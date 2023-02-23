@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_clustering.h"
 
 #include <functional>
+#include <optional>
 #include <utility>
 
 #include "mlir/IR/BuiltinAttributes.h"
@@ -135,7 +136,7 @@ class DefaultClusteringPolicy : public ClusteringPolicy {
  public:
   explicit DefaultClusteringPolicy(
       std::function<bool(Operation*)> filter,
-      llvm::Optional<ValueConstraint> default_constraint = llvm::None)
+      llvm::Optional<ValueConstraint> default_constraint = std::nullopt)
       : filter_(std::move(filter)), default_constraint_(default_constraint) {}
 
   LogicalResult MatchAndUpdateConstraints(
@@ -153,7 +154,7 @@ template <typename OpTy>
 class OpDefaultClusteringPolicy : public DefaultClusteringPolicy {
  public:
   explicit OpDefaultClusteringPolicy(
-      llvm::Optional<ValueConstraint> default_constraint = llvm::None)
+      llvm::Optional<ValueConstraint> default_constraint = std::nullopt)
       : DefaultClusteringPolicy(
             [](Operation* op) -> bool { return mlir::isa<OpTy>(op); },
             default_constraint) {}
@@ -400,7 +401,7 @@ class ConcatV2OpClusteringPolicy
     // a known rank.
     for (auto value : op.getValues()) {
       operands.Insert(value,
-                      result_constraint.getValueOr(ValueConstraint::kRank));
+                      result_constraint.value_or(ValueConstraint::kRank));
     }
 
     // Force axis to be a constant.

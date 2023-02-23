@@ -9,6 +9,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/jit:__subpackages__",
         "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
@@ -87,6 +88,20 @@ cc_library(
         "//tensorflow/core/framework:tensor_shape_proto_cc",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "tpu_embedding_spmd_sharding_utils",
+    srcs = ["tpu_embedding_spmd_sharding_utils.cc"],
+    hdrs = ["tpu_embedding_spmd_sharding_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
     ],
 )
 
@@ -246,7 +261,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",
         "//tensorflow/compiler/xla/stream_executor/tpu:status_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",

@@ -13,9 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-package(default_visibility = [
-    "//visibility:public",
-])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [
+        "//visibility:public",
+    ],
+)
 
 licenses(["notice"])
 
@@ -46,13 +49,17 @@ objc_library(
     srcs = ["coreml_delegate.mm"],
     hdrs = ["coreml_delegate.h"],
     copts = ["-std=c++17"],
+    defines = select({
+        "//tensorflow/lite/delegates:tflite_debug_delegate": ["TFLITE_DEBUG_DELEGATE"],
+        "//conditions:default": [],
+    }),
     module_name = "TensorFlowLiteCCoreML",
     deps = [
         ":coreml_delegate_kernel",
         ":mlmodel_proto_cc",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/delegates/coreml/builders:op_builder",
         "//tensorflow/lite/delegates/coreml/builders:op_validator",
@@ -75,10 +82,11 @@ objc_library(
         ":coreml_executor",
         ":mlmodel_proto_cc",
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/coreml/builders:op_builder",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:types",
+        "@FP16",
     ],
 )

@@ -17,7 +17,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
-#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/tools/signature/signature_def_util.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 

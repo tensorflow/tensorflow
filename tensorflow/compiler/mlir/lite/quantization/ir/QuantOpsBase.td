@@ -27,6 +27,7 @@ include "mlir/IR/OpBase.td"
 def QuantizationFork_Dialect : Dialect {
   let name = "quantfork";
   let cppNamespace = "::mlir::quantfork";
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 #endif // QUANT_FORK_BASE

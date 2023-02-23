@@ -19,16 +19,19 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 
 namespace xla {
 namespace gpu {
 
-static constexpr const char kIRSizeKey[] = "code_size";
-static constexpr const char kBasicBlockSplitCountKey[] = "basic_block_count";
+// Use the "reserved" keys for these properties so lookups are fast.
+static constexpr absl::string_view kIRSizeKey = HloCostAnalysis::kReserved0Key;
+static constexpr absl::string_view kBasicBlockSplitCountKey =
+    HloCostAnalysis::kReserved1Key;
 
 Status GpuHloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(HloCostAnalysis::Preprocess(hlo));
@@ -44,7 +47,7 @@ int64_t GpuHloCostAnalysis::FusionParameterReadBytes(
     const HloInstruction* hlo) const {
   CHECK(hlo->IsFused() && (hlo->opcode() == HloOpcode::kParameter ||
                            hlo->opcode() == HloOpcode::kGetTupleElement));
-  float utilization = hlo_properties_.at(hlo).at(kUtilizationKey);
+  float utilization = hlo_properties_.at(hlo)[kUtilizationKey];
   if (!options_.count_multiple_input_accesses) {
     utilization = fmin(utilization, 1.0);
   }
@@ -55,37 +58,31 @@ Status GpuHloCostAnalysis::FusionCalculateUtilizations(
     const HloInstruction* fusion) {
   const HloInstruction* root = fusion->fused_expression_root();
   // Traverse through the computation from the root till parameters propagating
-  // the utilization of operands; store utilization of each node
-  // in hlo_properties_. All consumers of an instruction are processed before
-  // the instruction itself.
+  // the utilization of operands; store utilization of each node in
+  // hlo_properties_. All consumers of an instruction are processed before the
+  // instruction itself.
   std::vector<HloInstruction*> instructions =
       fusion->fused_instructions_computation()->MakeInstructionPostOrder();
   absl::c_reverse(instructions);
 
-  // To estimate where within the computation an instruction output can be
-  // reused and where it has to be recomputed again we group accesses to the
-  // instruction by their origin from "element-wise use roots". All access
-  // paths from such a root to the instruction are element-wise.
   // Whenever we account a non-element-wise operation we forget about
   // element-wise roots encountered so far and provisionally set its operands
   // as new element-wise roots.
-  absl::flat_hash_map<const HloInstruction*, ConstHloInstructionSet>
-      elementwise_use_roots;
-
-  absl::flat_hash_map<const HloInstruction*, float> root_utilizations;
   absl::flat_hash_map<const HloInstruction*, int64_t> root_ir_sizes;
 
   for (const HloInstruction* instr : instructions) {
     hlo_properties_[instr][kUtilizationKey] = 0;
     hlo_properties_[instr][kIRSizeKey] = 0;
+    elementwise_use_roots_[instr].clear();
+    root_utilizations_[instr] = 0;
   }
 
   // For the purpose of operand utilization analysis, no matter how the fusion
   // outputs are used, we assume that fusion is always executed completely
   // producing 100% of its outputs.
-  root_utilizations[root] = 1.0;
+  root_utilizations_[root] = 1.0;
   root_ir_sizes[root] = 1;
-  elementwise_use_roots[root].insert(root);
+  elementwise_use_roots_[root].insert(root);
 
   current_properties_[kFlopsKey] = 0;
   current_properties_[kBasicBlockSplitCountKey] = 0;
@@ -94,19 +91,20 @@ Status GpuHloCostAnalysis::FusionCalculateUtilizations(
   for (const HloInstruction* instr : instructions) {
     VLOG(8) << instr->name() << ":";
     VLOG(9) << "Elementwise use roots:";
-    for (const HloInstruction* r : elementwise_use_roots[instr]) {
-      VLOG(9) << "\t" << r->name() << ": " << root_utilizations[r];
-      hlo_properties_[instr][kUtilizationKey] += root_utilizations[r];
-      hlo_properties_[instr][kIRSizeKey] += root_ir_sizes[r];
+    Properties& instr_props = hlo_properties_[instr];
+    for (const HloInstruction* r : elementwise_use_roots_[instr]) {
+      VLOG(9) << "\t" << r->name() << ": " << root_utilizations_[r];
+      instr_props[kUtilizationKey] += root_utilizations_[r];
+      instr_props[kIRSizeKey] += root_ir_sizes[r];
     }
 
-    float cur_instr_utilization = hlo_properties_[instr][kUtilizationKey];
+    float cur_instr_utilization = instr_props[kUtilizationKey];
     VLOG(8) << "Total utilization: " << cur_instr_utilization;
-    float cur_instr_times_emitted = hlo_properties_[instr][kIRSizeKey];
+    float cur_instr_times_emitted = instr_props[kIRSizeKey];
     VLOG(8) << "Times emitted: " << cur_instr_times_emitted;
 
     current_properties_[kFlopsKey] +=
-        cur_instr_utilization * hlo_properties_[instr][kFlopsKey];
+        cur_instr_utilization * instr_props[kFlopsKey];
     current_properties_[kIRSizeKey] += cur_instr_times_emitted;
     current_properties_[kBasicBlockSplitCountKey] +=
         cur_instr_times_emitted * ElementalIrEmitter::OpInvalidatesCache(instr);
@@ -116,12 +114,11 @@ Status GpuHloCostAnalysis::FusionCalculateUtilizations(
       const HloInstruction* operand = instr->operand(operand_idx);
       if ((instr->IsElementwise()) || instr->opcode() == HloOpcode::kTuple ||
           instr->opcode() == HloOpcode::kGetTupleElement) {
-        auto instr_roots = elementwise_use_roots[instr];
-        for (const HloInstruction* r : instr_roots) {
-          elementwise_use_roots[operand].insert(r);
+        for (const HloInstruction* r : elementwise_use_roots_[instr]) {
+          elementwise_use_roots_[operand].insert(r);
         }
       } else {
-        elementwise_use_roots[operand].insert(operand);
+        elementwise_use_roots_[operand].insert(operand);
         float cur_operand_utilization =
             cur_instr_utilization * operand_utilization(*instr, operand_idx);
         // The utilization is always a best-effort estimate, but in some cases
@@ -134,13 +131,24 @@ Status GpuHloCostAnalysis::FusionCalculateUtilizations(
             ShapeUtil::ElementsInRecursive(operand->shape());
         cur_operand_utilization =
             ceil(cur_operand_utilization * operand_elements) / operand_elements;
-        root_utilizations[operand] += cur_operand_utilization;
+        root_utilizations_[operand] += cur_operand_utilization;
         root_ir_sizes[operand] += cur_instr_times_emitted;
       }
     }
   }
 
   return OkStatus();
+}
+
+float GpuHloCostAnalysis::CommonElementwiseUtilization(
+    const HloInstruction* a, const HloInstruction* b) const {
+  float ret = 0;
+  for (auto r : elementwise_use_roots_.at(a)) {
+    if (elementwise_use_roots_.at(b).count(r)) {
+      ret += root_utilizations_.at(r);
+    }
+  }
+  return ret;
 }
 
 bool GpuHloCostAnalysis::ProducerConsumerMergedTooLarge(
@@ -195,8 +203,14 @@ Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
     // gemm is an integer type, because in that case no floating point
     // operations are involved at all! But we still calculate FLOPS because the
     // number is sometimes required for ad-hoc calculations.
+
+    // cublasLt supports auxiliary outputs, so output may be tuple.
+    const Shape& output_shape = custom_call->shape().IsTuple()
+                                    ? custom_call->shape().tuple_shapes(0)
+                                    : custom_call->shape();
+
     current_properties_[kFlopsKey] =
-        GetDotFlops(custom_call->operand(0)->shape(), custom_call->shape(),
+        GetDotFlops(custom_call->operand(0)->shape(), output_shape,
                     gemm_config.dot_dimension_numbers());
     return OkStatus();
   }
@@ -221,8 +235,15 @@ Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
     // possible", and if we were to include temp memory in here, we'd
     // essentially be *rewarding* convs that use additional temp memory!
     if (custom_call->shape().IsTuple()) {
-      SetOutputBytesAccessed(
-          options_.shape_size(custom_call->shape().tuple_shapes(0)));
+      float output_size =
+          options_.shape_size(custom_call->shape().tuple_shapes(0));
+      // 'Bytes accessed' are estimated in HloCostAnalysis::Preprocess() as
+      // input + output. As the output size is being adjusted here it has
+      // to propagate to the total bytes accessed.
+      current_properties_[kBytesAccessedKey] -=
+          current_properties_.output_bytes_accessed();
+      current_properties_[kBytesAccessedKey] += output_size;
+      current_properties_.set_output_bytes_accessed(output_size);
     }
     return OkStatus();
   }

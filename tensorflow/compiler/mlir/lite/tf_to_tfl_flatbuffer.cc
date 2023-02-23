@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 
+#include <iostream>
+#include <memory>
 #include <string>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "llvm/Support/raw_ostream.h"
@@ -34,8 +37,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/mhlo_tfl_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/serializer/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_tfl_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -48,12 +52,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/tools/optimize/quantize_weights.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -61,7 +65,7 @@ using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::Operation;
 using mlir::OwningOpRef;
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 bool IsControlFlowV1Op(Operation* op) {
   return mlir::isa<mlir::tf_executor::SwitchOp, mlir::tf_executor::MergeOp,
@@ -227,7 +231,8 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
   }
 
   pass_manager.clear();
-  mlir::odml::AddTFToStablehloPasses(pass_manager, false, false);
+  mlir::odml::AddTFToStablehloPasses(pass_manager, /*skip_resize*/ true,
+                                     /*smuggle_disallowed_ops*/ true);
   // Print out a detailed report of non-converted stats.
   pass_manager.addPass(mlir::odml::createPrintOpStatsPass());
   mlir::odml::AddStablehloOptimizationPasses(pass_manager);
@@ -235,17 +240,18 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
     return statusHandler.ConsumeStatus();
   }
 
-  // return to avoid adding TFL converter path
-
   if (export_to_mlir) {
     llvm::raw_string_ostream os(*result);
     module.print(os);
     return statusHandler.ConsumeStatus();
   }
 
-  // TODO(b/242328935): Add outputing a TFLite Flatbuffer for a stablehlo.
-  return tensorflow::errors::Unknown(
-      "No output mlir specified, please specify output_mlir");
+  mlir::odml::FlatbufferExportOptions options;
+  if (!mlir::odml::MlirToFlatBufferTranslateFunction(module, options, result)) {
+    return statusHandler.ConsumeStatus();
+  }
+
+  return OkStatus();
 }
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(
@@ -284,6 +290,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
           pass_manager.getContext()));
 
   if (pass_config.enable_stablehlo_conversion) {
+    // return to avoid adding TFL converter path
     return ConvertTFExecutorToStablehloFlatbuffer(
         pass_manager, module, export_to_mlir, statusHandler, toco_flags,
         pass_config, session, result);
@@ -297,8 +304,8 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   // Freeze variables if a session is provided.
   if (session.has_value()) {
     mlir::TFL::ErrorCollectorInstrumentation collector(module.getContext());
-    if (failed(mlir::tf_saved_model::FreezeVariables(module,
-                                                     session.getValue()))) {
+    if (failed(
+            mlir::tf_saved_model::FreezeVariables(module, session.value()))) {
       auto status = statusHandler.ConsumeStatus();
       mlir::TFL::ErrorCollector* collector =
           mlir::TFL::ErrorCollector::GetErrorCollector();

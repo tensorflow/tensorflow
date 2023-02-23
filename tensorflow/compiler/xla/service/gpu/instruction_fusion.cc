@@ -15,13 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
+#include <algorithm>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -78,6 +79,11 @@ FusionDecision GpuInstructionFusion::ShouldFuseInexpensiveChecks(
           !IsProducerConsumerFusible(*producer, *consumer)) {
     return !fusible;
   }
+
+  if (CreatesHeavyComputation(*producer, *consumer)) {
+    return "the fusion would create a heavy computation";
+  }
+
   if (NoFusionPossible fusible =
           !InstructionFusion::ShouldFuse(consumer, operand_index)) {
     return !fusible;
@@ -96,7 +102,7 @@ FusionDecision GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 
   // The following checks are potentially expensive.
   if (NoFusionPossible too_large =
-          !FusionFitsInBudget(*consumer, *producer,
+          !FusionFitsInBudget(*consumer, *producer, device_info_,
                               /*is_consumer_producer_fusion=*/true)) {
     return !too_large;
   }
@@ -126,21 +132,6 @@ FusionDecision GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
   return ChooseFusionKind(*producer, *consumer);
-}
-
-std::vector<HloComputation*> GpuInstructionFusion::GetFusionComputations(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  std::vector<HloComputation*> computations =
-      InstructionFusion::GetFusionComputations(module, execution_threads);
-  computations.erase(
-      std::remove_if(computations.begin(), computations.end(),
-                     [](HloComputation* c) {
-                       return c->IsCustomCallComputation() &&
-                              IsSoftmaxCustomCall(*c->CustomCallInstruction());
-                     }),
-      computations.end());
-  return computations;
 }
 
 HloInstruction* GpuInstructionFusion::FuseInstruction(

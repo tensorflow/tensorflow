@@ -15,78 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_PROFILER_SESSION_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_PROFILER_SESSION_H_
 
-#include <functional>
-#include <memory>
-#include <vector>
-
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/tsl/profiler/protobuf/profiler_options.pb.h"
-
-#if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
-#include "tensorflow/core/profiler/lib/profiler_lock.h"
-#endif
+#include "tensorflow/tsl/profiler/lib/profiler_session.h"
 
 namespace tensorflow {
 
-// A profiler which will start profiling when creating the object and will stop
-// when either the object is destroyed or CollectData is called.
-// Multiple instances can be created, but at most one of them will profile.
-// Status() will return OK only for the instance that is profiling.
-// Thread-safety: ProfilerSession is thread-safe.
-class ProfilerSession {
- public:
-  // Creates a ProfilerSession and starts profiling.
-  static std::unique_ptr<ProfilerSession> Create(const ProfileOptions& options);
-
-  static ProfileOptions DefaultOptions() {
-    ProfileOptions options;
-    options.set_version(1);
-    options.set_device_tracer_level(1);
-    options.set_host_tracer_level(2);
-    options.set_device_type(ProfileOptions::UNSPECIFIED);
-    options.set_python_tracer_level(0);
-    options.set_enable_hlo_proto(true);
-    options.set_include_dataset_ops(true);
-    return options;
-  }
-
-  // Deletes an existing Profiler and enables starting a new one.
-  ~ProfilerSession();
-
-  tensorflow::Status Status() TF_LOCKS_EXCLUDED(mutex_);
-
-  // Collects profile data into XSpace.
-  tensorflow::Status CollectData(profiler::XSpace* space)
-      TF_LOCKS_EXCLUDED(mutex_);
-
- private:
-  // Constructs an instance of the class and starts profiling
-  explicit ProfilerSession(const ProfileOptions& options);
-
-  // ProfilerSession is neither copyable or movable.
-  ProfilerSession(const ProfilerSession&) = delete;
-  ProfilerSession& operator=(const ProfilerSession&) = delete;
-
-#if !defined(IS_MOBILE_PLATFORM)
-  // Collects profile data into XSpace without post-processsing.
-  tensorflow::Status CollectDataInternal(profiler::XSpace* space);
-
-  profiler::ProfilerLock profiler_lock_ TF_GUARDED_BY(mutex_);
-
-  std::unique_ptr<profiler::ProfilerInterface> profilers_ TF_GUARDED_BY(mutex_);
-
-  uint64 start_time_ns_;
-  ProfileOptions options_;
-#endif
-  tensorflow::Status status_ TF_GUARDED_BY(mutex_);
-  mutex mutex_;
-};
+using tsl::ProfilerSession;  // NOLINT
 
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_PROFILER_LIB_PROFILER_SESSION_H_

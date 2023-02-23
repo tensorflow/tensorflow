@@ -213,11 +213,11 @@ TfLiteStatus AtanPrepare(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus AtanEval(TfLiteContext* context, TfLiteNode* node) {
   using namespace tflite;
-  const TfLiteTensor* input = GetInput(context, node,0);
-  TfLiteTensor* output = GetOutput(context, node,0);
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
 
-  float* input_data = input->data.f;
-  float* output_data = output->data.f;
+  float* input_data = GetTensorData<float>(input);
+  float* output_data = GetTensorData<float>(output);
 
   size_t count = 1;
   int num_dims = NumDimensions(input);

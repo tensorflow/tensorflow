@@ -26,7 +26,7 @@ namespace hlo {
 // Verifies the source target pairs attached to collective permute.
 LogicalResult verifyCollectivePermuteSourceTargetPairs(
     Operation *op, DenseIntElementsAttr attr) {
-  auto type = attr.getType().dyn_cast<RankedTensorType>();
+  auto type = attr.getType().cast<RankedTensorType>();
   if (type.getRank() != 2)
     return op->emitError() << "expect source_target_pairs attribute to be of "
                               "rank 2, but got rank "
@@ -40,6 +40,10 @@ LogicalResult verifyCollectivePermuteSourceTargetPairs(
   llvm::DenseSet<int64_t> targets;
   for (auto i = attr.begin(), e = attr.end(); i != e; ++i) {
     auto val = (*i).getSExtValue();
+    if (val < 0)
+      return op->emitError()
+             << "replica ids in source_target_pairs must be >= 0.";
+
     if (i.getIndex() % 2 == 0) {
       bool isUnique = sources.insert(val).second;
       if (!isUnique) return op->emitError() << "duplicate sources not allowed.";

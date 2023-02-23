@@ -32,9 +32,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/custom_parsers.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/lstm_parser.h"
@@ -112,8 +112,10 @@ absl::Status NewConstNode(TensorFloat32 t, GraphFloat32* graph, Value** value) {
   return absl::OkStatus();
 }
 
-absl::Status ParseInputsWithConstTensor(Node* node, ObjectReader* reader,
-                                        TensorOrScalar* tensor_or_scalar) {
+template <DataType DataTypeT, typename T>
+absl::Status ParseInputsWithConstTensorImpl(
+    Node* node, ObjectReader* reader,
+    TensorOrScalarBase<DataTypeT, T>* tensor_or_scalar) {
   const std::string& opname = node->operation.type;
 
   // Determine runtime/constant tensors.
@@ -149,30 +151,63 @@ absl::Status ParseInputsWithConstTensor(Node* node, ObjectReader* reader,
     }
     RETURN_IF_ERROR(reader->AddInput(node, runtime_tensor));
     if (constant_dims->size <= 0 || NumElements(constant_dims) == 1) {
-      Tensor<Scalar, DataType::FLOAT32> tensor;
+      Tensor<Scalar, DataTypeT> tensor;
       RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
-      *tensor_or_scalar = tensor.data[0];
+      *tensor_or_scalar = static_cast<T>(tensor.data[0]);
     } else {
       if (CheckIfLinearConvertible(constant_dims).ok()) {
-        Tensor<Linear, DataType::FLOAT32> tensor;
+        Tensor<Linear, DataTypeT> tensor;
         RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
         *tensor_or_scalar = std::move(tensor);
       } else if (constant_dims->size == 2) {
-        Tensor<HW, DataType::FLOAT32> tensor_hw;
+        Tensor<HW, DataTypeT> tensor_hw;
         RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor_hw));
-        Tensor<HWC, DataType::FLOAT32> tensor;
+        Tensor<HWC, DataTypeT> tensor;
         tensor.id = tensor_hw.id;
         tensor.shape = HWC(1, tensor_hw.shape.h, tensor_hw.shape.w);
         tensor.data = tensor_hw.data;
         *tensor_or_scalar = std::move(tensor);
       } else {
-        Tensor<HWC, DataType::FLOAT32> tensor;
+        Tensor<HWC, DataTypeT> tensor;
         RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
         *tensor_or_scalar = std::move(tensor);
       }
     }
   }
   return absl::OkStatus();
+}
+
+absl::Status ParseInputsWithConstTensor(Node* node, ObjectReader* reader,
+                                        const TfLiteTensor* input0) {
+  switch (input0->type) {
+    case kTfLiteBool: {
+      ElementwiseAttributesBase<DataType::BOOL, bool> attr;
+      RETURN_IF_ERROR(
+          ParseInputsWithConstTensorImpl(node, reader, &attr.param));
+      attr.runtime_tensor_is_second =
+          IsConstantTensor(reader->GetInputTensor(0));
+      node->operation.attributes = std::move(attr);
+      return absl::OkStatus();
+    }
+    case kTfLiteInt32: {
+      ElementwiseAttributesBase<DataType::INT32, int32_t> attr;
+      RETURN_IF_ERROR(
+          ParseInputsWithConstTensorImpl(node, reader, &attr.param));
+      attr.runtime_tensor_is_second =
+          IsConstantTensor(reader->GetInputTensor(0));
+      node->operation.attributes = std::move(attr);
+      return absl::OkStatus();
+    }
+    default: {
+      ElementwiseAttributes attr;
+      RETURN_IF_ERROR(
+          ParseInputsWithConstTensorImpl(node, reader, &attr.param));
+      attr.runtime_tensor_is_second =
+          IsConstantTensor(reader->GetInputTensor(0));
+      node->operation.attributes = std::move(attr);
+      return absl::OkStatus();
+    }
+  }
 }
 
 absl::Status MaybeFuseActivationForElementwiseNode(
@@ -1080,11 +1115,12 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
                                                         /*runtime_inputs=*/1,
                                                         /*const_inputs=*/1,
                                                         /*outputs=*/1));
-      ElementwiseAttributes attr;
-      RETURN_IF_ERROR(ParseInputsWithConstTensor(node, reader, &attr.param));
-      attr.runtime_tensor_is_second =
-          IsConstantTensor(reader->GetInputTensor(0));
-      node->operation.attributes = std::move(attr);
+      const TfLiteTensor* input_tensor0 = reader->GetInputTensor(0);
+      const TfLiteTensor* constant_tensor = IsConstantTensor(input_tensor0)
+                                                ? input_tensor0
+                                                : reader->GetInputTensor(1);
+      RETURN_IF_ERROR(
+          ParseInputsWithConstTensor(node, reader, constant_tensor));
     } else {
       return absl::InvalidArgumentError("Incorrect operation type passed");
     }
@@ -1149,6 +1185,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       case OperationType::GREATER_EQUAL:
       case OperationType::LESS:
       case OperationType::LESS_EQUAL:
+      case OperationType::LOGICAL_AND:
       case OperationType::MAXIMUM:
       case OperationType::MINIMUM:
       case OperationType::MUL:
@@ -1173,6 +1210,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       case OperationType::GREATER_EQUAL:
       case OperationType::LESS:
       case OperationType::LESS_EQUAL:
+      case OperationType::LOGICAL_AND:
       case OperationType::MAXIMUM:
       case OperationType::MINIMUM:
       case OperationType::MUL:
@@ -2687,7 +2725,7 @@ class UnpackOperationParser : public TFLiteOperationParser {
       // Adding Identity reshape that will be removed.
       Node* node = graph->NewNode();
       node->operation.type = ToString(OperationType::RESHAPE);
-      RETURN_IF_ERROR(reader->AddInput(node, 1));
+      RETURN_IF_ERROR(reader->AddInput(node, 0));
       RETURN_IF_ERROR(reader->AddOutputs(node));
       // New shape comes from output shape.
       ReshapeAttributes attr;
@@ -3008,6 +3046,9 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
           OperationType::SIGMOID);
     case kTfLiteBuiltinLog:
       return std::make_unique<ElementwiseOperationParser>(OperationType::LOG);
+    case kTfLiteBuiltinLogicalAnd:
+      return std::make_unique<ElementwiseOperationParser>(
+          OperationType::LOGICAL_AND);
     case kTfLiteBuiltinLstm:
       return std::make_unique<LSTMOperationParser>();
     case kTfLiteBuiltinMaximum:
@@ -3109,6 +3150,7 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<UnpackOperationParser>();
     case kTfLiteBuiltinCustom: {
       const absl::string_view custom_name = registration->custom_name;
+      fprintf(stderr, "Found Custom Op: %s\n", registration->custom_name);
       if (custom_name == "Convolution2DTransposeBias") {
         return std::make_unique<TransposeConvCustomOperationParser>();
       }
@@ -3172,6 +3214,10 @@ TfLiteIntArray* GetOpsToReplace(
     if (registration->builtin_code == kTfLiteBuiltinSelectV2) {
       allowed_in_types.push_back(kTfLiteBool);
     }
+    if (registration->builtin_code == kTfLiteBuiltinLogicalAnd) {
+      allowed_in_types.push_back(kTfLiteBool);
+      allowed_out_types.push_back(kTfLiteBool);
+    }
     if (!IsAllAllowedTensors(context, node->inputs, allowed_in_types) ||
         !IsAllAllowedTensors(context, node->outputs, allowed_out_types)) {
       if (unsupported_details) {
@@ -3190,8 +3236,8 @@ TfLiteIntArray* GetOpsToReplace(
     return TfLiteIntArrayCreate(0);
   }
 
-  // By default, we simply get 1st largest partition as 'max_delegate_partions'
-  // is set to 1 by default.
+  // By default, we simply get 1st largest partition as
+  // 'max_delegate_partitions' is set to 1 by default.
   std::vector<int> ops_to_replace =
       partition_helper.GetNodesOfFirstNLargestPartitions(
           max_delegated_partitions);

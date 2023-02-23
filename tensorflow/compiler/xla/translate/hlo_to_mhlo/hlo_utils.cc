@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/tsl/platform/bfloat16.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 namespace xla {
 namespace {
@@ -40,7 +41,7 @@ template <typename CppType>
     const ShapedType& type, const LiteralBase& literal) {
   auto data_span = literal.data<CppType>();
   return ::mlir::DenseElementsAttr::get(
-      type, llvm::makeArrayRef(data_span.data(), data_span.size()));
+      type, llvm::ArrayRef(data_span.data(), data_span.size()));
 }
 
 StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
@@ -111,6 +112,10 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
   switch (element_type) {
     case PrimitiveType::PRED:
       return CreateDenseAttrFromLiteral<bool>(type, literal);
+    case PrimitiveType::F8E5M2:
+      return CreateDenseAttrFromLiteral<tsl::float8_e5m2>(type, literal);
+    case PrimitiveType::F8E4M3FN:
+      return CreateDenseAttrFromLiteral<tsl::float8_e4m3fn>(type, literal);
     case PrimitiveType::F16:
       return CreateDenseAttrFromLiteral<half>(type, literal);
     case PrimitiveType::BF16:
@@ -167,6 +172,14 @@ Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
   }
   if (element_type.isInteger(64)) {
     CopyDenseElementsBy<uint64_t>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isFloat8E5M2()) {
+    CopyDenseElementsBy<tsl::float8_e5m2>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isFloat8E4M3FN()) {
+    CopyDenseElementsBy<tsl::float8_e4m3fn>(data, output);
     return OkStatus();
   }
   if (element_type.isBF16()) {
@@ -226,6 +239,10 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
   switch (element_type) {
     case PrimitiveType::PRED:
       return builder.getI1Type();
+    case PrimitiveType::F8E5M2:
+      return builder.getFloat8E5M2Type();
+    case PrimitiveType::F8E4M3FN:
+      return builder.getFloat8E4M3FNType();
     case PrimitiveType::F16:
       return builder.getF16Type();
     case PrimitiveType::BF16:
@@ -406,6 +423,8 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kSin;
   } else if (isa<mlir::mhlo::SqrtOp, mlir::lmhlo::SqrtOp>(op)) {
     return xla::HloOpcode::kSqrt;
+  } else if (isa<mlir::mhlo::TanOp, mlir::lmhlo::TanOp>(op)) {
+    return xla::HloOpcode::kTan;
   } else if (isa<mlir::mhlo::TanhOp, mlir::lmhlo::TanhOp>(op)) {
     return xla::HloOpcode::kTanh;
   } else if (isa<mlir::mhlo::ComplexOp, mlir::lmhlo::ComplexOp>(op)) {

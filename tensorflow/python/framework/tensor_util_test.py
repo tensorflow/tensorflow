@@ -32,6 +32,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import shape_util
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
@@ -255,6 +256,42 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
     a = tensor_util.MakeNdarray(t)
     self.assertEqual(test_type, a.dtype)
     self.assertAllClose(np.array([10.0, 20.0], dtype=test_type), a)
+
+  def testFloat8e5m2(self):
+    test_type = dtypes.float8_e5m2.as_numpy_dtype
+    t = tensor_util.make_tensor_proto(np.array([10.0, 20.0], dtype=test_type))
+    # 10.0: "I" = 73 = 10010 01: 2^(18 - 15) * (1 + 1/4)
+    # 20.0: "M" = 77 = 10011 01: 2^(19 - 15) * (1 + 1/4)
+    self.assertProtoEquals(
+        """
+      dtype: DT_FLOAT8_E5M2
+      tensor_shape {
+        dim {
+          size: 2
+        }
+      }
+      tensor_content: "IM"
+      """, t)
+
+    a = tensor_util.MakeNdarray(t)
+    self.assertEqual(test_type, a.dtype)
+    self.assertAllClose(np.array([10.0, 20.0], dtype=test_type), a)
+
+  def testFloat8e4m3fn(self):
+    test_type = dtypes.float8_e4m3fn.as_numpy_dtype
+    t = tensor_util.make_tensor_proto(np.array([10.0, 20.0], dtype=test_type))
+    # 10.0: "R" = 82 = 1010 010: 2^(10 - 7) * (1 + 1/4)
+    # 20.0: "Z" = 90 = 1011 010: 2^(11 - 7) * (1 + 1/4)
+    self.assertProtoEquals(
+        """
+      dtype: DT_FLOAT8_E4M3FN
+      tensor_shape {
+        dim {
+          size: 2
+        }
+      }
+      tensor_content: "RZ"
+      """, t)
 
   def testInt(self):
     t = tensor_util.make_tensor_proto(10)
@@ -1220,12 +1257,12 @@ class MaybeSetStaticShapeTest(test.TestCase):
 
   @contextlib.contextmanager
   def disableSetStaticShape(self):
-    flag_old = tensor_util._ENABLE_MAYBE_SET_STATIC_SHAPE
-    tensor_util._ENABLE_MAYBE_SET_STATIC_SHAPE = False
+    flag_old = shape_util._ENABLE_MAYBE_SET_STATIC_SHAPE
+    shape_util._ENABLE_MAYBE_SET_STATIC_SHAPE = False
     try:
       yield
     finally:
-      tensor_util._ENABLE_MAYBE_SET_STATIC_SHAPE = flag_old
+      shape_util._ENABLE_MAYBE_SET_STATIC_SHAPE = flag_old
 
   def testMaybeSetStaticShape(self):
     shape = constant_op.constant([2, 5], dtype=dtypes.int32)
@@ -1267,7 +1304,7 @@ class ShapeTensorTest(test_util.TensorFlowTestCase):
   def testConversion(self):
     """Make sure fully known TensorShape objects convert to Tensors."""
     shape = tensor_shape.TensorShape([1, tensor_shape.Dimension(2)])
-    shape_tensor = tensor_util.shape_tensor(shape)
+    shape_tensor = shape_util.shape_tensor(shape)
     self.assertAllEqual((1, 2), shape_tensor)
 
 

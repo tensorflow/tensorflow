@@ -17,15 +17,19 @@ limitations under the License.
 
 #include <utility>
 
+#include "mlir/Conversion/AsyncToLLVM/AsyncToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
+#include "mlir/Dialect/Async/IR/Async.h"  // from @llvm-project
+#include "mlir/Dialect/Async/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/ir/tests/testlib.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/passes.h"
@@ -40,7 +44,7 @@ void RegisterDefaultXlaGpuRuntimeDialects(DialectRegistry& dialects) {
   dialects->insert<mlir::memref::MemRefDialect, mlir::scf::SCFDialect,
                    mlir::func::FuncDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
                    mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
-                   RuntimeDialect>();
+                   mlir::async::AsyncDialect, RuntimeDialect>();
 
   // Register MLIR dialects that can be translated to LLVM IR.
   mlir::registerLLVMDialectTranslation(*dialects);
@@ -57,11 +61,18 @@ void RegisterTestlibDialect(DialectRegistry& dialects) {
 static void CreateDefaultXlaGpuRuntimeCompilationPipeline(
     mlir::OpPassManager& pm, const CompilationPipelineOptions& opts) {
   pm.addPass(mlir::createConvertSCFToCFPass());
+  pm.addPass(mlir::createAsyncFuncToAsyncRuntimePass());
 
   // Export functions to the XLA runtime.
   pm.addPass(CreateExportRuntimeFunctionsPass());
   pm.addPass(CreateConvertCustomCallsPass());
   pm.addPass(CreateConvertAssertsPass());
+
+  // Lower from high level async operations to async runtime.
+  pm.addPass(mlir::createAsyncToAsyncRuntimePass());
+
+  // Add async.runtime reference counting operations.
+  pm.addPass(mlir::createAsyncRuntimePolicyBasedRefCountingPass());
 
   // Convert runtime operations and custom calls to LLVM dialect.
   ConvertRuntimeToLLvmOpts rt_to_llvm_opts = {
@@ -70,10 +81,17 @@ static void CreateDefaultXlaGpuRuntimeCompilationPipeline(
       opts.populate_attr_encodings};
   pm.addPass(CreateConvertRuntimeToLLVMPass(std::move(rt_to_llvm_opts)));
 
-  // Convert everythinG else to LLVM dialect.
-  pm.addPass(mlir::createMemRefToLLVMConversionPass());
+  // Convert async dialect to LLVM once everything else is in the LLVM dialect.
+  pm.addPass(mlir::createConvertAsyncToLLVMPass());
+
+  // Convert everything else to LLVM dialect.
+  pm.addPass(mlir::createFinalizeMemRefToLLVMConversionPass());
   pm.addPass(mlir::createConvertFuncToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
+
+  // Clean up IR before passing it to LLVM.
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
 }
 
 void CreateDefaultXlaGpuRuntimeCompilationPipeline(

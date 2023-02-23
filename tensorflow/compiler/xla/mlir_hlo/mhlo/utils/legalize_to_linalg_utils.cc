@@ -39,21 +39,23 @@ bool hasIntegralShapeType(Operation* op) {
 
 }  // namespace
 
-SmallVector<StringRef, 3> getParallelAndReductionIterators(
+SmallVector<utils::IteratorType, 3> getParallelAndReductionIterators(
     unsigned nLoops, unsigned nReduction) {
-  SmallVector<StringRef, 3> res(nLoops - nReduction,
-                                getParallelIteratorTypeName());
-  res.append(nReduction, getReductionIteratorTypeName());
+  SmallVector<utils::IteratorType, 3> res(nLoops - nReduction,
+                                          utils::IteratorType::parallel);
+  res.append(nReduction, utils::IteratorType::reduction);
   return res;
 }
 
-SmallVector<StringRef, 3> getNParallelLoopsAttrs(unsigned nParallelLoops) {
+SmallVector<utils::IteratorType, 3> getNParallelLoopsAttrs(
+    unsigned nParallelLoops) {
   return getParallelAndReductionIterators(nParallelLoops, 0);
 }
 
 Value getEmptySparseTensor(OpBuilder& b, Location loc, ShapedType type,
                            ArrayRef<Value> dynSizes) {
-  return b.create<bufferization::AllocTensorOp>(loc, type, dynSizes,
+  return b.create<bufferization::AllocTensorOp>(loc, type.cast<TensorType>(),
+                                                dynSizes,
                                                 /*copy=*/Value(),
                                                 /*memory_space=*/IntegerAttr());
 }
@@ -61,7 +63,8 @@ Value getEmptySparseTensor(OpBuilder& b, Location loc, ShapedType type,
 Value getEmptyTensor(OpBuilder& b, Location loc, ShapedType type,
                      ArrayRef<Value> dynSizes) {
   return b.create<tensor::EmptyOp>(loc, type.getShape(), type.getElementType(),
-                                   dynSizes);
+                                   dynSizes,
+                                   type.cast<RankedTensorType>().getEncoding());
 }
 
 Value getEmptyTensorFor(OpBuilder& b, Location loc, ShapedType resultType,
@@ -79,7 +82,7 @@ Value getEmptyTensorFor(OpBuilder& b, Location loc, ShapedType resultType,
     assert(reifiedShapes.size() == 1 && "Expected one reified result");
     // Construct sizes for the required dimensions.
     for (auto& en : llvm::enumerate(resultType.getShape())) {
-      if (en.value() != ShapedType::kDynamicSize) continue;
+      if (en.value() != ShapedType::kDynamic) continue;
       sizes.push_back(b.create<tensor::ExtractOp>(
           loc, reifiedShapes[0],
           ValueRange{b.create<arith::ConstantIndexOp>(loc, en.index())}));
@@ -120,6 +123,19 @@ Value postSparsify(Operation* op, Value semiring, Value result, OpBuilder* b) {
     return semiring;
   }
   return result;
+}
+
+bool allOperandsAreScalarTensors(Operation* op) {
+  return llvm::all_of(op->getOperands(), [](Value operand) {
+    auto operandTy = operand.getType().dyn_cast<ShapedType>();
+    return operandTy && operandTy.getRank() == 0;
+  });
+}
+
+bool isInBodyOfLinalgOps(Operation* op) {
+  auto* parentOp = op->getParentRegion()->getParentOp();
+  return parentOp->getDialect() ==
+         parentOp->getContext()->getLoadedDialect<linalg::LinalgDialect>();
 }
 
 }  // namespace mhlo

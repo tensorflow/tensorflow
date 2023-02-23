@@ -30,7 +30,7 @@ import tensorflow as tf
 from google.protobuf import text_format
 from tensorflow.lite.testing import _pywrap_string_util
 from tensorflow.lite.testing import generate_examples_report as report_lib
-from tensorflow.python.framework import graph_util as tf_graph_util
+from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.saved_model import signature_constants
 
 # pylint: disable=g-import-not-at-top
@@ -160,7 +160,7 @@ def freeze_graph(session, outputs):
   Returns:
     The frozen graph_def.
   """
-  return tf_graph_util.convert_variables_to_constants(
+  return convert_to_constants.convert_variables_to_constants(
       session, session.graph.as_graph_def(), [x.op.name for x in outputs])
 
 

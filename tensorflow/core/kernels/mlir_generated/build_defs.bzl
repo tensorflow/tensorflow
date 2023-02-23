@@ -308,7 +308,7 @@ def _gen_kernel_library(
 
     # Partially JIT-compiled kernels
     true_i64jits = [True for i in jit_i64_indexed_for_large_tensors_types]
-    false_jits = [True for i in jit_i64_indexed_for_large_tensors_types]
+    false_jits = [False for i in jit_i64_indexed_for_large_tensors_types]
     all_paratial_jit_kernels = zip(
         jit_i64_indexed_for_large_tensors_types,
         output_jit_i64_indexed_for_large_tensors_types,

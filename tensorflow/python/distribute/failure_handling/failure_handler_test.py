@@ -46,6 +46,13 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 
 
+try:
+  import dill  # pylint:disable=g-import-not-at-top
+
+  _REGISTER_DECORATOR = dill.register
+except ImportError:
+  _REGISTER_DECORATOR = lambda fn, *_: fn
+
 mock = test.mock
 
 
@@ -121,7 +128,8 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
                 raise_app_error_on_worker=None,
                 training_restarted=None,
                 training_finished=None,
-                termination_config=failure_handling.TerminationConfig()):
+                termination_config=failure_handling.TerminationConfig(),
+                api_wrapping_train=True):
 
     strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
 
@@ -205,7 +213,11 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
         for step in range(
             preemption_handler.total_run_calls % STEPS_PER_EPOCH,
             STEPS_PER_EPOCH):
-          preemption_handler.run(distributed_train_step, epoch, step)
+          if api_wrapping_train:
+            preemption_handler.run(distributed_train_step, epoch, step)
+          else:
+            preemption_handler._save_checkpoint_if_preempted()
+            distributed_train_step(epoch, step)
         # Add some randomness to when preemption actually happens. We should
         # trigger it for sure if the training is coming to an end and it hasn't
         # been triggered yet.
@@ -225,9 +237,12 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
           strategy.num_replicas_in_sync * EPOCHS_TO_RUN * STEPS_PER_EPOCH)
 
   @combinations.generate(
-      combinations.combine(input_arg=['checkpoint', 'manager'],
-                           mwms_mode=['local', 'multi_worker'],))
-  def test_preemption_checkpointing(self, input_arg, mwms_mode):
+      combinations.combine(
+          input_arg=['checkpoint', 'manager'],
+          mwms_mode=['local', 'multi_worker'],
+          api_wrapping_train=[True, False]))
+  def test_preemption_checkpointing(self, input_arg, mwms_mode,
+                                    api_wrapping_train):
     has_chief = False
 
     if _is_oss():
@@ -251,6 +266,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
           args=(checkpoint_dir, cluster_spec, input_arg,
                 [training_started_event
                 ], None, training_restarted, training_finished),
+          kwargs={'api_wrapping_train': api_wrapping_train},
           rpc_layer=rpc_layer,
           return_output=True,
           dependence_on_chief=has_chief)
@@ -494,6 +510,15 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
     # By default, as tested by other test cases, checkpoint will be saved.
     # This passed in save_fn skips it.
     self.assertEmpty(match_group)
+
+
+@_REGISTER_DECORATOR(PreemptionCheckpointTest)
+def _save_test_case(pickler, obj):
+  def reconstruct(*args, **kwargs):
+    del args, kwargs
+    return PreemptionCheckpointTest()
+
+  return pickler.save_reduce(reconstruct, (), obj=obj)
 
 
 if __name__ == '__main__':

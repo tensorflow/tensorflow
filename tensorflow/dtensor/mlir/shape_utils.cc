@@ -125,7 +125,7 @@ mlir::NamedAttrList GetAllAttributesFromOperation(mlir::Operation* op) {
 // operation is `DTensorLayout` op, then we use input of DTensorLayout op
 // instead for correct constant matching.
 mlir::LogicalResult InferShapeOfTFOpWithCustomOperandConstantFn(
-    llvm::Optional<mlir::Location> location, mlir::Operation* op,
+    std::optional<mlir::Location> location, mlir::Operation* op,
     int64_t graph_version,
     llvm::SmallVectorImpl<mlir::ShapedTypeComponents>& inferred_return_shapes) {
   if (auto type_op = llvm::dyn_cast<mlir::InferTypeOpInterface>(op)) {
@@ -248,14 +248,12 @@ StatusOr<llvm::ArrayRef<int64_t>> GetGlobalShapeOfValueFromDTensorLayout(
   if (value.isa<mlir::OpResult>() &&
       mlir::isa<mlir::TF::DTensorLayout>(value.getDefiningOp())) {
     auto layout_op = mlir::cast<mlir::TF::DTensorLayout>(value.getDefiningOp());
-    if (layout_op.getGlobalShape())
-      return layout_op.getGlobalShape().getValue();
+    if (layout_op.getGlobalShape()) return layout_op.getGlobalShape().value();
   } else if (value.hasOneUse() &&
              mlir::isa<mlir::TF::DTensorLayout>(*value.getUsers().begin())) {
     auto layout_op =
         mlir::cast<mlir::TF::DTensorLayout>(*value.getUsers().begin());
-    if (layout_op.getGlobalShape())
-      return layout_op.getGlobalShape().getValue();
+    if (layout_op.getGlobalShape()) return layout_op.getGlobalShape().value();
   }
   return errors::InvalidArgument(
       "consumer or producer of value is not a DTensorLayout");

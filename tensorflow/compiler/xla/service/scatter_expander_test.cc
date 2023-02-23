@@ -246,5 +246,95 @@ TEST_F(ScatterExpanderTest,
   EXPECT_TRUE(result);
 }
 
+TEST_F(ScatterExpanderTest, DoNotEliminateScatterWithAssociativeCombiner) {
+  const char* const kModuleStr = R"(
+    HloModule scatter_expander
+
+    scatter_computation {
+      arg1.173 = s32[] parameter(1)
+      arg0.172 = s32[] parameter(0)
+      ROOT add.48 = s32[] add(arg0.172, arg1.173)
+    }
+
+    ENTRY fused_computation {
+      bitcast.2335 = s32[1,4096] parameter(0)
+      pad.96 = s32[4096,2] parameter(1)
+     bitcast.2748 = s32[4096,1,1] parameter(2)
+      ROOT scatter.48 = s32[1,4096] scatter(bitcast.2335, pad.96, bitcast.2748),
+        update_window_dims={1,2}, inserted_window_dims={},
+        scatter_dims_to_operand_dims={0,1}, index_vector_dim=1,
+        to_apply=scatter_computation
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  ScatterExpander scatter_expander(
+      ScatterExpander::kEliminateIndeterminisitcScatters);
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&scatter_expander, module.get()));
+  EXPECT_FALSE(result);
+}
+
+TEST_F(ScatterExpanderTest, EliminateScatterWithNonAssociativeCombiner) {
+  const char* const kModuleStr = R"(
+    HloModule scatter_expander
+
+    scatter_computation {
+      arg1.173 = f32[] parameter(1)
+      arg0.172 = f32[] parameter(0)
+      ROOT add.48 = f32[] add(arg0.172, arg1.173)
+    }
+
+    ENTRY fused_computation {
+      bitcast.2335 = f32[1,4096] parameter(0)
+      pad.96 = s32[4096,2] parameter(1)
+     bitcast.2748 = f32[4096,1,1] parameter(2)
+      ROOT scatter.48 = f32[1,4096] scatter(bitcast.2335, pad.96, bitcast.2748),
+        update_window_dims={1,2}, inserted_window_dims={},
+        scatter_dims_to_operand_dims={0,1}, index_vector_dim=1,
+        to_apply=scatter_computation
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  ScatterExpander scatter_expander(
+      ScatterExpander::kEliminateIndeterminisitcScatters);
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&scatter_expander, module.get()));
+  EXPECT_TRUE(result);
+}
+
+TEST_F(ScatterExpanderTest, DoNotEliminateScatterWithAssociativeFp32Combiner) {
+  const char* const kModuleStr = R"(
+    HloModule scatter_expander
+
+    scatter_computation {
+      arg1.173 = f32[] parameter(1)
+      arg0.172 = f32[] parameter(0)
+      ROOT max.48 = f32[] maximum(arg0.172, arg1.173)
+    }
+
+    ENTRY fused_computation {
+      bitcast.2335 = f32[1,4096] parameter(0)
+      pad.96 = s32[4096,2] parameter(1)
+     bitcast.2748 = f32[4096,1,1] parameter(2)
+      ROOT scatter.48 = f32[1,4096] scatter(bitcast.2335, pad.96, bitcast.2748),
+        update_window_dims={1,2}, inserted_window_dims={},
+        scatter_dims_to_operand_dims={0,1}, index_vector_dim=1,
+        to_apply=scatter_computation
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  ScatterExpander scatter_expander(
+      ScatterExpander::kEliminateIndeterminisitcScatters);
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&scatter_expander, module.get()));
+  EXPECT_FALSE(result);
+}
+
 }  // namespace
 }  // namespace xla

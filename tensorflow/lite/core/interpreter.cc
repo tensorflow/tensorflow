@@ -18,6 +18,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdlib.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -29,9 +30,11 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/util.h"
 
@@ -90,7 +93,6 @@ TfLiteQuantization GetQuantizationFromLegacy(
 Interpreter::Interpreter(ErrorReporter* error_reporter)
     : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
-  // TODO(b/128420794): Include the TFLite runtime version in the log.
   // Prod logging is useful for mobile platforms where scraping console logs is
   // critical for debugging.
 #if defined(TFLITE_IS_MOBILE_PLATFORM)
@@ -348,10 +350,10 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
             i);
         break;
       case kTfLiteError:
-        error_reporter_->Report(
-            "Failed to apply the default TensorFlow Lite "
-            "delegate indexed at %zu.",
-            i);
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Failed to apply the default TensorFlow Lite "
+                             "delegate indexed at %zu.",
+                             i);
         return kTfLiteError;
       case kTfLiteDelegateError:
         TFLITE_LOG(
@@ -377,10 +379,10 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
             i);
         return kTfLiteUnresolvedOps;
       default:
-        error_reporter_->Report(
-            "Unknown status (%d) after applying the default "
-            "TensorFlow Lite delegate indexed at %zu.",
-            status, i);
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Unknown status (%d) after applying the default "
+                             "TensorFlow Lite delegate indexed at %zu.",
+                             status, i);
         return kTfLiteError;
     }
   }
@@ -433,6 +435,18 @@ TfLiteStatus Interpreter::SetMetadata(
                         ? nullptr
                         : &model_control_dependencies_[subgraph_index]));
   }
+  return kTfLiteOk;
+}
+
+TfLiteStatus Interpreter::SetTelemetrySettings(
+    std::unique_ptr<TfLiteTelemetryInterpreterSettings> settings) {
+  telemetry_data_ = std::move(settings);
+  return kTfLiteOk;
+}
+
+TfLiteStatus Interpreter::ReportTelemetrySettings(const char* setting_name) {
+  telemetry::TelemetryReportSettings(context_, setting_name,
+                                     telemetry_data_.get());
   return kTfLiteOk;
 }
 
@@ -493,5 +507,14 @@ TfLiteStatus Interpreter::EnableCancellation() {
 }
 
 TfLiteStatus Interpreter::Cancel() { return primary_subgraph().Cancel(); }
+
+void Interpreter::AddProfiler(std::unique_ptr<Profiler> profiler) {
+  if (profiler == nullptr) return;
+  if (root_profiler_ == nullptr) {
+    root_profiler_ = std::make_unique<profiling::RootProfiler>();
+  }
+  root_profiler_->AddProfiler(std::move(profiler));
+  SetSubgraphProfiler();
+}
 
 }  // namespace tflite

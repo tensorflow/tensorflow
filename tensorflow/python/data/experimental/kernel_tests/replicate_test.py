@@ -253,9 +253,6 @@ class EagerClusterReplicateTest(test_base.DatasetTestBase,
   def setUp(self):
     super(EagerClusterReplicateTest, self).setUp()
 
-    if context.context().use_tfrt:
-      self.skipTest("b/171412104: This test requires distributed support.")
-
     # TODO(b/171412104): Move create server to __init__ once tfrt support it.
     self._cached_server1 = server_lib.Server.create_local_server()
     self._cached_server2 = server_lib.Server.create_local_server()

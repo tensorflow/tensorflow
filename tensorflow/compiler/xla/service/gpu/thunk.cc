@@ -40,6 +40,8 @@ Thunk::ExecuteParams::ExecuteParams(
       return "kConditional";
     case Thunk::kConvolution:
       return "kConvolution";
+    case Thunk::kConvolutionReorder:
+      return "kConvolutionReorder";
     case Thunk::kCopy:
       return "kCopy";
     case Thunk::kCublasLtMatmul:
@@ -56,6 +58,10 @@ Thunk::ExecuteParams::ExecuteParams(
       return "kNcclAllReduceDone";
     case Thunk::kNcclCollectivePermute:
       return "kNcclCollectivePermute";
+    case Thunk::kNcclCollectivePermuteStart:
+      return "kNcclCollectivePermuteStart";
+    case Thunk::kNcclCollectivePermuteDone:
+      return "kNcclCollectivePermuteDone";
     case Thunk::kNcclReduceScatter:
       return "kNcclReduceScatter";
     case Thunk::kNcclAllToAll:

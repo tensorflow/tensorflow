@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <map>
@@ -188,6 +189,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
 
     CoordinatedTaskState GetState() { return state_; }
     Status GetStatus() { return status_; }
+    uint64_t GetTaskIncarnation() { return task_incarnation_; }
     void SetConnected(uint64_t task_incarnation);
     void Disconnect(uint64_t grace_period_duration_us);
     Status RecordHeartbeat(uint64_t task_incarnation);
@@ -387,8 +389,8 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
               }
               const bool is_stale = task_state->TimeSinceLastHeartbeatMs() >
                                     heartbeat_timeout_ms_;
-              VLOG(1) << "Checking staleness for " << task_name
-                      << " stale?=" << is_stale;
+              VLOG(10) << "Checking staleness for " << task_name
+                       << " stale?=" << is_stale;
               if (is_stale) {
                 stale_task_names.push_back(task_name);
                 status = MakeCoordinationError(errors::Unavailable(
@@ -497,7 +499,8 @@ Status CoordinationServiceStandaloneImpl::RegisterTask(
     const CoordinatedTask& task, uint64_t incarnation) {
   const std::string& task_name = GetTaskName(task);
 
-  Status status;
+  Status error;
+  std::string error_message;
   {
     mutex_lock l(state_mu_);
     if (!cluster_state_.contains(task_name)) {
@@ -506,33 +509,57 @@ Status CoordinationServiceStandaloneImpl::RegisterTask(
       return MakeCoordinationError(errors::InvalidArgument(
           "Unexpected task registered with task_name=", task_name));
     }
-    const auto task_status = cluster_state_[task_name]->GetStatus();
-    if (cluster_state_[task_name]->GetState() ==
-            CoordinatedTaskState::TASKSTATE_DISCONNECTED ||
+
+    auto* task_cluster_state = cluster_state_[task_name].get();
+    const auto task_state = task_cluster_state->GetState();
+    const auto task_status = task_cluster_state->GetStatus();
+
+    if (task_state == CoordinatedTaskState::TASKSTATE_DISCONNECTED ||
         (errors::IsUnavailable(task_status) &&
          task_status.GetPayload(CoordinationErrorPayloadKey()))) {
       // This task is currently disconnected (registering for the first time or
       // has called ResetTask() previously), or being unavailable, e.g. due
       // to preemption, but does not have chance to be reset. We should allow
       // the connection.
-      cluster_state_[task_name]->SetConnected(incarnation);
+      task_cluster_state->SetConnected(incarnation);
       LOG(INFO) << task_name
                 << " has connected to coordination service. Incarnation: "
                 << incarnation;
+      return OkStatus();
+    } else if (task_state == CoordinatedTaskState::TASKSTATE_CONNECTED) {
+      // This may happen if the service processes the initial RegisterTask(),
+      // but the agent did not receive the response so the agent retries again.
+      if (task_cluster_state->GetTaskIncarnation() == incarnation) {
+        // This should be a no-op, but we update the last heartbeat timestamp
+        // to give a longer grace period for the agent to start sending
+        // heartbeats.
+        task_cluster_state->SetConnected(incarnation);
+        LOG(INFO) << task_name
+                  << " has connected to coordination service with the same "
+                  << "incarnation again: " << incarnation;
+        return OkStatus();
+      } else {
+        error_message =
+            absl::StrCat(task_name,
+                         " unexpectedly tried to connect with a different "
+                         "incarnation. It has likely restarted.");
+      }
     } else {
       // This task is connected or already in error, which implies it has
       // registered previously.
-      status = MakeCoordinationError(
-          errors::Aborted("Duplicate task registration with task_name=",
-                          task_name),
-          task);
-      SetTaskError(task_name, status);
+      error_message =
+          absl::StrCat(task_name,
+                       " unexpectedly tried to connect while it is already in "
+                       "error. ResetTask() should be called before a "
+                       "subsequent connect attempt.");
     }
+    LOG(ERROR) << error_message;
+    error = MakeCoordinationError(errors::Aborted(error_message), task);
+    SetTaskError(task_name, error);
   }
-  if (!status.ok()) {
-    PropagateError(task);
-  }
-  return status;
+  assert(!error.ok());
+  PropagateError(task);
+  return error;
 }
 
 void CoordinationServiceStandaloneImpl::WaitForAllTasks(
@@ -822,6 +849,7 @@ std::string NormalizeKey(const StringPiece orig_key) {
 
 Status CoordinationServiceStandaloneImpl::InsertKeyValue(
     const std::string& key, const std::string& value) {
+  VLOG(3) << "InsertKeyValue(): " << key << ": " << value;
   const std::string& norm_key = NormalizeKey(key);
   mutex_lock l(kv_mu_);
   if (kv_store_.find(norm_key) != kv_store_.end()) {
@@ -841,6 +869,7 @@ Status CoordinationServiceStandaloneImpl::InsertKeyValue(
 
 void CoordinationServiceStandaloneImpl::GetKeyValueAsync(
     const std::string& key, StatusOrValueCallback done) {
+  VLOG(3) << "GetKeyValue(): " << key;
   const std::string& norm_key = NormalizeKey(key);
   mutex_lock l(kv_mu_);
   const auto& iter = kv_store_.find(norm_key);
@@ -858,6 +887,7 @@ void CoordinationServiceStandaloneImpl::GetKeyValueAsync(
 
 StatusOr<std::string> CoordinationServiceStandaloneImpl::TryGetKeyValue(
     const std::string& key) {
+  VLOG(3) << "TryGetKeyValue(): " << key;
   const std::string& norm_key = NormalizeKey(key);
   mutex_lock l(kv_mu_);
   const auto& iter = kv_store_.find(norm_key);
@@ -869,6 +899,7 @@ StatusOr<std::string> CoordinationServiceStandaloneImpl::TryGetKeyValue(
 
 std::vector<KeyValueEntry> CoordinationServiceStandaloneImpl::GetKeyValueDir(
     absl::string_view directory_key) {
+  VLOG(3) << "TryGetKeyValueDir(): " << directory_key;
   std::vector<KeyValueEntry> kvs_in_directory;
   const std::string norm_key = NormalizeKey(directory_key);
   const std::string dir = absl::StrCat(norm_key, "/");
@@ -896,6 +927,7 @@ std::vector<KeyValueEntry> CoordinationServiceStandaloneImpl::GetKeyValueDir(
 
 Status CoordinationServiceStandaloneImpl::DeleteKeyValue(
     const std::string& key) {
+  VLOG(3) << "DeleteKeyValue(): " << key;
   const std::string& norm_key = NormalizeKey(key);
   mutex_lock l(kv_mu_);
   // Delete directory: find key range that match directory prefix
@@ -935,6 +967,8 @@ void CoordinationServiceStandaloneImpl::BarrierAsync(
     const CoordinatedTask& task,
     const std::vector<CoordinatedTask>& participating_tasks,
     StatusCallback done) {
+  VLOG(3) << "Task " << GetTaskName(task) << "invoked BarrierAsync("
+          << barrier_id << ").";
   mutex_lock l(state_mu_);
   auto pair = barriers_.try_emplace(barrier_id);
   auto it = pair.first;
@@ -1076,6 +1110,7 @@ Status CoordinationServiceStandaloneImpl::CancelBarrier(
       "Barrier (", barrier_id, ") is cancelled by task: ", GetTaskName(task))));
   PassBarrier(barrier_id, cancelled, barrier);
 
+  VLOG(3) << "Barrier (" << barrier_id << ") is cancelled.";
   return OkStatus();
 }
 
@@ -1084,6 +1119,7 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
     absl::string_view barrier_id, Status result, BarrierState* barrier) {
   barrier->passed = true;
   barrier->result = result;
+  VLOG(3) << "Barrier(" << barrier_id << ") has passed with status: " << result;
   // Special hook for device propagation barrier to set global device ids.
   if (barrier_id == device_propagation_barrier_id_) {
     AggregateClusterDevices();

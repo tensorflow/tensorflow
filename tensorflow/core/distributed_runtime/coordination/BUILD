@@ -6,6 +6,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -15,6 +16,7 @@ package(
 cc_library(
     name = "coordination_client",
     hdrs = ["coordination_client.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_client",
     ],
@@ -25,6 +27,7 @@ cc_library(
     hdrs = [
         "coordination_service_rpc_handler.h",
     ],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_rpc_handler",
     ],
@@ -33,6 +36,7 @@ cc_library(
 cc_library(
     name = "coordination_service_error_util",
     hdrs = ["coordination_service_error_util.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_error_util",
     ],
@@ -42,6 +46,7 @@ cc_library(
     name = "coordination_service_barrier_proxy",
     srcs = ["coordination_service_barrier_proxy.cc"],
     hdrs = ["coordination_service_barrier_proxy.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/platform:errors",
@@ -59,6 +64,7 @@ cc_library(
 tf_cc_test(
     name = "coordination_service_barrier_proxy_test",
     srcs = ["coordination_service_barrier_proxy_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":coordination_service_barrier_proxy",
         "//tensorflow/core:lib",
@@ -82,7 +88,7 @@ filegroup(
         "coordination_client.h",
     ],
     visibility = [
-        "//tensorflow/core/function:__pkg__",
+        "//tensorflow/core/function/runtime_client:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
 )

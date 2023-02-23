@@ -19,12 +19,14 @@ limitations under the License.
 
 #include "mlir/Conversion/AsyncToLLVM/AsyncToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Async/IR/Async.h"  // from @llvm-project
 #include "mlir/Dialect/Async/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
@@ -39,7 +41,7 @@ void RegisterXlaRuntimeTestlibDialects(DialectRegistry& dialects) {
   // Register MLIR dialects supported by the Xla runtime tests.
   dialects->insert<mlir::arith::ArithDialect, mlir::async::AsyncDialect,
                    mlir::scf::SCFDialect, mlir::func::FuncDialect,
-                   RuntimeDialect>();
+                   mlir::memref::MemRefDialect, RuntimeDialect>();
 
   // Register MLIR dialects that can be translated to LLVM IR.
   registerLLVMDialectTranslation(*dialects);
@@ -47,9 +49,11 @@ void RegisterXlaRuntimeTestlibDialects(DialectRegistry& dialects) {
 
 void CreateXlaRuntimeTestlibPipeline(PassManager& passes) {
   passes->addPass(mlir::createConvertSCFToCFPass());
+  passes->addPass(mlir::createAsyncFuncToAsyncRuntimePass());
 
   // Export functions to the XLA runtime.
   passes->addPass(CreateExportRuntimeFunctionsPass());
+  passes->addPass(CreateConvertCustomCallsPass());
   passes->addPass(CreateConvertAssertsPass());
 
   // Lower from high level async operations to async runtime.
@@ -66,6 +70,7 @@ void CreateXlaRuntimeTestlibPipeline(PassManager& passes) {
   passes->addPass(mlir::createConvertAsyncToLLVMPass());
 
   // Convert everything else to LLVM dialect.
+  passes->addPass(mlir::createFinalizeMemRefToLLVMConversionPass());
   passes->addPass(mlir::createConvertFuncToLLVMPass());
   passes->addPass(mlir::createReconcileUnrealizedCastsPass());
 

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /// \file
+///
 /// Provides functionality to construct an interpreter for a model.
 ///
 /// WARNING: Users of TensorFlow Lite should not include this file directly,
@@ -26,17 +27,20 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffers.h"
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
+#include "tensorflow/lite/profiling/telemetry/profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
@@ -63,6 +67,10 @@ namespace tflite {
 /// Interpreter. Note: The user must ensure the lifetime of the model (and error
 /// reporter, if provided) is at least as long as interpreter's lifetime, and
 /// a single model instance may safely be used with multiple interpreters.
+using InterpreterBuilder = impl::InterpreterBuilder;
+
+namespace impl {
+
 class InterpreterBuilder {
  public:
   /// For this constructor, the ErrorReporter will be extracted from the
@@ -110,6 +118,14 @@ class InterpreterBuilder {
   void AddDelegate(TfLiteDelegate* delegate);
   void AddDelegate(TfLiteOpaqueDelegateStruct* opaque_delegate);
 
+  // Registers a telemetry profiler.
+  // Transfers the ownership to the InterpreterOptions.
+  // WARNING: This is an experimental API and subject to change.
+  void SetTelemetryProfiler(
+      std::unique_ptr<telemetry::TelemetryProfiler> profiler) {
+    telemetry_profiler_ = std::move(profiler);
+  }
+
  private:
   TfLiteStatus BuildLocalIndexToRegistrationMapping();
   TfLiteStatus ParseNodes(
@@ -118,7 +134,7 @@ class InterpreterBuilder {
   TfLiteStatus ParseTensors(
       const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
       const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors,
-      Subgraph* subgraph);
+      Subgraph* subgraph, TfLiteTelemetrySubgraphInfo* subgraph_info);
   TfLiteStatus ApplyDelegates(Interpreter* interpreter);
   TfLiteStatus ParseQuantization(const QuantizationParameters* src_quantization,
                                  TfLiteQuantization* quantization,
@@ -129,6 +145,7 @@ class InterpreterBuilder {
       const flatbuffers::Vector<flatbuffers::Offset<SignatureDef>>*
           signature_def_list,
       Interpreter* interpreter);
+  void ParseConversionMetadata(TfLiteTelemetryInterpreterSettings* settings);
 
   const ::tflite::Model* model_;
   const OpResolver& op_resolver_;
@@ -149,7 +166,11 @@ class InterpreterBuilder {
   int num_fp32_tensors_ = 0;
   int num_threads_ = -1;
   InterpreterOptions options_;
+
+  std::unique_ptr<telemetry::TelemetryProfiler> telemetry_profiler_;
 };
+
+}  // namespace impl
 
 }  // namespace tflite
 

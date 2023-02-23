@@ -212,10 +212,9 @@ struct HloCanonicalizeReductionPass
       for (Value operand : op.getInputs()) {
         newOperands.push_back(b.create<DynamicReshapeOp>(
             loc,
-            RankedTensorType::get(
-                SmallVector<int64_t, 4>(newOperandDims.size(),
-                                        ShapedType::kDynamicSize),
-                elemTy),
+            RankedTensorType::get(SmallVector<int64_t, 4>(newOperandDims.size(),
+                                                          ShapedType::kDynamic),
+                                  elemTy),
             operand, newOperandShape));
       }
       auto newOp =

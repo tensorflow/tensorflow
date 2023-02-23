@@ -25,7 +25,7 @@ include "mhlo/IR/hlo_ops.td"
 // Nullary op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(HLO_ConstantOp ElementsAttr:$value),
+def : Pat<(MHLO_ConstantOp ElementsAttr:$value),
           (Arith_ConstantOp $value)>;
 
 //===----------------------------------------------------------------------===//
@@ -43,46 +43,46 @@ def createFastMathNone : NativeCodeCall<
 
 
 // Unary Lowering Patterns.
-def : Pat<(HLO_CeilOp HLO_FpTensor:$i), (Math_CeilOp $i, (createFastMathNone ))>;
+def : Pat<(MHLO_CeilOp MHLO_FpTensor:$i), (Math_CeilOp $i, (createFastMathNone ))>;
 
 // Binary Lowering Patterns.
-def : Pat<(HLO_AndOp HLO_IntTensor:$l, HLO_IntTensor:$r),
+def : Pat<(MHLO_AndOp MHLO_IntTensor:$l, MHLO_IntTensor:$r),
           (Arith_AndIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_OrOp HLO_IntTensor:$l, HLO_IntTensor:$r),
+def : Pat<(MHLO_OrOp MHLO_IntTensor:$l, MHLO_IntTensor:$r),
           (Arith_OrIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_AddOp HLO_FpTensor:$l, HLO_FpTensor:$r),
+def : Pat<(MHLO_AddOp MHLO_FpTensor:$l, MHLO_FpTensor:$r),
           (Arith_AddFOp $l, $r, (createFastMathNone )),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_SubtractOp HLO_FpTensor:$l, HLO_FpTensor:$r),
+def : Pat<(MHLO_SubtractOp MHLO_FpTensor:$l, MHLO_FpTensor:$r),
           (Arith_SubFOp $l, $r, (createFastMathNone )),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_MulOp HLO_FpTensor:$l, HLO_FpTensor:$r),
+def : Pat<(MHLO_MulOp MHLO_FpTensor:$l, MHLO_FpTensor:$r),
           (Arith_MulFOp $l, $r, (createFastMathNone )),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_DivOp HLO_FpTensor:$l, HLO_FpTensor:$r),
+def : Pat<(MHLO_DivOp MHLO_FpTensor:$l, MHLO_FpTensor:$r),
           (Arith_DivFOp $l, $r, (createFastMathNone )),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_RemOp HLO_FpTensor:$l, HLO_FpTensor:$r),
+def : Pat<(MHLO_RemOp MHLO_FpTensor:$l, MHLO_FpTensor:$r),
           (Arith_RemFOp $l, $r, (createFastMathNone )),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_AddOp HLO_IntTensor:$l, HLO_IntTensor:$r),
+def : Pat<(MHLO_AddOp MHLO_IntTensor:$l, MHLO_IntTensor:$r),
           (Arith_AddIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_SubtractOp HLO_IntTensor:$l, HLO_IntTensor:$r),
+def : Pat<(MHLO_SubtractOp MHLO_IntTensor:$l, MHLO_IntTensor:$r),
           (Arith_SubIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_MulOp HLO_IntTensor:$l, HLO_IntTensor:$r),
+def : Pat<(MHLO_MulOp MHLO_IntTensor:$l, MHLO_IntTensor:$r),
           (Arith_MulIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_DivOp HLO_IntTensor:$l, HLO_IntTensor:$r),
+def : Pat<(MHLO_DivOp MHLO_IntTensor:$l, MHLO_IntTensor:$r),
           (Arith_DivSIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_RemOp HLO_IntTensor:$l, HLO_IntTensor:$r),
+def : Pat<(MHLO_RemOp MHLO_IntTensor:$l, MHLO_IntTensor:$r),
           (Arith_RemSIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 
-def : Pat<(HLO_SelectOp $pred, $tv, $fv),
+def : Pat<(MHLO_SelectOp $pred, $tv, $fv),
           (SelectOp $pred, $tv, $fv),
           [(IsSameSizeConstraint $pred, $tv), (IsSameSizeConstraint $tv, $fv)]>;

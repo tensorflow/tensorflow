@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -51,14 +52,14 @@ Value transposeReshape(Value arg, Location loc,
   int64_t leftSize = 1;
   for (auto dim : leftDims) {
     leftSize = (ShapedType::isDynamic(argShape[dim]) || leftSize < 0)
-                   ? ShapedType::kDynamicSize
+                   ? ShapedType::kDynamic
                    : leftSize * argShape[dim];
   }
 
   int64_t rightSize = 1;
   for (auto dim : rightDims) {
     rightSize = (ShapedType::isDynamic(argShape[dim]) || rightSize < 0)
-                    ? ShapedType::kDynamicSize
+                    ? ShapedType::kDynamic
                     : rightSize * argShape[dim];
   }
 
@@ -73,7 +74,7 @@ Value transposeReshape(Value arg, Location loc,
 
   auto transposePermutationAttr =
       DenseIntElementsAttr::get(transposePermutationType,
-                                llvm::makeArrayRef(transposePermutation))
+                                llvm::ArrayRef(transposePermutation))
           .cast<DenseIntElementsAttr>();
 
   // Compute the resulting shape.
@@ -111,16 +112,18 @@ Value transposeReshape(Value arg, Location loc,
   SmallVector<Value> reshapeDims;
   auto multiplyDynamicDims = [&](llvm::ArrayRef<int64_t> dims) -> Value {
     Value dynamicSize = rewriter.create<GetDimensionSizeOp>(
-        loc, RankedTensorType::get({1}, rewriter.getI32Type()), arg,
-        rewriter.getI64IntegerAttr(dims.front()));
-
+        loc, arg, rewriter.getI64IntegerAttr(dims.front()));
+    Value dynamicSizeReshaped = rewriter.create<ReshapeOp>(
+        loc, RankedTensorType::get({1}, rewriter.getI32Type()), dynamicSize);
     for (auto idx : dims.drop_front()) {
       Value dim = rewriter.create<GetDimensionSizeOp>(
-          loc, RankedTensorType::get({1}, rewriter.getI32Type()), arg,
-          rewriter.getI64IntegerAttr(idx));
-      dynamicSize = rewriter.create<MulOp>(loc, dynamicSize, dim);
+          loc, arg, rewriter.getI64IntegerAttr(idx));
+      Value dimReshaped = rewriter.create<ReshapeOp>(
+          loc, RankedTensorType::get({1}, rewriter.getI32Type()), dim);
+      dynamicSizeReshaped =
+          rewriter.create<MulOp>(loc, dynamicSizeReshaped, dimReshaped);
     }
-    return dynamicSize;
+    return dynamicSizeReshaped;
   };
 
   if (leftSize < 0) {
@@ -140,7 +143,6 @@ Value transposeReshape(Value arg, Location loc,
   Value reshapeDimsTensor = rewriter.create<ConcatenateOp>(
       loc, RankedTensorType::get({2}, rewriter.getI32Type()), reshapeDims,
       rewriter.getI64IntegerAttr(0));
-
   return rewriter.create<DynamicReshapeOp>(loc, reshapedType, transposeResult,
                                            reshapeDimsTensor);
 }
@@ -206,13 +208,13 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     RankedTensorType rhsTy = rhs.getType().dyn_cast<RankedTensorType>();
     if (!lhsTy || !rhsTy) return failure();
 
-    lhs = processDotArg(op.getLhs(), op.getLoc(),
-                        dotNumbers.getLhsContractingDimensions(),
-                        /*outerDimsFirst=*/true, rewriter);
+    lhs = llvm::cast<mlir::TypedValue<mlir::TensorType>>(processDotArg(
+        op.getLhs(), op.getLoc(), dotNumbers.getLhsContractingDimensions(),
+        /*outerDimsFirst=*/true, rewriter));
 
-    rhs = processDotArg(op.getRhs(), op.getLoc(),
-                        dotNumbers.getRhsContractingDimensions(),
-                        /*outerDimsFirst=*/false, rewriter);
+    rhs = llvm::cast<mlir::TypedValue<mlir::TensorType>>(processDotArg(
+        op.getRhs(), op.getLoc(), dotNumbers.getRhsContractingDimensions(),
+        /*outerDimsFirst=*/false, rewriter));
 
     // Accept only static shaped types.
     auto lhsShapeType = lhs.getType().dyn_cast_or_null<ShapedType>();
@@ -221,16 +223,11 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
 
     ArrayAttr precisionConfig;
     if (op.getPrecisionConfig()) precisionConfig = *op.getPrecisionConfig();
-    SmallVector<Type, 1> results;
-    LogicalResult res =
-        DotOp::inferReturnTypes(rewriter.getContext(), None, {lhs, rhs},
-                                op->getAttrDictionary(), {}, results);
-    (void)res;
-    assert(succeeded(res) && "invalid input to dot");
 
     ShapedType resultTy = op.getType().cast<ShapedType>();
-    ShapedType newTy =
-        results.front().cast<ShapedType>().clone(resultTy.getElementType());
+    ShapedType newTy = RankedTensorType::get(
+        {lhsShapeType.getShape()[0], rhsShapeType.getShape()[1]},
+        resultTy.getElementType());
     Value newDotOp =
         rewriter.create<DotOp>(op.getLoc(), newTy, lhs, rhs, precisionConfig);
     if (static_cast<int64_t>(lhsContractingDims.size()) ==
@@ -266,18 +263,22 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
       for (auto contractingDim : contractingDims) {
         for (; index < contractingDim; index++) {
           staticDims.push_back(ty.getDimSize(index));
-          dynDims.push_back(rewriter.create<GetDimensionSizeOp>(
-              loc, RankedTensorType::get({1}, rewriter.getI32Type()), arg,
-              rewriter.getI64IntegerAttr(index)));
+          Value dynDim = rewriter.create<GetDimensionSizeOp>(
+              loc, arg, rewriter.getI64IntegerAttr(index));
+          Value dynDimReshaped = rewriter.create<ReshapeOp>(
+              loc, RankedTensorType::get({1}, rewriter.getI32Type()), dynDim);
+          dynDims.push_back(dynDimReshaped);
         }
         index++;
       }
 
       for (; index < ty.getRank(); index++) {
         staticDims.push_back(ty.getDimSize(index));
-        dynDims.push_back(rewriter.create<GetDimensionSizeOp>(
-            loc, RankedTensorType::get({1}, rewriter.getI32Type()), arg,
-            rewriter.getI64IntegerAttr(index)));
+        Value dynDim = rewriter.create<GetDimensionSizeOp>(
+            loc, arg, rewriter.getI64IntegerAttr(index));
+        Value dynDimReshaped = rewriter.create<ReshapeOp>(
+            loc, RankedTensorType::get({1}, rewriter.getI32Type()), dynDim);
+        dynDims.push_back(dynDimReshaped);
       }
     };
 

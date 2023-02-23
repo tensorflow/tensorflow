@@ -1,9 +1,10 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
 
@@ -29,11 +30,11 @@ cc_library(
     srcs = [
         "add_hlo_trace_annotations.cc",
         "gpu_to_gpu_runtime.cc",
-        "launch_func_to_cuda_graph.cc",
         "lmhlo_gpu_to_gpu_runtime.cc",
         "lmhlo_to_gpu_launch.cc",
         "lmhlo_to_gpu_runtime.cc",
         "memref_get_global_to_arg.cc",
+        "outline_cuda_graphs.cc",
         "passes.cc",
         "uid_generator.h",
     ],
@@ -52,9 +53,8 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:location_exporter",
-        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ControlFlowDialect",

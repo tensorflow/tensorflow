@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {
@@ -629,6 +630,23 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
   EXPECT_EQ(invocations, 5);
 }
 
+TEST(ShapeUtilTest, GetForEachIndexParallelThreadCount) {
+  const int kThreadCount = ShapeUtil::GetForEachIndexParallelThreadCount();
+
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 100});
+  auto check_func = [kThreadCount](absl::Span<const int64_t> /*indexes*/,
+                                   int thread_id) -> StatusOr<bool> {
+    EXPECT_GE(thread_id, -1);
+    EXPECT_LT(thread_id, kThreadCount);
+    return true;
+  };
+
+  for (int i = 0; i < 10; ++i) {
+    ShapeUtil::ForEachIndexParallel(shape, /*base=*/{0, 0}, /*count=*/{10, 100},
+                                    /*incr=*/{1, 1}, check_func);
+  }
+}
+
 TEST(ShapeUtilTest, ForEachIndexParallel) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
   int64_t output[10][10];
@@ -641,10 +659,153 @@ TEST(ShapeUtilTest, ForEachIndexParallel) {
 
   ShapeUtil::ForEachIndexParallel(shape, /*base=*/{0, 0}, /*count=*/{10, 10},
                                   /*incr=*/{1, 1}, set_func);
-
   for (int i = 0; i < 10; ++i) {
     for (int j = 0; j < 10; ++j) {
       EXPECT_EQ(output[i][j], init + i + j);
+    }
+  }
+}
+
+TEST(ShapeUtilTest, ForEachIndexParallel_Rank0) {
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  int64_t output = -1;
+  auto set_func = [&](absl::Span<const int64_t> indexes,
+                      int /*thread_id*/) -> StatusOr<bool> {
+    output = indexes.size();
+    return true;
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{}, /*count=*/{},
+                                  /*incr=*/{}, set_func);
+
+  EXPECT_EQ(output, 0);
+}
+
+TEST(ShapeUtilTest, ForEachIndexParallel_Empty) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 0});
+  bool called = false;
+  auto set_func = [&](absl::Span<const int64_t> indexes,
+                      int /*thread_id*/) -> StatusOr<bool> {
+    called = true;
+    return true;
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{0, 0}, /*count=*/{2, 0},
+                                  /*incr=*/{1, 1}, set_func);
+
+  EXPECT_FALSE(called);
+}
+
+TEST(ShapeUtilTest, ForEachIndexParallel_DimensionPinnedWithZeros) {
+  // Some users of ForEachIndex use base = a, count = 0, incr = 0 to indicate
+  // that the given dimension should be pinned to the value "a" during the
+  // iteration. We want to be compatible with this behavior so we test it here.
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  int64_t output[2][2] = {};
+  int init = 5;
+  auto set_func = [&](absl::Span<const int64_t> indexes,
+                      int /*thread_id*/) -> StatusOr<bool> {
+    output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
+    return true;
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{1, 0}, /*count=*/{0, 2},
+                                  /*incr=*/{0, 1}, set_func);
+
+  for (int i = 0; i < 2; ++i) {
+    for (int j = 0; j < 2; ++j) {
+      if (i == 1) {
+        EXPECT_EQ(output[i][j], init + i + j);
+      } else {
+        EXPECT_EQ(output[i][j], 0);
+      }
+    }
+  }
+}
+
+TEST(ShapeUtilTest, ForEachIndexParallel_WithSkips) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+  int64_t output[10][10] = {};
+  int init = 5;
+  auto set_func = [&](absl::Span<const int64_t> indexes,
+                      int /*thread_id*/) -> StatusOr<bool> {
+    output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
+    return true;
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{2, 3}, /*count=*/{3, 1},
+                                  /*incr=*/{2, 1}, set_func);
+
+  for (int i = 0; i < 10; ++i) {
+    for (int j = 0; j < 10; ++j) {
+      if ((i == 2 || i == 4) && j == 3) {
+        EXPECT_EQ(output[i][j], init + i + j);
+      } else {
+        EXPECT_EQ(output[i][j], 0);
+      }
+    }
+  }
+}
+
+TEST(ShapeUtilTest, ForEachIndexParallel_CalledTwice) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+  int64_t output[10][10];
+  int init = 5;
+  auto set_func = [&](absl::Span<const int64_t> indexes,
+                      int /*thread_id*/) -> StatusOr<bool> {
+    output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
+    return true;
+  };
+  int init2 = 15;
+  auto set_func2 = [&](absl::Span<const int64_t> indexes,
+                       int /*thread_id*/) -> StatusOr<bool> {
+    output[indexes[0]][indexes[1]] = init2 + indexes[0] + indexes[1];
+    return true;
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{0, 0}, /*count=*/{10, 10},
+                                  /*incr=*/{1, 1}, set_func);
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{0, 0}, /*count=*/{10, 10},
+                                  /*incr=*/{1, 1}, set_func2);
+
+  for (int i = 0; i < 10; ++i) {
+    for (int j = 0; j < 10; ++j) {
+      EXPECT_EQ(output[i][j], init2 + i + j);
+    }
+  }
+}
+
+TEST(ShapeUtilTest, ForEachIndexParallel_CalledFromMultipleThreads) {
+  constexpr int kCallingThreads = 10;
+  constexpr int kDim0 = 10;
+  constexpr int kDim1 = 10;
+  constexpr int kInit = 5;
+  const Shape kShape = ShapeUtil::MakeShape(F32, {kDim0, kDim1});
+  int64_t output[kCallingThreads][kDim0][kDim1];
+
+  {
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), "foreach",
+                                 kCallingThreads);
+    for (int t = 0; t < kCallingThreads; ++t) {
+      pool.Schedule([&output, &kShape, t] {
+        auto set_func = [&output, t](absl::Span<const int64_t> indexes,
+                                     int /*thread_id*/) -> StatusOr<bool> {
+          output[t][indexes[0]][indexes[1]] = kInit + indexes[0] + indexes[1];
+          return true;
+        };
+
+        ShapeUtil::ForEachIndexParallel(kShape, /*base=*/{0, 0},
+                                        /*count=*/{kDim0, kDim1},
+                                        /*incr=*/{1, 1}, set_func);
+      });
+    }
+  }
+
+  for (int t = 0; t < kCallingThreads; ++t) {
+    for (int i = 0; i < kDim0; ++i) {
+      for (int j = 0; j < kDim1; ++j) {
+        EXPECT_EQ(output[t][i][j], kInit + i + j);
+      }
     }
   }
 }
@@ -936,7 +1097,42 @@ TEST(Transpose021Test, NoTranspose) {
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {128, 64}, {1, 0});
   Shape transposed =
       ShapeUtil::MakeShapeWithDenseLayout(F32, {64, 128}, {0, 1});
-  EXPECT_EQ(std::nullopt, ShapeUtil::FindTranspose021(shape, transposed));
+  EXPECT_EQ(std::nullopt, ShapeUtil::GetNormalizedTransposeShape(
+                              shape, transposed, Vector3{0, 2, 1}));
+}
+
+TEST(Transpose021Test, NoTranspose2) {
+  Shape shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {128, 64, 32}, {2, 1, 0});
+  Shape transposed =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {32, 64, 128}, {0, 1, 2});
+  EXPECT_EQ(std::nullopt, ShapeUtil::GetNormalizedTransposeShape(
+                              shape, transposed, Vector3{0, 1, 2}));
+}
+
+TEST(Transpose021Test, WrongTranspose) {
+  Shape input_shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 32768, 16}, {2, 1, 0});
+  Shape output_shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 32768, 16}, {0, 1, 2});
+  EXPECT_EQ(std::nullopt, ShapeUtil::GetNormalizedTransposeShape(
+                              input_shape, output_shape, Vector3{0, 2, 1}));
+}
+
+TEST(Transpose021Test, WrongTranspose2) {
+  Shape input_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 16}, {1, 0});
+  Shape output_shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 16}, {0, 1});
+  EXPECT_EQ(std::nullopt, ShapeUtil::GetNormalizedTransposeShape(
+                              input_shape, output_shape, Vector3{0, 1, 2}));
+}
+
+TEST(Transpose021Test, WrongTranspose3) {
+  Shape input_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 16}, {1, 0});
+  Shape output_shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 16}, {0, 1});
+  EXPECT_EQ(std::nullopt, ShapeUtil::GetNormalizedTransposeShape(
+                              input_shape, output_shape, Vector3{1, 2, 0}));
 }
 
 TEST(Transpose021Test, Simple) {
@@ -944,7 +1140,8 @@ TEST(Transpose021Test, Simple) {
   Shape transposed =
       ShapeUtil::MakeShapeWithDenseLayout(F32, {128, 64}, {0, 1});
   EXPECT_EQ(std::make_optional(Vector3{1, 64, 128}),
-            ShapeUtil::FindTranspose021(shape, transposed));
+            ShapeUtil::GetNormalizedTransposeShape(shape, transposed,
+                                                   Vector3{0, 2, 1}));
 }
 
 TEST(Transpose021Test, Simple2) {
@@ -953,7 +1150,27 @@ TEST(Transpose021Test, Simple2) {
   Shape output_shape =
       ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 32768, 16}, {1, 2, 0});
   EXPECT_EQ(std::make_optional(Vector3{8, 16, 32768}),
-            ShapeUtil::FindTranspose021(input_shape, output_shape));
+            ShapeUtil::GetNormalizedTransposeShape(input_shape, output_shape,
+                                                   Vector3{0, 2, 1}));
+}
+
+TEST(Transpose021Test, Simple3) {
+  Shape input_shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 32768, 16}, {2, 1, 0});
+  Shape output_shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 32768, 16}, {0, 1, 2});
+  EXPECT_EQ(std::make_optional(Vector3{16, 32768, 8}),
+            ShapeUtil::GetNormalizedTransposeShape(input_shape, output_shape,
+                                                   Vector3{2, 1, 0}));
+}
+
+TEST(Transpose021Test, Simple4) {
+  Shape input_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 16}, {1, 0});
+  Shape output_shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 16}, {0, 1});
+  EXPECT_EQ(std::make_optional(Vector3{16, 1, 8}),
+            ShapeUtil::GetNormalizedTransposeShape(input_shape, output_shape,
+                                                   Vector3{2, 1, 0}));
 }
 
 TEST(Transpose021Test, LargeView) {
@@ -962,7 +1179,8 @@ TEST(Transpose021Test, LargeView) {
   Shape output_shape = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {8, 32, 32, 32, 16}, {3, 2, 1, 4, 0});
   EXPECT_EQ(std::make_optional(Vector3{8, 16, 32768}),
-            ShapeUtil::FindTranspose021(input_shape, output_shape));
+            ShapeUtil::GetNormalizedTransposeShape(input_shape, output_shape,
+                                                   Vector3{0, 2, 1}));
 }
 
 TEST(Transpose021Test, LargeSizeOverflowTest) {
@@ -970,8 +1188,8 @@ TEST(Transpose021Test, LargeSizeOverflowTest) {
       ShapeUtil::MakeShapeWithDenseLayout(BF16, {4096, 4096, 128}, {2, 1, 0});
   Shape output_shape =
       ShapeUtil::MakeShapeWithDenseLayout(BF16, {4096, 4096, 128}, {2, 1, 0});
-  EXPECT_EQ(std::nullopt,
-            ShapeUtil::FindTranspose021(input_shape, output_shape));
+  EXPECT_EQ(std::nullopt, ShapeUtil::GetNormalizedTransposeShape(
+                              input_shape, output_shape, Vector3{0, 2, 1}));
 }
 
 TEST(Transpose021Test, Batched) {
@@ -980,7 +1198,8 @@ TEST(Transpose021Test, Batched) {
   Shape transposed =
       ShapeUtil::MakeShapeWithDenseLayout(F32, {32, 3, 64}, {1, 0, 2});
   EXPECT_EQ(std::make_optional(Vector3{1, 64, 96}),
-            ShapeUtil::FindTranspose021(shape, transposed));
+            ShapeUtil::GetNormalizedTransposeShape(shape, transposed,
+                                                   Vector3{0, 2, 1}));
 }
 
 TEST(Transpose021Test, BatchedLogical) {
@@ -990,7 +1209,8 @@ TEST(Transpose021Test, BatchedLogical) {
       ShapeUtil::MakeShapeWithDenseLayout(F32, {64, 32, 3}, {2, 1, 0});
   std::vector<int64_t> dimensions = {2, 0, 1};
   EXPECT_EQ(std::make_optional(Vector3{1, 64, 96}),
-            ShapeUtil::FindLogicalTranspose021(shape, transposed, dimensions));
+            ShapeUtil::GetNormalizedLogicalTransposeShape(
+                shape, transposed, dimensions, Vector3{0, 2, 1}));
 }
 
 TEST(Transpose021Test, Large) {
@@ -999,7 +1219,8 @@ TEST(Transpose021Test, Large) {
   Shape transposed =
       ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 31, 31, 65}, {2, 1, 3, 0});
   EXPECT_EQ(std::make_optional(Vector3{8, 65, 961}),
-            ShapeUtil::FindTranspose021(shape, transposed));
+            ShapeUtil::GetNormalizedTransposeShape(shape, transposed,
+                                                   Vector3{0, 2, 1}));
 }
 
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {

@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_FUSIBLE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_FUSIBLE_H_
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
 // TODO(b/112957171): Extract logic to determine fusibility of HLO ops from
@@ -60,10 +61,6 @@ int64_t SharedMemoryUsage(const HloInstruction& instr,
 
 inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 64; }
 
-bool IsInputFusible(const HloInstruction& instr);
-
-bool IsLoopFusible(const HloInstruction& instr);
-
 // Whether the op tranposes the physical data layout. Fusing such ops may lead
 // to uncoalesced data access and may thus not be beneficial.
 bool IsPhysicallyTransposing(const HloInstruction& instr);
@@ -81,6 +78,10 @@ bool IsReduceInputFusion(const HloInstruction& instr);
 // is either an unfused reduction-to-vector op or a reduce input fusion.
 bool IsInputFusibleReduction(const HloInstruction& instr);
 
+// Whether `instr` is a nestable variadic reduction
+// or a loop fusion rooted with such.
+bool IsNestableVariadicReduction(const HloInstruction& instr);
+
 // Whether `instr` is fusible as root of a scatter input fusions, i.e. `instr`
 // is either an unfused scatter op or a scatter input fusion.
 bool IsInputFusibleScatter(const HloInstruction& instr);
@@ -92,6 +93,7 @@ bool IsInputFusibleScatter(const HloInstruction& instr);
 // the producer, set consumer_producer_fusion to true to enable more fusion.
 FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
                                   const HloInstruction& instr2,
+                                  const GpuDeviceInfo& device_info,
                                   bool is_consumer_producer_fusion = false,
                                   FusionInfoCache* cache = nullptr);
 

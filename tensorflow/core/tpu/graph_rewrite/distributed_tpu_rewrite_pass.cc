@@ -103,7 +103,10 @@ static constexpr int kTPUMaxTopologySize = 4096;
 const char kShardingAttribute[] = "_XlaSharding";
 
 const char kTPUPartitionedInput[] = "TPUPartitionedInput";
+const char kTPUPartitionedInputV2[] = "TPUPartitionedInputV2";
+
 const char kTPUPartitionedOutput[] = "TPUPartitionedOutput";
+const char kTPUPartitionedOutputV2[] = "TPUPartitionedOutputV2";
 
 const char kVarHandleOp[] = "VarHandleOp";
 
@@ -305,6 +308,16 @@ class IntrusiveHeap {
 
   Rep rep_;
 };
+
+bool _IsTPUPartitionedInput(const Node* node) {
+  return (node->type_string() == kTPUPartitionedInput) ||
+         (node->type_string() == kTPUPartitionedInputV2);
+}
+
+bool _IsTPUPartitionedOutput(const Node* node) {
+  return (node->type_string() == kTPUPartitionedOutput) ||
+         (node->type_string() == kTPUPartitionedOutputV2);
+}
 
 string CoreDeviceLabel(int core) {
   return strings::StrCat("/device:", DEVICE_TPU_REPLICATED_CORE, ":", core);
@@ -2159,7 +2172,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
   for (const Edge* edge : replicate_node->out_edges()) {
     int num_partitioned_outputs = 0;
     for (const Edge* out_edge : edge->dst()->out_edges()) {
-      if (out_edge->dst()->type_string() == kTPUPartitionedOutput) {
+      if (_IsTPUPartitionedOutput(out_edge->dst())) {
         partitioned_output_nodes[edge->src_output()] = out_edge->dst();
         num_partitioned_outputs++;
       }
@@ -2219,7 +2232,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
       Node* input_node;
       TF_RETURN_IF_ERROR(replicate_node->input_node(
           i + (is_per_replica_arg ? 0 : index_offset), &input_node));
-      if (input_node->type_string() == kTPUPartitionedInput) {
+      if (_IsTPUPartitionedInput(input_node)) {
         TF_ASSIGN_OR_RETURN(
             absl::optional<xla::OpSharding> parsed_sharding,
             GetShardingFromNodeDef(input_node->def(), /*add_metadata=*/true));
@@ -3289,7 +3302,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
   const bool mpmd = (num_cores_per_replica > 1) && !use_spmd;
 
   for (const Edge* e : replicate_input_edges) {
-    if (e->src()->type_string() == kTPUPartitionedInput) {
+    if (_IsTPUPartitionedInput(e->src())) {
       int num_users = 0;
       for (const auto& ue : e->src()->out_edges()) {
         if (!ue->IsControlEdge()) ++num_users;
@@ -3304,15 +3317,23 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
       nodes.resize(num_cores_per_replica, NodeAndPort(nullptr, 0));
       VLOG(2) << "allocate " << num_cores_per_replica
               << " for replicate_input_fan_in_nodes[" << e->dst_input() << "]";
+
       std::vector<const Edge*> fan_in_edges;
       TF_RETURN_IF_ERROR(e->src()->input_edges(&fan_in_edges));
-      TF_RET_CHECK(fan_in_edges.size() == num_cores_per_replica);
 
-      for (const Edge* fe : fan_in_edges) {
-        nodes[fe->dst_input()].node = fe->src();
-        nodes[fe->dst_input()].port = fe->src_output();
+      bool is_packed = false;
+      TF_RET_CHECK((e->src()->type_string() == kTPUPartitionedInput) ||
+                   TryGetNodeAttr(e->src()->def(), "is_packed", &is_packed));
+
+      int num_fan_in_edges = fan_in_edges.size();
+      TF_RET_CHECK(is_packed || (num_fan_in_edges == num_cores_per_replica));
+
+      for (int i = 0; i < num_cores_per_replica; ++i) {
+        const Edge* fe = fan_in_edges[i % num_fan_in_edges];
+        nodes[i].node = fe->src();
+        nodes[i].port = fe->src_output();
         VLOG(2) << "replicate_input_fan_in_nodes[" << e->dst_input() << "]["
-                << fe->dst_input() << "] = " << fe->src()->name();
+                << i << "] = " << fe->src()->name();
       }
     }
   }
@@ -3331,7 +3352,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
     int num_partitioned_outputs = 0;
 
     for (const Edge* out_edge : edge->dst()->out_edges()) {
-      if (out_edge->dst()->type_string() == kTPUPartitionedOutput) {
+      if (_IsTPUPartitionedOutput(out_edge->dst())) {
         num_partitioned_outputs++;
         // Paths between replicate_node and replicate_output_fan_out_nodes:
         // ReplicateNode->TpuOutIdenity->kTPUPartitionedOutput->fan-out-nodes
@@ -3560,7 +3581,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
           if (arg_shardings[orig_arg_num].type() == xla::OpSharding::OTHER) {
             // Don't automatically add a split node when input node is
             // kTPUPartitionedInput
-            if (edge->src()->type_string() == kTPUPartitionedInput) {
+            if (_IsTPUPartitionedInput(edge->src())) {
               VLOG(2)
                   << "Connect "
                   << replicate_input_fan_in_nodes[input_num][core].node->name()
@@ -3609,7 +3630,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
               graph->AddEdge(split_node_and_index.node,
                              split_node_and_index.index, node, i);
             }
-          } else if (edge->src()->type_string() == kTPUPartitionedInput &&
+          } else if (_IsTPUPartitionedInput(edge->src()) &&
                      arg_shardings[orig_arg_num].type() ==
                          xla::OpSharding::REPLICATED) {
             graph->AddEdge(replicate_input_fan_in_nodes[input_num][core].node,
@@ -3747,7 +3768,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
           const Edge* e = replicate_output_edges[output_num];
           const Edge* e_out;
           for (const Edge* out_edge : e->dst()->out_edges()) {
-            if (out_edge->dst()->type_string() == kTPUPartitionedOutput) {
+            if (_IsTPUPartitionedOutput(out_edge->dst())) {
               isPartitionOutNode = true;
               e_out = out_edge;
             }
@@ -4988,7 +5009,7 @@ Status DistributedTPURewritePass::InternalRun(
   if (replicate_nodes.empty()) {
     // Remove unused TPUPartitionedInput nodes.
     for (Node* n : graph->nodes()) {
-      if (n->type_string() == kTPUPartitionedInput) graph->RemoveNode(n);
+      if (_IsTPUPartitionedInput(n)) graph->RemoveNode(n);
     }
     VLOG(1) << DumpGraphToFile("distributed_tpu_compilation_after", *graph,
                                options.flib_def);

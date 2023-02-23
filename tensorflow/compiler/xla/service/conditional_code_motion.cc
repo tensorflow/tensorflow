@@ -1146,6 +1146,23 @@ Status ReplaceInputAndMoveIntoBranches(
           };
       UpdateTupleUsers(inserted);
     }
+    // We can create invalid get-tuple-element() instructions when the output
+    // is not a tuple. Clean them away here.
+    // The algorithm creates some get-tuple-element() instructions, then when
+    // instructions are added to the conditional branch the algorithm can
+    // replace the operand of the GTE with an array shape. Because we use
+    // ReplaceWithDifferentShape() that's accepted. We used to rely on the
+    // TupleSimplifier to clean that up, but we shouldn't (because cleaning up
+    // invalid patterns is not the job of the TupleSimplifier).
+    // TODO(b/263496154): Change the algorithm in conditional code motion to
+    // avoid having invalid patterns lingering around at the end of the
+    // algorithm.
+    while (branch_comp->root_instruction()->opcode() ==
+               HloOpcode::kGetTupleElement &&
+           !branch_comp->root_instruction()->operand(0)->shape().IsTuple()) {
+      branch_comp->set_root_instruction(
+          branch_comp->root_instruction()->mutable_operands()[0]);
+    }
   }
   return OkStatus();
 }

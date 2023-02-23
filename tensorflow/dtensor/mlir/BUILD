@@ -6,6 +6,7 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/dtensor:dtensor-internal",
         # Allow visibility from the mlir language server.
@@ -137,7 +138,7 @@ cc_library(
     srcs = ["dtensor_location.cc"],
     hdrs = ["dtensor_location.h"],
     deps = [
-        "//tensorflow/compiler/mlir:name_utils",
+        "//tensorflow/compiler/mlir/utils:name_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -191,6 +192,10 @@ cc_library(
         "dtensor_allreduce_sum_optimization.cc",
         "dtensor_mixed_precision_reduce.cc",
         "dtensor_mlir_passes.cc",
+        "dtensor_remove_dtensorlayout.cc",
+        "dtensor_replace_auxiliary_layout_op.cc",
+        "dtensor_replace_relayout_with_identity.cc",
+        "dtensor_set_hlo_sharding.cc",
         "function_renaming.cc",
         "handle_cross_cluster_dependencies.cc",
         "handle_sparsetensors.cc",
@@ -227,7 +232,6 @@ cc_library(
         ":spmd_expander_common",
         ":tf_dtensor_dialect",
         ":value_utils",
-        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
@@ -239,11 +243,13 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
+        "//tensorflow/compiler/mlir/utils:name_utils",
         "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:lib",
         "//tensorflow/dtensor/cc:constants",
         "//tensorflow/dtensor/cc:dtensor_utils",
+        "//tensorflow/dtensor/cc:layout_to_xla_sharding",
         "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/dtensor/mlir/dtensor_dialect:ir/dtensor_attributes",
         "//tensorflow/dtensor/mlir/utils:dtensor_mlir_passes_internal",
@@ -304,7 +310,6 @@ tf_cc_test(
     srcs = ["group_assignment_test.cc"],
     deps = [
         ":group_assignment",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -324,7 +329,6 @@ cc_library(
     deps = [
         ":tf_dtensor_dialect",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/dtensor/cc:constants",
         "//tensorflow/dtensor/cc:dstatus",
@@ -471,13 +475,12 @@ cc_library(
         ":spmd_expander_common",
         ":tf_dtensor_dialect",
         ":value_utils",
-        "//tensorflow/compiler/mlir:array_container_utils",
-        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/utils:array_container_utils",
         "//tensorflow/compiler/xla/mlir_hlo:convert_op_folder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -508,6 +511,7 @@ cc_library(
     deps = [
         ":op_utils",
         ":tf_dtensor_dialect",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/core:lib",
         "//tensorflow/dtensor/cc:dstatus",
@@ -523,7 +527,7 @@ tf_cc_test(
     srcs = ["dtensor_location_test.cc"],
     deps = [
         ":dtensor_location",
-        "//tensorflow/compiler/mlir:name_utils",
+        "//tensorflow/compiler/mlir/utils:name_utils",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@llvm-project//mlir:IR",

@@ -15,30 +15,28 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 
+#include <array>
+#include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
-#include "absl/status/status.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
-#include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/pjrt/utils.h"
-#include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/tpu_computation_placer.h"
 #include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_interface.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::FindAndLoadTpuLibrary
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -104,16 +102,18 @@ PjRtTpuClient::PjRtTpuClient(
       }()) {
   // We always initialize the tpu client even if libtpu isn't linked in or
   // initialized.
-  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn !=
-      nullptr) {
-    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn();
+  if (stream_executor::tpu::ExecutorApiFn()
+          ->TpuAsyncCollectiveOffloadHelper_InitFn != nullptr) {
+    stream_executor::tpu::ExecutorApiFn()
+        ->TpuAsyncCollectiveOffloadHelper_InitFn();
   }
 }
 
 PjRtTpuClient::~PjRtTpuClient() {
-  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn !=
-      nullptr) {
-    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn();
+  if (stream_executor::tpu::ExecutorApiFn()
+          ->TpuAsyncCollectiveOffloadHelper_ShutdownFn != nullptr) {
+    stream_executor::tpu::ExecutorApiFn()
+        ->TpuAsyncCollectiveOffloadHelper_ShutdownFn();
   }
 }
 
@@ -170,11 +170,15 @@ StatusOr<std::string> PjRtTpuClient::SerializeExecutable(
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtTpuClient::DeserializeExecutable(absl::string_view serialized,
-                                     CompileOptions options) {
+                                     std::optional<CompileOptions> options) {
+  if (!options.has_value()) {
+    return InvalidArgument(
+        "PjRtTpuClient::DeserializeExecutable() requires CompileOptions");
+  }
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TpuExecutable> tpu_executable,
                       TpuExecutable::Deserialize(serialized));
 
-  TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&options));
+  TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&*options));
 
   // TODO(skyewm): can we streamline this? e.g. removing proto serialization
   XlaComputation computation(tpu_executable->module().ToProto());
@@ -188,22 +192,22 @@ PjRtTpuClient::DeserializeExecutable(absl::string_view serialized,
             .transfer_manager()
             ->ChooseCompactLayoutForShape(shape);
       },
-      options.argument_layouts, &options.executable_build_options,
+      options->argument_layouts, &options->executable_build_options,
       &unused_argument_layout_pointers));
 
   auto local_executable = std::make_unique<LocalExecutable>(
       std::move(tpu_executable), client_->mutable_backend(),
-      options.executable_build_options);
+      options->executable_build_options);
   std::vector<std::unique_ptr<LocalExecutable>> local_executables;
   local_executables.emplace_back(std::move(local_executable));
 
   auto pjrt_executable = std::make_unique<PjRtStreamExecutorExecutable>(
-      std::move(local_executables), options.parameter_is_tupled_arguments,
+      std::move(local_executables), options->parameter_is_tupled_arguments,
       std::move(extras.device_assignment),
       std::move(extras.addressable_device_logical_ids),
       std::move(extras.addressable_devices), this);
   TF_RETURN_IF_ERROR(
-      pjrt_executable->SetUpDonation(options.parameter_is_tupled_arguments));
+      pjrt_executable->SetUpDonation(options->parameter_is_tupled_arguments));
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(pjrt_executable));
 }
 

@@ -40,6 +40,13 @@ class TypeConverter {
   // time type if the conversion is successful, or `nullptr` if failed.
   using ConversionFn = std::function<std::unique_ptr<Type>(mlir::Type)>;
 
+  TypeConverter() = default;
+
+  template <typename... Fns>
+  explicit TypeConverter(Fns&&... fn) {
+    (AddConversion(std::forward<Fns>(fn)), ...);
+  }
+
   // Adds a type conversion function with a type predicate.
   //
   // Example:
@@ -50,7 +57,7 @@ class TypeConverter {
   // result for all other types, and the type converter will try the next
   // conversion function (see `Convert` implementation).
   template <typename Fn, typename FnTraits = llvm::function_traits<Fn>>
-  void AddConversion(Fn fn) {
+  void AddConversion(Fn&& fn) {
     using ArgType = typename FnTraits::template arg_t<0>;
     conversions_.emplace_back(
         [fn = std::forward<Fn>(fn)](mlir::Type type) -> std::unique_ptr<Type> {

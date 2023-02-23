@@ -24,6 +24,8 @@ limitations under the License.
 
 #include "tensorflow/tsl/platform/threadpool.h"
 #include "tfrt/concurrency/async_value.h"  // from @tf_runtime
+#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/concurrency/chain.h"  // from @tf_runtime
 #include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace mlir {
@@ -157,7 +159,7 @@ class AsyncRuntime {
   // ------------------------------------------------------------------------ //
 
   // Returns a pointer to the async value storage.
-  static void* GetStorage(Value* value);
+  static std::byte* GetStorage(Value* value);
 
   // Extracts async value that holds a chain owned by the value.
   static tsl::AsyncValue* GetAsyncValue(Value* value);
@@ -176,6 +178,27 @@ class AsyncRuntime {
   static AsyncRuntimeObject* ToAsyncRuntimeObject(Token* token);
   static AsyncRuntimeObject* ToAsyncRuntimeObject(Value* value);
   static AsyncRuntimeObject* ToAsyncRuntimeObject(Group* group);
+
+  // Convert async value/token to async runtime object.
+  static Token* AsToken(tsl::AsyncValueRef<tsl::Chain> chain);
+
+  template <typename T>
+  static Value* AsValue(
+      tsl::AsyncValueRef<T> value, size_t size,
+      absl::FunctionRef<void(const T*, std::byte* storage)> write) {
+    Value* runtime_async_value =
+        AsyncRuntime::CreateValue(size, alignof(std::max_align_t));
+    value.AndThen([runtime_async_value, write](absl::StatusOr<T*> status_or) {
+      if (!status_or.ok()) {
+        AsyncRuntime::SetError(runtime_async_value);
+      } else {
+        auto* store = AsyncRuntime::GetStorage(runtime_async_value);
+        write(*status_or, store);
+        AsyncRuntime::SetAvailable(runtime_async_value);
+      }
+    });
+    return runtime_async_value;
+  }
 
   AsyncTaskRunner* runner() const { return runner_; }
 

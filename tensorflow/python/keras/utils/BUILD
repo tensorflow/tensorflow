@@ -2,6 +2,7 @@
 #   Contains the Keras Utilities (internal TensorFlow version).
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # TODO(scottzhu): Remove non-keras deps from TF.
     default_visibility = [
         "//tensorflow/python/feature_column:__pkg__",

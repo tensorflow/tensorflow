@@ -339,6 +339,27 @@ class PerWorkerDatasetFromDatasetFunction(object):
     self._coordinator = coordinator
     self._element_spec = None
 
+  def build(self):
+    """Trigger dataset creation on workers without creating an iterator.
+
+    Returns:
+      A PerWorkerValues object containing a tuple of RemoteValues, themselves
+      containing the built Dataset for each worker
+    """
+    def _create_per_worker_dataset():
+      dataset = self._dataset_fn()
+      return dataset
+
+    # pylint: disable=protected-access
+    per_worker_dataset = self._coordinator._create_per_worker_resources(
+        _create_per_worker_dataset)
+    # hack type_spec of RemoteValues
+    for dataset_remote_value in per_worker_dataset._values:
+      dataset_remote_value._type_spec = dataset_ops.DatasetSpec(
+          self._dataset_fn.structured_outputs.element_spec)
+
+    return per_worker_dataset
+
   def __iter__(self):
     # We would like users to create iterators outside `tf.function`s so that we
     # can track them.

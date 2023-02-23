@@ -29,8 +29,8 @@ mlir::LogicalResult MlirHloToHloTranslateFunction(mlir::ModuleOp module,
 
 mlir::LogicalResult MlirHloToHloTextTranslateFunction(
     mlir::ModuleOp module, llvm::raw_ostream& output, bool emit_return_tuple,
-    bool emit_use_tuple_arg, bool print_layouts, bool print_large_constants,
-    bool via_builder, bool with_layouts);
+    bool emit_use_tuple_arg, bool print_layouts, bool print_sugar,
+    bool print_large_constants, bool via_builder, bool with_layouts);
 
 }  // namespace xla
 

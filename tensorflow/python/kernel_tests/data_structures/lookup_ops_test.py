@@ -41,6 +41,7 @@ from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_lookup_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import variables
@@ -572,6 +573,20 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(lookup_ops.tables_initializer())
     self.assertAllEqual(grad, -10.)
+
+  def testImportShapeInference(self, is_anonymous):
+    v = variables.Variable(1)
+
+    @def_function.function(jit_compile=True)
+    def foo():
+      return gen_lookup_ops.lookup_table_import_v2(
+          table_handle=v.handle, keys=[1.1, 2.2], values=1
+      )
+
+    with self.assertRaisesRegex(
+        ValueError, r"Shape must be at least rank 1 but is rank 0"
+    ):
+      foo()
 
   def testExportShapeInference(self, is_anonymous):
     table = self.getHashTable()(

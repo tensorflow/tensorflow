@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for array_ops."""
 import re
+import sys
 import time
 import unittest
 
@@ -452,7 +453,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
         np.uint8, np.int8, np.uint16, np.int16, np.uint32, np.int32, np.uint64,
         np.int64, np.bool_, np.float16, np.float32, np.float64, np.complex64,
         np.complex128,
-        np.array(b"").dtype.type
+        np.array(b"").dtype.type, dtypes.bfloat16.as_numpy_dtype
     ]:
       self._reverse1DimAuto(dtype)
 
@@ -461,7 +462,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
         np.uint8, np.int8, np.uint16, np.int16, np.uint32, np.int32, np.uint64,
         np.int64, np.bool_, np.float16, np.float32, np.float64, np.complex64,
         np.complex128,
-        np.array(b"").dtype.type
+        np.array(b"").dtype.type, dtypes.bfloat16.as_numpy_dtype
     ]:
       self._reverse2DimAuto(dtype)
 
@@ -685,6 +686,9 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
   @test_util.assert_no_new_pyobjects_executing_eagerly
   @test_util.assert_no_garbage_created
   def testVariableSliceEagerMemory(self):
+    if sys.version_info.major == 3 and sys.version_info.minor == 11:
+      # TODO(b/265082239)
+      self.skipTest("Not working in Python 3.11")
     with context.eager_mode():
       v = variables.Variable([1., 2.])
       v[0]  # pylint: disable=pointless-statement
@@ -1855,6 +1859,72 @@ class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
               min_range=input_min,
               max_range=input_max,
               axis=2**31 - 1))
+
+  @test_util.run_v2_only
+  def testInvalidAxis(self):
+
+    @def_function.function
+    def test_quantize_and_dequantize_v2():
+      gen_array_ops.quantize_and_dequantize_v2(
+          input=[2.5],
+          input_min=[1.0],
+          input_max=[10.0],
+          signed_input=True,
+          num_bits=1,
+          range_given=True,
+          round_mode="HALF_TO_EVEN",
+          narrow_range=True,
+          axis=0x7fffffff)
+
+    @def_function.function
+    def test_quantize_and_dequantize_v3():
+      gen_array_ops.quantize_and_dequantize_v3(
+          input=[2.5],
+          input_min=[1.0],
+          input_max=[10.0],
+          num_bits=1,
+          signed_input=True,
+          range_given=True,
+          narrow_range=True,
+          axis=0x7fffffff)
+
+    @def_function.function
+    def test_quantize_and_dequantize_v4():
+      gen_array_ops.quantize_and_dequantize_v4(
+          input=[2.5],
+          input_min=[1.0],
+          input_max=[10.0],
+          signed_input=True,
+          num_bits=1,
+          range_given=True,
+          round_mode="HALF_TO_EVEN",
+          narrow_range=True,
+          axis=0x7fffffff)
+
+    @def_function.function
+    def test_quantize_and_dequantize_v4_grad():
+      gen_array_ops.quantize_and_dequantize_v4_grad(
+          gradients=[2.5],
+          input=[2.5],
+          input_min=[1.0],
+          input_max=[10.0],
+          axis=0x7fffffff)
+
+    with self.assertRaisesRegex(
+        ValueError, "Axis cannot be >= kint32max value, got 2147483647"):
+      test_quantize_and_dequantize_v2()
+
+    with self.assertRaisesRegex(
+        ValueError, "Axis cannot be >= kint32max value, got 2147483647"):
+      test_quantize_and_dequantize_v3()
+
+    with self.assertRaisesRegex(
+        ValueError, "Axis cannot be >= kint32max value, got 2147483647"):
+      test_quantize_and_dequantize_v4()
+
+    with self.assertRaisesRegex(
+        ValueError, "Axis cannot be >= kint32max value, got 2147483647"):
+      test_quantize_and_dequantize_v4_grad()
 
 
 @test_util.run_all_in_graph_and_eager_modes

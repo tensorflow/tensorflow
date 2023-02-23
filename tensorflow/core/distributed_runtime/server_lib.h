@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace tsl {
 class CoordinationServiceAgent;
-}
+}  // namespace tsl
 
 namespace tensorflow {
 

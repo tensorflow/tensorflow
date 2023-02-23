@@ -26,11 +26,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/schema/reflection/schema_generated.h"
+#include "tensorflow/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/tools/serialization/enum_mapping.h"
 #include "tensorflow/lite/version.h"
 
@@ -64,10 +64,6 @@ class ModelWriter {
   explicit ModelWriter(const std::vector<Subgraph*>& subgraphs,
                        bool serialize_dims_signature = true);
 
-  // For initializing the ModelWriter internal data.
-  void Init(const std::vector<Subgraph*>& subgraphs,
-            bool serialize_dims_signature);
-
   // Get a buffer and size of a serialized flatbuffer.
   TfLiteStatus GetBuffer(std::unique_ptr<uint8_t[]>* out, size_t* size);
   // Write the serialized flatbuffer to the prescribed `filename`.
@@ -89,12 +85,21 @@ class ModelWriter {
                                     CustomWriter custom_writer);
 
  private:
+  // For initializing the ModelWriter internal data.
+  void Init(const std::vector<Subgraph*>& subgraphs,
+            bool serialize_dims_signature);
+
   template <class T>
   using Offset = flatbuffers::Offset<T>;
   Offset<flatbuffers::Vector<Offset<OperatorCode>>> CreateOpCodeTable(
       flatbuffers::FlatBufferBuilder* fbb);
   Offset<flatbuffers::Vector<Offset<Buffer>>> ExportBuffers(
       flatbuffers::FlatBufferBuilder* fbb);
+
+  // Updates subgraph_index references of control flow ops in the serialized
+  // model. This is necessary since the order of the subgraphs in the serialized
+  // model might be different than the original input model.
+  TfLiteStatus UpdateSubgraphReferences(flatbuffers::FlatBufferBuilder* fbb);
 
   // List of subgraph writers owned by this model writer.
   // There is one subgraph writer for each subgraph in the model.
@@ -106,6 +111,9 @@ class ModelWriter {
   // List of used opcodes
   std::vector<OpCode> opcodes_;
   absl::flat_hash_map<int, int> builtin_op_to_opcode_;
+
+  // Map from original subgraph indices to the new indices.
+  absl::flat_hash_map<int, int> subgraph_index_mapper_;
 };
 
 // Handles writing TensorFlow Lite running subgraph to a serialized TF lite

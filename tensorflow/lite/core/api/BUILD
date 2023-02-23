@@ -3,6 +3,7 @@ load("//tensorflow/lite:special_rules.bzl", "op_resolver_internal_visibility_all
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )
@@ -25,10 +26,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":error_reporter",
-        ":error_reporter_macro",
         ":op_resolver",
         "@flatbuffers//:runtime_cc",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         # TODO(b/158301698): consider moving internal:compatibility to a more
         # central location.
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -54,24 +54,10 @@ cc_library(
     ],
     deps = [
         ":error_reporter",
-        ":error_reporter_macro",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers//:runtime_cc",
-    ],
-)
-
-cc_library(
-    name = "error_reporter_macro",
-    hdrs = ["error_reporter_macro.h"],
-    compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts(),
-    visibility = [
-        "//tensorflow/lite/core/api:__pkg__",
-    ],
-    deps = [
-        ":error_reporter",
     ],
 )
 
@@ -114,7 +100,6 @@ cc_test(
     srcs = ["error_reporter_test.cc"],
     deps = [
         ":api",
-        ":error_reporter_macro",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -140,7 +125,7 @@ cc_test(
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:mutable_op_resolver",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
     ],
@@ -153,7 +138,7 @@ cc_test(
     deps = [
         ":api",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
     ],
 )

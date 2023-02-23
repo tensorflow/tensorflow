@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LogicalResult.h"
@@ -80,7 +81,7 @@ struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {
     SmallVector<Value> dynamicInitSizes;
     for (int64_t i = 0; i < rank; ++i) {
       // No need to materialize anything for static dimensions.
-      if (staticInitSizes[i] != ShapedType::kDynamicSize) {
+      if (staticInitSizes[i] != ShapedType::kDynamic) {
         continue;
       }
 
@@ -98,7 +99,7 @@ struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {
       Value dynamicSum;
       for (const Value operand : adaptor.getVal()) {
         auto operandTy = operand.getType().cast<RankedTensorType>();
-        if (operandTy.getDimSize(concatDim) == ShapedType::kDynamicSize) {
+        if (operandTy.getDimSize(concatDim) == ShapedType::kDynamic) {
           const Value dynamicSummand =
               rewriter.create<tensor::DimOp>(loc, operand, concatDim);
           if (dynamicSum) {
@@ -124,7 +125,8 @@ struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {
     auto emptyTensor = rewriter.create<tensor::EmptyOp>(
         loc, staticInitSizes, resultTy.getElementType(), dynamicInitSizes);
     rewriter.replaceOpWithNewOp<thlo::ConcatenateOp>(
-        op, resultTy, adaptor.getVal(), emptyTensor, concatDim);
+        op, resultTy, adaptor.getVal(), emptyTensor,
+        rewriter.getIndexAttr(concatDim));
     return success();
   }
 };
@@ -160,7 +162,7 @@ struct DynamicBroadcastInDimOpPattern
       dynamicDims.push_back(rewriter.create<tensor::ExtractOp>(
           loc, outputDimensions,
           ValueRange{rewriter.create<arith::ConstantIndexOp>(loc, i)}));
-      staticShapeInfo.push_back(ShapedType::kDynamicSize);
+      staticShapeInfo.push_back(ShapedType::kDynamic);
     }
     auto emptyTensor = rewriter.create<tensor::EmptyOp>(
         loc, staticShapeInfo, resultTy.getElementType(), dynamicDims);
@@ -205,7 +207,7 @@ struct GatherPattern : public OpConversionPattern<mhlo::GatherOp> {
         typeConverter->convertType(op.getType()).cast<RankedTensorType>();
     SmallVector<OpFoldResult> sizes;
     sizes.reserve(resultType.getRank());
-    if (resultType.getDimSize(0) != ShapedType::kDynamicSize) {
+    if (resultType.getDimSize(0) != ShapedType::kDynamic) {
       sizes.push_back(rewriter.getI64IntegerAttr(resultType.getDimSize(0)));
     } else {
       sizes.push_back(
@@ -332,7 +334,7 @@ struct SortPattern : public OpConversionPattern<mhlo::SortOp> {
 
     auto thloSort = rewriter.create<thlo::SortOp>(
         loc, resultTypes, adaptor.getInputs(), outputs,
-        rewriter.getI64IntegerAttr(dimension), rewriter.getBoolAttr(isStable));
+        rewriter.getIndexAttr(dimension), rewriter.getBoolAttr(isStable));
 
     Region& region = thloSort.getComparator();
     rewriter.inlineRegionBefore(op.getComparator(), region, region.end());
@@ -359,8 +361,41 @@ struct SortPattern : public OpConversionPattern<mhlo::SortOp> {
   }
 };
 
+struct ReversePattern : public OpConversionPattern<mhlo::ReverseOp> {
+  using OpConversionPattern<mhlo::ReverseOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::ReverseOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    auto reverseDimensions =
+        llvm::to_vector(op.getDimensions().getValues<int64_t>());
+    Type resultType = typeConverter->convertType(op->getResultTypes()[0]);
+    if (!resultType)
+      return rewriter.notifyMatchFailure(op, "failed to convert result type");
+    Location loc = op.getLoc();
+    auto operandType =
+        adaptor.getOperand().getType().dyn_cast<RankedTensorType>();
+    if (!operandType)
+      return rewriter.notifyMatchFailure(op, "expects known-rank operand");
+    auto tensorResultType = resultType.cast<RankedTensorType>();
+    SmallVector<Value, 8> dynShape =
+        tensor::createDynamicDimValues(rewriter, loc, adaptor.getOperand());
+    Value initTensor = rewriter.create<tensor::EmptyOp>(
+        loc, tensorResultType.getShape(), tensorResultType.getElementType(),
+        dynShape);
+    rewriter.replaceOpWithNewOp<thlo::ReverseOp>(
+        op, resultType, adaptor.getOperand(), initTensor, reverseDimensions);
+    return success();
+  }
+};
+
 class LegalizeMHLOToTHLOPass
     : public impl::LegalizeMHLOToTHLOPassBase<LegalizeMHLOToTHLOPass> {
+ public:
+  explicit LegalizeMHLOToTHLOPass(bool enableExperimentalOps) {
+    enableExperimental = enableExperimentalOps;
+  }
+
+ private:
   void runOnOperation() final {
     MLIRContext* ctx = &getContext();
     RewritePatternSet patterns(ctx);
@@ -379,18 +414,24 @@ class LegalizeMHLOToTHLOPass
 
     auto typeConverter = std::make_unique<LinalgTypeConverter>();
 
-    populateScalarHloToArithmeticConversionPatterns(ctx, *typeConverter,
-                                                    &patterns);
+    populateScalarHloToArithmeticConversionPatterns(
+        ctx, *typeConverter, &patterns,
+        [](Operation* op) { return isInBodyOfThloOp(op); });
 
     // List of patterns.
     // clang-format off
     patterns.insert<
-        ConcatenateOpPattern,
-        DynamicBroadcastInDimOpPattern,
-        GatherPattern,
+        ReversePattern,
         ScatterPattern,
         SortPattern,
         ThloRegionReturnOpConversion>(*typeConverter, ctx);
+
+    if (enableExperimental) {
+      patterns.insert<
+        ConcatenateOpPattern,
+        DynamicBroadcastInDimOpPattern,
+        GatherPattern>(*typeConverter, ctx);
+    }
     // clang-format on
 
     if (failed(applyPartialConversion(getOperation(), target,
@@ -402,8 +443,9 @@ class LegalizeMHLOToTHLOPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToTHLOPass() {
-  return std::make_unique<LegalizeMHLOToTHLOPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToTHLOPass(
+    bool enableExperimentalOps) {
+  return std::make_unique<LegalizeMHLOToTHLOPass>(enableExperimentalOps);
 }
 
 }  // namespace mhlo

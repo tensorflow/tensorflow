@@ -80,8 +80,8 @@ struct ClusteringPass : public impl::ClusteringBase<ClusteringPass> {
 
     // If the clustering tier is not defined, it means that the opset will later
     // filter supported operations, so it's ok to use `all` tier.
-    populateTfJitRtClusteringPolicies(
-        policies, tier.getValueOr(JitRtClusteringTier::kAll));
+    populateTfJitRtClusteringPolicies(policies,
+                                      tier.value_or(JitRtClusteringTier::kAll));
 
     // If opset is not empty restrict operations that are enabled for
     // clustering.

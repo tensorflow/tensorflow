@@ -1,6 +1,5 @@
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
     "tf_proto_library",
 )
 load(
@@ -34,6 +33,7 @@ default_package_visibility = [
 ]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = default_package_visibility,
     features = [
         "-layering_check",
@@ -187,6 +187,7 @@ filegroup(
         "util.h",
         "work_sharder.h",
         "xla_config_registry.h",
+        "zen_util.h",
         "//tensorflow/tsl/util:framework_internal_private_hdrs",
     ],
 )
@@ -382,6 +383,32 @@ cc_library(
 )
 
 cc_library(
+    name = "fake_clock_env",
+    testonly = 1,
+    srcs = ["fake_clock_env.cc"],
+    hdrs = ["fake_clock_env.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
+tf_cc_test(
+    name = "fake_clock_env_test",
+    srcs = [
+        "fake_clock_env_test.cc",
+    ],
+    deps = [
+        ":fake_clock_env",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:env",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "stats_calculator_portable",
     hdrs = [
         "stat_summarizer_options.h",
@@ -505,6 +532,7 @@ cc_library(
     name = "managed_stack_trace",
     hdrs = ["managed_stack_trace.h"],
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow/c/eager:__pkg__",
         "//tensorflow/compiler/mlir/tensorflow:__pkg__",
         "//tensorflow/core:__pkg__",
@@ -726,12 +754,12 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_plugin",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_wrapper",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_gpu_executor",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
     ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -751,9 +779,12 @@ tf_kernel_library(
         "//tensorflow/core:lib",
     ] + if_cuda([
         "//tensorflow/compiler/xla/stream_executor/cuda:cusparse_lib",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_blas_utils",
+        "//tensorflow/compiler/xla/stream_executor:data_type",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
         "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
         "//tensorflow/compiler/xla/stream_executor/rocm:hipsparse_wrapper",
     ]),
 )
@@ -862,7 +893,6 @@ tf_cc_tests(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    linkstatic = tf_kernel_tests_linkstatic(),
     visibility = [
         "//tensorflow/core:__pkg__",
     ],
@@ -890,6 +920,7 @@ tf_cc_tests(
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:status_matchers",
         "//third_party/eigen3",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -906,7 +937,6 @@ tf_cc_test(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

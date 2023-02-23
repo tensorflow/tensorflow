@@ -5,6 +5,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
@@ -19,6 +20,8 @@ package(
         "//tensorflow/tsl/platform:__subpackages__",
         # tensorflow/core/framework:tensor depends on hash
         "//tensorflow/core/framework:__pkg__",
+        # For dependency on hash
+        "//tensorflow/cc/experimental/tf2:__subpackages__",
     ],
     licenses = ["notice"],
 )

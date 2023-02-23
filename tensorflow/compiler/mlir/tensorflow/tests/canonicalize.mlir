@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -pass-pipeline='builtin.module(func.func(canonicalize))' | FileCheck %s
+// RUN: tf-opt %s -pass-pipeline='builtin.module(func.func(canonicalize{test-convergence}))' | FileCheck %s
 
 // CHECK-LABEL: func @tfAssertTrue
 func.func @tfAssertTrue(%arg0: tensor<1x1x6x2xf32>) {

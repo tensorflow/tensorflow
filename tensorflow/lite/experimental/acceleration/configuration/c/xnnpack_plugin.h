@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,29 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_XNNPACK_PLUGIN_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_XNNPACK_PLUGIN_H_
 
-// This header file is for the delegate plugin for XNNPACK.
-//
-// For the C++ delegate plugin interface, the XNNPACK delegate plugin is added
-// to the DelegatePluginRegistry by the side effect of a constructor for a
-// static object, so there's no public API needed for this plugin, other than
-// the API of tflite::delegates::DelegatePluginRegistry, which is declared in
-// delegate_registry.h.
-//
-// But to provide a C API to access the XNNPACK delegate plugin, we do expose
-// some functions, which are declared below.
-
-#include "tensorflow/lite/experimental/acceleration/configuration/c/delegate_plugin.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// C API for the XNNPACK delegate plugin.
-// Returns a pointer to a statically allocated table of function pointers.
-const TfLiteDelegatePlugin* TfLiteXnnpackDelegatePluginCApi();
-
-#ifdef __cplusplus
-}  // extern "C"
-#endif
+#include "tensorflow/lite/core/experimental/acceleration/configuration/c/xnnpack_plugin.h"
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_XNNPACK_PLUGIN_H_

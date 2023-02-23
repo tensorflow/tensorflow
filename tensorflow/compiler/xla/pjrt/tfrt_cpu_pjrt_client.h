@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -117,7 +118,7 @@ class TfrtCpuClient final : public PjRtClient {
   TfrtCpuClient(int process_index,
                 std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
                 size_t num_threads);
-  ~TfrtCpuClient();
+  ~TfrtCpuClient() override;
 
   int process_index() const override { return process_index_; }
 
@@ -151,7 +152,8 @@ class TfrtCpuClient final : public PjRtClient {
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
-  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override;
+  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+      const override;
 
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
@@ -161,11 +163,12 @@ class TfrtCpuClient final : public PjRtClient {
   StatusOr<std::optional<std::string>> ExecutableFingerprint(
       const PjRtLoadedExecutable& executable) const override;
 
-  StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const override;
-
+  // For TfrtCpuClient, `options` is mandatory.
+  // This function returns an InvalidArgument error if `std::nullopt` is passed.
+  // TODO(b/237720161): make it actually optional
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
-      absl::string_view serialized, CompileOptions options) override;
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) override;
@@ -319,20 +322,20 @@ class TfrtCpuBuffer final : public PjRtBuffer {
   StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) override;
 
-  void CopyToRemoteDevice(absl::string_view serialized_descriptor,
-                          RemoteSendCallback on_done) override {
+  void CopyToRemoteDevice(
+      PjRtFuture<StatusOr<std::string>> serialized_descriptor,
+      RemoteSendCallback on_done) override {
     on_done(Unimplemented("CopyToRemoteDevice not implemented."),
             /*sends_were_enqueued=*/false);
   }
 
   void CopyToRemoteDeviceScattered(
-      absl::Span<const std::pair<std::string, RemoteSendCallback>>
-          serialized_descriptors_and_callbacks,
-      const ScatterDetails& scatter_details) override {
-    for (const auto& d_and_cb : serialized_descriptors_and_callbacks) {
-      d_and_cb.second(
-          Unimplemented("CopyToRemoteDeviceScattered not implemented."),
-          /*sends_were_enqueued=*/false);
+      PjRtFuture<StatusOr<std::vector<std::string>>> serialized_descriptors,
+      std::vector<RemoteSendCallback> callbacks,
+      const xla::PjRtBuffer::ScatterDetails& scatter_details) override {
+    for (const auto& on_done : callbacks) {
+      on_done(Unimplemented("Implement CopyToRemoteDeviceScattered."),
+              /*sends_were_enqueued=*/false);
     }
   }
 
@@ -516,6 +519,10 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
     CompiledMemoryStats memory_stats = CompiledMemoryStats();
     memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
     const HloProto* proto = cpu_executable_->hlo_proto();
+    if (!proto) {
+      return tsl::errors::FailedPrecondition(
+          "cpu_executable_ has no hlo_proto.");
+    }
     memory_stats.serialized_hlo_proto = proto->SerializeAsString();
     return memory_stats;
   }
@@ -544,6 +551,8 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   void Delete() override;
 
   bool IsDeleted() override;
+
+  StatusOr<std::string> SerializeExecutable() const override;
 
   bool IsReturnedFutureSupported() const override { return true; }
 

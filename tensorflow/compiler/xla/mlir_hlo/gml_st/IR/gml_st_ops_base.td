@@ -23,11 +23,16 @@ include "mlir/IR/OpBase.td"
 def GmlSt_Dialect : Dialect {
   let name = "gml_st";
   let cppNamespace = "::mlir::gml_st";
+  let description = [{
+    The GmlSt (Google ML Structured) dialect is intended to hold operations,
+    types and transformations to assist structured code generation.
+  }];
 
   let dependentDialects = ["tensor::TensorDialect"];
   let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;
   let hasConstantMaterializer = 1;
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 class GMLST_Op<string mnemonic, list<Trait> traits> :

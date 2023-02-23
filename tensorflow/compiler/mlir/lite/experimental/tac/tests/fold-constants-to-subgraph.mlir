@@ -114,3 +114,28 @@ func.func @fold_all_test(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3x
 // ALL:           return %[[VAL_5]] : tensor<256x30x30x16xf32>
 // ALL:         }
 }
+
+// -----
+
+module {
+
+func.func @main(%arg0: tensor<4x384x32xf32>) -> tensor<1x384x32xf32> {
+  %0 = arith.constant dense<0> : tensor<3xi32>
+  %1 = arith.constant dense<[1, 384, 32]> : tensor<3xi32>
+  %2 = func.call @simple_test(%arg0, %0, %1) {tac.interface_name = "func1"} : (tensor<4x384x32xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x384x32xf32>
+  func.return %2 : tensor<1x384x32xf32>
+}
+
+// PARTIAL-LABEL: @simple_test
+func.func @simple_test(%arg0: tensor<4x384x32xf32>, %arg1: tensor<3xi32>, %arg2: tensor<3xi32>) -> tensor<1x384x32xf32> attributes {tac.interface_name = "func1"} {
+  %0 = "tfl.slice"(%arg0, %arg1, %arg2) : (tensor<4x384x32xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x384x32xf32>
+  func.return %0 : tensor<1x384x32xf32>
+}
+
+// PARTIAL:       func @simple_test(%[[VAL_0:.*]]: tensor<4x384x32xf32>, %[[VAL_1:.*]]: tensor<3xi32>, %[[VAL_2:.*]]: tensor<3xi32>) -> tensor<1x384x32xf32> attributes {tac.interface_name = "func1"} {
+// PARTIAL:           %[[VAL_3:.*]] = arith.constant dense<[1, 384, 32]> : tensor<3xi32>
+// PARTIAL:           %[[VAL_4:.*]] = arith.constant dense<0> : tensor<3xi32>
+// PARTIAL:           %[[VAL_5:.*]] = "tfl.slice"(%[[VAL_0]], %[[VAL_4]], %[[VAL_3]]) : (tensor<4x384x32xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x384x32xf32>
+// PARTIAL:           return %[[VAL_5]] : tensor<1x384x32xf32>
+// PARTIAL:         }
+}

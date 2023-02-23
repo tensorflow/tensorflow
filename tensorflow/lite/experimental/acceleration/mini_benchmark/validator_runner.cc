@@ -50,13 +50,14 @@ ValidatorRunner::ValidatorRunner(const ValidatorRunnerOptions& options)
           : std::make_unique<CustomValidationEmbedder>(
                 options.custom_input_batch_size, options.custom_input_data,
                 options.error_reporter),
-      error_reporter_, options.nnapi_sl, options.validation_entrypoint_name);
+      error_reporter_, options.nnapi_sl, options.gpu_plugin_handle,
+      options.validation_entrypoint_name, options.benchmark_result_evaluator);
 }
 
 MinibenchmarkStatus ValidatorRunner::Init() {
   MinibenchmarkStatus status = storage_.Read();
   if (status != kMinibenchmarkSuccess) {
-    error_reporter_->Report("Storage::Read failed");
+    TF_LITE_REPORT_ERROR(error_reporter_, "Storage::Read failed");
     return status;
   }
   return validator_runner_impl_->Init();

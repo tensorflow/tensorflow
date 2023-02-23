@@ -27,10 +27,10 @@ limitations under the License.
 #include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/core/model_builder.h"
@@ -38,6 +38,8 @@ limitations under the License.
 #include "tensorflow/lite/internal/signature_def.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/profiling/platform_profiler.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
+#include "tensorflow/lite/schema/conversion_metadata_generated.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/shared_library.h"
@@ -73,6 +75,9 @@ limitations under the License.
 namespace tflite {
 
 namespace {
+
+constexpr char kConversionMetadataKey[] = "CONVERSION_METADATA";
+constexpr char kTelemetryBuilderEventName[] = "InterpreterBuilder::operator()";
 
 // Ensure that ErrorReporter is non-null.
 ErrorReporter* ValidateErrorReporter(ErrorReporter* e) {
@@ -230,7 +235,8 @@ InterpreterBuilder::InterpreterBuilder(
     const InterpreterOptions* options_experimental)
     : model_(model),
       op_resolver_(op_resolver),
-      error_reporter_(ValidateErrorReporter(error_reporter)) {
+      error_reporter_(ValidateErrorReporter(error_reporter)),
+      metadata_(FlatBufferModel::ReadAllMetadata(model_)) {
   if (options_experimental) {
     options_ = *options_experimental;
   }
@@ -494,8 +500,9 @@ TfLiteStatus InterpreterBuilder::ParseSparsity(
     const auto* src_metadata = src_sparsity->dim_metadata()->Get(i);
     if (src_metadata->format() != DimensionType_DENSE &&
         src_metadata->format() != DimensionType_SPARSE_CSR) {
-      error_reporter_->Report("The %dth dimension has unknown type: %d.", i,
-                              src_metadata->format());
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "The %dth dimension has unknown type: %d.", i,
+                           src_metadata->format());
       return kTfLiteError;
     }
     auto* tgt_metadata = &sparsity->dim_metadata[i];
@@ -507,7 +514,8 @@ TfLiteStatus InterpreterBuilder::ParseSparsity(
       tgt_metadata->dense_size = src_metadata->dense_size();
     } else {
       if (ParseSparseIndexVector(src_metadata, tgt_metadata) != kTfLiteOk) {
-        error_reporter_->Report(
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
             "The %dth sparse dimension has invalid parameters.", i);
         return kTfLiteError;
       }
@@ -528,22 +536,24 @@ TfLiteStatus InterpreterBuilder::ParseSignatureDefs(
   signature_defs.reserve(signature_def_list->size());
   for (const auto fb_signature_def : *signature_def_list) {
     if (fb_signature_def == nullptr) {
-      error_reporter_->Report("NULL SignatureDef in the model.");
+      TF_LITE_REPORT_ERROR(error_reporter_, "NULL SignatureDef in the model.");
       return kTfLiteError;
     }
     if (fb_signature_def->signature_key() == nullptr) {
-      error_reporter_->Report("Missing exported method name for SignatureDef");
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Missing exported method name for SignatureDef");
       return kTfLiteError;
     }
     if (fb_signature_def->inputs() == nullptr) {
-      error_reporter_->Report("NULL SignatureDef inputs for exported method %s",
-                              fb_signature_def->signature_key()->c_str());
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "NULL SignatureDef inputs for exported method %s",
+                           fb_signature_def->signature_key()->c_str());
       return kTfLiteError;
     }
     if (fb_signature_def->outputs() == nullptr) {
-      error_reporter_->Report(
-          "NULL SignatureDef outputs for exported method %s",
-          fb_signature_def->signature_key()->c_str());
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "NULL SignatureDef outputs for exported method %s",
+                           fb_signature_def->signature_key()->c_str());
       return kTfLiteError;
     }
     signature_defs.resize(signature_defs.size() + 1);
@@ -560,7 +570,7 @@ TfLiteStatus InterpreterBuilder::ParseSignatureDefs(
 TfLiteStatus InterpreterBuilder::ParseTensors(
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
     const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors,
-    Subgraph* subgraph) {
+    Subgraph* subgraph, TfLiteTelemetrySubgraphInfo* subgraph_info) {
   TfLiteStatus status = kTfLiteOk;
 
   // A little helper to get the names of inputs and outputs. Note that they
@@ -570,6 +580,10 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     if (name) return name->c_str();
     return kEmptyTensorName;
   };
+
+  if (subgraph_info) {
+    subgraph_info->quantizations.resize(tensors->size());
+  }
 
   num_fp32_tensors_ = 0;
   for (int i = 0; i < tensors->size(); ++i) {
@@ -617,6 +631,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
                               i);
       status = kTfLiteError;
     }
+    if (subgraph_info) subgraph_info->quantizations[i] = quantization;
 
     std::vector<int> dims_signature = {};
     if (tensor->shape_signature()) {
@@ -743,12 +758,12 @@ TfLiteStatus InterpreterBuilder::operator()(
   auto* buffers = model_->buffers();
 
   if (subgraphs->size() == 0) {
-    error_reporter_->Report("No subgraph in the model.\n");
+    TF_LITE_REPORT_ERROR(error_reporter_, "No subgraph in the model.\n");
     return cleanup_and_error();
   }
 
   if (!buffers) {
-    error_reporter_->Report("No buffers in the model.\n");
+    TF_LITE_REPORT_ERROR(error_reporter_, "No buffers in the model.\n");
     return cleanup_and_error();
   }
 
@@ -766,16 +781,29 @@ TfLiteStatus InterpreterBuilder::operator()(
   (*interpreter)
       ->SetProfilerImpl(tflite::profiling::MaybeCreatePlatformProfiler());
 
+  bool telemetry_registered = telemetry_profiler_ != nullptr;
+  std::unique_ptr<TfLiteTelemetryInterpreterSettings> telemetry_settings;
+  if (telemetry_registered) {
+    (*interpreter)->AddProfiler(std::move(telemetry_profiler_));
+    telemetry_settings = std::make_unique<TfLiteTelemetryInterpreterSettings>();
+    telemetry_settings->subgraph_infos.resize(subgraphs->size());
+  }
+
   for (int subgraph_index = 0; subgraph_index < subgraphs->size();
        ++subgraph_index) {
     const tflite::SubGraph* subgraph = (*subgraphs)[subgraph_index];
     tflite::Subgraph* modified_subgraph =
         (*interpreter)->subgraph(subgraph_index);
+    auto* subgraph_info =
+        telemetry_registered
+            ? &telemetry_settings->subgraph_infos[subgraph_index]
+            : nullptr;
     auto operators = subgraph->operators();
     auto tensors = subgraph->tensors();
     if (!tensors) {
-      error_reporter_->Report("Did not get tensors in subgraph %d.\n",
-                              subgraph_index);
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Did not get tensors in subgraph %d.\n",
+                           subgraph_index);
       return cleanup_and_error();
     }
     if (modified_subgraph->AddTensors(tensors->size()) != kTfLiteOk) {
@@ -790,7 +818,8 @@ TfLiteStatus InterpreterBuilder::operator()(
     // Finally setup nodes and tensors
     // Parse tensors before nodes as ParseNodes checks input tensors for the
     // nodes.
-    if (ParseTensors(buffers, tensors, modified_subgraph) != kTfLiteOk)
+    if (ParseTensors(buffers, tensors, modified_subgraph, subgraph_info) !=
+        kTfLiteOk)
       return cleanup_and_error();
     if (operators && ParseNodes(operators, modified_subgraph) != kTfLiteOk)
       return cleanup_and_error();
@@ -822,6 +851,13 @@ TfLiteStatus InterpreterBuilder::operator()(
         op_resolver_.GetDelegateCreators();
   }
 
+  if (telemetry_registered) {
+    ParseConversionMetadata(telemetry_settings.get());
+    (*interpreter)->SetTelemetrySettings(std::move(telemetry_settings));
+    // Reports model and interpreter settings if telemetry is applied.
+    (*interpreter)->ReportTelemetrySettings(kTelemetryBuilderEventName);
+  }
+
   TfLiteStatus status = ApplyDelegates(interpreter->get());
   if (status != kTfLiteOk) {
     interpreter->reset();
@@ -831,12 +867,13 @@ TfLiteStatus InterpreterBuilder::operator()(
   if (options_.GetDynamicAllocationForLargeTensors()) {
     (*interpreter)->ApplyOptionsImpl(&options_);
   }
+
   return status;
 }
 
 void InterpreterBuilder::AddDelegate(TfLiteDelegate* delegate) {
   if (delegate == nullptr) {
-    error_reporter_->Report("Null delegate.");
+    TF_LITE_REPORT_ERROR(error_reporter_, "Null delegate.");
   } else {
     delegates_.push_back(delegate);
   }
@@ -848,6 +885,26 @@ void InterpreterBuilder::AddDelegate(
   // runtime code.  Apps using TF Lite should not rely on
   // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
   AddDelegate(reinterpret_cast<TfLiteDelegate*>(opaque_delegate));
+}
+
+void InterpreterBuilder::ParseConversionMetadata(
+    TfLiteTelemetryInterpreterSettings* settings) {
+  if (settings == nullptr) return;
+  auto it = metadata_.find(kConversionMetadataKey);
+  if (it == metadata_.end()) {
+    // No conversion metadata embeded.
+    return;
+  }
+  auto* conversion_meta = GetConversionMetadata(it->second.data());
+  if (conversion_meta == nullptr || conversion_meta->options() == nullptr) {
+    // Empty conversion metadata.
+    return;
+  }
+  settings->conversion_metadata =
+      std::make_unique<TfLiteTelemetryConversionMetadata>();
+  settings->conversion_metadata->model_optimization_modes =
+      FlatBufferIntArrayToVector(
+          conversion_meta->options()->model_optimization_modes());
 }
 
 }  // namespace tflite

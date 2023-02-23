@@ -1,8 +1,9 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/xla/mlir/runtime:friends"],
     licenses = ["notice"],
 )
@@ -53,14 +54,6 @@ gentbl_cc_library(
             "rt_types.cc.inc",
         ),
         (
-            ["-gen-attr-interface-decls"],
-            "rt_attr_interfaces.h.inc",
-        ),
-        (
-            ["-gen-attr-interface-defs"],
-            "rt_attr_interfaces.cc.inc",
-        ),
-        (
             ["-gen-attrdef-decls"],
             "rt_attrs.h.inc",
         ),
@@ -71,6 +64,24 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "rt_ops.td",
+    deps = [":rt_ops_td_files"],
+)
+
+gentbl_cc_library(
+    name = "rt_interfaces_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-attr-interface-decls"],
+            "rt_attr_interfaces.h.inc",
+        ),
+        (
+            ["-gen-attr-interface-defs"],
+            "rt_attr_interfaces.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "rt_interfaces.td",
     deps = [":rt_ops_td_files"],
 )
 
@@ -89,6 +100,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":rt_inc_gen",
+        ":rt_interfaces_inc_gen",
         "//tensorflow/compiler/xla/runtime:constraints",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",

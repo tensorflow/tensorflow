@@ -38,7 +38,6 @@ func.func @sigmoid_dynamic_dim(%arg0: tensor<?x1xf32>) -> tensor<?x1xf32> {
 
 // -----
 
-// CHECK-DAG: #map{{[0-9]*}} = affine_map<() -> ()>
 // CHECK-DAG: #map{{[0-9]*}} = affine_map<(d0) -> ()>
 // CHECK-DAG: #map{{[0-9]*}} = affine_map<(d0) -> (d0)>
 

@@ -17,10 +17,11 @@ limitations under the License.
 #define TENSORFLOW_LITE_IOS_TENSORFLOWLITEC_H_
 
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/c_api_experimental.h"
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api.h"
+#include "tensorflow/lite/core/c/c_api_experimental.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
+#include "tensorflow/lite/profiling/telemetry/c/profiler.h"
 
 #endif  // TENSORFLOW_LITE_IOS_TENSORFLOWLITEC_H_

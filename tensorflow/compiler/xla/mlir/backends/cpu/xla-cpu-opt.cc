@@ -13,11 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/Dialect/Vector/IR/VectorOps.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/IR/gml_st_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/test_passes.h"
@@ -32,13 +37,16 @@ int main(int argc, char **argv) {
   mlir::lmhlo::registerAllLmhloPasses();
   mlir::gml_st::registerGmlStPasses();
   mlir::gml_st::registerGmlStTestPasses();
+  mlir::bufferization::registerBufferizationPasses();
 
   mlir::DialectRegistry registry;
   mlir::mhlo::registerAllMhloDialects(registry);
   mlir::stablehlo::registerAllDialects(registry);
   registry.insert<mlir::func::FuncDialect, mlir::lmhlo::LmhloDialect,
+                  mlir::memref::MemRefDialect, mlir::scf::SCFDialect,
                   mlir::gml_st::GmlStDialect, mlir::thlo::THLODialect,
-                  mlir::linalg::LinalgDialect, mlir::tensor::TensorDialect>();
+                  mlir::linalg::LinalgDialect, mlir::tensor::TensorDialect,
+                  mlir::vector::VectorDialect, mlir::xla_cpu::XlaCpuDialect>();
 
   xla::cpu::registerCpuTransformsPasses();
 

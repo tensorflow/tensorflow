@@ -10,8 +10,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_C_PASSES_H
-#define MLIR_HLO_C_PASSES_H
+#ifndef MLIR_HLO_BINDINGS_C_PASSES_H
+#define MLIR_HLO_BINDINGS_C_PASSES_H
 
 #include "mlir-c/IR.h"
 #include "mlir-c/Support.h"
@@ -27,4 +27,4 @@ MLIR_CAPI_EXPORTED void mlirRegisterAllMhloPasses();
 }
 #endif
 
-#endif  // MLIR_HLO_C_PASSES_H
+#endif  // MLIR_HLO_BINDINGS_C_PASSES_H

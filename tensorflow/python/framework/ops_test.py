@@ -44,6 +44,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -94,18 +95,30 @@ class ResourceTest(test_util.TensorFlowTestCase):
 class TensorAndShapeTest(test_util.TensorFlowTestCase):
 
   def testShape(self):
-    op = ops.Operation(
-        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
+    op = ops.Operation.from_node_def(
+        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32]
+    )
     t = op.outputs[0]
     self.assertEqual(tensor_shape.unknown_shape(), t.get_shape())
     t.set_shape([1, 2, 3])
     self.assertEqual([1, 2, 3], t.get_shape())
 
+  def testNdim(self):
+
+    @def_function.function
+    def f(a):
+      self.assertEqual(a.ndim, 2)
+      return 0
+
+    x = array_ops.zeros((3, 4))
+    f(x)
+
   def testIterable(self):
     if not context.executing_eagerly():
       self.skipTest("Eager-mode test")
-    op = ops.Operation(
-        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
+    op = ops.Operation.from_node_def(
+        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32]
+    )
     t = op.outputs[0]
     with self.assertRaisesRegex(TypeError, "Cannot iterate"):
       iter(t)
@@ -114,8 +127,9 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     if context.executing_eagerly():
       self.skipTest("Graph-mode test")
 
-    op = ops.Operation(
-        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
+    op = ops.Operation.from_node_def(
+        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32]
+    )
     t = op.outputs[0]
     with self.assertRaisesRegex(TypeError, "Iterating.*not allowed in Graph"):
       next(iter(t))
@@ -127,8 +141,9 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
         next(iter(t))
 
   def testImplicitBool(self):
-    op = ops.Operation(
-        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.bool])
+    op = ops.Operation.from_node_def(
+        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.bool]
+    )
     t = op.outputs[0]
     with self.assertRaisesRegex(TypeError,
                                 "Using.*as a.*bool.*not allowed in Graph"):
@@ -665,9 +680,9 @@ class OperationTest(test_util.TensorFlowTestCase):
 
   def testTraceback(self):
     g = ops.Graph()
-    op1 = ops.Operation(
-        ops._NodeDef("None", "op1"), g, [],
-        [dtypes.float32_ref, dtypes.float32])
+    op1 = ops.Operation.from_node_def(
+        ops._NodeDef("None", "op1"), g, [], [dtypes.float32_ref, dtypes.float32]
+    )
     self.assertIn("testTraceback", op1.traceback[-1])
 
   @test_util.run_deprecated_v1
@@ -738,11 +753,15 @@ class OperationTest(test_util.TensorFlowTestCase):
     """, op3.node_def)
 
   def testDeviceObject(self):
-    op = ops.Operation(ops._NodeDef("None", "myop"), ops.Graph(), [], [])
+    op = ops.Operation.from_node_def(
+        ops._NodeDef("None", "myop"), ops.Graph(), [], []
+    )
     op._set_device("/job:goo/device:GPU:0")
     self.assertProtoEquals(
         "op:'None' name:'myop' device:'/job:goo/device:GPU:0' ", op.node_def)
-    op = ops.Operation(ops._NodeDef("None", "op2"), ops.Graph(), [], [])
+    op = ops.Operation.from_node_def(
+        ops._NodeDef("None", "op2"), ops.Graph(), [], []
+    )
     op._set_device(
         pydev.DeviceSpec(
             job="muu", device_type="CPU", device_index=0))
@@ -751,23 +770,30 @@ class OperationTest(test_util.TensorFlowTestCase):
 
   def testReferenceInput(self):
     g = ops.Graph()
-    op1 = ops.Operation(
-        ops._NodeDef("RefOutputFloatOutput", "op1"), g, [],
-        [dtypes.float32_ref, dtypes.float32])
+    op1 = ops.Operation.from_node_def(
+        ops._NodeDef("RefOutputFloatOutput", "op1"),
+        g,
+        [],
+        [dtypes.float32_ref, dtypes.float32],
+    )
     self.assertProtoEquals("op:'RefOutputFloatOutput' name:'op1'", op1.node_def)
     self.assertEqual([], list(op1.inputs))
     ref_t, nonref_t = op1.values()
     # NOTE(mrry): Must specify input_types to preserve ref-typed input.
-    op2 = ops.Operation(
+    op2 = ops.Operation.from_node_def(
         ops._NodeDef("RefInputFloatInput", "op2"),
-        g, [ref_t, nonref_t], [],
-        input_types=[dtypes.float32_ref, dtypes.float32])
+        g,
+        [ref_t, nonref_t],
+        [],
+        input_types=[dtypes.float32_ref, dtypes.float32],
+    )
     self.assertProtoEquals(
         "op:'RefInputFloatInput' name:'op2' input:'op1' input:'op1:1'",
         op2.node_def)
     self.assertEqual([ref_t, nonref_t], list(op2.inputs))
-    op3 = ops.Operation(
-        ops._NodeDef("TwoFloatInputs", "op3"), g, [ref_t, nonref_t], [])
+    op3 = ops.Operation.from_node_def(
+        ops._NodeDef("TwoFloatInputs", "op3"), g, [ref_t, nonref_t], []
+    )
     self.assertProtoEquals(
         "op:'TwoFloatInputs' name:'op3' input:'op1' input:'op1:1'",
         op3.node_def)
@@ -775,15 +801,15 @@ class OperationTest(test_util.TensorFlowTestCase):
   def testInvalidNames(self):
     g = ops.Graph()
     with self.assertRaises(ValueError):
-      ops.Operation(ops._NodeDef("op", ""), g)
+      ops.Operation.from_node_def(ops._NodeDef("op", ""), g)
     with self.assertRaises(ValueError):
-      ops.Operation(ops._NodeDef("op", "_invalid"), g)
+      ops.Operation.from_node_def(ops._NodeDef("op", "_invalid"), g)
     with self.assertRaises(ValueError):
-      ops.Operation(ops._NodeDef("op", "-invalid"), g)
+      ops.Operation.from_node_def(ops._NodeDef("op", "-invalid"), g)
     with self.assertRaises(ValueError):
-      ops.Operation(ops._NodeDef("op", "/invalid"), g)
+      ops.Operation.from_node_def(ops._NodeDef("op", "/invalid"), g)
     with self.assertRaises(ValueError):
-      ops.Operation(ops._NodeDef("op", "invalid:0"), g)
+      ops.Operation.from_node_def(ops._NodeDef("op", "invalid:0"), g)
 
   @test_util.run_deprecated_v1
   def testNoShapeFunction(self):
@@ -870,6 +896,13 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.int64, tensor.dtype)
 
   @test_util.run_in_graph_and_eager_modes
+  def testConvertToTensorFromValidTensor(self):
+    tensor = constant_op.constant(413, dtype=dtypes.int64)
+    converted = ops.convert_to_tensor(tensor, dtype=dtypes.int64)
+    # If dtype is compatible, the returned tensor should be the same instance.
+    self.assertEqual(tensor, converted)
+
+  @test_util.run_in_graph_and_eager_modes
   def testConvertToTensorFromInvalidTensor(self):
     tensor = constant_op.constant(42.0, dtype=dtypes.float32)
     with self.assertRaises(ValueError):
@@ -898,12 +931,15 @@ class OperationTest(test_util.TensorFlowTestCase):
 
   def testStr(self):
     node_def = ops._NodeDef("None", "op1")
-    op = ops.Operation(node_def, ops.Graph(), [], [dtypes.float32])
+    op = ops.Operation.from_node_def(
+        node_def, ops.Graph(), [], [dtypes.float32]
+    )
     self.assertEqual(str(node_def), str(op))
 
   def testRepr(self):
-    op = ops.Operation(
-        ops._NodeDef("None", "op1"), ops.Graph(), [], [dtypes.float32])
+    op = ops.Operation.from_node_def(
+        ops._NodeDef("None", "op1"), ops.Graph(), [], [dtypes.float32]
+    )
     self.assertEqual("<tf.Operation 'op1' type=None>", repr(op))
 
   @test_util.run_deprecated_v1
@@ -3568,7 +3604,7 @@ class _MyTuple(object):
     return iter(self._components)
 
 
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     _MyTuple, conversion_func=lambda x, *_, **__: _TupleTensor(x))
 
 

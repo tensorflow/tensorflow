@@ -47,7 +47,7 @@ void ReportError(ErrorReporter* error_reporter, const char* format, ...) {
   if (error_reporter) {
     va_list args;
     va_start(args, format);
-    error_reporter->Report(format, args);
+    TF_LITE_REPORT_ERROR(error_reporter, format, args);
     va_end(args);
   }
 }

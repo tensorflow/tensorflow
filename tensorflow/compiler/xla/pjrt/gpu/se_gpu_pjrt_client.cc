@@ -36,7 +36,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/compiler/xla/pjrt/gpu/nccl_id_store.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_ROCM
@@ -81,7 +81,7 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateCudaAsyncAllocator(
     // unified memory.
     // When unified memory is enabled, allow GPU memory oversubscription by
     // setting memory_fraction > 1.
-    size_t allocator_memory = free_memory * memory_fraction;
+    size_t allocator_memory = total_memory * memory_fraction;
     if (preallocate) {
       LOG(INFO) << "XLA backend allocating " << allocator_memory
                 << " bytes on device " << device_ordinal
@@ -92,7 +92,7 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateCudaAsyncAllocator(
                 << " for BFCAllocator.";
     }
 
-    auto allocator = std::make_unique<tensorflow::GpuCudaMallocAsyncAllocator>(
+    auto allocator = std::make_unique<se::GpuCudaMallocAsyncAllocator>(
         tsl::PlatformDeviceId(device_ordinal), allocator_memory, preallocate);
     allocator->SetStreamAndPreallocateMemory(
         ordinal_and_device.second->compute_stream()
@@ -341,7 +341,8 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
       device_vendor_(std::move(device_vendor)),
       slice_index_(slice_index) {
   attributes_ = {
-      {"device_vendor", PjRtDeviceAttribute(device_vendor_)},
+      {"device_vendor", device_vendor_},
+      {"slice_index", static_cast<int64_t>(slice_index)},
   };
   to_string_ = absl::StrFormat(
       "StreamExecutorGpuDevice(id=%i, process_index=%i, slice_index=%i)", id,

@@ -1,9 +1,11 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//tensorflow/tsl/platform:build_config.bzl", "if_llvm_system_z_available")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/xla/mlir/runtime:friends"],
     licenses = ["notice"],
 )
@@ -73,7 +75,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "calling_convention_test",
     srcs = ["calling_convention_test.cc"],
     compatible_with = get_compatible_with_cloud(),
@@ -101,6 +103,7 @@ cc_library(
         ":custom_call_encoding",
         ":passes",
         "//tensorflow/compiler/xla/mlir/backends/cpu/transforms:passes",
+        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir/math/transforms:passes",
         "//tensorflow/compiler/xla/mlir/memref/transforms:passes",
         "//tensorflow/compiler/xla/runtime:compiler",
@@ -131,6 +134,7 @@ cc_library(
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFToControlFlow",
+        "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:X86VectorToLLVMIRTranslation",
@@ -153,6 +157,9 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
         "//tensorflow/compiler/xla/runtime:compiler",
+        "@llvm-project//mlir:AsyncDialect",
+        "@llvm-project//mlir:AsyncToLLVM",
+        "@llvm-project//mlir:AsyncTransforms",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
         "@llvm-project//mlir:IR",
@@ -163,6 +170,7 @@ cc_library(
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFToControlFlow",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,  # has pipeline registration
 )
@@ -190,11 +198,13 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:type_id",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:Support",
+        "@tf_runtime//:async_value",
     ],
 )
 
@@ -213,12 +223,10 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:arguments",
         "//tensorflow/compiler/xla/runtime:compiler",
         "//tensorflow/compiler/xla/runtime:constraints",
-        "//tensorflow/compiler/xla/runtime:errors",
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/runtime:symbolic_shape",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ExecutionEngineUtils",
@@ -226,7 +234,22 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ToLLVMIRTranslation",
-    ],
+    ] + select({
+        "//tensorflow/tsl:arm_any": [
+            "@llvm-project//llvm:AArch64AsmParser",
+        ],
+        "//tensorflow/tsl:linux_ppc64le": [
+            "@llvm-project//llvm:PowerPCAsmParser",
+        ],
+        "//tensorflow/tsl:macos_arm64": [
+            "@llvm-project//llvm:AArch64AsmParser",
+        ],
+        "//conditions:default": [
+            "@llvm-project//llvm:X86AsmParser",
+        ],
+    }) + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZAsmParser",
+    ]),
 )
 
 cc_library(
@@ -273,7 +296,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "type_converter_test",
     srcs = ["type_converter_test.cc"],
     compatible_with = get_compatible_with_cloud(),

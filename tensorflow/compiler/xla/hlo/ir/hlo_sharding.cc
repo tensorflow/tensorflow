@@ -96,9 +96,13 @@ HloSharding HloSharding::PartialTile(
     return HloSharding(fully_tiled, /*replicate_on_last_tile_dim=*/false,
                        metadata);
   }
-  std::vector<std::set<int64_t>> sorted_groups(
-      tile_assignment_last_dim_replicate.num_elements() /
-      tile_assignment_last_dim_replicate.dimensions().back());
+  std::vector<int64_t> sorted_groups(
+      tile_assignment_last_dim_replicate.num_elements());
+  const int64_t group_size =
+      tile_assignment_last_dim_replicate.dimensions().back();
+  const int64_t num_groups =
+      tile_assignment_last_dim_replicate.num_elements() / group_size;
+  std::vector<int32_t> current_group_idx(num_groups, 0);
   auto get_group_id = [&](absl::Span<const int64_t> indices) {
     int64_t group_id = 0;
     for (int64_t i = 0; i < indices.size() - 1; ++i) {
@@ -109,14 +113,20 @@ HloSharding HloSharding::PartialTile(
   };
   tile_assignment_last_dim_replicate.Each(
       [&](absl::Span<const int64_t> indices, const int64_t device) {
-        sorted_groups[get_group_id(indices)].insert(device);
+        const int64_t group_id = get_group_id(indices);
+        sorted_groups[group_id * group_size + current_group_idx[group_id]++] =
+            device;
       });
+  for (int i = 0; i < num_groups; ++i) {
+    std::sort(sorted_groups.begin() + i * group_size,
+              sorted_groups.begin() + (i + 1) * group_size);
+  }
+  absl::c_fill(current_group_idx, 0);
   Array<int64_t> sorted_tile(tile_assignment_last_dim_replicate.dimensions());
   sorted_tile.Each([&](absl::Span<const int64_t> indices, int64_t* device) {
     const int64_t group_id = get_group_id(indices);
-    auto begin = sorted_groups[group_id].begin();
-    *device = *begin;
-    sorted_groups[group_id].erase(begin);
+    *device =
+        sorted_groups[group_id * group_size + current_group_idx[group_id]++];
   });
   return HloSharding(sorted_tile, /*replicate_on_last_tile_dim=*/true,
                      metadata);
@@ -515,7 +525,14 @@ StatusOr<HloSharding> HloSharding::GetTupleSharding(const Shape& shape) const {
     TF_RETURN_IF_ERROR(CheckLeafCount(shape));
     return *this;
   }
-  return Tuple(ShapeTree<HloSharding>(shape, *this));
+  return SingleTuple(shape, *this);
+}
+
+HloSharding HloSharding::NormalizeTupleSharding(const Shape& shape) const {
+  if (shape.IsTuple() && !IsTuple()) {
+    return HloSharding::SingleTuple(shape, *this);
+  }
+  return *this;
 }
 
 std::optional<int64_t> HloSharding::UniqueDevice() const {

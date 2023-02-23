@@ -30,7 +30,9 @@ def build_mock_flatbuffer_model():
   schema_fb.BufferStart(builder)
   buffer0_offset = schema_fb.BufferEnd(builder)
 
-  schema_fb.BufferStartDataVector(builder, 10)
+  schema_fb.BufferStartDataVector(builder, 12)
+  builder.PrependUint8(11)
+  builder.PrependUint8(10)
   builder.PrependUint8(9)
   builder.PrependUint8(8)
   builder.PrependUint8(7)
@@ -41,7 +43,7 @@ def build_mock_flatbuffer_model():
   builder.PrependUint8(2)
   builder.PrependUint8(1)
   builder.PrependUint8(0)
-  buffer1_data_offset = builder.EndVector(10)
+  buffer1_data_offset = builder.EndVector()
   schema_fb.BufferStart(builder)
   schema_fb.BufferAddData(builder, buffer1_data_offset)
   buffer1_offset = schema_fb.BufferEnd(builder)
@@ -53,14 +55,14 @@ def build_mock_flatbuffer_model():
   builder.PrependUOffsetTRelative(buffer2_offset)
   builder.PrependUOffsetTRelative(buffer1_offset)
   builder.PrependUOffsetTRelative(buffer0_offset)
-  buffers_offset = builder.EndVector(3)
+  buffers_offset = builder.EndVector()
 
   string0_offset = builder.CreateString('input_tensor')
   schema_fb.TensorStartShapeVector(builder, 3)
   builder.PrependInt32(1)
   builder.PrependInt32(2)
   builder.PrependInt32(5)
-  shape0_offset = builder.EndVector(3)
+  shape0_offset = builder.EndVector()
   schema_fb.TensorStart(builder)
   schema_fb.TensorAddName(builder, string0_offset)
   schema_fb.TensorAddShape(builder, shape0_offset)
@@ -74,7 +76,7 @@ def build_mock_flatbuffer_model():
   builder.PrependFloat32(5.0)
   builder.PrependFloat32(10.0)
   builder.PrependFloat32(20.0)
-  quant1_min_offset = builder.EndVector(5)
+  quant1_min_offset = builder.EndVector()
 
   schema_fb.QuantizationParametersStartMaxVector(builder, 5)
   builder.PrependFloat32(10.0)
@@ -82,7 +84,7 @@ def build_mock_flatbuffer_model():
   builder.PrependFloat32(-50.0)
   builder.PrependFloat32(1.0)
   builder.PrependFloat32(2.0)
-  quant1_max_offset = builder.EndVector(5)
+  quant1_max_offset = builder.EndVector()
 
   schema_fb.QuantizationParametersStartScaleVector(builder, 5)
   builder.PrependFloat32(3.0)
@@ -90,7 +92,7 @@ def build_mock_flatbuffer_model():
   builder.PrependFloat32(5.0)
   builder.PrependFloat32(6.0)
   builder.PrependFloat32(7.0)
-  quant1_scale_offset = builder.EndVector(5)
+  quant1_scale_offset = builder.EndVector()
 
   schema_fb.QuantizationParametersStartZeroPointVector(builder, 5)
   builder.PrependInt64(1)
@@ -98,7 +100,7 @@ def build_mock_flatbuffer_model():
   builder.PrependInt64(3)
   builder.PrependInt64(-1)
   builder.PrependInt64(-2)
-  quant1_zero_point_offset = builder.EndVector(5)
+  quant1_zero_point_offset = builder.EndVector()
 
   schema_fb.QuantizationParametersStart(builder)
   schema_fb.QuantizationParametersAddMin(builder, quant1_min_offset)
@@ -113,7 +115,7 @@ def build_mock_flatbuffer_model():
   builder.PrependInt32(1)
   builder.PrependInt32(2)
   builder.PrependInt32(5)
-  shape1_offset = builder.EndVector(3)
+  shape1_offset = builder.EndVector()
   schema_fb.TensorStart(builder)
   schema_fb.TensorAddName(builder, string1_offset)
   schema_fb.TensorAddShape(builder, shape1_offset)
@@ -127,7 +129,7 @@ def build_mock_flatbuffer_model():
   builder.PrependInt32(1)
   builder.PrependInt32(2)
   builder.PrependInt32(5)
-  shape2_offset = builder.EndVector(3)
+  shape2_offset = builder.EndVector()
   schema_fb.TensorStart(builder)
   schema_fb.TensorAddName(builder, string2_offset)
   schema_fb.TensorAddShape(builder, shape2_offset)
@@ -139,45 +141,74 @@ def build_mock_flatbuffer_model():
   builder.PrependUOffsetTRelative(tensor2_offset)
   builder.PrependUOffsetTRelative(tensor1_offset)
   builder.PrependUOffsetTRelative(tensor0_offset)
-  tensors_offset = builder.EndVector(3)
+  tensors_offset = builder.EndVector()
 
   schema_fb.SubGraphStartInputsVector(builder, 1)
   builder.PrependInt32(0)
-  inputs_offset = builder.EndVector(1)
+  inputs_offset = builder.EndVector()
 
   schema_fb.SubGraphStartOutputsVector(builder, 1)
   builder.PrependInt32(2)
-  outputs_offset = builder.EndVector(1)
+  outputs_offset = builder.EndVector()
 
   schema_fb.OperatorCodeStart(builder)
   schema_fb.OperatorCodeAddBuiltinCode(builder, schema_fb.BuiltinOperator.ADD)
   schema_fb.OperatorCodeAddDeprecatedBuiltinCode(builder,
                                                  schema_fb.BuiltinOperator.ADD)
   schema_fb.OperatorCodeAddVersion(builder, 1)
-  code_offset = schema_fb.OperatorCodeEnd(builder)
+  code0_offset = schema_fb.OperatorCodeEnd(builder)
 
-  schema_fb.ModelStartOperatorCodesVector(builder, 1)
-  builder.PrependUOffsetTRelative(code_offset)
-  codes_offset = builder.EndVector(1)
+  schema_fb.OperatorCodeStart(builder)
+  schema_fb.OperatorCodeAddBuiltinCode(builder,
+                                       schema_fb.BuiltinOperator.VAR_HANDLE)
+  schema_fb.OperatorCodeAddDeprecatedBuiltinCode(
+      builder, schema_fb.BuiltinOperator.PLACEHOLDER_FOR_GREATER_OP_CODES)
+  schema_fb.OperatorCodeAddVersion(builder, 1)
+  code1_offset = schema_fb.OperatorCodeEnd(builder)
+
+  schema_fb.ModelStartOperatorCodesVector(builder, 2)
+  builder.PrependUOffsetTRelative(code1_offset)
+  builder.PrependUOffsetTRelative(code0_offset)
+  codes_offset = builder.EndVector()
 
   schema_fb.OperatorStartInputsVector(builder, 2)
   builder.PrependInt32(0)
   builder.PrependInt32(1)
-  op_inputs_offset = builder.EndVector(2)
+  op_inputs_offset = builder.EndVector()
 
   schema_fb.OperatorStartOutputsVector(builder, 1)
   builder.PrependInt32(2)
-  op_outputs_offset = builder.EndVector(1)
+  op_outputs_offset = builder.EndVector()
 
   schema_fb.OperatorStart(builder)
   schema_fb.OperatorAddOpcodeIndex(builder, 0)
   schema_fb.OperatorAddInputs(builder, op_inputs_offset)
   schema_fb.OperatorAddOutputs(builder, op_outputs_offset)
-  op_offset = schema_fb.OperatorEnd(builder)
+  op0_offset = schema_fb.OperatorEnd(builder)
 
-  schema_fb.SubGraphStartOperatorsVector(builder, 1)
-  builder.PrependUOffsetTRelative(op_offset)
-  ops_offset = builder.EndVector(1)
+  shared_name = builder.CreateString('var')
+  schema_fb.VarHandleOptionsStart(builder)
+  schema_fb.VarHandleOptionsAddSharedName(builder, shared_name)
+  var_handle_options_offset = schema_fb.VarHandleOptionsEnd(builder)
+
+  schema_fb.OperatorStart(builder)
+  schema_fb.OperatorAddOpcodeIndex(builder, 1)
+  schema_fb.OperatorAddBuiltinOptionsType(
+      builder, schema_fb.BuiltinOptions.VarHandleOptions)
+  schema_fb.OperatorAddBuiltinOptions(builder, var_handle_options_offset)
+  op1_offset = schema_fb.OperatorEnd(builder)
+
+  schema_fb.OperatorStart(builder)
+  schema_fb.OperatorAddBuiltinOptionsType(
+      builder, schema_fb.BuiltinOptions.VarHandleOptions)
+  schema_fb.OperatorAddBuiltinOptions(builder, var_handle_options_offset)
+  op2_offset = schema_fb.OperatorEnd(builder)
+
+  schema_fb.SubGraphStartOperatorsVector(builder, 3)
+  builder.PrependUOffsetTRelative(op2_offset)
+  builder.PrependUOffsetTRelative(op1_offset)
+  builder.PrependUOffsetTRelative(op0_offset)
+  ops_offset = builder.EndVector()
 
   string3_offset = builder.CreateString('subgraph_name')
   schema_fb.SubGraphStart(builder)
@@ -190,7 +221,7 @@ def build_mock_flatbuffer_model():
 
   schema_fb.ModelStartSubgraphsVector(builder, 1)
   builder.PrependUOffsetTRelative(subgraph_offset)
-  subgraphs_offset = builder.EndVector(1)
+  subgraphs_offset = builder.EndVector()
 
   signature_key = builder.CreateString('my_key')
   input_tensor_string = builder.CreateString('input_tensor')
@@ -210,10 +241,10 @@ def build_mock_flatbuffer_model():
 
   schema_fb.SignatureDefStartInputsVector(builder, 1)
   builder.PrependUOffsetTRelative(input_tensor)
-  signature_inputs_offset = builder.EndVector(1)
+  signature_inputs_offset = builder.EndVector()
   schema_fb.SignatureDefStartOutputsVector(builder, 1)
   builder.PrependUOffsetTRelative(output_tensor)
-  signature_outputs_offset = builder.EndVector(1)
+  signature_outputs_offset = builder.EndVector()
 
   schema_fb.SignatureDefStart(builder)
   schema_fb.SignatureDefAddSignatureKey(builder, signature_key)
@@ -222,7 +253,7 @@ def build_mock_flatbuffer_model():
   signature_offset = schema_fb.SignatureDefEnd(builder)
   schema_fb.ModelStartSignatureDefsVector(builder, 1)
   builder.PrependUOffsetTRelative(signature_offset)
-  signature_defs_offset = builder.EndVector(1)
+  signature_defs_offset = builder.EndVector()
 
   string4_offset = builder.CreateString('model_description')
   schema_fb.ModelStart(builder)

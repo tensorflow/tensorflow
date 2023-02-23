@@ -17,6 +17,7 @@
 #   Keras saving and loading files for SavedModel.
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/python/keras/saving:__subpackages__",
     ],

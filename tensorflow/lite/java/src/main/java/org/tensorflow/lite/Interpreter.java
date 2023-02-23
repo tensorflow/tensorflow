@@ -89,6 +89,12 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
     }
 
     @Override
+    public Options setUseXNNPACK(boolean useXNNPACK) {
+      super.setUseXNNPACK(useXNNPACK);
+      return this;
+    }
+
+    @Override
     public Options setNumThreads(int numThreads) {
       super.setNumThreads(numThreads);
       return this;
@@ -145,22 +151,6 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
     @Override
     public Options setCancellable(boolean allow) {
       super.setCancellable(allow);
-      return this;
-    }
-
-    /**
-     * Experimental: Disable an optimized set of CPU kernels (provided by XNNPACK).
-     *
-     * <p>Disabling this flag will disable use of a highly optimized set of CPU kernels provided via
-     * the XNNPACK delegate. Currently, this is restricted to a subset of floating point operations.
-     * See
-     * https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/xnnpack/README.md
-     * for more details.
-     *
-     * <p>WARNING: This is an experimental interface that is subject to change.
-     */
-    public Options setUseXNNPACK(boolean useXNNPACK) {
-      this.useXNNPACK = useXNNPACK;
       return this;
     }
 

@@ -183,7 +183,7 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
 
   EXPECT_EQ(fused_lstm_func_.getFunctionType().getNumResults(), 1);
   auto output_types = fused_lstm_func_.getFunctionType().getResults();
-  SmallVector<int64_t, 2> output_shape{1, mlir::ShapedType::kDynamicSize};
+  SmallVector<int64_t, 2> output_shape{1, mlir::ShapedType::kDynamic};
   EXPECT_EQ(output_types[0].cast<RankedTensorType>().getShape().size(),
             output_shape.size());
   for (int i = 0; i < output_shape.size(); i++) {
@@ -254,7 +254,7 @@ TEST_F(LstmUtilsTest, ConvertLayerNormLSTMCellSimpleToFusedLSTM) {
 
   EXPECT_EQ(fused_ln_lstm_func_.getFunctionType().getNumResults(), 1);
   auto output_types = fused_ln_lstm_func_.getFunctionType().getResults();
-  SmallVector<int64_t, 2> output_shape{1, mlir::ShapedType::kDynamicSize};
+  SmallVector<int64_t, 2> output_shape{1, mlir::ShapedType::kDynamic};
   EXPECT_EQ(output_types[0].cast<RankedTensorType>().getShape().size(),
             output_shape.size());
   for (int i = 0; i < output_shape.size(); i++) {

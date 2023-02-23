@@ -40,6 +40,7 @@ def TF_JITRT_Dialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::tf_jitrt";
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 //===----------------------------------------------------------------------===//
@@ -115,17 +116,15 @@ def FallbackExecuteOp : TF_JITRT_Op<"fallback.execute",
 
   let arguments = (ins
     SymbolRefAttr:$kernel,
-    Variadic<TFTensorType>:$operands,
+    Variadic<TFTensorType>,
     StrAttr:$device
   );
 
-  let results = (outs
-    Variadic<TFTensorType>:$results
-  );
+  let results = (outs Variadic<TFTensorType>);
 
   let assemblyFormat = [{
-    $kernel `(` $operands `)` `device` `(` $device `)` attr-dict `:`
-    functional-type($operands, $results)
+    $kernel `(` operands `)` `device` `(` $device `)` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -139,7 +138,7 @@ def FallbackDebugExecuteOp : TF_JITRT_Op<"fallback.debug.execute"> {
 
   let arguments = (ins
     SymbolRefAttr:$kernel,
-    Variadic<TFTensorType>:$operands,
+    Variadic<TFTensorType>,
     StrAttr:$device,
     // Print to standard output whenever compiled kernel specialized for the
     // operands shapes or values.
@@ -152,13 +151,11 @@ def FallbackDebugExecuteOp : TF_JITRT_Op<"fallback.debug.execute"> {
     BoolAttr:$legalize_i1_tensors
   );
 
-  let results = (outs
-    Variadic<TFTensorType>:$results
-  );
+  let results = (outs Variadic<TFTensorType>);
 
   let assemblyFormat = [{
-    $kernel `(` $operands `)` `device` `(` $device `)` attr-dict `:`
-    functional-type($operands, $results)
+    $kernel `(` operands `)` `device` `(` $device `)` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 

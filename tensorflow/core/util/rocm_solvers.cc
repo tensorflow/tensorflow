@@ -40,7 +40,6 @@ rocblas_Xtrsm   //    ----           //     ----                   / / Ungqr //
 
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocblas_wrapper.h"
@@ -582,7 +581,7 @@ TF_CALL_LAPACK_TYPES(POTRF_INSTANCE);
 #define GETRS_INSTANCE(Scalar, type_prefix)                                   \
   template <>                                                                 \
   Status GpuSolver::Getrs<Scalar>(rocblas_operation trans, int n, int nrhs,   \
-                                  Scalar* A, int lda, const int* dev_pivots,  \
+                                  Scalar* A, int lda, int* dev_pivots,        \
                                   Scalar* B, int ldb, int* dev_lapack_info) { \
     mutex_lock lock(handle_map_mutex);                                        \
     using ROCmScalar = typename ROCmComplexT<Scalar>::type;                   \
@@ -645,7 +644,7 @@ TF_CALL_LAPACK_TYPES(POTRF_BATCHED_INSTANCE);
                           pivots.bytes())) {                                  \
       return errors::Internal("GetriBatched: Failed to copy ptrs to device"); \
     }                                                                         \
-    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(getri_batched, type_prefix)(         \
+    TF_RETURN_IF_ROCBLAS_ERROR(ROCSOLVER_FN(getri_batched, type_prefix)(      \
         rocm_blas_handle_, n,                                                 \
         reinterpret_cast<ROCmScalar**>(dev_a.mutable_data()), lda,            \
         reinterpret_cast<int*>(pivots.mutable_data()), stride,                \
@@ -668,7 +667,7 @@ TF_CALL_ROCSOLV_TYPES(GETRI_BATCHED_INSTANCE);
     if (!CopyHostToDevice(context_, dev_a.mutable_data(), A, dev_a.bytes())) { \
       return errors::Internal("GetrfBatched: Failed to copy ptrs to device");  \
     }                                                                          \
-    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(getrf_batched, type_prefix)(          \
+    TF_RETURN_IF_ROCBLAS_ERROR(ROCSOLVER_FN(getrf_batched, type_prefix)(       \
         rocm_blas_handle_, n, n,                                               \
         reinterpret_cast<ROCmScalar**>(dev_a.mutable_data()), lda, dev_pivots, \
         stride, dev_info->mutable_data(), batch_size));                        \
@@ -696,7 +695,7 @@ TF_CALL_ROCSOLV_TYPES(GETRF_BATCHED_INSTANCE);
     if (!CopyHostToDevice(context_, dev_b.mutable_data(), B, dev_b.bytes())) { \
       return errors::Internal("GetrfBatched: Failed to copy ptrs to device");  \
     }                                                                          \
-    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(getrs_batched, type_prefix)(          \
+    TF_RETURN_IF_ROCBLAS_ERROR(ROCSOLVER_FN(getrs_batched, type_prefix)(       \
         rocm_blas_handle_, trans, n, nrhs,                                     \
         reinterpret_cast<ROCmScalar**>(dev_a.mutable_data()), lda, dev_pivots, \
         stride, reinterpret_cast<ROCmScalar**>(dev_b.mutable_data()), ldb,     \

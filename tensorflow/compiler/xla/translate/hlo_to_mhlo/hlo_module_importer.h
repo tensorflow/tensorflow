@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -48,7 +49,7 @@ class HloModuleImporter {
 
  private:
   bool import_all_computation_;
-  mlir::ModuleOp module_;
+  mlir::SymbolTable symbol_table_;
   mlir::Builder builder_;
 
   // Map for tracking which MLIR function map to which HLO Computation. This

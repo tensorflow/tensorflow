@@ -23,12 +23,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_performance_model.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -240,8 +240,8 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
     // Skip 'fusion' instruction if merging it into at least one of the users
     // would make the fusion use too much shared memory or registers.
     FusionDecision fits = FusionFitsInBudget(
-        *user, *producer, /*is_consumer_producer_fusion=*/true,
-        &fusion_info_cache_);
+        *user, *producer, gpu_device_info_,
+        /*is_consumer_producer_fusion=*/true, &fusion_info_cache_);
     if (!fits) {
       ++num_fail_fusion_too_large_;
       return fits;
@@ -283,12 +283,6 @@ StatusOr<bool> FusionMerger::Run(
   VLOG(1) << "FusionMerger for module: " << module->name();
   for (auto* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    // Skip Softmax CustomCall computations.
-    if (computation->IsCustomCallComputation() &&
-        IsSoftmaxCustomCall(*computation->CustomCallInstruction())) {
-      continue;
-    }
-
     VLOG(9) << "Before running FusionInstructionMerger for computation: "
             << computation->name();
     XLA_VLOG_LINES(9, computation->ToString());

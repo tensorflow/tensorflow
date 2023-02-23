@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
 #include <string>
 
 #include "mlir/Conversion/LLVMCommon/Pattern.h"  // from @llvm-project
@@ -59,13 +60,13 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
 
   std::pair<Value, Value> ConvertArrayAttrToStackAllocatedArray(
       Location loc, Type size_ty, Type element_ty,
-      llvm::Optional<ArrayAttr> attr, ConversionPatternRewriter *rewriter,
+      std::optional<ArrayAttr> attr, ConversionPatternRewriter *rewriter,
       std::function<Value(Attribute)> create_element) const {
     Type element_ptr_ty = LLVM::LLVMPointerType::get(element_ty);
 
     // If the attribute is missing or empty, set the element count to 0 and
     // return NULL.
-    if (!attr.has_value() || attr.getValue().empty()) {
+    if (!attr.has_value() || attr.value().empty()) {
       Value zero = rewriter->create<LLVM::ConstantOp>(
           loc, size_ty, rewriter->getIntegerAttr(size_ty, 0));
       Value null_ptr = rewriter->create<LLVM::NullOp>(loc, element_ptr_ty);
@@ -73,7 +74,7 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
     }
 
     // Allocate array to store the elements.
-    auto &array_attr = attr.getValue();
+    auto &array_attr = attr.value();
     Value array_size = rewriter->create<LLVM::ConstantOp>(
         loc, size_ty, rewriter->getIntegerAttr(size_ty, array_attr.size()));
     Value array_ptr = rewriter->create<LLVM::AllocaOp>(
@@ -91,7 +92,7 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
 
   std::pair<Value, Value> ConvertIntegerArrayAttrToStackAllocatedArray(
       Location loc, Type size_ty, Type element_ty,
-      llvm::Optional<ArrayAttr> attr,
+      std::optional<ArrayAttr> attr,
       ConversionPatternRewriter *rewriter) const {
     assert(size_ty.isa<IntegerType>() && "expect integer size type");
     assert(element_ty.isa<IntegerType>() && "expect integer element type");
@@ -134,7 +135,7 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
     Value output_index = rewriter.create<LLVM::ConstantOp>(
         loc, llvmInt32Type,
         rewriter.getI32IntegerAttr(tf_alloc_op.getOutputIndex().has_value()
-                                       ? tf_alloc_op.getOutputIndex().getValue()
+                                       ? tf_alloc_op.getOutputIndex().value()
                                        : -1));
 
     // Convert `candidate_input_indices`.
@@ -150,10 +151,9 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
         rewriter
             .create<LLVM::CallOp>(
                 loc, getVoidPtrType(), tf_func_ref,
-                llvm::makeArrayRef({adaptor.getCtx(), num_elements,
-                                    element_size, output_index,
-                                    candidates_count_and_ptr.first,
-                                    candidates_count_and_ptr.second}))
+                llvm::ArrayRef({adaptor.getCtx(), num_elements, element_size,
+                                output_index, candidates_count_and_ptr.first,
+                                candidates_count_and_ptr.second}))
             .getResult();
 
     MemRefDescriptor memRefDescriptor = CreateMemRefDescriptor(
@@ -173,7 +173,7 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
     Type llvm_void_ptr_type = getVoidPtrType();
     return LLVM::LLVMFunctionType::get(
         llvm_void_ptr_type,
-        llvm::makeArrayRef(
+        llvm::ArrayRef(
             {/*void* op_kernel_ctx*/ llvm_void_ptr_type,
              /*size_t num_elements*/ getIndexType(),
              /*size_t element_size*/ getIndexType(),
@@ -238,8 +238,8 @@ class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
     FlatSymbolRefAttr tf_func_ref =
         GetOrInsertLLVMFunction(GetFuncName(), GetFuncType(), op, &rewriter);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
-        op, llvm::None, tf_func_ref,
-        llvm::makeArrayRef({adaptor.getCtx(), allocated_bytes_ptr}));
+        op, std::nullopt, tf_func_ref,
+        llvm::ArrayRef({adaptor.getCtx(), allocated_bytes_ptr}));
     return success();
   }
 
@@ -285,10 +285,10 @@ class JITCompileFromStrOpConverter
         GetOrInsertLLVMFunction(GetFuncName(), GetFuncType(), op, &rewriter);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
         op, getVoidPtrType(), tf_func_ref,
-        llvm::makeArrayRef({adaptor.getCtx(), jit_module_code, tile_sizes.first,
-                            tile_sizes.second, unroll_factors.first,
-                            unroll_factors.second, max_supported_rank,
-                            enable_ftz, index_64bit, cpu_codegen}));
+        llvm::ArrayRef({adaptor.getCtx(), jit_module_code, tile_sizes.first,
+                        tile_sizes.second, unroll_factors.first,
+                        unroll_factors.second, max_supported_rank, enable_ftz,
+                        index_64bit, cpu_codegen}));
     return success();
   }
 
@@ -336,7 +336,7 @@ class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
     Value one = rewriter.create<LLVM::ConstantOp>(
         loc, i64_ty, rewriter.getI64IntegerAttr(1));
     auto result_ptr =
-        rewriter.create<LLVM::AllocaOp>(loc, result_ptr_ty, one, llvm::None);
+        rewriter.create<LLVM::AllocaOp>(loc, result_ptr_ty, one, std::nullopt);
     Type void_ptr_ty = getVoidPtrType();
     auto result_void_ptr =
         rewriter.create<LLVM::BitcastOp>(loc, void_ptr_ty, result_ptr);
@@ -364,7 +364,7 @@ class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
     FlatSymbolRefAttr tf_func_ref =
         GetOrInsertLLVMFunction(GetFuncName(), GetFuncType(), op, &rewriter);
     rewriter.create<LLVM::CallOp>(
-        loc, llvm::None, tf_func_ref,
+        loc, std::nullopt, tf_func_ref,
         ValueRange{adaptor.getCtx(), adaptor.getCallable(), result_void_ptr,
                    num_args, args_void_ptr});
 
@@ -417,8 +417,8 @@ class ReportErrorOpConverter
         loc, typeConverter->convertType(rewriter.getI32Type()),
         adaptor.getErrorCodeAttr());
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
-        op, llvm::None, tf_func_ref,
-        llvm::makeArrayRef({adaptor.getCtx(), error_code, message_constant}));
+        op, std::nullopt, tf_func_ref,
+        llvm::ArrayRef({adaptor.getCtx(), error_code, message_constant}));
     return success();
   }
 
@@ -516,17 +516,23 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
         UnrankedMemRefDescriptor::undef(rewriter, loc, llvm_result_type);
     desc.setRank(rewriter, loc, zero);
 
+    // Extract address space and element type.
+    auto targetType =
+        null_memref_op.getResult().getType().cast<UnrankedMemRefType>();
+    unsigned addressSpace =
+        *getTypeConverter()->getMemRefAddressSpace(targetType);
+
     // Due to the current way of handling unranked memref results escaping, we
     // have to actually construct a ranked underlying descriptor instead of just
     // setting its pointer to NULL.
     SmallVector<Value, 4> sizes;
     UnrankedMemRefDescriptor::computeSizes(rewriter, loc, *getTypeConverter(),
-                                           desc, sizes);
+                                           desc, addressSpace, sizes);
     Value underlying_desc_ptr = rewriter.create<LLVM::AllocaOp>(
-        loc, getVoidPtrType(), sizes.front(), llvm::None);
+        loc, getVoidPtrType(), sizes.front(), std::nullopt);
 
     // Populate underlying ranked descriptor.
-    Type elem_ptr_ptr_type = LLVM::LLVMPointerType::get(
+    LLVM::LLVMPointerType elem_ptr_ptr_type = LLVM::LLVMPointerType::get(
         LLVM::LLVMPointerType::get(llvm_elem_type, address_space));
 
     Value null = rewriter.create<LLVM::NullOp>(

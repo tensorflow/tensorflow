@@ -30,7 +30,11 @@ limitations under the License.
 
 // Common place for all collective thunks to include nccl/rccl headers.
 #if TENSORFLOW_USE_ROCM
+#if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/rccl/rccl.h"
+#else
+#include "rocm/include/rccl.h"
+#endif
 #else
 #include "third_party/nccl/nccl.h"
 #endif
@@ -115,7 +119,7 @@ class Lockable {
 TSL_LIB_GTL_DEFINE_INT_TYPE(OpId, int64_t);
 
 struct NcclComm : public Lockable<ncclComm_t> {
-  NcclComm() : Lockable(nullptr) {}
+  explicit NcclComm(ncclComm_t comm) : Lockable(comm) {}
 };
 
 StatusOr<NcclComm::Lock> AcquireNcclComm(

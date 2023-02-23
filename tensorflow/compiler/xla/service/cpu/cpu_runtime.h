@@ -27,9 +27,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_H_
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/cpu/xfeed_manager.h"
-#include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 namespace cpu {

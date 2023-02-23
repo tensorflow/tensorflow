@@ -15,33 +15,41 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/test_compilation_environment.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/strings/proto_serialization.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
 // In order to use TestCompilationEnvironment* with CompilationEnvironments, we
 // must define ProcessNewEnv for them.
-template <>
-std::unique_ptr<test::TestCompilationEnvironment1>
-CompilationEnvironments::ProcessNewEnv(
-    std::unique_ptr<test::TestCompilationEnvironment1> env) {
+std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv(
+    std::unique_ptr<tsl::protobuf::Message> msg) {
+  std::unique_ptr<test::TestCompilationEnvironment1> env(
+      tensorflow::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
   if (!env) {
     env = std::make_unique<test::TestCompilationEnvironment1>();
     env->set_some_flag(100);
@@ -55,7 +63,10 @@ namespace op = ::xla::testing::opcode_matchers;
 
 class HloModuleTest : public HloTestBase {
  protected:
-  HloModuleTest() {}
+  static void SetUpTestSuite() {
+    CompilationEnvironments::RegisterProcessNewEnvFn(
+        test::TestCompilationEnvironment1::descriptor(), ProcessNewEnv);
+  }
 
   // Create a computation which returns a constant.
   std::unique_ptr<HloComputation> CreateConstantComputation() {
@@ -118,7 +129,7 @@ TEST_F(HloModuleTest, CloneTest) {
   // Add a compilation environment to module
   auto env = std::make_unique<test::TestCompilationEnvironment1>();
   env->set_some_flag(10);
-  module->comp_envs().AddEnv(std::move(env));
+  TF_ASSERT_OK(module->comp_envs().AddEnv(std::move(env)));
 
   auto post_order = module->MakeComputationPostOrder();
   auto cloned_module = module->Clone("copy");
@@ -698,6 +709,187 @@ TEST_F(HloModuleTest, TwoComputationsFilterexecution_threads) {
     EXPECT_EQ(comp->execution_thread(), kParallelThreadName);
   }
   EXPECT_EQ(num_parallel_computations, 1);
+}
+
+TEST_F(HloModuleTest, HloModuleWithConfigSerializationEquality) {
+  const std::string computation_text =
+      R"(HloModule ReduceR3ToR2_module
+
+add_F32.v3 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY ReduceR3ToR2.v3 {
+  input = f32[8,16,256]{2,1,0} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[8,16]{1,0} reduce(input, constant), dimensions={2}, to_apply=add_F32.v3
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(computation_text));
+
+  TF_ASSERT_OK_AND_ASSIGN(xla::HloModuleProtoWithConfig proto,
+                          module->ToProtoWithConfig());
+  std::string serialized_module;
+  ASSERT_TRUE(tsl::SerializeToStringDeterministic(proto, &serialized_module));
+  std::string original_debug_str = proto.DebugString();
+  RecordProperty("serialized_module", original_debug_str);
+
+  // Verify that we can create a module from our parsed proto copy
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> reconstructed_module,
+                          HloModule::CreateFromProtoWithConfig(proto));
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::HloModuleProtoWithConfig reconstructed_module_proto,
+      reconstructed_module->ToProtoWithConfig());
+
+  // The two protos should be equivalent except for the `id` field
+  google::protobuf::util::MessageDifferencer diff;
+  diff.set_message_field_comparison(
+      google::protobuf::util::MessageDifferencer::EQUIVALENT);
+  auto module_descriptor = HloModuleProto::GetDescriptor();
+  auto unique_id_field = module_descriptor->FindFieldByName("id");
+  diff.IgnoreField(unique_id_field);
+  EXPECT_TRUE(diff.Compare(proto, reconstructed_module_proto));
+}
+
+static ShardableValueUpdatePairProto MakeShardPair(int offset) {
+  ShardableValueUpdatePairProto pear;
+  pear.set_input_parameter_number(offset + 1);
+  for (int64_t i = 0; i < 5; ++i) {
+    pear.add_parameter_shape_index(offset + i);
+  }
+  for (int64_t j = 0; j < 3; ++j) {
+    pear.add_output_shape_index(offset + j);
+  }
+  return pear;
+}
+
+static HloModuleConfigProto::BoolList MakeOneHotBoolList(unsigned num_vals,
+                                                         unsigned hot_idx) {
+  HloModuleConfigProto::BoolList list;
+  for (unsigned i = 0; i < num_vals; ++i) {
+    list.add_vals(i == hot_idx);
+  }
+  return list;
+}
+
+static StatusOr<HloModuleConfigProto> MakeTestModuleConfigProto() {
+  HloModuleConfigProto proto;
+  // entry_computation_layout_ is optional
+  proto.set_seed(0xdeadbeef);
+  proto.set_launch_id(0xfeed100);
+  proto.set_replica_count(3);
+  proto.set_num_partitions(2);
+  for (int x = 0; x < 6; ++x) {
+    proto.add_param_requires_broadcast_via_collectives(x & 1);
+  }
+  proto.set_use_spmd_partitioning(true);
+  proto.set_use_auto_spmd_partitioning(true);
+  for (unsigned x = 0; x < 4; ++x) {
+    proto.add_auto_spmd_partitioning_mesh_ids(10 - x);
+    proto.add_auto_spmd_partitioning_mesh_ids(x);
+  }
+  proto.set_deduplicate_hlo(true);
+  proto.set_intra_op_parallelism_threads(42);
+  proto.set_device_type("Google Test framework");
+  // debug options
+  *proto.mutable_debug_options() = DefaultDebugOptionsIgnoringFlags();
+  // static device assignment
+  {
+    DeviceAssignmentProto device_assignment_proto;
+    DeviceAssignment device_assignment(/*replica_count=*/3,
+                                       /*computation_count=*/2);
+    TF_RETURN_IF_ERROR(device_assignment.Serialize(&device_assignment_proto));
+    proto.mutable_static_device_assignment()->Swap(&device_assignment_proto);
+  }
+  // Shardable Value Update Pairs
+  for (int k = 0; k < 3; ++k) {
+    *proto.add_shardable_value_update_pairs() = MakeShardPair(k);
+  }
+  proto.set_alias_passthrough_params(true);
+  proto.set_content_aware_computation_sorting(true);
+  proto.set_fusion_config_collection(HloModuleConfigProto::PER_NODE);
+  // fusion config
+  for (int idx = 0; idx < 4; ++idx) {
+    bool reverse = (idx & 1) == 0;
+    *proto.add_fusion_config() =
+        MakeOneHotBoolList(6, (reverse) ? 6 - idx : idx);
+  }
+  // dot config
+  for (int idx = 0; idx < 4; ++idx) {
+    HloModuleConfigProto::Int64List int_list;
+    for (int x = 1; x <= 3; ++x) {
+      int_list.add_vals(x * x * idx);
+    }
+    proto.mutable_dot_config()->insert(
+        {absl::StrCat("Node", idx, "dot"), std::move(int_list)});
+  }
+
+  // layout config
+  for (int idx = 0; idx < 4; ++idx) {
+    HloModuleConfigProto::Int64ListList list_of_lists;
+    for (int x = 0; x < 4; ++x) {
+      HloModuleConfigProto::Int64List int_list;
+      for (int y = 0; y < 6; ++y) {
+        int_list.add_vals(y * x + idx + y + 1);
+      }
+      list_of_lists.add_lists()->Swap(&int_list);
+    }
+    proto.mutable_layout_config()->Add(std::move(list_of_lists));
+  }
+
+  // memory space assignment config
+  for (uint64_t mem_asgn = 42; mem_asgn < 50; ++mem_asgn) {
+    proto.add_memory_space_assignment_config(mem_asgn);
+  }
+
+  // phase ordering config
+  for (int n = 0; n < 4; ++n) {
+    *proto.add_phase_ordering_config() = MakeOneHotBoolList(4, n);
+  }
+  proto.set_phase_index(2);
+
+  proto.add_allow_spmd_sharding_propagation_to_output(true);
+  for (int idx = 1; idx <= 3; ++idx) {
+    int64_t allowance = 35 * idx;
+    proto.mutable_analysis_allowance_map()->insert(
+        {absl::StrCat("Key", idx), allowance});
+  }
+  proto.set_matrix_unit_operand_precision(PrecisionConfig::HIGH);
+  return proto;
+}
+
+TEST_F(HloModuleTest, HloModuleConfigCreateFromProto) {
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfigProto input_proto,
+                          MakeTestModuleConfigProto());
+  TF_ASSERT_OK_AND_ASSIGN(auto good_config,
+                          HloModuleConfig::CreateFromProto(input_proto));
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfigProto output_proto,
+                          good_config->ToProto());
+
+  google::protobuf::util::MessageDifferencer diff;
+  diff.set_message_field_comparison(
+      google::protobuf::util::MessageDifferencer::EQUIVALENT);
+  EXPECT_TRUE(diff.Compare(input_proto, output_proto));
+}
+
+TEST_F(HloModuleTest, HloModuleConfigToProto) {
+  auto module = CreateNewVerifiedModule();
+  const HloModuleConfig& good_config = module->config();
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfigProto first_proto,
+                          good_config.ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModuleConfig> remade_config,
+                          HloModuleConfig::CreateFromProto(first_proto));
+  ASSERT_NE(remade_config, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfigProto second_proto,
+                          remade_config->ToProto());
+
+  google::protobuf::util::MessageDifferencer diff;
+  diff.set_message_field_comparison(
+      google::protobuf::util::MessageDifferencer::EQUIVALENT);
+  EXPECT_TRUE(diff.Compare(first_proto, second_proto));
 }
 
 }  // namespace

@@ -13,48 +13,58 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TRANSFORMS_H
-#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TRANSFORMS_H
+#ifndef MLIR_HLO_GML_ST_TRANSFORMS_TRANSFORMS_H
+#define MLIR_HLO_GML_ST_TRANSFORMS_TRANSFORMS_H
 
 #include "gml_st/IR/gml_st_ops.h"
+#include "llvm/ADT/Hashing.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Pass/PassOptions.h"
 
 namespace mlir {
+
+class OpPassManager;
+
 namespace linalg {
+
 class LinalgOp;
 struct TiledLinalgOp;
 struct LinalgTilingOptions;
+
 }  // namespace linalg
 }  // namespace mlir
 
 namespace mlir {
 namespace gml_st {
 
-constexpr llvm::StringRef kTransformedMarker =
-    "__internal_transformed_marker__";
+constexpr llvm::StringRef kPerfectlyTiledLoopLabel =
+    "__perfectly_tiled_loop_label__";
 
 bool isZero(Value v);
+bool isOne(Value v);
 
-/// Perform standalone tiling of a single LinalgOp by `tileSizes`.
-/// An empty vector is interpreted as the identity permutation and the
-/// transformation returns early.
-///
-/// Return a struct containing the tiled loops in the specified order
-/// and the cloned op if successful, llvm::None otherwise.
-FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
-    RewriterBase &b, linalg::LinalgOp op,
-    const linalg::LinalgTilingOptions &options);
+template <typename ShapedTy>
+bool hasSingleElement(ShapedTy type) {
+  return type.hasStaticShape() && type.getNumElements() == 1;
+}
+bool hasSingleElementOperandsAndResults(Operation *op);
+
+/// Returns true if `candidate`'s offsets are all 0s and strides are all 1s.
+bool isIdentitySlice(ValueRange offsets, ValueRange strides);
+
+/// Returns true if `lhs` and `rhs` are of same static shape.
+bool haveSameStaticShape(Value lhs, Value rhs);
 
 // Sets the attribute to the `op` that indicates that the op was transformed.
-void setTransformationAttr(OpBuilder &b, Operation *op,
-                           StringRef name = kTransformedMarker);
+void setLabel(Operation *op, StringRef name);
 
 // Removes the attribute that indicates that it was transformed.
-void removeTransformationAttr(Operation *op,
-                              StringRef name = kTransformedMarker);
+void removeLabel(Operation *op, StringRef name);
 
 // Checks if `op` has the attribute that indicates that it was transformed.
-bool hasTransformationAttr(Operation *op, StringRef name = kTransformedMarker);
+bool hasLabel(Operation *op, StringRef name);
 
 // Checks if `op` has the matching label attribute.
 bool hasMatchingLabel(Operation *op, StringRef label);
@@ -62,4 +72,4 @@ bool hasMatchingLabel(Operation *op, StringRef label);
 }  // namespace gml_st
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TRANSFORMS_H
+#endif  // MLIR_HLO_GML_ST_TRANSFORMS_TRANSFORMS_H

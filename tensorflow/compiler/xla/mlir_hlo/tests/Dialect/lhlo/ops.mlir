@@ -78,7 +78,7 @@ func.func @invalid_alltoall(%input0: memref<2xf32>, %output: memref<8xf32>) {
 // -----
 
 func.func @invalid_alltoall(%input0: memref<2xf32>, %output: memref<8xf32>) {
-  // expected-error@+1 {{replica groups should be a rank 2 tensor of 64 bit integers}}
+  // expected-error@+1 {{replica groups should be a rank 2 tensor}}
   "lmhlo.all_to_all"(%input0, %output)
     {channel_id = #mhlo.channel_handle<handle = 1, type = 0>, constrain_layout = false,
      replica_groups = dense<0> : tensor<1xi64>,
@@ -1081,7 +1081,7 @@ func.func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
 
 // CHECK-LABEL: func @valid_custom_call
 func.func @valid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
-  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) {
+  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) ({}) {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
@@ -1100,7 +1100,7 @@ func.func @valid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
 
 func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
   // expected-error @+1 {{number of entries in the mapping for args (1) should match the number of args for the operation (2)}}
-  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) {
+  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) ({}) {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
@@ -1119,7 +1119,7 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
 
 func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
   // expected-error @+1 {{number of entries in the mapping for results (1) should match the number of results for the operation (2)}}
-  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) {
+  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) ({}) {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
@@ -1138,7 +1138,7 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
 
 func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
   // expected-error @+1 {{entry 0 cannot appear more than once in the mapping for args}}
-  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) {
+  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) ({}) {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
@@ -1157,7 +1157,7 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
 
 func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
   // expected-error @+1 {{entry 1 cannot appear more than once in the mapping for results}}
-  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) {
+  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) ({}) {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
@@ -1176,7 +1176,7 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
 
 func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
   // expected-error @+1 {{entries in mapping for args must be >= 0 and less than target's number of args (4)}}
-  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) {
+  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) ({}) {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
@@ -1195,7 +1195,7 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
 
 func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
   // expected-error @+1 {{entries in mapping for results must be >= 0 and less than target's number of results (3)}}
-  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) {
+  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) ({}) {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
@@ -1225,4 +1225,64 @@ func.func @invalid_float_abs_call(%input:memref<2xf32>, %result:memref<2xf64>) -
   // expected-error @+1 {{requires all operands to have the same type}}
   "lmhlo.abs"(%input, %result) : (memref<2xf32>, memref<2xf64>) -> ()
   func.return
+}
+
+// -----
+
+// CHECK-LABEL: func @send_memrefs
+func.func @send_memrefs(%arg0: memref<3xf32>) -> !mhlo.token {
+  // CHECK: lmhlo.send
+  // CHECK:   channel_handle = #mhlo.channel_handle<handle = 1, type = 2>
+  // CHECK:   frontend_attributes = {foo = "bar"}
+  // CHECK:   is_host_transfer = true
+  %token = "lmhlo.send"(%arg0) {
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 2>,
+    frontend_attributes = {foo = "bar"},
+    is_host_transfer = true
+  } : (memref<3xf32>) -> (!mhlo.token)
+  return %token : !mhlo.token
+}
+
+// -----
+
+// CHECK-LABEL: func @send_done
+func.func @send_done(%arg0: !mhlo.token) {
+  // CHECK: lmhlo.send_done
+  // CHECK:   channel_handle = #mhlo.channel_handle<handle = 1, type = 2>
+  // CHECK:   is_host_transfer = true
+  "lmhlo.send_done"(%arg0) {
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 2>,
+    is_host_transfer = true
+  } : (!mhlo.token) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @recv_memrefs
+func.func @recv_memrefs(%arg0: memref<3xf32>) -> !mhlo.token {
+  // CHECK: lmhlo.recv
+  // CHECK:   channel_handle = #mhlo.channel_handle<handle = 1, type = 3>
+  // CHECK:   frontend_attributes = {foo = "bar"}
+  // CHECK:   is_host_transfer = true
+  %token = "lmhlo.recv"(%arg0) {
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 3>,
+    frontend_attributes = {foo = "bar"},
+    is_host_transfer = true
+  } : (memref<3xf32>) -> (!mhlo.token)
+  return %token : !mhlo.token
+}
+
+// -----
+
+// CHECK-LABEL: func @recv_done
+func.func @recv_done(%arg0: !mhlo.token) {
+  // CHECK: lmhlo.recv_done
+  // CHECK:   channel_handle = #mhlo.channel_handle<handle = 1, type = 3>
+  // CHECK:   is_host_transfer = true
+  "lmhlo.recv_done"(%arg0) {
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 3>,
+    is_host_transfer = true
+  } : (!mhlo.token) -> ()
+  return
 }

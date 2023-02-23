@@ -438,36 +438,46 @@ Status GetCompressedElementFromVariantTensor(
 
 int64_t GetAllocatedBytes(const std::vector<Tensor>& element) {
   int64_t allocated_bytes = 0;
-  DatasetBase* dataset;
-  const CompressedElement* compressed_element;
   for (auto& tensor : element) {
-    if (GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
-      allocated_bytes += dataset->AllocatedBytes();
-    } else if (GetCompressedElementFromVariantTensor(tensor,
-                                                     &compressed_element)
-                   .ok()) {
-      allocated_bytes += compressed_element->ByteSizeLong();
-    } else {
-      allocated_bytes += tensor.AllocatedBytes();
+    if (tensor.dtype() == DT_VARIANT) {
+      // Special case certain variants where AllocatedBytes() doesn't give an
+      // accurate byte count.
+      DatasetBase* dataset;
+      if (GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
+        allocated_bytes += dataset->AllocatedBytes();
+        continue;
+      }
+      const CompressedElement* compressed_element;
+      if (GetCompressedElementFromVariantTensor(tensor, &compressed_element)
+              .ok()) {
+        allocated_bytes += compressed_element->ByteSizeLong();
+        continue;
+      }
     }
+    allocated_bytes += tensor.AllocatedBytes();
   }
   return allocated_bytes;
 }
 
 int64_t GetTotalBytes(const std::vector<Tensor>& element) {
   int64_t total_bytes = 0;
-  DatasetBase* dataset;
-  const CompressedElement* compressed_element;
   for (auto& tensor : element) {
-    if (GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
-      total_bytes += dataset->TotalBytes();
-    } else if (GetCompressedElementFromVariantTensor(tensor,
-                                                     &compressed_element)
-                   .ok()) {
-      total_bytes += compressed_element->ByteSizeLong();
-    } else {
-      total_bytes += tensor.TotalBytes();
+    if (tensor.dtype() == DT_VARIANT) {
+      // Special case certain variants where TotalBytes() doesn't give an
+      // accurate byte count.
+      DatasetBase* dataset;
+      if (GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
+        total_bytes += dataset->TotalBytes();
+        continue;
+      }
+      const CompressedElement* compressed_element;
+      if (GetCompressedElementFromVariantTensor(tensor, &compressed_element)
+              .ok()) {
+        total_bytes += compressed_element->ByteSizeLong();
+        continue;
+      }
     }
+    total_bytes += tensor.TotalBytes();
   }
   return total_bytes;
 }
@@ -725,6 +735,7 @@ Status DatasetBase::MakeIterator(
   Status s = (*iterator)->InitializeBase(ctx, parent);
   if (s.ok()) {
     s.Update((*iterator)->Initialize(ctx));
+    ctx->SaveCheckpoint(iterator->get());
   }
   if (!s.ok()) {
     // Reset the iterator to avoid returning an uninitialized iterator.
@@ -863,6 +874,9 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(
 
 Status DatasetBase::DatasetGraphDefBuilder::AddResourceHelper(
     SerializationContext* ctx, const Tensor& t, Node** output) {
+  if (t.NumElements() == 0) {
+    return errors::InvalidArgument("Empty resouce handle");
+  }
   const ResourceHandle& handle = t.flat<ResourceHandle>()(0);
   if (ctx->device_name() != handle.device()) {
     return errors::InvalidArgument("Trying to access resource ", handle.name(),
@@ -934,6 +948,13 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   }
   out_tensors->clear();
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
+  ctx->SaveCheckpoint(this);
+  if (!SymbolicCheckpointCompatible()) {
+    ctx->UpdateCheckpointStatus([this]() {
+      return errors::Unimplemented(dataset()->type_string(),
+                                   " does not support symbolic checkpointing.");
+    });
+  }
   if (TF_PREDICT_TRUE(s.ok())) {
     if (TF_PREDICT_TRUE(!*end_of_sequence)) {
       DCHECK_EQ(out_tensors->size(), dataset()->output_dtypes().size());

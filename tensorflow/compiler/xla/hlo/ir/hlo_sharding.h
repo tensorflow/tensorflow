@@ -249,6 +249,12 @@ class HloSharding {
   // having this object sharding.
   StatusOr<HloSharding> GetTupleSharding(const Shape& shape) const;
 
+  // If the shape is tuple and the current sharding is not a tuple, attempt to
+  // construct a sharding that is compatible with the shape by replicating the
+  // current sharding across all tuple elements. Note that the returned
+  // sharding is not guaranteed to be compatible with the input shape.
+  HloSharding NormalizeTupleSharding(const Shape& shape) const;
+
   // Extracts the sharding that is common within the current sharding.
   // If the current sharding is not a tuple sharding, the current sharding will
   // be returned. If it is a tuple, and all the tuple elements are common, the
@@ -364,13 +370,13 @@ class HloSharding {
  private:
   explicit HloSharding(bool manual, bool replicated,
                        absl::Span<const OpMetadata> metadata)
-      : replicated_(replicated),
+      : tile_assignment_({0}),
+        metadata_(metadata.begin(), metadata.end()),
+        replicated_(replicated),
         maximal_(replicated),
         tuple_(false),
         manual_(manual),
-        tile_assignment_({0}),
-        replicate_on_last_tile_dim_(false),
-        metadata_(metadata.begin(), metadata.end()) {}
+        replicate_on_last_tile_dim_(false) {}
   // device_id values:
   // -2: magic number to mean unassigned device, used by spatial partitioning
   // -1: the id of the host
@@ -378,41 +384,41 @@ class HloSharding {
   // NOTE(dimvar): -1 is needed for outside compilation. It can be removed once
   // we have fully switched to the side-effect tokens.
   explicit HloSharding(int64_t device_id, absl::Span<const OpMetadata> metadata)
-      : replicated_(false),
+      : tile_assignment_({1}, device_id),
+        metadata_(metadata.begin(), metadata.end()),
+        replicated_(false),
         maximal_(true),
         tuple_(false),
         manual_(false),
-        tile_assignment_({1}, device_id),
-        replicate_on_last_tile_dim_(false),
-        metadata_(metadata.begin(), metadata.end()) {}
+        replicate_on_last_tile_dim_(false) {}
   explicit HloSharding(const Array<int64_t>& tile_assignment,
                        bool replicate_on_last_tile_dim,
                        absl::Span<const OpMetadata> metadata = {})
-      : replicated_(false),
+      : tile_assignment_(tile_assignment),
+        metadata_(metadata.begin(), metadata.end()),
+        replicated_(false),
         maximal_(false),
         tuple_(false),
         manual_(false),
-        tile_assignment_(tile_assignment),
-        replicate_on_last_tile_dim_(replicate_on_last_tile_dim),
-        metadata_(metadata.begin(), metadata.end()) {}
+        replicate_on_last_tile_dim_(replicate_on_last_tile_dim) {}
   explicit HloSharding(const Array<int64_t>& tile_assignment,
                        absl::Span<const OpSharding::Type> subgroup_types,
                        absl::Span<const OpMetadata> metadata = {})
-      : replicated_(false),
+      : tile_assignment_(tile_assignment),
+        metadata_(metadata.begin(), metadata.end()),
+        subgroup_types_(subgroup_types.begin(), subgroup_types.end()),
+        replicated_(false),
         maximal_(false),
         tuple_(false),
         manual_(false),
-        tile_assignment_(tile_assignment),
-        replicate_on_last_tile_dim_(false),
-        metadata_(metadata.begin(), metadata.end()),
-        subgroup_types_(subgroup_types.begin(), subgroup_types.end()) {}
+        replicate_on_last_tile_dim_(false) {}
   explicit HloSharding(const std::vector<HloSharding>& tuple_shardings)
-      : replicated_(false),
+      : tile_assignment_({0}),
+        tuple_elements_(tuple_shardings),
+        replicated_(false),
         maximal_(false),
         tuple_(true),
         manual_(false),
-        tile_assignment_({0}),
-        tuple_elements_(tuple_shardings),
         replicate_on_last_tile_dim_(false) {}
 
   // Checks that the number of elements in tuple_elements_ is consistent with
@@ -427,10 +433,6 @@ class HloSharding {
   Status ValidateNonTuple(const Shape& shape,
                           std::optional<int64_t> num_devices) const;
 
-  bool replicated_;
-  bool maximal_;
-  bool tuple_;
-  bool manual_;
   // This field is only used if replicated_ is false. If maximal_ is true, then
   // the field contains a rank 1 array with a single element, which is the
   // device the HLO is assigned to. If maximal_ is false, the field contains an
@@ -453,7 +455,6 @@ class HloSharding {
   // true, tile_assignment_ will have an extra dimension in addition to the data
   // shape rank, and the added last dimension represents the subgroups of
   // replications, i.e., elements in slice [..., :] will be replicated.
-  bool replicate_on_last_tile_dim_;
   // This field is used to track the source of this sharding, usually derived
   // from instructions. Multiple metadata may be populated if sharding is
   // combined with other shardings. Metadata are to not be populated when
@@ -467,6 +468,11 @@ class HloSharding {
   // When creating HloSharding, subgroup dims of the same type will be merged,
   // so that there is at most one dim with a given type.
   std::vector<OpSharding::Type> subgroup_types_;
+  bool replicated_;
+  bool maximal_;
+  bool tuple_;
+  bool manual_;
+  bool replicate_on_last_tile_dim_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloSharding& sharding);

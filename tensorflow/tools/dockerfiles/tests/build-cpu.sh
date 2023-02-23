@@ -27,7 +27,7 @@ export TF_NEED_CUDA=0
 # TensorRT build failing as of 2019-12-18, see
 # https://github.com/tensorflow/tensorflow/issues/35115
 export CC_OPT_FLAGS='-mavx'
-export PYTHON_BIN_PATH=$(which python3.7)
+export PYTHON_BIN_PATH=$(which python3.9)
 export TMP=/tmp
 yes "" | /usr/local/bin/python configure.py
 

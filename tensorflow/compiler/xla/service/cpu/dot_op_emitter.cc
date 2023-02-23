@@ -317,9 +317,9 @@ Status DotOpEmitter::EmitLinalgMatmul() {
           }
         }
 
-        llvm::SmallVector<llvm::StringRef, 4> iteratorTypes(
-            parallel_exprs.size(), mlir::getParallelIteratorTypeName());
-        iteratorTypes.push_back(mlir::getReductionIteratorTypeName());
+        llvm::SmallVector<mlir::utils::IteratorType, 4> iteratorTypes(
+            parallel_exprs.size(), mlir::utils::IteratorType::parallel);
+        iteratorTypes.push_back(mlir::utils::IteratorType::reduction);
         builder->create<mlir::linalg::GenericOp>(
             function.getLoc(),
             /*inputs=*/mlir::ValueRange{b, c},

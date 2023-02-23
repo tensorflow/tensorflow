@@ -1094,7 +1094,7 @@ struct SparseSegmentGradFunctor<CPUDevice, T, Index, SegmentId> {
                            ? static_cast<T>(1)
                            : static_cast<T>(scaling[idx]));
       if (is_modified[output_idx]) {
-        if (scale == 1.0) {
+        if (scale == T{1.0}) {
           output_flat.template chip<0>(output_idx) +=
               input_flat.template chip<0>(idx);
         } else {
@@ -1102,7 +1102,7 @@ struct SparseSegmentGradFunctor<CPUDevice, T, Index, SegmentId> {
               input_flat.template chip<0>(idx) * scale;
         }
       } else {
-        if (scale == 1.0) {
+        if (scale == T{1.0}) {
           output_flat.template chip<0>(output_idx) =
               input_flat.template chip<0>(idx);
         } else {

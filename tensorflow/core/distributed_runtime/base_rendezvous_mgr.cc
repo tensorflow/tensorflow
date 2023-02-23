@@ -137,11 +137,20 @@ BaseRemoteRendezvous::~BaseRemoteRendezvous() {
 }
 
 // Returns true if "device_name" is a valid full name of local device
-// of the "worker".  This helper is purely based on the worker name
+// of the "worker". This helper is purely based on the worker name
 // and device name and does no lookups in the worker->device_mgr.
 static bool IsLocalDevice(const StringPiece worker_name,
                           const StringPiece device_name) {
   return absl::StartsWith(device_name, worker_name);
+}
+
+// Returns true if the parsed device name is empty. An empty src device
+// is used to represent a Recv from the local host device when
+// the host device name is not known at the time when the graph node is
+// emitted.
+static bool IsImplicitLocalDevice(
+    const DeviceNameUtils::ParsedName parsed_device_name) {
+  return !DeviceNameUtils::HasSomeDetails(parsed_device_name);
 }
 
 Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
@@ -191,7 +200,8 @@ Status BaseRemoteRendezvous::Send(const Rendezvous::ParsedKey& parsed,
     sess = session_;
   }
 
-  if (!IsLocalDevice(sess->worker_name(), parsed.src_device)) {
+  if (!IsImplicitLocalDevice(parsed.src) &&
+      !IsLocalDevice(sess->worker_name(), parsed.src_device)) {
     return errors::InvalidArgument(
         "Invalid rendezvous key (src): ", parsed.FullKey(), " @ ",
         sess->worker_name());
@@ -214,7 +224,8 @@ Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
     }
     sess = session_;
   }
-  if (is_src && !IsLocalDevice(sess->worker_name(), parsed.src_device)) {
+  if (is_src && !IsImplicitLocalDevice(parsed.src) &&
+      !IsLocalDevice(sess->worker_name(), parsed.src_device)) {
     return errors::InvalidArgument(
         "Invalid rendezvous key (src): ", parsed.FullKey(), " @ ",
         sess->worker_name());
@@ -321,7 +332,10 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
 
   profiler::ScopedMemoryDebugAnnotation op_annotation("RecvAsync", step_id_);
   // Are src and dst in the same worker?
-  if (IsSameWorker(parsed.src, parsed.dst)) {
+  // At this point parsed.dst must be a local device asserted by the previous
+  // call to ValidateDevices.
+  if (IsImplicitLocalDevice(parsed.src) ||
+      IsSameWorker(parsed.src, parsed.dst)) {
     // Recv the tensor from local_.
     local_->RecvAsync(
         parsed, recv_args,
@@ -488,12 +502,13 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
       if (!already_cancelled) {
         it = calls_
                  .emplace(cm,
-                          std::make_unique<PendingCalls>(token, 1, num_shards_))
+                          std::make_unique<PendingCalls>(token, 0, num_shards_))
                  .first;
       }
     }
     DCHECK(it != calls_.end());
     if (!already_cancelled) {
+      it->second->num_calls.fetch_add(1);
       auto& bucket = it->second->buckets[hash];
       mutex_lock bucket_lock(bucket.mu);
       bool emplaced = bucket.calls.emplace(call).second;

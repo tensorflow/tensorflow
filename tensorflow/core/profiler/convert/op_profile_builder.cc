@@ -109,7 +109,7 @@ void SortAndPruneChildren(int k, int level, Node* root) {
     } else {
       *root->mutable_children() =
           TopKChildren(root, k, [](const Node* a, const Node* b) {
-            return a->metrics().time() > b->metrics().time();
+            return a->metrics().raw_time() > b->metrics().raw_time();
           }).children();
     }
   }
@@ -166,11 +166,22 @@ int64_t GetComputationSize(Node node) {
 }
 
 // Fills op metrics into a node.
-void PopulateOpMetricsNode(const OpMetrics& op_metrics,
-                           double peak_gigaflops_per_second_per_core,
-                           double peak_gibibytes_per_second_per_core,
-                           uint64_t total_time_ps, Node* node) {
+void PopulateOpMetricsNode(
+    const OpMetrics& op_metrics, double peak_gigaflops_per_second_per_core,
+    std::vector<double> peak_mem_gibibytes_per_second_per_core,
+    uint64_t total_time_ps, Node* node) {
   DCHECK_EQ(ChildrenTimePs(op_metrics), 0);
+
+  // TODO(dfinchel): remove this temporary change to avoid crash.
+  // This is only needed while we make an update to proto version that is not
+  // backwards compatible.
+  if (peak_mem_gibibytes_per_second_per_core.size() !=
+      (MemBwType_MAX - MemBwType_MIN + 1)) {
+    peak_mem_gibibytes_per_second_per_core.clear();
+    for (int i = MemBwType_MIN; i <= MemBwType_MAX; ++i) {
+      peak_mem_gibibytes_per_second_per_core.push_back(0);
+    }
+  }
 
   Metrics* metrics = node->mutable_metrics();
   // The UI computes flops_rate = raw_flops / raw_time
@@ -178,10 +189,6 @@ void PopulateOpMetricsNode(const OpMetrics& op_metrics,
   // https://github.com/tensorflow/profiler/blob/master/frontend/app/common/utils/utils.ts
   metrics->set_raw_time(op_metrics.time_ps());
   metrics->set_raw_flops(op_metrics.flops());
-  metrics->set_raw_bytes_accessed(op_metrics.bytes_accessed());
-
-  // "time" is the op or category fraction of total time.
-  metrics->set_time(SafeDivide(op_metrics.time_ps(), total_time_ps));
 
   // Hack to approximate utilization for INT8/4 convolution HLOs:
   // Since MXU BW is 2x/4x for INT8/4, multiply peak BW by the factor detemrined
@@ -193,21 +200,63 @@ void PopulateOpMetricsNode(const OpMetrics& op_metrics,
   }
   double flops_utilization = SafeDivide(GigaFlopsPerSecondPerCore(op_metrics),
                                         peak_gigaflops_per_second_per_core);
-  // The UI expects flops_utilization = flops / time. See:
+  // The UI expects flops_utilization = flop_util / time_fraction. See:
   // https://github.com/tensorflow/profiler/blob/master/frontend/app/common/utils/utils.ts
-  metrics->set_flops(flops_utilization * metrics->time());
+  const double time_fraction = SafeDivide(op_metrics.time_ps(), total_time_ps);
+  metrics->set_flops(flops_utilization * time_fraction);
 
-  // TODO(b/219984562): Use hierarchical roofline.
-  double mem_bw_utilization = SafeDivide(GibiBytesPerSecondPerCore(op_metrics),
-                                         peak_gibibytes_per_second_per_core);
-  metrics->set_memory_bandwidth(mem_bw_utilization);
+  // Capture both on-chip and off-chip memory utilization.
+  const double hbm_gibibytes_per_second =
+      GigaToGibi(GigaBytesPerSecondPerCore(op_metrics,
+                                           MemorySpace::MEMORY_SPACE_HBM,
+                                           OpMetrics::MemoryAccessed::READ)) +
+      GigaToGibi(GigaBytesPerSecondPerCore(op_metrics,
+                                           MemorySpace::MEMORY_SPACE_HBM,
+                                           OpMetrics::MemoryAccessed::WRITE));
+  const double hbm_bw_utilization = SafeDivide(
+      hbm_gibibytes_per_second,
+      peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_HBM_RW]);
+  metrics->add_bandwidth_utils(hbm_bw_utilization);
+  double hbm_bytes =
+      GibiToGiga(hbm_gibibytes_per_second) * PicoToNano(op_metrics.time_ps());
+
+  const double sram_rd_gibibytes_per_second = GigaToGibi(
+      GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ON_CHIP,
+                                OpMetrics::MemoryAccessed::READ));
+  const double sram_rd_bw_utilization = SafeDivide(
+      sram_rd_gibibytes_per_second,
+      peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_SRAM_RD]);
+  metrics->add_bandwidth_utils(sram_rd_bw_utilization);
+  double sram_rd_bytes = GibiToGiga(sram_rd_gibibytes_per_second) *
+                         PicoToNano(op_metrics.time_ps());
+
+  const double sram_wr_gibibytes_per_second = GigaToGibi(
+      GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ON_CHIP,
+                                OpMetrics::MemoryAccessed::WRITE));
+  const double sram_wr_bw_utilization = SafeDivide(
+      sram_wr_gibibytes_per_second,
+      peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_SRAM_WR]);
+  metrics->add_bandwidth_utils(sram_wr_bw_utilization);
+  double sram_wr_bytes = GibiToGiga(sram_wr_gibibytes_per_second) *
+                         PicoToNano(op_metrics.time_ps());
+
+  // Check if number of bytes is consistent.
+  const auto total_bytes = op_metrics.bytes_accessed();
+  if ((hbm_bytes + sram_rd_bytes + sram_wr_bytes) < (0.99 * total_bytes)) {
+    // If inconsistent, assume total_bytes are all off-chip.
+    hbm_bytes = total_bytes;
+    sram_rd_bytes = 0;
+    sram_wr_bytes = 0;
+  }
+  metrics->add_raw_bytes_accessed_array(hbm_bytes);
+  metrics->add_raw_bytes_accessed_array(sram_rd_bytes);
+  metrics->add_raw_bytes_accessed_array(sram_wr_bytes);
 }
 
 // Sets the total time on the root node metrics.
 void SetTotalTime(uint64_t total_time_ps, Node* root) {
   Metrics* metrics = root->mutable_metrics();
   metrics->set_raw_time(total_time_ps);
-  metrics->set_time(1.0);
 }
 
 // Recursively insert "fused instruction" nodes (with raw flops).
@@ -327,12 +376,13 @@ void OpProfileBuilder::AddOp(const OpMetrics& op_metrics) {
   }
 }
 
-void OpProfileBuilder::Finalize(double peak_gigaflops_per_second_per_core,
-                                double peak_gibibytes_per_second_per_core,
-                                uint64_t total_time_ps) {
+void OpProfileBuilder::Finalize(
+    double peak_gigaflops_per_second_per_core,
+    std::vector<double> peak_mem_gibibytes_per_second_per_core,
+    uint64_t total_time_ps) {
   for (const auto& [node, op_metrics] : metrics_) {
     PopulateOpMetricsNode(op_metrics, peak_gigaflops_per_second_per_core,
-                          peak_gibibytes_per_second_per_core, total_time_ps,
+                          peak_mem_gibibytes_per_second_per_core, total_time_ps,
                           node);
   }
   SetTotalTime(total_time_ps, root_);

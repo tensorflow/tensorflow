@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -1119,6 +1118,22 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
       if (!old_to_new_instrs_.contains(consumer->mutable_operand(0))) {
         found_good_non_window_dilated_conv = false;
       }
+      ConvolutionDimensionNumbers dim_numbers =
+          consumer->convolution_dimension_numbers();
+
+      ConvDetails c = GetConvolutionDetails(consumer, dim_numbers);
+
+      auto retval = GetSpatialDimsToSplit(consumer->mutable_operand(0));
+      std::vector<int64_t> new_spatial_dims = retval.second;
+
+      auto new_activations = old_to_new_instrs_[consumer->mutable_operand(0)];
+      // If low padding is large, there's no benefit in propagating. This
+      // also makes halo creation unnecessarily difficult (b/246862180).
+      if (new_activations->shape().dimensions(retval.second[0]) <
+          c.inherent_low_padding) {
+        return false;
+      }
+
       auto dim_map_val_op_0 = instr_to_dim_map_[consumer->mutable_operand(0)];
 
       if (!are_conv_dims_compatible(consumer->convolution_dimension_numbers(),

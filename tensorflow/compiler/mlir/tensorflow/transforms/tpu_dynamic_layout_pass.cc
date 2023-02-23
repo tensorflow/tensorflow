@@ -127,7 +127,7 @@ TF::TPUGetLayoutOp BuildGetLayout(const int64_t execute_arg_index,
                                   OpBuilder* builder) {
   return builder->create<TF::TPUGetLayoutOp>(
       compile_launch.getLoc(),
-      llvm::ArrayRef<Type>{RankedTensorType::get({ShapedType::kDynamicSize},
+      llvm::ArrayRef<Type>{RankedTensorType::get({ShapedType::kDynamic},
                                                  builder->getIntegerType(64))},
       llvm::ArrayRef<Value>{compilation_key},
       llvm::ArrayRef<NamedAttribute>{
@@ -187,7 +187,7 @@ bool HandleReplicatedInputs(
                             entry.value().get(), &builder);
 
     auto device_list = replicate.getDevices()
-                           .getValue()
+                           .value()
                            .get(execute_launch.getDevice())
                            .cast<ArrayAttr>();
     copy_with_layout->setAttr(kDeviceAttr,

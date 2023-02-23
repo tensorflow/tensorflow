@@ -43,6 +43,7 @@ def RuntimeDialect : Dialect {
   let useDefaultAttributePrinterParser = 1;
 
   let hasOperationAttrVerify = 1;
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 def RT_Ordinal : SignlessIntegerAttrBase<I32, "ordinal value">;
@@ -88,12 +89,10 @@ def HloTraceAttr : AttrDef<RuntimeDialect, "HloTrace",
   let summary = "Trace execution of the HLO operation";
 
   let parameters = (ins
-    StringRefParameter<"hlo_op">:$hlo_op,
-    StringRefParameter<"module">:$module,
-    "int64_t":$program_id
+    StringRefParameter<"hlo_op">:$hlo_op
   );
 
-  let assemblyFormat = "`<` $hlo_op `,` $module `,` $program_id `>`";
+  let assemblyFormat = "`<` $hlo_op `>`";
 }
 
 #endif // RT_DIALECT

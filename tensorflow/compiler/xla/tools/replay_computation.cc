@@ -136,6 +136,8 @@ StatusOr<std::unique_ptr<LocalExecutable>> CompileExecutable(
   }
   ExecutableBuildOptions exec_build_options;
   *exec_build_options.mutable_debug_options() = GetDebugOptionsFromFlags();
+  exec_build_options.set_result_layout(
+      Shape(computation.proto().host_program_shape().result()));
   TF_ASSIGN_OR_RETURN(
       auto executables,
       client->Compile(computation, argument_layout_ptrs, exec_build_options));

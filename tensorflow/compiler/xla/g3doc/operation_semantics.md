@@ -228,8 +228,11 @@ size `m` and spatial sizes `w` and `h`):
 \frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h
 \left( \nabla y_{ijkl} \frac{x_{ijkl} - \mu_l}{\sigma^2_l+\epsilon} \right)
 \\\\
+d_l&=
+\frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \nabla y_{ijkl}
+\\\\
 \nabla x_{ijkl} &= \frac{\gamma_{l}}{\sqrt{\sigma^2_{l}+\epsilon}}
-\left( \nabla y_{ijkl} - \mathrm{mean}(\nabla y) - c_l (x_{ijkl} - \mu_{l})
+\left( \nabla y_{ijkl} - d_l - c_l (x_{ijkl} - \mu_{l})
 \right)
 \\\\
 \nabla \gamma_l &= \sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \left( \nabla y_{ijkl}
@@ -1397,6 +1400,8 @@ using the comparison operator of the element type of `operand`.
 <b>`Sqrt(operand)`</b> Element-wise square root operation `x -> sqrt(x)`.
 
 <b>`Cbrt(operand)`</b> Element-wise cubic root operation `x -> cbrt(x)`.
+
+<b>`Tan(operand)`</b> Element-wise tangent `x -> tan(x)`.
 
 <b>`Tanh(operand)`</b> Element-wise hyperbolic tangent `x -> tanh(x)`.
 

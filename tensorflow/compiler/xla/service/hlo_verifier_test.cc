@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
@@ -2537,6 +2540,127 @@ ENTRY entry (parameter.0: bf16[1,8,1,8,320], parameter.1: bf16[1,8,6,8,320]) -> 
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, InvalidShardingRank) {
+  const char* const hlo = R"(
+HloModule Module
+
+ENTRY main {
+  p = f32[4,2] parameter(0), sharding={devices=[1,2,2,1]0,1,2,3}
+  ROOT r = f32[4,2] copy(p)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("tile assignment dimensions (excluding subgroups) is "
+                        "different than the input rank."));
+}
+
+TEST_F(HloVerifierTest, InvalidShardingDevices) {
+  const char* const hlo = R"(
+HloModule Module
+
+ENTRY main {
+  p = f32[4,2] parameter(0), sharding={devices=[2,2]0,1,2,3}
+  ROOT r = f32[4,2] copy(p)
+}
+)";
+
+  HloModuleConfig config;
+  config.set_num_partitions(2);
+  config.set_use_spmd_partitioning(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo, config));
+  ASSERT_TRUE(module->config().use_spmd_partitioning());
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("device 2 > num_devices (2) in tile assignment"));
+}
+
+TEST_F(HloVerifierTest, InconsistentWhileSharding) {
+  const char* const hlo = R"(
+    HloModule While
+
+    %body.v3 (prev.1: s32[]) -> s32[] {
+       %prev.1 = s32[] parameter(0), sharding={replicated}
+      %constant = s32[] constant(1)
+      ROOT %add = s32[] add(s32[] %constant, s32[] %prev.1)
+    }
+
+    %condition.v3 (prev.2: s32[]) -> pred[] {
+      %prev.2 = s32[] parameter(0), sharding={maximal device=0}
+      %constant.1 = s32[] constant(5)
+      ROOT %greater-than = pred[] compare(s32[] %constant.1, s32[] %prev.2), direction=GT
+    }
+
+    ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
+      %constant.2 = s32[] constant(0)
+      ROOT %while = s32[] while(s32[] %constant.2), condition=%condition.v3, body=%body.v3
+    }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Inconsistent while sharding among instructions"));
+}
+
+TEST_F(HloVerifierTest, InconsistentConditionSharding) {
+  const char* const hlo = R"(
+  HloModule Module
+
+  true_branch {
+    tparam = (s32[], f32[4]) parameter(0)
+    ROOT tgte1 = f32[4] get-tuple-element(tparam), index=1
+  }
+
+  false_branch {
+    fparam = (s32[], f32[4]) parameter(0)
+    ROOT fgte1 = f32[4] get-tuple-element(fparam), index=1, sharding={replicated}
+  }
+
+  ENTRY entry {
+    p0 = (s32[], f32[4]) parameter(0)
+    constant = pred[] constant(true)
+    ROOT conditional = f32[4] conditional(constant, p0, p0),
+      true_computation=true_branch, false_computation=false_branch,
+      sharding={maximal device=0}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr("Inconsistent conditional sharding among instructions"));
+}
+
+TEST_F(HloVerifierTest, InvalidF8Usage) {
+  const char* const hlo = R"(
+  HloModule Module
+
+  ENTRY entry {
+    param0 = f32[] parameter(0)
+    x = f8e5m2[] convert(param0)
+    ROOT add = f8e5m2[] add(x, x)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr("FP8 is currently only supported in convert, bitcast, tuple, "
+                "get-tuple-element, transpose, convolution, dot, fusion, "
+                "reshape and copy instructions as well as Custom Calls"));
 }
 
 }  // namespace

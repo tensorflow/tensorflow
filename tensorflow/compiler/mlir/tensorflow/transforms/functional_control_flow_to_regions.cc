@@ -117,6 +117,23 @@ LogicalResult ConvertIfOp(IfOp if_op) {
   return success();
 }
 
+LogicalResult ConvertCaseOp(CaseOp case_op) {
+  OpBuilder builder(case_op);
+  auto case_region = builder.create<TF::CaseRegionOp>(
+      case_op.getLoc(), case_op.getResultTypes(), case_op.getBranchIndex(),
+      case_op.getIsStateless(), case_op.getBranches().size());
+  CopyDeviceAndUnderscoredAttributes(case_op, case_region);
+
+  for (const auto& item : llvm::enumerate(case_region.getBranches())) {
+    CreateCall(case_op, case_op.branch_function(item.index()),
+               /*caller_region=*/item.value(), case_op.getInput(),
+               /*use_region_args=*/false);
+  }
+  case_op.replaceAllUsesWith(case_region.getResults());
+  case_op.erase();
+  return success();
+}
+
 LogicalResult ConvertWhileOp(WhileOp while_op) {
   auto while_region = OpBuilder(while_op).create<TF::WhileRegionOp>(
       while_op.getLoc(), while_op.getResultTypes(), while_op.getInput(),
@@ -145,6 +162,11 @@ void FunctionalControlFlowToRegions::runOnOperation() {
   auto result = module.walk([](Operation* op) {
     if (IfOp if_op = llvm::dyn_cast<IfOp>(op)) {
       if (failed(ConvertIfOp(if_op))) {
+        op->emitOpError() << "failed to convert to region form";
+        return WalkResult::interrupt();
+      }
+    } else if (CaseOp case_op = llvm::dyn_cast<CaseOp>(op)) {
+      if (failed(ConvertCaseOp(case_op))) {
         op->emitOpError() << "failed to convert to region form";
         return WalkResult::interrupt();
       }

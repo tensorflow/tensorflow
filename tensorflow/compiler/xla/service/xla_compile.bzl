@@ -1,43 +1,112 @@
-"""Build macro that compile a Mhlo file into a Aot Result
+"""Build macro that compile a Mhlo or StableHlo file into a Aot Result
 
 
 To use from your BUILD file, add the following line to load the macro:
 
-load("//tensorflow/compiler/xla/service:xla_compile.bzl", "xla_aot_compile")
+load("//tensorflow/compiler/xla/service:xla_compile.bzl", "xla_aot_compile_cpu", "xla_aot_compile_gpu")
 
 Then call the macro like this:
 
 xla_aot_compile(
     name = "test_aot_result",
-    mhlo = ":test_mhlo_file",
+    module = ":test_module_file",
 )
 
 """
 
-def xla_aot_compile(
+xla_compile_tool = "//tensorflow/compiler/xla/service:xla_compile"
+
+def xla_aot_compile_cpu(
         name,
-        mhlo,
-        platform):
-    """Runs xla_compile to compile a MHLO module into an AotCompilationResult for CPU
+        module):
+    """Runs xla_compile to compile an MHLO or StableHLO module into an AotCompilationResult for CPU
 
     Args:
         name: The name of the build rule.
-        mhlo: The MHLO file to compile.
-        platform: The platform on which the built executable runs
+        module: The MHLO or StableHLO file to compile.
     """
 
     # Run xla_compile to generate the file containing an AotCompilationResult.
-    xla_compile_tool = "//tensorflow/compiler/xla/service:xla_compile"
-
     native.genrule(
-        name = ("gen_xla_compile"),
-        srcs = [mhlo],
+        name = ("gen_" + name),
+        srcs = [module],
         outs = [name],
         cmd = ("$(location " + xla_compile_tool + ")" +
-               " --mhlo_file=$(location " + mhlo + ")" +
+               " --module_file=$(location " + module + ")" +
                " --output_file=$(location " + name + ")" +
-               " --platform=" + platform),
+               " --platform=cpu"),
         tools = [xla_compile_tool],
     )
 
     return
+
+def xla_aot_compile_gpu(
+        name,
+        module,
+        gpu_target_config,
+        autotune_results):
+    """Runs xla_compile to compile an MHLO or StableHLO module into an AotCompilationResult for GPU
+
+    Args:
+        name: The name of the build rule.
+        module: The MHLO or StableHLO file to compile.
+        gpu_target_config: The serialized GpuTargetConfigProto
+        autotune_results: AOT AutotuneResults
+    """
+
+    # Run xla_compile to generate the file containing an AotCompilationResult.
+    native.genrule(
+        name = ("gen_" + name),
+        srcs = [module, gpu_target_config, autotune_results],
+        outs = [name],
+        cmd = (
+            "$(location " + xla_compile_tool + ")" +
+            " --module_file=$(location " + module + ")" +
+            " --output_file=$(location " + name + ")" +
+            " --platform=gpu" +
+            " --gpu_target_config=$(location " + gpu_target_config + ")" +
+            " --autotune_results=$(location " + autotune_results + ")"
+        ),
+        tools = [xla_compile_tool],
+        # copybara:comment_begin(oss-only)
+        target_compatible_with = select({
+            "@local_config_cuda//:is_cuda_enabled": [],
+            "//conditions:default": ["@platforms//:incompatible"],
+        }),
+        # copybara:comment_end
+    )
+
+    return
+
+def xla_aot_compile_gpu_runtime_autotuning(
+        name,
+        module,
+        gpu_target_config):
+    """Runs xla_compile to compile an MHLO or StableHLO module into an AotCompilationResult for GPU
+
+    Args:
+        name: The name of the build rule.
+        module: The MHLO or StableHLO file to compile.
+        gpu_target_config: The serialized GpuTargetConfigProto
+    """
+
+    # Run xla_compile to generate the file containing an AotCompilationResult.
+    native.genrule(
+        name = ("gen_" + name),
+        srcs = [module, gpu_target_config],
+        outs = [name],
+        cmd = (
+            "$(location " + xla_compile_tool + ")" +
+            " --module_file=$(location " + module + ")" +
+            " --output_file=$(location " + name + ")" +
+            " --platform=gpu" +
+            " --gpu_target_config=$(location " + gpu_target_config + ")"
+        ),
+        tools = [xla_compile_tool],
+        # copybara:comment_begin(oss-only)
+        target_compatible_with = select({
+            "@local_config_cuda//:is_cuda_enabled": [],
+            "//conditions:default": ["@platforms//:incompatible"],
+        }),
+        # copybara:comment_end
+    )

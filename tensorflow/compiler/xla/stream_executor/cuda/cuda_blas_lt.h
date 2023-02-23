@@ -27,8 +27,9 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_utils.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/host_or_device_scalar.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -52,7 +53,7 @@ class BlasLt {
     //  - `num_rows` if `order == kColumnMajor`.
     // If `batch_stride` is not specified, it defaults to `num_rows * num_cols`
     // if `batch_size > 1`, otherwise `0`.
-    static port::StatusOr<MatrixLayout> Create(
+    static tsl::StatusOr<MatrixLayout> Create(
         blas::DataType type, size_t num_rows, size_t num_cols, Order order,
         size_t batch_size = 1,
         std::optional<int64_t> leading_dim_stride = std::nullopt,
@@ -74,9 +75,10 @@ class BlasLt {
     kReLU = 2,                      // Apply point-wise ReLU function
     kBias = 4,                      // Add broadcasted bias vector
     kBiasThenReLU = kBias | kReLU,  // Apply bias and then ReLU transform
-    kGeLU = 32,  // Apply GELU point-wise transform to the results
-    kBiasThenGeLUApproximate =
-        kBias | kGeLU,  // Apply bias and then GeLU Tanh transform
+    kGELU = 32,                // Apply GELU point-wise transform to the results
+    kGELUWithAux = 32 | 1024,  // Apply GELU with auxiliary output.
+    kBiasThenGELU = kBias | kGELU,  // Apply bias and then approximate GELU.
+    kBiasThenGELUWithAux = kBiasThenGELU | 1024,
   };
 
   // Describes the location of pointers for the scaling factors alpha and beta.
@@ -87,7 +89,7 @@ class BlasLt {
 
   class MatmulDesc {
    public:
-    static port::StatusOr<MatmulDesc> Create(
+    static tsl::StatusOr<MatmulDesc> Create(
         blas::ComputationType compute_type, blas::DataType scale_type,
         blas::Transpose trans_a = blas::Transpose::kNoTranspose,
         blas::Transpose trans_b = blas::Transpose::kNoTranspose,
@@ -118,7 +120,7 @@ class BlasLt {
 
   class MatmulPreference {
    public:
-    static port::StatusOr<MatmulPreference> Create(size_t max_workspace_size);
+    static tsl::StatusOr<MatmulPreference> Create(size_t max_workspace_size);
 
     cublasLtMatmulPreference_t get() const { return handle_.get(); }
 
@@ -137,70 +139,95 @@ class BlasLt {
   explicit BlasLt(gpu::GpuExecutor* parent)
       : parent_(parent), blas_lt_(nullptr, cublasLtDestroy) {}
 
-  port::Status Init();
+  tsl::Status Init();
 
   // Returns a list of supported algorithms for DoMatmul. The algorithms are
   // returned in the order of increasing estimated compute time according to an
   // internal heuristic.
-  port::StatusOr<std::vector<MatmulAlgorithm>> GetMatmulAlgorithms(
+  tsl::StatusOr<std::vector<MatmulAlgorithm>> GetMatmulAlgorithms(
       const MatmulPlan& plan, const MatmulPreference& preference,
       size_t max_algorithm_count = 128);
 
-  template <typename AB, typename CD, typename Scale>
-  port::Status DoMatmul(Stream* stream, const MatmulPlan& plan,
-                        const HostOrDeviceScalar<Scale>& alpha,
-                        const DeviceMemory<AB>& a, const DeviceMemory<AB>& b,
-                        const HostOrDeviceScalar<Scale>& beta,
-                        const DeviceMemory<CD>& c, DeviceMemory<CD>& d,
-                        const MatmulAlgorithm& algorithm,
-                        ScratchAllocator& scratch_allocator,
-                        const DeviceMemory<CD>& bias = {},
-                        blas::ProfileResult* profile_result = nullptr) {
+  template <typename A, typename B, typename C, typename D, typename Scale>
+  tsl::Status DoMatmul(Stream* stream, const MatmulPlan& plan,
+                       const HostOrDeviceScalar<Scale>& alpha,
+                       const DeviceMemory<A>& a, const DeviceMemory<B>& b,
+                       const HostOrDeviceScalar<Scale>& beta,
+                       const DeviceMemory<C>& c, DeviceMemory<D>& d,
+                       const MatmulAlgorithm& algorithm,
+                       ScratchAllocator& scratch_allocator,
+                       const DeviceMemory<C>& bias = {},
+                       const DeviceMemoryBase& aux = DeviceMemory<uint8_t>{},
+                       const DeviceMemory<Scale>& a_scale = {},
+                       const DeviceMemory<Scale>& b_scale = {},
+                       const DeviceMemory<Scale>& c_scale = {},
+                       const DeviceMemory<Scale>& d_scale = {},
+                       const DeviceMemory<Scale>& d_amax = {},
+                       blas::ProfileResult* profile_result = nullptr) {
     if (AsCudaDataType(blas::ToDataType<Scale>::value) !=
         plan.op_desc.scale_type()) {
-      return port::InvalidArgumentError("mismatched scale types");
+      return tsl::errors::InvalidArgument("mismatched scale types");
     }
 
     bool expect_scale_factor_on_device =
         (plan.op_desc.pointer_mode() == CUBLASLT_POINTER_MODE_DEVICE);
 
     if (alpha.on_device() != expect_scale_factor_on_device) {
-      return port::InvalidArgumentError("wrong location for alpha");
+      return tsl::errors::InvalidArgument("wrong location for alpha");
     }
 
     if (beta.on_device() != expect_scale_factor_on_device) {
-      return port::InvalidArgumentError("wrong location for beta");
+      return tsl::errors::InvalidArgument("wrong location for beta");
     }
 
-    if (AsCudaDataType(blas::ToDataType<AB>::value) != plan.a_desc.type()) {
-      return port::InvalidArgumentError("mismatched A matrix types");
+    if (AsCudaDataType(blas::ToDataType<A>::value) != plan.a_desc.type()) {
+      return tsl::errors::InvalidArgument("mismatched A matrix types");
     }
 
-    if (AsCudaDataType(blas::ToDataType<AB>::value) != plan.b_desc.type()) {
-      return port::InvalidArgumentError("mismatched B matrix types");
+    if (AsCudaDataType(blas::ToDataType<B>::value) != plan.b_desc.type()) {
+      return tsl::errors::InvalidArgument("mismatched B matrix types");
     }
 
-    if (AsCudaDataType(blas::ToDataType<CD>::value) != plan.c_desc.type()) {
-      return port::InvalidArgumentError("mismatched C matrix types");
+    if (AsCudaDataType(blas::ToDataType<C>::value) != plan.c_desc.type()) {
+      return tsl::errors::InvalidArgument("mismatched C matrix types");
     }
 
-    if (AsCudaDataType(blas::ToDataType<CD>::value) != plan.d_desc.type()) {
-      return port::InvalidArgumentError("mismatched D matrix types");
+    if (AsCudaDataType(blas::ToDataType<D>::value) != plan.d_desc.type()) {
+      return tsl::errors::InvalidArgument("mismatched D matrix types");
     }
 
     return DoMatmul(stream, plan, alpha.opaque(), a, b, beta.opaque(), c, d,
-                    algorithm, scratch_allocator, bias, profile_result);
+                    algorithm, scratch_allocator, bias, aux, a_scale, b_scale,
+                    c_scale, d_scale, d_amax, profile_result);
+  }
+
+  template <typename A, typename B, typename C, typename D, typename Scale>
+  tsl::Status DoMatmul(Stream* stream, const MatmulPlan& plan,
+                       const HostOrDeviceScalar<Scale>& alpha,
+                       const DeviceMemory<A>& a, const DeviceMemory<B>& b,
+                       const HostOrDeviceScalar<Scale>& beta,
+                       const DeviceMemory<C>& c, DeviceMemory<D>& d,
+                       const MatmulAlgorithm& algorithm,
+                       ScratchAllocator& scratch_allocator,
+                       const DeviceMemory<C>& bias = {},
+                       const DeviceMemoryBase& aux = DeviceMemory<uint8_t>{},
+                       blas::ProfileResult* profile_result = nullptr) {
+    return DoMatmul(stream, plan, alpha, a, b, beta, c, d, algorithm,
+                    scratch_allocator, bias, aux, {}, {}, {}, {}, {},
+                    profile_result);
   }
 
  private:
-  port::Status DoMatmul(Stream* stream, const MatmulPlan& plan,
-                        const void* alpha, DeviceMemoryBase a,
-                        DeviceMemoryBase b, const void* beta,
-                        DeviceMemoryBase c, DeviceMemoryBase d,
-                        const MatmulAlgorithm& algorithm,
-                        ScratchAllocator& scratch_allocator,
-                        DeviceMemoryBase bias,
-                        blas::ProfileResult* profile_result);
+  tsl::Status DoMatmul(Stream* stream, const MatmulPlan& plan,
+                       const void* alpha, DeviceMemoryBase a,
+                       DeviceMemoryBase b, const void* beta, DeviceMemoryBase c,
+                       DeviceMemoryBase d, const MatmulAlgorithm& algorithm,
+                       ScratchAllocator& scratch_allocator,
+                       DeviceMemoryBase bias, DeviceMemoryBase aux,
+                       DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
+                       DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
+                       DeviceMemoryBase d_amax,
+                       blas::ProfileResult* profile_result);
 
   gpu::GpuExecutor* parent_;
 

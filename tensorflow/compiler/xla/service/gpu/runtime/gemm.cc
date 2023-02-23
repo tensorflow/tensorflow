@@ -15,112 +15,164 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
 
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/stream_executor/blas.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
+#endif
 
 namespace xla {
 namespace gpu {
 
 using xla::runtime::CustomCall;
-using xla::runtime::Executable;
+using xla::runtime::State;
+using xla::runtime::StridedMemrefView;
 
-const GemmConfig* JitRtGemmConfigCache::Get(int64_t uid) {
-  absl::MutexLock lock(&mutex_);
-  auto it = configs_.find(uid);
-  if (it != configs_.end()) return &it->second;
-  return nullptr;
+#if GOOGLE_CUDA
+
+Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
+                           se::DeviceMemoryBase lhs, se::DeviceMemoryBase rhs,
+                           se::DeviceMemoryBase out, const Shape& output_shape,
+                           double beta, const DebugOptions* debug_options,
+                           NonAtomicallyUpgradeableRWLock* gpu_lock) {
+  VLOG(3) << "Running GEMM runtime autotuning";
+  std::vector<se::blas::AlgorithmType> algorithms;
+  stream->parent()->GetBlasGemmAlgorithms(stream, &algorithms);
+
+  // Set autotune_level to 3 to disable correctness checking, which avoids
+  // memory allocation during runtime.
+  AutotuneConfig autotune_config{
+      /*autotune_level=*/3,
+      /*should_crash_on_check_failure=*/true,
+  };
+
+  // RedzoneAllocator will have size 0 for this autotune_level.
+  se::RedzoneAllocator buffer_allocator =
+      CreateRedzoneAllocator(stream, stream->parent()->GetAllocator(),
+                             *debug_options, autotune_config);
+
+  // Upgrade the reader lock for execution to a writer lock to protect runtime
+  // autotuning.
+  NonAtomicallyUpgradeableRWLock::WriterLock writer_lock =
+      gpu_lock->UpgradeToWriterMutexLock();
+
+  TF_ASSIGN_OR_RETURN(
+      auto best_algorithm_idx,
+      GetBestBlasAlgorithm(
+          stream, buffer_allocator, /*gemm_str=*/std::nullopt, autotune_config,
+          lhs, rhs, out, algorithms, output_shape, HloModuleConfig(), beta,
+          [&](const se::blas::AlgorithmType& algorithm)
+              -> StatusOr<se::blas::ProfileResult> {
+            se::blas::ProfileResult profile_result;
+            // We expect GemmWithAlgorithm to fail sometimes -- in fact, it will
+            // fail for all algorithms if we're targeting < sm_50.  But because
+            // we pass a non-null ProfileResult, DoGemmWithAlgorithm should
+            // always return true, and the actual success-ness is returned in
+            // ProfileResult::is_valid.
+            TF_RETURN_IF_ERROR(RunGemm(config, lhs, rhs, out, stream, algorithm,
+                                       &profile_result));
+            return std::move(profile_result);
+          }));
+
+  if (best_algorithm_idx.has_value()) {
+    config.algorithm = algorithms[best_algorithm_idx.value()];
+    return OkStatus();
+  } else {
+    return InternalError("Runtime autotuning failed to select an algorithm");
+  }
 }
+#endif
 
-const GemmConfig* JitRtGemmConfigCache::Set(int64_t uid, GemmConfig config) {
-  absl::MutexLock lock(&mutex_);
-  auto it = configs_.find(uid);
-  if (it != configs_.end()) return &it->second;
-
-  auto emplaced = configs_.try_emplace(uid, std::move(config));
-  return &emplaced.first->second;
-}
-
-// -------------------------------------------------------------------------- //
-
-namespace {
-struct Gemm {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          const DebugOptions* debug_options,
-                          JitRtGemmConfigCache* configs,
-                          runtime::StridedMemrefView lhs,
-                          runtime::StridedMemrefView rhs,
-                          runtime::StridedMemrefView out, int64_t algorithm,
-                          double alpha_real, double alpha_imag, double beta,
-                          DotDimensionNumbers dot_dims, int64_t uid) const;
-
-  static Gemm Handler() { return Gemm(); }
-};
-}  // namespace
-
-absl::Status Gemm::operator()(const ServiceExecutableRunOptions* run_options,
-                              const DebugOptions* debug_options,
-                              JitRtGemmConfigCache* configs,
-                              runtime::StridedMemrefView lhs,
-                              runtime::StridedMemrefView rhs,
-                              runtime::StridedMemrefView out, int64_t algorithm,
-                              double alpha_real, double alpha_imag, double beta,
-                              DotDimensionNumbers dot_dims, int64_t uid) const {
+static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
+                             const DebugOptions* debug_options,
+                             NonAtomicallyUpgradeableRWLock* gpu_lock,
+                             State<GemmConfig> state, StridedMemrefView lhs,
+                             StridedMemrefView rhs, StridedMemrefView out,
+                             int64_t algorithm, double alpha_real,
+                             double alpha_imag, double beta,
+                             DotDimensionNumbers dot_dims,
+                             absl::Span<const int32_t> precision) {
   se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
   se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
   se::DeviceMemoryBase output_data = GetDeviceAddress(out);
 
   VLOG(3) << "Running GEMM";
   se::Stream* stream = run_options->stream();
+  Shape output_shape = ToShape(out);
 
-  // Find the gemm config for this instance of operation based on uid.
-  const GemmConfig* config = configs->Get(uid);
-  if (config == nullptr) {
-    auto cfg = GetGemmConfig(lhs, rhs, out, algorithm, alpha_real, alpha_imag,
-                             beta, dot_dims.lhs_batch, dot_dims.lhs_contract,
-                             dot_dims.rhs_batch, dot_dims.rhs_contract);
-    if (!cfg.ok()) return ToAbslStatus(cfg.status());
-    config = configs->Set(uid, std::move(*cfg));
+  // Get the gemm config from the state.
+  absl::StatusOr<GemmConfig*> config_from_state = state.GetOrCreate([&] {
+    StatusOr<GemmConfig> gemm_config =
+        GetGemmConfig(lhs, rhs, out, algorithm, alpha_real, alpha_imag, beta,
+                      dot_dims.lhs_batch, dot_dims.lhs_contract,
+                      dot_dims.rhs_batch, dot_dims.rhs_contract,
+                      precision.empty() ? se::blas::kDefaultComputePrecision
+                                        : *absl::c_max_element(precision));
+    return ToAbsl(gemm_config);
+  });
+
+  if (!config_from_state.ok()) return config_from_state.status();
+  GemmConfig* gemm_config = *config_from_state;
+
+  // Set the gemm algorithm by runtime autotuning. We do runtime autotuning
+  // outside of state.GetOrCreate() because otherwise it would be a potential
+  // deadlock.
+  if (gemm_config->algorithm == stream_executor::blas::kRuntimeAutotuning) {
+#if GOOGLE_CUDA
+    auto status = DoRuntimeAutotuning(stream, *gemm_config, lhs_data, rhs_data,
+                                      output_data, output_shape, beta,
+                                      debug_options, gpu_lock);
+    if (!status.ok()) {
+      return absl::InternalError(status.ToString());
+    }
+#else
+    return absl::InternalError(
+        "Failed to run runtime autotuner because CUDA is not enabled");
+#endif
   }
 
-  Status executed = [&]() -> Status {
-    return RunGemm(*config, lhs_data, rhs_data, output_data, stream);
-  }();
+  Status executed =
+      RunGemm(*gemm_config, lhs_data, rhs_data, output_data, stream);
 
   if (!executed.ok()) return ToAbslStatus(executed);
 
   return absl::OkStatus();
 }
 
-static bool Gemm(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                 void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.gemm")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const DebugOptions*>()
-                             .UserData<JitRtGemmConfigCache*>()
-                             .Arg<runtime::StridedMemrefView>()  // lhs
-                             .Arg<runtime::StridedMemrefView>()  // rhs
-                             .Arg<runtime::StridedMemrefView>()  // out
-                             .Attr<int64_t>("algorithm")
-                             .Attr<double>("alpha_real")
-                             .Attr<double>("alpha_imag")
-                             .Attr<double>("beta")
-                             .Attr<DotDimensionNumbers>("dot_dims")
-                             .Attr<int64_t>("uid")
-                             .To<checks>(Gemm::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    Gemm, FunctionWrapper<GemmImpl>(), checks,
+    CustomCall::Bind("xla.gpu.gemm")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<const DebugOptions*>()
+        .UserData<NonAtomicallyUpgradeableRWLock*>()
+        .State<GemmConfig>("uid")
+        .Arg<StridedMemrefView>()  // lhs
+        .Arg<StridedMemrefView>()  // rhs
+        .Arg<StridedMemrefView>()  // out
+        .Attr<int64_t>("algorithm")
+        .Attr<double>("alpha_real")
+        .Attr<double>("alpha_imag")
+        .Attr<double>("beta")
+        .Attr<DotDimensionNumbers>("dot_dims")
+        .Attr<absl::Span<const int32_t>>("precision"));
 
 void RegisterGemmCustomCalls(runtime::DirectCustomCallRegistry& registry) {
-  registry.Register("xla.gpu.gemm", &xla::gpu::Gemm);
+  registry.Register("xla.gpu.gemm", Gemm);
 }
 
 }  // namespace gpu

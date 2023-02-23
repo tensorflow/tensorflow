@@ -2,6 +2,7 @@
 #   Contains the legacy TF layers (internal TensorFlow version).
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow/python/keras:__subpackages__",

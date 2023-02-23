@@ -1,9 +1,10 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_binary",
-    "tf_cc_test",
+    "//tensorflow/compiler/xla:xla.bzl",
+    "xla_cc_binary",
+    "xla_cc_test",
+    "xla_py_grpc_library",
 )
 load(
     "//tensorflow/tsl:tsl.bzl",
@@ -13,13 +14,10 @@ load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
-load(
-    "//tensorflow/compiler/xla:xla.bzl",
-    "xla_py_grpc_library",
-)
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
 
@@ -61,13 +59,13 @@ cc_library(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/util:command_line_flags",
-    ] + tf_grpc_cc_dependencies() + if_libtpu(
+    ] + tsl_grpc_cc_dependencies() + if_libtpu(
         if_false = ["//tensorflow/compiler/xla/service:cpu_plugin"],
         if_true = [],
     ),
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "grpc_service_main_cpu",
     deps = [
         ":grpc_service_main_library",
@@ -75,7 +73,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "grpc_client_test",
     srcs = ["grpc_client_test.cc"],
     data = [
@@ -93,7 +91,7 @@ tf_cc_test(
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "//tensorflow/tsl/platform:path",
-    ] + tf_grpc_cc_dependencies(),
+    ] + tsl_grpc_cc_dependencies(),
 )
 
 cc_library(
@@ -106,7 +104,7 @@ cc_library(
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/tsl/distributed_runtime/rpc:grpc_util",
-    ] + tf_grpc_cc_dependencies(),
+    ] + tsl_grpc_cc_dependencies(),
 )
 
 # copybara:uncomment_begin(google-only)

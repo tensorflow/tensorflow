@@ -61,143 +61,151 @@ _XLA_DEBUG_OPTIONS_URL = (
 _OP_DENYLIST = set(['WriteFile', 'ReadFile', 'PrintV2'])
 
 
-FLAGS = flags.FLAGS
-
 # Custom SavedModel CLI flags
-flags.DEFINE_string(name='dir', default=None,
-                    help='Directory containing the SavedModel.')
+_SMCLI_DIR = flags.DEFINE_string(
+    name='dir', default=None, help='Directory containing the SavedModel.')
 
-flags.DEFINE_bool(name='all', default=False,
-                  help='If set, outputs all available information in the given '
-                  'SavedModel.')
+_SMCLI_ALL = flags.DEFINE_bool(
+    name='all', default=False,
+    help='If set, outputs all available information in the given SavedModel.')
 
-flags.DEFINE_string(name='tag_set', default=None,
-                    help='Comma-separated set of tags that identify variant '
-                    'graphs in the SavedModel.')
+_SMCLI_TAG_SET = flags.DEFINE_string(
+    name='tag_set', default=None,
+    help='Comma-separated set of tags that identify variant graphs in the '
+    'SavedModel.')
 
-flags.DEFINE_string(name='signature_def', default=None,
-                    help='Specifies a SignatureDef (by key) within the '
-                    'SavedModel to display input(s) and output(s) for.')
+_SMCLI_SIGNATURE_DEF = flags.DEFINE_string(
+    name='signature_def', default=None,
+    help='Specifies a SignatureDef (by key) within the SavedModel to display '
+    'input(s) and output(s) for.')
 
-flags.DEFINE_bool(name='list_ops', default=False,
-                  help='If set, will output ops used by a MetaGraphDef '
-                  'specified by tag_set.')
+_SMCLI_LIST_OPS = flags.DEFINE_bool(
+    name='list_ops', default=False,
+    help='If set, will output ops used by a MetaGraphDef specified by tag_set.')
 
-flags.DEFINE_string(name='inputs', default='',
-                    help='Specifies input data files to pass to numpy.load(). '
-                    'Format should be \'<input_key>=<filename>\' or '
-                    '\'<input_key>=<filename>[<variable_name>]\', separated by '
-                    '\';\'. File formats are limited to .npy, .npz, or pickle.')
+_SMCLI_INPUTS = flags.DEFINE_string(
+    name='inputs', default='',
+    help='Specifies input data files to pass to numpy.load(). Format should be '
+    '\'<input_key>=<filename>\' or \'<input_key>=<filename>[<variable_name>]\','
+    ' separated by \';\'. File formats are limited to .npy, .npz, or pickle.')
 
-flags.DEFINE_string(name='input_exprs', default='',
-                    help='Specifies Python literal expressions or numpy '
-                    'functions. Format should be "<input_key>=\''
-                    '<python_expression>\'", separated by \';\'. Numpy can be '
-                    'accessed with \'np\'. Note that expressions are passed to '
-                    'literal_eval(), making this flag susceptible to code '
-                    'injection. Overrides duplicate input keys provided with '
-                    'the --inputs flag.')
+_SMCLI_INPUT_EXPRS = flags.DEFINE_string(
+    name='input_exprs', default='',
+    help='Specifies Python literal expressions or numpy functions. Format '
+    'should be "<input_key>=\'<python_expression>\'", separated by \';\'. Numpy'
+    ' can be accessed with \'np\'. Note that expressions are passed to '
+    'literal_eval(), making this flag susceptible to code injection. Overrides '
+    'duplicate input keys provided with the --inputs flag.')
 
-flags.DEFINE_string(name='input_examples', default='',
-                    help='Specifies tf.train.Example objects as inputs. Format '
-                    'should be \'<input_key>=[{feature0:value_list,feature1:'
-                    'value_list}]\', where input keys are separated by \';\'. '
-                    'Overrides duplicate input keys provided with the --inputs '
-                    'and --input_exprs flags.')
+_SMCLI_INPUT_EXAMPLES = flags.DEFINE_string(
+    name='input_examples', default='',
+    help='Specifies tf.train.Example objects as inputs. Format should be '
+    '\'<input_key>=[{{feature0:value_list,feature1:value_list}}]\', where input'
+    ' keys are separated by \';\'. Overrides duplicate input keys provided with'
+    ' the --inputs and --input_exprs flags.')
 
-flags.DEFINE_string(name='outdir', default=None,
-                    help='If specified, writes CLI output to the given '
-                    'directory.')
+_SMCLI_OUTDIR = flags.DEFINE_string(
+    name='outdir', default=None,
+    help='If specified, writes CLI output to the given directory.')
 
-flags.DEFINE_bool(name='overwrite', default=False,
-                  help='If set, overwrites output file if it already exists.')
+_SMCLI_OVERWRITE = flags.DEFINE_bool(
+    name='overwrite', default=False,
+    help='If set, overwrites output file if it already exists.')
 
-flags.DEFINE_bool(name='tf_debug', default=False,
-                  help='If set, uses the Tensorflow Debugger (tfdbg) to watch '
-                  'intermediate Tensors and runtime GraphDefs while '
-                  'running the SavedModel.')
+_SMCLI_TF_DEBUG = flags.DEFINE_bool(
+    name='tf_debug', default=False,
+    help='If set, uses the Tensorflow Debugger (tfdbg) to watch intermediate '
+    'Tensors and runtime GraphDefs while running the SavedModel.')
 
-flags.DEFINE_string(name='worker', default=None,
-                    help='If specified, runs the session on the given worker '
-                    '(bns or gRPC path).')
+_SMCLI_WORKER = flags.DEFINE_string(
+    name='worker', default=None,
+    help='If specified, runs the session on the given worker (bns or gRPC '
+    'path).')
 
-flags.DEFINE_bool(name='init_tpu', default=False,
-                  help='If set, calls tpu.initialize_system() on the session. '
+_SMCLI_INIT_TPU = flags.DEFINE_bool(
+    name='init_tpu', default=False,
+    help='If set, calls tpu.initialize_system() on the session. '
                   'Should only be set if the specified worker is a TPU job.')
 
-flags.DEFINE_bool(name='use_tfrt', default=False,
-                  help='If set, runs a TFRT session, instead of a TF1 session.')
+_SMCLI_USE_TFRT = flags.DEFINE_bool(
+    name='use_tfrt', default=False,
+    help='If set, runs a TFRT session, instead of a TF1 session.')
 
-flags.DEFINE_string(name='op_denylist', default=None,
-                    help='If specified, detects and reports the given ops. '
-                    'List of ops should be comma-separated. If not specified, '
-                    'the default list of ops is [WriteFile, ReadFile, '
-                    'PrintV2]. To specify an empty list, pass in the empty '
-                    'string.')
+_SMCLI_OP_DENYLIST = flags.DEFINE_string(
+    name='op_denylist', default=None,
+    help='If specified, detects and reports the given ops. List of ops should '
+    'be comma-separated. If not specified, the default list of ops is '
+    '[WriteFile, ReadFile, PrintV2]. To specify an empty list, pass in the '
+    'empty string.')
 
-flags.DEFINE_string(name='output_dir', default=None,
-                    help='Output directory for the SavedModel.')
+_SMCLI_OUTPUT_DIR = flags.DEFINE_string(
+    name='output_dir', default=None,
+    help='Output directory for the SavedModel.')
 
-flags.DEFINE_integer(name='max_workspace_size_bytes', default=2 << 20,
-                     help='The maximum temporary GPU memory which the TensorRT '
-                     'engine can use at execution time.')
+_SMCLI_MAX_WORKSPACE_SIZE_BYTES = flags.DEFINE_integer(
+    name='max_workspace_size_bytes', default=2 << 20,
+    help='The maximum temporary GPU memory which the TensorRT engine can use at'
+    ' execution time.')
 
-flags.DEFINE_enum(name='precision_mode', default='FP32',
-                  enum_values=['FP32', 'FP16', 'INT8'],
-                  help='TensorRT data precision. One of FP32, FP16, or INT8.')
+_SMCLI_PRECISION_MODE = flags.DEFINE_enum(
+    name='precision_mode', default='FP32', enum_values=['FP32', 'FP16', 'INT8'],
+    help='TensorRT data precision. One of FP32, FP16, or INT8.')
 
-flags.DEFINE_integer(name='minimum_segment_size', default=3,
-                     help='The minimum number of nodes required for a subgraph '
-                     'to be replaced in a TensorRT node.')
+_SMCLI_MINIMUM_SEGMENT_SIZE = flags.DEFINE_integer(
+    name='minimum_segment_size', default=3,
+    help='The minimum number of nodes required for a subgraph to be replaced in'
+    ' a TensorRT node.')
 
-flags.DEFINE_bool(name='convert_tf1_model', default=False,
-                  help='Support TensorRT conversion for TF1 models.')
+_SMCLI_CONVERT_TF1_MODEL = flags.DEFINE_bool(
+    name='convert_tf1_model', default=False,
+    help='Support TensorRT conversion for TF1 models.')
 
-flags.DEFINE_string(name='output_prefix', default=None,
-                    help='Output directory + filename prefix for the resulting '
-                    'header(s) and object file(s).')
+_SMCLI_OUTPUT_PREFIX = flags.DEFINE_string(
+    name='output_prefix', default=None,
+    help='Output directory + filename prefix for the resulting header(s) and '
+    'object file(s).')
 
-flags.DEFINE_string(name='signature_def_key', default=signature_constants.
-                    DEFAULT_SERVING_SIGNATURE_DEF_KEY,
-                    help='SavedModel SignatureDef key to use.')
+_SMCLI_SIGNATURE_DEF_KEY = flags.DEFINE_string(
+    name='signature_def_key',
+    default=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+    help='SavedModel SignatureDef key to use.')
 
-flags.DEFINE_string(name='checkpoint_path', default=None,
-                    help='Custom checkpoint to use. Uses SavedModel variables '
-                    'by default.')
+_SMCLI_CHECKPOINT_PATH = flags.DEFINE_string(
+    name='checkpoint_path', default=None,
+    help='Custom checkpoint to use. Uses SavedModel variables by default.')
 
-flags.DEFINE_string(name='variables_to_feed', default='',
-                    help='Names of the variables that will be fed into the '
-                    'SavedModel graph. Pass in \'\' to feed no variables, '
-                    '\'all\' to feed all variables, or a comma-separated list '
-                    'of variable names. Variables not fed will be frozen. '
-                    '*NOTE* Variables passed here must be set *by the user*. '
-                    'These variables will NOT be frozen, and their values will '
-                    'be uninitialized in the compiled object.')
+_SMCLI_VARIABLES_TO_FEED = flags.DEFINE_string(
+    name='variables_to_feed', default='',
+    help='Names of the variables that will be fed into the SavedModel graph. '
+    'Pass in \'\' to feed no variables, \'all\' to feed all variables, or a '
+    'comma-separated list of variable names. Variables not fed will be frozen. '
+    '*NOTE* Variables passed here must be set *by the user*. These variables '
+    'will NOT be frozen, and their values will be uninitialized in the compiled'
+    ' object.')
 
-flags.DEFINE_string(name='target_triple', default='x86_64-pc-linux',
-                    help='Triple identifying a target variation, containing '
-                    'information such as processor architecture, vendor, '
-                    'operating system, and environment. Defaults to '
-                    '\'x86_64-pc-linux\'.')
+_SMCLI_TARGET_TRIPLE = flags.DEFINE_string(
+    name='target_triple', default='x86_64-pc-linux',
+    help='Triple identifying a target variation, containing information such as'
+    ' processor architecture, vendor, operating system, and environment. '
+    'Defaults to \'x86_64-pc-linux\'.')
 
-flags.DEFINE_string(name='target_cpu', default='',
-                    help='Target CPU name for LLVM during AOT compilation. '
-                    'Examples include \'x86_64\', \'skylake\', \'haswell\', '
-                    '\'westmere\', \'\' (unknown).')
+_SMCLI_TARGET_CPU = flags.DEFINE_string(
+    name='target_cpu', default='',
+    help='Target CPU name for LLVM during AOT compilation. Examples include '
+    '\'x86_64\', \'skylake\', \'haswell\', \'westmere\', \'\' (unknown).')
 
-flags.DEFINE_string(name='cpp_class', default=None,
-                    help='The name of the generated C++ class, wrapping the '
-                    'generated function. Format should be [[<optional_namespace'
-                    '>::],...]<class_name>, i.e. the same syntax as C++ for '
-                    'specifying a class. This class will be generated in the '
-                    'given namespace(s), or, if none are specified, the global '
-                    'namespace.')
+_SMCLI_CPP_CLASS = flags.DEFINE_string(
+    name='cpp_class', default=None,
+    help='The name of the generated C++ class, wrapping the generated function.'
+    ' Format should be [[<optional_namespace>::],...]<class_name>, i.e. the '
+    'same syntax as C++ for specifying a class. This class will be generated in'
+    ' the given namespace(s), or, if none are specified, the global namespace.')
 
-flags.DEFINE_string(name='multithreading', default='False',
-                    help='Enable multithreading in the compiled computation. '
-                    'Note that with this flag enabled, the resulting object '
-                    'files may have external dependencies on multithreading '
-                    'libraries, such as \'nsync\'.')
+_SMCLI_MULTITHREADING = flags.DEFINE_string(
+    name='multithreading', default='False',
+    help='Enable multithreading in the compiled computation. Note that with '
+    'this flag enabled, the resulting object files may have external '
+    'dependencies on multithreading libraries, such as \'nsync\'.')
 
 command_required_flags = {
     'show': ['dir'],
@@ -931,8 +939,8 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
 def show():
   """Function triggered by show command."""
   # If all tag is specified, display all information.
-  if FLAGS.all:
-    _show_all(FLAGS.dir)
+  if _SMCLI_ALL.value:
+    _show_all(_SMCLI_DIR.value)
   else:
     # If no tag is specified, display all tag_sets.
     # If a tag set is specified:
@@ -940,17 +948,18 @@ def show():
     # # If no signature_def key is specified, display all SignatureDef keys.
     # # If a signature_def is specified, show its corresponding input output
     # # tensor information.
-    if FLAGS.tag_set is None:
-      if FLAGS.list_ops:
+    if _SMCLI_TAG_SET.value is None:
+      if _SMCLI_LIST_OPS.value:
         print('--list_ops must be paired with a tag-set or with --all.')
-      _show_tag_sets(FLAGS.dir)
+      _show_tag_sets(_SMCLI_DIR.value)
     else:
-      if FLAGS.list_ops:
-        _show_ops_in_metagraph(FLAGS.dir, FLAGS.tag_set)
-      if FLAGS.signature_def is None:
-        _show_signature_def_map_keys(FLAGS.dir, FLAGS.tag_set)
+      if _SMCLI_LIST_OPS.value:
+        _show_ops_in_metagraph(_SMCLI_DIR.value, _SMCLI_TAG_SET.value)
+      if _SMCLI_SIGNATURE_DEF.value is None:
+        _show_signature_def_map_keys(_SMCLI_DIR.value, _SMCLI_TAG_SET.value)
       else:
-        _show_inputs_outputs(FLAGS.dir, FLAGS.tag_set, FLAGS.signature_def)
+        _show_inputs_outputs(
+            _SMCLI_DIR.value, _SMCLI_TAG_SET.value, _SMCLI_SIGNATURE_DEF.value)
 
 
 def run():
@@ -960,41 +969,45 @@ def run():
     AttributeError: An error when neither --inputs nor --input_exprs is passed
     to run command.
   """
-  if not FLAGS.inputs and not FLAGS.input_exprs and not FLAGS.input_examples:
+  if not _SMCLI_INPUTS.value and not _SMCLI_INPUT_EXPRS.value and not _SMCLI_INPUT_EXAMPLES.value:
     raise AttributeError(
         'At least one of --inputs, --input_exprs or --input_examples must be '
         'required')
   tensor_key_feed_dict = load_inputs_from_input_arg_string(
-      FLAGS.inputs, FLAGS.input_exprs, FLAGS.input_examples)
+      _SMCLI_INPUTS.value,
+      _SMCLI_INPUT_EXPRS.value,
+      _SMCLI_INPUT_EXAMPLES.value)
   run_saved_model_with_feed_dict(
-      FLAGS.dir,
-      FLAGS.tag_set,
-      FLAGS.signature_def,
+      _SMCLI_DIR.value,
+      _SMCLI_TAG_SET.value,
+      _SMCLI_SIGNATURE_DEF.value,
       tensor_key_feed_dict,
-      FLAGS.outdir,
-      FLAGS.overwrite,
-      worker=FLAGS.worker,
-      init_tpu=FLAGS.init_tpu,
-      use_tfrt=FLAGS.use_tfrt,
-      tf_debug=FLAGS.tf_debug)
+      _SMCLI_OUTDIR.value,
+      _SMCLI_OVERWRITE.value,
+      worker=_SMCLI_WORKER.value,
+      init_tpu=_SMCLI_INIT_TPU.value,
+      use_tfrt=_SMCLI_USE_TFRT.value,
+      tf_debug=_SMCLI_TF_DEBUG.value)
 
 
 def scan():
   """Function triggered by scan command."""
-  if FLAGS.tag_set and FLAGS.op_denylist:
+  if _SMCLI_TAG_SET.value and _SMCLI_OP_DENYLIST.value:
     scan_meta_graph_def(
-        saved_model_utils.get_meta_graph_def(FLAGS.dir, FLAGS.tag_set),
-        _get_op_denylist_set(FLAGS.op_denylist))
-  elif FLAGS.tag_set:
+        saved_model_utils.get_meta_graph_def(
+            _SMCLI_DIR.value, _SMCLI_TAG_SET.value),
+        _get_op_denylist_set(_SMCLI_OP_DENYLIST.value))
+  elif _SMCLI_TAG_SET.value:
     scan_meta_graph_def(
-        saved_model_utils.get_meta_graph_def(FLAGS.dir, FLAGS.tag_set),
+        saved_model_utils.get_meta_graph_def(
+            _SMCLI_DIR.value, _SMCLI_TAG_SET.value),
         _OP_DENYLIST)
   else:
-    saved_model = saved_model_utils.read_saved_model(FLAGS.dir)
-    if FLAGS.op_denylist:
+    saved_model = saved_model_utils.read_saved_model(_SMCLI_DIR.value)
+    if _SMCLI_OP_DENYLIST.value:
       for meta_graph_def in saved_model.meta_graphs:
         scan_meta_graph_def(meta_graph_def,
-                            _get_op_denylist_set(FLAGS.op_denylist))
+                            _get_op_denylist_set(_SMCLI_OP_DENYLIST.value))
     else:
       for meta_graph_def in saved_model.meta_graphs:
         scan_meta_graph_def(meta_graph_def, _OP_DENYLIST)
@@ -1006,79 +1019,80 @@ def convert_with_tensorrt():
   # not installed
   from tensorflow.python.compiler.tensorrt import trt_convert as trt  # pylint: disable=g-import-not-at-top
 
-  if not FLAGS.convert_tf1_model:
+  if not _SMCLI_CONVERT_TF1_MODEL.value:
     params = trt.DEFAULT_TRT_CONVERSION_PARAMS._replace(
-        max_workspace_size_bytes=FLAGS.max_workspace_size_bytes,
-        precision_mode=FLAGS.precision_mode,
-        minimum_segment_size=FLAGS.minimum_segment_size)
+        max_workspace_size_bytes=_SMCLI_MAX_WORKSPACE_SIZE_BYTES.value,
+        precision_mode=_SMCLI_PRECISION_MODE.value,
+        minimum_segment_size=_SMCLI_MINIMUM_SEGMENT_SIZE.value)
     try:
       converter = trt.TrtGraphConverterV2(
-          input_saved_model_dir=FLAGS.dir,
-          input_saved_model_tags=FLAGS.tag_set.split(','),
+          input_saved_model_dir=_SMCLI_DIR.value,
+          input_saved_model_tags=_SMCLI_TAG_SET.value.split(','),
           **params._asdict())
       converter.convert()
     except Exception as exc:
       raise RuntimeError(
           '{}. Try passing "--convert_tf1_model=True".'.format(exc)) from exc
-    converter.save(output_saved_model_dir=FLAGS.output_dir)
+    converter.save(output_saved_model_dir=_SMCLI_OUTPUT_DIR.value)
   else:
     trt.create_inference_graph(
         None,
         None,
         max_batch_size=1,
-        max_workspace_size_bytes=FLAGS.max_workspace_size_bytes,
-        precision_mode=FLAGS.precision_mode,
-        minimum_segment_size=FLAGS.minimum_segment_size,
+        max_workspace_size_bytes=_SMCLI_MAX_WORKSPACE_SIZE_BYTES.value,
+        precision_mode=_SMCLI_PRECISION_MODE.value,
+        minimum_segment_size=_SMCLI_MINIMUM_SEGMENT_SIZE.value,
         is_dynamic_op=True,
-        input_saved_model_dir=FLAGS.dir,
-        input_saved_model_tags=FLAGS.tag_set.split(','),
-        output_saved_model_dir=FLAGS.output_dir)
+        input_saved_model_dir=_SMCLI_DIR.value,
+        input_saved_model_tags=_SMCLI_TAG_SET.value.split(','),
+        output_saved_model_dir=_SMCLI_OUTPUT_DIR.value)
 
 
 def freeze_model():
   """Function triggered by freeze_model command."""
   checkpoint_path = (
-      FLAGS.checkpoint_path
-      or os.path.join(FLAGS.dir, 'variables/variables'))
-  if not FLAGS.variables_to_feed:
+      _SMCLI_CHECKPOINT_PATH.value
+      or os.path.join(_SMCLI_DIR.value, 'variables/variables'))
+  if not _SMCLI_VARIABLES_TO_FEED.value:
     variables_to_feed = []
-  elif FLAGS.variables_to_feed.lower() == 'all':
+  elif _SMCLI_VARIABLES_TO_FEED.value.lower() == 'all':
     variables_to_feed = None  # We will identify them after.
   else:
-    variables_to_feed = FLAGS.variables_to_feed.split(',')
+    variables_to_feed = _SMCLI_VARIABLES_TO_FEED.value.split(',')
 
   saved_model_aot_compile.freeze_model(
       checkpoint_path=checkpoint_path,
       meta_graph_def=saved_model_utils.get_meta_graph_def(
-          FLAGS.dir, FLAGS.tag_set),
-      signature_def_key=FLAGS.signature_def_key,
+          _SMCLI_DIR.value, _SMCLI_TAG_SET.value),
+      signature_def_key=_SMCLI_SIGNATURE_DEF_KEY.value,
       variables_to_feed=variables_to_feed,
-      output_prefix=FLAGS.output_prefix)
+      output_prefix=_SMCLI_OUTPUT_PREFIX.value)
 
 
 def aot_compile_cpu():
   """Function triggered by aot_compile_cpu command."""
   checkpoint_path = (
-      FLAGS.checkpoint_path
-      or os.path.join(FLAGS.dir, 'variables/variables'))
-  if not FLAGS.variables_to_feed:
+      _SMCLI_CHECKPOINT_PATH.value
+      or os.path.join(_SMCLI_DIR.value, 'variables/variables'))
+  if not _SMCLI_VARIABLES_TO_FEED.value:
     variables_to_feed = []
-  elif FLAGS.variables_to_feed.lower() == 'all':
+  elif _SMCLI_VARIABLES_TO_FEED.value.lower() == 'all':
     variables_to_feed = None  # We will identify them after.
   else:
-    variables_to_feed = FLAGS.variables_to_feed.split(',')
+    variables_to_feed = _SMCLI_VARIABLES_TO_FEED.value.split(',')
 
   saved_model_aot_compile.aot_compile_cpu_meta_graph_def(
       checkpoint_path=checkpoint_path,
       meta_graph_def=saved_model_utils.get_meta_graph_def(
-          FLAGS.dir, FLAGS.tag_set),
-      signature_def_key=FLAGS.signature_def_key,
+          _SMCLI_DIR.value, _SMCLI_TAG_SET.value),
+      signature_def_key=_SMCLI_SIGNATURE_DEF_KEY.value,
       variables_to_feed=variables_to_feed,
-      output_prefix=FLAGS.output_prefix,
-      target_triple=FLAGS.target_triple,
-      target_cpu=FLAGS.target_cpu,
-      cpp_class=FLAGS.cpp_class,
-      multithreading=FLAGS.multithreading.lower() not in ('f', 'false', '0'))
+      output_prefix=_SMCLI_OUTPUT_PREFIX.value,
+      target_triple=_SMCLI_TARGET_TRIPLE.value,
+      target_cpu=_SMCLI_TARGET_CPU.value,
+      cpp_class=_SMCLI_CPP_CLASS.value,
+      multithreading=(
+          _SMCLI_MULTITHREADING.value.lower() not in ('f', 'false', '0')))
 
 
 def add_show_subparser(subparsers):
@@ -1256,13 +1270,19 @@ def create_parser():
   return parser
 
 
-def main(argv):
+def main():
   logging.set_verbosity(logging.INFO)
-  parser = create_parser()
-  flags.mark_flags_as_required(command_required_flags[argv[1]])
-  args = parser.parse_args()
-  args.func()
+
+  def smcli_main(argv):
+    parser = create_parser()
+    if len(argv) < 2:
+      parser.error('Too few arguments.')
+    flags.mark_flags_as_required(command_required_flags[argv[1]])
+    args = parser.parse_args()
+    args.func()
+
+  app.run(smcli_main)
 
 
 if __name__ == '__main__':
-  app.run(main=main)
+  main()

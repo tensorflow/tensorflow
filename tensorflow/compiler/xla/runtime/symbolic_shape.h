@@ -62,7 +62,7 @@ class SymbolicShapesResolver {
  public:
   // Dimension size can be symbolic (<= -2) or static.
   using SymbolicShape = llvm::SmallVector<int64_t>;
-  // Dimension size can be dynamic (ShapedType::kDynamicSize) or static.
+  // Dimension size can be dynamic (ShapedType::kDynamic) or static.
   using StaticShape = llvm::SmallVector<int64_t>;
 
   SymbolicShapesResolver(const FunctionType& signature,

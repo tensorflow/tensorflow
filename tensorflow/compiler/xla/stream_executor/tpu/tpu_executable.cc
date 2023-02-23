@@ -66,7 +66,7 @@ static SE_ExecutableRunOptions ToC(
 
 namespace xla {
 
-using ::tensorflow::tpu::ExecutorApiFn;
+using ::stream_executor::tpu::ExecutorApiFn;
 
 TpuExecutable::~TpuExecutable() {
   ExecutorApiFn()->TpuExecutable_FreeFn(se_executable_);

@@ -62,8 +62,7 @@ mlir::LogicalResult CreateSplitOp(const int num_split,
   auto input_type = src_input.getType().cast<mlir::TensorType>();
 
   if (input_type.hasRank()) {
-    if (input_type.getShape()[split_dimension] ==
-        mlir::ShapedType::kDynamicSize) {
+    if (input_type.getShape()[split_dimension] == mlir::ShapedType::kDynamic) {
       output_type = input_type;
     } else {
       auto shape = llvm::to_vector<4>(input_type.getShape());
@@ -115,8 +114,7 @@ mlir::TF::ConcatOp CreateConcatOp(const int concat_dimension,
   auto input_type = inputs[0].getType().cast<mlir::TensorType>();
 
   if (input_type.hasRank()) {
-    if (input_type.getShape()[concat_dimension] ==
-        mlir::ShapedType::kDynamicSize) {
+    if (input_type.getShape()[concat_dimension] == mlir::ShapedType::kDynamic) {
       output_type = input_type;
     } else {
       auto shape = llvm::to_vector<4>(input_type.getShape());
@@ -245,11 +243,11 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
                         input_index, tiled_input_size, num_cores_per_replica));
     };
 
-    // If input is already partitioned using the `tf.TPUPartitionedInput` op,
+    // If input is already partitioned using the `tf.TPUPartitionedInputV2` op,
     // only replicated sharding is supported where i-th operand to
-    // `tf.TPUPartitionedInput` op is input to the i-th logical device.
+    // `tf.TPUPartitionedInputV2` op is input to the i-th logical device.
     if (auto partitioned_input =
-            llvm::dyn_cast_or_null<mlir::TF::TPUPartitionedInputOp>(
+            llvm::dyn_cast_or_null<mlir::TF::TPUPartitionedInputV2Op>(
                 input_value.getDefiningOp())) {
       if (UnsupportedPartitionedShardingType(input_sharding_type))
         return cluster_func->emitOpError()
@@ -480,7 +478,7 @@ mlir::LogicalResult ValidateAndGetTiledExecuteOutputShape(
     const auto output_splits = dimension_and_output_splits.value();
     const auto output_shape = cluster_func_output_type.getShape();
 
-    if (output_shape[dimension_index] == mlir::ShapedType::kDynamicSize) {
+    if (output_shape[dimension_index] == mlir::ShapedType::kDynamic) {
       *tiled_logical_computation_type = cluster_func_output_type;
       break;
     }
@@ -578,15 +576,16 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
         output_sharding_config[tpu_cluster_output_index];
     const auto output_sharding_type = output_sharding.type();
 
-    // If output is demultiplexed using the `tf.TPUPartitionedOutput` op, only
+    // If output is demultiplexed using the `tf.TPUPartitionedOutputV2` op, only
     // replicated sharding is supported where i-th output of
-    // `tf.TPUPartitionedOutput` op maps to the output of i-th logical device.
-    // Also `tf.TPUPartitionedOutput` op must be a unique user of
+    // `tf.TPUPartitionedOutputV2` op maps to the output of i-th logical device.
+    // Also `tf.TPUPartitionedOutputV2` op must be a unique user of
     // TPU Cluster (`tf_device.old_parallel_execute`) output.
-    mlir::TF::TPUPartitionedOutputOp partitioned_output;
+    mlir::TF::TPUPartitionedOutputV2Op partitioned_output;
     for (auto user : old_parallel_execute_output.getUsers()) {
       if (auto partitioned_output_user =
-              llvm::dyn_cast_or_null<mlir::TF::TPUPartitionedOutputOp>(user)) {
+              llvm::dyn_cast_or_null<mlir::TF::TPUPartitionedOutputV2Op>(
+                  user)) {
         partitioned_output = partitioned_output_user;
         break;
       }

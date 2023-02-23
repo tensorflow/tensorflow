@@ -64,6 +64,7 @@ from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import summary_ops_v2
@@ -2846,7 +2847,7 @@ def concat(tensors, axis=0):
   if isinstance(tensors[0], sparse_tensor.SparseTensor):
     return sparse_ops.sparse_concat_v2(axis=axis, sp_inputs=tensors)
   elif _is_scalar(tensors[0]):
-    return array_ops.stack(tensors, axis=axis)
+    return array_ops_stack.stack(tensors, axis=axis)
   else:
     return array_ops.concat(tensors, axis=axis)
 

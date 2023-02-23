@@ -99,6 +99,11 @@ struct CollectiveReduceOrdering
   StringRef getName() final { return "CollectiveReduceOrdering"; }
 };
 
+struct NcclAllReduceOrdering
+    : public ::mlir::SideEffects::Resource::Base<NcclAllReduceOrdering> {
+  StringRef getName() final { return "NcclAllReduceOrdering"; }
+};
+
 // Returns true iff resource type with given ID is only self-dependent, i.e.,
 // there are no dependencies to other resource types (including unknown resource
 // type).

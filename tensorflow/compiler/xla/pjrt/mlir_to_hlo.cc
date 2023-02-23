@@ -25,7 +25,8 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/xla/mlir/utils/error_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
@@ -35,7 +36,7 @@ namespace xla {
 Status MlirToXlaComputation(mlir::ModuleOp module,
                             XlaComputation& xla_computation,
                             bool use_tuple_args, bool return_tuple) {
-  mlir::StatusScopedDiagnosticHandler diagnostic_handler(module->getContext());
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(module->getContext());
   {
     mlir::PassManager pm(module->getContext());
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
@@ -52,7 +53,7 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
     if (failed(pm.run(module))) {
       VLOG(1) << "MHLO->HLO lowering passes failed.";
       module->dump();
-      return diagnostic_handler.ConsumeStatus();
+      return FromAbslStatus(diagnostic_handler.ConsumeStatus());
     }
 
     VLOG(5) << "MHLO module after lowering, before HLO import ";
@@ -77,17 +78,18 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
   context.loadDialect<mlir::mhlo::MhloDialect>();
   context.loadDialect<mlir::chlo::ChloDialect>();
   context.loadDialect<mlir::sparse_tensor::SparseTensorDialect>();
-  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
+  context.loadDialect<mlir::stablehlo::StablehloDialect>();
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(&context);
   module = mlir::parseSourceString<mlir::ModuleOp>(
       llvm::StringRef(mlir_module_str.data(), mlir_module_str.size()),
       &context);
   if (!module) {
-    return diagnostic_handler.ConsumeStatus();
+    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
   }
   if (failed(module->verifyInvariants())) {
     VLOG(1) << "MLIR verification failed.";
     module->dump();
-    return diagnostic_handler.ConsumeStatus();
+    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
   }
   return std::move(module);
 }

@@ -1,15 +1,12 @@
-#if defined(PLATFORM_GOOGLE)
-#include "third_party/tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_init_fns.inc"
-#else
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_init_fns.inc"
-#endif
 
 namespace {
 
-tsl::Status SetTpuOpsStructFns(void* library_handle) { // TENSORFLOW_STATUS_OK
+tsl::Status SetTpuOpsStructFns(void* library_handle) {  // TENSORFLOW_STATUS_OK
   // Constant cast so that we can initialize the functions. The functions are
   // mutable here because this is the only place where they are initialized.
-  auto* ops_api_fn = const_cast<TfTpu_OpsApiFn*>(tensorflow::tpu::OpsApiFn());
+  auto* ops_api_fn =
+      const_cast<TfTpu_OpsApiFn*>(stream_executor::tpu::OpsApiFn());
 
   TFTPU_SET_FN(ops_api_fn, ConfigureDistributedTpuOp_DoWork);
   TFTPU_SET_FN(ops_api_fn, WaitForDistributedTpuOp_DoWork);
@@ -112,11 +109,13 @@ tsl::Status SetTpuOpsStructFns(void* library_handle) { // TENSORFLOW_STATUS_OK
                TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation);
   TFTPU_SET_FN(ops_api_fn,
                TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_DedupDataTupleMaskComputation);
 
   return tsl::OkStatus();
 }
 
-tsl::Status InitializeTpuStructFns(void* library_handle) { // TENSORFLOW_STATUS_OK
+tsl::Status InitializeTpuStructFns(  // TENSORFLOW_STATUS_OK
+    void* library_handle) {
   TF_RETURN_IF_ERROR(SetTpuOpsStructFns(library_handle));
   TF_RETURN_IF_ERROR(SetExecutorStructFn(library_handle));
 

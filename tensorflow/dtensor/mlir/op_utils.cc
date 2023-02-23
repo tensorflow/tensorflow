@@ -54,10 +54,58 @@ absl::optional<mlir::func::FuncOp> MaybeFindFunction(mlir::Operation* op) {
   return func;
 }
 
-void RemoveDTensorLayoutOp(mlir::TF::DTensorLayout layout) {
-  layout.getOutput().replaceAllUsesWith(layout.getInput());
-  layout.erase();
+void RemoveDTensorLayoutOps(mlir::ModuleOp module,
+                            bool remove_xla_spmd_layouts) {
+  llvm::SmallVector<mlir::TF::DTensorLayout, 4> layout_ops;
+  module.walk([&](mlir::TF::DTensorLayout layout) {
+    // Remove layout ops only for layouts running on DTensor SPMD.
+    // Layout ops will be preserved for XLA SPMD to annotate sharding
+    // later down the DTensor stack.
+    if (remove_xla_spmd_layouts || !layout.getLayout().mesh().use_xla_spmd()) {
+      layout_ops.emplace_back(layout);
+    }
+  });
+
+  for (auto layout_op : layout_ops) {
+    layout_op.getOutput().replaceAllUsesWith(layout_op.getInput());
+    layout_op.erase();
+  }
 }
 
+mlir::LogicalResult ReplaceAuxiliaryDTensorLayoutOpsWithIdentity(
+    mlir::ModuleOp module) {
+  llvm::SmallVector<mlir::TF::DTensorLayout, 4> layout_ops;
+  module.walk([&](mlir::TF::DTensorLayout op) { layout_ops.emplace_back(op); });
+
+  llvm::DenseSet<mlir::TF::DTensorLayout> deleted_layout_ops;
+
+  for (auto layout_op : llvm::reverse(layout_ops)) {
+    if (deleted_layout_ops.contains(layout_op)) {
+      continue;
+    }
+    while (auto input_layout_op =
+               llvm::dyn_cast_or_null<mlir::TF::DTensorLayout>(
+                   layout_op.getInput().getDefiningOp())) {
+      // Check that layout of input DTensorLayout op is equivalent to
+      // the layout of its connected DTensorLayout op.
+      if (layout_op.getLayout() != input_layout_op.getLayout()) {
+        return layout_op.emitOpError(
+            "Found inconsistent layout. This should never happen.");
+      }
+
+      // Replace DTensorLayout op with identity op.
+      mlir::OpBuilder builder(input_layout_op);
+      auto new_identity = builder.create<mlir::TF::IdentityOp>(
+          input_layout_op->getLoc(), input_layout_op.getType(),
+          input_layout_op.getInput());
+      input_layout_op.getOutput().replaceAllUsesWith(new_identity.getOutput());
+      input_layout_op.erase();
+
+      deleted_layout_ops.insert(input_layout_op);
+    }
+  }
+
+  return mlir::success();
+}
 }  // namespace dtensor
 }  // namespace tensorflow

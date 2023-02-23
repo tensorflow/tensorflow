@@ -1,8 +1,8 @@
 path: "tensorflow.optimizers.Adadelta"
 tf_class {
-  is_instance: "<class \'keras.optimizers.optimizer_experimental.adadelta.Adadelta\'>"
-  is_instance: "<class \'keras.optimizers.optimizer_experimental.optimizer.Optimizer\'>"
-  is_instance: "<class \'keras.optimizers.optimizer_experimental.optimizer._BaseOptimizer\'>"
+  is_instance: "<class \'keras.optimizers.adadelta.Adadelta\'>"
+  is_instance: "<class \'keras.optimizers.optimizer.Optimizer\'>"
+  is_instance: "<class \'keras.optimizers.optimizer._BaseOptimizer\'>"
   is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
@@ -16,6 +16,10 @@ tf_class {
   }
   member {
     name: "lr"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "variables"
     mtype: "<type \'property\'>"
   }
   member_method {
@@ -73,9 +77,5 @@ tf_class {
   member_method {
     name: "update_step"
     argspec: "args=[\'self\', \'grad\', \'variable\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "variables"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
 }

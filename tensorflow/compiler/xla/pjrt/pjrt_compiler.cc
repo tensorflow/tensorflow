@@ -45,6 +45,11 @@ void PjRtRegisterCompiler(absl::string_view platform_name,
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, const XlaComputation& computation,
     const PjRtDeviceTopology& topology, PjRtClient* client) {
+  auto topology_compiler = topology.compiler();
+  if (topology_compiler.has_value()) {
+    return (*topology_compiler)
+        ->Compile(std::move(options), computation, topology, client);
+  }
   absl::ReaderMutexLock l(&registry_mutex);
   const auto* compiler_registry = CompilerRegistry();
   auto it = compiler_registry->find(topology.platform_name());
@@ -58,6 +63,11 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, mlir::ModuleOp module,
     const PjRtDeviceTopology& topology, PjRtClient* client) {
+  auto topology_compiler = topology.compiler();
+  if (topology_compiler.has_value()) {
+    return (*topology_compiler)
+        ->Compile(std::move(options), module, topology, client);
+  }
   absl::ReaderMutexLock l(&registry_mutex);
   const auto* compiler_registry = CompilerRegistry();
   auto it = compiler_registry->find(topology.platform_name());

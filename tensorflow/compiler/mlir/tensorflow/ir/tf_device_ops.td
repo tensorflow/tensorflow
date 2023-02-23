@@ -39,6 +39,7 @@ def TfDevice_Dialect : Dialect {
 }];
 
   let cppNamespace = "::mlir::tf_device";
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 //===----------------------------------------------------------------------===//
@@ -114,7 +115,7 @@ def TfDevice_LaunchFuncOp : TfDevice_Op<"launch_func", []> {
   let arguments = (ins
     StrAttr:$device,
     FlatSymbolRefAttr:$func,
-    Variadic<AnyType>:$operands);
+    Variadic<AnyType>);
 
   let results = (outs
     Variadic<AnyType>:$results
@@ -348,7 +349,7 @@ This op is used for outlining a cluster.
 
   let arguments = (ins
     FlatSymbolRefAttr:$func,
-    Variadic<AnyType>:$operands
+    Variadic<AnyType>
   );
 
   let results = (outs

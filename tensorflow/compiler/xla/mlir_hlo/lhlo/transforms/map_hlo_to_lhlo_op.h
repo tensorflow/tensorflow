@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_LHLO_TRANSFORMS_MAP_HLO_TO_LHLO_OP_H
-#define MLIR_HLO_DIALECT_LHLO_TRANSFORMS_MAP_HLO_TO_LHLO_OP_H
+#ifndef MLIR_HLO_LHLO_TRANSFORMS_MAP_HLO_TO_LHLO_OP_H
+#define MLIR_HLO_LHLO_TRANSFORMS_MAP_HLO_TO_LHLO_OP_H
 
 #include <type_traits>
 
@@ -96,6 +96,7 @@ MAP_HLO_TO_LHLO(SineOp);
 MAP_HLO_TO_LHLO(SliceOp);
 MAP_HLO_TO_LHLO(SqrtOp);
 MAP_HLO_TO_LHLO(SubtractOp);
+MAP_HLO_TO_LHLO(TanOp);
 MAP_HLO_TO_LHLO(TanhOp);
 MAP_HLO_TO_LHLO(TransposeOp);
 MAP_HLO_TO_LHLO(XorOp);
@@ -105,4 +106,4 @@ MAP_HLO_TO_LHLO(XorOp);
 }  // namespace mhlo
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_LHLO_TRANSFORMS_MAP_HLO_TO_LHLO_OP_H
+#endif  // MLIR_HLO_LHLO_TRANSFORMS_MAP_HLO_TO_LHLO_OP_H

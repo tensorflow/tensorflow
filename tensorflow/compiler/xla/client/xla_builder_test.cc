@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 
+#include <algorithm>
 #include <complex>
 #include <functional>
 #include <memory>
@@ -1458,6 +1459,31 @@ TEST_F(XlaBuilderTest, OutfeedDummyTupleSharding) {
   Outfeed(value, shape, "");
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   EXPECT_FALSE(module->entry_computation()->root_instruction()->has_sharding());
+}
+
+TEST_F(XlaBuilderTest, OutfeedTokenSharding) {
+  XlaBuilder b(TestName());
+  XlaOp value = ConstantR1<int32_t>(&b, {0});
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, /* dimensions= */ {1},
+                                                    /* minor_to_major= */ {0});
+  b.SetSharding(sharding_builder::Replicate());
+  Outfeed(value, shape, "");
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto it = std::find_if(module->entry_computation()->instructions().begin(),
+                         module->entry_computation()->instructions().end(),
+                         [](const HloInstruction* i) {
+                           return i->opcode() == HloOpcode::kOutfeed;
+                         });
+  EXPECT_NE(it, module->entry_computation()->instructions().end());
+  auto* outfeed = *it;
+  EXPECT_TRUE(outfeed->has_sharding());
+  EXPECT_TRUE(outfeed->sharding().IsTuple());
+  EXPECT_EQ(outfeed->sharding().tuple_elements().size(), 2);
+  EXPECT_TRUE(outfeed->operand(1)->has_sharding());
+  EXPECT_EQ(outfeed->sharding().tuple_elements().back(),
+            HloSharding::FromProto(sharding_builder::AssignDevice(0)).value());
+  EXPECT_EQ(outfeed->operand(1)->sharding(),
+            HloSharding::FromProto(sharding_builder::AssignDevice(0)).value());
 }
 
 TEST_F(XlaBuilderTest, NormalizeTupleSharding) {

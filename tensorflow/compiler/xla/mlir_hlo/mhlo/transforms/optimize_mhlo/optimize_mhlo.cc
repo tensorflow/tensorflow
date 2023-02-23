@@ -24,7 +24,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/passes.h"
-#include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
+#include "utils/hlo_utils.h"
 
 namespace mlir {
 namespace mhlo {

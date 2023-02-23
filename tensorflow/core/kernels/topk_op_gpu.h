@@ -486,8 +486,9 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
 #if GOOGLE_CUDA
     constexpr bool is_supported = true;
 #else
-    // GpuRadixSortDescending is not supported on ROCm for fp16.
-    constexpr bool is_supported = !std::is_same<T, Eigen::half>::value;
+    // GpuRadixSortDescending is not supported on ROCm for fp16/bf16.
+    constexpr bool is_supported = !std::is_same<T, Eigen::half>::value &&
+                                  !std::is_same<T, Eigen::bfloat16>::value;
 #endif
     if constexpr (is_supported) {
       // Note: DeviceSegmentedRadixSort is very slow when num_segments=1 because

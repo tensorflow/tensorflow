@@ -19,12 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <iterator>
+#include <optional>
 #include <queue>
 #include <stack>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -63,7 +63,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
@@ -233,7 +232,7 @@ bool NeedsCastBack(OpOperand& use, Dialect* tf_dialect) {
 TensorType CreateTensorType(llvm::Optional<llvm::ArrayRef<int64_t>> shape,
                             Type element_type) {
   if (shape.has_value())
-    return tensorflow::GetTypeFromTFTensorShape(shape.getValue(), element_type);
+    return tensorflow::GetTypeFromTFTensorShape(shape.value(), element_type);
   return UnrankedTensorType::get(element_type);
 }
 
@@ -449,6 +448,8 @@ struct ValuePort {
     return producer == other.producer && port == other.port;
   }
 
+  ValuePort() = default;
+
   // Convert output value to ValuePort.
   explicit ValuePort(Value v) {
     OpResult opr = v.dyn_cast<OpResult>();
@@ -472,6 +473,8 @@ struct ValuePort {
     os << formatv(" [{0}]", llvm::make_range(port.begin(), port.end()));
     return os;
   }
+
+  bool IsValid() const { return !producer.isNull(); }
 };
 
 struct ValuePortHasher {
@@ -487,6 +490,86 @@ using ComputedQueryFn = function_ref<bool(ValuePort)>;
 using ValueQueryFn = function_ref<Attribute(const ValuePort&)>;
 using ValuePortInputs = SmallVectorImpl<ValuePort>;
 
+// Note: Following implements the rank 1 pack op case so could be
+// generalized.
+//
+// Maps the specified component in the `port` of the given op's result to one of
+// the element in the input.
+ValuePort ComputeInputComponentFor(PackOp op, ArrayRef<unsigned int> port) {
+  auto type = op.getType().cast<TensorType>();
+  if (!type.hasRank() || type.getRank() != 1) return {};
+  if (port.size() != 2) return {};
+  assert(port[0] == 0);
+  return ValuePort(op.getOperand(port[1]));
+}
+
+ValuePort ComputeInputComponentFor(ConcatV2Op op, ArrayRef<unsigned int> port) {
+  if (port.size() != 2) return {};
+  assert(port[0] == 0);
+
+  int64_t element_idx = port[1];
+  for (Value val : op.getValues()) {
+    auto val_ty = val.getType().cast<TensorType>();
+    if (!val_ty.hasStaticShape() || val_ty.getRank() != 1) return {};
+
+    int64_t dim_size = val_ty.getNumElements();
+    if (element_idx >= dim_size) {
+      element_idx -= dim_size;
+      continue;
+    }
+
+    ValuePort req(val);
+    req.port.push_back(element_idx);
+    return req;
+  }
+  return {};
+}
+
+ValuePort ComputeInputComponentFor(GatherV2Op op, ArrayRef<unsigned int> port) {
+  if (port.size() != 2) return {};
+  assert(port[0] == 0);
+
+  auto params = op.getParams();
+  auto params_ty = params.getType().dyn_cast<RankedTensorType>();
+  if (!params_ty || !params_ty.hasStaticShape() || params_ty.getRank() != 1 ||
+      op.getBatchDims() != 0) {
+    return {};
+  }
+
+  DenseIntElementsAttr axis;
+  if (!matchPattern(op.getAxis(), m_Constant(&axis)) ||
+      axis.getNumElements() != 1 ||
+      !axis.getSplatValue<llvm::APInt>().isZero()) {
+    return {};
+  }
+
+  DenseIntElementsAttr indices;
+  if (!matchPattern(op.getIndices(), m_Constant(&indices)) ||
+      indices.getType().getRank() != 1 || port[1] >= indices.getNumElements()) {
+    return {};
+  }
+
+  int64_t input_idx = indices.getValues<IntegerAttr>()[port[1]].getInt();
+  if (input_idx >= params_ty.getDimSize(0)) return {};
+
+  ValuePort req(params);
+  req.port.push_back(input_idx);
+  return req;
+}
+
+ValuePort ComputeInputComponentFor(Operation* op, ArrayRef<unsigned int> port) {
+  if (auto pack_op = llvm::dyn_cast<PackOp>(op)) {
+    return ComputeInputComponentFor(pack_op, port);
+  }
+  if (auto concat_op = llvm::dyn_cast<ConcatV2Op>(op)) {
+    return ComputeInputComponentFor(concat_op, port);
+  }
+  if (auto gather_op = llvm::dyn_cast<GatherV2Op>(op)) {
+    return ComputeInputComponentFor(gather_op, port);
+  }
+  return {};
+}
+
 // TODO(jpienaar): ComputeInputsRequiredForOutput and ComputeOutputComponent are
 // intended to be switched to op interfaces once more refined.
 LogicalResult ComputeInputsRequiredForOutput(ValuePort value_port,
@@ -496,17 +579,11 @@ LogicalResult ComputeInputsRequiredForOutput(ValuePort value_port,
   auto& port = value_port.port;
   if (!op) return failure();
 
-  // No inputs required for constants.
-  if (matchPattern(op, m_Constant())) return success();
+  // No inputs required for constants and ShapeOp.
+  if (matchPattern(op, m_Constant()) || isa<TF::ShapeOp>(op)) return success();
 
-  // Note: this focusses only on the trivial pack op case and this could be
-  // generalized.
-  if (auto pack_op = dyn_cast<TF::PackOp>(op)) {
-    auto type = pack_op.getType().cast<TensorType>();
-    if (!type.hasRank() || type.getRank() != 1) return failure();
-    if (port.size() != 2) return failure();
-    assert(port[0] == 0);
-    ValuePort req(pack_op.getOperand(port[1]));
+  ValuePort req = ComputeInputComponentFor(op, port);
+  if (req.IsValid()) {
     if (!has_been_computed(req)) inputs->push_back(req);
     return success();
   }
@@ -533,6 +610,18 @@ Attribute ComputeOutputComponent(const ValuePort& value_port,
   ElementsAttr attr;
   if (matchPattern(op, m_Constant(&attr))) {
     if (port.size() == 1 && port[0] == 0) return attr;
+    if (port.size() == 2) {
+      assert(port[0] == 0);
+      DenseIntElementsAttr value;
+      if (!matchPattern(op, m_Constant(&value)) ||
+          value.getType().getRank() != 1 || port[1] >= value.getNumElements()) {
+        return nullptr;
+      }
+
+      auto range = value.getValues<Attribute>();
+      auto component_ty = RankedTensorType::get({1}, value.getElementType());
+      return DenseElementsAttr::get(component_ty, range[port[1]]);
+    }
     return nullptr;
   }
 
@@ -542,14 +631,28 @@ Attribute ComputeOutputComponent(const ValuePort& value_port,
     return nullptr;
   }
 
-  // Note: this focusses only on the trivial pack op case and this could be
-  // generalized.
-  if (auto pack_op = dyn_cast<TF::PackOp>(op)) {
-    TensorType type = pack_op.getType().cast<TensorType>();
-    if (!type.hasRank() || type.getRank() != 1) return nullptr;
-    if (port.size() != 2 || port[0] != 0) return nullptr;
-    ValuePort op_port(op->getOperand(port[1]));
-    return values(op_port);
+  if (auto shape_op = dyn_cast<TF::ShapeOp>(op)) {
+    // No shape available in an unranked tensor type.
+    auto operand_ty =
+        shape_op.getOperand().getType().dyn_cast<RankedTensorType>();
+    if (!operand_ty) return nullptr;
+
+    // Shape op has a single output so the first element should always be zero
+    // and the second element of port points to a particular element in the
+    // shape result.
+    if (port.size() != 2 || port[0] != 0 || port[1] >= operand_ty.getRank())
+      return nullptr;
+
+    // If the dim is dynamic, the dimension can't be inferred during
+    // compilation.
+    int64_t dim = operand_ty.getDimSize(port[1]);
+    if (dim == ShapedType::kDynamic) return nullptr;
+
+    // Create an elements attribute for the particular dimension.
+    Type element_ty = getElementTypeOrSelf(shape_op.getType());
+    APInt dim_value(element_ty.getIntOrFloatBitWidth(), dim);
+    auto component_ty = RankedTensorType::get({1}, element_ty);
+    return DenseElementsAttr::get(component_ty, {dim_value});
   }
 
   if (auto graph = dyn_cast<tf_executor::GraphOp>(op)) {
@@ -565,6 +668,9 @@ Attribute ComputeOutputComponent(const ValuePort& value_port,
           ValuePort(island.GetYield().getFetches()[port[0]]), values);
     return nullptr;
   }
+
+  ValuePort req = ComputeInputComponentFor(op, port);
+  if (req.IsValid()) return values(req);
 
   return nullptr;
 }
@@ -758,6 +864,14 @@ class ShapeInference {
   // Infers the shape IfRegion outputs based on the shapes of the then and else
   // yields.
   bool InferShapeForIfRegion(IfRegionOp op);
+
+  // Infers the shape CaseOp outputs based on the shapes of branch function
+  // result types.
+  bool InferShapeForCase(CaseOp op);
+
+  // Infers the shape CaseRegion outputs based on the shapes of the branch
+  // yields.
+  bool InferShapeForCaseRegion(CaseRegionOp op);
 
   // Infers the shape of _XlaHostComputeMlir based on the host computation
   // module.  Returns true if a return type was changed.
@@ -975,6 +1089,44 @@ bool ShapeInference::InferShapeForIfRegion(IfRegionOp op) {
     if (std::get<1>(result) != std::get<2>(result)) continue;
     changed = RefineResultType(op, std::get<0>(result), std::get<1>(result)) ||
               changed;
+  }
+  return changed;
+}
+
+bool ShapeInference::InferShapeForCase(CaseOp op) {
+  DCOMMENT_OP(op.getOperation(), "Infer shape for case ");
+
+  llvm::SmallVector<TypeRange> branch_result_types;
+  for (int i = 0; i < op.num_branches(); ++i) {
+    branch_result_types.push_back(op.ResolveBranchFunction(&symbol_table_, i)
+                                      .getFunctionType()
+                                      .getResults());
+  }
+
+  bool changed = false;
+  for (const auto& result : op.getResults()) {
+    llvm::DenseSet<Type> types;
+    for (const auto& branch_result_type : branch_result_types) {
+      types.insert(branch_result_type[result.getResultNumber()]);
+    }
+    if (types.size() == 1) {
+      changed = RefineResultType(op, result, *types.begin()) || changed;
+    }
+  }
+  return changed;
+}
+
+bool ShapeInference::InferShapeForCaseRegion(CaseRegionOp op) {
+  bool changed = false;
+  for (const auto& result : op.getResults()) {
+    llvm::DenseSet<Type> types;
+    for (auto& branch : op.getBranches()) {
+      Operation* yield = branch.front().getTerminator();
+      types.insert(yield->getOperandTypes()[result.getResultNumber()]);
+    }
+    if (types.size() == 1) {
+      changed = RefineResultType(op, result, *types.begin()) || changed;
+    }
   }
   return changed;
 }
@@ -1327,7 +1479,7 @@ bool ShapeInference::InferShapeForVarHandleOp(VarHandleOp op) {
 }
 
 // Helper function for creating a Window proto from user-supplied data.
-// Returns llvm::None if the user-supplied data was invalid.
+// Returns std::nullopt if the user-supplied data was invalid.
 llvm::Optional<xla::Window> InferWindowFromDimensions(
     llvm::SmallVector<int64_t> window_dimensions,
     llvm::SmallVector<int64_t> window_strides,
@@ -1352,7 +1504,7 @@ llvm::Optional<xla::Window> InferWindowFromDimensions(
         verify_size(padding.size(), "padding entries") &&
         verify_size(lhs_dilation.size(), "lhs dilation factors") &&
         verify_size(rhs_dilation.size(), "rhs dilation factors")))
-    return llvm::None;
+    return std::nullopt;
 
   xla::Window window;
   for (size_t i = 0; i < window_dimensions.size(); i++) {
@@ -1392,7 +1544,7 @@ llvm::Optional<RankedTensorType> InferWindowOutputShape(
     llvm::errs() << "Window has dimension " << window.dimensions_size()
                  << " but base shape has dimension " << base_shape.getRank()
                  << "\n";
-    return llvm::None;
+    return std::nullopt;
   }
 
   std::vector<int64_t> output_dimensions(window.dimensions_size());
@@ -1402,26 +1554,26 @@ llvm::Optional<RankedTensorType> InferWindowOutputShape(
     if (dim.size() <= 0) {
       llvm::errs() << "Window " << window.DebugString()
                    << " has a non-positive dimension.\n";
-      return llvm::None;
+      return std::nullopt;
     }
     if (dim.stride() <= 0) {
       llvm::errs() << "Window " << window.DebugString()
                    << " has a non-positive stride.\n";
-      return llvm::None;
+      return std::nullopt;
     }
     if (dim.base_dilation() < 1) {
       llvm::errs() << "Window " << window.DebugString()
                    << " has a non-positive base area dilation factor.\n";
-      return llvm::None;
+      return std::nullopt;
     }
     if (dim.window_dilation() < 1) {
       llvm::errs() << "Window " << window.DebugString()
                    << " has a non-positive window dilation factor.\n";
-      return llvm::None;
+      return std::nullopt;
     }
 
     if (base_shape.isDynamicDim(i)) {
-      output_dimensions[i] = ShapedType::kDynamicSize;
+      output_dimensions[i] = ShapedType::kDynamic;
     } else {
       const int64_t dilated_base = xla::window_util::DilatedBound(
           base_shape.getDimSize(i), dim.base_dilation());
@@ -1489,7 +1641,7 @@ bool ShapeInference::InferShapeForXlaReduceWindowOp(XlaReduceWindowOp op) {
       op->emitOpError("failed to create window");
     }
     auto output_shape = InferWindowOutputShape(
-        input_ty, window.getValue(),
+        input_ty, window.value(),
         op.getInitValue().getType().cast<ShapedType>().getElementType());
 
     if (!output_shape) {
@@ -1497,7 +1649,7 @@ bool ShapeInference::InferShapeForXlaReduceWindowOp(XlaReduceWindowOp op) {
     }
 
     changed = RefineResultType(op.getOperation(), op.getResult(),
-                               output_shape.getValue());
+                               output_shape.value());
   }
 
   return changed;
@@ -1540,13 +1692,13 @@ bool ShapeInference::InferShapeForXlaSelectAndScatterOp(
       op->emitOpError("failed to create window");
     }
     auto window_result_shape = InferWindowOutputShape(
-        operand_shape, window.getValue(), operand_shape.getElementType());
+        operand_shape, window.value(), operand_shape.getElementType());
 
     if (!window_result_shape) {
       op->emitOpError("failed to infer window result shape");
     }
 
-    if (window_result_shape.getValue() != source_shape) {
+    if (window_result_shape.value() != source_shape) {
       op->emitOpError(
           "Source shape does not match the shape of window-reduced operand.");
     }
@@ -1631,11 +1783,11 @@ llvm::Optional<RankedTensorType> InferXlaConvOutputShape(
                                 lhs_dilations, rhs_dilations);
 
   auto output_shape =
-      InferWindowOutputShape(base_shape, window.getValue(), element_type);
+      InferWindowOutputShape(base_shape, window.value(), element_type);
 
   for (auto i = 0; i < num_spatial_dims; ++i) {
     output_dims[dnums.output_spatial_dimensions(i)] =
-        output_shape.getValue().getShape()[i];
+        output_shape.value().getShape()[i];
     DCOMMENT("inferrd output spatial dimension "
              << i << " at dimension numebr "
              << dnums.output_spatial_dimensions(i) << " is "
@@ -1847,9 +1999,9 @@ bool ShapeInference::InferShapeForXlaConvV2Op(XlaConvV2Op op) {
         padding_pairs, lhs_dilations_vec, rhs_dilations_vec, batch_group_count,
         dnums, element_type);
 
-    if (output_shape.getValue()) {
+    if (output_shape.value()) {
       changed = RefineResultType(op.getOperation(), op.getResult(),
-                                 output_shape.getValue());
+                                 output_shape.value());
       return changed;
     }
   }
@@ -2050,7 +2202,7 @@ bool CanWhileTypeBeRefinedWith(TensorType current_type,
     int64_t current_dim = std::get<0>(dim);
     int64_t potential_refined_dim = std::get<1>(dim);
     if (current_dim != potential_refined_dim &&
-        current_dim != ShapedType::kDynamicSize)
+        current_dim != ShapedType::kDynamic)
       return false;
   }
   return true;
@@ -2143,6 +2295,11 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   if (auto if_region = dyn_cast<IfRegionOp>(op))
     return InferShapeForIfRegion(if_region);
 
+  if (auto case_op = dyn_cast<CaseOp>(op)) return InferShapeForCase(case_op);
+
+  if (auto case_region = dyn_cast<CaseRegionOp>(op))
+    return InferShapeForCaseRegion(case_region);
+
   if (auto while_op = dyn_cast<WhileOp>(op))
     return InferShapeForWhile(
         while_op, while_op.body_function().getFunctionType().getResults());
@@ -2215,7 +2372,7 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
 
   llvm::SmallVector<ShapedTypeComponents, 4> inferred_return_shapes;
   if (failed(InferReturnTypeComponentsForTFOp(
-          /*location=*/None, op, graph_version_, operand_as_constant_fn,
+          /*location=*/std::nullopt, op, graph_version_, operand_as_constant_fn,
           op_result_as_shape_fn, result_element_type_fn,
           inferred_return_shapes)))
     return false;
@@ -2230,8 +2387,8 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
     ShapedTypeComponents inferred = std::get<1>(result);
     TensorType inferred_type;
     if (inferred.hasRank()) {
-      inferred_type = tensorflow::GetTypeFromTFTensorShape(
-          inferred.getDims(), inferred.getElementType());
+      inferred_type =
+          RankedTensorType::get(inferred.getDims(), inferred.getElementType());
 
     } else {
       inferred_type = UnrankedTensorType::get(inferred.getElementType());
@@ -2289,7 +2446,7 @@ FailureOr<bool> ShapeInference::PropagateShapeToFunctions(
       any_failure = true;
       continue;
     }
-    any_nonconvergence = any_nonconvergence || !failure_or_converged.getValue();
+    any_nonconvergence = any_nonconvergence || !failure_or_converged.value();
     if (failed(InferShapeForFunctionReturnType(func))) any_failure = true;
   }
   if (any_failure) return failure();
@@ -2319,7 +2476,7 @@ FailureOr<bool> ShapeInference::PropagateShapeToRegions(
         InferShapeUntilFixPoint(region, max_iterations);
     if (failed(failure_or_converged))
       any_failure = true;
-    else if (!failure_or_converged.getValue())
+    else if (!failure_or_converged.value())
       any_nonconvergence = true;
   }
   if (any_failure) return failure();
@@ -2399,7 +2556,7 @@ RankedTensorType GetCompatibleRankedTensorType(RankedTensorType lhs,
     if (lhs_dim == std::get<1>(dim)) {
       dims.push_back(lhs_dim);
     } else {
-      dims.push_back(ShapedType::kDynamicSize);
+      dims.push_back(ShapedType::kDynamic);
     }
   }
   return tensorflow::GetTypeFromTFTensorShape(
@@ -2509,9 +2666,8 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
     if (auto xla_select_and_scatter_op =
             dyn_cast<TF::XlaSelectAndScatterOp>(op)) {
       return propagate_shape_to(xla_select_and_scatter_op.getSelect())
-                 .getValue() &&
-             propagate_shape_to(xla_select_and_scatter_op.getScatter())
-                 .getValue();
+                 .value() &&
+             propagate_shape_to(xla_select_and_scatter_op.getScatter()).value();
     } else if (auto xla_variadic_reduce_v2_op =
                    dyn_cast<TF::XlaVariadicReduceV2Op>(op)) {
       return propagate_shape_to(xla_variadic_reduce_v2_op.getReducer());
@@ -2746,7 +2902,7 @@ static FailureOr<bool> InferShapeForFunction(ShapeInference& context,
                                              int64_t max_iterations) {
   FailureOr<bool> failure_or_converged =
       context.InferShapeUntilFixPoint(&func.getBody(), max_iterations);
-  if (failed(failure_or_converged) || !failure_or_converged.getValue())
+  if (failed(failure_or_converged) || !failure_or_converged.value())
     return failure_or_converged;
   // TODO(b/156276510): Verify that it is always fine to refine a function's
   // return type, as long as we do not change the argument shapes.
@@ -2800,7 +2956,7 @@ FailureOr<bool> InferShapeForFunction(func::FuncOp func,
 
   FailureOr<bool> failure_or_converged =
       context.InferShapeUntilFixPoint(&func.getBody(), max_iterations);
-  if (failed(failure_or_converged) || !failure_or_converged.getValue())
+  if (failed(failure_or_converged) || !failure_or_converged.value())
     return failure_or_converged;
 
   if (failed(context.InferShapeForFunctionReturnType(func))) return failure();
@@ -2834,7 +2990,7 @@ FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations) {
     func::FuncOp func = context.front();
     FailureOr<bool> failure_or_converged =
         InferShapeForFunction(context, func, max_iterations);
-    if (failed(failure_or_converged) || !failure_or_converged.getValue())
+    if (failed(failure_or_converged) || !failure_or_converged.value())
       return failure_or_converged;
     context.pop_front();
 

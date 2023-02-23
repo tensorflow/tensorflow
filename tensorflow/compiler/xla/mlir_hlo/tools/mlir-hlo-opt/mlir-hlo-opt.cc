@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "deallocation/IR/deallocation_ops.h"
+#include "deallocation/transforms/passes.h"
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/test_passes.h"
@@ -21,60 +23,52 @@ limitations under the License.
 #include "lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "mhlo/IR/register.h"
 #include "mhlo/transforms/passes.h"
-#include "mlir-hlo/Transforms/gpu_passes.h"
-#include "mlir-hlo/Transforms/passes.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "stablehlo/dialect/Register.h"
 #include "thlo/IR/thlo_ops.h"
 #include "thlo/transforms/passes.h"
+#include "transforms/gpu_passes.h"
+#include "transforms/passes.h"
 
 using namespace mlir;
 
-int main(int argc, char **argv) {
-  mlir::registerAllPasses();
-  mlir::hlo::registerLMHLOTransformsPasses();
-  mlir::registerLMHLOGPUTransformsPasses();
-  mlir::mhlo::registerAllMhloPasses();
-  mlir::lmhlo::registerAllLmhloPasses();
-  mlir::thlo::registerAllThloPasses();
-  mlir::gml_st::registerGmlStPasses();
-  mlir::gml_st::registerGmlStTestPasses();
+int main(int argc, char** argv) {
+  registerAllPasses();
+  deallocation::registerDeallocationPasses();
+  gml_st::registerGmlStPasses();
+  gml_st::registerGmlStTestPasses();
+  hlo::registerLMHLOTransformsPasses();
+  lmhlo::registerAllLmhloPasses();
+  mhlo::registerAllMhloPasses();
+  registerLMHLOGPUTransformsPasses();
+  thlo::registerAllThloPasses();
 
-  struct HloToGpuPipelineOptions
-      : public PassPipelineOptions<HloToGpuPipelineOptions> {
-    ListOption<int64_t> blockTileDim{
-        *this, "block-tile",
-        llvm::cl::desc("dimensions of the subproblem processed by the block")};
-    ListOption<int64_t> warpTileDim{
-        *this, "warp-tile",
-        llvm::cl::desc("dimensions of the subproblem processed by the warp")};
-    ListOption<int64_t> threadTileDim{
-        *this, "thread-tile",
-        llvm::cl::desc("dimensions of the subproblem processed by the thread")};
-    Option<bool> experimentalSoftmax{
-        *this, "experimental-softmax",
-        llvm::cl::desc(
-            "enable the experimental variant of this pipeline for softmax"),
-        llvm::cl::init(false)};
-  };
-  mlir::PassPipelineRegistration<HloToGpuPipelineOptions>(
-      "hlo-to-gpu-pipeline",
-      "Pipeline to transform HLO to LLVM + NVVM dialects.",
-      [](OpPassManager& pm, const HloToGpuPipelineOptions& opts) {
-        return createHloToGpuPipeline(pm, opts.blockTileDim, opts.warpTileDim,
-                                      opts.threadTileDim,
-                                      opts.experimentalSoftmax);
-      });
+  PassPipelineRegistration<gml_st::GmlStCPUTilingOptions>
+      gmlStCpuTilingPipeline("gml-st-cpu-tiling-pipeline",
+                             "Tiles, fuses, vectorizes tileable ops for CPU",
+                             gml_st::addCPUTilingPipeline);
 
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::mhlo::registerAllMhloDialects(registry);
-  mlir::stablehlo::registerAllDialects(registry);
-  registry.insert<mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
-                  mlir::gml_st::GmlStDialect, mlir::thlo::THLODialect>();
+  PassPipelineRegistration<> defaultGmlStCpuTilingPipeline(
+      "default-gml-st-cpu-tiling-pipeline",
+      "Tiles, fuses, vectorizes tileable ops for CPU with default parameters",
+      gml_st::addDefaultCPUTilingPipeline);
 
-  return failed(
-      mlir::MlirOptMain(argc, argv, "MLIR HLO pass driver\n", registry));
+  PassPipelineRegistration<> genericHostToLLVMPass(
+      "generic-host-to-llvm",
+      "Pipeline to lower common dialects resulting from HLO to LLVM",
+      hlo::createGenericHostToLLVMPipeline);
+
+  DialectRegistry registry;
+  registerAllDialects(registry);
+  mhlo::registerAllMhloDialects(registry);
+  stablehlo::registerAllDialects(registry);
+  registry.insert<deallocation::DeallocationDialect, lmhlo::LmhloDialect,
+                  lmhlo_gpu::LmhloGpuDialect, gml_st::GmlStDialect,
+                  thlo::THLODialect>();
+
+  registerTestHloTransformDialectEraseSchedulePass();
+  registerTestHloTransformDialectInterpreterPass();
+  return failed(MlirOptMain(argc, argv, "MLIR HLO pass driver\n", registry));
 }

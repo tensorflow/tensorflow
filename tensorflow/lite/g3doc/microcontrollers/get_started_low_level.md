@@ -18,7 +18,7 @@ The end-to-end workflow involves the following steps:
 
 1.  [Train a model](#train_a_model) (in Python): A jupyter notebook to train,
     convert and optimize a model for on-device use.
-2.  [Run inference](#run_inference) (in C++ 11): An end-to-end unit test that
+2.  [Run inference](#run_inference) (in C++ 17): An end-to-end unit test that
     runs inference on the model using the [C++ library](library.md).
 
 ## Get a supported device
@@ -150,10 +150,11 @@ In the following code, the model is instantiated using data from a `char` array,
 `g_model`, which is declared in `model.h`. We then check the model to ensure its
 schema version is compatible with the version we are using:
 
-```c++
+```C++
 const tflite::Model* model = ::tflite::GetModel(g_model);
 if (model->version() != TFLITE_SCHEMA_VERSION) {
-  error_reporter->Report("Model provided is schema version %d not equal "
+  TF_LITE_REPORT_ERROR(error_reporter,
+      "Model provided is schema version %d not equal "
       "to supported version %d.\n",
       model->version(), TFLITE_SCHEMA_VERSION);
 }
@@ -262,10 +263,10 @@ In this case, we input a floating point value representing `0`.
 To run the model, we can call `Invoke()` on our `tflite::MicroInterpreter`
 instance:
 
-```c++
+```C++
 TfLiteStatus invoke_status = interpreter.Invoke();
 if (invoke_status != kTfLiteOk) {
-  error_reporter->Report("Invoke failed\n");
+  TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
 }
 ```
 

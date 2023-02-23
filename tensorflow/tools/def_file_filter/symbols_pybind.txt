@@ -49,10 +49,22 @@ tensorflow::tfprof::SerializeToString
 [//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool] # graph_analyze
 tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
 
-[//tensorflow/python:bfloat16_lib] # bfloat16
-tensorflow::RegisterNumpyBfloat16
-tensorflow::Bfloat16Dtype
-tensorflow::Float8_E4M3B11Dtype
+[//tensorflow/tsl/python/lib/core:bfloat16_lib] # bfloat16
+tsl::RegisterNumpyBfloat16
+tsl::Bfloat16Dtype
+tsl::Bfloat16NumpyType
+tsl::Float8_E4M3B11Dtype
+
+[//tensorflow/tsl/python/lib/core:float8_lib] # float8_e4m3fn, float8_e5m2
+tsl::RegisterNumpyFloat8e4m3fn
+tsl::Float8e4m3fnDtype
+tsl::Float8e4m3fnNumpyType
+tsl::RegisterNumpyFloat8e5m2
+tsl::Float8e5m2Dtype
+tsl::Float8e5m2NumpyType
+
+[//tensorflow/tsl/python/lib/core:custom_casts_lib]
+tsl::RegisterCustomCasts
 
 [//tensorflow/python:py_func_lib] # py_func
 tensorflow::InitializePyTrampoline
@@ -92,6 +104,8 @@ tensorflow::SessionState::kTensorHandleResourceTypeName
 [//tensorflow/core/data/service:dispatcher_client] # dispatcher_client
 tensorflow::data::DataServiceDispatcherClient::EnsureInitialized
 tensorflow::data::DataServiceDispatcherClient::GetDataServiceMetadata
+tensorflow::data::DataServiceDispatcherClient::GetSnapshotSplit
+tensorflow::data::DataServiceDispatcherClient::Initialize
 
 [//tensorflow/core/data/service:grpc_util] # grpc_util
 tensorflow::data::grpc_util::Retry
@@ -102,7 +116,9 @@ tensorflow::data::GrpcDataServerBase::Start
 tensorflow::data::GrpcDataServerBase::Stop
 tensorflow::data::GrpcDataServerBase::BoundPort
 tensorflow::data::DispatchGrpcDataServer::NumWorkers
+tensorflow::data::DispatchGrpcDataServer::SnapshotStreams
 tensorflow::data::WorkerGrpcDataServer::NumTasks
+tensorflow::data::WorkerGrpcDataServer::SnapshotTaskProgresses
 tensorflow::data::NewDispatchServer
 tensorflow::data::NewWorkerServer
 
@@ -225,6 +241,7 @@ tensorflow::ExperimentalRunPassPipeline
 tensorflow::ExperimentalConvertSavedModelV1ToMlirLite
 tensorflow::ExperimentalConvertSavedModelV1ToMlir
 tensorflow::ExperimentalConvertSavedModelToMlir
+tensorflow::ExperimentalWriteBytecode
 tensorflow::ImportGraphDef
 tensorflow::ImportFunction
 
@@ -275,10 +292,12 @@ tensorflow::ExtendSession
 tensorflow::GetHandleShapeAndType
 tensorflow::SetHandleShapeAndType
 tensorflow::AddWhileInputHack
+tensorflow::RecordMutation
+tensorflow::Graph::IsControlEdge
 
-[//tensorflow/python:numpy_lib] # tf_session
-tensorflow::ImportNumpy
-_tensorflow_numpy_api
+[//tensorflow/tsl/python/lib/core:numpy] # tf_session
+tsl::ImportNumpy
+_tsl_numpy_api
 
 [//tensorflow/python/client:tf_session_helper] # tf_session
 tensorflow::TF_NewSessionRef
@@ -362,18 +381,15 @@ tensorflow::grappler::GetNumAvailableLogicalCPUCores
 [//tensorflow/core/profiler/internal:traceme_recorder_impl] # profiler
 tensorflow::profiler::TraceMeRecorder::Record
 
-[//tensorflow/core/profiler/lib:profiler_session_impl] # profiler
-tensorflow::ProfilerSession::Create
-tensorflow::ProfilerSession::CollectData
-tensorflow::ProfilerSession::Status
-tensorflow::ProfilerSession::~ProfilerSession
+[//tensorflow/tsl/profiler/lib:profiler_session_impl] # profiler
+tsl::ProfilerSession::Create
+tsl::ProfilerSession::CollectData
+tsl::ProfilerSession::Status
+tsl::ProfilerSession::~ProfilerSession
 
-[//tensorflow/core/profiler/rpc:profiler_server_impl] # profiler
-tensorflow::profiler::ProfilerServer::StartProfilerServer
-tensorflow::profiler::ProfilerServer::~ProfilerServer
-
-[//tensorflow/core/profiler/convert:hlo_to_tools_data_impl] # profiler
-tensorflow::profiler::ConvertHloProtoToToolData
+[//tensorflow/tsl/profiler/rpc:profiler_server_impl] # profiler
+tsl::profiler::ProfilerServer::StartProfilerServer
+tsl::profiler::ProfilerServer::~ProfilerServer
 
 [//tensorflow/core/profiler/rpc/client:profiler_client_impl] # profiler
 tensorflow::profiler::ProfileGrpc
@@ -383,6 +399,15 @@ tensorflow::profiler::RemoteProfilerSession::Create
 tensorflow::profiler::RemoteProfilerSession::GetServiceAddress
 tensorflow::profiler::RemoteProfilerSession::WaitForCompletion
 tensorflow::profiler::RemoteProfilerSession::~RemoteProfilerSession
+
+[//tensorflow/tsl/profiler/rpc/client:profiler_client_impl] # profiler
+tsl::profiler::ProfileGrpc
+tsl::profiler::NewSessionGrpc
+tsl::profiler::MonitorGrpc
+tsl::profiler::RemoteProfilerSession::Create
+tsl::profiler::RemoteProfilerSession::GetServiceAddress
+tsl::profiler::RemoteProfilerSession::WaitForCompletion
+tsl::profiler::RemoteProfilerSession::~RemoteProfilerSession
 
 [//tensorflow/compiler/xla:status_macros] # tfcompile
 xla::status_macros::MakeErrorStream::Impl::Impl
@@ -421,6 +446,10 @@ tensorflow::metrics::SavedModelWrite
 tensorflow::metrics::SavedModelRead
 tensorflow::metrics::SavedModelWriteApi
 tensorflow::metrics::SavedModelReadApi
+tensorflow::metrics::SavedModelWriteFingerprint
+tensorflow::metrics::SavedModelReadFingerprint
+tensorflow::metrics::SavedModelWritePath
+tensorflow::metrics::SavedModelReadPath
 tensorflow::metrics::CheckpointReadDuration
 tensorflow::metrics::CheckpointWriteDuration
 tensorflow::metrics::AsyncCheckpointWriteDuration
@@ -429,6 +458,8 @@ tensorflow::metrics::CheckpointSize
 
 [//tensorflow/cc/saved_model:fingerprinting_impl] # SavedModel Fingerprinting
 tensorflow::saved_model::fingerprinting::CreateFingerprintDef
+tensorflow::saved_model::fingerprinting::ReadSavedModelFingerprint
+tensorflow::saved_model::fingerprinting::MakeFingerprintMap
 
 
 [//tensorflow/compiler/jit:flags] # tfe
@@ -482,6 +513,9 @@ tensorflow::CopyPythonAPITensorLists
 [//tensorflow/core/platform:statusor] # tfe
 tensorflow::internal_statusor::Helper::Crash
 
+[//tensorflow/core/platform:cpu_feature_guard] # cpu_feature_guard
+tensorflow::port::InfoAboutUnusedCPUFeatures
+
 [//tensorflow/core/function:runtime_client_cc] # runtime_client
 tensorflow::core::function::GlobalEagerContext
 tensorflow::core::function::GlobalPythonEagerContext
@@ -527,9 +561,11 @@ tensorflow::dtensor::TPUCoreLocationsToIDs
 tensorflow::dtensor::Pack
 tensorflow::dtensor::Unpack
 tensorflow::dtensor::FetchLayout
+tensorflow::dtensor::IsDTensor
 tensorflow::dtensor::SparsePack
 tensorflow::dtensor::IsSparseDTensor
 tensorflow::dtensor::GetFunctionCacheHitAndMissCount
+tensorflow::dtensor::SetIteratorElementLayouts
 
 [//tensorflow/dtensor/cc:tensor_layout] # DTensor
 tensorflow::dtensor::Mesh

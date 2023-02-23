@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_SPECIALIZATION_H_
 #define TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_SPECIALIZATION_H_
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"
@@ -58,7 +58,7 @@ struct SpecializationListener {
 //
 // Returns error if arguments are not compatible with the function signature.
 absl::Status SpecializeFunction(
-    mlir::func::FuncOp func, ArgumentsRef arguments,
+    mlir::FunctionOpInterface func, ArgumentsRef arguments,
     llvm::ArrayRef<SymbolicShapesResolver::SymbolicShape> symbolic_shapes,
     llvm::ArrayRef<ArgumentConstraint> constraints,
     const SpecializationListener* listener = nullptr);

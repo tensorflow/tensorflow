@@ -15,19 +15,24 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 
+#include <array>
 #include <functional>
 #include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -42,6 +47,33 @@ bool IsConvCustomCall(const HloInstruction* instr) {
          (instr->custom_call_target() == kCudnnConvForwardCallTarget ||
           instr->custom_call_target() ==
               kCudnnConvBiasActivationForwardCallTarget);
+}
+
+bool IsConvDepthwise(const HloInstruction* instr) {
+  int64_t feature_group_count = instr->feature_group_count();
+  if (feature_group_count == 1) {
+    return false;
+  }
+
+  const HloInstruction* input = instr->operand(0);
+  int64_t input_feature_dimension =
+      instr->convolution_dimension_numbers().input_feature_dimension();
+  int64_t input_feature_count =
+      input->shape().dimensions(input_feature_dimension);
+  return input_feature_count == feature_group_count;
+}
+
+bool IsNonDepthwiseConvCustomCall(const HloInstruction* instr) {
+  return IsConvCustomCall(instr) && !IsConvDepthwise(instr);
+}
+
+bool IsExponentialMinusOne(const HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kExpm1;
+}
+
+bool HasThreeUsers(const HloInstruction* instr) {
+  int64_t user_count = instr->user_count();
+  return user_count == 3;
 }
 
 // Can instr be converted to type `dst_ty` without losing any precision?  For
@@ -148,28 +180,30 @@ StatusOr<HloInstruction*> EnsureIsConvBiasActivation(HloInstruction* conv) {
   return FailedPrecondition("Unsupported conv: %s", conv->ToString());
 }
 
-// convert<float>(gte(custom-call<int32>(int8_x, int8_w))) ->
-// gte(custom-call<float>(int8_x, int8_w))
-StatusOr<bool> FuseConvertToFloat(HloComputation* comp) {
+// convert<cvt_type>(gte(custom-call<conv_type>(int8_x, int8_w))) ->
+// gte(custom-call<cvt_type>(int8_x, int8_w))
+StatusOr<bool> FuseConvertTypeIntoConv(HloComputation* comp,
+                                       PrimitiveType conv_type,
+                                       PrimitiveType cvt_type) {
   bool changed = false;
   for (auto instr : comp->MakeInstructionPostOrder()) {
     HloInstruction* conv = nullptr;
+    auto tuple_elem =
+        m::GetTupleElement(m::Op(&conv).WithPredicate(IsConvCustomCall), 0)
+            .WithElementType(conv_type);
     auto pattern =
-        m::Convert(
-            m::GetTupleElement(m::Op(&conv).WithPredicate(IsConvCustomCall), 0)
-                .WithElementType(S32))
-            .WithElementType(F32);
+        m::Convert(tuple_elem.WithOneUser()).WithElementType(cvt_type);
     if (!Match(instr, pattern)) {
       continue;
     }
     if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
-          return absl::StrCat("FuseConvertToFloat: ", conv->ToString());
+          return absl::StrCat("FuseConvertTypeIntoConv: ", conv->ToString());
         })) {
       continue;
     }
 
     Shape new_shape = conv->shape();
-    new_shape.mutable_tuple_shapes(0)->set_element_type(F32);
+    new_shape.mutable_tuple_shapes(0)->set_element_type(cvt_type);
     HloInstruction* new_conv =
         comp->AddInstruction(conv->CloneWithNewShape(new_shape));
     comp->parent()->SetAndUniquifyInstrName(new_conv, conv->name());
@@ -183,6 +217,33 @@ StatusOr<bool> FuseConvertToFloat(HloComputation* comp) {
   return changed;
 }
 
+struct ConvConvertTypes {
+  PrimitiveType convolution_type;
+  PrimitiveType conversion_type;
+};
+
+// Remove convert around convolution by making the convolution-type
+// (custom call) to be the same as the conversion result.
+// For example: convert<float>(gte(custom-call<int32>(int8_x, int8_w))) ->
+// gte(custom-call<float>(int8_x, int8_w))
+StatusOr<bool> FuseRemoveConvertInConv(HloComputation* comp) {
+  bool changed = false;
+  // Note: We are eliminating F16->F32 due to the benchmark/test
+  // waymo/ml/deploy/sync_test/local:perception_occlusion_net_sync_test_v100
+  // not able to find an appropriate cuDNN function.
+  std::array<ConvConvertTypes, 3> types{{
+      {S32, F32},
+      {S8, F32},
+      {F32, S8},
+  }};
+  for (auto [conv_type, cvt_type] : types) {
+    TF_ASSIGN_OR_RETURN(bool curr_change,
+                        FuseConvertTypeIntoConv(comp, conv_type, cvt_type));
+    changed |= curr_change;
+  }
+  return changed;
+}
+
 // alpha * gte(custom-call(...)) ->
 // gte(custom-call(..., backend_config={alpha})).
 StatusOr<bool> FuseConvAlpha(HloComputation* comp) {
@@ -191,9 +252,12 @@ StatusOr<bool> FuseConvAlpha(HloComputation* comp) {
     HloInstruction* conv = nullptr;
     HloInstruction* gte = nullptr;
     HloInstruction* alpha = nullptr;
+
+    // We don't want to upgrade depthwise convolutions to ConvBiasActivation,
+    // because the fused CUDNN functions are slower for some of those.
     auto pattern = m::MultiplyAnyOrder(
-        m::GetTupleElement(&gte, m::Op(&conv).WithPredicate(IsConvCustomCall),
-                           0)
+        m::GetTupleElement(
+            &gte, m::Op(&conv).WithPredicate(IsNonDepthwiseConvCustomCall), 0)
             .WithOneUse(),
         m::Broadcast(m::ConstantEffectiveScalar(&alpha)));
     if (!Match(instr, pattern)) {
@@ -239,9 +303,15 @@ StatusOr<bool> FuseBiasOrSideInput(HloComputation* comp) {
     HloInstruction* conv = nullptr;
     HloInstruction* gte = nullptr;
     HloInstruction* addend = nullptr;
+
+    // We don't want to upgrade depthwise convolutions to ConvBiasActivation,
+    // because the fused CUDNN functions are slower for some of those.
     auto pattern = m::AddAnyOrder(
-        m::GetTupleElement(
-            &gte, m::Op(&conv).WithPredicate(IsConvCustomCall).WithOneUse(), 0)
+        m::GetTupleElement(&gte,
+                           m::Op(&conv)
+                               .WithPredicate(IsNonDepthwiseConvCustomCall)
+                               .WithOneUse(),
+                           0)
             .WithOneUse(),
         m::Op(&addend));
     if (!Match(instr, pattern)) {
@@ -445,19 +515,102 @@ StatusOr<bool> FuseSideInputAlpha(HloComputation* comp) {
   return changed;
 }
 
+StatusOr<bool> FuseElu(HloComputation* comp, se::CudaComputeCapability cc) {
+  bool changed = false;
+  for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
+    const DebugOptions& debug_options =
+        instr->GetModule()->config().debug_options();
+    if (!debug_options.xla_gpu_use_runtime_fusion() ||
+        !cc.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+      return false;
+    }
+
+    HloInstruction* gte;
+    HloInstruction* conv;
+    HloInstruction* expm1;
+
+    // In Elu computation, the GetTupleElement node will have three users:
+    // Compare, ExponentialMinusOnem, and Select.
+    // We don't want to upgrade depthwise convolutions to ConvBiasActivation,
+    // because the fused CUDNN functions are slower for some of those.
+    auto gte_pattern =
+        m::GetTupleElement(&gte,
+                           m::Op(&conv)
+                               .WithPredicate(IsNonDepthwiseConvCustomCall)
+                               .WithOneUse())
+            .WithElementType(F16)
+            .WithPredicate(HasThreeUsers);
+    if (!Match(instr,
+               m::Select(m::Compare(gte_pattern,
+                                    m::Broadcast(m::ConstantEffectiveScalar(0)))
+                             .WithComparisonDirection(ComparisonDirection::kGt)
+                             .WithOneUse(),
+                         gte_pattern,
+                         m::Op(&expm1)
+                             .WithPredicate(IsExponentialMinusOne)
+                             .WithOperand(0, gte_pattern)
+                             .WithOneUse()))) {
+      continue;
+    }
+
+    // In some cases, the XLA optimizes the inputs of the convolution by
+    // moving and broadcasting the bias to the side input, e.g., when the input
+    // spatial dimensions are all ones and filter spatial dimentsions are all
+    // non-ones. However, there is a known issue that the side input is not well
+    // supported in the cuDNN runtime fusion. Therefore, we skip these cases.
+    // TODO(kaixih@nvidia): remove this check when cuDNN fixes it.
+    if (conv->operands().size() > 3) {
+      continue;
+    }
+
+    // cuDNN runtime funsion kernels require 32-bit aligned data access. Since
+    // we only allow fp16 datatype, we need to check if the in and out channels
+    // of filter are even numbers.
+    const Shape& shape = conv->operand(1)->shape();
+    int64_t num_input_features = shape.dimensions(
+        conv->convolution_dimension_numbers().kernel_input_feature_dimension());
+    int64_t num_output_features =
+        shape.dimensions(conv->convolution_dimension_numbers()
+                             .kernel_output_feature_dimension());
+    if (num_input_features % 2 != 0 || num_output_features % 2 != 0) {
+      continue;
+    }
+
+    TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig config,
+                        conv->backend_config<CudnnConvBackendConfig>());
+    if (config.activation_mode() != se::dnn::kNone) {
+      continue;
+    }
+
+    if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
+          return absl::StrCat("FuseElu: ", conv->ToString());
+        })) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(conv, EnsureIsConvBiasActivation(conv));
+    config.set_activation_mode(se::dnn::kElu);
+    TF_RETURN_IF_ERROR(conv->set_backend_config(config));
+    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte));
+    changed = true;
+  }
+  return changed;
+}
+
 StatusOr<bool> FuseRelu(HloComputation* comp) {
   bool changed = false;
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
     HloInstruction* gte;
     HloInstruction* conv;
-    if (!Match(
-            instr,
-            m::MaximumAnyOrder(
-                m::Broadcast(m::ConstantEffectiveScalar(0)),
-                m::GetTupleElement(
-                    &gte,
-                    m::Op(&conv).WithPredicate(IsConvCustomCall).WithOneUse())
-                    .WithOneUse()))) {
+    // We don't want to upgrade depthwise convolutions to ConvBiasActivation,
+    // because the fused CUDNN functions are slower for some of those.
+    if (!Match(instr,
+               m::MaximumAnyOrder(
+                   m::Broadcast(m::ConstantEffectiveScalar(0)),
+                   m::GetTupleElement(
+                       &gte, m::Op(&conv)
+                                 .WithPredicate(IsNonDepthwiseConvCustomCall)
+                                 .WithOneUse())
+                       .WithOneUse()))) {
       continue;
     }
     TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig config,
@@ -764,8 +917,7 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(
        module->MakeNonfusionComputations(execution_threads)) {
     // Fuse "inside out" starting with the operations closest to the conv.
     bool changed = false;
-
-    TF_ASSIGN_OR_RETURN(changed, FuseConvertToFloat(comp));
+    TF_ASSIGN_OR_RETURN(changed, FuseRemoveConvertInConv(comp));
     any_changed |= changed;
 
     TF_ASSIGN_OR_RETURN(changed, FuseConvAlpha(comp));
@@ -786,6 +938,8 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(
     // cases.
     TF_ASSIGN_OR_RETURN(changed, FuseRelu(comp));
     any_changed |= changed;
+    TF_ASSIGN_OR_RETURN(changed, FuseElu(comp, compute_capability_));
+    any_changed |= changed;
 
     TF_ASSIGN_OR_RETURN(changed, FuseConvertToF16(comp));
     any_changed |= changed;
@@ -802,6 +956,8 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(
     any_changed |= changed;
 
     TF_ASSIGN_OR_RETURN(changed, FuseRelu(comp));
+    any_changed |= changed;
+    TF_ASSIGN_OR_RETURN(changed, FuseElu(comp, compute_capability_));
     any_changed |= changed;
 
     // Check that we don't have any convs outputing integer types other than s8.

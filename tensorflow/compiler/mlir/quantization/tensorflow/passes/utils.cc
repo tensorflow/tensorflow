@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "llvm/ADT/STLExtras.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/eval_util.h"
@@ -76,7 +77,7 @@ LogicalResult IsOperationFoldable(Operation* op) {
   // folded to preserve the original semantics.
   if (op->hasTrait<OpTrait::IsTerminator>() ||
       op->hasTrait<OpTrait::TF::NoConstantFold>() || op->getNumRegions() != 0 ||
-      !MemoryEffectOpInterface::hasNoEffect(op)) {
+      !isMemoryEffectFree(op)) {
     return failure();
   }
 
@@ -240,6 +241,16 @@ llvm::SmallVector<Value> ConstantFoldOpIfPossible(Operation* op) {
     return op->getResults();
   }
   return results;
+}
+
+llvm::SmallVector<Value> CloneOpWithReplacedOperands(
+    OpBuilder& builder, Operation* op,
+    const llvm::SmallVector<Value>& new_operands) {
+  IRMapping mapping;
+  for (const auto& arg : llvm::enumerate(new_operands)) {
+    mapping.map(op->getOperand(arg.index()), arg.value());
+  }
+  return builder.clone(*op, mapping)->getResults();
 }
 
 }  // namespace quant

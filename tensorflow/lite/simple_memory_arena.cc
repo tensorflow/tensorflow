@@ -26,7 +26,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/macros.h"
 #ifdef TF_LITE_TENSORFLOW_PROFILER
 #include "tensorflow/lite/tensorflow_profiler_logger.h"
@@ -147,6 +147,7 @@ TfLiteStatus SimpleMemoryArena::Commit(TfLiteContext* context,
   if (required_size > underlying_buffer_size_) {
     *arena_reallocated = true;
 #ifdef TF_LITE_TENSORFLOW_PROFILER
+    PauseHeapMonitoring(/*pause=*/true);
     OnTfLiteArenaAlloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
                        required_size);
 #endif
@@ -176,6 +177,9 @@ TfLiteStatus SimpleMemoryArena::Commit(TfLiteContext* context,
     underlying_buffer_.reset(new_alloc);
     underlying_buffer_size_ = required_size;
     underlying_buffer_aligned_ptr_ = new_underlying_buffer_aligned_ptr;
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+    PauseHeapMonitoring(/*pause=*/false);
+#endif
   } else {
     *arena_reallocated = false;
   }

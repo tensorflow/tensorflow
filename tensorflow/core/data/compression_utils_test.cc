@@ -107,24 +107,6 @@ TEST_P(ParameterizedCompressionUtilsTest, VersionMismatch) {
 INSTANTIATE_TEST_SUITE_P(Instantiation, ParameterizedCompressionUtilsTest,
                          ::testing::ValuesIn(TestCases()));
 
-class ParameterizedCompressionAndSerializationTest
-    : public DatasetOpsTestBase,
-      public ::testing::WithParamInterface<std::vector<Tensor>> {};
-
-TEST_P(ParameterizedCompressionAndSerializationTest, RoundTrip) {
-  std::vector<Tensor> element = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_tensors,
-                          CompressAndSerialize(element));
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Tensor> round_trip_element,
-                          DeserializeAndUncompress(serialized_tensors));
-  TF_EXPECT_OK(
-      ExpectEqual(element, round_trip_element, /*compare_order=*/true));
-}
-
-INSTANTIATE_TEST_SUITE_P(Instantiation,
-                         ParameterizedCompressionAndSerializationTest,
-                         ::testing::ValuesIn(TestCases()));
-
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

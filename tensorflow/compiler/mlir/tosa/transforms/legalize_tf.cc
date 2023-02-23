@@ -19,7 +19,10 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <limits>
+#include <memory>
 #include <numeric>
+#include <utility>
 
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
@@ -45,7 +48,7 @@ namespace {
 // Performs lowering to TOSA dialect
 class LegalizeTF : public impl::TosaLegalizeTFPassBase<LegalizeTF> {
  public:
-  explicit LegalizeTF() {}
+  explicit LegalizeTF() = default;
   void runOnOperation() override;
 };
 
@@ -129,6 +132,8 @@ DECL_CONVERT_OP(GatherNd);
 DECL_CONVERT_OP(SelectV2);
 DECL_CONVERT_OP(SpaceToDepth);
 DECL_CONVERT_OP(DepthToSpace);
+DECL_CONVERT_OP(Sin);
+DECL_CONVERT_OP(Cos);
 DECL_CONVERT_OP(SpaceToBatchND);
 DECL_CONVERT_OP(BatchToSpaceND);
 DECL_CONVERT_OP(ZerosLike);
@@ -244,6 +249,48 @@ LogicalResult ConvertTFGreaterEqualOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFSinOp::matchAndRewrite(Operation* op,
+                                              PatternRewriter& rewriter) const {
+  auto tf_sin_op = cast<TF::SinOp>(op);
+  ShapedType output_type = tf_sin_op.getResult().getType().cast<ShapedType>();
+
+  llvm::Optional<Value> result =
+      convertSinOp(rewriter, op, tf_sin_op.getX(), output_type);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.value()});
+  return success();
+}
+
+LogicalResult ConvertTFCosOp::matchAndRewrite(Operation* op,
+                                              PatternRewriter& rewriter) const {
+  auto tf_cos_op = cast<TF::CosOp>(op);
+  Value input = tf_cos_op.getX();
+  RankedTensorType input_ty = input.getType().dyn_cast<RankedTensorType>();
+  ShapedType output_ty = tf_cos_op.getResult().getType().dyn_cast<ShapedType>();
+
+  if (!input_ty || !output_ty) return failure();
+
+  bool input_is_fp = input_ty.getElementType().isa<mlir::FloatType>();
+  bool output_is_fp = output_ty.getElementType().isa<mlir::FloatType>();
+
+  if (!input_is_fp || !output_is_fp) {
+    return rewriter.notifyMatchFailure(
+        op, "ConvertTFCosOp: input/result must be fp.");
+  }
+
+  // Replace with the equivalent sin operation:
+  //   cos(x) = sin(x + π / 2).
+  auto fp_scalar_ty = RankedTensorType::get({}, rewriter.getF32Type());
+  auto pi_2 = rewriter.create<ConstOp>(
+      op->getLoc(), fp_scalar_ty,
+      DenseElementsAttr::get(fp_scalar_ty, {static_cast<float>(M_PI_2)}));
+  auto offset = rewriter.create<AddOp>(op->getLoc(), input_ty, input, pi_2);
+
+  CreateReplaceOpAndInfer<TF::SinOp>(rewriter, op, output_ty, offset);
+  return success();
+}
+
 LogicalResult ConvertTFAddOp::matchAndRewrite(Operation* op,
                                               PatternRewriter& rewriter) const {
   auto tf_add_op = cast<TF::AddOp>(op);
@@ -321,7 +368,7 @@ LogicalResult ConvertTFMulOp::matchAndRewrite(Operation* op,
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
   return success();
 }
 
@@ -335,7 +382,7 @@ LogicalResult ConvertTFSquareOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
   return success();
 }
 
@@ -349,7 +396,7 @@ LogicalResult ConvertTFSquaredDifferenceOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
   return success();
 }
 
@@ -368,7 +415,7 @@ LogicalResult ConvertTFRoundOp::matchAndRewrite(
 
     if (!result) return failure();
 
-    rewriter.replaceOp(op, {result.getValue()});
+    rewriter.replaceOp(op, {result.value()});
     return success();
 
   } else {
@@ -387,7 +434,7 @@ LogicalResult ConvertTFFloorDivOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -402,7 +449,7 @@ LogicalResult ConvertTFFloorModOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -517,29 +564,29 @@ LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
   auto tmpAttr = tf_avgpool_op.getDataFormatAttr();
   if (tmpAttr && tmpAttr.getValue().str() != "NHWC") return failure();
 
-  ArrayAttr pad;
-  ArrayAttr stride;
-  ArrayAttr kernel;
+  DenseI64ArrayAttr pad;
+  DenseI64ArrayAttr stride;
+  DenseI64ArrayAttr kernel;
   {
     auto tmpAttr = tf_avgpool_op.getStrides();
     if (!tmpAttr) {
-      stride = rewriter.getI64ArrayAttr({1, 1});
+      stride = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
       int64_t stride_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
       int64_t stride_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
-      stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
+      stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
     }
   }
   {
     auto tmpAttr = tf_avgpool_op.getKsize();
     if (!tmpAttr) {
-      kernel = rewriter.getI64ArrayAttr({1, 1});
+      kernel = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
       int64_t kernel_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
       int64_t kernel_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
-      kernel = rewriter.getI64ArrayAttr({kernel_h, kernel_w});
+      kernel = rewriter.getDenseI64ArrayAttr({kernel_h, kernel_w});
     }
   }
   {
@@ -547,8 +594,8 @@ LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
     if (!GetPaddingFromString(tf_avgpool_op.getPadding().str(), &tf_pad).ok())
       return failure();
 
-    ArrayAttr dilation =
-        rewriter.getI64ArrayAttr({1, 1});  // Pooling has no non-unit dilation
+    DenseI64ArrayAttr dilation = rewriter.getDenseI64ArrayAttr(
+        {1, 1});  // Pooling has no non-unit dilation
 
     SmallVector<int64_t, 4> i64array;
 
@@ -558,7 +605,7 @@ LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
     }
 
     RankedTensorType filter_type = tensorflow::GetTypeFromTFTensorShape(
-        llvm::makeArrayRef(i64array), rewriter.getIntegerType(64));
+        llvm::ArrayRef(i64array), rewriter.getIntegerType(64));
 
     if (!getPaddingValuesFromPadType(
             tf_pad,
@@ -587,29 +634,29 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
   auto tmpAttr = tf_maxpool_op.getDataFormatAttr();
   if (tmpAttr && tmpAttr.getValue().str() != "NHWC") return failure();
 
-  ArrayAttr pad;
-  ArrayAttr stride;
-  ArrayAttr kernel;
+  DenseI64ArrayAttr pad;
+  DenseI64ArrayAttr stride;
+  DenseI64ArrayAttr kernel;
   {
     auto tmpAttr = tf_maxpool_op.getStrides();
     if (!tmpAttr) {
-      stride = rewriter.getI64ArrayAttr({1, 1});
+      stride = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
       int64_t stride_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
       int64_t stride_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
-      stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
+      stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
     }
   }
   {
     auto tmpAttr = tf_maxpool_op.getKsize();
     if (!tmpAttr) {
-      kernel = rewriter.getI64ArrayAttr({1, 1});
+      kernel = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
       int64_t kernel_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
       int64_t kernel_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
-      kernel = rewriter.getI64ArrayAttr({kernel_h, kernel_w});
+      kernel = rewriter.getDenseI64ArrayAttr({kernel_h, kernel_w});
     }
   }
   {
@@ -618,7 +665,7 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
       return failure();
 
     // Pooling has no non-unit dilation
-    ArrayAttr dilation = rewriter.getI64ArrayAttr({1, 1});
+    DenseI64ArrayAttr dilation = rewriter.getDenseI64ArrayAttr({1, 1});
 
     SmallVector<int64_t, 4> i64array;
 
@@ -628,7 +675,7 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
     }
 
     RankedTensorType filter_type = tensorflow::GetTypeFromTFTensorShape(
-        llvm::makeArrayRef(i64array), rewriter.getIntegerType(64));
+        llvm::ArrayRef(i64array), rewriter.getIntegerType(64));
 
     if (!getPaddingValuesFromPadType(
             tf_pad,
@@ -646,6 +693,7 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
 LogicalResult ConvertTFConcatV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_concatv2_op = cast<TF::ConcatV2Op>(op);
+  auto result_type = tf_concatv2_op.getResult().getType().cast<ShapedType>();
   SmallVector<Value> values(tf_concatv2_op.getValues());
 
   ElementsAttr axis_elems;
@@ -655,11 +703,11 @@ LogicalResult ConvertTFConcatV2Op::matchAndRewrite(
   int32_t axis = axis_elems.getValues<IntegerAttr>()[0].getInt();
 
   llvm::Optional<Value> result =
-      convertConcatV2Op(rewriter, op, tf_concatv2_op.getResult(), values, axis);
+      convertConcatV2Op(rewriter, op, result_type, values, axis);
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -679,7 +727,7 @@ LogicalResult ConvertTFReshapeOp::matchAndRewrite(
   for (int i = 0; i < output_type.getShape().size(); i++) {
     shape_vals.push_back(output_type.getShape()[i]);
   }
-  ArrayAttr shape_attr = rewriter.getI64ArrayAttr(shape_vals);
+  DenseI64ArrayAttr shape_attr = rewriter.getDenseI64ArrayAttr(shape_vals);
 
   CreateReplaceOpAndInfer<tosa::ReshapeOp>(
       rewriter, op, output_type, tf_reshape_op.getTensor(), shape_attr);
@@ -729,8 +777,8 @@ LogicalResult ConvertTFShapeOp::matchAndRewrite(
 
   RankedTensorType shape_type = tensorflow::GetTypeFromTFTensorShape(
       {static_cast<int32_t>(shape_arr.size())}, rewriter.getIntegerType(32));
-  auto shape_attr = DenseI32ArrayAttr::get(rewriter.getContext(),
-                                           llvm::makeArrayRef(shape_arr));
+  auto shape_attr =
+      DenseI32ArrayAttr::get(rewriter.getContext(), llvm::ArrayRef(shape_arr));
   auto shape_const = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
                                                      shape_type, shape_attr);
 
@@ -749,7 +797,7 @@ LogicalResult ConvertTFExpandDimsOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -771,7 +819,7 @@ LogicalResult ConvertTFSqueezeOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -808,14 +856,14 @@ LogicalResult ConvertTFFillOp::matchAndRewrite(
     SmallVector<float> fill_arr(
         total_size,
         value_elem.getValues<FloatAttr>()[0].getValue().convertToFloat());
-    fill_attr = DenseF32ArrayAttr::get(rewriter.getContext(),
-                                       llvm::makeArrayRef(fill_arr));
+    fill_attr =
+        DenseF32ArrayAttr::get(rewriter.getContext(), llvm::ArrayRef(fill_arr));
   } else {
     SmallVector<int32_t> fill_arr(
         total_size,
         value_elem.getValues<IntegerAttr>()[0].getValue().getLimitedValue());
-    fill_attr = DenseI32ArrayAttr::get(rewriter.getContext(),
-                                       llvm::makeArrayRef(fill_arr));
+    fill_attr =
+        DenseI32ArrayAttr::get(rewriter.getContext(), llvm::ArrayRef(fill_arr));
   }
   auto fill_const_op = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
                                                        fill_type, fill_attr);
@@ -849,7 +897,7 @@ LogicalResult ConvertTFConv2DOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -911,29 +959,29 @@ LogicalResult ConvertTFDepthwiseConv2dNativeOp::matchAndRewrite(
   auto tmpAttr = tf_dwconv2d_op.getDataFormatAttr();
   if (tmpAttr && tmpAttr.getValue().str() != "NHWC") return failure();
 
-  ArrayAttr stride;
-  ArrayAttr dilation;
-  ArrayAttr pad;
+  DenseI64ArrayAttr stride;
+  DenseI64ArrayAttr dilation;
+  DenseI64ArrayAttr pad;
   {
     auto tmpAttr = tf_dwconv2d_op.getStrides();
     if (!tmpAttr) {
-      stride = rewriter.getI64ArrayAttr({1, 1});
+      stride = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
       int64_t stride_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
       int64_t stride_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
-      stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
+      stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
     }
   }
   {
     auto tmpAttr = tf_dwconv2d_op.getDilations();
     if (!tmpAttr) {
-      dilation = rewriter.getI64ArrayAttr({1, 1});
+      dilation = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
       int64_t dilation_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
       int64_t dilation_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
-      dilation = rewriter.getI64ArrayAttr({dilation_h, dilation_w});
+      dilation = rewriter.getDenseI64ArrayAttr({dilation_h, dilation_w});
     }
   }
   {
@@ -1003,20 +1051,20 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(ArrayRef<int64_t>(a1_transpose_dims),
                                            filter_type.getElementType()),
-      tf_conv_op.getFilter(), a1_filter_transpose_perm.getValue());
+      tf_conv_op.getFilter(), a1_filter_transpose_perm.value());
 
-  ArrayAttr stride;
-  ArrayAttr outpad;
-  ArrayAttr output_shape;
+  DenseI64ArrayAttr stride;
+  DenseI64ArrayAttr outpad;
+  DenseI64ArrayAttr output_shape;
   {
     auto tmpAttr = tf_conv_op.getStrides();
     if (!tmpAttr) {
-      stride = rewriter.getI64ArrayAttr({1, 1});
+      stride = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
       int64_t stride_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
       int64_t stride_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
-      stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
+      stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
     }
   }
   {
@@ -1058,10 +1106,10 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
       for (int i = 0; i < output_shape_elems.getNumElements(); i++)
         shape_vec.push_back(
             output_shape_elems.getValues<IntegerAttr>()[i].getInt());
-      output_shape = rewriter.getI64ArrayAttr(shape_vec);
+      output_shape = rewriter.getDenseI64ArrayAttr(shape_vec);
     } else {
       // Use output tensor's shape otherwise.
-      output_shape = rewriter.getI64ArrayAttr(output_type.getShape());
+      output_shape = rewriter.getDenseI64ArrayAttr(output_type.getShape());
     }
   }
 
@@ -1074,7 +1122,7 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
 
   CreateReplaceOpAndInfer<tosa::TransposeConv2DOp>(
       rewriter, op, output_type, tf_conv_op.getOutBackprop(),
-      a1_filter_transpose_op.getResult(), zero_bias.getValue(), outpad, stride,
+      a1_filter_transpose_op.getResult(), zero_bias.value(), outpad, stride,
       output_shape);
 
   return success();
@@ -1097,7 +1145,7 @@ LogicalResult ConvertTFAllOp::matchAndRewrite(Operation* op,
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1119,7 +1167,7 @@ LogicalResult ConvertTFAnyOp::matchAndRewrite(Operation* op,
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1141,7 +1189,7 @@ LogicalResult ConvertTFMaxOp::matchAndRewrite(Operation* op,
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1163,7 +1211,7 @@ LogicalResult ConvertTFMinOp::matchAndRewrite(Operation* op,
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1185,7 +1233,7 @@ LogicalResult ConvertTFMeanOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1207,7 +1255,7 @@ LogicalResult ConvertTFProdOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1229,7 +1277,7 @@ LogicalResult ConvertTFSumOp::matchAndRewrite(Operation* op,
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1243,7 +1291,7 @@ LogicalResult ConvertTFEluOp::matchAndRewrite(Operation* op,
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1258,7 +1306,7 @@ LogicalResult ConvertTFSoftmaxOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1272,7 +1320,7 @@ LogicalResult ConvertTFLogSoftmaxOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1485,8 +1533,8 @@ LogicalResult ConvertTFSliceOp::matchAndRewrite(
                      output_type.getShape().end());
   }
 
-  ArrayAttr begin = rewriter.getI64ArrayAttr(begin_vals);
-  ArrayAttr size = rewriter.getI64ArrayAttr(size_vals);
+  DenseI64ArrayAttr begin = rewriter.getDenseI64ArrayAttr(begin_vals);
+  DenseI64ArrayAttr size = rewriter.getDenseI64ArrayAttr(size_vals);
 
   CreateReplaceOpAndInfer<tosa::SliceOp>(rewriter, op, output_type,
                                          tf_slice_op.getInput(), begin, size);
@@ -1510,7 +1558,8 @@ LogicalResult ConvertTFTileOp::matchAndRewrite(
     multiples_vals.push_back(
         multiples_elems.getValues<IntegerAttr>()[i].getInt());
 
-  ArrayAttr multiples_attr = rewriter.getI64ArrayAttr(multiples_vals);
+  DenseI64ArrayAttr multiples_attr =
+      rewriter.getDenseI64ArrayAttr(multiples_vals);
 
   CreateReplaceOpAndInfer<tosa::TileOp>(rewriter, op, output_type,
                                         tf_tile_op.getInput(), multiples_attr);
@@ -1554,7 +1603,7 @@ LogicalResult ConvertTFPackOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1576,7 +1625,7 @@ LogicalResult ConvertTFUnpackOp::matchAndRewrite(
 
   if (!results) return failure();
 
-  rewriter.replaceOp(op, results.getValue());
+  rewriter.replaceOp(op, results.value());
 
   return success();
 }
@@ -1605,7 +1654,7 @@ LogicalResult ConvertTFSplitOp::matchAndRewrite(
 
   if (!results) return failure();
 
-  rewriter.replaceOp(op, results.getValue());
+  rewriter.replaceOp(op, results.value());
 
   return success();
 }
@@ -1641,7 +1690,7 @@ LogicalResult ConvertTFSplitVOp::matchAndRewrite(
 
   if (!results) return failure();
 
-  rewriter.replaceOp(op, results.getValue());
+  rewriter.replaceOp(op, results.value());
 
   return success();
 }
@@ -1729,7 +1778,7 @@ LogicalResult ConvertTFMirrorPadOp::matchAndRewrite(
       rewriter, op, output_type, tf_mirrorpad_op.getInput(),
       tf_mirrorpad_op.getPaddings(), mode);
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1750,7 +1799,7 @@ LogicalResult ConvertTFResizeBilinearOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1772,7 +1821,7 @@ LogicalResult ConvertTFResizeNearestNeighborOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1822,11 +1871,11 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
   // [N, H, C] * [N, C, W] -> [N, H, W].
   auto op1_reshape_a = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(), batch_a_type, tf_matmul_op.getA(),
-      rewriter.getI64ArrayAttr(batch_a_shape));
+      rewriter.getDenseI64ArrayAttr(batch_a_shape));
 
   auto op2_reshape_b = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(), batch_b_type, tf_matmul_op.getB(),
-      rewriter.getI64ArrayAttr(batch_b_shape));
+      rewriter.getDenseI64ArrayAttr(batch_b_shape));
 
   auto op3_matmul_op1_op2 = CreateOpAndInfer<tosa::MatMulOp>(
       rewriter, op->getLoc(), batch_output_type, op1_reshape_a.getResult(),
@@ -1834,7 +1883,7 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
 
   CreateReplaceOpAndInfer<tosa::ReshapeOp>(
       rewriter, op, output_type, op3_matmul_op1_op2.getResult(),
-      rewriter.getI64ArrayAttr(output_type.getShape()));
+      rewriter.getDenseI64ArrayAttr(output_type.getShape()));
 
   return success();
 }
@@ -1853,7 +1902,7 @@ LogicalResult ConvertTFGatherOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1877,7 +1926,7 @@ LogicalResult ConvertTFGatherV2Op::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1892,7 +1941,7 @@ LogicalResult ConvertTFGatherNdOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1907,7 +1956,7 @@ LogicalResult ConvertTFSelectV2Op::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1922,7 +1971,7 @@ LogicalResult ConvertTFSpaceToDepthOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1937,7 +1986,7 @@ LogicalResult ConvertTFDepthToSpaceOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1951,7 +2000,7 @@ LogicalResult ConvertTFSpaceToBatchNDOp::matchAndRewrite(
       tf_s2b_op.getBlockShape(), tf_s2b_op.getPaddings());
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1966,7 +2015,7 @@ LogicalResult ConvertTFBatchToSpaceNDOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1985,7 +2034,7 @@ LogicalResult ConvertTFStridedSliceOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1999,7 +2048,7 @@ LogicalResult ConvertTFZerosLikeOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -2166,7 +2215,7 @@ LogicalResult ConvertTFFakeQuantWithMinMaxArgsOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -2201,7 +2250,7 @@ LogicalResult ConvertTFFakeQuantWithMinMaxVarsOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -2267,7 +2316,7 @@ LogicalResult ConvertTFOneHotOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -2331,11 +2380,11 @@ LogicalResult ConvertTFBatchMatMulV2Op::matchAndRewrite(
 
     auto op1_reshape_x = CreateOpAndInfer<tosa::ReshapeOp>(
         rewriter, op->getLoc(), rank3_x_type, tf_batch_matmul_op.getX(),
-        rewriter.getI64ArrayAttr(rank3_x_shape));
+        rewriter.getDenseI64ArrayAttr(rank3_x_shape));
 
     auto op2_reshape_y = CreateOpAndInfer<tosa::ReshapeOp>(
         rewriter, op->getLoc(), rank3_y_type, tf_batch_matmul_op.getY(),
-        rewriter.getI64ArrayAttr(rank3_y_shape));
+        rewriter.getDenseI64ArrayAttr(rank3_y_shape));
 
     auto op3_matmul_op1_op2 = CreateOpAndInfer<tosa::MatMulOp>(
         rewriter, op->getLoc(), rank3_output_type, op1_reshape_x.getResult(),
@@ -2343,7 +2392,7 @@ LogicalResult ConvertTFBatchMatMulV2Op::matchAndRewrite(
 
     CreateReplaceOpAndInfer<tosa::ReshapeOp>(
         rewriter, op, output_type, op3_matmul_op1_op2.getResult(),
-        rewriter.getI64ArrayAttr(output_type.getShape()));
+        rewriter.getDenseI64ArrayAttr(output_type.getShape()));
   }
   return success();
 }
@@ -2432,6 +2481,8 @@ void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns) {
   patterns.add<ConvertTFSelectV2Op>(ctx);
   patterns.add<ConvertTFSpaceToDepthOp>(ctx);
   patterns.add<ConvertTFDepthToSpaceOp>(ctx);
+  patterns.add<ConvertTFSinOp>(ctx);
+  patterns.add<ConvertTFCosOp>(ctx);
   patterns.add<ConvertTFSpaceToBatchNDOp>(ctx);
   patterns.add<ConvertTFBatchToSpaceNDOp>(ctx);
   patterns.add<ConvertTFZerosLikeOp>(ctx);

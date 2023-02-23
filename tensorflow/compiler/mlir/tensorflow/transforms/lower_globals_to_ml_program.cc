@@ -121,12 +121,6 @@ SymbolRefAttr lookupGlobalTensor(func::FuncOp func, Value resource,
 }
 
 static LogicalResult convertTFGlobals(ModuleOp module) {
-  if (auto sessionInitializer =
-          tf_saved_model::GetSessionInitializerOp(module)) {
-    return sessionInitializer.emitError()
-           << "Session initializer is not supported yet";
-  }
-
   OpBuilder globalBuilder(module.getBodyRegion());
   DenseMap<Operation *, std::string> opToName;
   for (auto globalTensor : module.getOps<tf_saved_model::GlobalTensorOp>()) {

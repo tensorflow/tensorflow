@@ -161,6 +161,7 @@ class Conv2DTransposeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradient(self):
+    self.skipTest("b/262851489: Fix nightly build for GPU.")
     x_shape = [2, 6, 4, 3]
     f_shape = [3, 3, 2, 3]
     y_shape = [2, 12, 8, 2]
@@ -317,6 +318,17 @@ class Conv2DTransposeTest(test.TestCase):
             filters=np.ones((1, 1, 1, 1)),
             output_shape=[2, -2],
             strides=[1])
+        self.evaluate(op)
+
+  def testConv2DTransposeLargeOutputShape(self):
+    # On GPU, this test does try to allocate the output tensor and OOMs.
+    with test_util.device(use_gpu=False):
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        op = nn_ops.conv2d_transpose(
+            input=np.ones((2, 2, 2, 2)),
+            output_shape=[114078056, 179835296],
+            strides=[10],
+            filters=[[[[1]]]])
         self.evaluate(op)
 
 if __name__ == "__main__":

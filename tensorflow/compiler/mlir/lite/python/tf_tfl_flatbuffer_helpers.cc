@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
 
+#include <optional>
 #include <ostream>
 #include <string>
 #include <unordered_set>
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -43,8 +43,9 @@ limitations under the License.
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 namespace tensorflow {
 namespace internal {
@@ -234,7 +235,7 @@ Status PopulateQuantizationSpecs(
           DataType_Name(ConvertIODataTypeToDataType(toco_data_type)));
     }
     if (flag.shape().unknown_rank()) {
-      node_shapes->push_back(llvm::None);
+      node_shapes->push_back(std::nullopt);
     } else {
       node_shapes->push_back(std::vector<int>(flag.shape().dims().begin(),
                                               flag.shape().dims().end()));
@@ -248,8 +249,8 @@ Status PopulateQuantizationSpecs(
         node_mins->push_back(min_max.first);
         node_maxs->push_back(min_max.second);
       } else {
-        node_mins->push_back(llvm::None);
-        node_maxs->push_back(llvm::None);
+        node_mins->push_back(std::nullopt);
+        node_maxs->push_back(std::nullopt);
       }
     }
   }
@@ -306,9 +307,10 @@ Status PopulateQuantizationSpecs(
   if (toco_flags.has_default_ranges_max()) {
     quant_specs->default_ranges.second = toco_flags.default_ranges_max();
   }
-  if (toco_flags.enable_mlir_dynamic_range_quantizer()) {
-    quant_specs->enable_mlir_dynamic_range_quantizer = true;
-  }
+  quant_specs->enable_mlir_dynamic_range_quantizer =
+      toco_flags.enable_mlir_dynamic_range_quantizer();
+  quant_specs->enable_mlir_variable_quantization =
+      toco_flags.enable_mlir_variable_quantization();
   return OkStatus();
 }
 

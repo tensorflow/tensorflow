@@ -4,7 +4,10 @@
 
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
-package(default_visibility = ["//tensorflow/lite/delegates/hexagon/java:__subpackages__"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//tensorflow/lite/delegates/hexagon/java:__subpackages__"],
+)
 
 licenses(["notice"])
 

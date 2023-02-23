@@ -102,6 +102,9 @@ int main(int argc, char** argv) {
           "than the reference this is necessary because some HLO passes are "
           "legalization passes which must be run prior to code generation."),
 
+      tsl::Flag("random_init_input_literals", &opts.random_init_input_literals,
+                "Initialize input literals with random numbers."
+                "Leave them uninitialized otherwise."),
       tsl::Flag("use_large_float_range", &opts.use_large_float_range,
                 "Generate floating point values using a large uniform-log "
                 "distribution as opposed to a small uniform distribution."),
@@ -156,7 +159,10 @@ int main(int argc, char** argv) {
     hlo_filename = argv[1];
   }
 
-  std::minstd_rand0 engine;
+  std::unique_ptr<std::minstd_rand0> engine;
+  if (opts.random_init_input_literals) {
+    engine = std::make_unique<std::minstd_rand0>();
+  }
   int failure_count = 0;
   const int iteration_count = opts.iterations;
   for (int i = 1; i <= iteration_count; ++i) {
@@ -164,7 +170,7 @@ int main(int argc, char** argv) {
       std::cerr << "\n=== Iteration " << i << "\n";
     }
     xla::Status matched = xla::RunAndCompare(
-        hlo_filename, &test_runner, reference_runner.get(), &engine, opts);
+        hlo_filename, &test_runner, reference_runner.get(), engine.get(), opts);
 
     // The AssertionResult is only meaningful when the reference is
     // used. Without a reference, the test just verifies that nothing blew up

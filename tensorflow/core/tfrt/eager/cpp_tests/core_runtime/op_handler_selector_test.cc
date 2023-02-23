@@ -356,7 +356,8 @@ class SelectorTest : public ::testing::Test {
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
         /* async */ false, device_manager_,
         /* device_mgr_owned */ false, /* rendezvous */ nullptr,
-        /* cluster_flr */ nullptr);
+        /* cluster_flr */ nullptr, /*collective_executor_mgr=*/nullptr,
+        /*run_eager_op_as_function=*/true);
     corert_ = CreateCoreRuntime();
     fallback_op_handler_ = CreateOpHandler();
     cpu_op_handler_ = CreateOpHandler();

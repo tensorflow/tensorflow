@@ -105,13 +105,25 @@ def validation_model(
               %s %s \
               --jpegs=$$JPEGS \
               --use_ondevice_cpu_for_golden=%s \
-              --output=$(@D)/tmp
+              --output='$(@D)/%s.tflite.tmp'
           $(location //tensorflow/lite/experimental/acceleration/mini_benchmark:copy_associated_files) \
-              $(@D)/tmp \
+              '$(@D)/%s.tflite.tmp' \
               $(location %s) \
               $(location %s.tflite)
-          rm $(@D)/tmp
-        """ % (jpegs, main_model, metrics_model, scale_arg, zeropoint_arg, use_ondevice_cpu_for_golden, main_model, name),
+          rm '$(@D)/%s.tflite.tmp'
+        """ % (
+            jpegs,
+            main_model,
+            metrics_model,
+            scale_arg,
+            zeropoint_arg,
+            use_ondevice_cpu_for_golden,
+            name,
+            name,
+            main_model,
+            name,
+            name,
+        ),
         tools = [
             "//tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:embedder_cmdline",
             "//tensorflow/lite/experimental/acceleration/mini_benchmark:copy_associated_files",
@@ -150,9 +162,9 @@ def validation_test(name, validation_model, tags = [], copts = [], deps = []):
             "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
             "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
             "//tensorflow/lite/experimental/acceleration/mini_benchmark:big_little_affinity",
-            "//tensorflow/lite/experimental/acceleration/mini_benchmark:model_loader",
             "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
             "//tensorflow/lite/experimental/acceleration/mini_benchmark:validator",
+            "//tensorflow/lite/tools:model_loader",
         ] + select({
             clean_dep("//tensorflow:android"): [
                 "//tensorflow/lite/experimental/acceleration/configuration:gpu_plugin",

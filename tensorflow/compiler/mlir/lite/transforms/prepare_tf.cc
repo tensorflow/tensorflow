@@ -64,6 +64,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/size_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
@@ -317,7 +318,7 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
     auto perm_type = tensorflow::GetTypeFromTFTensorShape(
         {static_cast<int>(perm.size())}, rewriter.getIntegerType(32));
     auto perm_attr =
-        DenseElementsAttr::get(perm_type, llvm::makeArrayRef<int>(perm));
+        DenseElementsAttr::get(perm_type, llvm::ArrayRef<int>(perm));
     auto perm_op = rewriter.create<TF::ConstOp>(loc, perm_type, perm_attr);
 
     // Create tensor type for the transpose result.
@@ -394,8 +395,9 @@ class ConvertTFDepthwiseConv2dNative
         tensorflow::GetTypeFromTFTensorShape({4}, rewriter.getIntegerType(32));
     SmallVector<Attribute, 4> result_shape_data(4);
     for (int i = 0; i < 4; ++i) {
+      auto size = result_shape[i];
       result_shape_data[i] =
-          rewriter.getI32IntegerAttr(static_cast<int32_t>(result_shape[i]));
+          rewriter.getI32IntegerAttr(ConvertToTfliteSize(size));
     }
     auto shape_attr = DenseElementsAttr::get(shape_type, result_shape_data);
     auto shape = rewriter.create<TF::ConstOp>(loc, shape_type, shape_attr);
@@ -466,8 +468,9 @@ struct ConvertTFStridedSlice : public RewritePattern {
         {dim_size}, rewriter.getIntegerType(32));
     SmallVector<Attribute, 4> result_shape_data(dim_size);
     for (int i = 0; i < dim_size; ++i) {
+      auto size = revised_shape[i];
       result_shape_data[i] =
-          rewriter.getI32IntegerAttr(static_cast<int32_t>(revised_shape[i]));
+          rewriter.getI32IntegerAttr(ConvertToTfliteSize(size));
     }
 
     auto shape_attr = DenseElementsAttr::get(shape_type, result_shape_data);
@@ -997,14 +1000,14 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
     auto odsLoc = rewriter.getFusedLoc({fused_batch_norm->getLoc()});
 
     // We need to make sure input and output shapes are compatible.
-    int64_t last_dim = ShapedType::kDynamicSize;
+    int64_t last_dim = ShapedType::kDynamic;
     {
       auto is_last_dim_compatible = [](const Value &v, int64_t &last_dim) {
         auto v_type = v.getType().dyn_cast_or_null<RankedTensorType>();
         if (!v_type) return true;
         int64_t v_last_dim = v_type.getDimSize(v_type.getRank() - 1);
-        if (v_last_dim == ShapedType::kDynamicSize) return true;
-        if (last_dim != ShapedType::kDynamicSize && v_last_dim != last_dim)
+        if (v_last_dim == ShapedType::kDynamic) return true;
+        if (last_dim != ShapedType::kDynamic && v_last_dim != last_dim)
           return false;
         last_dim = v_last_dim;
         return true;
@@ -1218,7 +1221,9 @@ LogicalResult ConvertTf2XlaOps(func::FuncOp func, MLIRContext *context) {
   target.addIllegalOp<TF::XlaGatherOp>();
 
   RewritePatternSet patterns(context);
-  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns, context);
+  mhlo::Tf2XlaTypeConverter converter;
+  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns, context,
+                                             converter);
   mhlo::PopulateLegalizeTfPatterns(context, &patterns);
   TF::PopulateLegalizeHloToTfPatterns(&patterns, context);
   mhlo::GatherOp::getCanonicalizationPatterns(patterns, context);

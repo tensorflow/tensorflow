@@ -251,7 +251,8 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
         foo, input_signature)
     self.assertEqual(
         tuple(spec.fullargspec),
-        ([], 'my_var_args', None, None, [], None, {}))
+        (['my_var_args_0', 'my_var_args_1', 'my_var_args_2'
+         ], None, None, None, [], None, {}))
     self.assertEqual(spec.is_method, False)
     self.assertEqual(spec.input_signature, input_signature)
     self.assertEqual(spec.default_values, {})
@@ -320,10 +321,10 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
         spec.function_type,
         function_type_lib.FunctionType([
             function_type_lib.Parameter(
-                'x', function_type_lib.Parameter.POSITIONAL_ONLY, False,
+                'x', function_type_lib.Parameter.POSITIONAL_OR_KEYWORD, False,
                 type_constraint[0]),
             function_type_lib.Parameter(
-                'y', function_type_lib.Parameter.POSITIONAL_ONLY, False,
+                'y', function_type_lib.Parameter.POSITIONAL_OR_KEYWORD, False,
                 type_constraint[1]),
             function_type_lib.Parameter(
                 'z', function_type_lib.Parameter.KEYWORD_ONLY, True,
@@ -358,8 +359,85 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
       }),
       decorator=(dummy_tf_decorator, transparent_decorator),
   )
-  def test_method_bound(self, input_signature, type_constraint, decorator):
+  def test_method_bound_internal(
+      self, input_signature, type_constraint, decorator
+  ):
 
+    def testing_decorator(func):
+      spec = function_spec.FunctionSpec.from_function_and_signature(
+          func, input_signature
+      )
+      self.assertEqual(
+          tuple(spec.fullargspec),
+          (['self', 'x', 'y'], None, None, (1,), [], None, {}),
+      )
+
+      self.assertEqual(spec.is_method, False)
+      self.assertEqual(spec.default_values, {'y': 1})
+
+      self.assertEqual(
+          spec.function_type,
+          function_type_lib.FunctionType([
+              function_type_lib.Parameter(
+                  'self',
+                  function_type_lib.Parameter.POSITIONAL_OR_KEYWORD,
+                  False,
+                  type_constraint[0],
+              ),
+              function_type_lib.Parameter(
+                  'x',
+                  function_type_lib.Parameter.POSITIONAL_OR_KEYWORD,
+                  False,
+                  type_constraint[1],
+              ),
+              function_type_lib.Parameter(
+                  'y',
+                  function_type_lib.Parameter.POSITIONAL_OR_KEYWORD,
+                  True,
+                  type_constraint[2],
+              ),
+          ]),
+      )
+
+      return func
+
+    class MyClass:
+
+      @testing_decorator
+      def foo(self, x, y=1):
+        pass
+
+    MyClass().foo(1)
+
+  @parameterized.product(
+      ({
+          'input_signature': None,
+          'type_constraint': (None, None, None)
+      }, {
+          'input_signature': (tensor_spec.TensorSpec(shape=None),
+                              tensor_spec.TensorSpec(shape=None)),
+          'type_constraint': (tensor_spec.TensorSpec(shape=None),
+                              tensor_spec.TensorSpec(shape=None))
+      }, {
+          'input_signature': (tensor_spec.TensorSpec(shape=None),),
+          'type_constraint': (tensor_spec.TensorSpec(shape=None),
+                              trace_type.from_value(1))
+      }, {
+          'input_signature': ([
+              tensor_spec.TensorSpec(shape=None),
+              tensor_spec.TensorSpec(shape=None)
+          ], tensor_spec.TensorSpec(shape=None)),
+          'type_constraint': (trace_type.from_value([
+              tensor_spec.TensorSpec(shape=None),
+              tensor_spec.TensorSpec(shape=None)
+          ], trace_type.InternalTracingContext(is_legacy_signature=True)),
+                              tensor_spec.TensorSpec(shape=None))
+      }),
+      decorator=(dummy_tf_decorator, transparent_decorator),
+  )
+  def test_method_bound_external(
+      self, input_signature, type_constraint, decorator
+  ):
     class MyClass:
 
       @decorator
@@ -370,21 +448,19 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
         MyClass().foo, input_signature)
     self.assertEqual(
         tuple(spec.fullargspec),
-        (['self', 'x', 'y'], None, None, (1,), [], None, {}))
-    self.assertEqual(spec.is_method, decorator is transparent_decorator)
+        (['self', 'x', 'y'], None, None, (1,), [], None, {}),
+    )
+    self.assertEqual(spec.is_method, True)
     self.assertEqual(spec.default_values, {'y': 1})
     self.assertEqual(
         spec.function_type,
         function_type_lib.FunctionType([
             function_type_lib.Parameter(
-                'self', function_type_lib.Parameter.POSITIONAL_OR_KEYWORD,
-                False, type_constraint[0]),
-            function_type_lib.Parameter(
                 'x', function_type_lib.Parameter.POSITIONAL_OR_KEYWORD, False,
-                type_constraint[1]),
+                type_constraint[0]),
             function_type_lib.Parameter(
                 'y', function_type_lib.Parameter.POSITIONAL_OR_KEYWORD, True,
-                type_constraint[2])
+                type_constraint[1])
         ]))
 
   @parameterized.product(
@@ -444,6 +520,23 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
                 'y', function_type_lib.Parameter.POSITIONAL_OR_KEYWORD, True,
                 type_constraint[2])
         ]))
+
+
+# TODO(fmuham): Remove when is_same_structure is removed.
+class SameStructureTest(test.TestCase):
+
+  def test_same_structure(self):
+    self.assertTrue(function_spec.is_same_structure([1, 2, 3], [1, 2, 3], True))
+    self.assertTrue(
+        function_spec.is_same_structure([1, 2, 3], [1, 2, 4], False)
+    )
+
+    self.assertFalse(
+        function_spec.is_same_structure([1, 2, 3], [1, 2, 4], True)
+    )
+    self.assertFalse(
+        function_spec.is_same_structure([1, 2, 3], [1, 2, 3, 4], False)
+    )
 
 
 if __name__ == '__main__':

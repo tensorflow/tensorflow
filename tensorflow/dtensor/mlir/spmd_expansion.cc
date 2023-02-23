@@ -204,6 +204,11 @@ mlir::LogicalResult UpdateFunctionArgsUsingLayout(mlir::func::FuncOp function) {
           "Invalid layout attribute found during SPMD expansion: {0}",
           arg_layout.status().error_message()));
 
+    // XLA SPMD will handle argument shape updating for us.
+    if (arg_layout->mesh().use_xla_spmd()) {
+      continue;
+    }
+
     mlir::Type arg_type = mlir::getElementTypeOrSelf(
         function.getFunctionType().getInput(argument_index));
 
@@ -353,17 +358,6 @@ mlir::LogicalResult ConductSPMDExpansion(mlir::ModuleOp module) {
   return mlir::success();
 }
 
-// DTensorLayout only conveys layout information of tensors which is no
-// longer needed after SPMD expansion. As so, remove all layouts from
-// graph.
-void RemoveDTensorLayoutOps(mlir::ModuleOp module) {
-  llvm::SmallVector<mlir::TF::DTensorLayout, 4> layout_ops;
-  module.walk(
-      [&](mlir::TF::DTensorLayout layout) { layout_ops.emplace_back(layout); });
-
-  for (auto layout_op : layout_ops) RemoveDTensorLayoutOp(layout_op);
-}
-
 // Removes temporary attrs created during SPMD expansion.
 void RemoveTemporarySPMDAttrs(mlir::ModuleOp module) {
   module.walk([&](mlir::Operation* op) {
@@ -387,7 +381,7 @@ struct DTensorSPMDExpansion
     auto module = getOperation();
     if (failed(ConductSPMDExpansion(module))) return signalPassFailure();
 
-    RemoveDTensorLayoutOps(module);
+    RemoveDTensorLayoutOps(module, /*remove_xla_spmd_layouts=*/false);
 
     RemoveTemporarySPMDAttrs(module);
   };

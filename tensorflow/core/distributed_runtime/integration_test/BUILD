@@ -6,6 +6,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -16,6 +17,7 @@ tf_cuda_library(
     name = "coordination_test_opkernel_registration",
     testonly = 1,
     srcs = ["coordination_test_opkernel_registration.cc"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
@@ -28,6 +30,7 @@ tf_cuda_cc_test(
     name = "c_api_coordination_test",
     size = "small",
     srcs = ["c_api_coordination_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = [
         "no_cuda_asan",  # TODO(b/193450885)
         "no_windows",  # TODO(b/207281588)
@@ -56,6 +59,7 @@ tf_cuda_cc_test(
     name = "c_api_session_coordination_test",
     size = "small",
     srcs = ["c_api_session_coordination_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = [
         "no_windows",  # TODO(b/207281588)
     ],
@@ -79,6 +83,7 @@ tf_cuda_cc_test(
     name = "c_api_multi_client_test",
     size = "small",
     srcs = ["c_api_multi_client_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = [
         "no_windows",  # TODO(b/207281588)
     ],
@@ -108,6 +113,7 @@ tf_cc_test(
     name = "c_api_multi_client_function_test",
     size = "small",
     srcs = ["c_api_multi_client_function_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = [
         "no_oss",  # test uses TFRT
     ],
@@ -141,6 +147,7 @@ tf_cuda_cc_test(
     name = "c_api_recoverable_jobs_test",
     size = "small",
     srcs = ["c_api_recoverable_jobs_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = [
         "no_cuda_asan",  # TODO(b/193450885)
         "no_windows",  # TODO(b/207281588)

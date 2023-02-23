@@ -18,8 +18,10 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <vector>
 
+#include "mlir/Dialect/SparseTensor/IR/Enums.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -44,7 +46,11 @@ using xla::ShapeUtil;
 namespace xla {
 
 PrimitiveType TypeToPrimitiveType(mlir::Type type) {
-  if (type.isBF16()) {
+  if (type.isFloat8E5M2()) {
+    return PrimitiveType::F8E5M2;
+  } else if (type.isFloat8E4M3FN()) {
+    return PrimitiveType::F8E4M3FN;
+  } else if (type.isBF16()) {
     return PrimitiveType::BF16;
   } else if (type.isF16()) {
     return PrimitiveType::F16;
@@ -81,15 +87,20 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
   return PrimitiveType::PRIMITIVE_TYPE_INVALID;
 }
 
-std::optional<DimLevelType> ConvertDimLevelType(
+std::optional<std::tuple<DimLevelType, bool, bool>> ConvertDimLevelType(
     mlir::sparse_tensor::DimLevelType dlt) {
-  switch (dlt) {
-    case mlir::sparse_tensor::DimLevelType::Singleton:
-      return DimLevelType::DIM_SINGLETON;
-    case mlir::sparse_tensor::DimLevelType::Compressed:
-      return DimLevelType::DIM_COMPRESSED;
-    case mlir::sparse_tensor::DimLevelType::Dense:
-      return DimLevelType::DIM_DENSE;
+  auto f = mlir::sparse_tensor::getLevelFormat(dlt);
+  if (!f) return std::nullopt;
+
+  bool unique = mlir::sparse_tensor::isUniqueDLT(dlt);
+  bool ordered = mlir::sparse_tensor::isOrderedDLT(dlt);
+  switch (*f) {
+    case mlir::sparse_tensor::LevelFormat::Singleton:
+      return std::make_tuple(DimLevelType::DIM_SINGLETON, unique, ordered);
+    case mlir::sparse_tensor::LevelFormat::Compressed:
+      return std::make_tuple(DimLevelType::DIM_COMPRESSED, unique, ordered);
+    case mlir::sparse_tensor::LevelFormat::Dense:
+      return std::make_tuple(DimLevelType::DIM_DENSE, unique, ordered);
     default:
       return std::nullopt;
   }
@@ -164,21 +175,21 @@ Shape TypeToShape(mlir::Type type) {
     if (auto extn = t.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>()) {
       bounds = llvm::to_vector<4>(extn.getBounds());
     } else {
-      bounds.assign(rank, ShapedType::kDynamicSize);
+      bounds.assign(rank, ShapedType::kDynamic);
     }
 
-    llvm::SmallVector<int64_t, 4> shape(rank, mlir::ShapedType::kDynamicSize);
+    llvm::SmallVector<int64_t, 4> shape(rank, mlir::ShapedType::kDynamic);
     std::vector<bool> is_dynamic(rank, false);
     for (int64_t dim = 0; dim < rank; ++dim) {
       // Only fully static shapes are supported.
       // TODO(b/115638799): Update once xla::Shape can support dynamic shapes.
       int64_t size = t.getDimSize(dim);
-      if (size == ShapedType::kDynamicSize) {
-        if (bounds[dim] == ShapedType::kDynamicSize) return {};
+      if (size == ShapedType::kDynamic) {
+        if (bounds[dim] == ShapedType::kDynamic) return {};
         shape[dim] = bounds[dim];
         is_dynamic[dim] = true;
       } else {
-        if (bounds[dim] != ShapedType::kDynamicSize) return {};
+        if (bounds[dim] != ShapedType::kDynamic) return {};
         shape[dim] = size;
       }
     }
@@ -198,10 +209,14 @@ Shape TypeToShape(mlir::Type type) {
         return {};
 
       llvm::SmallVector<DimLevelType, 3> dim_level_types;
+      llvm::SmallVector<bool, 3> level_unique;
+      llvm::SmallVector<bool, 3> level_ordered;
       for (auto dlt : sparse.getDimLevelType()) {
         auto new_dlt = ConvertDimLevelType(dlt);
         if (!new_dlt) return {};
-        dim_level_types.push_back(*new_dlt);
+        dim_level_types.push_back(std::get<0>(*new_dlt));
+        level_unique.push_back(std::get<1>(*new_dlt));
+        level_ordered.push_back(std::get<2>(*new_dlt));
       }
 
       std::vector<int64_t> ordering(rank);
@@ -214,7 +229,8 @@ Shape TypeToShape(mlir::Type type) {
       auto final_ordering = mlir::applyPermutationMap(
           dimOrder, llvm::ArrayRef<int64_t>(ordering));
       auto sparse_shape = ::xla::ShapeUtil::MakeShapeWithSparseLayout(
-          primitive_type, shape, final_ordering, dim_level_types);
+          primitive_type, shape, final_ordering, dim_level_types, level_unique,
+          level_ordered);
       return sparse_shape;
     }
 

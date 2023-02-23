@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -201,7 +202,7 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
   builder.createBlock(&wrap_func.getBody(), wrap_func.begin(), arg_types,
                       arg_locs);
 
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   for (int32_t i : llvm::seq<int32_t>(0, arguments.size())) {
     mapping.map(arguments[i], wrap_func.getArgument(i));
   }

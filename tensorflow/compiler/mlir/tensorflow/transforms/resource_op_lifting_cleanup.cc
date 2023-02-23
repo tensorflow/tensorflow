@@ -120,7 +120,7 @@ void EliminateUnusedResults(
 func::FuncOp CloneFunctionIfNeeded(func::FuncOp func) {
   ModuleOp module = func->getParentOfType<ModuleOp>();
   auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
-  if (func_uses.has_value() && llvm::hasSingleElement(func_uses.getValue()))
+  if (func_uses.has_value() && llvm::hasSingleElement(func_uses.value()))
     return func;
   func::FuncOp cloned = func.clone();
   cloned.setPrivate();
@@ -272,21 +272,21 @@ LogicalResult ForwardCommonArgToOutput(Operation *op,
       }
       if (!common_arg_index.has_value()) {
         common_arg_index = block_arg.getArgNumber();
-      } else if (common_arg_index.getValue() != block_arg.getArgNumber()) {
+      } else if (common_arg_index.value() != block_arg.getArgNumber()) {
         return op->emitError("result #")
                << result_idx
                << " is not tied to the same argument across all branches";
       }
     }
 
-    if (io_match && result_idx != common_arg_index.getValue()) {
+    if (io_match && result_idx != common_arg_index.value()) {
       return op->emitOpError("Result #")
              << result_idx << " is tied to argument #"
-             << common_arg_index.getValue();
+             << common_arg_index.value();
     }
 
     // Forward the corresponding input to the output
-    result.replaceAllUsesWith(branch_args[common_arg_index.getValue()]);
+    result.replaceAllUsesWith(branch_args[common_arg_index.value()]);
   }
   return success();
 }

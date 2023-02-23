@@ -504,8 +504,8 @@ class CheckpointTestBase(test.TestCase):
       self.match(expected, actual)
 
   def gen_break_points(self, num_outputs, num_samples=10):
-    """Generates `num_samples` breaks points in [0, num_outputs]."""
-    return np.linspace(0, num_outputs, num_samples, dtype=int)
+    """Generates `num_samples` unique break points in [0, num_outputs]."""
+    return np.unique(np.linspace(0, num_outputs, num_samples, dtype=int))
 
   def _build_graph(self, ds_fn, sparse_tensors=False):
     dataset = ds_fn()

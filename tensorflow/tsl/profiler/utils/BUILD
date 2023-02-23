@@ -1,9 +1,10 @@
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/tsl/profiler:internal",
     ],
@@ -13,7 +14,6 @@ package(
 package_group(
     name = "friends",
     includes = [
-        "//tensorflow/core/profiler:friends",
         "//tensorflow/tsl/profiler:friends",
     ],
 )
@@ -21,6 +21,14 @@ package_group(
 cc_library(
     name = "math_utils",
     hdrs = ["math_utils.h"],
+)
+
+cc_library(
+    name = "format_utils",
+    hdrs = ["format_utils.h"],
+    deps = [
+        "//tensorflow/tsl/platform:logging",
+    ],
 )
 
 cc_library(
@@ -43,7 +51,7 @@ cc_library(
     ],
     copts = tf_profiler_copts(),
     visibility = [
-        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
+        "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/tsl/platform/cloud:__pkg__",
         "//tensorflow/tsl/profiler:internal",
     ],
@@ -66,7 +74,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "timespan_test",
     srcs = ["timespan_test.cc"],
     deps = [
@@ -88,7 +96,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "tf_op_utils_test",
     size = "small",
     srcs = ["tf_op_utils_test.cc"],
@@ -157,7 +165,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "xplane_builder_test",
     size = "small",
     srcs = ["xplane_builder_test.cc"],
@@ -175,6 +183,10 @@ cc_library(
     name = "trace_utils",
     hdrs = ["trace_utils.h"],
     copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/compiler/xla/backends/profiler/gpu:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
+    ],
     deps = [
         "//tensorflow/tsl/platform:types",
     ],
@@ -208,7 +220,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "xplane_utils_test",
     srcs = ["xplane_utils_test.cc"],
     deps = [
@@ -251,7 +263,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "parse_annotation_test",
     srcs = ["parse_annotation_test.cc"],
     deps = [
@@ -306,7 +318,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "group_events_test",
     srcs = ["group_events_test.cc"],
     deps = [
@@ -337,7 +349,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "tpu_xplane_utils_test",
     srcs = ["tpu_xplane_utils_test.cc"],
     deps = [
@@ -357,5 +369,32 @@ cc_library(
     deps = [
         "//tensorflow/tsl/platform",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "buffer_pool",
+    srcs = ["buffer_pool.cc"],
+    hdrs = ["buffer_pool.h"],
+    copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/compiler/xla/backends/profiler/gpu:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
+    ],
+    deps = [
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/platform:thread_annotations",
+    ],
+)
+
+tsl_cc_test(
+    name = "buffer_pool_test",
+    srcs = ["buffer_pool_test.cc"],
+    deps = [
+        ":buffer_pool",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )

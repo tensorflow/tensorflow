@@ -6,6 +6,7 @@ load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_t
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/tsl:internal",
     ],
@@ -34,6 +35,7 @@ cc_library(
     srcs = ["grpc_util.cc"],
     hdrs = ["grpc_util.h"],
     deps = [
+        "@com_google_absl//absl/strings:cord",
         "//tensorflow/tsl/platform:random",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:stringpiece",

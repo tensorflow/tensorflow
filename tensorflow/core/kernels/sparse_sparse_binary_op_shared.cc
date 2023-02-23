@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/cwise_ops.h"
 #include "tensorflow/core/kernels/cwise_ops_common.h"
+#include "tensorflow/core/kernels/sparse_utils.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -131,22 +132,12 @@ class SparseSparseBinaryOpShared : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("b_shape", &b_shape_t));
 
     // Validations.
-    OP_REQUIRES(
-        ctx,
-        TensorShapeUtils::IsMatrix(a_indices_t->shape()) &&
-            TensorShapeUtils::IsMatrix(b_indices_t->shape()),
-        errors::InvalidArgument("Inputs a_indices and b_indices should be "
-                                "matrices but received shapes: ",
-                                a_indices_t->shape().DebugString(), ", ",
-                                b_indices_t->shape().DebugString()));
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsVector(a_values_t->shape()) &&
-                    TensorShapeUtils::IsVector(b_values_t->shape()),
-                errors::InvalidArgument(
-                    "Inputs a_values and b_values should be vectors "
-                    "but received shapes: ",
-                    a_values_t->shape().DebugString(), " and ",
-                    b_values_t->shape().DebugString()));
+    OP_REQUIRES_OK(ctx, sparse_utils::ValidateSparseTensor<int64_t>(
+                            *a_indices_t, *a_values_t, *a_shape_t,
+                            sparse_utils::IndexValidation::kUnordered));
+    OP_REQUIRES_OK(ctx, sparse_utils::ValidateSparseTensor<int64_t>(
+                            *b_indices_t, *b_values_t, *b_shape_t,
+                            sparse_utils::IndexValidation::kUnordered));
 
     const int64_t a_nnz = a_indices_t->dim_size(0);
     const int64_t b_nnz = b_indices_t->dim_size(0);
@@ -154,25 +145,7 @@ class SparseSparseBinaryOpShared : public OpKernel {
     const auto a_values = a_values_t->vec<T>();
     const auto b_values = b_values_t->vec<T>();
 
-    OP_REQUIRES(
-        ctx, a_values.size() == a_nnz && b_values.size() == b_nnz,
-        errors::InvalidArgument("Expected ", a_nnz, " and ", b_nnz,
-                                " non-empty input values, got ",
-                                a_values.size(), " and ", b_values.size()));
-
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsVector(a_shape_t->shape()) &&
-                    TensorShapeUtils::IsVector(b_shape_t->shape()),
-                errors::InvalidArgument(
-                    "Input shapes should be a vector but received shapes ",
-                    a_shape_t->shape().DebugString(), " and ",
-                    b_shape_t->shape().DebugString()));
     const int num_dims = a_indices_t->dim_size(1);
-    OP_REQUIRES(
-        ctx, a_shape_t->NumElements() == num_dims,
-        errors::InvalidArgument("Second dimension of a_indices and length of "
-                                "a_shape must match, got ",
-                                num_dims, " and ", a_shape_t->NumElements()));
     OP_REQUIRES(ctx, num_dims > 0,
                 errors::InvalidArgument("Tensors must not be empty"));
     OP_REQUIRES(ctx, a_shape_t->IsSameSize(*b_shape_t),
@@ -192,7 +165,7 @@ class SparseSparseBinaryOpShared : public OpKernel {
     const auto a_indices_mat = a_indices_t->matrix<int64_t>();
     const auto b_indices_mat = b_indices_t->matrix<int64_t>();
     std::vector<T> a_augmented_values, b_augmented_values;
-    std::vector<std::pair<bool, int64>> entries_to_copy;  // from_a?, idx
+    std::vector<std::pair<bool, int64_t>> entries_to_copy;  // from_a?, idx
     UnionSparseIndicesAndValues(a_indices_mat, a_values, a_nnz, b_indices_mat,
                                 b_values, b_nnz, num_dims, &a_augmented_values,
                                 &b_augmented_values, &entries_to_copy);

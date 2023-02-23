@@ -8,6 +8,7 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined
 # copybara:uncomment_end
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -21,6 +22,7 @@ cc_library(
         "noop_profiler.h",
         "profiler.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
     deps = [
         ":profile_buffer",
@@ -95,6 +97,7 @@ cc_library(
 cc_library(
     name = "profile_buffer",
     hdrs = ["profile_buffer.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
     deps = [
         ":memory_info",
@@ -116,6 +119,7 @@ cc_library(
     name = "time",
     srcs = ["time.cc"],
     hdrs = ["time.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
 )
 
@@ -132,6 +136,7 @@ cc_library(
     name = "memory_info",
     srcs = ["memory_info.cc"],
     hdrs = ["memory_info.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
 )
 
@@ -181,6 +186,7 @@ cc_library(
     name = "profile_summary_formatter",
     srcs = ["profile_summary_formatter.cc"],
     hdrs = ["profile_summary_formatter.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
     deps = [
         "//tensorflow/core/util:stats_calculator_portable",
@@ -201,6 +207,7 @@ cc_library(
     name = "profile_summarizer",
     srcs = ["profile_summarizer.cc"],
     hdrs = ["profile_summarizer.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
     deps = [
         ":memory_info",
@@ -208,7 +215,7 @@ cc_library(
         ":profile_summary_formatter",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -241,6 +248,7 @@ cc_test(
         ":profiler",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/kernels:test_util",

@@ -19,14 +19,20 @@ limitations under the License.
 
 #include <fstream>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <variant>
 
 #include "absl/base/call_once.h"
 #include "absl/strings/str_format.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
+#include "tensorflow/compiler/xla/service/bfloat16_support.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/convert_mover.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
@@ -35,52 +41,87 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_simplify_padding.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
-#include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace xla {
 namespace gpu {
+namespace {
+
+class ConvBfloat16Support : public BFloat16Support {
+ public:
+  explicit ConvBfloat16Support(
+      se::dnn::VersionInfo cudnn_version,
+      se::CudaComputeCapability cuda_compute_capability)
+      : is_conv_bf16_supported_((cudnn_version.major_version() > 8 ||
+                                 (cudnn_version.major_version() == 8 &&
+                                  cudnn_version.minor_version() >= 2)) &&
+                                cuda_compute_capability.IsAtLeast(
+                                    se::CudaComputeCapability::AMPERE)) {}
+
+  bool SupportsBF16Operand(const HloInstruction& hlo,
+                           int64_t operand_index) const override {
+    return (hlo.opcode() != HloOpcode::kConvolution) || is_conv_bf16_supported_;
+  }
+
+  bool SupportsBF16Output(const HloInstruction& hlo) const override {
+    return (hlo.opcode() != HloOpcode::kConvolution) || is_conv_bf16_supported_;
+  }
+
+ private:
+  bool is_conv_bf16_supported_;
+};
+
+}  // namespace
 
 Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
-    HloModule* hlo_module, se::StreamExecutor* stream_exec,
+    HloModule* hlo_module, GpuVersion gpu_version,
+    se::dnn::VersionInfo dnn_version,
     se::DeviceMemoryAllocator* device_allocator) {
+  auto cuda_compute_capability =
+      std::get<se::CudaComputeCapability>(gpu_version);
   // Convert convolutions into CustomCalls to cudnn, then canonicalize them
   // (GpuConvPaddingLegalization). Also expand cuSolver calls.
   HloPassPipeline pipeline("conv_canonicalization");
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/false,
       /*allow_mixed_precision=*/false);
+
+  // Convert upsupported bf16 convolutions to f32.
+  ConvBfloat16Support conv_bf16_support(dnn_version, cuda_compute_capability);
+  pipeline.AddPass<BFloat16Normalization>(&conv_bf16_support);
+
   pipeline.AddPass<GpusolverRewriter>();
   pipeline.AddPass<GpuConvRewriter>();
-  pipeline.AddPass<CudnnFusedConvRewriter>();
+  pipeline.AddPass<CudnnFusedConvRewriter>(cuda_compute_capability);
   pipeline.AddPass<GpuConvPaddingLegalization>();
-  pipeline.AddPass<CudnnPadForConvolutions>(
-      stream_exec->GetDeviceDescription().cuda_compute_capability());
-  pipeline.AddPass<CudnnVectorizeConvolutions>(
-      stream_exec->GetDeviceDescription().cuda_compute_capability());
+  pipeline.AddPass<CudnnPadForConvolutions>(cuda_compute_capability);
+  pipeline.AddPass<CudnnVectorizeConvolutions>(cuda_compute_capability,
+                                               dnn_version);
   // The conv padding/vectorization passes which we need to get rid of.  They
   // also leave behind unnecessary tuple/get-tuple-element pairs that
   // TupleSimplifier fixes.
@@ -99,9 +140,18 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<CudnnSimplifyPadding>();
 
   // tf2xla bridge, DepthwiseConvolutionConverter, GpuConvRewriter, and
-  // CudnnSimplifyPadding introduce reshapes and transposes that can be
-  // eliminated using AlgebraicSimplifier  We run algsimp to a fixed point.
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
+  // CudnnSimplifyPadding introduce reshapes and transposes.
+  pipeline.AddPass<HloPassFix<ReshapeMover>>();
+  // The reshapes and transposes can possibly be eliminated using
+  // AlgebraicSimplifier. ConvertMover and ReshapeMover fight with each other.
+  // ConvertMover wants to move some converts down the graph, but ReshapeMover
+  // wants to move them up the graph. We run ConvertMover and algsimp to a fixed
+  // point.
+  [&, &pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+          "simplify_after_conv_canonicalization")] {
+    pipeline.AddPass<ConvertMover>();
+    pipeline.AddPass<AlgebraicSimplifier>(algsimp_options);
+  }();
 
   // GpuConvRewriter, GpuConvPaddingLegalization and
   // CudnnConvPadForTensorCores may add instructions which can be simplified
@@ -114,24 +164,29 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 
 Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator,
+    const GpuTargetConfig& gpu_target_config,
+    const AutotuneResults* autotune_results) {
   HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1");
 
   // This needs to run before GemmRewriter, which is part of
   // OptimizeHloPostLayoutAssignment().
-  if (stream_exec->GetDeviceDescription().cuda_compute_capability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::BF16,
+  auto cuda_compute_capability =
+      std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
+  if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
+                                            PrimitiveType::BF16,
                                             /*pad_to_multiple_of=*/8);
   }
-  if (stream_exec->GetDeviceDescription().cuda_compute_capability().IsAtLeast(
-          se::CudaComputeCapability::VOLTA)) {
+  if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     // Pad gemms over S8 to multiples of 4 so cuBLAS can run them.
-    pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::S8,
+    pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
+                                            PrimitiveType::S8,
                                             /*pad_to_multiple_of=*/4);
 
     // Pad the dimensions of matrices in dot operations to multiples of 8.
-    pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::F16,
+    pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
+                                            PrimitiveType::F16,
                                             /*pad_to_multiple_of=*/8);
   }
   // Padding a gemm operand that's a constant results in pad(constant).  Run
@@ -140,10 +195,10 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   TF_RETURN_IF_ERROR(pre_pipeline.Run(hlo_module).status());
 
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
-      hlo_module, stream_exec, device_allocator));
+      hlo_module, stream_exec, device_allocator, gpu_target_config,
+      autotune_results));
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
-  post_pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
 
   // Transform TriangularSolve ops into custom-calls, so we can add temp
   // memory.
@@ -316,23 +371,8 @@ GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
 StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    llvm::Module* llvm_module,
-                                   GpuVersion gpu_version,
-                                   se::StreamExecutor* stream_exec,
-                                   bool relocatable,
+                                   GpuVersion gpu_version, bool relocatable,
                                    const HloModule* debug_module) {
-  std::string libdevice_dir;
-  {
-    absl::MutexLock lock(&mutex_);
-
-    // Find the directory containing libdevice.  To avoid searching for it every
-    // time, we have a one-element cache, keyed on the module's config's
-    // cuda_data_dir.
-    if (cached_libdevice_dir_.empty()) {
-      cached_libdevice_dir_ = GetLibdeviceDir(module_config);
-    }
-    libdevice_dir = cached_libdevice_dir_;
-  }
-  VLOG(2) << "Libdevice dir = " << libdevice_dir << "\n";
   std::unique_ptr<llvm::Module> loaded_module =
       MaybeLoadLLVMFromFile(debug_module, llvm_module);
   llvm::Module* selected_module = nullptr;
@@ -349,8 +389,8 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
         "NVPTXCompiler::CompileTargetBinary - CompileToPtx for ",
         (debug_module != nullptr ? debug_module->name() : "(unknown")));
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
-    TF_ASSIGN_OR_RETURN(ptx, nvptx::CompileToPtx(selected_module, gpu_version,
-                                                 module_config, libdevice_dir));
+    TF_ASSIGN_OR_RETURN(
+        ptx, nvptx::CompileToPtx(selected_module, gpu_version, module_config));
 
     uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     // This won't record values for calls that error out (because if they error
@@ -359,8 +399,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   }
 
   std::vector<uint8_t> cubin = CompileGpuAsmOrGetCachedResult(
-      stream_exec, ptx, std::get<se::CudaComputeCapability>(gpu_version),
-      module_config,
+      ptx, std::get<se::CudaComputeCapability>(gpu_version), module_config,
       (debug_module != nullptr ? debug_module->name() : "(unknown)"),
       relocatable);
 
@@ -369,9 +408,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
 }
 
 std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
-    se::StreamExecutor* stream_exec, const std::string& ptx,
-    se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
-    absl::string_view module_name, bool relocatable) {
+    const std::string& ptx, se::CudaComputeCapability cc,
+    const HloModuleConfig& hlo_module_config, absl::string_view module_name,
+    bool relocatable) {
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "NVPTXCompiler::CompileGpuAsmOrGetCachedResult for ", module_name));
   tsl::profiler::TraceMe activity("PTX->CUBIN",
@@ -401,7 +440,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     if (inserted) {
       CHECK(!cache_value->compilation_done);
       if (!ptx.empty()) {
-        auto ptxas_config =
+        se::GpuAsmOpts ptxas_config =
             PtxOptsFromDebugOptions(hlo_module_config.debug_options());
         if (relocatable) {
           ptxas_config.extra_flags.push_back("-c");
@@ -409,7 +448,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
         uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
         StatusOr<std::vector<uint8_t>> maybe_cubin = se::CompileGpuAsm(
-            stream_exec->device_ordinal(), cache_ptx->c_str(), ptxas_config);
+            cc.major, cc.minor, cache_ptx->c_str(), ptxas_config);
 
         if (maybe_cubin.ok()) {
           uint64_t end_usecs = tsl::Env::Default()->NowMicros();
@@ -424,10 +463,10 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
           if (maybe_cubin.status().code() == tsl::error::Code::NOT_FOUND) {
             if (!hlo_module_config.debug_options()
                      .xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found()) {
-              LOG(WARNING) << CantFindCudaMessage(
+              LOG(WARNING) << nvptx::CantFindCudaMessage(
                   "Can't find ptxas binary in ${CUDA_DIR}/bin.  Custom ptxas "
                   "location can be specified using $PATH.",
-                  hlo_module_config);
+                  hlo_module_config.debug_options().xla_gpu_cuda_data_dir());
               LOG(FATAL)
                   << "Can't find ptxas binary.  You can pass the flag "
                      "--xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found "
@@ -439,13 +478,13 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
             // binaries are not available. We don't want to spam logs with
             // identical warnings in this case.
 
-            LOG_FIRST_N(WARNING, 1) << CantFindCudaMessage(
+            LOG_FIRST_N(WARNING, 1) << nvptx::CantFindCudaMessage(
                 "Can't find ptxas binary in ${CUDA_DIR}/bin.  Will back to "
                 "the GPU driver for PTX -> sass compilation.  This is OK so "
                 "long as you don't see a warning below about an out-of-date "
                 "driver version. Custom ptxas location can be specified "
                 "using $PATH.",
-                hlo_module_config);
+                hlo_module_config.debug_options().xla_gpu_cuda_data_dir());
           } else if (maybe_cubin.status().code() !=
                      tsl::error::Code::UNIMPLEMENTED) {
             // If unimplemented is returned, we fallback to the driver.
@@ -476,12 +515,40 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   return cache_value->cubin_data;
 }
 
+static bool UseNvlink(const std::string& preferred_cuda_dir) {
+  const bool use_nvlink_by_default =
+#ifdef TF_DISABLE_NVLINK_BY_DEFAULT
+      false;
+#else
+      true;
+#endif
+  bool use_nvlink;
+  TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_NVLINK_FOR_PARALLEL_COMPILATION",
+                                      /*default_val=*/
+                                      use_nvlink_by_default, &use_nvlink));
+
+  if (!use_nvlink) {
+    return false;
+  }
+
+  // Make sure nvlink exists and is executable.
+  const std::string bin_path =
+      se::FindCudaExecutable("nvlink", preferred_cuda_dir);
+  return se::GetToolVersion(bin_path).ok();
+}
+
 StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
     const HloModuleConfig& hlo_module_config) {
   // TODO(phawkins): rather than comparing version numbers, it might be more
   // robust if we simply tried to link something the first time we compile.
   auto ptxas_config =
       PtxOptsFromDebugOptions(hlo_module_config.debug_options());
+
+  static const bool use_nvlink = UseNvlink(ptxas_config.preferred_cuda_dir);
+  if (use_nvlink) {
+    return true;
+  }
+
   TF_ASSIGN_OR_RETURN(
       auto ptxas_version_tuple,
       se::GetAsmCompilerVersion(ptxas_config.preferred_cuda_dir));
@@ -510,16 +577,22 @@ StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
 }
 
 StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
-    se::StreamExecutor* stream_exec,
-    std::vector<std::vector<uint8_t>> modules) {
+    se::StreamExecutor* stream_exec, std::vector<std::vector<uint8_t>> modules,
+    const DebugOptions& debug_options) {
+  auto ptxas_config = PtxOptsFromDebugOptions(debug_options);
+
   std::vector<stream_executor::CubinOrPTXImage> images;
   images.reserve(modules.size());
-  for (auto& module : modules) {
+  for (std::vector<uint8_t>& module : modules) {
     images.push_back({"", std::move(module)});
   }
-  return LinkGpuAsm(static_cast<se::gpu::GpuContext*>(
-                        stream_exec->implementation()->GpuContextHack()),
-                    images);
+  auto context = static_cast<se::gpu::GpuContext*>(
+      stream_exec->implementation()->GpuContextHack());
+  if (UseNvlink(ptxas_config.preferred_cuda_dir)) {
+    return LinkUsingNvlink(debug_options.xla_gpu_cuda_data_dir(), context,
+                           images);
+  }
+  return LinkGpuAsm(context, images);
 }
 
 }  // namespace gpu

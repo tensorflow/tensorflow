@@ -32,7 +32,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -96,7 +96,7 @@ func::FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
   Block* outlined_func_block = outlined_func.addEntryBlock();
 
   // Clone the operations and remap the inputs to use the function arguments.
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   mapping.map(inputs, outlined_func.getArguments());
   builder->setInsertionPoint(outlined_func_block, outlined_func_block->begin());
   for (Operation* op : ops) {
@@ -321,6 +321,14 @@ bool HasDynamicExternalValues(Operation* op) {
       .wasInterrupted();
 }
 
+// Checks if `type` is allowed for XLA. String and resources are not XLA types.
+// There are other TF types that are not XLA types which will be removed by
+// successive passes in TF/XLA bridge phase 2.
+bool TypeValidForXLA(const Type& type) {
+  const Type elem = getElementTypeOrSelf(type);
+  return !elem.isa<TF::ResourceType>() && !elem.isa<TF::StringType>();
+}
+
 // Returns operands of `cluster_ops` that need to be
 // communicated from device->host. This is for the case when all operands have a
 // static shape.
@@ -330,15 +338,20 @@ llvm::SmallSetVector<Value, 4> GetStaticExternalOperands(
   llvm::SmallSetVector<Value, 4> external_values;
   for (Operation* op : cluster_ops) {
     op->walk([&](Operation* walked_op) {
-      if (llvm::isa<TF::_XlaRecvAtHostV2Op, TF::_XlaSendFromHostV2Op>(
+      if (llvm::isa<TF::_XlaRecvAtHostOp, TF::_XlaRecvAtHostV2Op,
+                    TF::_XlaSendFromHostOp, TF::_XlaSendFromHostV2Op>(
               walked_op))
         return WalkResult::advance();
       for (Value v : walked_op->getOperands()) {
+        if (!TypeValidForXLA(v.getType())) continue;
         if (auto* defining_op = v.getDefiningOp()) {
           if (!op->isAncestor(defining_op) &&
               tpu_cluster->isAncestor(defining_op) &&
               !HasOutsideCompilationAncestor(defining_op) &&
-              !llvm::isa<TF::_XlaRecvAtHostV2Op>(defining_op)) {
+              // Ignore operands that have already been received by a previously
+              // created cluster.
+              !llvm::isa<TF::_XlaRecvAtHostOp, TF::_XlaRecvAtHostV2Op>(
+                  defining_op)) {
             external_values.insert(v);
           }
           continue;
@@ -361,6 +374,7 @@ llvm::SmallSetVector<Value, 4> GetAllExternalOperands(
   for (Operation* op : cluster_ops) {
     op->walk([&](Operation* walked_op) {
       for (Value v : walked_op->getOperands()) {
+        if (!TypeValidForXLA(v.getType())) continue;
         Operation* defining_op = v.getDefiningOp();
         if (!defining_op || !cluster_ops.count(defining_op)) {
           external_values.insert(v);
@@ -406,7 +420,8 @@ void GetExternalOutputs(const llvm::SmallSetVector<Operation*, 4>& cluster_ops,
           HasDynamicOutputs(user)) {
         if (!user_set.insert(user).second) continue;
         for (Value v : user->getOperands()) {
-          if (v.getDefiningOp() == op && !isa<tf_device::ReturnOp>(user))
+          if (TypeValidForXLA(v.getType()) && v.getDefiningOp() == op &&
+              !isa<tf_device::ReturnOp>(user))
             external_outputs.insert(v);
           if (v.getDefiningOp() == op && isa<tf_device::ReturnOp>(user))
             tmp_host_outputs.push_back(v);
@@ -447,11 +462,13 @@ void MarkOutsideCompiled(Operation* op) {
 }
 
 // Returns whether an outside compilation cluster should be closed.  True when:
-// 1. There is a dynamically shaped output consumed by a non-outside compiled
+// 1. There is no non-XLA output.
+// 2. There is a dynamically shaped output consumed by a non-outside compiled
 // op.
-// 2. There is no dynamically shaped output.
+// 3. There is no dynamically shaped output.
 bool ShouldCloseCluster(llvm::ArrayRef<Value> outputs) {
   bool has_dynamic_output = false;
+  bool has_nonxla_output = false;
   for (Value v : outputs) {
     if (TF::CanBeRefined(v.getType())) {
       has_dynamic_output = true;
@@ -461,8 +478,12 @@ bool ShouldCloseCluster(llvm::ArrayRef<Value> outputs) {
           return true;
       }
     }
+    if (!TypeValidForXLA(v.getType()))
+      for (const Operation* user : v.getUsers())
+        if (!isa<tf_device::ReturnOp>(user)) has_nonxla_output = true;
   }
-  return !has_dynamic_output;
+
+  return !has_nonxla_output && !has_dynamic_output;
 }
 
 // Replaces `external_operands` with the results from `recv_at_host`.
@@ -1101,19 +1122,11 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
   return success();
 }
 
-// Checks if `type` is allowed for data on TPUs. String and resources cannot be
-// assigned to TPUs. There are other TF types that are not allowed on TPUs, but
-// these will be removed by successive passes in TF/XLA bridge phase 2.
-bool TypeValidForTPU(Type type) {
-  Type elem = getElementTypeOrSelf(type);
-  return !elem.isa<TF::ResourceType>() && !elem.isa<TF::StringType>();
-}
-
 // Check that cluster results are valid. An result is invalid when it does not
 // have a valid XLA type.
 LogicalResult CheckClusterResults(tf_device::ClusterOp cluster) {
   for (OpResult result : cluster.getResults()) {
-    if (!TypeValidForTPU(result.getType())) {
+    if (!TypeValidForXLA(result.getType())) {
       cluster.emitError()
           << "The TPUExtractHeadTailOutsideCompilation pass produced a TPU "
              "cluster with a result with a non-XLA type: "
@@ -1121,6 +1134,35 @@ LogicalResult CheckClusterResults(tf_device::ClusterOp cluster) {
       return failure();
     }
   }
+  return success();
+}
+
+// Check that op marked for outside compilation has an ancestor also marked for
+// outside compilation.
+LogicalResult CheckAncestorNotOutsideComp(Operation* op) {
+  if (!op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
+    return success();
+  Operation* iter_op = op;
+  while (auto* parent_op = iter_op->getParentOp()) {
+    if (parent_op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
+      op->emitOpError()
+          << "An op marked for outside compilation (having attribute "
+          << kXlaOutsideCompilationAttr
+          << ") has an ancestor marked for outside compilation.";
+      return failure();
+    }
+    iter_op = parent_op;
+  }
+  return success();
+}
+
+// Check the validity of the module, pre-pass.
+LogicalResult CheckPreconditions(ModuleOp module) {
+  auto walk_result = module.walk([&](Operation* op) {
+    if (failed(CheckAncestorNotOutsideComp(op))) return WalkResult::interrupt();
+    return WalkResult::advance();
+  });
+  if (walk_result.wasInterrupted()) return failure();
   return success();
 }
 
@@ -1137,6 +1179,8 @@ LogicalResult CheckPostconditions(ModuleOp module) {
 void TPUExtractOutsideCompilation::runOnOperation() {
   // Get runtime devices information from the closest parent module.
   auto module = getOperation();
+  if (failed(CheckPreconditions(module))) signalPassFailure();
+
   mlir::TF::RuntimeDevices devices;
   if (failed(tensorflow::GetDevicesFromOp(module, &devices)))
     return signalPassFailure();

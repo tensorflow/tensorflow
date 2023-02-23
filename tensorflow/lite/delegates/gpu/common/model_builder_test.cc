@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder_internal.h"
@@ -154,7 +154,7 @@ class DelegatedInterpreter {
   // GetNodeAndRegistration.  We can't implement those using
   //   TfLiteContext *context = interpreter_.primary_subgraph().context();
   //   context->GetNodeAndRegistration(context, &node, &registration);
-  // here, because calling GetNodeAndRegistration from within it's own
+  // here, because calling GetNodeAndRegistration from within its own
   // implementation would lead to an infinite loop.
   // Instead, we just call node_and_registration and use a const_cast.
   // These const_casts are a bit ugly, but I think less ugly than exposing
@@ -1370,7 +1370,7 @@ TEST(ModelBuilderTest, GetOpsToReplaceRejectsSplitOpGl) {
   TfLiteIntArrayFree(ops_to_replace);
 }
 
-// StubTfLiteContext is a TfLiteContext which has 3 nodes as the followings.
+// StubTfLiteContext is a TfLiteContext which has 3 nodes as the following.
 // dummyAdd -> target op -> dummyAdd
 class StubTfLiteContext : public TfLiteContext {
  public:

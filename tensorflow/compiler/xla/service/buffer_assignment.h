@@ -549,7 +549,8 @@ class BufferAssignment {
   }
 
   // Combines allocations of temporary buffers into one big BufferAllocation.
-  void CombineTempAllocations();
+  void CombineTempAllocations(
+      const absl::flat_hash_set<BufferValue::Color>& private_stack_colors);
 
   // Computes stats for the assignment, to be retrieved by GetStats.
   Status ComputeSummaryStats();
@@ -592,6 +593,8 @@ class BufferAssigner {
   using Colorer = std::function<Status(HloAliasAnalysis*, const HloOrdering&)>;
   using MustNotLiveOut =
       std::function<bool(const HloInstruction*, const ShapeIndex&)>;
+  using PrivateStacks = absl::flat_hash_map<BufferValue::Color,
+                                            std::vector<const HloComputation*>>;
 
   static Colorer DefaultColorer() {
     return [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
@@ -625,7 +628,8 @@ class BufferAssigner {
       std::optional<MustNotLiveOut> must_not_live_out = std::nullopt,
       HloDataflowAnalysis::CanShareBuffer can_share_buffer = nullptr,
       std::unique_ptr<memory_space_assignment::PresetAssignments>
-          preset_assignments = {});
+          preset_assignments = {},
+      const PrivateStacks& private_stacks = {});
 
  private:
   BufferAssigner(bool allocate_buffers_for_constants, Colorer colorer,
@@ -643,7 +647,8 @@ class BufferAssigner {
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
       BufferValue::SizeFunction buffer_size,
       LogicalBuffer::AlignmentFunction color_alignment,
-      HloDataflowAnalysis::CanShareBuffer can_share_buffer);
+      HloDataflowAnalysis::CanShareBuffer can_share_buffer,
+      const PrivateStacks& private_stacks);
 
   // Assigns buffers to the instructions in the given computations. "assignment"
   // is modified to reflect the new buffer assignments. If is_thread_local is
@@ -685,7 +690,8 @@ class BufferAssigner {
       const absl::flat_hash_map<const HloComputation*,
                                 absl::flat_hash_set<const HloValue*>>&
           buffers_to_assign_sequentially,
-      bool run_whole_module_heap_simulation, BufferAssignment* assignment);
+      bool run_whole_module_heap_simulation, BufferAssignment* assignment,
+      const PrivateStacks& private_stacks);
 
   // Uses the results of the heap simulator to create a single allocation, with
   // LogicalBuffers packed to specific offsets.
@@ -702,7 +708,19 @@ class BufferAssigner {
   // colored with the same color.
   absl::flat_hash_map<LogicalBuffer::Color,
                       absl::flat_hash_set<const HloValue*>>
-  SplitBuffersByColor(const absl::flat_hash_set<const HloValue*>& buffers);
+  SplitBuffersByColor(
+      const absl::flat_hash_set<const HloValue*>& buffers) const;
+
+  // Split a set of buffers into several sets, each of which contains buffers
+  // with defining instructions that are dominated by the given private stack
+  // computation. This function CHECK-fails if there are outstanding buffers
+  // that do not have a dominating private stack computation.
+  absl::flat_hash_map<const HloComputation*,
+                      absl::flat_hash_set<const HloValue*>>
+  SplitBuffersByPrivateStackComputation(
+      const absl::flat_hash_set<const HloValue*>& buffers,
+      absl::Span<const HloComputation* const> private_stack_computations,
+      const CallGraph& call_graph) const;
 
   // If true, allocate buffers for constant instructions.
   bool allocate_buffers_for_constants_;

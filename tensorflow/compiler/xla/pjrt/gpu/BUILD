@@ -1,11 +1,14 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "if_nccl")
+load("//tensorflow/tsl:tsl.bzl", "if_nccl")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
+load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
+load("//tensorflow/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
 
@@ -23,7 +26,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/compiler/xla/stream_executor:kernel",
-        "//tensorflow/core:gpu_runtime",
+        "//tensorflow/tsl/framework:bfc_allocator",
+        "//tensorflow/tsl/framework:device_id_impl",
         "//tensorflow/tsl/util:env_var",
         "@com_google_absl//absl/types:span",
     ],
@@ -59,12 +63,28 @@ cc_library(
     ] + if_cuda([
         ":nccl_id_store_cuda",
         "@local_config_cuda//cuda:cuda_headers",
-        "//tensorflow/core/common_runtime/gpu:gpu_cudamallocasync_allocator",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
     ]) + if_rocm([
         ":nccl_id_store_rocm",
         "@local_config_rocm//rocm:rocm_headers",
     ]),
+)
+
+xla_cc_test(
+    name = "se_gpu_pjrt_client_test",
+    srcs = if_gpu_is_configured(["se_gpu_pjrt_client_test.cc"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    tags = ["requires-gpu-nvidia"],
+    deps = [
+        ":se_gpu_pjrt_client",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 # We actually wish we could write if_cuda(if_nccl(...)) in :gpu_device,
@@ -105,7 +125,7 @@ cc_library(
     ] + if_nccl(["@local_config_nccl//:nccl"]),
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "pjrt_client_test_se_gpu",
     srcs = ["pjrt_client_test_se_gpu.cc"],
     tags = [

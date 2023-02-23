@@ -21,30 +21,32 @@ namespace tflite {
 namespace acceleration {
 
 // Evaluates the BenchmarkEvent output from validator.
-class BenchmarkResultEvaluator {
+class AbstractBenchmarkResultEvaluator {
  public:
-  virtual ~BenchmarkResultEvaluator() = default;
+  virtual ~AbstractBenchmarkResultEvaluator() = default;
 
-  // Returns whether this event means the validation passed.
-  virtual bool IsValidationSuccessEvent(const BenchmarkEvent& event) = 0;
+  // Returns whether this event means the validation test has passed. It checks
+  // that the test has finished successfully, and the test result passed
+  // accuracy checks.
+  bool IsValidationSuccessEvent(const BenchmarkEvent& event) {
+    return event.event_type() == BenchmarkEventType_END && event.result() &&
+           HasPassedAccuracyCheck(*event.result());
+  }
+
+  // Returns whether this BenchmarkResult should pass the accuracy check.
+  virtual bool HasPassedAccuracyCheck(const BenchmarkResult& result) = 0;
 };
 
 // Evaluator for embedded validation scenario.
-class EmbeddedResultEvaluator : public BenchmarkResultEvaluator {
+class EmbeddedResultEvaluator : public AbstractBenchmarkResultEvaluator {
  public:
+  static EmbeddedResultEvaluator* GetInstance();
+
+  bool HasPassedAccuracyCheck(const BenchmarkResult& result) override;
+
+ private:
+  EmbeddedResultEvaluator() = default;
   ~EmbeddedResultEvaluator() override = default;
-
-  bool IsValidationSuccessEvent(const BenchmarkEvent& event) override;
-};
-
-// Evaluator for custom validatio scenario.
-// Note: This class treats validation test completion as success for now. It
-// will integrate with custom validation rule from users later.
-class CustomResultEvaluator : public BenchmarkResultEvaluator {
- public:
-  ~CustomResultEvaluator() override = default;
-
-  bool IsValidationSuccessEvent(const BenchmarkEvent& event) override;
 };
 
 }  // namespace acceleration

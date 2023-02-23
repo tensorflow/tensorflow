@@ -4,6 +4,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -139,7 +140,7 @@ cc_library(
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
         "//tensorflow/compiler/xla/backends/profiler/cpu:python_tracer_impl",
-        "//tensorflow/core/profiler/lib:profiler_interface",
+        "//tensorflow/tsl/profiler/lib:profiler_interface",
     ],
 )
 

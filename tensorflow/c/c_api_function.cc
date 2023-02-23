@@ -185,7 +185,7 @@ TF_Function* TF_GraphToFunctionWithControlOutputs(
   if (control_output_names) {
     control_output_names_vec.reserve(ncontrol_outputs);
     for (int i = 0; i < ncontrol_outputs; ++i) {
-      control_output_names_vec.push_back(string(output_names[i]));
+      control_output_names_vec.push_back(string(control_output_names[i]));
     }
   }
 

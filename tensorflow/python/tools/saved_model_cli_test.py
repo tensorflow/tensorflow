@@ -153,8 +153,8 @@ signature_def['serving_default']:
 The MetaGraph with tag set ['serve'] contains the following ops:"""
     # pylint: enable=line-too-long
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS(
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS(
         ['saved_model_cli', 'show', '--dir', base_path, '--all'])
     parser = saved_model_cli.create_parser()
     parser.parse_args()
@@ -256,8 +256,8 @@ Concrete Functions:
           x: TensorSpec(shape=(2, 2), dtype=tf.float32, name='x')
 """.strip()  # pylint: enable=line-too-long
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS(
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS(
         ['saved_model_cli', 'show', '--dir', saved_model_dir, '--all'])
     parser = saved_model_cli.create_parser()
     parser.parse_args()
@@ -334,8 +334,8 @@ Concrete Functions:
           b: TensorSpec(shape=(), dtype=tf.float32, name='b')
 """.strip()  # pylint: enable=line-too-long
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS(
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS(
         ['saved_model_cli', 'show', '--dir', saved_model_dir, '--all'])
     parser = saved_model_cli.create_parser()
     parser.parse_args()
@@ -351,8 +351,8 @@ Concrete Functions:
 
     exp_out = 'The given SavedModel contains the following tag-sets:\n\'serve\''
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS(['saved_model_cli', 'show', '--dir', base_path])
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS(['saved_model_cli', 'show', '--dir', base_path])
     parser = saved_model_cli.create_parser()
     parser.parse_args()
     with captured_output() as (out, err):
@@ -372,8 +372,8 @@ Concrete Functions:
         '"regress_x_to_y"', '"regress_x_to_y2"', '"serving_default"'
     ]
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS(
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS(
         ['saved_model_cli', 'show', '--dir', base_path, '--tag_set', 'serve'])
     parser = saved_model_cli.create_parser()
     parser.parse_args()
@@ -390,8 +390,8 @@ Concrete Functions:
   def testShowCommandErrorNoTagSet(self):
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli', 'show', '--dir', base_path,
         '--tag_set', 'badtagset'])
     parser = saved_model_cli.create_parser()
@@ -411,8 +411,8 @@ Concrete Functions:
         '      dtype: DT_FLOAT\n      shape: (-1, 1)\n      name: y:0\n'
         'Method name is: tensorflow/serving/predict')
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli', 'show', '--dir', base_path, '--tag_set', 'serve',
         '--signature_def', 'serving_default'
     ])
@@ -427,8 +427,8 @@ Concrete Functions:
   def testShowCommandListOps(self):
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli', 'show', '--dir', base_path, '--tag_set', 'serve',
         '--list_ops'])
     parser = saved_model_cli.create_parser()
@@ -464,8 +464,8 @@ Concrete Functions:
                'The given SavedModel contains the following tag-sets:\n'
                '\'serve\'').strip()
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli', 'show', '--dir', base_path, '--list_ops'])
     parser = saved_model_cli.create_parser()
     parser.parse_args()
@@ -477,8 +477,8 @@ Concrete Functions:
     self.assertEqual(err.getvalue().strip(), '')
 
   def testPrintREFTypeTensor(self):
-    ref_tensor_info = meta_graph_pb2.TensorInfo()
-    ref_tensor_info.dtype = types_pb2.DT_FLOAT_REF
+    ref_tensor_info = meta_graph_pb2.TensorInfo(
+        dtype=types_pb2.DT_FLOAT_REF)
     with captured_output() as (out, err):
       saved_model_cli._print_tensor_info(ref_tensor_info)
     self.assertIn('DT_FLOAT_REF', out.getvalue().strip())
@@ -617,8 +617,8 @@ Concrete Functions:
     output_dir = os.path.join(test.get_temp_dir(),
                               'input_examples' + ('tfrt' if use_tfrt else ''))
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli',
         'run', '--dir', base_path, '--tag_set', 'serve',
         '--signature_def', 'regress_x_to_y', '--input_examples',
@@ -677,7 +677,7 @@ Concrete Functions:
         test.get_temp_dir(),
         'long_input_examples' + ('tfrt' if use_tfrt else ''))
 
-    saved_model_cli.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS.unparse_flags()
     input_examples = (
         'inputs=[{"variable0":[0.0],"variable1":[1.0],"variable2":[2.0],'
         '"variable3":[3.0],"variable4":[4.0],"variable5":[5.0],'
@@ -686,7 +686,7 @@ Concrete Functions:
         '"variable2":[2.0],"variable3":[3.0],"variable4":[4.0],'
         '"variable5":[5.0],"variable6":[6.0],"variable7":[7.0],'
         '"variable8":[8.0],"variable9":[9.0]}]')
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli',
         'run', '--dir', saved_model_dir, '--tag_set', 'serve',
         '--signature_def', 'func', '--input_examples', input_examples,
@@ -710,8 +710,8 @@ Concrete Functions:
     if os.path.exists(output_file):
       os.remove(output_file)
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli',
         'run', '--dir', base_path, '--tag_set', 'serve',
         '--signature_def', 'regress_x2_to_y3', '--inputs',
@@ -736,8 +736,8 @@ Concrete Functions:
     if os.path.isdir(output_dir):
       shutil.rmtree(output_dir)
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli',
         'run', '--dir', base_path, '--tag_set', 'serve',
         '--signature_def', 'serving_default', '--inputs', 'x=' +
@@ -761,8 +761,8 @@ Concrete Functions:
     output_file = os.path.join(test.get_temp_dir(), 'y.npy')
     open(output_file, 'a').close()
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli',
         'run', '--dir', base_path, '--tag_set', 'serve',
         '--signature_def', 'serving_default', '--inputs', 'x=' +
@@ -780,8 +780,8 @@ Concrete Functions:
   def testRunCommandInvalidInputKeyError(self, use_tfrt):
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli',
         'run', '--dir', base_path, '--tag_set', 'serve',
         '--signature_def', 'regress_x2_to_y3',
@@ -796,8 +796,8 @@ Concrete Functions:
   def testRunCommandInvalidSignature(self, use_tfrt):
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli',
         'run', '--dir', base_path, '--tag_set', 'serve',
         '--signature_def', 'INVALID_SIGNATURE',
@@ -815,8 +815,8 @@ Concrete Functions:
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     output_dir = os.path.join(test.get_temp_dir(), 'new_dir')
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli',
         'run', '--dir', base_path, '--tag_set', 'serve',
         '--signature_def', 'regress_x_to_y',
@@ -833,8 +833,8 @@ Concrete Functions:
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     output_dir = os.path.join(test.get_temp_dir(), 'new_dir')
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli',
         'run', '--dir', base_path, '--tag_set', 'serve',
         '--signature_def', 'regress_x_to_y',
@@ -851,8 +851,8 @@ Concrete Functions:
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     output_dir = os.path.join(test.get_temp_dir(), 'new_dir')
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli',
         'run', '--dir', base_path, '--tag_set', 'serve',
         '--signature_def', 'regress_x_to_y',
@@ -875,8 +875,8 @@ Concrete Functions:
     output_file = os.path.join(test.get_temp_dir(), 'y.npy')
     open(output_file, 'a').close()
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli',
         'run', '--dir', base_path, '--tag_set', 'serve',
         '--signature_def', 'serving_default', '--inputs', 'x=' +
@@ -891,8 +891,8 @@ Concrete Functions:
   def testRunCommandInputNotGivenError(self, use_tfrt):
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli',
         'run', '--dir', base_path, '--tag_set', 'serve',
         '--signature_def', 'serving_default'
@@ -914,8 +914,8 @@ Concrete Functions:
     if os.path.isdir(output_dir):
       shutil.rmtree(output_dir)
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli',
         'run', '--dir', base_path, '--tag_set', 'serve',
         '--signature_def', 'serving_default', '--inputs', 'x=' +
@@ -942,8 +942,8 @@ Concrete Functions:
   def testScanCommand(self):
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli', 'scan', '--dir', base_path])
     parser = saved_model_cli.create_parser()
     parser.parse_args()
@@ -959,8 +959,8 @@ Concrete Functions:
   def testScanCommandFoundCustomDenylistedOp(self):
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli',
         'scan', '--dir', base_path, '--tag_set', 'serve', '--op_denylist',
         'VariableV2,Assign,Relu6'])
@@ -981,8 +981,8 @@ Concrete Functions:
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     output_dir = os.path.join(test.get_temp_dir(), 'aot_compile_cpu_dir')
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli',
         'aot_compile_cpu', '--dir', base_path, '--tag_set', 'serve',
         '--output_prefix', output_dir, '--cpp_class', 'Compiled',
@@ -1052,8 +1052,8 @@ Concrete Functions:
 
     output_prefix = os.path.join(test.get_temp_dir(), 'aot_compile_cpu_dir/out')
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli',  # Use the default serving signature_key.
         'aot_compile_cpu', '--dir', saved_model_dir, '--tag_set', 'serve',
         '--signature_def_key', 'func', '--output_prefix', output_prefix,
@@ -1109,8 +1109,8 @@ Concrete Functions:
 
     output_prefix = os.path.join(test.get_temp_dir(), 'aot_compile_cpu_dir/out')
 
-    saved_model_cli.FLAGS.unparse_flags()
-    saved_model_cli.FLAGS([
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS([
         'saved_model_cli',  # Use the default seving signature_key.
         'freeze_model', '--dir', saved_model_dir, '--tag_set', 'serve',
         '--signature_def_key', 'func', '--output_prefix', output_prefix,

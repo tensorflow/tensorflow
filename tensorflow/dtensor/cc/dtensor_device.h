@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/tf_status.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -34,8 +35,10 @@ namespace dtensor {
 // `device_name` arg should match the `device_name` argument to
 // TFE_RegisterCustomDevice, and is the name of the custom device itself
 // (e.g. pass it to `tf.device` to place operations on it from Python).
+// TODO(b/268241383): Remove the `status = nullptr` overload.
 void AllocateDTensorDevice(absl::string_view device_name,
-                           TFE_CustomDevice* device, void** device_info);
+                           TFE_CustomDevice* device, void** device_info,
+                           TF_Status* status = nullptr);
 
 // Add a mesh to the `DTensorDevice` indicated by `device_info`.
 //
@@ -48,8 +51,13 @@ void AllocateDTensorDevice(absl::string_view device_name,
 //
 // `is_host_mesh` indicates this is a CPU mesh used only for sea-of-donuts-style
 // host collectives.
+//
+// in_flight_nodes_limit throttles the number of inflight nodes in the eager
+// async executors used by DTensor. The throttling bounds the memory usage
+// of an eager training loop. Python API sets this value to 8 by default.
 void AddMesh(const std::string& serialized_mesh, void* device_info,
-             bool is_async, bool is_host_mesh, TF_Status* status);
+             bool is_async, bool is_host_mesh, int in_flight_nodes_limit,
+             TF_Status* status);
 
 // Sets a requested layout for outputs of all operations.
 void ExperimentalSetDefaultLayout(const std::string& serialized_layout,
@@ -102,6 +110,10 @@ std::vector<TFE_TensorHandle*> Unpack(TFE_Context* context,
 std::string FetchLayout(TFE_Context* context, TFE_TensorHandle* input,
                         void* device_info, TF_Status* status);
 
+// Returns whether `input` is a dtensor.
+bool IsDTensor(TFE_Context* context, TFE_TensorHandle* input, void* device_info,
+               TF_Status* status);
+
 // Pack `indices`, `values`, `shapes` tensors into a SparseTensorWithLayout.
 TFE_TensorHandle* SparsePack(TFE_Context* context, int num_inputs,
                              TFE_TensorHandle** indices,
@@ -121,6 +133,12 @@ bool IsSparseDTensor(TFE_Context* context, TFE_TensorHandle* input,
 // 'miss'.
 std::unordered_map<std::string, int> GetFunctionCacheHitAndMissCount(
     TFE_Context* context, void* device_info, TF_Status* status);
+
+// Sets the layouts for the elements emitted by an iterator resource tensor.
+void SetIteratorElementLayouts(TFE_Context* context, TFE_TensorHandle* input,
+                               const std::vector<std::string>& string_layouts,
+                               void* device_info, TF_Status* status);
+
 }  // namespace dtensor
 }  // namespace tensorflow
 

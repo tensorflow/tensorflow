@@ -41,6 +41,8 @@ class DerivedXEventBuilder {
                     std::optional<int64_t> group_id) const;
 
   void Expand(Timespan event_span);
+  Timespan GetTimespan() const { return event_.GetTimespan(); }
+  void SetTimespan(Timespan event_span) { event_.SetTimespan(event_span); }
 
  private:
   XEventBuilder event_;
@@ -84,9 +86,9 @@ class DerivedXLineBuilder {
   void ExpandOrAddLevelEvent(const XEventMetadata& event_metadata,
                              Timespan event_span,
                              std::optional<int64_t> group_id, int level);
+  void AdjustDurationForTraceViewer(int level);
 
   const XStatMetadata* group_id_stat_metadata_ = nullptr;
-  const XStatMetadata* level_stat_metadata_ = nullptr;
   XLineBuilder line_;
   absl::flat_hash_map<int, std::optional<DerivedXEventBuilder>>
       last_event_by_level_;
@@ -110,10 +112,6 @@ void ProcessTfOpEvent(absl::string_view tf_op_full_name, Timespan event_span,
                       DerivedXLineBuilder& tf_name_scope_line_builder,
                       DerivedXLineBuilder& tf_op_line_builder);
 
-// Adds step names from GroupMetadataMap to "Steps" line in plane.
-// The event name is updated when converted to trace events.
-void AddGroupMetadataToStepEvents(const GroupMetadataMap& group_metadata_map,
-                                  XLineBuilder& line);
 
 // Derives "Steps" line from group_id XStat in XEvents.
 void DeriveStepEventsFromGroups(const GroupMetadataMap& group_metadata_map,

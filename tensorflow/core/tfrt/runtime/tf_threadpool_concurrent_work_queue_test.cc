@@ -52,12 +52,10 @@ TEST_F(TfThreadpoolWorkQueueTest, GetNameOk) {
 TEST_F(TfThreadpoolWorkQueueTest, InitializeRequestOk) {
   tfrt::RequestContextBuilder ctx_builder(/*host=*/nullptr,
                                           /*resource_context=*/nullptr);
-  tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
-  auto queue =
-      tf_threadpool_cwq_->InitializeRequest(&ctx_builder, &intra_op_threadpool);
+  auto queue = tf_threadpool_cwq_->InitializeRequest(/*request_id=*/0);
   TF_ASSERT_OK(queue.status());
   EXPECT_NE(*queue, nullptr);
-  EXPECT_NE(intra_op_threadpool, nullptr);
+  EXPECT_NE((*queue)->GetIntraOpThreadPool(), nullptr);
 }
 
 TEST_F(TfThreadpoolWorkQueueTest, IsInWorkerThreadOk) {

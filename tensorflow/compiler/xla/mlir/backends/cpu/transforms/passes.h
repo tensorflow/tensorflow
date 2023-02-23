@@ -35,6 +35,24 @@ createConvertLmhloToCpuRuntimePass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createXlaAbiLegalizationPass();
 
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createLegalizeCollectiveOpsPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createLegalizeI1VectorTransferOpsPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createConvertXlaCpuMemRefElementCastToLLVMPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createRemoveCopiesToOutParamsPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createSparseCustomCallToPackUnpackOpPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createRewriteReallocToAllocPass();
+
 //===-----------------------------------------------------------------------===/
 
 #define GEN_PASS_REGISTRATION

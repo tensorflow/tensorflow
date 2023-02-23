@@ -450,9 +450,6 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr(kDataTransferProtocol, &data_transfer_protocol_));
   }
-  if (data_transfer_protocol_.empty()) {
-    data_transfer_protocol_ = kGrpcTransferProtocol;
-  }
 
   std::string target_workers_str = "AUTO";
   if (ctx->HasAttr(kTargetWorkers)) {

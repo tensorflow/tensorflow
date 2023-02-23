@@ -17,6 +17,7 @@
 #include <utility>
 
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
@@ -90,6 +91,7 @@ static void BM_InstantiateExecutable(::testing::benchmark::State& state) {
   opts.compiler.create_compilation_pipeline =
       [&](xla::runtime::PassManager& passes) {
         TfJitRtPipelineOptions opts;
+        opts.vectorize = tensorflow::GetJitRtFlags().vectorize;
 
         // Lower from Tensorflow to Linalg on buffers.
         CreateTfJitRtPipeline(*passes, opts);

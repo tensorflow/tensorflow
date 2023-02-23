@@ -27,7 +27,8 @@ TfLiteStatus InterpreterUtils::InvokeWithCPUFallback(Interpreter* interpreter) {
   }
   // Retry without delegation.
   // TODO(b/138706191): retry only if error is due to delegation.
-  interpreter->error_reporter()->Report(
+  TF_LITE_REPORT_ERROR(
+      interpreter->error_reporter(),
       "Invoke() failed in the presence of delegation. Retrying without.");
 
   // Copy input data to a buffer.

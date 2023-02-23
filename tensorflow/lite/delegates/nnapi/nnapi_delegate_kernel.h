@@ -23,7 +23,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_plugin.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"

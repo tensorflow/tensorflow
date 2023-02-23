@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/verifier.h"
@@ -54,6 +53,8 @@ std::unique_ptr<Allocation> GetAllocationFromFile(
   return allocation;
 }
 
+namespace impl {
+
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
     const char* filename, ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
@@ -69,6 +70,9 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
       GetAllocationFromFile(filename, error_reporter), extra_verifier,
       error_reporter);
 }
+
+}  // namespace impl
+
 #endif
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
@@ -90,12 +94,31 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromBuffer(
                                       error_reporter);
 }
 
+void FlatBufferModel::ValidateModelBuffers(ErrorReporter* error_reporter) {
+  auto buffers = model_->buffers();
+  if (buffers && buffers->size() > 0) {
+    auto first_buffer = buffers->Get(0);
+    if (first_buffer && first_buffer->data()) {
+      if (first_buffer->data()->size() != 0) {
+        // Note the 0th entry of this array must be an empty buffer (sentinel).
+        // This is a convention so that tensors without a buffer can provide 0
+        // as their buffer.
+        TF_LITE_REPORT_ERROR(
+            error_reporter,
+            "The 0th entry of the model buffer must be an empty buffer.");
+      }
+    }
+  }
+}
+
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromAllocation(
     std::unique_ptr<Allocation> allocation, ErrorReporter* error_reporter) {
   std::unique_ptr<FlatBufferModel> model(new FlatBufferModel(
       std::move(allocation), ValidateErrorReporter(error_reporter)));
   if (!model->initialized()) {
     model.reset();
+  } else {
+    model->ValidateModelBuffers(error_reporter);
   }
   return model;
 }
@@ -105,7 +128,7 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromAllocation(
     ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
   if (!allocation || !allocation->valid()) {
-    error_reporter->Report("The model allocation is null/empty");
+    TF_LITE_REPORT_ERROR(error_reporter, "The model allocation is null/empty");
     return nullptr;
   }
 
@@ -113,7 +136,8 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromAllocation(
       reinterpret_cast<const uint8_t*>(allocation->base()),
       allocation->bytes());
   if (!VerifyModelBuffer(base_verifier)) {
-    error_reporter->Report("The model is not a valid Flatbuffer buffer");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "The model is not a valid Flatbuffer buffer");
     return nullptr;
   }
 
@@ -136,6 +160,8 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
       new FlatBufferModel(caller_owned_model_spec, error_reporter));
   if (!model->initialized()) {
     model.reset();
+  } else {
+    model->ValidateModelBuffers(error_reporter);
   }
   return model;
 }
@@ -159,7 +185,8 @@ string FlatBufferModel::GetMinimumRuntime() const {
       }
       // If there is no '\0' in the buffer, this indicates that the flatbuffer
       // is malformed.
-      error_reporter_->Report(
+      TF_LITE_REPORT_ERROR(
+          error_reporter_,
           "Min_runtime_version in model metadata is malformed");
       break;
     }
@@ -168,14 +195,19 @@ string FlatBufferModel::GetMinimumRuntime() const {
 }
 
 std::map<std::string, std::string> FlatBufferModel::ReadAllMetadata() const {
-  std::map<std::string, std::string> keys_values;
-  if (!model_ || !model_->metadata() || !model_->buffers()) return keys_values;
+  return ReadAllMetadata(model_);
+}
 
-  for (int i = 0; i < model_->metadata()->size(); ++i) {
-    auto metadata = model_->metadata()->Get(i);
+std::map<std::string, std::string> FlatBufferModel::ReadAllMetadata(
+    const tflite::Model* model) {
+  std::map<std::string, std::string> keys_values;
+  if (!model || !model->metadata() || !model->buffers()) return keys_values;
+
+  for (int i = 0; i < model->metadata()->size(); ++i) {
+    auto metadata = model->metadata()->Get(i);
     auto buf = metadata->buffer();
-    if (buf >= model_->buffers()->size()) continue;
-    const tflite::Buffer* buffer = (*model_->buffers())[buf];
+    if (buf >= model->buffers()->size()) continue;
+    const tflite::Buffer* buffer = (*model->buffers())[buf];
     if (!buffer || !buffer->data()) continue;
     const flatbuffers::Vector<uint8_t>* array = buffer->data();
     if (!array) continue;

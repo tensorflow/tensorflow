@@ -16,15 +16,16 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_COMMON
 #define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_COMMON
 
-def HLO_Dialect : Dialect {
+def MHLO_Dialect : Dialect {
   let name = "mhlo";
   let cppNamespace = "::mlir::mhlo";
 
   let useDefaultAttributePrinterParser = 0;
   let useDefaultTypePrinterParser = 0;
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
-include "stablehlo/dialect/Base.td"
+include "mhlo/IR/hlo_base.td"
 include "mhlo/IR/hlo_ops_enums.td"
 include "mhlo/IR/hlo_ops_attrs.td"
 include "mhlo/IR/hlo_ops_typedefs.td"

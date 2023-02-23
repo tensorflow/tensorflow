@@ -8,8 +8,13 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     features = ["-layering_check"],
     licenses = ["notice"],
 )
@@ -1168,7 +1173,9 @@ cc_library(
     ] + if_static(
         ["//tensorflow/core/platform:tensor_float_32_utils"],
         ["//tensorflow/core/platform:tensor_float_32_hdr_lib"],
-    ),
+    ) + if_rocm_is_configured([
+        "//tensorflow/core/platform:stream_executor",
+    ]),
 )
 
 tf_cuda_cc_test(

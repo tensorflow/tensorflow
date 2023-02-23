@@ -20,66 +20,66 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/IR/TensorEncoding.td"
 
-def HLODim : ArrayRefParameter<"int64_t", "Dimension"> {
-  let parser = "mlir::mhlo::parseIntArray($_parser)";
-  let printer = "mlir::mhlo::printIntArray($_printer, $_self)";
+def MHLO_Dims : ArrayRefParameter<"int64_t", "Dimension"> {
+  let parser = "parseDimSizes($_parser)";
+  let printer = "printDimSizes($_printer, $_self)";
 }
 
-def ScatterDimensionNumbers : AttrDef<HLO_Dialect, "ScatterDimensionNumbers"> {
+def MHLO_ScatterDimensionNumbers : AttrDef<MHLO_Dialect, "ScatterDimensionNumbers"> {
   let mnemonic = "scatter";
   let summary = "Attribute that models the dimension information for scatter";
   let parameters = (ins
-      HLODim:$updateWindowDims,
-      HLODim:$insertedWindowDims,
-      HLODim:$scatterDimsToOperandDims,
+      MHLO_Dims:$updateWindowDims,
+      MHLO_Dims:$insertedWindowDims,
+      MHLO_Dims:$scatterDimsToOperandDims,
       "int64_t":$indexVectorDim
   );
   let hasCustomAssemblyFormat = 1;
 }
 
-def GatherDimensionNumbers : AttrDef<HLO_Dialect, "GatherDimensionNumbers"> {
+def MHLO_GatherDimensionNumbers : AttrDef<MHLO_Dialect, "GatherDimensionNumbers"> {
   let mnemonic = "gather";
   let summary = "Attribute that models the dimension information for gather";
   let parameters = (ins
-      HLODim:$offsetDims,
-      HLODim:$collapsedSliceDims,
-      HLODim:$startIndexMap,
+      MHLO_Dims:$offsetDims,
+      MHLO_Dims:$collapsedSliceDims,
+      MHLO_Dims:$startIndexMap,
       "int64_t":$indexVectorDim
   );
   let hasCustomAssemblyFormat = 1;
 }
 
-def DotDimensionNumbers : AttrDef<HLO_Dialect, "DotDimensionNumbers"> {
+def MHLO_DotDimensionNumbers : AttrDef<MHLO_Dialect, "DotDimensionNumbers"> {
   let mnemonic = "dot";
   let summary = "Attribute that models the dimension information for dot.";
   let parameters = (ins
-      HLODim:$lhsBatchingDimensions,
-      HLODim:$rhsBatchingDimensions,
-      HLODim:$lhsContractingDimensions,
-      HLODim:$rhsContractingDimensions
+      MHLO_Dims:$lhsBatchingDimensions,
+      MHLO_Dims:$rhsBatchingDimensions,
+      MHLO_Dims:$lhsContractingDimensions,
+      MHLO_Dims:$rhsContractingDimensions
   );
   let hasCustomAssemblyFormat = 1;
 }
 
-def ConvDimensionNumbers : AttrDef<HLO_Dialect, "ConvDimensionNumbers"> {
+def MHLO_ConvDimensionNumbers : AttrDef<MHLO_Dialect, "ConvDimensionNumbers"> {
   let cppNamespace = "::mlir::mhlo";
   let mnemonic = "conv";
   let summary = "Structure of dimension information for conv op";
   let parameters = (ins
     "int64_t":$inputBatchDimension,
     "int64_t":$inputFeatureDimension,
-    HLODim:$inputSpatialDimensions,
+    MHLO_Dims:$inputSpatialDimensions,
     "int64_t":$kernelInputFeatureDimension,
     "int64_t":$kernelOutputFeatureDimension,
-    HLODim:$kernelSpatialDimensions,
+    MHLO_Dims:$kernelSpatialDimensions,
     "int64_t":$outputBatchDimension,
     "int64_t":$outputFeatureDimension,
-    HLODim:$outputSpatialDimensions
+    MHLO_Dims:$outputSpatialDimensions
   );
   let hasCustomAssemblyFormat = 1;
 }
 
-def OutputOperandAlias : AttrDef<HLO_Dialect, "OutputOperandAlias"> {
+def MHLO_OutputOperandAlias : AttrDef<MHLO_Dialect, "OutputOperandAlias"> {
   let cppNamespace = "::mlir::mhlo";
   let mnemonic = "output_operand_alias";
   let summary =
@@ -112,9 +112,9 @@ def OutputOperandAlias : AttrDef<HLO_Dialect, "OutputOperandAlias"> {
     ```
   }];
   let parameters = (ins
-    HLODim:$outputTupleIndices,
+    MHLO_Dims:$outputTupleIndices,
     "int64_t":$operandIndex,
-    HLODim:$operandTupleIndices
+    MHLO_Dims:$operandTupleIndices
   );
   let assemblyFormat = [{
     `<` `output_tuple_indices` `=` $outputTupleIndices `,`
@@ -123,7 +123,7 @@ def OutputOperandAlias : AttrDef<HLO_Dialect, "OutputOperandAlias"> {
   }];
 }
 
-def ArgResultAlias : AttrDef<HLO_Dialect, "ArgResultAlias"> {
+def MHLO_ArgResultAlias : AttrDef<MHLO_Dialect, "ArgResultAlias"> {
   let cppNamespace = "::mlir::mhlo";
   let mnemonic = "result_alias";
   let summary =
@@ -148,9 +148,9 @@ def ArgResultAlias : AttrDef<HLO_Dialect, "ArgResultAlias"> {
     ```
   }];
   let parameters = (ins
-    HLODim:$argTupleIndices,
+    MHLO_Dims:$argTupleIndices,
     "int64_t":$resultIndex,
-    HLODim:$resultTupleIndices,
+    MHLO_Dims:$resultTupleIndices,
     "bool":$isMustAlias
   );
   let hasCustomAssemblyFormat = 1;
@@ -159,16 +159,104 @@ def ArgResultAlias : AttrDef<HLO_Dialect, "ArgResultAlias"> {
 // Represents a unique identifier for each Send/Recv instruction pair or
 // optionally for collective instructions (AllReduce, CollectivePermute,
 // AllToAll). Non-positive channel_id handle is equivalent to no channel id.
-def ChannelHandle : AttrDef<HLO_Dialect, "ChannelHandle"> {
+def MHLO_ChannelHandle : AttrDef<MHLO_Dialect, "ChannelHandle"> {
   let mnemonic = "channel_handle";
   let parameters = (ins "int64_t":$handle, "int64_t":$type);
   let summary = "two 64-bit integers 'handle' and 'type'";
   let assemblyFormat = "`<` struct(params) `>`";
 }
 
+def MHLO_CrossProgramPrefetch : AttrDef<MHLO_Dialect, "CrossProgramPrefetch"> {
+  let mnemonic = "cross_program_prefetch";
+  let parameters = (ins "int64_t":$parameter, MHLO_Dims:$indices, "Optional<int64_t>":$offset);
+  let summary = "Argument that is prefetched from another program";
+  let description = [{
+    This attribute captures an argument that is prefetched from another program.
+    For a given `CrossProgramPrefetchAttr`, `parameter` tells us which argument
+    of the `main` function of the module is prefetched, and `indices` is a shape
+    index telling us what subshape of that argument is prefetched.
+
+    A shape has a subshape iff it is a tuple. In that case, the subshape of
+    the tuple by `indices` is the shape achieved after indexing by each
+    element of `indices` in turn. For example, the [1,0] subshape of
+    `tuple<tuple<token, token>, tuple<tensor<i32>, token>>` is `tensor<i32>`.
+
+    An empty value for `indices` means the whole shape is prefetched.
+
+    For example,
+
+    ```mlir
+    module attributes { mhlo.cross_program_prefetch = [ #mhlo.cross_program_prefetch< parameter = 0, indices = [0]> ]} {
+      func.func @copy(%arg0 : tuple<tensor<2x3xi32>, tensor<i32>>) -> tuple<tensor<2x3xi32>, tensor<i32>> {
+        %0 = "mhlo.copy"(%arg0) {is_cross_program_prefetch}
+        return %0 : tuple<tensor<2x3xi32>, tensor<i32>>
+      }
+      func.func @main(%arg0 : tuple<tensor<2x3xi32>, tensor<i32>>) -> tuple<tensor<2x3xi32>, tensor<i32>> {
+        %1 = "mhlo.async_start"(%arg0) {called_computation=@copy}
+        %2 = "mhlo.async_done"(%1) {called_computation=@copy}
+        return %2 : tuple<tensor<2x3xi32>, tensor<i32>>
+      }
+    }
+    ```
+
+    The `parameter = 0` tells us that the async copy of the `0`th parameter is
+    a `cross_program_prefetch`, while the `index` of `[0]` tells us that the
+    `0`th element of the tuple is prefetched while the other element of the
+    tuple is not.
+  }];
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def MHLO_DynamicParameterBinding : AttrDef<MHLO_Dialect, "DynamicParameterBinding"> {
+  let mnemonic = "dynamic_parameter_binding";
+  let summary = "Indicates which parameters represent dynamic dimension sizes.";
+  let description = [{
+    This attribute indicates which parameters to the `main` function of a
+    given module have the runtime values for dynamic dimension sizes for
+    other parameters.
+
+    Each binding here specifies that parameter containing the runtime value of
+    the dynamic dimension size `dynamic_param_num` (which contains the
+    runtime size at a subshape given by the shape index
+    `dynamic_param_index`) and the dimension for which that is the size,
+    which is the `target_param_dim_num` dimension of the `target_param_num`
+    parameter to `main` at subshape `target_param_index`.
+
+    See cross_program_prefetch for a discussion of subshapes.
+
+    For example,
+
+    module @main attributes {
+     mhlo.dynamic_parameter_bindings = [
+       #mhlo.dynamic_parameter_binding<
+         dynamic_param_num = 0,
+         dynamic_param_indices = [],
+         target_param_num = 1,
+         target_param_indices = [],
+         target_param_dim_num = 0>] } {
+     func.func @main(%a : tensor<f32>, %b : tensor<?xf32, #mhlo.type_extensions<bounds = [2]>>) -> () {
+       func.return
+     }
+    }
+
+    Here, 'b' (param index 1) has a dynamic shape whose real size is
+    determined at runtime. 'a' represents the real size of b's zeroth
+    dimension.
+
+  }];
+  let parameters = (ins
+      "int64_t":$dynamic_param_num,
+      MHLO_Dims:$dynamic_param_indices,
+      "int64_t":$target_param_num,
+      MHLO_Dims:$target_param_indices,
+      "int64_t":$target_param_dim_num
+  );
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
 // Note: This is an experimental attribute and shouldn't be relied upon for
 // production.
-def TypeExtensions : AttrDef<HLO_Dialect, "TypeExtensions", [
+def MHLO_TypeExtensions : AttrDef<MHLO_Dialect, "TypeExtensions", [
     DeclareAttrInterfaceMethods<VerifiableTensorEncoding>,
     DeclareAttrInterfaceMethods<HLO_BoundedAttrInterface>]> {
   let mnemonic = "type_extensions";
@@ -188,11 +276,12 @@ def TypeExtensions : AttrDef<HLO_Dialect, "TypeExtensions", [
 
     See `HLO_BoundedAttrInterface` for documentation for `bounds`.
   }];
-  let assemblyFormat = "`<` `bounds` `=` `[` $bounds `]` `>`";
+
+  let assemblyFormat = "`<` `bounds` `=` ` ` custom<DimSizes>($bounds) `>`";
 }
 
 // A layout attribute (1D tensor of index type)
-def HLO_LayoutAttr : Attr<
+def MHLO_LayoutAttr : Attr<
   And<[IndexElementsAttr.predicate,
        CPred<[{$_self.cast<::mlir::DenseIntElementsAttr>().getType().getRank()
                == 1}]>]>,
@@ -203,12 +292,12 @@ def HLO_LayoutAttr : Attr<
 }
 
 // An array of layout (1D tensor) attributes.
-def HLO_ArrayOfLayoutAttr : TypedArrayAttrBase<HLO_LayoutAttr,
+def MHLO_ArrayOfLayoutAttr : TypedArrayAttrBase<MHLO_LayoutAttr,
     "Array of layout (1D tensor of index type) attributes">;
 
 // An array of FlatSymbolRef attributes that can be used as a default valued
 // attribute.
-def HLO_FlatSymbolRefArrayAttr :
+def MHLO_FlatSymbolRefArrayAttr :
   TypedArrayAttrBase<FlatSymbolRefAttr, "flat symbol ref array attribute"> {
   let constBuilderCall = "::mlir::ArrayAttr::get($_builder.getContext(), $0)";
 }
@@ -217,7 +306,7 @@ def HLO_FlatSymbolRefArrayAttr :
 // Common convolution attributes
 //===----------------------------------------------------------------------===//
 
-def BoolElementsAttr :
+def MHLO_BoolElementsAttr :
     ElementsAttrBase<
       And<[CPred<"$_self.isa<::mlir::DenseIntOrFPElementsAttr>()">,
            CPred<"$_self.cast<::mlir::DenseIntOrFPElementsAttr>().getType().getElementType().isInteger(1)">]>,
@@ -228,7 +317,7 @@ def BoolElementsAttr :
   let convertFromStorage = "$_self";
 }
 
-def ConvolutionAttributes {
+def MHLO_ConvolutionAttributes {
   dag attributes = (ins
     // Default value: one for each of the spatial dimension.
     OptionalAttr<I64ElementsAttr>:$window_strides,
@@ -239,11 +328,11 @@ def ConvolutionAttributes {
     // Default value: one for each of the spatial dimension.
     OptionalAttr<I64ElementsAttr>:$rhs_dilation,
     // Default value: false for each of the spatial dimension.
-    OptionalAttr<BoolElementsAttr>:$window_reversal,
-    ConvDimensionNumbers:$dimension_numbers,
+    OptionalAttr<MHLO_BoolElementsAttr>:$window_reversal,
+    MHLO_ConvDimensionNumbers:$dimension_numbers,
     I64Attr:$feature_group_count,
     I64Attr:$batch_group_count,
-    HLO_PrecisionConfigAttr:$precision_config
+    MHLO_PrecisionConfigAttr:$precision_config
   );
 }
 

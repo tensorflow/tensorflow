@@ -539,6 +539,40 @@ Status TuplePointsToAnalysis::HandleCustomCall(HloInstruction* custom_call) {
   return OkStatus();
 }
 
+// WARNING:
+// Adding this, which essentially does the same thing as HandleCustomCall
+// Not sure if it is really needed or it will break anything
+Status TuplePointsToAnalysis::HandleFusion(HloInstruction* fusion) {
+  auto cfusion = Cast<HloFusionInstruction>(fusion);
+  PointsToSet& points_to_set = CreateEmptyPointsToSet(fusion);
+  absl::flat_hash_map<ShapeIndex, std::pair<int64_t, ShapeIndex>>
+      aliased_outputs;
+  for (const auto& pair : cfusion->output_to_operand_aliasing()) {
+    aliased_outputs.emplace(pair.first, pair.second);
+  }
+  points_to_set.ForEachMutableElement([&](const ShapeIndex& index,
+                                          PointsToSet::BufferList* buffers) {
+    auto it = aliased_outputs.find(index);
+    if (it == aliased_outputs.end()) {
+      points_to_set.AddPointedToBuffer(
+          logical_buffer_analysis_->GetBuffer(fusion, index), index);
+    } else {
+      const PointsToSet& input_set =
+          *PerInst(cfusion->operand(it->second.first))->points_to_set;
+      for (const LogicalBuffer* input_buffer :
+           input_set.element(it->second.second)) {
+        points_to_set.AddPointedToBuffer(*input_buffer, index);
+      }
+
+      for (HloInstruction* tuple : input_set.tuple_sources(it->second.second)) {
+        points_to_set.add_tuple_source(index, tuple);
+      }
+    }
+  });
+  points_to_set.add_tuple_source({}, fusion);
+  return OkStatus();
+}
+
 Status TuplePointsToAnalysis::HandleOptimizationBarrier(
     HloInstruction* barrier) {
   // A kOptimizationBarrier instruction is a no-op.

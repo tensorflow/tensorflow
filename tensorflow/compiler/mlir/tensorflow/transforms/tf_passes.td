@@ -306,7 +306,7 @@ def UnrollBatchMatMulPass : Pass<"tf-unroll-batch-matmul", "mlir::func::FuncOp">
   let constructor = "TF::CreateUnrollBatchMatMulPassPass()";
 }
 
-def ClusterFormationPass : Pass<"tf-device-cluster-formation", "mlir::func::FuncOp"> {
+def ClusterFormationPass : Pass<"tf-device-cluster-formation", "mlir::ModuleOp"> {
   let summary = "Form clusters from instructions assigned to same device";
   let constructor = "TFDevice::CreateClusterFormationPass()";
   let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
@@ -368,6 +368,17 @@ def LegalizeTFGToTFPass : Pass<"tfe-legalize-tfg", "ModuleOp"> {
 def ReplicateToIslandPass : Pass<"tf-replicate-to-island", "mlir::func::FuncOp"> {
   let summary = "Lowers device replicate to executor islands";
   let constructor = "TFDevice::CreateReplicateToIslandPass()";
+  let options = [
+    Option<"legacy_graph_export_", "legacy-graph-export", "bool",
+           /*default=*/"true",
+           "Determines whether or not this pass should execute logic that is "
+           "reserved for the legacy graph export pipeline to maintain expected "
+           "invariants. In the case of this pass, that means manually propagating "
+           "controls to lifted parallel execute regions to the graph fetch to "
+           "ensure the ops execute, as well as determining whether or not the "
+           "islands created by this pass should be split after the replicated "
+           "ops have been lifted.">
+  ];
 }
 
 def ReplicaIDToDeviceOrdinalPass : Pass<"tf-replica-id-to-device-ordinal", "mlir::func::FuncOp"> {
@@ -386,6 +397,27 @@ def ConvertReadonlyReferenceVariablesToResourceVariablesPass :
   Pass<"tf-readonly-references-to-resources", "mlir::func::FuncOp"> {
   let summary = "Convert readonly reference variables to resource variables.";
   let constructor = "TF::CreateConvertReadonlyReferenceVariablesToResourceVariablesPass()";
+}
+
+def ReplicateTensorListInitOpsPass : Pass<"tf-replicate-tensor-list-init-ops", "mlir::func::FuncOp"> {
+  let summary =
+    "Replicate TensorList init ops for correct shape assignments in shape inference";
+
+  let description = [{
+    If we pass same TensorList to a while op as multiple arguments or just use
+    the same TensorList at multiple places and assign different
+    TensorListSetItem to elements of TensorList, the shape inference is then
+    unable to identify the Shape of these args and thus the input TensorList
+    shape is unidentifiable.
+    All of these args are supposed to be independent and not related to original
+    creation of TensorList.
+
+    This pass will create multiple instances of TensorList for each arg of the
+    while op and each use and thus there will be not a conflict in resolving the
+    shape of these different inputs.
+  }];
+
+  let constructor = "TF::CreateReplicateTensorListInitOpsPass()";
 }
 
 def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
@@ -902,6 +934,24 @@ def ExecutorTPUV1IslandInliningPass : Pass<"tf-executor-tpu-v1-island-inlining",
   }];
 
   let constructor = "tf_executor::CreateTFExecutorTPUV1IslandInliningPass()";
+}
+
+def TPUPartitionedOpConversionPass : Pass<"tf-tpu-partitioned-op-conversion", "mlir::func::FuncOp"> {
+  let summary = "Rewrite all TPU Partitioned ops into their V2 counterparts.";
+
+  let constructor = "TFTPU::CreateTPUPartitionedOpConversionPass()";
+}
+
+def TPUValidateInputsPass : Pass<"tf-tpu-validate-inputs", "ModuleOp"> {
+  let summary = "Validates inputs to the TPU TF/XLA bridge";
+
+  let description = [{
+    This pass checks that the IR has valid input to TPU TF/XLA bridge.
+    It checks the relations of multiple ops. Properties of single ops are
+    checked by the 'verify' method of ops.
+  }];
+
+  let constructor = "TFTPU::CreateTPUValidateInputsPass()";
 }
 
 def TPUClusterFormationPass : Pass<"tf-tpu-cluster-formation", "ModuleOp"> {
@@ -2181,7 +2231,7 @@ def SplitIntoIslandPerOpPass : Pass<"tf-executor-split-into-island-per-op", "mli
         }
     ```
   }];
-  let constructor = "mlir::CreateSplitIntoIslandPerOpPass()";
+  let constructor = "mlir::TF::CreateSplitIntoIslandPerOpPass()";
   let dependentDialects = ["mlir::tf_executor::TensorFlowExecutorDialect"];
 }
 
@@ -2257,6 +2307,15 @@ def BroadcastFoldPass : Pass<"tf-broadcast-fold", "mlir::func::FuncOp"> {
 def ParallelExecuteToIslandsPass : Pass<"tf-parallel-execute-to-islands", "mlir::func::FuncOp"> {
   let summary = "Lowers device parallel_execute to executor islands";
   let constructor = "TFDevice::CreateParallelExecuteToIslandsPass()";
+  let options = [
+    Option<"legacy_graph_export_", "legacy-graph-export", "bool",
+           /*default=*/"true",
+           "Determines whether or not this pass should execute logic that is "
+           "reserved for the legacy graph export pipeline to maintain expected "
+           "invariants. In the case of this pass, that means manually propagating "
+           "controls to lifted parallel execute regions to the graph fetch to "
+           "ensure the ops execute.">
+  ];
 }
 
 def ConstantOpDeviceAssignmentPass : Pass<"constant-op-device-assignment", "ModuleOp"> {

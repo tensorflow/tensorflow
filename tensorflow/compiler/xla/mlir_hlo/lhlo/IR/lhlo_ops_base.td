@@ -25,7 +25,7 @@ include "mhlo/IR/hlo_ops_common.td"
 //===----------------------------------------------------------------------===//
 
 // Any integer tensor types
-def LHLO_IntBuffer : MemRefOf<[HLO_Int]>;
+def LHLO_IntBuffer : MemRefOf<[MHLO_Int]>;
 
 // Any floating-point tensor types
 def LHLO_FpBuffer : MemRefOf<[AnyFloat]>;
@@ -34,16 +34,16 @@ def LHLO_ComplexBuffer : MemRefOf<[AnyComplex]>;
 
 def LHLO_FpOrComplexBuffer : MemRefOf<[AnyFloat, AnyComplex]>;
 
-def LHLO_PredBuffer : MemRefOf<[HLO_Pred]>;
+def LHLO_PredBuffer : MemRefOf<[MHLO_Pred]>;
 
 // Any integer or floating-point tensor types
-def LHLO_IntOrFpBuffer : MemRefOf<[HLO_Int, AnyFloat]>;
+def LHLO_IntOrFpBuffer : MemRefOf<[MHLO_Int, AnyFloat]>;
 
-def LHLO_PredOrIntBuffer : MemRefOf<[HLO_Int, HLO_Pred]>;
+def LHLO_PredOrIntBuffer : MemRefOf<[MHLO_Int, MHLO_Pred]>;
 
 def LHLO_Buffer : MemRefOf<[AnyFloat, AnyInteger, AnyComplex]>;
 
-def LHLO_DimensionValue : AnyTypeOf<[Index, HLO_Pred, HLO_Int]>;
+def LHLO_DimensionValue : AnyTypeOf<[Index, MHLO_Pred, MHLO_Int]>;
 
 // Dynamic representation of a shape vector
 def LHLO_DimensionBuffer : MemRefRankOf<[LHLO_DimensionValue], [1]>;

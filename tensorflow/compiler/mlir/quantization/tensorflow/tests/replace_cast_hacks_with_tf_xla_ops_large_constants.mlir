@@ -56,7 +56,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
   }
 
 // CHECK-LABEL: func @conv_with_filter_larger_than_1GB
-// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() {value = dense<-237772800> : tensor<512xi32>} : () -> tensor<512xi32>
+// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() {value = dense<-237772800> : tensor<1x1x1x512xi32>} : () -> tensor<1x1x1x512xi32>
 // CHECK: %[[PADV2_0:.*]] = "tf.PadV2"
 // CHECK: %[[XLACONVV2_0:.*]] = "tf.XlaConvV2"(%[[PADV2_0]]
 // CHECK: %[[SUB_0:.*]] = "tf.Sub"(%[[XLACONVV2_0]], %[[CONST]])

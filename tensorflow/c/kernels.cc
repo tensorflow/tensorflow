@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/kernels.h"
 
 #include <memory>
+#include <vector>
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_api_macros.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/types.h"
 // Required for IS_MOBILE_PLATFORM definition
@@ -41,11 +43,18 @@ using tensorflow::errors::InvalidArgument;
 // implementations. It is crucial that changes to this file are made cautiously
 // and with a focus on maintaining both source and binary compatibility.
 
+typedef std::function<void()> AsyncOpKernelDoneCallback;
+void TF_RunAsyncOpKernelDoneCallback(TF_AsyncOpKernelDoneCallback* done) {
+  (*reinterpret_cast<AsyncOpKernelDoneCallback*>(done))();
+}
+
 struct TF_KernelBuilder {
   ::tensorflow::KernelDefBuilder* cc_builder;
 
   void* (*create_function)(TF_OpKernelConstruction*);
   void (*compute_function)(void*, TF_OpKernelContext*);
+  void (*compute_async_function)(void*, TF_OpKernelContext*,
+                                 TF_AsyncOpKernelDoneCallback* done);
   void (*delete_function)(void*);
 };
 
@@ -59,6 +68,23 @@ TF_KernelBuilder* TF_NewKernelBuilder(
   result->cc_builder->Device(device_name);
   result->create_function = create_func;
   result->compute_function = compute_func;
+  result->compute_async_function = nullptr;
+  result->delete_function = delete_func;
+  return result;
+}
+
+TF_KernelBuilder* TF_NewAsyncKernelBuilder(
+    const char* op_name, const char* device_name,
+    void* (*create_func)(TF_OpKernelConstruction*),
+    void (*compute_async_func)(void*, TF_OpKernelContext*,
+                               TF_AsyncOpKernelDoneCallback* done),
+    void (*delete_func)(void*)) {
+  TF_KernelBuilder* result = new TF_KernelBuilder;
+  result->cc_builder = new ::tensorflow::KernelDefBuilder(op_name);
+  result->cc_builder->Device(device_name);
+  result->create_function = create_func;
+  result->compute_function = nullptr;
+  result->compute_async_function = compute_async_func;
   result->delete_function = delete_func;
   return result;
 }
@@ -172,6 +198,51 @@ class COpKernel : public OpKernel {
   void* c_kernel_;
 };
 
+class CAsyncOpKernel : public AsyncOpKernel {
+ public:
+  explicit CAsyncOpKernel(
+      OpKernelConstruction* ctx, void* (*create_func)(TF_OpKernelConstruction*),
+      void (*compute_async_func)(void*, TF_OpKernelContext*,
+                                 TF_AsyncOpKernelDoneCallback*),
+      void (*delete_func)(void*))
+      : AsyncOpKernel(ctx),
+        compute_async_func_(compute_async_func),
+        delete_func_(delete_func) {
+    if (create_func != nullptr) {
+      c_kernel_ =
+          (*create_func)(reinterpret_cast<TF_OpKernelConstruction*>(ctx));
+    } else {
+      c_kernel_ = nullptr;
+    }
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    Notification n;
+    ComputeAsync(ctx, [&n]() { n.Notify(); });
+    n.WaitForNotification();
+  }
+
+  void ComputeAsync(OpKernelContext* ctx, AsyncOpKernelDoneCallback done) {
+    (*compute_async_func_)(
+        c_kernel_, reinterpret_cast<TF_OpKernelContext*>(ctx),
+        reinterpret_cast<TF_AsyncOpKernelDoneCallback*>(&done));
+  }
+
+  CAsyncOpKernel* AsAsync() override { return this; }
+
+  ~CAsyncOpKernel() override {
+    if (delete_func_ != nullptr) {
+      (*delete_func_)(c_kernel_);
+    }
+  }
+
+ private:
+  void (*compute_async_func_)(void*, TF_OpKernelContext* context,
+                              TF_AsyncOpKernelDoneCallback* done);
+  void (*delete_func_)(void*);
+  void* c_kernel_;
+};
+
 // A KernelFactory that returns COpKernel instances.
 class KernelBuilderFactory
     : public ::tensorflow::kernel_factory::OpKernelFactory {
@@ -180,9 +251,14 @@ class KernelBuilderFactory
       : builder_(builder) {}
   ::tensorflow::OpKernel* Create(
       ::tensorflow::OpKernelConstruction* context) override {
-    return new ::tensorflow::COpKernel(context, builder_->create_function,
-                                       builder_->compute_function,
-                                       builder_->delete_function);
+    if (builder_->compute_function)
+      return new ::tensorflow::COpKernel(context, builder_->create_function,
+                                         builder_->compute_function,
+                                         builder_->delete_function);
+    else
+      return new ::tensorflow::CAsyncOpKernel(
+          context, builder_->create_function, builder_->compute_async_function,
+          builder_->delete_function);
   }
   ~KernelBuilderFactory() override { TF_DeleteKernelBuilder(builder_); }
 
@@ -295,6 +371,13 @@ void TF_InputRange(TF_OpKernelContext* ctx, const char* name,
   tensorflow::Set_TF_Status_from_Status(args->status, status);
 }
 
+TF_DataType TF_InputDatatype(TF_OpKernelContext* ctx, int index) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  CHECK_GE(index, 0);                     // Crash OK
+  CHECK_LT(index, cc_ctx->num_inputs());  // Crash OK
+  return static_cast<TF_DataType>(cc_ctx->input_dtype(index));
+}
+
 void TF_SetOutput(TF_OpKernelContext* ctx, int i, const TF_Tensor* tensor,
                   TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
@@ -351,6 +434,18 @@ void TF_GetSerializedConfigProto(TF_OpKernelContext* ctx,
   }
   auto cc_status =
       tensorflow::MessageToBuffer(config_proto, serialized_config_proto);
+  tensorflow::Set_TF_Status_from_Status(status, cc_status);
+}
+
+void TF_GetSerializedResourceHandleProto(
+    TF_OpKernelContext* ctx, int i, TF_Buffer* serialized_resource_handle_proto,
+    TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  const tensorflow::ResourceHandle& handle = HandleFromInput(cc_ctx, i);
+  tensorflow::ResourceHandleProto handle_proto;
+  handle.AsProto(&handle_proto);
+  auto cc_status = tensorflow::MessageToBuffer(
+      handle_proto, serialized_resource_handle_proto);
   tensorflow::Set_TF_Status_from_Status(status, cc_status);
 }
 
@@ -650,6 +745,18 @@ int64_t TF_GetIterId(TF_OpKernelContext* ctx) {
   return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)
       ->frame_iter()
       .iter_id;
+}
+
+int64_t TF_GetStepId(TF_OpKernelContext* ctx) {
+  return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)->step_id();
+}
+
+int TF_GetDeviceId(TF_OpKernelContext* ctx) {
+  // TensorFlow always sets device in OpKernelContext.
+  auto* device =
+      reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)->device();
+  if (!device->parsed_name().has_id) return -1;
+  return device->parsed_name().id;
 }
 
 TF_StringView TF_GetOpKernelName(TF_OpKernelContext* ctx) {

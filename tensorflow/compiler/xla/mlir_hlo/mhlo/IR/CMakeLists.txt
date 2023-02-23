@@ -62,12 +62,14 @@ target_link_libraries(MhloDialect
   MLIRQuantDialect
   MLIRSparseTensorDialect
   HloOpsCommon
+  StablehloAssemblyFormat
   StablehloBase
+  StablehloTypeInference
 )
 target_include_directories(MhloDialect
   PUBLIC
+  $<BUILD_INTERFACE:${MLIR_HLO_SOURCE_DIR}>
   $<BUILD_INTERFACE:${MLIR_HLO_GEN_INCLUDE_DIR}>
-  $<BUILD_INTERFACE:${MLIR_HLO_MAIN_INCLUDE_DIR}>
 )
 
 add_mlir_dialect_library(MhloRegisterDialects

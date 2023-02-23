@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
@@ -732,8 +732,7 @@ std::vector<std::string> GetValidControlRets(
 Status XlaCompiler::CompileSingleOp(
     const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::SingleOpCompileArgument& single_op_compile_argument,
-    const std::vector<XlaCompiler::Argument>& args,
-    XlaCompiler::CompilationResult* result) {
+    absl::Span<const Argument> args, XlaCompiler::CompilationResult* result) {
   const std::vector<DataType>& result_dtypes =
       single_op_compile_argument.output_dtypes;
   const NodeDef& node_def = single_op_compile_argument.node_def;
@@ -976,7 +975,7 @@ Status XlaCompiler::XLAShapeForArgument(
           }
           TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
           TensorShape shape;
-          shape.AddDim(arg.max_array_size);
+          TF_RETURN_IF_ERROR(shape.AddDimWithStatus(arg.max_array_size));
           shape.AppendShape(std::get<TensorShape>(arg.shape));
           TF_RETURN_IF_ERROR(TensorShapeToXLAShape(arg.type, shape, xla_shape));
 
@@ -994,7 +993,7 @@ Status XlaCompiler::XLAShapeForArgument(
           }
           TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
           TensorShape shape;
-          shape.AddDim(arg.max_array_size);
+          TF_RETURN_IF_ERROR(shape.AddDimWithStatus(arg.max_array_size));
           shape.AppendShape(std::get<TensorShape>(arg.shape));
           xla::Shape buffer_shape;
           TF_RETURN_IF_ERROR(
@@ -1502,6 +1501,13 @@ Status XlaCompiler::CompileGraph(
       &num_computation_outputs, &num_nonconst_outputs, &result->outputs,
       &result->resource_updates, &result->xla_output_shape,
       result->input_mapping));
+
+  for (const auto& [key, send] : host_compute_sends_) {
+    *result->host_compute_metadata.add_device_to_host() = send;
+  }
+  for (const auto& [key, recv] : host_compute_recvs_) {
+    *result->host_compute_metadata.add_host_to_device() = recv;
+  }
 
   VLOG(2) << "Outputs: total: " << context->retvals().size()
           << " nonconstant: " << num_nonconst_outputs;

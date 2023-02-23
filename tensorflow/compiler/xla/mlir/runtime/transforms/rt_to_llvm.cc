@@ -17,12 +17,13 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"  // from @llvm-project
@@ -33,6 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
@@ -104,10 +106,12 @@ struct RuntimeAPI {
 };
 
 // Adds function declaration if it doesn't already exist.
-static void AddDeclaration(ModuleOp module, std::string_view name,
-                           FunctionType type) {
+static void AddDeclaration(SymbolTable &sym_table, ModuleOp module,
+                           std::string_view name, FunctionType type) {
+  assert(sym_table.getOp() == module && "incorrect symbol table");
+  if (sym_table.lookup(name)) return;
+
   auto b = ImplicitLocOpBuilder::atBlockEnd(module.getLoc(), module.getBody());
-  if (module.lookupSymbol(name)) return;
 
   MLIRContext *ctx = module.getContext();
   func::FuncOp func = b.create<func::FuncOp>(name, type);
@@ -116,12 +120,14 @@ static void AddDeclaration(ModuleOp module, std::string_view name,
   // TODO(ezhulenev): Add per-argument nocapture attributes?
   func->setAttr("passthrough",
                 ArrayAttr::get(ctx, {StringAttr::get(ctx, "nounwind")}));
+
+  sym_table.insert(func);
 }
 
 // Adds Runtime C API declarations to the module.
-static void AddRuntimeApiDeclarations(ModuleOp module) {
+static void AddRuntimeApiDeclarations(SymbolTable &sym_table, ModuleOp module) {
   auto add = [&](std::string_view name, FunctionType type) {
-    AddDeclaration(module, name, type);
+    AddDeclaration(sym_table, module, name, type);
   };
 
   MLIRContext *ctx = module.getContext();
@@ -215,82 +221,136 @@ class IsOkOpLowering : public OpConversionPattern<IsOkOp> {
 // Convert rt.custom_call to the corresponding runtime API call.
 //===----------------------------------------------------------------------===//
 
-static FailureOr<Value> EncodeArguments(
-    CallOp op, CustomCallArgEncodingSet &encodings, Globals &g,
+static Value AsPtr(ImplicitLocOpBuilder &b,
+                   std::variant<LLVM::AllocaOp, LLVM::GlobalOp> &v) {
+  if (auto *alloca = std::get_if<LLVM::AllocaOp>(&v))
+    return alloca->getResult();
+  return Globals::AddrOf(b, std::get<LLVM::GlobalOp>(v));
+}
+
+static LLVM::GlobalOp EncodeEmptyArgsRets(Globals &g, ImplicitLocOpBuilder &b,
+                                          std::string_view symbol_base) {
+  // Empty args/rets is just an array with a single pointer to size (zero).
+  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
+  Type type = LLVM::LLVMArrayType::get(ptr, 1);
+
+  auto init = [&](ImplicitLocOpBuilder &ib, Attribute) {
+    LLVM::GlobalOp zero =
+        EncodeScalar(g, b, b.getI64IntegerAttr(0), "__rt_zero");
+
+    Value arr = b.create<LLVM::UndefOp>(type);
+    arr = b.create<LLVM::InsertValueOp>(arr, Globals::AddrOf(b, zero), 0);
+    b.create<LLVM::ReturnOp>(arr);
+  };
+
+  return g.GetOrCreate(b, b.getArrayAttr({}), type, symbol_base, init);
+}
+
+static LLVM::GlobalOp EncodeTypeTable(Globals &g, ImplicitLocOpBuilder &b,
+                                      ArrayRef<LLVM::GlobalOp> type_ids,
+                                      std::string_view symbol_base) {
+  // We store type table as `!llvm.array<ptr x len>`.
+  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
+  Type type = LLVM::LLVMArrayType::get(ptr, type_ids.size());
+
+  // Global initializer that encodes type ids as pointers.
+  auto init = [&](ImplicitLocOpBuilder &ib, Attribute) -> LogicalResult {
+    Value arr = b.create<LLVM::UndefOp>(type);
+    for (auto &pair : llvm::enumerate(type_ids)) {
+      arr = b.create<LLVM::InsertValueOp>(arr, Globals::AddrOf(b, pair.value()),
+                                          pair.index());
+    }
+    b.create<LLVM::ReturnOp>(arr);
+    return success();
+  };
+
+  // Put all type ids into an array attribute, so we can use it as a globals
+  // cache key, so we do not encode the same type table multiple times.
+  llvm::SmallVector<llvm::StringRef> type_id_syms;
+  for (auto type_id : type_ids) type_id_syms.push_back(type_id.getSymName());
+  auto arr_attr = b.getStrArrayAttr(type_id_syms);
+
+  return g.GetOrCreate(b, arr_attr, type, symbol_base, init);
+}
+
+struct EncodedArguments {
+  std::variant<LLVM::AllocaOp, LLVM::GlobalOp> encoded;  // `args` argument
+  SmallVector<std::variant<LLVM::AllocaOp, LLVM::GlobalOp>> values;
+};
+
+static FailureOr<EncodedArguments> EncodeArguments(
+    CallOp op, CustomCallArgEncodingSet &encodings, Globals &g, Allocas &a,
     DenseMap<Value, CustomCallArgEncoding::Encoded> &encoded_args,
     ImplicitLocOpBuilder &b, ValueRange operands, ValueRange converted) {
   llvm::SmallVector<CustomCallArgEncoding::Encoded> encoded;
 
+  // Encode empty arguments as a global array (skip the status type).
+  if (operands.drop_front().empty()) {
+    return EncodedArguments{EncodeEmptyArgsRets(g, b, "__rt_empty_args"), {}};
+  }
+
+  EncodedArguments arguments;
+
   // Encode all arguments as a set of pointers (skip the execution context).
   for (auto tuple : llvm::drop_begin(llvm::zip(operands, converted))) {
-    // Check if the value was already encoded.
-    auto it = encoded_args.find(std::get<0>(tuple));
-    if (it != encoded_args.end()) {
-      encoded.push_back(it->second);
-      continue;
-    }
-
-    // Otherwise encode it right after the converted value definition.
-    OpBuilder::InsertionGuard guard(b);
-    if (auto *defining_op = std::get<1>(tuple).getDefiningOp()) {
-      b.setInsertionPointAfter(defining_op);
-    } else {
-      b.setInsertionPointToStart(std::get<1>(tuple).getParentBlock());
-    }
-
     auto encoded_arg =
-        encodings.Encode(g, b, std::get<0>(tuple), std::get<1>(tuple));
+        encodings.Encode(g, a, b, std::get<0>(tuple), std::get<1>(tuple));
     if (failed(encoded_arg)) return failure();
     encoded.push_back(*encoded_arg);
     encoded_args.try_emplace(std::get<0>(tuple), *encoded_arg);
   }
 
-  // We store encoded arguments as `!llvm.array<ptr<i8> x len>`.
+  // We store encoded arguments as `!llvm.array<ptr x len>`.
+  size_t len = encoded.empty() ? 1 : 2 + encoded.size();
   Type ptr = LLVM::LLVMPointerType::get(b.getContext());
-  Type type = LLVM::LLVMArrayType::get(ptr, 1 + encoded.size() * 2);
+  Type type = LLVM::LLVMArrayType::get(ptr, len);
 
-  // Prepare an array for encoding arguments.
+  // Prepare an array for encoded arguments.
   Value arr = b.create<LLVM::UndefOp>(type);
   auto insert_value = [&](Value value, int64_t offset) {
     arr = b.create<LLVM::InsertValueOp>(arr, value, offset);
   };
 
   // Insert the number of encoded arguments.
-  Attribute num_args = b.getI64IntegerAttr(encoded.size());
-  insert_value(PackScalarAttribute(g, b, num_args, "__rt_num_args"), 0);
+  LLVM::GlobalOp num_args =
+      EncodeScalar(g, b, b.getI64IntegerAttr(encoded.size()), "__rt_num_args");
+  insert_value(Globals::AddrOf(b, num_args), 0);
 
-  // Store encoded arguments into the allocated storage.
+  // Package arguments type ids into a type table global value.
+  llvm::SmallVector<LLVM::GlobalOp> type_ids;
+  for (auto &arg : encoded) type_ids.push_back(arg.type_id);
+  LLVM::GlobalOp type_table =
+      EncodeTypeTable(g, b, type_ids, "__rt_args_type_table");
+  if (!encoded.empty()) insert_value(Globals::AddrOf(b, type_table), 1);
+
+  // Store pointer to encoded arguments into the allocated storage.
   for (auto &pair : llvm::enumerate(encoded)) {
     CustomCallArgEncoding::Encoded encoded = pair.value();
-    int64_t offset = 1 + pair.index() * 2;
-
-    insert_value(encoded.type_id, offset + 0);
-    insert_value(encoded.value, offset + 1);
+    int64_t offset = 2 + pair.index();
+    insert_value(AsPtr(b, encoded.value), offset);
+    arguments.values.push_back(encoded.value);
   }
 
-  // Always create an `alloca` in the parent function entry block.
-  // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
-  Value mem = [&]() -> Value {
-    Block &block = op->getParentOfType<func::FuncOp>().getBody().front();
-    OpBuilder::InsertionGuard guard(b);
-    b.setInsertionPointToStart(&block);
-    Value c1 = b.create<ConstantOp>(b.getI32IntegerAttr(1));
-    return b.create<LLVM::AllocaOp>(ptr, type, c1, 0);
-  }();
+  // Get allocation for packed arguments pointers.
+  LLVM::AllocaOp alloca = a.GetOrCreate(b, type);
 
-  // Store constructed arguments array on the stack and return a pointer to it.
-  b.create<LLVM::StoreOp>(arr, mem);
+  // Start the lifetime of the encoded arguments pointers.
+  b.create<LLVM::LifetimeStartOp>(b.getI64IntegerAttr(-1), alloca);
 
-  // Return a pointer to the encoded arguments.
-  return mem;
+  // Store constructed arguments pointers array into the alloca.
+  b.create<LLVM::StoreOp>(arr, alloca.getRes());
+
+  // Alloca that encodes the custom call arguments.
+  arguments.encoded = alloca;
+
+  return arguments;
 }
 
 // Encodes attributes into the global constant (array of pointers to the
 // attributes data, which are also stored as global constants).
-static FailureOr<Value> EncodeAttributes(CustomCallAttrEncodingSet &encodings,
-                                         SymbolTable &sym_table, Globals &g,
-                                         ImplicitLocOpBuilder &b,
-                                         ArrayRef<NamedAttribute> attrs) {
+static FailureOr<LLVM::GlobalOp> EncodeAttributes(
+    CustomCallAttrEncodingSet &encodings, SymbolTable &sym_table, Globals &g,
+    ImplicitLocOpBuilder &b, ArrayRef<NamedAttribute> attrs) {
   // Forward attributes that are not part of the custom call operation itself.
   auto forward_attr = [](NamedAttribute attr) -> bool {
     return attr.getName() != "callee" && attr.getName() != "dynamic";
@@ -310,30 +370,34 @@ static FailureOr<Value> EncodeAttributes(CustomCallAttrEncodingSet &encodings,
 }
 
 struct EncodedResults {
-  Value result_array_ptr;  // passed as 'rets' argument to custom call
-  SmallVector<LLVM::AllocaOp> allocas;  // storage for values of results
+  std::variant<LLVM::AllocaOp, LLVM::GlobalOp> encoded;  // `rets` argument
+  SmallVector<LLVM::AllocaOp> allocas;                   // encoded returns
 };
 
 static FailureOr<EncodedResults> EncodeResults(
-    CallOp op, CustomCallRetEncodingSet &encodings, Globals &g,
+    CallOp op, CustomCallRetEncodingSet &encodings, Globals &g, Allocas &a,
     ImplicitLocOpBuilder &b, TypeRange ret_types, TypeRange converted_types) {
   llvm::SmallVector<CustomCallRetEncoding::Encoded> encoded;
+
+  // Encode empty returns as a global array (skip the status type).
+  if (ret_types.drop_front().empty()) {
+    return EncodedResults{EncodeEmptyArgsRets(g, b, "__rt_empty_rets"), {}};
+  }
+
   EncodedResults results;
 
   // Encode all returns as a set of pointers (skip the status type).
   for (auto tuple : llvm::drop_begin(llvm::zip(ret_types, converted_types))) {
-    Block &block = op->getParentOfType<func::FuncOp>().getBody().front();
-    OpBuilder::InsertionGuard guard(b);
-    b.setInsertionPointToStart(&block);
     auto encoded_ret =
-        encodings.Encode(g, b, std::get<0>(tuple), std::get<1>(tuple));
+        encodings.Encode(g, a, b, std::get<0>(tuple), std::get<1>(tuple));
     if (failed(encoded_ret)) return failure();
     encoded.push_back(*encoded_ret);
   }
 
-  // We store encoded results as `!llvm.array<ptr<i8> x len>`.
+  // We store encoded results as `!llvm.array<ptr x len>`.
+  size_t len = encoded.empty() ? 1 : 2 + encoded.size();
   Type ptr = LLVM::LLVMPointerType::get(b.getContext());
-  Type type = LLVM::LLVMArrayType::get(ptr, 1 + encoded.size() * 2);
+  Type type = LLVM::LLVMArrayType::get(ptr, len);
 
   // Prepare an array for encoding results.
   Value arr = b.create<LLVM::UndefOp>(type);
@@ -342,35 +406,37 @@ static FailureOr<EncodedResults> EncodeResults(
   };
 
   // Insert the number of encoded results.
-  Attribute num_rets = b.getI64IntegerAttr(encoded.size());
-  insert_value(PackScalarAttribute(g, b, num_rets, "__rt_num_rets"), 0);
+  LLVM::GlobalOp num_rets =
+      EncodeScalar(g, b, b.getI64IntegerAttr(encoded.size()), "__rt_num_rets");
+  insert_value(Globals::AddrOf(b, num_rets), 0);
+
+  // Package results type ids into a type table global value.
+  llvm::SmallVector<LLVM::GlobalOp> type_ids;
+  for (auto &arg : encoded) type_ids.push_back(arg.type_id);
+  LLVM::GlobalOp type_table =
+      EncodeTypeTable(g, b, type_ids, "__rt_rets_type_table");
+  if (!encoded.empty()) insert_value(Globals::AddrOf(b, type_table), 1);
 
   // Store encoded results into the allocated storage.
   for (auto &pair : llvm::enumerate(encoded)) {
     CustomCallRetEncoding::Encoded encoded_pair = pair.value();
-    int64_t offset = 1 + pair.index() * 2;
-
-    insert_value(encoded_pair.type_id, offset + 0);
-    insert_value(encoded_pair.value, offset + 1);
-
+    int64_t offset = 2 + pair.index();
+    insert_value(encoded_pair.value, offset);
     results.allocas.push_back(encoded_pair.value);
   }
 
-  // Always create an `alloca` in the parent function entry block.
-  // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
-  Value mem = [&]() -> Value {
-    Block &block = op->getParentOfType<func::FuncOp>().getBody().front();
-    OpBuilder::InsertionGuard guard(b);
-    b.setInsertionPointToStart(&block);
-    Value c1 = b.create<ConstantOp>(b.getI32IntegerAttr(1));
-    return b.create<LLVM::AllocaOp>(ptr, type, c1, 0);
-  }();
+  // Get allocation for packed results pointers.
+  LLVM::AllocaOp alloca = a.GetOrCreate(b, type);
 
-  // Store constructed results array on the stack
-  b.create<LLVM::StoreOp>(arr, mem);
+  // Start the lifetime of the encoded results pointers allocation.
+  b.create<LLVM::LifetimeStartOp>(b.getI64IntegerAttr(-1), alloca);
 
-  // Return a pointer to the encoded results.
-  results.result_array_ptr = mem;
+  // Store constructed results pointers array on the stack
+  b.create<LLVM::StoreOp>(arr, alloca);
+
+  // Alloca that encodes the custom call returns.
+  results.encoded = alloca;
+
   return results;
 }
 
@@ -398,6 +464,7 @@ class CallOpLowering : public OpConversionPattern<CallOp> {
 
   CallOpLowering(TypeConverter &converter, MLIRContext *ctx,
                  SymbolTable &sym_table, Globals &globals,
+                 EncodingAllocas &allocas,
                  CustomCallArgEncodingSet &arg_encoding,
                  CustomCallAttrEncodingSet &attr_encoding,
                  CustomCallRetEncodingSet &ret_encoding,
@@ -405,6 +472,7 @@ class CallOpLowering : public OpConversionPattern<CallOp> {
       : OpConversionPattern(converter, ctx),
         sym_table_(sym_table),
         globals_(globals),
+        allocas_(allocas),
         arg_encoding_(arg_encoding),
         attr_encoding_(attr_encoding),
         ret_encoding_(ret_encoding),
@@ -415,9 +483,13 @@ class CallOpLowering : public OpConversionPattern<CallOp> {
       ConversionPatternRewriter &rewriter) const override {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
+    // Reuse allocas for encoding custom call arguments.
+    Allocas allocas = allocas_.GetForOperation(op);
+
     // Encode operation arguments as a runtime API arguments.
-    auto args = EncodeArguments(op, arg_encoding_, globals_, encoded_args_, b,
-                                op->getOperands(), adaptor.getOperands());
+    auto args =
+        EncodeArguments(op, arg_encoding_, globals_, allocas, encoded_args_, b,
+                        op->getOperands(), adaptor.getOperands());
     if (failed(args)) return op.emitOpError() << "failed to encode arguments";
 
     // Encode operation attributes as a runtime API argument.
@@ -431,8 +503,8 @@ class CallOpLowering : public OpConversionPattern<CallOp> {
     std::transform(
         ret_types.begin(), ret_types.end(), converted_ret_types.begin(),
         [&](Type type) { return getTypeConverter()->convertType(type); });
-    auto rets = EncodeResults(op, ret_encoding_, globals_, b, ret_types,
-                              converted_ret_types);
+    auto rets = EncodeResults(op, ret_encoding_, globals_, allocas, b,
+                              ret_types, converted_ret_types);
     if (failed(rets)) return op.emitOpError() << "failed to encode results";
 
     // Creates a dynamic custom call resolved by name at run time.
@@ -442,19 +514,20 @@ class CallOpLowering : public OpConversionPattern<CallOp> {
 
       return b.create<func::CallOp>(
           kCustomCall, TypeRange(rewriter.getI1Type()),
-          ValueRange({adaptor.getCtx(), callee, *args, *attrs,
-                      rets->result_array_ptr}));
+          ValueRange({adaptor.getCtx(), callee, AsPtr(b, args->encoded),
+                      Globals::AddrOf(b, *attrs), AsPtr(b, rets->encoded)}));
     };
 
     // Creates a direct custom call resolved at link time.
     auto call_direct = [&]() -> func::CallOp {
       auto type = RuntimeAPI::DirectCustomCallFunctionType(op.getContext());
-      AddDeclaration(op->getParentOfType<ModuleOp>(), op.getCallee(), type);
+      AddDeclaration(sym_table_, op->getParentOfType<ModuleOp>(),
+                     op.getCallee(), type);
 
-      return b.create<func::CallOp>(op.getCallee(),
-                                    TypeRange(rewriter.getI1Type()),
-                                    ValueRange({adaptor.getCtx(), *args, *attrs,
-                                                rets->result_array_ptr}));
+      return b.create<func::CallOp>(
+          op.getCallee(), TypeRange(rewriter.getI1Type()),
+          ValueRange({adaptor.getCtx(), AsPtr(b, args->encoded),
+                      Globals::AddrOf(b, *attrs), AsPtr(b, rets->encoded)}));
     };
 
     // Build a call operation and result decoding right after the original op.
@@ -470,6 +543,23 @@ class CallOpLowering : public OpConversionPattern<CallOp> {
     if (failed(decoded_results))
       return op.emitOpError() << "failed to decode results";
 
+    auto size = b.getI64IntegerAttr(-1);
+
+    // End the lifetime of encoded arguments and results pointers.
+    if (auto *alloca = std::get_if<LLVM::AllocaOp>(&args->encoded))
+      b.create<LLVM::LifetimeEndOp>(size, *alloca);
+    if (auto *alloca = std::get_if<LLVM::AllocaOp>(&rets->encoded))
+      b.create<LLVM::LifetimeEndOp>(size, *alloca);
+
+    // End the lifetime of arguments encoded on a stack.
+    for (auto &arg : args->values)
+      if (auto *alloca = std::get_if<LLVM::AllocaOp>(&arg))
+        b.create<LLVM::LifetimeEndOp>(size, *alloca);
+
+    // End the lifetime of results encoded on a stack.
+    for (LLVM::AllocaOp alloca : rets->allocas)
+      b.create<LLVM::LifetimeEndOp>(size, alloca);
+
     rewriter.replaceOp(op, ValueRange(*decoded_results));
     return success();
   }
@@ -477,6 +567,7 @@ class CallOpLowering : public OpConversionPattern<CallOp> {
  private:
   SymbolTable &sym_table_;
   Globals &globals_;
+  EncodingAllocas &allocas_;
   CustomCallArgEncodingSet &arg_encoding_;
   CustomCallAttrEncodingSet &attr_encoding_;
   CustomCallRetEncodingSet &ret_encoding_;
@@ -588,8 +679,11 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext *ctx = module.getContext();
 
+  // A symbol table for resolving symbol references attributes.
+  SymbolTable sym_table(module);
+
   // Add declarations for the runtime API functions.
-  AddRuntimeApiDeclarations(module);
+  AddRuntimeApiDeclarations(sym_table, module);
 
   RuntimeTypeConverter converter;
   RewritePatternSet patterns(ctx);
@@ -612,7 +706,7 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
       // opaque pointer
       return LLVM::LLVMPointerType::get(IntegerType::get(type.getContext(), 8));
 
-    return llvm::None;
+    return std::nullopt;
   });
 
   // Use UnrealizedConversionCast as the bridge so that we don't need to pull
@@ -637,11 +731,11 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   PopulateTraceTypeIdNames(type_id_names);
   if (opts_.populate_type_id_names) opts_.populate_type_id_names(type_id_names);
 
-  // A symbol table for resolving symbol references attributes.
-  SymbolTable sym_table(module);
-
   // A helper class to create unique global constants.
   Globals globals(module, type_id_names);
+
+  // A helper class to create allocas for values encoded on a stack.
+  EncodingAllocas allocas;
 
   // Keep a cache of encoded values to encode each unique value just once.
   DenseMap<Value, CustomCallArgEncoding::Encoded> encoded_args;
@@ -667,8 +761,8 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   if (opts_.populate_attr_encodings) opts_.populate_attr_encodings(attrs);
   if (opts_.populate_ret_encodings) opts_.populate_ret_encodings(rets);
 
-  patterns.add<CallOpLowering>(llvm_converter, ctx, sym_table, globals, args,
-                               attrs, rets, encoded_args);
+  patterns.add<CallOpLowering>(llvm_converter, ctx, sym_table, globals, allocas,
+                               args, attrs, rets, encoded_args);
 
   // Convert function signatures and call sites.
   mlir::populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(

@@ -1,9 +1,10 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
 
@@ -28,20 +29,37 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "legalize_collective_ops.cc",
+        "legalize_i1_vector_transfers.cc",
         "lmhlo_to_cpu_runtime.cc",
+        "remove_copies_to_out_params.cc",
+        "sparse_rewrite_passes.cc",
         "xla_abi_legalization.cc",
+        "xla_cpu_memref_element_cast_to_llvm.cc",
+        "xla_rewrite_realloc_to_alloc.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
         ":passes_inc_gen",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:type_converter",
         "//tensorflow/compiler/xla/mlir/runtime/utils:custom_calls",
+        "//tensorflow/compiler/xla/mlir/xla_cpu/ir:xla_cpu",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMCommonConversion",
+        "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SparseTensorDialect",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:VectorDialect",
     ],
 )

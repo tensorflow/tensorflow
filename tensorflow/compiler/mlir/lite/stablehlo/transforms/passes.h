@@ -28,6 +28,15 @@ namespace odml {
 // ops.
 std::unique_ptr<Pass> createUnfuseBatchNormPass();
 
+// Creates a pass which constant folds broadcast_in_dim op conditionally.
+std::unique_ptr<Pass> createFoldBroadcastPass();
+
+// Creates a pass which fuses MHLO binary element-wise ops and convolution op.
+std::unique_ptr<Pass> createFuseConvolutionPass();
+
+// Creates a pass which applies various optimizations on MHLO IR.
+std::unique_ptr<Pass> createOptimizePass();
+
 }  // namespace odml
 }  // namespace mlir
 

@@ -13,6 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <optional>
+#include <tuple>
+#include <vector>
+
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -33,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -158,7 +164,7 @@ LogicalResult HandleWhileOp(
   llvm::SmallDenseMap<Value, SizeInfo> body_map;
   auto find_arg_tensor_list_type = [&](int64_t index) -> llvm::Optional<Type> {
     auto it = buffer_to_size->find(while_op.getOperand(index));
-    if (it == buffer_to_size->end()) return llvm::None;
+    if (it == buffer_to_size->end()) return std::nullopt;
     return it->getFirst().getType();
   };
   auto arg_buffer_size_is_fixed = [&](int64_t index) {
@@ -219,7 +225,7 @@ LogicalResult HandleCaseOrIfOp(
 
   auto find_arg_buffer_type = [&](int64_t index) -> llvm::Optional<Type> {
     auto it = buffer_to_size->find(op.getOperand(index + 1));
-    if (it == buffer_to_size->end()) return llvm::None;
+    if (it == buffer_to_size->end()) return std::nullopt;
     return it->getFirst().getType();
   };
   auto arg_buffer_size_is_fixed = [&](int64_t index) {
@@ -474,7 +480,7 @@ LogicalResult HandlePartitionedCallOp(
   }
   auto find_arg_buffer_type = [&](int64_t index) -> llvm::Optional<Type> {
     auto it = buffer_to_size->find(call.getOperand(index));
-    if (it == buffer_to_size->end()) return llvm::None;
+    if (it == buffer_to_size->end()) return std::nullopt;
     return it->getFirst().getType();
   };
   auto arg_buffer_size_is_fixed = [&](int64_t index) {
@@ -532,7 +538,7 @@ LogicalResult GetConstShapeValue(Value shape_value,
   if (!shape_const_op) return failure();
   for (const auto& v : shape_const_op.getValue().getValues<APInt>()) {
     int64_t dim_size = v.getSExtValue();
-    if (dim_size == ShapedType::kDynamicSize) return failure();
+    if (dim_size == tensorflow::kTFDynamicSize) return failure();
     shape->push_back(dim_size);
   }
   return success();
@@ -868,7 +874,7 @@ LogicalResult DecomposeTensorListOpsInternal(
     } else if (auto addn = llvm::dyn_cast<TF::AddNOp>(&op)) {
       auto it = buffer_to_size->find(addn.getOperand(0));
       if (it != buffer_to_size->end()) {
-        addn.getSum().setType(addn.getOperand(0).getType());
+        addn.getSum().setType(addn.getOperand(0).getType().cast<TensorType>());
         auto size = it->getSecond();
         (*buffer_to_size)[addn.getSum()] = size;
       }

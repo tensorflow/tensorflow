@@ -22,10 +22,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
 
 
-def _window(self, size, shift, stride, drop_remainder, name):
+def _window(input_dataset, size, shift, stride, drop_remainder, name):
   if shift is None:
     shift = size
-  return _WindowDataset(self, size, shift, stride, drop_remainder, name=name)
+  return _WindowDataset(
+      input_dataset, size, shift, stride, drop_remainder, name=name)
 
 
 class _WindowDataset(dataset_ops.UnaryDataset):

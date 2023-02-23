@@ -55,7 +55,7 @@ DeviceTarget::DeviceTarget(MLIRContext* ctx) : ctx_(ctx) {
 Optional<KernelSpec> DeviceTarget::GetKernelSpec(
     llvm::StringRef kernel, const KernelSpecs::Signature& signature) const {
   auto kernel_specs_it = specs_.find(kernel);
-  if (kernel_specs_it == specs_.end()) return llvm::None;
+  if (kernel_specs_it == specs_.end()) return std::nullopt;
   return kernel_specs_it->getValue().Find(signature);
 }
 
