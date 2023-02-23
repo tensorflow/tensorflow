@@ -1442,11 +1442,15 @@ bool LayoutAssignment::OperandLayoutAlwaysPropagateForward(
   }
 }
 
+// This function is invoked to determine whether the layout returned from
+// ChooseOperandLayoutFromOutputLayout is mandatary.
 bool LayoutAssignment::OutputLayoutAlwaysPropagateToOperands(
     const HloInstruction* user) {
   switch (user->opcode()) {
     case HloOpcode::kReshape:
       return false;
+    case HloOpcode::kTranspose:
+      return true;
     default:
       return !InstructionCanChangeLayoutInstance(user);
   }
