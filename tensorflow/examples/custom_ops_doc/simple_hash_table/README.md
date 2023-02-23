@@ -1,3 +1,4 @@
+<!-- LINT.IfChange -->
 # Create a stateful custom op
 
 This example shows you how to create TensorFlow custom ops with internal state.
@@ -166,11 +167,6 @@ insert    | CRUD: update                | Insert                | `SimpleHashTab
 remove    | CRUD: delete                | Remove                | `SimpleHashTableRemoveOpKernel` | Examples>SimpleHashTableRemove | `remove`
 import    | SavedModel: restore         | Import                | `SimpleHashTableImportOpKernel` | Examples>SimpleHashTableImport | `do_import`
 export    | SavedModel: save            | Export                | `SimpleHashTableExportOpKernel` | Examples>SimpleHashTableExport | `export`
-
-For an actual hash table use case, it is preferable to use (or extend) the
-existing `tf.lookup` ops. In this simple example, `insert`, `find` and `remove`
-use only a single key-value pair per call. In contrast, existing `tf.lookup`
-ops can use multiple key-value pairs in a single call.
 
 You can use this hash table as:
 
@@ -895,8 +891,9 @@ the `simple_hash_table` op.
 
 Op components                           | Build rule             | Build target               | Source
 --------------------------------------- | ---------------------- | -------------------------- | ------
-Kernels (C++)                           | `tf_kernel_library`    | `simple_hash_table_kernel` | `simple_hash_table_kernel.cc`, `simple_hash_table_op.cc`
-Wrapper (automatically generated)       | `tf_gen_op_wrapper.py` | `gen_simple_hash_table_op` | N/A
+Kernels (C++)                           | `tf_custom_op_library` | `simple_hash_table_kernel` | `simple_hash_table_kernel.cc`, `simple_hash_table_op.cc`
+Wrapper (automatically generated)       | N/A.                   | `gen_simple_hash_table_op` | N/A
 Wrapper (with public API and docstring) | `py_strict_library`    | `simple_hash_table_op`, `simple_hash_table`     | `simple_hash_table_op.py`, `simple_hash_table.py`
 Tests                                   | `tf_py_test`           | `simple_hash_table_test`   | `simple_hash_table_test.py`
+<!-- LINT.ThenChange(simple_hash_table.md) -->
 
