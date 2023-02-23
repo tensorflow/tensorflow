@@ -1408,7 +1408,6 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     self._function_spec = function_spec.FunctionSpec(
         func_type,
         {d: function_spec.BOUND_VALUE for d in spec.default_values},
-        spec.is_method,
         spec.is_pure,
         name=self._func_graph.name,
     )

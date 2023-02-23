@@ -392,11 +392,7 @@ class TracingCompiler:
           with func_graph.as_default():
             placeholder_bound_args = target_func_type.placeholder_arguments(
                 placeholder_context)
-          if self.function_spec.is_method:
-            # TODO(fmuham): canonicalize_function_inputs removes self arg.
-            args = placeholder_bound_args.args[1:]
-          else:
-            args = placeholder_bound_args.args
+          args = placeholder_bound_args.args
           kwargs = placeholder_bound_args.kwargs
 
           concrete_function = self._create_concrete_function(
