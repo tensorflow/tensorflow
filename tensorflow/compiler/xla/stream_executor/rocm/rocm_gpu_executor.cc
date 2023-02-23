@@ -978,8 +978,8 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   //
   // TODO(jlebar): This really should be more unique.  In CUDA land, we mix in
   // the clock speed and L2 cache size.
-  builder.set_model_str(absl::StrFormat("cc_%d.%d with %dB RAM, %d cores",
-                                        cc_major, cc_minor, device_memory_size,
+  builder.set_model_str(absl::StrFormat("cc_%d.%d.%d with %dB RAM, %d cores",
+                                        cc_major, cc_minor, device_ordinal, device_memory_size,
                                         core_count));
 
   return builder.Build();
