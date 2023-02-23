@@ -146,6 +146,25 @@ template <typename T>
 llvm::Optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
                                      ArrayRef<T> vec, ArrayRef<int64_t> shape);
 
+// For each spatial dimension, return the remainder of the output size
+// calculation: (I - 1 + pad - (K - 1) * dilation) % stride.
+llvm::SmallVector<int64_t> getOutputSpatialSizeRemainder(
+    tensorflow::TensorFormat data_format_tf, ShapedType input_type,
+    DenseI64ArrayAttr kernel_size, DenseI64ArrayAttr pads,
+    DenseI64ArrayAttr strides, DenseI64ArrayAttr dilations);
+
+// The TOSA specification requires the full size of the input to be used during
+// the convolution (the output size remainder calculation must be 0). If input
+// slicing is necessary to satisfy the condition, return a tosa::SliceOp,
+// otherwise return input_val.
+Value getInputSlicedToItsUsedSize(PatternRewriter& rewriter, Operation* op,
+                                  tensorflow::TensorFormat data_format_tf,
+                                  ShapedType input_type, Value input_val,
+                                  DenseI64ArrayAttr kernel_size,
+                                  DenseI64ArrayAttr pads,
+                                  DenseI64ArrayAttr strides,
+                                  DenseI64ArrayAttr dilations);
+
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type);
 

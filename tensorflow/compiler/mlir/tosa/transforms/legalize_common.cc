@@ -3536,45 +3536,16 @@ llvm::Optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
 llvm::Optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
                                           Operation* op, ShapedType output_type,
                                           Value input, Value filter, Value bias,
-                                          ArrayRef<int64_t> strides,
-                                          ArrayRef<int64_t> dilations,
-                                          StringRef padding_ref,
+                                          DenseI64ArrayAttr pads,
+                                          DenseI64ArrayAttr strides,
+                                          DenseI64ArrayAttr dilations,
                                           StringRef data_format_ref) {
   if (data_format_ref.str() != "NDHWC") {
     (void)rewriter.notifyMatchFailure(op, "currently only supports NDHWC");
     return std::nullopt;
   }
 
-  tensorflow::Padding tf_pad;
-  if (!GetPaddingFromString(padding_ref.str(), &tf_pad).ok()) {
-    (void)rewriter.notifyMatchFailure(
-        op, "could not get padding data from padding string term");
-    return std::nullopt;
-  }
-
-  // Since NDHWC/NCDHW aren't presented in TensorFormat, here these are
-  // represented by mapping NDHWC to NHWC, and NCDHW to NCHW, with the knowledge
-  // of rank of input tensor.
-  tensorflow::TensorFormat data_format_tf;
-  if (!FormatFromString("NHWC", &data_format_tf)) return std::nullopt;
-
-  if (tf_pad == tensorflow::Padding::EXPLICIT) {
-    (void)rewriter.notifyMatchFailure(op, "doesn't support explicit padding");
-    return std::nullopt;
-  }
-
-  DenseI64ArrayAttr strides_attr = rewriter.getDenseI64ArrayAttr(strides);
-  DenseI64ArrayAttr dilations_attr = rewriter.getDenseI64ArrayAttr(dilations);
-  RankedTensorType input_type = input.getType().cast<RankedTensorType>();
   RankedTensorType filter_type = filter.getType().cast<RankedTensorType>();
-
-  DenseI64ArrayAttr pads_attr;
-  if (!getPaddingValuesFromPadType(tf_pad, data_format_tf, 0, input_type,
-                                   filter_type, strides_attr, dilations_attr,
-                                   rewriter, pads_attr)) {
-    (void)rewriter.notifyMatchFailure(op, "can't get padding values from type");
-    return std::nullopt;
-  }
 
   // Note that the kernel shape of tfl.conv_3d isn't [O, D, H, W, I] but
   // [D, H, W, I, O] which is the same as in TF.
@@ -3598,8 +3569,7 @@ llvm::Optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
 
   return CreateOpAndInfer<tosa::Conv3DOp>(
              rewriter, op->getLoc(), output_type, input,
-             a1_filter_transpose_op.getResult(), bias, pads_attr, strides_attr,
-             dilations_attr)
+             a1_filter_transpose_op.getResult(), bias, pads, strides, dilations)
       .getResult();
 }
 

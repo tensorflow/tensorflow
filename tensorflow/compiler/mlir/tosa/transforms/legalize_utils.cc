@@ -128,30 +128,60 @@ llvm::Optional<Value> convertTFConv3DCommon(
     Value input, Value filter, Value bias, ArrayAttr strides_attr,
     ArrayAttr dilations_attr, StringRef padding_ref,
     StringRef data_format_ref) {
-  SmallVector<int64_t, 3> strides;
+  DenseI64ArrayAttr strides;
   if (!strides_attr) {
     // Defaults to [1, 1, 1].
-    strides = {1, 1, 1};
+    strides = rewriter.getDenseI64ArrayAttr({1, 1, 1});
   } else {
     int64_t stride_d = strides_attr[1].cast<IntegerAttr>().getInt();
     int64_t stride_h = strides_attr[2].cast<IntegerAttr>().getInt();
     int64_t stride_w = strides_attr[3].cast<IntegerAttr>().getInt();
-    strides = {stride_d, stride_h, stride_w};
+    strides = rewriter.getDenseI64ArrayAttr({stride_d, stride_h, stride_w});
   }
 
-  SmallVector<int64_t, 3> dilations;
+  DenseI64ArrayAttr dilations;
   if (!dilations_attr) {
     // Defaults to [1, 1, 1].
-    dilations = {1, 1, 1};
+    dilations = rewriter.getDenseI64ArrayAttr({1, 1, 1});
   } else {
     int64_t dilation_d = dilations_attr[1].cast<IntegerAttr>().getInt();
     int64_t dilation_h = dilations_attr[2].cast<IntegerAttr>().getInt();
     int64_t dilation_w = dilations_attr[3].cast<IntegerAttr>().getInt();
-    dilations = {dilation_d, dilation_h, dilation_w};
+    dilations =
+        rewriter.getDenseI64ArrayAttr({dilation_d, dilation_h, dilation_w});
+  }
+
+  DenseI64ArrayAttr pads;
+  {
+    RankedTensorType input_type = input.getType().cast<RankedTensorType>();
+    RankedTensorType filter_type = filter.getType().cast<RankedTensorType>();
+
+    tensorflow::TensorFormat data_format_tf;
+    if (!FormatFromString(data_format_ref, &data_format_tf)) {
+      return llvm::None;
+    }
+
+    tensorflow::Padding tf_pad;
+    if (!GetPaddingFromString(padding_ref.str(), &tf_pad).ok()) {
+      (void)rewriter.notifyMatchFailure(
+          op, "could not get padding data from padding string term");
+      return llvm::None;
+    }
+
+    if (tf_pad == tensorflow::Padding::EXPLICIT) {
+      (void)rewriter.notifyMatchFailure(op, "don't have explicit padding");
+      return llvm::None;
+    }
+
+    if (!getPaddingValuesFromPadType(tf_pad, data_format_tf, 0, input_type,
+                                     filter_type, strides, dilations, rewriter,
+                                     pads)) {
+      return llvm::None;
+    }
   }
 
   return convertConv3DCommon(rewriter, op, output_type, input, filter, bias,
-                             strides, dilations, padding_ref, data_format_ref);
+                             pads, strides, dilations, data_format_ref);
 }
 
 LogicalResult getDynamicDims(PatternRewriter& rewriter, Operation* op,
@@ -772,6 +802,68 @@ template llvm::Optional<Value> getConstTensor<int32_t>(PatternRewriter&,
                                                        Operation*,
                                                        ArrayRef<int32_t> vec,
                                                        ArrayRef<int64_t> shape);
+
+llvm::SmallVector<int64_t> getOutputSpatialSizeRemainder(
+    tensorflow::TensorFormat data_format_tf, ShapedType input_type,
+    DenseI64ArrayAttr kernel_size, DenseI64ArrayAttr pads,
+    DenseI64ArrayAttr strides, DenseI64ArrayAttr dilations) {
+  llvm::SmallVector<int64_t> output_size_remainder;
+
+  const int nb_spatial_dims =
+      GetTensorSpatialDims(input_type.getRank(), data_format_tf);
+  for (int spatial_dim = 0; spatial_dim < nb_spatial_dims; spatial_dim++) {
+    const int64_t in_size = input_type.getDimSize(GetTensorSpatialDimIndex(
+        input_type.getRank(), data_format_tf, spatial_dim));
+    const int64_t full_pad =
+        pads[2 * spatial_dim + 0] + pads[2 * spatial_dim + 1];
+
+    const int64_t full_size =
+        in_size - 1 + full_pad -
+        (kernel_size[spatial_dim] - 1) * dilations[spatial_dim];
+    output_size_remainder.push_back(full_size % strides[spatial_dim]);
+  }
+
+  return output_size_remainder;
+}
+
+Value getInputSlicedToItsUsedSize(PatternRewriter& rewriter, Operation* op,
+                                  tensorflow::TensorFormat data_format_tf,
+                                  ShapedType input_type, Value input_val,
+                                  DenseI64ArrayAttr kernel_size,
+                                  DenseI64ArrayAttr pads,
+                                  DenseI64ArrayAttr strides,
+                                  DenseI64ArrayAttr dilations) {
+  const int nb_spatial_dims =
+      GetTensorSpatialDims(input_type.getRank(), data_format_tf);
+  const llvm::SmallVector<int64_t> output_size_remainder =
+      getOutputSpatialSizeRemainder(data_format_tf, input_type, kernel_size,
+                                    pads, strides, dilations);
+
+  const bool need_slicing =
+      llvm::any_of(output_size_remainder, [](int64_t v) { return v > 0; });
+  const bool zero_pads =
+      llvm::all_of(pads.asArrayRef(), [](int64_t v) { return v == 0; });
+  if (need_slicing && zero_pads) {
+    const ArrayRef<int64_t> input_shape = input_type.getShape();
+    llvm::SmallVector<int64_t> start(input_type.getRank(), 0);
+    llvm::SmallVector<int64_t> size(input_shape.begin(), input_shape.end());
+    for (int spatial_dim = 0; spatial_dim < nb_spatial_dims; spatial_dim++) {
+      const int index = GetTensorSpatialDimIndex(input_type.getRank(),
+                                                 data_format_tf, spatial_dim);
+      size[index] -= output_size_remainder[spatial_dim];
+    }
+
+    auto slice_op = CreateOpAndInfer<tosa::SliceOp>(
+        rewriter, op->getLoc(),
+        UnrankedTensorType::get(input_type.getElementType()), input_val,
+        rewriter.getDenseI64ArrayAttr(start),
+        rewriter.getDenseI64ArrayAttr(size));
+
+    return slice_op.getResult();
+  }
+
+  return input_val;
+}
 
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type) {

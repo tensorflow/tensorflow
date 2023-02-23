@@ -42,6 +42,17 @@ func.func @test_conv2d_bias(%arg0: tensor<1x32x32x8xf32>, %cst: tensor<16x2x2x8x
 
 // -----
 
+// CHECK-LABEL: test_conv2d_slicing
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = array<i64: 2, 31, 30, 8>, start = array<i64: 0, 0, 0, 0>}
+// CHECK: %[[VAR1:.*]] = "tosa.conv2d"(%[[VAR0]], %arg1, %arg2) {dilation = array<i64: 1, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 2, 3>}
+// CHECK-SAME: tensor<2x15x10x16xf32>
+func.func @test_conv2d_slicing(%arg0: tensor<2x32x32x8xf32>, %arg1: tensor<16x3x3x8xf32>, %arg2: tensor<16xf32>) -> tensor<2x15x10x16xf32> {
+  %0 = "tfl.conv_2d"(%arg0, %arg1, %arg2)  {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 3 : i32}  : (tensor<2x32x32x8xf32>, tensor<16x3x3x8xf32>, tensor<16xf32>) -> tensor<2x15x10x16xf32>
+  func.return %0 : tensor<2x15x10x16xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_transpose_conv2d
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<16xf32>}
 // CHECK: %[[VAR1:.*]] = "tosa.transpose_conv2d"(%arg0, %arg1, %[[VAR0]]) {out_pad = array<i64: 0, 0, 0, 0>, out_shape = array<i64: 1, 32, 32, 16>, stride = array<i64: 1, 1>}
@@ -124,6 +135,17 @@ func.func @test_depthwise_conv2d_bias_inferred(%arg0: tensor<?x32x32x8xf32>, %ar
 
 // -----
 
+// CHECK-LABEL: test_depthwise_conv2d_slicing
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = array<i64: 1, 31, 31, 8>, start = array<i64: 0, 0, 0, 0>}
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg1) {new_shape = array<i64: 3, 3, 8, 2>}
+// CHECK: %[[VAR2:.*]] = "tosa.depthwise_conv2d"(%[[VAR0]], %[[VAR1]], %arg2) {dilation = array<i64: 1, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 2, 2>}
+// CHECK-SAME: tensor<1x15x15x16xf32>
+func.func @test_depthwise_conv2d_slicing(%arg0: tensor<1x32x32x8xf32>, %arg1: tensor<1x3x3x16xf32>, %arg2: tensor<16xf32>) -> tensor<1x15x15x16xf32> {
+  %0 = "tfl.depthwise_conv_2d"(%arg0, %arg1, %arg2)  {depth_multiplier = 2 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32}  : (tensor<1x32x32x8xf32>, tensor<1x3x3x16xf32>, tensor<16xf32>) -> tensor<1x15x15x16xf32>
+  func.return %0 : tensor<1x15x15x16xf32>
+}
+// -----
+
 // CHECK-LABEL: test_conv3d
 // CHECK-SAME: %[[VAL_0:.*]]: tensor<2x2x7x7x2xf32>
 // CHECK-SAME: %[[VAL_1:.*]]: tensor<2x3x3x2x4xf32>
@@ -164,6 +186,18 @@ func.func @test_conv3d_dynamic(%arg0: tensor<?x11x32x32x8xf32>, %arg1: tensor<3x
 func.func @test_conv3d_bias(%arg0: tensor<10x3x64x64x12xf32>, %arg1: tensor<16x2x2x12x8xf32>, %cst: tensor<8xf32>) -> tensor<10x3x64x64x8xf32> {
   %0 = "tfl.conv_3d"(%arg0, %arg1, %cst) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<10x3x64x64x12xf32>, tensor<16x2x2x12x8xf32>, tensor<8xf32>) -> tensor<10x3x64x64x8xf32>
   func.return %0 : tensor<10x3x64x64x8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_conv3d_slicing
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<[4, 0, 1, 2, 3]>
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.slice"(%arg0) {size = array<i64: 1, 31, 31, 31, 8>, start = array<i64: 0, 0, 0, 0, 0>}
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.transpose"(%arg1, %[[VAR0]])
+// CHECK: %[[VAR3:.*]] = "tosa.conv3d"(%[[VAR1]], %[[VAR2]], %arg2) {dilation = array<i64: 1, 1, 1>, pad = array<i64: 0, 0, 0, 0, 0, 0>, stride = array<i64: 2, 2, 2>}
+func.func @test_conv3d_slicing(%arg0: tensor<1x32x32x32x8xf32>, %arg1: tensor<3x3x3x8x16xf32>, %arg2: tensor<16xf32>) -> tensor<1x15x15x15x16xf32> {
+  %0 = "tfl.conv_3d"(%arg0, %arg1, %arg2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_d = 2 : i32, stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x32x32x32x8xf32>, tensor<3x3x3x8x16xf32>, tensor<16xf32>) -> tensor<1x15x15x15x16xf32>
+  func.return %0 : tensor<1x15x15x15x16xf32>
 }
 
 // -----
@@ -863,6 +897,16 @@ func.func @test_avg_pool2d_dynamic(%arg0: tensor<?x32x32x8xf32>) -> tensor<*xf32
 
 // -----
 
+// CHECK-LABEL: test_avg_pool2d_slicing
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = array<i64: 1, 31, 31, 8>, start = array<i64: 0, 0, 0, 0>}
+// CHECK: %[[VAR1:.*]] = "tosa.avg_pool2d"(%[[VAR0]]) {kernel = array<i64: 3, 3>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 2, 2>}
+func.func @test_avg_pool2d_slicing(%arg0: tensor<1x32x32x8xf32>) -> tensor<*xf32> {
+  %0 = "tfl.average_pool_2d"(%arg0)  {filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32}  : (tensor<1x32x32x8xf32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_max_pool2d
 // CHECK: %[[VAR0:.*]] = "tosa.max_pool2d"(%arg0) {kernel = array<i64: 1, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 1, 1>}
 func.func @test_max_pool2d(%arg0: tensor<1x32x32x8xf32>) -> tensor<*xf32> {
@@ -876,6 +920,16 @@ func.func @test_max_pool2d(%arg0: tensor<1x32x32x8xf32>) -> tensor<*xf32> {
 // CHECK: %[[VAR0:.*]] = "tosa.max_pool2d"(%arg0) {kernel = array<i64: 1, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 1, 1>}
 func.func @test_max_pool2d_dynamic(%arg0: tensor<?x32x32x8xf32>) -> tensor<*xf32> {
   %0 = "tfl.max_pool_2d"(%arg0)  {filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}  : (tensor<?x32x32x8xf32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_max_pool2d_slicing
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = array<i64: 1, 31, 31, 8>, start = array<i64: 0, 0, 0, 0>}
+// CHECK: %[[VAR1:.*]] = "tosa.max_pool2d"(%[[VAR0]]) {kernel = array<i64: 3, 3>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 2, 2>}
+func.func @test_max_pool2d_slicing(%arg0: tensor<1x32x32x8xf32>) -> tensor<*xf32> {
+  %0 = "tfl.max_pool_2d"(%arg0)  {filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32}  : (tensor<1x32x32x8xf32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 

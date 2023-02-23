@@ -261,9 +261,9 @@ llvm::Optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
 llvm::Optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
                                           Operation* op, ShapedType output_type,
                                           Value input, Value filter, Value bias,
-                                          ArrayRef<int64_t> strides,
-                                          ArrayRef<int64_t> dilations,
-                                          StringRef padding_ref,
+                                          DenseI64ArrayAttr pads,
+                                          DenseI64ArrayAttr strides,
+                                          DenseI64ArrayAttr dilations,
                                           StringRef data_format_ref);
 
 // Lowers Gather operator to a sequence of TOSA ops.
