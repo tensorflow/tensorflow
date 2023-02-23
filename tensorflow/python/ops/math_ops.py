@@ -4330,8 +4330,13 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
       `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
       `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+                    (or)
+      A python list or tuple or numpy array that has a registered 
+      Tensor conversion function
     axis: A `Tensor` of type `int32` (default: 0). Must be in the range
       `[-rank(x), rank(x))`.
+                    (or)
+          A Python integer in the range `[-rank(x), rank(x))`.     
     exclusive: If `True`, perform exclusive cumsum.
     reverse: A `bool` (default: False).
     name: A name for the operation (optional).
