@@ -383,6 +383,50 @@ func.func @test_logical_not(%arg0: tensor<1x21x3xi1>) -> tensor<*xi1> {
   func.return %0 : tensor<*xi1>
 }
 
+// CHECK-LABEL: test_reduce_all_axis_1_keep_true
+// CHECK-SAME: %[[VAL_0:.+]]: tensor<1x4x8x19xi1>
+// CHECK: %[[VAL_1:.*]] = "tosa.reduce_all"(%[[VAL_0]]) {axis = 1 : i64} : (tensor<1x4x8x19xi1>) -> tensor<1x1x8x19xi1>
+func.func @test_reduce_all_axis_1_keep_true(%arg0: tensor<1x4x8x19xi1>) -> tensor<1x1x8x19xi1> {
+  %cst = arith.constant dense<1> : tensor<1xi32>
+  %0 = "tfl.reduce_all"(%arg0, %cst)  {keep_dims = true}  : (tensor<1x4x8x19xi1>, tensor<1xi32>) -> tensor<1x1x8x19xi1>
+  func.return %0 : tensor<1x1x8x19xi1>
+}
+
+// -----
+
+// CHECK-LABEL: test_reduce_all_axis_1_keep_false
+// CHECK-SAME: %[[VAL_0:.+]]: tensor<1x4x8x19xi1>
+// CHECK: %[[VAL_1:.*]] = "tosa.reduce_all"(%[[VAL_0]]) {axis = 1 : i64} : (tensor<1x4x8x19xi1>) -> tensor<1x1x8x19xi1>
+// CHECK: %[[VAL_2:.*]] = "tosa.reshape"(%[[VAL_1]]) {new_shape = array<i64: 1, 8, 19>} : (tensor<1x1x8x19xi1>) -> tensor<1x8x19xi1>
+func.func @test_reduce_all_axis_1_keep_false(%arg0: tensor<1x4x8x19xi1>) -> tensor<1x8x19xi1> {
+  %cst = arith.constant dense<1> : tensor<1xi32>
+  %0 = "tfl.reduce_all"(%arg0, %cst)  {keep_dims = false}  : (tensor<1x4x8x19xi1>, tensor<1xi32>) -> tensor<1x8x19xi1>
+  func.return %0 : tensor<1x8x19xi1>
+}
+
+// -----
+
+// CHECK-LABEL: test_reduce_all_axis_2_keep_true
+// CHECK-SAME: %[[VAL_0:.+]]: tensor<1x4x8x19xi1>
+// CHECK: %[[VAL_1:.*]] = "tosa.reduce_all"(%[[VAL_0]]) {axis = 2 : i64} : (tensor<1x4x8x19xi1>) -> tensor<1x4x1x19xi1>
+func.func @test_reduce_all_axis_2_keep_true(%arg0: tensor<1x4x8x19xi1>) -> tensor<1x4x1x19xi1> {
+  %cst = arith.constant dense<2> : tensor<1xi32>
+  %0 = "tfl.reduce_all"(%arg0, %cst)  {keep_dims = true}  : (tensor<1x4x8x19xi1>, tensor<1xi32>) -> tensor<1x4x1x19xi1>
+  func.return %0 : tensor<1x4x1x19xi1>
+}
+
+// -----
+
+// CHECK-LABEL: test_reduce_all_axis_2_keep_false
+// CHECK-SAME: %[[VAL_0:.+]]: tensor<1x4x8x19xi1>
+// CHECK: %[[VAL_1:.*]] = "tosa.reduce_all"(%[[VAL_0]]) {axis = 2 : i64} : (tensor<1x4x8x19xi1>) -> tensor<1x4x1x19xi1>
+// CHECK: %[[VAL_2:.*]] = "tosa.reshape"(%[[VAL_1]]) {new_shape = array<i64: 1, 4, 19>} : (tensor<1x4x1x19xi1>) -> tensor<1x4x19xi1>
+func.func @test_reduce_all_axis_2_keep_false(%arg0: tensor<1x4x8x19xi1>) -> tensor<1x4x19xi1> {
+  %cst = arith.constant dense<2> : tensor<1xi32>
+  %0 = "tfl.reduce_all"(%arg0, %cst)  {keep_dims = false}  : (tensor<1x4x8x19xi1>, tensor<1xi32>) -> tensor<1x4x19xi1>
+  func.return %0 : tensor<1x4x19xi1>
+}
+
 // -----
 
 // CHECK-LABEL: test_reduce_any

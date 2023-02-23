@@ -124,6 +124,7 @@ DECL_CONVERT_OP(Softmax);
 DECL_CONVERT_OP(LogSoftmax);
 DECL_CONVERT_OP(Sqrt);
 DECL_CONVERT_OP(L2Normalization);
+DECL_CONVERT_OP(ReduceAll);
 DECL_CONVERT_OP(ReduceAny);
 DECL_CONVERT_OP(ReduceMax);
 DECL_CONVERT_OP(ReduceMin);
@@ -2080,6 +2081,30 @@ LogicalResult ConvertTFLFillOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFLReduceAllOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_all_op = cast<TFL::ReduceAllOp>(op);
+
+  RankedTensorType output_type =
+      tfl_all_op.getResult().getType().dyn_cast<RankedTensorType>();
+
+  if (!output_type)
+    return rewriter.notifyMatchFailure(op, "output not a ranked tensor");
+
+  ElementsAttr axes_elems;
+  if (!matchPattern(tfl_all_op.getReductionIndices(), m_Constant(&axes_elems)))
+    return rewriter.notifyMatchFailure(op, "fail to get reduction indices");
+
+  llvm::Optional<Value> result = convertReduceAllOp(
+      rewriter, op, output_type, tfl_all_op.getInput(), axes_elems);
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.value()});
+
+  return success();
+}
+
 LogicalResult ConvertTFLReduceAnyOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_any_op = cast<TFL::ReduceAnyOp>(op);
@@ -3917,6 +3942,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLLogSoftmax);
   DEF_PATTERN_INSERT(TFLSqrt);
   DEF_PATTERN_INSERT(TFLL2Normalization);
+  DEF_PATTERN_INSERT(TFLReduceAll);
   DEF_PATTERN_INSERT(TFLReduceAny);
   DEF_PATTERN_INSERT(TFLReduceMax);
   DEF_PATTERN_INSERT(TFLReduceMin);
