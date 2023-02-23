@@ -236,7 +236,7 @@ auto OptionalBitcastPreservingElementType(HloInstruction **optional_bitcast,
       std::move(pattern));
 }
 
-auto ConvertToF8(HloInstruction **instr) {
+auto ConvertFromF8(HloInstruction **instr) {
   return m::Convert(m::Op(instr).WithPredicate(IsF8Type));
 }
 
@@ -316,19 +316,19 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                 m::AnyOf<HloInstruction>(
                     OptionalBitcastPreservingElementType(
                         &a_bitcast,
-                        m::MultiplyAnyOrder(&a_binary, ConvertToF8(&a),
+                        m::MultiplyAnyOrder(&a_binary, ConvertFromF8(&a),
                                             m::Broadcast(m::Op(&a_scale)))),
                     OptionalBitcastPreservingElementType(
-                        &a_bitcast, m::Divide(&a_binary, ConvertToF8(&a),
+                        &a_bitcast, m::Divide(&a_binary, ConvertFromF8(&a),
                                               m::Broadcast(m::Op(&a_scale))))),
                 m::AnyOf<HloInstruction>(
                     OptionalBitcastPreservingElementType(
                         &b_bitcast,
-                        m::MultiplyAnyOrder(&b_binary, ConvertToF8(&b),
+                        m::MultiplyAnyOrder(&b_binary, ConvertFromF8(&b),
                                             m::Broadcast(m::Op(&b_scale)))),
                     OptionalBitcastPreservingElementType(
                         &b_bitcast,
-                        m::Divide(&b_binary, ConvertToF8(&b),
+                        m::Divide(&b_binary, ConvertFromF8(&b),
                                   m::Broadcast(m::Op(&b_scale)))))))) {
       TF_ASSIGN_OR_RETURN(
           bool created_call,
@@ -345,7 +345,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // possibly type converted FP8 operands into a Custom Call.
     if (Match(instr, m::AnyOf<HloInstruction>(
                          m::CustomCall({kCublasLtMatmulCallTarget},
-                                       ConvertToF8(&a), ConvertToF8(&b)),
+                                       ConvertFromF8(&a), ConvertFromF8(&b)),
                          m::CustomCall({kCublasLtMatmulCallTarget},
                                        m::Op(&a).WithPredicate(IsF8Type),
                                        m::Op(&b).WithPredicate(IsF8Type))))) {
