@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
@@ -123,6 +124,7 @@ DECL_CONVERT_OP(StridedSlice);
 DECL_CONVERT_OP(Less);
 DECL_CONVERT_OP(LessEqual);
 DECL_CONVERT_OP(Pad);
+DECL_CONVERT_OP(PadV2);
 DECL_CONVERT_OP(MirrorPad);
 DECL_CONVERT_OP(ResizeBilinear);
 DECL_CONVERT_OP(ResizeNearestNeighbor);
@@ -1770,11 +1772,43 @@ LogicalResult ConvertTFPadOp::matchAndRewrite(Operation* op,
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  auto pad_op = CreateOpAndInfer<tosa::PadOp>(rewriter, op->getLoc(),
-                                              output_type, tf_pad_op.getInput(),
-                                              tf_pad_op.getPaddings());
+  SmallVector<int64_t> padding_vals;
+  if (failed(getVectorFromValue64(tf_pad_op.getPaddings(), padding_vals))) {
+    return rewriter.notifyMatchFailure(op, "paddings is not a constant value");
+  }
+
+  Value padding = mlir::tosa::getTosaConstShape(rewriter, op->getLoc(), padding_vals);
+
+  auto pad_op = CreateOpAndInfer<tosa::PadOp>(
+      rewriter, op->getLoc(), output_type, tf_pad_op.getInput(), padding);
 
   rewriter.replaceOp(op, {pad_op.getResult()});
+  return success();
+}
+
+LogicalResult ConvertTFPadV2Op::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_pad_op = cast<TF::PadV2Op>(op);
+
+  RankedTensorType output_type =
+      tf_pad_op.getResult().getType().dyn_cast<RankedTensorType>();
+  if (!output_type) {
+    return rewriter.notifyMatchFailure(op, "output type not a ranked tensor");
+  }
+
+  Value input = tf_pad_op.getInput();
+  Value constant_value = tf_pad_op.getConstantValues();
+
+  SmallVector<int64_t> padding_vals;
+  if (failed(getVectorFromValue64(tf_pad_op.getPaddings(), padding_vals))) {
+    return rewriter.notifyMatchFailure(op, "paddings is not a constant value");
+  }
+
+  Value padding = mlir::tosa::getTosaConstShape(rewriter, op->getLoc(), padding_vals);
+
+  CreateReplaceOpAndInfer<tosa::PadOp>(rewriter, op, tf_pad_op.getType(), input,
+                                       padding, constant_value);
+
   return success();
 }
 
@@ -2513,6 +2547,7 @@ void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns) {
   patterns.add<ConvertTFLessOp>(ctx);
   patterns.add<ConvertTFLessEqualOp>(ctx);
   patterns.add<ConvertTFPadOp>(ctx);
+  patterns.add<ConvertTFPadV2Op>(ctx);
   patterns.add<ConvertTFMirrorPadOp>(ctx);
   patterns.add<ConvertTFResizeBilinearOp>(ctx);
   patterns.add<ConvertTFResizeNearestNeighborOp>(ctx);

@@ -646,12 +646,25 @@ func.func @test_unstack(%arg0: tensor<1x32x32x8xf32>) -> tensor<32x32x8xf32> {
 // -----
 
 // CHECK-LABEL: test_pad
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<1> : tensor<3x2xi32>}>
+// CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {value = dense<1> : tensor<6xindex>} : () -> !tosa.shape<6>
 // CHECK-DAG: %[[PVAL:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<f32>}>
 // CHECK: %[[VAR1:.*]] = tosa.pad %arg0, %[[VAR0]], %[[PVAL]]
 func.func @test_pad(%arg0: tensor<13x21x3xf32>) -> tensor<15x23x5xf32> {
   %2 = "tf.Const"()  {value = dense<1> : tensor<3x2xi32>}  : () -> tensor<3x2xi32>
   %3 = "tf.Pad"(%arg0, %2)   : (tensor<13x21x3xf32>, tensor<3x2xi32>) -> tensor<15x23x5xf32>
+  func.return %3 : tensor<15x23x5xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_pad_v2
+// CHECK-DAG: %[[VAL_1:.*]] = "tosa.const"() <{value = dense<-3.40282347E+38> : tensor<f32>}
+// CHECK-DAG: %[[VAL_2:.*]] = tosa.const_shape {value = dense<[1, 0, 0, 1, 1, 2]> : tensor<6xindex>} : () -> !tosa.shape<6>
+// CHECK: %[[VAL_3:.*]] = tosa.pad %[[VAL_0]], %[[VAL_2]], %[[VAL_1]]
+func.func @test_pad_v2(%arg0: tensor<13x21x3xf32>) -> tensor<15x23x5xf32> {
+  %1 = "tf.Const"() {value = dense<[[1, 0], [0, 1], [1, 2]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
+  %2 = "tf.Const"() {value = dense<-3.40282347E+38> : tensor<f32>} : () -> tensor<f32>
+  %3 = "tf.PadV2"(%arg0, %1, %2) : (tensor<13x21x3xf32>, tensor<3x2xi32>, tensor<f32>) -> tensor<15x23x5xf32>
   func.return %3 : tensor<15x23x5xf32>
 }
 
@@ -827,7 +840,7 @@ func.func @test_reverse(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_space_to_batch
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<{{\[}}[0, 0], [0, 1], [0, 0]]> : tensor<3x2xi32>}>
+// CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {value = dense<[0, 0, 0, 1, 0, 0]> : tensor<6xindex>} : () -> !tosa.shape<6>
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() <{value = dense<[2, 0, 1, 3]> : tensor<4xi32>}>
 // CHECK-DAG: %[[PVAL:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<f32>}>
 // CHECK-DAG: %[[VAR2:.*]] = tosa.pad %arg0, %[[VAR0]], %[[PVAL]]

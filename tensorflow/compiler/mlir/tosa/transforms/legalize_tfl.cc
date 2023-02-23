@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -3031,9 +3032,14 @@ LogicalResult ConvertTFLPadOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
+  SmallVector<int64_t> padding_vals;
+  if (failed(getVectorFromValue64(tfl_pad_op.getPadding(), padding_vals))) {
+    return rewriter.notifyMatchFailure(op, "padding is not a constant value");
+  }
+  Value padding = getTosaConstShape(rewriter, op->getLoc(), padding_vals);
+
   auto pad_op = CreateOpAndInfer<tosa::PadOp>(
-      rewriter, op->getLoc(), output_type, tfl_pad_op.getInput(),
-      tfl_pad_op.getPadding());
+      rewriter, op->getLoc(), output_type, tfl_pad_op.getInput(), padding);
 
   rewriter.replaceOp(op, {pad_op.getResult()});
   return success();
@@ -3076,8 +3082,14 @@ LogicalResult ConvertTFLPadV2Op::matchAndRewrite(
   auto tfl_pad_op = cast<TFL::PadV2Op>(op);
 
   Value input = tfl_pad_op.getInput();
-  Value padding = tfl_pad_op.getPadding();
   Value constant_value = tfl_pad_op.getConstantValues();
+
+  SmallVector<int64_t> padding_vals;
+  if (failed(getVectorFromValue64(tfl_pad_op.getPadding(), padding_vals))) {
+    return rewriter.notifyMatchFailure(op, "padding is not a constant value");
+  }
+
+  Value padding = getTosaConstShape(rewriter, op->getLoc(), padding_vals);
 
   CreateReplaceOpAndInfer<tosa::PadOp>(rewriter, op, tfl_pad_op.getType(),
                                        input, padding, constant_value);
