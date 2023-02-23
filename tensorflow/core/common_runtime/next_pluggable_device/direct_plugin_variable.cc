@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/jit/xla_launch_util.h"
+#include "tensorflow/compiler/jit/variable_info.h"
 
 namespace tensorflow {
 

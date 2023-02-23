@@ -117,9 +117,8 @@ class InternalPlaceholderContext(trace.PlaceholderContext):
 class InternalCastContext(trace.CastContext):
   """Default casting behaviors."""
 
-  def __init__(self, allow_specs=False, allow_supertype_tensors=False):
+  def __init__(self, allow_specs=False):
     self._allow_specs = allow_specs
-    self._allow_supertype_tensors = allow_supertype_tensors
 
   @property
   def allow_specs(self) -> bool:
@@ -127,15 +126,6 @@ class InternalCastContext(trace.CastContext):
     # Public APIs like get_concrete_function allow users to pass in specs
     # instead which need to pass through input binding etc.
     return self._allow_specs
-
-  @property
-  def allow_supertype_tensors(self) -> bool:
-    """Allow Tensors to have supertype of the TensorSpec after casting."""
-    # This happens only in graph mode where graph tensor shape can be inferred
-    # to not have a particular shape but users specify a more specific shape on
-    # the tf.function called from graph mode.
-    # EagerTensors can never have supertype of any TensorSpec.
-    return self._allow_supertype_tensors
 
 
 def from_value(value: Any,

@@ -130,9 +130,9 @@ TEST(Status, ErrorStatusForEachPayloadIteratesOverAll) {
   s.SetPayload("key2", absl::Cord("value2"));
   s.SetPayload("key3", absl::Cord("value3"));
 
-  std::unordered_map<std::string, std::string> payloads;
-  s.ForEachPayload([&payloads](StringPiece key, StringPiece value) {
-    payloads[std::string(key)] = std::string(value);
+  std::unordered_map<std::string, absl::Cord> payloads;
+  s.ForEachPayload([&payloads](StringPiece key, const absl::Cord& value) {
+    payloads[std::string(key)] = value;
   });
 
   EXPECT_EQ(payloads.size(), 3);
@@ -147,9 +147,9 @@ TEST(Status, OkStatusForEachPayloadNoIteration) {
   s.SetPayload("key2", absl::Cord("value2"));
   s.SetPayload("key3", absl::Cord("value3"));
 
-  std::unordered_map<std::string, std::string> payloads;
-  s.ForEachPayload([&payloads](StringPiece key, StringPiece value) {
-    payloads[std::string(key)] = std::string(value);
+  std::unordered_map<std::string, absl::Cord> payloads;
+  s.ForEachPayload([&payloads](StringPiece key, const absl::Cord& value) {
+    payloads[std::string(key)] = value;
   });
 
   EXPECT_EQ(payloads.size(), 0);

@@ -27,13 +27,35 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
+
+namespace attr_value_util_internal {
+// Return the size of the tensor represented by this TensorProto. If shape is
+// not fully defined return -1.
+int64_t TensorByteSize(const TensorProto& t) {
+  // num_elements returns -1 if shape is not fully defined.
+  int64_t num_elems = PartialTensorShape(t.tensor_shape()).num_elements();
+  if (num_elems < 0) {
+    return -1;
+  }
+
+  int64_t tensor_byte_size =
+      MultiplyWithoutOverflow(num_elems, DataTypeSize(t.dtype()));
+  if (tensor_byte_size < 0) {
+    VLOG(1)
+        << "Overflow encountered when computing tensor byte size, multiplying "
+        << num_elems << " with " << DataTypeSize(t.dtype());
+    return -1;
+  }
+  return tensor_byte_size;
+}
+}  // namespace attr_value_util_internal
+
 namespace {
 
 // Do not construct large tensors to compute their hash or compare for equality.
@@ -41,14 +63,6 @@ constexpr int kMaxAttrValueTensorByteSize = 32 * 1024 * 1024;  // 32mb
 
 // Limit nesting of tensors to 100 deep to prevent memory overflow.
 constexpr int kMaxTensorNestDepth = 100;
-
-// Return the size of the tensor represented by this TensorProto. If shape is
-// not fully defined return -1.
-int64_t TensorByteSize(const TensorProto& t) {
-  // num_elements returns -1 if shape is not fully defined.
-  int64_t num_elems = PartialTensorShape(t.tensor_shape()).num_elements();
-  return num_elems < 0 ? -1 : num_elems * DataTypeSize(t.dtype());
-}
 
 // Compute TensorProto hash by creating a Tensor, serializing it as tensor
 // content, and computing a hash of it's string representation. This is unsafe
@@ -68,7 +82,8 @@ uint64 TensorProtoHash(const TensorProto& tp) {
 // different hash code if they are defined with different TensorProto
 // representations.
 uint64 FastTensorProtoHash(const TensorProto& tp) {
-  if (TensorByteSize(tp) > kMaxAttrValueTensorByteSize) {
+  if (attr_value_util_internal::TensorByteSize(tp) >
+      kMaxAttrValueTensorByteSize) {
     return DeterministicProtoHash64(tp);
   } else {
     return TensorProtoHash(tp);
@@ -81,8 +96,10 @@ bool AreTensorProtosEqual(const TensorProto& lhs, const TensorProto& rhs,
   // conversion to an actual Tensor if we can quickly rule out equality
   // by comparing the Tensor size since different sized Tensors are definitely
   // different.
-  const int64_t lhs_tensor_bytes = TensorByteSize(lhs);
-  const int64_t rhs_tensor_bytes = TensorByteSize(rhs);
+  const int64_t lhs_tensor_bytes =
+      attr_value_util_internal::TensorByteSize(lhs);
+  const int64_t rhs_tensor_bytes =
+      attr_value_util_internal::TensorByteSize(rhs);
   if (lhs_tensor_bytes != rhs_tensor_bytes) {
     return false;
   }

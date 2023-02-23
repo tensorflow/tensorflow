@@ -30,13 +30,17 @@ using ::tflite::acceleration::RequestAndroidInfo;
 
 const TfLiteStableDelegate* LoadDelegateFromSharedLibrary(
     const std::string& delegate_path) {
-  return LoadDelegateFromSharedLibrary(delegate_path,
-                                       kTfLiteStableDelegateSymbol);
+  void* symbol_pointer =
+      LoadSymbolFromSharedLibrary(delegate_path, kTfLiteStableDelegateSymbol);
+  if (!symbol_pointer) {
+    return nullptr;
+  }
+  return reinterpret_cast<const TfLiteStableDelegate*>(symbol_pointer);
 }
 
-const TfLiteStableDelegate* LoadDelegateFromSharedLibrary(
-    const std::string& delegate_path, const std::string& delegate_symbol) {
-  // TODO(b/239825926): Use android_dlopen_ext to support loading from an offset
+void* LoadSymbolFromSharedLibrary(const std::string& delegate_path,
+                                  const std::string& delegate_symbol) {
+  // TODO(b/268483011): Use android_dlopen_ext to support loading from an offset
   // within an apk.
   void* delegate_lib_handle = nullptr;
   // RTLD_NOW: Ensures that any dynamic linking errors occur early rather than
@@ -54,6 +58,10 @@ const TfLiteStableDelegate* LoadDelegateFromSharedLibrary(
     TFLITE_LOG(INFO) << "Android SDK level is " << sdk_version
                      << ", using dlopen with RTLD_NODELETE.";
   }
+  // On the one hand, the handld would not be closed in production. The resource
+  // will be release when the process is killed. On the other hand, it may cause
+  // issue for leak detection in testing.
+  // TODO(b/268483011): Better support for cleanup the shared library handle.
   delegate_lib_handle = dlopen(delegate_path.c_str(), dlopen_flags);
   if (!delegate_lib_handle) {
     TFLITE_LOG(ERROR) << "Failed to open library " << delegate_path << ": "
@@ -61,15 +69,15 @@ const TfLiteStableDelegate* LoadDelegateFromSharedLibrary(
     return nullptr;
   }
 
-  auto* stable_delegate_pointer = reinterpret_cast<TfLiteStableDelegate*>(
-      dlsym(delegate_lib_handle, delegate_symbol.c_str()));
-  if (!stable_delegate_pointer) {
+  void* symbol_pointer = dlsym(delegate_lib_handle, delegate_symbol.c_str());
+  if (!symbol_pointer) {
     TFLITE_LOG(ERROR) << "Failed to find " << delegate_symbol
                       << " symbol: " << dlerror();
     dlclose(delegate_lib_handle);
     return nullptr;
   }
-  return stable_delegate_pointer;
+  TFLITE_LOG(INFO) << "Found symbol: " << delegate_symbol;
+  return symbol_pointer;
 }
 
 }  // namespace utils

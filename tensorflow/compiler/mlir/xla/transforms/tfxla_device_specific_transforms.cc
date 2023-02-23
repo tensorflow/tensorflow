@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/tf2xla/kernels/rng_converter_utils.h"
 
 namespace mlir {
 namespace mhlo {
@@ -41,9 +42,44 @@ class TFXLADeviceSpecificTransforms
   void runOnOperation() override;
 
  private:
+  LogicalResult ConvertGetAlgOp(TF::StatelessRandomGetAlgOp get_alg_op);
 };
 
-void TFXLADeviceSpecificTransforms::runOnOperation() {}
+LogicalResult TFXLADeviceSpecificTransforms::ConvertGetAlgOp(
+    TF::StatelessRandomGetAlgOp get_alg_op) {
+  if (!device_type_.hasValue()) return failure();
+
+  xla::RandomAlgorithm xla_rng =
+      tensorflow::DefaultRngAlgForDeviceType(device_type_);
+  tensorflow::Algorithm tensorflow_rng =
+      tensorflow::ToTensorflowAlgorithm(xla_rng);
+
+  OpBuilder opbuilder(get_alg_op);
+
+  auto tf_const = opbuilder.create<TF::ConstOp>(
+      get_alg_op->getLoc(), opbuilder.getI32IntegerAttr((int)tensorflow_rng));
+
+  get_alg_op->replaceAllUsesWith(tf_const);
+  get_alg_op->erase();
+  return success();
+}
+
+void TFXLADeviceSpecificTransforms::runOnOperation() {
+  if (!device_type_.hasValue()) return;
+  auto func_op = getOperation();
+
+  auto walk_result = func_op->walk([&](TF::StatelessRandomGetAlgOp op) {
+    if (failed(ConvertGetAlgOp(op))) {
+      op->emitOpError(
+          "Could not convert and remove Device specific information");
+      return WalkResult::interrupt();
+    }
+
+    return WalkResult::advance();
+  });
+
+  if (walk_result.wasInterrupted()) signalPassFailure();
+}
 
 }  // namespace
 

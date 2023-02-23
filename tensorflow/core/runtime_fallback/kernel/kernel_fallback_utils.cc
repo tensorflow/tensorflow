@@ -28,6 +28,7 @@ void SetUpParams(const tfrt_stub::OpKernelRunner& runner,
                  tensorflow::Device* device,
                  tfrt_stub::OpKernelRunState& run_state) {
   auto& params = run_state.params;
+  params.step_id = fallback_request_state.step_id();
   params.inputs = run_state.input_tf_tensor_values;
   params.device = device;
   params.op_kernel = runner.op_kernel();

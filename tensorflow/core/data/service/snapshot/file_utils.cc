@@ -92,10 +92,12 @@ tsl::Status AtomicallyWriteTextProto(absl::string_view filename,
 }
 
 tsl::Status AtomicallyWriteTFRecord(absl::string_view filename,
-                                    const Tensor& tensor, tsl::Env* env) {
+                                    const Tensor& tensor,
+                                    absl::string_view compression,
+                                    tsl::Env* env) {
   auto nonatomically_write = [&](const std::string& uncomitted_filename) {
     snapshot_util::TFRecordWriter writer(uncomitted_filename,
-                                         tsl::io::compression::kNone);
+                                         std::string(compression));
     TF_RETURN_IF_ERROR(writer.Initialize(env));
     TF_RETURN_IF_ERROR(writer.WriteTensors({tensor}));
     return tsl::OkStatus();

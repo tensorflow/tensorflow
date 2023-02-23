@@ -1908,26 +1908,35 @@ Status IrEmitterUnnested::EmitUnnestedTranspose(
 
   // TODO(cheshire): avoid duplication of FindTiledTranspose function, is it
   // possible?
-  std::optional<Vector3> dims = FindAnyTiledTranspose(**absl::c_find_if(
+  auto dims_and_order = FindAnyTiledTranspose(**absl::c_find_if(
       hlo_roots,
       [](HloInstruction* instr) { return FindAnyTiledTranspose(*instr); }));
 
   // TODO(cheshire): have a more robust way of checking this.
-  CHECK(dims.has_value());
+  CHECK(dims_and_order.has_value());
 
   constexpr int kNumRows = 4;
   CHECK_EQ(WarpSize() % kNumRows, 0);
 
   // 3D view over the input shape.
-  Vector3 permuted_dims = {dims->at(0), dims->at(2), dims->at(1)};
+  Vector3 dims = dims_and_order->first;
+  Vector3 order = dims_and_order->second;
+  // We expect that the last dimension is swapped with a different dimension.
+  CHECK_NE(order[2], 2);
+  Vector3 permuted_dims = {dims[order[0]], dims[order[1]], dims[order[2]]};
+  Vector3 tile_sizes{1, 1, 1};
+  tile_sizes[order[2]] = WarpSize() / kNumRows;
+  Vector3 num_threads{1, 1, WarpSize()};
+  num_threads[order[2]] = kNumRows;
 
   TilingScheme tiling_scheme(
       /*permuted_dims*/ permuted_dims,
-      /*tile_sizes=*/{1, WarpSize() / kNumRows, 1},
-      /*num_threads=*/{1, kNumRows, WarpSize()},
+      /*tile_sizes=*/tile_sizes,
+      /*num_threads=*/num_threads,
       /*indexing_order=*/kLinearIndexingX,
       /*vector_size=*/1,
-      /*scaling_factor=*/1);
+      /*scaling_factor=*/1,
+      /*tiling_dimensions=*/{order[2], 2});
   LaunchDimensions launch_dimensions(
       tiling_scheme.GetNumberOfBlocksPhysical(),
       tiling_scheme.GetNumThreadsPerBlockPhysical());
@@ -1935,7 +1944,7 @@ Status IrEmitterUnnested::EmitUnnestedTranspose(
   TF_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
                       BuildKernelThunk(fusion, launch_dimensions));
 
-  TF_RETURN_IF_ERROR(EmitTranspose021Tile(
+  TF_RETURN_IF_ERROR(EmitTransposeTile(
       fusion, fused_computation,
       absl::MakeSpan(ir_arrays).subspan(0, fusion.getInputBuffers().size()),
       absl::MakeSpan(ir_arrays).subspan(fusion.getInputBuffers().size()),
@@ -3598,8 +3607,10 @@ static void EmitXTileLoop(
               b->CreateMul(x, constant(stride_x * vector_size)), constant(i));
           llvm::Value* x_loc = b->CreateAdd(x_offset, start_offset_x, "x_loc");
           IrArray::Index source_idx_x =
-              tile_origin_index.AddOffsetToDim(y_loc, kDimY, b)
-                  .AddOffsetToDim(x_loc, kDimX, b);
+              tile_origin_index
+                  .AddOffsetToDim(y_loc, tiling_scheme.GetTilingDimension(0), b)
+                  .AddOffsetToDim(x_loc, tiling_scheme.GetTilingDimension(1),
+                                  b);
           auto emit_element = [&] {
             return (*emit_elem_function)(thread_id_info, source_idx_x, y_loc,
                                          x_loc);
@@ -4240,32 +4251,39 @@ IrEmitterUnnested::EmitTilingKernel(
 
   KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
 
+  int64_t non_tiling_dimension =
+      tiling_scheme.GetTilingDimension(0) == 1 ? kDimZ : kDimY;
   const IrArray::Index block_coords = [&] {
-    IrArray::Index starting_block(thread_id_info.block_id,
-                                  ShapeUtil::MakeShapeWithDescendingLayout(
-                                      PRED /*arbitrary*/, dims_in_blocks),
-                                  &b_);
-    std::vector<llvm::Value*> multidim = {
-        b_.CreateMul(starting_block[0],
-                     constant(tiling_scheme.GetBlockTileSizeFor(0)),
-                     "block_origin.z"),
-        starting_block[1], starting_block[2]};
+    IrArray::Index starting_block(
+        thread_id_info.block_id,
+        ShapeUtil::MakeShapeWithDenseLayout(
+            PRED /*arbitrary*/, dims_in_blocks,
+            // This layout determines the iteration order. We want the
+            // non-tiling dimension to be the slowest varying dimension.
+            {2, 1 - non_tiling_dimension, non_tiling_dimension}),
+        &b_);
+    std::vector<llvm::Value*> multidim = starting_block.multidim();
+    multidim[non_tiling_dimension] = b_.CreateMul(
+        multidim[non_tiling_dimension],
+        constant(tiling_scheme.GetBlockTileSizeFor(non_tiling_dimension)),
+        "block_origin." + std::to_string(non_tiling_dimension));
     return IrArray::Index(multidim, dims_in_blocks, index_ty);
   }();
 
   ValueVector2 tile_dimensions;
+  // Coordinate access is shifted: 0 corresponds to the first non-tiling
+  // dimension and 1 corresponds to DimX.
+  std::array<int64_t, 2> tiling_coords{1 - non_tiling_dimension, kDimX};
   for (int i = 0; i < 2; ++i) {
-    // Coordinate access is shifted by 1: 0 corresponds to DimY
-    // and 1 corresponds to DimX.
-    int tiling_coord = i + 1;
-
-    int64_t tile_size_for_dim = tiling_scheme.GetBlockTileSizeFor(tiling_coord);
+    int64_t tile_size_for_dim =
+        tiling_scheme.GetBlockTileSizeFor(tiling_coords[i]);
     // Only last row or column may not have full size.
-    llvm::Value* is_last = b_.CreateICmpEQ(
-        block_coords[tiling_coord], constant(dims_in_blocks[tiling_coord] - 1));
+    llvm::Value* is_last =
+        b_.CreateICmpEQ(block_coords[tiling_coords[i]],
+                        constant(dims_in_blocks[tiling_coords[i]] - 1));
     int64_t partial_row =
-        dims_in_elems[tiling_coord] -
-        (dims_in_blocks[tiling_coord] - 1) * tile_size_for_dim;
+        dims_in_elems[tiling_coords[i]] -
+        (dims_in_blocks[tiling_coords[i]] - 1) * tile_size_for_dim;
     tile_dimensions[i] =
         b_.CreateSelect(is_last, constant(partial_row),
                         constant(tile_size_for_dim), "tile_bound");
@@ -4274,7 +4292,10 @@ IrEmitterUnnested::EmitTilingKernel(
   IrArray::Index tile_origin = [&] {
     std::vector<llvm::Value*> elem_multi_index = block_coords.multidim();
     llvm::Type* index_ty = block_coords.GetType();
-    for (int i = kDimY; i < kDimTot; ++i) {
+    for (int i = 0; i < kDimTot; ++i) {
+      if (i == non_tiling_dimension) {
+        continue;
+      }
       elem_multi_index[i] =
           b_.CreateMul(block_coords[i],
                        llvm::ConstantInt::get(
@@ -4289,18 +4310,21 @@ IrEmitterUnnested::EmitTilingKernel(
     tile_element_generator(thread_id_info, tile, tile_dimensions);
   };
 
-  if (tiling_scheme.GetBlockTileSizeFor(kDimZ) == 1) {
+  if (tiling_scheme.GetBlockTileSizeFor(non_tiling_dimension) == 1) {
     emit_tile(tile_origin);
   } else {
-    llvm::Value* starting_tile_index_for_dim = tile_origin[kDimZ];
+    llvm::Value* starting_tile_index_for_dim =
+        tile_origin[non_tiling_dimension];
     llvm::Value* block_size_for_dim =
-        constant(tiling_scheme.GetBlockTileSizeFor(kDimZ));
+        constant(tiling_scheme.GetBlockTileSizeFor(non_tiling_dimension));
     llvm::Value* block_id_for_dim =
         b_.CreateUDiv(starting_tile_index_for_dim, block_size_for_dim);
-    llvm::Value* last_block_for_dim = constant(dims_in_blocks[kDimZ] - 1);
-    llvm::Value* last_block_size_for_dim = constant(
-        dims_in_elems[kDimZ] -
-        (dims_in_blocks[kDimZ] - 1) * tiling_scheme.GetBlockTileSizeFor(kDimZ));
+    llvm::Value* last_block_for_dim =
+        constant(dims_in_blocks[non_tiling_dimension] - 1);
+    llvm::Value* last_block_size_for_dim =
+        constant(dims_in_elems[non_tiling_dimension] -
+                 (dims_in_blocks[non_tiling_dimension] - 1) *
+                     tiling_scheme.GetBlockTileSizeFor(non_tiling_dimension));
 
     llvm::Value* num_tiles_in_block =
         b_.CreateSelect(b_.CreateICmpEQ(last_block_for_dim, block_id_for_dim),
@@ -4310,7 +4334,7 @@ IrEmitterUnnested::EmitTilingKernel(
             /*end=*/num_tiles_in_block,
             /*step=*/1, [&](llvm::Value* block_dim_induction_var) {
               IrArray::Index tile_index = tile_origin.AddOffsetToDim(
-                  block_dim_induction_var, kDimZ, &b_);
+                  block_dim_induction_var, non_tiling_dimension, &b_);
               emit_tile(tile_index);
             });
   }
@@ -4330,7 +4354,7 @@ static IrArray::Index PermuteIndex(const IrArray::Index& index,
                         Permute(index.dims(), permutation), index.GetType()};
 }
 
-Status IrEmitterUnnested::EmitTranspose021Tile(
+Status IrEmitterUnnested::EmitTransposeTile(
     mlir::lmhlo::FusionOp fusion, HloComputation* fusion_hlo,
     absl::Span<const llvm_ir::IrArray> operand_arrays,
     absl::Span<const llvm_ir::IrArray> output_arrays,
@@ -4375,14 +4399,16 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
   }
 
   absl::flat_hash_map<const HloInstruction*, llvm::GlobalVariable*> tiles;
+  Vector3 permutation;
   for (const auto& [tile_idx, root] : llvm::enumerate(hlo_roots)) {
-    if (FindAnyTiledTranspose(*root)) {
+    if (auto tr = FindAnyTiledTranspose(*root)) {
+      permutation = tr->second;
       const HloInstruction& hero = FindNonTrivialHero(*root);
       tiles[&hero] =
           AllocateShared(tiling_scheme,
                          llvm_ir::PrimitiveTypeToIrType(
                              hero.operand(0)->shape().element_type(), module_),
-                         {tiling_scheme.GetBlockTileSizeFor(kDimY),
+                         {tiling_scheme.GetBlockTileSizeFor(permutation[kDimX]),
                           tiling_scheme.GetBlockTileSizeFor(kDimX) + 1},
                          absl::StrCat("tr_tile_", tile_idx));
     }
@@ -4438,7 +4464,6 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
 
     EmitSyncThreads();
 
-    Vector3 permutation{0, 2, 1};
     IrArray::Index output_tile_index = PermuteIndex(index, permutation);
     ValueVector2 transposed_tile_dimensions = {tile_dimensions[1],
                                                tile_dimensions[0]};

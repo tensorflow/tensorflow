@@ -533,12 +533,12 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitScatter(const ScatterDescriptor& desc,
                      const LaunchDimensions& launch_dimensions);
 
-  Status EmitTranspose021Tile(mlir::lmhlo::FusionOp fusion,
-                              HloComputation* fusion_hlo,
-                              absl::Span<const llvm_ir::IrArray> operand_arrays,
-                              absl::Span<const llvm_ir::IrArray> output_arrays,
-                              const TilingScheme& tiling_scheme,
-                              const LaunchDimensions& launch_dimensions);
+  Status EmitTransposeTile(mlir::lmhlo::FusionOp fusion,
+                           HloComputation* fusion_hlo,
+                           absl::Span<const llvm_ir::IrArray> operand_arrays,
+                           absl::Span<const llvm_ir::IrArray> output_arrays,
+                           const TilingScheme& tiling_scheme,
+                           const LaunchDimensions& launch_dimensions);
 
   Status EmitScatter(mlir::lmhlo::FusionOp fusion_op,
                      const HloComputation* fused_computation);

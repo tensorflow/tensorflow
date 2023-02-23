@@ -667,6 +667,7 @@ cc_library(
         ":grpc_dispatcher_impl",
         ":grpc_util",
         ":grpc_worker_impl",
+        ":worker_client",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",

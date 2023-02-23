@@ -48,7 +48,7 @@ from .xla_extension import XLACompatibleSharding as XLACompatibleSharding
 from .xla_extension import NamedSharding as NamedSharding
 from .xla_extension import SingleDeviceSharding as SingleDeviceSharding
 from .xla_extension import PmapSharding as PmapSharding
-from .xla_extension import OpShardingSharding as OpShardingSharding
+from .xla_extension import GSPMDSharding as GSPMDSharding
 
 _version: int
 

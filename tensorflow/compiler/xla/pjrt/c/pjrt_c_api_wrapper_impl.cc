@@ -526,6 +526,24 @@ PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Executable_NumReplicas(
+    PJRT_Executable_NumReplicas_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_NumReplicas_Args",
+      PJRT_Executable_NumReplicas_Args_STRUCT_SIZE, args->struct_size));
+  args->num_replicas = args->executable->get()->num_replicas();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_NumPartitions(
+    PJRT_Executable_NumPartitions_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_NumPartitions_Args",
+      PJRT_Executable_NumPartitions_Args_STRUCT_SIZE, args->struct_size));
+  args->num_partitions = args->executable->get()->num_partitions();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_LoadedExecutable_AddressableDevices(
     PJRT_LoadedExecutable_AddressableDevices_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(

@@ -5685,6 +5685,45 @@ func CollateTPUEmbeddingMemory(scope *Scope, memory_configs []tf.Output) (merged
 	return op.Output(0)
 }
 
+// CollectiveAllToAllV2Attr is an optional argument to CollectiveAllToAllV2.
+type CollectiveAllToAllV2Attr func(optionalAttr)
+
+// CollectiveAllToAllV2CommunicationHint sets the optional communication_hint attribute to value.
+// If not specified, defaults to "auto"
+func CollectiveAllToAllV2CommunicationHint(value string) CollectiveAllToAllV2Attr {
+	return func(m optionalAttr) {
+		m["communication_hint"] = value
+	}
+}
+
+// CollectiveAllToAllV2TimeoutSeconds sets the optional timeout_seconds attribute to value.
+// If not specified, defaults to 0
+func CollectiveAllToAllV2TimeoutSeconds(value float32) CollectiveAllToAllV2Attr {
+	return func(m optionalAttr) {
+		m["timeout_seconds"] = value
+	}
+}
+
+// Mutually exchanges multiple tensors of identical type and shape.
+func CollectiveAllToAllV2(scope *Scope, input tf.Output, group_size tf.Output, group_key tf.Output, instance_key tf.Output, ordering_token []tf.Output, optional ...CollectiveAllToAllV2Attr) (data tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CollectiveAllToAllV2",
+		Input: []tf.Input{
+			input, group_size, group_key, instance_key, tf.OutputList(ordering_token),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // CollectiveAllToAllV3Attr is an optional argument to CollectiveAllToAllV3.
 type CollectiveAllToAllV3Attr func(optionalAttr)
 
@@ -57310,56 +57349,79 @@ func XlaBroadcastHelper(scope *Scope, lhs tf.Output, rhs tf.Output, broadcast_di
 	return op.Output(0), op.Output(1)
 }
 
-// Temporary op for experimenting with jax2tf.
+// XlaCallModuleAttr is an optional argument to XlaCallModule.
+type XlaCallModuleAttr func(optionalAttr)
+
+// XlaCallModuleDimArgsSpec sets the optional dim_args_spec attribute to value.
 //
-// DO NOT USE THIS OP. It has no backwards compatibility guarantees. It is also
-// very likely to change. This op will be used only in jax2tf under an
-// experimental flag.
+// value: in presence of dynamic shapes, this is the specification for the
+// dimension arguments. In absence of dynamic shapes this list is empty. The
+// `module` takes one 0-dimensional integer tensor dimension argument for each
+// element of `dim_spec_args`. The dimension arguments come after the platform
+// index argument and before the actual arguments. Each specification is a
+// string of the form "<arg_idx>.<axis_idx>" that specifies that the value of
+// the corresponding dimension argument must be "args[arg_idx].shape[axis_idx]",
+// where "args" are the actual array arguments.
+// If not specified, defaults to {}
+func XlaCallModuleDimArgsSpec(value []string) XlaCallModuleAttr {
+	return func(m optionalAttr) {
+		m["dim_args_spec"] = value
+	}
+}
+
+// XlaCallModulePlatforms sets the optional platforms attribute to value.
 //
-// This is an experimental op to allow a smooth evolution of jax2tf towards
-// emitting and serializing StableHLO directly from JAX.
+// value: the list of platforms supported by `module`. If the list is empty,
+// the `module` is platform independent or there should be no platform checking
+// or preprocessing. The list can contain the strings "CPU", "GPU", or "TPU".
+// If the list is not empty then it is an error to compile this op for a
+// platform that does not appear in the list. If the list contains more than
+// one platform, then the `module` takes one additional 0-dimensional
+// integer-tensor parameter in the first position, encoding the index in
+// `platforms` of the current compilation platform.
+// If not specified, defaults to {}
+func XlaCallModulePlatforms(value []string) XlaCallModuleAttr {
+	return func(m optionalAttr) {
+		m["platforms"] = value
+	}
+}
+
+// Invokes a StableHLO module.
 //
-// The serialized module must return a tuple if and only if the Sout is an empty
-// list or a list with more than 1 elements. The length of Tout and Sout must
-// match. This op always returns a tuple of results, even if the module returns
-// a single result.
-//
-// The handling of dynamic shapes is work-in-progress. At the moment, the
-// JAX lowering for dynamic shapes will prepend one dimension parameter to the
-// serialized module for each dimension whose value must be passed in.
-// The "args" correspond to the non-dimension arguments. During compilation
-// we compute the values of the dimension arguments based on the static shapes of
-// the "args". In order to do this, we encode for each dimension argument a
-// specification of how to compute its value, as a string, in the form
-// "<arg_idx>.<axis_idx>".
-// E.g., the specification "2.1" denotes the value args[2].shape[1].
+// This op is experimental and is intended for use with JAX native serialization
+// in a TensorFlow context.
 //
 // Arguments:
 //
 //	args: A list of `Tensor` with possibly different types to be passed as arguments
 //
-// to the HLO module. These are all non-dimension arguments. The dimension
-// arguments are computed at JIT time.
+// to the `module`. These are the actual arguments and do not include the
+// platform argument (see `platforms`) nor the dimension arguments (see
+// `dim_args_spec`).
 //
-//	version: Changes when we change the semantics of the op, to support backwards
+//	version: Tracks changes the semantics of the op, to support backwards
 //
 // compatibility. Version 1 carries an MHLO text or bytecode `module`. From
-// version 2, the op carries a StableHLO text or bytecode `module`.
+// version 2, the op carries a StableHLO text or bytecode `module`. From
+// version 3, the op also supports the `platforms` attribute.
 //
 //	module: A serialized computation, a text or bytecode representation of
 //
-// an mlir.Module.
+// an mlir.Module. The return type must be a tuple if and only if the `Sout` is
+// a list with 0 or more than 1 elements. The length of `Tout` and
+// `Sout` must match. This op always returns a tuple of results, even if the
+// module returns a single result.
 //
 //	Sout: List of output tensor shapes.
 //	Tout: List of output tensor data types.
-//	dim_args_spec: the specification for the dimension arguments, one for each
-//
-// dimension argument. In absence of dynamic shapes this list is empty.
-func XlaCallModule(scope *Scope, args []tf.Output, version int64, module string, Sout []tf.Shape, Tout []tf.DataType, dim_args_spec []string) (output []tf.Output) {
+func XlaCallModule(scope *Scope, args []tf.Output, version int64, module string, Sout []tf.Shape, Tout []tf.DataType, optional ...XlaCallModuleAttr) (output []tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
-	attrs := map[string]interface{}{"version": version, "module": module, "Sout": Sout, "Tout": Tout, "dim_args_spec": dim_args_spec}
+	attrs := map[string]interface{}{"version": version, "module": module, "Sout": Sout, "Tout": Tout}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "XlaCallModule",
 		Input: []tf.Input{

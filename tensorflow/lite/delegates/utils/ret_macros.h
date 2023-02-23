@@ -15,8 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_UTILS_RET_MACROS_H_
 #define TENSORFLOW_LITE_DELEGATES_UTILS_RET_MACROS_H_
 
-#include "absl/log/log.h"
+#include <cstddef>
+#include <cstdlib>
+
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/minimal_logging.h"
 
 // Evaluate an expression whose type is std::optional<T>. If it returns an
 // instance that contains a value, then initialize the declaration with that
@@ -40,18 +43,39 @@ limitations under the License.
 #define TFLITE_RET_CHECK(c, m, r) \
   TFLITE_RET_CHECK_IMPL(c, m, r, __FILE__, __LINE__)
 
-#define TFLITE_RET_CHECK_IMPL(c, m, r, file, line)                      \
-  do {                                                                  \
-    if (!(c)) {                                                         \
-      LOG(ERROR) << "TFLITE_RET_CHECK failure (" << file << ":" << line \
-                 << ") " #c " \"" << m << "\"";                         \
-      return (r);                                                       \
-    }                                                                   \
+#define TFLITE_RET_CHECK_IMPL(c, m, r, file, line)                         \
+  do {                                                                     \
+    if (!(c)) {                                                            \
+      ::tflite::delegates::utils::TfLiteCheckLog("TFLITE_RET_CHECK", file, \
+                                                 line, #c, m);             \
+      return (r);                                                          \
+    }                                                                      \
   } while (false)
 
 // If the specified condition is false, log the specified message and return
 // kTfLiteDelegateError.
 #define TFLITE_RET_CHECK_STATUS(c, m) \
   TFLITE_RET_CHECK(c, m, kTfLiteDelegateError)
+
+// If the specified condition is false, log the specified message and abort().
+#define TFLITE_ABORT_CHECK(c, m) \
+  TFLITE_ABORT_CHECK_IMPL(c, m, __FILE__, __LINE__)
+
+#define TFLITE_ABORT_CHECK_IMPL(c, m, file, line)                            \
+  do {                                                                       \
+    if (!(c)) {                                                              \
+      ::tflite::delegates::utils::TfLiteCheckLog("TFLITE_ABORT_CHECK", file, \
+                                                 line, #c, m);               \
+      std::abort();                                                          \
+    }                                                                        \
+  } while (false)
+
+namespace tflite::delegates::utils {
+inline void TfLiteCheckLog(const char* kind, const char* file, std::size_t line,
+                           const char* cond, const char* message) {
+  TFLITE_LOG_PROD(::tflite::TFLITE_LOG_ERROR, "%s failure (%s:%zu) %s \"%s\"",
+                  kind, file, line, cond, message);
+}
+}  // namespace tflite::delegates::utils
 
 #endif  // TENSORFLOW_LITE_DELEGATES_UTILS_RET_MACROS_H_

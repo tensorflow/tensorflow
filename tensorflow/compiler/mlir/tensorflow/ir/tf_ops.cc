@@ -145,8 +145,13 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // a TF operation.
   bool isLegalToInline(Operation *call, Operation *callable,
                        bool wouldBeCloned) const final {
-    // Skip inlining for TPUPartitionedCalls.
-    if (isa<TPUPartitionedCallOp>(call)) return false;
+    // Skip inlining for TPUPartitionedCalls and BatchFunctionOps.
+    // `BatchFunctionOp` is added to this list because:
+    // 1) It is mostly intentionally inserted as an optimization and inlining it
+    //    could potentially cause performance degradation.
+    // 2) There are existing `BatchFunctionOp` usages before `CallOpInterface`
+    //    trait is added and unintentional inlining should be avoided.
+    if (isa<TPUPartitionedCallOp, BatchFunctionOp>(call)) return false;
     // Maintain inlining for  `tf.function`s with jit_compile option.
     if (callable->hasAttr("tf._XlaMustCompile")) return true;
     auto noinline_attr_name = absl::StrCat("tf.", tensorflow::kNoInlineAttr);
@@ -288,8 +293,8 @@ bool TensorFlowDialect::CanHaveSideEffects(Operation *op) {
 
 // Hook functions which may add additional operations to the dialect.
 // These are invoked at construction time.
-static DenseMap<TypeID, TensorFlowDialect::AdditionalOpFunction>
-    &GetAdditionalOperationHooks() {
+static DenseMap<TypeID, TensorFlowDialect::AdditionalOpFunction> &
+GetAdditionalOperationHooks() {
   static auto *additional_operation_hooks =
       new DenseMap<TypeID, TensorFlowDialect::AdditionalOpFunction>();
   return *additional_operation_hooks;

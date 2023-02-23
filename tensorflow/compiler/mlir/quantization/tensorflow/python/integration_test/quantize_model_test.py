@@ -3271,15 +3271,13 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     repr_ds = []
     for _ in range(500):
-      repr_ds.append(
-          {
-              'input_tensor': ops.convert_to_tensor(
-                  np.random.uniform(
-                      low=-0.1, high=0.2, size=(1, 3, 4, 3, 3)
-                  ).astype('f4')
-              ),
-          }
-      )
+      repr_ds.append({
+          'input_tensor': ops.convert_to_tensor(
+              np.random.uniform(
+                  low=-0.1, high=0.2, size=(1, 3, 4, 3, 3)
+              ).astype('f4')
+          ),
+      })
 
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     tags = {tag_constants.SERVING}
@@ -4093,7 +4091,8 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   """
 
   @parameterized.named_parameters(
-      ('to_tf_per_tensor', quant_opts_pb2.TF, False),
+      # TODO(b/269421880): Enable legacy weight-only scheme with the uniform
+      # quantized opset
       ('to_xla_per_tensor', quant_opts_pb2.XLA, False),
   )
   @test_util.run_in_graph_and_eager_modes
@@ -4136,15 +4135,17 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
-    self.assertTrue(self._contains_op(output_graphdef, 'MatMul'))
     # Due to other meta data, the compression is not exactly 1/4.
-    threshold = 0.9 if quant_opts_pb2.TF else 0.3
+    self.assertTrue(self._contains_op(output_graphdef, 'XlaDotV2'))
     self.assertSizeRatioLessThan(
-        self._output_saved_model_path, self._input_saved_model_path, threshold
+        self._output_saved_model_path,
+        self._input_saved_model_path,
+        threshold=0.3,
     )
 
   @parameterized.named_parameters(
-      ('to_tf_per_tensor', quant_opts_pb2.TF, False),
+      # TODO(b/269421880): Enable legacy weight-only scheme with the uniform
+      # quantized opset
       ('to_xla_per_tensor', quant_opts_pb2.XLA, False),
   )
   @test_util.run_in_graph_and_eager_modes
@@ -4190,20 +4191,21 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
-    self.assertTrue(self._contains_op(output_graphdef, 'Conv2D'))
     # Due to other meta data, the compression is not exactly 1/4.
-
-    threshold = 0.9 if quant_opts_pb2.TF else 0.3
+    self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
     self.assertSizeRatioLessThan(
-        self._output_saved_model_path, self._input_saved_model_path, threshold
+        self._output_saved_model_path,
+        self._input_saved_model_path,
+        threshold=0.3,
     )
 
   @parameterized.named_parameters(
-      ('to_tf_per_tensor', quant_opts_pb2.TF, False),
+      # TODO(b/269421880): Enable legacy weight-only scheme with the uniform
+      # quantized opset
       ('to_xla_per_tensor', quant_opts_pb2.XLA, False),
   )
   @test_util.run_in_graph_and_eager_modes
-  def test_depthwise_conv_model(
+  def test_depthwise_conv2d_model(
       self,
       target_opset: quant_opts_pb2.OpSet,
       enable_per_channel_quantization: bool,
@@ -4245,11 +4247,12 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
-    self.assertTrue(self._contains_op(output_graphdef, 'DepthwiseConv2dNative'))
     # Due to other meta data, the compression is not exactly 1/4.
-    threshold = 0.9 if quant_opts_pb2.TF else 0.3
+    self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
     self.assertSizeRatioLessThan(
-        self._output_saved_model_path, self._input_saved_model_path, threshold
+        self._output_saved_model_path,
+        self._input_saved_model_path,
+        threshold=0.3,
     )
 
   @parameterized.named_parameters(
@@ -4286,7 +4289,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         op_set=target_opset,
     )
 
-    if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
+    if target_opset != quant_opts_pb2.XLA:
       # Uniform quantized opset is not supported for weight-only
       with self.assertRaisesRegex(
           ValueError, 'Uniform quantized opset does not support weight-only.'

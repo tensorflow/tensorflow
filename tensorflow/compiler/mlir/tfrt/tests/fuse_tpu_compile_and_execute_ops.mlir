@@ -107,3 +107,25 @@ func.func private @reorder_execute_arg_defining_ops(%arg0: tensor<1x3xf32> {tf.d
 }
 
 }
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+// CHECK-LABEL: func private @spmd_fuse_mulitple_execute_ops
+// CHECK: tf.VarHandleOp
+// CHECK-NEXT: tf.ReadVariableOp
+// CHECK-NEXT: tf.TPUCompileMlirAndExecute
+// CHECK-NOT: tf.SplitOp
+func.func private @spmd_fuse_mulitple_execute_ops(%arg0: tensor<1x4xf32> {tf.device = "/CPU:0"}) -> (tensor<1x1xf32> {tf.device = "/TPU:0"}) {
+  %cst = "tf.Const"() {device = "/CPU:0", value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %compilation_status, %program:2 = "tf._TPUCompileMlir"() {device = "/CPU:0", metadata = "metadata", mlir_module = "propgram"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>, tensor<3x!tf_type.string>)
+  "tf.TPUCompileSucceededAssert"(%compilation_status) {device = "/CPU:0"} : (tensor<!tf_type.string>) -> ()
+  %0 = "tf.VarHandleOp"() {_xla_inferred_shapes = [#tf_type.shape<>], allowed_devices = [], container = "", device = "/CPU:0", shared_name = "y"} : () -> tensor<!tf_type.resource<tensor<2x1xf32>>>
+  %1 = "tf.ReadVariableOp"(%0) {device = "/CPU:0"} : (tensor<!tf_type.resource<tensor<2x1xf32>>>) -> tensor<2x1xf32>
+  %2:2 = "tf.Split"(%cst, %arg0) {device = "/CPU:0"} : (tensor<i32>,  tensor<1x4xf32>) -> (tensor<1x2xf32>, tensor<1x2xf32>)
+  %3 = "tf.TPUExecute"(%2#0, %1, %program#0) {_producer_name = "UNKNOWN", device = "/TPU:0"} : (tensor<1x2xf32>, tensor<2x1xf32>, tensor<3x!tf_type.string>) -> tensor<1x1xf32>
+  %4 = "tf.TPUExecute"(%2#1, %1, %program#1) {_producer_name = "UNKNOWN", device = "/TPU:1"} : (tensor<1x2xf32>, tensor<2x1xf32>, tensor<3x!tf_type.string>) -> tensor<1x1xf32>
+  return %3 : tensor<1x1xf32>
+}
+
+}

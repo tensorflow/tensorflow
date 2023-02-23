@@ -863,6 +863,12 @@ class TFRTCallOpConversion : public mlir::OpConversionPattern<CallOp> {
   LogicalResult matchAndRewrite(
       CallOp op, typename CallOp::Adaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
+    if (auto xla_must_compile =
+            op->template getAttrOfType<mlir::BoolAttr>("_XlaMustCompile");
+        xla_must_compile && xla_must_compile.getValue()) {
+      return mlir::failure();
+    }
+
     auto callee =
         op.getCallableForCallee().template dyn_cast<mlir::SymbolRefAttr>();
     if (!callee) return failure();
@@ -1561,6 +1567,7 @@ class TfToTfrtConversionPass
     tpu_transfer_result_to_host_ = options.tpu_transfer_result_to_host;
     use_tpu_host_allocator_for_inputs_ =
         options.use_tpu_host_allocator_for_inputs;
+    tpu_allow_unpadded_batch_ = options.tpu_allow_unpadded_batch;
     cost_threshold_ = options.cost_threshold;
     upper_cost_threshold_ = options.upper_cost_threshold;
     merge_inter_dependent_streams_ = options.merge_inter_dependent_streams;
@@ -1590,7 +1597,8 @@ class TfToTfrtConversionPass
           &target, &patterns, &context, &corert_converter, &fallback_converter,
           TfrtTpuExecuteOpConversionOptions{
               tpu_use_core_selector_, tpu_use_bundled_transfer_,
-              tpu_transfer_result_to_host_, use_tpu_host_allocator_for_inputs_},
+              tpu_transfer_result_to_host_, use_tpu_host_allocator_for_inputs_,
+              tpu_allow_unpadded_batch_},
           tpu_lower_to_fallback_);
 
     if (target_gpu_) {
@@ -1814,6 +1822,18 @@ class TfToTfrtConversionPass
       llvm::cl::desc("If true, fallback executeops that produce inputs to tpu "
                      "program will use tpu host allocator."),
       llvm::cl::init(false)};
+
+  Option<TfrtCompileOptions::TpuAllowUnpaddedBatch> tpu_allow_unpadded_batch_{
+      *this, "tpu-allow-unpadded-batch",
+      llvm::cl::desc("To allow unpadded batch for TPU execution."),
+      llvm::cl::values(
+          clEnumValN(TfrtCompileOptions::TpuAllowUnpaddedBatch::kDisabled,
+                     "disabled", "Disable this feature."),
+          clEnumValN(TfrtCompileOptions::TpuAllowUnpaddedBatch::kAuto, "auto",
+                     "Enable this feature when in-graph batching is detected."),
+          clEnumValN(TfrtCompileOptions::TpuAllowUnpaddedBatch::kEnforced,
+                     "enforced", "Force to enable this feature.")),
+      llvm::cl::init(TfrtCompileOptions::TpuAllowUnpaddedBatch::kDisabled)};
 
   Option<bool> target_gpu_{
       *this, "target-gpu",
@@ -2153,6 +2173,8 @@ static void CreateTFExecutorToTFPipelineHelper(
       mlir::tf_executor::CreateTFExecutorIslandCoarseningPass());
 
   AddTfDeviceAssignmentPasses(pm, options);
+
+  pm.addPass(tfrt_compiler::CreateTfrtXlaRewritePass());
 
   // Here we perform TFRT specific optimization before standard TF optimization,
   // as TFRT-specific optimization may create more opportunities.

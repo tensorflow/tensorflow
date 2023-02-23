@@ -93,7 +93,7 @@ class DelegatePerformanceReportingListener : public BenchmarkListener {
     AddMetric(/*name=*/"warmup_latency_average_us", /*value=*/warmup_us.avg());
     AddMetric(/*name=*/"warmup_latency_min_us", /*value=*/warmup_us.min());
     AddMetric(/*name=*/"warmup_latency_max_us", /*value=*/warmup_us.max());
-    AddMetric(/*name=*/"warmup_latency_standard_deviation",
+    AddMetric(/*name=*/"warmup_latency_standard_deviation_us",
               /*value=*/warmup_us.std_deviation());
     AddMetric(/*name=*/"inference_latency_average_us",
               /*value=*/inference_us.avg());
@@ -101,7 +101,7 @@ class DelegatePerformanceReportingListener : public BenchmarkListener {
               /*value=*/inference_us.min());
     AddMetric(/*name=*/"inference_latency_max_us",
               /*value=*/inference_us.max());
-    AddMetric(/*name=*/"inference_latency_standard_deviation",
+    AddMetric(/*name=*/"inference_latency_standard_deviation_us",
               /*value=*/inference_us.std_deviation());
     AddMetric(/*name=*/"initialization_memory_max_rss_mebibyte",
               /*value=*/init_mem_usage.mem_footprint_kb / 1024.0);

@@ -16,13 +16,14 @@ limitations under the License.
 
 #include <poll.h>
 
+#include <cerrno>
 #include <optional>
 #include <variant>
 #include <vector>
 
-#include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/utils/ret_macros.h"
+#include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite::delegates::utils {
 namespace {
@@ -70,7 +71,7 @@ std::optional<size_t> PollFds(absl::Span<const int> fds, bool block) {
     size_t signalled_count = 0;
     for (auto& fd : pfds) {
       if (fd.revents & (POLLERR | POLLNVAL)) {
-        LOG(ERROR) << "invalid fd to poll";
+        TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "invalid fd to poll");
         return {};
       }
       if (fd.fd == -1 || (fd.revents & POLLIN)) {
@@ -88,8 +89,9 @@ std::optional<size_t> PollFds(absl::Span<const int> fds, bool block) {
     return signalled_count;
   }
 
-  LOG(FATAL) << "The code should never reach this point";  // Crash OK
-  return 0;
+  TFLITE_ABORT_CHECK(false,
+                     "The code should never reach this point");  // Crash OK
+  return {};
 }
 
 }  // namespace

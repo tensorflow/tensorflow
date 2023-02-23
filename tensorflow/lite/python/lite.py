@@ -587,6 +587,7 @@ class TFLiteConverterBase:
     self._experimental_allow_all_select_tf_ops = False
 
     self._experimental_variable_quantization = False
+    self._experimental_disable_fuse_mul_and_fc = False
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -705,6 +706,8 @@ class TFLiteConverterBase:
             self._experimental_guarantee_all_funcs_one_use,
         "allow_all_select_tf_ops":
             self._experimental_allow_all_select_tf_ops,
+        "disable_fuse_mul_and_fc":
+            self._experimental_disable_fuse_mul_and_fc,
     }
 
     if self.saved_model_dir:

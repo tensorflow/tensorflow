@@ -26,10 +26,10 @@ limitations under the License.
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
-#include "tensorflow/compiler/jit/xla_launch_util.h"
+#include "tensorflow/compiler/jit/variable_info.h"
+#include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_resource.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
@@ -42,13 +42,6 @@ limitations under the License.
 TF_Device* TF_GetDevice(TF_OpKernelContext* ctx) {
   auto* cc_ctx = reinterpret_cast<tensorflow::OpKernelContext*>(ctx);
   return reinterpret_cast<TF_Device*>(cc_ctx->device());
-}
-
-size_t TF_GetDeviceOrdinal(TF_Device* device) {
-  // TODO(chuanhao): make GetDeviceOrdinal a virtual member function in the base
-  // device class, instead of casting to `NextPluggableDevice`.
-  auto cc_device = reinterpret_cast<tensorflow::NextPluggableDevice*>(device);
-  return cc_device->GetDeviceOrdinal();
 }
 
 // --------------------------  Resource  ---------------------------------------
@@ -101,7 +94,7 @@ struct TF_VariableInfo {
   TF_VariableInfo() = delete;
   // TF_VariableInfo is constructed here by TensorFlow, and will be passed to
   // plugin as a opaque pointer. Plugin will need to call C APIs below to
-  // operate on TF_VaribleInfo (such as allocate temp tensor for the `var` held
+  // operate on TF_VariableInfo (such as allocate temp tensor for the `var` held
   // by the underlying tensorflow::VariableInfo.
   TF_VariableInfo(int index, const std::string& name, tensorflow::Var* var) {
     var_info = tensorflow::VariableInfo{index, name, var};
@@ -258,7 +251,7 @@ void TF_CreateAndSetPjRtCApiClient(const char* device_type, TF_Status* status) {
 
 PJRT_Client* TF_GetPjRtCClient(const char* device_type, TF_Status* status) {
   tsl::StatusOr<xla::PjRtClient*> pjrt_client =
-      tensorflow::GetOrCreatePjRtClient(tensorflow::DeviceType(device_type));
+      tensorflow::GetPjRtClient(tensorflow::DeviceType(device_type));
   if (!pjrt_client.ok()) {
     tensorflow::Set_TF_Status_from_Status(status, pjrt_client.status());
     return nullptr;
@@ -312,7 +305,7 @@ void TF_CreatePjRtBuffer(TF_Tensor* c_tensor, PJRT_Buffer* c_buffer,
     return;
   }
   auto pjrt_client =
-      tensorflow::GetOrCreatePjRtClient(tensorflow::DeviceType(device_type));
+      tensorflow::GetPjRtClient(tensorflow::DeviceType(device_type));
   if (!pjrt_client.ok()) {
     tensorflow::Set_TF_Status_from_Status(status, pjrt_client.status());
     return;

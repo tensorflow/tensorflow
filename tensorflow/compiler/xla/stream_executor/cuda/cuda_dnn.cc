@@ -3486,6 +3486,11 @@ tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
     absl::Span<const int64_t> dims, absl::Span<const int64_t> strides,
     int64_t uid, dnn::DataType dtype, int64_t vec_count, int64_t vec_dim,
     bool is_virtual = false, bool is_reordered_nchw_vect = false) {
+  if (is_reordered_nchw_vect && (CUDNN_VERSION) < 8300) {
+    return tsl::errors::Internal(
+        "reordered nchw_vect requires cudnn 8.3+, but version was %d",
+        (CUDNN_VERSION));
+  }
   auto tensor = cudnn_frontend::TensorBuilder()
                     .setDim(dims.size(), dims.data())
                     .setStride(strides.size(), strides.data())
@@ -3494,9 +3499,13 @@ tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
                     .setDataType(ToCudnnDataType(dtype))
                     .setVectorCountAndDimension(vec_count, vec_dim)
                     .setVirtual(is_virtual)
+// TODO(jlebar): remove guard after JAX no longer supports old cudnn
+#if CUDNN_VERSION >= 8300
                     .setReorderType(is_reordered_nchw_vect
+
                                         ? CUDNN_TENSOR_REORDERING_INT8x32
                                         : CUDNN_TENSOR_REORDERING_NONE)
+#endif
                     .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor);
   return tensor;

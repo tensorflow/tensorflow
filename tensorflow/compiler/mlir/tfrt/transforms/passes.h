@@ -18,11 +18,13 @@ limitations under the License.
 
 #include <memory>
 
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
+#include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/tsl/platform/status.h"
 
 namespace mlir {
@@ -71,6 +73,8 @@ CreateFuseTpuCompileAndExecutePass();
 // Create a pass to optimize TF dialect for TFRT workflow.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateOptimizeTfForTfrtPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateTfrtXlaRewritePass();
 
 }  // namespace tfrt_compiler
 
@@ -167,6 +171,17 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, fallback executeops that produce inputs to tpu "
                      "program will use tpu host allocator."),
       llvm::cl::init(false)};
+  Option<TfrtCompileOptions::TpuAllowUnpaddedBatch> tpu_allow_unpadded_batch{
+      *this, "tpu-allow-unpadded-batch",
+      llvm::cl::desc("To allow unpadded batch for TPU execution."),
+      llvm::cl::values(
+          clEnumValN(TfrtCompileOptions::TpuAllowUnpaddedBatch::kDisabled,
+                     "disabled", "Disable this feature."),
+          clEnumValN(TfrtCompileOptions::TpuAllowUnpaddedBatch::kAuto, "auto",
+                     "Enable this feature when in-graph batching is detected."),
+          clEnumValN(TfrtCompileOptions::TpuAllowUnpaddedBatch::kEnforced,
+                     "enforced", "Force to enable this feature.")),
+      llvm::cl::init(TfrtCompileOptions::TpuAllowUnpaddedBatch::kDisabled)};
 
   Option<bool> target_gpu{
       *this, "target-gpu",

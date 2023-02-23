@@ -355,6 +355,7 @@ cc_library(
         ":py_client",
         ":python_ref_manager",
         ":traceback",
+        ":util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",

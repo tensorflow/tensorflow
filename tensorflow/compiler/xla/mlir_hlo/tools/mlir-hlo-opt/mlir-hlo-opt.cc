@@ -35,71 +35,35 @@ limitations under the License.
 using namespace mlir;
 
 int main(int argc, char** argv) {
-  mlir::registerAllPasses();
-  mlir::deallocation::registerDeallocationPasses();
-  mlir::gml_st::registerGmlStPasses();
-  mlir::gml_st::registerGmlStTestPasses();
-  mlir::hlo::registerLMHLOTransformsPasses();
-  mlir::lmhlo::registerAllLmhloPasses();
-  mlir::mhlo::registerAllMhloPasses();
-  mlir::registerLMHLOGPUTransformsPasses();
-  mlir::thlo::registerAllThloPasses();
+  registerAllPasses();
+  deallocation::registerDeallocationPasses();
+  gml_st::registerGmlStPasses();
+  gml_st::registerGmlStTestPasses();
+  hlo::registerLMHLOTransformsPasses();
+  lmhlo::registerAllLmhloPasses();
+  mhlo::registerAllMhloPasses();
+  registerLMHLOGPUTransformsPasses();
+  thlo::registerAllThloPasses();
 
-  struct HloToGpuPipelineOptions
-      : public PassPipelineOptions<HloToGpuPipelineOptions> {
-    ListOption<int64_t> blockTileDim{
-        *this, "block-tile",
-        llvm::cl::desc("dimensions of the subproblem processed by the block")};
-    ListOption<int64_t> warpTileDim{
-        *this, "warp-tile",
-        llvm::cl::desc("dimensions of the subproblem processed by the warp")};
-    ListOption<int64_t> threadTileDim{
-        *this, "thread-tile",
-        llvm::cl::desc("dimensions of the subproblem processed by the thread")};
-    Option<bool> experimentalSoftmax{
-        *this, "experimental-softmax",
-        llvm::cl::desc(
-            "enable the experimental variant of this pipeline for softmax"),
-        llvm::cl::init(false)};
-  };
-  mlir::PassPipelineRegistration<HloToGpuPipelineOptions>(
-      "hlo-to-gpu-pipeline",
-      "Pipeline to transform HLO to LLVM + NVVM dialects.",
-      [](OpPassManager& pm, const HloToGpuPipelineOptions& opts) {
-        return createHloToGpuPipeline(pm, opts.blockTileDim, opts.warpTileDim,
-                                      opts.threadTileDim,
-                                      opts.experimentalSoftmax);
-      });
-  mlir::PassPipelineRegistration<gml_st::GmlStCPUTilingOptions>
+  PassPipelineRegistration<gml_st::GmlStCPUTilingOptions>
       gmlStCpuTilingPipeline("gml-st-cpu-tiling-pipeline",
                              "Tiles, fuses, vectorizes tileable ops for CPU",
                              gml_st::addCPUTilingPipeline);
 
-  mlir::PassPipelineRegistration<> defaultGmlStCpuTilingPipeline(
+  PassPipelineRegistration<> defaultGmlStCpuTilingPipeline(
       "default-gml-st-cpu-tiling-pipeline",
       "Tiles, fuses, vectorizes tileable ops for CPU with default parameters",
       gml_st::addDefaultCPUTilingPipeline);
 
-  struct HloToTritonPipelineOptions
-      : public PassPipelineOptions<HloToTritonPipelineOptions> {
-    ListOption<int64_t> blockTileDim{
-        *this, "block-tile",
-        llvm::cl::desc("dimensions of the subproblem processed by the block")};
-  };
-  mlir::PassPipelineRegistration<HloToTritonPipelineOptions>(
-      "hlo-to-triton-pipeline", "Pipeline to transform HLO to Triton dialect.",
-      [](OpPassManager& pm, const HloToTritonPipelineOptions& opts) {
-        return createHloToTritonPipeline(pm, opts.blockTileDim);
-      });
+  DialectRegistry registry;
+  registerAllDialects(registry);
+  mhlo::registerAllMhloDialects(registry);
+  stablehlo::registerAllDialects(registry);
+  registry.insert<deallocation::DeallocationDialect, lmhlo::LmhloDialect,
+                  lmhlo_gpu::LmhloGpuDialect, gml_st::GmlStDialect,
+                  thlo::THLODialect>();
 
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::mhlo::registerAllMhloDialects(registry);
-  mlir::stablehlo::registerAllDialects(registry);
-  registry.insert<mlir::deallocation::DeallocationDialect,
-                  mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
-                  mlir::gml_st::GmlStDialect, mlir::thlo::THLODialect>();
-
-  return failed(
-      mlir::MlirOptMain(argc, argv, "MLIR HLO pass driver\n", registry));
+  registerTestHloTransformDialectEraseSchedulePass();
+  registerTestHloTransformDialectInterpreterPass();
+  return failed(MlirOptMain(argc, argv, "MLIR HLO pass driver\n", registry));
 }

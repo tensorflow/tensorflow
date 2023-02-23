@@ -33,9 +33,10 @@ cc_library(
         "legalize_i1_vector_transfers.cc",
         "lmhlo_to_cpu_runtime.cc",
         "remove_copies_to_out_params.cc",
-        "sparse_custom_call_rewrite.cc",
+        "sparse_rewrite_passes.cc",
         "xla_abi_legalization.cc",
         "xla_cpu_memref_element_cast_to_llvm.cc",
+        "xla_rewrite_realloc_to_alloc.cc",
     ],
     hdrs = ["passes.h"],
     deps = [

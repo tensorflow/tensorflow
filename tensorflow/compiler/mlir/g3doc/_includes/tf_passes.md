@@ -1885,6 +1885,10 @@ to 12 feature dimension, which has better performance on TPU.
 ### `-tf-tpu-update-embedding-enqueue-op-inputs`: Updates inputs to TPU embedding enqueue ops depending on whether graph is in training mode or in evaluation mode.
 Updates inputs to TPU embedding enqueue ops depending on whether graph
 is in training mode or in evaluation mode.
+### `-tf-tpu-validate-inputs`: Validates inputs to the TPU TF/XLA bridge
+This pass checks that the IR has valid input to TPU TF/XLA bridge.
+It checks the relations of multiple ops. Properties of single ops are
+checked by the 'verify' method of ops.
 ### `-tf-tpu-variable-runtime-reformatting`: Adds device variable formatting op to allow compilation-guided variable formatting.
 A pass that takes advantage of a loop to add ops that allow the execution to
 avoid repeatedly formatting variables back and forth. The desired formatting

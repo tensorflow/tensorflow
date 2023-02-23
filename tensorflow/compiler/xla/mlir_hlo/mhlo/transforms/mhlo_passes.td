@@ -48,6 +48,12 @@ def HloCanonicalizeReductionPass : Pass<"hlo-canonicalize-reduction", "func::Fun
   let constructor = "createHloCanonicalizeReductionPass()";
 }
 
+def HloCanonicalizeDotPass : Pass<"hlo-canonicalize-dot", "func::FuncOp"> {
+  let summary = "Rewrites dot operands that contain unit dimension.";
+  let constructor = "createHloCanonicalizeDotPass()";
+  let dependentDialects = ["mhlo::MhloDialect", "tensor::TensorDialect"];
+}
+
 def HloLegalizeToLhloPass : Pass<"hlo-legalize-to-lhlo", "ModuleOp"> {
   let summary = "Legalize from HLO dialect to LHLO dialect.";
   let constructor = "createLegalizeToLhloPass()";

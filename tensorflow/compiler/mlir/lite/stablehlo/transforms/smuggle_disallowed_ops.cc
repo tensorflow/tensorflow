@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
@@ -31,12 +32,19 @@ namespace odml {
 
 namespace {
 
+// Convert op to stablehlo.custom_call
+//   "tf.ResizeBilinear"(%341, %138) {
+//      align_corners = false, device = "", half_pixel_centers = true}
+//   ==>
+//   stablehlo.custom_call @tf.ResizeBilinear(%arg0, %arg1) {
+//      align_corners = false, device = "", half_pixel_centers = true}
 LogicalResult SmuggleOp(Operation* op, PatternRewriter& rewriter) {
   auto call_target =
       rewriter.getNamedAttr("call_target_name", op->getName().getIdentifier());
+  SmallVector<NamedAttribute> attrs{op->getAttrs()};
+  attrs.push_back(call_target);
   auto custom_call = rewriter.create<mlir::stablehlo::CustomCallOp>(
-      op->getLoc(), op->getResultTypes(), op->getOperands(),
-      ArrayRef<NamedAttribute>{call_target});
+      op->getLoc(), op->getResultTypes(), op->getOperands(), attrs);
   rewriter.replaceOp(op, custom_call.getResults());
   return success();
 }

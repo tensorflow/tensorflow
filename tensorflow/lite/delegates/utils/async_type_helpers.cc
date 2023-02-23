@@ -17,10 +17,10 @@ limitations under the License.
 #include <cstring>
 #include <string_view>
 
-#include "absl/log/check.h"
 #include "tensorflow/lite/core/async/interop/attribute_keys.h"
 #include "tensorflow/lite/core/async/interop/c/attribute_map.h"
 #include "tensorflow/lite/core/async/interop/c/constants.h"
+#include "tensorflow/lite/delegates/utils/ret_macros.h"
 
 // TODO(b/191883048): Cleanup this file when refactoring the attribute map
 // accessors.
@@ -74,7 +74,8 @@ const char* StringFromSyncType(SyncType sync_type) {
 }  // namespace
 
 BufferAttributes ReadBufferAttrs(const TfLiteAttributeMap* attr_map) {
-  CHECK(TfLiteAttributeMapIsBufferAttributeMap(attr_map));  // Crash OK
+  TFLITE_ABORT_CHECK(TfLiteAttributeMapIsBufferAttributeMap(attr_map),
+                     "");  // Crash OK
   BufferAttributes attrs{};
   const char* buffer_type = nullptr;
   if (TfLiteAttributeMapGetStringAttr(
@@ -117,7 +118,8 @@ BufferAttributes ReadBufferAttrs(const ScopedTfLiteAttrMap& attr_map) {
 
 void WriteBufferAttrs(const BufferAttributes& attrs,
                       TfLiteAttributeMap* attr_map) {
-  CHECK(TfLiteAttributeMapIsBufferAttributeMap(attr_map));  // Crash OK
+  TFLITE_ABORT_CHECK(TfLiteAttributeMapIsBufferAttributeMap(attr_map),
+                     "");  // Crash OK
   if (attrs.buffer_type) {
     TfLiteAttributeMapSetStringAttr(
         attr_map,
@@ -154,7 +156,8 @@ ScopedTfLiteAttrMap WriteBufferAttrs(const BufferAttributes& attrs) {
 }
 
 SyncAttributes ReadSyncAttrs(const TfLiteAttributeMap* attr_map) {
-  CHECK(TfLiteAttributeMapIsSyncAttributeMap(attr_map));  // Crash OK
+  TFLITE_ABORT_CHECK(TfLiteAttributeMapIsSyncAttributeMap(attr_map),
+                     "");  // Crash OK
   SyncAttributes attrs{};
   const char* sync_type = nullptr;
   if (TfLiteAttributeMapGetStringAttr(
@@ -171,7 +174,8 @@ SyncAttributes ReadSyncAttrs(const ScopedTfLiteAttrMap& attr_map) {
 }
 
 void WriteSyncAttrs(const SyncAttributes& attrs, TfLiteAttributeMap* attr_map) {
-  CHECK(TfLiteAttributeMapIsSyncAttributeMap(attr_map));  // Crash OK
+  TFLITE_ABORT_CHECK(TfLiteAttributeMapIsSyncAttributeMap(attr_map),
+                     "");  // Crash OK
   if (attrs.sync_type) {
     TfLiteAttributeMapSetStringAttr(
         attr_map,

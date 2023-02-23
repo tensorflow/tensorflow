@@ -95,6 +95,18 @@ BM_TFMlir_DYNAMIC_ALL(1, 18, 300, 8, 8, 8, kPack, "matmul", f32);
 BM_TFMlir_STATIC_ALL(1, 18, 300, 8, 8, 8, kPack, "matmul", f32);
 BM_Eigen_WRAPPER(1, 18, 300, f32);
 
+BM_TFMlir_DYNAMIC_ALL(1, 1, 300, 8, 8, 8, kPack, "matmul", f32);
+BM_TFMlir_STATIC_ALL(1, 1, 300, 8, 8, 8, kPack, "matmul", f32);
+BM_Eigen_WRAPPER(1, 1, 300, f32);
+
+BM_TFMlir_DYNAMIC_ALL(18, 1, 300, 8, 8, 8, kPack, "matmul", f32);
+BM_TFMlir_STATIC_ALL(18, 1, 300, 8, 8, 8, kPack, "matmul", f32);
+BM_Eigen_WRAPPER(18, 1, 300, f32);
+
+BM_TFMlir_DYNAMIC_ALL(18, 300, 1, 8, 8, 8, kPack, "matmul", f32);
+BM_TFMlir_STATIC_ALL(18, 300, 1, 8, 8, 8, kPack, "matmul", f32);
+BM_Eigen_WRAPPER(18, 300, 1, f32);
+
 BM_TFMlir_DYNAMIC_ALL(1, 300, 300, 8, 8, 8, kPack, "matmul", f32);
 BM_TFMlir_STATIC_ALL(1, 300, 300, 8, 8, 8, kPack, "matmul", f32);
 BM_Eigen_WRAPPER(1, 300, 300, f32);

@@ -80,11 +80,10 @@ void populateTransferReadOfOneDimExpandShapePattern(
 
 RewritePatternSet getDefaultVectorizationPatterns(MLIRContext *ctx) {
   RewritePatternSet patterns(ctx);
-  mlir::vector::populateVectorTransferPermutationMapLoweringPatterns(patterns);
-  mlir::vector::populateVectorReductionToContractPatterns(patterns);
-  patterns.add<mlir::linalg::LinalgCopyVTRForwardingPattern,
-               mlir::linalg::LinalgCopyVTWForwardingPattern>(ctx,
-                                                             /*benefit=*/2);
+  vector::populateVectorTransferPermutationMapLoweringPatterns(patterns);
+  vector::populateVectorReductionToContractPatterns(patterns);
+  patterns.add<linalg::LinalgCopyVTRForwardingPattern,
+               linalg::LinalgCopyVTWForwardingPattern>(ctx, /*benefit=*/2);
   TransferWriteOp::getCanonicalizationPatterns(patterns, ctx);
   return patterns;
 }

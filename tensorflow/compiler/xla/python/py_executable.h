@@ -20,11 +20,13 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_executable.h"
+#include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
@@ -108,24 +110,30 @@ class PyLoadedExecutable
 
   bool is_deleted() { return ifrt_loaded_executable_->IsDeleted(); }
 
-  StatusOr<std::vector<PyBuffer::object>> Execute(
-      absl::Span<PyBuffer::object const> args, PjRtDevice* device);
+  StatusOr<std::vector<pybind11::object>> Execute(
+      absl::Span<const std::variant<PyBuffer::object, PyArray>> args,
+      PjRtDevice* device, bool returns_jax_array = false);
 
-  StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>> ExecuteWithToken(
-      absl::Span<PyBuffer::object const> args, PjRtDevice* device);
+  StatusOr<std::pair<std::vector<pybind11::object>, PyToken>> ExecuteWithToken(
+      absl::Span<const std::variant<PyBuffer::object, PyArray>> args,
+      PjRtDevice* device, bool returns_jax_array = false);
 
   // Takes args indexed by argid then deviceid, transposes them, and passes to
   // PjRtExecutable::Execute. The result is similarly transposed back into the
   // argid,deviceid format.
   // args is [num_args x num_devices].
-  StatusOr<std::vector<std::vector<PyBuffer::object>>>
+  StatusOr<std::vector<std::vector<pybind11::object>>>
   ExecuteShardedOnLocalDevices(
-      absl::Span<const std::vector<PyBuffer::object>> args);
+      absl::Span<const std::vector<std::variant<PyBuffer::object, PyArray>>>
+          args,
+      bool returns_jax_array = false);
 
   StatusOr<
-      std::pair<std::vector<std::vector<PyBuffer::object>>, PyShardedToken>>
+      std::pair<std::vector<std::vector<pybind11::object>>, PyShardedToken>>
   ExecuteShardedOnLocalDevicesWithTokens(
-      absl::Span<const std::vector<PyBuffer::object>> args);
+      absl::Span<const std::vector<std::variant<PyBuffer::object, PyArray>>>
+          args,
+      bool returns_jax_array = false);
 
   StatusOr<std::vector<PyShardedBuffer>> ExecuteShardedOnLocalDevices(
       absl::Span<PyShardedBuffer* const> args);
@@ -174,8 +182,10 @@ class PyLoadedExecutable
   void KeepAlive(pybind11::object obj);
 
  private:
-  StatusOr<std::pair<std::vector<PyBuffer::object>, ifrt::Future<Status>>>
-  ExecuteInternal(absl::Span<PyBuffer::object const> args, PjRtDevice* device);
+  StatusOr<std::pair<std::vector<pybind11::object>, ifrt::Future<Status>>>
+  ExecuteInternal(
+      absl::Span<const std::variant<PyBuffer::object, PyArray>> args,
+      PjRtDevice* device, bool returns_jax_array);
 
   friend class PyClient;
 

@@ -292,6 +292,8 @@ tensorflow::ExtendSession
 tensorflow::GetHandleShapeAndType
 tensorflow::SetHandleShapeAndType
 tensorflow::AddWhileInputHack
+tensorflow::RecordMutation
+tensorflow::Graph::IsControlEdge
 
 [//tensorflow/tsl/python/lib/core:numpy] # tf_session
 tsl::ImportNumpy
@@ -446,6 +448,8 @@ tensorflow::metrics::SavedModelWriteApi
 tensorflow::metrics::SavedModelReadApi
 tensorflow::metrics::SavedModelWriteFingerprint
 tensorflow::metrics::SavedModelReadFingerprint
+tensorflow::metrics::SavedModelWritePath
+tensorflow::metrics::SavedModelReadPath
 tensorflow::metrics::CheckpointReadDuration
 tensorflow::metrics::CheckpointWriteDuration
 tensorflow::metrics::AsyncCheckpointWriteDuration

@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import pywrap_sanitizers
 from tensorflow.python import tf2
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
@@ -1337,6 +1338,10 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCheckpointLargeBuffer(self):
+    if (pywrap_sanitizers.is_asan_enabled() or
+        pywrap_sanitizers.is_tsan_enabled() or
+        pywrap_sanitizers.is_msan_enabled()):
+      self.skipTest("Skip to avoid OOM when using sanitizers.")
     # Tensors of size 512M.
     dataset = from_list.from_list(
         [

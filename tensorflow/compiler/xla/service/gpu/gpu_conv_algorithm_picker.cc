@@ -314,10 +314,6 @@ StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
 }
 #endif
 
-using ConvCacheKey =
-    std::tuple<std::string /* stream_exec->GetDeviceDescription().model_str()*/,
-               std::string /* conv->ToString(HloPrintOptions::Canonical()) */>;
-
 struct ConvCacheStats {
   int64_t cache_hits = 0;
   int64_t cache_misses = 0;
@@ -328,18 +324,9 @@ struct ConvCacheStats {
   }
 };
 
-ConvCacheKey AutotuneCacheKeyfromInstruction(
-    const HloCustomCallInstruction* conv,
-    absl::string_view device_description_str) {
-  auto options = HloPrintOptions::Canonical();
-  options.set_print_backend_config(true);
-  return std::make_tuple(std::string(device_description_str),
-                         conv->ToString(options));
-}
-
 absl::Mutex autotune_cache_mu(absl::kConstInit);
 auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
-    *new absl::flat_hash_map<ConvCacheKey, AutotuneResult>();
+    *new absl::flat_hash_map<AutotuneCacheKey, AutotuneResult>();
 auto& autotune_cache_stats ABSL_GUARDED_BY(autotune_cache_mu) =
     *new ConvCacheStats();
 
@@ -400,8 +387,8 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
   // If in deviceless mode, return the result from the autotune_cache.
   if (auto deviceless_config = std::get_if<DevicelessConfig>(&config_)) {
     auto device_description_str = deviceless_config->model_str;
-    ConvCacheKey key =
-        AutotuneCacheKeyfromInstruction(instr, device_description_str);
+    AutotuneCacheKey key =
+        AutotuneCacheKeyFromInstruction(instr, device_description_str);
     absl::MutexLock autotune_lock(&autotune_cache_mu);
     auto it = autotune_cache.find(key);
     if (it != autotune_cache.end()) {
@@ -428,7 +415,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
   // which can greatly improve both stability (deterministic numeric results
   // within a process for a given input) and performance (2x speedup on some
   // models).
-  ConvCacheKey key = AutotuneCacheKeyfromInstruction(
+  AutotuneCacheKey key = AutotuneCacheKeyFromInstruction(
       instr, stream_exec->GetDeviceDescription().model_str());
   {
     absl::MutexLock autotune_lock(&autotune_cache_mu);
@@ -544,7 +531,7 @@ GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
   initialize_buffer(result_buffer, result_shape);
 
   // Get canonical HLO.
-  std::string canonical_hlo = std::get<1>(AutotuneCacheKeyfromInstruction(
+  std::string canonical_hlo = std::get<1>(AutotuneCacheKeyFromInstruction(
       instr, stream_exec->GetDeviceDescription().model_str()));
 
   TF_ASSIGN_OR_RETURN(GpuConvConfig gpu_conv_config, GetGpuConvConfig(instr));
