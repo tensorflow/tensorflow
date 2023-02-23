@@ -177,7 +177,8 @@ class AsyncCheckpointHelper:
       if isinstance(current_trackable, TPUEmbedding):
         self._handle_tpu_embedding(current_trackable)
 
-      for child in current_trackable._trackable_children("checkpoint").values():
+      for child in current_trackable._trackable_children(
+          save_type="checkpoint").values():
         if child in visited:
           continue
         visited.add(child)

@@ -847,7 +847,8 @@ class CheckpointLoadStatus(_LoadStatus):
       # restoration checks.
       if (isinstance(trackable_object,
                      data_structures.TrackableDataStructure) and
-          not trackable_object._trackable_children()):  # pylint: disable=protected-access
+          not trackable_object._trackable_children(  # pylint: disable=protected-access
+              save_type=base.SaveType.CHECKPOINT)):
         continue
       self._checkpoint.all_python_objects.add(trackable_object)
     unused_python_objects = (
