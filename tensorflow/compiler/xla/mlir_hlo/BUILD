@@ -736,6 +736,7 @@ cc_library(
         "mhlo/transforms/prepare_for_export/prepare_for_export.cc",
         "mhlo/transforms/rank_specialization/rank_specialization.cc",
         "mhlo/transforms/restrict_max_rank/restrict_max_rank.cc",
+        "mhlo/transforms/shape_legalize_to_hlo/shape_legalize_to_hlo.cc",
         "mhlo/transforms/shape_reification/shape_reification_pass.cc",
         "mhlo/transforms/shape_simplification/shape_simplification.cc",
         "mhlo/transforms/sink_constants_to_control_flow/sink_constants_to_control_flow.cc",
