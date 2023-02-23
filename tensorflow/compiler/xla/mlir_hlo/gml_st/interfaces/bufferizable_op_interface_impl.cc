@@ -42,21 +42,6 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-// Returns a scalar or a memref type result of `gml_st.materialize` op after
-// bufferization.
-FailureOr<Value> materializeExtraction(OpBuilder &b, Value memref,
-                                       MaterializeOp materializeOp) {
-  Location loc = materializeOp.getLoc();
-  if (!materializeOp.getType().isa<ShapedType>()) {
-    auto indices = getValueOrCreateConstantIndexOp(
-        b, loc, materializeOp.getMixedOffsets());
-    return b.create<memref::LoadOp>(loc, memref, indices).getResult();
-  }
-  Value subview = b.create<memref::SubViewOp>(
-      loc, memref, materializeOp.getMixedOffsets(),
-      materializeOp.getMixedSizes(), materializeOp.getMixedStrides());
-  return subview;
-}
 
 LogicalResult materializeInsertion(OpBuilder &b, Value update, Value set,
                                    Value memref,
@@ -93,48 +78,6 @@ LogicalResult materializeInsertion(OpBuilder &b, Value update, Value set,
                                   tile.getMixedSizes(), tile.getMixedStrides());
   return options.createMemCpy(b, loc, update, memref);
 }
-
-struct MaterializeOpInterface
-    : public BufferizableOpInterface::ExternalModel<MaterializeOpInterface,
-                                                    MaterializeOp> {
-  bool bufferizesToMemoryRead(Operation * /*op*/, OpOperand &opOperand,
-                              const AnalysisState & /*state*/) const {
-    return opOperand.getOperandNumber() == 0;
-  }
-
-  bool bufferizesToMemoryWrite(Operation * /*op*/, OpOperand & /*opOperand*/,
-                               const AnalysisState & /*state*/) const {
-    return false;
-  }
-
-  AliasingOpResultList getAliasingOpResults(
-      Operation *op, OpOperand &opOperand,
-      const AnalysisState & /*state*/) const {
-    auto result = op->getOpResult(0);
-    if (result.getType().isa<RankedTensorType>() &&
-        opOperand.getOperandNumber() == 0)
-      return {{result, BufferRelation::Unknown}};
-    return {};
-  }
-
-  LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationOptions &options) const {
-    auto materializeOp = cast<MaterializeOp>(op);
-
-    FailureOr<Value> bufferOr =
-        getBuffer(rewriter, materializeOp->getOpOperand(0).get(), options);
-    if (failed(bufferOr)) return failure();
-
-    rewriter.setInsertionPoint(materializeOp);
-    FailureOr<Value> resultOr =
-        materializeExtraction(rewriter, *bufferOr, materializeOp);
-
-    if (failed(resultOr)) return failure();
-
-    bufferization::replaceOpWithBufferizedValues(rewriter, op, *resultOr);
-    return success();
-  }
-};
 
 struct ParallelOpInterface
     : public BufferizableOpInterface::ExternalModel<ParallelOpInterface,
@@ -438,7 +381,6 @@ void mlir::gml_st::registerBufferizableOpInterfaceExternalModels(
     DialectRegistry &registry) {
   registry.addExtension(
       +[](MLIRContext *ctx, gml_st::GmlStDialect * /*dialect*/) {
-        MaterializeOp::attachInterface<MaterializeOpInterface>(*ctx);
         ParallelOp::attachInterface<ParallelOpInterface>(*ctx);
         SetYieldOp::attachInterface<SetYieldOpInterface>(*ctx);
       });

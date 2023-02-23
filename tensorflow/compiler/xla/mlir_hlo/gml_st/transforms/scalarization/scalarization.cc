@@ -589,9 +589,10 @@ struct ScalarizeForOp : public OpRewritePattern<scf::ForOp> {
 
     // Move old body into new for loop.
     rewriter.setInsertionPointToStart(newLoopBody);
-    SmallVector<Value> blockArgs{newForOp.getInductionVar(),
-                                 rewriter.create<tensor::FromElementsOp>(
-                                     loc, newForOp.getRegionIterArg(0))};
+    SmallVector<Value> blockArgs{
+        newForOp.getInductionVar(),
+        rewriter.create<tensor::FromElementsOp>(loc, iterArgTensorTy,
+                                                newForOp.getRegionIterArg(0))};
     rewriter.mergeBlocks(forOp.getBody(), newLoopBody, blockArgs);
 
     // Replace terminator that yields a tensor with the one that yields the
@@ -679,7 +680,6 @@ struct ScalarizationPass
     auto *context = &getContext();
 
     RewritePatternSet patterns(context);
-    patterns.add<ScalarizeLinalgOp>(context);
     // clang-format off
     patterns.add<
         ScalarizeConcatenateOp,
@@ -687,6 +687,7 @@ struct ScalarizationPass
         ScalarizeForOp,
         ScalarizeGatherOp,
         ScalarizeIfOp,
+        ScalarizeLinalgOp,
         ScalarizeReverseOp,
         ScalarizeScatterOp
     >(context);

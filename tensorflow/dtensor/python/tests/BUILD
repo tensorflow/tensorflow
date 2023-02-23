@@ -286,7 +286,7 @@ dtensor_test(
     name = "xla_spmd_test",
     srcs = ["spmd_test.py"],
     additional_backends = [
-        # TPU_V3_DONUT_BACKEND,  # FIXME(b/269177045): Failing due to RelayoutOp support.
+        TPU_V3_DONUT_BACKEND,
     ],
     disable = ALL_BACKENDS,
     env = {

@@ -1,8 +1,6 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN:     --gml-tiling-softmax="tile-sizes=8,16 distribute=true" \
-// RUN:     --canonicalize --cse \
-// RUN:     --gml-tiling-softmax="tile-sizes=1,1 distribute=true" \
-// RUN:     --canonicalize --cse | \
+// RUN:     --gml-tiling-softmax="tile-sizes=8,16" --canonicalize --cse \
+// RUN:     --gml-tiling-softmax="tile-sizes=1,1" --canonicalize --cse | \
 // RUN: FileCheck %s
 
 func.func @softmax(%arg0: tensor<64x128xf32>) -> tensor<64x128xf32> {

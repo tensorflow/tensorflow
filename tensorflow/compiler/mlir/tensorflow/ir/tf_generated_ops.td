@@ -2149,6 +2149,30 @@ case it might be faster to use the CPU.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_CollectiveAllToAllV2Op : TF_Op<"CollectiveAllToAllV2", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_CollectiveReduceOrderingEffect]> {
+  let summary = [{
+Mutually exchanges multiple tensors of identical type and shape.
+  }];
+
+  let arguments = (ins
+    TF_FpOrI32OrI64Tensor:$input,
+    TF_Int32Tensor:$group_size,
+    TF_Int32Tensor:$group_key,
+    TF_Int32Tensor:$instance_key,
+    Variadic<TF_ResourceTensor>:$ordering_token,
+
+    DefaultValuedOptionalAttr<StrAttr, "\"auto\"">:$communication_hint,
+    DefaultValuedOptionalAttr<F32Attr, "0.0f">:$timeout_seconds
+  );
+
+  let results = (outs
+    TF_FpOrI32OrI64Tensor:$data
+  );
+
+  TF_DerivedOperandSizeAttr Nordering_token = TF_DerivedOperandSizeAttr<4>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_CollectiveAssignGroupV2Op : TF_Op<"CollectiveAssignGroupV2", [Pure, TF_NoConstantFold]> {
   let summary = "Assign group keys based on group assignment.";
 
@@ -2227,7 +2251,7 @@ Mutually accumulates multiple tensors of identical type and shape.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_CollectiveGatherV2Op : TF_Op<"CollectiveGatherV2", [TF_CollectiveReduceOrderingEffect]> {
+def TF_CollectiveGatherV2Op : TF_Op<"CollectiveGatherV2", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_CollectiveReduceOrderingEffect]> {
   let summary = [{
 Mutually accumulates multiple tensors of identical type and shape.
   }];
@@ -15116,6 +15140,74 @@ has size `k`, the number of segments.}]>:$output
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_SegmentMaxV2Op : TF_Op<"SegmentMaxV2", [Pure]> {
+  let summary = "Computes the maximum along segments of a tensor.";
+
+  let description = [{
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+Computes a tensor such that
+\\(output_i = \max_j(data_j)\\) where `max` is over `j` such
+that `segment_ids[j] == i`.
+
+If the maximum is empty for a given segment ID `i`, it outputs the smallest
+possible value for the specific numeric type,
+`output[i] = numeric_limits<T>::lowest()`.
+
+Note: That this op is currently only supported with jit_compile=True.
+
+Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+and an error is thrown for indices that are not increasing. On GPU, this
+does not throw an error for unsorted indices. On GPU, out-of-order indices
+result in safe but unspecified behavior, which may include treating
+out-of-order indices as the same as a smaller following index.
+
+The only difference with SegmentMax is the additional input  `num_segments`.
+This helps in evaluating the output shape in compile time.
+`num_segments` should be consistent with segment_ids.
+e.g. Max(segment_ids) should be equal to `num_segments` - 1 for a 1-d segment_ids
+With inconsistent num_segments, the op still runs. only difference is,
+the output takes the size of num_segments irrespective of size of segment_ids and data.
+for num_segments less than expected output size, the last elements are ignored
+for num_segments more than the expected output size, last elements are assigned 
+smallest possible value for the specific numeric type.
+
+For example:
+
+>>> @tf.function(jit_compile=True)
+... def test(c):
+...   return tf.raw_ops.SegmentMaxV2(data=c, segment_ids=tf.constant([0, 0, 1]), num_segments=2)
+>>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+>>> test(c).numpy()
+array([[4, 3, 3, 4],
+       [5, 6, 7, 8]], dtype=int32)
+  }];
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$data,
+    Arg<TF_I32OrI64Tensor, [{A 1-D tensor whose size is equal to the size of `data`'s
+first dimension.  Values should be sorted and can be repeated.
+The values must be less than `num_segments`.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.}]>:$segment_ids,
+    TF_I32OrI64Tensor:$num_segments
+  );
+
+  let results = (outs
+    Res<TF_IntOrFpTensor, [{Has same shape as data, except for the first `segment_ids.rank`
+dimensions, which are replaced with a single dimensionw which has size
+`num_segments`.
+}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tnumsegments = TF_DerivedOperandTypeAttr<2>;
+}
+
 def TF_SegmentMeanOp : TF_Op<"SegmentMean", [Pure]> {
   let summary = "Computes the mean along segments of a tensor.";
 
@@ -15216,6 +15308,73 @@ has size `k`, the number of segments.}]>:$output
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_SegmentMinV2Op : TF_Op<"SegmentMinV2", [Pure]> {
+  let summary = "Computes the minimum along segments of a tensor.";
+
+  let description = [{
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+Computes a tensor such that
+\\(output_i = \min_j(data_j)\\) where `min` is over `j` such
+that `segment_ids[j] == i`.
+
+If the minimum is empty for a given segment ID `i`, it outputs the largest
+possible value for the specific numeric type,
+`output[i] = numeric_limits<T>::max()`.
+
+Note: That this op is currently only supported with jit_compile=True.
+
+Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+and an error is thrown for indices that are not increasing. On GPU, this
+does not throw an error for unsorted indices. On GPU, out-of-order indices
+result in safe but unspecified behavior, which may include treating
+out-of-order indices as the same as a smaller following index.
+
+The only difference with SegmentMin is the additional input  `num_segments`.
+This helps in evaluating the output shape in compile time.
+`num_segments` should be consistent with segment_ids.
+e.g. Max(segment_ids) should be equal to `num_segments` - 1 for a 1-d segment_ids
+With inconsistent num_segments, the op still runs. only difference is,
+the output takes the size of num_segments irrespective of size of segment_ids and data.
+for num_segments less than expected output size, the last elements are ignored
+for num_segments more than the expected output size, last elements are assigned 
+the largest possible value for the specific numeric type.
+
+For example:
+
+>>> @tf.function(jit_compile=True)
+... def test(c):
+...   return tf.raw_ops.SegmentMinV2(data=c, segment_ids=tf.constant([0, 0, 1]), num_segments=2)
+>>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+>>> test(c).numpy()
+array([[1, 2, 2, 1],
+       [5, 6, 7, 8]], dtype=int32)
+  }];
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$data,
+    Arg<TF_I32OrI64Tensor, [{A 1-D tensor whose size is equal to the size of `data`'s
+first dimension.  Values should be sorted and can be repeated.
+The values must be less than `num_segments`.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.}]>:$segment_ids,
+    TF_I32OrI64Tensor:$num_segments
+  );
+
+  let results = (outs
+    Res<TF_IntOrFpTensor, [{Has same shape as data, except for the first `segment_ids.rank`
+dimensions, which are replaced with a single dimensionw which has size
+`num_segments`.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tnumsegments = TF_DerivedOperandTypeAttr<2>;
 }
 
 def TF_SegmentProdOp : TF_Op<"SegmentProd", [Pure]> {

@@ -685,11 +685,11 @@ StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
   TF_RETURN_IF_ERROR(tensorflow::ConvertTfMlirToRuntimeExecutable(
       options, module,
       [&bytecode_buffer](mlir::PassManager& pm, mlir::ModuleOp module,
-                         const TfrtPipelineOptions&) {
+                         const TfrtPipelineOptions& options) {
         mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
         pm.addPass(mlrt_compiler::CreateParallelizationPass());
-        pm.addPass(mlrt_compiler::CreateTfToMlrtConversionPass());
+        pm.addPass(mlrt_compiler::CreateTfToMlrtConversionPass(options));
 
         if (mlir::failed(pm.run(module)))
           return diag_handler.Combine(tensorflow::errors::Internal(

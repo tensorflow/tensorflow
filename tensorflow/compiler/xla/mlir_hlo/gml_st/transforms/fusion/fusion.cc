@@ -482,7 +482,6 @@ LogicalResult fuseFillOpsIntoParallelOp(PatternRewriter& rewriter,
 
 gml_st::TilingOptions getGmlStTilingOptions(ArrayRef<int64_t> tileSizes) {
   gml_st::TilingOptions opts;
-  opts.distribute = true;
   opts.setTileSizeComputationFn(tileSizes);
   return opts;
 }
@@ -491,8 +490,6 @@ FailureOr<ParallelOp> tileUsingGmlStParallelAndFuseGreedily(
     PatternRewriter& rewriter, Operation* op,
     const mlir::gml_st::TilingOptions& opts, StringRef label,
     llvm::function_ref<bool(Operation*)> fuseFilterFn) {
-  assert(opts.distribute == true &&
-         "gml_st.for should not be used for CPU pipeline");
   auto tilingResult = tileUsingGmlSt(opts, rewriter, cast<TilingInterface>(op));
   if (failed(tilingResult)) return failure();
 
@@ -506,7 +503,7 @@ FailureOr<ParallelOp> tileUsingGmlStParallelAndFuseGreedily(
                  fuseFilterFn);
   }
   setLabel(tilingResult->tiledOps.front(), label);
-  return cast<ParallelOp>(tilingResult->loop);
+  return tilingResult->loop;
 }
 
 scf::SCFTilingOptions getSCFTilingOptions(ArrayRef<int64_t> tileSizes) {

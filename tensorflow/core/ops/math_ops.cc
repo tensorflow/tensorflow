@@ -1325,6 +1325,16 @@ REGISTER_OP("SegmentMin")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(SegmentReductionShapeFn);
 
+REGISTER_OP("SegmentMinV2")
+    .Input("data: T")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Output("output: T")
+    .Attr("T: realnumbertype")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
+
 REGISTER_OP("SegmentMax")
     .Input("data: T")
     .Input("segment_ids: Tindices")
@@ -1332,6 +1342,16 @@ REGISTER_OP("SegmentMax")
     .Attr("T: realnumbertype")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(SegmentReductionShapeFn);
+
+REGISTER_OP("SegmentMaxV2")
+    .Input("data: T")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Output("output: T")
+    .Attr("T: realnumbertype")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("UnsortedSegmentSum")
     .Input("data: T")

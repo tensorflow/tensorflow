@@ -22,30 +22,6 @@ func.func @dynamic_types(%size : index) {
 
 // -----
 
-// CHECK-LABEL: @materialize_vector
-// CHECK-SAME: %[[VECTOR:.*]]: vector<64x32xf32>
-func.func @materialize_vector(%vector: vector<64x32xf32>) {
-  // CHECK: %{{.*}} = gml_st.materialize %[[VECTOR]]
-  // CHECK-SAME: : vector<64x32xf32>
-  %0 = gml_st.materialize %vector[0, 0][42, 16][1, 1]
-    : vector<64x32xf32> to vector<42x16xf32>
-  func.return
-}
-
-// -----
-
-// CHECK-LABEL: @materialize_0d_vector
-// CHECK-SAME: %[[VECTOR:.*]]: vector<f32>
-func.func @materialize_0d_vector(%vector: vector<f32>) {
-  // CHECK: %{{.*}} = gml_st.materialize %[[VECTOR]]
-  // CHECK-SAME: : vector<f32> to vector<f32>
-  %0 = gml_st.materialize %vector[][][]
-    : vector<f32> to vector<f32>
-  func.return
-}
-
-// -----
-
 #id_1d = affine_map<(d0) -> (d0)>
 
 func.func @parallel_loop(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,

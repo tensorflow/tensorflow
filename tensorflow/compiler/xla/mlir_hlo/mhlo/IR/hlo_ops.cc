@@ -6115,7 +6115,7 @@ LogicalResult WhileOp::fold(FoldAdaptor /*adaptor*/,
     return failure();  // TODO(mhlo): this is an infinite loop, should we fold?
 
   results.append(getOperands().begin(), getOperands().end());
-  return success();
+  return success(!results.empty());
 }
 
 static LogicalResult whileCanonicalization(WhileOp whileOp,

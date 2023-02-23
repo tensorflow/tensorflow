@@ -34,7 +34,6 @@ class TensorOrMemrefOf<list<Type> allowedTypes> :
 def THLO_Dialect : Dialect {
   let name = "thlo";
   let cppNamespace = "::mlir::thlo";
-  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 class THLO_Op<string mnemonic, list<Trait> traits> :

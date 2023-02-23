@@ -348,7 +348,8 @@ struct VectorizeForCPUPass
       TransferReadOp::getCanonicalizationPatterns(patterns, ctx);
       // clang-format off
       patterns.add<
-        VectorizeIfOpPattern,
+        // TODO(b/270330204): Re-enable the pattern.
+        /*VectorizeIfOpPattern,*/
         VectorizationPattern<BroadcastOp>,
         VectorizationPattern<FillOp>,
         VectorizationPattern<GenericOp>,

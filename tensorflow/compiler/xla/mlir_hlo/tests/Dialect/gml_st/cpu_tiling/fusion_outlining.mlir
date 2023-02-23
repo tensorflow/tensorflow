@@ -67,3 +67,26 @@ func.func @multiple_fusions(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
 // CHECK:        %[[VAL:.*]] = call @multiple_fusions_fusion_0(%[[ARG0_1]], %[[ARG1_1]])
 // CHECK:        %[[VAL_0:.*]] = call @multiple_fusions_fusion_1(%[[ARG2]], %[[VAL]])
 // CHECK:        return %[[VAL_0]]
+
+// -----
+
+func.func @cst_defined_above(%arg0: tensor<1x32xf32>, %arg1: tensor<32x10xf32>, %arg2: tensor<10xf32>) -> tensor<1x10xf32> {
+  %cst = arith.constant 0.000000e+00 : f32
+  %0 = tensor.empty() : tensor<1x10xf32>
+  %1 = gml_st.fusion (%arg3 = %0: tensor<1x10xf32>, %arg4 = %arg2: tensor<10xf32>, %arg5 = %arg0: tensor<1x32xf32>, %arg6 = %arg1: tensor<32x10xf32>) {
+    %2 = linalg.fill ins(%cst : f32) outs(%arg3 : tensor<1x10xf32>) -> tensor<1x10xf32>
+    gml_st.yield %2 : tensor<1x10xf32>
+  } : tensor<1x10xf32>
+  return %1 : tensor<1x10xf32>
+}
+
+// CHECK:      @cst_defined_above_fusion_0
+// CHECK-SAME:     %[[ARG0:.*]]: tensor<1x10xf32>, %[[ARG1:.*]]: tensor<10xf32>, %[[ARG2:.*]]: tensor<1x32xf32>, %[[ARG3:.*]]: tensor<32x10xf32>
+// CHECK-DAG:    %[[CST:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK:        %[[FILL:.*]] = linalg.fill ins(%[[CST]] : f32) outs(%[[ARG0]] : tensor<1x10xf32>)
+// CHECK:        return %[[FILL]]
+// CHECK:      @cst_defined_above
+// CHECK-SAME:     %[[ARG0_0:.*]]: tensor<1x32xf32>, %[[ARG1_0:.*]]: tensor<32x10xf32>, %[[ARG2_0:.*]]: tensor<10xf32>
+// CHECK:        %[[EMPTY:.*]] = tensor.empty()
+// CHECK:        %[[VAL:.*]] = call @cst_defined_above_fusion_0(%[[EMPTY]], %[[ARG2_0]], %[[ARG0_0]], %[[ARG1_0]])
+// CHECK:        return %[[VAL]]

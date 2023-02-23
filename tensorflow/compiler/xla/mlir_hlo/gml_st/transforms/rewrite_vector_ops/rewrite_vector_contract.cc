@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
-#include "gml_st/utils/vector_utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -32,41 +31,6 @@ using vector::OuterProductOp;
 
 #define GEN_PASS_DEF_REWRITEVECTORCONTRACTPASS
 #include "gml_st/transforms/passes.h.inc"
-
-struct OuterProductOpCanonicalizationPattern
-    : public OpRewritePattern<OuterProductOp> {
-  OuterProductOpCanonicalizationPattern(
-      MLIRContext *context, llvm::function_ref<bool(OuterProductOp)> filterFn,
-      PatternBenefit benefit = 1)
-      : OpRewritePattern(context, benefit), filterFn(filterFn) {}
-
-  LogicalResult matchAndRewrite(OuterProductOp op,
-                                PatternRewriter &rewriter) const override {
-    if (!filterFn(op))
-      return rewriter.notifyMatchFailure(op, "did not match filter");
-
-    bool changed = false;
-    SmallVector<Value> newAccs{op.getAcc()};
-    for (auto &acc : newAccs) {
-      auto materializeOp = acc.getDefiningOp<MaterializeOp>();
-      auto src = materializeOp.getSource();
-      auto srcType = src.getType().cast<ShapedType>();
-      if (auto resType = op.getResult().getType().dyn_cast<ShapedType>()) {
-        if (resType.hasStaticShape() && srcType == resType) {
-          acc = src;
-          changed = true;
-        }
-      }
-    }
-    if (!changed) return failure();
-    rewriter.updateRootInPlace(op,
-                               [&]() { op.getAccMutable().assign(newAccs); });
-    return success();
-  }
-
- private:
-  llvm::function_ref<bool(OuterProductOp)> filterFn;
-};
 
 struct RewriteVectorContractPass
     : public impl::RewriteVectorContractPassBase<RewriteVectorContractPass> {
@@ -100,12 +64,6 @@ struct RewriteVectorContractPass
 
     RewritePatternSet patterns(ctx);
 
-    auto outerProductOpFilter = [&](OuterProductOp op) {
-      return (llvm::any_of(op.getAcc(), [](auto acc) {
-        return acc.template getDefiningOp<MaterializeOp>() != nullptr;
-      }));
-    };
-
     vector::populateVectorToVectorCanonicalizationPatterns(patterns);
     // Currently we always lower vector.contract into vector.outerproduct.
     patterns.add<vector::ContractionOpToOuterProductOpLowering,
@@ -113,8 +71,6 @@ struct RewriteVectorContractPass
         vector::VectorTransformsOptions().setVectorTransformsOptions(
             vector::VectorContractLowering::OuterProduct),
         ctx, 2);
-    patterns.add<OuterProductOpCanonicalizationPattern>(ctx,
-                                                        outerProductOpFilter);
     vector::populateVectorTransferPermutationMapLoweringPatterns(patterns);
 
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {

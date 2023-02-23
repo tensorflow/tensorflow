@@ -94,7 +94,6 @@ ParallelOp generateTileLoopNest(OpBuilder &builder, Location loc,
                                 ArrayRef<Range> loopRanges,
                                 ArrayRef<Value> tileSizeVals,
                                 ArrayRef<Value> dstOperands,
-                                StringRef distributionLabel,
                                 SmallVector<OpFoldResult> &offsets,
                                 SmallVector<OpFoldResult> &sizes) {
   assert(!loopRanges.empty() && "expected at least one loop range");
@@ -128,17 +127,12 @@ ParallelOp generateTileLoopNest(OpBuilder &builder, Location loc,
           nestedBuilder, bodyLoc, steps[index], ubs[index], iv);
     }
   };
-  std::optional<StringAttr> distributionLabelAttr;
-  if (!distributionLabel.empty()) {
-    distributionLabelAttr =
-        StringAttr::get(builder.getContext(), distributionLabel);
-  }
   return builder.create<gml_st::ParallelOp>(
       loc, TypeRange(ValueRange{dstOperands}),
       getValueOrCreateConstantIndexOp(builder, loc, lbs),
       getValueOrCreateConstantIndexOp(builder, loc, ubs),
       getValueOrCreateConstantIndexOp(builder, loc, steps), dstOperands,
-      distributionLabelAttr,
+      std::nullopt,
       [&](OpBuilder &nestedBuilder, Location bodyLoc, ValueRange ivs,
           ValueRange /*outputs*/) { buildBody(nestedBuilder, bodyLoc, ivs); });
 }
@@ -148,17 +142,19 @@ ParallelOp generateTileLoopNest(OpBuilder &builder, Location loc,
 struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
   TilingPattern(MLIRContext *context,
                 llvm::function_ref<LogicalResult(TilingInterface)> filterFn,
-                TilingOptions options, PatternBenefit benefit = 1)
+                TilingOptions options, bool distribute,
+                PatternBenefit benefit = 1)
       : OpInterfaceRewritePattern<TilingInterface>(context, benefit),
         filterFn(filterFn),
-        options(std::move(options)) {}
+        options(std::move(options)),
+        distribute(distribute) {}
 
   LogicalResult matchAndRewrite(TilingInterface op,
                                 PatternRewriter &rewriter) const override {
     if (!filterFn || failed(filterFn(op)) || hasLabel(op, kTileAppliedLabel))
       return failure();
 
-    if (options.distribute) {
+    if (distribute) {
       auto tilingResult = tileUsingGmlSt(options, rewriter, op);
       if (failed(tilingResult)) return failure();
 
@@ -182,6 +178,7 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
  private:
   llvm::function_ref<LogicalResult(TilingInterface)> filterFn;
   TilingOptions options;
+  bool distribute;
 };
 
 struct TilingPass : public impl::TilingPassBase<TilingPass> {
@@ -205,7 +202,6 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
     MLIRContext *ctx = &getContext();
 
     TilingOptions opts;
-    opts.distribute = distribute;
     SmallVector<int64_t> ts(tileSizes.begin(), tileSizes.end());
     opts.tileSizeComputationFn = [ts](OpBuilder &b, Operation *op) {
       OpBuilder::InsertionGuard guard(b);
@@ -224,7 +220,7 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
       return success();
     };
     RewritePatternSet patterns(ctx);
-    populateTilingPatterns(ctx, filterFn, opts, &patterns);
+    patterns.add<TilingPattern>(ctx, filterFn, opts, distribute);
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
 
@@ -299,9 +295,9 @@ FailureOr<TilingResult> tileUsingGmlSt(const TilingOptions &options,
     return rewriter.notifyMatchFailure(op, "failed to get destinations");
   SmallVector<OpFoldResult> offsets, sizes;
   TilingResult tilingResult;
-  tilingResult.loop = generateTileLoopNest(
-      rewriter, loc, iterationDomain, tileSizeVector, dstOperands,
-      options.distributionLabel, offsets, sizes);
+  tilingResult.loop =
+      generateTileLoopNest(rewriter, loc, iterationDomain, tileSizeVector,
+                           dstOperands, offsets, sizes);
   Block *loopBody = &tilingResult.loop->getRegion(0).front();
   auto terminator = cast<SetYieldOp>(loopBody->getTerminator());
   rewriter.setInsertionPoint(terminator);
@@ -337,9 +333,7 @@ FailureOr<TilingResult> tileUsingGmlSt(const TilingOptions &options,
 void populateTilingPatterns(
     MLIRContext *context,
     llvm::function_ref<LogicalResult(TilingInterface)> filterFn,
-    const TilingOptions &opts, RewritePatternSet *patterns) {
-  patterns->add<TilingPattern>(context, filterFn, opts);
-}
+    const TilingOptions &opts, RewritePatternSet *patterns) {}
 
 void removeTilingLabels(Operation *op) {
   op->walk([](Operation *op) { removeLabel(op, kTileAppliedLabel); });

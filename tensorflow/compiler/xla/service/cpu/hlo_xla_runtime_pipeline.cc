@@ -118,6 +118,12 @@ static Status CreateHloXlaPipeline(
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
+  // Some early sparse rewriting rules.
+  if (options.sparse_bufferization) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::mhlo::createSparseRewritingPass());
+  }
+
   // Transform HLO operations to Linalg.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeSortPass());
   pm.addNestedPass<mlir::func::FuncOp>(

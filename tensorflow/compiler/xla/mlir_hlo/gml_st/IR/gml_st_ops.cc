@@ -75,10 +75,6 @@ ParseResult parseShapeTypeDimensionsList(AsmParser &parser,
   return success();
 }
 
-Type inferReturnType(ShapedType sourceType, ArrayRef<int64_t> tileShape) {
-  return sourceType.clone(tileShape, sourceType.getElementType());
-}
-
 LogicalResult verifyCompatibleExtractedSubset(Operation *op,
                                               ShapedType shapedType,
                                               Type extractedType,
@@ -192,130 +188,6 @@ Operation *GmlStDialect::materializeConstant(OpBuilder &builder, Attribute attr,
     return builder.create<arith::ConstantIndexOp>(loc, intValue);
   }
   return {};
-}
-
-//===----------------------------------------------------------------------===//
-// MaterializeOp
-//===----------------------------------------------------------------------===//
-
-void MaterializeOp::build(OpBuilder &b, OperationState &result, Value source,
-                          ArrayRef<OpFoldResult> offsets,
-                          ArrayRef<OpFoldResult> sizes,
-                          ArrayRef<OpFoldResult> strides) {
-  SmallVector<int64_t> staticOffsets, staticSizes, staticStrides;
-  SmallVector<Value> dynamicOffsets, dynamicSizes, dynamicStrides;
-  dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets);
-  dispatchIndexOpFoldResults(sizes, dynamicSizes, staticSizes);
-  dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides);
-  auto sourceType = source.getType().cast<ShapedType>();
-  Type resultType = inferReturnType(sourceType, staticSizes);
-  build(b, result, resultType, source, dynamicOffsets, dynamicSizes,
-        dynamicStrides, b.getDenseI64ArrayAttr(staticOffsets),
-        b.getDenseI64ArrayAttr(staticSizes),
-        b.getDenseI64ArrayAttr(staticStrides));
-}
-
-void MaterializeOp::build(OpBuilder &b, OperationState &result, Type resultType,
-                          Value source, ArrayRef<OpFoldResult> offsets,
-                          ArrayRef<OpFoldResult> sizes,
-                          ArrayRef<OpFoldResult> strides) {
-  SmallVector<int64_t> staticOffsets, staticSizes, staticStrides;
-  SmallVector<Value> dynamicOffsets, dynamicSizes, dynamicStrides;
-  dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets);
-  dispatchIndexOpFoldResults(sizes, dynamicSizes, staticSizes);
-  dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides);
-  build(b, result, resultType, source, dynamicOffsets, dynamicSizes,
-        dynamicStrides, b.getDenseI64ArrayAttr(staticOffsets),
-        b.getDenseI64ArrayAttr(staticSizes),
-        b.getDenseI64ArrayAttr(staticStrides));
-}
-
-void MaterializeOp::build(OpBuilder &b, OperationState &result, Value source,
-                          ArrayRef<OpFoldResult> offsets) {
-  SmallVector<OpFoldResult> unitSizesAndStrides(offsets.size(),
-                                                b.getIndexAttr(1));
-  build(b, result, source, offsets, unitSizesAndStrides, unitSizesAndStrides);
-}
-
-LogicalResult MaterializeOp::verify() {
-  return verifyCompatibleExtractedSubset(getOperation(), getSource().getType(),
-                                         getType(), getStaticSizes());
-}
-
-LogicalResult MaterializeOp::reifyResultShapes(
-    OpBuilder &builder, ReifiedRankedShapedTypeDims &reifiedReturnShapes) {
-  reifiedReturnShapes.push_back(
-      getAsValues(builder, getLoc(), getMixedSizes()));
-  return success();
-}
-
-namespace {
-
-/// Adapted from OpWithOffsetSizesAndStridesConstantArgumentFolder, which makes
-/// slightly incompatible assumptions about the op.
-struct FoldConstantsIntoMaterializeOp : public OpRewritePattern<MaterializeOp> {
-  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(MaterializeOp op,
-                                PatternRewriter &rewriter) const override {
-    SmallVector<OpFoldResult> mixedOffsets(op.getMixedOffsets());
-    SmallVector<OpFoldResult> mixedSizes(op.getMixedSizes());
-    SmallVector<OpFoldResult> mixedStrides(op.getMixedStrides());
-
-    // No constant operands were folded, just return;
-    if (failed(foldDynamicIndexList(rewriter, mixedOffsets)) &&
-        failed(foldDynamicIndexList(rewriter, mixedSizes)) &&
-        failed(foldDynamicIndexList(rewriter, mixedStrides)))
-      return failure();
-
-    SmallVector<int64_t> staticSizes;
-    SmallVector<Value> dynamicSizes;
-    dispatchIndexOpFoldResults(mixedSizes, dynamicSizes, staticSizes);
-
-    Type opResultType = op.getType();
-    Type newResultType =
-        opResultType.isa<ShapedType>()
-            ? inferReturnType(op.getSource().getType(), staticSizes)
-            : opResultType;
-    // Create the new tile in canonical form.
-    auto newMaterializeOp = rewriter.create<MaterializeOp>(
-        op.getLoc(), newResultType, op.getSource(), mixedOffsets, mixedSizes,
-        mixedStrides);
-
-    // Cast the result back to the original type.
-    if (opResultType != newResultType) {
-      rewriter.replaceOpWithNewOp<tensor::CastOp>(op, opResultType,
-                                                  newMaterializeOp.getResult());
-    } else {
-      rewriter.replaceOp(op, newMaterializeOp.getResult());
-    }
-    return success();
-  }
-};
-
-/// Folds tensor::CastOp sources into MaterializeOp.
-struct FoldSrcCastIntoMaterialize : public OpRewritePattern<MaterializeOp> {
-  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(MaterializeOp op,
-                                PatternRewriter &rewriter) const override {
-    auto cast = op.getSource().getDefiningOp<tensor::CastOp>();
-    if (!cast) return failure();
-
-    auto src = cast.getSource();
-    auto shape = op.getStaticSizes();
-    rewriter.replaceOpWithNewOp<MaterializeOp>(
-        op, inferReturnType(src.getType(), shape), src, op.getMixedOffsets(),
-        op.getMixedSizes(), op.getMixedStrides());
-    return success();
-  }
-};
-}  // namespace
-
-void MaterializeOp::getCanonicalizationPatterns(RewritePatternSet &results,
-                                                MLIRContext *context) {
-  results.add<FoldConstantsIntoMaterializeOp, FoldSrcCastIntoMaterialize>(
-      context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -596,10 +468,9 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<ParallelOp> {
 
     // Replace the loop by a lower-dimensional loop.
     ParallelOp newOp;
-    auto parallelLoop = cast<ParallelOp>(op);
     newOp = rewriter.create<ParallelOp>(op.getLoc(), op.getResultTypes(),
                                         newLowerBounds, newUpperBounds,
-                                        newSteps, parallelLoop.getOutputs());
+                                        newSteps, op.getOutputs());
     // The new loop needs to keep all attributes from the old one, except for
     // "operand_segment_sizes" which captures the outdated information of the
     // old iteration domain.

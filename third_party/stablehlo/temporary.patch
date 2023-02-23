@@ -1,3 +1,36 @@
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
+--- stablehlo/stablehlo/dialect/ChloOps.td
++++ stablehlo/stablehlo/dialect/ChloOps.td
+@@ -53,7 +53,6 @@
+     and provide conversion patterns to fully materialize into lower level
+     dialects.
+   }];
+-  let useFoldAPI = kEmitFoldAdaptorFolder;
+ }
+ 
+ class CHLO_Op<string mnemonic, list<Trait> traits> :
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
+--- stablehlo/stablehlo/dialect/StablehloOps.td
++++ stablehlo/stablehlo/dialect/StablehloOps.td
+@@ -37,7 +37,6 @@
+ 
+   let useDefaultAttributePrinterParser = 0;
+   let useDefaultTypePrinterParser = 0;
+-  let useFoldAPI = kEmitFoldAdaptorFolder;
+ }
+ 
+ class StableHLO_Op<string mnemonic, list<Trait> traits> :
+diff --ruN a/stablehlo/stablehlo/dialect/VhloDialect.td b/stablehlo/stablehlo/dialect/VhloDialect.td
+--- stablehlo/stablehlo/dialect/VhloDialect.td
++++ stablehlo/stablehlo/dialect/VhloDialect.td
+@@ -36,7 +36,6 @@
+ 
+   let useDefaultAttributePrinterParser = 0;
+   let useDefaultTypePrinterParser = 0;
+-  let useFoldAPI = kEmitFoldAdaptorFolder;
+ }
+ 
+ #endif
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
 --- stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir

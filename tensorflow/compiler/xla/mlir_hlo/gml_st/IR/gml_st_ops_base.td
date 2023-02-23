@@ -32,7 +32,6 @@ def GmlSt_Dialect : Dialect {
   let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;
   let hasConstantMaterializer = 1;
-  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 class GMLST_Op<string mnemonic, list<Trait> traits> :

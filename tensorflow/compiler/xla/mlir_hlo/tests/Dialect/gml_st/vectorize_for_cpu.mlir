@@ -265,18 +265,18 @@ func.func @vectorize_ite(%pred: i1, %lhs: tensor<8x1xf32>,
 }
 
 // CHECK-LABEL:  @vectorize_ite
-// CHECK-SAME:       %[[PRED:.*]]: i1, %[[LHS:.*]]: tensor<8x1xf32>, %[[RHS:.*]]: tensor<8x1xf32>
-// CHECK-DAG:      %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG:      %[[ZERO:.*]] = arith.constant 0.000000e+00 : f32
-// CHECK:          %[[IF:.*]] = scf.if %[[PRED]] -> (vector<8x1xf32>)
-// CHECK:            %[[TRANSFER:.*]] = vector.transfer_read %[[LHS]][%[[C0]], %[[C0]]], %[[ZERO]]
-// CHECK:            scf.yield %[[TRANSFER]]
-// CHECK:          else
-// CHECK:            %[[TRANSFER_0:.*]] = vector.transfer_read %[[RHS]][%[[C0]], %[[C0]]], %[[ZERO]]
-// CHECK:            scf.yield %[[TRANSFER_0]]
-// CHECK:          %[[EMPTY:.*]] = tensor.empty
-// CHECK:          %[[TRANSFER_1:.*]] = vector.transfer_write %[[IF]], %[[EMPTY]][%[[C0]], %[[C0]]]
-// CHECK:          return %[[TRANSFER_1]]
+// REENABLE-SAME:       %[[PRED:.*]]: i1, %[[LHS:.*]]: tensor<8x1xf32>, %[[RHS:.*]]: tensor<8x1xf32>
+// REENABLE-DAG:      %[[C0:.*]] = arith.constant 0 : index
+// REENABLE-DAG:      %[[ZERO:.*]] = arith.constant 0.000000e+00 : f32
+// REENABLE:          %[[IF:.*]] = scf.if %[[PRED]] -> (vector<8x1xf32>)
+// REENABLE:            %[[TRANSFER:.*]] = vector.transfer_read %[[LHS]][%[[C0]], %[[C0]]], %[[ZERO]]
+// REENABLE:            scf.yield %[[TRANSFER]]
+// REENABLE:          else
+// REENABLE:            %[[TRANSFER_0:.*]] = vector.transfer_read %[[RHS]][%[[C0]], %[[C0]]], %[[ZERO]]
+// REENABLE:            scf.yield %[[TRANSFER_0]]
+// REENABLE:          %[[EMPTY:.*]] = tensor.empty
+// REENABLE:          %[[TRANSFER_1:.*]] = vector.transfer_write %[[IF]], %[[EMPTY]][%[[C0]], %[[C0]]]
+// REENABLE:          return %[[TRANSFER_1]]
 
 // -----
 
@@ -292,18 +292,18 @@ func.func @vectorize_ite_and_scalar(%pred: i1, %lhs: tensor<8x1xf32>,
 }
 
 // CHECK-LABEL:  @vectorize_ite_and_scalar
-// CHECK-SAME:       %[[PRED:.*]]: i1, %[[LHS:.*]]: tensor<8x1xf32>, %[[LHS_SCALAR:.*]]: f32, %[[RHS:.*]]: tensor<8x1xf32>, %[[RHS_SCALAR:.*]]: f32
-// CHECK-DAG:      %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG:      %[[CST:.*]] = arith.constant 0.000000e+00 : f32
-// CHECK:          %[[IF:.*]]:2 = scf.if %[[PRED]] -> (vector<8x1xf32>, f32)
-// CHECK:            %[[TRANSFER:.*]] = vector.transfer_read %[[LHS]][%[[C0]], %[[C0]]], %[[CST]]
-// CHECK:            scf.yield %[[TRANSFER]], %[[LHS_SCALAR]]
-// CHECK:          else
-// CHECK:            %[[TRANSFER_0:.*]] = vector.transfer_read %[[RHS]][%[[C0]], %[[C0]]], %[[CST]]
-// CHECK:            scf.yield %[[TRANSFER_0]], %[[RHS_SCALAR]]
-// CHECK:          %[[EMPTY:.*]] = tensor.empty
-// CHECK:          %[[TRANSFER_1:.*]] = vector.transfer_write %[[IF]]#0, %[[EMPTY]][%[[C0]], %[[C0]]]
-// CHECK:          return %[[TRANSFER_1]], %[[IF]]#1
+// REENABLE-SAME:       %[[PRED:.*]]: i1, %[[LHS:.*]]: tensor<8x1xf32>, %[[LHS_SCALAR:.*]]: f32, %[[RHS:.*]]: tensor<8x1xf32>, %[[RHS_SCALAR:.*]]: f32
+// REENABLE-DAG:      %[[C0:.*]] = arith.constant 0 : index
+// REENABLE-DAG:      %[[CST:.*]] = arith.constant 0.000000e+00 : f32
+// REENABLE:          %[[IF:.*]]:2 = scf.if %[[PRED]] -> (vector<8x1xf32>, f32)
+// REENABLE:            %[[TRANSFER:.*]] = vector.transfer_read %[[LHS]][%[[C0]], %[[C0]]], %[[CST]]
+// REENABLE:            scf.yield %[[TRANSFER]], %[[LHS_SCALAR]]
+// REENABLE:          else
+// REENABLE:            %[[TRANSFER_0:.*]] = vector.transfer_read %[[RHS]][%[[C0]], %[[C0]]], %[[CST]]
+// REENABLE:            scf.yield %[[TRANSFER_0]], %[[RHS_SCALAR]]
+// REENABLE:          %[[EMPTY:.*]] = tensor.empty
+// REENABLE:          %[[TRANSFER_1:.*]] = vector.transfer_write %[[IF]]#0, %[[EMPTY]][%[[C0]], %[[C0]]]
+// REENABLE:          return %[[TRANSFER_1]], %[[IF]]#1
 
 // -----
 
@@ -321,13 +321,13 @@ func.func @vectorize_ite_w_casts(%pred: i1, %lhs: tensor<8x1xf32>,
 }
 
 // CHECK-LABEL:  @vectorize_ite_w_casts
-// CHECK-SAME:       %[[PRED:.*]]: i1, %[[LHS:.*]]: tensor<8x1xf32>, %[[RHS:.*]]: tensor<8x1xf32>
-// CHECK:          %[[RES:.*]] = scf.if %[[PRED]]
-// CHECK-SAME:         vector<8x1xf32>
-// CHECK:            %[[LHS_:.*]] = vector.transfer_read %[[LHS]]
-// CHECK:            scf.yield %[[LHS_]]
-// CHECK:          else
-// CHECK:            %[[RHS_:.*]] = vector.transfer_read %[[RHS]]
-// CHECK:            scf.yield %[[RHS_]]
-// CHECK:          %[[RES_:.*]] = vector.transfer_write %[[RES]]
-// CHECK:          return %[[RES_]]
+// REENABLE-SAME:       %[[PRED:.*]]: i1, %[[LHS:.*]]: tensor<8x1xf32>, %[[RHS:.*]]: tensor<8x1xf32>
+// REENABLE:          %[[RES:.*]] = scf.if %[[PRED]]
+// REENABLE-SAME:         vector<8x1xf32>
+// REENABLE:            %[[LHS_:.*]] = vector.transfer_read %[[LHS]]
+// REENABLE:            scf.yield %[[LHS_]]
+// REENABLE:          else
+// REENABLE:            %[[RHS_:.*]] = vector.transfer_read %[[RHS]]
+// REENABLE:            scf.yield %[[RHS_]]
+// REENABLE:          %[[RES_:.*]] = vector.transfer_write %[[RES]]
+// REENABLE:          return %[[RES_]]

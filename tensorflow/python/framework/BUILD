@@ -1430,6 +1430,7 @@ pytype_library(
     deps = [
         ":composite_tensor",
         ":dtypes",
+        ":tensor_conversion_registry",
         ":tensor_shape",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",

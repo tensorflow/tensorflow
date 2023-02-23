@@ -62,7 +62,10 @@ struct PyBufferPyObject {
   PyObject* weakrefs;
 };
 static_assert(std::is_standard_layout<PyBufferPyObject>::value,
-              "PyBufferPyObject must be standard layout");
+              "PyBufferPyObject must be standard layout. This error "
+              "can occur if the target is compiled with the Clang compiler and "
+              "the GCC standard library. In that case either switch to the GCC "
+              "toolchain or use -stdlib=libc++.");
 
 PyObject* PyBuffer_tp_new(PyTypeObject* subtype, PyObject* args,
                           PyObject* kwds) {

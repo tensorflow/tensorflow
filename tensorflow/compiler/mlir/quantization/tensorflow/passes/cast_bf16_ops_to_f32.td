@@ -88,3 +88,23 @@ def CastBFloat16MatMulToFloat32 : Pat<
   [(IsBF16ElementType $input),
    (IsBF16ElementType $filter)],
   (addBenefit 1)>;
+
+def CastBFloat16DepthwiseConvToFloat32 : Pat<
+  (TF_DepthwiseConv2dNativeOp:$res
+    $input, $filter, $strides, $padding,
+    $explicit_paddings, IsDataFormatNHWC:$data_format, $dilations),
+  (TF_CastOp
+    (TF_DepthwiseConv2dNativeOp
+      (TF_CastOp
+        $input, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $input))),
+      (TF_CastOp
+        $filter, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $filter))),
+      $strides, $padding, $explicit_paddings,
+      IsDataFormatNHWC:$data_format, $dilations,
+      (returnType (CloneTypeWithF32ElementType $res))),
+    /*truncate=*/ConstBoolAttrFalse),
+  [(IsBF16ElementType $input),
+   (IsBF16ElementType $filter)],
+  (addBenefit 1)>;

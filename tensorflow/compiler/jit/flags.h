@@ -155,9 +155,10 @@ struct BuildXlaOpsPassFlags {
 struct MlirCommonFlags {
   ConfigProto::Experimental::MlirBridgeRollout tf_mlir_enable_mlir_bridge;
 
-  bool tf_mlir_enable_merge_control_flow_pass;
-  bool tf_mlir_enable_convert_control_to_data_outputs_pass;
-  bool tf_mlir_enable_generic_outside_compilation;
+  bool tf_mlir_enable_merge_control_flow_pass = true;
+  bool tf_mlir_enable_convert_control_to_data_outputs_pass = false;
+  bool tf_mlir_enable_generic_outside_compilation = false;
+  bool tf_mlir_strip_debug = false;
 };
 
 // Flags for the JitRt pipeline -- see tf_jitrt_pipeline.h for details.

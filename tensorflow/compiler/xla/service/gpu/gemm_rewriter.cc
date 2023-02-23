@@ -80,6 +80,8 @@ Status SetName(HloModule *module, HloInstruction *gemm) {
 // types not compatible with Epilogue Fusion.
 bool SupportsEpilogueFusion(PrimitiveType type) {
   switch (type) {
+    case F8E4M3FN:
+    case F8E5M2:
     case F16:
     case BF16:
     case F32:
@@ -151,6 +153,16 @@ auto CublasLtMatmul(HloInstruction **instr) {
 
 auto GemmOrCublasLtMatmul(HloInstruction **instr) {
   return m::CustomCall(instr, {kGemmCallTarget, kCublasLtMatmulCallTarget});
+}
+
+auto CublasLtMatmulMaybeF8(HloInstruction **instr) {
+  return m::CustomCall(
+      instr, {kCublasLtMatmulCallTarget, kCublasLtMatmulF8CallTarget});
+}
+
+auto GemmOrCublasLtMatmulMaybeF8(HloInstruction **instr) {
+  return m::CustomCall(instr, {kGemmCallTarget, kCublasLtMatmulCallTarget,
+                               kCublasLtMatmulF8CallTarget});
 }
 
 auto BcastConstScalar(HloInstruction **instr, double value) {
@@ -307,7 +319,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     HloInstruction *alpha, *existing_gemm;
     if (Match(instr,
               m::MultiplyAnyOrder(
-                  GemmOrCublasLtMatmul(&existing_gemm).WithOneUser(),
+                  GemmOrCublasLtMatmulMaybeF8(&existing_gemm).WithOneUser(),
                   m::Broadcast(m::ConstantScalar(&alpha)).WithOneUser()))) {
       TF_ASSIGN_OR_RETURN(auto config,
                           existing_gemm->backend_config<GemmBackendConfig>());
@@ -456,11 +468,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (Match(instr,
               m::MaximumAnyOrder(
                   m::AnyOf<HloInstruction>(
-                      m::Slice(&optional_slice_or_bitcast,
-                               CublasLtMatmul(&existing_gemm).WithOneUser()),
-                      m::Bitcast(&optional_slice_or_bitcast,
-                                 CublasLtMatmul(&existing_gemm).WithOneUser()),
-                      CublasLtMatmul(&existing_gemm))
+                      m::Slice(
+                          &optional_slice_or_bitcast,
+                          CublasLtMatmulMaybeF8(&existing_gemm).WithOneUser()),
+                      m::Bitcast(
+                          &optional_slice_or_bitcast,
+                          CublasLtMatmulMaybeF8(&existing_gemm).WithOneUser()),
+                      CublasLtMatmulMaybeF8(&existing_gemm))
                       .WithOneUser(),
                   m::Broadcast(&zeros, m::ConstantScalar(0))))) {
       TF_RETURN_IF_ERROR(FuseReluActivation(instr, zeros, existing_gemm,

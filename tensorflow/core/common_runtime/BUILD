@@ -666,6 +666,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
     ],

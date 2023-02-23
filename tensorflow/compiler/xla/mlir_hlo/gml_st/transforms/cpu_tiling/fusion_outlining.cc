@@ -15,13 +15,13 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/passes.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/RegionUtils.h"
 
 namespace mlir {
 namespace gml_st {
@@ -30,34 +30,61 @@ namespace {
 #define GEN_PASS_DEF_FUSIONOUTLININGPASS
 #include "gml_st/transforms/passes.h.inc"
 
-LogicalResult outlineFusionOp(func::FuncOp funcOp, PatternRewriter& rewriter) {
-  MLIRContext* ctx = funcOp.getContext();
+void outlineFusionOp(func::FuncOp parentFuncOp, gml_st::FusionOp fusionOp,
+                     int64_t localFusionId, PatternRewriter& rewriter) {
+  MLIRContext* ctx = fusionOp.getContext();
 
+  // Find implicit operands, all of which must be constant-like.
+  Region& fusionBody = fusionOp.getBodyRegion();
+  SetVector<Operation*> implicitConstantLikeOperands;
+  visitUsedValuesDefinedAbove({fusionBody}, [&](OpOperand* operand) -> void {
+    Operation* def = operand->get().getDefiningOp();
+    assert(def && def->getNumOperands() == 0 && isPure(def) &&
+           "expect only constant-like implicit operands");
+    implicitConstantLikeOperands.insert(def);
+  });
+
+  // Insert outlined fusion func ops right before the parent func op.
+  rewriter.setInsertionPoint(parentFuncOp);
+  std::string outlinedFuncName =
+      llvm::formatv("{0}_fusion_{1}", parentFuncOp.getName(), localFusionId)
+          .str();
+  auto funcTy = FunctionType::get(ctx, fusionOp->getOperandTypes(),
+                                  fusionOp.getTerminator()->getOperandTypes());
+  auto funcOp = rewriter.create<func::FuncOp>(fusionOp.getLoc(),
+                                              outlinedFuncName, funcTy);
+
+  // Move body and replace yield with return terminator.
+  Region& funcOpBodyRegion = funcOp.getBody();
+  funcOpBodyRegion.takeBody(fusionOp.getRegion());
+  Block& funcOpBodyBlock = funcOpBodyRegion.getBlocks().front();
+  auto yieldOp = llvm::cast<gml_st::YieldOp>(funcOpBodyBlock.getTerminator());
+  rewriter.setInsertionPoint(yieldOp);
+  rewriter.replaceOpWithNewOp<func::ReturnOp>(yieldOp, yieldOp.getOperands());
+
+  // Inline constant-like implicit operands.
+  rewriter.setInsertionPointToStart(&funcOpBodyBlock);
+  for (Operation* constantLikeOp : implicitConstantLikeOperands) {
+    Operation* clonedConstantLikeOp = rewriter.clone(*constantLikeOp);
+    for (auto it : llvm::zip(constantLikeOp->getResults(),
+                             clonedConstantLikeOp->getResults())) {
+      replaceAllUsesInRegionWith(std::get<0>(it), std::get<1>(it),
+                                 funcOp.getBody());
+    }
+  }
+
+  // Replace fusion op with a call to the newly outlined function.
+  rewriter.setInsertionPoint(fusionOp);
+  rewriter.replaceOpWithNewOp<func::CallOp>(fusionOp, funcOp,
+                                            fusionOp->getOperands());
+}
+
+LogicalResult outlineFusionOpPattern(func::FuncOp funcOp,
+                                     PatternRewriter& rewriter) {
   // Outline fusion ops one by one.
   int64_t numOutlinedFusions = 0;
   funcOp.walk([&](gml_st::FusionOp fusionOp) {
-    // Insert outlined fusion func ops right before the parent func op.
-    rewriter.setInsertionPoint(funcOp);
-    auto outlinedFuncTy =
-        FunctionType::get(ctx, fusionOp->getOperandTypes(),
-                          fusionOp.getTerminator()->getOperandTypes());
-    std::string outlinedFuncName =
-        llvm::formatv("{0}_fusion_{1}", funcOp.getName(), numOutlinedFusions++)
-            .str();
-    auto outlinedFuncOp = rewriter.create<func::FuncOp>(
-        fusionOp.getLoc(), outlinedFuncName, outlinedFuncTy);
-
-    // Move body and replace yield terminator with return terminator.
-    outlinedFuncOp.getBody().takeBody(fusionOp.getRegion());
-    Block& theBlock = outlinedFuncOp.getBody().getBlocks().front();
-    rewriter.setInsertionPoint(theBlock.getTerminator());
-    rewriter.replaceOpWithNewOp<func::ReturnOp>(
-        theBlock.getTerminator(), theBlock.getTerminator()->getOperands());
-
-    // Replace fusion op with a call to the newly outlined function.
-    rewriter.setInsertionPoint(fusionOp);
-    rewriter.replaceOpWithNewOp<func::CallOp>(fusionOp, outlinedFuncOp,
-                                              fusionOp->getOperands());
+    outlineFusionOp(funcOp, fusionOp, numOutlinedFusions++, rewriter);
   });
 
   // Successfully applied pattern if at least one fusion was outlined.
@@ -73,7 +100,7 @@ struct FusionOutliningPass
 
     // Populate patterns.
     RewritePatternSet patterns(ctx);
-    patterns.add(outlineFusionOp);
+    patterns.add(outlineFusionOpPattern);
 
     if (failed(applyPatternsAndFoldGreedily(moduleOp, std::move(patterns)))) {
       return signalPassFailure();

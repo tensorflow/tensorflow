@@ -54,6 +54,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import data as data_types
 from tensorflow.python.util import nest
 
 
@@ -1338,7 +1339,7 @@ def check_steps_argument(input_data, steps, steps_name):
                            input_type=input_type_str, steps_name=steps_name))
     return True
 
-  if isinstance(input_data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
+  if isinstance(input_data, (data_types.DatasetV1, data_types.DatasetV2)):
     return True
 
   if steps is not None:
@@ -1551,7 +1552,7 @@ def is_feature_layer(layer):
 
 def is_eager_dataset_or_iterator(data):
   return context.executing_eagerly() and isinstance(
-      data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
+      data, (data_types.DatasetV1, data_types.DatasetV2,
              iterator_ops.IteratorBase))
 
 
@@ -1573,7 +1574,7 @@ def verify_dataset_shuffled(x):
   Returns:
     boolean, whether the input dataset is shuffled or not.
   """
-  assert isinstance(x, dataset_ops.DatasetV2)
+  assert isinstance(x, data_types.DatasetV2)
   graph_def = get_dataset_graph_def(x)
   for node in graph_def.node:
     if node.op.startswith('ShuffleDataset'):
@@ -1589,7 +1590,7 @@ def verify_dataset_shuffled(x):
 
 
 def is_dataset_or_iterator(data):
-  return isinstance(data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
+  return isinstance(data, (data_types.DatasetV1, data_types.DatasetV2,
                            iterator_ops.Iterator, iterator_ops.IteratorBase))
 
 
@@ -1682,7 +1683,7 @@ def infer_steps_for_dataset(model,
   Raises:
     ValueError: In case of invalid argument values.
   """
-  assert isinstance(dataset, dataset_ops.DatasetV2)
+  assert isinstance(dataset, data_types.DatasetV2)
   if (model._in_multi_worker_mode() and
       (dataset.options().experimental_distribute.auto_shard_policy !=
        options_lib.AutoShardPolicy.OFF)):
@@ -1876,7 +1877,7 @@ def unpack_validation_data(validation_data, raise_if_ambiguous=True):
   """
   if (isinstance(validation_data, (iterator_ops.Iterator,
                                    iterator_ops.IteratorBase,
-                                   dataset_ops.DatasetV2,
+                                   data_types.DatasetV2,
                                    data_utils.Sequence))
       or not hasattr(validation_data, '__len__')):
     val_x = validation_data

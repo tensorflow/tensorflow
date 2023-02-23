@@ -97,6 +97,7 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
         "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -136,6 +137,7 @@ py_library(
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -427,6 +429,7 @@ py_library(
     deps = [
         "//tensorflow/python:dtypes",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/types",
     ],
 )
 

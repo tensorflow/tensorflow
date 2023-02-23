@@ -343,8 +343,8 @@ bool SupportSpatialPartitioning(
                                  ->entry_computation()
                                  ->root_instruction() == instruction;
   if (instruction->parent()->root_instruction() == instruction &&
-      computation_map.find(instruction->parent()) == computation_map.end() &
-          !(is_entry_root && allow_spmd_sharding_propagation_to_output)) {
+      computation_map.find(instruction->parent()) == computation_map.end() &&
+      !(is_entry_root && allow_spmd_sharding_propagation_to_output)) {
     // We don't support sharding the root instruction of a computation yet,
     // unless the computation is a while body.
     return false;
@@ -1393,7 +1393,7 @@ StatusOr<bool> ProcessShardingInstruction(
   bool changed = false;
   HloInstruction* root_instr = module->entry_computation()->root_instruction();
   if (saved_root_shardings != nullptr && root_instr->shape().IsTuple() &&
-      module->entry_computation()->root_instruction()->has_sharding()) {
+      root_instr->has_sharding()) {
     saved_root_shardings->reserve(
         root_instr->sharding().tuple_elements().size());
     for (const HloSharding& sharding :
@@ -1403,8 +1403,8 @@ StatusOr<bool> ProcessShardingInstruction(
   }
   for (HloComputation* computation : module->computations(execution_threads)) {
     auto instructions = computation->MakeInstructionPostOrder();
-    std::reverse(instructions.begin(), instructions.end());
-    for (HloInstruction* instruction : instructions) {
+    for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
+      HloInstruction* instruction = *it;
       if (!instruction->IsCustomCall("Sharding")) {
         continue;
       }

@@ -1463,6 +1463,7 @@ cc_library(
         "gml_st/transforms/cpu_tiling/fusion_outlining.cc",
         "gml_st/transforms/cpu_tiling/fusion_planning_for_cpu.cc",
         "gml_st/transforms/cpu_tiling/transform_dot_for_cpu.cc",
+        "gml_st/transforms/cpu_tiling/transform_generic_for_cpu.cc",
         "gml_st/transforms/cpu_tiling/transform_map_for_cpu.cc",
         "gml_st/transforms/cpu_tiling/transform_matmul_for_cpu.cc",
         "gml_st/transforms/cpu_tiling/transform_reduce_for_cpu.cc",
@@ -1495,7 +1496,6 @@ cc_library(
         "gml_st/transforms/tiling/tiling.h",
         "gml_st/transforms/vectorization/vectorization.h",
         "gml_st/utils/linalg_utils.h",
-        "gml_st/utils/vector_utils.h",
     ],
     strip_include_prefix = ".",
     deps = [

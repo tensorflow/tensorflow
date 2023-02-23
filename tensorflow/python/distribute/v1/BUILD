@@ -91,6 +91,7 @@ pytype_strict_library(
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
     ],
 )

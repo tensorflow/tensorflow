@@ -4239,6 +4239,128 @@ TEST_F(CublasLtF8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
       )");
 }
 
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABAlphaDF8) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[16,32] parameter(0)
+      y = f8e4m3fn[32,16] parameter(1)
+      x_f32 = f32[16,32] convert(x)
+      y_f32 = f32[32,16] convert(y)
+      x_scale = f32[] parameter(2)
+      y_scale = f32[] parameter(3)
+      x_scale_bcast = f32[16,32] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      x_unscaled = f32[16,32] multiply(x_f32, x_scale_bcast)
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      k = f32[] constant(3.0)
+      k_bcast = f32[16,16] broadcast(k), dimensions={}
+      dot_a = f32[16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ROOT out = f32[16,16] multiply(dot_a, k_bcast)
+          }
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
+; CHECK-NEXT:    [[C0:%[^ ]+]] = f32[] constant(0)
+; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = f32[16,16]{1,0} broadcast([[C0]]), dimensions={}
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
+; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
+; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[C1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":3
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
+; CHECK:           }"
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[16,32] parameter(0)
+      y = f8e4m3fn[32,16] parameter(1)
+      x_f32 = f32[16,32] convert(x)
+      y_f32 = f32[32,16] convert(y)
+      x_scale = f32[] parameter(2)
+      y_scale = f32[] parameter(3)
+      x_scale_bcast = f32[16,32] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      x_unscaled = f32[16,32] multiply(x_f32, x_scale_bcast)
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      dot_a = f32[16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      c = f32[] constant(0)
+      c_bcast = f32[16,16] broadcast(c), dimensions={}
+      ROOT out = f32[16,16] maximum(dot_a, c_bcast)
+          }
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
+; CHECK-NEXT:    [[C0:%[^ ]+]] = f32[] constant(0)
+; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = f32[16,16]{1,0} broadcast([[C0]]), dimensions={}
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
+; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
+; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[C1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"RELU\"
+; CHECK:           }"
+      )");
+}
+
 TEST_F(CublasLtF8GemmRewriteTest, InvScaledABUnscaledDF8) {
   if (!GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::HOPPER)) {
@@ -4382,6 +4504,78 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABInvScaledDF8) {
 
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 
+      )");
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[16,32] parameter(0)
+      y = f8e4m3fn[32,16] parameter(1)
+      x_f32 = f32[16,32] convert(x)
+      y_f32 = f32[32,16] convert(y)
+      x_scale = f32[] parameter(2)
+      y_scale = f32[] parameter(3)
+      z_scale = f32[] parameter(4)
+      x_scale_bcast = f32[16,32] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      z_scale_bcast = f32[16,16] broadcast(z_scale), dimensions={}
+      x_unscaled = f32[16,32] multiply(x_f32, x_scale_bcast)
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      c = f32[] constant(0)
+      c_bcast = f32[16,16] broadcast(c), dimensions={}
+      dot_a = f32[16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      relu_a = f32[16,16] maximum(dot_a, c_bcast)
+      relu_a_scaled = f32[16,16] divide(relu_a, z_scale_bcast)
+      c1 = f32[] constant(-448.)
+      c1_bcast = f32[16,16] broadcast(c1), dimensions={}
+      c2 = f32[] constant(448.)
+      c2_bcast = f32[16,16] broadcast(c2), dimensions={}
+      relu_a_clamped = f32[16,16] clamp(c1_bcast, relu_a_scaled, c2_bcast)
+      ROOT out = f8e4m3fn[16,16] convert(relu_a_clamped)
+          }
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{2e-3, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[], z_scale: f32[]) -> f8e4m3fn[16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
+; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
+; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = bf16[16,16]{1,0} broadcast([[C0]]), dimensions={}
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
+; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
+; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
+; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C1]], [[P4]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[P4_INV]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{ 
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[] 
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"RELU\"
+; CHECK:           }"
       )");
 }
 

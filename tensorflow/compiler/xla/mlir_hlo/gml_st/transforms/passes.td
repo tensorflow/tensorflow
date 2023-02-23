@@ -24,7 +24,7 @@ def TilingPass : Pass<"gml-tiling", "mlir::func::FuncOp"> {
     Option<"opLabel", "op-label", "std::string", /*default=*/"",
            "Operation with this label is the anchor to latch on.">,
     Option<"distribute", "distribute", "bool", /*default=*/"true",
-           "Generate gml_st.parallel or gml_st.for">,
+           "Generate gml_st.parallel or scf.for">,
     ListOption<"tileSizes", "tile-sizes", "int64_t", "Tile sizes",
                "llvm::cl::ZeroOrMore">,
   ];
@@ -45,13 +45,9 @@ def TilingSoftmaxPass : Pass<"gml-tiling-softmax", "mlir::func::FuncOp"> {
   let summary = "Match, tile, and fuse softmax implementations";
   let constructor = "::mlir::gml_st::createTilingSoftmaxPass()";
   let options = [
-    Option<"distribute", "distribute", "bool", /*default=*/"true",
-           "Generate gml_st.parallel or gml_st.for">,
     ListOption<"tileSizes", "tile-sizes", "int64_t",
                "Right-aligned tile sizes. Do not tile possible remaining "
                "dimensions", "llvm::cl::ZeroOrMore">,
-    Option<"distributionLabel", "distribution-label", "std::string",
-            /*default=*/"", "Distribution label for generated gml_st.parallel">,
   ];
 }
 
@@ -248,6 +244,12 @@ def TransformSortForCpuPass :
   let summary = "Transform sort ops for running on CPU";
 
   let constructor = "createTransformSortForCpuPass()";
+}
+
+def TransformGenericForCpuPass :
+    Pass<"gml-st-cpu-transform-generic", "mlir::func::FuncOp"> {
+  let summary = "Transform generic ops for running on CPU";
+  let constructor = "createTransformGenericForCpuPass()";
 }
 
 def AddDebugInfoPass :

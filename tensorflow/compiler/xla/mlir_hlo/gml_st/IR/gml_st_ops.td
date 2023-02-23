@@ -155,78 +155,6 @@ def GMLST_TileOp : GMLST_Op<"tile", [
   let hasVerifier = 1;
 }
 
-def GMLST_MaterializeOp : GMLST_Op<"materialize", [
-    AttrSizedOperandSegments,
-    DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
-    OffsetSizeAndStrideOpInterface, Pure]> {
-  let summary = "Operation to extract values from tensor or vector";
-  let description = [{
-    The "materialize" operation extracts a vector from another or a vector.
-    MaterializeOp accepts a list of offsets-sizes-strides.
-
-    ```
-    %subvector = gml_st.materialize %vector[0, 0][42, 16][1, 1]
-      : vector<?x?xf32>[!gml_st.tile<42x16>] to vector<42x16xf32>
-    ```
-
-    If `sizes` define a shape with a single element, it is also possible to
-    extract an element from a vector.
-
-    ```
-    %element = gml_st.materialize %vector[0, 0][1, 1][1, 1]
-      : vector<3x1xindex>[!gml_st.tile<1x1>] to index
-
-    %element = gml_st.materialize %vector[%tile_0d]
-      : vector<f32>[][][] to f32
-
-    %subvector = gml_st.materialize %vector[%tile_with_single_element]
-      : vector<3x1xindex>[0, 0][1, 1][1, 1] to vector<1x1xindex>
-    ```
-  }];
-  let arguments = (ins
-    Vector:$source,
-    Variadic<Index>:$offsets,
-    Variadic<Index>:$sizes,
-    Variadic<Index>:$strides,
-    DenseI64ArrayAttr:$static_offsets,
-    DenseI64ArrayAttr:$static_sizes,
-    DenseI64ArrayAttr:$static_strides
-  );
-  let results = (outs VectorOrScalar:$result);
-
-  let builders = [
-   OpBuilder<(ins "Value":$source, "ArrayRef<OpFoldResult>":$offsets,
-     "ArrayRef<OpFoldResult>":$sizes, "ArrayRef<OpFoldResult>":$strides)>,
-   OpBuilder<(ins "Type":$resultType, "Value":$source,
-     "ArrayRef<OpFoldResult>":$offsets, "ArrayRef<OpFoldResult>":$sizes,
-     "ArrayRef<OpFoldResult>":$strides)>,
-   OpBuilder<(ins "Value":$source, "ArrayRef<OpFoldResult>":$offsets)>,
-  ];
-
-  let assemblyFormat = [{
-    $source
-    custom<DynamicIndexList>($offsets, $static_offsets)
-    custom<DynamicIndexList>($sizes, $static_sizes)
-    custom<DynamicIndexList>($strides, $static_strides)
-    attr-dict
-    `:` type($source) `to` type($result)
-  }];
-
-  let extraClassDeclaration = [{
-    /// Return the expected rank of each of the`static_offsets`, `static_sizes`
-    /// and `static_strides` attributes.
-    std::array<unsigned, 3> getArrayAttrMaxRanks() {
-      unsigned rank = getSource().getType().cast<ShapedType>().getRank();
-      return {rank, rank, rank};
-    }
-    /// Return the number of leading operands before the `offsets`, `sizes` and
-    /// and `strides` operands.
-    static unsigned getOffsetSizeAndStrideStartOperandIndex() { return 1; }
-  }];
-  let hasCanonicalizer = 1;
-  let hasVerifier = 1;
-}
-
 class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
     : GMLST_Op<mnemonic, !listconcat(traits, [
       AttrSizedOperandSegments,
@@ -331,11 +259,11 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
       %tile = gml_st.tile [%i, %j] [4, 4] [1, 1]
         : !gml_st.tile<8x16> to !gml_st.tile<4x4>
 
-      %lhs_sub = gml_st.materialize %lhs_[%tile]
+      %lhs_sub = tensor.extract_slice %lhs_[%tile]
         : tensor<8x16xf32>[!gml_st.tile<4x4>] to tensor<4x4xf32>
-      %rhs_sub = gml_st.materialize %rhs_[%tile]
+      %rhs_sub = tensor.extract_slice %rhs_[%tile]
         : tensor<8x16xf32>[!gml_st.tile<4x4>] to tensor<4x4xf32>
-      %out_sub = gml_st.materialize %out_[%tile]
+      %out_sub = tensor.extract_slice %out_[%tile]
         : tensor<8x16xf32>[!gml_st.tile<4x4>] to tensor<4x4xf32>
 
       %add_sub = linalg.map
@@ -359,7 +287,7 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
 
     %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c1) {
       %tile = gml_st.tile [%i] [1] [1] : !gml_st.tile<1>
-      %in_sub = gml_st.materialize %in[%tile]
+      %in_sub = tensor.extract_slice %in[%tile]
         : tensor<8xf32>[!gml_st.tile<1>] to tensor<1xf32>
 
       gml_st.set_yield %in_sub into %out[%tile_0d]
