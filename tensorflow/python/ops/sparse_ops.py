@@ -1067,7 +1067,8 @@ def sparse_split_v2(sp_input=None,
 
   >>> indices = [[0, 2], [0, 4], [0, 5], [1, 0], [1, 1]]
   >>> values = [1, 2, 3, 4, 5]
-  >>> t = tf.sparse.SparseTensor(indices=indices, values=values, dense_shape=[2, 7])
+  >>> t = tf.sparse.SparseTensor(indices=indices, values=values,
+  ...                            dense_shape=[2, 7])
   >>> tf.sparse.to_dense(t)
   <tf.Tensor: shape=(2, 7), dtype=int32, numpy=
   array([[0, 0, 1, 0, 2, 3, 0],

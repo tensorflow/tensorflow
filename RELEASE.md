@@ -68,6 +68,14 @@
       existing calls pass Tensors with the wrong shape or omit certain
       non-Tensor arguments (including default values).
 
+*   `tf.nn`
+
+    *   `tf.nn.embedding_lookup_sparse` and `tf.nn.safe_embedding_lookup_sparse`
+        now support ids and weights described by `tf.RaggedTensor`s.
+    *   Added a new boolean argument `allow_fast_lookup` to
+        `tf.nn.embedding_lookup_sparse` and
+        `tf.nn.safe_embedding_lookup_sparse`, which enables a simplified and
+        typically faster lookup procedure.
 
 ## Bug Fixes and Other Changes
 

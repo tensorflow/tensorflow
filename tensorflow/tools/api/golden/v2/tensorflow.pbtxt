@@ -893,6 +893,14 @@ tf_module {
     argspec: "args=[\'func\', \'inp\', \'Tout\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "ragged_fill_empty_rows"
+    argspec: "args=[\'value_rowids\', \'values\', \'nrows\', \'default_value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ragged_fill_empty_rows_grad"
+    argspec: "args=[\'reverse_index_map\', \'grad_values\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "random_index_shuffle"
     argspec: "args=[\'index\', \'seed\', \'max_index\', \'rounds\', \'name\'], varargs=None, keywords=None, defaults=[\'4\', \'None\'], "
   }
