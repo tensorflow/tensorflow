@@ -245,6 +245,7 @@ Status SnapshotManager::HandleStreamCompletion(
     mode_ = Mode::kDone;
     TF_RETURN_IF_ERROR(AtomicallyWriteStringToFile(SnapshotDoneFilePath(path_),
                                                    std::string(), env_));
+    LOG(INFO) << "Finished writing tf.data distributed snapshot at " << path_;
   }
   return OkStatus();
 }

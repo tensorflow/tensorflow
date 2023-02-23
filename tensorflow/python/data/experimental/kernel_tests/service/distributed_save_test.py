@@ -33,11 +33,8 @@ from tensorflow.python.platform import test
 
 # TODO(mpcallanan): Restructure this and snapshot_ft_test.py to share more.
 
-# Enum value for `SnapshotStreamInfo::DONE`.
-_DONE = 4
 
-
-class DistributedSaveTfDataServiceTest(
+class DistributedSaveTest(
     data_service_test_base.TestBase, parameterized.TestCase
 ):
 
@@ -126,8 +123,7 @@ class DistributedSaveTfDataServiceTest(
       )
 
   def _wait_for_snapshot(self, cluster):
-    streams = lambda: cluster.snapshot_streams(self._test_dir)
-    while len(streams()) != 1 or streams()[0].state != _DONE:
+    while not os.path.exists(os.path.join(self._test_dir, "DONE")):
       time.sleep(0.1)
 
 
