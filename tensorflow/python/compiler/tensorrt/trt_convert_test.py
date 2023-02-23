@@ -703,6 +703,43 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     gc.collect()  # Force GC to destroy the TRT engine cache.
 
   @test_util.run_v2_only
+  def testTrtGraphConverter_RemoveNativeSegments(self):
+    """Test case for trt_convert._remove_native_segment()."""
+    np_input = np.random.random_sample([5, 3]).astype(np.float32)
+    # Create a model and save it.
+    input_saved_model_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
+    root = self._GetShapeOpModel()
+    expected_output = root.run(np_input)
+    save.save(root, input_saved_model_dir, signatures=root.run)
+
+    # Run TRT conversion.
+    converter = trt_convert.TrtGraphConverterV2(
+        input_saved_model_dir,
+        precision_mode=trt_convert.TrtPrecisionMode.FP32,
+        allow_build_at_runtime=False,
+        minimum_segment_size=1)
+
+    def _input_fn():
+      yield (np_input,)
+    graph_func = converter.convert()
+    converter.build(_input_fn)
+    # Load and verify the reduced converted model.
+    output_saved_model_dir2 = self.mkdtemp()
+    with test_utils.experimental_feature_scope("remove_native_segments"):
+      converter.save(output_saved_model_dir2)
+    saved_model_loaded = load.load(output_saved_model_dir2)
+    graph_func_after = saved_model_loaded.signatures["serving_default"]
+    actual_output = graph_func_after(x=np_input)["output_0"]
+    self.assertAllClose(
+        expected_output,
+        actual_output,
+        atol=1e-6,
+        rtol=1e-6)
+    del graph_func
+    del root
+    gc.collect()  # Force GC to destroy the TRT engine cache.
+
+  @test_util.run_v2_only
   def testTrtGraphConverter_DestroyEngineCache(self):
     """Test case for trt_convert.TrtGraphConverter()."""
 
