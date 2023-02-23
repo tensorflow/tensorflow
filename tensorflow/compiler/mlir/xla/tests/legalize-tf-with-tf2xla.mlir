@@ -17,6 +17,13 @@ func.func @unknown_op(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   func.return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: add_v2
+func.func @add_v2(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  // CHECK: mhlo.add %arg0, %arg0 : tensor<2xi32>
+  %0 = "tf.AddV2"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  func.return %0: tensor<2xi32>
+}
+
 // CHECK-LABEL: not_allowlisted_op
 func.func @not_allowlisted_op(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<?x?x?xf32> {
   // CHECK: tf.TensorListReserve
