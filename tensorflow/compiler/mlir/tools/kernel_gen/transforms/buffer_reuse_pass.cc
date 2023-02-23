@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstddef>
+#include <optional>
 #include <vector>
 
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Analysis/Liveness.h"  // from @llvm-project
@@ -53,13 +53,13 @@ class BufferReuseAnalysis {
 
   Optional<SmallVector<int32_t, 2>> get_reuse_candiates(memref::AllocOp op) {
     auto it = reuse_candidates_.find(op);
-    if (it == reuse_candidates_.end()) return llvm::None;
+    if (it == reuse_candidates_.end()) return std::nullopt;
     return it->second;
   }
 
   Optional<int32_t> get_output_index(memref::AllocOp op) {
     auto it = output_indices_.find(op);
-    if (it == output_indices_.end()) return llvm::None;
+    if (it == output_indices_.end()) return std::nullopt;
     return it->second;
   }
 

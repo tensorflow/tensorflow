@@ -115,6 +115,49 @@ struct MklEinsumHelper {
         MklMatMulPrimitiveFactory<T, T, T, T>::Get(
             *params, false /* value for do_not_cache */);
 
+    T* weight_data = const_cast<T*>(rhs.flat<T>().data());
+
+#ifdef DNNL_AARCH64_USE_ACL
+    memory::format_tag weight_format;
+    switch (params->b_dims.size()) {
+      case 2:
+        weight_format =
+            trans_y ? memory::format_tag::ba : memory::format_tag::ab;
+        break;
+      case 3:
+        weight_format =
+            trans_y ? memory::format_tag::acb : memory::format_tag::abc;
+        break;
+      case 4:
+        weight_format =
+            trans_y ? memory::format_tag::abdc : memory::format_tag::abcd;
+        break;
+      case 5:
+        weight_format =
+            trans_y ? memory::format_tag::abced : memory::format_tag::abcde;
+        break;
+      default:
+        weight_format = memory::format_tag::undef;
+    }
+    engine cpu_engine = engine(engine::kind::cpu, 0);
+    MklDnnData<T> weights_mkl(&cpu_engine);
+    if (weight_format != memory::format_tag::undef) {
+      auto weight_md =
+          memory::desc(params->b_dims, MklDnnType<T>(), weight_format);
+      std::shared_ptr<dnnl::matmul::primitive_desc> matmul_pd =
+          matmul_prim->GetPrimitiveDesc();
+      // Reorder weights if necessary.
+      // Check whether we need to do reorder.
+      if (weight_md != matmul_pd->weights_desc()) {
+        weights_mkl.SetUsrMem(weight_md, weight_data);
+        weights_mkl.CheckReorderToOpMem(matmul_pd.get()->weights_desc(),
+                                        cpu_engine, ctx);
+        weight_data =
+            reinterpret_cast<T*>(weights_mkl.GetOpMem().get_data_handle());
+      }
+    }
+#endif  // DNNL_AARCH64_USE_ACL
+
     UserScratchPad<unsigned char> scratch_pad;
     scratch_pad.AllocateSPTensor(matmul_prim, ctx);
     // Execute matmul primitive.
@@ -122,7 +165,7 @@ struct MklEinsumHelper {
     MklDnnThreadPool eigen_tp(ctx);
     cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
 
-    matmul_prim->Execute(cpu_stream, lhs.flat<T>().data(), rhs.flat<T>().data(),
+    matmul_prim->Execute(cpu_stream, lhs.flat<T>().data(), weight_data,
                          output->flat<T>().data(), scratch_pad.Get());
 
     Tensor output_reshaped;
@@ -272,7 +315,6 @@ class MklEinsum : public OpKernel {
   bool mkl_output_has_ellipsis_ = false;
 };
 
-#ifndef DNNL_AARCH64_USE_ACL
 #define REGISTER_EINSUM_MKL(TYPE)                                             \
   REGISTER_KERNEL_BUILDER(Name("_MklEinsum")                                  \
                               .Device(DEVICE_CPU)                             \
@@ -281,6 +323,5 @@ class MklEinsum : public OpKernel {
                           MklEinsum<CPUDevice, TYPE>)
 TF_CALL_float(REGISTER_EINSUM_MKL);
 TF_CALL_bfloat16(REGISTER_EINSUM_MKL);
-#endif  // !DNNL_AARCH64_USE_ACL
 }  // namespace tensorflow
 #endif  // INTEL_MKL

@@ -15,11 +15,16 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/Sequence.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
@@ -37,10 +42,12 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
@@ -55,9 +62,16 @@ namespace mlir {
 namespace quant {
 namespace {
 
-constexpr char kQuantizeFuncName[] = "quantize_i8";
-constexpr char kDequantizeFuncName[] = "dequantize_i8";
-constexpr char kAttrMapAttribute[] = "attr_map";
+using QuantMethod =
+    tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
+
+constexpr StringRef kQuantizeFuncName = "quantize_i8";
+constexpr StringRef kDequantizeFuncName = "dequantize_i8";
+constexpr StringRef kAttrMapAttribute = "attr_map";
+constexpr StringRef kQuantizedOpsAttribute = "tf_quant.quantized_ops";
+constexpr StringRef kCompositeFuncPrefix = "composite_";
+constexpr StringRef kQuantizedFuncPrefix = "quantized_";
+constexpr StringRef kFloatOutputFuncPrefix = "_float_output_fn";
 
 class QuantizeCompositeFunctionsPass
     : public mlir::PassWrapper<QuantizeCompositeFunctionsPass,
@@ -67,18 +81,21 @@ class QuantizeCompositeFunctionsPass
 
   explicit QuantizeCompositeFunctionsPass() = default;
 
-  explicit QuantizeCompositeFunctionsPass(
-      QuantizationMethod quantization_method, OpSet target_opset,
-      bool enable_per_channel_quantization) {
+  explicit QuantizeCompositeFunctionsPass(QuantMethod quantization_method,
+                                          OpSet target_opset,
+                                          bool enable_per_channel_quantization,
+                                          int min_num_elements_for_weights) {
     quantization_method_ = quantization_method;
     target_opset_ = target_opset;
     enable_per_channel_quantization_ = enable_per_channel_quantization;
+    min_num_elements_for_weights_ = min_num_elements_for_weights;
   }
 
   QuantizeCompositeFunctionsPass(const QuantizeCompositeFunctionsPass& other) {
     quantization_method_ = other.quantization_method_;
     target_opset_ = other.target_opset_;
     enable_per_channel_quantization_ = other.enable_per_channel_quantization_;
+    min_num_elements_for_weights_ = other.min_num_elements_for_weights_;
   }
 
   StringRef getArgument() const final {
@@ -101,15 +118,20 @@ class QuantizeCompositeFunctionsPass
   void runOnOperation() override;
 
   // These flags are only used for testing purpose.
-  Option<QuantizationMethod> quantization_method_{
+  Option<QuantMethod> quantization_method_{
       *this, "quantization-method",
-      llvm::cl::init(QuantizationMethod::kPostTrainingQuantization),
+      llvm::cl::init(
+          tensorflow::quantization::QuantizationMethod::STATIC_RANGE),
       llvm::cl::desc("Choose quantization method."),
       llvm::cl::values(
-          clEnumValN(QuantizationMethod::kPostTrainingQuantization, "ptq",
-                     "Post-training static-range quantization"),
-          clEnumValN(QuantizationMethod::kDynamicRangeQuantization, "drq",
-                     "Post-training dynamic-range quantizaiton"))};
+          clEnumValN(tensorflow::quantization::QuantizationMethod::STATIC_RANGE,
+                     "ptq", "Post-training static-range quantization"),
+          clEnumValN(
+              tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE,
+              "drq", "Post-training dynamic-range quantizaiton"),
+          clEnumValN(tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY,
+                     "weight_only", "Post-training weight-only quantizaiton"))};
+
   Option<OpSet> target_opset_{
       *this, "target-opset", llvm::cl::init(OpSet::TF),
       llvm::cl::desc("Choose target opset."),
@@ -123,6 +145,8 @@ class QuantizeCompositeFunctionsPass
   Option<bool> enable_per_channel_quantization_{
       *this, "enable-per-channel-quantization", llvm::cl::init(false),
       llvm::cl::desc("Whether enable per-channel quantized weights.")};
+
+  int min_num_elements_for_weights_;
 };
 
 LogicalResult CreateUniformQuantizedTypeParams(UniformQuantizedType qtype,
@@ -188,14 +212,55 @@ LogicalResult CreateQuantizationParams(QuantizedType elem_type, Location loc,
   return failure();
 }
 
+// Converts the element type of the input tensor to the corresponding quantized
+// version. Supports only int8 for now and returns nullptr if the input type is
+// not supported.
+ShapedType ConvertIntToQint(ShapedType input_type, MLIRContext* ctx) {
+  int bit_width;
+  bool is_signed;
+
+  Type ele_type = input_type.getElementType();
+  if (ele_type.isIntOrFloat()) {
+    bit_width = ele_type.getIntOrFloatBitWidth();
+    is_signed = ele_type.isSignlessIntOrFloat() || ele_type.isSignedInteger();
+  } else if (QuantizedType qtype = ele_type.dyn_cast<QuantizedType>()) {
+    bit_width = qtype.getStorageTypeIntegralWidth();
+    is_signed = qtype.isSigned();
+  } else {
+    return input_type;
+  }
+
+  Type new_storage_type;
+  if (is_signed) {
+    switch (bit_width) {
+      case 8:
+        new_storage_type = TF::Qint8Type::get(ctx);
+        break;
+      case 32:
+        new_storage_type = TF::Qint32Type::get(ctx);
+        break;
+      default:
+        return nullptr;  // Not yet supported
+    }
+  } else {
+    return nullptr;  // Not yet supported
+  }
+
+  input_type = input_type.clone(new_storage_type);
+  return input_type;
+}
+
 // Replaces quant.qcast op to composite quantize_i8 function.
 class ReplaceQuantizePattern
     : public mlir::OpRewritePattern<quantfork::QuantizeCastOp> {
  public:
-  explicit ReplaceQuantizePattern(MLIRContext* context)
-      : OpRewritePattern<quantfork::QuantizeCastOp>(context) {}
+  explicit ReplaceQuantizePattern(MLIRContext* context, OpSet target_opset)
+      : OpRewritePattern<quantfork::QuantizeCastOp>(context),
+        target_opset_(target_opset) {}
 
  private:
+  OpSet target_opset_ = OpSet::TF;
+
   LogicalResult matchAndRewrite(quantfork::QuantizeCastOp q_op,
                                 PatternRewriter& rewriter) const override {
     auto output_type = q_op.getType().cast<TensorType>();
@@ -208,8 +273,21 @@ class ReplaceQuantizePattern
       return failure();
     }
 
-    SmallVector<Type> output_types = {
-        output_type.clone(elem_type.getStorageType())};
+    SmallVector<Type> output_types;
+
+    if (target_opset_ == OpSet::UNIFORM_QUANTIZED) {
+      ShapedType new_output_type = ConvertIntToQint(
+          output_type.cast<ShapedType>(), rewriter.getContext());
+      if (!new_output_type) {
+        q_op->emitError(
+            "Failed to convert the type to the corresponding qtype.");
+        return failure();
+      }
+      output_types = {new_output_type};
+    } else {
+      output_types = {output_type.clone(elem_type.getStorageType())};
+    }
+
     SmallVector<Value> args = {q_op.getArg(), scale, zero_point};
     FlatSymbolRefAttr func_name =
         FlatSymbolRefAttr::get(rewriter.getStringAttr(kQuantizeFuncName));
@@ -228,10 +306,13 @@ class ReplaceQuantizePattern
 class ReplaceDequantizePattern
     : public mlir::OpRewritePattern<quantfork::DequantizeCastOp> {
  public:
-  explicit ReplaceDequantizePattern(MLIRContext* context)
-      : OpRewritePattern<quantfork::DequantizeCastOp>(context) {}
+  explicit ReplaceDequantizePattern(MLIRContext* context, OpSet target_opset)
+      : OpRewritePattern<quantfork::DequantizeCastOp>(context),
+        target_opset_(target_opset) {}
 
  private:
+  OpSet target_opset_ = OpSet::TF;
+
   LogicalResult matchAndRewrite(quantfork::DequantizeCastOp dq_op,
                                 PatternRewriter& rewriter) const override {
     auto input_type = dq_op.getArg().getType().cast<TensorType>();
@@ -245,6 +326,17 @@ class ReplaceDequantizePattern
     }
 
     TensorType output_type = input_type.clone(elem_type.getStorageType());
+    if (target_opset_ == OpSet::UNIFORM_QUANTIZED) {
+      ShapedType new_output_type = ConvertIntToQint(
+          output_type.cast<ShapedType>(), rewriter.getContext());
+      if (!new_output_type) {
+        dq_op->emitError(
+            "Failed to convert the type to the corresponding qtype.");
+        return failure();
+      }
+      output_type = new_output_type.cast<TensorType>();
+    }
+
     auto scast_op = rewriter.create<quantfork::StorageCastOp>(loc, output_type,
                                                               dq_op.getArg());
 
@@ -316,41 +408,6 @@ bool IsQuantizedCallforStaticRange(TF::PartitionedCallOp call_op) {
   return has_quantized_types;
 }
 
-// Converts the element type of the input tensor to the corresponding quantized
-// version. Supports only int8 for now and returns nullptr if the input type is
-// not supported.
-ShapedType ConvertIntToQint(ShapedType input_type, MLIRContext* ctx) {
-  int bit_width;
-  bool is_signed;
-
-  Type ele_type = input_type.getElementType();
-  if (ele_type.isIntOrFloat()) {
-    bit_width = ele_type.getIntOrFloatBitWidth();
-    is_signed = ele_type.isSignlessIntOrFloat() || ele_type.isSignedInteger();
-  } else if (QuantizedType qtype = ele_type.dyn_cast<QuantizedType>()) {
-    bit_width = qtype.getStorageTypeIntegralWidth();
-    is_signed = qtype.isSigned();
-  } else {
-    return input_type;
-  }
-
-  Type new_storage_type;
-  if (is_signed) {
-    switch (bit_width) {
-      case 8:
-        new_storage_type = mlir::TF::Qint8Type::get(ctx);
-        break;
-      default:
-        return nullptr;  // Not yet supported
-    }
-  } else {
-    return nullptr;  // Not yet supported
-  }
-
-  input_type = input_type.clone(new_storage_type);
-  return input_type;
-}
-
 // Transfers the attributes of the corresponding ops from the float function to
 // the quantized function using the attr_map attribute. In the quantized
 // function, this map (map1) is in {attr_name_1: attr_identifier} format; and in
@@ -361,7 +418,7 @@ ShapedType ConvertIntToQint(ShapedType input_type, MLIRContext* ctx) {
 // the attribute identifier in the float function.
 LogicalResult TransferTFAttributesToTFUniformAttributes(
     PatternRewriter& rewriter, func::FuncOp float_func,
-    func::FuncOp quantized_func, QuantizationMethod quantization_method,
+    func::FuncOp quantized_func, QuantMethod quantization_method,
     bool enable_per_channel_quantization) {
   // A map to find an attribute from its identifier.
   llvm::StringMap<Attribute> identifier_to_attr;
@@ -392,6 +449,13 @@ LogicalResult TransferTFAttributesToTFUniformAttributes(
   for (Operation& inner_op : quantized_func.getBody().front().getOperations()) {
     if (auto uniform_op =
             llvm::dyn_cast<TF::UniformQuantizedConvolutionHybridOp>(inner_op)) {
+      if (failed(FillAttributesForUniformQuantizedConvolutionOp(
+              rewriter, uniform_op, identifier_to_attr, quantization_method,
+              enable_per_channel_quantization)))
+        return failure();
+    } else if (auto uniform_op =
+                   llvm::dyn_cast<TF::UniformQuantizedConvolutionOp>(
+                       inner_op)) {
       if (failed(FillAttributesForUniformQuantizedConvolutionOp(
               rewriter, uniform_op, identifier_to_attr, quantization_method,
               enable_per_channel_quantization)))
@@ -466,13 +530,25 @@ LogicalResult TransferAttributes(func::FuncOp float_func,
   return success();
 }
 
+// Get the corresponding quantized function name from the given function name.
+std::string GetQuantizedFunctionName(StringRef func_name) {
+  if (func_name.startswith(kQuantizedFuncPrefix)) return func_name.str();
+  if (!func_name.startswith(kCompositeFuncPrefix)) return "";
+
+  return llvm::Twine(kQuantizedFuncPrefix)
+      .concat(llvm::Twine(
+          func_name.substr(kCompositeFuncPrefix.size()).rsplit("_fn").first))
+      .concat("_fn")
+      .str();
+}
+
 // Unwraps quantization parameters of PartitionedCall ops with quantized
 // input/outputs that are created from QuantizePass.
 class QuantizeFunctionPattern
     : public mlir::OpRewritePattern<TF::PartitionedCallOp> {
  public:
   explicit QuantizeFunctionPattern(MLIRContext* context,
-                                   QuantizationMethod quantization_method,
+                                   QuantMethod quantization_method,
                                    OpSet target_opset,
                                    bool enable_per_channel_quantization)
       : OpRewritePattern<TF::PartitionedCallOp>(context),
@@ -481,8 +557,8 @@ class QuantizeFunctionPattern
         enable_per_channel_quantization_(enable_per_channel_quantization) {}
 
  private:
-  QuantizationMethod quantization_method_ =
-      QuantizationMethod::kPostTrainingQuantization;
+  QuantMethod quantization_method_ =
+      tensorflow::quantization::QuantizationMethod::STATIC_RANGE;
   OpSet target_opset_ = OpSet::TF;
   bool enable_per_channel_quantization_;
 
@@ -493,24 +569,28 @@ class QuantizeFunctionPattern
     if (!call_op->removeAttr(kQuantTraitAttrName) || !f_attr) {
       return failure();
     }
-
-    // Determines if all required float input/outputs are now quantized.
-    bool has_quantized_types = false;
-    if (quantization_method_ == QuantizationMethod::kDynamicRangeQuantization) {
-      has_quantized_types = IsQuantizedCallforDynamicRange(call_op);
-      if (f_attr.getValue().startswith("composite_") && !has_quantized_types) {
-        call_op->emitError(
-            "Only quantizable ops need to be in composite function for dynamic"
-            "-range PTQ case.");
-        return failure();
-      }
-    } else {
-      has_quantized_types = IsQuantizedCallforStaticRange(call_op);
-    }
-
-    if (!f_attr.getValue().startswith("composite_") || !has_quantized_types) {
+    if (!f_attr.getValue().startswith(kCompositeFuncPrefix)) {
       return failure();
     }
+    // Determines if all required float input/outputs are now quantized.
+    bool has_quantized_types = false;
+    switch (quantization_method_) {
+      case tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE:
+        has_quantized_types = IsQuantizedCallforDynamicRange(call_op);
+        break;
+      case tensorflow::quantization::QuantizationMethod::STATIC_RANGE:
+        has_quantized_types = IsQuantizedCallforStaticRange(call_op);
+        break;
+      case tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY:
+        // Skipping input type check for weight-only quantization as it can be
+        // dequantized beforehand for the legacy scheme.
+        has_quantized_types = true;
+        break;
+      default:
+        call_op->emitError("The quantization method is not supported.");
+        return failure();
+    }
+    if (!has_quantized_types) return failure();
 
     SmallVector<Value, 4> args;
     SmallVector<Value, 4> qparam_args;
@@ -616,11 +696,17 @@ class QuantizeFunctionPattern
         result_types.push_back(result_type);
         continue;
       }
+
+      if (target_opset_ == OpSet::UNIFORM_QUANTIZED) {
+        ShapedType new_result_type = ConvertIntToQint(
+            result_type.cast<ShapedType>(), rewriter.getContext());
+        result_types.push_back(new_result_type);
+      } else {
+        result_types.push_back(result_type.clone(qtype.getStorageType()));
+      }
       auto scast_op = rewriter.create<quantfork::StorageCastOp>(
           call_op.getLoc(), result_type, result);
       replace_map.insert(std::make_pair(result, scast_op));
-
-      result_types.push_back(result_type.clone(qtype.getStorageType()));
     }
 
     for (auto replace_pair : replace_map) {
@@ -637,13 +723,8 @@ class QuantizeFunctionPattern
         dyn_cast<func::FuncOp>(symbol_table.lookup(f_attr.getValue()));
     rewriter.setInsertionPointAfter(float_func);
 
-    // substr(10) == strip the "composite_" prefix.
     const std::string quantized_function_name =
-        llvm::Twine("quantized_")
-            .concat(
-                llvm::Twine(f_attr.getValue().substr(10).rsplit("_fn").first))
-            .concat("_fn")
-            .str();
+        GetQuantizedFunctionName(f_attr.getValue());
     const mlir::func::FuncOp quantized_func =
         dyn_cast<func::FuncOp>(symbol_table.lookup(quantized_function_name));
     mlir::func::FuncOp new_quantized_func =
@@ -725,13 +806,13 @@ class QuantizeFunctionPattern
         dyn_cast<func::FuncOp>(symbol_table.lookup(f_attr.getValue()));
     rewriter.setInsertionPointAfter(float_func);
 
-    // substr(10) == strip the "composite_" prefix.
-    const std::string quantized_function_name =
-        llvm::Twine("quantized_")
-            .concat(
-                llvm::Twine(f_attr.getValue().substr(10).rsplit("_fn").first))
-            .concat("_float_output_fn")
-            .str();
+    // the length of the "_fn" suffix.
+    const size_t fn_suffix_length = 3;
+    std::string quantized_function_name =
+        GetQuantizedFunctionName(f_attr.getValue());
+    quantized_function_name.replace(
+        quantized_function_name.size() - fn_suffix_length, fn_suffix_length,
+        kFloatOutputFuncPrefix);
     const auto quantized_func =
         dyn_cast<func::FuncOp>(symbol_table.lookup(quantized_function_name));
     auto new_quantized_func = dyn_cast<func::FuncOp>(quantized_func->clone());
@@ -793,8 +874,6 @@ class QuantizeConstPattern
         target_opset_(target_opset) {}
 
  private:
-  QuantizationMethod quantization_method_ =
-      QuantizationMethod::kPostTrainingQuantization;
   LogicalResult matchAndRewrite(quantfork::QuantizeCastOp q_op,
                                 PatternRewriter& rewriter) const override {
     DenseFPElementsAttr attr;
@@ -815,7 +894,6 @@ class QuantizeConstPattern
 
     if (target_opset_ == OpSet::UNIFORM_QUANTIZED) {
       new_type = ConvertIntToQint(new_type, rewriter.getContext());
-      tensor_qtype = ConvertIntToQint(tensor_qtype, rewriter.getContext());
 
       // TODO(b/225793355): It adds TensorProtoAttr to the constant as a
       // workaround.
@@ -825,7 +903,12 @@ class QuantizeConstPattern
         return failure();
       }
 
-      tensor_proto.set_dtype(tensorflow::DT_QINT8);
+      const int bit_width = tensor_qtype.getElementType()
+                                .dyn_cast<QuantizedType>()
+                                .getStorageTypeIntegralWidth();
+
+      tensor_proto.set_dtype((bit_width == 8) ? tensorflow::DT_QINT8
+                                              : tensorflow::DT_QINT32);
 
       tensor_proto_attr = ElementsAttr(TF::TensorProtoAttr::get(
           new_type, tensorflow::mangling_util::MangleTensor(tensor_proto)));
@@ -843,6 +926,155 @@ class QuantizeConstPattern
   OpSet target_opset_;
 };
 
+// Prints a summary about the quantization results.
+class QuantizationSummary {
+ public:
+  explicit QuantizationSummary(ModuleOp module)
+      : module_(module), symbol_table_(module) {}
+
+  void Print() {
+    llvm::StringMap<OpCountItem> func_count_map;
+    int32_t total_quantized_func_count = 0, float_output_func_count = 0,
+            quantize_func_count = 0, dequantize_func_count = 0,
+            weight_only_count = 0;
+
+    module_.walk([&](Operation* op) {
+      if (auto call_op = llvm::dyn_cast_or_null<TF::PartitionedCallOp>(op)) {
+        const auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
+        if (!f_attr) return;
+        StringRef func_name = f_attr.getValue();
+        if (func_name.startswith(kQuantizedFuncPrefix)) {
+          auto representative_name = GetRepresentativeName(func_name);
+          if (failed(representative_name)) return;
+
+          func_count_map[representative_name.value()].num_quant++;
+          total_quantized_func_count++;
+          if (func_name.contains(kFloatOutputFuncPrefix)) {
+            float_output_func_count++;
+          }
+        } else if (func_name.startswith(kCompositeFuncPrefix)) {
+          auto representative_name = GetRepresentativeName(func_name);
+          if (failed(representative_name)) {
+            // TODO(b/264507511): Print quantization summary for weight-only.
+            weight_only_count++;
+          } else {
+            func_count_map[representative_name.value()].num_float++;
+          }
+        } else if (func_name.startswith("quantize_i")) {
+          quantize_func_count++;
+        } else if (func_name.startswith("dequantize_i")) {
+          dequantize_func_count++;
+        }
+      } else if (auto einsum = llvm::isa<TF::EinsumOp>(op)) {
+        if (IsInCompsiteFunction(op)) return;
+        // Leftover Einsum ops are always non-quantized.
+        auto op_name = op->getName().stripDialect();
+        func_count_map[op_name].num_float++;
+      }
+    });
+
+    // Pad string to a certain size to format the table. Space is preferred to
+    // Tab since it is easier to check the format in the mlir tests.
+    auto pad_string = [](StringRef s, int32_t width) -> std::string {
+      return llvm::Twine(s).concat(std::string(width - s.size(), ' ')).str();
+    };
+
+    // Generate a quantization report.
+    size_t name_col_width = 5;
+    absl::c_for_each(func_count_map.keys(), [&name_col_width](const auto& key) {
+      name_col_width = std::max(name_col_width, key.size() + 1);
+    });
+
+    std::vector<std::string> lines;
+    lines.push_back("-------- Quantization Summary --------");
+    lines.push_back("Number of quantized layers in the model");
+    lines.push_back("--------------------------------");
+    lines.push_back(
+        absl::StrFormat("%s Count/Total", pad_string("Name", name_col_width)));
+    lines.push_back("================================");
+    for (StringRef op_name : func_count_map.keys()) {
+      const int32_t quantized_count = func_count_map[op_name].num_quant;
+      const int32_t total_count =
+          quantized_count + func_count_map[op_name].num_float;
+      lines.push_back(absl::StrFormat("%s %d/%d",
+                                      pad_string(op_name, name_col_width),
+                                      quantized_count, total_count));
+    }
+    lines.push_back("");
+    lines.push_back(absl::StrFormat(
+        "Number of quantized layers with quantized outputs: %d/%d",
+        total_quantized_func_count - float_output_func_count,
+        total_quantized_func_count));
+    lines.push_back(absl::StrFormat("Number of quantize layers added: %d",
+                                    quantize_func_count));
+    lines.push_back(absl::StrFormat("Number of dequantize layers added: %d",
+                                    dequantize_func_count));
+    lines.push_back("");
+
+    // Make the report visible by default.
+    const std::string log_message =
+        absl::StrJoin(lines.begin(), lines.end(), /*separator=*/"\n");
+    llvm::errs() << log_message;
+
+    // Create a FuncOp and attach the quantization summary to it. This is a
+    // a hack to check the summary in mlir tests. This function will be
+    // automatically removed since this pass is always followed by the Symbol
+    // DCE pass.
+    OpBuilder builder(module_);
+    builder.setInsertionPointToEnd(&module_.getBodyRegion().back());
+    const auto func_type =
+        builder.getFunctionType(/*inputs=*/{}, /*results=*/{});
+    auto summary_func = builder.create<func::FuncOp>(
+        builder.getUnknownLoc(), /*sym_name=*/"summary", func_type);
+    summary_func.setPrivate();
+    summary_func->setAttr("quantization_summary",
+                          builder.getStringAttr(log_message));
+  }
+
+ private:
+  // Structs used to count quantized and non-quantized ops.
+  struct OpCountItem {
+    int32_t num_quant = 0;
+    int32_t num_float = 0;
+  };
+
+  // Get the representative name attribute value of a composite function.
+  FailureOr<StringRef> GetRepresentativeName(StringRef func_name) {
+    std::string quantized_func_name = GetQuantizedFunctionName(func_name);
+    auto quantized_func = dyn_cast_or_null<func::FuncOp>(
+        symbol_table_.lookup(quantized_func_name));
+    // Quantized function does not exist for weight-only case.
+    if (!quantized_func ||
+        !quantized_func->hasAttrOfType<ArrayAttr>(kQuantizedOpsAttribute)) {
+      return failure();
+    }
+
+    auto quantized_ops =
+        quantized_func->getAttrOfType<ArrayAttr>(kQuantizedOpsAttribute)
+            .getValue();
+    if (quantized_ops.empty()) {
+      quantized_func->emitError() << "At least one op is expected in the "
+                                  << kQuantizedOpsAttribute << " attribute.";
+      return failure();
+    }
+
+    // Use the first op as the representative name.
+    return quantized_ops.front().cast<StringAttr>().getValue();
+  }
+
+  bool IsInCompsiteFunction(Operation* op) {
+    func::FuncOp parent = op->getParentOfType<func::FuncOp>();
+    if (!parent) return false;
+
+    StringRef sym_name = parent.getSymName();
+    return sym_name.startswith(kQuantizedFuncPrefix) ||
+           sym_name.startswith(kCompositeFuncPrefix);
+  }
+
+  ModuleOp module_;
+  SymbolTable symbol_table_;
+};
+
 static PassRegistration<QuantizeCompositeFunctionsPass> pass;
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/quantize_composite_functions.inc"
@@ -858,19 +1090,37 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   pm.enableVerifier(false);
 
   QuantizationSpecs quant_specs;
-  if (quantization_method_ == QuantizationMethod::kDynamicRangeQuantization) {
-    quant_specs.weight_quantization = true;
-    quant_specs.inference_type = tensorflow::DT_QINT8;
-    quant_specs.disable_per_channel = !enable_per_channel_quantization_;
-    pm.addPass(CreatePrepareQuantizeDRQPass(quant_specs, target_opset_));
-  } else {
-    pm.addNestedPass<func::FuncOp>(
-        CreatePrepareQuantizePass(quantization_method_));
-  }
-  pm.addNestedPass<func::FuncOp>(
-      CreateQuantizePass(quant_specs, target_opset_));
+  pm.addPass(CreatePreprocessOpPass(quant_specs, target_opset_));
 
-  pm.addNestedPass<func::FuncOp>(CreatePostQuantizePass());
+  quant_specs.inference_type = tensorflow::DT_QINT8;
+  quant_specs.disable_per_channel = !enable_per_channel_quantization_;
+  // Apply activation-weight quantization.
+  if (quantization_method_ ==
+      tensorflow::quantization::QuantizationMethod::STATIC_RANGE) {
+    pm.addNestedPass<func::FuncOp>(
+        CreatePrepareQuantizePass(quant_specs, quantization_method_));
+    pm.addNestedPass<func::FuncOp>(
+        CreateQuantizePass(quant_specs, target_opset_));
+    pm.addNestedPass<func::FuncOp>(CreatePostQuantizePass());
+  }
+  if ((quantization_method_ !=
+       tensorflow::quantization::QuantizationMethod::STATIC_RANGE) ||
+      (target_opset_ == OpSet::XLA)) {
+    // Apply weight quantization.
+    // For XLA case, weight quantization will be applied for the remaining f32
+    // weights even in SRQ.
+    quant_specs.minimum_elements_for_weights = min_num_elements_for_weights_;
+    quant_specs.weight_quantization = true;
+    pm.addPass(CreatePrepareQuantizeDRQPass(quant_specs, target_opset_));
+    if (quantization_method_ !=
+            tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE &&
+        target_opset_ != OpSet::XLA) {
+      quant_specs.weight_only_quantization = true;
+    }
+    pm.addNestedPass<func::FuncOp>(
+        CreateQuantizePass(quant_specs, target_opset_));
+    pm.addNestedPass<func::FuncOp>(CreatePostQuantizePass());
+  }
   if (failed(pm.run(module))) {
     signalPassFailure();
   }
@@ -885,24 +1135,27 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   }
 
   // Constant quantization is a lossy transformation, so they are applied only
-  // after all the other patterns have been aplied.
+  // after all the other patterns have been applied.
   RewritePatternSet patterns_2(ctx);
   populateWithGenerated(patterns_2);
-  patterns_2.add<ReplaceQuantizePattern, ReplaceDequantizePattern>(ctx);
+  patterns_2.add<ReplaceQuantizePattern, ReplaceDequantizePattern>(
+      ctx, target_opset_);
   patterns_2.add<QuantizeConstPattern>(ctx, target_opset_);
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns_2))) ||
       failed(verify(module))) {
     signalPassFailure();
   }
+  QuantizationSummary(module).Print();
 }
 
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
-    QuantizationMethod quantization_method, OpSet target_opset,
-    bool enable_per_channel_quantization) {
+    QuantMethod quantization_method, OpSet target_opset,
+    bool enable_per_channel_quantization, int min_num_elements_for_weights) {
   return std::make_unique<QuantizeCompositeFunctionsPass>(
-      quantization_method, target_opset, enable_per_channel_quantization);
+      quantization_method, target_opset, enable_per_channel_quantization,
+      min_num_elements_for_weights);
 }
 
 }  // namespace quant

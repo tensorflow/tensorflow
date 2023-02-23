@@ -461,5 +461,73 @@ TEST_F(GpuHloCostAnalysisTest, DynUpdateSliceNotUsingOperandData) {
   EXPECT_EQ(analysis_.output_bytes_accessed(*fusion), 1);
 }
 
+TEST_F(GpuHloCostAnalysisTest, CommonElementwiseUseTwoParameters) {
+  const char* hlo_fusion_module_str = R"(
+  HloModule m
+
+  add {
+    p0 = s8[] parameter(0)
+    p1 = s8[] parameter(1)
+    ROOT _ = s8[] add(p0, p1)
+  }
+
+  f {
+    p0 = s8[10] parameter(0)
+    p1 = s8[10] parameter(1)
+    a = s8[10] add(p0, p1)
+    c0 = s8[] constant(0)
+    r0 = s8[] reduce(a, c0), dimensions={0}, to_apply=add
+    c1 = s8[] constant(100)
+    r1 = s8[] reduce(a, c1), dimensions={0}, to_apply=add
+    ROOT _ = s8[] add(r0, r1)
+  }
+
+  ENTRY _ {
+    p0 = s8[10] parameter(0)
+    p1 = s8[10] parameter(1)
+    ROOT _ = s8[] fusion(p0, p1), kind=kLoop, calls=f
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_fusion_module_str));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+
+  EXPECT_EQ(analysis_.CommonElementwiseUtilization(fusion->fused_parameter(0),
+                                                   fusion->fused_parameter(1)),
+            2.f);
+}
+
+TEST_F(GpuHloCostAnalysisTest, CommonElementwiseUseParameterAndRoot) {
+  const char* hlo_fusion_module_str = R"(
+  HloModule m
+
+  f {
+    p0 = s8[10] parameter(0)
+    p1 = s8[] parameter(1)
+    p1b = s8[10] broadcast(p1)
+    a = s8[10] add(p0, p1b)
+    ROOT _ = s8[10] negate(a)
+  }
+
+  ENTRY _ {
+    p0 = s8[10] parameter(0)
+    p1 = s8[] parameter(1)
+    ROOT _ = s8[10] fusion(p0, p1), kind=kLoop, calls=f
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_fusion_module_str));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+
+  EXPECT_EQ(analysis_.CommonElementwiseUtilization(
+                fusion->fused_parameter(0), fusion->fused_expression_root()),
+            1.f);
+  EXPECT_EQ(analysis_.CommonElementwiseUtilization(
+                fusion->fused_parameter(1), fusion->fused_expression_root()),
+            0.f);
+}
+
 }  // namespace gpu
 }  // namespace xla

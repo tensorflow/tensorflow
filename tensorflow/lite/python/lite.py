@@ -238,7 +238,8 @@ class QuantizationMode:
                disable_per_channel=False,
                experimental_new_dynamic_range_quantizer=False,
                experimental_low_bit_qat=False,
-               full_integer_quantization_bias_type=None):
+               full_integer_quantization_bias_type=None,
+               experimental_mlir_variable_quantization=False):
     self._optimizations = optimizations
     for deprecated_optimization in [
         Optimize.OPTIMIZE_FOR_SIZE, Optimize.OPTIMIZE_FOR_LATENCY
@@ -263,6 +264,9 @@ class QuantizationMode:
 
     self._full_integer_quantization_bias_type = full_integer_quantization_bias_type
     self._validate_full_integer_quantization_bias_type()
+
+    self.enable_mlir_variable_quantization = (
+        experimental_mlir_variable_quantization)
 
   def is_post_training_int8_only_quantization(self):
     return (self.is_any_optimization_enabled() and
@@ -363,36 +367,55 @@ class QuantizationMode:
       return {
           "inference_type": (inference_ty if inference_ty is not None else
                              self.activations_type()),
-          "inference_input_type": _dtypes.float32,
-          "post_training_quantize": False,  # disable dynamic range quantization
-          "quantize_to_float16": False,  # disable float16 quantization
-          "disable_infer_tensor_range": is_low_bit_qat,
-          "use_fake_quant_num_bits": is_low_bit_qat,
+          "inference_input_type":
+              _dtypes.float32,
+          "post_training_quantize":
+              False,  # disable dynamic range quantization
+          "quantize_to_float16":
+              False,  # disable float16 quantization
+          "disable_infer_tensor_range":
+              is_low_bit_qat,
+          "use_fake_quant_num_bits":
+              is_low_bit_qat,
+          "enable_mlir_variable_quantization":
+              self.enable_mlir_variable_quantization,
       }
     elif self.is_post_training_dynamic_range_quantization():
       return {
-          "inference_type": _dtypes.float32,
-          "inference_input_type": _dtypes.float32,
-          "post_training_quantize": True,  # enable dynamic range quantization
-          "quantize_to_float16": False,  # disable float16 quantization
+          "inference_type":
+              _dtypes.float32,
+          "inference_input_type":
+              _dtypes.float32,
+          "post_training_quantize":
+              True,  # enable dynamic range quantization
+          "quantize_to_float16":
+              False,  # disable float16 quantization
           # experimental: disable per-channel (per-axis) quantization.
           "disable_per_channel_quantization":
               self._disable_per_channel,
           "enable_mlir_dynamic_range_quantizer":
-              self._enable_new_dynamic_range_quantizer
+              self._enable_new_dynamic_range_quantizer,
+          "enable_mlir_variable_quantization":
+              self.enable_mlir_variable_quantization
       }
     elif self.is_post_training_float16_quantization():
       return {
-          "inference_type": _dtypes.float32,
-          "inference_input_type": _dtypes.float32,
-          "post_training_quantize": True,
-          "quantize_to_float16": True,  # enable float16 quantization
+          "inference_type":
+              _dtypes.float32,
+          "inference_input_type":
+              _dtypes.float32,
+          "post_training_quantize":
+              True,
+          "quantize_to_float16":
+              True,  # enable float16 quantization
           "accumulation_type":
               self._target_spec._experimental_supported_accumulation_type,  # pylint: disable=protected-access
           "allow_bfloat16":
               self.is_bfloat16_quantization(),
           "enable_mlir_dynamic_range_quantizer":
-              self._enable_new_dynamic_range_quantizer
+              self._enable_new_dynamic_range_quantizer,
+          "enable_mlir_variable_quantization":
+              self.enable_mlir_variable_quantization
       }
     else:
       # Note this might still trigger (uint8) quantization to be compatible with
@@ -563,6 +586,9 @@ class TFLiteConverterBase:
     # converted model as flex ops.
     self._experimental_allow_all_select_tf_ops = False
 
+    self._experimental_variable_quantization = False
+    self._experimental_disable_fuse_mul_and_fc = False
+
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
 
@@ -588,7 +614,7 @@ class TFLiteConverterBase:
     return _get_grappler_config(optimizers)
 
   def _quantize(self, result, input_type, output_type, activations_type,
-                bias_type, allow_float):
+                bias_type, allow_float, enable_variable_quantization):
     """Quantize the model."""
     # pylint: disable=protected-access
     custom_op_registerers_by_name = [
@@ -623,7 +649,8 @@ class TFLiteConverterBase:
           calibrated,
           self._experimental_disable_per_channel,
           input_data_type=input_type,
-          output_data_type=output_type)
+          output_data_type=output_type,
+          enable_variable_quantization=enable_variable_quantization)
     else:
       return calibrate_quantize.calibrate_and_quantize(
           self.representative_dataset.input_gen,
@@ -679,6 +706,8 @@ class TFLiteConverterBase:
             self._experimental_guarantee_all_funcs_one_use,
         "allow_all_select_tf_ops":
             self._experimental_allow_all_select_tf_ops,
+        "disable_fuse_mul_and_fc":
+            self._experimental_disable_fuse_mul_and_fc,
     }
 
     if self.saved_model_dir:
@@ -770,7 +799,8 @@ class TFLiteConverterBase:
         graph_def, self._experimental_disable_per_channel,
         self.experimental_new_dynamic_range_quantizer,
         self._experimental_low_bit_qat,
-        self._experimental_full_integer_quantization_bias_type)
+        self._experimental_full_integer_quantization_bias_type,
+        self._experimental_variable_quantization)
     converter_kwargs.update({
         "tf_version":
             self._metadata.environment.tensorflowVersion,
@@ -868,8 +898,10 @@ class TFLiteConverterBase:
         q_activations_type = quant_mode.activations_type()
         q_bias_type = quant_mode.bias_type()
         q_allow_float = quant_mode.is_allow_float()
+        q_variable_quantization = quant_mode.enable_mlir_variable_quantization
         model = self._quantize(model, q_in_type, q_out_type, q_activations_type,
-                               q_bias_type, q_allow_float)
+                               q_bias_type, q_allow_float,
+                               q_variable_quantization)
 
       m_in_type = in_type if in_type else _dtypes.float32
       m_out_type = out_type if out_type else _dtypes.float32
@@ -1015,7 +1047,8 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
         graph_def, self._experimental_disable_per_channel,
         self.experimental_new_dynamic_range_quantizer,
         self._experimental_low_bit_qat,
-        self._experimental_full_integer_quantization_bias_type)
+        self._experimental_full_integer_quantization_bias_type,
+        self._experimental_variable_quantization)
     self._validate_inference_input_output_types(self._quant_mode)
 
     if not self._is_unknown_shapes_allowed():
@@ -1087,7 +1120,8 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
         graph_def, self._experimental_disable_per_channel,
         self.experimental_new_dynamic_range_quantizer,
         self._experimental_low_bit_qat,
-        self._experimental_full_integer_quantization_bias_type)
+        self._experimental_full_integer_quantization_bias_type,
+        self._experimental_variable_quantization)
     self._validate_inference_input_output_types(quant_mode)
     converter_kwargs = {
         "enable_tflite_resource_variables":
@@ -2044,7 +2078,8 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
         self._graph_def, self._experimental_disable_per_channel,
         self.experimental_new_dynamic_range_quantizer,
         self._experimental_low_bit_qat,
-        self._experimental_full_integer_quantization_bias_type)
+        self._experimental_full_integer_quantization_bias_type,
+        self._experimental_variable_quantization)
 
     optimized_graph = self._optimize_tf_model(self._graph_def,
                                               self._input_tensors,

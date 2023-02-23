@@ -161,6 +161,15 @@ def LHLO_CosineOp: LHLO_UnaryElementwiseOp<"cosine", LHLO_FpOrComplexBuffer> {
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 }
+def LHLO_TanOp: LHLO_UnaryElementwiseOp<"tan", LHLO_FpOrComplexBuffer> {
+  let summary = "Tan operator";
+  let description = [{
+    Returns `Tan(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
 def LHLO_ExpOp: LHLO_UnaryElementwiseOp<"exponential", LHLO_FpOrComplexBuffer> {
   let summary = "Exponential operator";
   let description = [{
@@ -640,6 +649,7 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
     OptionalAttr<CustomCallTargetArgMappingAttr>:$target_arg_mapping
   );
   let hasVerifier = 1;
+  let regions = (region AnyRegion:$called_computation);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1346,6 +1356,90 @@ def LHLO_SortOp: LHLO_Op<"sort", [SameVariadicOperandSize, SameOperandsShape]> {
 }
 
 //===----------------------------------------------------------------------===//
+// Point-to-point communication operations.
+//===----------------------------------------------------------------------===//
+
+def LHLO_SendOp : LHLO_Op<"send", []> {
+
+  let summary = "Send operator";
+
+  let description = [{
+    Sends the given operand data to a Recv instruction in another computation
+    that shares the same channel handle. Does not return any data. Send is an
+    asynchronous operation, and must be paired with a SendDone operation to
+    wait for the completion of the data transfer.
+
+    See https://www.tensorflow.org/xla/operation_semantics#send.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
+    MHLO_ChannelHandle:$channel_handle,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer,
+    DefaultValuedOptionalAttr<DictionaryAttr, "{}">:$frontend_attributes
+  );
+
+  let results = (outs MHLO_Token:$token);
+}
+
+def LHLO_RecvOp : LHLO_Op<"recv", []> {
+
+  let summary = "Recv operator";
+
+  let description = [{
+    Receives data of the given shape from a Send instruction in another
+    computation that shares the same channel handle. Recv is an asynchronous
+    operation, and must be paired with a RecvDone operation to wait for the
+    completion of the data transfer.
+
+    See https://www.tensorflow.org/xla/operation_semantics#recv.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs,
+    MHLO_ChannelHandle:$channel_handle,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer,
+    DefaultValuedOptionalAttr<DictionaryAttr, "{}">:$frontend_attributes
+  );
+
+  let results = (outs MHLO_Token:$token);
+}
+
+def LHLO_SendDoneOp : LHLO_Op<"send_done", []> {
+
+  let summary = "SendDone operator";
+
+  let description = [{
+    Waits for the completion of corresponding Send operation data transfer.
+
+    See https://www.tensorflow.org/xla/operation_semantics#send.
+  }];
+
+  let arguments = (ins
+    MHLO_Token:$token,
+    MHLO_ChannelHandle:$channel_handle,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer
+  );
+}
+
+def LHLO_RecvDoneOp : LHLO_Op<"recv_done", []> {
+
+  let summary = "RecvDone operator";
+
+  let description = [{
+    Waits for the completion of corresponding Recv operation data transfer.
+
+    See https://www.tensorflow.org/xla/operation_semantics#recv.
+  }];
+
+  let arguments = (ins
+    MHLO_Token:$token,
+    MHLO_ChannelHandle:$channel_handle,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer
+  );
+}
+
+//===----------------------------------------------------------------------===//
 // Late operations
 //===----------------------------------------------------------------------===//
 
@@ -1365,6 +1459,9 @@ def FusionOp : LHLO_Op<"fusion", [
     The XLA runtime expects this hint to be followed, as it expects a single
     kernel per HLO instruction. This restriction might be lifted in the future.
   }];
+  let arguments = (ins
+    OptionalAttr<AnyAttrOf<[StrAttr, DictionaryAttr]>>:$backend_config
+  );
   let regions = (region SizedRegion<1>:$region);
 
   let skipDefaultBuilders = 1;
@@ -1426,7 +1523,7 @@ def TerminatorOp :
   }];
   let builders = [
     OpBuilder<(ins "ValueRange":$operands),
-    [{ build($_builder, $_state, llvm::None, operands, llvm::None); }]>];
+    [{ build($_builder, $_state, std::nullopt, operands, std::nullopt); }]>];
 }
 
 def LHLO_RealDynamicSliceOp: LHLO_Op<

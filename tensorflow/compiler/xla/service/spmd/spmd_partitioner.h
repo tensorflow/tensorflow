@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SPMD_PARTITIONER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SPMD_PARTITIONER_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -344,12 +347,6 @@ class PartitionedHlo {
       : hlo_(hlo), base_shape_(base_shape), state_(std::move(state)) {
     CHECK(hlo->has_sharding())
         << "PartitionedHlo is missing sharding:" << hlo->ToString();
-    // If the tuple shape instruction does not have a tuple sharding, reassign
-    // to use the tuple sharding. Reshard() implementation assumes this.
-    if (hlo_->shape().IsTuple() && !hlo_->sharding().IsTuple()) {
-      hlo_->set_sharding(
-          hlo_->sharding().GetTupleSharding(hlo_->shape()).value());
-    }
   }
 
   PartitionedHlo CloneWithNewHlo(HloInstruction* hlo) const {

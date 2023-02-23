@@ -300,5 +300,32 @@ TEST_F(TupleSimplifierTest, ShardingLoss) {
   Run(m.get(), /*change_expected=*/false);
 }
 
+TEST_F(TupleSimplifierTest, NestedTuple) {
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = s32[10] parameter(0), sharding={devices=[2]0,1}
+      p1 = s32[10] parameter(1), sharding={devices=[2]0,1}
+      p2 = s32[10] parameter(2), sharding={devices=[2]0,1}
+      p3 = s32[10] parameter(3), sharding={devices=[2]0,1}
+      t = (s32[10], s32[10]) tuple(p0, p1), sharding={{devices=[2]0,1}, {devices=[2]0,1}}
+      t2 = ((s32[10], s32[10]), s32[10]) tuple(t, p2), sharding={{devices=[2]0,1}, {devices=[2]0,1}, {devices=[2]0,1}}
+      t3 = (((s32[10], s32[10]), s32[10]), s32[10]) tuple(t2, p3), sharding={{devices=[2]0,1}, {devices=[2]0,1}, {devices=[2]0,1}, {devices=[2]0,1}}
+      gte0 = ((s32[10], s32[10]), s32[10]) get-tuple-element(t3), index=0, sharding={{replicated}, {replicated}, {replicated}}
+      gte1 = (s32[10], s32[10]) get-tuple-element(gte0), index=0, sharding={{replicated}, {replicated}}
+      gte2 = s32[10] get-tuple-element(gte1), index=1, sharding={devices=[2]0,1}
+      gte3 = s32[10] get-tuple-element(gte1), index=0, sharding={replicated}
+      ROOT to = (s32[10], s32[10]) tuple(gte2, gte3)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  Run(m.get(), /*change_expected=*/true);
+  auto* p1 = FindInstruction(m.get(), "p1");
+  auto* gte3 = FindInstruction(m.get(), "gte3");
+  EXPECT_THAT(m->entry_computation()->root_instruction()->operand(0), p1);
+  EXPECT_THAT(m->entry_computation()->root_instruction()->operand(1), gte3);
+}
+
 }  // namespace
 }  // namespace xla

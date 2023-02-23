@@ -39,9 +39,9 @@ Status LoadAutotuneResults(absl::string_view data) {
         "Failed to parse autotune results string.");
   }
   if (results.version() != kVersion) {
-    return tsl::errors::InvalidArgument(
+    return tsl::errors::InvalidArgument(absl::StrFormat(
         "Version mismatch in autotune results.  Expected %d but was %d",
-        kVersion, results.version());
+        kVersion, results.version()));
   }
 
   TF_RETURN_IF_ERROR(gpu::GpuConvAlgorithmPicker::LoadAutotuneResults(results));

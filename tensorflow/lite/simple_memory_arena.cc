@@ -147,6 +147,7 @@ TfLiteStatus SimpleMemoryArena::Commit(TfLiteContext* context,
   if (required_size > underlying_buffer_size_) {
     *arena_reallocated = true;
 #ifdef TF_LITE_TENSORFLOW_PROFILER
+    PauseHeapMonitoring(/*pause=*/true);
     OnTfLiteArenaAlloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
                        required_size);
 #endif
@@ -176,6 +177,9 @@ TfLiteStatus SimpleMemoryArena::Commit(TfLiteContext* context,
     underlying_buffer_.reset(new_alloc);
     underlying_buffer_size_ = required_size;
     underlying_buffer_aligned_ptr_ = new_underlying_buffer_aligned_ptr;
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+    PauseHeapMonitoring(/*pause=*/false);
+#endif
   } else {
     *arena_reallocated = false;
   }

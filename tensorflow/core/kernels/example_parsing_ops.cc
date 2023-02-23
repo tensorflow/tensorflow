@@ -982,7 +982,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
     for (int d = 0; d < attrs_.num_context_dense; ++d) {
       TensorShape out_shape;
       for (const int dim : attrs_.context_dense_shapes[d].dim_sizes())
-        out_shape.AddDim(dim);
+        OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(dim));
       Tensor* out = nullptr;
       OP_REQUIRES_OK(ctx, context_dense_values.allocate(d, out_shape, &out));
     }
@@ -1099,9 +1099,9 @@ class ParseSingleSequenceExampleOp : public OpKernel {
       const FeatureList& fl = (feature_list_missing)
                                   ? empty_feature_list
                                   : feature_list_found->second;
-      out_shape.AddDim(fl.feature_size());
+      OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(fl.feature_size()));
       for (const int dim : attrs_.feature_list_dense_shapes[d].dim_sizes()) {
-        out_shape.AddDim(dim);
+        OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(dim));
       }
       Tensor* out = nullptr;
       OP_REQUIRES_OK(ctx,

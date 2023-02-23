@@ -14,8 +14,8 @@
 # ==============================================================================
 """Tests for SavedModel fingerprinting.
 
-These tests verify that FingerprintDef protobuf is written correctly in
-`tf.saved_model.save`.
+These tests verify that fingerprint is written correctly and that APIs for
+reading it are correct.
 """
 import os
 import shutil
@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import save
+from tensorflow.python.saved_model.fingerprinting import read_fingerprint
 from tensorflow.python.saved_model.pywrap_saved_model import constants
 from tensorflow.python.trackable import autotrackable
 
@@ -72,6 +73,7 @@ class FingerprintingTest(test.TestCase):
 
     fingerprint_def = self._read_fingerprint(
         file_io.join(save_dir, constants.FINGERPRINT_FILENAME))
+
     # We cannot check this value due to non-determinism in serialization.
     self.assertGreater(fingerprint_def.saved_model_checksum, 0)
     self.assertEqual(fingerprint_def.graph_def_program_hash,
@@ -114,6 +116,37 @@ class FingerprintingTest(test.TestCase):
                      fingerprint_input_sig.graph_def_program_hash)
     self.assertEqual(fingerprint_sig.signature_def_hash,
                      fingerprint_input_sig.signature_def_hash)
+
+  def test_read_fingerprint_api(self):
+    save_dir = self._create_saved_model()
+    fingerprint = read_fingerprint(save_dir)
+
+    fingerprint_def = self._read_fingerprint(
+        file_io.join(save_dir, constants.FINGERPRINT_FILENAME)
+    )
+
+    self.assertEqual(
+        fingerprint.saved_model_checksum, fingerprint_def.saved_model_checksum
+    )
+    self.assertEqual(
+        fingerprint.graph_def_program_hash,
+        fingerprint_def.graph_def_program_hash,
+    )
+    self.assertEqual(
+        fingerprint.signature_def_hash, fingerprint_def.signature_def_hash
+    )
+    self.assertEqual(
+        fingerprint.saved_object_graph_hash,
+        fingerprint_def.saved_object_graph_hash,
+    )
+    self.assertEqual(
+        fingerprint.checkpoint_hash, fingerprint_def.checkpoint_hash
+    )
+    self.assertEqual(fingerprint.version, fingerprint_def.version.producer)
+
+  def test_read_fingerprint_api_invalid(self):
+    with self.assertRaisesRegex(ValueError, "No or invalid fingerprint"):
+      read_fingerprint("foo")
 
 
 if __name__ == "__main__":

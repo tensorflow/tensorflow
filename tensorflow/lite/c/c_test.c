@@ -306,7 +306,7 @@ static void TestInferenceUsingInterpreter(void) {
 
 TfLiteStatus PrepareThatChecksExecutionPlanSizeEqualsTwo(
     TfLiteOpaqueContext* context,
-    struct TfLiteOpaqueDelegateStruct* opaque_delegate, void* data) {
+    TfLiteOpaqueDelegate* opaque_delegate, void* data) {
   bool* delegate_prepared = (bool*)data;
   *delegate_prepared = true;
 
@@ -327,11 +327,11 @@ static void TestTfLiteOpaqueContextGetExecutionPlan(void) {
   TfLiteOpaqueDelegateBuilder opaque_delegate_builder = { NULL };
   opaque_delegate_builder.data = &delegate_prepared;
   opaque_delegate_builder.Prepare = PrepareThatChecksExecutionPlanSizeEqualsTwo;
-  struct TfLiteOpaqueDelegateStruct* opaque_delegate =
+  TfLiteOpaqueDelegate* opaque_delegate =
       TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
-  TfLiteInterpreterOptionsAddOpaqueDelegate(options, opaque_delegate);
+  TfLiteInterpreterOptionsAddDelegate(options, opaque_delegate);
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
 
   // The delegate should have been applied.

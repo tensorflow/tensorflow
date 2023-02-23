@@ -152,7 +152,8 @@ class TfrtCpuClient final : public PjRtClient {
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
-  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override;
+  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+      const override;
 
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
@@ -160,9 +161,6 @@ class TfrtCpuClient final : public PjRtClient {
       mlir::ModuleOp module, CompileOptions options) override;
 
   StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtLoadedExecutable& executable) const override;
-
-  StatusOr<std::string> SerializeExecutable(
       const PjRtLoadedExecutable& executable) const override;
 
   // For TfrtCpuClient, `options` is mandatory.
@@ -553,6 +551,8 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   void Delete() override;
 
   bool IsDeleted() override;
+
+  StatusOr<std::string> SerializeExecutable() const override;
 
   bool IsReturnedFutureSupported() const override { return true; }
 

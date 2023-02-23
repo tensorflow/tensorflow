@@ -16,7 +16,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//third_party/eigen3",
     ],

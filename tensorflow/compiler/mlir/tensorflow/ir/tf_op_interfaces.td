@@ -144,12 +144,14 @@ def TF_GetResourceInstanceInterface : OpInterface<"GetResourceInstanceInterface"
   let methods = [
     InterfaceMethod<
       /*desc=*/[{Returns a string corresponding to the resource instance
-                 accessed by this op. The implementation must guarantee that the
+                 accessed by this op, or `std::nullopt` if the resource should
+                 be ignored. The implementation must guarantee that the
                  mapping between resource instances and strings is bijective,
                  i.e., two op instances should return the same string if and
                  only if they access the same resource. The interface should
-                 only be used for ops that access exactly one resource.}],
-      /*retTy=*/"std::string",
+                 only be used for ops that access exactly one op-based resource
+                 (see `tf_op_base.td` for details).}],
+      /*retTy=*/"std::optional<std::string>",
       /*methodName=*/"GetResourceInstanceStr",
       /*args=*/(ins)
     >,

@@ -25,11 +25,12 @@ namespace {
 using tflite::TFLiteSettings;
 using tflite::TFLiteSettingsBuilder;
 using tflite::delegates::utils::LoadDelegateFromSharedLibrary;
+using tflite::delegates::utils::LoadSymbolFromSharedLibrary;
 
 TEST(TfLiteDelegateLoaderUtilsTest, Simple) {
   const TfLiteStableDelegate* stable_delegate_handle =
       LoadDelegateFromSharedLibrary(
-          "third_party/tensorflow/lite/delegates/utils/experimental/"
+          "tensorflow/lite/delegates/utils/experimental/"
           "sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so");
 
   EXPECT_NE(stable_delegate_handle, nullptr);
@@ -59,12 +60,11 @@ TEST(TfLiteDelegateLoaderUtilsTest, Simple) {
 }
 
 TEST(TfLiteDelegateLoaderUtilsTest, WrongSymbolReturnsNullptr) {
-  const TfLiteStableDelegate* stable_delegate_handle =
-      LoadDelegateFromSharedLibrary(
-          "third_party/tensorflow/lite/delegates/utils/experimental/"
-          "sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so",
-          "NOT_REAL_SYMBOL");
-  EXPECT_EQ(stable_delegate_handle, nullptr);
+  void* symbol_pointer = LoadSymbolFromSharedLibrary(
+      "tensorflow/lite/delegates/utils/experimental/"
+      "sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so",
+      "NOT_REAL_SYMBOL");
+  EXPECT_EQ(symbol_pointer, nullptr);
 }
 
 TEST(TfLiteDelegateLoaderUtilsTest, MissingLibReturnsNullptr) {

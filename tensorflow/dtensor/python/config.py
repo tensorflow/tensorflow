@@ -207,3 +207,8 @@ def preferred_device_type() -> str:
 def gpu_use_nccl_communication() -> bool:
   """Return True if environment indicates NCCL shall be used for GPU."""
   return os.environ.get("DTENSOR_GPU_USE_NCCL_COMMUNICATION", "0") != "0"
+
+
+def backend_is_pw() -> bool:
+  """Return True if environment indicates the backend is Pathways."""
+  return os.environ.get("DTENSOR_USE_PARALLEL_EXECUTOR") == "pw"

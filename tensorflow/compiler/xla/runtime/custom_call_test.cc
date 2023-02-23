@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
+#include "tensorflow/compiler/xla/runtime/module.h"
 #include "tensorflow/compiler/xla/runtime/state.h"
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
@@ -121,9 +122,31 @@ static absl::Status CompileAndExecute(
   auto executed = executable->Execute(args, converter, execute_opts);
   if (!executed.ok())
     return absl::InternalError(
-        absl::StrFormat("%s: %s", executed.message(), error));
+        absl::StrFormat("%s: %s", executed.status().message(), error));
 
   return absl::OkStatus();
+}
+
+template <typename State>
+static absl::StatusOr<std::unique_ptr<State>> CompileAndExecute(
+    std::string_view source, ArgumentsRef args, const StatefulModule<State>& m,
+    absl::Span<const std::string_view> exported = {"test"}) {
+  CustomCallRegistry registry = {
+      [&](DynamicCustomCallRegistry& registry) { m.Export(registry); },
+      [&](DirectCustomCallRegistry& registry) { m.Export(registry); },
+  };
+  auto state = m.CreateModuleState();
+  if (!state.ok()) return state.status();
+
+  CustomCall::UserData user_data;
+  auto initialized = m.InitializeUserData(state->get(), user_data);
+  if (!initialized.ok()) return initialized;
+
+  auto executed = CompileAndExecute(source, args, registry, /*copts=*/{},
+                                    /*type_converter=*/{}, exported, user_data);
+  if (!executed.ok()) return executed;
+
+  return state;
 }
 
 // No-Op custom call with a single `i32` argument.
@@ -135,44 +158,62 @@ static void I32NoOp(DynamicCustomCallRegistry& registry) {
 }
 
 //===----------------------------------------------------------------------===//
+// A test for stateful module with a direct custom call.
+//===----------------------------------------------------------------------===//
 
-// Static counter to observe side effects of direct custom call.
-static int32_t custom_call_counter = 0;
+struct Counter : public Module::State {
+  int32_t value = 0;
+};
 
-// Direct custom call linked with XLA runtime executable at compile (link) time.
-static bool CustomCallFn(ExecutionContext* ctx, void** args, void** attrs,
-                         void** rets) {
-  auto handler = CustomCall::Bind("test.custom_call")
-                     .Arg<int32_t>()
-                     .To([&](int32_t arg) -> LogicalResult {
-                       custom_call_counter += arg;
-                       return success();
-                     });
+// Package custom call that updates a `Counter` as a runtime module.
+struct CounterModule : public StatefulModule<Counter> {
+  CounterModule() : StatefulModule<Counter>("counter") {}
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+  static bool Inc(ExecutionContext* e, void** args, void** attrs, void** rets) {
+    auto impl = CustomCall::Bind("test.increment")
+                    .UserData<Counter*>()  // counter
+                    .Arg<int32_t>()        // value
+                    .To([](Counter* counter, int32_t value) {
+                      return success(counter->value += value);
+                    });
+    return succeeded(Executable::Call(e, *impl, args, attrs, rets));
+  }
+
+  void Export(DirectCustomCallRegistry& registry) const final {
+    registry.Register("test.increment", Inc);
+  }
+
+  absl::StatusOr<std::unique_ptr<Counter>> CreateModuleState() const final {
+    return std::make_unique<Counter>();
+  }
+
+  absl::Status InitializeUserData(Counter* state,
+                                  CustomCall::UserData& user_data) const final {
+    user_data.insert(state);
+    return absl::OkStatus();
+  }
+};
 
 TEST(CustomCallTest, DirectCustomCall) {
   absl::string_view source = R"(
-    func.func private @custom_call(%arg0: i32)
-      attributes { rt.custom_call = "test.custom_call" }
+    func.func private @increment(%arg0: i32)
+      attributes { rt.custom_call = "test.increment" }
 
     func.func @test() {
       %0 = arith.constant 42 : i32
-      call @custom_call(%0) : (i32) -> ()
+      call @increment(%0) : (i32) -> ()
       return
     }
   )";
 
-  CustomCallRegistry registry;
-  registry.direct_custom_calls = [&](DirectCustomCallRegistry& registry) {
-    registry.Register("test.custom_call", CustomCallFn);
-  };
-
-  ASSERT_EQ(custom_call_counter, 0);
-  ASSERT_TRUE(CompileAndExecute(source, /*args=*/{}, registry).ok());
-  EXPECT_EQ(custom_call_counter, 42);
+  auto counter = CompileAndExecute(source, /*args=*/{}, CounterModule());
+  ASSERT_TRUE(counter.ok());
+  EXPECT_EQ((*counter)->value, 42);
 }
+
+//===----------------------------------------------------------------------===//
+// All other tests use dynamic custom calls and do not use modules.
+//===----------------------------------------------------------------------===//
 
 TEST(CustomCallTest, ScalarArgs) {
   absl::string_view source = R"(
@@ -322,6 +363,70 @@ TEST(CustomCallTest, StatusOrRet) {
 
   ASSERT_TRUE(CompileAndExecute(source, /*args=*/{}, registry).ok());
   EXPECT_EQ(i64, 42);
+}
+
+TEST(CustomCallTest, StatusOrAsyncToken) {
+  absl::string_view source = R"(
+    func.func private @custom_call_return() -> !async.token
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call_return" }
+
+    func.func @test() {
+      %0 = call @custom_call_return() : () -> !async.token
+      async.await %0 : !async.token
+      return
+    }
+  )";
+
+  auto f_result = []() -> absl::StatusOr<AsyncValueRef<tsl::Chain>> {
+    return tsl::MakeAvailableAsyncValueRef<tsl::Chain>();
+  };
+
+  CustomCallRegistry registry = {[&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call_return")
+                          .Ret<AsyncValueRef<tsl::Chain>>()
+                          .To(f_result));
+  }};
+
+  ASSERT_TRUE(CompileAndExecute(source, /*args=*/{}, registry).ok());
+}
+
+TEST(CustomCallTest, StatusOrAsyncScalarValue) {
+  absl::string_view source = R"(
+    func.func private @custom_call_return() -> !async.value<i32>
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call_return" }
+
+    func.func private @custom_call(%arg32 : i32)
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      %0 = call @custom_call_return() : () -> !async.value<i32>
+      %1 = async.await %0 : !async.value<i32>
+      call @custom_call(%1) : (i32) -> ()
+      return
+    }
+  )";
+
+  auto f_result = []() -> absl::StatusOr<AsyncValueRef<int32_t>> {
+    return tsl::MakeAvailableAsyncValueRef<int32_t>(42);
+  };
+
+  int32_t i32 = 0;
+  auto f = [&](int32_t arg) {
+    i32 = arg;
+    return success();
+  };
+
+  CustomCallRegistry registry = {[&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call_return")
+                          .Ret<AsyncValueRef<int32_t>>()
+                          .To(f_result));
+
+    registry.Register(
+        CustomCall::Bind("test.custom_call").Arg<int32_t>().To(f));
+  }};
+
+  ASSERT_TRUE(CompileAndExecute(source, /*args=*/{}, registry).ok());
+  EXPECT_EQ(i32, 42);
 }
 
 TEST(CustomCallTest, StatusOrTupleRets) {
@@ -655,7 +760,7 @@ TEST(CustomCallTest, MemRefRets) {
   };
 
   auto f = [&](MemrefView arg0) {
-    llvm::ArrayRef<float> data = {reinterpret_cast<float*>(arg0.data), 4};
+    absl::Span<const float> data = {reinterpret_cast<float*>(arg0.data), 4};
     arg_shape = {arg0.sizes.begin(), arg0.sizes.end()};
     arg_data = {data.begin(), data.end()};
     return success();
@@ -672,6 +777,59 @@ TEST(CustomCallTest, MemRefRets) {
   }};
 
   ASSERT_TRUE(CompileAndExecute(source, /*args=*/{}, registry).ok());
+  EXPECT_EQ(arg_shape, std::vector<int64_t>({2, 2}));
+  EXPECT_EQ(arg_data, input);
+}
+
+TEST(CustomCallTest, AsyncMemRefRets) {
+  absl::string_view source = R"(
+    func.func private @custom_call_result() -> !async.value<memref<2x2xf32>>
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call_result" }
+
+    func.func private @custom_call(%arg0: memref<2x2xf32>)
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      %0 = call @custom_call_result() : () -> (!async.value<memref<2x2xf32>>)
+      %1 = async.await %0 : !async.value<memref<2x2xf32>>
+      call @custom_call(%1) : (memref<2x2xf32>) -> ()
+      return
+    }
+  )";
+
+  // Allocate storage for arguments.
+  std::vector<float> input = {1.0, 2.0, 3.0, 4.0};
+
+  // Observe returned memref by capturing memref argument shape and data.
+  std::vector<int64_t> arg_shape;
+  std::vector<float> arg_data;
+
+  auto f_result = [&](Result<AsyncValueRef<MemrefView>> ret0) {
+    std::vector<int64_t> dims = {ret0.GetDims().begin(), ret0.GetDims().end()};
+    auto async_value = tsl::MakeAvailableAsyncValueRef<MemrefView>(
+        ret0.GetDType(), input.data(), dims);
+    ret0.Set(async_value);
+    return success();
+  };
+
+  auto f = [&](MemrefView arg0) {
+    llvm::ArrayRef<float> data = {reinterpret_cast<float*>(arg0.data), 4};
+    arg_shape = {arg0.sizes.begin(), arg0.sizes.end()};
+    arg_data = {data.begin(), data.end()};
+    return success();
+  };
+
+  CustomCallRegistry registry = {[&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call_result")
+                          .Ret<AsyncValueRef<MemrefView>>()  // ret0
+                          .To(f_result));
+
+    registry.Register(CustomCall::Bind("test.custom_call")
+                          .Arg<MemrefView>()  // arg0
+                          .To(f));
+  }};
+
+  ASSERT_TRUE(CompileAndExecute(source, {}, registry).ok());
   EXPECT_EQ(arg_shape, std::vector<int64_t>({2, 2}));
   EXPECT_EQ(arg_data, input);
 }
@@ -829,15 +987,15 @@ TEST(CustomCallTest, MappedEnumAttr) {
 // Structure corresponding to the MLIR attribute.
 struct PairOfDims {
   int64_t rank;
-  llvm::ArrayRef<int64_t> a;
-  llvm::ArrayRef<int64_t> b;
+  absl::Span<const int64_t> a;
+  absl::Span<const int64_t> b;
 };
 
 // Register aggregate attribute decoding.
 XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
     PairOfDims, AggregateMember<int64_t>("rank"),
-    AggregateMember<llvm::ArrayRef<int64_t>>("a"),
-    AggregateMember<llvm::ArrayRef<int64_t>>("b"));
+    AggregateMember<absl::Span<const int64_t>>("a"),
+    AggregateMember<absl::Span<const int64_t>>("b"));
 
 TEST(CustomCallTest, StructAttr) {
   absl::string_view source = R"(
@@ -1023,6 +1181,46 @@ TEST(CustomCallTest, StateArg) {
                   .ok());
   ASSERT_EQ(*state_i32[0], 42);
   ASSERT_EQ(*state_i64[0], 42);
+}
+
+TEST(CustomCallTest, DictionaryAttr) {
+  absl::string_view source = R"(
+    func.func private @custom_call()
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      call @custom_call() {
+        dict = { foo = "Uh oh", bar = 42 : i32, baz = array<i32: 1, 2> }
+      }: () -> ()
+      return
+    }
+  )";
+
+  std::string foo;
+  int32_t bar = 0;
+  std::vector<int32_t> baz;
+
+  auto handler = [&](Dictionary dict) -> LogicalResult {
+    if (dict.size() != 3) return failure();
+
+    foo = *dict.get<std::string_view>("foo");
+    bar = *dict.get<int32_t>("bar");
+    auto span = dict.get<absl::Span<const int32_t>>("baz");
+    baz = std::vector<int32_t>(span->begin(), span->end());
+
+    return success();
+  };
+
+  CustomCallRegistry registry = {[&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call")
+                          .Attr<Dictionary>("dict")
+                          .To(handler));
+  }};
+
+  ASSERT_TRUE(CompileAndExecute(source, /*args=*/{}, registry).ok());
+  EXPECT_EQ(foo, "Uh oh");
+  EXPECT_EQ(bar, 42);
+  EXPECT_EQ(baz, std::vector<int32_t>({1, 2}));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1694,14 +1892,15 @@ BENCHMARK(BM_UserDataX12None);
 // Benchmark memref encoding for a sequence of custom calls.
 //===----------------------------------------------------------------------===//
 
+static LogicalResult Sink(CustomCall::RemainingArgs) { return success(); }
+
 template <CustomCall::RuntimeChecks checks>
 static bool RemainingArgsSink(ExecutionContext* ctx, void** args, void** attrs,
                               void** rets) {
-  static auto* handler =
-      CustomCall::Bind("test.custom_call")
-          .RemainingArgs()
-          .To<checks>([](CustomCall::RemainingArgs) { return success(); })
-          .release();
+  static auto* handler = CustomCall::Bind("test.custom_call")
+                             .RemainingArgs()
+                             .To<checks>(CustomCall::FunctionWrapper<Sink>())
+                             .release();
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 

@@ -186,27 +186,12 @@ void PrintPassPipeline(const mlir::PassManager& pass_manager,
   llvm::interleaveComma(
       pass_manager.getPasses(), passOS,
       [&](mlir::Pass& pass) { pass.printAsTextualPipeline(passOS); });
-  os << "{-# external_resources: { mlir_reproducer: { pipeline: \""
-     << passOS.str() << "\", ";
+  os << "{-# external_resources: { mlir_reproducer: { pipeline: "
+        "\"builtin.module("
+     << passOS.str() << ")\", ";
   os << "disable_threading: true, ";
   os << "verify_each: true } } #-}";
   os << "\n\n";
-}
-
-std::string DumpCrashReproducerToFile(llvm::StringRef name,
-                                      const mlir::PassManager& pm,
-                                      mlir::Operation* op,
-                                      llvm::StringRef dirname) {
-  std::unique_ptr<llvm::raw_ostream> os;
-  std::string filepath;
-  Status result = CreateFileForDumping(name, &os, &filepath, dirname);
-  if (!result.ok()) return result.error_message();
-
-  PrintPassPipeline(pm, op, *os);
-  op->print(*os, mlir::OpPrintingFlags().useLocalScope());
-  LOG(INFO) << "Dumped MLIR operation '" << op->getName().getStringRef().str()
-            << "' to '" << filepath << "'";
-  return filepath;
 }
 
 std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,

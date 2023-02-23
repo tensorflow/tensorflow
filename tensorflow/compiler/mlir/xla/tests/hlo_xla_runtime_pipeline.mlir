@@ -1,4 +1,4 @@
-// RUN: xla-opt -split-input-file -hlo-xla-runtime-pipeline %s | FileCheck %s
+// RUN: tf-opt -split-input-file -hlo-xla-runtime-pipeline %s | FileCheck %s
 
 // CHECK-LABEL: func.func @simple_add(
 func.func @simple_add(%arg0: tensor<f64>) -> tensor<f64> {
@@ -12,12 +12,11 @@ func.func @simple_add(%arg0: tensor<f64>) -> tensor<f64> {
 #CSR = #sparse_tensor.encoding<{dimLevelType = [ "dense", "compressed" ]}>
 
 // CHECK-LABEL: func.func @csr_gendot(
-// CHECK-SAME:    %[[DIMSIZES:.*0]]: memref<2xindex>,
-// CHECK-SAME:    %[[MEMSIZES:.*1]]: memref<3xindex>,
-// CHECK-SAME:    %[[PTR:.*2]]: memref<?xindex>,
-// CHECK-SAME:    %[[IDX:.*3]]: memref<?xindex>,
-// CHECK-SAME:    %[[VAL:.*4]]: memref<?xf64>,
-// CHECK-SAME:    %[[DENSE:.*5]]: memref<64x32xf64>) -> memref<32x32xf64> {
+// CHECK-SAME:    %[[PTR:.*0]]: memref<?xindex>,
+// CHECK-SAME:    %[[IDX:.*1]]: memref<?xindex>,
+// CHECK-SAME:    %[[VAL:.*2]]: memref<?xf64>,
+// CHECK-SAME:    %[[SPEC:.*3]]: !llvm.struct<(array<2 x i64>, array<3 x i64>)>
+// CHECK-SAME:    %[[DENSE:.*4]]: memref<64x32xf64>) -> memref<32x32xf64> {
 func.func @csr_gendot(%arg0: tensor<32x64xf64, #CSR>,
                       %arg1: tensor<64x32xf64>) -> tensor<32x32xf64> {
   // CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index

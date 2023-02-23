@@ -86,6 +86,14 @@ struct BenchmarkResult;
 struct BenchmarkResultBuilder;
 struct BenchmarkResultT;
 
+namespace BenchmarkResult_ {
+
+struct InferenceOutput;
+struct InferenceOutputBuilder;
+struct InferenceOutputT;
+
+}  // namespace BenchmarkResult_
+
 struct ErrorCode;
 struct ErrorCodeBuilder;
 struct ErrorCodeT;
@@ -166,6 +174,12 @@ bool operator==(const BenchmarkMetricT &lhs, const BenchmarkMetricT &rhs);
 bool operator!=(const BenchmarkMetricT &lhs, const BenchmarkMetricT &rhs);
 bool operator==(const BenchmarkResultT &lhs, const BenchmarkResultT &rhs);
 bool operator!=(const BenchmarkResultT &lhs, const BenchmarkResultT &rhs);
+namespace BenchmarkResult_ {
+
+bool operator==(const InferenceOutputT &lhs, const InferenceOutputT &rhs);
+bool operator!=(const InferenceOutputT &lhs, const InferenceOutputT &rhs);
+}  // namespace BenchmarkResult_
+
 bool operator==(const ErrorCodeT &lhs, const ErrorCodeT &rhs);
 bool operator!=(const ErrorCodeT &lhs, const ErrorCodeT &rhs);
 bool operator==(const BenchmarkErrorT &lhs, const BenchmarkErrorT &rhs);
@@ -1771,6 +1785,7 @@ struct EdgeTpuSettingsT : public flatbuffers::NativeTable {
   std::string model_token{};
   tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type = tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED;
   tflite::EdgeTpuSettings_::QosClass qos_class = tflite::EdgeTpuSettings_::QosClass_QOS_UNDEFINED;
+  std::vector<int32_t> hardware_cluster_ids{};
   EdgeTpuSettingsT() = default;
   EdgeTpuSettingsT(const EdgeTpuSettingsT &o);
   EdgeTpuSettingsT(EdgeTpuSettingsT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -1787,7 +1802,8 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_EDGETPU_DEVICE_SPEC = 10,
     VT_MODEL_TOKEN = 12,
     VT_FLOAT_TRUNCATION_TYPE = 14,
-    VT_QOS_CLASS = 16
+    VT_QOS_CLASS = 16,
+    VT_HARDWARE_CLUSTER_IDS = 18
   };
   tflite::EdgeTpuPowerState inference_power_state() const {
     return static_cast<tflite::EdgeTpuPowerState>(GetField<int32_t>(VT_INFERENCE_POWER_STATE, 0));
@@ -1810,6 +1826,9 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   tflite::EdgeTpuSettings_::QosClass qos_class() const {
     return static_cast<tflite::EdgeTpuSettings_::QosClass>(GetField<int32_t>(VT_QOS_CLASS, 0));
   }
+  const flatbuffers::Vector<int32_t> *hardware_cluster_ids() const {
+    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_HARDWARE_CLUSTER_IDS);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_INFERENCE_POWER_STATE, 4) &&
@@ -1823,6 +1842,8 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyString(model_token()) &&
            VerifyField<int32_t>(verifier, VT_FLOAT_TRUNCATION_TYPE, 4) &&
            VerifyField<int32_t>(verifier, VT_QOS_CLASS, 4) &&
+           VerifyOffset(verifier, VT_HARDWARE_CLUSTER_IDS) &&
+           verifier.VerifyVector(hardware_cluster_ids()) &&
            verifier.EndTable();
   }
   EdgeTpuSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -1855,6 +1876,9 @@ struct EdgeTpuSettingsBuilder {
   void add_qos_class(tflite::EdgeTpuSettings_::QosClass qos_class) {
     fbb_.AddElement<int32_t>(EdgeTpuSettings::VT_QOS_CLASS, static_cast<int32_t>(qos_class), 0);
   }
+  void add_hardware_cluster_ids(flatbuffers::Offset<flatbuffers::Vector<int32_t>> hardware_cluster_ids) {
+    fbb_.AddOffset(EdgeTpuSettings::VT_HARDWARE_CLUSTER_IDS, hardware_cluster_ids);
+  }
   explicit EdgeTpuSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1874,8 +1898,10 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(
     flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec = 0,
     flatbuffers::Offset<flatbuffers::String> model_token = 0,
     tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type = tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED,
-    tflite::EdgeTpuSettings_::QosClass qos_class = tflite::EdgeTpuSettings_::QosClass_QOS_UNDEFINED) {
+    tflite::EdgeTpuSettings_::QosClass qos_class = tflite::EdgeTpuSettings_::QosClass_QOS_UNDEFINED,
+    flatbuffers::Offset<flatbuffers::Vector<int32_t>> hardware_cluster_ids = 0) {
   EdgeTpuSettingsBuilder builder_(_fbb);
+  builder_.add_hardware_cluster_ids(hardware_cluster_ids);
   builder_.add_qos_class(qos_class);
   builder_.add_float_truncation_type(float_truncation_type);
   builder_.add_model_token(model_token);
@@ -1894,9 +1920,11 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettingsDirect(
     flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec = 0,
     const char *model_token = nullptr,
     tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type = tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED,
-    tflite::EdgeTpuSettings_::QosClass qos_class = tflite::EdgeTpuSettings_::QosClass_QOS_UNDEFINED) {
+    tflite::EdgeTpuSettings_::QosClass qos_class = tflite::EdgeTpuSettings_::QosClass_QOS_UNDEFINED,
+    const std::vector<int32_t> *hardware_cluster_ids = nullptr) {
   auto inactive_power_configs__ = inactive_power_configs ? _fbb.CreateVector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>(*inactive_power_configs) : 0;
   auto model_token__ = model_token ? _fbb.CreateString(model_token) : 0;
+  auto hardware_cluster_ids__ = hardware_cluster_ids ? _fbb.CreateVector<int32_t>(*hardware_cluster_ids) : 0;
   return tflite::CreateEdgeTpuSettings(
       _fbb,
       inference_power_state,
@@ -1905,7 +1933,8 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettingsDirect(
       edgetpu_device_spec,
       model_token__,
       float_truncation_type,
-      qos_class);
+      qos_class,
+      hardware_cluster_ids__);
 }
 
 flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -2408,6 +2437,7 @@ struct BenchmarkResultT : public flatbuffers::NativeTable {
   int32_t max_memory_kb = 0;
   bool ok = false;
   std::vector<std::unique_ptr<tflite::BenchmarkMetricT>> metrics{};
+  std::vector<std::unique_ptr<tflite::BenchmarkResult_::InferenceOutputT>> actual_output{};
   BenchmarkResultT() = default;
   BenchmarkResultT(const BenchmarkResultT &o);
   BenchmarkResultT(BenchmarkResultT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -2422,7 +2452,8 @@ struct BenchmarkResult FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_INFERENCE_TIME_US = 6,
     VT_MAX_MEMORY_KB = 8,
     VT_OK = 10,
-    VT_METRICS = 12
+    VT_METRICS = 12,
+    VT_ACTUAL_OUTPUT = 14
   };
   const flatbuffers::Vector<int64_t> *initialization_time_us() const {
     return GetPointer<const flatbuffers::Vector<int64_t> *>(VT_INITIALIZATION_TIME_US);
@@ -2439,6 +2470,9 @@ struct BenchmarkResult FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<flatbuffers::Offset<tflite::BenchmarkMetric>> *metrics() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::BenchmarkMetric>> *>(VT_METRICS);
   }
+  const flatbuffers::Vector<flatbuffers::Offset<tflite::BenchmarkResult_::InferenceOutput>> *actual_output() const {
+    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::BenchmarkResult_::InferenceOutput>> *>(VT_ACTUAL_OUTPUT);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_INITIALIZATION_TIME_US) &&
@@ -2450,6 +2484,9 @@ struct BenchmarkResult FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyOffset(verifier, VT_METRICS) &&
            verifier.VerifyVector(metrics()) &&
            verifier.VerifyVectorOfTables(metrics()) &&
+           VerifyOffset(verifier, VT_ACTUAL_OUTPUT) &&
+           verifier.VerifyVector(actual_output()) &&
+           verifier.VerifyVectorOfTables(actual_output()) &&
            verifier.EndTable();
   }
   BenchmarkResultT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2476,6 +2513,9 @@ struct BenchmarkResultBuilder {
   void add_metrics(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::BenchmarkMetric>>> metrics) {
     fbb_.AddOffset(BenchmarkResult::VT_METRICS, metrics);
   }
+  void add_actual_output(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::BenchmarkResult_::InferenceOutput>>> actual_output) {
+    fbb_.AddOffset(BenchmarkResult::VT_ACTUAL_OUTPUT, actual_output);
+  }
   explicit BenchmarkResultBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2493,8 +2533,10 @@ inline flatbuffers::Offset<BenchmarkResult> CreateBenchmarkResult(
     flatbuffers::Offset<flatbuffers::Vector<int64_t>> inference_time_us = 0,
     int32_t max_memory_kb = 0,
     bool ok = false,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::BenchmarkMetric>>> metrics = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::BenchmarkMetric>>> metrics = 0,
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::BenchmarkResult_::InferenceOutput>>> actual_output = 0) {
   BenchmarkResultBuilder builder_(_fbb);
+  builder_.add_actual_output(actual_output);
   builder_.add_metrics(metrics);
   builder_.add_max_memory_kb(max_memory_kb);
   builder_.add_inference_time_us(inference_time_us);
@@ -2509,20 +2551,89 @@ inline flatbuffers::Offset<BenchmarkResult> CreateBenchmarkResultDirect(
     const std::vector<int64_t> *inference_time_us = nullptr,
     int32_t max_memory_kb = 0,
     bool ok = false,
-    const std::vector<flatbuffers::Offset<tflite::BenchmarkMetric>> *metrics = nullptr) {
+    const std::vector<flatbuffers::Offset<tflite::BenchmarkMetric>> *metrics = nullptr,
+    const std::vector<flatbuffers::Offset<tflite::BenchmarkResult_::InferenceOutput>> *actual_output = nullptr) {
   auto initialization_time_us__ = initialization_time_us ? _fbb.CreateVector<int64_t>(*initialization_time_us) : 0;
   auto inference_time_us__ = inference_time_us ? _fbb.CreateVector<int64_t>(*inference_time_us) : 0;
   auto metrics__ = metrics ? _fbb.CreateVector<flatbuffers::Offset<tflite::BenchmarkMetric>>(*metrics) : 0;
+  auto actual_output__ = actual_output ? _fbb.CreateVector<flatbuffers::Offset<tflite::BenchmarkResult_::InferenceOutput>>(*actual_output) : 0;
   return tflite::CreateBenchmarkResult(
       _fbb,
       initialization_time_us__,
       inference_time_us__,
       max_memory_kb,
       ok,
-      metrics__);
+      metrics__,
+      actual_output__);
 }
 
 flatbuffers::Offset<BenchmarkResult> CreateBenchmarkResult(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkResultT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+namespace BenchmarkResult_ {
+
+struct InferenceOutputT : public flatbuffers::NativeTable {
+  typedef InferenceOutput TableType;
+  std::vector<uint8_t> value{};
+};
+
+struct InferenceOutput FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef InferenceOutputT NativeTableType;
+  typedef InferenceOutputBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_VALUE = 4
+  };
+  const flatbuffers::Vector<uint8_t> *value() const {
+    return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_VALUE);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_VALUE) &&
+           verifier.VerifyVector(value()) &&
+           verifier.EndTable();
+  }
+  InferenceOutputT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(InferenceOutputT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<InferenceOutput> Pack(flatbuffers::FlatBufferBuilder &_fbb, const InferenceOutputT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct InferenceOutputBuilder {
+  typedef InferenceOutput Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_value(flatbuffers::Offset<flatbuffers::Vector<uint8_t>> value) {
+    fbb_.AddOffset(InferenceOutput::VT_VALUE, value);
+  }
+  explicit InferenceOutputBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  flatbuffers::Offset<InferenceOutput> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<InferenceOutput>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<InferenceOutput> CreateInferenceOutput(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> value = 0) {
+  InferenceOutputBuilder builder_(_fbb);
+  builder_.add_value(value);
+  return builder_.Finish();
+}
+
+inline flatbuffers::Offset<InferenceOutput> CreateInferenceOutputDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    const std::vector<uint8_t> *value = nullptr) {
+  auto value__ = value ? _fbb.CreateVector<uint8_t>(*value) : 0;
+  return tflite::BenchmarkResult_::CreateInferenceOutput(
+      _fbb,
+      value__);
+}
+
+flatbuffers::Offset<InferenceOutput> CreateInferenceOutput(flatbuffers::FlatBufferBuilder &_fbb, const InferenceOutputT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+}  // namespace BenchmarkResult_
 
 struct ErrorCodeT : public flatbuffers::NativeTable {
   typedef ErrorCode TableType;
@@ -4083,7 +4194,8 @@ inline bool operator==(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs)
       ((lhs.edgetpu_device_spec == rhs.edgetpu_device_spec) || (lhs.edgetpu_device_spec && rhs.edgetpu_device_spec && *lhs.edgetpu_device_spec == *rhs.edgetpu_device_spec)) &&
       (lhs.model_token == rhs.model_token) &&
       (lhs.float_truncation_type == rhs.float_truncation_type) &&
-      (lhs.qos_class == rhs.qos_class);
+      (lhs.qos_class == rhs.qos_class) &&
+      (lhs.hardware_cluster_ids == rhs.hardware_cluster_ids);
 }
 
 inline bool operator!=(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs) {
@@ -4097,7 +4209,8 @@ inline EdgeTpuSettingsT::EdgeTpuSettingsT(const EdgeTpuSettingsT &o)
         edgetpu_device_spec((o.edgetpu_device_spec) ? new tflite::EdgeTpuDeviceSpecT(*o.edgetpu_device_spec) : nullptr),
         model_token(o.model_token),
         float_truncation_type(o.float_truncation_type),
-        qos_class(o.qos_class) {
+        qos_class(o.qos_class),
+        hardware_cluster_ids(o.hardware_cluster_ids) {
   inactive_power_configs.reserve(o.inactive_power_configs.size());
   for (const auto &v : o.inactive_power_configs) { inactive_power_configs.emplace_back((v) ? new tflite::EdgeTpuInactivePowerConfigT(*v) : nullptr); }
 }
@@ -4110,6 +4223,7 @@ inline EdgeTpuSettingsT &EdgeTpuSettingsT::operator=(EdgeTpuSettingsT o) FLATBUF
   std::swap(model_token, o.model_token);
   std::swap(float_truncation_type, o.float_truncation_type);
   std::swap(qos_class, o.qos_class);
+  std::swap(hardware_cluster_ids, o.hardware_cluster_ids);
   return *this;
 }
 
@@ -4129,6 +4243,7 @@ inline void EdgeTpuSettings::UnPackTo(EdgeTpuSettingsT *_o, const flatbuffers::r
   { auto _e = model_token(); if (_e) _o->model_token = _e->str(); }
   { auto _e = float_truncation_type(); _o->float_truncation_type = _e; }
   { auto _e = qos_class(); _o->qos_class = _e; }
+  { auto _e = hardware_cluster_ids(); if (_e) { _o->hardware_cluster_ids.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->hardware_cluster_ids[_i] = _e->Get(_i); } } }
 }
 
 inline flatbuffers::Offset<EdgeTpuSettings> EdgeTpuSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -4146,6 +4261,7 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::F
   auto _model_token = _o->model_token.empty() ? 0 : _fbb.CreateString(_o->model_token);
   auto _float_truncation_type = _o->float_truncation_type;
   auto _qos_class = _o->qos_class;
+  auto _hardware_cluster_ids = _o->hardware_cluster_ids.size() ? _fbb.CreateVector(_o->hardware_cluster_ids) : 0;
   return tflite::CreateEdgeTpuSettings(
       _fbb,
       _inference_power_state,
@@ -4154,7 +4270,8 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::F
       _edgetpu_device_spec,
       _model_token,
       _float_truncation_type,
-      _qos_class);
+      _qos_class,
+      _hardware_cluster_ids);
 }
 
 
@@ -4450,7 +4567,8 @@ inline bool operator==(const BenchmarkResultT &lhs, const BenchmarkResultT &rhs)
       (lhs.inference_time_us == rhs.inference_time_us) &&
       (lhs.max_memory_kb == rhs.max_memory_kb) &&
       (lhs.ok == rhs.ok) &&
-      (lhs.metrics == rhs.metrics);
+      (lhs.metrics == rhs.metrics) &&
+      (lhs.actual_output == rhs.actual_output);
 }
 
 inline bool operator!=(const BenchmarkResultT &lhs, const BenchmarkResultT &rhs) {
@@ -4465,6 +4583,8 @@ inline BenchmarkResultT::BenchmarkResultT(const BenchmarkResultT &o)
         ok(o.ok) {
   metrics.reserve(o.metrics.size());
   for (const auto &v : o.metrics) { metrics.emplace_back((v) ? new tflite::BenchmarkMetricT(*v) : nullptr); }
+  actual_output.reserve(o.actual_output.size());
+  for (const auto &v : o.actual_output) { actual_output.emplace_back((v) ? new tflite::BenchmarkResult_::InferenceOutputT(*v) : nullptr); }
 }
 
 inline BenchmarkResultT &BenchmarkResultT::operator=(BenchmarkResultT o) FLATBUFFERS_NOEXCEPT {
@@ -4473,6 +4593,7 @@ inline BenchmarkResultT &BenchmarkResultT::operator=(BenchmarkResultT o) FLATBUF
   std::swap(max_memory_kb, o.max_memory_kb);
   std::swap(ok, o.ok);
   std::swap(metrics, o.metrics);
+  std::swap(actual_output, o.actual_output);
   return *this;
 }
 
@@ -4490,6 +4611,7 @@ inline void BenchmarkResult::UnPackTo(BenchmarkResultT *_o, const flatbuffers::r
   { auto _e = max_memory_kb(); _o->max_memory_kb = _e; }
   { auto _e = ok(); _o->ok = _e; }
   { auto _e = metrics(); if (_e) { _o->metrics.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { if(_o->metrics[_i]) { _e->Get(_i)->UnPackTo(_o->metrics[_i].get(), _resolver); } else { _o->metrics[_i] = std::unique_ptr<tflite::BenchmarkMetricT>(_e->Get(_i)->UnPack(_resolver)); }; } } }
+  { auto _e = actual_output(); if (_e) { _o->actual_output.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { if(_o->actual_output[_i]) { _e->Get(_i)->UnPackTo(_o->actual_output[_i].get(), _resolver); } else { _o->actual_output[_i] = std::unique_ptr<tflite::BenchmarkResult_::InferenceOutputT>(_e->Get(_i)->UnPack(_resolver)); }; } } }
 }
 
 inline flatbuffers::Offset<BenchmarkResult> BenchmarkResult::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkResultT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -4505,14 +4627,57 @@ inline flatbuffers::Offset<BenchmarkResult> CreateBenchmarkResult(flatbuffers::F
   auto _max_memory_kb = _o->max_memory_kb;
   auto _ok = _o->ok;
   auto _metrics = _o->metrics.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::BenchmarkMetric>> (_o->metrics.size(), [](size_t i, _VectorArgs *__va) { return CreateBenchmarkMetric(*__va->__fbb, __va->__o->metrics[i].get(), __va->__rehasher); }, &_va ) : 0;
+  auto _actual_output = _o->actual_output.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::BenchmarkResult_::InferenceOutput>> (_o->actual_output.size(), [](size_t i, _VectorArgs *__va) { return CreateInferenceOutput(*__va->__fbb, __va->__o->actual_output[i].get(), __va->__rehasher); }, &_va ) : 0;
   return tflite::CreateBenchmarkResult(
       _fbb,
       _initialization_time_us,
       _inference_time_us,
       _max_memory_kb,
       _ok,
-      _metrics);
+      _metrics,
+      _actual_output);
 }
+
+namespace BenchmarkResult_ {
+
+
+inline bool operator==(const InferenceOutputT &lhs, const InferenceOutputT &rhs) {
+  return
+      (lhs.value == rhs.value);
+}
+
+inline bool operator!=(const InferenceOutputT &lhs, const InferenceOutputT &rhs) {
+    return !(lhs == rhs);
+}
+
+
+inline InferenceOutputT *InferenceOutput::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<InferenceOutputT>(new InferenceOutputT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void InferenceOutput::UnPackTo(InferenceOutputT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = value(); if (_e) { _o->value.resize(_e->size()); std::copy(_e->begin(), _e->end(), _o->value.begin()); } }
+}
+
+inline flatbuffers::Offset<InferenceOutput> InferenceOutput::Pack(flatbuffers::FlatBufferBuilder &_fbb, const InferenceOutputT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateInferenceOutput(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<InferenceOutput> CreateInferenceOutput(flatbuffers::FlatBufferBuilder &_fbb, const InferenceOutputT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const InferenceOutputT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _value = _o->value.size() ? _fbb.CreateVector(_o->value) : 0;
+  return tflite::BenchmarkResult_::CreateInferenceOutput(
+      _fbb,
+      _value);
+}
+
+}  // namespace BenchmarkResult_
 
 
 inline bool operator==(const ErrorCodeT &lhs, const ErrorCodeT &rhs) {

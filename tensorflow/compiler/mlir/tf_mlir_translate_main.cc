@@ -155,10 +155,10 @@ int main(int argc, char** argv) {
     // Processes the memory buffer with a new MLIRContext.
     auto processBuffer = [&](std::unique_ptr<llvm::MemoryBuffer> ownedBuffer,
                              llvm::raw_ostream& os) {
-      llvm::SourceMgr sourceMgr;
-      sourceMgr.AddNewSourceBuffer(std::move(ownedBuffer), llvm::SMLoc());
+      auto sourceMgr = std::make_shared<llvm::SourceMgr>();
+      sourceMgr->AddNewSourceBuffer(std::move(ownedBuffer), llvm::SMLoc());
       mlir::MLIRContext context;
-      mlir::SourceMgrDiagnosticHandler diagnostic_handler(sourceMgr, &context);
+      mlir::SourceMgrDiagnosticHandler diagnostic_handler(*sourceMgr, &context);
       return (*requested_translation)(sourceMgr, os, &context);
     };
 

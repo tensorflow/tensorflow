@@ -49,9 +49,11 @@ void RegisterXlaRuntimeTestlibDialects(DialectRegistry& dialects) {
 
 void CreateXlaRuntimeTestlibPipeline(PassManager& passes) {
   passes->addPass(mlir::createConvertSCFToCFPass());
+  passes->addPass(mlir::createAsyncFuncToAsyncRuntimePass());
 
   // Export functions to the XLA runtime.
   passes->addPass(CreateExportRuntimeFunctionsPass());
+  passes->addPass(CreateConvertCustomCallsPass());
   passes->addPass(CreateConvertAssertsPass());
 
   // Lower from high level async operations to async runtime.
@@ -68,7 +70,7 @@ void CreateXlaRuntimeTestlibPipeline(PassManager& passes) {
   passes->addPass(mlir::createConvertAsyncToLLVMPass());
 
   // Convert everything else to LLVM dialect.
-  passes->addPass(mlir::createMemRefToLLVMConversionPass());
+  passes->addPass(mlir::createFinalizeMemRefToLLVMConversionPass());
   passes->addPass(mlir::createConvertFuncToLLVMPass());
   passes->addPass(mlir::createReconcileUnrealizedCastsPass());
 

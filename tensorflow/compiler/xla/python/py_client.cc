@@ -15,13 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/py_client.h"
 
+#include <exception>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/numbers.h"
+#include "tensorflow/compiler/xla/python/ifrt/client.h"
 #include "tensorflow/compiler/xla/pjrt/host_callback.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -48,14 +52,11 @@ namespace xla {
 
 namespace py = pybind11;
 
-PyClient::PyClient(std::unique_ptr<PjRtClient> pjrt_client)
-    : PyClient(std::shared_ptr<PjRtClient>(std::move(pjrt_client))) {}
-
-PyClient::PyClient(std::shared_ptr<PjRtClient> pjrt_client)
-    : pjrt_client_(std::move(pjrt_client)) {
-  CHECK(pjrt_client_ != nullptr);
-  buffers_.resize(pjrt_client_->device_count());
-  for (PjRtDevice* device : pjrt_client_->addressable_devices()) {
+PyClient::PyClient(std::shared_ptr<ifrt::Client> ifrt_client)
+    : ifrt_client_(std::move(ifrt_client)) {
+  CHECK(ifrt_client_);
+  buffers_.resize(ifrt_client_->device_count());
+  for (ifrt::Device* device : ifrt_client_->addressable_devices()) {
     if (device->id() >= buffers_.size()) {
       buffers_.resize(device->id() + 1);
     }
@@ -64,12 +65,12 @@ PyClient::PyClient(std::shared_ptr<PjRtClient> pjrt_client)
 
 PyClient::~PyClient() {
   py::gil_scoped_release gil;
-  pjrt_client_ = nullptr;
+  ifrt_client_ = nullptr;
 }
 
 std::vector<ClientAndPtr<PjRtDevice>> PyClient::Devices() {
   std::vector<ClientAndPtr<PjRtDevice>> devices;
-  auto span = pjrt_client_->devices();
+  auto span = ifrt_client_->devices();
   devices.reserve(span.size());
   for (PjRtDevice* device : span) {
     devices.push_back(WrapWithClient(shared_from_this(), device));
@@ -79,8 +80,8 @@ std::vector<ClientAndPtr<PjRtDevice>> PyClient::Devices() {
 
 std::vector<ClientAndPtr<PjRtDevice>> PyClient::LocalDevices() {
   std::vector<ClientAndPtr<PjRtDevice>> devices;
-  devices.reserve(pjrt_client_->addressable_devices().size());
-  for (PjRtDevice* device : pjrt_client_->addressable_devices()) {
+  devices.reserve(ifrt_client_->addressable_devices().size());
+  for (ifrt::Device* device : ifrt_client_->addressable_devices()) {
     devices.push_back(WrapWithClient(shared_from_this(), device));
   }
   return devices;
@@ -129,92 +130,106 @@ std::vector<std::shared_ptr<PyLoadedExecutable>> PyClient::LiveExecutables() {
 
 Status PyClient::Defragment() {
   CHECK(PyGILState_Check());
-  switch (pjrt_client_->runtime_type()) {
-    case PjRtRuntimeType::kTfrt:
-      return pjrt_client_->Defragment();
-    case PjRtRuntimeType::kStreamExecutor:
-      struct TmpBuffer {
-        // TODO(skyewm): Arrays create multiple PyBuffers for the same
-        // PjRtBuffer when Array._arrays is called.  This should theoretically
-        // be a single possibly-null PyBuffer* for Arrays.
-        std::vector<PyBuffer*> py_buffers;
-        // Non-empty for buffers found in an PyArray_Storage. Multiple Arrays
-        // can reference the same PjRtBuffer.
-        std::vector<std::shared_ptr<PjRtBuffer>*> pjrt_buffer_ptrs;
-        // TODO(skyewm): maybe use py_buffer's HostValue
-        std::shared_ptr<Literal> host_copy;
-      };
+  auto runtime_type = ifrt_client_->runtime_type();
+  if (runtime_type == PjRtRuntimeTypeString(PjRtRuntimeType::kTfrt)) {
+    return pjrt_client()->Defragment();
+  } else if (runtime_type ==
+             PjRtRuntimeTypeString(PjRtRuntimeType::kStreamExecutor)) {
+    struct TmpBuffer {
+      // TODO(skyewm): Arrays create multiple PyBuffers for the same
+      // PjRtBuffer when Array._arrays is called.  This should theoretically
+      // be a single possibly-null PyBuffer* for Arrays.
+      std::vector<PyBuffer*> py_buffers;
+      // Non-empty for buffers found in a PyArray_Storage. Multiple Arrays
+      // can reference the same PjRtBuffer.
+      std::vector<std::shared_ptr<PjRtBuffer>*> pjrt_buffer_ptrs;
+      // TODO(skyewm): maybe use py_buffer's HostValue
+      std::shared_ptr<Literal> host_copy;
+    };
 
-      // Synchronously copy all buffers to host
-      absl::flat_hash_map<PjRtBuffer*, TmpBuffer> pjrt_buf_to_tmp_buffer;
-      for (PyBuffer* device_buffers : buffers_) {
-        for (PyBuffer* buffer = device_buffers; buffer;
-             buffer = buffer->next_) {
-          if (buffer->is_deleted()) {
-            continue;
-          }
-          auto [iter, inserted] =
-              pjrt_buf_to_tmp_buffer.insert({buffer->buffer(), TmpBuffer()});
-          if (inserted) {
-            TF_ASSIGN_OR_RETURN(iter->second.host_copy,
-                                buffer->buffer_->ToLiteralSync());
-          }
-          iter->second.py_buffers.push_back(buffer);
+    // Synchronously copy all buffers to host
+    absl::flat_hash_map<PjRtBuffer*, TmpBuffer> pjrt_buf_to_tmp_buffer;
+    for (PyBuffer* device_buffers : buffers_) {
+      for (PyBuffer* buffer = device_buffers; buffer; buffer = buffer->next_) {
+        if (buffer->is_deleted()) {
+          continue;
         }
-      }
-
-      for (PyArray_Storage* array = arrays_; array; array = array->next) {
-        for (int i = 0; i < array->pjrt_buffers.size(); ++i) {
-          std::shared_ptr<PjRtBuffer>& pjrt_buf_ptr = array->pjrt_buffers[i];
-          if (pjrt_buf_ptr->IsDeleted()) {
-            continue;
-          }
-          auto [iter, inserted] =
-              pjrt_buf_to_tmp_buffer.insert({pjrt_buf_ptr.get(), TmpBuffer()});
-          if (inserted) {
-            TF_ASSIGN_OR_RETURN(iter->second.host_copy,
-                                pjrt_buf_ptr->ToLiteralSync());
-          }
-          iter->second.pjrt_buffer_ptrs.push_back(&pjrt_buf_ptr);
+        auto [iter, inserted] =
+            pjrt_buf_to_tmp_buffer.insert({buffer->pjrt_buffer(), TmpBuffer()});
+        if (inserted) {
+          TF_ASSIGN_OR_RETURN(iter->second.host_copy,
+                              buffer->pjrt_buffer()->ToLiteralSync());
         }
+        iter->second.py_buffers.push_back(buffer);
       }
+    }
 
-      // All buffers successfully copied to host, delete on-device copies.
-      //
-      // Use blocking delete operation to ensure all memory is actually cleared
-      // before we start rewriting buffers.
-      //
-      // Die instead of returning a bad status because program presumably can't
-      // continue if we fail to reconstitute device buffers.
-      for (const auto& it : pjrt_buf_to_tmp_buffer) {
-        PjRtBuffer* pjrt_buf = it.first;
-        TF_CHECK_OK(tensorflow::down_cast<PjRtStreamExecutorBuffer*>(pjrt_buf)
-                        ->Release(/*wait_for_operations_to_complete=*/true)
-                        .status());
+    for (PyArray_Storage* array = arrays_; array; array = array->next) {
+      // TODO(hyeontaek): Support non-PjRt Arrays.
+      // TODO(hyeontaek): Re-construct ifrt::Array with new PjRtBuffer so that
+      // std::shared_ptr<PjRtBuffer> does not need to be updated in-place.
+      if (array->ifrt_array == nullptr) {
+        continue;
       }
-
-      // Copy host copies back to device and update PyBuffers in-place.
-      for (auto& it : pjrt_buf_to_tmp_buffer) {
-        PjRtBuffer* pjrt_buf = it.first;
-        TmpBuffer& tmp_buffer = it.second;
-        std::unique_ptr<PjRtBuffer> new_copy =
-            pjrt_client_
-                ->BufferFromHostLiteral(*tmp_buffer.host_copy,
-                                        pjrt_buf->device())
-                .value();
-        TF_CHECK_OK(new_copy->BlockHostUntilReady());
-
-        std::shared_ptr<PjRtBuffer> new_pjrt_buf_ptr(new_copy.release());
-        for (PyBuffer* py_buffer : tmp_buffer.py_buffers) {
-          py_buffer->buffer_ = new_pjrt_buf_ptr;
+      auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(
+          array->ifrt_array.get());
+      if (arr == nullptr) {
+        throw XlaRuntimeError(
+            "This operation is implemented for a PjRt-compatible backend "
+            "only.");
+      }
+      TF_ASSIGN_OR_RETURN(absl::Span<std::shared_ptr<PjRtBuffer>> pjrt_buffers,
+                          arr->mutable_pjrt_buffers());
+      for (int i = 0; i < pjrt_buffers.size(); ++i) {
+        std::shared_ptr<PjRtBuffer>& pjrt_buf_ptr = pjrt_buffers[i];
+        if (pjrt_buf_ptr->IsDeleted()) {
+          continue;
         }
-        for (std::shared_ptr<PjRtBuffer>* pjrt_buffer_ptr :
-             tmp_buffer.pjrt_buffer_ptrs) {
-          *pjrt_buffer_ptr = new_pjrt_buf_ptr;
+        auto [iter, inserted] =
+            pjrt_buf_to_tmp_buffer.insert({pjrt_buf_ptr.get(), TmpBuffer()});
+        if (inserted) {
+          TF_ASSIGN_OR_RETURN(iter->second.host_copy,
+                              pjrt_buf_ptr->ToLiteralSync());
         }
+        iter->second.pjrt_buffer_ptrs.push_back(&pjrt_buf_ptr);
       }
+    }
 
-      // TODO(skyewm): delete executables?
+    // All buffers successfully copied to host, delete on-device copies.
+    //
+    // Use blocking delete operation to ensure all memory is actually cleared
+    // before we start rewriting buffers.
+    //
+    // Die instead of returning a bad status because program presumably can't
+    // continue if we fail to reconstitute device buffers.
+    for (const auto& it : pjrt_buf_to_tmp_buffer) {
+      PjRtBuffer* pjrt_buf = it.first;
+      TF_CHECK_OK(tensorflow::down_cast<PjRtStreamExecutorBuffer*>(pjrt_buf)
+                      ->Release(/*wait_for_operations_to_complete=*/true)
+                      .status());
+    }
+
+    // Copy host copies back to device and update PyBuffers in-place.
+    for (auto& it : pjrt_buf_to_tmp_buffer) {
+      PjRtBuffer* pjrt_buf = it.first;
+      TmpBuffer& tmp_buffer = it.second;
+      std::unique_ptr<PjRtBuffer> new_copy =
+          pjrt_client()
+              ->BufferFromHostLiteral(*tmp_buffer.host_copy, pjrt_buf->device())
+              .value();
+      TF_CHECK_OK(new_copy->BlockHostUntilReady());
+
+      std::shared_ptr<PjRtBuffer> new_pjrt_buf_ptr(new_copy.release());
+      for (PyBuffer* py_buffer : tmp_buffer.py_buffers) {
+        py_buffer->SetPjRtBuffer(new_pjrt_buf_ptr);
+      }
+      for (std::shared_ptr<PjRtBuffer>* pjrt_buffer_ptr :
+           tmp_buffer.pjrt_buffer_ptrs) {
+        *pjrt_buffer_ptr = new_pjrt_buf_ptr;
+      }
+    }
+
+    // TODO(skyewm): delete executables?
   }
   return OkStatus();
 }
@@ -223,7 +238,7 @@ StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
 PyClient::GetDefaultDeviceAssignment(int num_replicas, int num_partitions) {
   TF_ASSIGN_OR_RETURN(
       DeviceAssignment device_assignment,
-      pjrt_client_->GetDefaultDeviceAssignment(num_replicas, num_partitions));
+      ifrt_client_->GetDefaultDeviceAssignment(num_replicas, num_partitions));
   std::vector<std::vector<ClientAndPtr<PjRtDevice>>> result;
   result.resize(num_replicas);
   for (int r = 0; r < num_replicas; ++r) {
@@ -231,7 +246,7 @@ PyClient::GetDefaultDeviceAssignment(int num_replicas, int num_partitions) {
     for (int p = 0; p < num_partitions; ++p) {
       int device_id = device_assignment(r, p);
       TF_ASSIGN_OR_RETURN(PjRtDevice * device,
-                          pjrt_client_->LookupDevice(device_id));
+                          ifrt_client_->LookupDevice(device_id));
       result[r][p] = WrapWithClient(shared_from_this(), device);
     }
   }
@@ -241,13 +256,13 @@ PyClient::GetDefaultDeviceAssignment(int num_replicas, int num_partitions) {
 StatusOr<std::vector<ClientAndPtr<PjRtDevice>>>
 PyClient::GetDefaultDeviceAssignment1D(int num_replicas) {
   TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
-                      pjrt_client_->GetDefaultDeviceAssignment(
+                      ifrt_client_->GetDefaultDeviceAssignment(
                           num_replicas, /*num_partitions=*/1));
   std::vector<ClientAndPtr<PjRtDevice>> result;
   for (int i = 0; i < num_replicas; ++i) {
     int device_id = device_assignment(i, 0);
     TF_ASSIGN_OR_RETURN(PjRtDevice * device,
-                        pjrt_client_->LookupDevice(device_id));
+                        ifrt_client_->LookupDevice(device_id));
     result.push_back(WrapWithClient(shared_from_this(), device));
   }
   return result;
@@ -255,10 +270,11 @@ PyClient::GetDefaultDeviceAssignment1D(int num_replicas) {
 
 StatusOr<py::object> PyClient::BufferFromPyval(
     pybind11::handle argument, PjRtDevice* device, bool force_copy,
-    PjRtClient::HostBufferSemantics host_buffer_semantics) {
+    ifrt::Client::HostBufferSemantics host_buffer_semantics,
+    bool use_jax_array) {
   if (device == nullptr) {
-    TF_RET_CHECK(!pjrt_client_->addressable_devices().empty());
-    device = pjrt_client_->addressable_devices().front();
+    TF_RET_CHECK(!ifrt_client_->addressable_devices().empty());
+    device = ifrt_client_->addressable_devices().front();
   }
   CHECK(device != nullptr);
 
@@ -285,11 +301,11 @@ StatusOr<py::object> PyClient::BufferFromPyval(
       jax::ApplyTransferGuardToHostToDevice(transfer_guard_formatter));
 
   TF_ASSIGN_OR_RETURN(PjRtDevice * found_device,
-                      pjrt_client_->LookupDevice(device->id()));
+                      ifrt_client_->LookupDevice(device->id()));
   if (found_device != device) {
     return InvalidArgument("Cannot copy value to device '%s' with '%s' backend",
                            device->DebugString(),
-                           pjrt_client_->platform_name());
+                           ifrt_client_->platform_name());
   }
   GlobalPyRefManager()->CollectGarbage();
 
@@ -297,14 +313,20 @@ StatusOr<py::object> PyClient::BufferFromPyval(
   options.squash_64bit_types = false;
   options.allow_zero_copy =
       (!force_copy &&
-       (host_buffer_semantics == PjRtClient::HostBufferSemantics::kZeroCopy));
+       (host_buffer_semantics == ifrt::Client::HostBufferSemantics::kZeroCopy));
   TF_ASSIGN_OR_RETURN(DevicePutResult put,
-                      DevicePut(argument, device, options));
+                      DevicePut(argument, ifrt_client_.get(), device, options));
 
-  if (put.owned_buffer) {
+  if (put.ifrt_array) {
     auto traceback = Traceback::Get();
-    return PyBuffer::Make(shared_from_this(), std::move(put.owned_buffer),
-                          std::move(traceback));
+    if (use_jax_array) {
+      return PyArray::MakeFromSingleDevice(shared_from_this(), traceback,
+                                           std::move(put.ifrt_array),
+                                           put.weak_type, false);
+    } else {
+      return PyBuffer::Make(shared_from_this(), std::move(put.ifrt_array),
+                            std::move(traceback));
+    }
   } else {
     return py::reinterpret_borrow<py::object>(put.owning_pybuffer);
   }
@@ -319,7 +341,7 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
   bool done = false;
 
   TF_ASSIGN_OR_RETURN(
-      auto buffers, pjrt_client_->MakeCrossHostReceiveBuffers(
+      auto buffers, pjrt_client()->MakeCrossHostReceiveBuffers(
                         shapes, device,
                         [&done, &recv_descriptors_or,
                          &mu](StatusOr<PjRtCrossHostRecvState> recv_state_or) {
@@ -350,73 +372,65 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
     const std::string& desc = descriptors.serialized_descriptors[0];
     pybind11::bytes py_desc = pybind11::bytes(desc);
     auto traceback = Traceback::Get();
+    auto* client =
+        llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(ifrt_client());
+    if (client == nullptr) {
+      throw XlaRuntimeError(
+          "This operation is implemented for a PjRt-compatible backend only.");
+    }
+    TF_ASSIGN_OR_RETURN(auto ifrt_array,
+                        client->CreatePjRtArray(std::move(buffers[i])));
     auto py_buf =
-        PyBuffer::Make(shared_from_this(), std::move(buffers[i]), traceback);
+        PyBuffer::Make(shared_from_this(), std::move(ifrt_array), traceback);
     result.push_back(std::make_pair(std::move(py_desc), std::move(py_buf)));
   }
   return result;
 }
 
 StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::Compile(
-    const XlaComputation& computation, CompileOptions options,
-    std::vector<pybind11::capsule> host_callbacks) {
-  std::unique_ptr<PjRtLoadedExecutable> executable;
-  std::optional<std::string> fingerprint;
-  {
-    py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(executable,
-                        pjrt_client_->Compile(computation, std::move(options)));
-    TF_ASSIGN_OR_RETURN(fingerprint,
-                        pjrt_client_->ExecutableFingerprint(*executable));
-  }
-  auto traceback = Traceback::Get();
-  return std::make_shared<PyLoadedExecutable>(
-      shared_from_this(), std::move(executable), std::move(traceback),
-      std::move(fingerprint), std::move(host_callbacks));
-}
-
-StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::CompileMlir(
     std::string mlir_module, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
-  std::unique_ptr<PjRtLoadedExecutable> executable;
+  std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable;
   std::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
     mlir::MLIRContext context;
     TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                         ParseMlirModuleString(mlir_module, context));
-    TF_ASSIGN_OR_RETURN(
-        executable, pjrt_client_->Compile(module.get(), std::move(options)));
-    TF_ASSIGN_OR_RETURN(fingerprint,
-                        pjrt_client_->ExecutableFingerprint(*executable));
+    TF_ASSIGN_OR_RETURN(ifrt_loaded_executable,
+                        ifrt_client_->GetDefaultCompiler()->Compile(
+                            module.get(), std::move(options)));
+    TF_ASSIGN_OR_RETURN(fingerprint, ifrt_loaded_executable->Fingerprint());
   }
   auto traceback = Traceback::Get();
   return std::make_shared<PyLoadedExecutable>(
-      shared_from_this(), std::move(executable), std::move(traceback),
-      std::move(fingerprint), std::move(host_callbacks));
+      shared_from_this(), std::move(ifrt_loaded_executable),
+      std::move(traceback), std::move(fingerprint), std::move(host_callbacks));
 }
 
 StatusOr<py::bytes> PyClient::SerializeExecutable(
     const PyLoadedExecutable& executable) const {
-  return pjrt_client_->SerializeExecutable(executable.pjrt_executable());
+  return executable.ifrt_loaded_executable()->Serialize();
 }
 
 StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::DeserializeExecutable(
     const std::string& serialized, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
-  std::unique_ptr<PjRtLoadedExecutable> executable;
+  std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable;
   std::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(executable, pjrt_client_->DeserializeExecutable(
-                                        serialized, std::move(options)));
-    TF_ASSIGN_OR_RETURN(fingerprint,
-                        pjrt_client_->ExecutableFingerprint(*executable));
+    TF_ASSIGN_OR_RETURN(
+        ifrt_loaded_executable,
+        ifrt_client_->GetDefaultCompiler()->DeserializeLoadedExecutable(
+            serialized, std::move(options)));
+    TF_ASSIGN_OR_RETURN(fingerprint, ifrt_loaded_executable->Fingerprint());
   }
+  TF_ASSIGN_OR_RETURN(fingerprint, ifrt_loaded_executable->Fingerprint());
   auto traceback = Traceback::Get();
   return std::make_shared<PyLoadedExecutable>(
-      shared_from_this(), std::move(executable), std::move(traceback),
-      std::move(fingerprint), std::move(host_callbacks));
+      shared_from_this(), std::move(ifrt_loaded_executable),
+      std::move(traceback), std::move(fingerprint), std::move(host_callbacks));
 }
 
 namespace {
@@ -471,24 +485,26 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
 
   for (PyBuffer* device_buffers : buffers_) {
     for (PyBuffer* buffer = device_buffers; buffer; buffer = buffer->next_) {
-      TF_RETURN_IF_ERROR(
-          add_buffer_to_profile(buffer->buffer(), buffer->traceback().get()));
+      TF_RETURN_IF_ERROR(add_buffer_to_profile(buffer->pjrt_buffer(),
+                                               buffer->traceback().get()));
     }
   }
 
   for (PyArray_Storage* array = arrays_; array; array = array->next) {
-    for (const auto& buffer : array->pjrt_buffers) {
+    if (array->ifrt_array == nullptr) {
+      continue;
+    }
+    auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(
+        array->ifrt_array.get());
+    // TODO(hyeontaek): Support non-PjRt Arrays.
+    if (arr == nullptr) {
+      throw XlaRuntimeError(
+          "This operation is implemented for a PjRt-compatible backend "
+          "only.");
+    }
+    for (const auto& buffer : arr->pjrt_buffers()) {
       TF_RETURN_IF_ERROR(
           add_buffer_to_profile(buffer.get(), array->traceback.get()));
-    }
-  }
-
-  for (auto* sharded_buffer = sharded_buffers_; sharded_buffer;
-       sharded_buffer = sharded_buffer->next_) {
-    for (int i = 0; i < sharded_buffer->num_devices(); ++i) {
-      auto* buffer = sharded_buffer->GetPjRtBuffer(i);
-      TF_RETURN_IF_ERROR(
-          add_buffer_to_profile(buffer, sharded_buffer->traceback().get()));
     }
   }
 
@@ -653,7 +669,7 @@ StatusOr<std::pair<uint64_t, pybind11::object>>
 PyClient::GetEmitPythonCallbackDescriptor(
     pybind11::function callable, absl::Span<Shape const> operand_shapes,
     absl::Span<Shape const> result_shapes) {
-  PjRtPlatformId platform_id = pjrt_client_->platform_id();
+  ifrt::PlatformId platform_id = ifrt_client_->platform_id();
   if (platform_id != GpuId() && platform_id != CpuId()) {
     return Unimplemented(
         "EmitPythonCallback is only implemented on CPU and GPU");
@@ -734,7 +750,7 @@ StatusOr<XlaOp> PyClient::EmitPythonCallbackFromDescriptor(
   Shape result_shape = ShapeUtil::MakeTupleShape(result_shapes_with_layout);
   std::string callback_str = std::to_string(descriptor);
   std::string callback_name = "xla_python_cpu_callback";
-  if (pjrt_client_->platform_id() == GpuId()) {
+  if (ifrt_client_->platform_id() == GpuId()) {
     callback_name = "xla_python_gpu_callback";
   }
   XlaOp result =

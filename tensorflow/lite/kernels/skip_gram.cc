@@ -33,8 +33,8 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/string_util.h"
@@ -98,7 +98,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
   tflite::StringRef strref = tflite::GetString(input, 0);
   int prev_idx = 0;
-  for (int i = 1; i < strref.len; i++) {
+  for (size_t i = 1; i < strref.len; i++) {
     if (isspace(*(strref.str + i))) {
       if (i > prev_idx && !isspace(*(strref.str + prev_idx))) {
         words.push_back({strref.str + prev_idx, i - prev_idx});

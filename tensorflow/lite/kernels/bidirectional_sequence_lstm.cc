@@ -18,8 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
@@ -1194,6 +1194,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           &lstm_params,
           /*forward_sequence=*/true, time_major, /*output_offset=*/0,
           fw_scratch_buffer, fw_activation_state, fw_cell_state, fw_output,
+          /*recurrent_to_input_is_diag=*/false,
+          /*recurrent_to_forget_is_diag=*/false,
+          /*recurrent_to_cell_is_diag=*/false,
+          /*recurrent_to_output_is_diag=*/false,
           CpuBackendContext::GetFromContext(context));
       TF_LITE_ENSURE_OK(context, fw_pass_status);
 
@@ -1215,7 +1219,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           &lstm_params,
           /*forward_sequence=*/false, time_major, bw_output_offset,
           bw_scratch_buffer, bw_activation_state, bw_cell_state,
-          actual_bw_output, CpuBackendContext::GetFromContext(context));
+          actual_bw_output,
+          /*recurrent_to_input_is_diag=*/false,
+          /*recurrent_to_forget_is_diag=*/false,
+          /*recurrent_to_cell_is_diag=*/false,
+          /*recurrent_to_output_is_diag=*/false,
+          CpuBackendContext::GetFromContext(context));
       TF_LITE_ENSURE_OK(context, bw_pass_status);
       return kTfLiteOk;
     }
@@ -1302,6 +1311,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           GetTemporary(context, node, kAuxInputZeroPoints),
           GetTemporary(context, node, kOutputStateZeroPoints), fw_row_sums,
           fw_row_sums_size, &op_data->compute_fw_row_sums,
+          /*recurrent_to_input_is_diag=*/false,
+          /*recurrent_to_forget_is_diag=*/false,
+          /*recurrent_to_cell_is_diag=*/false,
+          /*recurrent_to_output_is_diag=*/false,
           CpuBackendContext::GetFromContext(context));
       TF_LITE_ENSURE_OK(context, fw_pass_status);
 
@@ -1343,6 +1356,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           GetTemporary(context, node, kAuxInputZeroPoints),
           GetTemporary(context, node, kOutputStateZeroPoints), bw_row_sums,
           bw_row_sums_size, &op_data->compute_bw_row_sums,
+          /*recurrent_to_input_is_diag=*/false,
+          /*recurrent_to_forget_is_diag=*/false,
+          /*recurrent_to_cell_is_diag=*/false,
+          /*recurrent_to_output_is_diag=*/false,
           CpuBackendContext::GetFromContext(context));
       TF_LITE_ENSURE_OK(context, bw_pass_status);
       return kTfLiteOk;

@@ -168,26 +168,12 @@ Status MlirFunctionOptimizationPass::Run(
     }
   }
 
-  static const char* kTfMlirCategory = "TfMlir";
-  tensorflow::metrics::ScopedCounter<2> timings(
-      tensorflow::metrics::GetGraphOptimizationCounter(),
-      {kTfMlirCategory, "graph_analysis"});
-
-  timings.ReportAndStop();
-
   if (overall_state == MlirOptimizationPassState::Disabled) {
     if (VLOG_IS_ON(1)) {
       LOG_FIRST_N(INFO, 1)
           << "None of the MLIR Optimization Passes are enabled "
           << "(registered " << registry_->passes().size() << ")";
     }
-    // Capture stats on graph properties analyzed before running the MLIR
-    // bridge. We set `uses_uninitialized_resource_args` to false here because
-    // function optimization is not affected by uninitialized resource args.
-    // TODO(b/241853328): Remove LogGraphFeatures when fixed
-    LogGraphFeatures(**graph, flib_def, config_proto,
-                     /*uses_uninitialized_resource_args=*/false,
-                     /*is_v1_compat=*/false);
     return OkStatus();
   }
 
@@ -214,7 +200,11 @@ Status MlirFunctionOptimizationPass::Run(
   // during import is not necessary.
   import_config.enable_shape_inference = false;
 
-  timings.Reset({kTfMlirCategory, "convert_graph_to_mlir"});
+  static const char* kTfMlirCategory = "TfMlir";
+  tensorflow::metrics::ScopedCounter<2> timings(
+      tensorflow::metrics::GetGraphOptimizationCounter(),
+      {kTfMlirCategory, "convert_graph_to_mlir"});
+
   auto module_ref_status = ConvertGraphToMlir(**graph, debug_info, *flib_def,
                                               import_config, &context);
   timings.ReportAndStop();
@@ -233,15 +223,8 @@ Status MlirFunctionOptimizationPass::Run(
       std::move(module_ref_status.value());
   AddDevicesToOp(*module_ref, &device_set);
 
-  // Capture stats on graph properties analyzed before running the MLIR
-  // bridge. We set `uses_uninitialized_resource_args` to false here because
-  // function optimization is not affected by uninitialized resource args.
-  // TODO (b/241853328) Remove LogGraphFeatures when fixed
-  LogGraphFeatures(**graph, flib_def, config_proto,
-                   /*uses_uninitialized_resource_args=*/false,
-                   /*is_v1_compat=*/false);
-
   int per_pass_state_index = 0;
+  bool is_module_updated = false;
   for (auto& pass_registration : registry_->passes()) {
     llvm::StringRef name = pass_registration.pass->name();
 
@@ -253,13 +236,24 @@ Status MlirFunctionOptimizationPass::Run(
     auto pass_state = per_pass_state[per_pass_state_index++];
     if (pass_state == MlirOptimizationPassState::Enabled) {
       VLOG(2) << "Run MLIR graph optimization pass: " << StringRefToView(name);
+      VLOG(2) << "Graph #nodes " << (*graph)->num_nodes() << " #edges "
+              << (*graph)->num_edges();
       timings.Reset({kTfMlirCategory, name.str()});
       pass_status = pass_registration.pass->Run(config_proto, *module_ref,
                                                 **graph, *flib_def);
       timings.ReportAndStop();
+      if (pass_status.ok()) {
+        VLOG(2) << "Finished MLIR graph optimization pass: "
+                << StringRefToView(name);
+        VLOG(2) << "Graph #nodes " << (*graph)->num_nodes() << " #edges "
+                << (*graph)->num_edges();
+        is_module_updated = true;
+      }
     } else if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
       VLOG(2) << "Run MLIR graph optimization pass with fallback: "
               << StringRefToView(name);
+      VLOG(2) << "Graph #nodes " << (*graph)->num_nodes() << " #edges "
+              << (*graph)->num_edges();
       // Make sure when the pass is FallbackEnabled, it only modifies the MLIR
       // module in case of no failures.
       auto module_ref_clone = module_ref->clone();
@@ -268,10 +262,16 @@ Status MlirFunctionOptimizationPass::Run(
                                                 **graph, *flib_def);
       timings.ReportAndStop();
 
-      if (pass_status.ok())
+      if (pass_status.ok()) {
+        VLOG(2) << "Finished MLIR graph optimization pass with fallback: "
+                << StringRefToView(name);
+        VLOG(2) << "Graph #nodes " << (*graph)->num_nodes() << " #edges "
+                << (*graph)->num_edges();
         module_ref = module_ref_clone;
-      else
+        is_module_updated = true;
+      } else {
         module_ref_clone->destroy();
+      }
     } else {
       VLOG(2) << "MLIR graph optimization pass: " << StringRefToView(name)
               << " is disabled and will not be run.";
@@ -301,6 +301,11 @@ Status MlirFunctionOptimizationPass::Run(
     }
   }
 
+  if (!is_module_updated) {
+    VLOG(2) << "MLIR module is not updated. Using the original graph. "
+            << "Do not convert mlir module back to graph";
+    return OkStatus();
+  }
   GraphExportConfig export_config;
   absl::flat_hash_set<Node*> control_ret_nodes;
 
@@ -343,15 +348,6 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   auto pass_state =
       pass->GetPassState(options.device_set, options.session_options->config,
                          **options.graph, *options.flib_def);
-
-  // If we ever have more than one MlirV1CompatOptimization pass we need to
-  // ensure the logging only happens once per graph to avoid redundant logging
-  // (see how it is used in the MLIRFunctionOptimizationPass as an example)
-  // TODO(b/241853328): Remove LogGraphFeatures when fixed
-  LogGraphFeatures(**options.graph, options.flib_def,
-                   options.session_options->config,
-                   /*uses_uninitialized_resource_args=*/false,
-                   /*is_v1_compat=*/true);
 
   if (pass_state == MlirOptimizationPassState::Disabled) {
     LOG_FIRST_N(INFO, 1) << "MLIR V1 optimization pass is not enabled";

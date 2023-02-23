@@ -22,8 +22,8 @@ limitations under the License.
 #include <string>
 #endif  // TF_LITE_STATIC_MEMORY
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
 
@@ -297,7 +297,7 @@ TfLiteStatus GetOutputShapeFromInput(TfLiteContext* context,
                                      const TfLiteTensor* input,
                                      TfLiteIntArray** output_shape);
 
-const std::string GetShapeDebugString(const TfLiteIntArray* shape);
+std::string GetShapeDebugString(const TfLiteIntArray* shape);
 
 #endif  // !defined(TF_LITE_STATIC_MEMORY)
 

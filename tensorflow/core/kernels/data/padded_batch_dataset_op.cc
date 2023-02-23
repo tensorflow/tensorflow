@@ -297,9 +297,10 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
 
         for (int dim = 0; dim < padded_shape.dims(); ++dim) {
           if (padded_shape.dim_size(dim) == -1) {
-            batch_component_shape.AddDim(0);
+            TF_RETURN_IF_ERROR(batch_component_shape.AddDimWithStatus(0));
           } else {
-            batch_component_shape.AddDim(padded_shape.dim_size(dim));
+            TF_RETURN_IF_ERROR(batch_component_shape.AddDimWithStatus(
+                padded_shape.dim_size(dim)));
           }
         }
 
@@ -348,7 +349,8 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
         // element in the batch.
         TensorShape component_shape({});
         for (int i = 1; i < batch_component_shape.dims(); ++i) {
-          component_shape.AddDim(batch_component_shape.dim_size(i));
+          TF_RETURN_IF_ERROR(component_shape.AddDimWithStatus(
+              batch_component_shape.dim_size(i)));
         }
         auto copy_element_fn = [component_index, &batch_elements,
                                 &batch_component, &component_shape](int index) {

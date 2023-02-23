@@ -20,14 +20,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_PLATFORM_H_
 
 #include <map>
+#include <memory>
 
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/device_options.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin.h"
 #include "tensorflow/compiler/xla/stream_executor/trace_listener.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -135,7 +136,7 @@ class Platform {
   // return an error if unrecognized options are provided.  If using
   // MultiPlatformManager, this method will be called automatically by
   // InitializePlatformWithId/InitializePlatformWithName.
-  virtual port::Status Initialize(
+  virtual tsl::Status Initialize(
       const std::map<std::string, std::string>& platform_options);
 
   // Returns a populated DeviceDescription for the device at the given ordinal.
@@ -144,7 +145,7 @@ class Platform {
   //
   // Alternatively callers may call GetDeviceDescription() on the StreamExecutor
   // which returns a cached instance specific to the initialized StreamExecutor.
-  virtual port::StatusOr<std::unique_ptr<DeviceDescription>>
+  virtual tsl::StatusOr<std::unique_ptr<DeviceDescription>>
   DescriptionForDevice(int ordinal) const = 0;
 
   // Returns a device with the given ordinal on this platform with a default
@@ -154,23 +155,23 @@ class Platform {
   //
   // Ownership of the executor is NOT transferred to the caller --
   // the Platform owns the executors in a singleton-like fashion.
-  virtual port::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) = 0;
+  virtual tsl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) = 0;
 
   // Returns a device or error, as above, with the specified plugins.
   //
   // Ownership of the executor is NOT transferred to the caller.
-  virtual port::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(
+  virtual tsl::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(
       int ordinal, const PluginConfig& plugin_config) = 0;
 
   // Returns a device constructed with the options specified in "config".
   // Ownership of the executor is NOT transferred to the caller.
-  virtual port::StatusOr<StreamExecutor*> GetExecutor(
+  virtual tsl::StatusOr<StreamExecutor*> GetExecutor(
       const StreamExecutorConfig& config) = 0;
 
   // Returns a device constructed with the options specified in "config" without
   // looking in or storing to the Platform's executor cache.
   // Ownership IS transferred to the caller.
-  virtual port::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
+  virtual tsl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
       const StreamExecutorConfig& config) = 0;
 
   // Warning: this is a dangerous API and should be used with caution.
@@ -184,7 +185,7 @@ class Platform {
   // that have no reason to destroy device contexts.
   //
   // The platform must be reinitialized after this is called.
-  virtual port::Status ForceExecutorShutdown();
+  virtual tsl::Status ForceExecutorShutdown();
 
   // Registers a TraceListener to listen to all StreamExecutors for this
   // platform.
@@ -207,7 +208,7 @@ class Platform {
   // GetPeerAccessMap(). Note that calling this routine will force the creation
   // of a default-argument (see StreamExecutorConfig) StreamExecutor object for
   // each device ordinal in the system, should any not yet exist.
-  virtual port::Status EnablePeerAccess();
+  virtual tsl::Status EnablePeerAccess();
 
  protected:
   // SE_DISALLOW_COPY_AND_ASSIGN declares a constructor, which suppresses the

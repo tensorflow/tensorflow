@@ -13,8 +13,11 @@ module {
 // CHECK-NOT: func private @internal_quantize_i8
 // CHECK-NOT: func private @internal_matmul_fn
 // CHECK: func private @quantized_matmul_fn
+// CHECK-SAME: tf_quant.quantized_ops = ["MatMul"]
 // CHECK: func private @quantized_conv2d_fn
+// CHECK-SAME: tf_quant.quantized_ops = ["Conv2D"]
 // CHECK: func private @quantized_depthwise_conv2d_fn
+// CHECK-SAME: tf_quant.quantized_ops = ["DepthwiseConv2D"]
 
 // UQ-CHECK: func private @quantized_conv2d_fn
 // UQ-CHECK: func private @quantized_depthwise_conv2d_fn

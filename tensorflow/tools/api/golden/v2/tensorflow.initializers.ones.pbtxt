@@ -1,7 +1,7 @@
 path: "tensorflow.initializers.ones"
 tf_class {
-  is_instance: "<class \'keras.initializers.initializers_v2.Ones\'>"
-  is_instance: "<class \'keras.initializers.initializers_v2.Initializer\'>"
+  is_instance: "<class \'keras.initializers.initializers.Ones\'>"
+  is_instance: "<class \'keras.initializers.initializers.Initializer\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"

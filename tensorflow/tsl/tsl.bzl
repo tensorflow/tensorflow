@@ -6,7 +6,9 @@ load(
 )
 load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
+    "cc_binary",
     "cc_library",
+    "cc_shared_library",
 )
 load(
     "@local_config_tensorrt//:build_defs.bzl",
@@ -18,7 +20,7 @@ load(
     "if_rocm_is_configured",
 )
 load(
-    "//third_party/mkl:build_defs.bzl",
+    "//tensorflow/tsl/mkl:build_defs.bzl",
     "if_enable_mkl",
     "if_mkl",
 )
@@ -111,6 +113,12 @@ def if_libtpu(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
+def if_macos(a, otherwise = []):
+    return select({
+        clean_dep("//tensorflow/tsl:macos"): a,
+        "//conditions:default": otherwise,
+    })
+
 def if_windows(a, otherwise = []):
     return select({
         clean_dep("//tensorflow/tsl:windows"): a,
@@ -175,15 +183,15 @@ def if_no_default_logger(a):
 # Combine with 'if_gpu_is_configured' (XLA) or 'if_cuda_or_rocm' (otherwise).
 def if_nccl(if_true, if_false = []):
     return select({
-        "//tensorflow/tsl:no_nccl_support": if_false,
-        "//tensorflow/tsl:windows": if_false,
+        clean_dep("//tensorflow/tsl:no_nccl_support"): if_false,
+        clean_dep("//tensorflow/tsl:windows"): if_false,
         "//conditions:default": if_true,
     })
 
 def if_with_tpu_support(if_true, if_false = []):
     """Shorthand for select()ing whether to build API support for TPUs when building TSL"""
     return select({
-        "//tensorflow/tsl:with_tpu_support": if_true,
+        clean_dep("//tensorflow/tsl:with_tpu_support"): if_true,
         "//conditions:default": if_false,
     })
 
@@ -270,10 +278,11 @@ def tsl_copts(
 
 def tf_openmp_copts():
     # We assume when compiling on Linux gcc/clang will be used and MSVC on Windows
+    # TODO(zacmustin): Update OSS to use TSL's MKL.
     return select({
         # copybara:uncomment_begin
-        # "//third_party/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
-        # "//third_party/mkl:build_with_mkl_windows_openmp": ["/openmp"],
+        # "//tensorflow/tsl/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
+        # "//tensorflow/tsl/mkl:build_with_mkl_windows_openmp": ["/openmp"],
         # copybara:uncomment_end_and_comment_begin
         "@org_tensorflow//third_party/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
         "@org_tensorflow//third_party/mkl:build_with_mkl_windows_openmp": ["/openmp:llvm"],
@@ -410,7 +419,7 @@ def if_not_mobile_or_arm_or_lgpl_restricted(a):
     })
 
 def tsl_grpc_cc_dependencies():
-    return ["//tensorflow/tsl:grpc++"]
+    return [clean_dep("//tensorflow/tsl:grpc++")]
 
 # Bazel rule for collecting the header files that a target depends on.
 def _transitive_hdrs_impl(ctx):
@@ -517,3 +526,213 @@ _transitive_parameters_library = rule(
     },
     implementation = _transitive_parameters_library_impl,
 )
+
+# buildozer: disable=function-docstring-args
+def tsl_pybind_extension_opensource(
+        name,
+        srcs,
+        module_name = None,  # @unused
+        hdrs = [],
+        dynamic_deps = [],
+        static_deps = [],
+        deps = [],
+        additional_exported_symbols = [],
+        compatible_with = None,
+        copts = [],
+        data = [],
+        defines = [],
+        deprecation = None,
+        features = [],
+        licenses = None,
+        linkopts = [],
+        pytype_deps = [],
+        pytype_srcs = [],
+        restricted_to = None,
+        srcs_version = "PY3",
+        testonly = None,
+        visibility = None,
+        win_def_file = None):  # @unused
+    """Builds a generic Python extension module."""
+    p = name.rfind("/")
+    if p == -1:
+        sname = name
+        prefix = ""
+    else:
+        sname = name[p + 1:]
+        prefix = name[:p + 1]
+    so_file = "%s%s.so" % (prefix, sname)
+    filegroup_name = "%s_filegroup" % name
+    pyd_file = "%s%s.pyd" % (prefix, sname)
+    exported_symbols = [
+        "init%s" % sname,
+        "init_%s" % sname,
+        "PyInit_%s" % sname,
+    ] + additional_exported_symbols
+
+    exported_symbols_file = "%s-exported-symbols.lds" % name
+    version_script_file = "%s-version-script.lds" % name
+
+    exported_symbols_output = "\n".join(["_%s" % symbol for symbol in exported_symbols])
+    version_script_output = "\n".join([" %s;" % symbol for symbol in exported_symbols])
+
+    native.genrule(
+        name = name + "_exported_symbols",
+        outs = [exported_symbols_file],
+        cmd = "echo '%s' >$@" % exported_symbols_output,
+        output_licenses = ["unencumbered"],
+        visibility = ["//visibility:private"],
+        testonly = testonly,
+    )
+
+    native.genrule(
+        name = name + "_version_script",
+        outs = [version_script_file],
+        cmd = "echo '{global:\n%s\n local: *;};' >$@" % version_script_output,
+        output_licenses = ["unencumbered"],
+        visibility = ["//visibility:private"],
+        testonly = testonly,
+    )
+
+    if static_deps:
+        cc_library_name = so_file + "_cclib"
+        cc_library(
+            name = cc_library_name,
+            hdrs = hdrs,
+            srcs = srcs + hdrs,
+            data = data,
+            deps = deps,
+            compatible_with = compatible_with,
+            copts = copts + [
+                "-fno-strict-aliasing",
+                "-fexceptions",
+            ] + select({
+                clean_dep("//tensorflow/tsl:windows"): [],
+                "//conditions:default": [
+                    "-fvisibility=hidden",
+                ],
+            }),
+            defines = defines,
+            features = features + ["-use_header_modules"],
+            restricted_to = restricted_to,
+            testonly = testonly,
+            visibility = visibility,
+        )
+
+        cc_shared_library(
+            name = so_file,
+            roots = [cc_library_name],
+            dynamic_deps = dynamic_deps,
+            static_deps = static_deps,
+            additional_linker_inputs = [exported_symbols_file, version_script_file],
+            compatible_with = compatible_with,
+            deprecation = deprecation,
+            features = features + ["-use_header_modules"],
+            licenses = licenses,
+            restricted_to = restricted_to,
+            shared_lib_name = so_file,
+            testonly = testonly,
+            user_link_flags = linkopts + select({
+                clean_dep("//tensorflow/tsl:macos"): [
+                    # TODO: the -w suppresses a wall of harmless warnings about hidden typeinfo symbols
+                    # not being exported.  There should be a better way to deal with this.
+                    "-Wl,-w",
+                    "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
+                ],
+                clean_dep("//tensorflow/tsl:windows"): [],
+                "//conditions:default": [
+                    "-Wl,--version-script",
+                    "$(location %s)" % version_script_file,
+                ],
+            }),
+            visibility = visibility,
+        )
+
+        # cc_shared_library can generate more than one file.
+        # Solution to avoid the error "variable '$<' : more than one input file."
+        filegroup(
+            name = filegroup_name,
+            srcs = [so_file],
+            output_group = "main_shared_library_output",
+            testonly = testonly,
+        )
+
+    else:
+        cc_binary(
+            name = so_file,
+            srcs = srcs + hdrs,
+            data = data,
+            copts = copts + [
+                "-fno-strict-aliasing",
+                "-fexceptions",
+            ] + select({
+                clean_dep("//tensorflow/tsl:windows"): [],
+                "//conditions:default": [
+                    "-fvisibility=hidden",
+                ],
+            }),
+            linkopts = linkopts + select({
+                clean_dep("//tensorflow/tsl:macos"): [
+                    # TODO: the -w suppresses a wall of harmless warnings about hidden typeinfo symbols
+                    # not being exported.  There should be a better way to deal with this.
+                    "-Wl,-w",
+                    "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
+                ],
+                clean_dep("//tensorflow/tsl:windows"): [],
+                "//conditions:default": [
+                    "-Wl,--version-script",
+                    "$(location %s)" % version_script_file,
+                ],
+            }),
+            deps = deps + [
+                exported_symbols_file,
+                version_script_file,
+            ],
+            defines = defines,
+            features = features + ["-use_header_modules"],
+            linkshared = 1,
+            testonly = testonly,
+            licenses = licenses,
+            visibility = visibility,
+            deprecation = deprecation,
+            restricted_to = restricted_to,
+            compatible_with = compatible_with,
+        )
+
+        # For Windows, emulate the above filegroup with the shared object.
+        native.alias(
+            name = filegroup_name,
+            actual = so_file,
+        )
+
+    # For Windows only.
+    native.genrule(
+        name = name + "_pyd_copy",
+        srcs = [filegroup_name],
+        outs = [pyd_file],
+        cmd = "cp $< $@",
+        output_to_bindir = True,
+        visibility = visibility,
+        deprecation = deprecation,
+        restricted_to = restricted_to,
+        compatible_with = compatible_with,
+        testonly = testonly,
+    )
+
+    native.py_library(
+        name = name,
+        data = select({
+            clean_dep("//tensorflow/tsl:windows"): [pyd_file],
+            "//conditions:default": [so_file],
+        }) + pytype_srcs,
+        deps = pytype_deps,
+        srcs_version = srcs_version,
+        licenses = licenses,
+        testonly = testonly,
+        visibility = visibility,
+        deprecation = deprecation,
+        restricted_to = restricted_to,
+        compatible_with = compatible_with,
+    )
+
+# Export open source version of pybind_extension under base name as well.
+tsl_pybind_extension = tsl_pybind_extension_opensource

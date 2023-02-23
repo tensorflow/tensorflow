@@ -325,7 +325,6 @@ cc_library(
     hdrs = ["tpu_embedding_software_deduplication_rewrite_pass.h"],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",

@@ -48,8 +48,8 @@ struct HloLegalizeToStablehloPass
 
     stablehlo::HloToStablehloTypeConverter converter;
     RewritePatternSet patterns(&getContext());
-    stablehlo::populateHloToStablehloPatterns(&patterns, &converter,
-                                              &getContext());
+    stablehlo::populateHloToStablehloPatterns(
+        &patterns, &converter, &getContext(), allow_experimental_features_);
     stablehlo::registerFuncOpsForTypeConversion(target, patterns, converter);
 
     if (failed(applyPartialConversion(getOperation(), target,

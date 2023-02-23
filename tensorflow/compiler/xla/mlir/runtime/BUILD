@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
 
 package_group(
@@ -7,6 +7,7 @@ package_group(
         # copybara:uncomment_begin(google-only)
         # "//platforms/xla/service/cpu/...",
         # "//learning/brain/experimental/tfrt/autofusion/...",
+        # "//third_party/mlir_edge/tpgen/...",
         # # TODO(ezhulenev): Clean up dependencies that are leforvers from Autofusion project.
         # "@tf_runtime//...",
         # "//third_party/tf_runtime_google/...",
@@ -26,7 +27,7 @@ package(
     licenses = ["notice"],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "xla-runtime-opt",
     srcs = ["xla-runtime-opt.cc"],
     compatible_with = get_compatible_with_cloud(),
@@ -37,6 +38,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_cpu",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:passes",
+        "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MemRefDialect",

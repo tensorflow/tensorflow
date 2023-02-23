@@ -16,9 +16,10 @@ limitations under the License.
 // LINT.IfChange
 #include "tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.h"
 
+#include <cstdlib>
+
 #include "mlir/IR/BuiltinOps.h"
 #include "tensorflow/dtensor/mlir/create_dtensor_mlir_passes.h"
-
 
 namespace tensorflow {
 namespace dtensor {

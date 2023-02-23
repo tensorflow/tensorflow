@@ -43,7 +43,11 @@ SHELL ["/bin/bash", "-c"]
 RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub && \
     apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
-        cuda-11-8 \
+        cuda-cudart-dev-${CUDA/./-} \
+        cuda-nvcc-${CUDA/./-} \
+        cuda-cupti-${CUDA/./-} \
+        cuda-nvprune-${CUDA/./-} \
+        cuda-libraries-${CUDA/./-} \
         cuda-command-line-tools-${CUDA/./-} \
         libcublas-${CUDA/./-} \
         cuda-nvrtc-${CUDA/./-} \
@@ -53,9 +57,6 @@ RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/
         libcusparse-${CUDA/./-} \
         curl \
         libcudnn8=${CUDNN}+cuda${CUDA} \
-        libfreetype6-dev \
-        libhdf5-serial-dev \
-        libzmq3-dev \
         pkg-config \
         software-properties-common \
         unzip

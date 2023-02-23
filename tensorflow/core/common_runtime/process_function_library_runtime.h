@@ -16,10 +16,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
-#include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -503,7 +503,7 @@ class ProcessFunctionLibraryRuntime {
   mutable mutex mu_;
 
   Env* const env_;
-  const absl::optional<const ConfigProto> config_;
+  const std::optional<const ConfigProto> config_;
   const DeviceMgr* const device_mgr_;
   const FunctionLibraryDefinition* lib_def_;
   thread::ThreadPool* default_thread_pool_;

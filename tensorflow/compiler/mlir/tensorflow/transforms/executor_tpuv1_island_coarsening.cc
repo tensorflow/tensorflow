@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <optional>
 #include <queue>
 #include <tuple>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
@@ -71,7 +71,7 @@ struct TpuV1BridgeExecutorIslandCoarsening
 };
 
 // Returns name of TPU cluster, if op belongs to a TPU cluster. Otherwise,
-// returns `llvm::None`.
+// returns `std::nullopt`.
 llvm::Optional<llvm::StringRef> GetTpuClusterName(Operation* op) {
   if (auto tpu_status = op->getAttrOfType<StringAttr>(kTpuStatusAttr)) {
     // Borrow cluster name from TPU status (for `TPUCompilationResult` op).
@@ -80,7 +80,7 @@ llvm::Optional<llvm::StringRef> GetTpuClusterName(Operation* op) {
   auto device_type = op->getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr);
   if (!device_type || device_type.getValue() != TF::kTpuDevice) {
     // Op does not belong to a TPU cluster.
-    return llvm::None;
+    return std::nullopt;
   }
   // Op belongs to a TPU cluster.
   if (auto replication_info =

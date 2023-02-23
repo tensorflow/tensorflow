@@ -18,7 +18,7 @@ package(
 py_library(
     name = "checkpoint_lib",
     deps = [
-        ":checkpoint",
+        ":checkpoint_core",
         ":checkpoint_management",
         ":checkpoint_options",
         ":functional_saver",
@@ -29,9 +29,24 @@ py_library(
 )
 
 py_library(
+    name = "async_checkpoint_helper",
+    srcs = ["async_checkpoint_helper.py"],
+    srcs_version = "PY3",
+    deps = ["//tensorflow/python/tpu:tpu_embedding_v2"],
+)
+
+py_library(
     name = "checkpoint",
+    srcs_version = "PY3",
+    deps = [
+        ":async_checkpoint_helper",
+        ":checkpoint_core",
+    ],
+)
+
+py_library(
+    name = "checkpoint_core",
     srcs = [
-        "__init__.py",
         "checkpoint.py",
     ],
     srcs_version = "PY3",
@@ -65,7 +80,7 @@ py_library(
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/saved_model:utils",
+        "//tensorflow/python/saved_model:path_helpers",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:data_structures",
@@ -307,6 +322,7 @@ tf_py_test(
     srcs = ["restore_test.py"],
     deps = [
         ":restore",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python/eager:test",
     ],
 )
@@ -331,6 +347,7 @@ py_library(
     srcs = ["checkpoint_options.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:util",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -361,6 +378,28 @@ cuda_py_test(
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/trackable:trackable_utils",
+    ],
+)
+
+py_library(
+    name = "tensor_callable",
+    srcs = ["tensor_callable.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/training/saving:saveable_object",
+    ],
+)
+
+tf_py_test(
+    name = "tensor_callable_test",
+    srcs = ["tensor_callable_test.py"],
+    deps = [
+        ":checkpoint",
+        ":tensor_callable",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/trackable:base",
     ],
 )
 
@@ -424,6 +463,7 @@ tf_py_test(
         ":checkpoint",
         ":saveable_compat",
         ":testdata/generate_checkpoint",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/trackable:base",

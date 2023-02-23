@@ -17,10 +17,10 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
@@ -40,7 +40,7 @@ namespace xla {
 
 namespace {
 
-using ::tensorflow::tpu::ExecutorApiFn;
+using ::stream_executor::tpu::ExecutorApiFn;
 
 class TpuCompiler : public Compiler {
  public:
@@ -67,7 +67,8 @@ class TpuCompiler : public Compiler {
     StatusHelper status;
     ExecutorApiFn()->TpuCompiler_RunHloPassesFn(
         compiler_, &hlo_module,
-        static_cast<tensorflow::tpu::TpuExecutor*>(executor->implementation())
+        static_cast<stream_executor::tpu::TpuExecutor*>(
+            executor->implementation())
             ->se_executor(),
         &allocator, &result, status.c_status);
     if (!status.ok()) {
@@ -96,7 +97,8 @@ class TpuCompiler : public Compiler {
     StatusHelper status;
     ExecutorApiFn()->TpuCompiler_RunBackendFn(
         compiler_, &hlo_module,
-        static_cast<tensorflow::tpu::TpuExecutor*>(executor->implementation())
+        static_cast<stream_executor::tpu::TpuExecutor*>(
+            executor->implementation())
             ->se_executor(),
         &allocator, &result, status.c_status);
     if (!status.ok()) {
@@ -136,7 +138,7 @@ class TpuCompiler : public Compiler {
       se_lists_storage.emplace_back(stream_exec[i].size());
       se_lists[i].exec = se_lists_storage.back().data();
       for (int j = 0; j < stream_exec[i].size(); ++j) {
-        se_lists[i].exec[j] = static_cast<tensorflow::tpu::TpuExecutor*>(
+        se_lists[i].exec[j] = static_cast<stream_executor::tpu::TpuExecutor*>(
                                   stream_exec[i][j]->implementation())
                                   ->se_executor();
       }

@@ -64,13 +64,15 @@ std::string Hostname(const XSpace& space) {
 }  // namespace
 
 PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
-                    double peak_hbm_bw_giga_bytes_per_second) {
+                    std::vector<double> peak_bws) {
   PerfEnv result;
   result.set_peak_tera_flops_per_second(peak_tera_flops_per_second);
-  result.set_peak_hbm_bw_giga_bytes_per_second(
-      peak_hbm_bw_giga_bytes_per_second);
+
+  for (const auto bw : peak_bws) {
+    result.add_peak_bws_giga_bytes_per_second(bw);
+  }
   result.set_ridge_point(TeraToGiga(peak_tera_flops_per_second) /
-                         peak_hbm_bw_giga_bytes_per_second);
+                         peak_bws[MemBwType::MEM_BW_TYPE_HBM_RW]);
   return result;
 }
 
@@ -79,15 +81,39 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
   if (!absl::StartsWith(device_plane.name(), kTpuPlanePrefix)) {
     return MakePerfEnv(
         GigaToTera(GetFlopMaxThroughputPerSM(cap)) * cap.num_cores(),
-        UniToGiga(cap.memory_bandwidth()));
+        // Ideally, the cap should report separate hbm BW, for now set to same.
+        {UniToGiga(cap.memory_bandwidth()), UniToGiga(cap.memory_bandwidth()),
+         UniToGiga(cap.memory_bandwidth()), UniToGiga(cap.memory_bandwidth())});
   } else {
     XPlaneVisitor visitor = CreateTfXPlaneVisitor(&device_plane);
     auto peak_tera_flops_per_second =
         visitor.GetStat(StatType::kDevCapPeakTeraflopsPerSecond);
+    auto peak_tera_flops_per_second_val =
+        peak_tera_flops_per_second.has_value()
+            ? peak_tera_flops_per_second->DoubleValue()
+            : 0.0;
     auto peak_hbm_bw_giga_bytes_per_second =
         visitor.GetStat(StatType::kDevCapPeakHbmBwGigabytesPerSecond);
-    return MakePerfEnv(peak_tera_flops_per_second->DoubleValue(),
-                       peak_hbm_bw_giga_bytes_per_second->DoubleValue());
+    auto peak_hbm_bw_giga_bytes_per_second_val =
+        peak_hbm_bw_giga_bytes_per_second.has_value()
+            ? peak_hbm_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    auto peak_sram_rd_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakSramRdBwGigabytesPerSecond);
+    auto peak_sram_rd_bw_giga_bytes_per_second_val =
+        peak_sram_rd_bw_giga_bytes_per_second.has_value()
+            ? peak_sram_rd_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    auto peak_sram_wr_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakSramWrBwGigabytesPerSecond);
+    auto peak_sram_wr_bw_giga_bytes_per_second_val =
+        peak_sram_wr_bw_giga_bytes_per_second.has_value()
+            ? peak_sram_wr_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    return MakePerfEnv(peak_tera_flops_per_second_val,
+                       {peak_hbm_bw_giga_bytes_per_second_val,
+                        peak_sram_rd_bw_giga_bytes_per_second_val,
+                        peak_sram_wr_bw_giga_bytes_per_second_val});
   }
 }
 

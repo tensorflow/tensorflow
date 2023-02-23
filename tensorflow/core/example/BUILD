@@ -57,6 +57,20 @@ cc_library(
     alwayslink = 1,
 )
 
+tf_cc_test(
+    name = "feature_util_test",
+    size = "small",
+    srcs = ["feature_util_test.cc"],
+    deps = [
+        ":example_protos_cc",
+        ":feature_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 # TODO(bmzhao): Refactor this target to use granular dependencies
 # after stage 4 of the TF build refactor is complete:
 # https://github.com/tensorflow/community/pull/179

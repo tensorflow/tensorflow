@@ -826,7 +826,6 @@ def _register_dataset(service, dataset, compression, dataset_id=None):
     dataset = dataset.map(
         lambda *x: compression_ops.compress(x),
         num_parallel_calls=dataset_ops.AUTOTUNE)
-  dataset = dataset.prefetch(dataset_ops.AUTOTUNE)
   dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
 
   metadata = data_service_pb2.DataServiceMetadata(
@@ -981,16 +980,11 @@ def _from_dataset_id(processing_mode,
     data_service_metadata = None
     dataset_id_val = tensor_util.constant_value(dataset_id)
     try:
-      if isinstance(dataset_id_val, str) or isinstance(dataset_id_val, bytes):
-        data_service_metadata = (
-            _pywrap_server_lib.TF_DATA_GetDataServiceMetadataByID(
-                dataset_id_val, address, protocol))
-      else:
-        # TODO(b/236725000): Remove this after the forward compatibility window
-        # has passed.
-        data_service_metadata = (
-            _pywrap_server_lib.TF_DATA_GetDataServiceMetadata(
-                dataset_id_val, address, protocol))
+      data_service_metadata = (
+          _pywrap_server_lib.TF_DATA_GetDataServiceMetadataByID(
+              dataset_id_val, address, protocol
+          )
+      )
     except NotImplementedError as err:
       raise ValueError(
           "The tf.data service is running an earlier version of TensorFlow "

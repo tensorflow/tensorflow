@@ -36,6 +36,7 @@ def PythonTestAttrsDialect : Dialect {
       return (getDialectNamespace() + ".shape_value").str();
     }
   }];
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 #endif  // PYTHON_TEST_ATTRS

@@ -203,8 +203,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return std::optional<std::string>();
   }
 
-  StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const override;
+  virtual StatusOr<std::string> SerializeExecutable(
+      const PjRtLoadedExecutable& executable) const;
 
   // For PjRtStreamExecutorClient, `options` is mandatory.
   // This function returns an InvalidArgument error if `std::nullopt` is passed.
@@ -213,7 +213,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
       absl::string_view serialized,
       std::optional<CompileOptions> options) override;
 
-  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override;
+  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+      const override;
 
   // Creates a buffer on the device without initializing or copying any data.
   // An optional `definition_event` may be speficied that can be used to
@@ -795,6 +796,10 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
   void Delete() override { executables_.clear(); }
 
   bool IsDeleted() override { return executables_.empty(); }
+
+  StatusOr<std::string> SerializeExecutable() const override {
+    return client_->SerializeExecutable(*this);
+  }
 
   bool IsReturnedFutureSupported() const override { return true; }
 

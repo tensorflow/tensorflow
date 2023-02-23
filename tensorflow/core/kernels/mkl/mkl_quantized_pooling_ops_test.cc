@@ -82,8 +82,8 @@ TEST_F(QuantizedPoolingTest, SmallAveragePooling) {
   TF_ASSERT_OK(RunOpKernel());
 
   const Tensor& output = *GetOutput(0);
-  const float output_min = GetOutput(1)->flat<float>()(0);
-  const float output_max = GetOutput(2)->flat<float>()(0);
+  const float output_min = GetOutput(1)->scalar<float>()();
+  const float output_max = GetOutput(2)->scalar<float>()();
   Tensor output_float =
       QuantizedTensorToFloat<quint8>(output, output_min, output_max);
 
@@ -138,8 +138,8 @@ TEST_F(QuantizedPoolingTest, SmallMaxPooling) {
   TF_ASSERT_OK(RunOpKernel());
 
   const Tensor& output = *GetOutput(0);
-  const float output_min = GetOutput(1)->flat<float>()(0);
-  const float output_max = GetOutput(2)->flat<float>()(0);
+  const float output_min = GetOutput(1)->scalar<float>()();
+  const float output_max = GetOutput(2)->scalar<float>()();
   Tensor output_float =
       QuantizedTensorToFloat<quint8>(output, output_min, output_max);
 

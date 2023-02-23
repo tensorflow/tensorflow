@@ -150,6 +150,10 @@ class BaseGPUDevice : public LocalDevice {
     return stream_->compute->implementation()->GpuStreamMemberHack();
   }
 
+  // Given the compute stream for a GPU or virtual GPU, return the TfDeviceId
+  // for the GPU or vGPU.
+  static std::optional<tsl::TfDeviceId> FindTfDeviceId(se::Stream* compute);
+
  protected:
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned

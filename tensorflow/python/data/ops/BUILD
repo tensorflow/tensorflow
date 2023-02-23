@@ -9,12 +9,23 @@ py_library(
     srcs = ["structured_function.py"],
     srcs_version = "PY3",
     deps = [
+        ":debug_mode",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:function",
         "//tensorflow/python:util",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:structure",
     ],
+)
+
+py_library(
+    name = "debug_mode",
+    srcs = ["debug_mode.py"],
+)
+
+py_library(
+    name = "test_mode",
+    srcs = ["test_mode.py"],
 )
 
 py_library(
@@ -46,6 +57,11 @@ py_library(
 )
 
 py_library(
+    name = "shuffle_op",
+    srcs = ["shuffle_op.py"],
+)
+
+py_library(
     name = "rebatch_op",
     srcs = ["rebatch_op.py"],
     deps = [
@@ -66,13 +82,20 @@ py_library(
 
 py_library(
     name = "dataset_ops",
-    srcs = ["dataset_ops.py"],
+    # Grouped together due to mutual dependencies, to avoid dependency cycles.
+    srcs = [
+        "dataset_autograph.py",
+        "dataset_ops.py",
+    ],
     srcs_version = "PY3",
     deps = [
         ":batch_op",
         ":cache_op",
+        ":choose_from_datasets_op",
         ":concatenate_op",
         ":counter_op",
+        ":debug_mode",
+        ":directed_interleave_op",
         ":filter_op",
         ":flat_map_op",
         ":from_generator_op",
@@ -93,9 +116,11 @@ py_library(
         ":range_op",
         ":rebatch_op",
         ":repeat_op",
+        ":sample_from_datasets_op",
         ":save_ops",
         ":scan_op",
         ":shard_op",
+        ":shuffle_op",
         ":skip_op",
         ":snapshot_op",
         ":sparse_batch_op",
@@ -106,6 +131,7 @@ py_library(
         ":unique_op",
         ":window_op",
         ":zip_op",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dataset_ops_gen",
@@ -131,9 +157,11 @@ py_library(
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/data/util:traverse",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:resource",
+        "//tensorflow/python/types",
         "//third_party/py/numpy",
     ],
 )
@@ -144,8 +172,18 @@ py_library(
 )
 
 py_library(
+    name = "choose_from_datasets_op",
+    srcs = ["choose_from_datasets_op.py"],
+)
+
+py_library(
     name = "concatenate_op",
     srcs = ["concatenate_op.py"],
+)
+
+py_library(
+    name = "directed_interleave_op",
+    srcs = ["directed_interleave_op.py"],
 )
 
 py_library(
@@ -199,6 +237,11 @@ py_library(
 )
 
 py_library(
+    name = "sample_from_datasets_op",
+    srcs = ["sample_from_datasets_op.py"],
+)
+
+py_library(
     name = "ignore_errors_op",
     srcs = ["ignore_errors_op.py"],
 )
@@ -210,11 +253,16 @@ py_library(
 
 py_library(
     name = "iterator_ops",
-    srcs = ["iterator_ops.py"],
+    # Grouped together due to mutual dependencies, to avoid dependency cycles.
+    srcs = [
+        "iterator_autograph.py",
+        "iterator_ops.py",
+    ],
     srcs_version = "PY3",
     deps = [
         ":optional_ops",
         ":options",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -226,6 +274,8 @@ py_library(
         "//tensorflow/python/data/util:sparse",
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:type_utils",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/trackable:base",
     ],
 )
@@ -238,6 +288,7 @@ py_library(
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/platform",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/util",
     ],
 )
@@ -287,6 +338,7 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/util",
     ],
 )
@@ -341,6 +393,7 @@ py_library(
         "//tensorflow/python/data/util:sparse",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/framework:type_utils",
     ],
 )
 
@@ -349,13 +402,16 @@ py_library(
     srcs = ["optional_ops.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:optional_ops_gen",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/saved_model:nested_structure_coder",
     ],
 )
 
@@ -365,6 +421,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:test_mode",
         "//tensorflow/python/data/util:options",
     ],
 )

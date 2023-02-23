@@ -37,6 +37,7 @@ from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -1843,7 +1844,7 @@ class GRUCell(DropoutRNNCellMixin, Layer):
       if not self.reset_after:
         input_bias, recurrent_bias = self.bias, None
       else:
-        input_bias, recurrent_bias = array_ops.unstack(self.bias)
+        input_bias, recurrent_bias = array_ops_stack.unstack(self.bias)
 
     if self.implementation == 1:
       if 0. < self.dropout < 1.:

@@ -123,7 +123,6 @@ filegroup(
     srcs = [
         "gpu_bfc_allocator.h",
         "gpu_cudamalloc_allocator.h",
-        "gpu_cudamallocasync_allocator.h",
         "gpu_debug_allocator.h",
         "gpu_device.h",
         "gpu_id.h",
@@ -165,10 +164,10 @@ tf_cuda_library(
     ],
     deps = [
         ":gpu_bfc_allocator",
-        ":gpu_cudamallocasync_allocator",
         ":gpu_id_impl",
         ":gpu_lib",
         "//tensorflow/compiler/xla/stream_executor:device_id_utils",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init_impl",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
@@ -188,28 +187,6 @@ tf_cuda_library(
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
-)
-
-tf_cuda_library(
-    name = "gpu_cudamallocasync_allocator",
-    srcs = [
-        "gpu_cudamallocasync_allocator.cc",
-        ":gpu_runtime_headers",
-    ],
-    hdrs = ["gpu_cudamallocasync_allocator.h"],
-    cuda_deps = [
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
-    ],
-    deps = [
-        ":gpu_id_impl",
-        "//tensorflow/compiler/xla/stream_executor:device_id_utils",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init_impl",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core/platform:stream_executor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-    ],
 )
 
 tf_cuda_library(
@@ -270,7 +247,6 @@ tf_cuda_library(
         ":gpu_id",
         "//tensorflow/compiler/xla/stream_executor:platform",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -334,6 +310,7 @@ tf_cuda_cc_test(
         ":gpu_id",
         ":gpu_runtime",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_cudamallocasync_allocator_header",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -391,6 +368,7 @@ tf_cuda_cc_test(
     deps = [
         ":gpu_id",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_cudamallocasync_allocator_header",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -462,7 +440,6 @@ tf_cc_test(
         ":gpu_virtual_mem_allocator",
         "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

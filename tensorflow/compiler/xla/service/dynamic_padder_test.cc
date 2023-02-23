@@ -283,19 +283,19 @@ ENTRY main {
 
   auto* root = module_->entry_computation()->root_instruction();
   EXPECT_THAT(root,
-              op::CustomCall("SliceToDynamic", op::Negate(), op::Constant()));
+              op::CustomCall({"SliceToDynamic"}, op::Negate(), op::Constant()));
   HloInstruction* negate = root->mutable_operand(0);
   EXPECT_THAT(
       negate,
       op::Negate(op::GetTupleElement(op::CustomCall(
-          "PadToStatic", op::GetTupleElement(op::CustomCall(
-                             "OpWithDynamicLowering", ::testing::_))))));
+          {"PadToStatic"}, op::GetTupleElement(op::CustomCall(
+                               {"OpWithDynamicLowering"}, ::testing::_))))));
   auto custom_call_1 =
       module_->entry_computation()->GetInstructionWithName("custom-call.1");
   EXPECT_THAT(custom_call_1,
-              op::CustomCall("OpWithDynamicLowering",
+              op::CustomCall({"OpWithDynamicLowering"},
                              op::Tuple(op::GetTupleElement(),
-                                       op::CustomCall("SliceToDynamic"))));
+                                       op::CustomCall({"SliceToDynamic"}))));
 }
 
 TEST_F(DynamicPadderTest, DynamicOutputNestedTuple) {
@@ -324,7 +324,7 @@ ENTRY main {
   EXPECT_THAT(root, op::Tuple(op::Constant(), op::Tuple()));
   HloInstruction* nested_tuple = root->mutable_operand(1);
   EXPECT_THAT(nested_tuple,
-              op::Tuple(op::Constant(), op::CustomCall("SliceToDynamic")));
+              op::Tuple(op::Constant(), op::CustomCall({"SliceToDynamic"})));
 }
 
 TEST_F(DynamicPadderTest, ConvolutionTest) {
@@ -495,7 +495,7 @@ ENTRY test {
   TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
 
   EXPECT_THAT(module_->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall("SliceToDynamic",
+              GmockMatch(m::CustomCall({"SliceToDynamic"},
                                        m::Dot(m::Op().WithShape(S8, {16, 32}),
                                               m::Op().WithShape(S8, {32, 64}))
                                            .WithShape(S32, {16, 64}),
@@ -515,12 +515,12 @@ ENTRY test {
   module_ = GetHloModule(hlo_text);
   TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
 
-  EXPECT_THAT(
-      module_->entry_computation()->root_instruction(),
-      GmockMatch(m::CustomCall("SliceToDynamic",
-                               m::GetTupleElement(m::CustomCall(
-                                   "PadToStatic", m::CustomCall("UnknownOp"))),
-                               m::Op())));
+  EXPECT_THAT(module_->entry_computation()->root_instruction(),
+              GmockMatch(m::CustomCall(
+                  {"SliceToDynamic"},
+                  m::GetTupleElement(m::CustomCall(
+                      {"PadToStatic"}, m::CustomCall({"UnknownOp"}))),
+                  m::Op())));
 }
 
 TEST_F(DynamicPadderTest, WhileLoopDynamicShapeChangeToStatic) {

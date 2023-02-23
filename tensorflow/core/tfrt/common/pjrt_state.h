@@ -23,8 +23,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/status.h"
 
-ABSL_DECLARE_FLAG(bool, tf_use_pjrt);
-
 namespace tensorflow {
 
 const char kPjRtStateResourceName[] = "pjrt_state";

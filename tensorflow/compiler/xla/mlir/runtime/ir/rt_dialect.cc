@@ -69,7 +69,7 @@ mlir::LogicalResult RuntimeDialect::verifyOperationAttribute(
                                << " to be an integer attribute";
     }
 
-    auto func = llvm::dyn_cast<mlir::func::FuncOp>(op);
+    auto func = llvm::dyn_cast<mlir::FunctionOpInterface>(op);
     if (!func) {
       return op->emitError()
              << attribute.getName() << " can only be applied to a function";

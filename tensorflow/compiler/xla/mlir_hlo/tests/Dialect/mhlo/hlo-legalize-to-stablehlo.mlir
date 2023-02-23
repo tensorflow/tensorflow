@@ -1,4 +1,5 @@
 // RUN: mlir-hlo-opt --hlo-legalize-to-stablehlo --mlir-print-op-generic --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: mlir-hlo-opt --hlo-legalize-to-stablehlo=allow-experimental-features --mlir-print-op-generic --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // ============ ATTRIBUTES ============
 
@@ -151,6 +152,7 @@ func.func @attr_custom_call_api_version_status_returning_unified(%arg0: tensor<f
 }
 // CHECK-LABEL: "attr_custom_call_api_version_status_returning_unified"
 
+// CustomCallSchedule aka #mhlo<custom_call_schedule> is unsupported at the moment (see negative test below).
 // DequantizeMode aka #mhlo<dequantize_mode> is unused at the moment.
 // DomainKind aka #mhlo<kind> is unsupported at the moment (see negative test below).
 // DotDimensionNumbers aka #mhlo.dot is covered below.
@@ -198,34 +200,32 @@ func.func @attr_fft_type_irfft(%arg0: tensor<9xcomplex<f32>>) -> tensor<16xf32> 
 // FusionKind aka #mhlo<fusion_kind> is unsupported at the moment (see negative test below).
 // GatherDimensionNumbers aka #mhlo.gather is covered below.
 
-func.func @attr_precision_config_default(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
+func.func @attr_precision_default(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
   %0 = "mhlo.dot"(%arg0, %arg1) {
     // CHECK: precision_config = [#stablehlo<precision DEFAULT>]
     precision_config = [#mhlo<precision DEFAULT>]
   } : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
   func.return %0 : tensor<8x8xf32>
 }
-// CHECK-LABEL: "attr_precision_config_default"
+// CHECK-LABEL: "attr_precision_default"
 
-func.func @attr_precision_config_high(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
+func.func @attr_precision_high(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
   %0 = "mhlo.dot"(%arg0, %arg1) {
     // CHECK: precision_config = [#stablehlo<precision HIGH>]
     precision_config = [#mhlo<precision HIGH>]
   } : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
   func.return %0 : tensor<8x8xf32>
 }
-// CHECK-LABEL: "attr_precision_config_high"
+// CHECK-LABEL: "attr_precision_high"
 
-func.func @attr_precision_config_highest(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
+func.func @attr_precision_highest(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
   %0 = "mhlo.dot"(%arg0, %arg1) {
     // CHECK: precision_config = [#stablehlo<precision HIGHEST>]
     precision_config = [#mhlo<precision HIGHEST>]
   } : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
   func.return %0 : tensor<8x8xf32>
 }
-// CHECK-LABEL: "attr_precision_config_highest"
-
-// Precision::PACKED_NIBBLE is unsupported at the moment (see negative test below).
+// CHECK-LABEL: "attr_precision_highest"
 
 func.func @attr_rng_algorithm_default(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   %0:2 = "mhlo.rng_bit_generator"(%arg0) {
@@ -387,6 +387,7 @@ func.func @op_all_reduce(%arg0: tensor<f32>) -> tensor<f32> {
 
 func.func @op_all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
   //               CHECK: "stablehlo.all_to_all"(%arg0) {
+  //          CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>,
   //          CHECK-SAME:   concat_dimension = 0 : i64,
   // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
   //          CHECK-SAME:   split_count = 4 : i64,
@@ -396,11 +397,11 @@ func.func @op_all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
     split_dimension = 1 : i64,
     concat_dimension = 0 : i64,
     split_count = 4 : i64,
-    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
   } : (tensor<4x16xf32>) -> tensor<16x4xf32>
   func.return %0 : tensor<16x4xf32>
 }
-// CHECK-LABEL: "op_all_to_all"
 
 func.func @op_and(%arg0: tensor<i1>, %arg1: tensor<i1>) -> tensor<i1> {
   // CHECK: "stablehlo.and"(%arg0, %arg1) : (tensor<i1>, tensor<i1>) -> tensor<i1>
@@ -671,7 +672,7 @@ func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.wi
 // CHECK-LABEL: "op_cstr_reshapable"
 
 func.func @called_computation() { func.return }
-func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
+func.func @op_custom_call_api_version_original(%arg0: tensor<f32>) -> tensor<f32> {
   //      CHECK: "stablehlo.custom_call"(%arg0) {
   // CHECK-SAME:   api_version = 1 : i32,
   // CHECK-SAME:   backend_config = "",
@@ -702,7 +703,7 @@ func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
   } : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
-// CHECK-LABEL: "op_custom_call"
+// CHECK-LABEL: "op_custom_call_api_version_original"
 
 func.func @op_divide(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   // CHECK: "stablehlo.divide"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
@@ -938,13 +939,13 @@ func.func @op_get_dimension_size(%arg0: tensor<?xf32>) -> tensor<i32> {
 }
 // CHECK-LABEL: "op_get_dimension_size"
 
-func.func @op_get_tuple_element(%arg0: tuple<tensor<f32>>) -> tensor<f32> {
+func.func @op_get_tuple_element(%arg0: tuple<tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>>) -> tensor<f32> {
   //      CHECK: "stablehlo.get_tuple_element"(%arg0) {
-  // CHECK-SAME:   index = 0 : i32
-  // CHECK-SAME: } : (tuple<tensor<f32>>) -> tensor<f32>
+  // CHECK-SAME:   index = 4 : i32
+  // CHECK-SAME: } : (tuple<tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>>) -> tensor<f32>
   %0 = "mhlo.get_tuple_element"(%arg0) {
-    index = 0 : i32
-  } : (tuple<tensor<f32>>) -> tensor<f32>
+    index = 4 : i32
+  } : (tuple<tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
 // CHECK-LABEL: "op_get_tuple_element"
@@ -1117,7 +1118,12 @@ func.func @op_pad(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> tensor<16xf32> {
 }
 // CHECK-LABEL: "op_pad"
 
-// PartitionIdOp aka mhlo.partition_id is unsupported at the moment (see negative test below).
+func.func @op_partition_id() -> tensor<ui32> {
+  // CHECK: "stablehlo.partition_id"() : () -> tensor<ui32>
+  %0 = "mhlo.partition_id"() : () -> tensor<ui32>
+  func.return %0 : tensor<ui32>
+}
+// CHECK-LABEL: "op_partition_id"
 
 func.func @op_popcnt(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK: "stablehlo.popcnt"(%arg0) : (tensor<i32>) -> tensor<i32>
@@ -1699,6 +1705,20 @@ func.func @type_ui64(%arg0: tensor<ui64>, %arg1: tensor<ui64>) -> tensor<ui64> {
 }
 // CHECK-LABEL: "type_ui64"
 
+func.func @type_f8E4M3FN(%arg0: tensor<f8E4M3FN>, %arg1: tensor<f8E4M3FN>) -> tensor<f8E4M3FN> {
+  // CHECK: "stablehlo.add"(%arg0, %arg1) : (tensor<f8E4M3FN>, tensor<f8E4M3FN>) -> tensor<f8E4M3FN>
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<f8E4M3FN>, tensor<f8E4M3FN>) -> tensor<f8E4M3FN>
+  func.return %0 : tensor<f8E4M3FN>
+}
+// CHECK-LABEL: "type_f8E4M3FN"
+
+func.func @type_f8E5M2(%arg0: tensor<f8E5M2>, %arg1: tensor<f8E5M2>) -> tensor<f8E5M2> {
+  // CHECK: "stablehlo.add"(%arg0, %arg1) : (tensor<f8E5M2>, tensor<f8E5M2>) -> tensor<f8E5M2>
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<f8E5M2>, tensor<f8E5M2>) -> tensor<f8E5M2>
+  func.return %0 : tensor<f8E5M2>
+}
+// CHECK-LABEL: "type_f8E5M2"
+
 func.func @type_bf16(%arg0: tensor<bf16>, %arg1: tensor<bf16>) -> tensor<bf16> {
   // CHECK: "stablehlo.add"(%arg0, %arg1) : (tensor<bf16>, tensor<bf16>) -> tensor<bf16>
   %0 = "mhlo.add"(%arg0, %arg1) : (tensor<bf16>, tensor<bf16>) -> tensor<bf16>
@@ -1786,6 +1806,25 @@ func.func @type_token_caller(%arg0: !mhlo.token) -> !mhlo.token {
 //       CHECK: function_type = (!stablehlo.token) -> !stablehlo.token
 // CHECK-LABEL: "type_token_caller"
 
+func.func @type_token_region(%arg0: tensor<i1>, %arg1: !mhlo.token) {
+  //      CHECK: "stablehlo.while"(%arg1) ({
+  // CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG2:arg.*]]: !stablehlo.token):
+  // CHECK-NEXT:     "stablehlo.return"(%arg0) : (tensor<i1>) -> ()
+  // CHECK-NEXT:   }, {
+  // CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG2:arg.*]]: !stablehlo.token):
+  // CHECK-NEXT:     "stablehlo.return"(%[[ARG2]]) : (!stablehlo.token) -> ()
+  // CHECK-NEXT: }) : (!stablehlo.token) -> !stablehlo.token
+  %0 = "mhlo.while"(%arg1) ({
+    ^bb0(%arg2: !mhlo.token):
+      mhlo.return %arg0 : tensor<i1>
+    }, {
+    ^bb0(%arg2: !mhlo.token):
+      mhlo.return %arg2 : !mhlo.token
+  }) : (!mhlo.token) -> !mhlo.token
+  return
+}
+// CHECK-LABEL: "type_token_region"
+
 func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!mhlo.token> {
   %0 = "mhlo.custom_call"(%arg0) {
     call_target_name = "foo"
@@ -1797,32 +1836,18 @@ func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!mhlo.token> {
 
 // ============ NEGATIVE TESTS ============
 // Some ops, attributes and types used in MHLO programs are not supported in StableHLO.
-// For those cases, we have negative tests below.
+// The following features are private, and not convertable to StableHLO even
+// with the experimental flag.
 
 // -----
 
-func.func @attr_precision_config_packed_nibble(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.dot' that was explicitly marked illegal}}
-  %0 = "mhlo.dot"(%arg0, %arg1) {
-    precision_config = [#mhlo<precision PACKED_NIBBLE>]
-  } : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
+func.func @attr_precision_config_invalid() -> tensor<8x8xf32> {
+  // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
+  %0 = "mhlo.custom_call"() {
+    call_target_name = "foo",
+    precision_config = [#mhlo<precision PACKED_NIBBLE>, 1 : i32]
+  } : () -> tensor<8x8xf32>
   func.return %0 : tensor<8x8xf32>
-}
-
-// -----
-
-func.func @custom_call_api_version_typed_ffi() {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
-  "mhlo.custom_call"() {call_target_name = "foo", api_version = 4 : i32} : () -> ()
-  func.return
-}
-
-// -----
-
-func.func @custom_call_dictionary_backend_config() {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
-  "mhlo.custom_call"() {call_target_name = "foo", api_version = 4 : i32, backend_config = {foo = 42 : i32}} : () -> ()
-  func.return
 }
 
 // -----
@@ -1831,15 +1856,6 @@ func.func @op_add_dependency(%arg0: tensor<16xf32>, %arg1: !mhlo.token) -> tenso
   // expected-error@+1 {{failed to legalize operation 'mhlo.add_dependency' that was explicitly marked illegal}}
   %0 = "mhlo.add_dependency"(%arg0, %arg1) : (tensor<16xf32>, !mhlo.token) -> tensor<16xf32>
   func.return %0 : tensor<16xf32>
-}
-
-// -----
-
-func.func private @op_all_to_all_tuple(%arg0: tensor<128x4xf32>,
-    %arg1: tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>) {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.all_to_all' that was explicitly marked illegal}}
-  %0:2 = "mhlo.all_to_all"(%arg0, %arg1) {replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>} : (tensor<128x4xf32>, tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>)
-  return %0#0, %0#1 : tensor<128x4xf32>, tensor<128x4xf32>
 }
 
 // -----
@@ -1935,6 +1951,17 @@ func.func @op_convolution_unknown_dimension_numbers(%arg0: tensor<1x8x8x32x207xf
 
 // -----
 
+func.func @op_custom_call_custom_call_schedule(%arg0: tensor<f32>) -> tensor<f32> {
+  // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
+  %0 = "mhlo.custom_call"(%arg0) {
+    call_target_name = "foo",
+    custom_call_schedule = #mhlo<custom_call_schedule EARLIEST>
+  } : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// -----
+
 func.func @op_domain(%arg0: tensor<f32>) -> tensor<f32> {
   // expected-error@+1 {{failed to legalize operation 'mhlo.domain' that was explicitly marked illegal}}
   %0 = "mhlo.domain"(%arg0) {
@@ -1953,17 +1980,14 @@ func.func @op_fusion(%arg0: tensor<f32>) -> tensor<f32> {
     ^bb0(%arg1: tensor<f32>):
       "mhlo.return"(%arg1) : (tensor<f32>) -> ()
   }) {
-    fusion_kind = #mhlo<fusion_kind kCustom>
+    fusion_kind = #mhlo<fusion_kind kCustom>,
+    output_operand_aliases = [
+      #mhlo.output_operand_alias<output_tuple_indices = [],
+                                 operand_index = 0,
+                                 operand_tuple_indices = []>
+    ]
   } : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
-}
-
-// -----
-
-func.func @op_partition_id() -> tensor<ui32> {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.partition_id' that was explicitly marked illegal}}
-  %0 = "mhlo.partition_id"() : () -> tensor<ui32>
-  func.return %0 : tensor<ui32>
 }
 
 // -----
@@ -1982,20 +2006,4 @@ func.func @op_xla_rng_get_and_update_state() -> tensor<2xui64> {
     delta = 1: i64
   } : () -> tensor<2xui64>
   func.return %0 : tensor<2xui64>
-}
-
-// -----
-
-func.func @type_f8e4m3fn(%arg0: tensor<f16>) -> tensor<f8E4M3FN> {
-  // expected-error@+1 {{'stablehlo.convert' op result #0 must be tensor of 16-bit float or 32-bit float or 64-bit float or bfloat16 type or pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or complex type with 32-bit float or 64-bit float elements or 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer values, but got 'tensor<f8E4M3FN>'}}
-  %0 = "mhlo.convert"(%arg0) : (tensor<f16>) -> tensor<f8E4M3FN>
-  func.return %0 : tensor<f8E4M3FN>
-}
-
-// -----
-
-func.func @type_f8e5m2(%arg0: tensor<f16>) -> tensor<f8E5M2> {
-  // expected-error@+1 {{'stablehlo.convert' op result #0 must be tensor of 16-bit float or 32-bit float or 64-bit float or bfloat16 type or pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or complex type with 32-bit float or 64-bit float elements or 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer values, but got 'tensor<f8E5M2>'}}
-  %0 = "mhlo.convert"(%arg0) : (tensor<f16>) -> tensor<f8E5M2>
-  func.return %0 : tensor<f8E5M2>
 }

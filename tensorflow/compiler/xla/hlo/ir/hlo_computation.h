@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
@@ -239,6 +240,17 @@ class HloComputation {
   // on the computation's existing name.
   void UniquifyName(NameUniquer* name_uniquer);
 
+  // Prints a string representation of the computation.
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  void Print(Printer* printer) const {
+    return Print(printer, HloPrintOptions());
+  }
+  void Print(Printer* printer, const HloPrintOptions& options) const;
+  void Print(Printer* printer, const HloPrintOptions& options,
+             absl::Span<const HloInstruction* const> instruction_order) const;
+
   // Return a string representation of the computation.
   //
   // (We express the default options using an overload rather than a default
@@ -312,9 +324,15 @@ class HloComputation {
             MakeUnwrappingIterator(instructions_.end())};
   }
 
+  using ChannelDependencies =
+      absl::flat_hash_map<const HloInstruction*,
+                          absl::InlinedVector<HloInstruction*, 1>>;
+
   // Compute and return a post-order of the instructions in the computation. In
   // this order, definitions of values always appear before their uses.
   std::vector<HloInstruction*> MakeInstructionPostOrder() const;
+  std::vector<HloInstruction*> MakeInstructionPostOrder(
+      const ChannelDependencies& channel_dependencies) const;
 
   int64_t instruction_count() const { return instruction_iterators_.size(); }
 
@@ -557,13 +575,13 @@ class HloComputation {
   // make each channel complete).
   bool IsSafelyRemovable(const HloInstruction* instruction);
 
-  // Returns a map from channel-id to the group of instructions associated with
-  // the channel. These instructions will be considered as a single node for
-  // dependency purposes. Send and RecvDone are in the group, and AllReduces
-  // with the same channel id are in the group.
-  using ChannelDependencyGroup =
-      absl::flat_hash_map<int64_t, absl::InlinedVector<HloInstruction*, 1>>;
-  ChannelDependencyGroup ComputeChannelDependencies() const;
+  // Returns a map from an instruction to the group of instructions associated
+  // with the same channel. These instructions will be considered as a single
+  // node for dependency purposes.
+  // RecvDone ops will map to the corresponding Send op.
+  // Cross-partition collectives will map to every other instruction with the
+  // same channel ID (it doesn't map to itself).
+  ChannelDependencies ComputeChannelDependencies() const;
 
   // Returns true if this computation has a side effect. A computation has a
   // side effect if it contains one or more instructions with a side effect.
@@ -711,8 +729,7 @@ class HloComputation {
 
   enum VisitState { kVisiting, kVisited };
   void ComputeInstructionPostOrder(
-      HloInstruction* root,
-      HloComputation::ChannelDependencyGroup& channel_dependencies,
+      HloInstruction* root, const ChannelDependencies& channel_dependencies,
       absl::flat_hash_map<HloInstruction*, VisitState>& visited,
       std::vector<HloInstruction*>& post_order) const;
 

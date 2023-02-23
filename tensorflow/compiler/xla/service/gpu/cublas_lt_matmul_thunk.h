@@ -35,7 +35,13 @@ class CublasLtMatmulThunk : public Thunk {
                       BufferAllocation::Slice b_buffer,
                       BufferAllocation::Slice c_buffer,
                       BufferAllocation::Slice d_buffer,
-                      BufferAllocation::Slice bias_buffer /* may be null */);
+                      BufferAllocation::Slice bias_buffer /* may be null */,
+                      BufferAllocation::Slice aux_buffer /* may be null */,
+                      BufferAllocation::Slice a_scale_buffer /* may be null */,
+                      BufferAllocation::Slice b_scale_buffer /* may be null */,
+                      BufferAllocation::Slice c_scale_buffer /* may be null */,
+                      BufferAllocation::Slice d_scale_buffer /* may be null */,
+                      BufferAllocation::Slice d_amax_buffer /* may be null */);
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -47,6 +53,12 @@ class CublasLtMatmulThunk : public Thunk {
   BufferAllocation::Slice c_buffer_;
   BufferAllocation::Slice d_buffer_;
   BufferAllocation::Slice bias_buffer_;
+  BufferAllocation::Slice aux_buffer_;
+  BufferAllocation::Slice a_scale_buffer_;
+  BufferAllocation::Slice b_scale_buffer_;
+  BufferAllocation::Slice c_scale_buffer_;
+  BufferAllocation::Slice d_scale_buffer_;
+  BufferAllocation::Slice d_amax_buffer_;
   std::optional<se::cuda::BlasLt::MatmulAlgorithm> algorithm_;
 };
 

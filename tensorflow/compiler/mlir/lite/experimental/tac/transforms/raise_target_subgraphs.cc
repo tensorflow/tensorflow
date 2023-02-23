@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -178,7 +179,7 @@ void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(Block& block,
   };
 
   // Given a block, partition into lists of similar `Operations` as described.
-  Optional<InferenceDeviceType> current_device_type = llvm::None;
+  Optional<InferenceDeviceType> current_device_type = std::nullopt;
   for (Operation& current_op : block) {
     auto next_device_type = GetInferenceDeviceTypeForOp(&current_op);
     if (!next_device_type.has_value() ||

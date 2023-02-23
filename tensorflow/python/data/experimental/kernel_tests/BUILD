@@ -157,6 +157,23 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "distributed_save_test",
+    size = "small",
+    srcs = ["distributed_save_test.py"],
+    deps = [
+        "//tensorflow/python:framework_combinations",
+        "//tensorflow/python/data/experimental/kernel_tests/service:test_base",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/experimental/ops:distributed_save_op",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/platform:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
     name = "from_list_test",
     size = "small",
     srcs = ["from_list_test.py"],
@@ -203,7 +220,7 @@ tf_py_test(
 
 tf_py_test(
     name = "index_shuffle_test",
-    size = "medium",
+    size = "large",
     srcs = ["index_shuffle_test.py"],
     shard_count = 12,
     deps = [
@@ -350,6 +367,7 @@ tf_py_test(
     srcs = ["map_defun_op_test.py"],
     deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",

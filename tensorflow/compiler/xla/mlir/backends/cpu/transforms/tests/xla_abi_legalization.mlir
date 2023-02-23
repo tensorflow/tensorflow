@@ -92,7 +92,7 @@ func.func @custom_call(%arg0: tensor<f32>, %arg1: tensor<2x3xf32>) -> (tensor<6x
 //   CHECK-NOT: result_layouts
 //       CHECK: %[[T1:.*]] = "mhlo.transpose"(%[[ARG1]]) {{.*}} -> tensor<3x2xf32>
 //       CHECK: %[[R1:.*]] = mhlo.reshape %[[T1]] {{.*}} -> tensor<2x3xf32>
-//       CHECK: %[[CC:.*]]:2 = "mhlo.custom_call"(%[[ARG0]], %[[R1]])
+//       CHECK: %[[CC:.*]]:2 = mhlo.custom_call @yolo(%[[ARG0]], %[[R1]])
 //       CHECK: %[[RR:.*]] = mhlo.reshape %[[CC]]#0 {{.*}} -> tensor<3x6xf32>
 //       CHECK: %[[TR:.*]] = "mhlo.transpose"(%[[RR]]) {{.*}} -> tensor<6x3xf32>
 //       CHECK: return %[[TR]], %[[CC]]#1
@@ -107,7 +107,7 @@ func.func @custom_call_i1_input(%arg0: tensor<42xi1>) {
 
 // CHECK-LABEL: @custom_call_i1_input
 // CHECK: %[[CONVERTED:.*]] = mhlo.convert {{.*}} : (tensor<42xi1>) -> tensor<42xui8>
-// CHECK: "mhlo.custom_call"(%[[CONVERTED]])
+// CHECK: mhlo.custom_call @yolo(%[[CONVERTED]])
 
 // -----
 

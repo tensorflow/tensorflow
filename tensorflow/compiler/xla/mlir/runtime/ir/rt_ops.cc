@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"  // IWYU pragma: keep
 
 #include <iterator>
+#include <optional>
 
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project  // IWYU pragma: keep
@@ -36,24 +36,24 @@ using llvm::Optional;
 //===----------------------------------------------------------------------===//
 
 void ExportOp::build(OpBuilder &builder, OperationState &result,
-                     func::FuncOp function_ref) {
+                     FunctionOpInterface function_ref) {
   result.addAttribute("function_ref", SymbolRefAttr::get(function_ref));
 }
 
 void ExportOp::build(OpBuilder &builder, OperationState &result,
-                     func::FuncOp function_ref, unsigned ordinal) {
+                     FunctionOpInterface function_ref, unsigned ordinal) {
   build(builder, result, function_ref);
   result.addAttribute("ordinal", builder.getI32IntegerAttr(ordinal));
 }
 
 LogicalResult ExportOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   Operation *op = getOperation();
-  auto func = symbolTable.lookupNearestSymbolFrom<func::FuncOp>(
+  auto func = symbolTable.lookupNearestSymbolFrom<FunctionOpInterface>(
       op, getFunctionRefAttr());
 
   // Function reference must reference a valid FuncOp operation.
   if (!func) {
-    return op->emitError() << "func.func op named '" << getFunctionRef()
+    return op->emitError() << "func op named '" << getFunctionRef()
                            << "' not found for export";
   }
 
@@ -62,19 +62,19 @@ LogicalResult ExportOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 
 Optional<unsigned> ExportOp::ordinal() {
   if (auto ordinal = getOrdinal()) return ordinal->getLimitedValue();
-  return llvm::None;
+  return std::nullopt;
 }
 
-mlir::func::FuncOp ExportOp::exported(mlir::SymbolTable &sym_table) {
-  return sym_table.lookupNearestSymbolFrom<func::FuncOp>(getOperation(),
-                                                         getFunctionRefAttr());
+FunctionOpInterface ExportOp::exported(mlir::SymbolTable &sym_table) {
+  return sym_table.lookupNearestSymbolFrom<FunctionOpInterface>(
+      getOperation(), getFunctionRefAttr());
 }
 
 //===----------------------------------------------------------------------===//
 // TraceOp
 //===----------------------------------------------------------------------===//
 
-void TraceOp::getSuccessorRegions(Optional<unsigned> index,
+void TraceOp::getSuccessorRegions(std::optional<unsigned> index,
                                   ArrayRef<Attribute> operands,
                                   SmallVectorImpl<RegionSuccessor> &regions) {
   // If the predecessor is the TraceOp, branch into the body.
@@ -122,8 +122,8 @@ void TraceOp::build(OpBuilder &builder, OperationState &result,
 //===----------------------------------------------------------------------===//
 
 MutableOperandRange YieldOp::getMutableSuccessorOperands(
-    Optional<unsigned> index) {
-  return operandsMutable();
+    std::optional<unsigned> index) {
+  return getArgumentsMutable();
 }
 
 }  // namespace runtime

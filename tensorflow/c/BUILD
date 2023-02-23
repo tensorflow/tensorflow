@@ -90,6 +90,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "c_api_headers",
+    hdrs = [
+        "c_api.h",
+        "c_api_macros.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tf_attrtype",
+        ":tf_buffer",
+        ":tf_datatype",
+        ":tf_status_headers",
+        ":tf_tstring",
+    ],
+)
+
 tf_cuda_library(
     name = "c_api_internal",
     hdrs = [
@@ -218,7 +234,7 @@ tf_cuda_library(
     ],
     copts = tf_copts(),
     visibility = [
-        "//tensorflow/c:__subpackages__",
+        "//tensorflow:__subpackages__",
         "//tensorflow/python:__subpackages__",
     ],
     deps = [
@@ -844,6 +860,7 @@ tf_cc_test(
     data = [
         "testdata/tf_record",
         "//tensorflow/c/experimental/stream_executor/test:test_pluggable_device.so",
+        "//tensorflow/core/common_runtime/next_pluggable_device/c:test_next_pluggable_device_plugin.so",
     ],
     extra_copts = if_google(["-DTENSORFLOW_NO_SHARED_OBJECTS=1"]),
     linkopts = select({

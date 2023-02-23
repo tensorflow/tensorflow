@@ -30,6 +30,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import math_ops
@@ -582,7 +583,7 @@ def standard_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask,
   input_shape = backend.int_shape(inputs)
   timesteps = input_shape[0] if time_major else input_shape[1]
 
-  input_bias, recurrent_bias = array_ops.unstack(bias)
+  input_bias, recurrent_bias = array_ops_stack.unstack(bias)
 
   def step(cell_inputs, cell_states):
     """Step function that will be used by Keras RNN backend."""

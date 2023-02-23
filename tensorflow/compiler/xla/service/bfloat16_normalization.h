@@ -54,7 +54,7 @@ class BFloat16Normalization : public HloModulePass {
 // Despecializer, not by our normal compilation flow on TPU.
 class BFloat16MixedPrecisionRemoval : public HloModulePass {
  public:
-  BFloat16MixedPrecisionRemoval() {}
+  BFloat16MixedPrecisionRemoval() = default;
 
   ~BFloat16MixedPrecisionRemoval() override = default;
 
@@ -75,7 +75,7 @@ class BFloat16MixedPrecisionRemoval : public HloModulePass {
  private:
   class BFloat16SupportForMixedPrecisionRemoval : public BFloat16Support {
    public:
-    BFloat16SupportForMixedPrecisionRemoval() {}
+    BFloat16SupportForMixedPrecisionRemoval() = default;
 
     ~BFloat16SupportForMixedPrecisionRemoval() override = default;
 

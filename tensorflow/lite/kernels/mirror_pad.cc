@@ -21,8 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -246,6 +246,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_MIRROR_PAD(int64_t);
       break;
     }
+    case kTfLiteInt16: {
+      TF_LITE_MIRROR_PAD(int16_t);
+      break;
+    }
     default:
       status = kTfLiteError;
       break;
@@ -271,6 +275,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(padding_matrix), 2);
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(padding_matrix, 0),
                     NumDimensions(input_tensor));
+
+  if (input_tensor->type == kTfLiteUInt8 || input_tensor->type == kTfLiteInt8 ||
+      input_tensor->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input_tensor->params.scale,
+                      output_tensor->params.scale);
+    TF_LITE_ENSURE_EQ(context, input_tensor->params.zero_point,
+                      output_tensor->params.zero_point);
+  }
+
+  if (input_tensor->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input_tensor->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output_tensor->params.zero_point, 0);
+  }
 
   if (!IsConstantTensor(padding_matrix)) {
     SetTensorToDynamic(output_tensor);

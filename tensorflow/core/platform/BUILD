@@ -208,6 +208,12 @@ cc_library(
     ],
 )
 
+# Required to avoid ODR issues in the pybind wrapper.
+cc_library(
+    name = "cpu_feature_guard_hdr",
+    hdrs = ["cpu_feature_guard.h"],
+)
+
 cc_library(
     name = "casts",
     hdrs = ["casts.h"],
@@ -1198,6 +1204,7 @@ tf_cc_tests(
         "//tensorflow/tsl/platform/profile_utils:cpu_utils_test.cc",
     ],
     create_named_test_suite = True,
+    tags = ["no_mac_arm64"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",

@@ -70,9 +70,14 @@ class DType {
     // dtype will have empty dimensions.
     kToken = 17,
 
-    kString = 19,
+    kF8E4M3FN = 19,
+    kF8E5M2 = 20,
 
-    // Next = 20
+    // Next = 21
+
+    // String is not support in XLA. DType.Kind needs to match xla.PrimitiveType
+    // enum, so choose a large enum to avoid collision.
+    kString = 99,
   };
 
   explicit DType(Kind kind) : kind_(kind) {}

@@ -22,6 +22,7 @@ limitations under the License.
 #include <random>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
@@ -55,7 +56,10 @@ class DistributedRuntimeClientImpl : public DistributedRuntimeClient {
                                GlobalTopologyProto* global_topology) override;
   xla::StatusOr<std::string> BlockingKeyValueGet(
       std::string key, absl::Duration timeout) override;
+  xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
+  KeyValueDirGet(absl::string_view key) override;
   xla::Status KeyValueSet(std::string key, std::string value) override;
+  xla::Status KeyValueDelete(std::string key) override;
   xla::Status WaitAtBarrier(std::string barrier_id,
                             absl::Duration timeout) override;
   xla::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
@@ -122,7 +126,10 @@ class DistributedRuntimeCoordinationServiceClient
                                GlobalTopologyProto* global_topology) override;
   xla::StatusOr<std::string> BlockingKeyValueGet(
       std::string key, absl::Duration timeout) override;
+  xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
+  KeyValueDirGet(absl::string_view key) override;
   xla::Status KeyValueSet(std::string key, std::string value) override;
+  xla::Status KeyValueDelete(std::string key) override;
   xla::Status WaitAtBarrier(std::string barrier_id,
                             absl::Duration timeout) override;
   xla::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
@@ -376,6 +383,19 @@ xla::Status DistributedRuntimeClientImpl::WaitAtBarrier(
   return FromGrpcStatus(status);
 }
 
+xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
+DistributedRuntimeClientImpl::KeyValueDirGet(absl::string_view key) {
+  return xla::Unimplemented(
+      "KeyValueDirGet() is unimplemented. Enable coordination service to use "
+      "this method.");
+}
+
+xla::Status DistributedRuntimeClientImpl::KeyValueDelete(std::string key) {
+  return xla::Unimplemented(
+      "KeyValueDelete() is unimplemented. Enable coordination service to use "
+      "this method.");
+}
+
 xla::StatusOr<tsl::CoordinationServiceAgent*>
 DistributedRuntimeClientImpl::GetCoordinationServiceAgent() {
   return xla::Internal(
@@ -467,7 +487,7 @@ DistributedRuntimeCoordinationServiceClient::
 }
 
 DistributedRuntimeCoordinationServiceClient::
-    ~DistributedRuntimeCoordinationServiceClient() {}
+    ~DistributedRuntimeCoordinationServiceClient() = default;
 
 xla::Status DistributedRuntimeCoordinationServiceClient::Connect() {
   const absl::Time deadline =
@@ -523,6 +543,30 @@ xla::StatusOr<std::string>
 DistributedRuntimeCoordinationServiceClient::BlockingKeyValueGet(
     std::string key, absl::Duration timeout) {
   return coord_agent_->GetKeyValue(key, timeout);
+}
+
+xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
+DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
+    absl::string_view key) {
+  // TODO(hanyangtay): Migrate to string_view for both client and coordination
+  // agent APIs.
+  TF_ASSIGN_OR_RETURN(const auto results,
+                      coord_agent_->GetKeyValueDir(std::string(key)));
+
+  std::vector<std::pair<std::string, std::string>> kvs;
+  kvs.reserve(results.size());
+
+  // Convert tensorflow::KeyValueEntry to std::pair<std::string,
+  // string>.
+  for (const auto& kv : results) {
+    kvs.push_back(std::make_pair(kv.key(), kv.value()));
+  }
+  return kvs;
+}
+
+xla::Status DistributedRuntimeCoordinationServiceClient::KeyValueDelete(
+    std::string key) {
+  return coord_agent_->DeleteKeyValue(key);
 }
 
 xla::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(

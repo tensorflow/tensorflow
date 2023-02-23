@@ -26,8 +26,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import test as test_lib
 
 # TODO(yangzihao): Currently matmul autotuning is disabled by default. Use
@@ -185,32 +183,6 @@ def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
       self.assertAllClose(theoretical, numerical, rtol=tol, atol=tol)
 
   return Test
-
-
-@test_util.with_eager_op_as_function
-class MatMulStatsTest(test_lib.TestCase):
-
-  @test_util.run_v1_only("Test requires a Graph and NodeDef inspection")
-  def testSimpleStatistics(self):
-    a = variables.Variable(random_ops.random_normal([25, 16]))
-    b = variables.Variable(random_ops.random_normal([16, 9]))
-    math_ops.matmul(a, b)
-    g = ops.get_default_graph()
-    for op in g.get_operations():
-      flops = ops.get_stats_for_node_def(g, op.node_def, "flops").value
-      if op.name == "MatMul":
-        self.assertEqual(7200, flops)
-
-  @test_util.run_v1_only("Test requires a Graph and NodeDef inspection")
-  def testTransposedStatistics(self):
-    a = variables.Variable(random_ops.random_normal([16, 25]))
-    b = variables.Variable(random_ops.random_normal([16, 9]))
-    math_ops.matmul(a, b, transpose_a=True)
-    g = ops.get_default_graph()
-    for op in g.get_operations():
-      flops = ops.get_stats_for_node_def(g, op.node_def, "flops").value
-      if op.name == "MatMul":
-        self.assertEqual(7200, flops)
 
 
 try:

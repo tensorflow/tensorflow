@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/TargetSelect.h"
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
@@ -51,7 +52,7 @@ static bool DebugJitCompiler() {
 #if defined(DEBUG_XLA_RUNTIME_COMPILER)
   return true;
 #endif
-  return false;
+  return VLOG_IS_ON(5);
 }
 
 static bool EnablePassTiming() {
@@ -82,11 +83,15 @@ static void SetupPassDebugging(MLIRContext* context, mlir::PassManager& pm) {
   // Print IR after all passes.
   if (DebugJitCompiler()) {
     context->disableMultithreading();
+    // Do not print large constants.
+    mlir::OpPrintingFlags printing_flags;
+    printing_flags.elideLargeElementsAttrs(32);
     pm.enableIRPrinting([](Pass*, Operation*) { return false; },
                         [](Pass*, Operation*) { return true; },
                         /*printModuleScope=*/true,
                         /*printAfterOnlyOnChange=*/false,
-                        /*printAfterOnlyOnFailure=*/false, llvm::errs());
+                        /*printAfterOnlyOnFailure=*/false, llvm::errs(),
+                        printing_flags);
   }
 }
 
@@ -94,12 +99,13 @@ static LogicalResult RunPipeline(
     ModuleOp module, const std::function<void(PassManager&)>& create_pipeline) {
   if (!create_pipeline) return success();
 
-  mlir::PassManager pm(module.getContext());
-  SetupPassDebugging(module.getContext(), pm);
-
   // Instrument the pass manager to capture timing information.
   DefaultTimingManager tm;
   TimingScope timing;
+
+  mlir::PassManager pm(module.getContext());
+  SetupPassDebugging(module.getContext(), pm);
+
   if (EnablePassTiming()) {
     tm.setEnabled(true);
     timing = tm.getRootScope();
@@ -125,19 +131,17 @@ static LogicalResult RunSpecializationPipeline(
 
 //===----------------------------------------------------------------------===//
 
-// Creates a new MLIR Context and registers all the dialects that are expected
+// Configures MLIR Context and registers all the dialects that are expected
 // in the compiled module.
-static std::unique_ptr<MLIRContext> CreateMlirContext(
-    const JitCompiler::Options& opts) {
-  DialectRegistry dialects;
-
-  // Call user-provided callback to register all required dialects.
-  if (opts.register_dialects) opts.register_dialects(dialects);
-
-  auto threading = MLIRContext::Threading::DISABLED;
-  auto ctx = std::make_unique<MLIRContext>(*dialects, threading);
-  ctx->loadAllAvailableDialects();
-  return ctx;
+static void ConfigureMlirContext(MLIRContext* context,
+                                 const JitCompiler::Options& opts) {
+  if (opts.register_dialects) {
+    // Call user-provided callback to register all required dialects.
+    DialectRegistry dialects;
+    opts.register_dialects(dialects);
+    context->appendDialectRegistry(*dialects);
+    context->loadAllAvailableDialects();
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -147,14 +151,57 @@ static std::unique_ptr<MLIRContext> CreateMlirContext(
 JitCompiler::JitCompiler(JitCompiler::Options opts,
                          std::string_view mlir_module)
     : opts_(std::move(opts)),
-      context_(CreateMlirContext(opts_)),
+      owned_context_(
+          std::make_unique<MLIRContext>(MLIRContext::Threading::DISABLED)),
+      context_(owned_context_.get()),
       diagnostic_os_(diagnostic_),
-      handler_(source_mgr_, context_.get(), diagnostic_os_),
+      handler_(source_mgr_, context_, diagnostic_os_),
       specialized_(false) {
+  ConfigureMlirContext(context_, opts_);
   source_mgr_.AddNewSourceBuffer(
       llvm::MemoryBuffer::getMemBuffer(mlir_module, "xla.program"),
       llvm::SMLoc());
-  module_ = parseSourceFile<ModuleOp>(source_mgr_, context_.get());
+  module_ = parseSourceFile<ModuleOp>(source_mgr_, context_);
+}
+
+JitCompiler::JitCompiler(JitCompiler::Options opts, mlir::ModuleOp mlir_module)
+    : opts_(std::move(opts)),
+      context_(mlir_module.getContext()),
+      diagnostic_os_(diagnostic_),
+      handler_(source_mgr_, context_, diagnostic_os_),
+      module_(mlir_module),
+      specialized_(false) {
+  ConfigureMlirContext(context_, opts_);
+}
+
+absl::Status JitCompiler::ComputeOrdinalsForExportedFunctions(
+    absl::Span<const std::string_view> exported) {
+  SymbolTable sym_table(*module_);
+
+  // Add `rt.export` operations for all explicitly exported functions.
+  for (auto& indexed : llvm::enumerate(exported)) {
+    if (auto func = sym_table.lookup<FunctionOpInterface>(indexed.value())) {
+      OpBuilder(func).create<ExportOp>(func.getLoc(), func, indexed.index());
+      continue;
+    }
+    return InvalidArgument("exported function %s not found", indexed.value());
+  }
+
+  // Assign unique ordinals to all exported functions, including functions that
+  // were already exported with `rt.export` operations in the input IR.
+  mlir::PassManager pm(module_->getContext());
+  pm.addPass(CreateOrdinalAssignmentPass());
+  if (failed(pm.run(*module_)))
+    return Error("failed to run ordinal assignment pass");
+
+  // Resolve all functions exported from the module indexed by ordinal.
+  for (ExportOp op : module_->getOps<ExportOp>()) {
+    unsigned ordinal = *op.ordinal();
+    if (ordinal >= exported_.size()) exported_.resize(ordinal + 1);
+    exported_[ordinal] = op.exported(sym_table);
+  }
+
+  return absl::OkStatus();
 }
 
 /*static*/ absl::StatusOr<std::unique_ptr<JitCompiler>>
@@ -168,32 +215,23 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
   if (!compiler->module_)
     return compiler->Error("failed to parse the mlir source");
 
-  ModuleOp module = *compiler->module_;
-  SymbolTable sym_table(module);
+  auto status = compiler->ComputeOrdinalsForExportedFunctions(exported);
+  if (!status.ok()) return status;
 
-  // Add `rt.export` operations for all explicitly exported functions.
-  for (auto& indexed : llvm::enumerate(exported)) {
-    if (auto func = sym_table.lookup<func::FuncOp>(indexed.value())) {
-      OpBuilder(func).create<ExportOp>(func.getLoc(), func, indexed.index());
-      continue;
-    }
-    return InvalidArgument("exported function %s not found", indexed.value());
-  }
+  // Initialize LLVM compiler internals.
+  InitializeLlvmCompiler();
 
-  // Assign unique ordinals to all exported functions, including functions that
-  // were already exported with `rt.export` operations in the input IR.
-  mlir::PassManager pm(module.getContext());
-  pm.addPass(CreateOrdinalAssignmentPass());
-  if (failed(pm.run(module)))
-    return compiler->Error("failed to run ordinal assignment pass");
+  return {std::move(compiler)};
+}
 
-  // Resolve all functions exported from the module indexed by ordinal.
-  for (ExportOp op : module.getOps<ExportOp>()) {
-    unsigned ordinal = *op.ordinal();
-    if (ordinal >= compiler->exported_.size())
-      compiler->exported_.resize(ordinal + 1);
-    compiler->exported_[ordinal] = op.exported(sym_table);
-  }
+/*static*/ absl::StatusOr<std::unique_ptr<JitCompiler>>
+JitCompiler::Instantiate(JitCompiler::Options opts, ModuleOp mlir_module,
+                         absl::Span<const std::string_view> exported) {
+  std::unique_ptr<JitCompiler> compiler(
+      new JitCompiler(std::move(opts), mlir_module));
+
+  auto status = compiler->ComputeOrdinalsForExportedFunctions(exported);
+  if (!status.ok()) return status;
 
   // Initialize LLVM compiler internals.
   InitializeLlvmCompiler();
@@ -218,15 +256,17 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
   std::vector<std::string_view> exported;  // names of exported functions
 
   for (auto& indexed : llvm::enumerate(compiler->exported())) {
-    func::FuncOp func = indexed.value();
+    auto func = indexed.value();
     std::string_view name = exported.emplace_back(func.getName());
 
     // Get the signature of the exported function.
-    auto signature = opts.type_converter.Convert(func.getFunctionType());
+    auto signature = opts.type_converter.Convert(
+        llvm::cast<mlir::FunctionType>(func.getFunctionType()));
     if (!signature.ok()) return signature.status();
 
     // Calling convention conversion can fail if some types are not supported.
-    auto runtime_type = opts.calling_convention(func.getFunctionType());
+    auto runtime_type = opts.calling_convention(
+        llvm::cast<mlir::FunctionType>(func.getFunctionType()));
     if (!runtime_type)
       return compiler->Error(StrFormat(
           "calling convention failed to convert function type for %s", name));
@@ -332,7 +372,7 @@ absl::Status JitCompiler::Specialize(unsigned ordinal, ArgumentsRef arguments,
   assert(!specialized_ && "can specialize executable only once");
   specialized_ = true;
 
-  func::FuncOp func = exported(ordinal);
+  auto func = exported(ordinal);
 
   // Update function signature and sink constant arguments into the body.
   if (auto specialized = SpecializeFunction(func, arguments, symbolic_shapes,

@@ -1,6 +1,6 @@
 # Automatic sharding annotation
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -30,6 +30,7 @@ cc_library(
         ":auto_sharding_util",
         ":cluster_environment",
         ":matrix",
+        ":metrics",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:heap_simulator",
@@ -128,7 +129,14 @@ cc_library(
     ],
 )
 
-tf_cc_binary(
+cc_library(
+    name = "metrics",
+    srcs = ["metrics.cc"],
+    hdrs = ["metrics.h"],
+    deps = ["//tensorflow/tsl/lib/monitoring:counter"],
+)
+
+xla_cc_binary(
     name = "auto_sharding_runner",
     srcs = ["auto_sharding_runner.cc"],
     deps = [
@@ -136,6 +144,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/stream_executor:dnn",
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
         "//tensorflow/tsl/platform:platform_port",
     ],

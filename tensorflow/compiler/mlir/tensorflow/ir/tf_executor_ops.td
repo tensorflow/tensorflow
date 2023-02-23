@@ -44,6 +44,7 @@ def TfExecutor_Dialect : Dialect {
 }];
 
   let cppNamespace = "::mlir::tf_executor";
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 // Control type.

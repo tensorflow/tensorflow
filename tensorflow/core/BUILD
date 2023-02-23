@@ -115,7 +115,7 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        ":dependency_whitelist",
+        ":dependency_allowlist",
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
@@ -127,7 +127,7 @@ package(
 )
 
 package_group(
-    name = "dependency_whitelist",
+    name = "dependency_allowlist",
     packages = [
         "//learning/freud/topic_models/tensorflow/...",
         "//learning/infra/mira/...",
@@ -605,6 +605,7 @@ cc_library(
         "//tensorflow/core/kernels:random_index_shuffle_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:stateful_random_ops",
+        "//tensorflow/core/kernels:sync_ops",
         "//tensorflow/core/kernels:random_binomial_op",
         "//tensorflow/core/kernels:random_poisson_op",
         "//tensorflow/core/kernels:required",
@@ -942,6 +943,7 @@ filegroup(
         "nn_grad",
         "nn_ops_op_lib",
         "no_op_op_lib",
+        "optional_ops_op_lib",
         "parsing_ops_op_lib",
         "portable_op_registrations_and_gradients",
         "ragged_array_ops_op_lib",
@@ -970,6 +972,7 @@ filegroup(
         "stateless_random_ops_v2_op_lib",
         "string_ops_op_lib",
         "summary_ops_op_lib",
+        "sync_ops_op_lib",
         "tpu_configuration_ops_op_lib",
         "tpu_cross_replica_ops_op_lib",
         "tpu_embedding_ops_op_lib",
@@ -1095,7 +1098,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":portable_tensorflow_lib_lite",
-        ":protos_all_cc_impl",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:portable_tensorflow_kernels",
         "//third_party/eigen3",
         "@com_google_protobuf//:protobuf",
@@ -1930,60 +1933,6 @@ tf_cc_test(
         ":test",
         ":test_main",
         "@com_google_absl//absl/memory",
-    ],
-)
-
-tf_cc_tests(
-    name = "core_higher_level_tests",
-    size = "small",
-    srcs = [
-        "//tensorflow/core/example:feature_util_test.cc",
-        "//tensorflow/core/graph:algorithm_test.cc",
-        "//tensorflow/core/graph:control_flow_test.cc",
-        "//tensorflow/core/graph:costmodel_test.cc",
-        "//tensorflow/core/graph:edgeset_test.cc",
-        "//tensorflow/core/graph:graph_def_builder_test.cc",
-        "//tensorflow/core/graph:graph_partition_test.cc",
-        "//tensorflow/core/graph:graph_test.cc",
-        "//tensorflow/core/graph:node_builder_test.cc",
-        "//tensorflow/core/graph:optimizer_cse_test.cc",
-        "//tensorflow/core/graph:subgraph_test.cc",
-        "//tensorflow/core/graph:tensor_id_test.cc",
-        "//tensorflow/core/graph:validate_test.cc",
-        "//tensorflow/core/util/sparse:higher_level_tests_group",
-    ],
-    linkopts = select({
-        "//tensorflow:macos": ["-headerpad_max_install_names"],
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":core",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session_internal",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":ops",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/cc:function_ops",
-        "//tensorflow/cc:ops",
-        "//tensorflow/cc:scope",
-        "//tensorflow/cc:sendrecv_ops",
-        "//tensorflow/cc:while_loop",
-        "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/platform:regexp",
-        "//tensorflow/core/util:protos_test_cc",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -710,7 +710,7 @@ func.func @main(%key: tensor<5x5xi32>, %value: tensor<5x5xf32>) -> (tensor<5x5xi
 // CHECK:   %[[VAR2:.*]] = mhlo.add %[[VAR0]], %[[VAR1]] : tensor<f32>
 // CHECK:   tensor_store %[[VAR2]], %[[MEMREF:.*]] : memref<f32>
 // CHECK:   "lmhlo.terminator"() : () -> ()
-// CHECK: }) : () -> ()
+// CHECK: }) {backend_config = ""} : () -> ()
 func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   %result = "mhlo.fusion"(%arg0, %arg1) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
@@ -732,7 +732,7 @@ func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 // CHECK:   tensor_store %[[VAL1]], %{{.*}} : memref<f32>
 // CHECK:   tensor_store %[[VAL2]], %{{.*}} : memref<f32>
 // CHECK:   "lmhlo.terminator"() : () -> ()
-// CHECK: }) : () -> ()
+// CHECK: }) {backend_config = ""} : () -> ()
 func.func @main(%arg0: tuple<tuple<tensor<f32>>, tensor<f32>>, %arg1: tuple<tensor<f32>>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>> {
   %0 = "mhlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tuple<tensor<f32>>, tensor<f32>>) -> tuple<tensor<f32>>
   %1 = "mhlo.get_tuple_element"(%0) {index = 0 : i32} : (tuple<tensor<f32>>) -> tensor<f32>

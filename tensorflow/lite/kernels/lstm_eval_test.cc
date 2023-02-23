@@ -22,8 +22,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 
 namespace tflite {
@@ -943,7 +943,11 @@ void TestOneHybridAsymmLSTM() {
       one_parameter.GetAccumScratchBuffer(), output,
       one_parameter.GetInputZeroPoints(), one_parameter.GetAuxInputZeroPoints(),
       one_parameter.GetOutputStateZeroPoints(), one_parameter.GetRowSums(),
-      one_parameter.GetNumRowSums(), &compute_row_sums, &context);
+      one_parameter.GetNumRowSums(), &compute_row_sums,
+      /*recurrent_to_input_is_diag=*/false,
+      /*recurrent_to_forget_is_diag=*/false,
+      /*recurrent_to_cell_is_diag=*/false,
+      /*recurrent_to_output_is_diag=*/false, &context);
   const std::vector<float> expected_cell = {
       7.83134,  1.96158, 2.18285, 3.28739,  0.483214,
       0.618206, 1.21539, 1.4052,  -3.17735, 2.24296,  //

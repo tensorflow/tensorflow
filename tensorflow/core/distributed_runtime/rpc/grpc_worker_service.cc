@@ -536,6 +536,10 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
               AllocatorAttributes alloc_attrs;
               alloc_attrs.set_gpu_compatible(true);
               alloc_attrs.set_on_host(true);
+              profiler::ScopedMemoryDebugAnnotation op_annotation(
+                  "GrpcWorker::RecvTensorAsync::consumer_callback",
+                  request->step_id(), "dynamic", val.dtype(),
+                  [shape = val.shape()]() { return shape.DebugString(); });
               Allocator* alloc = src_dev->GetAllocator(alloc_attrs);
               Tensor* copy = new Tensor(alloc, val.dtype(), val.shape());
               CHECK(send_dev_context)

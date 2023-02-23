@@ -26,6 +26,7 @@
 #include <utility>
 #include <vector>
 
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -125,19 +126,28 @@ static bool Infeed(xla::runtime::ExecutionContext* ctx, void** args,
 namespace {
 struct XlaOutfeed {
   absl::Status operator()(const ExecutableRunOptions* run_options,
-                          CustomCall::RemainingArgs args) const;
+                          CustomCall::RemainingArgs args,
+                          absl::Span<const int32_t> result_type) const;
   static XlaOutfeed Handler() { return XlaOutfeed(); }
 };
 }  // namespace
 
-absl::Status XlaOutfeed::operator()(const ExecutableRunOptions* run_options,
-                                    CustomCall::RemainingArgs args) const {
+absl::Status XlaOutfeed::operator()(
+    const ExecutableRunOptions* run_options, CustomCall::RemainingArgs args,
+    absl::Span<const int32_t> result_type) const {
+  assert(result_type.size() == args.size() &&
+         "Result types and input args should be of the same size.");
   for (unsigned i = 0; i < args.size(); ++i) {
     auto memref = args.get<xla::runtime::StridedMemrefView>(i);
     if (!succeeded(memref)) {
       return absl::InvalidArgumentError(
           "Failed to get arguments as (strided) memref view");
     }
+
+    // Restoring the sign information that was lost during convert-to-signless
+    // pass. This information was stashed in an attribute inside
+    // xla_cpu::outfeed.
+    memref->dtype = PrimitiveType(result_type[i]);
 
     auto size_in_bytes = static_cast<int32_t>(MemrefSize(*memref));
     std::string shape_string = ToShape(*memref).SerializeAsString();
@@ -159,6 +169,7 @@ static bool Outfeed(xla::runtime::ExecutionContext* ctx, void** args,
   static auto* handler = CustomCall::Bind("xla.cpu.outfeed")
                              .UserData<const ExecutableRunOptions*>()
                              .Arg<CustomCall::RemainingArgs>()  // args
+                             .Attr<absl::Span<const int32_t>>("result_type")
                              .To<RuntimeChecks()>(XlaOutfeed::Handler())
                              .release();
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));

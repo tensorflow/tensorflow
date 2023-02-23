@@ -30,8 +30,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -40,8 +40,7 @@ namespace tensorflow {
 // file; otherwise, load from a GraphDef.
 // Setting prune_unused_nodes to true, would prune unreachable nodes if
 // output_arrays is specified.
-stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-LoadFromGraphdefOrMlirSource(
+tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoadFromGraphdefOrMlirSource(
     const std::string& input_filename, bool input_mlir,
     bool use_splatted_constant, const std::vector<std::string>& extra_tf_opdefs,
     const GraphImportConfig& specs, absl::string_view debug_info_file,
@@ -52,8 +51,7 @@ LoadFromGraphdefOrMlirSource(
 
 // Load Saved model (either v1 or v2) into MLIR.
 // 'saved_model_bundle' will be initialized if V1 model was loaded.
-stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-ImportSavedModel(
+tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     const std::string& input_filename, const int saved_model_version,
     const std::unordered_set<std::string>& tags,
     absl::Span<const std::string> extra_tf_opdefs,

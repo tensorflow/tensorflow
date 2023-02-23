@@ -39,9 +39,9 @@ int SignificandWidth(PrimitiveType type) {
     case F16:
       return std::numeric_limits<half>::digits;
     case F8E5M2:
-      return 3;
+      return std::numeric_limits<tsl::float8_e5m2>::digits;
     case F8E4M3FN:
-      return 4;
+      return std::numeric_limits<tsl::float8_e4m3fn>::digits;
     default:
       LOG(FATAL) << "Not a floating data type " << type;
   }
@@ -76,9 +76,9 @@ int OverflowExponent(PrimitiveType type) {
     case F16:
       return std::numeric_limits<half>::max_exponent;
     case F8E5M2:
-      return 16;
+      return std::numeric_limits<tsl::float8_e5m2>::max_exponent;
     case F8E4M3FN:
-      return 9;
+      return std::numeric_limits<tsl::float8_e4m3fn>::max_exponent;
     default:
       LOG(FATAL) << "Not a floating data type " << type;
   }

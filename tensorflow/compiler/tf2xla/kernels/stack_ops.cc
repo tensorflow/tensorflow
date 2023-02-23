@@ -68,7 +68,7 @@ Status MaybeInitializeStack(xla::XlaBuilder* builder, XlaResource* resource,
   }
 
   TensorShape stack_shape;
-  stack_shape.AddDim(resource->max_array_size());
+  TF_RETURN_IF_ERROR(stack_shape.AddDimWithStatus(resource->max_array_size()));
   stack_shape.AppendShape(elem_shape);
 
   if (!resource->initialized()) {

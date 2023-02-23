@@ -105,9 +105,13 @@ void TfLiteTensorDataFree(TfLiteTensor* t) {
       t->allocation_type == kTfLitePersistentRo) {
     if (t->data.raw) {
 #ifdef TF_LITE_TENSORFLOW_PROFILER
+      tflite::PauseHeapMonitoring(/*pause=*/true);
       tflite::OnTfLiteTensorDealloc(t);
 #endif
       free(t->data.raw);
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+      tflite::PauseHeapMonitoring(/*pause=*/false);
+#endif
     }
   }
   t->data.raw = nullptr;
@@ -215,12 +219,15 @@ TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
   return kTfLiteOk;
 }
 
-void TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
-                                 bool preserve_data) {
+TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
+                                         bool preserve_data) {
   if (tensor->allocation_type != kTfLiteDynamic &&
       tensor->allocation_type != kTfLitePersistentRo) {
-    return;
+    return kTfLiteOk;
   }
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+  tflite::PauseHeapMonitoring(/*pause=*/true);
+#endif
   size_t alloc_bytes = num_bytes;
   // TODO(b/145340303): Tensor data should be aligned.
 #ifdef TFLITE_KERNEL_USE_XNNPACK
@@ -247,10 +254,19 @@ void TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
     tflite::OnTfLiteTensorAlloc(tensor, alloc_bytes);
 #endif
   }
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+  tflite::PauseHeapMonitoring(/*pause=*/false);
+#endif
   tensor->bytes = num_bytes;
+  if (tensor->data.data == nullptr && num_bytes != 0) {
+    // We are done allocating but tensor is pointing to null and a valid size
+    // was requested, so we error.
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
 }
 
-void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
+TfLiteStatus TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
   return TfLiteTensorResizeMaybeCopy(num_bytes, tensor, true);
 }
 #endif  // TF_LITE_STATIC_MEMORY
@@ -301,7 +317,7 @@ const char* TfLiteTypeGetName(TfLiteType type) {
 
 TfLiteDelegate TfLiteDelegateCreate() { return TfLiteDelegate{}; }
 
-struct TfLiteOpaqueDelegateStruct* TfLiteOpaqueDelegateCreate(
+TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
     const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder) {
   if (!opaque_delegate_builder) return nullptr;
 
@@ -309,17 +325,30 @@ struct TfLiteOpaqueDelegateStruct* TfLiteOpaqueDelegateCreate(
   result->opaque_delegate_builder = new TfLiteOpaqueDelegateBuilder{};
   *(result->opaque_delegate_builder) = *opaque_delegate_builder;
 
-  return reinterpret_cast<struct TfLiteOpaqueDelegateStruct*>(result);
+  return reinterpret_cast<TfLiteOpaqueDelegate*>(result);
 }
 
-void TfLiteOpaqueDelegateDelete(
-    struct TfLiteOpaqueDelegateStruct* opaque_delegate) {
+void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* opaque_delegate) {
   if (!opaque_delegate) return;
 
   const TfLiteDelegate* tflite_delegate =
       reinterpret_cast<const TfLiteDelegate*>(opaque_delegate);
   delete tflite_delegate->opaque_delegate_builder;
   delete tflite_delegate;
+}
+
+void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate) {
+  if (!delegate) return nullptr;
+
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // 'TfLiteOpaqueDelegate' and 'TfLiteDelegate' being equivalent.
+  const auto* tflite_delegate =
+      reinterpret_cast<const TfLiteDelegate*>(delegate);
+
+  if (!tflite_delegate->opaque_delegate_builder) return tflite_delegate->data_;
+
+  return tflite_delegate->opaque_delegate_builder->data;
 }
 
 }  // extern "C"

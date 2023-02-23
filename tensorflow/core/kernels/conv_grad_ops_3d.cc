@@ -1449,16 +1449,19 @@ void LaunchConvBackpropInputOpImpl(
   }
   // Shape: batch, filters, z, y, x.
   Tensor pre_transformed_in_backprop;
+  TensorShape pre_transformed_in_backprop_shape;
+  OP_REQUIRES_OK(
+      context, ShapeFromFormatWithStatus(compute_data_format,
+                                         compatible_input_shape.dim_size(0),
+                                         {{compatible_input_shape.dim_size(2),
+                                           compatible_input_shape.dim_size(3),
+                                           compatible_input_shape.dim_size(4)}},
+                                         compatible_input_shape.dim_size(1),
+                                         &pre_transformed_in_backprop_shape));
   OP_REQUIRES_OK(context,
-                 context->allocate_temp(
-                     DataTypeToEnum<T>::value,
-                     ShapeFromFormat(compute_data_format,
-                                     compatible_input_shape.dim_size(0),
-                                     {{compatible_input_shape.dim_size(2),
-                                       compatible_input_shape.dim_size(3),
-                                       compatible_input_shape.dim_size(4)}},
-                                     compatible_input_shape.dim_size(1)),
-                     &pre_transformed_in_backprop));
+                 context->allocate_temp(DataTypeToEnum<T>::value,
+                                        pre_transformed_in_backprop_shape,
+                                        &pre_transformed_in_backprop));
 
   auto out_backprop_ptr =
       AsDeviceMemory(transformed_out_backprop.template flat<T>().data(),
@@ -1517,14 +1520,17 @@ void LaunchConvBackpropInputOpImpl(
 
   if (rows_odd || cols_odd || planes_odd) {
     Tensor in_backprop_remove_padding;
+    TensorShape in_backprop_remove_padding_shape;
+    OP_REQUIRES_OK(
+        context,
+        ShapeFromFormatWithStatus(
+            compute_data_format, dims.batch_size,
+            {{dims.input_size(0), dims.input_size(1), dims.input_size(2)}},
+            dims.in_depth, &in_backprop_remove_padding_shape));
     OP_REQUIRES_OK(context,
-                   context->allocate_temp(
-                       DataTypeToEnum<T>::value,
-                       ShapeFromFormat(compute_data_format, dims.batch_size,
-                                       {{dims.input_size(0), dims.input_size(1),
-                                         dims.input_size(2)}},
-                                       dims.in_depth),
-                       &in_backprop_remove_padding));
+                   context->allocate_temp(DataTypeToEnum<T>::value,
+                                          in_backprop_remove_padding_shape,
+                                          &in_backprop_remove_padding));
 
     // Remove the padding for odd spatial dimensions.
     functor::PadInput<GPUDevice, T, int, 5>()(
@@ -1574,11 +1580,12 @@ struct LaunchConvBackpropInputOp<Eigen::bfloat16> {
     auto* stream = ctx->op_device_context()->stream();
     const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
         se::CudaComputeCapability::AMPERE);
-    Tensor casted_out_backprop = out_backprop;
-    Tensor casted_filter = filter;
-    Tensor casted_in_backprop = *in_backprop;
 
     if (cast_to_float) {
+      Tensor casted_out_backprop = out_backprop;
+      Tensor casted_filter = filter;
+      Tensor casted_in_backprop = *in_backprop;
+
       const GPUDevice& device = ctx->eigen_device<GPUDevice>();
       functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, out_backprop.shape(),
@@ -1606,8 +1613,8 @@ struct LaunchConvBackpropInputOp<Eigen::bfloat16> {
     }
 
     LaunchConvBackpropInputOpImpl<Eigen::bfloat16>(
-        ctx, cudnn_use_autotune, casted_out_backprop, casted_filter, dilation,
-        strides, padding, &casted_in_backprop, data_format);
+        ctx, cudnn_use_autotune, out_backprop, filter, dilation, strides,
+        padding, in_backprop, data_format);
   }
 };
 
@@ -1803,15 +1810,16 @@ void LaunchConvBackpropFilterOpImpl(
 
   Tensor compatible_input;
   if (rows_odd || cols_odd || planes_odd) {
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(
-                       DataTypeToEnum<T>::value,
-                       ShapeFromFormat(data_format, dims.batch_size,
-                                       {{dims.input_size(0) + planes_odd,
-                                         dims.input_size(1) + rows_odd,
-                                         dims.input_size(2) + cols_odd}},
-                                       dims.in_depth),
-                       &compatible_input));
+    TensorShape compatible_input_shape;
+    OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                data_format, dims.batch_size,
+                                {{dims.input_size(0) + planes_odd,
+                                  dims.input_size(1) + rows_odd,
+                                  dims.input_size(2) + cols_odd}},
+                                dims.in_depth, &compatible_input_shape));
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                   compatible_input_shape,
+                                                   &compatible_input));
     functor::PadInput<GPUDevice, T, int, 5>()(
         context->template eigen_device<GPUDevice>(),
         To32Bit(input.tensor<T, 5>()), {{0, 0, 0}},
@@ -2028,11 +2036,12 @@ struct LaunchConvBackpropFilterOp<Eigen::bfloat16> {
       auto* stream = ctx->op_device_context()->stream();
       const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::AMPERE);
+
+      if (cast_to_float) {
       Tensor casted_input = input;
       Tensor casted_out_backprop = out_backprop;
       Tensor casted_filter_backprop = *filter_backprop;
 
-      if (cast_to_float) {
       const GPUDevice& device = ctx->eigen_device<GPUDevice>();
       functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
       OP_REQUIRES_OK(
@@ -2060,8 +2069,8 @@ struct LaunchConvBackpropFilterOp<Eigen::bfloat16> {
       }
 
       LaunchConvBackpropFilterOpImpl<Eigen::bfloat16>(
-          ctx, cudnn_use_autotune, casted_input, casted_out_backprop, dilation,
-          stride, padding, &casted_filter_backprop, data_format);
+          ctx, cudnn_use_autotune, input, out_backprop, dilation, stride,
+          padding, filter_backprop, data_format);
     }
 };
 

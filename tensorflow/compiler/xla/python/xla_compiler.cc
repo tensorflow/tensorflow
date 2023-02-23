@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module_group.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
@@ -531,12 +531,17 @@ void BuildXlaCompilerSubmodule(py::module& m) {
         });
   m.def(
       "hlo_module_cost_analysis",
-      [](PyClient* client,
-         const HloModule& module) -> StatusOr<HloCostAnalysis::Properties> {
+      [](PyClient* client, const HloModule& module)
+          -> StatusOr<absl::flat_hash_map<std::string, float>> {
         TF_ASSIGN_OR_RETURN(auto analysis,
                             client->pjrt_client()->GetHloCostAnalysis());
         TF_RETURN_IF_ERROR(module.entry_computation()->Accept(analysis.get()));
-        return analysis->properties();
+
+        // Convert from HloCostAnalysis::Properties to a standard map.
+        absl::flat_hash_map<std::string, float> ret;
+        analysis->properties().ForEach(
+            [&](absl::string_view key, float val) { ret[key] = val; });
+        return ret;
       });
   m.def("hlo_module_from_text",
         [](const std::string& hlo_module_text)
@@ -647,6 +652,16 @@ void BuildXlaCompilerSubmodule(py::module& m) {
             result.ParseFromString(t[0].cast<std::string>());
             return ValueOrThrow(CompileOptions::FromProto(result));
           }))
+      .def("SerializeAsString",
+           [](const CompileOptions& self) -> py::bytes {
+             return py::bytes(ValueOrThrow(self.ToProto()).SerializeAsString());
+           })
+      .def_static("ParseFromString",
+                  [](py::bytes s) {
+                    CompileOptionsProto result;
+                    result.ParseFromString(s);
+                    return ValueOrThrow(CompileOptions::FromProto(result));
+                  })
       .def_readwrite("argument_layouts", &CompileOptions::argument_layouts)
       .def_readwrite("parameter_is_tupled_arguments",
                      &CompileOptions::parameter_is_tupled_arguments)
@@ -783,9 +798,15 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           &ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_ids)
       .def_property(
           "allow_spmd_sharding_propagation_to_output",
-          &ExecutableBuildOptions::allow_spmd_sharding_propagation_to_output,
-          &ExecutableBuildOptions::
-              set_allow_spmd_sharding_propagation_to_output);
+          [](const ExecutableBuildOptions& options) -> std::vector<bool> {
+            return std::vector<bool>(
+                options.allow_spmd_sharding_propagation_to_output().begin(),
+                options.allow_spmd_sharding_propagation_to_output().end());
+          },
+          [](ExecutableBuildOptions& options, std::vector<bool> values) {
+            absl::InlinedVector<bool, 1> v(values.begin(), values.end());
+            options.set_allow_spmd_sharding_propagation_to_output(v);
+          });
 
   py::enum_<OpSharding::Type> op_sharding_type(m, "OpSharding_Type");
   op_sharding_type.value("REPLICATED", OpSharding::REPLICATED)
@@ -814,6 +835,10 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                     &xla::OpSharding::replicate_on_last_tile_dim,
                     &xla::OpSharding::set_replicate_on_last_tile_dim)
       .def("__repr__", &xla::OpSharding::DebugString)
+      .def("ParseFromString",
+           [](OpSharding& sharding, const std::string& s) {
+             sharding.ParseFromString(s);
+           })
       .def("SerializeToString",
            [](const OpSharding& sharding) {
              return py::bytes(sharding.SerializeAsString());

@@ -2511,7 +2511,7 @@ func.func @testFullyConnectedWithBadOutputShape(%arg0: tensor<1x37xf32>, %arg1: 
 
 func.func @testTransposeConv(%arg0: tensor<4xi32>, %arg1: tensor<32x4x4x128xf32>, %arg2: tensor<1x32x42x128xf32>) -> tensor<1x64x84x32xf32> {
   %cst = "tfl.no_value"() {value = unit} : () -> none
-  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x32xf32>
+  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x32xf32>
   func.return %0 : tensor<1x64x84x32xf32>
 }
 
@@ -2522,7 +2522,7 @@ func.func @testTransposeConvWithOutputThatHasDynamicSizes(%arg0: tensor<4xi32>, 
   // CHECK: %[[NONE:.*]] = "tfl.no_value"() {value} : () -> none
   // CHECK: "tfl.transpose_conv"(%arg0, %arg1, %arg2, %[[NONE]])
   %cst = "tfl.no_value"() {value = unit} : () -> none
-  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<?x?x?x?xf32>
+  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<?x?x?x?xf32>
   func.return %0 : tensor<?x?x?x?xf32>
 }
 
@@ -2548,7 +2548,7 @@ func.func @testConvolution2DTransposeNoBias(%arg0: tensor<32x4x4x128xf32>, %arg1
 func.func @testTransposeConvBadOutputRank(%arg0: tensor<4xi32>, %arg1: tensor<32x4x4x128xf32>, %arg2: tensor<1x32x42x128xf32>) -> tensor<64x84x32xf32> {
   %cst = "tfl.no_value"() {value = unit} : () -> none
   // expected-error @+1 {{expect output type has rank = 4, got output type tensor<64x84x32xf32>}}
-  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<64x84x32xf32>
+  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<64x84x32xf32>
   func.return %0 : tensor<64x84x32xf32>
 }
 
@@ -2558,7 +2558,7 @@ func.func @testTransposeConvBadOutputShape(%arg1: tensor<32x4x4x128xf32>, %arg2:
   %cst = arith.constant dense<[1, 64, 84, 32]> : tensor<4xi32>
   %cst_1 = "tfl.no_value"() {value = unit} : () -> none
   // expected-error @+1 {{expect output type tensor<1x64x84x32xf32>, got tensor<1x64x84x31xf32>}}
-  %0 = "tfl.transpose_conv"(%cst, %arg1, %arg2, %cst_1) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x31xf32>
+  %0 = "tfl.transpose_conv"(%cst, %arg1, %arg2, %cst_1) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x31xf32>
   func.return %0 : tensor<1x64x84x31xf32>
 }
 

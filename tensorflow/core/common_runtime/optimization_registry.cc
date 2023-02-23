@@ -67,7 +67,10 @@ Status OptimizationPassRegistry::RunGrouping(
       VLOG(1) << "Running optimization phase " << phase.first;
       for (auto& pass : phase.second) {
         VLOG(1) << "Running optimization pass: " << pass->name();
-
+        if (options.graph) {
+          VLOG(1) << "Graph #nodes " << (*options.graph)->num_nodes()
+                  << " #edges " << (*options.graph)->num_edges();
+        }
         tensorflow::metrics::ScopedCounter<2> pass_timings(
             tensorflow::metrics::GetGraphOptimizationCounter(),
             {kGraphOptimizationCategory, pass->name()});
@@ -86,6 +89,10 @@ Status OptimizationPassRegistry::RunGrouping(
     group_timings.ReportAndStop();
   }
   VLOG(1) << "Finished optimization of a group " << grouping;
+  if (options.graph && group != groups_.end()) {
+    VLOG(1) << "Graph #nodes " << (*options.graph)->num_nodes() << " #edges "
+            << (*options.graph)->num_edges();
+  }
   if (VLOG_IS_ON(3) ||
       (VLOG_IS_ON(2) && grouping == Grouping::POST_REWRITE_FOR_EXEC)) {
     std::string prefix = strings::StrCat(options.debug_filename_prefix,

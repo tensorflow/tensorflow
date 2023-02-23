@@ -172,9 +172,6 @@ class CapturableResource(base.Trackable, metaclass=_ResourceMetaclass):
         self._resource_handle = self._create_resource()
     return self._resource_handle
 
-  def _map_resources(self, _):
-    return self._export_to_saved_model_graph({}, {})
-
   def _export_to_saved_model_graph(
       self, object_map, tensor_map, **unused_kwargs):
     """For implementing `Trackable`."""

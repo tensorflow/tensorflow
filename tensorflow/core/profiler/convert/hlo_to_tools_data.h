@@ -33,7 +33,7 @@ namespace profiler {
 // successful, else return an error status.
 StatusOr<std::string> ConvertHloProtoToToolData(
     const SessionSnapshot& session_snapshot, const absl::string_view tool_name,
-    const HloToolOptions& options);
+    const ToolOptions& options);
 
 }  // namespace profiler
 }  // namespace tensorflow

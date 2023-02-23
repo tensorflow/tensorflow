@@ -86,7 +86,7 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
 }
 
 // Check if op uses a device from a list of virtual devices.
-bool UsesVirtualDevice(const Optional<DictionaryAttr>& virtual_devices,
+bool UsesVirtualDevice(const std::optional<DictionaryAttr>& virtual_devices,
                        Operation* operation) {
   if (!virtual_devices.has_value()) return false;
 
@@ -132,7 +132,7 @@ void HoistReplicateInvariantOps(tf_device::ReplicateOp replicate_op) {
   });
 
   Region* replicate_region = &replicate_op.getBody();
-  Optional<DictionaryAttr> virtual_device_list = replicate_op.getDevices();
+  std::optional<DictionaryAttr> virtual_device_list = replicate_op.getDevices();
   for (Operation& inner_op :
        llvm::make_early_inc_range(replicate_op.GetBody())) {
     if (llvm::isa<tf_device::ReturnOp>(inner_op)) continue;

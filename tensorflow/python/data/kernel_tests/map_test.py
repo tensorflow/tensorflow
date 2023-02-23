@@ -24,9 +24,11 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import pywrap_sanitizers
 from tensorflow.python import tf2
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.data.experimental.ops import from_list
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -1149,7 +1151,6 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
       sess.close()
       thread.join()
 
-
   # TODO(b/126553094): map doesnt work with variable defined inside function in
   # eager mode, possible Graph tensors leak out of the function building context
   # from function graph in eager mode as variables are created in init_scope.
@@ -1337,18 +1338,30 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCheckpointLargeBuffer(self):
-    # Tensor of size 512M
-    dataset = dataset_ops.Dataset.from_tensors(
-        array_ops.ones((128, 1024, 1024), dtype=dtypes.float32))
-    dataset = dataset.repeat()
+    if (pywrap_sanitizers.is_asan_enabled() or
+        pywrap_sanitizers.is_tsan_enabled() or
+        pywrap_sanitizers.is_msan_enabled()):
+      self.skipTest("Skip to avoid OOM when using sanitizers.")
+    # Tensors of size 512M.
+    dataset = from_list.from_list(
+        [
+            random_ops.random_uniform((128, 1024, 1024), dtype=dtypes.float32)
+            for _ in range(5)
+        ]
+    )
+
     # Set parallelism to 5 to exceed the 2GB protobuf limit
     dataset = dataset.map(lambda x: x * 2, num_parallel_calls=5)
     iterator = iter(dataset)
-    next(iterator)  # request an element to fill the parallel map buffer
+    next(iterator)  # Request an element to fill the parallel map buffer
+    time.sleep(1)  # Give buffers some time to fill
     ckpt = trackable_utils.Checkpoint(iterator=iterator)
     manager = checkpoint_management.CheckpointManager(
         ckpt, self.get_temp_dir(), max_to_keep=1)
     manager.save()
+    del dataset
+    del iterator
+    manager.restore_or_initialize()
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),

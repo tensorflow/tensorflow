@@ -33,11 +33,11 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
-#include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
+#include "tensorflow/tsl/profiler/convert/xplane_to_trace_events.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -228,8 +228,8 @@ tensorflow::Status Trace(
   TF_RETURN_IF_ERROR(ValidateOptions(opts));
 
   {
-    TF_RETURN_IF_ERROR(tensorflow::profiler::Trace(logdir, num_tracing_attempts,
-                                                   opts, is_cloud_tpu_session));
+    TF_RETURN_IF_ERROR(tensorflow::profiler::CaptureRemoteTrace(
+        logdir, num_tracing_attempts, opts, is_cloud_tpu_session));
   }
   return OkStatus();
 }
@@ -261,7 +261,7 @@ tensorflow::Status ProfilerSessionWrapper::Stop(tensorflow::string* result) {
     tensorflow::profiler::XSpace xspace;
     tensorflow::Status status = session_->CollectData(&xspace);
     session_.reset();
-    tensorflow::profiler::ConvertXSpaceToTraceEventsString(xspace, result);
+    tsl::profiler::ConvertXSpaceToTraceEventsString(xspace, result);
     TF_RETURN_IF_ERROR(status);
   }
   return OkStatus();

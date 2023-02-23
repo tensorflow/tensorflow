@@ -22,27 +22,26 @@ limitations under the License.
 
 #include <any>
 #include <functional>
-#include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/hlo_module_group.h"
-#include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/metrics_hook_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/threadpool.h"
 
@@ -247,7 +246,7 @@ class Compiler {
         layout_canonicalization_callback = {};
   };
 
-  virtual ~Compiler() {}
+  virtual ~Compiler() = default;
 
   // Returns the ID of the platform that this compiler targets.
   virtual se::Platform::Id PlatformId() const = 0;
@@ -269,7 +268,7 @@ class Compiler {
   // The returned 'BufferAssignment' retains a pointer to the 'HloModule', so
   // the module must live at least as long as the buffer assignments.
   virtual StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      const HloModule* module) {
+      HloModule* module, se::StreamExecutor* executor) {
     return Unimplemented("This compiler does not support this method");
   }
 
@@ -390,19 +389,20 @@ class Compiler {
 
   // Returns a MetricsHookInterface object used to instrument Compiler's
   // compilation stages.
-  virtual std::unique_ptr<MetricsHookInterface> CreateMetricsHook() const;
+  virtual std::unique_ptr<MetricsHookInterface> CreateMetricsHook(
+      absl::string_view filename_prefix) const;
 
  private:
   // Mutex that guards the platform-compiler map.
   static absl::Mutex platform_compiler_mutex_;
 
   // Map from platform kind to compiler factory.
-  static std::map<se::Platform::Id, CompilerFactory>*
+  static absl::flat_hash_map<se::Platform::Id, CompilerFactory>*
   GetPlatformCompilerFactories();
 
   // Map from platform kind to compiler instance, if we made one already (based
   // on the factories above).
-  static std::map<se::Platform::Id, std::unique_ptr<Compiler>>*
+  static absl::flat_hash_map<se::Platform::Id, std::unique_ptr<Compiler>>*
   GetPlatformCompilers();
 };
 

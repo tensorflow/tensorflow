@@ -17,18 +17,4 @@ limitations under the License.
 
 #include "tensorflow/lite/core/experimental/acceleration/configuration/c/delegate_plugin.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-typedef TfLiteDelegatePluginCreateFunc TfLiteOpaqueDelegatePluginCreateFunc;
-typedef TfLiteDelegatePluginDestroyFunc TfLiteOpaqueDelegatePluginDestroyFunc;
-typedef TfLiteDelegatePluginGetDelegateErrnoFunc
-    TfLiteOpaqueDelegatePluginGetDelegateErrnoFunc;
-typedef TfLiteDelegatePlugin TfLiteOpaqueDelegatePlugin;
-
-#ifdef __cplusplus
-};  // extern "C"
-#endif
-
 #endif  // TENSORFLOW_LITE_CORE_SHIMS_C_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_PLUGIN_H_

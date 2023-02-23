@@ -159,6 +159,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
@@ -243,9 +244,8 @@ def _internal_input_layer(features,
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    v1=['feature_column.input_layer'],
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export(v1=['feature_column.input_layer'])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def input_layer(features,
                 feature_columns,
                 weight_collections=None,
@@ -379,9 +379,8 @@ class InputLayer(object):
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    v1=['feature_column.linear_model'],
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export(v1=['feature_column.linear_model'])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def linear_model(features,
                  feature_columns,
                  units=1,
@@ -771,9 +770,8 @@ def _transform_features(features, feature_columns):
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    v1=['feature_column.make_parse_example_spec'],
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export(v1=['feature_column.make_parse_example_spec'])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def make_parse_example_spec(feature_columns):
   """Creates parsing spec dictionary from input feature_columns.
 

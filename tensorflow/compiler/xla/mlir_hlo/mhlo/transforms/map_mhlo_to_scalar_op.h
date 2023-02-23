@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H
-#define MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H
+#ifndef MLIR_HLO_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H
+#define MLIR_HLO_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H
+
+#include <optional>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -54,6 +56,10 @@ template <>
 struct MhloToScalarOp<mhlo::AndOp> {
   using IOp = ::mlir::arith::AndIOp;
   using UOp = ::mlir::arith::AndIOp;
+};
+template <>
+struct MhloToScalarOp<mhlo::CbrtOp> {
+  using FOp = ::mlir::math::CbrtOp;
 };
 template <>
 struct MhloToScalarOp<mhlo::CompareOp> {
@@ -159,6 +165,11 @@ struct MhloToScalarOp<mhlo::SineOp> {
   using COp = ::mlir::complex::SinOp;
 };
 template <>
+struct MhloToScalarOp<mhlo::TanOp> {
+  using FOp = ::mlir::math::TanOp;
+  using COp = ::mlir::complex::TanOp;
+};
+template <>
 struct MhloToScalarOp<mhlo::Atan2Op> {
   using FOp = ::mlir::math::Atan2Op;
   using COp = ::mlir::complex::Atan2Op;
@@ -200,7 +211,8 @@ template <typename StdScalarOp>
 struct MapMhloOpToScalarOpImpl<StdScalarOp> {
   Value operator()(Location loc, ArrayRef<Type> resultTypes,
                    ArrayRef<Type> /*argTypes*/, ValueRange args, OpBuilder* b) {
-    return b->template create<StdScalarOp>(loc, resultTypes, args, mlir::None);
+    return b->template create<StdScalarOp>(loc, resultTypes, args,
+                                           std::nullopt);
   }
 };
 
@@ -211,7 +223,7 @@ struct MapMhloOpToScalarOpImpl<SupportedType, StdScalarOp, Args...> {
     Type elementType = getElementTypeOrSelf(argTypes.front());
     if (SupportedType{}(elementType)) {
       return b->template create<StdScalarOp>(loc, resultTypes, args,
-                                             mlir::None);
+                                             std::nullopt);
     }
     return MapMhloOpToScalarOpImpl<Args...>{}(loc, resultTypes, argTypes, args,
                                               b);
@@ -318,31 +330,10 @@ inline Value getConstantOrSplat(OpBuilder* b, Location loc, Type t,
   return b->create<arith::ConstantOp>(loc, t, v);
 }
 
-template <>
-inline Value mapMhloOpToStdScalarOp<mhlo::CbrtOp>(Location loc,
-                                                  ArrayRef<Type> resultTypes,
-                                                  ArrayRef<Type> argTypes,
-                                                  mhlo::CbrtOp::Adaptor adaptor,
-                                                  OpBuilder* b) {
-  Type elementType = getElementTypeOrSelf(argTypes.front());
-  if (auto floatType = elementType.dyn_cast<FloatType>()) {
-    // Convert cbrt(x) to copysign(cbrt(abs(x), 1.0 / 3.0), x).
-    // This is to allow cbrt using pow while still handling negative numbers. It
-    // should match most cbrt intrinsics.
-    Value abs = b->create<mlir::math::AbsFOp>(loc, adaptor.getOperand());
-    Value third = b->create<arith::ConstantOp>(
-        loc, b->getFloatAttr(floatType, 1.0 / 3.0));
-    Value pow = b->create<mlir::math::PowFOp>(loc, resultTypes[0], abs, third);
-    return b->create<mlir::math::CopySignOp>(loc, floatType, pow,
-                                             adaptor.getOperand());
-  }
-  return nullptr;
-}
-
 template <typename PredicateType>
 inline Optional<PredicateType> getCmpPredicate(mhlo::ComparisonDirection,
                                                bool) {
-  return llvm::None;
+  return std::nullopt;
 }
 
 template <>
@@ -357,7 +348,7 @@ inline Optional<arith::CmpFPredicate> getCmpPredicate<arith::CmpFPredicate>(
       .Case("GT", arith::CmpFPredicate::OGT)
       .Case("LE", arith::CmpFPredicate::OLE)
       .Case("LT", arith::CmpFPredicate::OLT)
-      .Default(llvm::None);
+      .Default(std::nullopt);
 }
 
 template <>
@@ -375,7 +366,7 @@ inline Optional<arith::CmpIPredicate> getCmpPredicate<arith::CmpIPredicate>(
             isSigned ? arith::CmpIPredicate::sle : arith::CmpIPredicate::ule)
       .Case("LT",
             isSigned ? arith::CmpIPredicate::slt : arith::CmpIPredicate::ult)
-      .Default(llvm::None);
+      .Default(std::nullopt);
 }
 
 template <>
@@ -627,20 +618,23 @@ inline Value mapConvertOpToStdScalarOp(Location loc, ArrayRef<Type> targetTypes,
   if (IsUnsignedIntegerType{}(sourceType) &&
       mlir::arith::UIToFPOp::areCastCompatible(convertedSourceType,
                                                targetType)) {
-    return b->create<mlir::arith::UIToFPOp>(loc, resultTypes, args, mlir::None);
+    return b->create<mlir::arith::UIToFPOp>(loc, resultTypes, args,
+                                            std::nullopt);
   }
   if (mlir::arith::SIToFPOp::areCastCompatible(sourceType, targetType)) {
-    return b->create<mlir::arith::SIToFPOp>(loc, resultTypes, args, mlir::None);
+    return b->create<mlir::arith::SIToFPOp>(loc, resultTypes, args,
+                                            std::nullopt);
   }
   if (sourceType.isa<FloatType>() && targetType.isa<FloatType>()) {
     auto src = sourceType.cast<FloatType>();
     auto res = targetType.cast<FloatType>();
     if (src.getWidth() > res.getWidth()) {
       return b->create<mlir::arith::TruncFOp>(loc, resultTypes, args,
-                                              mlir::None);
+                                              std::nullopt);
     }
     if (src.getWidth() < res.getWidth()) {
-      return b->create<mlir::arith::ExtFOp>(loc, resultTypes, args, mlir::None);
+      return b->create<mlir::arith::ExtFOp>(loc, resultTypes, args,
+                                            std::nullopt);
     }
     // There's no direct conversion between different 16 bit floating point
     // types, so go through 32 bit float.
@@ -673,16 +667,16 @@ inline Value mapConvertOpToStdScalarOp(Location loc, ArrayRef<Type> targetTypes,
     auto res = targetType.cast<IntegerType>();
     if (src.getWidth() > res.getWidth()) {
       return b->create<mlir::arith::TruncIOp>(loc, resultTypes, args,
-                                              mlir::None);
+                                              std::nullopt);
     }
     if (src.getWidth() < res.getWidth()) {
       // Special case boolean values, so they get casted to `1` instead of `-1`.
       if (IsUnsignedIntegerType{}(src)) {
         return b->create<mlir::arith::ExtUIOp>(loc, resultTypes, args,
-                                               mlir::None);
+                                               std::nullopt);
       }
       return b->create<mlir::arith::ExtSIOp>(loc, resultTypes, args,
-                                             mlir::None);
+                                             std::nullopt);
     }
     // No conversion is needed for the same width integers
     return args.front();
@@ -690,11 +684,13 @@ inline Value mapConvertOpToStdScalarOp(Location loc, ArrayRef<Type> targetTypes,
   if (targetType.isUnsignedInteger() &&
       mlir::arith::FPToUIOp::areCastCompatible(convertedSourceType,
                                                targetType)) {
-    return b->create<mlir::arith::FPToUIOp>(loc, resultTypes, args, mlir::None);
+    return b->create<mlir::arith::FPToUIOp>(loc, resultTypes, args,
+                                            std::nullopt);
   }
   if (mlir::arith::FPToSIOp::areCastCompatible(convertedSourceType,
                                                targetType)) {
-    return b->create<mlir::arith::FPToSIOp>(loc, resultTypes, args, mlir::None);
+    return b->create<mlir::arith::FPToSIOp>(loc, resultTypes, args,
+                                            std::nullopt);
   }
   if (targetType.isa<ComplexType>()) {
     Type targetElementType = targetType.cast<ComplexType>().getElementType();
@@ -1267,4 +1263,4 @@ struct MhloOpToStdScalarOp {
 }  // namespace mhlo
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H
+#endif  // MLIR_HLO_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H

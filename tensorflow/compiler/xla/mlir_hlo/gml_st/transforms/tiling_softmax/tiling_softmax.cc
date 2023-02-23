@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
-#include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/tiling/tiling.h"
@@ -25,6 +25,7 @@ limitations under the License.
 #include "gml_st/utils/linalg_utils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -35,12 +36,13 @@ namespace {
 #define GEN_PASS_DEF_TILINGSOFTMAXPASS
 #include "gml_st/transforms/passes.h.inc"
 
-static constexpr llvm::StringRef kTileSoftmaxAppliedLabel =
+constexpr llvm::StringRef kTileSoftmaxAppliedLabel =
     "__tile_softmax_applied_label__";
 
 Operation *fuseIthOperandInPlace(PatternRewriter &rewriter, Operation *op,
                                  int64_t i) {
-  auto matOp = llvm::cast<MaterializeOp>(op->getOperand(i).getDefiningOp());
+  auto matOp =
+      llvm::cast<tensor::ExtractSliceOp>(op->getOperand(i).getDefiningOp());
   FailureOr<Value> fused = createFusedOp(rewriter, matOp);
   assert(succeeded(fused) && "expect success after matching");
   rewriter.replaceOp(matOp, *fused);
@@ -52,9 +54,6 @@ LogicalResult tilePartialSoftmax(
     llvm::function_ref<FailureOr<Operation *>(Operation *, int64_t)>
         tileOperationFn) {
   // Match cwise root op.
-  if (!isCwiseGenericOp(op))
-    return rewriter.notifyMatchFailure(op, "not cwise generic");
-
   // Match all operands to be derived from the same source value in one of two
   // ways:
   //   i)  by a reduction and subsequent bcast in one dimension, or
@@ -62,8 +61,10 @@ LogicalResult tilePartialSoftmax(
   Value commonSource;
   Optional<int64_t> commonReductionDim;
   SmallVector<Optional<SimpleBcastReduction>> simpleBcastReductions;
-  auto genericOp = llvm::dyn_cast_or_null<linalg::GenericOp>(op.getOperation());
-  for (Value operand : genericOp.getInputs()) {
+  auto mapOp = llvm::dyn_cast_or_null<linalg::MapOp>(op.getOperation());
+  if (!mapOp || mapOp.getNumDpsInits() != 1)
+    return rewriter.notifyMatchFailure(op, "no mapOp");
+  for (Value operand : mapOp.getInputs()) {
     // Case i.
     SimpleBcastReduction bcastReduction;
     int64_t reductionDim;
@@ -87,7 +88,7 @@ LogicalResult tilePartialSoftmax(
     if (commonSource && commonSource != operand)
       return rewriter.notifyMatchFailure(op, "common source != operand");
     commonSource = operand;
-    simpleBcastReductions.push_back(llvm::None);
+    simpleBcastReductions.push_back(std::nullopt);
   }
 
   if (!commonReductionDim || !commonSource)
@@ -148,7 +149,7 @@ struct TilePartialSoftmaxPattern
     // Only apply to non-fusable occurrences.
     bool hasFusableOccurrences = llvm::any_of(
         op->getUsers(),
-        [](Operation *op) { return llvm::isa<MaterializeOp>(op); });
+        [](Operation *op) { return llvm::isa<tensor::ExtractSliceOp>(op); });
     if (hasFusableOccurrences)
       return rewriter.notifyMatchFailure(op, "has fusable occurrences");
 
@@ -177,12 +178,12 @@ struct TilePartialSoftmaxPattern
           tilingOptions.distributionLabel = distributionLabel;
           // Tile.
           FailureOr<TilingResult> tilingResult =
-              tile(tilingOptions, rewriter, op);
+              tileUsingGmlSt(tilingOptions, rewriter, op);
           if (failed(tilingResult)) return failure();
 
           rewriter.replaceOp(op, tilingResult->loop->getResults());
-          setLabel(tilingResult->tiledOp, kTileSoftmaxAppliedLabel);
-          return tilingResult->tiledOp;
+          setLabel(tilingResult->tiledOps.front(), kTileSoftmaxAppliedLabel);
+          return tilingResult->tiledOps.front();
         });
   }
 
@@ -192,10 +193,11 @@ struct TilePartialSoftmaxPattern
   std::string distributionLabel;
 };
 
-struct FusePartialSoftmaxPattern : public OpRewritePattern<MaterializeOp> {
-  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
+struct FusePartialSoftmaxPattern
+    : public OpRewritePattern<tensor::ExtractSliceOp> {
+  using OpRewritePattern<tensor::ExtractSliceOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(MaterializeOp op,
+  LogicalResult matchAndRewrite(tensor::ExtractSliceOp op,
                                 PatternRewriter &rewriter) const override {
     Value source = op.getSource();
     Operation *def = source.getDefiningOp();
@@ -218,13 +220,9 @@ struct FusePartialSoftmaxPattern : public OpRewritePattern<MaterializeOp> {
           // TODO(frgossen): Assert this assumption when we have moved to
           // unnested tiles.
 
-          // Extract tile offsets and sizes.
-          auto tile = op.getSet().getDefiningOp<TileOp>();
-          if (!tile) return failure();
-
           // Fuse.
-          SmallVector<OpFoldResult> offsets = tile.getMixedOffsets();
-          SmallVector<OpFoldResult> sizes = tile.getMixedSizes();
+          SmallVector<OpFoldResult> offsets = op.getMixedOffsets();
+          SmallVector<OpFoldResult> sizes = op.getMixedSizes();
           FailureOr<Value> result =
               iface.generateResultTileValue(rewriter, 0, offsets, sizes);
           if (failed(result)) {
@@ -238,15 +236,15 @@ struct FusePartialSoftmaxPattern : public OpRewritePattern<MaterializeOp> {
   }
 };
 
-struct FuseUnaryCwisePattern : public OpRewritePattern<MaterializeOp> {
-  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
+struct FuseUnaryCwisePattern : public OpRewritePattern<tensor::ExtractSliceOp> {
+  using OpRewritePattern<tensor::ExtractSliceOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(MaterializeOp op,
+  LogicalResult matchAndRewrite(tensor::ExtractSliceOp op,
                                 PatternRewriter &rewriter) const override {
     // Match unary cwise ops.
     Operation *source = op.getSource().getDefiningOp();
-    if (!isUnaryCwiseGenericOp(source)) return failure();
-
+    auto mapOp = dyn_cast_or_null<linalg::MapOp>(source);
+    if (!mapOp || mapOp.getNumDpsInputs() != 1) return failure();
     // Fuse.
     FailureOr<Value> fused = createFusedOp(rewriter, op);
     if (failed(fused)) return failure();
@@ -268,7 +266,7 @@ struct TilingSoftmaxPass
   void getDependentDialects(DialectRegistry &registry) const final {
     registry
         .insert<GmlStDialect, linalg::LinalgDialect, tensor::TensorDialect>();
-    registerGmlStTilingInterfaceExternalModels(registry);
+    linalg::registerTilingInterfaceExternalModels(registry);
   }
 
   void runOnOperation() override {

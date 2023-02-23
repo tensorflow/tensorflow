@@ -22,12 +22,12 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/device_mem_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
@@ -231,7 +231,7 @@ Allocator* GPUProcessState::GetGPUAllocator(
       // TODO: **WARNING** probably will not work in a multi-gpu scenario
       gpu_bfc_allocator.reset();
       gpu_allocator =
-          new GpuCudaMallocAsyncAllocator(platform_device_id, total_bytes);
+          new se::GpuCudaMallocAsyncAllocator(platform_device_id, total_bytes);
     }
 
     Allocator* recording_allocator = nullptr;
@@ -346,7 +346,7 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
     int64_t limit_mb = -1;
     Status status =
         tsl::ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
-                                 1LL << 16 /*2^16 MB == 64GB*/, &limit_mb);
+                                 1LL << 17 /*2^17 MB == 128GB*/, &limit_mb);
     if (!status.ok()) {
       LOG(ERROR) << "GetGpuHostAllocator: " << status.error_message();
     }

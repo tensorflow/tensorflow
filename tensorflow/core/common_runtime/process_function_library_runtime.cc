@@ -18,13 +18,13 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
-#include <variant>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/types/optional.h"
+#include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/build_graph_options.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -377,7 +377,8 @@ std::vector<Tensor> GetLocalArgs(gtl::ArraySlice<FunctionArg> args) {
   std::vector<Tensor> tensors;
   for (const auto& arg : args) {
     if (arg.index() == 0) {
-      tensors.push_back(std::get<Tensor>(arg));
+      // NOLINTNEXTLINE
+      tensors.push_back(absl::get<Tensor>(arg));
     }
   }
   return tensors;
@@ -406,7 +407,8 @@ Status FunctionRetsToTensors(const std::vector<FunctionRet>* function_rets,
       return errors::Internal(
           "Expect a Tensor as a function output but got a TensorShape.");
     }
-    tensors->push_back(std::get<Tensor>(ret));
+    // NOLINTNEXTLINE
+    tensors->push_back(absl::get<Tensor>(ret));
   }
   return OkStatus();
 }
@@ -555,80 +557,37 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(device_mgr_->LookupDevice("CPU:0", &cpu_device));
 
   const uint64 optimization_start_time_usecs = Env::Default()->NowMicros();
-  TF_ASSIGN_OR_RETURN(auto optimized_graph_info,
-                      OptimizeFunctionGraph(
-                          function_name, attrs, options, dev_set, lib_def_,
-                          composite_devices, cpu_device, default_device, env_));
+  // Look up for optimized function graph in library. If found, skip
+  // `OptimizeFunctionGraph` step.
+  OptimizedFunctionGraph* optimized_graph_proto =
+      options.lib_def != nullptr
+          ? options.lib_def->FindOptimizedFunctionGraph(function_name)
+          : lib_def_->FindOptimizedFunctionGraph(function_name);
+  StatusOr<OptimizedFunctionGraphInfo> optimized_graph_info =
+      optimized_graph_proto == nullptr
+          ? OptimizeFunctionGraph(function_name, attrs, options, *dev_set,
+                                  lib_def_, composite_devices, cpu_device,
+                                  default_device, env_)
+          : OptimizedFunctionGraphInfo::FromProto(*optimized_graph_proto);
+  if (!optimized_graph_info.ok()) return optimized_graph_info.status();
 
-  auto& graph = optimized_graph_info.function_graph;
-  graph->mutable_flib_def()->set_default_registry(
-      &(optimized_graph_info.lib_def));
+  // Resets the library registration correctly.
+  optimized_graph_info->function_graph->mutable_flib_def()
+      ->set_default_registry(&(optimized_graph_info->lib_def));
 
-  // Expand the nodes assigned to a CompositeDevice before graph partition to
-  // avoid generating a subgraph on a virtual device for execution.
-  // This transformation should happen as late as possible, in order to run as
-  // more graph optimization passes (e.g. PRE_PLACEMENT, PLACER,
-  // POST_PLACEMENT, POST_REWRITE_FOR_EXEC) on a smaller graph as possible.
-  TF_RETURN_IF_ERROR(ReplicatePerReplicaNodesInFunctionGraph(
-      options.composite_devices, graph.get()));
-
-  const FunctionLibraryDefinition* lib_def =
-      options.lib_def == nullptr ? lib_def_ : options.lib_def;
-  if (options.graph_collector != nullptr) {
-    GraphDef def;
-    graph->ToGraphDef(&def);
-    *def.mutable_library() = lib_def->ReachableDefinitions(def).ToProto();
-    options.graph_collector->CollectOptimizedGraph(def);
-  }
-
-  VLOG(4) << "Main function graph to be partitioned:";
-  VLOG(4) << DebugString(graph->ToGraphDefDebug());
-
-  auto subgraphs =
-      std::make_unique<std::unordered_map<string, std::unique_ptr<Graph>>>();
-  TF_RETURN_IF_ERROR(
-      PartitionFunctionGraph(*dev_set, std::move(graph), subgraphs.get()));
-
-  for (const auto& pair : *subgraphs) {
-    DumpGraph(strings::StrCat("Before running POST_PARTITIONING passes (",
-                              pair.first, ")"),
-              pair.second.get());
-  }
-
-  GraphOptimizationPassOptions optimization_options;
-  optimization_options.flib_def = &(optimized_graph_info.lib_def);
-  optimization_options.is_function_graph = true;
-  optimization_options.graph = nullptr;
-  optimization_options.device_set = nullptr;
-  optimization_options.partition_graphs = subgraphs.get();
-  optimization_options.debug_filename_prefix = "pflr_imd_";
-  env_->CreateUniqueFileName(&optimization_options.debug_filename_prefix, "_");
-
-  // Normally POST_PARTITIONING passes are run by distributed workers.
-  // Distributed workers are currently not supported in this code path, so we
-  // run the passes here.
-  const bool should_run_optimization_passes = !options.is_component_function;
-  if (should_run_optimization_passes) {
-    TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
-        OptimizationPassRegistry::POST_PARTITIONING, optimization_options));
-  }
-  for (const auto& pair : *subgraphs) {
-    const auto* optimized_subgraph = pair.second.get();
-    DumpGraph(
-        strings::StrCat("After all optimization passes (", pair.first, ")"),
-        optimized_subgraph);
-    if (VLOG_IS_ON(1)) {
-      DumpGraphDefToFile(
-          strings::StrCat("pflr_after_all_optimization_passes_",
-                          reinterpret_cast<uintptr_t>(optimized_subgraph), "_",
-                          pair.first),
-          optimized_subgraph->ToGraphDefDebug());
-    }
-  }
+  TF_ASSIGN_OR_RETURN(
+      auto subgraphs,
+      PreprocessAndPartitionGraph(*optimized_graph_info, options, *dev_set,
+                                  lib_def_, composite_devices, env_));
   const uint64 optimization_end_time_usecs = Env::Default()->NowMicros();
   metrics::UpdateFunctionGraphOptimizationTime(optimization_end_time_usecs -
                                                optimization_start_time_usecs);
+  VLOG(1) << "Finished graph optimizations for MultiDevice function \""
+          << function_name << "\" with target device \"" << options.target
+          << "\"";
 
+  const FunctionLibraryDefinition* lib_def =
+      options.lib_def == nullptr ? lib_def_ : options.lib_def;
   if (options.graph_collector != nullptr) {
     for (const auto& pair : *subgraphs) {
       GraphDef def;
@@ -639,21 +598,23 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   }
 
   const auto& node_name_to_control_ret =
-      optimized_graph_info.node_name_to_control_ret;
+      optimized_graph_info->node_name_to_control_ret;
   // We must preserve control returns in each of the function components,
   // otherwise after function inlining we might prune side-effectful nodes.
   const auto control_ret =
       [&node_name_to_control_ret](const Node* n) -> absl::optional<string> {
     const auto it = node_name_to_control_ret.find(n->name());
     return it != node_name_to_control_ret.end()
-               ? std::make_optional<string>(it->second)
-               : std::nullopt;
+               // NOLINTNEXTLINE
+               ? absl::make_optional<string>(it->second)
+               // NOLINTNEXTLINE
+               : absl::nullopt;
   };
 
   auto data = std::make_unique<MultiDeviceFunctionData>(
-      function_name, function_key, optimized_graph_info.num_return_nodes,
-      std::move(optimized_graph_info.lib_def),
-      std::move(optimized_graph_info.ret_types));
+      function_name, function_key, optimized_graph_info->num_return_nodes,
+      std::move(optimized_graph_info->lib_def),
+      std::move(optimized_graph_info->ret_types));
 
   int i = 0;
   // Generate a random function_name to avoid one function reuse the partition
@@ -786,7 +747,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(group.as_summary_status());
 
   *handle = AddMultiDeviceHandle(std::move(data), function_key);
-  VLOG(2) << "Instantiated MultiDevice function \"" << function_name
+  VLOG(1) << "Instantiated MultiDevice function \"" << function_name
           << "\" with handle " << *handle;
 
   PublishSubgraphs(function_name, std::move(subgraphs));

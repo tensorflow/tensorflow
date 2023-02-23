@@ -214,7 +214,11 @@ def create_distributed_mesh(
     return mesh
 
   if device_type.upper() == 'TPU':
-    mesh = tpu_util.create_tpu_mesh(dim_names, shape, mesh_name, use_xla_spmd)
+    mesh = tpu_util.create_tpu_mesh(
+        mesh_dim_names=dim_names,
+        mesh_shape=shape,
+        mesh_name=mesh_name,
+        use_xla_spmd=use_xla_spmd)
     _print_context(
         config.num_global_devices(device_type), config.num_clients(),
         config.client_id(), device_type, mesh)
@@ -223,8 +227,13 @@ def create_distributed_mesh(
   raise ValueError(f'Device type {device_type} is not CPU, GPU or TPU')
 
 
+_BARRIER_DICT = {}
+
+
 @tf_export('experimental.dtensor.barrier', v1=[])
-def barrier(mesh: layout.Mesh, barrier_name: Optional[str] = None):
+def barrier(mesh: layout.Mesh,
+            barrier_name: Optional[str] = None,
+            timeout_in_ms: Optional[int] = None):
   """Runs a barrier on the mesh.
 
   Upon returning from the barrier, all operations run before the barrier
@@ -249,7 +258,9 @@ def barrier(mesh: layout.Mesh, barrier_name: Optional[str] = None):
 
   Args:
     mesh: The mesh to run the barrier on.
-    barrier_name: The name of the barrier. mainly used for logging purpose.
+    barrier_name: The name of the barrier. Mainly used for logging purpose.
+    timeout_in_ms: The timeout of the barrier in ms. If omitted, blocks
+      indefinitely till the barrier is reached from all clients.
   """
   if barrier_name is None:
     barrier_name = '(barrier)'
@@ -274,6 +285,16 @@ def barrier(mesh: layout.Mesh, barrier_name: Optional[str] = None):
   # TODO(hthu): This isn't strictly needed but might cause confusing behaviors
   # from users. Consider dropping this if there is a `big` performance hit.
   context.async_wait()
+
+  if context.context().coordination_service:
+    if timeout_in_ms is None:
+      timeout_in_ms = 24 * 60 * 60 * 1000  # 24 hours to stand in for infinite.
+
+    num_calls = _BARRIER_DICT.setdefault(barrier_name, 0)
+    _BARRIER_DICT[barrier_name] = num_calls + 1
+
+    barrier_id = f'{barrier_name}:{num_calls}'
+    context.context().wait_at_barrier(barrier_id, timeout_in_ms)
 
   logging.info('finished running barrier across all clients after '
                'op: %s', barrier_name)

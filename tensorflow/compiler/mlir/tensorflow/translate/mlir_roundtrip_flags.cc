@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 
+#include <optional>
 #include <ostream>
 #include <sstream>
 #include <type_traits>
@@ -224,7 +225,7 @@ Status ParseNodeShapes(
     std::vector<string> node_shapes_str = absl::StrSplit(shapes_str, ':');
     for (int i = 0; i < node_shapes_str.size(); i++) {
       if (node_shapes_str[i] == "*") {
-        shapes_vector.push_back(llvm::None);
+        shapes_vector.push_back(std::nullopt);
         continue;
       }
       TF_ASSIGN_OR_RETURN(auto shape, ParseShapeStr(node_shapes_str[i]));

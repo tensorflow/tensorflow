@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
@@ -43,9 +42,21 @@ class ReductionVectorizationNoOptTest : public GpuCodegenTest {
     debug_options.set_xla_disable_all_hlo_passes(true);
     return debug_options;
   }
+
+ public:
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
 };
 
 TEST_F(ReductionVectorizationNoOptTest, MultiOutputStore) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::PASCAL_)) {
+    GTEST_SKIP() << "Maxwell GPUs are less vectorized";
+  }
   const char* hlo_text = R"(
 HloModule MultiOutputStore
 
