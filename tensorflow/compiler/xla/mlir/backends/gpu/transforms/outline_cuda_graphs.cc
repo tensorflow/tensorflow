@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/stream_executor/blas.h"
 
 namespace xla {
 namespace gpu {
@@ -97,10 +98,24 @@ using MoveOp = OpCapture<kMove, T, Ts...>;
 template <typename T, typename... Ts>
 using CloneOp = OpCapture<kClone, T, Ts...>;
 
-// Capture gpu operations by moving them intp graph capture function.
+// Capture gpu operations by moving them into graph capture function.
 struct LaunchFuncOpCapture : public MoveOp<LaunchFuncOp> {};
 struct ConvOpCapture : public MoveOp<lmhlo_gpu::ConvForwardFusedOp> {};
-struct GemmOpCapture : public MoveOp<lmhlo_gpu::GEMMOp> {};
+
+struct GemmOpCapture : public OpCapturePattern {
+  FailureOr<OpCapturePattern::Capture> match(Operation* op) final {
+    if (auto gemm = llvm::dyn_cast<lmhlo_gpu::GEMMOp>(op)) {
+      // GEMM that does runtime autotuning should not be captured, since CUDA
+      // graph does not support operations that allocate memory.
+      if (!gemm.getAlgorithm().has_value() ||
+          gemm.getAlgorithm().value() !=
+              stream_executor::blas::kRuntimeAutotuning) {
+        return kMove;
+      }
+    }
+    return failure();
+  }
+};
 
 // Capture pure operations by cloning them into graph capture function.
 struct ConstantOpCapture : public CloneOp<arith::ConstantOp> {};
