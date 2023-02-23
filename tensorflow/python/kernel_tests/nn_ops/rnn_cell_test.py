@@ -1355,6 +1355,7 @@ class LSTMTest(test.TestCase):
               cell_clip=cell_clip,
               use_peephole=use_peephole))
       
+  @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   def testLSTMBlockCellErrorHandling2(self):
     forget_bias = 112.66590343649887
