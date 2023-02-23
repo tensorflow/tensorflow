@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Utils/StaticValueUtils.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -947,7 +948,10 @@ std::optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
   if (!matchPattern(paddings_value, m_Constant(&paddings_elems)))
     return std::nullopt;
 
-  SmallVector<int32_t> a0_pad_const(2 * (input_rank));
+  ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
+  auto rank_one_shape_type = tosa::shapeType::get(rewriter.getContext(), 1);
+
+  SmallVector<int64_t> a0_pad_const(2 * (input_rank));
   SmallVector<int64_t> padded_shape(input_rank);
 
   // 1. Pad based on paddings operand.  No padding on the batch dimension.
@@ -989,21 +993,13 @@ std::optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
     padded_shape[i + block_rank + 1] = input_shape[i + block_rank + 1];
   }
 
-  RankedTensorType a0_pad_const_attr_type =
-      tensorflow::GetTypeFromTFTensorShape({(input_rank), 2},
-                                           rewriter.getIntegerType(32));
-
-  // Create a const op to generate the tensor type for the input padding array
-  auto a0_pad_const_op = rewriter.create<tosa::ConstOp>(
-      op->getLoc(), a0_pad_const_attr_type,
-      DenseElementsAttr::get(a0_pad_const_attr_type,
-                             llvm::ArrayRef(a0_pad_const)));
+  Value a0_padding = mlir::tosa::getTosaConstShape(rewriter, op->getLoc(), a0_pad_const);
 
   auto a1_pad_input_op = CreateOpAndInfer<tosa::PadOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(padded_shape,
                                            result_type.getElementType()),
-      input_value, a0_pad_const_op.getResult());
+      input_value, a0_padding);
 
   // 2. Reshape the padded structure of shape padded_shape to
   // [batch + padded_shape[1] / block_shape[0], block_shape[0], ...
@@ -2555,6 +2551,9 @@ std::optional<Value> convertStridedSliceOp(
     }
   }
 
+  SmallVector<int64_t> input_pads(
+      input_rank * 2);  // Stores pads on either side of a dimension
+
   // Step 0: Process the begin/end masks and build the begin/sizes for the
   // first slice
   SmallVector<int64_t> a1_begin(input_rank), a1_size(input_rank);
@@ -2579,9 +2578,37 @@ std::optional<Value> convertStridedSliceOp(
       a1_size[i] = 1;
       strides[i] = 1;
     }
+
+    // Note: no padding added to dynamic dimensions
+    auto stride_remainder = a1_size[i] % strides[i];
+    if (a1_size[i] > 0 && stride_remainder != 0) {
+      input_pads[2 * i] = 0;  // No padding at beginning of dimension
+      auto pad_up_value = strides[i] - stride_remainder;
+      input_pads[2 * i + 1] = pad_up_value;  // Pad end of dimension up to the
+                                             // next multiple of strides[i]
+      a1_size[i] += pad_up_value;
+    } else {
+      input_pads[2 * i] = 0;
+      input_pads[2 * i + 1] = 0;
+    }
   }
 
-  // Step 1: Slice the input array
+  // Step 0.5: Add tosa.Pad if required
+  const bool need_padding =
+      llvm::any_of(input_pads, [](int64_t i) { return i != 0; });
+  if (need_padding) {
+    Value a0_padding = getTosaConstShape(rewriter, op->getLoc(), input_pads);
+
+    auto a0_pad_input_op = CreateOpAndInfer<tosa::PadOp>(
+        rewriter, op->getLoc(),
+        tensorflow::GetTypeFromTFTensorShape(a1_size,
+                                             result_type.getElementType()),
+        input_value, a0_padding);
+
+    input_value =
+        a0_pad_input_op.getResult();  // overwrite input_value parameter
+  }
+
   auto a1_slice_op = CreateOpAndInfer<tosa::SliceOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(a1_size, element_type), input_value,

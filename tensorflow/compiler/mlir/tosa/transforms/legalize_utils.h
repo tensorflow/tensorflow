@@ -137,9 +137,16 @@ Value getTosaConstTensorScalarInt(ImplicitLocOpBuilder& builder, Type type,
 Value getTosaConstShape(PatternRewriter& rewriter, Operation* op,
                         llvm::ArrayRef<int64_t> values);
 
-// Create a vector from a 32-bit value tensor.  Returns vector size on success
-// or -1 on error.
+
+// Populate a int32_t vector from a val tensor
+// return failure if val is not a constant value
+// return success otherwise
 LogicalResult getVectorFromValue32(Value val, SmallVectorImpl<int32_t>& vec);
+
+// Populate a int64_t vector from a val tensor
+// return failure if val is not a constant value
+// return success otherwise
+LogicalResult getVectorFromValue64(Value val, SmallVectorImpl<int64_t>& vec);
 
 // Calculates the TOSA padding values based on TF operators padded with
 // SAME/VALID.

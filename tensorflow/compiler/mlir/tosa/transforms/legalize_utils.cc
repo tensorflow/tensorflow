@@ -577,6 +577,9 @@ Value getTosaConstShape(PatternRewriter& rewriter, Operation* op,
 
 // Create a vector from a 32-bit value tensor.  Returns the size of
 // the new vector or -1 on error.
+// Populate a int32_t vector from a val tensor
+// return failure if val is not a constant value
+// return success otherwise
 LogicalResult getVectorFromValue32(Value val, SmallVectorImpl<int32_t>& vec) {
   int i = 0;
 
@@ -588,6 +591,26 @@ LogicalResult getVectorFromValue32(Value val, SmallVectorImpl<int32_t>& vec) {
 
   for (auto idx : elems.getValues<IntegerAttr>()) {
     vec.push_back(idx.getInt());
+    i++;
+  }
+
+  return success();
+}
+
+// Populate a int64_t vector from a val tensor
+// return failure if val is not a constant value
+// return success otherwise
+LogicalResult getVectorFromValue64(Value val, SmallVectorImpl<int64_t>& vec) {
+  int i = 0;
+
+  ElementsAttr elems;
+
+  vec.clear();
+
+  if (!matchPattern(val, m_Constant(&elems))) return failure();
+
+  for (auto idx : elems.getValues<IntegerAttr>()) {
+    vec.push_back(static_cast<int64_t>(idx.getInt()));
     i++;
   }
 
