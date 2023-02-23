@@ -2488,8 +2488,10 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
   """
   image = ops.convert_to_tensor(image, name='image')
   dtype = dtypes.as_dtype(dtype)
-  if dtype.is_complex or image.dtype.is_complex:
-    raise AttributeError('Both dtype and image.dtype must be either floating point or integer')
+  if not dtype.is_floating and not dtype.is_integer:
+    raise AttributeError('dtype must be either floating point or integer')
+  if not image.dtype.is_floating and not image.dtype.is_integer:
+    raise AttributeError('image dtype must be either floating point or integer')
   if dtype == image.dtype:
     return array_ops.identity(image, name=name)
 
