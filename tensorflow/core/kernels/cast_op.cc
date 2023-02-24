@@ -23,12 +23,11 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/cast_op_impl.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
-
-#include "tensorflow/core/kernels/cast_op_impl.h"
 
 namespace tensorflow {
 
@@ -280,7 +279,6 @@ REGISTER_CAST_GPU(float8_e4m3fn, float8_e4m3fn);
 
 #undef REGISTER_CAST_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 
 #undef CURRY_TYPES2
 
