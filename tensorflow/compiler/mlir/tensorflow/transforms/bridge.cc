@@ -94,7 +94,6 @@ void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
   const llvm::SmallVector<std::string, 4> ops_to_preserve = {
       "tf.TPUReplicateMetadata", "tf.TPUCompilationResult",
       "tf.TPUReplicatedOutput"};
-
   pm.addNestedPass<func::FuncOp>(
       tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));
   // It is assumed at this stage there are no V1 control flow ops as Graph
@@ -102,7 +101,6 @@ void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
   // tf_executor dialect islands/graphs.
   pm.addNestedPass<func::FuncOp>(
       CreateExecutorDialectToFunctionalConversionPass());
-
   // Guarantee all functions have one use, which enables more exact shape
   // inference.
   pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
@@ -186,9 +184,6 @@ void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
   pm.addNestedPass<func::FuncOp>(TFDevice::CreateClusterConstantSinkingPass());
   pm.addPass(TF::CreateResourceDeviceInferencePass());
   pm.addPass(TFDevice::CreateClusterOutliningPass());
-  if (tensorflow::GetMlirCommonFlags()->tf_mlir_strip_debug) {
-    pm.addPass(createStripDebugInfoPass());
-  }
   pm.addPass(CreateTPUResourceReadForWritePass());
   pm.addPass(TFDevice::CreateMarkInputOutputAliasesPass());
   pm.addPass(CreateTPUShardingIdentificationPass());
