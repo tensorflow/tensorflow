@@ -418,6 +418,10 @@ class Client:
       results_shapes: Sequence[Shape],
       operand_layouts: Optional[Sequence[Shape]] = ...,
       has_side_effects: bool = ...) -> Tuple[XlaOp, Any]: ...
+  def make_python_callback_from_host_send_and_recv(
+      self, callable: Callable, operand_shapes: Sequence[Shape],
+      result_shapes: Sequence[Shape], send_channel_ids: Sequence[int],
+      recv_channel_ids: Sequence[int]) -> Any: ...
   def get_python_callback_from_host_send(callable: Any,
                                          operand_shapes: Any, send_channel_ids: Any, recv_channel_ids: Any) -> Any: ...
 
