@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/cc/client/client_session.h"
 
+#include <utility>
 #include <vector>
 
 #include "absl/synchronization/barrier.h"
@@ -38,6 +39,14 @@ using ops::Const;
 using ops::Mul;
 using ops::Placeholder;
 using ops::Sub;
+
+tensorflow::SessionOptions GetSessionOptions() {
+  tensorflow::SessionOptions options;
+  // Disable optimizations for static graph to allow calls to Session::Extend.
+  options.config.mutable_experimental()->set_disable_optimize_for_static_graph(
+      true);
+  return options;
+}
 
 class CustomThreadPoolImpl : public thread::ThreadPoolInterface {
  public:
@@ -100,7 +109,7 @@ TEST(ClientSessionTest, Extend) {
   Scope root = Scope::NewRootScope();
   auto a = Placeholder(root, DT_INT32, Placeholder::Shape({2}));
   auto c = Add(root, a, {2, 2});
-  ClientSession session(root);
+  ClientSession session(root, GetSessionOptions());
   std::vector<Tensor> outputs;
 
   TF_EXPECT_OK(session.Run({{a, {1, 1}}}, {c}, &outputs));
@@ -116,7 +125,7 @@ TEST(ClientSessionTest, MultiThreadedWithDefaultThreadpool) {
   Scope root = Scope::NewRootScope();
   auto a = Add(root, {1, 2}, {3, 4});
   auto b = Mul(root, {1, 2}, {3, 4});
-  ClientSession session(root);
+  ClientSession session(root, GetSessionOptions());
   {
     thread::ThreadPool thread_pool(Env::Default(), "pool", 2);
     thread_pool.Schedule([&session, a]() {
@@ -143,7 +152,7 @@ TEST(ClientSessionTest, MultiThreadedWithCustomThreadpool) {
   int num_threads = 3;
   auto a = Add(root, {1, 2}, {3, 4});
   auto b = Mul(root, {1, 2}, {3, 4});
-  ClientSession session(root);
+  ClientSession session(root, GetSessionOptions());
 
   auto inter_op_threadpool =
       absl::make_unique<CustomThreadPoolImpl>(num_threads);

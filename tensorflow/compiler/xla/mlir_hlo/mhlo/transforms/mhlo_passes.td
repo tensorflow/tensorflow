@@ -48,6 +48,12 @@ def HloCanonicalizeReductionPass : Pass<"hlo-canonicalize-reduction", "func::Fun
   let constructor = "createHloCanonicalizeReductionPass()";
 }
 
+def HloCanonicalizeDotPass : Pass<"hlo-canonicalize-dot", "func::FuncOp"> {
+  let summary = "Rewrites dot operands that contain unit dimension.";
+  let constructor = "createHloCanonicalizeDotPass()";
+  let dependentDialects = ["mhlo::MhloDialect", "tensor::TensorDialect"];
+}
+
 def HloLegalizeToLhloPass : Pass<"hlo-legalize-to-lhlo", "ModuleOp"> {
   let summary = "Legalize from HLO dialect to LHLO dialect.";
   let constructor = "createLegalizeToLhloPass()";
@@ -232,6 +238,17 @@ def ShapeReificationPass : Pass<"shape-reification", "func::FuncOp"> {
   let constructor = "createShapeReificationPass()";
 }
 
+def SymbolicShapeOptimization : Pass<"symbolic-shape-optimization", "func::FuncOp"> {
+  let summary = "Analyzes shapes and performs shape-related optimizations";
+  let constructor = "createSymbolicShapeOptimizationPass()";
+}
+
+def ShapeSimplification
+    : Pass<"shape-simplification", "mlir::func::FuncOp"> {
+  let summary = "Simplify shape ops";
+  let constructor = "createShapeSimplification()";
+}
+
 def ConstraintFusionPass : Pass<"constraint-fusion", "func::FuncOp"> {
   let summary = "Fuse shape constraints and merge all assuming regions.";
   let constructor = "createConstraintFusionPass()";
@@ -302,6 +319,12 @@ def RankSpecializationToSCFPass
   ];
 }
 
+def MhloExpandOpsSimplifierPass
+    : Pass<"mhlo-expand-ops-simplifier", "func::FuncOp"> {
+  let summary = "Expand feature rich mhlo ops into a set of simpler mhlo ops.";
+  let constructor = "createMhloExpandOpsSimplifierPass()";
+}
+
 def CollapseElementwiseMapPass
     : Pass<"mhlo-collapse-elementwise-map", "func::FuncOp"> {
   let summary = "Collapse the mhlo.map if the map only has elementwise ops.";
@@ -312,6 +335,12 @@ def HloLegalizeToStablehloPass : Pass<"hlo-legalize-to-stablehlo", "ModuleOp"> {
   let summary = "Legalize HLO to StableHLO.";
   let constructor = "createHloLegalizeToStablehloPass()";
   let dependentDialects = ["stablehlo::StablehloDialect"];
+  let options = [
+    Option<"allow_experimental_features_", "allow-experimental-features",
+           "bool", /*default=*/"false",
+           "Allow legalization of experimental MHLO features via StableHLO "
+           "custom_call">
+  ];
 }
 
 def StablehloLegalizeToHloPass : Pass<"stablehlo-legalize-to-hlo", "ModuleOp"> {
@@ -332,4 +361,17 @@ def PrepareForExportPass : Pass<"xla-prepare-for-export", "mlir::func::FuncOp"> 
     Note: The result of this pass need not be a module in canonical form and
     canonicalization may undo transformations.
   }];
+}
+
+def ShapeLegalizeToHloPass : Pass<"shape-legalize-to-hlo", "func::FuncOp"> {
+  let summary = "Legalize shape-related ops to HLO.";
+  let constructor = "createShapeLegalizeToHloPass()";
+  let description = [{
+    An experimental pass that legalizes shape-related ops to MHLO ops.
+
+    Bringing shape and data computations together via an optional pass will
+    make it possible for the MHLO ecosystem to potentially leverage the
+    compilation pipelines that use HLO operations to model dynamism.
+  }];
+  let dependentDialects = ["mhlo::MhloDialect"];
 }

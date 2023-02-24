@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/core/framework/model.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 
 #include "tensorflow/core/framework/cancellation.h"
@@ -85,9 +87,13 @@ TEST_P(AsyncInterleaveManyTest, Model) {
   });
   Model::NodeValues input_times;
   input_times[kModelInputTimeKey] = input_time;
+  EXPECT_EQ(async_interleave_many->buffered_bytes(), 0);
+  EXPECT_EQ(async_interleave_many->peak_buffered_bytes(), 0);
   EXPECT_EQ(async_interleave_many->TotalBufferedBytes(), 0);
   EXPECT_EQ(async_interleave_many->TotalMaximumBufferedBytes(), 0);
   async_interleave_many->record_buffer_event(110, 10);
+  EXPECT_EQ(async_interleave_many->buffered_bytes(), 110);
+  EXPECT_EQ(async_interleave_many->peak_buffered_bytes(), 110);
   EXPECT_EQ(async_interleave_many->TotalBufferedBytes(), 110);
   EXPECT_EQ(async_interleave_many->TotalMaximumBufferedBytes(),
             110 * parallelism / 10);
@@ -155,9 +161,13 @@ TEST_P(AsyncKnownRatioTest, Model) {
   async_known_many->add_input(source2);
   Model::NodeValues input_times;
   input_times[kModelInputTimeKey] = input_time;
+  EXPECT_EQ(async_known_many->buffered_bytes(), 0);
+  EXPECT_EQ(async_known_many->peak_buffered_bytes(), 0);
   EXPECT_EQ(async_known_many->TotalBufferedBytes(), 0);
   EXPECT_EQ(async_known_many->TotalMaximumBufferedBytes(), 0);
   async_known_many->record_buffer_event(110, 10);
+  EXPECT_EQ(async_known_many->buffered_bytes(), 110);
+  EXPECT_EQ(async_known_many->peak_buffered_bytes(), 110);
   EXPECT_EQ(async_known_many->TotalBufferedBytes(), 110);
   EXPECT_EQ(async_known_many->TotalMaximumBufferedBytes(),
             num_inputs_per_output == 0
@@ -397,9 +407,13 @@ TEST_P(AsyncUnknownRatioTest, Model) {
   async_unknown_many->add_input(source2);
   Model::NodeValues input_times;
   input_times[kModelInputTimeKey] = input_time;
+  EXPECT_EQ(async_unknown_many->buffered_bytes(), 0);
+  EXPECT_EQ(async_unknown_many->peak_buffered_bytes(), 0);
   EXPECT_EQ(async_unknown_many->TotalBufferedBytes(), 0);
   EXPECT_EQ(async_unknown_many->TotalMaximumBufferedBytes(), 0);
   async_unknown_many->record_buffer_event(110, 10);
+  EXPECT_EQ(async_unknown_many->buffered_bytes(), 110);
+  EXPECT_EQ(async_unknown_many->peak_buffered_bytes(), 110);
   EXPECT_EQ(async_unknown_many->TotalBufferedBytes(), 110);
   EXPECT_EQ(async_unknown_many->TotalMaximumBufferedBytes(),
             110.0 * parallelism / 10);
@@ -548,23 +562,27 @@ TEST(BufferedBytesTest, Node) {
 
   EXPECT_EQ(node->buffered_bytes(), 0);
   EXPECT_EQ(node->buffered_elements(), 0);
+  EXPECT_EQ(node->peak_buffered_bytes(), 0);
   EXPECT_EQ(node->TotalBufferedBytes(), 0);
   EXPECT_EQ(node->TotalMaximumBufferedBytes(), 0);
 
   node->record_buffer_event(20, 1);
   EXPECT_EQ(node->buffered_bytes(), 20);
+  EXPECT_EQ(node->peak_buffered_bytes(), 20);
   EXPECT_EQ(node->buffered_elements(), 1);
   EXPECT_EQ(node->TotalBufferedBytes(), 20);
   EXPECT_EQ(node->TotalMaximumBufferedBytes(), 60);
 
   node->record_buffer_event(10, 1);
   EXPECT_EQ(node->buffered_bytes(), 30);
+  EXPECT_EQ(node->peak_buffered_bytes(), 30);
   EXPECT_EQ(node->buffered_elements(), 2);
   EXPECT_EQ(node->TotalBufferedBytes(), 30);
   EXPECT_EQ(node->TotalMaximumBufferedBytes(), 45);
 
   node->record_buffer_event(18, 1);
   EXPECT_EQ(node->buffered_bytes(), 48);
+  EXPECT_EQ(node->peak_buffered_bytes(), 48);
   EXPECT_EQ(node->buffered_elements(), 3);
   EXPECT_EQ(node->bytes_produced(), 0);
   EXPECT_EQ(node->num_elements(), 0);
@@ -575,6 +593,7 @@ TEST(BufferedBytesTest, Node) {
   node->record_element();
   node->record_bytes_produced(20);
   EXPECT_EQ(node->buffered_bytes(), 28);
+  EXPECT_EQ(node->peak_buffered_bytes(), 48);
   EXPECT_EQ(node->buffered_elements(), 2);
   EXPECT_EQ(node->bytes_produced(), 20);
   EXPECT_EQ(node->num_elements(), 1);
@@ -585,6 +604,7 @@ TEST(BufferedBytesTest, Node) {
   node->record_element();
   node->record_bytes_produced(10);
   EXPECT_EQ(node->buffered_bytes(), 18);
+  EXPECT_EQ(node->peak_buffered_bytes(), 48);
   EXPECT_EQ(node->buffered_elements(), 1);
   EXPECT_EQ(node->bytes_produced(), 30);
   EXPECT_EQ(node->num_elements(), 2);
@@ -612,6 +632,8 @@ TEST(BufferedBytesTest, Node) {
 
   input->record_buffer_event(28, 1);
   EXPECT_EQ(node->bytes_consumed(), 0);
+  EXPECT_EQ(node->buffered_bytes(), 18);
+  EXPECT_EQ(node->peak_buffered_bytes(), 48);
   EXPECT_EQ(node->TotalBufferedBytes(), 46);
   EXPECT_EQ(node->TotalMaximumBufferedBytes(), 119.5);
 
@@ -620,6 +642,8 @@ TEST(BufferedBytesTest, Node) {
   input->record_bytes_produced(28);
   node->record_bytes_consumed(28);
   EXPECT_EQ(node->bytes_consumed(), 28);
+  EXPECT_EQ(node->buffered_bytes(), 18);
+  EXPECT_EQ(node->peak_buffered_bytes(), 48);
   EXPECT_EQ(node->TotalBufferedBytes(), 18);
   EXPECT_EQ(node->TotalMaximumBufferedBytes(), 119.5);
 
@@ -1342,6 +1366,51 @@ TEST(ModelTest, ModelMetrics) {
                     HasSubstr("autotune: true")));
 }
 
+TEST(ModelTest, ModelCollectOptimizationMetrics) {
+  CellReader<std::string> cell_reader("/tensorflow/data/model");
+  model::Model model;
+  std::shared_ptr<Node> root = model::MakeUnknownNode({0, "unknown0", nullptr});
+  model.AddNode([&root](model::Node::Args args) { return root; }, root->name(),
+                nullptr, &root);
+  model.output()->record_element();
+  model.output()->record_start(100);
+  model.output()->record_stop(200);
+  std::string model_id = strings::StrCat(reinterpret_cast<uintptr_t>(&model));
+  // Before optimization, whatever metrics collected are returned.
+  EXPECT_THAT(cell_reader.Read(model_id),
+              AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+                    HasSubstr("autotune: true"), HasSubstr("num_elements: 1"),
+                    HasSubstr("processing_time: 100")));
+  CancellationManager cancellation_manager;
+  model.Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/20,
+                 /*ram_budget=*/1000, /*model_input_time=*/50,
+                 &cancellation_manager);
+  model.output()->record_element();
+  model.output()->record_start(300);
+  model.output()->record_stop(400);
+  // After optimization, metrics collected just before optimization are
+  // returned. Metrics collected after optimization are not returned.
+  EXPECT_THAT(cell_reader.Read(model_id),
+              AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+                    HasSubstr("autotune: true"), HasSubstr("num_elements: 1"),
+                    HasSubstr("processing_time: 100")));
+  // Add gap times.
+  model.RecordIteratorGapTime(10);
+  model.RecordIteratorGapTime(11);
+  model.RecordIteratorGapTime(12);
+  // Call optimization again. Metrics collected after the first optimization
+  // and the added gap times should be returned as well.
+  model.Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/20,
+                 /*ram_budget=*/1000, /*model_input_time=*/50,
+                 &cancellation_manager);
+  EXPECT_THAT(
+      cell_reader.Read(model_id),
+      AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+            HasSubstr("autotune: true"), HasSubstr("num_elements: 2"),
+            HasSubstr("processing_time: 200"), HasSubstr("gap_times: 10"),
+            HasSubstr("gap_times: 11"), HasSubstr("gap_times: 12")));
+}
+
 TEST(ModelTest, ModelCollectAndDestroyRaceCondition) {
   CellReader<std::string> cell_reader("/tensorflow/data/model");
   auto* model = new model::Model();
@@ -1414,6 +1483,7 @@ TEST_F(ModelTimingTest, Interleave) {
         node_class: INTERLEAVE_MANY
         inputs: 3
         inputs: 4
+        inputs: 5
         parameters: { name: "cycle_length" value: 2 tunable: false }
       }
     }
@@ -1421,10 +1491,10 @@ TEST_F(ModelTimingTest, Interleave) {
       key: 3
       value: {
         id: 3
-        name: "Batch"
+        name: "Filter"
         autotune: true
-        num_elements: 60
-        processing_time: 1200
+        num_elements: 2
+        processing_time: 10
         node_class: KNOWN_RATIO
         ratio: 1
       }
@@ -1435,8 +1505,20 @@ TEST_F(ModelTimingTest, Interleave) {
         id: 4
         name: "Batch"
         autotune: true
-        num_elements: 40
-        processing_time: 800
+        num_elements: 50
+        processing_time: 1000
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    nodes: {
+      key: 5
+      value: {
+        id: 5
+        name: "Batch"
+        autotune: true
+        num_elements: 50
+        processing_time: 1000
         node_class: KNOWN_RATIO
         ratio: 1
       }
@@ -1446,18 +1528,21 @@ TEST_F(ModelTimingTest, Interleave) {
 
   EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/1)->pipeline_ratio);
   EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/2)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, GetNodeTiming(/*node_id=*/3)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(0.02, GetNodeTiming(/*node_id=*/3)->pipeline_ratio);
   EXPECT_DOUBLE_EQ(0.5, GetNodeTiming(/*node_id=*/4)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(0.5, GetNodeTiming(/*node_id=*/5)->pipeline_ratio);
 
   EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/1)->self_time_nsec);
   EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/2)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/3)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(5, GetNodeTiming(/*node_id=*/3)->self_time_nsec);
   EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/4)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/5)->self_time_nsec);
 
-  EXPECT_DOUBLE_EQ(40, GetNodeTiming(/*node_id=*/1)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(30, GetNodeTiming(/*node_id=*/2)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/3)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(40.1, GetNodeTiming(/*node_id=*/1)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(30.1, GetNodeTiming(/*node_id=*/2)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(5, GetNodeTiming(/*node_id=*/3)->total_time_nsec);
   EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/4)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/5)->total_time_nsec);
 }
 
 // When the `parallelism` parameter of a `ParallelInterleave` is not present in
@@ -1503,10 +1588,10 @@ TEST_F(ModelTimingTest, TestDefaultParallelismInParallelInterleave) {
           key: 3
           value: {
             id: 3
-            name: "Batch"
+            name: "TensorSlice"
             autotune: true
-            num_elements: 60
-            processing_time: 60
+            num_elements: 2
+            processing_time: 40
             node_class: KNOWN_RATIO
             ratio: 1
           }
@@ -1517,8 +1602,8 @@ TEST_F(ModelTimingTest, TestDefaultParallelismInParallelInterleave) {
             id: 4
             name: "Batch"
             autotune: true
-            num_elements: 60
-            processing_time: 1200
+            num_elements: 30
+            processing_time: 600
             node_class: KNOWN_RATIO
             ratio: 1
           }
@@ -1529,8 +1614,8 @@ TEST_F(ModelTimingTest, TestDefaultParallelismInParallelInterleave) {
             id: 5
             name: "Batch"
             autotune: true
-            num_elements: 40
-            processing_time: 1200
+            num_elements: 20
+            processing_time: 600
             node_class: KNOWN_RATIO
             ratio: 1
           }
@@ -1541,8 +1626,8 @@ TEST_F(ModelTimingTest, TestDefaultParallelismInParallelInterleave) {
             id: 6
             name: "Batch"
             autotune: true
-            num_elements: 60
-            processing_time: 2400
+            num_elements: 30
+            processing_time: 1200
             node_class: KNOWN_RATIO
             ratio: 1
           }
@@ -1553,8 +1638,8 @@ TEST_F(ModelTimingTest, TestDefaultParallelismInParallelInterleave) {
             id: 7
             name: "Batch"
             autotune: false  # Marked as an inactive input
-            num_elements: 40
-            processing_time: 2000
+            num_elements: 2
+            processing_time: 40
             node_class: KNOWN_RATIO
             ratio: 1
           }
@@ -1565,23 +1650,19 @@ TEST_F(ModelTimingTest, TestDefaultParallelismInParallelInterleave) {
 
   EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/1)->pipeline_ratio);
   EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/2)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
-                   GetNodeTiming(/*node_id=*/3)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
-                   GetNodeTiming(/*node_id=*/4)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
-                   GetNodeTiming(/*node_id=*/5)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
-                   GetNodeTiming(/*node_id=*/6)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(2.0 / 100.0, GetNodeTiming(/*node_id=*/3)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(30.0 / 100.0, GetNodeTiming(/*node_id=*/4)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(20 / 100.0, GetNodeTiming(/*node_id=*/5)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(30 / 100.0, GetNodeTiming(/*node_id=*/6)->pipeline_ratio);
   EXPECT_DOUBLE_EQ(0, GetNodeTiming(/*node_id=*/7)->pipeline_ratio);
 
   const double expected_self_time_1 = 1000.0 / 100.0;
   const double expected_self_time_2 = 2000.0 / 100.0 / parallelism;
-  const double expected_self_time_3 = 60.0 / 60.0;
-  const double expected_self_time_4 = 1200.0 / 60.0;
-  const double expected_self_time_5 = 1200.0 / 40.0;
-  const double expected_self_time_6 = 2400.0 / 60.0;
-  const double expected_self_time_7 = 2000.0 / 40.0;
+  const double expected_self_time_3 = 40.0 / 2.0;
+  const double expected_self_time_4 = 600.0 / 30.0;
+  const double expected_self_time_5 = 600.0 / 20.0;
+  const double expected_self_time_6 = 1200.0 / 30.0;
+  const double expected_self_time_7 = 40.0 / 2.0;
 
   EXPECT_DOUBLE_EQ(expected_self_time_1,
                    GetNodeTiming(/*node_id=*/1)->self_time_nsec);
@@ -1624,8 +1705,10 @@ TEST_F(ModelTimingTest, TestDefaultParallelismInParallelInterleave) {
     }
     expected_input_time = 1.0 / input_throughput;
   }
-  EXPECT_DOUBLE_EQ(expected_input_time + expected_self_time_2,
-                   GetNodeTiming(/*node_id=*/2)->total_time_nsec);
+  const double expected_first_input_time = expected_self_time_3 * 2.0 / 100.0;
+  EXPECT_DOUBLE_EQ(
+      expected_first_input_time + expected_input_time + expected_self_time_2,
+      GetNodeTiming(/*node_id=*/2)->total_time_nsec);
 }
 
 class ParallelInterleaveTimingTest
@@ -1681,10 +1764,10 @@ TEST_P(ParallelInterleaveTimingTest, ScenarioTest) {
           key: 3
           value: {
             id: 3
-            name: "Batch"
+            name: "TensorSlice"
             autotune: true
-            num_elements: 60
-            processing_time: 60
+            num_elements: 2
+            processing_time: 40
             node_class: KNOWN_RATIO
             ratio: 1
           }
@@ -1695,8 +1778,8 @@ TEST_P(ParallelInterleaveTimingTest, ScenarioTest) {
             id: 4
             name: "Batch"
             autotune: true
-            num_elements: 60
-            processing_time: 1200
+            num_elements: 30
+            processing_time: 600
             node_class: KNOWN_RATIO
             ratio: 1
           }
@@ -1707,8 +1790,8 @@ TEST_P(ParallelInterleaveTimingTest, ScenarioTest) {
             id: 5
             name: "Batch"
             autotune: true
-            num_elements: 40
-            processing_time: 1200
+            num_elements: 20
+            processing_time: 600
             node_class: KNOWN_RATIO
             ratio: 1
           }
@@ -1719,8 +1802,8 @@ TEST_P(ParallelInterleaveTimingTest, ScenarioTest) {
             id: 6
             name: "Batch"
             autotune: true
-            num_elements: 60
-            processing_time: 2400
+            num_elements: 30
+            processing_time: 1200
             node_class: KNOWN_RATIO
             ratio: 1
           }
@@ -1731,8 +1814,8 @@ TEST_P(ParallelInterleaveTimingTest, ScenarioTest) {
             id: 7
             name: "Batch"
             autotune: false  # Marked as an inactive input
-            num_elements: 40
-            processing_time: 2000
+            num_elements: 2
+            processing_time: 40
             node_class: KNOWN_RATIO
             ratio: 1
           }
@@ -1743,23 +1826,19 @@ TEST_P(ParallelInterleaveTimingTest, ScenarioTest) {
 
   EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/1)->pipeline_ratio);
   EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/2)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
-                   GetNodeTiming(/*node_id=*/3)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
-                   GetNodeTiming(/*node_id=*/4)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
-                   GetNodeTiming(/*node_id=*/5)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
-                   GetNodeTiming(/*node_id=*/6)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(2.0 / 100.0, GetNodeTiming(/*node_id=*/3)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(30.0 / 100.0, GetNodeTiming(/*node_id=*/4)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(20 / 100.0, GetNodeTiming(/*node_id=*/5)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(30 / 100.0, GetNodeTiming(/*node_id=*/6)->pipeline_ratio);
   EXPECT_DOUBLE_EQ(0, GetNodeTiming(/*node_id=*/7)->pipeline_ratio);
 
   const double expected_self_time_1 = 1000.0 / 100.0;
   const double expected_self_time_2 = 2000.0 / 100.0 / parallelism;
-  const double expected_self_time_3 = 60.0 / 60.0;
-  const double expected_self_time_4 = 1200.0 / 60.0;
-  const double expected_self_time_5 = 1200.0 / 40.0;
-  const double expected_self_time_6 = 2400.0 / 60.0;
-  const double expected_self_time_7 = 2000.0 / 40.0;
+  const double expected_self_time_3 = 40.0 / 2.0;
+  const double expected_self_time_4 = 600.0 / 30.0;
+  const double expected_self_time_5 = 600.0 / 20.0;
+  const double expected_self_time_6 = 1200.0 / 30.0;
+  const double expected_self_time_7 = 40.0 / 2.0;
 
   EXPECT_DOUBLE_EQ(expected_self_time_1,
                    GetNodeTiming(/*node_id=*/1)->self_time_nsec);
@@ -1802,8 +1881,10 @@ TEST_P(ParallelInterleaveTimingTest, ScenarioTest) {
     }
     expected_input_time = 1.0 / input_throughput;
   }
-  EXPECT_DOUBLE_EQ(expected_input_time + expected_self_time_2,
-                   GetNodeTiming(/*node_id=*/2)->total_time_nsec);
+  const double expected_first_input_time = expected_self_time_3 * 2.0 / 100.0;
+  EXPECT_DOUBLE_EQ(
+      expected_first_input_time + expected_input_time + expected_self_time_2,
+      GetNodeTiming(/*node_id=*/2)->total_time_nsec);
 }
 
 INSTANTIATE_TEST_SUITE_P(ParallelInterleaveTimingTest,
@@ -1854,10 +1935,10 @@ TEST_F(ModelTimingTest, ParallelInterleave_Batch_ParallelMap) {
       key: 3
       value: {
         id: 3
-        name: "Batch"
+        name: "TensorSlice"
         autotune: true
-        num_elements: 60
-        processing_time: 60
+        num_elements: 2
+        processing_time: 40
         node_class: KNOWN_RATIO
         ratio: 1
       }
@@ -1868,8 +1949,8 @@ TEST_F(ModelTimingTest, ParallelInterleave_Batch_ParallelMap) {
         id: 4
         name: "Batch"
         autotune: true
-        num_elements: 60
-        processing_time: 1200
+        num_elements: 50
+        processing_time: 1000
         node_class: KNOWN_RATIO
         ratio: 2
         inputs: 6
@@ -1881,8 +1962,8 @@ TEST_F(ModelTimingTest, ParallelInterleave_Batch_ParallelMap) {
         id: 5
         name: "Batch"
         autotune: true
-        num_elements: 40
-        processing_time: 800
+        num_elements: 50
+        processing_time: 1000
         node_class: KNOWN_RATIO
         ratio: 2
         inputs: 7
@@ -1894,8 +1975,8 @@ TEST_F(ModelTimingTest, ParallelInterleave_Batch_ParallelMap) {
         id: 6
         name: "ParallelMapV2"
         autotune: true
-        num_elements: 120
-        processing_time: 2400
+        num_elements: 100
+        processing_time: 2000
         node_class: ASYNC_KNOWN_RATIO
         ratio: 1
         parameters: {
@@ -1913,8 +1994,8 @@ TEST_F(ModelTimingTest, ParallelInterleave_Batch_ParallelMap) {
         id: 7
         name: "ParallelMapV2"
         autotune: true
-        num_elements: 120
-        processing_time: 2400
+        num_elements: 100
+        processing_time: 2000
         node_class: ASYNC_KNOWN_RATIO
         ratio: 1
         parameters: {
@@ -1929,29 +2010,86 @@ TEST_F(ModelTimingTest, ParallelInterleave_Batch_ParallelMap) {
     output: 1
   )pb");
 
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/1)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/2)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, GetNodeTiming(/*node_id=*/3)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, GetNodeTiming(/*node_id=*/4)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, GetNodeTiming(/*node_id=*/5)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/6)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/7)->pipeline_ratio);
+  const double expected_pipeline_ratio_1 = 1.0;
+  EXPECT_DOUBLE_EQ(expected_pipeline_ratio_1,
+                   GetNodeTiming(/*node_id=*/1)->pipeline_ratio);
+  const double expected_pipeline_ratio_2 =
+      expected_pipeline_ratio_1 * 100.0 / 100.0;
+  EXPECT_DOUBLE_EQ(expected_pipeline_ratio_2,
+                   GetNodeTiming(/*node_id=*/2)->pipeline_ratio);
+  const double expected_pipeline_ratio_3 =
+      expected_pipeline_ratio_2 * 2.0 / 100.0;
+  EXPECT_DOUBLE_EQ(expected_pipeline_ratio_3,
+                   GetNodeTiming(/*node_id=*/3)->pipeline_ratio);
+  const double expected_pipeline_ratio_4 =
+      expected_pipeline_ratio_2 * 50.0 / 100.0;
+  EXPECT_DOUBLE_EQ(expected_pipeline_ratio_4,
+                   GetNodeTiming(/*node_id=*/4)->pipeline_ratio);
+  const double expected_pipeline_ratio_5 =
+      expected_pipeline_ratio_2 * 50.0 / 100.0;
+  EXPECT_DOUBLE_EQ(expected_pipeline_ratio_5,
+                   GetNodeTiming(/*node_id=*/5)->pipeline_ratio);
+  const double expected_pipeline_ratio_6 =
+      expected_pipeline_ratio_4 * 100.0 / 50.0;
+  EXPECT_DOUBLE_EQ(expected_pipeline_ratio_6,
+                   GetNodeTiming(/*node_id=*/6)->pipeline_ratio);
+  const double expected_pipeline_ratio_7 =
+      expected_pipeline_ratio_5 * 100.0 / 50.0;
+  EXPECT_DOUBLE_EQ(expected_pipeline_ratio_7,
+                   GetNodeTiming(/*node_id=*/7)->pipeline_ratio);
 
-  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/1)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/2)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/3)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/4)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/5)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/6)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/7)->self_time_nsec);
+  const double expected_self_time_1 = 1000.0 / 100.0;
+  EXPECT_DOUBLE_EQ(expected_self_time_1,
+                   GetNodeTiming(/*node_id=*/1)->self_time_nsec);
+  const double expected_self_time_2 = 2000.0 / 100.0 / 2.0;
+  EXPECT_DOUBLE_EQ(expected_self_time_2,
+                   GetNodeTiming(/*node_id=*/2)->self_time_nsec);
+  const double expected_self_time_3 = 40.0 / 2.0;
+  EXPECT_DOUBLE_EQ(expected_self_time_3,
+                   GetNodeTiming(/*node_id=*/3)->self_time_nsec);
+  const double expected_self_time_4 = 1000.0 / 50.0;
+  EXPECT_DOUBLE_EQ(expected_self_time_4,
+                   GetNodeTiming(/*node_id=*/4)->self_time_nsec);
+  const double expected_self_time_5 = 1000.0 / 50.0;
+  EXPECT_DOUBLE_EQ(expected_self_time_5,
+                   GetNodeTiming(/*node_id=*/5)->self_time_nsec);
+  const double expected_self_time_6 = 2000.0 / 100.0 / 2.0;
+  EXPECT_DOUBLE_EQ(expected_self_time_6,
+                   GetNodeTiming(/*node_id=*/6)->self_time_nsec);
+  const double expected_self_time_7 = 2000.0 / 100.0 / 2.0;
+  EXPECT_DOUBLE_EQ(expected_self_time_7,
+                   GetNodeTiming(/*node_id=*/7)->self_time_nsec);
 
-  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/1)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/2)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/3)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/4)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/5)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/6)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/7)->total_time_nsec);
+  const double expected_total_time_7 = expected_self_time_7;
+  const double expected_total_time_6 = expected_self_time_6;
+  // Input of node 5 is a `ParallelMap`, which is an async node that belongs to
+  // a separate stage.
+  const double expected_total_time_5 = expected_self_time_5;
+  // Input of node 4 is a `ParallelMap`, which is an async node that belongs to
+  // a separate stage.
+  const double expected_total_time_4 = expected_self_time_4;
+  const double expected_total_time_3 = expected_self_time_3;
+  const double expected_total_time_2 =
+      expected_total_time_3 * 2.0 / 100.0 +
+      1.0 / (1.0 / expected_total_time_4 + 1.0 / expected_total_time_5) +
+      expected_self_time_2;
+  // Input of node 1 is a `ParallelInterleave`, which is an async node that
+  // belongs to a separate stage.
+  const double expected_total_time_1 = expected_self_time_1;
+  EXPECT_DOUBLE_EQ(expected_total_time_1,
+                   GetNodeTiming(/*node_id=*/1)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_total_time_2,
+                   GetNodeTiming(/*node_id=*/2)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_total_time_3,
+                   GetNodeTiming(/*node_id=*/3)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_total_time_4,
+                   GetNodeTiming(/*node_id=*/4)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_total_time_5,
+                   GetNodeTiming(/*node_id=*/5)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_total_time_6,
+                   GetNodeTiming(/*node_id=*/6)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_total_time_7,
+                   GetNodeTiming(/*node_id=*/7)->total_time_nsec);
 }
 
 class BufferSizeTest : public ::testing::Test {
@@ -2302,7 +2440,8 @@ TEST_F(ModelTimingTest, OptimizeStageBased_OneStage) {
         id: 1
         name: "ParallelMapV2"
         autotune: true
-        num_elements: 100
+        num_elements: 97
+        buffered_elements: 3
         processing_time: 5000
         bytes_produced: 10000
         node_class: ASYNC_KNOWN_RATIO
@@ -2339,7 +2478,6 @@ TEST_F(ModelTimingTest, OptimizeStageBased_OneStage) {
         num_elements: 100
         processing_time: 1000
         node_class: KNOWN_RATIO
-        ratio: 2
       }
     }
     output: 1
@@ -2606,7 +2744,7 @@ TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatio) {
   model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 20, 10000, 50,
                    &cancellation_manager);
 
-  EXPECT_EQ(16, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+  EXPECT_EQ(5, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
 }
 
 TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatioLessThanOne) {
@@ -2664,22 +2802,38 @@ TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatioLessThanOne) {
   model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 20, 10000, 50,
                    &cancellation_manager);
 
-  EXPECT_EQ(14, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+  EXPECT_EQ(16, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
 }
 
 TEST_F(ModelTimingTest, ComputeTargetTime) {
   model_ = std::make_unique<Model>();
 
+  model_->RecordIteratorGapTime(5);
+  model_->RecordIteratorGapTime(5);
   model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(15);
+  model_->RecordIteratorGapTime(15);
   model_->RecordIteratorGapTime(1000);
   // Gap times that are >= 10 seconds are always dropped.
   model_->RecordIteratorGapTime(10000000);
 
   EXPECT_DOUBLE_EQ(10, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, ComputeTargetTime_Experiment) {
+  model_ = std::make_unique<Model>();
+  model_->AddExperiment("stage_based_autotune_v2");
+
+  model_->RecordIteratorGapTime(5);
+  model_->RecordIteratorGapTime(5);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(15);
+  model_->RecordIteratorGapTime(15);
+  model_->RecordIteratorGapTime(1000);
+  // Gap times that are >= 10 seconds are always dropped.
+  model_->RecordIteratorGapTime(10000000);
+
+  EXPECT_DOUBLE_EQ(5, model_->ComputeTargetTimeNsec() * 1e-3);
 }
 
 TEST_F(ModelTimingTest, ComputeTargetTime_NoOutlier) {

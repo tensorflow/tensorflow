@@ -21,6 +21,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import keras_export
@@ -268,9 +269,10 @@ class RadialConstraint(Constraint):
     # backend.switch is supported.
     w = backend.map_fn(
         self._kernel_constraint,
-        backend.stack(array_ops.unstack(w, axis=-1), axis=0))
-    return backend.reshape(backend.stack(array_ops.unstack(w, axis=0), axis=-1),
-                           (height, width, channels, kernels))
+        backend.stack(array_ops_stack.unstack(w, axis=-1), axis=0))
+    return backend.reshape(
+        backend.stack(array_ops_stack.unstack(w, axis=0), axis=-1),
+        (height, width, channels, kernels))
 
   def _kernel_constraint(self, kernel):
     """Radially constraints a kernel with shape (height, width, channels)."""

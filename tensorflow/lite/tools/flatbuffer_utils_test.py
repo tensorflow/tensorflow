@@ -230,5 +230,19 @@ class XxdOutputToBytesTest(test_util.TensorFlowTestCase):
     self.assertEqual(initial_bytes, final_bytes)
 
 
+class CountResourceVariablesTest(test_util.TensorFlowTestCase):
+
+  def testCountResourceVariables(self):
+    # 1. SETUP
+    # Define the initial model
+    initial_model = test_utils.build_mock_model()
+
+    # 2. Confirm that resource variables for mock model is 1
+    # The mock model is created with two VAR HANDLE ops, but with the same
+    # shared name.
+    self.assertEqual(
+        flatbuffer_utils.count_resource_variables(initial_model), 1)
+
+
 if __name__ == '__main__':
   test.main()

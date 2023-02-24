@@ -1,8 +1,6 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN:     --gml-tiling-softmax="tile-sizes=8,16 distribute=true" \
-// RUN:     --canonicalize --cse \
-// RUN:     --gml-tiling-softmax="tile-sizes=1,1 distribute=true" \
-// RUN:     --canonicalize --cse | \
+// RUN:     --gml-tiling-softmax="tile-sizes=8,16" --canonicalize --cse \
+// RUN:     --gml-tiling-softmax="tile-sizes=1,1" --canonicalize --cse | \
 // RUN: FileCheck %s
 
 func.func @softmax(%arg0: tensor<64x128xf32>) -> tensor<64x128xf32> {
@@ -17,7 +15,7 @@ func.func @softmax(%arg0: tensor<64x128xf32>) -> tensor<64x128xf32> {
       linalg.yield %11 : f32
     }
   %3 = tensor.empty() : tensor<64x128xf32>
-  %4 = linalg.broadcast 
+  %4 = linalg.broadcast
     ins(%2 : tensor<64xf32>)
     outs(%3 : tensor<64x128xf32>)
     dimensions = [1]
@@ -68,50 +66,51 @@ func.func @softmax(%arg0: tensor<64x128xf32>) -> tensor<64x128xf32> {
 // CHECK-SAME:     outs(%[[EMPTY]] : tensor<64xf32>)
 
 // CHECK:      %[[PARALLEL:.*]] = gml_st.parallel (%[[ARG1:.*]]) = (%[[C0]]) to (%[[C64]]) step (%[[C8]])
-// CHECK-NEXT:   %[[TILE:.*]] = gml_st.tile [%[[ARG1]], 0] [8, 128] [1, 1]
-// CHECK-NEXT:   %[[MATERIALIZE:.*]] = gml_st.materialize %[[ARG0]][%[[TILE]]]
-// CHECK-NEXT:   %[[TILE_0:.*]] = gml_st.tile [%[[ARG1]]] [8] [1]
-// CHECK-NEXT:   %[[MATERIALIZE_0:.*]] = gml_st.materialize %[[FILL]][%[[TILE_0]]]
-// CHECK-NEXT:   %[[MATERIALIZE_1:.*]] = gml_st.materialize %[[EMPTY_0]][%[[TILE]]]
-// CHECK-NEXT:   %[[MATERIALIZE_3:.*]] = gml_st.materialize %[[FILL_0]][%[[TILE_0]]]
+// CHECK-SAME:     outs (%[[EMPTY_:.*]] = %[[EMPTY_0]]:
+// CHECK-DAG:   %[[MATERIALIZE:.*]] = tensor.extract_slice %[[ARG0]][%[[ARG1]], 0] [8, 128] [1, 1]
+// CHECK-DAG:   %[[MATERIALIZE_0:.*]] = tensor.extract_slice %[[FILL]][%[[ARG1]]] [8] [1]
+// CHECK-DAG:   %[[MATERIALIZE_1:.*]] = tensor.extract_slice %[[EMPTY_0]][%[[ARG1]], 0] [8, 128] [1, 1]
+// CHECK-DAG:   %[[MATERIALIZE_3:.*]] = tensor.extract_slice %[[FILL_0]][%[[ARG1]]] [8] [1]
+// CHECK-DAG:   %[[EMPTY_SUB:.*]] = tensor.extract_slice %[[EMPTY_]]
 
 // CHECK:        %[[PARALLEL_0:.*]] = gml_st.parallel (%[[ARG2:.*]]) = (%[[C0]]) to (%[[C8]]) step (%[[C1]])
-// CHECK-NEXT:     %[[TILE_4:.*]] = gml_st.tile [%[[ARG2]], 0] [1, 128] [1, 1]
-// CHECK-NEXT:     %[[MATERIALIZE_4:.*]] = gml_st.materialize %[[MATERIALIZE]][%[[TILE_4]]]
-// CHECK-NEXT:     %[[TILE_5:.*]] = gml_st.tile [%[[ARG2]]] [1] [1]
-// CHECK-NEXT:     %[[MATERIALIZE_5:.*]] = gml_st.materialize %[[MATERIALIZE_0]][%[[TILE_5]]]
-
+// CHECK-SAME:       outs (%[[EMPTY_SUB_:.*]] = %[[EMPTY_SUB]]:
+// CHECK-NEXT:     %[[MATERIALIZE_4:.*]] = tensor.extract_slice %[[MATERIALIZE]][%[[ARG2]], 0] [1, 128] [1, 1]
+// CHECK-NEXT:     %[[MATERIALIZE_5:.*]] = tensor.extract_slice %[[MATERIALIZE_0]][%[[ARG2]]] [1] [1]
 // CHECK-NEXT:     %[[REDUCE:.*]] = linalg.reduce
-// CHECK-NEXT:         ins(%[[MATERIALIZE_4]] : tensor<1x128xf32>)
-// CHECK-NEXT:         outs(%[[MATERIALIZE_5]] : tensor<1xf32>)
-// CHECK-NEXT:         dimensions = [1]
+// CHECK-SAME:         ins(%[[MATERIALIZE_4]] : tensor<1x128xf32>)
+// CHECK-SAME:         outs(%[[MATERIALIZE_5]] : tensor<1xf32>)
+// CHECK-SAME:         dimensions = [1]
 
-// CHECK:          %[[MATERIALIZE_6:.*]] = gml_st.materialize %[[MATERIALIZE_1]][%[[TILE_4]]]
+// CHECK:          %[[MATERIALIZE_6:.*]] = tensor.extract_slice %[[MATERIALIZE_1]][%[[ARG2]], 0] [1, 128] [1, 1]
 // CHECK-NEXT:     %[[BROADCAST:.*]] = linalg.broadcast
-// CHECK-NEXT:         ins(%[[REDUCE]] : tensor<1xf32>)
-// CHECK-NEXT:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
-// CHECK-NEXT:         dimensions = [1]
+// CHECK-SAME:         ins(%[[REDUCE]] : tensor<1xf32>)
+// CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
+// CHECK-SAME:         dimensions = [1]
 
 // CHECK:          %[[MAP:.*]] = linalg.map
-// CHECK-NEXT:         ins(%[[MATERIALIZE_4]], %[[BROADCAST]] : tensor<1x128xf32>, tensor<1x128xf32>)
-// CHECK-NEXT:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
+// CHECK-SAME:         ins(%[[MATERIALIZE_4]], %[[BROADCAST]] : tensor<1x128xf32>, tensor<1x128xf32>)
+// CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
 
 // CHECK:          %[[MAP_0:.*]] = linalg.map
-// CHECK-NEXT:         ins(%[[MAP]] : tensor<1x128xf32>)
-// CHECK-NEXT:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
+// CHECK-SAME:         ins(%[[MAP]] : tensor<1x128xf32>)
+// CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
 
-// CHECK:          %[[MATERIALIZE_8:.*]] = gml_st.materialize %[[MATERIALIZE_3]][%[[TILE_5]]]
+// CHECK:          %[[MATERIALIZE_8:.*]] = tensor.extract_slice %[[MATERIALIZE_3]][%[[ARG2]]] [1] [1]
 // CHECK-NEXT:          %[[REDUCE_0:.*]] = linalg.reduce
-// CHECK-NEXT:         ins(%[[MAP_0]] : tensor<1x128xf32>)
-// CHECK-NEXT:         outs(%[[MATERIALIZE_8]] : tensor<1xf32>)
+// CHECK-SAME:         ins(%[[MAP_0]] : tensor<1x128xf32>)
+// CHECK-SAME:         outs(%[[MATERIALIZE_8]] : tensor<1xf32>)
 
 // CHECK:          %[[BROADCAST_0:.*]] = linalg.broadcast
-// CHECK-NEXT:         ins(%[[REDUCE_0]] : tensor<1xf32>)
-// CHECK-NEXT:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
+// CHECK-SAME:         ins(%[[REDUCE_0]] : tensor<1xf32>)
+// CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
 
+// CHECK-NEXT:     %[[MATERIALIZE_7:.*]] = tensor.extract_slice %[[EMPTY_SUB_]]
 // CHECK:          %[[MAP_1:.*]] = linalg.map
-// CHECK-NEXT:         ins(%[[MAP_0]], %[[BROADCAST_0]] : tensor<1x128xf32>, tensor<1x128xf32>)
-// CHECK-NEXT:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
-// CHECK:          gml_st.set_yield %[[MAP_1]] into %[[MATERIALIZE_1]][%[[TILE_4]]]
-// CHECK:        gml_st.set_yield %[[PARALLEL_0]] into %[[EMPTY_0]][%[[TILE]]]
+// CHECK-SAME:         ins(%[[MAP_0]], %[[BROADCAST_0]] : tensor<1x128xf32>, tensor<1x128xf32>)
+// CHECK-SAME:         outs(%[[MATERIALIZE_7]] : tensor<1x128xf32>)
+// CHECK:          %[[TILE_4:.*]] = gml_st.tile [%[[ARG2]], 0] [1, 128] [1, 1]
+// CHECK:          gml_st.set_yield %[[MAP_1]] into %[[EMPTY_SUB_]][%[[TILE_4]]]
+// CHECK:        %[[TILE:.*]] = gml_st.tile [%[[ARG1]], 0] [8, 128] [1, 1]
+// CHECK:        gml_st.set_yield %[[PARALLEL_0]] into %[[EMPTY_]][%[[TILE]]]
 // CHECK:      return %[[PARALLEL]]

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <iostream>
+#include <optional>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -440,7 +441,7 @@ void HandleCluster(tf_device::ClusterFuncOp cluster_func, int32_t block_size,
       llvm::dyn_cast<tf_device::ReplicateOp>(cluster_func->getParentOp());
 
   llvm::SmallVector<int64_t, 8> transform_input_indices;
-  for (auto input : llvm::enumerate(cluster_func.operands())) {
+  for (const auto& input : llvm::enumerate(cluster_func.getOperands())) {
     if (auto block_arg = input.value().dyn_cast<BlockArgument>()) {
       if (block_arg.getArgNumber() != arg_num) continue;
       // For a block argument, consider transforms only when it is a replicated
@@ -486,13 +487,13 @@ bool Conv2DInputShapeCanTransform(Value input) {
 // Get block argument id and number of users for the input arg.
 Optional<BlockArgumentInfo> GetBlockArgNum(Value arg) {
   if (auto block_arg = arg.dyn_cast<mlir::BlockArgument>()) {
-    if (!Conv2DInputShapeCanTransform(arg)) return None;
+    if (!Conv2DInputShapeCanTransform(arg)) return std::nullopt;
     unsigned num_users =
         std::distance(block_arg.getUsers().begin(), block_arg.getUsers().end());
     BlockArgumentInfo block_arg_info = {block_arg.getArgNumber(), num_users};
     return block_arg_info;
   }
-  return None;
+  return std::nullopt;
 }
 
 // Gets input block argument id and number of users for the input recursively.
@@ -520,7 +521,7 @@ Optional<BlockArgumentInfo> GetInputBlockArgNum(Value input) {
     cast_op = dyn_cast_or_null<TF::CastOp>(next_input.getDefiningOp());
   }
 
-  return None;
+  return std::nullopt;
 }
 
 // Checks if a convoluton can apply SpaceToDepth transform.
@@ -528,7 +529,7 @@ Optional<BlockArgumentInfo> GetInputBlockArgNum(Value input) {
 // and its input feature size smaller than 8 can be transformed.
 Optional<BlockArgumentInfo> GetConv2DInputArgNum(TF::Conv2DOp conv2d) {
   if (conv2d.getDataFormat() != "NHWC" || conv2d.getStrides().size() != 4) {
-    return None;
+    return std::nullopt;
   }
   // Current supported ops between convolution input and the block arguments are
   // PadOp and CastOp.

@@ -536,6 +536,10 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
               AllocatorAttributes alloc_attrs;
               alloc_attrs.set_gpu_compatible(true);
               alloc_attrs.set_on_host(true);
+              profiler::ScopedMemoryDebugAnnotation op_annotation(
+                  "GrpcWorker::RecvTensorAsync::consumer_callback",
+                  request->step_id(), "dynamic", val.dtype(),
+                  [shape = val.shape()]() { return shape.DebugString(); });
               Allocator* alloc = src_dev->GetAllocator(alloc_attrs);
               Tensor* copy = new Tensor(alloc, val.dtype(), val.shape());
               CHECK(send_dev_context)
@@ -648,11 +652,12 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
       if (hook == nullptr) {
         s = errors::Internal("Invalid null hook for key ",
                              request->buf_rendezvous_key());
-      }
-      if (!DMAHelper::CanUseDMA(hook->prod_value)) {
-        s = errors::Internal("Tensor value for key ",
-                             request->buf_rendezvous_key(),
-                             " is not of a type supported by RecvBuf");
+      } else {
+        if (!DMAHelper::CanUseDMA(hook->prod_value)) {
+          s = errors::Internal("Tensor value for key ",
+                               request->buf_rendezvous_key(),
+                               " is not of a type supported by RecvBuf");
+        }
       }
     } else {
       if (hook != nullptr) {

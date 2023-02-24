@@ -69,22 +69,24 @@ import weakref
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.function import trace_type
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
+from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
+from tensorflow.python.eager.polymorphic_function import compiler_ir
 from tensorflow.python.eager.polymorphic_function import function_spec as function_spec_lib
-from tensorflow.python.eager.polymorphic_function import monomorphic_function
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
@@ -536,7 +538,8 @@ class Function(core.GenericFunction, trackable.Trackable):
                jit_compile=None,
                reduce_retracing=False,
                experimental_implements=None,
-               experimental_autograph_options=None):
+               experimental_autograph_options=None,
+               experimental_attributes=None,):
     """Initializes a `Function`.
 
     Args:
@@ -548,6 +551,7 @@ class Function(core.GenericFunction, trackable.Trackable):
       reduce_retracing: See the documentation for `tf.function`.
       experimental_implements: See the documentation for `tf.function`.
       experimental_autograph_options: See the documentation for `tf.function`.
+      experimental_attributes: See the documentation for `tf.function`.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -560,7 +564,22 @@ class Function(core.GenericFunction, trackable.Trackable):
         input_signature,
         jit_compile=jit_compile,
     )
-    self._implements = experimental_implements
+
+    self._attributes = {}
+    if experimental_implements is not None:
+      self._attributes = self._create_implements_attribute(
+          experimental_implements
+      )
+
+    if experimental_attributes is not None:
+      self._attributes.update(experimental_attributes)
+
+    for attribute in self._attributes:
+      if attribute not in attributes_lib.POLYMORPHIC_FUNCTION_ALLOWLIST:
+        raise ValueError(
+            f"`{attribute} is not supported by tf.function as an attribute."
+        )
+
     # If `True`, the function uses the rendezvous of the parent. This is only
     # needed to support code where raw send/recv operations are inserted and
     # when functions are run in graph mode where they may not be inlined.
@@ -576,7 +595,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     self._name = name
     self._key_for_call_stats = self._get_key_for_call_stats()
     self._omit_frequent_tracing_warning = False
-    ops._tf_function_api_guage.get_cell().set(True)  # pylint: disable=protected-access
+    ops._tf_function_api_gauge.get_cell().set(True)  # pylint: disable=protected-access
 
   @property
   def name(self):
@@ -654,11 +673,11 @@ class Function(core.GenericFunction, trackable.Trackable):
         self._python_function,
         wrapped_fn))
 
-  def _create_implements_attribute(self):
-    """Creates the attribute value corresponding to IMPLEMENTS_ATTRIBUTE_NAME."""
+  def _create_implements_attribute(self, implements_arg):
+    """Creates the attribute value corresponding to attribute_lib.IMPLEMENTS."""
     attributes = {}
-    if isinstance(self._implements, str):
-      # First check if the IMPLEMENTS_ATTRIBUTE_NAME is specified as a
+    if isinstance(implements_arg, str):
+      # First check if the attribute_lib.IMPLEMENTS is specified as a
       # NameAttrList. This is used when apart from the function name being
       # implemented, a list of attributes is also being specified.
       # The attributes are specified as key-value pairs in the NameAttrList
@@ -668,31 +687,25 @@ class Function(core.GenericFunction, trackable.Trackable):
       try:
         attr_value = attr_value_pb2.AttrValue()
         nameattrlist = attr_value_pb2.NameAttrList()
-        _text_format.Merge(self._implements, nameattrlist)
+        _text_format.Merge(implements_arg, nameattrlist)
         attr_value.func.CopyFrom(nameattrlist)
-        attributes[monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME] = attr_value
+        attributes[attributes_lib.IMPLEMENTS] = attr_value
       except (_text_format.ParseError, DecodeError):
-        attributes[
-            monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME] = self._implements
+        attributes[attributes_lib.IMPLEMENTS] = implements_arg
     return attributes
 
   def _compiler(self, fn):
     """Returns a TracingCompiler generated from the input function."""
-    attributes = {}
-
-    if self._implements is not None:
-      attributes = self._create_implements_attribute()
+    attributes = self._attributes.copy()
 
     share = self._shared_rendezvous
     if share is not None:
-      attributes[monomorphic_function.SHARED_RENDEZVOUS_ATTRIBUTE_NAME] = share
+      attributes[attributes_lib.SHARED_RENDEZVOUS] = share
 
     if self._jit_compile is not None:
-      attributes.update(_XlaMustCompile=bool(self._jit_compile))
+      attributes[attributes_lib.XLA_COMPILE] = bool(self._jit_compile)
       if self._jit_compile:
-        attributes.update(_noinline=True)
-    if not attributes:
-      attributes = None
+        attributes[attributes_lib.NO_INLINE] = True
 
     try:
       name = fn.__name__
@@ -723,8 +736,6 @@ class Function(core.GenericFunction, trackable.Trackable):
       kwds: Keyword arguments to the python callable.
       add_initializers_to: Where to collect variable initializers, if not None.
     """
-    self.function_spec.validate_input_signature_with_argspec()
-
     created_variables = []
     lifted_initializer_graph = func_graph_module.FuncGraph("initializer")
 
@@ -776,7 +787,7 @@ class Function(core.GenericFunction, trackable.Trackable):
         autograph=self._autograph,
         jit_compile=self._jit_compile,
         reduce_retracing=self._reduce_retracing,
-        experimental_implements=self._implements,
+        experimental_attributes=self._attributes,
         experimental_autograph_options=self._experimental_autograph_options)
 
     if self._shared_rendezvous:
@@ -997,6 +1008,32 @@ class Function(core.GenericFunction, trackable.Trackable):
       raise ValueError("Compiler IR can only be returned for functions marked "
                        "with 'jit_compile=True'")
 
+    is_tensor_spec = lambda x: isinstance(x, tensor_spec.TensorSpec)
+
+    def _check_inputs(args, kwargs):
+      all_inputs = list(args) + list(kwargs.values())
+      # Emtpy input is okay.
+      if not all_inputs:
+        return
+      if any(map(is_tensor_spec, all_inputs)) and any(
+          map(lambda x: not is_tensor_spec(x), all_inputs)
+      ):
+        raise ValueError(
+            "experimental_get_compiler_ir supports either "
+            "(1) all inputs are TensorSpec  or "
+            "(2) all inputs are tf.Tensor/python variables"
+        )
+
+    _check_inputs(args, kwargs)
+    if (
+        len(args) + len(kwargs.values()) > 0
+        and all(map(is_tensor_spec, args))
+        and all(map(is_tensor_spec, kwargs.values()))
+    ):
+      # For the case inputs are not empty and input types are all tf.TensorSpec
+      concrete_fn = self.get_concrete_function(*args, **kwargs)
+      return compiler_ir.from_concrete_function(concrete_fn)
+
     concrete_fn = self.get_concrete_function(*args, **kwargs)
     fn_name = concrete_fn.name
 
@@ -1005,15 +1042,14 @@ class Function(core.GenericFunction, trackable.Trackable):
         concrete_fn._function_spec.canonicalize_function_inputs(args, kwargs))
 
     def compiler_ir_generator(stage="hlo", device_name=None):
-      # TODO(cheshire): This is a hack to get the current "preferred" device,
-      # there is no current API to get it otherwise.
-      if device_name is None:
-        device_name = random_ops.random_normal([]).device
+      device_name = compiler_ir.maybe_get_device_name(device_name)
       res_bytes = context.context().get_compiler_ir(
           device_name=device_name,
-          stage=stage,
           function_name=fn_name,
-          args=list(filtered_flat_args) + concrete_fn.captured_inputs)
+          flat_args=list(filtered_flat_args),
+          captured_inputs=concrete_fn.captured_inputs,
+          stage=stage,
+      )
       if stage in ("hlo_serialized", "optimized_hlo_serialized",
                    "optimized_hlo_proto_serialized"):
         return res_bytes
@@ -1141,20 +1177,24 @@ class Function(core.GenericFunction, trackable.Trackable):
     Returns:
       A list of instances of `ConcreteFunction`.
     """
-    concrete_functions = self._list_all_concrete_functions()
     seen_signatures = []
-    for concrete_function in concrete_functions:
-      signature = concrete_function.structured_input_signature
-      flattened = nest.flatten(signature)
-      if any(
-          isinstance(arg, func_graph_module.UnknownArgument)
-          for arg in flattened):
-        logging.info("Unsupported signature for serialization: %s.", signature)
-        continue
-      equal_to_signature = functools.partial(
-          function_spec_lib.is_same_structure, signature, check_values=True)
-      if not any(equal_to_signature(s) for s in seen_signatures):
-        seen_signatures.append(signature)
+    if self.input_signature is not None:
+      seen_signatures.append((self.input_signature, {}))
+    else:
+      concrete_functions = self._list_all_concrete_functions()
+      for concrete_function in concrete_functions:
+        signature = concrete_function.structured_input_signature
+        flattened = nest.flatten(signature)
+        if any(
+            isinstance(arg, func_graph_module.UnknownArgument)
+            for arg in flattened):
+          logging.info("Unsupported signature for serialization: %s.",
+                       signature)
+          continue
+        equal_to_signature = functools.partial(
+            function_spec_lib.is_same_structure, signature, check_values=True)
+        if not any(equal_to_signature(s) for s in seen_signatures):
+          seen_signatures.append(signature)
 
     # Re-create concrete functions for these signatures. Re-creating ensures
     # that if the cache key has changed, the function will be traced again.
@@ -1219,6 +1259,9 @@ class Function(core.GenericFunction, trackable.Trackable):
     concrete._garbage_collector.release()  # pylint: disable=protected-access
     return concrete
 
+  def __tf_tracing_type__(self, _):
+    return trace_type.Weakref(weakref.ref(self))
+
   def __get__(self, instance, owner):
     """Makes it possible to decorate instance methods."""
     del owner
@@ -1280,6 +1323,7 @@ def function(
     reduce_retracing=False,
     experimental_implements=None,
     experimental_autograph_options=None,
+    experimental_attributes=None,
     experimental_relax_shapes=None,
     experimental_compile=None,
     experimental_follow_type_hints=None  # pylint: disable=unused-argument
@@ -1581,6 +1625,8 @@ def function(
       project.
     experimental_autograph_options: Optional tuple of
       `tf.autograph.experimental.Feature` values.
+    experimental_attributes: Optional dictionary of attributes to include in the
+      generated FunctionDefs.
     experimental_relax_shapes: Deprecated. Use `reduce_retracing`
       instead.
     experimental_compile: Deprecated alias to 'jit_compile'.
@@ -1626,7 +1672,8 @@ def function(
                 jit_compile,
                 "experimental_compile",
                 experimental_compile),
-            experimental_implements=experimental_implements))
+            experimental_implements=experimental_implements,
+            experimental_attributes=experimental_attributes))
 
   # This code path is for the `foo = tf.function(foo, ...)` use case
   if func is not None:

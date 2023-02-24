@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "tensorflow/c/eager/abstract_function.h"
@@ -565,7 +566,7 @@ llvm::Optional<const TensorMetadata*> TensorHandleInterface::Metadata() const {
     context_.GetHostContext()->Await(th.GetAsyncMetadata().CopyRCRef());
   }
   if (th.IsMetadataError()) {
-    return llvm::None;
+    return std::nullopt;
   }
   return &th.GetAvailableMetadata();
 }
@@ -1010,11 +1011,10 @@ tensorflow::Status ContextInterface::EnableCollectiveOps(
 }
 
 tensorflow::Status ContextInterface::BuildFunctionRequestContext(
-    tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
+    tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table, int64_t step_id,
     RCReference<tfrt::RequestContext>* request_context) {
-  auto* step_container = GetEagerContext()->StepContainer();
-  RequestContextBuilder request_context_builder(
-      GetHostContext(), GetResourceContext(), step_container->StepId());
+  RequestContextBuilder request_context_builder(GetHostContext(),
+                                                GetResourceContext(), step_id);
 
   TF_RETURN_IF_ERROR(tensorflow::tfd::SetUpKernelFallbackCompatRequestContext(
       &request_context_builder, runner_table, GetEagerContext()));
@@ -1029,7 +1029,8 @@ tensorflow::Status ContextInterface::BuildFunctionRequestContext(
 
 tensorflow::Status ContextInterface::BuildOpRequestContext(
     RCReference<tfrt::RequestContext>* request_context) {
-  return BuildFunctionRequestContext(/*runner_table=*/nullptr, request_context);
+  return BuildFunctionRequestContext(/*runner_table=*/nullptr, /*step_id=*/0,
+                                     request_context);
 }
 
 tensorflow::ImmediateExecutionTensorHandle*
@@ -1226,7 +1227,7 @@ tensorflow::Status ContextInterface::RunMetadataRecordFunction(
   mutex_lock l(run_metadata_mu_);
   auto* function_graphs = run_metadata_->add_function_graphs();
   *function_graphs->mutable_pre_optimization_graph() = def;
-  // TODO(b/b/171600738): Figure out a way to record the right post optimization
+  // TODO(b/171600738): Figure out a way to record the right post optimization
   // graph and partition graph.
   *function_graphs->mutable_post_optimization_graph() = def;
   *function_graphs->add_partition_graphs() = def;
@@ -1352,7 +1353,7 @@ tensorflow::Status OperationInterface::Execute(
 
     RCReference<RequestContext> request_ctx;
     TF_RETURN_IF_ERROR(context_->BuildFunctionRequestContext(
-        function_state_->GetRunnerTable(), &request_ctx));
+        function_state_->GetRunnerTable(), step_id(), &request_ctx));
 
     ExecutionContext exec_ctx{std::move(request_ctx),
                               abort_location_handler_.GetCurrentLocation()};
@@ -1526,7 +1527,8 @@ tensorflow::Status OperationInterface::Initialize() {
       /*request_ctx_fn=*/
       [this](tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
              RCReference<RequestContext>* request_ctx) {
-        return context_->BuildFunctionRequestContext(runner_table, request_ctx);
+        return context_->BuildFunctionRequestContext(runner_table, step_id(),
+                                                     request_ctx);
       },
       abort_location_handler_.GetCurrentLocation(), compile_options,
       input_devices, &result));
@@ -1676,8 +1678,8 @@ tensorflow::Status OperationInterface::SetAttrShape(const char* attr_name,
     }
 
     // Set RankedShapeAttr.
-    offset = bef_attr_encoder_.EncodeRankedShapeAttr(
-        llvm::makeArrayRef(dims, num_dims));
+    offset =
+        bef_attr_encoder_.EncodeRankedShapeAttr(llvm::ArrayRef(dims, num_dims));
   }
   fallback_attrs_.Set(attr_name, proto);
 
@@ -1733,7 +1735,7 @@ static size_t SerializeTFETensorToDenseAttr(
   for (int i = 0; i < tensor->NumDims(); ++i) {
     shape.push_back(tensor->Dim(i));
   }
-  auto elements = llvm::makeArrayRef(
+  auto elements = llvm::ArrayRef(
       reinterpret_cast<const uint8_t*>(tensor->Data()), tensor->ByteSize());
   return encoder->EncodeDenseAttr(static_cast<DType>(element_type), shape,
                                   elements);

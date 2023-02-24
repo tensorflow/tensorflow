@@ -244,8 +244,8 @@ unwanted behavior.
 
 ## Reporting vulnerabilities
 
-Please fill out [this report form](https://forms.gle/mr12SgzXENhxQ7jD6) about
-any security related issues you find.
+Please use [Google Bug Hunters reporting form](https://g.co/vulnz) to report security
+related issues.
 
 Please use a descriptive title for your report.
 
@@ -277,11 +277,7 @@ TensorFlow uses the following disclosure process:
 
 For each vulnerability, we try to ingress it as soon as possible, given the size
 of the team and the number of reports. Vulnerabilities will, in general, be
-batched to be fixed at the same time as a quarterly release. An exception to
-this rule is for high impact vulnerabilities where exploitation of models used
-for inference in products (i.e., not models created just to showcase a
-vulnerability) is possible. In these cases, we will attempt to do patch releases
-within an accelerated timeline, not waiting for the next quarterly release.
+batched to be fixed at the same time as a quarterly release.
 
 Past security advisories are listed
 [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/README.md).
@@ -289,7 +285,3 @@ In the future, we might sunset this list and only use GitHub's Security Advisory
 format, to simplify the post-vulnerability-fix process.  We credit reporters for
 identifying security issues, although we keep your name confidential if you
 request it.
-
-**Note**: Since September 2022, you may also use [the Google OSS VRP
-program](https://bughunters.google.com/about/rules/6521337925468160/google-open-source-software-vulnerability-reward-program-rules)
-to submit vulnerability reports. All consideration in this section still apply.

@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/string_util.h"
 

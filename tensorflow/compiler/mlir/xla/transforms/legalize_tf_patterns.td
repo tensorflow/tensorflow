@@ -317,7 +317,7 @@ def : Pat<(TF_CrossReplicaSumOp $input, (ConstantLikeMatcher ElementsAttr:$group
 
 def ValueToVariadic: NativeCodeCall<"SmallVector<Value, 1>{$0}">;
 def : Pat<(TF_AllToAllOp AnyRankedTensor:$input, (ConstantLikeMatcher ElementsAttr:$group_assignment), I64Attr:$concat_dimension, $split_dimension, $split_count),
-          (MHLO_AllToAllOp (ValueToVariadic $input), $split_dimension, $concat_dimension, $split_count, (CastElementsToI64Elements $group_assignment))>;
+          (MHLO_AllToAllOp (ValueToVariadic $input), $split_dimension, $concat_dimension, $split_count, (CastElementsToI64Elements $group_assignment), (NullChannelHandleAttr))>;
 
 //===----------------------------------------------------------------------===//
 // FFT op patterns.
@@ -596,7 +596,7 @@ foreach Mapping = [
                    [TF_SinOp, MHLO_SineOp],
                    [TF_SqrtOp, MHLO_SqrtOp],
                    [TF_TanhOp, MHLO_TanhOp],
-                   [TF_TanOp, CHLO_TanOp]
+                   [TF_TanOp, MHLO_TanOp]
                   ] in {
  def : Pat<(Mapping[0] MHLO_Tensor:$input),
            (Mapping[1] $input)>;

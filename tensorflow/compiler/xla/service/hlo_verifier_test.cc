@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
@@ -2655,7 +2658,9 @@ TEST_F(HloVerifierTest, InvalidF8Usage) {
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
       status.error_message(),
-      HasSubstr("FP8 is currently only supported in convert instructions"));
+      HasSubstr("FP8 is currently only supported in convert, bitcast, tuple, "
+                "get-tuple-element, transpose, convolution, dot, fusion, "
+                "reshape and copy instructions as well as Custom Calls"));
 }
 
 }  // namespace

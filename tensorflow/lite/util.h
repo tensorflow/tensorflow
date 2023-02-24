@@ -111,6 +111,12 @@ inline bool IsResourceOrVariant(const TfLiteTensor* tensor) {
   return tensor->type == kTfLiteResource || tensor->type == kTfLiteVariant;
 }
 
+// Compute the number of bytes required to represent a tensor with dimensions
+// specified by the array dims (of length dims_size). Returns the status code
+// and bytes.
+TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
+                           size_t* bytes, TfLiteContext context);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_UTIL_H_

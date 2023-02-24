@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/tsl/profiler/backends/cpu/annotation_stack.h"
+#include "tensorflow/tsl/profiler/lib/nvtx_utils.h"
 #endif
 
 namespace tsl {
@@ -48,7 +49,17 @@ class ScopedAnnotationStack {
  public:
   static int64_t ActivityStart(std::string name) {
 #if !defined(IS_MOBILE_PLATFORM)
-    if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+#if GOOGLE_CUDA
+    std::optional<nvtxDomainHandle_t> domain =
+        tsl::profiler::nvtx::GetNVTXDomain();
+    if (TF_PREDICT_FALSE(domain.has_value())) {
+      nvtxEventAttributes_t attrs;
+      std::string name_str(name);
+      tsl::profiler::nvtx::MakeAttributes(name_str.c_str(), &attrs);
+      ::nvtxDomainRangePushEx(domain.value(), &attrs);
+    } else  // NOLINT
+#endif
+        if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
       return AnnotationStack::PushAnnotation(std::move(name));
     }
 #endif
@@ -66,7 +77,18 @@ class ScopedAnnotationStack {
   template <typename NameGeneratorT>
   static int64_t ActivityStart(NameGeneratorT name_generator) {
 #if !defined(IS_MOBILE_PLATFORM)
-    if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+#if GOOGLE_CUDA
+    std::optional<nvtxDomainHandle_t> domain =
+        tsl::profiler::nvtx::GetNVTXDomain();
+    if (TF_PREDICT_FALSE(domain.has_value())) {
+      auto name = name_generator();
+      nvtxEventAttributes_t attrs;
+      std::string name_str(name);
+      tsl::profiler::nvtx::MakeAttributes(name_str.c_str(), &attrs);
+      ::nvtxDomainRangePushEx(domain.value(), &attrs);
+    } else  // NOLINT
+#endif
+        if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
       return AnnotationStack::PushAnnotation(name_generator());
     }
 #endif
@@ -75,7 +97,14 @@ class ScopedAnnotationStack {
 
   static void ActivityEnd(int64_t activity_id) {
 #if !defined(IS_MOBILE_PLATFORM)
-    if (TF_PREDICT_FALSE(activity_id != kInvalidActivity)) {
+#if GOOGLE_CUDA
+    std::optional<nvtxDomainHandle_t> domain =
+        tsl::profiler::nvtx::GetNVTXDomain();
+    if (TF_PREDICT_FALSE(domain.has_value())) {
+      ::nvtxDomainRangePop(domain.value());
+    } else  // NOLINT
+#endif
+        if (TF_PREDICT_FALSE(activity_id != kInvalidActivity)) {
       AnnotationStack::PopAnnotation(activity_id);
     }
 #endif

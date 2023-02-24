@@ -19,11 +19,12 @@ limitations under the License.
 #define GML_ST_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
 include "gml_st/IR/gml_st_ops_base.td"
-include "gml_st/IR/gml_st_legacy_ops.td"
 
 ///////////////////////////////////////////////////////////////////////////////
 // Types
@@ -78,6 +79,12 @@ def GMLST_TileType : GMLST_Set<"Tile"> {
 
 def AnySet : Type<Or<[GMLST_TileType.predicate]>, "subset type">;
 
+def Vector : AnyTypeOf<[
+  AnyVectorOfAnyRank
+], "", "::mlir::ShapedType">;
+def VectorOrScalar : AnyTypeOf<[
+  AnyVectorOfAnyRank, AnyFloat, AnyInteger, AnyComplex, Index
+]>;
 def RankedTensorOrVector : AnyTypeOf<[
   AnyRankedTensor, AnyVectorOfAnyRank
 ], "", "::mlir::ShapedType">;
@@ -148,56 +155,6 @@ def GMLST_TileOp : GMLST_Op<"tile", [
   let hasVerifier = 1;
 }
 
-def GMLST_MaterializeOp : GMLST_Op<"materialize", [Pure]> {
-  let summary = "Operation to extract values from tensor or vector";
-  let description = [{
-    The "materialize" operation extracts a tensor or a vector from another
-    tensor or a vector as specified by the value of a provided set.
-
-    MaterializeOp accepts `!gml_st.tile` type to extract tensors from tensors.
-
-    ```
-    %subtensor = gml_st.materialize %tensor[%tile]
-      : tensor<?x?xf32>[!gml_st.tile<42x16>] to tensor<42x16xf32>
-    ```
-
-    If `!gml_st.tile` has a single element or rank-0, it is also possible to
-    extract an element from a tensor.
-
-    ```
-    %element = gml_st.materialize %tensor[%tile_with_single_element]
-      : tensor<3x1xindex>[!gml_st.tile<1x1>] to index
-
-    %element = gml_st.materialize %tensor[%tile_0d]
-      : tensor<f32>[!gml_st.tile<>] to f32
-
-    %subtensor = gml_st.materialize %tensor[%tile_with_single_element]
-      : tensor<3x1xindex>[!gml_st.tile<1x1>] to tensor<1x1xindex>
-    ```
-
-    MaterializeOp can also extract a vector from a vector.
-
-    ```
-    %subvector = gml_st.materialize %vector[%tile]
-      : vector<64x32xf32>[!gml_st.tile<42x16>] to vector<42x16xf32>
-    ```
-
-    The operation is designed to be polymorphic to support non-rectangular
-    subsets. It will accept `set` arguments of types other than `!gml_st.tile`.
-  }];
-  let arguments = (ins RankedTensorOrVector:$source, AnySet:$set);
-  let results = (outs RankedTensorOrVectorOrScalar:$result);
-
-  let builders = [OpBuilder<(ins "Value":$source, "Value":$set)>];
-
-  let assemblyFormat = [{
-    $source`[` $set `]` attr-dict `:` type($source) `[` type($set) `]`
-      `to` type($result)
-  }];
-
-  let hasCanonicalizer = 1;
-}
-
 class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
     : GMLST_Op<mnemonic, !listconcat(traits, [
       AttrSizedOperandSegments,
@@ -226,197 +183,7 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
 
     /// Return terminator of the loop body.
     SetYieldOp getTerminator();
-  }];
 
-  let hasCustomAssemblyFormat = 1;
-}
-
-def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
-  let summary = "Loop-like operation for parallel loops";
-  let description = [{
-    This is a multi-dimensional loop-like operation to support distribution on
-    tensors. The loop can have variadic number of results.
-
-    The body region contains exactly one block that terminates with
-    `gml_st.set_yield` which specifies how to combine partial results computed
-    in every iteration of the loop.
-
-    Example:
-
-    ```mlir
-    %add = gml_st.parallel (%i, %j)
-        = (%c0, %c0) to (%c8, %c16) step (%c4, %c4) {
-
-      %tile = gml_st.tile [%i, %j] [4, 4] [1, 1]
-        : !gml_st.tile<8x16> to !gml_st.tile<4x4>
-
-      %lhs_sub = gml_st.materialize %lhs_[%tile]
-        : tensor<8x16xf32>[!gml_st.tile<4x4>] to tensor<4x4xf32>
-      %rhs_sub = gml_st.materialize %rhs_[%tile]
-        : tensor<8x16xf32>[!gml_st.tile<4x4>] to tensor<4x4xf32>
-      %out_sub = gml_st.materialize %out_[%tile]
-        : tensor<8x16xf32>[!gml_st.tile<4x4>] to tensor<4x4xf32>
-
-      %add_sub = linalg.map
-        ins(%lhs_sub: tensor<4x4xf32>, %rhs_sub: tensor<4x4xf32>)
-        outs(%out_sub: tensor<4x4xf32>)
-        (%lhs_elem: f32, %rhs_elem: f32) {
-          %0 = arith.addf %lhs_elem, %rhs_elem : f32
-          linalg.yield %0 : f32
-        }
-
-      gml_st.set_yield %add_sub into %out[%tile]
-        : tensor<4x4xf32> into tensor<16x64xf32>[!gml_st.tile<4x4>]
-    } : tensor<16x64xf32>
-    ```
-
-    The terminator specifies, that the partial result `%add_sub` is to become a
-    part of the final result initialized by `%out` at the position defined by
-    `%tile`.
-
-    Example with concurrent updates:
-
-    %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c1) {
-      %tile = gml_st.tile [%i] [1] [1] : !gml_st.tile<1>
-      %in_sub = gml_st.materialize %in[%tile]
-        : tensor<8xf32>[!gml_st.tile<1>] to tensor<1xf32>
-
-      gml_st.set_yield %in_sub into %out[%tile_0d]
-        acc (%new, %old: tensor<1xf32>) {
-          %combined = mhlo.add %new, %old : tensor<1xf32>
-          gml_st.yield %combined : tensor<1xf32>
-        } : tensor<1xf32> into tensor<8xf32>[!gml_st.tile<1>]
-    } : tensor<8xf32>
-
-    Every iteration of this loop extracts an element of the input and combines
-    it with the overlapping subset of the output. In that case,
-    `gml_st.set_yield` has an optional 'accumulator' region, that models the
-    concurrent update. The code in the accumulator can be lowered to atomic RMW
-    or to some other synchronization primitive.
-
-    After bufferization the loop does not produce any results.
-
-    ```mlir
-    gml_st.parallel (%i, %j) = (%c0, %c0) to (%c8, %c16) step (%c4, %c4) {
-      %lhs_sub = memref.subview %lhs[%tile]
-        : memref<8x16xf32> to memref<4x4xf32, #map>
-      %rhs_sub = memref.subview %rhs[%tile]
-        : memref<8x16xf32> to memref<4x4xf32, #map>
-      %out_sub = memref.subview %out[%tile]
-        : memref<8x16xf32> to memref<4x4xf32, #map>
-
-      linalg.map
-        ins(%lhs_sub: memref<4x4xf32>, %rhs_sub: memref<4x4xf32>)
-        outs(%out_sub: memref<4x4xf32>)
-        (%lhs_elem: f32, %rhs_elem: f32) {
-          %0 = arith.addf %lhs_elem, %rhs_elem : f32
-          linalg.yield %0 : f32
-        }
-
-      gml_st.set_yield
-    }
-    ```
-  }];
-
-  let arguments = (ins Variadic<Index>:$lowerBound,
-                       Variadic<Index>:$upperBound,
-                       Variadic<Index>:$step,
-                       OptionalAttr<StrAttr>:$distributionType);
-
-  let builders = [
-    OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$lowerBounds,
-      "ValueRange":$upperBounds, "ValueRange":$steps,
-      CArg<"Optional<StringAttr>", "llvm::None">:$distributionType,
-      CArg<"function_ref<void (OpBuilder &, Location, /*ivs=*/ValueRange)>",
-      "nullptr">:$bodyBuilderFn)>,
-  ];
-  let skipDefaultBuilders = 1;
-
-  let extraClassDeclaration = extraBaseClassDeclaration # [{
-    /// Return the destinations for a gml_st.parallel op.
-    ValueRange getLoopLikeOpInits();
-  }];
-
-  let hasCanonicalizer = 1;
-}
-
-def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
-  let summary = "Loop-like operation for sequential loops";
-  let description = [{
-    This is a multi-dimensional loop-like operation with sequential semantics.
-    The arguments also include the loop-carried tensor or vector variables.
-    The loop can have variadic number of results.
-
-    The body region contains exactly one block that terminates with
-    `gml_st.set_yield` which specifies how to update a subset of the
-    loop-carried variable on every iteration.
-
-    Example:
-
-    ```mlir
-    %add = gml_st.for (%i) = (%c0, %c0) to (%c8, %c16) step (%c4, %c4)
-        outs(%out_ = %out: tensor<8x16xf32>) {
-      %tile = gml_st.tile [%i, %j] [4, 4] [1, 1]
-        : !gml_st.tile<8x16> to !gml_st.tile<4x4>
-
-      %lhs_sub = gml_st.materialize %lhs[%tile]
-        : tensor<8x16xf32>[!gml_st.tile<4x4>]
-      %rhs_sub = gml_st.materialize %rhs[%tile]
-        : tensor<8x16xf32>[!gml_st.tile<4x4>]
-      %out_sub = gml_st.materialize %out_[%tile]
-        : tensor<8x16xf32>[!gml_st.tile<4x4>]
-
-      %add_sub = linalg.map
-        ins(%lhs_sub: tensor<4x4xf32>, %rhs_sub: tensor<4x4xf32>)
-        outs(%out_sub: tensor<4x4xf32>)
-        (%lhs_elem: f32, %rhs_elem: f32) {
-          %0 = arith.addf %lhs_elem, %rhs_elem : f32
-          linalg.yield %0 : f32
-        }
-
-      gml_st.set_yield %add_sub into %out_[%tile]
-        : tensor<4x4xf32> into tensor<16x64xf32>[!gml_st.tile<4x4>]
-    }
-    ```
-
-    After bufferization the `outs` argument list becomes empty and the loop
-    does not produce any results.
-
-    ```mlir
-    gml_st.for (%i, %j) = (%c0, %c0) to (%c8, %c16) step (%c4, %c4) {
-      %lhs_sub = memref.subview %lhs[%tile]
-        : memref<8x16xf32> to memref<4x4xf32, #map>
-      %rhs_sub = memref.subview %rhs[%tile]
-        : memref<8x16xf32> to memref<4x4xf32, #map>
-      %out_sub = memref.subview %out[%tile]
-        : memref<8x16xf32> to memref<4x4xf32, #map>
-
-      linalg.map
-        ins(%lhs_sub: memref<4x4xf32>, %rhs_sub: memref<4x4xf32>)
-        outs(%out_sub: memref<4x4xf32>)
-        (%lhs_elem: f32, %rhs_elem: f32) {
-          %0 = arith.addf %lhs_elem, %rhs_elem : f32
-          linalg.yield %0 : f32
-        }
-
-      gml_st.set_yield
-    }
-    ```
-  }];
-
-  let arguments = (ins Variadic<Index>:$lowerBound,
-                       Variadic<Index>:$upperBound,
-                       Variadic<Index>:$step,
-                       Variadic<AnyShaped>:$outputs);
-
-  let builders = [
-    OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$lowerBounds,
-      "ValueRange":$upperBounds, "ValueRange":$steps, "ValueRange":$outputs,
-      CArg<"function_ref<void (OpBuilder &, Location, /*ivs=*/ValueRange,"
-        "/*outputs=*/ValueRange)>", "nullptr">:$bodyBuilderFn)>,
-  ];
-
-  let extraClassDeclaration = extraBaseClassDeclaration # [{
     /// Number of output operands
     unsigned getNumOutputs() { return getOutputs().size(); }
 
@@ -467,8 +234,115 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
     ValueRange getLoopLikeOpInits() {
       return getOutputs();
     }
+
   }];
 
+  let hasCustomAssemblyFormat = 1;
+}
+
+def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
+  let summary = "Loop-like operation for parallel loops";
+  let description = [{
+    This is a multi-dimensional loop-like operation to support distribution on
+    tensors. The loop can have variadic number of results.
+
+    The body region contains exactly one block that terminates with
+    `gml_st.set_yield` which specifies how to combine partial results computed
+    in every iteration of the loop.
+
+    Example:
+
+    ```mlir
+    %add = gml_st.parallel (%i, %j)
+        = (%c0, %c0) to (%c8, %c16) step (%c4, %c4) {
+
+      %tile = gml_st.tile [%i, %j] [4, 4] [1, 1]
+        : !gml_st.tile<8x16> to !gml_st.tile<4x4>
+
+      %lhs_sub = tensor.extract_slice %lhs_[%tile]
+        : tensor<8x16xf32>[!gml_st.tile<4x4>] to tensor<4x4xf32>
+      %rhs_sub = tensor.extract_slice %rhs_[%tile]
+        : tensor<8x16xf32>[!gml_st.tile<4x4>] to tensor<4x4xf32>
+      %out_sub = tensor.extract_slice %out_[%tile]
+        : tensor<8x16xf32>[!gml_st.tile<4x4>] to tensor<4x4xf32>
+
+      %add_sub = linalg.map
+        ins(%lhs_sub: tensor<4x4xf32>, %rhs_sub: tensor<4x4xf32>)
+        outs(%out_sub: tensor<4x4xf32>)
+        (%lhs_elem: f32, %rhs_elem: f32) {
+          %0 = arith.addf %lhs_elem, %rhs_elem : f32
+          linalg.yield %0 : f32
+        }
+
+      gml_st.set_yield %add_sub into %out[%tile]
+        : tensor<4x4xf32> into tensor<16x64xf32>[!gml_st.tile<4x4>]
+    } : tensor<16x64xf32>
+    ```
+
+    The terminator specifies, that the partial result `%add_sub` is to become a
+    part of the final result initialized by `%out` at the position defined by
+    `%tile`.
+
+    Example with concurrent updates:
+
+    %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c1) {
+      %tile = gml_st.tile [%i] [1] [1] : !gml_st.tile<1>
+      %in_sub = tensor.extract_slice %in[%tile]
+        : tensor<8xf32>[!gml_st.tile<1>] to tensor<1xf32>
+
+      gml_st.set_yield %in_sub into %out[%tile_0d]
+        acc (%new, %old: tensor<1xf32>) {
+          %combined = mhlo.add %new, %old : tensor<1xf32>
+          gml_st.yield %combined : tensor<1xf32>
+        } : tensor<1xf32> into tensor<8xf32>[!gml_st.tile<1>]
+    } : tensor<8xf32>
+
+    Every iteration of this loop extracts an element of the input and combines
+    it with the overlapping subset of the output. In that case,
+    `gml_st.set_yield` has an optional 'accumulator' region, that models the
+    concurrent update. The code in the accumulator can be lowered to atomic RMW
+    or to some other synchronization primitive.
+
+    After bufferization the loop does not produce any results.
+
+    ```mlir
+    gml_st.parallel (%i, %j) = (%c0, %c0) to (%c8, %c16) step (%c4, %c4) {
+      %lhs_sub = memref.subview %lhs[%tile]
+        : memref<8x16xf32> to memref<4x4xf32, #map>
+      %rhs_sub = memref.subview %rhs[%tile]
+        : memref<8x16xf32> to memref<4x4xf32, #map>
+      %out_sub = memref.subview %out[%tile]
+        : memref<8x16xf32> to memref<4x4xf32, #map>
+
+      linalg.map
+        ins(%lhs_sub: memref<4x4xf32>, %rhs_sub: memref<4x4xf32>)
+        outs(%out_sub: memref<4x4xf32>)
+        (%lhs_elem: f32, %rhs_elem: f32) {
+          %0 = arith.addf %lhs_elem, %rhs_elem : f32
+          linalg.yield %0 : f32
+        }
+
+      gml_st.set_yield
+    }
+    ```
+  }];
+
+  let arguments = (ins Variadic<Index>:$lowerBound,
+                       Variadic<Index>:$upperBound,
+                       Variadic<Index>:$step,
+                       Variadic<AnyShaped>:$outputs,
+                       OptionalAttr<StrAttr>:$distributionType);
+
+  let builders = [
+    OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$lowerBounds,
+      "ValueRange":$upperBounds, "ValueRange":$steps, "ValueRange":$outputs,
+      CArg<"std::optional<StringAttr>", "std::nullopt">:$distributionType,
+      CArg<"function_ref<void (OpBuilder &, Location, /*ivs=*/ValueRange, /*outputs=*/ValueRange)>",
+      "nullptr">:$bodyBuilderFn)>,
+  ];
+  let skipDefaultBuilders = 1;
+
+  let extraClassDeclaration = extraBaseClassDeclaration;
   let hasCanonicalizer = 1;
 }
 
@@ -539,7 +413,7 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [
       if (!isDstOperand(opOperand)) return failure();
 
       auto parent = getOperation()->getBlock()->getParentOp();
-      if (isa<ParallelOp>(parent) || isa<ForOp>(parent)) {
+      if (isa<ParallelOp>(parent)) {
         return parent->getResult(opOperand.getOperandNumber() -
                                  getNumUpdates());
       }
@@ -557,36 +431,39 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [
   let hasCanonicalizer = 1;
 }
 
-// TODO(b/253560795): Figure out where this operation shoud live, and how to
-// model it properly.
-def GMLST_DistributeOp : GMLST_Op<"distribute", [
-      Pure,
-      AllElementTypesMatch<["source", "result"]>
-    ]> {
-  let summary = "Tile combining operation";
+def GMLST_YieldOp : GMLST_Op<"yield", [Pure, ReturnLike, Terminator,
+    HasParent<"::mlir::gml_st::SetYieldOp, ::mlir::gml_st::FusionOp">]>,
+    Arguments<(ins Variadic<AnyType>:$values)> {
+  let summary = "Yield operation";
   let description = [{
-    `gml_st.distribute` is in a sense an inverse operation to
-    `gml_st.materialize`, and a non-terminator version of `gml_st.set_yield`.
-    It takes one tile of a vector per parallel iteration, and returns a larger
-    vector composed of these tiles.
+    `gml_st.yield` is a special terminator operation for accumulator regions of
+    `gml_st.set_yield` and `gml_st.fusion` region.
 
-    It is only needed as an intermediate step when flattening gml_st.parallel
-    operations during SIMTfication for GPU, where one `gml_st.distribute`
-    replaces each output of `gml_st.set_yield`. It only works on vectors, since
-    tensor arguments have been bufferized into memrefs by that point in the
-    pipeline. This is also the reason why it does not need a destination
-    argument.
+    Example:
+
+    ```mlir
+    gml_st.yield %f0: tensor<f32>
+    ```
   }];
+  let assemblyFormat = "attr-dict $values `:` type($values)";
+}
 
-  let arguments = (ins AnyVectorOfAnyRank:$source, AnySet:$set);
-  let results = (outs AnyVectorOfAnyRank:$result);
+def GMLST_FusionOp : GMLST_Op<"fusion", [
+      SingleBlockImplicitTerminator<"gml_st::YieldOp">
+    ]> {
+  let summary = "A cluster of operations to be tiled and fused.";
 
-  let assemblyFormat = [{
-    $source `into` `[` $set `]` attr-dict `:` type($source)
-      `into` type($result) `[` type($set) `]`
+  let arguments = (ins Variadic<AnyType>:$inputs);
+  let results = (outs Variadic<AnyRankedTensor>:$results);
+  let regions = (region SizedRegion<1>:$region);
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+
+  code extraClassDeclaration = [{
+    /// Return terminator of the region body.
+    YieldOp getTerminator();
   }];
-
-  let hasVerifier = 0;
 }
 
 #endif // GML_ST_OPS

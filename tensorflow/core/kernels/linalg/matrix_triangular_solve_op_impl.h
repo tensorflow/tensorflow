@@ -186,8 +186,8 @@ class BaseMatrixTriangularSolveOp : public OpKernel {
                     "In[0] mismatch In[1] shape: ", d1, " vs. ", d2, ": ",
                     in0.shape().DebugString(), " ", in1.shape().DebugString(),
                     " ", lower_, " ", adjoint_));
-    out_shape.AddDim(d0);
-    out_shape.AddDim(d3);
+    OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(d0));
+    OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(d3));
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, out_shape, &out));
     if (out->NumElements() == 0) {

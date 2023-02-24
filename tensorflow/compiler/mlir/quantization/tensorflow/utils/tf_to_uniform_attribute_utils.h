@@ -28,13 +28,15 @@ namespace mlir::quant {
 LogicalResult FillAttributesForUniformQuantizedDotOp(
     PatternRewriter& rewriter, Operation* op,
     llvm::StringMap<Attribute>& identifier_to_attr,
-    QuantizationMethod quantization_method,
+    tensorflow::quantization::QuantizationMethod::ExperimentalMethod
+        quantization_method,
     bool enable_per_channel_quantization);
 
 LogicalResult FillAttributesForUniformQuantizedConvolutionOp(
     PatternRewriter& rewriter, Operation* op,
     llvm::StringMap<Attribute>& identifier_to_attr,
-    QuantizationMethod quantization_method,
+    tensorflow::quantization::QuantizationMethod::ExperimentalMethod
+        quantization_method,
     bool enable_per_channel_quantization);
 
 }  // namespace mlir::quant

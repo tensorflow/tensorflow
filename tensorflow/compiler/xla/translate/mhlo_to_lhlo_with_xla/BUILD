@@ -30,7 +30,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/compiler/xla/service/gpu:matmul_utils",
         "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:attribute_importer",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_module_importer",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
@@ -77,7 +76,6 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service/cpu:hlo_xla_runtime_pipeline",  # buildcleaner: keep
         "//tensorflow/tsl/platform:platform_port",
-        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
@@ -98,7 +96,6 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
         "//tensorflow/tsl/platform:platform_port",
-        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",

@@ -19,7 +19,6 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:translate_registration",
         "//tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla:translate_registration",
         "//tensorflow/tsl/platform:platform_port",
-        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

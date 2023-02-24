@@ -1,191 +1,344 @@
-diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/dialect/CMakeLists.txt
---- stablehlo/stablehlo/dialect/CMakeLists.txt
-+++ stablehlo/stablehlo/dialect/CMakeLists.txt
-@@ -106,6 +106,7 @@
-   LINK_LIBS PUBLIC
-   MLIRInferTypeOpInterface
-   MLIRIR
-+  StablehloAssemblyFormat
-   StablehloBase
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -53,6 +53,7 @@
+ 
+ gentbl_cc_library(
+     name = "base_attr_interfaces_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-attr-interface-decls"],
+@@ -65,7 +66,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/Base.td",
+-    strip_include_prefix = ".",
+     deps = [":stablehlo_ops_td_files"],
  )
  
-diff --ruN a/stablehlo/stablehlo/reference/Tensor.cpp b/stablehlo/stablehlo/reference/Tensor.cpp
---- stablehlo/stablehlo/reference/Tensor.cpp
-+++ stablehlo/stablehlo/reference/Tensor.cpp
-@@ -368,24 +368,25 @@
+@@ -100,6 +100,7 @@
  
-     // For both f16 and bf16 floating-point types, we use uint16_t as their
-     // storage type because there are no buitin types for those.
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint16_t>(floatValues));
-+    return Tensor(
-+        type,
-+        HeapAsmResourceBlob::allocateAndCopyInferAlign<uint16_t>(floatValues));
-   }
+ gentbl_cc_library(
+     name = "chlo_attrs_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-attrdef-decls"],
+@@ -112,7 +113,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/ChloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":chlo_ops_td_files",
+     ],
+@@ -164,6 +164,7 @@
  
-   if (elemType.isF32()) {
-     auto floatValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APFloat>(),
-         [&](APFloat value) -> float { return value.convertToFloat(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<float>(floatValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<float>(
-+                            floatValues));
-   }
+ gentbl_cc_library(
+     name = "chlo_enums_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-enum-decls"],
+@@ -176,7 +177,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/ChloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":chlo_ops_td_files",
+     ],
+@@ -184,6 +184,7 @@
  
-   if (elemType.isF64()) {
-     auto floatValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APFloat>(),
-         [&](APFloat value) -> double { return value.convertToDouble(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<double>(floatValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<double>(
-+                            floatValues));
-   }
+ gentbl_cc_library(
+     name = "chlo_ops_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-op-decls"],
+@@ -196,7 +197,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/ChloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":chlo_ops_td_files",
+     ],
+@@ -233,7 +233,10 @@
+     srcs = [
+         "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
+     ],
+-    includes = ["include", "."],
++    includes = [
++        ".",
++        "include",
++    ],
+     deps = [
+         ":chlo_ops_td_files",
+         "@llvm-project//mlir:OpBaseTdFiles",
+@@ -358,9 +361,9 @@
+     deps = [
+         ":reference_axes",
+         ":reference_element",
+-        ":reference_sizes",
+         ":reference_errors",
+         ":reference_scope",
++        ":reference_sizes",
+         ":reference_tensor",
+         ":reference_types",
+         ":stablehlo_ops",
+@@ -473,6 +476,7 @@
  
-   // Handle signed integer types.
-@@ -393,32 +394,32 @@
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> int8_t { return value.getSExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<int8_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<int8_t>(
-+                            intValues));
-   }
+ gentbl_cc_library(
+     name = "stablehlo_attrs_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-attrdef-decls"],
+@@ -485,7 +489,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/StablehloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":stablehlo_ops_td_files",
+     ],
+@@ -539,6 +542,7 @@
  
-   if (elemType.isSignlessInteger(16)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> int16_t { return value.getSExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<int16_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<int16_t>(
-+                            intValues));
-   }
+ gentbl_cc_library(
+     name = "stablehlo_enums_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-enum-decls"],
+@@ -551,7 +555,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/StablehloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":stablehlo_ops_td_files",
+     ],
+@@ -559,6 +562,7 @@
  
-   if (elemType.isSignlessInteger(32)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> int32_t { return value.getSExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<int32_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<int32_t>(
-+                            intValues));
-   }
+ gentbl_cc_library(
+     name = "stablehlo_ops_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-op-decls"],
+@@ -571,7 +575,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/StablehloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":stablehlo_ops_td_files",
+     ],
+@@ -634,6 +637,7 @@
  
-   if (elemType.isSignlessInteger(64)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> int64_t { return value.getSExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<int64_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<int64_t>(
-+                            intValues));
-   }
- 
-   // Handle unsigned integer types.
-@@ -426,32 +427,35 @@
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> uint8_t { return value.getZExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint8_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<uint8_t>(
-+                            intValues));
-   }
- 
-   if (elemType.isUnsignedInteger(16)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> uint16_t { return value.getZExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint16_t>(intValues));
-+    return Tensor(
-+        type,
-+        HeapAsmResourceBlob::allocateAndCopyInferAlign<uint16_t>(intValues));
-   }
- 
-   if (elemType.isUnsignedInteger(32)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> uint32_t { return value.getZExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint32_t>(intValues));
-+    return Tensor(
-+        type,
-+        HeapAsmResourceBlob::allocateAndCopyInferAlign<uint32_t>(intValues));
-   }
- 
-   if (elemType.isUnsignedInteger(64)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> uint64_t { return value.getZExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint64_t>(intValues));
-+    return Tensor(
-+        type,
-+        HeapAsmResourceBlob::allocateAndCopyInferAlign<uint64_t>(intValues));
-   }
- 
-   // Handle boolean type.
-@@ -459,8 +463,8 @@
-     auto boolValues = llvm::to_vector(
-         llvm::map_range(attr.getValues<bool>(),
-                         [&](bool value) -> uint8_t { return value ? 1 : 0; }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint8_t>(boolValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<uint8_t>(
-+                            boolValues));
-   }
- 
-   // Handle complex types.
-@@ -473,9 +477,10 @@
-             return std::complex<float>(value.real().convertToFloat(),
-                                        value.imag().convertToFloat());
-           }));
--      return Tensor(type,
--                    HeapAsmResourceBlob::allocateAndCopy<std::complex<float>>(
--                        complexValues));
-+      return Tensor(
-+          type,
-+          HeapAsmResourceBlob::allocateAndCopyInferAlign<std::complex<float>>(
-+              complexValues));
-     }
-     if (complexElemTy.isF64()) {
-       auto complexValues = llvm::to_vector(llvm::map_range(
-@@ -484,9 +489,10 @@
-             return std::complex<double>(value.real().convertToDouble(),
-                                         value.imag().convertToDouble());
-           }));
--      return Tensor(type,
--                    HeapAsmResourceBlob::allocateAndCopy<std::complex<double>>(
--                        complexValues));
-+      return Tensor(
-+          type,
-+          HeapAsmResourceBlob::allocateAndCopyInferAlign<std::complex<double>>(
-+              complexValues));
-     }
-   }
- 
-diff --ruN a/stablehlo/stablehlo/tests/CMakeLists.txt b/stablehlo/stablehlo/tests/CMakeLists.txt
---- stablehlo/stablehlo/tests/CMakeLists.txt
-+++ stablehlo/stablehlo/tests/CMakeLists.txt
-@@ -53,4 +53,5 @@
-   MLIRShapeDialect
-   MLIRSupport
-   MLIRTransformUtils
-+  StablehloAssemblyFormat
+ gentbl_cc_library(
+     name = "stablehlo_pass_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             [
+@@ -644,7 +648,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/transforms/Passes.td",
+-    strip_include_prefix = ".",
+     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
  )
-diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
---- stablehlo/stablehlo/tests/TestUtils.cpp
-+++ stablehlo/stablehlo/tests/TestUtils.cpp
-@@ -36,7 +36,6 @@
- #include "mlir/Support/TypeID.h"
- #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
- #include "stablehlo/dialect/AssemblyFormat.h"
--#include "stablehlo/dialect/Base.h"
  
- namespace mlir {
- namespace hlo {
+@@ -672,13 +675,13 @@
+         ":vhlo_types",
+         "@llvm-project//llvm:Support",
+         "@llvm-project//mlir:FuncDialect",
++        "@llvm-project//mlir:IR",
+         "@llvm-project//mlir:InferTypeOpInterface",
+-        "@llvm-project//mlir:IR",
+         "@llvm-project//mlir:Pass",
+         "@llvm-project//mlir:Support",
+         "@llvm-project//mlir:TensorDialect",
++        "@llvm-project//mlir:TransformUtils",
+         "@llvm-project//mlir:Transforms",
+-        "@llvm-project//mlir:TransformUtils",
+     ],
+ )
+ 
+@@ -775,6 +778,7 @@
+ 
+ gentbl_cc_library(
+     name = "test_utils_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             [
+@@ -786,7 +790,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/tests/TestUtils.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":test_utils_td_files",
+     ],
+@@ -915,7 +918,10 @@
+     srcs = [
+         "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
+     ],
+-    includes = ["include", "."],
++    includes = [
++        ".",
++        "include",
++    ],
+     deps = [
+         ":vhlo_ops_td_files",
+         "@llvm-project//mlir:OpBaseTdFiles",
+@@ -924,6 +930,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_attr_interfaces_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-attr-interface-decls"],
+@@ -936,7 +943,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloAttrs.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+@@ -944,6 +950,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_attrs_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-attrdef-decls"],
+@@ -956,7 +963,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+@@ -964,6 +970,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_enums_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-enum-decls"],
+@@ -976,7 +983,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloEnums.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+@@ -984,6 +990,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_op_interfaces_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-op-interface-decls"],
+@@ -996,7 +1003,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+@@ -1033,6 +1039,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_ops_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-op-decls"],
+@@ -1045,7 +1052,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+@@ -1094,6 +1100,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_type_interfaces_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-type-interface-decls"],
+@@ -1106,7 +1113,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloTypes.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+@@ -1114,6 +1120,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_types_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-typedef-decls"],
+@@ -1126,7 +1133,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
+--- stablehlo/stablehlo/dialect/ChloOps.td
++++ stablehlo/stablehlo/dialect/ChloOps.td
+@@ -53,7 +53,6 @@
+     and provide conversion patterns to fully materialize into lower level
+     dialects.
+   }];
+-  let useFoldAPI = kEmitFoldAdaptorFolder;
+ }
+ 
+ class CHLO_Op<string mnemonic, list<Trait> traits> :
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
+--- stablehlo/stablehlo/dialect/StablehloOps.td
++++ stablehlo/stablehlo/dialect/StablehloOps.td
+@@ -37,7 +37,6 @@
+ 
+   let useDefaultAttributePrinterParser = 0;
+   let useDefaultTypePrinterParser = 0;
+-  let useFoldAPI = kEmitFoldAdaptorFolder;
+ }
+ 
+ class StableHLO_Op<string mnemonic, list<Trait> traits> :
+diff --ruN a/stablehlo/stablehlo/dialect/VhloDialect.td b/stablehlo/stablehlo/dialect/VhloDialect.td
+--- stablehlo/stablehlo/dialect/VhloDialect.td
++++ stablehlo/stablehlo/dialect/VhloDialect.td
+@@ -38,7 +38,6 @@
+ 
+   let useDefaultAttributePrinterParser = 0;
+   let useDefaultTypePrinterParser = 0;
+-  let useFoldAPI = kEmitFoldAdaptorFolder;
+ }
+ 
+ #endif
 

@@ -328,14 +328,16 @@ template <typename T>
 int CountLeadingZeros(T integer_input) {
   static_assert(std::is_unsigned<T>::value,
                 "Only unsigned integer types handled.");
-#if defined(__GNUC__)
-  return integer_input ? __builtin_clz(integer_input)
-                       : std::numeric_limits<T>::digits;
-#else
   if (integer_input == 0) {
     return std::numeric_limits<T>::digits;
   }
-
+#if defined(__GNUC__)
+  if (std::is_same<T, uint32_t>::value) {
+    return __builtin_clz(integer_input);
+  } else if (std::is_same<T, uint64_t>::value) {
+    return __builtin_clzll(integer_input);
+  }
+#endif
   const T one_in_leading_positive = static_cast<T>(1)
                                     << (std::numeric_limits<T>::digits - 1);
   int leading_zeros = 0;
@@ -344,7 +346,6 @@ int CountLeadingZeros(T integer_input) {
     ++leading_zeros;
   }
   return leading_zeros;
-#endif
 }
 
 template <typename T>
@@ -420,7 +421,7 @@ inline void LUTPopulateInt8(float input_scale, int32_t input_zero_point,
     const float dequantized = input_scale * (val - input_zero_point);
     const float transformed =
         LUTTransform(transform, transform_params, dequantized);
-    const float rescaled = std::round(transformed * inverse_scale);
+    const float rescaled = TfLiteRound(transformed * inverse_scale);
     const int32_t quantized =
         static_cast<int32_t>(rescaled + output_zero_point);
     lut_uint8[static_cast<uint8_t>(static_cast<T>(val))] = static_cast<uint8_t>(
@@ -549,43 +550,10 @@ constexpr int LUTSize() {
                     std::is_same<T, int8_t>::value ||
                     std::is_same<T, int16_t>::value,
                 "Only LUTs with uint8, int8 or int16 inputs are supported.");
-  if (std::is_same<T, uint8_t>::value || std::is_same<T, int8_t>::value) {
-    return 256;
-  } else {
-    return 513;
-  }
-}
-
-// Deprecated and will be removed in future, please use LUTPopulate instead
-template <typename FloatT, typename LutInT, typename LutOutT>
-inline void gen_lut(FloatT (*func)(FloatT), FloatT input_min, FloatT input_max,
-                    FloatT output_min, FloatT output_max, LutOutT* lut) {
-  static_assert(std::is_same<LutInT, LutOutT>::value,
-                "Input and output type of the LUT must be the same.");
-  static_assert(std::is_same<LutInT, int16_t>::value,
-                "Only int16_t type LUT are supported.");
-  static_assert(std::is_same<FloatT, float>::value,
-                "Only float type is supported for FloatT.");
-  using T = LutInT;
-
-  const auto zero_point = [](float min, float max, float scale) {
-    // Symmetric int16 LUT, we know the zero-point will not overflow an int32_t
-    // and zero-point from min will be the same as from max.
-    return static_cast<int32_t>(
-        static_cast<float>(std::numeric_limits<T>::min()) - min / scale);
-  };
-
-  const float scale = static_cast<float>(std::numeric_limits<T>::max() -
-                                         std::numeric_limits<T>::min());
-  const float input_scale = (input_max - input_min) / scale;
-  const FloatT output_scale = (output_max - output_min) / scale;
-  const int32_t input_zero_point =
-      zero_point(input_min, input_max, input_scale);
-  const int32_t output_zero_point =
-      zero_point(output_min, output_max, output_scale);
-
-  return LUTPopulate<T, float>(input_scale, input_zero_point, output_scale,
-                               output_zero_point, func, lut);
+  // As per c++11: constexpr methods cannot have more than one return statement.
+  return (std::is_same<T, uint8_t>::value || std::is_same<T, int8_t>::value)
+             ? 256
+             : 513;
 }
 
 // int16_t -> int16_t table lookup with interpolation

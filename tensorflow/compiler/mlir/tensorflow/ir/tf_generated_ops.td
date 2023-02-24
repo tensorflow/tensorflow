@@ -16,9 +16,12 @@ limitations under the License.
 // This is the auto-generated operation definition file for TensorFlow.
 //
 // PLEASE DO NOT MANUALLY EDIT THIS FILE!
+// ONLY EXCEPTION: FIELDS THAT CANNOT BE GENERATED
 //
 // If you absolutely need to modify the generated fields of an op, move the op
-// definition to `tf_ops.td` and perform the modification there.
+// definition to `tf_ops.td` and perform the modification there. Generated
+// fields and the process to generate them are documented at:
+// mlir/tensorflow/dialectgen/README.md
 //
 // This file contains TensorFlow ops whose definitions are programmatically
 // generated from the TF op registration and the api-def-files in the following
@@ -356,7 +359,7 @@ For example:
 
 ```
 # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-tf.angle(input) ==> [2.0132, 1.056]
+tf.math.angle(input) ==> [2.0132, 1.056]
 ```
 
 @compatibility(numpy)
@@ -1213,15 +1216,15 @@ about broadcasting
   }];
 
   let arguments = (ins
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64]>, [{2-D or higher with shape `[..., r_x, c_x]`.}]>:$x,
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64]>, [{2-D or higher with shape `[..., r_y, c_y]`.}]>:$y,
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{2-D or higher with shape `[..., r_x, c_x]`.}]>:$x,
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{2-D or higher with shape `[..., r_y, c_y]`.}]>:$y,
 
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_x,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_y
   );
 
   let results = (outs
-    Res<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64]>, [{3-D or higher with shape `[..., r_o, c_o]`}]>:$output
+    Res<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{3-D or higher with shape `[..., r_o, c_o]`}]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2146,6 +2149,30 @@ case it might be faster to use the CPU.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_CollectiveAllToAllV2Op : TF_Op<"CollectiveAllToAllV2", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_CollectiveReduceOrderingEffect]> {
+  let summary = [{
+Mutually exchanges multiple tensors of identical type and shape.
+  }];
+
+  let arguments = (ins
+    TF_FpOrI32OrI64Tensor:$input,
+    TF_Int32Tensor:$group_size,
+    TF_Int32Tensor:$group_key,
+    TF_Int32Tensor:$instance_key,
+    Variadic<TF_ResourceTensor>:$ordering_token,
+
+    DefaultValuedOptionalAttr<StrAttr, "\"auto\"">:$communication_hint,
+    DefaultValuedOptionalAttr<F32Attr, "0.0f">:$timeout_seconds
+  );
+
+  let results = (outs
+    TF_FpOrI32OrI64Tensor:$data
+  );
+
+  TF_DerivedOperandSizeAttr Nordering_token = TF_DerivedOperandSizeAttr<4>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_CollectiveAssignGroupV2Op : TF_Op<"CollectiveAssignGroupV2", [Pure, TF_NoConstantFold]> {
   let summary = "Assign group keys based on group assignment.";
 
@@ -2224,7 +2251,7 @@ Mutually accumulates multiple tensors of identical type and shape.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_CollectiveGatherV2Op : TF_Op<"CollectiveGatherV2", [TF_CollectiveReduceOrderingEffect]> {
+def TF_CollectiveGatherV2Op : TF_Op<"CollectiveGatherV2", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_CollectiveReduceOrderingEffect]> {
   let summary = [{
 Mutually accumulates multiple tensors of identical type and shape.
   }];
@@ -2302,6 +2329,33 @@ Mutually reduces multiple tensors of identical type and shape.
       return ArraysAreCastCompatible(inferred, actual);
     }
   }];
+}
+
+def TF_CollectiveReduceScatterV2Op : TF_Op<"CollectiveReduceScatterV2", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_CollectiveReduceOrderingEffect]> {
+  let summary = [{
+Mutually reduces multiple tensors of identical type and shape and scatters the result.
+  }];
+
+  let arguments = (ins
+    TF_FpOrI32OrI64Tensor:$input,
+    TF_Int32Tensor:$group_size,
+    TF_Int32Tensor:$group_key,
+    TF_Int32Tensor:$instance_key,
+    Variadic<TF_ResourceTensor>:$ordering_token,
+
+    TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add"]>:$merge_op,
+    TF_AnyStrAttrOf<["Id", "Div"]>:$final_op,
+    DefaultValuedOptionalAttr<StrAttr, "\"auto\"">:$communication_hint,
+    DefaultValuedOptionalAttr<F32Attr, "0.0f">:$timeout_seconds,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$max_subdivs_per_device
+  );
+
+  let results = (outs
+    TF_FpOrI32OrI64Tensor:$data
+  );
+
+  TF_DerivedOperandSizeAttr Nordering_token = TF_DerivedOperandSizeAttr<4>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_CollectiveReduceV2Op : TF_Op<"CollectiveReduceV2", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_CollectiveReduceOrderingEffect]> {
@@ -2719,6 +2773,35 @@ the `filter` input of the convolution.}]>:$output
   }];
 }
 
+def TF_Conv2DBackpropFilterV2Op : TF_Op<"Conv2DBackpropFilterV2", [Pure]> {
+  let summary = [{
+Computes the gradients of convolution with respect to the filter.
+  }];
+
+  let arguments = (ins
+    Arg<TF_FloatTensor, [{4-D with shape `[batch, in_height, in_width, in_channels]`.}]>:$input,
+    Arg<TF_FloatTensor, [{4-D with shape `[filter_height, filter_width, in_channels, out_channels]`.
+Only shape of tensor is used.}]>:$filter,
+    Arg<TF_FloatTensor, [{4-D with shape `[batch, out_height, out_width, out_channels]`.
+Gradients w.r.t. the output of the convolution.}]>:$out_backprop,
+
+    I64ArrayAttr:$strides,
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
+    TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$explicit_paddings,
+    DefaultValuedOptionalAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    Res<TF_FloatTensor, [{4-D with shape
+`[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
+the `filter` input of the convolution.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_Conv2DBackpropInputOp : TF_Op<"Conv2DBackpropInput", [Pure, TF_LayoutSensitiveInterface]> {
   let summary = [{
 Computes the gradients of convolution with respect to the input.
@@ -2756,6 +2839,35 @@ w.r.t. the input of the convolution.}]>:$output
     StringRef GetOptimalLayout(const RuntimeDevices& devices);
     LogicalResult UpdateDataFormat(StringRef data_format);
   }];
+}
+
+def TF_Conv2DBackpropInputV2Op : TF_Op<"Conv2DBackpropInputV2", [Pure]> {
+  let summary = [{
+Computes the gradients of convolution with respect to the input.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int32]>, [{4-D with shape `[batch, in_height, in_width, in_channels]`.
+Only shape of tensor is used.}]>:$input,
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int32]>, [{4-D with shape
+`[filter_height, filter_width, in_channels, out_channels]`.}]>:$filter,
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int32]>, [{4-D with shape `[batch, out_height, out_width, out_channels]`.
+Gradients w.r.t. the output of the convolution.}]>:$out_backprop,
+
+    I64ArrayAttr:$strides,
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
+    TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$explicit_paddings,
+    DefaultValuedOptionalAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int32]>, [{4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient
+w.r.t. the input of the convolution.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_Conv3DOp : TF_Op<"Conv3D", [InferTensorType, Pure]> {
@@ -2799,6 +2911,30 @@ out_channels]`. `in_channels` must match between `input` and `filter`.}]>:$filte
 
 }
 
+def TF_Conv3DBackpropFilterOp : TF_Op<"Conv3DBackpropFilter", [Pure]> {
+  let summary = [{
+Computes the gradients of 3-D convolution with respect to the filter.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>, [{Shape `[batch, depth, rows, cols, in_channels]`.}]>:$input,
+    Arg<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>, [{Shape `[depth, rows, cols, in_channels, out_channels]`.
+`in_channels` must match between `input` and `filter`.}]>:$filter,
+    Arg<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>, [{Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
+out_channels]`.}]>:$out_backprop,
+
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{1, 1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_Conv3DBackpropFilterV2Op : TF_Op<"Conv3DBackpropFilterV2", [Pure]> {
   let summary = [{
 Computes the gradients of 3-D convolution with respect to the filter.
@@ -2821,6 +2957,30 @@ out_channels]`.}]>:$out_backprop,
 
   let results = (outs
     TF_FloatTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_Conv3DBackpropInputOp : TF_Op<"Conv3DBackpropInput", [Pure]> {
+  let summary = [{
+Computes the gradients of 3-D convolution with respect to the input.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>, [{Shape `[batch, depth, rows, cols, in_channels]`.}]>:$input,
+    Arg<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>, [{Shape `[depth, rows, cols, in_channels, out_channels]`.
+`in_channels` must match between `input` and `filter`.}]>:$filter,
+    Arg<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>, [{Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
+out_channels]`.}]>:$out_backprop,
+
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{1, 1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -3109,7 +3269,7 @@ opposite direction.
   }];
 
   let arguments = (ins
-    Arg<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>, [{A `Tensor`. Must be one of the following types: `float16`, `float32`, `float64`.}]>:$x,
+    Arg<TF_FloatTensor, [{A `Tensor`. Must be one of the following types: `float16`, `float32`, `float64`.}]>:$x,
     Arg<TF_I32OrI64Tensor, [{A `Tensor` of type `int32` (default: 0). Must be in the range
 `[-rank(x), rank(x))`.}]>:$axis,
 
@@ -3118,7 +3278,7 @@ opposite direction.
   );
 
   let results = (outs
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$out
+    TF_FloatTensor:$out
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -7970,6 +8130,8 @@ def TF_LogicalAndOp : TF_Op<"LogicalAnd", [Commutative, Pure, ResultsBroadcastab
   let results = (outs
     TF_BoolTensor:$z
   );
+
+  let hasFolder = 1;
 }
 
 def TF_LogicalNotOp : TF_Op<"LogicalNot", [Pure, TF_Involution, TF_SameOperandsAndResultTypeResolveRef]> {
@@ -8326,15 +8488,15 @@ cublas.
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$a,
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$b,
+    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$a,
+    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$b,
 
     DefaultValuedOptionalAttr<BoolAttr, "false">:$transpose_a,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$transpose_b
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$product
+    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$product
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -10628,6 +10790,18 @@ def TF_OptionalNoneOp : TF_Op<"OptionalNone", [Pure]> {
   let results = (outs
     TF_VariantTensor:$optional
   );
+}
+
+def TF_OutfeedEnqueueOp : TF_Op<"OutfeedEnqueue", []> {
+  let summary = "Enqueue a Tensor on the computation outfeed.";
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{A tensor that will be inserted into the outfeed queue.}]>:$input
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_OutfeedEnqueueTupleOp : TF_Op<"OutfeedEnqueueTuple", []> {
@@ -14966,6 +15140,74 @@ has size `k`, the number of segments.}]>:$output
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_SegmentMaxV2Op : TF_Op<"SegmentMaxV2", [Pure]> {
+  let summary = "Computes the maximum along segments of a tensor.";
+
+  let description = [{
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+Computes a tensor such that
+\\(output_i = \max_j(data_j)\\) where `max` is over `j` such
+that `segment_ids[j] == i`.
+
+If the maximum is empty for a given segment ID `i`, it outputs the smallest
+possible value for the specific numeric type,
+`output[i] = numeric_limits<T>::lowest()`.
+
+Note: That this op is currently only supported with jit_compile=True.
+
+Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+and an error is thrown for indices that are not increasing. On GPU, this
+does not throw an error for unsorted indices. On GPU, out-of-order indices
+result in safe but unspecified behavior, which may include treating
+out-of-order indices as the same as a smaller following index.
+
+The only difference with SegmentMax is the additional input  `num_segments`.
+This helps in evaluating the output shape in compile time.
+`num_segments` should be consistent with segment_ids.
+e.g. Max(segment_ids) should be equal to `num_segments` - 1 for a 1-d segment_ids
+With inconsistent num_segments, the op still runs. only difference is,
+the output takes the size of num_segments irrespective of size of segment_ids and data.
+for num_segments less than expected output size, the last elements are ignored
+for num_segments more than the expected output size, last elements are assigned 
+smallest possible value for the specific numeric type.
+
+For example:
+
+>>> @tf.function(jit_compile=True)
+... def test(c):
+...   return tf.raw_ops.SegmentMaxV2(data=c, segment_ids=tf.constant([0, 0, 1]), num_segments=2)
+>>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+>>> test(c).numpy()
+array([[4, 3, 3, 4],
+       [5, 6, 7, 8]], dtype=int32)
+  }];
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$data,
+    Arg<TF_I32OrI64Tensor, [{A 1-D tensor whose size is equal to the size of `data`'s
+first dimension.  Values should be sorted and can be repeated.
+The values must be less than `num_segments`.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.}]>:$segment_ids,
+    TF_I32OrI64Tensor:$num_segments
+  );
+
+  let results = (outs
+    Res<TF_IntOrFpTensor, [{Has same shape as data, except for the first `segment_ids.rank`
+dimensions, which are replaced with a single dimensionw which has size
+`num_segments`.
+}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tnumsegments = TF_DerivedOperandTypeAttr<2>;
+}
+
 def TF_SegmentMeanOp : TF_Op<"SegmentMean", [Pure]> {
   let summary = "Computes the mean along segments of a tensor.";
 
@@ -15068,6 +15310,73 @@ has size `k`, the number of segments.}]>:$output
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_SegmentMinV2Op : TF_Op<"SegmentMinV2", [Pure]> {
+  let summary = "Computes the minimum along segments of a tensor.";
+
+  let description = [{
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+Computes a tensor such that
+\\(output_i = \min_j(data_j)\\) where `min` is over `j` such
+that `segment_ids[j] == i`.
+
+If the minimum is empty for a given segment ID `i`, it outputs the largest
+possible value for the specific numeric type,
+`output[i] = numeric_limits<T>::max()`.
+
+Note: That this op is currently only supported with jit_compile=True.
+
+Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+and an error is thrown for indices that are not increasing. On GPU, this
+does not throw an error for unsorted indices. On GPU, out-of-order indices
+result in safe but unspecified behavior, which may include treating
+out-of-order indices as the same as a smaller following index.
+
+The only difference with SegmentMin is the additional input  `num_segments`.
+This helps in evaluating the output shape in compile time.
+`num_segments` should be consistent with segment_ids.
+e.g. Max(segment_ids) should be equal to `num_segments` - 1 for a 1-d segment_ids
+With inconsistent num_segments, the op still runs. only difference is,
+the output takes the size of num_segments irrespective of size of segment_ids and data.
+for num_segments less than expected output size, the last elements are ignored
+for num_segments more than the expected output size, last elements are assigned 
+the largest possible value for the specific numeric type.
+
+For example:
+
+>>> @tf.function(jit_compile=True)
+... def test(c):
+...   return tf.raw_ops.SegmentMinV2(data=c, segment_ids=tf.constant([0, 0, 1]), num_segments=2)
+>>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+>>> test(c).numpy()
+array([[1, 2, 2, 1],
+       [5, 6, 7, 8]], dtype=int32)
+  }];
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$data,
+    Arg<TF_I32OrI64Tensor, [{A 1-D tensor whose size is equal to the size of `data`'s
+first dimension.  Values should be sorted and can be repeated.
+The values must be less than `num_segments`.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.}]>:$segment_ids,
+    TF_I32OrI64Tensor:$num_segments
+  );
+
+  let results = (outs
+    Res<TF_IntOrFpTensor, [{Has same shape as data, except for the first `segment_ids.rank`
+dimensions, which are replaced with a single dimensionw which has size
+`num_segments`.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tnumsegments = TF_DerivedOperandTypeAttr<2>;
+}
+
 def TF_SegmentProdOp : TF_Op<"SegmentProd", [Pure]> {
   let summary = "Computes the product along segments of a tensor.";
 
@@ -15116,6 +15425,64 @@ has size `k`, the number of segments.}]>:$output
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_SegmentProdV2Op : TF_Op<"SegmentProdV2", [Pure]> {
+  let summary = "Computes the product along segments of a tensor.";
+
+  let description = [{
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+Computes a tensor such that
+\\(output_i = \prod_j data_j\\) where the product is over `j` such
+that `segment_ids[j] == i`.
+
+If the product is empty for a given segment ID `i`, `output[i] = 1`.
+
+Note: That this op is currently only supported with jit_compile=True.
+
+The only difference with SegmentProd is the additional input  `num_segments`.
+This helps in evaluating the output shape in compile time.
+`num_segments` should be consistent with segment_ids.
+e.g. Max(segment_ids) - 1 should be equal to `num_segments` for a 1-d segment_ids
+With inconsistent num_segments, the op still runs. only difference is, 
+the output takes the size of num_segments irrespective of size of segment_ids and data.
+for num_segments less than expected output size, the last elements are ignored
+for num_segments more than the expected output size, last elements are assigned 1.
+
+For example:
+
+>>> @tf.function(jit_compile=True)
+... def test(c):
+...   return tf.raw_ops.SegmentProdV2(data=c, segment_ids=tf.constant([0, 0, 1]), num_segments=2)
+>>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+>>> test(c).numpy()
+array([[4, 6, 6, 4],
+       [5, 6, 7, 8]], dtype=int32)
+  }];
+
+  let arguments = (ins
+    TF_NumberTensor:$data,
+    Arg<TF_I32OrI64Tensor, [{A 1-D tensor whose size is equal to the size of `data`'s
+first dimension.  Values should be sorted and can be repeated.
+The values must be less than `num_segments`.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.}]>:$segment_ids,
+    TF_I32OrI64Tensor:$num_segments
+  );
+
+  let results = (outs
+    Res<TF_NumberTensor, [{Has same shape as data, except for the first `segment_ids.rank`
+dimensions, which are replaced with a single dimensionw which has size
+`num_segments`.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tnumsegments = TF_DerivedOperandTypeAttr<2>;
 }
 
 def TF_SegmentSumOp : TF_Op<"SegmentSum", [Pure]> {
@@ -18993,7 +19360,9 @@ def TF_TensorListSetItemOp : TF_Op<"TensorListSetItem", [Pure]> {
   let arguments = (ins
     TF_VariantTensor:$input_handle,
     TF_Int32Tensor:$index,
-    TF_Tensor:$item
+    TF_Tensor:$item,
+
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$resize_if_index_out_of_bounds
   );
 
   let results = (outs
@@ -19737,6 +20106,8 @@ Same shape condition as scales.}]>:$zero_points,
 
   TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniformQuantizeOp : TF_Op<"UniformQuantize", [Pure]> {
@@ -19765,6 +20136,8 @@ Same shape condition as scales.}]>:$zero_points,
 
   TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniformQuantizedAddOp : TF_Op<"UniformQuantizedAdd", [Pure]> {
@@ -19927,6 +20300,8 @@ Same shape condition as `output_scales`.}]>:$output_zero_points,
 
   TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniformQuantizedConvolutionHybridOp : TF_Op<"UniformQuantizedConvolutionHybrid", [Pure]> {
@@ -19984,6 +20359,8 @@ The output data is the non-quantized output data.}]>:$output
   TF_DerivedOperandTypeAttr Tlhs = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Trhs = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniformQuantizedDotOp : TF_Op<"UniformQuantizedDot", [Pure]> {
@@ -20035,6 +20412,8 @@ Same shape condition as rhs_scales.}]>:$output_zero_points,
 
   TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniformQuantizedDotHybridOp : TF_Op<"UniformQuantizedDotHybrid", [Pure]> {
@@ -20071,6 +20450,8 @@ The output data is the original output data itself (Not quantized).}]>:$output
   TF_DerivedOperandTypeAttr Tlhs = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Trhs = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniformRequantizeOp : TF_Op<"UniformRequantize", [Pure]> {
@@ -20119,6 +20500,8 @@ Same shape condition as scales.}]>:$output_zero_points,
 
   TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniqueOp : TF_Op<"Unique", [Pure]> {
@@ -20418,7 +20801,7 @@ array([[5, 5, 5, 5],
 
   let arguments = (ins
     TF_NumberTensor:$data,
-    Arg<TF_I32OrI64Tensor, [{A tensor whose shape is a prefix of `data.shape`.
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{A tensor whose shape is a prefix of `data.shape`.
 The values must be less than `num_segments`.
 
 Caution: The values are always validated to be in range on CPU, never validated
@@ -20649,12 +21032,12 @@ def TF_XdivyOp : TF_Op<"Xdivy", [Pure, ResultsBroadcastableShape, TF_SameOperand
   let summary = "Returns 0 if x == 0, and x / y otherwise, elementwise.";
 
   let arguments = (ins
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$x,
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$y
+    TF_FpOrComplexTensor:$x,
+    TF_FpOrComplexTensor:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$z
+    TF_FpOrComplexTensor:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -20716,40 +21099,24 @@ for binary operators.
 }
 
 def TF_XlaCallModuleOp : TF_Op<"XlaCallModule", [Pure]> {
-  let summary = "Temporary op for experimenting with jax2tf.";
+  let summary = "Invokes a StableHLO module.";
 
   let description = [{
-DO NOT USE THIS OP. It has no backwards compatibility guarantees. It is also
-very likely to change. This op will be used only in jax2tf under an
-experimental flag.
-
-This is an experimental op to allow a smooth evolution of jax2tf towards
-emitting and serializing StableHLO directly from JAX.
-
-The serialized module must return a tuple if and only if the Sout is an empty
-list or a list with more than 1 elements. The length of Tout and Sout must
-match. This op always returns a tuple of results, even if the module returns
-a single result.
-
-The handling of dynamic shapes is work-in-progress. At the moment, the
-JAX lowering for dynamic shapes will prepend one dimension parameter to the
-serialized module for each dimension whose value must be passed in.
-The "args" correspond to the non-dimension arguments. During compilation
-we compute the values of the dimension arguments based on the static shapes of
-the "args". In order to do this, we encode for each dimension argument a
-specification of how to compute its value, as a string, in the form
-"<arg_idx>.<axis_idx>".
-E.g., the specification "2.1" denotes the value args[2].shape[1].
+This op is experimental and is intended for use with JAX native serialization
+in a TensorFlow context.
   }];
 
   let arguments = (ins
     Arg<Variadic<TF_Tensor>, [{A list of `Tensor` with possibly different types to be passed as arguments
-to the HLO module.}]>:$args,
+to the `module`. These are the actual arguments and do not include the
+platform argument (see `platforms`) nor the dimension arguments (see
+`dim_args_spec`).}]>:$args,
 
     I64Attr:$version,
     StrAttr:$module,
     TF_ShapeAttrArray:$Sout,
-    StrArrayAttr:$dim_args_spec
+    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$dim_args_spec,
+    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$platforms
   );
 
   let results = (outs
@@ -21069,6 +21436,25 @@ def TF_XlaLaunchOp : TF_Op<"XlaLaunch", [AttrSizedOperandSegments]> {
   TF_DerivedOperandSizeAttr Nresources = TF_DerivedOperandSizeAttr<2>;
   TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<1>;
   TF_DerivedOperandTypeListAttr Tconstants = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
+}
+
+def TF_XlaLaunchV2Op : TF_Op<"XlaLaunchV2", [Pure]> {
+  let summary = "XLA Launch Op. For use by the XLA JIT only.";
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$args,
+
+    I64ArrayAttr:$constants,
+    I64ArrayAttr:$resources,
+    SymbolRefAttr:$function
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$results
+  );
+
+  TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
 }
 
@@ -21529,6 +21915,25 @@ key: A unique identifier for this region used to match up host transfers.
   TF_DerivedOperandTypeAttr Tinput = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_XlaSetBoundOp : TF_Op<"XlaSetBound", [Pure]> {
+  let summary = [{
+Set a bound for the given input value as a hint to Xla compiler,
+  }];
+
+  let description = [{
+returns the same value.
+  }];
+
+  let arguments = (ins
+    TF_Int32Tensor:$input,
+    TF_Int32Tensor:$bound
+  );
+
+  let results = (outs
+    TF_Int32Tensor:$output
+  );
+}
+
 def TF_XlaSetDynamicDimensionSizeOp : TF_Op<"XlaSetDynamicDimensionSize", [InferTensorType, Pure, TF_NoConstantFold]> {
   let summary = "Make a static dimension into a xla bounded dynamic dimension.";
 
@@ -21573,6 +21978,63 @@ Sorts a tensor. Currently only sorts in ascending order are supported.
 
   let results = (outs
     Res<TF_Tensor, [{A `Tensor` of type T.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaSpmdFullToShardShapeOp : TF_Op<"XlaSpmdFullToShardShape", [Pure]> {
+  let summary = [{
+An op used by XLA SPMD partitioner to switch from automatic partitioning to
+  }];
+
+  let description = [{
+manual partitioning. It annotates the input (full-shape, to be automatically
+partitioned) with the same sharding used by manual partitioning, and outputs a
+shard-shaped tensor to be consumed by later manually-partitioned ops. If the
+shape is not evenly partitionable, the padding region will be masked with 0s.
+The conversion can happen partially in subgroups, by specifying the dim
+attribute, where only that dim will be converted.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+
+    StrAttr:$manual_sharding,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$dim,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$unspecified_dims
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaSpmdShardToFullShapeOp : TF_Op<"XlaSpmdShardToFullShape", [Pure]> {
+  let summary = [{
+An op used by XLA SPMD partitioner to switch from manual partitioning to
+  }];
+
+  let description = [{
+automatic partitioning. It converts the shard-shaped, manually partitioned input
+into full-shaped tensor to be partitioned automatically with the same sharding
+used by manual partitioning. The conversion can happen partially in subgroups,
+by specifying the dim attribute, where only that dim will be converted.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+
+    StrAttr:$manual_sharding,
+    TF_ShapeAttr:$full_shape,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$dim,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$unspecified_dims
+  );
+
+  let results = (outs
+    TF_Tensor:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -21700,12 +22162,12 @@ def TF_Xlog1pyOp : TF_Op<"Xlog1py", [Pure, TF_SameOperandsAndResultElementTypeRe
   let summary = "Returns 0 if x == 0, and x * log1p(y) otherwise, elementwise.";
 
   let arguments = (ins
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$x,
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$y
+    TF_FpOrComplexTensor:$x,
+    TF_FpOrComplexTensor:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$z
+    TF_FpOrComplexTensor:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -21716,12 +22178,12 @@ def TF_XlogyOp : TF_Op<"Xlogy", [Pure, ResultsBroadcastableShape, TF_SameOperand
   let summary = "Returns 0 if x == 0, and x * log(y) otherwise, elementwise.";
 
   let arguments = (ins
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$x,
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$y
+    TF_FpOrComplexTensor:$x,
+    TF_FpOrComplexTensor:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$z
+    TF_FpOrComplexTensor:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;

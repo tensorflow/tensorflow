@@ -135,11 +135,11 @@ cc_library(
         ":types",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/tools:verifier",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:tooling_util",
-        "//tensorflow/lite/tools:verifier",
         "@flatbuffers",
     ],
 )

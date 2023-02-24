@@ -46,4 +46,5 @@ add_mlir_dialect_library(GmlStDialect
   MLIRSupport
   MLIRTensorDialect
   MLIRViewLikeInterface
+  MLIRVectorDialect
 )

@@ -1,0 +1,15 @@
+// RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
+
+HloModule frontend_attributes, entry_computation_layout={(f32[])->f32[]}
+
+// CHECK-LABEL: func.func @main
+ENTRY main {
+  param = f32[] parameter(0)
+  // CHECK:      mhlo.add
+  // CHECK:      mhlo.frontend_attributes = {
+  // CHECK-DAG:    _dummy_frontend_attribute = "xyz"
+  // CHECK-DAG:    _xla_compute_type = "host"
+  // CHECK:      }
+  ROOT add = f32[] add(param, param), frontend_attributes={
+    _xla_compute_type="host", _dummy_frontend_attribute="xyz"}
+}

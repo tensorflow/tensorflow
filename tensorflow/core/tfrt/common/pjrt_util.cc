@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 
 #include <memory>
+#include <optional>
+#include <set>
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/platform/errors.h"
@@ -65,15 +67,17 @@ Status DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(
   return OkStatus();
 }
 
-StatusOr<xla::PjRtClient*> GetPjRtClientFromTFGlobalResourceManager(
-    const DeviceType& device_type) {
+StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type) {
   ResourceMgr* rmgr = tfrt_global::GetTFGlobalResourceMgr();
   PjRtState* pjrt_state;
-  TF_RETURN_IF_ERROR(rmgr->Lookup(rmgr->default_container(),
-                                  kPjRtStateResourceName, &pjrt_state));
+  TF_RETURN_IF_ERROR(rmgr->LookupOrCreate<PjRtState>(
+      rmgr->default_container(), kPjRtStateResourceName, &pjrt_state,
+      [&](PjRtState** ret) {
+        *ret = PjRtState::Create();
+        return OkStatus();
+      }));
   core::ScopedUnref pjrt_state_ref(pjrt_state);
-  TF_ASSIGN_OR_RETURN(auto pjrt_client, pjrt_state->GetPjRtClient(device_type));
-  return pjrt_client;
+  return pjrt_state->GetPjRtClient(device_type);
 }
 
 }  // namespace tensorflow

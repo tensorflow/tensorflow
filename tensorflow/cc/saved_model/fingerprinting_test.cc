@@ -139,5 +139,16 @@ TEST(FingerprintingTest, TestReadNonexistentFingerprint) {
   EXPECT_FALSE(ReadSavedModelFingerprint(export_dir).ok());
 }
 
+TEST(FingerprintingTest, TestMakeFingerprintMap) {
+  const std::string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model/testdata",
+                   "VarsAndArithmeticObjectGraph");
+  TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_pb,
+                          ReadSavedModelFingerprint(export_dir));
+  auto fingerprint_map = MakeFingerprintMap(fingerprint_pb);
+  EXPECT_EQ(fingerprint_pb.saved_model_checksum(),
+            fingerprint_map["saved_model_checksum"]);
+}
+
 }  // namespace
 }  // namespace tensorflow::saved_model::fingerprinting

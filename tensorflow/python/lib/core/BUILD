@@ -27,39 +27,15 @@ package(
     licenses = ["notice"],
 )
 
-cc_library(
-    name = "custom_float",
-    hdrs = [
-        "custom_float.h",
-    ],
-    deps = [
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/python/lib/core:numpy",
-        "//third_party/eigen3",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-        "@com_google_absl//absl/strings",
-    ],
-)
-
+# Deprecated, use //third_party/tensorflow/tsl/python/lib/core:bfloat16_lib
 cc_library(
     name = "bfloat16_lib",
-    srcs = [
-        "bfloat16.cc",
-        "float8_e4m3b11.cc",
-    ],
     hdrs = [
         "bfloat16.h",
-        "float8_e4m3b11.h",
     ],
     deps = [
-        ":custom_float",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/python/lib/core:numpy",
-        "//third_party/eigen3",
+        "//tensorflow/tsl/python/lib/core:bfloat16_lib",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -68,47 +44,29 @@ tf_python_pybind_extension(
     srcs = ["bfloat16_wrapper.cc"],
     hdrs = ["bfloat16.h"],
     deps = [
+        "//tensorflow/tsl/python/lib/core:bfloat16_hdr",
         "//third_party/python_runtime:headers",
         "@pybind11",
-    ],
-)
-
-cc_library(
-    name = "float8_lib",
-    srcs = [
-        "float8.cc",
-    ],
-    hdrs = [
-        "float8.h",
-    ],
-    deps = [
-        ":custom_float",
-        "//tensorflow/core/platform:float8",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/python/lib/core:numpy",
-        "//third_party/eigen3",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-        "@com_google_absl//absl/strings",
     ],
 )
 
 tf_python_pybind_extension(
     name = "_pywrap_float8",
     srcs = ["float8_wrapper.cc"],
-    hdrs = ["float8.h"],
     deps = [
-        ":float8_lib",
+        "//tensorflow/tsl/python/lib/core:float8_hdr",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )
 
-cc_library(
-    name = "custom_types_lib",
+tf_python_pybind_extension(
+    name = "_pywrap_custom_casts",
+    srcs = ["custom_casts_wrapper.cc"],
     deps = [
-        ":bfloat16_lib",
-        ":float8_lib",
+        "//tensorflow/tsl/python/lib/core:custom_casts_hdr",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 
@@ -122,12 +80,12 @@ cc_library(
         ],
     ),
     deps = [
-        ":bfloat16_lib",
-        ":float8_lib",
         ":py_util",
         "//tensorflow/c:c_api_no_xla",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/python/lib/core:bfloat16_lib",
+        "//tensorflow/tsl/python/lib/core:float8_lib",
         "//tensorflow/tsl/python/lib/core:numpy",
     ],
 )
@@ -234,8 +192,6 @@ filegroup(
 filegroup(
     name = "basic_hdrs",
     srcs = [
-        "bfloat16.h",
-        "float8.h",
         "ndarray_tensor.h",
         "ndarray_tensor_bridge.h",
         "py_exception_registry.h",
@@ -313,8 +269,6 @@ cc_library(
 cc_library(
     name = "ndarray_tensor_headers",
     hdrs = [
-        "bfloat16.h",
-        "float8.h",
         "ndarray_tensor.h",
         "ndarray_tensor_bridge.h",
         "safe_ptr.h",
@@ -348,8 +302,6 @@ cc_library(
         "//tensorflow:ndarray_tensor_allow_list",
     ]),
     deps = [
-        ":bfloat16_lib",
-        ":float8_lib",
         ":ndarray_tensor_bridge",
         ":safe_ptr",
         "//tensorflow/c:c_api_internal",
@@ -358,6 +310,8 @@ cc_library(
         "//tensorflow/c/eager:tfe_context_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/python/lib/core:bfloat16_lib",
+        "//tensorflow/tsl/python/lib/core:float8_lib",
         "//tensorflow/tsl/python/lib/core:numpy",
     ],
 )

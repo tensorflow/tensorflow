@@ -311,6 +311,5 @@ class FaultToleranceTest(data_service_test_base.TestBase,
     cluster.add_worker()
     self.assertAllEqual(next(it), tensor)
 
-
 if __name__ == "__main__":
   test.main()

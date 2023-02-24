@@ -182,7 +182,7 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
     tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> status_or_module =
         tensorflow::kernel_gen::GenerateKernelForTfCode(
             context, code, architectures, tile_sizes, unroll_factors,
-            max_supported_rank, /*embed_memref_prints=*/false,
+            max_supported_rank,
             /*print_ptx=*/false, /*print_llvmir=*/false, enable_ftz,
             index_64bit,
             /*jit_compile=*/false,

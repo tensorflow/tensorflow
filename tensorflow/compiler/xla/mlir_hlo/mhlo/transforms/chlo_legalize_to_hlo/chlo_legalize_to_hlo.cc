@@ -311,19 +311,19 @@ Value materializeErfcApproximationF64ForMagnituteGeOne(
   Value expZ = rewriter.create<mhlo::ExpOp>(loc, z);
   Value absX = rewriter.create<mhlo::AbsOp>(loc, x);
   Value polP = materializePolynomialApproximation(
-      rewriter, loc, absX, llvm::makeArrayRef(kErfcPCoefficients));
+      rewriter, loc, absX, llvm::ArrayRef(kErfcPCoefficients));
   Value expZMulPolyP = rewriter.create<mhlo::MulOp>(loc, expZ, polP);
   Value polQ = materializePolynomialApproximation(
-      rewriter, loc, absX, llvm::makeArrayRef(kErfcQCoefficients));
+      rewriter, loc, absX, llvm::ArrayRef(kErfcQCoefficients));
   Value erfcApprox18 = rewriter.create<mhlo::DivOp>(loc, expZMulPolyP, polQ);
 
   // Materialize polynomial approximation for x in >= 8 as
   //   erfc(x) exp(z) R(|x|) / S(|x|).
   Value polR = materializePolynomialApproximation(
-      rewriter, loc, absX, llvm::makeArrayRef(kErfcRCoefficients));
+      rewriter, loc, absX, llvm::ArrayRef(kErfcRCoefficients));
   Value expZMulPolyR = rewriter.create<mhlo::MulOp>(loc, expZ, polR);
   Value polS = materializePolynomialApproximation(
-      rewriter, loc, absX, llvm::makeArrayRef(kErfcSCoefficients));
+      rewriter, loc, absX, llvm::ArrayRef(kErfcSCoefficients));
   Value erfcApprox8Inf = rewriter.create<mhlo::DivOp>(loc, expZMulPolyR, polS);
 
   // Combine polynomial approximations for x >= 1.
@@ -375,10 +375,10 @@ Value materializeErfApproximationF64ForMagnituteLeOne(
   //   erf(x) = x T(x^2) / U(x^2).
   Value xSq = rewriter.create<mhlo::MulOp>(loc, x, x);
   Value polyT = materializePolynomialApproximation(
-      rewriter, loc, xSq, llvm::makeArrayRef(kErfTCoefficients));
+      rewriter, loc, xSq, llvm::ArrayRef(kErfTCoefficients));
   Value xMulPolyT = rewriter.create<mhlo::MulOp>(loc, x, polyT);
   Value polyU = materializePolynomialApproximation(
-      rewriter, loc, xSq, llvm::makeArrayRef(kErfUCoefficients));
+      rewriter, loc, xSq, llvm::ArrayRef(kErfUCoefficients));
   return rewriter.create<mhlo::DivOp>(loc, xMulPolyT, polyU);
 }
 
@@ -475,9 +475,9 @@ Value materializeErfcApproximationF32ForMagnitudeGeOne(
   Value absXLtTwo = rewriter.create<mhlo::CompareOp>(
       loc, absX, two, mhlo::ComparisonDirection::LT);
   Value polP = materializePolynomialApproximation(
-      rewriter, loc, reciprocalXSq, llvm::makeArrayRef(kErfcPCoefficients));
+      rewriter, loc, reciprocalXSq, llvm::ArrayRef(kErfcPCoefficients));
   Value polR = materializePolynomialApproximation(
-      rewriter, loc, reciprocalXSq, llvm::makeArrayRef(kErfcRCoefficients));
+      rewriter, loc, reciprocalXSq, llvm::ArrayRef(kErfcRCoefficients));
   Value poly = rewriter.create<mhlo::SelectOp>(loc, absXLtTwo, polP, polR);
   Value erfcApprox = rewriter.create<mhlo::MulOp>(loc, expZMulOneDivAbsX, poly);
 
@@ -519,7 +519,7 @@ Value materializeErfApproximationF32ForMagnitudeLeOne(
   //   erf(x) = x T(x^2).
   Value xSq = rewriter.create<mhlo::MulOp>(loc, x, x);
   Value polyT = materializePolynomialApproximation(
-      rewriter, loc, xSq, llvm::makeArrayRef(kErfTCoefficients));
+      rewriter, loc, xSq, llvm::ArrayRef(kErfTCoefficients));
   return rewriter.create<mhlo::MulOp>(loc, x, polyT);
 }
 
@@ -547,10 +547,10 @@ Value materializeErfApproximationF32(ConversionPatternRewriter &rewriter,
 
   // Materialize polynomial approximation for x in [-4, 4] as
   //   erf(x) = x * Alpha(x^2) / Beta(x^2).
-  Value alphaPoly = materializePolynomialApproximation(
-      rewriter, loc, xSq, llvm::makeArrayRef(kAlpha));
-  Value betaPoly = materializePolynomialApproximation(
-      rewriter, loc, xSq, llvm::makeArrayRef(kBeta));
+  Value alphaPoly = materializePolynomialApproximation(rewriter, loc, xSq,
+                                                       llvm::ArrayRef(kAlpha));
+  Value betaPoly = materializePolynomialApproximation(rewriter, loc, xSq,
+                                                      llvm::ArrayRef(kBeta));
   Value xMulAlphaPoly = rewriter.create<mhlo::MulOp>(loc, x, alphaPoly);
   return rewriter.create<mhlo::DivOp>(loc, xMulAlphaPoly, betaPoly);
 }
@@ -1337,26 +1337,6 @@ struct ConvertSinhOp : public OpConversionPattern<SinhOp> {
   }
 };
 
-Value materializeTan(ConversionPatternRewriter &rewriter, Location loc,
-                     ValueRange operands) {
-  TanOp::Adaptor transformed(operands);
-  return rewriter.create<mhlo::DivOp>(
-      loc, rewriter.create<mhlo::SineOp>(loc, transformed.getOperand()),
-      rewriter.create<mhlo::CosineOp>(loc, transformed.getOperand()));
-}
-
-struct ConvertTanOp : public OpConversionPattern<TanOp> {
-  using OpConversionPattern<TanOp>::OpConversionPattern;
-  LogicalResult matchAndRewrite(
-      TanOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOp(
-        op, materializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
-                                  rewriter.getF32Type(), &materializeTan));
-    return success();
-  }
-};
-
 // Converts chlo.top_k to MHLO iota, sort, and slice ops.
 //
 // chlo.top_k sorts along last dimension of the input tensor and then returns
@@ -1729,7 +1709,6 @@ void populateDecomposeChloPatterns(MLIRContext *context,
                    ConvertNextAfterOp,
                    ConvertPolygammaOp,
                    ConvertSinhOp,
-                   ConvertTanOp,
                    ConvertTopKOp,
                    ConvertZetaOp>(context);
   // clang-format on

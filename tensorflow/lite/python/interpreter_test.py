@@ -338,7 +338,7 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
     interpreter.allocate_tensors()
     # Invalid tensor index passed.
     with self.assertRaisesRegex(ValueError, 'Tensor with no shape found.'):
-      interpreter._get_tensor_details(4)
+      interpreter._get_tensor_details(4, 0)
     with self.assertRaisesRegex(ValueError, 'Invalid node index'):
       interpreter._get_op_details(4)
 

@@ -758,3 +758,9 @@ TF_Library* TF_LoadPluggableDeviceLibrary(const char* library_filename,
 void TF_DeletePluggableDeviceLibraryHandle(TF_Library* lib_handle) {
   delete lib_handle;
 }
+
+void TF_GraphRemoveFunction(TF_Graph* g, const char* func_name,
+                            TF_Status* status) {
+  tensorflow::mutex_lock l(g->mu);
+  status->status = g->graph.mutable_flib_def()->RemoveFunction(func_name);
+}

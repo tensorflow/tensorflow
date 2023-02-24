@@ -147,6 +147,7 @@ void RuntimeFallbackExecutor::Prepare(llvm::StringRef mlir_input) {
   TfrtPipelineOptions pipeline_opts;
   pipeline_opts.default_device = kDefaultHostDeviceName;
   pipeline_opts.hoist_invariant_ops = true;
+  pipeline_opts.sink_in_invariant_ops = false;
   pipeline_opts.cost_threshold = 1024;
   pipeline_opts.upper_cost_threshold = 100000;
   pipeline_opts.merge_inter_dependent_streams = true;

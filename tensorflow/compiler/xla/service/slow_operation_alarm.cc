@@ -85,7 +85,7 @@ void SlowOperationAlarm::ScheduleAlarm(SlowOperationAlarm* alarm) {
   absl::call_once(init_flag, [] {
     ready = new absl::CondVar();
     outstanding_alarms = new std::list<SlowOperationAlarm*>();
-    (void)!tsl::Env::Default()->StartThread(
+    [[maybe_unused]] static tsl::Thread* t = tsl::Env::Default()->StartThread(
         tsl::ThreadOptions(), "SlowOperationAlarm", [] { AlarmLoop(); });
   });
 

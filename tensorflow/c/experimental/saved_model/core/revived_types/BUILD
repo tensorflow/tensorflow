@@ -7,6 +7,7 @@ package(
     default_visibility = [
         # Restricting visibility for now
         "//tensorflow/c/experimental/saved_model/core:__pkg__",
+        # copybara:uncomment "//learning/brain/tfrt/aot:__pkg__",
     ],
     licenses = ["notice"],
 )

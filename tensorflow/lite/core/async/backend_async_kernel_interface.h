@@ -99,13 +99,13 @@ class BackendAsyncKernelInterface {
   // Inspects the buffer types supported by the backend.
   // `io_type` specify whether the call returns supported input or output
   // buffer.
-  virtual std::vector<const char*> SupportedBufferTypes(
+  virtual const std::vector<const char*>& SupportedBufferTypes(
       TfLiteIoType io_type) const = 0;
 
   // Inspects the sync object types supported by the backend.
   // `io_type` specify whether the call returns supported input or output
   // sync object.
-  virtual std::vector<const char*> SupportedSynchronizations(
+  virtual const std::vector<const char*>& SupportedSynchronizations(
       TfLiteIoType io_type) const = 0;
 
   // Reconciles buffer or sync attributes for tensor at tensor_index.
@@ -175,13 +175,20 @@ class BackendAsyncKernelInterface {
 
   // Waits on the execution scheduled using the task to finish.
   // TfLite runtime guarantees that the task has an un-ended execution.
-  // Returns kTfLiteOk if the task is finished (w/ or w/o blocking).
+  //
+  // Callers should be able to call `Wait` on the same task from multiple
+  // threads, and those calls should return the same status (i.e. if the backend
+  // failed to successfully wait on the task, all `Wait` to the task should
+  // return the same error before a new invocation is scheduled). Returns
+  // kTfLiteOk if the task is finished (w/ or w/o blocking).
   virtual TfLiteStatus Wait(TfLiteOpaqueContext* context,
                             TfLiteExecutionTask* task) = 0;
 
   // Finishes the task and clean up allocated resources for the task.
   // May block if there's pending executions.
-  // Returns kTfLiteOk if there's no error.
+  // This function will be called once and only once for individual task.
+  // Returns kTfLiteOk if there's no error. The backend is responsible to
+  // clean up task resources regardless there's error or not.
   virtual TfLiteStatus Finish(TfLiteOpaqueContext* context,
                               TfLiteExecutionTask* task) = 0;
 

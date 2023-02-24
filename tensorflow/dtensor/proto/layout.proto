@@ -60,4 +60,7 @@ message MeshProto {
 
   // Required name which uniquely identifies this mesh in a program.
   string name = 3;
+
+  // If true, ops on this mesh will use XLA SPMD.
+  bool use_xla_spmd = 7;
 }

@@ -15,8 +15,8 @@ limitations under the License.
 
 // This file defines the operations used in the LHLO dialect.
 
-#ifndef MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_H
-#define MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_H
+#ifndef MLIR_HLO_LHLO_IR_LHLO_OPS_H
+#define MLIR_HLO_LHLO_IR_LHLO_OPS_H
 
 #include "lhlo/IR/lhlo_ops_structs.h"
 #include "lhlo/IR/lhlo_structured_interface.h"
@@ -61,4 +61,4 @@ class LmhloDialect : public Dialect {
 #define GET_OP_CLASSES
 #include "lhlo/IR/lhlo_ops.h.inc"
 
-#endif  // MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_H
+#endif  // MLIR_HLO_LHLO_IR_LHLO_OPS_H

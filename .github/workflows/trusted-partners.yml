@@ -30,9 +30,9 @@ jobs:
       github.event.sender.type == 'User'
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b # v3.2.0
       - name: Trusted-Partners-PR
-        uses: actions/github-script@v6
+        uses: actions/github-script@d556feaca394842dc55e4734bf3bb9f685482fa0 # v6.3.3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -50,6 +50,9 @@ jobs:
               console.log(await script.filter({github, context, domain}));
               break;
             case "linaro.org":
+              console.log(await script.filter({github, context, domain}));
+              break;
+            case "arm.com":
               console.log(await script.filter({github, context, domain}));
               break;
             case "google.com":

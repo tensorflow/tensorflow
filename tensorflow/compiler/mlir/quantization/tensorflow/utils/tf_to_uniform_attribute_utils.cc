@@ -32,6 +32,9 @@ limitations under the License.
 
 namespace mlir::quant {
 
+using QuantMethod =
+    tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
+
 Attribute GetWindowStridesValue(
     PatternRewriter& rewriter, llvm::StringMap<Attribute>& identifier_to_attr) {
   ArrayAttr stride = identifier_to_attr["strides"].dyn_cast<ArrayAttr>();
@@ -103,13 +106,14 @@ Attribute GetBatchGroupCountValue(
 void FillQuantizationAttributes(PatternRewriter& rewriter, Operation* op,
                                 NamedAttrList& attrs,
                                 llvm::StringMap<Attribute>& identifier_to_attr,
-                                QuantizationMethod quantization_method) {
+                                QuantMethod quantization_method) {
   // TODO(b/259374419): Support broader quantization schemes
   absl::flat_hash_map<std::string, int> min_max_scheme_for_8bit_narrow;
   min_max_scheme_for_8bit_narrow = {{"min", -127}, {"max", 127}};
 
   std::set<std::string> quantization_attributes;
-  if (quantization_method == QuantizationMethod::kDynamicRangeQuantization) {
+  if (quantization_method ==
+      tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE) {
     quantization_attributes = {
         "rhs_quantization_min_val",
         "rhs_quantization_max_val",
@@ -134,15 +138,15 @@ void FillQuantizationAttributes(PatternRewriter& rewriter, Operation* op,
 LogicalResult FillAttributesForUniformQuantizedDotOp(
     PatternRewriter& rewriter, Operation* op,
     llvm::StringMap<Attribute>& identifier_to_attr,
-    QuantizationMethod quantization_method,
-    bool enable_per_channel_quantization) {
+    QuantMethod quantization_method, bool enable_per_channel_quantization) {
   NamedAttrList attrs;
 
   // Fill quantization related attributes.
   FillQuantizationAttributes(rewriter, op, attrs, identifier_to_attr,
                              quantization_method);
 
-  if (!(quantization_method == QuantizationMethod::kDynamicRangeQuantization)) {
+  if (!(quantization_method ==
+        tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE)) {
     // Per-channel activation is not supported
     attrs.push_back(rewriter.getNamedAttr("lhs_quantization_axis",
                                           rewriter.getI64IntegerAttr(-1)));
@@ -167,8 +171,7 @@ LogicalResult FillAttributesForUniformQuantizedDotOp(
 LogicalResult FillAttributesForUniformQuantizedConvolutionOp(
     PatternRewriter& rewriter, Operation* op,
     llvm::StringMap<Attribute>& identifier_to_attr,
-    QuantizationMethod quantization_method,
-    bool enable_per_channel_quantization) {
+    QuantMethod quantization_method, bool enable_per_channel_quantization) {
   NamedAttrList attrs;
   absl::flat_hash_map<std::string, Attribute (*)(PatternRewriter&,
                                                  llvm::StringMap<Attribute>&)>
@@ -201,8 +204,9 @@ LogicalResult FillAttributesForUniformQuantizedConvolutionOp(
         "opset.");
   }
 
-  if (op->getParentOfType<func::FuncOp>().getName().contains("depthwise_"))
+  if (op->getParentOfType<func::FuncOp>().getName().contains("depthwise_")) {
     feature_group_cnt = input_shape.getDimSize(3);
+  }
 
   attrs.push_back(rewriter.getNamedAttr(
       feature_group_cnt_attr, rewriter.getI64IntegerAttr(feature_group_cnt)));
@@ -211,7 +215,8 @@ LogicalResult FillAttributesForUniformQuantizedConvolutionOp(
   FillQuantizationAttributes(rewriter, op, attrs, identifier_to_attr,
                              quantization_method);
 
-  if (!(quantization_method == QuantizationMethod::kDynamicRangeQuantization)) {
+  if (quantization_method !=
+      tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE) {
     // Per-channel activation is not supported
     attrs.push_back(rewriter.getNamedAttr("lhs_quantization_axis",
                                           rewriter.getI64IntegerAttr(-1)));

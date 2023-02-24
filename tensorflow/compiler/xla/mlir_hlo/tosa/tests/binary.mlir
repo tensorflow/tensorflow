@@ -60,8 +60,8 @@ func.func @divide_f32(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<
 
 // CHECK-LABEL: @dot_vector_vector
 func.func @dot_vector_vector(%arg0 : tensor<3xf32>, %arg1 : tensor<3xf32>) -> tensor<f32> {
-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 1, 3]}
-  // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg1) {new_shape = [1, 3, 1]}
+  // CHECK-DAG: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = array<i64: 1, 1, 3>}
+  // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg1) {new_shape = array<i64: 1, 3, 1>}
   // CHECK-DAG: %[[VAR2:.*]] = "tosa.matmul"(%[[VAR0]], %[[VAR1]])
   // CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]])
   %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<3xf32>, tensor<3xf32>) -> tensor<f32>
@@ -70,8 +70,8 @@ func.func @dot_vector_vector(%arg0 : tensor<3xf32>, %arg1 : tensor<3xf32>) -> te
 
 // CHECK-LABEL: @dot_vector_matrix
 func.func @dot_vector_matrix(%arg0 : tensor<2xf32>, %arg1 : tensor<2x3xf32>) -> tensor<3xf32> {
-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 1, 2]}
-  // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg1) {new_shape = [1, 2, 3]}
+  // CHECK-DAG: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = array<i64: 1, 1, 2>}
+  // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg1) {new_shape = array<i64: 1, 2, 3>}
   // CHECK-DAG: %[[VAR2:.*]] = "tosa.matmul"(%[[VAR0]], %[[VAR1]])
   // CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]])
   %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<2xf32>, tensor<2x3xf32>) -> tensor<3xf32>
@@ -80,8 +80,8 @@ func.func @dot_vector_matrix(%arg0 : tensor<2xf32>, %arg1 : tensor<2x3xf32>) -> 
 
 // CHECK-LABEL: @dot_matrix_vector
 func.func @dot_matrix_vector(%arg0 : tensor<2x3xf32>, %arg1 : tensor<3xf32>) -> tensor<2xf32> {
-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 2, 3]}
-  // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg1) {new_shape = [1, 3, 1]}
+  // CHECK-DAG: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = array<i64: 1, 2, 3>}
+  // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg1) {new_shape = array<i64: 1, 3, 1>}
   // CHECK-DAG: %[[VAR2:.*]] = "tosa.matmul"(%[[VAR0]], %[[VAR1]])
   // CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]])
   %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<2x3xf32>, tensor<3xf32>) -> tensor<2xf32>
@@ -90,12 +90,46 @@ func.func @dot_matrix_vector(%arg0 : tensor<2x3xf32>, %arg1 : tensor<3xf32>) -> 
 
 // CHECK-LABEL: @dot_matrix_matrix
 func.func @dot_matrix_matrix(%arg0 : tensor<2x3xf32>, %arg1 : tensor<3x4xf32>) -> tensor<2x4xf32> {
-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 2, 3]}
-  // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg1) {new_shape = [1, 3, 4]}
+  // CHECK-DAG: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = array<i64: 1, 2, 3>}
+  // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg1) {new_shape = array<i64: 1, 3, 4>}
   // CHECK-DAG: %[[VAR2:.*]] = "tosa.matmul"(%[[VAR0]], %[[VAR1]])
   // CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]])
   %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<2x3xf32>, tensor<3x4xf32>) -> tensor<2x4xf32>
   return %0 : tensor<2x4xf32>
+}
+
+// CHECK-LABEL: @gather
+func.func @gather(%arg0 : tensor<3x4x5xi32>, %arg1 : tensor<3x2xi32>) -> tensor<3x2x5xi32> {
+  // CHECK: tosa.gather
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0],
+      index_vector_dim = 1,
+      offset_dims = [1, 2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 2, 5]> : tensor<3xi64>
+  } : (tensor<3x4x5xi32>, tensor<3x2xi32>) -> tensor<3x2x5xi32>
+  return %0 : tensor<3x2x5xi32>
+}
+
+// CHECK-LABEL: @gather_unranked
+func.func @gather_unranked(%arg0 : tensor<*xi32>, %arg1 : tensor<3x2xi32>) -> tensor<*xi32> {
+  // This lowering does not support unranked tensors, so this should not
+  // legalize.
+  // CHECK: mhlo.gather
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0],
+      index_vector_dim = 1,
+      offset_dims = [1, 2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 2, 5]> : tensor<3xi64>
+  } : (tensor<*xi32>, tensor<3x2xi32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
 }
 
 // CHECK-LABEL: @maximum
@@ -165,17 +199,17 @@ func.func @reduce_sum(%arg0: tensor<5x4xf32>, %arg1: tensor<f32>) -> tensor<4xf3
 }
 
 // CHECK-LABEL: @shift_left
-func.func @shift_left(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xf32> {
+func.func @shift_left(%arg0 : tensor<10xi32>, %arg1 : tensor<10xi32>) -> tensor<10xi32> {
   // CHECK: tosa.logical_left_shift
-  %0 = "mhlo.shift_left"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
-  return %0 : tensor<10xf32>
+  %0 = "mhlo.shift_left"(%arg0, %arg1) : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
+  return %0 : tensor<10xi32>
 }
 
 // CHECK-LABEL: @shift_right_logical
-func.func @shift_right_logical(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xf32> {
+func.func @shift_right_logical(%arg0 : tensor<10xi32>, %arg1 : tensor<10xi32>) -> tensor<10xi32> {
   // CHECK: tosa.logical_right_shift
-  %0 = "mhlo.shift_right_logical"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
-  return %0 : tensor<10xf32>
+  %0 = "mhlo.shift_right_logical"(%arg0, %arg1) : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
+  return %0 : tensor<10xi32>
 }
 
 // CHECK-LABEL: @subtract

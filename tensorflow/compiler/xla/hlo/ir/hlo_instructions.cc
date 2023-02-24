@@ -23,6 +23,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -30,9 +31,8 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
@@ -42,7 +42,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/protobuf.h"
@@ -51,9 +53,7 @@ namespace xla {
 namespace {
 
 using absl::CEscape;
-using absl::StrAppend;
 using absl::StrCat;
-using absl::StrJoin;
 
 bool IsInstructionElementwiseOnOperand(const HloInstruction* instruction,
                                        const HloInstruction* operand) {
@@ -63,26 +63,27 @@ bool IsInstructionElementwiseOnOperand(const HloInstruction* instruction,
   });
 }
 
-std::string PrecisionConfigToString(const PrecisionConfig& precision_config) {
+void PrintPrecisionConfig(HloInstruction::AttributePrinter& printer,
+                          const PrecisionConfig& precision_config) {
   if (absl::c_all_of(
           precision_config.operand_precision(), [](int32_t precision) {
             return static_cast<PrecisionConfig::Precision>(precision) ==
                    PrecisionConfig::DEFAULT;
           })) {
-    return "";
+    return;
   }
 
-  return StrCat(
-      "operand_precision={",
-      StrJoin(
-          precision_config.operand_precision(), ",",
-          [](std::string* out, int32_t precision) {
-            CHECK(PrecisionConfig::Precision_IsValid(precision)) << precision;
-            StrAppend(out,
-                      PrecisionToString(
-                          static_cast<PrecisionConfig::Precision>(precision)));
-          }),
-      "}");
+  printer.Next([&precision_config](Printer* printer) {
+    printer->Append("operand_precision={");
+    AppendJoin(printer, precision_config.operand_precision(), ",",
+               [](Printer* printer, int32_t precision) {
+                 CHECK(PrecisionConfig::Precision_IsValid(precision))
+                     << precision;
+                 printer->Append(PrecisionToString(
+                     static_cast<PrecisionConfig::Precision>(precision)));
+               });
+    printer->Append("}");
+  });
 }
 
 void SetThreadName(HloComputation* called_computation,
@@ -134,10 +135,13 @@ HloInstructionProto HloBatchNormInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloBatchNormInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  return {StrCat("epsilon=", epsilon()),
-          StrCat("feature_index=", feature_index())};
+void HloBatchNormInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next(
+      [this](Printer* printer) { AppendCat(printer, "epsilon=", epsilon()); });
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "feature_index=", feature_index());
+  });
 }
 
 HloBatchNormTrainingInstruction::HloBatchNormTrainingInstruction(
@@ -217,10 +221,16 @@ HloInstructionProto HloFftInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloFftInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  return {StrCat("fft_type=", FftType_Name(fft_type())),
-          StrCat("fft_length={", StrJoin(fft_length(), ","), "}")};
+void HloFftInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "fft_type=", FftType_Name(fft_type()));
+  });
+  printer.Next([this](Printer* printer) {
+    printer->Append("fft_length={");
+    AppendJoin(printer, fft_length(), ",");
+    printer->Append("}");
+  });
 }
 
 bool HloFftInstruction::IdenticalSlowPath(
@@ -302,22 +312,22 @@ HloOpcode HloAsyncInstruction::async_wrapped_opcode() const {
   return async_wrapped_instruction()->opcode();
 }
 
-std::vector<std::string> HloAsyncInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> result;
+void HloAsyncInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
   if (async_group_id_.has_value()) {
-    result.push_back(StrCat("async_group_id=", *async_group_id_));
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "async_group_id=", *async_group_id_);
+    });
   }
   if (async_execution_thread_ != kMainExecutionThread) {
-    result.push_back(
-        StrCat("async_execution_thread=\"", async_execution_thread_, "\""));
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "async_execution_thread=\"", async_execution_thread_,
+                "\"");
+    });
   }
   if (options.syntax_sugar_async_ops()) {
-    std::vector<std::string> wrapped_extra_attributes =
-        async_wrapped_instruction()->ExtraAttributesToString(options);
-    absl::c_copy(wrapped_extra_attributes, std::back_inserter(result));
+    async_wrapped_instruction()->PrintExtraAttributes(printer, options);
   }
-  return result;
 }
 
 bool HloAsyncInstruction::IdenticalSlowPath(
@@ -369,27 +379,30 @@ HloInstructionProto HloAsyncInstruction::ToProto() const {
   return proto;
 }
 
-HloCopyStartInstruction::HloCopyStartInstruction(const Shape& shape,
-                                                 HloInstruction* operand,
-                                                 bool is_cross_program_prefetch)
+HloCopyStartInstruction::HloCopyStartInstruction(
+    const Shape& shape, HloInstruction* operand,
+    std::optional<int> cross_program_prefetch_index)
     : HloInstruction(HloOpcode::kCopyStart, shape),
-      is_cross_program_prefetch_(is_cross_program_prefetch) {
+      cross_program_prefetch_index_(cross_program_prefetch_index) {
   AppendOperand(operand);
 }
 
 HloInstructionProto HloCopyStartInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_is_cross_program_prefetch(is_cross_program_prefetch_);
+  if (cross_program_prefetch_index_.has_value()) {
+    proto.set_cross_program_prefetch_index(*cross_program_prefetch_index_);
+  }
   return proto;
 }
 
-std::vector<std::string> HloCopyStartInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> result;
-  if (is_cross_program_prefetch()) {
-    result.push_back("is_cross_program_prefetch=true");
+void HloCopyStartInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  if (cross_program_prefetch_index_.has_value()) {
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "cross_program_prefetch_index=",
+                *cross_program_prefetch_index_);
+    });
   }
-  return result;
 }
 
 bool HloCopyStartInstruction::IdenticalSlowPath(
@@ -397,8 +410,8 @@ bool HloCopyStartInstruction::IdenticalSlowPath(
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloCopyStartInstruction&>(other);
-  return is_cross_program_prefetch() ==
-         casted_other.is_cross_program_prefetch();
+  return cross_program_prefetch_index() ==
+         casted_other.cross_program_prefetch_index();
 }
 
 std::unique_ptr<HloInstruction>
@@ -406,8 +419,8 @@ HloCopyStartInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
-  return std::make_unique<HloCopyStartInstruction>(shape, new_operands[0],
-                                                   is_cross_program_prefetch());
+  return std::make_unique<HloCopyStartInstruction>(
+      shape, new_operands[0], cross_program_prefetch_index());
 }
 
 HloCompareInstruction::HloCompareInstruction(
@@ -429,17 +442,17 @@ HloInstructionProto HloCompareInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloCompareInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> result;
-  result.push_back(
-      StrCat("direction=", ComparisonDirectionToString(direction())));
+void HloCompareInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "direction=", ComparisonDirectionToString(direction()));
+  });
   if (compare_.GetType() !=
       Comparison::DefaultComparisonType(operand(0)->shape().element_type())) {
-    result.push_back(
-        StrCat("type=", ComparisonTypeToString(compare_.GetType())));
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "type=", ComparisonTypeToString(compare_.GetType()));
+    });
   }
-  return result;
 }
 
 bool HloCompareInstruction::IdenticalSlowPath(
@@ -460,40 +473,40 @@ std::unique_ptr<HloInstruction> HloCompareInstruction::CloneWithNewOperandsImpl(
 
 namespace {
 
-// Converts a protocol buffer message (e.g., TriangularSolveOptions) to a vector
-// of "key=value" attribute strings generically, using protocol buffer
+// Converts a protocol buffer message (e.g., TriangularSolveOptions) to a
+// vector of "key=value" attribute strings generically, using protocol buffer
 // reflection.
 //
 // Currently implements a small subset of cases; feel free to add more as
 // needed.
-std::vector<std::string> AttributeProtoToStringVector(
-    const tsl::protobuf::Message& message) {
+void PrintAttributeProto(HloInstruction::AttributePrinter& printer,
+                         const tsl::protobuf::Message& message) {
   const tsl::protobuf::Reflection* reflection = message.GetReflection();
   std::vector<const tsl::protobuf::FieldDescriptor*> fields;
   reflection->ListFields(message, &fields);
 
-  std::vector<std::string> output;
   for (const tsl::protobuf::FieldDescriptor* field : fields) {
-    std::string s = absl::StrCat(field->name(), "=");
     CHECK(!field->is_repeated()) << "Repeated fields aren't implemented";
-    switch (field->type()) {
-      case tsl::protobuf::FieldDescriptor::TYPE_BOOL: {
-        bool val = reflection->GetBool(message, field);
-        absl::StrAppend(&s, val ? "true" : "false");
-        break;
+    printer.Next([&](Printer* printer) {
+      printer->Append(field->name());
+      printer->Append("=");
+      switch (field->type()) {
+        case tsl::protobuf::FieldDescriptor::TYPE_BOOL: {
+          bool val = reflection->GetBool(message, field);
+          printer->Append(val ? "true" : "false");
+          break;
+        }
+        case tsl::protobuf::FieldDescriptor::TYPE_ENUM: {
+          const tsl::protobuf::EnumValueDescriptor* evd =
+              reflection->GetEnum(message, field);
+          printer->Append(evd->name());
+          break;
+        }
+        default:
+          LOG(FATAL) << "Unimplemented field type: " << field->DebugString();
       }
-      case tsl::protobuf::FieldDescriptor::TYPE_ENUM: {
-        const tsl::protobuf::EnumValueDescriptor* evd =
-            reflection->GetEnum(message, field);
-        absl::StrAppend(&s, evd->name());
-        break;
-      }
-      default:
-        LOG(FATAL) << "Unimplemented field type: " << field->DebugString();
-    }
-    output.push_back(std::move(s));
+    });
   }
-  return output;
 }
 
 }  // namespace
@@ -513,10 +526,9 @@ HloInstructionProto HloTriangularSolveInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string>
-HloTriangularSolveInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  return AttributeProtoToStringVector(triangular_solve_options_);
+void HloTriangularSolveInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  PrintAttributeProto(printer, triangular_solve_options_);
 }
 
 bool HloTriangularSolveInstruction::IdenticalSlowPath(
@@ -556,9 +568,9 @@ HloInstructionProto HloCholeskyInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloCholeskyInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  return AttributeProtoToStringVector(cholesky_options_);
+void HloCholeskyInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  PrintAttributeProto(printer, cholesky_options_);
 }
 
 bool HloCholeskyInstruction::IdenticalSlowPath(
@@ -601,13 +613,12 @@ HloInstructionProto HloChannelInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloChannelInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& /*options*/) const {
-  std::vector<std::string> result;
-  if (channel_id_) {
-    result.push_back(StrCat("channel_id=", *channel_id_));
-  }
-  return result;
+void HloChannelInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& /*options*/) const {
+  if (!channel_id_) return;
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "channel_id=", *channel_id_);
+  });
 }
 
 bool HloChannelInstruction::IdenticalSlowPath(
@@ -634,14 +645,13 @@ HloInstructionProto HloSendRecvInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloSendRecvInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> attrs =
-      HloChannelInstruction::ExtraAttributesToStringImpl(options);
+void HloSendRecvInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  HloChannelInstruction::PrintExtraAttributesImpl(printer, options);
   if (is_host_transfer()) {
-    attrs.push_back("is_host_transfer=true");
+    printer.Next(
+        [](Printer* printer) { printer->Append("is_host_transfer=true"); });
   }
-  return attrs;
 }
 
 bool HloSendRecvInstruction::IdenticalSlowPathIgnoringChannelIdValues(
@@ -755,16 +765,17 @@ HloInstructionProto HloCollectiveInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloCollectiveInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> result =
-      HloChannelInstruction::ExtraAttributesToStringImpl(options);
-  result.push_back(
-      StrCat("replica_groups=", ReplicaGroupsToString(replica_groups())));
+void HloCollectiveInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  HloChannelInstruction::PrintExtraAttributesImpl(printer, options);
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer,
+              "replica_groups=", ReplicaGroupsToString(replica_groups()));
+  });
   if (constrain_layout_) {
-    result.push_back("constrain_layout=true");
+    printer.Next(
+        [](Printer* printer) { printer->Append("constrain_layout=true"); });
   }
-  return result;
 }
 
 bool HloCollectiveInstruction::IdenticalSlowPathIgnoringChannelIdValues(
@@ -792,15 +803,17 @@ HloAllGatherInstruction::HloAllGatherInstruction(
       all_gather_dimension_(all_gather_dimension),
       use_global_device_ids_(use_global_device_ids) {}
 
-std::vector<std::string> HloAllGatherInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> result =
-      HloCollectiveInstruction::ExtraAttributesToStringImpl(options);
-  result.push_back(StrCat("dimensions={", all_gather_dimension_, "}"));
+void HloAllGatherInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  HloCollectiveInstruction::PrintExtraAttributesImpl(printer, options);
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "dimensions={", all_gather_dimension_, "}");
+  });
   if (use_global_device_ids_) {
-    result.push_back("use_global_device_ids=true");
+    printer.Next([](Printer* printer) {
+      printer->Append("use_global_device_ids=true");
+    });
   }
-  return result;
 }
 
 std::unique_ptr<HloInstruction>
@@ -848,15 +861,14 @@ HloInstructionProto HloAllReduceInstructionBase::ToProto() const {
   return proto;
 }
 
-std::vector<std::string>
-HloAllReduceInstructionBase::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> result =
-      HloCollectiveInstruction::ExtraAttributesToStringImpl(options);
+void HloAllReduceInstructionBase::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  HloCollectiveInstruction::PrintExtraAttributesImpl(printer, options);
   if (use_global_device_ids_) {
-    result.push_back("use_global_device_ids=true");
+    printer.Next([](Printer* printer) {
+      printer->Append("use_global_device_ids=true");
+    });
   }
-  return result;
 }
 
 bool HloAllReduceInstructionBase::IdenticalSlowPathIgnoringChannelIdValues(
@@ -904,13 +916,12 @@ HloReduceScatterInstruction::HloReduceScatterInstruction(
           replica_groups, constrain_layout, channel_id, use_global_device_ids),
       scatter_dimension_(scatter_dimension) {}
 
-std::vector<std::string>
-HloReduceScatterInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> result =
-      HloAllReduceInstructionBase::ExtraAttributesToStringImpl(options);
-  result.push_back(StrCat("dimensions={", scatter_dimension_, "}"));
-  return result;
+void HloReduceScatterInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  HloAllReduceInstructionBase::PrintExtraAttributesImpl(printer, options);
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "dimensions={", scatter_dimension_, "}");
+  });
 }
 
 HloInstructionProto HloReduceScatterInstruction::ToProto() const {
@@ -965,14 +976,14 @@ HloInstructionProto HloAllToAllInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloAllToAllInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> result =
-      HloCollectiveInstruction::ExtraAttributesToStringImpl(options);
+void HloAllToAllInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  HloCollectiveInstruction::PrintExtraAttributesImpl(printer, options);
   if (split_dimension_) {
-    result.push_back(StrCat("dimensions={", *split_dimension_, "}"));
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "dimensions={", *split_dimension_, "}");
+    });
   }
-  return result;
 }
 
 bool HloAllToAllInstruction::IdenticalSlowPathIgnoringChannelIdValues(
@@ -1026,30 +1037,30 @@ HloInstructionProto HloCollectivePermuteInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string>
-HloCollectivePermuteInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> result =
-      HloChannelInstruction::ExtraAttributesToStringImpl(options);
-  {
-    std::vector<std::string> strs;
-    const auto& pairs = source_target_pairs();
-    strs.reserve(pairs.size());
-    for (const auto& pair : pairs) {
-      strs.push_back(StrCat("{", pair.first, ",", pair.second, "}"));
-    }
-    result.push_back(StrCat("source_target_pairs={", StrJoin(strs, ","), "}"));
-  }
+void HloCollectivePermuteInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  HloChannelInstruction::PrintExtraAttributesImpl(printer, options);
+  printer.Next([this](Printer* printer) {
+    printer->Append("source_target_pairs={");
+    AppendJoin(printer, source_target_pairs(), ",",
+               [](Printer* printer, const std::pair<int64_t, int64_t>& pair) {
+                 AppendCat(printer, "{", pair.first, ",", pair.second);
+                 printer->Append("}");
+               });
+    printer->Append("}");
+  });
   if (!dynamic_slice_sizes_list().empty()) {
-    std::vector<std::string> strs;
-    const auto& sizes_list = dynamic_slice_sizes_list();
-    strs.reserve(sizes_list.size());
-    for (const auto& slice_sizes : dynamic_slice_sizes_list()) {
-      strs.push_back(StrCat("{", StrJoin(slice_sizes, ","), "}"));
-    }
-    result.push_back(StrCat("slice_sizes={", StrJoin(strs, ","), "}"));
+    printer.Next([this](Printer* printer) {
+      printer->Append("slice_sizes={");
+      AppendJoin(printer, dynamic_slice_sizes_list(), ",",
+                 [](Printer* printer, const std::vector<int64_t>& slice_sizes) {
+                   printer->Append("{");
+                   AppendJoin(printer, slice_sizes, ",");
+                   printer->Append("}");
+                 });
+      printer->Append("}");
+    });
   }
-  return result;
 }
 
 bool HloCollectivePermuteInstruction::IdenticalSlowPathIgnoringChannelIdValues(
@@ -1105,9 +1116,13 @@ HloInstructionProto HloDimensionsInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloDimensionsInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
+void HloDimensionsInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    printer->Append("dimensions={");
+    AppendJoin(printer, dimensions(), ",");
+    printer->Append("}");
+  });
 }
 
 bool HloDimensionsInstruction::IdenticalSlowPath(
@@ -1196,14 +1211,16 @@ HloInstructionProto HloSortInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloSortInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> attrs;
-  attrs.push_back(StrCat("dimensions={", StrJoin(dimensions(), ","), "}"));
+void HloSortInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    printer->Append("dimensions={");
+    AppendJoin(printer, dimensions(), ",");
+    printer->Append("}");
+  });
   if (is_stable()) {
-    attrs.push_back("is_stable=true");
+    printer.Next([](Printer* printer) { printer->Append("is_stable=true"); });
   }
-  return attrs;
 }
 
 bool HloSortInstruction::IdenticalSlowPath(
@@ -1302,12 +1319,14 @@ HloInstructionProto HloReshapeInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloReshapeInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
+void HloReshapeInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
   if (inferred_dimension() == -1) {
-    return {};
+    return;
   }
-  return {StrCat("inferred_dimension=", inferred_dimension())};
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "inferred_dimension=", inferred_dimension());
+  });
 }
 
 bool HloReshapeInstruction::IdenticalSlowPath(
@@ -1364,9 +1383,13 @@ bool HloMapInstruction::IsElementwiseImpl(
   return true;
 }
 
-std::vector<std::string> HloMapInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
+void HloMapInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    printer->Append("dimensions={");
+    AppendJoin(printer, dimensions(), ",");
+    printer->Append("}");
+  });
 }
 
 bool HloMapInstruction::IdenticalSlowPath(
@@ -1412,18 +1435,23 @@ HloInstructionProto HloSliceInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloSliceInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> bounds;
-  bounds.reserve(slice_starts_.size());
-  const bool omit_stride = absl::c_all_of(
-      slice_strides_, [](int64_t stride) { return stride == 1; });
-  for (int i = 0; i < slice_starts_.size(); ++i) {
-    std::string stride_str = omit_stride ? "" : StrCat(":", slice_strides_[i]);
-    bounds.push_back(
-        StrCat("[", slice_starts_[i], ":", slice_limits_[i], stride_str, "]"));
-  }
-  return {StrCat("slice={", StrJoin(bounds, ", "), "}")};
+void HloSliceInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    const bool omit_stride = absl::c_all_of(
+        slice_strides_, [](int64_t stride) { return stride == 1; });
+    printer->Append("slice={");
+    AppendJoin(printer, slice_starts_, ", ",
+               [&](Printer* printer, auto& slice_start) {
+                 const auto i = &slice_start - slice_starts_.data();
+                 AppendCat(printer, "[", slice_start, ":", slice_limits_[i]);
+                 if (!omit_stride) {
+                   AppendCat(printer, ":", slice_strides_[i]);
+                 }
+                 printer->Append("]");
+               });
+    printer->Append("}");
+  });
 }
 
 bool HloSliceInstruction::IdenticalSlowPath(
@@ -1509,23 +1537,36 @@ HloConstantInstruction::CloneWithNewOperandsImpl(
                                                   this->shape());
 }
 
-std::string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
-    const HloPrintOptions& options,
+void HloConstantInstruction::PrintOperandsWithCanonicalNameMap(
+    Printer* printer, const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
   if (options.print_only_essential_constants()) {
     if (!literal_.has_value()) {
-      return "{...}";
+      printer->Append("{...}");
+      return;
     }
     if (literal().IsAll(0)) {
-      return "0";
+      printer->Append("0");
+      return;
     }
     if (literal().IsAll(1)) {
-      return "1";
+      printer->Append("1");
+      return;
     }
     if (shape().IsInteger()) {
-      return literal_->ToStringWithoutShapeOneline();
+      // The following prevents high compilation latencies caused by serializing
+      // large constant tensors; for example: b/265669625. The limit of 500k was
+      // chosen empirically to make sure that serialization of the `literal_` is
+      // less than a second.
+      if (auto num_constants =
+              absl::c_accumulate(shape().dimensions(), 1, std::multiplies<>());
+          num_constants <= 500'000) {
+        literal_->PrintWithoutShapeOneline(printer);
+        return;
+      }
     }
-    return "{...}";
+    printer->Append("{...}");
+    return;
   }
 
   // For constants, show the actual value in place of an empty operand list.
@@ -1534,10 +1575,10 @@ std::string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
        options.print_large_constants())) {
     // Literal::ToString emits multidimensional arrays over multiple
     // lines. Compact this into one line by stripping out white space.
-    return literal_->ToStringWithoutShapeOneline();
+    literal_->PrintWithoutShapeOneline(printer);
   } else {
     // Do not show large constants or tuples.
-    return "{...}";
+    printer->Append("{...}");
   }
 }
 
@@ -1641,16 +1682,16 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
         CHECK_NOTNULL(GetModule())->AddEmbeddedComputation(builder.Build()));
     clone = called_computation_root();
   } else {
-    // When add_output is false, instruction_to_append is necessarily an operand
-    // of the callable instruction. After appending this will no longer be the
-    // case. Remove the operand from the operand list and remove its
-    // corresponding called computation parameter instruction.
+    // When add_output is false, instruction_to_append is necessarily an
+    // operand of the callable instruction. After appending this will no
+    // longer be the case. Remove the operand from the operand list and remove
+    // its corresponding called computation parameter instruction.
     bool in_operand_list =
         absl::c_linear_search(operands(), instruction_to_append);
     CHECK(add_output || in_operand_list);
     if (do_not_clone) {
-      // We assume all uses of a kTuple operation are GTE ops. In this case, we
-      // don't need to clone 'instruction_to_append'.
+      // We assume all uses of a kTuple operation are GTE ops. In this case,
+      // we don't need to clone 'instruction_to_append'.
       CHECK(!in_operand_list);
       clone = instruction_to_append;
     } else {
@@ -1662,8 +1703,8 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     for (int64_t operand_num = 0; operand_num < operand_count();
          ++operand_num) {
       if (instruction_to_append == operand(operand_num)) {
-        // Replace the called computation parameter instruction's uses with the
-        // clone.
+        // Replace the called computation parameter instruction's uses with
+        // the clone.
         HloInstruction* called_computation_parameter =
             called_computation_parameters[operand_num];
         TF_CHECK_OK(called_computation_parameter->ReplaceAllUsesWith(clone));
@@ -1679,8 +1720,8 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     // this callable instruction is no longer a use of instruction_to_append.
     if (in_operand_list) {
       DetachFrom(instruction_to_append);
-      // When the instruction_to_append does not have other users, we don't need
-      // to generate a multioutput instruction.
+      // When the instruction_to_append does not have other users, we don't
+      // need to generate a multioutput instruction.
       if (instruction_to_append->user_count() == 0) {
         add_output = false;
       }
@@ -1691,8 +1732,8 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
   const std::vector<HloInstruction*>& called_computation_parameters =
       called_computation()->parameter_instructions();
 
-  // Add each operand of the clone as an operand of the callable instruction. A
-  // complication is that some clone operands may already be operands of the
+  // Add each operand of the clone as an operand of the callable instruction.
+  // A complication is that some clone operands may already be operands of the
   // callable instruction.
   for (int64_t operand_num = 0; operand_num < clone->operand_count();
        ++operand_num) {
@@ -1709,9 +1750,9 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     }
 
     if (called_computation_parameter == nullptr) {
-      // Clone's operand was not already an operand of the callable instruction.
-      // Add it as an operand and add a corresponding called computation
-      // parameter instruction.
+      // Clone's operand was not already an operand of the callable
+      // instruction. Add it as an operand and add a corresponding called
+      // computation parameter instruction.
       called_computation_parameter = AddCallOperand(operand);
     }
     TF_CHECK_OK(
@@ -1720,7 +1761,8 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
 
   if (add_output) {
     CHECK_GT(instruction_to_append->user_count(), 0);
-    // If this is already a multioutput instruction, expand the root tuple by 1.
+    // If this is already a multioutput instruction, expand the root tuple
+    // by 1.
     HloInstruction* root = called_computation_root();
     HloInstruction::InstructionVector tuple_elements;
     bool newly_created_tuple_instr = false;
@@ -1848,7 +1890,8 @@ void HloFusionInstruction::ClearFusionComputationInstruction() {
   // Each fusion calls a single computation, but we use called_computations()
   // instead of fused_instructions_computation(), because the order in which
   // things get destructed can vary; the fusion computation's back-pointer may
-  // already be null, which violates a check in fused_instructions_computation.
+  // already be null, which violates a check in
+  // fused_instructions_computation.
   for (HloComputation* computation : called_computations()) {
     // Some passes that rewrite fusions may reassign a fusion computation to a
     // different fusion instruction as this instruction gets destructed.
@@ -1878,7 +1921,7 @@ std::string HloFusionInstruction::ToCategory() const {
 
 HloInstructionProto HloFusionInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_fusion_kind(xla::ToString(fusion_kind()));
+  *proto.mutable_fusion_kind() = std::string(xla::ToString(fusion_kind()));
   for (const auto& pair : output_to_operand_aliasing()) {
     auto aliasing = proto.add_output_operand_aliasing();
     aliasing->set_operand_index(pair.second.first);
@@ -1976,8 +2019,8 @@ void HloFusionInstruction::MergeFusionInstruction(
   // Replace instruction_to_merge use of 'this' with unfused_root.
   TF_CHECK_OK(instruction_to_merge->ReplaceUseWith(this, unfused_root));
 
-  // Build a dummy root for the cloned fusion as we may remove the original root
-  // in the fusion process.
+  // Build a dummy root for the cloned fusion as we may remove the original
+  // root in the fusion process.
   if (!unfused_instructions.empty()) {
     HloComputation* computation = unfused_root->parent();
     auto* dummy_root = computation->AddInstruction(
@@ -2111,22 +2154,23 @@ int64_t HloFusionInstruction::fused_instruction_count() const {
   return fused_instructions_computation()->instruction_count();
 }
 
-std::vector<std::string> HloFusionInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> extra = {
-      StrCat("kind=", xla::ToString(fusion_kind()))};
+void HloFusionInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "kind=", xla::ToString(fusion_kind()));
+  });
   if (!output_to_operand_aliasing().empty()) {
-    std::vector<std::string> pair_strings;
-    pair_strings.reserve(output_to_operand_aliasing().size());
-    for (const auto& pair : output_to_operand_aliasing()) {
-      pair_strings.push_back(StrCat(pair.first.ToString(), ": (",
-                                    pair.second.first, ", ",
-                                    pair.second.second.ToString(), ")"));
-    }
-    extra.push_back(StrCat("output_to_operand_aliasing={",
-                           StrJoin(pair_strings, ", "), "}"));
+    printer.Next([this](Printer* printer) {
+      printer->Append("output_to_operand_aliasing={");
+      AppendJoin(printer, output_to_operand_aliasing(), ", ",
+                 [](Printer* printer, auto& pair) {
+                   AppendCat(printer, pair.first.ToString(), ": (",
+                             pair.second.first, ", ");
+                   AppendCat(printer, pair.second.second.ToString(), ")");
+                 });
+      printer->Append("}");
+    });
   }
-  return extra;
 }
 
 bool HloFusionInstruction::IdenticalSlowPath(
@@ -2206,9 +2250,12 @@ HloInstructionProto HloRngInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloRngInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  return {StrCat("distribution=", RandomDistributionToString(distribution_))};
+void HloRngInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer,
+              "distribution=", RandomDistributionToString(distribution_));
+  });
 }
 
 bool HloRngInstruction::IsElementwiseImpl(
@@ -2251,29 +2298,25 @@ HloInstructionProto HloParameterInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloParameterInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> result;
-  if (!parameter_replicated_at_leaf_buffers_) {
-    return result;
+void HloParameterInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  if (!parameter_replicated_at_leaf_buffers_ || !options.print_ids()) {
+    return;
   }
-  std::vector<std::string> buffers_replicated_strs;
-  buffers_replicated_strs.reserve(
-      parameter_replicated_at_leaf_buffers_->size());
-  for (bool replicated : *parameter_replicated_at_leaf_buffers_) {
-    buffers_replicated_strs.push_back(replicated ? "true" : "false");
-  }
-  if (options.print_ids()) {
-    result.push_back(StrCat("parameter_replication={",
-                            StrJoin(buffers_replicated_strs, ","), "}"));
-  }
-  return result;
+  printer.Next([this](Printer* printer) {
+    printer->Append("parameter_replication={");
+    AppendJoin(printer, *parameter_replicated_at_leaf_buffers_, ",",
+               [](Printer* printer, bool replicated) {
+                 printer->Append(replicated ? "true" : "false");
+               });
+    printer->Append("}");
+  });
 }
 
-std::string HloParameterInstruction::OperandsToStringWithCanonicalNameMap(
-    const HloPrintOptions& options,
+void HloParameterInstruction::PrintOperandsWithCanonicalNameMap(
+    Printer* printer, const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
-  return StrCat(parameter_number_);
+  printer->Append(parameter_number_);
 }
 
 bool HloParameterInstruction::IdenticalSlowPath(
@@ -2310,10 +2353,11 @@ HloInstructionProto HloGetTupleElementInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string>
-HloGetTupleElementInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  return {StrCat("index=", tuple_index())};
+void HloGetTupleElementInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "index=", tuple_index());
+  });
 }
 
 bool HloGetTupleElementInstruction::IdenticalSlowPath(
@@ -2350,11 +2394,14 @@ HloInstructionProto HloReducePrecisionInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string>
-HloReducePrecisionInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  return {StrCat("exponent_bits=", exponent_bits_),
-          StrCat("mantissa_bits=", mantissa_bits_)};
+void HloReducePrecisionInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "exponent_bits=", exponent_bits_);
+  });
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "mantissa_bits=", mantissa_bits_);
+  });
 }
 
 bool HloReducePrecisionInstruction::IdenticalSlowPath(
@@ -2393,12 +2440,14 @@ HloInstructionProto HloInfeedInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloInfeedInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
+void HloInfeedInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
   if (!options.print_infeed_outfeed_config() || infeed_config_.empty()) {
-    return {};
+    return;
   }
-  return {StrCat("infeed_config=\"", CEscape(infeed_config_), "\"")};
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "infeed_config=\"", CEscape(infeed_config_), "\"");
+  });
 }
 
 bool HloInfeedInstruction::IdenticalSlowPath(
@@ -2435,16 +2484,17 @@ HloInstructionProto HloOutfeedInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloOutfeedInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> extra;
-  extra.push_back(StrCat("outfeed_shape=",
-                         ShapeUtil::HumanStringWithLayout(outfeed_shape_)));
+void HloOutfeedInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    printer->Append("outfeed_shape=");
+    ShapeUtil::PrintHumanStringWithLayout(printer, outfeed_shape_);
+  });
   if (options.print_infeed_outfeed_config() && !outfeed_config_.empty()) {
-    extra.push_back(
-        StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\""));
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "outfeed_config=\"", CEscape(outfeed_config_), "\"");
+    });
   }
-  return extra;
 }
 
 bool HloOutfeedInstruction::IdenticalSlowPath(
@@ -2506,28 +2556,30 @@ HloInstructionProto HloConvolutionInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloConvolutionInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> extra;
+void HloConvolutionInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
   if (window_.dimensions_size() != 0) {
-    extra.push_back(StrCat("window={", window_util::ToString(window()), "}"));
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "window={", window_util::ToString(window()), "}");
+    });
   }
-  extra.push_back(StrCat("dim_labels=", ConvolutionDimensionNumbersToString(
-                                            convolution_dimension_numbers_)));
+  printer.Next([this](Printer* printer) {
+    AppendCat(
+        printer, "dim_labels=",
+        ConvolutionDimensionNumbersToString(convolution_dimension_numbers_));
+  });
   if (feature_group_count_ != 1) {
-    extra.push_back(StrCat("feature_group_count=", feature_group_count_));
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "feature_group_count=", feature_group_count_);
+    });
   }
 
   if (batch_group_count_ != 1) {
-    extra.push_back(StrCat("batch_group_count=", batch_group_count_));
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "batch_group_count=", batch_group_count_);
+    });
   }
-
-  std::string precision_config_string =
-      PrecisionConfigToString(precision_config_);
-  if (!precision_config_string.empty()) {
-    extra.push_back(precision_config_string);
-  }
-  return extra;
+  PrintPrecisionConfig(printer, precision_config_);
 }
 
 bool HloConvolutionInstruction::IdenticalSlowPath(
@@ -2588,14 +2640,13 @@ HloInstructionProto HloReduceWindowInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string>
-HloReduceWindowInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> extra;
+void HloReduceWindowInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
   if (window_.dimensions_size() != 0) {
-    extra.push_back(StrCat("window={", window_util::ToString(window()), "}"));
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "window={", window_util::ToString(window()), "}");
+    });
   }
-  return extra;
 }
 
 bool HloReduceWindowInstruction::IdenticalSlowPath(
@@ -2640,14 +2691,13 @@ HloInstructionProto HloSelectAndScatterInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string>
-HloSelectAndScatterInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> extra;
+void HloSelectAndScatterInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
   if (window_.dimensions_size() != 0) {
-    extra.push_back(StrCat("window={", window_util::ToString(window()), "}"));
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "window={", window_util::ToString(window()), "}");
+    });
   }
-  return extra;
 }
 
 bool HloSelectAndScatterInstruction::IdenticalSlowPath(
@@ -2783,72 +2833,94 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> extra;
+void HloCustomCallInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
   if (window_ != nullptr) {
-    extra.push_back(StrCat("window={", window_util::ToString(*window_), "}"));
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "window={", window_util::ToString(*window_), "}");
+    });
   }
   if (convolution_dimension_numbers_ != nullptr) {
-    extra.push_back(StrCat(
-        "dim_labels=",
-        ConvolutionDimensionNumbersToString(*convolution_dimension_numbers_)));
+    printer.Next([this](Printer* printer) {
+      AppendCat(
+          printer, "dim_labels=",
+          ConvolutionDimensionNumbersToString(*convolution_dimension_numbers_));
+    });
   }
   if (feature_group_count_ != 1) {
-    extra.push_back(StrCat("feature_group_count=", feature_group_count_));
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "feature_group_count=", feature_group_count_);
+    });
   }
   if (batch_group_count_ != 1) {
-    extra.push_back(StrCat("batch_group_count=", batch_group_count_));
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "batch_group_count=", batch_group_count_);
+    });
   }
-  std::string precision_config_string =
-      PrecisionConfigToString(precision_config_);
-  if (!precision_config_string.empty()) {
-    extra.push_back(precision_config_string);
-  }
+  PrintPrecisionConfig(printer, precision_config_);
   if (padding_type_ != PaddingType::PADDING_INVALID) {
-    extra.push_back(StrCat("padding_type=", PaddingType_Name(padding_type())));
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "padding_type=", PaddingType_Name(padding_type()));
+    });
   }
   // By contract, we print the custom call target even if
-  // options.print_subcomputation_mode() == kOff, because the call target is not
-  // an HloComputation.
-  extra.push_back(
-      StrCat("custom_call_target=\"", CEscape(custom_call_target_), "\""));
+  // options.print_subcomputation_mode() == kOff, because the call target is
+  // not an HloComputation.
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "custom_call_target=\"", CEscape(custom_call_target_),
+              "\"");
+  });
 
   if (layout_constrained()) {
-    std::vector<std::string> shape_strings;
-    shape_strings.reserve(operand_shapes_with_layout_.size());
-    for (const Shape& shape : operand_shapes_with_layout_) {
-      shape_strings.push_back(ShapeUtil::HumanStringWithLayout(shape));
-    }
-    extra.push_back(StrCat("operand_layout_constraints={",
-                           StrJoin(shape_strings, ", "), "}"));
+    printer.Next([this](Printer* printer) {
+      printer->Append("operand_layout_constraints={");
+      if (!operand_shapes_with_layout_.empty()) {
+        ShapeUtil::PrintHumanStringWithLayout(printer,
+                                              operand_shapes_with_layout_[0]);
+        for (const Shape& shape :
+             absl::MakeSpan(operand_shapes_with_layout_).subspan(1)) {
+          printer->Append(", ");
+          ShapeUtil::PrintHumanStringWithLayout(printer, shape);
+        }
+      }
+      printer->Append("}");
+    });
   }
   if (custom_call_has_side_effect_) {
-    extra.push_back("custom_call_has_side_effect=true");
+    printer.Next([](Printer* printer) {
+      printer->Append("custom_call_has_side_effect=true");
+    });
   }
   if (literal_.has_value()) {
-    extra.push_back(StrCat("literal=", literal_->ToStringWithLayoutOneline()));
+    printer.Next([this](Printer* printer) {
+      printer->Append("literal=");
+      literal_->PrintWithLayoutOneline(printer);
+    });
   }
   if (!output_to_operand_aliasing().empty()) {
-    std::vector<std::string> pair_strings;
-    pair_strings.reserve(output_to_operand_aliasing().size());
-    for (const auto& pair : output_to_operand_aliasing()) {
-      pair_strings.push_back(StrCat(pair.first.ToString(), ": (",
-                                    pair.second.first, ", ",
-                                    pair.second.second.ToString(), ")"));
-    }
-    extra.push_back(StrCat("output_to_operand_aliasing={",
-                           StrJoin(pair_strings, ", "), "}"));
+    printer.Next([this](Printer* printer) {
+      printer->Append("output_to_operand_aliasing={");
+      AppendJoin(printer, output_to_operand_aliasing(), ", ",
+                 [](Printer* printer, auto& pair) {
+                   AppendCat(printer, pair.first.ToString(), ": (",
+                             pair.second.first, ", ");
+                   AppendCat(printer, pair.second.second.ToString(), ")");
+                 });
+      printer->Append("}");
+    });
   }
   if (custom_call_schedule_ != CustomCallSchedule::SCHEDULE_NONE) {
-    extra.push_back(
-        StrCat("schedule=", CustomCallSchedule_Name(custom_call_schedule_)));
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer,
+                "schedule=", CustomCallSchedule_Name(custom_call_schedule_));
+    });
   }
   if (api_version_ != CustomCallApiVersion::API_VERSION_ORIGINAL) {
-    extra.push_back(
-        StrCat("api_version=", CustomCallApiVersion_Name(api_version_)));
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer,
+                "api_version=", CustomCallApiVersion_Name(api_version_));
+    });
   }
-  return extra;
 }
 
 bool HloCustomCallInstruction::IdenticalSlowPath(
@@ -2979,9 +3051,11 @@ HloInstructionProto HloPadInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloPadInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  return {StrCat("padding=", xla::PaddingConfigToString(padding_config_))};
+void HloPadInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "padding=", xla::PaddingConfigToString(padding_config_));
+  });
 }
 
 bool HloPadInstruction::IdenticalSlowPath(
@@ -3050,11 +3124,13 @@ HloInstructionProto HloDynamicSliceInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string>
-HloDynamicSliceInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  return {StrCat("dynamic_slice_sizes={", StrJoin(dynamic_slice_sizes(), ","),
-                 "}")};
+void HloDynamicSliceInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    printer->Append("dynamic_slice_sizes={");
+    AppendJoin(printer, dynamic_slice_sizes(), ",");
+    printer->Append("}");
+  });
 }
 
 bool HloDynamicSliceInstruction::IdenticalSlowPath(
@@ -3093,22 +3169,21 @@ HloGatherInstruction::HloGatherInstruction(
 }
 
 /*static*/ std::string HloGatherInstruction::GatherDimensionNumbersToString(
-    const GatherDimensionNumbers& gather_dimension_numbers) {
-  std::string offset_dims =
-      StrCat("offset_dims={",
-             StrJoin(gather_dimension_numbers.offset_dims(), ","), "}");
-  std::string collapsed_slice_dims = StrCat(
-      "collapsed_slice_dims={",
-      StrJoin(gather_dimension_numbers.collapsed_slice_dims(), ","), "}");
-  std::string start_index_map =
-      StrCat("start_index_map={",
-             StrJoin(gather_dimension_numbers.start_index_map(), ","), "}");
-  std::string index_vector_dim =
-      StrCat("index_vector_dim=", gather_dimension_numbers.index_vector_dim());
+    const GatherDimensionNumbers& dim_numbers) {
+  StringPrinter printer;
+  PrintGatherDimensionNumbers(&printer, dim_numbers);
+  return std::move(printer).ToString();
+}
 
-  return StrJoin<std::initializer_list<std::string>>(
-      {offset_dims, collapsed_slice_dims, start_index_map, index_vector_dim},
-      ", ");
+/*static*/ void HloGatherInstruction::PrintGatherDimensionNumbers(
+    Printer* printer, const GatherDimensionNumbers& dim_numbers) {
+  printer->Append("offset_dims={");
+  AppendJoin(printer, dim_numbers.offset_dims(), ",");
+  printer->Append("}, collapsed_slice_dims={");
+  AppendJoin(printer, dim_numbers.collapsed_slice_dims(), ",");
+  printer->Append("}, start_index_map={");
+  AppendJoin(printer, dim_numbers.start_index_map(), ",");
+  AppendCat(printer, "}, index_vector_dim=", dim_numbers.index_vector_dim());
 }
 
 /* static */ GatherDimensionNumbers HloGatherInstruction::MakeGatherDimNumbers(
@@ -3140,15 +3215,20 @@ HloInstructionProto HloGatherInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloGatherInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> attrs{
-      GatherDimensionNumbersToString(gather_dimension_numbers()),
-      StrCat("slice_sizes={", StrJoin(gather_slice_sizes(), ","), "}")};
+void HloGatherInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    PrintGatherDimensionNumbers(printer, gather_dimension_numbers());
+  });
+  printer.Next([this](Printer* printer) {
+    printer->Append("slice_sizes={");
+    AppendJoin(printer, gather_slice_sizes(), ",");
+    printer->Append("}");
+  });
   if (indices_are_sorted()) {
-    attrs.push_back("indices_are_sorted=true");
+    printer.Next(
+        [](Printer* printer) { printer->Append("indices_are_sorted=true"); });
   }
-  return attrs;
 }
 
 bool HloGatherInstruction::IdenticalSlowPath(
@@ -3190,24 +3270,21 @@ HloScatterInstruction::HloScatterInstruction(
 }
 
 /*static*/ std::string HloScatterInstruction::ScatterDimensionNumbersToString(
-    const ScatterDimensionNumbers& scatter_dimension_numbers) {
-  std::string update_window_dims =
-      StrCat("update_window_dims={",
-             StrJoin(scatter_dimension_numbers.update_window_dims(), ","), "}");
-  std::string inserted_window_dims = StrCat(
-      "inserted_window_dims={",
-      StrJoin(scatter_dimension_numbers.inserted_window_dims(), ","), "}");
-  std::string scatter_dims_to_operand_dims = StrCat(
-      "scatter_dims_to_operand_dims={",
-      StrJoin(scatter_dimension_numbers.scatter_dims_to_operand_dims(), ","),
-      "}");
-  std::string index_vector_dim =
-      StrCat("index_vector_dim=", scatter_dimension_numbers.index_vector_dim());
+    const ScatterDimensionNumbers& dim_numbers) {
+  StringPrinter printer;
+  PrintScatterDimensionNumbers(&printer, dim_numbers);
+  return std::move(printer).ToString();
+}
 
-  return StrJoin<std::initializer_list<std::string>>(
-      {update_window_dims, inserted_window_dims, scatter_dims_to_operand_dims,
-       index_vector_dim},
-      ", ");
+/*static*/ void HloScatterInstruction::PrintScatterDimensionNumbers(
+    Printer* printer, const ScatterDimensionNumbers& dim_numbers) {
+  printer->Append("update_window_dims={");
+  AppendJoin(printer, dim_numbers.update_window_dims(), ",");
+  printer->Append("}, inserted_window_dims={");
+  AppendJoin(printer, dim_numbers.inserted_window_dims(), ",");
+  printer->Append("}, scatter_dims_to_operand_dims={");
+  AppendJoin(printer, dim_numbers.scatter_dims_to_operand_dims(), ",");
+  AppendCat(printer, "}, index_vector_dim=", dim_numbers.index_vector_dim());
 }
 
 /* static */ ScatterDimensionNumbers
@@ -3239,17 +3316,20 @@ HloInstructionProto HloScatterInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloScatterInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> attrs{
-      ScatterDimensionNumbersToString(scatter_dimension_numbers())};
+void HloScatterInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    printer->Append(
+        ScatterDimensionNumbersToString(scatter_dimension_numbers()));
+  });
   if (indices_are_sorted()) {
-    attrs.push_back("indices_are_sorted=true");
+    printer.Next(
+        [](Printer* printer) { printer->Append("indices_are_sorted=true"); });
   }
   if (unique_indices()) {
-    attrs.push_back("unique_indices=true");
+    printer.Next(
+        [](Printer* printer) { printer->Append("unique_indices=true"); });
   }
-  return attrs;
 }
 
 bool HloScatterInstruction::IdenticalSlowPath(
@@ -3284,9 +3364,11 @@ HloInstructionProto HloIotaInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloIotaInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  return {StrCat("iota_dimension=", iota_dimension())};
+void HloIotaInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "iota_dimension=", iota_dimension());
+  });
 }
 
 bool HloIotaInstruction::IdenticalSlowPath(
@@ -3321,17 +3403,12 @@ HloInstructionProto HloDotInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloDotInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> extra = {
-      DotDimensionNumbersToString(dot_dimension_numbers_)};
-
-  std::string precision_config_string =
-      PrecisionConfigToString(precision_config_);
-  if (!precision_config_string.empty()) {
-    extra.push_back(precision_config_string);
-  }
-  return extra;
+void HloDotInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    printer->Append(DotDimensionNumbersToString(dot_dimension_numbers_));
+  });
+  PrintPrecisionConfig(printer, precision_config_);
 }
 
 bool HloDotInstruction::IdenticalSlowPath(
@@ -3364,14 +3441,16 @@ HloDomainInstruction::HloDomainInstruction(
   AppendOperand(operand);
 }
 
-std::vector<std::string> HloDomainInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
+void HloDomainInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
   if (operand_side_metadata_ != nullptr && user_side_metadata_ != nullptr) {
-    return {StrCat("domain={kind=\"", operand_side_metadata_->Kind(),
-                   "\", entry=", user_side_metadata_->ToString(),
-                   ", exit=", operand_side_metadata_->ToString(), "}")};
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "domain={kind=\"", operand_side_metadata_->Kind(),
+                "\", entry=");
+      AppendCat(printer, user_side_metadata_->ToString(),
+                ", exit=", operand_side_metadata_->ToString(), "}");
+    });
   }
-  return {};
 }
 
 bool HloDomainInstruction::IdenticalSlowPath(
@@ -3425,10 +3504,11 @@ HloInstructionProto HloGetDimensionSizeInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string>
-HloGetDimensionSizeInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& /*options*/) const {
-  return {StrCat("dimensions={", dimension(), "}")};
+void HloGetDimensionSizeInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& /*options*/) const {
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "dimensions={", dimension(), "}");
+  });
 }
 
 bool HloGetDimensionSizeInstruction::IdenticalSlowPath(
@@ -3460,10 +3540,11 @@ HloSetDimensionSizeInstruction::HloSetDimensionSizeInstruction(
   AppendOperand(val);
 }
 
-std::vector<std::string>
-HloSetDimensionSizeInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& /*options*/) const {
-  return {StrCat("dimensions={", dimension(), "}")};
+void HloSetDimensionSizeInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& /*options*/) const {
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "dimensions={", dimension(), "}");
+  });
 }
 
 HloInstructionProto HloSetDimensionSizeInstruction::ToProto() const {
@@ -3502,10 +3583,10 @@ HloInstructionProto HloRngGetAndUpdateStateInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string>
-HloRngGetAndUpdateStateInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& /*options*/) const {
-  return {StrCat("delta=", delta())};
+void HloRngGetAndUpdateStateInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& /*options*/) const {
+  printer.Next(
+      [this](Printer* printer) { AppendCat(printer, "delta=", delta()); });
 }
 
 bool HloRngGetAndUpdateStateInstruction::IdenticalSlowPath(
@@ -3540,10 +3621,11 @@ HloInstructionProto HloRngBitGeneratorInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string>
-HloRngBitGeneratorInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  return {StrCat("algorithm=", RandomAlgorithmToString(algorithm_))};
+void HloRngBitGeneratorInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "algorithm=", RandomAlgorithmToString(algorithm_));
+  });
 }
 
 bool HloRngBitGeneratorInstruction::IdenticalSlowPath(

@@ -44,6 +44,13 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 
 
+try:
+  import dill  # pylint:disable=g-import-not-at-top
+
+  _REGISTER_DECORATOR = dill.register
+except ImportError:
+  _REGISTER_DECORATOR = lambda fn, *_: fn
+
 mock = test.mock
 
 
@@ -496,6 +503,15 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
                        maintenance_event, training_finished, False,
                        training_restarted, termination_config)
         self.assertTrue(training_finished.is_set())
+
+
+@_REGISTER_DECORATOR(GceFailureHandlingTest)
+def _save_test_case(pickler, obj):
+  def reconstruct(*args, **kwargs):
+    del args, kwargs
+    return GceFailureHandlingTest()
+
+  return pickler.save_reduce(reconstruct, (), obj=obj)
 
 
 if __name__ == '__main__':

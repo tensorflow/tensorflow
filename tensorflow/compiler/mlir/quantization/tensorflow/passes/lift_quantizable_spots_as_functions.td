@@ -311,3 +311,12 @@ multiclass LiftCompositeOpsWithActivation<Op ActivationOp, string ActivationName
 }
 defm : LiftCompositeOpsWithActivation<TF_ReluOp, "relu">;
 defm : LiftCompositeOpsWithActivation<TF_Relu6Op, "relu6">;
+
+def LiftGather : Pat<
+  (TF_GatherV2Op:$res $params, $indices, $axis, $batch_dims),
+  (LiftAsFunctionCall<"composite_gather_fn">
+    (ArgumentList $params, $indices, $axis),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"batch_dims"> $batch_dims))),
+  [(IsNotInLiftedFunc $res), (IsConstTensor $params)], (addBenefit 1)>;

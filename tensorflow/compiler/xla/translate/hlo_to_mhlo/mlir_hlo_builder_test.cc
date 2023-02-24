@@ -292,5 +292,67 @@ TEST_F(XlaBuilderTest, DuplicateCustomCallComparator) {
   (void)symbol_table;
 }
 
+TEST_F(XlaBuilderTest, CustomCallWithFrontendAttributes) {
+  TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
+
+  // Create frontend attributes and set it for the CustomCall op.
+  FrontendAttributes attr;
+  attr.mutable_map()->insert({"test_name", "test_value"});
+
+  xla_builder_.SetFrontendAttributes(attr);
+
+  // Add the CustomCallOp to the module.
+  Shape shape(PrimitiveType::PRED, /*dimensions=*/{}, /*dynamic_dimensions=*/{},
+              /*tuple_shapes=*/{});
+  auto custom_call = CustomCall(&xla_builder_, "test_call_target", {}, shape);
+
+  TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
+
+  // Verify that the frontend attributes are correctly set for the CustomCall
+  // op.
+  ExpectHasSubstr(
+      GetMlirOpString(custom_call),
+      R"(%0 = mhlo.custom_call @test_call_target() {backend_config = "", mhlo.frontend_attributes = {test_name = "test_value"}} : () -> tensor<i1>)");
+}
+
+TEST_F(XlaBuilderTest, CustomCallWithLiteral) {
+  auto input = ConstantLiteral(&xla_builder_,
+                               LiteralUtil::CreateFromDimensions(F32, {5, 7}));
+  xla::Literal literal = xla::LiteralUtil::CreateR0<int32_t>(16);
+  auto custom_call = CustomCall(&xla_builder_, "OpWithLiteral", {input},
+                                xla_builder_.GetShape(input).value(),
+                                /*opaque=*/"", /*has_side_effect=*/false,
+                                /*output_operand_aliasing=*/{}, &literal);
+
+  TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
+
+  ExpectHasSubstr(
+      GetMlirOpString(custom_call),
+      R"(mhlo.custom_call @OpWithLiteral(%0) {backend_config = "", mhlo.literal = dense<16> : tensor<i32>} : (tensor<5x7xf32>) -> tensor<5x7xf32>)");
+}
+
+TEST_F(XlaBuilderTest, InfeedWithTokenWithFrontendAttributes) {
+  TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
+
+  // Create frontend attributes and set it for the CustomCall op.
+  FrontendAttributes attr;
+  attr.mutable_map()->insert({"test_name", "test_value"});
+
+  xla_builder_.SetFrontendAttributes(attr);
+
+  auto token = CreateToken(&xla_builder_);
+  InfeedWithToken(token, ShapeUtil::MakeShape(F32, {4, 8}), "");
+
+  TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
+
+  // Verify that the frontend attributes are correctly set for the entire
+  // module.
+  ExpectHasSubstr(
+      GetMlirOpString(module_.get()),
+      R"(%0 = mhlo.create_token {mhlo.frontend_attributes = {test_name = "test_value"}} : !mhlo.token
+  %1:2 = "mhlo.infeed"(%0) {infeed_config = "", mhlo.frontend_attributes = {test_name = "test_value"}} : (!mhlo.token) -> (tensor<4x8xf32>, !mhlo.token)
+  %2 = mhlo.tuple %1#0, %1#1 {mhlo.frontend_attributes = {test_name = "test_value"}} : tuple<tensor<4x8xf32>, !mhlo.token>)");
+}
+
 }  // namespace
 }  // namespace xla

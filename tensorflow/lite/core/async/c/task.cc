@@ -86,4 +86,15 @@ void TfLiteExecutionTaskSetDelegateExecutionData(
   if (task == nullptr || task->task == nullptr) return;
   task->task->SetDelegateExecutionData(kernel, data);
 }
+
+TfLiteStatus TfLiteExecutionTaskGetStatus(const TfLiteExecutionTask* task) {
+  if (task == nullptr || task->task == nullptr) return kTfLiteError;
+  return task->task->Status();
+}
+
+void TfLiteExecutionTaskSetStatus(const TfLiteExecutionTask* task,
+                                  TfLiteStatus status) {
+  if (task == nullptr || task->task == nullptr) return;
+  task->task->SetStatus(status);
+}
 }

@@ -17,6 +17,7 @@
 import itertools
 import numbers
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -574,7 +575,7 @@ class MeanReductionTest(BaseReductionTest):
         self.assertTrue(np.all(np.isnan(y)))
 
 
-class EuclideanNormReductionTest(BaseReductionTest):
+class EuclideanNormReductionTest(BaseReductionTest, parameterized.TestCase):
 
   def _tf_reduce(self, x, reduction_axes, keepdims):
     return math_ops.reduce_euclidean_norm(x, reduction_axes, keepdims)
@@ -611,36 +612,23 @@ class EuclideanNormReductionTest(BaseReductionTest):
       np_arr = np.array([-1.]).astype(dtype)
       self._compareAll(np_arr, None)
 
+  @parameterized.parameters(
+      dtypes.bfloat16,
+      dtypes.float32,
+      dtypes.float64,
+      dtypes.int32,
+      dtypes.complex64,
+      dtypes.complex128,
+  )
   @test_util.run_deprecated_v1
-  def testInt32(self):
+  def testTypes(self, dtype):
     for rank in range(1, _MAX_RANK + 1):
-      np_arr = self._makeIncremental((2,) * rank, dtypes.int32)
-      self._compareAllAxes(np_arr)
+      np_arr = self._makeIncremental((2,) * rank, dtype)
+      rtol, atol = (1e-2, 5e-1) if dtype == dtypes.bfloat16 else (1e-6, 1e-6)
+      self._compareAllAxes(np_arr, rtol=rtol, atol=atol)
 
   @test_util.run_deprecated_v1
-  def testFloat32(self):
-    for rank in range(1, _MAX_RANK + 1):
-      np_arr = self._makeIncremental((2,) * rank, dtypes.float32)
-      self._compareAllAxes(np_arr)
-
-  @test_util.run_deprecated_v1
-  def testFloat64(self):
-    for rank in range(1, _MAX_RANK + 1):
-      np_arr = self._makeIncremental((2,) * rank, dtypes.float64)
-      self._compareAllAxes(np_arr)
-
-  @test_util.run_deprecated_v1
-  def testComplex64(self):
-    for rank in range(1, _MAX_RANK + 1):
-      np_arr = self._makeIncremental((2,) * rank, dtypes.complex64)
-      self._compareAllAxes(np_arr)
-
-  @test_util.run_deprecated_v1
-  def testComplex128(self):
-    for rank in range(1, _MAX_RANK + 1):
-      np_arr = self._makeIncremental((2,) * rank, dtypes.complex128)
-      self._compareAllAxes(np_arr)
-
+  def testDegenerate(self):
     with self.session():
       for dtype in (dtypes.bfloat16, dtypes.float16, dtypes.float32,
                     dtypes.float64):

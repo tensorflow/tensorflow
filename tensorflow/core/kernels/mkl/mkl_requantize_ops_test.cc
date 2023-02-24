@@ -159,8 +159,8 @@ TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_Basic) {
   // --------------------------------------------------------------------
 
   // Verify the Expected Outputs
-  const float output_min = GetOutput(0)->flat<float>()(0);
-  const float output_max = GetOutput(1)->flat<float>()(0);
+  const float output_min = GetOutput(0)->scalar<float>()();
+  const float output_max = GetOutput(1)->scalar<float>()();
   EXPECT_NEAR(-14.8217, output_min, 0.002);
   EXPECT_NEAR(14.8217, output_max, 0.002);
 
@@ -220,8 +220,8 @@ TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_ClipMax) {
   // --------------------------------------------------------------------
 
   // Verify the expected outputs
-  const float output_min = GetOutput(0)->flat<float>()(0);
-  const float output_max = GetOutput(1)->flat<float>()(0);
+  const float output_min = GetOutput(0)->scalar<float>()();
+  const float output_max = GetOutput(1)->scalar<float>()();
   EXPECT_NEAR(-6.0, output_min, 0.002);  // Values are aligned with clip_value.
   EXPECT_NEAR(6.0, output_max, 0.002);   // Values are aligned with clip_value.
 }
@@ -281,16 +281,16 @@ TEST_F(MklRequantizatedOpsTest, RequantizePerChannelTest_Basic) {
   float range_op_output_max = 14.8217;
 
   // Add the requested_min and requested_max stored from Step 6.
-  AddInputFromArray<float>(TensorShape({1}), {range_op_output_min});
-  AddInputFromArray<float>(TensorShape({1}), {range_op_output_max});
+  AddInputFromArray<float>(TensorShape({}), {range_op_output_min});
+  AddInputFromArray<float>(TensorShape({}), {range_op_output_max});
 
   // Run the kernel
   TF_ASSERT_OK(RunOpKernel());
 
   // Verify the output with the expected output
   Tensor output = *GetOutput(0);
-  const float output_min = GetOutput(1)->flat<float>()(0);
-  const float output_max = GetOutput(2)->flat<float>()(0);
+  const float output_min = GetOutput(1)->scalar<float>()();
+  const float output_max = GetOutput(2)->scalar<float>()();
   EXPECT_NEAR(range_op_output_min, output_min, 0.002);
   EXPECT_NEAR(range_op_output_max, output_max, 0.002);
 }

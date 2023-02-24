@@ -617,9 +617,11 @@ class Conv2DOp : public BinaryOp<T> {
     OP_REQUIRES_OK(context,
                    ComputeConv2DDimension(params_, input, filter, &dimensions));
 
-    TensorShape out_shape = ShapeFromFormat(
-        params_.data_format, dimensions.batch, dimensions.out_rows,
-        dimensions.out_cols, dimensions.out_depth);
+    TensorShape out_shape;
+    OP_REQUIRES_OK(
+        context, ShapeFromFormatWithStatus(
+                     params_.data_format, dimensions.batch, dimensions.out_rows,
+                     dimensions.out_cols, dimensions.out_depth, &out_shape));
 
     // Output tensor is of the following dimensions:
     // [ in_batch, out_rows, out_cols, out_depth ]
@@ -875,11 +877,13 @@ void LaunchConv2DOpImpl(OpKernelContext* ctx, bool use_cudnn,
     const int64_t padding_cols_diff = std::abs(padding_right - padding_left);
     const int64_t new_in_rows = in_rows + padding_rows_diff;
     const int64_t new_in_cols = in_cols + padding_cols_diff;
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(
-                            DataTypeToEnum<T>::value,
-                            ShapeFromFormat(data_format, in_batch, new_in_rows,
-                                            new_in_cols, in_depths),
-                            &transformed_input));
+    TensorShape transformed_input_shape;
+    OP_REQUIRES_OK(ctx, ShapeFromFormatWithStatus(
+                            data_format, in_batch, new_in_rows, new_in_cols,
+                            in_depths, &transformed_input_shape));
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                transformed_input_shape, &transformed_input));
 
     const int64_t input_pad_top = padding_top - common_padding_rows;
     const int64_t input_pad_bottom = padding_bottom - common_padding_rows;
@@ -910,8 +914,10 @@ void LaunchConv2DOpImpl(OpKernelContext* ctx, bool use_cudnn,
   if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
     VLOG(4) << "Convert the input tensor from NHWC to NCHW.";
 
-    TensorShape nchw_shape =
-        ShapeFromFormat(FORMAT_NCHW, in_batch, in_rows, in_cols, in_depths);
+    TensorShape nchw_shape;
+    OP_REQUIRES_OK(
+        ctx, ShapeFromFormatWithStatus(FORMAT_NCHW, in_batch, in_rows, in_cols,
+                                       in_depths, &nchw_shape));
     if (in_depths > 1) {
       Tensor transformed_input;
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
@@ -1012,11 +1018,13 @@ void LaunchConv2DOpImpl(OpKernelContext* ctx, bool use_cudnn,
   Tensor transformed_output;
   if (data_format != compute_data_format) {
     VLOG(4) << "Allocate temporary memory for output in compute data format";
+    TensorShape transformed_output_shape;
+    OP_REQUIRES_OK(ctx, ShapeFromFormatWithStatus(
+                            compute_data_format, out_batch, out_rows, out_cols,
+                            out_depths, &transformed_output_shape));
     OP_REQUIRES_OK(
         ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                ShapeFromFormat(compute_data_format, out_batch,
-                                                out_rows, out_cols, out_depths),
-                                &transformed_output));
+                                transformed_output_shape, &transformed_output));
   } else {
     transformed_output = *output;
   }
@@ -1103,11 +1111,12 @@ void LaunchConv2DOp<GPUDevice, Eigen::bfloat16>::operator()(
   auto* stream = ctx->op_device_context()->stream();
   const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
       se::CudaComputeCapability::AMPERE);
-  Tensor casted_input = input_param;
-  Tensor casted_filter = filter;
-  Tensor casted_out = *output;
 
   if (cast_to_float) {
+    Tensor casted_input = input_param;
+    Tensor casted_filter = filter;
+    Tensor casted_out = *output;
+
     const GPUDevice& device = ctx->eigen_device<GPUDevice>();
     functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
     OP_REQUIRES_OK(
@@ -1136,9 +1145,9 @@ void LaunchConv2DOp<GPUDevice, Eigen::bfloat16>::operator()(
   }
 
   LaunchConv2DOpImpl<Eigen::bfloat16>(
-      ctx, use_cudnn, cudnn_use_autotune, casted_input, casted_filter,
-      row_dilation, col_dilation, row_stride, col_stride, padding,
-      explicit_paddings, &casted_out, data_format);
+      ctx, use_cudnn, cudnn_use_autotune, input_param, filter, row_dilation,
+      col_dilation, row_stride, col_stride, padding, explicit_paddings, output,
+      data_format);
 }
 
 // Forward declarations of the functor specializations for GPU.

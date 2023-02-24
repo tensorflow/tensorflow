@@ -177,7 +177,6 @@ cc_library(
         "buffer_reuse_pass.cc",
         "bufferize_pass.cc",
         "copy_cleanup_pass.cc",
-        "embed_memref_prints.cc",
         "embed_tf_framework_pass.cc",
         "fuse_inner_parallel_loops_pass.cc",
         "parallel_loops_to_sequential.cc",

@@ -129,7 +129,6 @@ DerivedXLineBuilder::DerivedXLineBuilder(
     int64_t timestamp_ns, std::vector<DerivedXLineBuilder*> dependent_lines)
     : group_id_stat_metadata_(
           plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId))),
-      level_stat_metadata_(plane->GetOrCreateStatMetadata("l")),
       line_(plane->GetOrCreateLine(line_id)),
       dependent_lines_(std::move(dependent_lines)) {
   line_.SetName(name);
@@ -171,12 +170,52 @@ void DerivedXLineBuilder::ExpandOrAddLevelEvent(
     if (group_id.has_value()) {
       event.AddStatValue(*group_id_stat_metadata_, *group_id);
     }
-    event.AddStatValue(*level_stat_metadata_, level);
     last_event.emplace(std::move(event), group_id);
   }
 }
 
+// When deriving a bunch of events with the same timespan, there could be
+// indeterministic behavior of how trace viewer stacking these events.
+// This function will shrink the stack of events with the same timespan when
+// necessary. Event at top of stack might shrink more than event at the bottom.
+// Because the time unit in trace viewer is nanosecond, therefore the minimum
+// difference is 1ns. However to prevent shrink induced inconsitency, we can
+// not shrink more than the duration of event at the top of the stack.
+void DerivedXLineBuilder::AdjustDurationForTraceViewer(int level) {
+  if (level >= last_event_by_level_.size() || !last_event_by_level_[level])
+    return;
+
+  int max_level = level;
+  for (; max_level < last_event_by_level_.size(); ++max_level) {
+    if (!last_event_by_level_[max_level].has_value()) {
+      break;
+    }
+  }
+  --max_level;
+  if (max_level <= level) return;
+  auto& event_on_top_stack = *last_event_by_level_[max_level];
+  Timespan timespan = event_on_top_stack.GetTimespan();
+  // We will at most shrink the top of the stack to 1ns.
+  int64_t max_shrink_ns = timespan.duration_ps() / 1000 - 1;
+  int64_t shrink_ns = 0;
+  std::optional<Timespan> last_level_timespan;
+  for (int i = level; i <= max_level; ++i) {
+    auto& current_event = *last_event_by_level_[i];
+    if (shrink_ns < max_shrink_ns &&
+        last_level_timespan == current_event.GetTimespan()) {
+      shrink_ns++;
+    }
+    last_level_timespan = current_event.GetTimespan();
+    if (shrink_ns) {
+      current_event.SetTimespan(Timespan::FromEndPoints(
+          last_level_timespan->begin_ps(),
+          last_level_timespan->end_ps() - 1000 * shrink_ns));
+    }
+  }
+}
+
 void DerivedXLineBuilder::ResetLastEvents(int level) {
+  AdjustDurationForTraceViewer(level);
   for (int i = level, end = last_event_by_level_.size(); i < end; ++i) {
     last_event_by_level_[i].reset();
   }
@@ -185,28 +224,6 @@ void DerivedXLineBuilder::ResetLastEvents(int level) {
       line->ResetLastEvents(0);
     }
   }
-}
-
-void AddGroupMetadataToStepEvents(const GroupMetadataMap& group_metadata_map,
-                                  XLineBuilder& line) {
-  if (group_metadata_map.empty()) return;
-  XPlaneBuilder* plane = line.Plane();
-  const XStatMetadata* group_id_stat_metadata =
-      plane->GetStatMetadata(GetStatTypeStr(StatType::kGroupId));
-  if (group_id_stat_metadata == nullptr) return;
-  const XStatMetadata* step_name_stat_metadata =
-      plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kStepName));
-  line.ForEachEvent([&](XEventBuilder event) {
-    const XStat* group_id_stat = event.GetStat(*group_id_stat_metadata);
-    if (group_id_stat != nullptr) {
-      int64_t group_id = group_id_stat->int64_value();
-      if (const GroupMetadata* group_metadata =
-              gtl::FindOrNull(group_metadata_map, group_id)) {
-        // TODO(b/160255693): Change the event name directly.
-        event.AddStatValue(*step_name_stat_metadata, group_metadata->name);
-      }
-    }
-  });
 }
 
 void DeriveStepEventsFromGroups(const GroupMetadataMap& group_metadata_map,

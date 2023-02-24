@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/cluster_environment.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/matrix.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/metrics.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
@@ -52,6 +53,10 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status.h"
 #include "ortools/linear_solver/linear_solver.h"
 #include "ortools/linear_solver/linear_solver.pb.h"
+#ifdef PLATFORM_GOOGLE
+#include "file/base/helpers.h"
+#include "util/task/status.pb.h"
+#endif
 
 using MPConstraint = operations_research::MPConstraint;
 using MPSolver = operations_research::MPSolver;
@@ -431,6 +436,11 @@ void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
         resharding_costs = ReshardingCostsForTupleOperand(
             ins->operand(0), strategy_map.at(ins->operand(0)).get());
         LOG(INFO) << absl::StrJoin(resharding_costs.back(), ",");
+      } else if (ins->opcode() == HloOpcode::kRngBitGenerator &&
+                 ins->operand(0)->shape().IsArray()) {
+        resharding_costs = GenerateReshardingCostsForAllOperands(
+            ins, output_spec, strategy_map, cluster_env, call_graph,
+            {HloSharding::Replicate()});
       } else {
         resharding_costs = GenerateReshardingCostsForAllOperands(
             ins, output_spec, strategy_map, cluster_env, call_graph);
@@ -1516,6 +1526,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kSin:
       case HloOpcode::kSqrt:
       case HloOpcode::kCbrt:
+      case HloOpcode::kTan:
       case HloOpcode::kTanh:
       // Binary elementwise operations
       case HloOpcode::kAdd:
@@ -1974,7 +1985,7 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
   CHECK(solver);
   solver->MutableObjective()->SetMinimization();
   std::string solver_parameter_str;
-#if !defined(__APPLE__)
+#ifdef PLATFORM_GOOGLE
   if (solver->ProblemType() ==
       operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
     // Set random_seed, interleave_search and share_binary_clauses for
@@ -2168,6 +2179,21 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
     }
   }
 
+#ifdef PLATFORM_GOOGLE
+  // Exports the model for debugging.
+  bool dump_model = false;
+  if (dump_model) {
+    operations_research::MPModelProto model_proto;
+    solver->ExportModelToProto(&model_proto);
+    auto write_status = file::SetTextProto(
+        // Modify this file path if needed.
+        absl::StrCat("/tmp/model_", solver->NumVariables(), ".proto"),
+        model_proto, file::Defaults());
+    if (!write_status.ok()) {
+      LOG(ERROR) << write_status.message();
+    }
+  }
+#endif
   solver->set_time_limit(3600 * 1000);  // in ms
   VLOG(0) << "Starting solver " << solver->ProblemType() << "\n"
           << "Solver parameter string: " << solver_parameter_str << "\n"
@@ -2182,15 +2208,15 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
   auto status = solver->Solve();
   if (status == operations_research::MPSolver::INFEASIBLE) {
     LOG(ERROR) << "MPSolver could not find any feasible solution.";
-    /*
-    // TODO (zhuohan): Move this part of code to a non-open sourced position.
-    //   Need to include "util/task/status.pb.h"
+#ifdef PLATFORM_GOOGLE
     operations_research::MPModelRequest model_request;
     solver->ExportModelToProto(model_request.mutable_model());
-    if (solver_type == "SAT") {
+    if (solver->ProblemType() ==
+        operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
       model_request.set_solver_type(
           operations_research::MPModelRequest::SAT_INTEGER_PROGRAMMING);
-    } else if (solver_type == "SCIP") {
+    } else if (solver->ProblemType() ==
+               operations_research::MPSolver::SCIP_MIXED_INTEGER_PROGRAMMING) {
       model_request.set_solver_type(
           operations_research::MPModelRequest::SCIP_MIXED_INTEGER_PROGRAMMING);
     }
@@ -2206,7 +2232,7 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
           << " - "
           << model_request.model().general_constraint(index).DebugString();
     }
-    */
+#endif
 
     return tsl::errors::Internal(
         "MPSolver could not find any feasible solution.");
@@ -2795,9 +2821,12 @@ void SaveShardingForInstruction(
     absl::flat_hash_map<std::string, std::vector<HloSharding>>&
         preserve_shardings,
     HloInstruction* inst) {
-  if (inst->has_sharding() && !inst->sharding().IsTuple()) {
+  if (!inst->has_sharding()) {
+    return;
+  }
+  if (!inst->sharding().IsTuple()) {
     preserve_shardings[inst->name()] = {inst->sharding()};
-  } else if (inst->has_sharding() && inst->sharding().IsTuple()) {
+  } else {
     preserve_shardings[inst->name()] = inst->sharding().tuple_elements();
   }
 }
@@ -3685,6 +3714,12 @@ StatusOr<bool> AutoSharding::Run(
   bool module_is_changed = false;
   VLOG(1) << "Start auto sharding pass";
 
+#if !defined(__APPLE__)
+  // Streamz metrics.
+  absl::Time start_time = absl::Now();
+  metrics::RecordAutoShardingInvocations();
+#endif
+
   bool set_to_memory_lower_bound = (option_.memory_budget_per_device == 0);
   TF_RETURN_IF_ERROR(option_.CheckAndSetup());
   VLOG(1) << "AutoShardingOptions:\n" << option_.ToString();
@@ -3738,7 +3773,7 @@ StatusOr<bool> AutoSharding::Run(
   // sharding propagation pass after that before spmd partitioner.
   auto status_or_changed = ProcessShardingInstruction(
       module, execution_threads, /*replace_sharding_with_copy=*/true,
-      &unspecified_dims);
+      &unspecified_dims, /*saved_root_shardings=*/nullptr);
   if (!status_or_changed.ok()) {
     return status_or_changed;
   }
@@ -3962,6 +3997,13 @@ StatusOr<bool> AutoSharding::Run(
   TF_RETURN_IF_ERROR(CanonicalizeLayouts(module));
   XLA_VLOG_LINES(6, absl::StrCat("After auto sharding:\n", module->ToString()));
   DumpHloModuleIfEnabled(*module, "after_auto_spmd_sharding");
+
+#if !defined(__APPLE__)
+  absl::Time end_time = absl::Now();
+  auto duration = end_time - start_time;
+  metrics::RecordAutoShardingCompilationTime(
+      absl::ToInt64Microseconds(duration));
+#endif
   return module_is_changed;
 }
 

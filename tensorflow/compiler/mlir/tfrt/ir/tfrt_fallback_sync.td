@@ -121,16 +121,14 @@ def SyncExecuteOp : FallbackSync_Op<"executeop", [Pure]> {
   }];
 
   let arguments = (ins
-    Variadic<TFTensorType>:$operands,
+    Variadic<TFTensorType>,
     StrAttr:$node_def,
     I32Attr:$op_key
   );
 
-  let results = (outs
-    Variadic<TFTensorType>:$results
-  );
+  let results = (outs Variadic<TFTensorType>);
 
-  let assemblyFormat = "`(` $operands`)` attr-dict `:` functional-type($operands, $results)";
+  let assemblyFormat = "`(`operands`)` attr-dict `:` functional-type(operands, results)";
 }
 
 

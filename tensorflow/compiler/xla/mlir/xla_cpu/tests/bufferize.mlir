@@ -106,3 +106,24 @@ func.func @fft(%arg0: tensor<3x5x4x8x256xf32>) -> tensor<3x5x4x8x129xcomplex<f32
 //       CHECK: %[[ARG0_MEMREF:.*]] = bufferization.to_memref %[[ARG0]]
 //       CHECK: %[[OUT:.*]] = memref.alloc() {{.*}}
 //       CHECK: "xla_cpu.fft"(%[[ARG0_MEMREF]], %[[OUT]])
+
+
+// -----
+
+func.func @rng_bit_generator(%state: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>) {
+  %new_state_init = tensor.empty() : tensor<2xui64>
+  %output_init = tensor.empty() : tensor<10x12xui32>
+  %new_state, %output = "xla_cpu.rng_bit_generator"(%state, %new_state_init,
+      %output_init) {
+    rng_algorithm = #mhlo.rng_algorithm<DEFAULT>
+  } : (tensor<2xui64>, tensor<2xui64>, tensor<10x12xui32>)
+      -> (tensor<2xui64>, tensor<10x12xui32>)
+  func.return %new_state, %output : tensor<2xui64>, tensor<10x12xui32>
+}
+
+// CHECK-LABEL: @rng_bit_generator
+//  CHECK-SAME:   %[[STATE:.*]]: tensor
+//       CHECK: %[[STATE_MEMREF:.*]] = bufferization.to_memref %[[STATE]]
+//       CHECK: %[[STATE_OUT:.*]] = memref.alloc() {{.*}}<2xui64>
+//       CHECK: %[[OUTPUT:.*]] = memref.alloc() {{.*}}<10x12xui32>
+//       CHECK: "xla_cpu.rng_bit_generator"(%[[STATE_MEMREF]], %[[STATE_OUT]], %[[OUTPUT]])

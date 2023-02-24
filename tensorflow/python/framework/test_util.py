@@ -68,6 +68,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
+from tensorflow.python.ops import gen_sync_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
@@ -685,6 +686,17 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
       """Warms up, gets object counts, runs the test, checks for new objects."""
       with context.eager_mode():
         gc.disable()
+        # Python 3.11 removed "errors" and "skipped" as members of
+        # unittest.case._Outcome so get them from the test result object
+        # instead.
+        test_errors = None
+        test_skipped = None
+        if hasattr(self._outcome, "errors"):
+          test_errors = self._outcome.errors
+          test_skipped = self._outcome.skipped
+        else:
+          test_errors = self._outcome.result.errors
+          test_skipped = self._outcome.result.skipped
         # Run the test 2 times as warmup, in an attempt to fill up caches, which
         # should not grow as the test is run repeatedly below.
         #
@@ -709,8 +721,7 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
         # These objects are retained across gc collections so we exclude them
         # from the object count calculation.
         obj_count_by_type = _get_object_count_by_type(
-            exclude=gc.get_referents(self._outcome.errors,
-                                     self._outcome.skipped))
+            exclude=gc.get_referents(test_errors, test_skipped))
 
         if ops.has_default_graph():
           collection_sizes_before = {
@@ -745,8 +756,7 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
         # There should be no new Python objects hanging around.
         obj_count_by_type = (
             _get_object_count_by_type(
-                exclude=gc.get_referents(self._outcome.errors,
-                                         self._outcome.skipped)) -
+                exclude=gc.get_referents(test_errors, test_skipped)) -
             obj_count_by_type)
 
         # There should be no newly registered functions hanging around.
@@ -2098,7 +2108,7 @@ def disable_cudnn_autotune(func):
 
       return result
 
-    return decorated
+    return tf_decorator.make_decorator(func, decorated)
 
   if func is not None:
     return decorator(func)
@@ -2946,7 +2956,22 @@ class TensorFlowTestCase(googletest.TestCase):
       else:
         a = self.evaluate(a)
     if not isinstance(a, np.ndarray):
-      return np.array(a)
+      try:
+        return np.array(a)
+      except ValueError as e:
+        # TODO(b/264461299): NumPy 1.24 no longer infers dtype=object from
+        # ragged sequences.
+        # See:
+        # https://numpy.org/neps/nep-0034-infer-dtype-is-object.html
+        # Fixing this correctly requires clarifying the API contract of this
+        # function with respect to ragged sequences and possibly updating all
+        # users. As a backwards compatibility measure, if array
+        # creation fails with an "inhomogeneous shape" error, try again with
+        # an explicit dtype=object, which should restore the previous behavior.
+        if "inhomogeneous shape" in str(e):
+          return np.array(a, dtype=object)
+        else:
+          raise
     return a
 
   def evaluate_if_both_tensors(self, a, b):
@@ -2973,12 +2998,15 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertEqual(a.shape, b.shape, shape_mismatch_msg)
 
     msgs = [msg]
-    # np.allclose does not always work for our custom bfloat16 extension type
-    # when type promotions are involved, so we first cast any bfloat16 arrays
-    # to float32.
+    # np.allclose does not always work for our custom bfloat16 and float8
+    # extension types when type promotions are involved, so we first cast any
+    # arrays of such types to float32.
     a_dtype = a.dtype
-    a = a.astype(np.float32) if a.dtype == dtypes.bfloat16.as_numpy_dtype else a
-    b = b.astype(np.float32) if b.dtype == dtypes.bfloat16.as_numpy_dtype else b
+    custom_dtypes = (dtypes.bfloat16.as_numpy_dtype,
+                     dtypes.float8_e5m2.as_numpy_dtype,
+                     dtypes.float8_e4m3fn.as_numpy_dtype)
+    a = a.astype(np.float32) if a.dtype in custom_dtypes else a
+    b = b.astype(np.float32) if b.dtype in custom_dtypes else b
     if not np.allclose(a, b, rtol=rtol, atol=atol):
       # Adds more details to np.testing.assert_allclose.
       #
@@ -3216,9 +3244,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
     same = (a == b)
 
-    if (a.dtype in [
-        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
-    ]):
+    if dtypes.as_dtype(a.dtype).is_floating:
       same = np.logical_or(same, np.logical_and(np.isnan(a), np.isnan(b)))
     msgs = [msg]
     if not np.all(same):
@@ -3582,7 +3608,7 @@ class TensorFlowTestCase(googletest.TestCase):
     elif isinstance(a, ragged_tensor_value.RaggedTensorValue):
       return a.to_list()
     else:
-      return np.array(a).tolist()
+      return np.array(a, dtype=object).tolist()
 
   def _assertRaggedEqual(self, a, b, msg):
     """Asserts that two ragged tensors are equal."""
@@ -3966,3 +3992,59 @@ class TestDelta:
   def Get(self):
     value = _test_metrics_util.test_counter_value(self.name, self.label)
     return value - self.last_value
+
+
+@tf_export("test.experimental.sync_devices")
+def sync_devices():
+  """Synchronizes all devices.
+
+  By default, GPUs run asynchronously. This means that when you run an op on the
+  GPU, like `tf.linalg.matmul`, the op may still be running on the GPU when the
+  function returns. Non-GPU devices can also be made to run asynchronously by
+  calling `tf.config.experimental.set_synchronous_execution(False)`. Calling
+  `sync_devices()` blocks until pending ops have finished executing. This is
+  primarily useful for measuring performance during a benchmark.
+
+  For example, here is how you can measure how long `tf.linalg.matmul` runs:
+
+  >>> import time
+  >>> x = tf.random.normal((4096, 4096))
+  >>> tf.linalg.matmul(x, x)  # Warmup.
+  >>> tf.test.experimental.sync_devices()  # Block until warmup has completed.
+  >>>
+  >>> start = time.time()
+  >>> y = tf.linalg.matmul(x, x)
+  >>> tf.test.experimental.sync_devices()  # Block until matmul has completed.
+  >>> end = time.time()
+  >>> print(f'Time taken: {end - start}')
+
+  If the call to `sync_devices()` was omitted, the time printed could be too
+  small. This is because the op could still be running asynchronously when
+  the line `end = time.time()` is executed.
+
+  Raises:
+    RuntimeError: If run outside Eager mode. This must be called in Eager mode,
+      outside any `tf.function`s.
+  """
+  if not context.executing_eagerly():
+    raise RuntimeError(
+        "sync_devices() must only be called in Eager mode, outside tf.functions"
+    )
+
+  # There are two sources of asynchrony in TensorFlow:
+  #
+  # 1. On GPUs, kernels are run on a CUDA stream, which is inherently
+  #    asynchronous.
+  # 2. Calling `tf.config.experimental.set_synchronous_execution(False)` makes
+  #    all ops asynchronous, in which case TensorFlow maintains internal queues
+  #    of pending ops.
+  #
+  # Calling SyncDevice addresses source (1). Calling async_await addresses
+  # source (2). It is important that SyncDevice() is called before async_wait(),
+  # otherwise the SyncDevice op itself may still be pending on an internal
+  # TensorFlow queue when the sync_devices() Python function returns.
+  devices = config.list_logical_devices()
+  for dev in devices:
+    with ops.device(dev.name):
+      gen_sync_ops.SyncDevice()
+  context.async_wait()

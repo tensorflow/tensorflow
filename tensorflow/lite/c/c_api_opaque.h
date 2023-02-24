@@ -47,23 +47,26 @@ TFL_CAPI_EXPORT extern int32_t TfLiteOpaqueTensorNumDims(
 TFL_CAPI_EXPORT extern int32_t TfLiteOpaqueTensorDim(
     const TfLiteOpaqueTensor* opaque_tensor, int32_t dim_index);
 
-// Returns the number of dimensions that the tensor's signature has.
+// Loads into the provided 'num_dims' the number of dimensions that the tensor's
+// signature has. Returns 'kTfLiteOk' if 'num_dims' was successfully loaded. Any
+// other return code indicates an error and 'num_dims' won't be loaded.
 //
 // A tensor's dimension signature encodes shapes with unknown dimensions with
 // -1.  E.g. for a tensor with three dimensions, whose first dimension has an
-// unkowns size, and the second and third dimension have a size of 2, the
-// dimension signature is [-1,2,2], and 'TfLiteOpaqueTensorNumDimsSignature'
-// returns 3.
-//
-// If the 'opaque_tensor' does not have its dimensions signature property set,
-// which is for example the case when no unkown dimension is present, then -1 is
-// returned to indicate the absence of the dimension signature property.
-TFL_CAPI_EXPORT extern int32_t TfLiteOpaqueTensorNumDimsSignature(
-    const TfLiteOpaqueTensor* opaque_tensor);
+// unknown size, and the second and third dimension have a size of 2, the
+// dimension signature is [-1,2,2], and 'TfLiteOpaqueTensorGetNumDimsSignature'
+// loads 3 into 'num_dims'. If the tensor does not have its dimension signature
+// field set then 'num_dims' is set to -1.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueTensorGetNumDimsSignature(
+    const TfLiteOpaqueTensor* opaque_tensor, int32_t* num_dims);
 
-// Returns the length of the tensor in the "dim_index" signature dimension.
-TFL_CAPI_EXPORT extern int32_t TfLiteOpaqueTensorDimSignature(
-    const TfLiteOpaqueTensor* opaque_tensor, int32_t dim_index);
+// Loads into the provided 'dim_length' the length of the tensor in the
+// 'dim_index' signature dimension or -1 if that dimension has unknown length.
+// Returns 'kTfLiteOk' if 'dim_length' was successfully loaded. Any
+// other return code indicates an error and 'dim_length' won't be loaded.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueTensorGetDimSignature(
+    const TfLiteOpaqueTensor* opaque_tensor, int32_t dim_index,
+    int32_t* dim_length);
 
 // Returns 'non-zero' if the provided 'opaque_tensor' is a variable, and returns
 // zero otherwise.
@@ -110,8 +113,8 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueTensorCopyToBuffer(
 
 // Returns the input tensor of the given node.
 TFL_CAPI_EXPORT extern const TfLiteOpaqueTensor* TfLiteOpaqueNodeGetInput(
-    TfLiteOpaqueContext* opaque_context, const TfLiteOpaqueNode* opaque_node,
-    int index);
+    const TfLiteOpaqueContext* opaque_context,
+    const TfLiteOpaqueNode* opaque_node, int index);
 
 // Returns the output tensor of the given node.
 TFL_CAPI_EXPORT extern TfLiteOpaqueTensor* TfLiteOpaqueNodeGetOutput(
@@ -263,7 +266,7 @@ TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
     struct TfLiteOpaqueContext* opaque_context,
     TfLiteRegistrationExternal* registration_external,
     const TfLiteIntArray* nodes_to_replace,
-    struct TfLiteOpaqueDelegateStruct* opaque_delegate);
+    TfLiteOpaqueDelegate* opaque_delegate);
 
 // Returns modifiable access to the opaque tensor that corresponds to the
 // specified `index` and is associated with the provided `opaque_context`.
@@ -338,6 +341,160 @@ size_t TfLiteOpaqueContextGetNumTensors(
 TFL_CAPI_EXPORT
 const char* TfLiteOpaqueContextGetName(
     const struct TfLiteOpaqueContext* opaque_context);
+
+// Resizes the provided 'tensor' that is associated with the provided
+// 'context' so that the 'tensor's shape matches the dimensionality specified
+// via the provided 'new_size' array.  Returns 'kTfLiteOk' in
+// case of success.  Any other return value indicates a failure and will leave
+// the 'tensor' in an unspecified state.  The TF Lite runtime takes ownership
+// of the 'new_size' array, even in case of failure.
+TFL_CAPI_EXPORT
+TfLiteStatus TfLiteOpaqueContextResizeTensor(TfLiteOpaqueContext* context,
+                                             TfLiteOpaqueTensor* tensor,
+                                             TfLiteIntArray* new_size);
+
+// Reports an error message formed by using the provided 'format' string in
+// combination with the data provided via the unnamed arguments following the
+// the 'format' parameter ('...').  The intended usage and behavior is the same
+// as with 'printf' with regards to how the data and the formatting string
+// interact.  E.g.
+// 'TfLiteOpaqueContextReportError(opaque_context, "a=%d b=%d", a, b);'
+//
+// The provided 'opaque_context' will be used for reporting the resulting error
+// message.
+//
+// Note that TF Lite clients can use macros like 'TF_LITE_OPAQUE_ENSURE' to
+// check for certain conditions to be true, and print an error message if the
+// condition does not hold.  Direct usage of this function from application code
+// should therefore be rare.
+TFL_CAPI_EXPORT
+void TfLiteOpaqueContextReportError(struct TfLiteOpaqueContext* opaque_context,
+                                    const char* format, ...);
+
+// Same as 'TfLiteOpaqueContextReportError', but with the variable arguments
+// passed via a 'va_list' instead of directly.
+//
+// Callers that receive an ellipsis and want to forward it to
+// to the opaque context error reporting API can add the ellipsis content to a
+// 'va_list' and then call 'TfLiteOpaqueContextReportErrorVa'. E.g.:
+//
+// void MyErrorReporter(struct TfLiteOpaqueContext* opaque_context,
+//                                     const char* format, ...) {
+//   va_list vlist;
+//   va_start(vlist, format);
+//   TfLiteOpaqueContextReportErrorVa(opaque_context, format, vlist);
+//   va_end(vlist);
+// }
+TFL_CAPI_EXPORT
+void TfLiteOpaqueContextReportErrorVa(
+    struct TfLiteOpaqueContext* opaque_context, const char* format,
+    va_list vlist);
+
+// Since we must not depend on any libraries, define a minimal subset of
+// error macros while avoiding names that have pre-conceived meanings like
+// assert and check.
+
+// Try to make all reporting calls through TF_LITE_OPAQUE_KERNEL_LOG rather than
+// calling the TfLiteOpaqueContextReportError function directly, so that message
+// strings can be stripped out if the binary size needs to be severely
+// optimized.
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
+
+#if !defined(TF_LITE_OPAQUE_KERNEL_LOG)
+#define TF_LITE_OPAQUE_KERNEL_LOG(opaque_context, ...)             \
+  do {                                                             \
+    TfLiteOpaqueContextReportError((opaque_context), __VA_ARGS__); \
+  } while (false)
+#endif
+
+#if !defined(TF_LITE_OPAQUE_MAYBE_KERNEL_LOG)
+#define TF_LITE_OPAQUE_MAYBE_KERNEL_LOG(opaque_context, ...)         \
+  do {                                                               \
+    if ((opaque_context) != nullptr) {                               \
+      TfLiteOpaqueContextReportError((opaque_context), __VA_ARGS__); \
+    }                                                                \
+  } while (false)
+#endif
+
+#else  // TF_LITE_STRIP_ERROR_STRINGS
+#define ARGS_UNUSED(...) (void)sizeof(#__VA_ARGS__)
+
+#if !defined(TF_LITE_OPAQUE_MAYBE_KERNEL_LOG)
+#define TF_LITE_OPAQUE_KERNEL_LOG(opaque_context, ...) ARGS_UNUSED(__VA_ARGS__)
+#endif
+
+#if !defined(TF_LITE_OPAQUE_MAYBE_KERNEL_LOG)
+#define TF_LITE_OPAQUE_MAYBE_KERNEL_LOG(opaque_context, ...) \
+  ARGS_UNUSED(__VA_ARGS__)
+#endif
+
+#endif  // TF_LITE_STRIP_ERROR_STRINGS
+
+// Check whether value is true, and if not return kTfLiteError from
+// the current function (and report the error string msg).
+#if !defined(TF_LITE_OPAQUE_ENSURE_MSG)
+#define TF_LITE_OPAQUE_ENSURE_MSG(opaque_context, value, msg)        \
+  do {                                                               \
+    if (!(value)) {                                                  \
+      TF_LITE_OPAQUE_KERNEL_LOG((opaque_context), __FILE__ " " msg); \
+      return kTfLiteError;                                           \
+    }                                                                \
+  } while (0)
+#endif
+
+// Check whether the value `a` is true, and if not return kTfLiteError from
+// the current function, while also reporting the location of the error.
+#if !defined(TF_LITE_OPAQUE_ENSURE)
+#define TF_LITE_OPAQUE_ENSURE(opaque_context, a)                           \
+  do {                                                                     \
+    if (!(a)) {                                                            \
+      TF_LITE_OPAQUE_KERNEL_LOG(opaque_context, "%s:%d: %s was not true.", \
+                                __FILE__, __LINE__, #a);                   \
+      return kTfLiteError;                                                 \
+    }                                                                      \
+  } while (0)
+#endif
+
+// Check whether the value `a == b` is true, and if not return kTfLiteError from
+// the current function, while also reporting the location of the error.
+// `a` and `b` may be evaluated more than once, so no side effects or
+// extremely expensive computations should be done.
+// NOTE: Use TF_LITE_ENSURE_TYPES_EQ if comparing TfLiteTypes.
+#if !defined(TF_LITE_OPAQUE_ENSURE_EQ)
+#define TF_LITE_OPAQUE_ENSURE_EQ(opaque_context, a, b)                         \
+  do {                                                                         \
+    if ((a) != (b)) {                                                          \
+      TF_LITE_OPAQUE_KERNEL_LOG((opaque_context), "%s:%d %s != %s (%d != %d)", \
+                                __FILE__, __LINE__, #a, #b, (a), (b));         \
+      return kTfLiteError;                                                     \
+    }                                                                          \
+  } while (0)
+#endif
+
+#if !defined(TF_LITE_OPAQUE_ENSURE_TYPES_EQ)
+#define TF_LITE_OPAQUE_ENSURE_TYPES_EQ(opaque_context, a, b)                   \
+  do {                                                                         \
+    if ((a) != (b)) {                                                          \
+      TF_LITE_OPAQUE_KERNEL_LOG((opaque_context), "%s:%d %s != %s (%s != %s)", \
+                                __FILE__, __LINE__, #a, #b,                    \
+                                TfLiteTypeGetName(a), TfLiteTypeGetName(b));   \
+      return kTfLiteError;                                                     \
+    }                                                                          \
+  } while (0)
+#endif
+
+#if !defined(TF_LITE_OPAQUE_ENSURE_NEAR)
+#define TF_LITE_OPAQUE_ENSURE_NEAR(opaque_context, a, b, epsilon)            \
+  do {                                                                       \
+    auto delta = ((a) > (b)) ? ((a) - (b)) : ((b) - (a));                    \
+    if (delta > epsilon) {                                                   \
+      TF_LITE_OPAQUE_KERNEL_LOG(                                             \
+          (opaque_context), "%s:%d %s not near %s (%f != %f)", __FILE__,     \
+          __LINE__, #a, #b, static_cast<double>(a), static_cast<double>(b)); \
+      return kTfLiteError;                                                   \
+    }                                                                        \
+  } while (0)
+#endif
 
 #ifdef __cplusplus
 }  // extern "C"

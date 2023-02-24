@@ -27,34 +27,69 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/client.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_compiler.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace xla {
 namespace ifrt {
 
-// `Client` implementation that wraps `xla::PjRtClient`.
-class PjRtClient final : public llvm::RTTIExtends<PjRtClient, Client> {
- public:
-  static std::unique_ptr<ifrt::Client> Create(
-      std::shared_ptr<xla::PjRtClient> pjrt_client);
-  static std::unique_ptr<ifrt::Client> Create(
-      std::unique_ptr<xla::PjRtClient> pjrt_client);
+class PjRtCompatibleArray;
 
-  xla::PjRtClient* pjrt_client() const { return pjrt_client_.get(); }
+// PjRt-compatible `Client` interface.
+class PjRtCompatibleClient
+    : public llvm::RTTIExtends<PjRtCompatibleClient, Client> {
+ public:
+  static constexpr int kPjRtBufferInlineSize = 1;
+  using PjRtBuffers =
+      absl::InlinedVector<std::shared_ptr<PjRtBuffer>, kPjRtBufferInlineSize>;
+
+  // APIs that allow direct access to `xla::PjRtClient` for PjRt-only
+  // operations.
+  virtual xla::PjRtClient* pjrt_client() = 0;
+  virtual std::shared_ptr<xla::PjRtClient> shared_ptr_pjrt_client() = 0;
+  virtual StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+      std::shared_ptr<PjRtBuffer> pjrt_buffer) = 0;
+  virtual StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+      Shape shape, PjRtBuffers pjrt_buffers) = 0;
+
+  static char ID;  // NOLINT
+};
+
+// `Client` implementation that wraps `xla::PjRtClient`.
+class PjRtClient final
+    : public llvm::RTTIExtends<PjRtClient, PjRtCompatibleClient> {
+ public:
+  static std::unique_ptr<PjRtClient> Create(
+      std::shared_ptr<xla::PjRtClient> pjrt_client);
+
+  // PjRtCompatibleClient implementation.
+
+  xla::PjRtClient* pjrt_client() override { return pjrt_client_.get(); }
+  std::shared_ptr<xla::PjRtClient> shared_ptr_pjrt_client() override {
+    return pjrt_client_;
+  }
+  StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+      std::shared_ptr<PjRtBuffer> pjrt_buffer) override;
+  StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+      Shape shape, PjRtBuffers pjrt_buffers) override;
 
   // Client implementation.
 
   ~PjRtClient() override = default;
 
-  StatusOr<std::unique_ptr<Array>> MakeArrayFromHostBuffer(
+  StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       std::shared_ptr<const Sharding> sharding,
       Client::HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) override;
 
-  StatusOr<std::unique_ptr<Array>> AssembleArray(
+  StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
       Shape shape, std::shared_ptr<const Sharding> sharding,
-      absl::Span<Array* const> arrays, ArrayCopySemantics semantics) override;
+      absl::Span<tsl::RCReference<Array>> arrays,
+      ArrayCopySemantics semantics) override;
+
+  StatusOr<tsl::RCReference<Tuple>> MakeTuple(
+      absl::Span<tsl::RCReference<Value>> values) override;
 
   absl::string_view runtime_type() const override {
     DCHECK(this);
@@ -111,9 +146,9 @@ class PjRtClient final : public llvm::RTTIExtends<PjRtClient, Client> {
     return pjrt_client_->CreateHostToDeviceChannelHandle();
   }
 
-  Compiler* GetDefaultCompiler() const override {
+  Compiler* GetDefaultCompiler() override {
     DCHECK(this);
-    return const_cast<PjRtCompiler*>(&default_compiler_);
+    return &default_compiler_;
   }
 
   static char ID;  // NOLINT

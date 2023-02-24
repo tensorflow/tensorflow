@@ -68,14 +68,12 @@ ConvParameters::ConvParameters(
   // Have to convert to std::string because apparently our open-source protobuf
   // does not speak absl::string_view.
   proto_.set_device_identifier(
-      std::string(stream_exec->device_description_str()));
+      std::string(stream_exec->GetDeviceDescription().model_str()));
   proto_.set_version(version);
   hash_code_ = ComputeHash(device_id_, proto_);
 }
-
-ConvParameters::ConvParameters(se::StreamExecutor* stream_exec,
-                               const ConvParametersProto& proto)
-    : device_id_(stream_exec->device_ordinal()),
+ConvParameters::ConvParameters(int device_id, const ConvParametersProto& proto)
+    : device_id_(device_id),
       proto_(proto),
       hash_code_(ComputeHash(device_id_, proto_)) {}
 
@@ -108,7 +106,7 @@ MatmulParameters::MatmulParameters(
   // Have to convert to std::string because apparently our open-source protobuf
   // does not speak absl::string_view.
   proto_.set_device_identifier(
-      std::string(stream_exec->device_description_str()));
+      std::string(stream_exec->GetDeviceDescription().model_str()));
   proto_.set_version(version);
   hash_code_ = ComputeHash(device_id_, proto_);
 }

@@ -29,6 +29,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -49,6 +50,8 @@ _VARIABLE_OPS = set(["Variable",
                      "AutoReloadVariable",
                      "VarHandleOp",
                      "ReadVariableOp"])
+
+_REF_VARIABLE_OPS = frozenset(["Variable", "VariableV2", "AutoReloadVariable"])
 
 
 def set_cpu0(device_string):
@@ -188,8 +191,7 @@ def saveable_objects_for_op(op, name):
         raise ValueError(
             f"Slices must all be from the same tensor: {slice_name} != "
             f"{variable._save_slice_info.full_name}")
-      if variable.op.type in ["Variable", "VariableV2",
-                              "AutoReloadVariable"]:
+      if variable.op.type in _REF_VARIABLE_OPS:
         yield ReferenceVariableSaveable(
             variable, variable._save_slice_info.spec, name)
       else:
@@ -199,9 +201,13 @@ def saveable_objects_for_op(op, name):
   elif isinstance(op, trackable.Trackable) and not isinstance(
       op, variables.Variable):
     # pylint: disable=protected-access
-    for attr, factory in saveable_objects_from_trackable(op).items():
+    for attr, factory in saveable_objects_from_trackable(
+        op, tf1_saver=True).items():
       if attr == trackable.VARIABLE_VALUE_KEY:
-        # Keep original name for classes masquerading as variables.
+        # Keep original name for classes masquerading as variables and
+        # Trackables that define _serialize_to_tensors.
+        full_name = name
+      elif attr == trackable_utils.SERIALIZE_TO_TENSORS_NAME:
         full_name = name
       else:
         full_name = name + "_" + attr
@@ -227,8 +233,7 @@ def saveable_objects_for_op(op, name):
         raise TypeError(
             "names_to_saveables must be a dict mapping string "
             f"names to Tensors/Variables. Not a variable: {variable}")
-      if variable.op.type in ["Variable", "VariableV2",
-                              "AutoReloadVariable"]:
+      if variable.op.type in _REF_VARIABLE_OPS:
         yield ReferenceVariableSaveable(variable, "", name)
       else:
         yield ResourceVariableSaveable(variable, "", name)
@@ -290,7 +295,8 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
     elif isinstance(var, trackable.Trackable) and not resource_or_ref_variable:
       trackable_saveables = [
           (factory() if callable(factory) else factory)
-          for factory in saveable_objects_from_trackable(var).values()]
+          for factory in (
+              saveable_objects_from_trackable(var, tf1_saver=True).values())]
       names_to_saveables.update(
           op_list_to_dict(trackable_saveables))
     else:
@@ -577,8 +583,20 @@ def is_factory_for_restored_saveable_object(factory):
 
 
 @tf_export("__internal__.tracking.saveable_objects_from_trackable", v1=[])
-def saveable_objects_from_trackable(obj):
-  """Returns SaveableObject factory dict from a Trackable."""
+def saveable_objects_from_trackable(obj, tf1_saver=False):
+  """Returns SaveableObject factory dict from a Trackable.
+
+  Args:
+    obj: A `Trackable`
+    tf1_saver: Boolean, whether this is being called from a TF1 Saver (
+        `tf.compat.v1.train.Saver`). When this is True, the SaveableObject will
+        be generated from `obj`'s legacy `_gather_saveables_for_checkpoint` fn.
+        When saving with TF2, `Trackable._serialize_from_tensors` is preferred.
+
+  Returns:
+    A dict mapping attribute names to SaveableObject factories (callables that
+    produce a SaveableObject).
+  """
   if isinstance(obj, python_state.PythonState):
     return {
         python_state.PYTHON_STATE:
@@ -587,6 +605,12 @@ def saveable_objects_from_trackable(obj):
                 state_callback=obj.serialize,
                 restore_callback=obj.deserialize)
     }
+
+  if tf1_saver:
+    saveable_factories = obj._gather_saveables_for_checkpoint()  # pylint: disable=protected-access
+    if saveable_factories:
+      return saveable_factories
+
   if trackable_has_serialize_to_tensor(obj):
 
     def create_saveable(name="", call_with_mapped_captures=None):
@@ -599,24 +623,29 @@ def saveable_objects_from_trackable(obj):
 
       specs = []
       local_names = []
-      prefix = saveable_compat.get_saveable_name(obj) or ""
       for tensor_name, maybe_tensor in tensor_dict.items():
         local_names.append(tensor_name)
-        spec_name = name + trackable_utils.escape_local_name(tensor_name)
 
         if not isinstance(maybe_tensor, dict):
           maybe_tensor = {"": maybe_tensor}
 
+        spec_name = name + trackable_utils.escape_local_name(tensor_name)
         # Create separate specs for each slice spec.
         for slice_spec, tensor in maybe_tensor.items():
-          specs.append(saveable_object.SaveSpec(tensor, slice_spec, spec_name))
+          if isinstance(tensor, saveable_object.SaveSpec):
+            spec = tensor
+            spec.name = spec_name
+            spec.slice_spec = slice_spec
+          else:
+            spec = saveable_object.SaveSpec(tensor, slice_spec, spec_name)
+          specs.append(spec)
 
       return TrackableSaveable(
           obj=obj,
           specs=specs,
           name=name,
           local_names=local_names,
-          prefix=prefix,
+          prefix=saveable_compat.get_saveable_name(obj) or "",
           call_with_mapped_captures=call_with_mapped_captures)
 
     return {trackable_utils.SERIALIZE_TO_TENSORS_NAME: create_saveable}
@@ -641,24 +670,25 @@ class TrackableSaveable(saveable_object.SaveableObject):
     for n, local_name in enumerate(self._local_names):
       restored_tensor_dict[local_name] = restored_tensors[n]
 
-    def restore_from_tensors():
-      restore_fn = self._trackable._restore_from_tensors  # pylint: disable=protected-access
-      if (self._call_with_mapped_captures and
-          isinstance(restore_fn, core.ConcreteFunction)):
-        self._call_with_mapped_captures(restore_fn, [restored_tensor_dict])
-      else:
-        restore_fn(restored_tensor_dict)
+    restore_fn = self._trackable._restore_from_tensors  # pylint: disable=protected-access
 
-      # In graph mode, this wrapper function is converted into a tf.function,
-      # and to ensure that _restore_from_tensors is executed, there must be at
-      # least one returned tensor. `_restore_from_tensors` may return zero
-      # tensors so create a dummy constant here.
-      return constant_op.constant(1)
+    # When restoring a RefVariable, call the restore function directly.
+    # pylint: disable=protected-access
+    if not ops.executing_eagerly_outside_functions() and any([
+        spec._tensor.op.type in _REF_VARIABLE_OPS
+        for spec in self.specs
+        if isinstance(spec._tensor, ops.Tensor)]):
+      return restore_fn(restored_tensor_dict)
+    # pylint: enable=protected-access
 
-    if not ops.executing_eagerly_outside_functions():
-      restore_from_tensors = def_function.function(restore_from_tensors,
-                                                   autograph=False)
-    return restore_from_tensors()
+    if (self._call_with_mapped_captures and
+        isinstance(restore_fn, core.ConcreteFunction)):
+      ret = self._call_with_mapped_captures(restore_fn, [restored_tensor_dict])
+    else:
+      ret = restore_fn(restored_tensor_dict)
+    if ret is not None:
+      return ret
+    return gen_control_flow_ops.no_op()
 
   def get_proto_names_and_checkpoint_keys(self):
     return [(self._prefix + local_name, spec.name)
@@ -710,12 +740,28 @@ class _PythonStringStateSaveable(saveable_object.SaveableObject):
 
 
 def trackable_has_serialize_to_tensor(obj):
-  # pylint: disable=protected-access
-  obj_serialize_fn = obj._serialize_to_tensors
-  if hasattr(obj_serialize_fn, "__func__"):
-    obj_serialize_fn = obj_serialize_fn.__func__
-  return trackable.Trackable._serialize_to_tensors != obj_serialize_fn
-  # pylint: enable=protected-access
+  """Returns whether obj's class has `_serialize_to_tensors` defined."""
+  try:
+    if "_serialize_to_tensors" in obj.__dict__:
+      # In some cases (e.g. restored objects), the object may have
+      # `_serialize_to_tensors` even if the class does not.
+      return True
+  except AttributeError:  # Data structure proxy wrappers don't have __dict__.
+    pass
+
+  # Use MRO so that if a parent class has `_serialize_to_tensors`, but the
+  # object class has not yet been migrated, we'll continue to use the obj
+  # class's `_gather_saveables_for_checkpoint` method.
+  for t in type(obj).mro():
+    if t is trackable.Trackable:
+      # Base case. Return False since _serialize_to_tensors will raise a
+      # NotImplemented Error.
+      return False
+    elif "_serialize_to_tensors" in t.__dict__:
+      return True
+    elif "_gather_saveables_for_checkpoint" in t.__dict__:
+      return False
+  return False
 
 
 def _convert_to_string(x):

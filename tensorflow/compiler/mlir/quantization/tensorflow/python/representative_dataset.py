@@ -36,13 +36,55 @@ RepresentativeDatasetMapping = Mapping[str, RepresentativeDataset]
 
 # A type alias expressing that it can be either a RepresentativeDataset or
 # a mapping of signature key to RepresentativeDataset.
-RepresentativeDatasetOrMapping = Union[RepresentativeDataset,
-                                       RepresentativeDatasetMapping]
+RepresentativeDatasetOrMapping = Union[
+    RepresentativeDataset, RepresentativeDatasetMapping
+]
+
+
+class RepresentativeDatasetSaver:
+  """Representative dataset saver.
+
+  Exposes a single method `save` that saves the provided representative dataset
+  into files.
+
+  This is useful when you would like to keep a snapshot of your representative
+  dataset at a file system or when you need to pass the representative dataset
+  as files.
+  """
+
+  def save(
+      self, representative_dataset: RepresentativeDatasetOrMapping
+  ) -> None:
+    """Saves the representative dataset.
+
+    Args:
+      representative_dataset: RepresentativeDataset or
+        RepresentativeDatasetMapping which is a signature_def_key ->
+        representative dataset mapping. RepresentativeDataset should be
+        considered as: {"serving_default": representative_dataset}.
+    """
+    raise NotImplementedError('Method "save" is not implemented.')
+
+
+class RepresentativeDatasetLoader:
+  """Representative dataset loader.
+
+  Exposes a single method `load` that loads the representative dataset from
+  files.
+  """
+
+  def load(self) -> RepresentativeDatasetMapping:
+    """Loads the representative dataset.
+
+    Returns:
+      A signature def key -> representative dataset mapping.
+    """
+    raise NotImplementedError('Method "load" is not implemented.')
 
 
 def replace_tensors_by_numpy_ndarrays(
-    repr_ds: RepresentativeDataset,
-    sess: session.Session) -> RepresentativeDataset:
+    repr_ds: RepresentativeDataset, sess: session.Session
+) -> RepresentativeDataset:
   """Replaces tf.Tensors in samples by their evaluated numpy arrays.
 
   Note: This should be run in graph mode (default in TF1) only.

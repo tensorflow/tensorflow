@@ -38,6 +38,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
@@ -1461,7 +1462,7 @@ class AnonymousExtensionTypeTest(test_util.TensorFlowTestCase,
     loaded_model = load.load(path)
 
     with self.assertRaises(ValueError):
-      type_spec.lookup('tf.test.MaskedTensorV1')
+      type_spec_registry.lookup('tf.test.MaskedTensorV1')
 
     t = constant_op.constant([10, 20, 30])
     v1 = loaded_model.f(t, t)
@@ -1531,10 +1532,10 @@ def temporarily_add_dispatch(op, typ, fn):
 @contextlib.contextmanager
 def temporarily_register_type_spec(name, cls):
   """Context manager for making temporary changes to the TypeSpec registry."""
-  type_spec.register(name)(cls)
+  type_spec_registry.register(name)(cls)
   yield
-  assert type_spec._TYPE_SPEC_TO_NAME.pop(cls) == name
-  assert type_spec._NAME_TO_TYPE_SPEC.pop(name) is cls
+  assert type_spec_registry._TYPE_SPEC_TO_NAME.pop(cls) == name
+  assert type_spec_registry._NAME_TO_TYPE_SPEC.pop(name) is cls
 
 
 if __name__ == '__main__':

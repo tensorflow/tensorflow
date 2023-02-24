@@ -15,6 +15,8 @@ package(
         "//tensorflow/core/platform:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
+        # For proto_serialization library
+        "//tensorflow/cc/experimental/tf2:__subpackages__",
     ],
     licenses = ["notice"],
 )

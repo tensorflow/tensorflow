@@ -52,7 +52,9 @@ void OptimizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   populateWithGenerated(patterns);
   auto func = getOperation();
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    signalPassFailure();
+  }
 }
 
 }  // namespace

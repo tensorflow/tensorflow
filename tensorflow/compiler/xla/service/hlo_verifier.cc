@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 
+#include <algorithm>
+#include <iterator>
 #include <memory>
+#include <numeric>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -36,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
+#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -1545,7 +1550,8 @@ Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
   TF_RETURN_IF_ERROR(CheckAsyncOpComputationThreadName(async_start));
   const Shape& param_shape = async_start->shape().tuple_shapes(0);
   for (int i = 0; i < async_start->operand_count(); ++i) {
-    if (param_shape.tuple_shapes(i) != async_start->operand(i)->shape()) {
+    if (!ShapesSame(param_shape.tuple_shapes(i),
+                    async_start->operand(i)->shape())) {
       return InternalError(
           "The %s expects the shape of operand %d to match the async shape at "
           "index {0} (%s vs %s).",
@@ -1559,7 +1565,7 @@ Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
 
 Status ShapeVerifier::HandleAsyncUpdate(HloInstruction* async_update) {
   TF_RETURN_IF_ERROR(CheckAsyncOpComputationThreadName(async_update));
-  if (async_update->operand(0)->shape() != async_update->shape()) {
+  if (!ShapesSame(async_update->operand(0)->shape(), async_update->shape())) {
     return InternalError(
         "The %s expects the shape of operand and output to match (%s vs %s).",
         HloOpcodeString(async_update->opcode()),
@@ -1576,7 +1582,7 @@ Status ShapeVerifier::HandleAsyncDone(HloInstruction* async_done) {
   TF_RETURN_IF_ERROR(CheckAsyncOpComputationShapes(
       async_done, async_done->operand(0)->shape()));
   const Shape& root_shape = async_done->operand(0)->shape().tuple_shapes(1);
-  if (root_shape != async_done->shape()) {
+  if (!ShapesSame(root_shape, async_done->shape())) {
     return InternalError(
         "The %s expects the shape of output to match the async shape at index "
         "{1} (%s vs %s).",
@@ -2614,15 +2620,14 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   Status Preprocess(HloInstruction* instruction) override {
-    auto previous = instructions_by_name_.find(instruction->name());
-    TF_RET_CHECK(previous == instructions_by_name_.end())
-        << "HLO has name that is not unique within module:\n"
-        << instruction->ToString()
-        << " in computation: " << instruction->parent()->name()
-        << "\nPrevious HLO with same name:\n"
-        << previous->second->ToString()
-        << " in computation: " << previous->second->parent()->name();
-    instructions_by_name_[instruction->name()] = instruction;
+    auto [it, inserted] =
+        instructions_by_name_.insert({instruction->name(), instruction});
+    TF_RET_CHECK(inserted) << "HLO has name that is not unique within module:\n"
+                           << instruction->ToString() << " in computation: "
+                           << instruction->parent()->name()
+                           << "\nPrevious HLO with same name:\n"
+                           << it->second->ToString() << " in computation: "
+                           << it->second->parent()->name();
 
     if (instruction->has_sharding()) {
       Status status =
@@ -2684,16 +2689,6 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     return OkStatus();
   }
 
-  static bool HasFp8Operand(HloInstruction* instruction) {
-    for (HloInstruction* operand : instruction->operands()) {
-      if (ShapeUtil::HasPrimitiveType(operand->shape(), F8E5M2) ||
-          ShapeUtil::HasPrimitiveType(operand->shape(), F8E4M3FN)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   static Status VerifyF8Usage(HloInstruction* instruction) {
     bool has_fp8_operand =
         absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
@@ -2702,11 +2697,24 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         });
     // TODO(b/259609697): Support FP8 operands in all instructions that support
     // inputs of other floating-point dtypes. Currently the CPU and GPU backends
-    // only support FP8 operands in the convert instruction.
-    if (has_fp8_operand && instruction->opcode() != HloOpcode::kConvert) {
+    // only support FP8 operands in the convert, tuple, get-tuple-element and
+    // transpose instructions and FP8 Custom Calls.
+    if (has_fp8_operand && instruction->opcode() != HloOpcode::kConvert &&
+        instruction->opcode() != HloOpcode::kBitcast &&
+        instruction->opcode() != HloOpcode::kTuple &&
+        instruction->opcode() != HloOpcode::kGetTupleElement &&
+        instruction->opcode() != HloOpcode::kTranspose &&
+        instruction->opcode() != HloOpcode::kConvolution &&
+        instruction->opcode() != HloOpcode::kDot &&
+        instruction->opcode() != HloOpcode::kFusion &&
+        instruction->opcode() != HloOpcode::kReshape &&
+        instruction->opcode() != HloOpcode::kCopy &&
+        instruction->opcode() != HloOpcode::kCustomCall) {
       return InvalidArgument(
-          "FP8 is currently only supported in convert instructions, but got "
-          "instruction with FP8 input: %s",
+          "FP8 is currently only supported in convert, bitcast, tuple, "
+          "get-tuple-element, transpose, convolution, dot, fusion, reshape and "
+          "copy instructions as well as Custom Calls, but got instruction with "
+          "FP8 input: %s",
           instruction->ToString());
     }
     return OkStatus();

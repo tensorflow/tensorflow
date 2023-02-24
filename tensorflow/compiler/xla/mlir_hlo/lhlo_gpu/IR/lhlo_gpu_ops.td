@@ -121,6 +121,24 @@ def LHLOGPU_ConvForwardFusedSideInputOp :
          F64Attr:$side_input_scale)>.attributes);
 }
 
+// Reordering helpers for int8x32 cuDNN convolutions.
+def LHLOGPU_CudnnConvReorderFilterOp : LHLOGPU_Op<"cudnn_conv_reorder_filter"> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$filter_input,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$filter_output,
+    I64ElementsAttr:$filter_dims);
+}
+
+def LHLOGPU_CudnnConvReorderFilterAndBiasOp :
+      LHLOGPU_Op<"cudnn_conv_reorder_filter_and_bias"> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$filter_input,
+    Arg<LHLO_Buffer, "", [MemRead]>:$bias_input,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$filter_output,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$bias_output,
+    I64ElementsAttr:$filter_dims);
+}
+
 //===----------------------------------------------------------------------===//
 // LMHLO ops representing other library functions.
 //===----------------------------------------------------------------------===//
@@ -139,13 +157,34 @@ def LHLOGPU_GEMMOp : LHLOGPU_Op<"gemm"> {
     OptionalAttr<I64Attr>:$algorithm);
 }
 
-def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul"> {
+def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul", [AttrSizedOperandSegments]> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$a,
     Arg<LHLO_Buffer, "", [MemRead]>:$b,
     Arg<LHLO_Buffer, "", [MemRead]>:$c,
     Arg<LHLO_Buffer, "", [MemWrite]>:$d,
     Arg<Optional<LHLO_Buffer>, "", [MemRead]>:$bias,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead, MemWrite]>:$aux,
+    MHLO_DotDimensionNumbers:$dot_dimension_numbers,
+    MHLO_PrecisionConfigAttr:$precision_config,
+    F64Attr:$alpha_real,
+    F64Attr:$alpha_imag,
+    F64Attr:$beta,
+    CublasLtMatmulEpilogueAttr:$epilogue,
+    I64Attr:$algorithm);
+}
+
+def LHLOGPU_CublasLtMatmulF8Op : LHLOGPU_Op<"cublas.lt.matmul.f8"> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$a,
+    Arg<LHLO_Buffer, "", [MemRead]>:$b,
+    Arg<LHLO_Buffer, "", [MemRead]>:$c,
+    Arg<LHLO_Buffer, "", [MemRead]>:$a_scale,
+    Arg<LHLO_Buffer, "", [MemRead]>:$b_scale,
+    Arg<LHLO_Buffer, "", [MemRead]>:$c_scale,
+    Arg<LHLO_Buffer, "", [MemRead]>:$d_scale,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$d,
+    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$d_amax,
     MHLO_DotDimensionNumbers:$dot_dimension_numbers,
     MHLO_PrecisionConfigAttr:$precision_config,
     F64Attr:$alpha_real,
@@ -164,8 +203,14 @@ def LHLOGPU_CholeskyOp : LHLOGPU_Op<"cholesky"> {
     BoolAttr:$is_lower);
 }
 
+class LHLOGPU_AsyncCollectiveCommunicationOp<string name, list<Trait> traits = []> :
+  LHLOGPU_Op<name, !listconcat(traits, [SameVariadicOperandSize])> {
+  let results = (outs MHLO_Token:$token);
+  let hasVerifier = 1;
+}
+
 def LHLOGPU_AllReduceStartOp :
-  LHLOGPU_Op<"all_reduce_start", [SameOperandsElementType, SameVariadicOperandSize]> {
+  LHLOGPU_AsyncCollectiveCommunicationOp<"all_reduce_start", [SameOperandsElementType]> {
   let summary = "AllReduceStart operator";
   let description = [{
     Performs an asynchronous custom reduction across replicas.
@@ -178,19 +223,28 @@ def LHLOGPU_AllReduceStartOp :
     OptionalAttr<MHLO_ChannelHandle>:$channel_id,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$use_global_device_ids
   );
-  let results = (outs MHLO_Token:$token);
   let regions = (region SizedRegion<1>:$computation);
-  let hasVerifier = 1;
 }
 
-def LHLOGPU_AllReduceDoneOp:
-  LHLOGPU_Op<"all_reduce_done", [SameVariadicOperandSize]> {
+def LHLOGPU_AllReduceDoneOp: LHLOGPU_Op<"all_reduce_done"> {
   let summary = "AllReduceDone operator";
+  let arguments = (ins MHLO_Token:$token);
+}
+
+def LHLOGPU_CollectivePermuteStartOp :
+  LHLOGPU_AsyncCollectiveCommunicationOp<"collective_permute_start"> {
+  let summary = "CollectivePermuteStart operator";
   let arguments = (ins
-    MHLO_Token:$token,
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
-    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    I64ElementsAttr:$source_target_pairs,
+    OptionalAttr<MHLO_ChannelHandle>:$channel_id
   );
+}
+
+def LHLOGPU_CollectivePermuteDoneOp: LHLOGPU_Op<"collective_permute_done"> {
+  let summary = "CollectivePermuteDone operator";
+  let arguments = (ins MHLO_Token:$token);
 }
 
 #endif // LHLO_GPU_OPS

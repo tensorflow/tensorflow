@@ -381,6 +381,23 @@ func.func @verify_reducer_function(%arg0: tensor<8x5xf32>, %arg1 : tensor<4xf32>
 
 // -----
 
+// Verifies that dynamic input type is allowed with reducer function with static shapes.
+func.func @verify_dynamic_operand(%arg0: tensor<8x?xf32>, %arg1 : tensor<4xf32>)
+    -> (tensor<?xf32>) {
+
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
+
+  ^bb0(%arg2: tensor<4xf32>, %arg3: tensor<4xf32> ):
+    %1 = "mhlo.add"(%arg2, %arg3) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+    "mhlo.return"(%1) : (tensor<4xf32>) -> ()
+
+  }) {dimensions = dense<[0]> : tensor<1xi64>} : (tensor<8x?xf32>, tensor<4xf32>) -> tensor<?xf32>
+
+  func.return %0: tensor<?xf32>
+}
+
+// -----
+
 func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
     %arg2: tensor<f32>, %arg3: tensor<i32>) -> (tensor<?xf32>) {
 

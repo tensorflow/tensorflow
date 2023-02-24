@@ -91,6 +91,8 @@ class TensorFlowDialect final : public Dialect {
     return failure();
   }
 
+  static bool HasConstantFoldHook() { return constant_fold_hook_; }
+
   // Provides a hook for op interface.
   void *getRegisteredInterfaceForOp(mlir::TypeID interface,
                                     mlir::OperationName opName) override;

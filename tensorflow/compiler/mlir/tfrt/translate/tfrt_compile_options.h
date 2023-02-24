@@ -78,12 +78,31 @@ struct TfrtCompileOptions {
   // tpu host allocator. This options is experimental.
   bool use_tpu_host_allocator_for_inputs = false;
 
+  // To allow unpadded batch for TPU execution.
+  enum class TpuAllowUnpaddedBatch {
+    // Disable this feature.
+    kDisabled,
+    // Enable this feature when in-graph batching is detected.
+    kAuto,
+    // Force to enable this feature.
+    kEnforced,
+  };
+  TpuAllowUnpaddedBatch tpu_allow_unpadded_batch =
+      TpuAllowUnpaddedBatch::kDisabled;
+
   // If true, the compiler will try to hoist invariant ops (e.g., const ops and
   // their non-side-effecting consumers) to loading phase, which avoids the
   // runtime cost during later running.
   // TODO(tfrt-devs): Set the default value to true after testing as it is
   // supposed to be turned on by default.
   bool hoist_invariant_ops = false;
+
+  // If true, the compiler will try to sink in the invariant ops (e.g. const
+  // ops, var handle ops, etc.) to the nested function (e.g. batch function) to
+  // facilitate invariant ops hoisting.
+  // TODO(tfrt-devs): Set the default value to true after testing as it is
+  // supposed to be turned on by default.
+  bool sink_in_invariant_ops = false;
 
   // If true, tf.While's iterations will be parallelized on a best-effort
   // basis. This is currently experimental.
@@ -125,6 +144,10 @@ struct TfrtCompileOptions {
 
   // Whether to compile to sync TFRT dialect.
   bool compile_to_sync_tfrt_dialect = false;
+
+  // Whether to use bridge for GPU.
+  // TODO(b/260915352): Remove the flag and default to using bridge.
+  bool use_bridge_for_gpu = false;
 };
 
 std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options);

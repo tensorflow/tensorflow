@@ -214,7 +214,11 @@ def create_distributed_mesh(
     return mesh
 
   if device_type.upper() == 'TPU':
-    mesh = tpu_util.create_tpu_mesh(dim_names, shape, mesh_name, use_xla_spmd)
+    mesh = tpu_util.create_tpu_mesh(
+        mesh_dim_names=dim_names,
+        mesh_shape=shape,
+        mesh_name=mesh_name,
+        use_xla_spmd=use_xla_spmd)
     _print_context(
         config.num_global_devices(device_type), config.num_clients(),
         config.client_id(), device_type, mesh)

@@ -187,6 +187,7 @@ struct ReturnResults {
         tensor_proto->add_sizes(size);
       }
 
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(data, size_in_bytes);
       tensor_proto->set_contents(std::string(data, size_in_bytes));
       tensor_proto->set_dtype(desc->dtype());
 
@@ -294,7 +295,7 @@ absl::Status Execute(RunnerFlags flags,
   // Execute and convert results to proto message.
   if (auto executed = executable->Execute(args, converter, execute_opts);
       !executed.ok())
-    return executed;
+    return executed.status();
 
   if (auto inout = WriteInoutResults(args_proto, args, &results_proto);
       !inout.ok())

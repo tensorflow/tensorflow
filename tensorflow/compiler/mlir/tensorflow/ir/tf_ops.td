@@ -321,7 +321,7 @@ def TF_YieldOp : TF_Op<"Yield",
     region.
   }];
 
-  let arguments = (ins Variadic<AnyType>:$operands);
+  let arguments = (ins Variadic<AnyType>);
 }
 
 def TF_IfRegionOp : TF_Op<"IfRegion",
@@ -1435,6 +1435,9 @@ operations inside a TPU host.
   );
 }
 
+// We must manually define TPUPartitionedInput, TPUPartitionedInputV2,
+// TPUPartitionedOutput, and TPUPartitionedOutputV2 since they have an
+// optional attribute, _XlaSharding, unlike the TensorFlow definition.
 def TF_TPUPartitionedInputOp : TF_Op<"TPUPartitionedInput", [Pure]> {
   let summary = [{
 An op that groups a list of partitioned inputs together. This op
@@ -1455,6 +1458,28 @@ An op that groups a list of partitioned inputs together. This op
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
+def TF_TPUPartitionedInputV2Op : TF_Op<"TPUPartitionedInputV2", [Pure]> {
+  let summary = [{
+An op that groups a list of partitioned inputs together. Supports ND sharding.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$inputs,
+    I64ArrayAttr:$partition_dims,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_packed,
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+
+  let hasVerifier = 1;
+}
+
 def TF_TPUPartitionedOutputOp : TF_Op<"TPUPartitionedOutput", [Pure]> {
   let summary = [{
 An op that demultiplexes a tensor to be sharded by XLA to a list of partitioned
@@ -1468,6 +1493,30 @@ outputs outside the XLA computation.
     TF_Tensor:$inputs,
 
     DefaultValuedOptionalAttr<I64Attr, "0">:$partition_dim,
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultSizeAttr num_splits = TF_DerivedResultSizeAttr<0>;
+}
+
+def TF_TPUPartitionedOutputV2Op : TF_Op<"TPUPartitionedOutputV2", [Pure]> {
+  let summary = [{
+An op that demultiplexes a tensor to be sharded by XLA to a list of partitioned
+  }];
+
+  let description = [{
+outputs outside the XLA computation. Supports ND sharding.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$inputs,
+
+    I64ArrayAttr:$partition_dims,
     OptionalAttr<StrAttr>:$_XlaSharding
   );
 
