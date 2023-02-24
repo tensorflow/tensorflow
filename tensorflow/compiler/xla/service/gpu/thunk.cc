@@ -50,6 +50,10 @@ Thunk::ExecuteParams::ExecuteParams(
       return "kCustomCall";
     case Thunk::kNcclAllGather:
       return "kNcclAllGather";
+    case Thunk::kNcclAllGatherStart:
+      return "kNcclAllGatherStart";
+    case Thunk::kNcclAllGatherDone:
+      return "kNcclAllGatherDone";
     case Thunk::kNcclAllReduce:
       return "kNcclAllReduce";
     case Thunk::kNcclAllReduceStart:

@@ -309,15 +309,12 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // AllGather.
 //===----------------------------------------------------------------------===//
 
-static absl::Status AllGatherImpl(
-    const ServiceExecutableRunOptions* run_options,
-    CollectivesSupport* collectives, CustomCall::RemainingArgs args,
-    int32_t uid, int64_t group_mode, int64_t op_id,
-    absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values) {
 #if XLA_ENABLE_XCCL
-  VLOG(3) << "Running AllGather";
-  se::Stream* stream = run_options->stream();
+static absl::Status AllGatherImplCommon(
+    const ServiceExecutableRunOptions* run_options, se::Stream* stream,
+    CustomCall::RemainingArgs args, int32_t uid, int64_t group_mode,
+    int64_t op_id, absl::Span<const int64_t> replica_group_offsets,
+    absl::Span<const int64_t> replica_group_values) {
   NcclExecuteParams params(*run_options, stream);
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
@@ -327,8 +324,23 @@ static absl::Status AllGatherImpl(
   auto device_buffers = GetDeviceBufferPairs(args);
   if (!device_buffers.ok()) return ToAbslStatus(device_buffers.status());
 
-  auto st = RunAllGather(*device_buffers, *stream, **comm);
-  if (!st.ok()) return ToAbslStatus(st);
+  return ToAbslStatus(RunAllGather(*device_buffers, *stream, **comm));
+}
+#endif  // XLA_ENABLE_XCCL
+
+static absl::Status AllGatherImpl(
+    const ServiceExecutableRunOptions* run_options,
+    CollectivesSupport* collectives, CustomCall::RemainingArgs args,
+    int32_t uid, int64_t group_mode, int64_t op_id,
+    absl::Span<const int64_t> replica_group_offsets,
+    absl::Span<const int64_t> replica_group_values) {
+#if XLA_ENABLE_XCCL
+  VLOG(3) << "Running AllGather";
+  se::Stream* stream = run_options->stream();
+  auto status =
+      AllGatherImplCommon(run_options, stream, args, uid, group_mode, op_id,
+                          replica_group_offsets, replica_group_values);
+  if (!status.ok()) return status;
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
   return collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream);
@@ -348,6 +360,60 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<int64_t>("op_id")
         .Attr<absl::Span<const int64_t>>("replica_group_offsets")
         .Attr<absl::Span<const int64_t>>("replica_group_values"));
+
+//===----------------------------------------------------------------------===//
+// AllGatherStart.
+//===----------------------------------------------------------------------===//
+
+static absl::Status AllGatherStartImpl(
+    const ServiceExecutableRunOptions* run_options,
+    AsyncCollectivesSupport* async_collectives, CustomCall::RemainingArgs args,
+    int64_t group_mode, int64_t op_id,
+    absl::Span<const int64_t> replica_group_offsets,
+    absl::Span<const int64_t> replica_group_values, int32_t uid) {
+#if XLA_ENABLE_XCCL
+  VLOG(3) << "Running AllGatherStart";
+  se::Stream* stream = run_options->stream();
+  se::Stream* async_stream = async_collectives->async_comm_stream();
+
+  // Wait until compute inputs are ready.
+  async_stream->ThenWaitFor(stream);
+
+  auto status =
+      AllGatherImplCommon(run_options, async_stream, args, uid, group_mode,
+                          op_id, replica_group_offsets, replica_group_values);
+  if (!status.ok()) return status;
+
+  return async_collectives->RecordEvent(uid);
+#else   // XLA_ENABLE_XCCL
+  return absl::InternalError("NCCL disabled");
+#endif  // XLA_ENABLE_XCCL
+}
+
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    AllGatherStart, FunctionWrapper<AllGatherStartImpl>(), checks,
+    CustomCall::Bind("xla.gpu.all_gather_start")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<AsyncCollectivesSupport*>()
+        .RemainingArgs()              // args
+        .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
+        .Attr<int64_t>("op_id")
+        .Attr<absl::Span<const int64_t>>("replica_group_offsets")
+        .Attr<absl::Span<const int64_t>>("replica_group_values")
+        .Attr<int32_t>("uid"));
+
+//===----------------------------------------------------------------------===//
+// AllGatherDone.
+//===----------------------------------------------------------------------===//
+
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    AllGatherDone, FunctionWrapper<AsyncDoneImpl>(), checks,
+    CustomCall::Bind("xla.gpu.all_gather_done")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<CollectivesSupport*>()
+        .UserData<AsyncCollectivesSupport*>()
+        .Value("AllGatherDone")
+        .Attr<int32_t>("uid"));
 
 //===----------------------------------------------------------------------===//
 // AllReduce.
@@ -622,6 +688,8 @@ void RegisterCollectiveCustomCalls(
   registry.Register("xla.gpu.collective_permute_done", CollectivePermuteDone);
   registry.Register("xla.gpu.collective_permute_start", CollectivePermuteStart);
   registry.Register("xla.gpu.all_gather", AllGather);
+  registry.Register("xla.gpu.all_gather_done", AllGatherDone);
+  registry.Register("xla.gpu.all_gather_start", AllGatherStart);
   registry.Register("xla.gpu.all_reduce", AllReduce);
   registry.Register("xla.gpu.all_reduce_done", AllReduceDone);
   registry.Register("xla.gpu.all_reduce_start", AllReduceStart);

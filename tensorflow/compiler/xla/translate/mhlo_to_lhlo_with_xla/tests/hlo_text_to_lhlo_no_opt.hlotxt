@@ -889,3 +889,20 @@ ENTRY main {
   %recv = (f32[4]{0}, u32[], token[]) recv(token[] %tok), channel_id=1, is_host_transfer=true, frontend_attributes={_xla_host_transfer_handler_name="undef",_xla_host_transfer_is_lower_bits="false",_xla_host_transfer_original_type="f32",_xla_host_transfer_rendezvous="undef"}
   ROOT %recv-done = (f32[4]{0}, token[]) recv-done((f32[4]{0}, u32[], token[]) %recv), channel_id=1, is_host_transfer=true
 }
+
+// -----
+
+HloModule TestAllGatherAsync
+
+// CHECK: func @main
+// CHECK: %[[TOKEN:.*]] = "lmhlo_gpu.all_gather_start"(%{{.*}}, %{{.*}}) {
+// CHECK-SAME: all_gather_dimension = 1 : i64
+// CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+// CHECK-SAME: use_global_device_ids = false
+// CHECK ""lmhlo_gpu.all_gather_done"(%[[TOKEN]])
+ENTRY main {
+  param0 = f32[10,20] parameter(0)
+  ags = (f32[10,20], f32[10,80]) all-gather-start(param0), replica_groups={{0,1,2,3}},
+    dimensions={1}
+  ROOT ag = f32[10,80] all-gather-done(ags)
+}

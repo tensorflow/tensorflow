@@ -2195,7 +2195,7 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
     auto strides = *select_and_scatter_op.getWindowStrides();
     auto paddings = *select_and_scatter_op.getPadding();
 
-    for (auto stride_and_padding :
+    for (const auto& stride_and_padding :
          llvm::enumerate(llvm::zip(strides, paddings))) {
       const int i = stride_and_padding.index();
       int64_t stride = std::get<0>(stride_and_padding.value()).getSExtValue();
@@ -2932,16 +2932,14 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
     auto thunk =
         std::make_unique<NcclThunkType>(GetThunkInfo(op), collective_permute_op,
                                         replica_count, partition_count, buffer);
-    if constexpr (std::is_same_v<NcclThunkType,
-                                 NcclCollectivePermuteStartThunk>) {
+    if constexpr (NcclThunkType::IsAsync()) {
       async_executor = &thunk->async_executor();
     }
     AddThunkToThunkSequence(std::move(thunk));
   }
 
   // Signal that start thunk not created with nullptr.
-  if constexpr (std::is_same_v<NcclThunkType,
-                               NcclCollectivePermuteStartThunk>) {
+  if constexpr (NcclThunkType::IsAsync()) {
     async_executors_.insert({op, async_executor});
   }
   return OkStatus();
@@ -2968,7 +2966,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   // Stash relevant information in NcclCollectiveThunk::Buffer even if we may
   // not generate an NcclCollectiveThunk.
   std::vector<NcclCollectiveThunk::Buffer> buffers;
-  buffers.reserve(op.getOperands().size());
+  buffers.reserve(op.getInputs().size());
   for (auto it : llvm::zip(op.getInputs(), op.getOutputs())) {
     mlir::Value operand = std::get<0>(it);
     mlir::Value result = std::get<1>(it);
@@ -2988,7 +2986,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
         std::make_unique<NcclThunkType>(GetThunkInfo(op), op,
                                         /*buffers=*/std::move(buffers));
 
-    if constexpr (std::is_same_v<NcclThunkType, NcclAllReduceStartThunk>) {
+    if constexpr (NcclThunkType::IsAsync()) {
       async_executors_.insert({untyped_op, &thunk->async_executor()});
     }
 
@@ -2997,7 +2995,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   }
 
   // Signal that start thunk not created with nullptr.
-  if constexpr (std::is_same_v<NcclThunkType, NcclAllReduceStartThunk>) {
+  if constexpr (NcclThunkType::IsAsync()) {
     async_executors_.insert({untyped_op, nullptr});
   }
 
@@ -5571,6 +5569,16 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
 
   if (mlir::isa<mlir::lmhlo::AllGatherOp>(op)) {
     return EmitNcclThunk<NcclAllGatherThunk, mlir::lmhlo::AllGatherOp>(op);
+  }
+
+  if (mlir::isa<mlir::lmhlo_gpu::AllGatherStartOp>(op)) {
+    return EmitNcclThunk<NcclAllGatherStartThunk,
+                         mlir::lmhlo_gpu::AllGatherStartOp>(op);
+  }
+
+  if (mlir::isa<mlir::lmhlo_gpu::AllGatherDoneOp>(op)) {
+    return EmitNcclAsyncDone<NcclAllGatherDoneThunk,
+                             mlir::lmhlo_gpu::AllGatherDoneOp>(op);
   }
 
   if (mlir::isa<mlir::lmhlo::AllReduceOp>(op)) {
