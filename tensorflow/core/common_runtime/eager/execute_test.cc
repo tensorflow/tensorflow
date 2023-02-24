@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -52,6 +53,113 @@ TEST(ExecuteTest, EagerOperationAsFunction) {
   std::vector<TensorHandle*> retvals(1);
   int num_retvals = retvals.size();
   TF_ASSERT_OK(EagerExecute(op.get(), retvals.data(), &num_retvals));
+
+  retvals[0]->Unref();
+  retvals[0] = nullptr;
+  ctx->Unref();
+}
+
+TEST(ExecuteTest, SimpleFunction) {
+  StaticDeviceMgr device_mgr(
+      DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:0"));
+  auto ctx = new EagerContext(
+      SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_EXPLICIT,
+      false, &device_mgr, false, nullptr, nullptr);
+
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
+  const string function_name = "XTimesTwo";
+  const FunctionDef x_times_two = FunctionDefHelper::Define(
+      // Name
+      function_name,
+      // Args
+      {"x: int64"},
+      // Return values
+      {"y: int64"},
+      // Attr def
+      {},
+      // Nodes
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+          {{"scale"},
+           "Cast",
+           {"two"},
+           {{"SrcT", DT_INT64}, {"DstT", DT_INT64}}},
+          {{"y"}, "Mul", {"x", "scale"}, {{"T", DT_INT64}}},
+      });
+  TF_ASSERT_OK(ctx->AddFunctionDef(x_times_two));
+
+  auto op = std::make_unique<EagerOperation>(ctx);
+  TF_ASSERT_OK(op->Reset(
+      /*op=*/function_name.c_str(),
+      /*raw_device_name=*/"/job:localhost/replica:0/task:0/device:CPU:0"));
+
+  Tensor input_tensor = test::AsScalar<int64_t>(3);
+  auto input = core::RefCountPtr<ImmediateExecutionTensorHandle>(
+      ctx->CreateLocalHandleFromTFTensor(input_tensor,
+                                         ctx->HostCPUName().c_str()));
+  TF_ASSERT_OK(op->AddInput(input.get()));
+
+  monitoring::testing::CellReader<int64_t> counter_reader(
+      "/tensorflow/core/tf_function_compile");
+  std::vector<TensorHandle*> retvals(1);
+  int num_retvals = retvals.size();
+  TF_ASSERT_OK(EagerExecute(op.get(), retvals.data(), &num_retvals));
+  EXPECT_EQ(counter_reader.Delta("CPU", "disabled"), 1);
+
+  retvals[0]->Unref();
+  retvals[0] = nullptr;
+  ctx->Unref();
+}
+
+TEST(ExecuteTest, CompiledFunction) {
+  StaticDeviceMgr device_mgr(
+      DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:0"));
+  auto ctx = new EagerContext(
+      SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_EXPLICIT,
+      false, &device_mgr, false, nullptr, nullptr);
+
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
+  const string function_name = "XTimesTwo";
+  const FunctionDef x_times_two = FunctionDefHelper::Define(
+      // Name
+      function_name,
+      // Args
+      {"x: int64"},
+      // Return values
+      {"y: int64"},
+      // Attr def
+      {},
+      // Nodes
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+          {{"scale"},
+           "Cast",
+           {"two"},
+           {{"SrcT", DT_INT64}, {"DstT", DT_INT64}}},
+          {{"y"}, "Mul", {"x", "scale"}, {{"T", DT_INT64}}},
+      });
+  TF_ASSERT_OK(ctx->AddFunctionDef(x_times_two));
+
+  auto op = std::make_unique<EagerOperation>(ctx);
+  TF_ASSERT_OK(op->Reset(
+      /*op=*/function_name.c_str(),
+      /*raw_device_name=*/"/job:localhost/replica:0/task:0/device:CPU:0"));
+  TF_ASSERT_OK(op->SetAttrBool("_XlaMustCompile", true));
+
+  Tensor input_tensor = test::AsScalar<int64_t>(3);
+  auto input = core::RefCountPtr<ImmediateExecutionTensorHandle>(
+      ctx->CreateLocalHandleFromTFTensor(input_tensor,
+                                         ctx->HostCPUName().c_str()));
+  TF_ASSERT_OK(op->AddInput(input.get()));
+
+  monitoring::testing::CellReader<int64_t> counter_reader(
+      "/tensorflow/core/tf_function_compile");
+  std::vector<TensorHandle*> retvals(1);
+  int num_retvals = retvals.size();
+  TF_ASSERT_OK(EagerExecute(op.get(), retvals.data(), &num_retvals));
+  EXPECT_EQ(counter_reader.Delta("CPU", "enabled"), 1);
 
   retvals[0]->Unref();
   retvals[0] = nullptr;
