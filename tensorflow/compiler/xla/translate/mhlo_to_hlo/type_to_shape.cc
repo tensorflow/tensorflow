@@ -72,6 +72,8 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
     switch (integer_type.getWidth()) {
       case 1:
         return PrimitiveType::PRED;
+      case 4:
+        return is_unsigned ? PrimitiveType::U4 : PrimitiveType::S4;
       case 8:
         return is_unsigned ? PrimitiveType::U8 : PrimitiveType::S8;
       case 16:

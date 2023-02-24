@@ -2663,5 +2663,41 @@ TEST_F(HloVerifierTest, InvalidF8Usage) {
                 "reshape and copy instructions as well as Custom Calls"));
 }
 
+TEST_F(HloVerifierTest, InvalidS4Usage) {
+  const char* const hlo = R"(
+  HloModule Module
+
+  ENTRY entry {
+    param0 = s32[] parameter(0)
+    x = s4[] convert(param0)
+    ROOT add = s4[] add(x, x)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr("S4/U4 is currently only supported in matmul and convolution"));
+}
+
+TEST_F(HloVerifierTest, InvalidU4Usage) {
+  const char* const hlo = R"(
+  HloModule Module
+
+  ENTRY entry {
+    param0 = u32[] parameter(0)
+    x = u4[] convert(param0)
+    ROOT add = u4[] add(x, x)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr("S4/U4 is currently only supported in matmul and convolution"));
+}
+
 }  // namespace
 }  // namespace xla

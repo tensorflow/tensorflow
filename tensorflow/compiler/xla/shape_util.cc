@@ -69,6 +69,8 @@ constexpr uint8_t primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
     sizeof(complex128),  // C128 = 18
     sizeof(float) / 4,   // F8E5M2 = 19
     sizeof(float) / 4,   // F8E4M3FN = 20
+    sizeof(int8_t),      // S4 = 21
+    sizeof(int8_t),      // U4 = 22
 };
 constexpr int64_t kAnnotationPrintInterval = 5;
 
@@ -544,6 +546,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ bool ShapeUtil::ElementIsSigned(const Shape& shape) {
   switch (shape.element_type()) {
+    case S4:
     case S8:
     case S16:
     case S32:
@@ -557,6 +560,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       return true;
 
     case PRED:
+    case U4:
     case U8:
     case U16:
     case U32:
@@ -815,6 +819,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   switch (primitive_type) {
     case PRED:
       return sizeof(int8_t);
+    case S4:
+      return sizeof(int8_t);
     case S8:
       return sizeof(int8_t);
     case S16:
@@ -823,6 +829,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       return sizeof(int32_t);
     case S64:
       return sizeof(int64_t);
+    case U4:
+      return sizeof(uint8_t);
     case U8:
       return sizeof(uint8_t);
     case U16:

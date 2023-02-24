@@ -1360,10 +1360,12 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
     case TUPLE:
     case OPAQUE_TYPE:
     case TOKEN:
+    case S4:
     case S8:
     case S16:
     case S32:
     case S64:
+    case U4:
     case U8:
     case U16:
     case U32:
