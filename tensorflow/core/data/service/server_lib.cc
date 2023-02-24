@@ -178,6 +178,41 @@ void WorkerGrpcDataServer::AddDataServiceToBuilder(
   service_ = std::make_unique<GrpcWorkerImpl>(config_, builder).release();
 }
 
+void WorkerGrpcDataServer::MaybeStartAlternativeDataTransferServer(
+    std::vector<DataTransferServerInfo>& transfer_servers) {
+  if (config_.data_transfer_protocol().empty() ||
+      config_.data_transfer_protocol() == kGrpcTransferProtocol) {
+    return;
+  }
+  Status s = DataTransferServer::Build(config_.data_transfer_protocol(),
+                                       service_->get_element_getter(),
+                                       &transfer_server_);
+  if (!s.ok()) {
+    LOG(ERROR) << "failed to build " << config_.data_transfer_protocol()
+               << " server for worker " << config_.worker_address() << ": "
+               << s;
+    return;
+  }
+  s = transfer_server_->Start();
+  if (!s.ok()) {
+    LOG(ERROR) << "failed to start " << config_.data_transfer_protocol()
+               << " server for worker " << config_.worker_address() << ": "
+               << s;
+    return;
+  }
+  LOG(INFO) << "Data transfer server started at 0.0.0.0:"
+            << transfer_server_->get_port() << " for protocol "
+            << config_.data_transfer_protocol() << " for worker "
+            << config_.worker_address();
+  DataTransferServerInfo alternative_transfer_server;
+  alternative_transfer_server.set_protocol(config_.data_transfer_protocol());
+  alternative_transfer_server.set_address(
+      str_util::StringReplace(config_.data_transfer_address(), kPortPlaceholder,
+                              absl::StrCat(transfer_server_->get_port()),
+                              /*replace_all=*/false));
+  transfer_servers.push_back(alternative_transfer_server);
+}
+
 Status WorkerGrpcDataServer::StartServiceInternal() {
   std::string base_address = config_.worker_address();
   if (base_address.empty()) {
@@ -190,22 +225,7 @@ Status WorkerGrpcDataServer::StartServiceInternal() {
   grpc_transfer_server.set_protocol(kGrpcTransferProtocol);
   grpc_transfer_server.set_address(worker_address);
   std::vector<DataTransferServerInfo> transfer_servers = {grpc_transfer_server};
-  if (!config_.data_transfer_protocol().empty() &&
-      config_.data_transfer_protocol() != kGrpcTransferProtocol) {
-    TF_RETURN_IF_ERROR(DataTransferServer::Build(
-        config_.data_transfer_protocol(), service_->get_element_getter(),
-        &transfer_server_));
-    TF_RETURN_IF_ERROR(transfer_server_->Start());
-    LOG(INFO) << "Data transfer server started at 0.0.0.0:"
-              << transfer_server_->get_port();
-    DataTransferServerInfo alternative_transfer_server;
-    alternative_transfer_server.set_protocol(config_.data_transfer_protocol());
-    alternative_transfer_server.set_address(str_util::StringReplace(
-        config_.data_transfer_address(), kPortPlaceholder,
-        absl::StrCat(transfer_server_->get_port()),
-        /*replace_all=*/false));
-    transfer_servers.push_back(alternative_transfer_server);
-  }
+  MaybeStartAlternativeDataTransferServer(transfer_servers);
   TF_RETURN_IF_ERROR(service_->Start(worker_address, transfer_servers));
   return OkStatus();
 }
