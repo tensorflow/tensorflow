@@ -17,6 +17,9 @@ from typing import Collection, Dict, Mapping, Optional, Sequence
 
 from absl import logging
 
+# pylint: disable=g-importing-member
+from google.protobuf.any_pb2 import Any
+# pylint: enable=g-importing-member
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
@@ -293,6 +296,7 @@ def save_model_v1(
     save_op_name: Optional[str] = None,
     checkpoint_dir: Optional[str] = None,
     function_aliases: Optional[Mapping[str, str]] = None,
+    asset_file_defs: Sequence[meta_graph_pb2.AssetFileDef] = (),
 ) -> None:
   """Saves the model.
 
@@ -309,6 +313,10 @@ def save_model_v1(
     save_op_name: Name of the node for saving variables.
     checkpoint_dir: Path to checkpoint file where variable values are saved.
     function_aliases: Function name -> function alias mapping.
+    asset_file_defs: `AssetFileDef`s that associates the asset files and the
+      name of the tensors to which the asset file names should be fed. The
+      caller should make sure the asset files exist in the output saved model
+      directory.
 
   Raises:
     ValueError iff the graph does not contain a valid signature or the file
@@ -324,6 +332,16 @@ def save_model_v1(
     signature_def_map = _validate_signatures(
         signature_def_map, ops.get_default_graph()
     )
+
+    # Add `AssetFileDef`s to the collection so that correct values are fed to
+    # the tensors that accept asset file paths.
+    for asset_file_def in asset_file_defs:
+      asset_any_proto = Any()
+      asset_any_proto.Pack(asset_file_def)
+      ops.add_to_collection(
+          saved_model_constants.ASSETS_KEY,
+          asset_any_proto,
+      )
 
     # `restore_op_name` and `save_op_name` are non-empty & non-None when
     # variables should be restored / saved.
