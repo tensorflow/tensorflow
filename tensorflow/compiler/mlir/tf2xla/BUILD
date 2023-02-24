@@ -2,6 +2,7 @@
 #    TF2XLA Bridge and related components.
 
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -82,6 +83,18 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:register",
+    ],
+)
+
+tf_cc_test(
+    name = "compile_mlir_util_test",
+    srcs = ["api/v0/compile_mlir_util_test.cc"],
+    deps = [
+        ":compile_mlir_util",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Pass",
     ],
 )
 
