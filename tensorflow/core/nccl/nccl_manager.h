@@ -192,6 +192,10 @@ class NcclManager {
   void AddReduceRecv(std::unique_ptr<Participant> participant,
                      const Context& context, ncclRedOp_t reduction_op);
 
+  // Adds one participant to an all-to-all.
+  void AddToAllToAll(std::unique_ptr<Participant> participant,
+                     const Context& context);
+
   // Signals that the `Collective` corresponding to `key` is ready to launch
   // across all nodes participating in this multi-node collective operation.
   //
@@ -215,6 +219,7 @@ class NcclManager {
     kReduce = 3,
     kAllGather = 4,
     kReduceScatter = 5,
+    kAllToAll = 6,
   };
   struct Collective;
   struct Communicator;

@@ -40,36 +40,6 @@ func.func @lower_vector_contract(%arg0: tensor<8x8xf32>, %arg1: tensor<8x8xf32>)
 
 // -----
 
-func.func @canonicalize_outer_product(%arg0: tensor<8x8xf32>, %arg1: tensor<8x8xf32>)
-                  -> tensor<8x8xf32> {
-  %c0 = arith.constant 0 : index
-  %cst = arith.constant dense<0.000000e+00> : vector<8x8xf32>
-  %cst_0 = arith.constant 0.000000e+00 : f32
-  %0 = tensor.empty() : tensor<8x8xf32>
-  %2 = vector.transfer_read %arg0[%c0, %c0], %cst_0 {in_bounds = [true, true]} : tensor<8x8xf32>, vector<8x8xf32>
-  %3 = vector.transfer_read %arg1[%c0, %c0], %cst_0 {in_bounds = [true, true]} : tensor<8x8xf32>, vector<8x8xf32>
-  %5 = gml_st.materialize %cst[0, 0] [8, 8] [1, 1]  : vector<8x8xf32> to vector<8x8xf32>
-  %6 = vector.contract {indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>, affine_map<(d0, d1, d2) -> (d2, d1)>, affine_map<(d0, d1, d2) -> (d0, d1)>], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %2, %3, %5 : vector<8x8xf32>, vector<8x8xf32> into vector<8x8xf32>
-  %7 = vector.transfer_write %6, %0[%c0, %c0] {in_bounds = [true, true]} : vector<8x8xf32>, tensor<8x8xf32>
-  return %7 : tensor<8x8xf32>
-}
-
-// CHECK-LABEL: func @canonicalize_outer_product(
-// CHECK-SAME:      %[[LHS:.*]]: tensor<8x8xf32>, %[[RHS:.*]]: tensor<8x8xf32>)
-
-// CHECK-DAG:     %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG:     %[[CST:.*]] = arith.constant dense<0.000000e+00> : vector<8x8xf32>
-// CHECK:         %[[INIT:.*]] = tensor.empty
-
-// CHECK:         %[[LHS_READ:.*]] = vector.transfer_read %[[LHS]]
-// CHECK:         %[[RHS_READ:.*]] = vector.transfer_read %[[RHS]]
-// CHECK:         %[[TRANSPOSE:.*]] = vector.transpose %[[LHS_READ]]
-// CHECK:         %[[EXTRACT_LHS0:.*]] = vector.extract %[[TRANSPOSE]][0]
-// CHECK:         %[[EXTRACT_RHS0:.*]] = vector.extract %[[RHS_READ]][0]
-// CHECK:         %[[PRODUCT0:.*]] = vector.outerproduct %[[EXTRACT_LHS0]], %[[EXTRACT_RHS0]], %[[CST]]
-
-// -----
-
 func.func @lower_vector_contract_4d(%arg0: tensor<1x1x8x1xf32>,
                                     %arg1: tensor<1x1x8x1xf32>)
                   -> tensor<1x1x8x8xf32> {

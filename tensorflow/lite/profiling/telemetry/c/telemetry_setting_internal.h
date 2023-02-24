@@ -30,9 +30,7 @@ struct TfLiteTelemetryConversionMetadata {
 };
 
 struct TfLiteTelemetrySubgraphInfo {
-  std::vector<int32_t> op_types;
   std::vector<TfLiteQuantization> quantizations;
-  std::vector<const char*> custom_op_names;
 };
 
 struct TfLiteTelemetryInterpreterSettings {

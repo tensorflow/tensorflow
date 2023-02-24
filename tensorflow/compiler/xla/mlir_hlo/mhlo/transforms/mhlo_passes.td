@@ -48,6 +48,12 @@ def HloCanonicalizeReductionPass : Pass<"hlo-canonicalize-reduction", "func::Fun
   let constructor = "createHloCanonicalizeReductionPass()";
 }
 
+def HloCanonicalizeDotPass : Pass<"hlo-canonicalize-dot", "func::FuncOp"> {
+  let summary = "Rewrites dot operands that contain unit dimension.";
+  let constructor = "createHloCanonicalizeDotPass()";
+  let dependentDialects = ["mhlo::MhloDialect", "tensor::TensorDialect"];
+}
+
 def HloLegalizeToLhloPass : Pass<"hlo-legalize-to-lhlo", "ModuleOp"> {
   let summary = "Legalize from HLO dialect to LHLO dialect.";
   let constructor = "createLegalizeToLhloPass()";
@@ -355,4 +361,17 @@ def PrepareForExportPass : Pass<"xla-prepare-for-export", "mlir::func::FuncOp"> 
     Note: The result of this pass need not be a module in canonical form and
     canonicalization may undo transformations.
   }];
+}
+
+def ShapeLegalizeToHloPass : Pass<"shape-legalize-to-hlo", "func::FuncOp"> {
+  let summary = "Legalize shape-related ops to HLO.";
+  let constructor = "createShapeLegalizeToHloPass()";
+  let description = [{
+    An experimental pass that legalizes shape-related ops to MHLO ops.
+
+    Bringing shape and data computations together via an optional pass will
+    make it possible for the MHLO ecosystem to potentially leverage the
+    compilation pipelines that use HLO operations to model dynamism.
+  }];
+  let dependentDialects = ["mhlo::MhloDialect"];
 }

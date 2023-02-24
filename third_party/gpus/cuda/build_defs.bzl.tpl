@@ -23,6 +23,25 @@ def if_cuda_clang(if_true, if_false = []):
        "//conditions:default": if_false
    })
 
+def cuda_compiler(if_cuda_clang, if_nvcc, neither = []):
+    """Shorthand for select()'ing on wheteher we're building with cuda-clang or nvcc.
+
+     Returns a select statement which evaluates to if_cuda_clang if we're building
+     with cuda-clang, if_nvcc if we're building with NVCC.
+     Otherwise, the select statement evaluates to neither.
+
+    """
+    if %{cuda_is_configured}:
+        return select({
+            "@local_config_cuda//cuda:using_clang": if_cuda_clang,
+            "@local_config_cuda//:is_cuda_compiler_nvcc": if_nvcc,
+            "//conditions:default": neither
+        })
+    else:
+        return select({
+            "//conditions:default": neither
+        })
+
 def if_cuda_clang_opt(if_true, if_false = []):
    """Shorthand for select()'ing on wheteher we're building with cuda-clang
    in opt mode.
@@ -42,10 +61,12 @@ def cuda_default_copts():
     return if_cuda([
         "-x", "cuda",
         "-DGOOGLE_CUDA=1",
-        "-Xcuda-fatbinary", "--compress-all",
     ] + %{cuda_extra_copts}) + if_cuda_clang_opt(
         # Some important CUDA optimizations are only enabled at O3.
         ["-O3"]
+    ) + cuda_compiler(
+        if_cuda_clang = [ "-Xcuda-fatbinary", "--compress-all"],
+        if_nvcc = [ "-Xcuda-fatbinary=--compress-all"]
     )
 
 def cuda_gpu_architectures():

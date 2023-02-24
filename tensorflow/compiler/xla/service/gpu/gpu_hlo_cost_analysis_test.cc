@@ -69,53 +69,6 @@ ENTRY entry {
   EXPECT_EQ(analysis_.flop_count(*conv1), 159694848);
 }
 
-TEST_F(GpuHloCostAnalysisTest, SoftmaxCustomCall) {
-  absl::string_view hlo_string = R"(
-HloModule softmax
-
-max_computation {
-  arg_0 = f32[] parameter(0)
-  arg_1 = f32[] parameter(1)
-  ROOT maximum = f32[] maximum(arg_0, arg_1)
-}
-
-add_computation {
-  arg_0.1 = f32[] parameter(0)
-  arg_1.1 = f32[] parameter(1)
-  ROOT maximum = f32[] add(arg_0.1, arg_1.1)
-}
-
-softmax_computation {
-  param_0 = f32[127,125]{1,0} parameter(0)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
-  exponential = f32[127,125]{1,0} exponential(subtract)
-  constant_zero = f32[] constant(0)
-  second_reduce = f32[127]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
-  second_broadcast = f32[127,125]{1,0} broadcast(second_reduce), dimensions={0}
-  ROOT divide = f32[127,125]{1,0} divide(exponential, second_broadcast)
-}
-
-ENTRY entry {
-  param = f32[127,125]{1,0} parameter(0)
-  ROOT softmax = f32[127,125]{1,0} custom-call(param), custom_call_target="__softmax_fusion", to_apply=softmax_computation
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
-  HloComputation* comp = module->entry_computation();
-  const HloInstruction* softmax = comp->GetInstructionWithName("softmax");
-  int op_size = sizeof(float) * 127 * 125;
-  int out_size = sizeof(float) * 127 * 125;
-  EXPECT_EQ(analysis_.operand_bytes_accessed(*softmax, 0), op_size);
-  EXPECT_EQ(analysis_.output_bytes_accessed(*softmax), out_size);
-  EXPECT_EQ(analysis_.bytes_accessed(*softmax), op_size + out_size);
-  EXPECT_EQ(analysis_.flop_count(*softmax), 237363);
-}
-
 TEST_F(GpuHloCostAnalysisTest, ReduceWindowWithOverlapsRepeatedReads) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true

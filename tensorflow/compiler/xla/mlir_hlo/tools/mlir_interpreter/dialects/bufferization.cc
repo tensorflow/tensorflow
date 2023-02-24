@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 
-#include <optional>  // NOLINT
+#include <algorithm>  // NOLINT
+#include <optional>   // NOLINT
 
 #include "tools/mlir_interpreter/dialects/util.h"
 #include "tools/mlir_interpreter/framework/interpreter.h"
@@ -48,7 +49,18 @@ InterpreterValue allocTensor(
   return InterpreterValue::makeTensor(ty.getElementType(), shape);
 }
 
+InterpreterValue clone(InterpreterState& state, bufferization::CloneOp,
+                       const InterpreterValue& in) {
+  if (auto* stats = state.getOptions().stats) {
+    stats->heapSize += in.buffer()->getByteSize();
+    stats->peakHeapSize = std::max(stats->peakHeapSize, stats->heapSize);
+    ++stats->numAllocations;
+  }
+  return in.clone();
+}
+
 REGISTER_MLIR_INTERPRETER_OP(allocTensor);
+REGISTER_MLIR_INTERPRETER_OP(clone);
 REGISTER_MLIR_INTERPRETER_OP(toMemref);
 REGISTER_MLIR_INTERPRETER_OP(toTensor);
 

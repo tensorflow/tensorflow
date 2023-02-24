@@ -412,6 +412,8 @@ Value CreateXlaDotV2Op(OpBuilder &builder, Location loc, Value input,
               /*precision_config=*/builder.getStringAttr(precision_config_str))
           .getResult();
 
+  if (input_zp_value == 0) return dot_result;
+
   auto input_shape = input.getType().template cast<ShapedType>();
   auto weight_shape = weight.getType().template cast<ShapedType>();
   SmallVector<int64_t> input_output_dims(input_shape.getRank() - 2);

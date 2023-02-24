@@ -41,10 +41,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_simplify_padding.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
@@ -120,7 +120,8 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<CudnnFusedConvRewriter>(cuda_compute_capability);
   pipeline.AddPass<GpuConvPaddingLegalization>();
   pipeline.AddPass<CudnnPadForConvolutions>(cuda_compute_capability);
-  pipeline.AddPass<CudnnVectorizeConvolutions>(cuda_compute_capability);
+  pipeline.AddPass<CudnnVectorizeConvolutions>(cuda_compute_capability,
+                                               dnn_version);
   // The conv padding/vectorization passes which we need to get rid of.  They
   // also leave behind unnecessary tuple/get-tuple-element pairs that
   // TupleSimplifier fixes.
@@ -173,16 +174,19 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   auto cuda_compute_capability =
       std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
   if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-    pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::BF16,
+    pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
+                                            PrimitiveType::BF16,
                                             /*pad_to_multiple_of=*/8);
   }
   if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     // Pad gemms over S8 to multiples of 4 so cuBLAS can run them.
-    pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::S8,
+    pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
+                                            PrimitiveType::S8,
                                             /*pad_to_multiple_of=*/4);
 
     // Pad the dimensions of matrices in dot operations to multiples of 8.
-    pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::F16,
+    pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
+                                            PrimitiveType::F16,
                                             /*pad_to_multiple_of=*/8);
   }
   // Padding a gemm operand that's a constant results in pad(constant).  Run
@@ -195,23 +199,6 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
       autotune_results));
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
-  if (!stream_exec) {
-    // Device not available. Use AOT autotune results.
-    CHECK(autotune_results);
-    GemmAlgorithmPicker::ClearAutotuneResults();
-    TF_RETURN_IF_ERROR(
-        GemmAlgorithmPicker::LoadAutotuneResults(*autotune_results));
-
-    std::string device_description_str =
-        gpu_target_config.device_description_str;
-    GemmAlgorithmPicker::DevicelessConfig deviceless_config{
-        device_description_str, cuda_compute_capability};
-    post_pipeline.AddPass<GemmAlgorithmPicker>(deviceless_config);
-  } else {
-    GemmAlgorithmPicker::DeviceConfig device_config{stream_exec,
-                                                    device_allocator};
-    post_pipeline.AddPass<GemmAlgorithmPicker>(device_config);
-  }
 
   // Transform TriangularSolve ops into custom-calls, so we can add temp
   // memory.
@@ -453,7 +440,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     if (inserted) {
       CHECK(!cache_value->compilation_done);
       if (!ptx.empty()) {
-        auto ptxas_config =
+        se::GpuAsmOpts ptxas_config =
             PtxOptsFromDebugOptions(hlo_module_config.debug_options());
         if (relocatable) {
           ptxas_config.extra_flags.push_back("-c");

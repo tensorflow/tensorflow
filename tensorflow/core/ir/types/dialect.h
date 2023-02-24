@@ -289,8 +289,8 @@ Type DropRefAndSubTypes(Type ty);
 //===----------------------------------------------------------------------===//
 
 // An iterator for the tensor shapes of an op's operands of shaped types.
-// Returns llvm::None if a operand is unranked; returns ArrayRef<int64_t> as the
-// shape otherwise.
+// Returns std::nullopt if a operand is unranked; returns ArrayRef<int64_t> as
+// the shape otherwise.
 class OperandShapeIterator final
     : public llvm::mapped_iterator<Operation::operand_iterator,
                                    llvm::Optional<ArrayRef<int64_t>> (*)(
@@ -305,8 +305,8 @@ class OperandShapeIterator final
 using OperandShapeRange = iterator_range<OperandShapeIterator>;
 
 // An iterator for the tensor shapes of an op's results of shaped types.
-// Returns llvm::None if a result is unranked; returns ArrayRef<int64_t> as the
-// shape otherwise.
+// Returns std::nullopt if a result is unranked; returns ArrayRef<int64_t> as
+// the shape otherwise.
 class ResultShapeIterator final
     : public llvm::mapped_iterator<Operation::result_iterator,
                                    llvm::Optional<ArrayRef<int64_t>> (*)(

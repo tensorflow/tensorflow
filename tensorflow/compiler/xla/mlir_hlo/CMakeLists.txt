@@ -163,6 +163,7 @@ add_custom_target(check-mlir-hlo)
 
 add_subdirectory(analysis)
 add_subdirectory(bindings)
+add_subdirectory(deallocation)
 add_subdirectory(gml_st)
 add_subdirectory(lhlo)
 add_subdirectory(lhlo_gpu)

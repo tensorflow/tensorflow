@@ -72,6 +72,20 @@ cc_library(
 )
 
 cc_library(
+    name = "conv_reorder",
+    srcs = ["conv_reorder.cc"],
+    hdrs = ["conv_reorder.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+    ],
+)
+
+cc_library(
     name = "custom_call",
     srcs = ["custom_call.cc"],
     hdrs = ["custom_call.h"],
@@ -99,6 +113,7 @@ cc_library(
         ":cholesky",
         ":collectives",
         ":conv",
+        ":conv_reorder",
         ":cublas_lt_matmul",
         ":custom_call",
         ":fft",
@@ -119,6 +134,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:module_registry",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:buffer_allocations",
+        "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
         "//tensorflow/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/strings",
@@ -160,6 +176,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:matmul_utils",
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
+        "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:gemm_algorithm_picker",
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
@@ -172,10 +189,12 @@ cc_library(
     hdrs = ["graph_launch.h"],
     deps = [
         ":conv",
+        ":gemm",
         ":kernel_launch",
         ":support",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/synchronization",
+        "//tensorflow/compiler/xla/runtime:state",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:custom_call_registry",

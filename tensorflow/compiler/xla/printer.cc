@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/printer.h"
 
+#include <cstring>
 #include <string>
 #include <utility>
 
@@ -23,14 +24,39 @@ limitations under the License.
 
 namespace xla {
 
-void StringPrinter::Append(absl::string_view s) {
-  absl::StrAppend(&result_, s);
+void StringPrinter::Append(const absl::AlphaNum& a) {
+  absl::StrAppend(&result_, a);
 }
 
 std::string StringPrinter::ToString() && { return std::move(result_); }
 
-void CordPrinter::Append(absl::string_view s) { result_.Append(s); }
+void CordPrinter::AppendImpl(const absl::AlphaNum& a) {
+  if (buffer_.capacity() <= a.size()) {
+    AppendBuffer();
+    result_.Append(a.Piece());
+    return;
+  }
+  if (buffer_.capacity() < a.size() + buffer_.length()) {
+    AppendBuffer();
+  }
+  auto dst = buffer_.available_up_to(a.size());
+  std::memcpy(dst.data(), a.data(), a.size());
+  buffer_.IncreaseLengthBy(a.size());
+}
 
-absl::Cord CordPrinter::ToCord() && { return std::move(result_); }
+void CordPrinter::AppendBuffer() {
+  if (buffer_.length() == 0) return;
+  result_.Append(std::move(buffer_));
+  constexpr size_t kCordBufferSize = 64 << 10;
+  buffer_ =
+      absl::CordBuffer::CreateWithCustomLimit(kCordBufferSize, kCordBufferSize);
+}
+
+void CordPrinter::Append(const absl::AlphaNum& a) { AppendImpl(a); }
+
+absl::Cord CordPrinter::ToCord() && {
+  if (buffer_.length() > 0) result_.Append(std::move(buffer_));
+  return std::move(result_);
+}
 
 }  // namespace xla

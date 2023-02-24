@@ -1,7 +1,7 @@
 path: "tensorflow.TensorSpec"
 tf_class {
-  is_instance: "<class \'tensorflow.python.framework.tensor_spec.TensorSpec\'>"
-  is_instance: "<class \'tensorflow.python.framework.tensor_spec.DenseSpec\'>"
+  is_instance: "<class \'tensorflow.python.framework.tensor.TensorSpec\'>"
+  is_instance: "<class \'tensorflow.python.framework.tensor.DenseSpec\'>"
   is_instance: "<class \'tensorflow.python.framework.type_spec.BatchableTypeSpec\'>"
   is_instance: "<class \'tensorflow.python.framework.type_spec.TypeSpec\'>"
   is_instance: "<class \'tensorflow.python.types.internal.TypeSpec\'>"

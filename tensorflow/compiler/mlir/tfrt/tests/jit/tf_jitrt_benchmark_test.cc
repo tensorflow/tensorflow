@@ -91,9 +91,7 @@ static void BM_InstantiateExecutable(::testing::benchmark::State& state) {
   opts.compiler.create_compilation_pipeline =
       [&](xla::runtime::PassManager& passes) {
         TfJitRtPipelineOptions opts;
-        opts.enable_xla_cpu_transformations =
-            tensorflow::GetJitRtFlags().enable_xla_cpu_transformations;
-        opts.lower_to_mmt4d = tensorflow::GetJitRtFlags().pack_matmul;
+        opts.vectorize = tensorflow::GetJitRtFlags().vectorize;
 
         // Lower from Tensorflow to Linalg on buffers.
         CreateTfJitRtPipeline(*passes, opts);

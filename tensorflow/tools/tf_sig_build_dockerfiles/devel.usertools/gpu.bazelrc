@@ -69,8 +69,8 @@ test --test_summary=short
 # Pass --config=nonpip to run the same suite of tests. If you want to run just
 # one test for investigation, you don't need --config=nonpip; just run the
 # bazel test invocation as normal.
-test:nonpip_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11
-test:nonpip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11
+test:nonpip_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:nonpip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_oss_py38,-no_oss_py39,-no_oss_py310
 test:nonpip_filters --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
 test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
@@ -92,8 +92,8 @@ test:pip_venv --action_env PYTHON_LIB_PATH="/bazel_pip/lib/python3/site-packages
 test:pip_venv --python_path="/bazel_pip/bin/python3"
 test:pip_venv --define=no_tensorflow_py_deps=true
 # Yes, we don't exclude the gpu tests on pip for some reason.
-test:pip_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_pip,-nopip
-test:pip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_pip,-nopip
+test:pip_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_pip,-nopip,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:pip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_pip,-nopip,-no_oss_py38,-no_oss_py39,-no_oss_py310
 test:pip_filters --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
 test:pip --config=pip_venv --config=pip_filters -- //bazel_pip/tensorflow/... -//bazel_pip/tensorflow/python/integration_testing/... -//bazel_pip/tensorflow/compiler/tf2tensorrt/... -//bazel_pip/tensorflow/compiler/xrt/... -//bazel_pip/tensorflow/core/tpu/... -//bazel_pip/tensorflow/lite/... -//tensorflow/tools/toolchains/...
 

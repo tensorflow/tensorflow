@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -40,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -54,11 +54,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/utils.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_targets.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/util/quantization/uniform_quant_ops_attr.pb.h"
 #include "tensorflow/core/util/quantization/uniform_quant_ops_params.h"
@@ -75,7 +77,6 @@ class LegalizeTF : public impl::LegalizeTFBase<LegalizeTF> {
   explicit LegalizeTF(bool allow_partial_conversion, bool legalize_chlo,
                       llvm::Optional<StringRef> tf2xla_fallback_device_type,
                       bool prefer_tf2xla) {
-    allow_partial_conversion_ = allow_partial_conversion;
     legalize_chlo_ = legalize_chlo;
     prefer_tf2xla_ = prefer_tf2xla;
     use_tf2xla_fallback_ = tf2xla_fallback_device_type.has_value();
@@ -172,9 +173,10 @@ FailureOr<TensorType> GetUniformQuantizedType(
   return GetSameShapeTensorType(original_type.cast<TensorType>(), elem_ty);
 }
 
-template <typename UniformQuantizedOp>
-FailureOr<mhlo::ConstantOp> CreateConstantOpForQint8Rhs(
-    UniformQuantizedOp op, TensorType new_rhs_type, PatternRewriter &rewriter) {
+template <typename TFQuantizedType, typename UniformQuantizedOp>
+FailureOr<mhlo::ConstantOp> CreateConstantOpForRhs(UniformQuantizedOp op,
+                                                   TensorType new_rhs_type,
+                                                   PatternRewriter &rewriter) {
   // Check whether the rhs operand has constant op.
   TF::TensorProtoAttr tensor_proto_attr;
   if (!matchPattern(op.getRhs(), m_Constant(&tensor_proto_attr))) {
@@ -197,9 +199,10 @@ FailureOr<mhlo::ConstantOp> CreateConstantOpForQint8Rhs(
     return op.emitError("Failed to convert tensor proto to Tensor.");
   }
 
-  auto arr = t.flat<tensorflow::qint8>();
+  auto arr = t.flat<TFQuantizedType>();
   auto dense_attr = mlir::DenseElementsAttr::get(
-      GetSameShapeTensorType(new_rhs_type, rewriter.getIntegerType(8)),
+      GetSameShapeTensorType(
+          new_rhs_type, rewriter.getIntegerType(8 * sizeof(TFQuantizedType))),
       llvm::ArrayRef(arr.data(), arr.size()));
   return rewriter.create<mhlo::ConstantOp>(op.getLoc(), new_rhs_type,
                                            dense_attr);
@@ -242,13 +245,14 @@ DenseIntElementsAttr ConvertToDenseElementsAttr(ArrayAttr array_attr,
       array);
 }
 
+template <typename UniformQuantizedConvolutionOp>
 FailureOr<ElementsAttr> ConvertPaddingAttr(
-    TF::UniformQuantizedConvolutionHybridOp op,
+    UniformQuantizedConvolutionOp op,
     const xla::ConvolutionDimensionNumbers &dnums, PatternRewriter &rewriter) {
   StringAttr conv_padding = op.getPaddingAttr();
   SmallVector<int64_t> padding_nums;
-  ShapedType lhs_shape = op.getLhs().getType().cast<ShapedType>();
-  ShapedType rhs_shape = op.getRhs().getType().cast<ShapedType>();
+  ShapedType lhs_shape = op.getLhs().getType().template cast<ShapedType>();
+  ShapedType rhs_shape = op.getRhs().getType().template cast<ShapedType>();
 
   // Handle only static shape cases.
   // TODO(b/260284866): Handle dynamic shape cases.
@@ -263,7 +267,7 @@ FailureOr<ElementsAttr> ConvertPaddingAttr(
   padding_nums.reserve(padding_nums_size);
   if (conv_padding.strref().equals("EXPLICIT")) {
     for (auto padding_elem :
-         op.getExplicitPaddingAttr().getAsRange<IntegerAttr>()) {
+         op.getExplicitPaddingAttr().template getAsRange<IntegerAttr>()) {
       padding_nums.push_back(padding_elem.getInt());
     }
   } else if (conv_padding.strref().equals("VALID")) {
@@ -272,15 +276,15 @@ FailureOr<ElementsAttr> ConvertPaddingAttr(
     padding_nums.resize(padding_nums_size);
     for (int i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
       const int64_t stride =
-          op.getWindowStridesAttr()[i].cast<IntegerAttr>().getInt();
+          op.getWindowStridesAttr()[i].template cast<IntegerAttr>().getInt();
       const int64_t lhs_size_dilated =
           tensorflow::UniformQuantizedConvolutionParams::DilatedSize(
               lhs_shape.getDimSize(dnums.input_spatial_dimensions(i)),
-              op.getLhsDilationAttr()[i].cast<IntegerAttr>().getInt());
+              op.getLhsDilationAttr()[i].template cast<IntegerAttr>().getInt());
       const int64_t rhs_size_dilated =
           tensorflow::UniformQuantizedConvolutionParams::DilatedSize(
               rhs_shape.getDimSize(dnums.kernel_spatial_dimensions(i)),
-              op.getRhsDilationAttr()[i].cast<IntegerAttr>().getInt());
+              op.getRhsDilationAttr()[i].template cast<IntegerAttr>().getInt());
 
       const int64_t output_size = (lhs_size_dilated + stride - 1) / stride;
       const int64_t total_padding = std::max(
@@ -298,6 +302,44 @@ FailureOr<ElementsAttr> ConvertPaddingAttr(
                             rewriter.getIntegerType(64)),
       padding_nums);
   return padding_attr;
+}
+
+template <typename UniformQuantizedConvolutionOp>
+FailureOr<SmallVector<NamedAttribute>> ConvertToMhloConvolutionOpAttrs(
+    UniformQuantizedConvolutionOp op, PatternRewriter &rewriter) {
+  // TODO(b/261005147): Update the lowering logic after migration to mhlo
+  // ConvolutionDimensionNumbers.
+  tensorflow::UniformQuantizedConvolutionDimensionNumbersAttr dnums_input;
+  if (!dnums_input.ParseFromString(std::string(op.getDimensionNumbers()))) {
+    return op->emitError("Parse dimension_numbers failed.");
+  }
+  xla::ConvolutionDimensionNumbers dnums =
+      ConvertConvolutionDimensionNumbers(dnums_input);
+
+  SmallVector<NamedAttribute> converted_attrs;
+  for (auto attr : op->getAttrs()) {
+    if (attr.getName() == op.getFeatureGroupCountAttrName() ||
+        attr.getName() == op.getBatchGroupCountAttrName()) {
+      converted_attrs.push_back(attr);
+    } else if (attr.getName() == op.getDimensionNumbersAttrName()) {
+      attr.setValue(xla::ConvertConvDimensionNumbers(dnums, &rewriter));
+      converted_attrs.push_back(attr);
+    } else if (attr.getName() == op.getPaddingAttrName()) {
+      auto value_or = ConvertPaddingAttr(op, dnums, rewriter);
+      if (failed(value_or)) {
+        return failure();
+      }
+      attr.setValue(*value_or);
+      converted_attrs.push_back(attr);
+    } else if (attr.getName() == op.getWindowStridesAttrName() ||
+               attr.getName() == op.getLhsDilationAttrName() ||
+               attr.getName() == op.getRhsDilationAttrName()) {
+      attr.setValue(ConvertToDenseElementsAttr(
+          attr.getValue().template cast<ArrayAttr>(), rewriter));
+      converted_attrs.push_back(attr);
+    }
+  }
+  return converted_attrs;
 }
 
 // TODO(hinsu): Move this pattern to legalize_tf after resolving the dependency
@@ -324,7 +366,8 @@ class ConvertUniformQuantizedDotHybridOp
       return failure();
     }
 
-    auto rhs = CreateConstantOpForQint8Rhs(op, *rhs_type, rewriter);
+    auto rhs =
+        CreateConstantOpForRhs<tensorflow::qint8>(op, *rhs_type, rewriter);
     if (failed(rhs)) {
       return failure();
     }
@@ -352,47 +395,19 @@ class ConvertUniformQuantizedConvolutionHybridOp
       return failure();
     }
 
-    auto rhs = CreateConstantOpForQint8Rhs(op, *rhs_type, rewriter);
+    auto rhs =
+        CreateConstantOpForRhs<tensorflow::qint8>(op, *rhs_type, rewriter);
     if (failed(rhs)) {
       return failure();
     }
 
-    // TODO(b/261005147): Update the lowering logic after migration to mhlo
-    // ConvolutionDimensionNumbers.
-    tensorflow::UniformQuantizedConvolutionDimensionNumbersAttr dnums_input;
-    if (!dnums_input.ParseFromString(std::string(op.getDimensionNumbers()))) {
-      return op->emitError("Parse dimension_numbers failed.");
+    auto converted_attrs_or = ConvertToMhloConvolutionOpAttrs(op, rewriter);
+    if (failed(converted_attrs_or)) {
+      return failure();
     }
-    xla::ConvolutionDimensionNumbers dnums =
-        ConvertConvolutionDimensionNumbers(dnums_input);
-
-    SmallVector<NamedAttribute> converted_attrs;
-    for (auto attr : op->getAttrs()) {
-      if (attr.getName() == op.getFeatureGroupCountAttrName() ||
-          attr.getName() == op.getBatchGroupCountAttrName()) {
-        converted_attrs.push_back(attr);
-      } else if (attr.getName() == op.getDimensionNumbersAttrName()) {
-        attr.setValue(xla::ConvertConvDimensionNumbers(dnums, &rewriter));
-        converted_attrs.push_back(attr);
-      } else if (attr.getName() == op.getPaddingAttrName()) {
-        auto value_or = ConvertPaddingAttr(op, dnums, rewriter);
-        if (failed(value_or)) {
-          return failure();
-        }
-        attr.setValue(*value_or);
-        converted_attrs.push_back(attr);
-      } else if (attr.getName() == op.getWindowStridesAttrName() ||
-                 attr.getName() == op.getLhsDilationAttrName() ||
-                 attr.getName() == op.getRhsDilationAttrName()) {
-        attr.setValue(ConvertToDenseElementsAttr(
-            attr.getValue().cast<ArrayAttr>(), rewriter));
-        converted_attrs.push_back(attr);
-      }
-    }
-
     SmallVector<Value, 2> operands{op.getLhs(), *rhs};
     rewriter.replaceOpWithNewOp<mhlo::ConvolutionOp>(op, op.getType(), operands,
-                                                     converted_attrs);
+                                                     *converted_attrs_or);
     return success();
   }
 };
@@ -491,7 +506,8 @@ class ConvertUniformQuantizedDotOp
       return failure();
     }
 
-    auto rhs_or = CreateConstantOpForQint8Rhs(op, *rhs_type, rewriter);
+    auto rhs_or =
+        CreateConstantOpForRhs<tensorflow::qint8>(op, *rhs_type, rewriter);
     if (failed(rhs_or)) {
       return failure();
     }
@@ -508,6 +524,105 @@ class ConvertUniformQuantizedDotOp
 
     rewriter.replaceOpWithNewOp<mhlo::DotOp>(op, *output_type, lhs, *rhs_or,
                                              /*precision_config=*/nullptr);
+    return success();
+  }
+};
+
+class ConvertUniformQuantizedConvolutionOp
+    : public OpConversionPattern<TF::UniformQuantizedConvolutionOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      TF::UniformQuantizedConvolutionOp op,
+      TF::UniformQuantizedConvolutionOpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    Value lhs = adaptor.getLhs();
+
+    auto rhs_type = GetUniformQuantizedType(
+        op, adaptor.getRhs().getType(), op.getRhsScales(),
+        op.getRhsZeroPoints(),
+        /*expressed_type=*/rewriter.getF32Type(), op.getRhsQuantizationMinVal(),
+        op.getRhsQuantizationMaxVal(), op.getRhsQuantizationAxis(), rewriter);
+    if (failed(rhs_type)) {
+      return failure();
+    }
+
+    auto rhs_or =
+        CreateConstantOpForRhs<tensorflow::qint8>(op, *rhs_type, rewriter);
+    if (failed(rhs_or)) {
+      return failure();
+    }
+
+    auto output_type = GetUniformQuantizedType(
+        op, op.getOutput().getType(), op.getOutputScales(),
+        op.getOutputZeroPoints(),
+        /*expressed_type=*/rewriter.getF32Type(),
+        op.getOutputQuantizationMinVal(), op.getOutputQuantizationMaxVal(),
+        op.getOutputQuantizationAxis(), rewriter);
+    if (failed(output_type)) {
+      return failure();
+    }
+
+    auto converted_attrs_or = ConvertToMhloConvolutionOpAttrs(op, rewriter);
+    if (failed(converted_attrs_or)) {
+      return failure();
+    }
+    SmallVector<Value, 2> operands{lhs, *rhs_or};
+    rewriter.replaceOpWithNewOp<mhlo::ConvolutionOp>(op, *output_type, operands,
+                                                     *converted_attrs_or);
+    return success();
+  }
+};
+
+class ConvertUniformQuantizedAddOp
+    : public OpConversionPattern<TF::UniformQuantizedAddOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      TF::UniformQuantizedAddOp op, TF::UniformQuantizedAddOpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    Value lhs = adaptor.getLhs();
+
+    auto lhs_type = lhs.getType().cast<ShapedType>();
+    if (!lhs_type.hasRank()) {
+      return rewriter.notifyMatchFailure(
+          op, "Legalization supports cases where only lhs rank known.");
+    }
+    // rhs (bias) is always 1D that broadcasts to last dim of lhs.
+    auto broadcast_dims =
+        GetI64ElementsAttr({lhs_type.getRank() - 1}, &rewriter);
+
+    auto rhs_type = GetUniformQuantizedType(
+        op, adaptor.getRhs().getType(), op.getRhsScales(),
+        op.getRhsZeroPoints(),
+        /*expressed_type=*/rewriter.getF32Type(), op.getRhsQuantizationMinVal(),
+        op.getRhsQuantizationMaxVal(), op.getRhsQuantizationAxis(), rewriter);
+    if (failed(rhs_type)) {
+      return failure();
+    }
+
+    auto rhs_or =
+        CreateConstantOpForRhs<tensorflow::qint32>(op, *rhs_type, rewriter);
+    if (failed(rhs_or)) {
+      return failure();
+    }
+
+    auto output_type = GetUniformQuantizedType(
+        op, op.getOutput().getType(), op.getOutputScales(),
+        op.getOutputZeroPoints(),
+        /*expressed_type=*/rewriter.getF32Type(),
+        op.getOutputQuantizationMinVal(), op.getOutputQuantizationMaxVal(),
+        op.getOutputQuantizationAxis(), rewriter);
+    if (failed(output_type)) {
+      return failure();
+    }
+
+    // lhs, rhs, output scales and zero_points are guaranteed (by the TF
+    // quantizer) to be identical, respectively.
+    rewriter.replaceOpWithNewOp<chlo::BroadcastAddOp>(op, *output_type, lhs,
+                                                      *rhs_or, broadcast_dims);
     return success();
   }
 };
@@ -684,25 +799,9 @@ RewritePatternSet PatternsIncludeOps(
 }
 
 mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
-                                  bool legalize_chlo,
-                                  bool allow_partial_conversion) {
+                                  bool legalize_chlo) {
   ConversionTarget target =
       GetDefaultLegalConversionTargets(*op->getContext(), legalize_chlo);
-
-  if (!allow_partial_conversion) {
-    // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.
-    target.addLegalOp<ModuleOp, ::mlir::func::FuncOp, ::mlir::func::ReturnOp>();
-    DenseSet<Operation *> nonlegalized_ops;
-    LogicalResult result = applyPartialConversion(
-        op, target, std::move(patterns), &nonlegalized_ops);
-    // In order to enforce that the conversion result is fully converted,
-    // fail if there are any nonlegalized ops in the set.
-    if (failed(result) || !nonlegalized_ops.empty()) {
-      EmitLegalizationErrors(op, nonlegalized_ops);
-      return failure();
-    }
-    return result;
-  }
 
   return applyPartialConversion(op, target, std::move(patterns));
 }
@@ -711,8 +810,7 @@ mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
 /// patterns from TF2XLA fallback for provided device type (see
 /// legalize_tf_with_tf2xla.cc for details). By default, TF2XLA fallback is not
 /// used.
-LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
-                         bool legalize_chlo,
+LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
                          llvm::Optional<StringRef> tf2xla_fallback_device_type,
                          bool prefer_tf2xla) {
   MLIRContext *context = op->getContext();
@@ -771,18 +869,17 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
   // canonicalization pattern to pattern list to enable multi-hop lowering.
   chlo::ConstantLikeOp::getCanonicalizationPatterns(patterns, context);
 
-  return ApplyPatterns(op, patterns, legalize_chlo, allow_partial_conversion);
+  return ApplyPatterns(op, patterns, legalize_chlo);
 }
 
 // Performs the lowering to XLA dialect.
 void LegalizeTF::runOnOperation() {
-  llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None;
+  llvm::Optional<StringRef> tf2xla_fallback_device_type = std::nullopt;
   if (use_tf2xla_fallback_) {
     tf2xla_fallback_device_type = device_type_;
   }
-  if (failed(legalizeTF(getOperation(), allow_partial_conversion_,
-                        legalize_chlo_, tf2xla_fallback_device_type,
-                        prefer_tf2xla_))) {
+  if (failed(legalizeTF(getOperation(), legalize_chlo_,
+                        tf2xla_fallback_device_type, prefer_tf2xla_))) {
     signalPassFailure();
   }
 }
@@ -803,8 +900,7 @@ void LegalizeTFModulePass::runOnOperation() {
                                        /*is_module_pass=*/true);
 
   if (failed(ApplyPatterns(op, patterns,
-                           /*legalize_chlo=*/false,
-                           /*allow_partial_conversion=*/true))) {
+                           /*legalize_chlo=*/false))) {
     signalPassFailure();
   }
 }
@@ -813,11 +909,13 @@ void LegalizeTFModulePass::runOnOperation() {
 
 void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
                                             RewritePatternSet *patterns) {
-  patterns->add<ConvertUniformQuantizedDotHybridOp,
-                ConvertUniformQuantizedConvolutionHybridOp,
-                ConvertUniformQuantizeOp, ConvertUniformRequantizeOp,
-                ConvertUniformDequantizeOp, ConvertUniformQuantizedDotOp>(
-      context);
+  patterns
+      ->add<ConvertUniformQuantizedDotHybridOp,
+            ConvertUniformQuantizedConvolutionHybridOp,
+            ConvertUniformQuantizeOp, ConvertUniformRequantizeOp,
+            ConvertUniformDequantizeOp, ConvertUniformQuantizedDotOp,
+            ConvertUniformQuantizedConvolutionOp, ConvertUniformQuantizedAddOp>(
+          context);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass(

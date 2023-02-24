@@ -92,9 +92,6 @@ struct PyArray_Storage {
 // The C++ implementation of jax.Array. A few key methods and data members are
 // implemented in C++ for performance, while most of the functionalities are
 // still implemented in python.
-//
-// TODO(chky): Consider replacing the usage of PyShardedBuffer with PyArray as
-// PyArray is more general.
 class PyArray : public pybind11::object {
  public:
   PYBIND11_OBJECT(PyArray, pybind11::object, PyArray::IsPyArray);

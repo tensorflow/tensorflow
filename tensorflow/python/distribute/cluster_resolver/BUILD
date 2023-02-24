@@ -26,7 +26,7 @@ py_library(
         ":tfconfig_cluster_resolver_py",
         ":tpu_cluster_resolver_py",
         "//tensorflow/python:util",
-    ],
+    ],  # placeholder for google-internal dependencies,,
 )
 
 py_library(

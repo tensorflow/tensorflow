@@ -82,13 +82,51 @@ TEST_F(LatencyBenchmarkTest, FailedWithInvalidNumThreadsSettings) {
                   .has_error());
 }
 
-TEST_F(LatencyBenchmarkTest, SucceedWithNullTfLiteSettingsSettings) {
+TEST_F(LatencyBenchmarkTest, SucceedWithEmptyTfLiteSettings) {
+  flatbuffers::FlatBufferBuilder fbb;
+  TFLiteSettingsBuilder tflite_settings_builder(fbb);
+  fbb.Finish(tflite_settings_builder.Finish());
+  const TFLiteSettings* settings =
+      flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer());
+
   // TODO(b/253442685): verify that the default delegate was used.
-  EXPECT_EQ(Benchmark(*settings_, kSettingsFilePath, fileno(model_fp_),
-                      /*model_offset=*/0, model_size_, args_)
+  EXPECT_EQ(Benchmark(*settings, /*tflite_settings_path=*/"example_path",
+                      fileno(model_fp_), /*model_offset=*/0, model_size_, args_)
                 .event_type(),
             proto::benchmark::BENCHMARK_EVENT_TYPE_END);
 }
+
+TEST_F(LatencyBenchmarkTest, SucceedWithCpuTfLiteSettings) {
+  flatbuffers::FlatBufferBuilder fbb;
+  TFLiteSettingsBuilder tflite_settings_builder(fbb);
+  tflite_settings_builder.add_disable_default_delegates(true);
+  fbb.Finish(tflite_settings_builder.Finish());
+  const TFLiteSettings* settings =
+      flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer());
+
+  // TODO(b/253442685): verify that no model delegation has occurred.
+  EXPECT_EQ(Benchmark(*settings, /*tflite_settings_path=*/"example_path",
+                      fileno(model_fp_), /*model_offset=*/0, model_size_, args_)
+                .event_type(),
+            proto::benchmark::BENCHMARK_EVENT_TYPE_END);
+}
+
+#ifdef __ANDROID__
+TEST_F(LatencyBenchmarkTest, SucceedWithGpuTfLiteSettings) {
+  flatbuffers::FlatBufferBuilder fbb;
+  TFLiteSettingsBuilder tflite_settings_builder(fbb);
+  tflite_settings_builder.add_delegate(Delegate_GPU);
+  fbb.Finish(tflite_settings_builder.Finish());
+  const TFLiteSettings* settings =
+      flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer());
+
+  // TODO(b/253442685): verify that the GPU delegate was used.
+  EXPECT_EQ(Benchmark(*settings, /*tflite_settings_path=*/"example_path",
+                      fileno(model_fp_), /*model_offset=*/0, model_size_, args_)
+                .event_type(),
+            proto::benchmark::BENCHMARK_EVENT_TYPE_END);
+}
+#endif  // __ANDROID__
 
 TEST_F(LatencyBenchmarkTest, SucceedWithSampleStableDelegate) {
   // TODO(b/253442685): verify that the stable delegate was used.

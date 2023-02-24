@@ -44,7 +44,7 @@ def _get_configurations(
         dict(
             suffix = "gpu",
             backend = "gpu",
-            tags = ["requires-gpu-nvidia", "gpu"],
+            tags = ["requires-gpu", "gpu"],
             flags = [],
             env = {},
             deps = [],
@@ -55,7 +55,7 @@ def _get_configurations(
             dict(
                 suffix = GPU_2DEVS_BACKEND,
                 backend = GPU_2DEVS_BACKEND,
-                tags = ["requires-gpu-nvidia:2", "gpu", "specialbackend", GPU_2DEVS_BACKEND],
+                tags = ["requires-gpu:2", "gpu"],
                 flags = [],
                 env = {
                 },

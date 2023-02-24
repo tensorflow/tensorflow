@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.core.function import trace_type
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.checkpoint import tensor_callable
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.compat import compat as forward_compat
@@ -54,6 +55,7 @@ from tensorflow.python.ops import variables
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
@@ -101,7 +103,7 @@ def _set_handle_shapes_and_types(tensor, handle_data, graph_mode):
       [d.size for d in s.dim]  # pylint: disable=g-complex-comprehension
       if not s.unknown_rank else None for s in shapes
   ]
-  with tensor._op._graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
+  with tensor._op.graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
     pywrap_tf_session.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
         c_graph,
         tensor._as_tf_output(),  # pylint: disable=protected-access
@@ -2730,6 +2732,13 @@ class VariableSpec(tensor_spec.DenseSpec):
     return (type(self) is type(other) and self.shape == other.shape and
             self.dtype == other.dtype and self.trainable == other.trainable and
             self.alias_id == other.alias_id)
+
+
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        VariableSpec, struct_pb2.TypeSpecProto.VARIABLE_SPEC
+    )
+)
 
 
 _pywrap_utils.RegisterType("VariableSpec", VariableSpec)

@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
@@ -735,17 +737,27 @@ StatusOr<mlir::Operation*> LowerDTensorRecv(mlir::Operation* send_op,
 
       // Create a zero constant.
       mlir::Attribute const_attr;
-      if (output_type.getElementType().isIntOrIndex()) {
-        if (output_type.getElementType().isInteger(64)) {
+      auto output_element_type = output_type.getElementType();
+      if (output_element_type.isIntOrIndex()) {
+        if (output_element_type.isInteger(64)) {
           const_attr = mlir::DenseIntElementsAttr::get(
               output_type, llvm::SmallVector<int64_t>{0});
         } else {
           const_attr = mlir::DenseIntElementsAttr::get(
               output_type, llvm::SmallVector<int32_t>{0});
         }
-      } else {
+      } else if (output_element_type.isBF16()) {
+        mlir::FloatAttr zero = mlir::FloatAttr::get(output_element_type, 0.);
+        const_attr = mlir::DenseElementsAttr::get(
+            output_type, llvm::SmallVector<mlir::Attribute>{zero});
+      } else if (output_element_type.isF16() || output_element_type.isF32()) {
         const_attr = mlir::DenseFPElementsAttr::get(
             output_type, llvm::SmallVector<float>{0.0});
+      } else if (output_element_type.isF64()) {
+        const_attr = mlir::DenseFPElementsAttr::get(
+            output_type, llvm::SmallVector<double>{0.0});
+      } else {
+        return errors::InvalidArgument("unsupported output type");
       }
 
       mlir::Value zeros = builder.create<mlir::TF::ConstOp>(loc, const_attr);

@@ -334,6 +334,10 @@ class HloComputation {
   std::vector<HloInstruction*> MakeInstructionPostOrder(
       const ChannelDependencies& channel_dependencies) const;
 
+  // Calls `func` with each instruction in the computation in post-order.
+  void ForEachInstructionPostOrder(
+      absl::FunctionRef<void(HloInstruction*)> func) const;
+
   int64_t instruction_count() const { return instruction_iterators_.size(); }
 
   // Creates and returns a list of the embedded computations called by this
@@ -732,6 +736,11 @@ class HloComputation {
       HloInstruction* root, const ChannelDependencies& channel_dependencies,
       absl::flat_hash_map<HloInstruction*, VisitState>& visited,
       std::vector<HloInstruction*>& post_order) const;
+
+  void ForEachInstructionPostOrderImpl(
+      absl::FunctionRef<void(HloInstruction*)> func, HloInstruction* root,
+      const ChannelDependencies& channel_dependencies,
+      absl::flat_hash_map<HloInstruction*, VisitState>& visited) const;
 
   Status RemoveUnusedParametersImpl(bool allow_non_fusion);
 

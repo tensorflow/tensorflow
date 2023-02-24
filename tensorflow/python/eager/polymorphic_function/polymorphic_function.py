@@ -69,7 +69,7 @@ import weakref
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.core.function.trace_type import default_types
+from tensorflow.core.function import trace_type
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
@@ -1259,8 +1259,8 @@ class Function(core.GenericFunction, trackable.Trackable):
     concrete._garbage_collector.release()  # pylint: disable=protected-access
     return concrete
 
-  def __tf_tracing_type__(self, signature_context):
-    return default_types.Weakref(weakref.ref(self))
+  def __tf_tracing_type__(self, _):
+    return trace_type.Weakref(weakref.ref(self))
 
   def __get__(self, instance, owner):
     """Makes it possible to decorate instance methods."""

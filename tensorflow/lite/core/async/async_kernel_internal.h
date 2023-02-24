@@ -73,14 +73,22 @@ struct TfLiteAsyncKernel {
   // Inspects the buffer types supported by the backend.
   // `io_type` specify whether the call returns supported input or output
   // buffer.
-  std::vector<const char*> (*supported_buffer_types)(
-      const TfLiteAsyncKernel* async_kernel, int32_t io_type) = nullptr;
+  // Note: the lifespan of returned *`type` strings should be tied to that
+  // of the backend delegate.
+  // Caller DOES NOT own returned types array.
+  void (*supported_buffer_types)(const TfLiteAsyncKernel* async_kernel,
+                                 int32_t io_type, const char* const** types,
+                                 size_t* n_types) = nullptr;
 
   // Inspects the sync object types supported by the backend.
   // `io_type` specify whether the call returns supported input or output
   // sync object.
-  std::vector<const char*> (*supported_synchronizations)(
-      const TfLiteAsyncKernel* async_kernel, int32_t io_type) = nullptr;
+  // Note: the lifespan of returned *`type` strings should be tied to that
+  // of the backend delegate.
+  // Caller DOES NOT own returned types array.
+  void (*supported_synchronizations)(const TfLiteAsyncKernel* async_kernel,
+                                     int32_t io_type, const char* const** types,
+                                     size_t* n_types) = nullptr;
 
   // Reconciles buffer or sync attributes for tensor at tensor_index.
   // Fills `merged` with reconciled attributes.

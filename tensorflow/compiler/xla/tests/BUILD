@@ -231,6 +231,7 @@ xla_cc_binary(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
     ],
 )
 
@@ -1292,6 +1293,23 @@ xla_test(
 )
 
 xla_test(
+    name = "convolution_cudnn_test",
+    timeout = "long",
+    srcs = ["convolution_cudnn_test.cc"],
+    backend_tags = {"gpu": [
+        "gpu",
+        "requires-gpu-sm80",
+    ]},
+    backends = ["gpu"],
+    deps = [
+        ":hlo_test_base",
+        ":xla_internal_test_main",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
     name = "batch_normalization_test",
     srcs = ["batch_normalization_test.cc"],
     disabled_backends = [
@@ -2198,27 +2216,6 @@ xla_test(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-xla_test(
-    name = "gpu_dump_mlir_passes_test",
-    srcs = ["gpu_dump_mlir_passes_test.cc"],
-    backends = [
-        "gpu",
-    ],
-    deps = [
-        ":hlo_test_base",
-        ":xla_internal_test_main",
-        "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:path",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )

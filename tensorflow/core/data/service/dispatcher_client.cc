@@ -173,8 +173,6 @@ Status DataServiceDispatcherClient::GetSnapshotSplit(
     const std::string& worker_address, const std::string& base_path,
     int64_t stream_index, int64_t source_index, Tensor& split,
     int64_t& local_split_index, bool& end_of_splits) {
-  TF_RETURN_IF_ERROR(EnsureInitialized());
-
   GetSnapshotSplitRequest req;
   req.set_worker_address(worker_address);
   req.set_base_path(base_path);

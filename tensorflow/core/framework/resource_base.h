@@ -39,7 +39,10 @@ class ResourceBase : public core::WeakRefCounted {
   virtual int64_t MemoryUsed() const { return 0; }
 
   // Writes a representation of this resource into `builder`, so that executing
-  // `*out` will recreate this resource.
+  // `*out` will recreate this resource. The lifetime of the created resource
+  // should not be tied to the graph that created it, since the graph may be
+  // destroyed before the resource is used. To avoid this lifetime issue, you
+  // can usually set a unique `shared_name` attribute for the resource.
   virtual Status AsGraphDef(GraphDefBuilder* builder, Node** out) const {
     return errors::Unimplemented("AsGraphDef not implemented for resource ",
                                  DebugString());

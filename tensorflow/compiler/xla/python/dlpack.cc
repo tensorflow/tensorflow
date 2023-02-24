@@ -204,11 +204,13 @@ StatusOr<std::vector<int64_t>> StridesToLayout(
     if (strides[a] > strides[b]) {
       return false;
     }
-    return dims[a] == 1 && dims[b] != 1;
+    // If two dimensions have the same stride, prefer the major-to-minor
+    // interpretation of the ordering, since that's what JAX wants.
+    return b < a;
   });
   int64_t stride = 1;
   for (int64_t d : minor_to_major) {
-    if (strides[d] != stride) {
+    if (dims[d] > 1 && strides[d] != stride) {
       return Unimplemented(
           "Only DLPack tensors with trivial (compact) striding are supported; "
           "i.e., tensors whose striding represents a transposition of the "

@@ -52,6 +52,14 @@ class InterpreterListener {
   virtual void leaveRegion(ArrayRef<InterpreterValue> terminatorArgs) {}
 };
 
+struct InterpreterStats {
+  // Memrefs only.
+  int64_t heapSize = 0;
+  int64_t peakHeapSize = 0;
+  int64_t numAllocations = 0;
+  int64_t numDeallocations = 0;
+};
+
 struct InterpreterOptions {
   InterpreterListener* listener = nullptr;
   std::optional<int64_t> maxSteps = std::nullopt;
@@ -63,6 +71,7 @@ struct InterpreterOptions {
       [](llvm::StringRef failure) {
         llvm::errs() << "Interpreter failure: " << failure << "\n";
       };
+  InterpreterStats* stats = nullptr;
 };
 
 class InterpreterState {
@@ -133,6 +142,8 @@ class InterpreterScope {
     return ret->second;
   }
 
+  void verify() const;
+
   // Retrieves the side channel of the given type in this scope or one of its
   // ancestor scopes. If `optional` is set, returns nullptr if not found,
   // otherwise asserts.
@@ -155,6 +166,8 @@ class InterpreterScope {
   void setSideChannel(std::shared_ptr<InterpreterSideChannel> sideChannel) {
     sideChannels.push_back(std::move(sideChannel));
   }
+
+  InterpreterScope* getParentScope() const { return parentScope; }
 
  private:
   DenseMap<Value, InterpreterValue> values;

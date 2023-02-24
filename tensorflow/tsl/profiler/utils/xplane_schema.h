@@ -279,7 +279,12 @@ enum StatType {
   kSymbolId,
   kTfOpName,
   kDmaStallDurationPs,
-  kLastStatType = kDmaStallDurationPs
+  kKey,
+  kPayloadSizeBytes,
+  kDuration,
+  kBufferSize,
+  kTransfers,
+  kLastStatType = kTransfers,
 };
 
 inline std::string TpuPlaneName(int32_t device_ordinal) {

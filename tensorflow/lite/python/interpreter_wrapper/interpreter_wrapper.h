@@ -51,23 +51,25 @@ class InterpreterWrapper {
   static InterpreterWrapper* CreateWrapperCPPFromFile(
       const char* model_path, int op_resolver_id,
       const std::vector<std::string>& registerers, std::string* error_msg,
-      bool preserve_all_tensors);
+      bool preserve_all_tensors, bool disable_delegate_clustering);
   static InterpreterWrapper* CreateWrapperCPPFromFile(
       const char* model_path, int op_resolver_id,
       const std::vector<std::string>& registerers_by_name,
       const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
-      std::string* error_msg, bool preserve_all_tensors);
+      std::string* error_msg, bool preserve_all_tensors,
+      bool disable_delegate_clustering);
 
   // SWIG caller takes ownership of pointer.
   static InterpreterWrapper* CreateWrapperCPPFromBuffer(
       PyObject* data, int op_resolver_id,
       const std::vector<std::string>& registerers, std::string* error_msg,
-      bool preserve_all_tensors);
+      bool preserve_all_tensors, bool disable_delegate_clustering);
   static InterpreterWrapper* CreateWrapperCPPFromBuffer(
       PyObject* data, int op_resolver_id,
       const std::vector<std::string>& registerers_by_name,
       const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
-      std::string* error_msg, bool preserve_all_tensors);
+      std::string* error_msg, bool preserve_all_tensors,
+      bool disable_delegate_clustering);
 
   ~InterpreterWrapper();
   PyObject* AllocateTensors(int subgraph_index);
@@ -123,7 +125,8 @@ class InterpreterWrapper {
       std::unique_ptr<PythonErrorReporter> error_reporter,
       const std::vector<std::string>& registerers_by_name,
       const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
-      std::string* error_msg, bool preserve_all_tensors);
+      std::string* error_msg, bool preserve_all_tensors,
+      bool disable_delegate_clustering);
 
   InterpreterWrapper(std::unique_ptr<Model> model,
                      std::unique_ptr<PythonErrorReporter> error_reporter,

@@ -223,6 +223,79 @@ Attribute convertAttr(Attribute hloAttr) {
 
 #undef RETURN_CONVERTED_ENUM_ATTR
 
+// Convert array of enum attrs to an array of enum strings
+//   [#mhlo<precision PACKED_NIBBLE>] -> ["PACKED_NIBBLE"]
+//
+// This is stable as long as enum names are not changed. This is needed to avoid
+// a dependency on upstream printing / parsing. If an attribute name is changed,
+// we can fork and  modify the code of `stringifyPrecision` as needed for
+// compatibility.
+Attribute encodePrecisionConfig(Attribute hloAttrs) {
+  auto hloArrayAttr = hloAttrs.dyn_cast<ArrayAttr>();
+  if (!hloArrayAttr) return {};
+  SmallVector<Attribute> stablehloAttrs;
+  for (auto hloAttr : hloArrayAttr) {
+    auto precisionAttr = hloAttr.dyn_cast<mhlo::PrecisionAttr>();
+    if (!precisionAttr) return {};
+    StringRef precisionStr = mhlo::stringifyPrecision(precisionAttr.getValue());
+    if (precisionStr.empty()) return {};
+    stablehloAttrs.push_back(
+        StringAttr::get(hloAttr.getContext(), precisionStr));
+  }
+  return ArrayAttr::get(hloAttrs.getContext(), stablehloAttrs);
+}
+
+// Experimental and public ops in MHLO that do not exist yet in StableHLO can be
+// encoded as a StableHLO CustomCallOp to allow round-tripping between dialects.
+//
+// Example:
+//   %0 = "mhlo.dot"(%arg0, %arg1) {
+//     precision_config = [#mhlo<precision PACKED_NIBBLE>] } ...
+//  ==>
+//  %0 = stablehlo.custom_call @mhlo.dot {
+//    mhlo.attributes = {precision_config = ["PACKED_NIBBLE"]}}
+LogicalResult rewriteMhloOpAsCustomCall(Operation* hloOp,
+                                        ConversionPatternRewriter& rewriter,
+                                        TypeRange stablehloTypes,
+                                        ValueRange stablehloOperands) {
+  if (hloOp->getNumRegions() != 0) {
+    // Extensibility protocol for regions hasn't been implemented yet.
+    // In principle, it should be straightforward to implement by
+    // converting regions into functions and calling them out in
+    // "called_computations".
+    // https://github.com/openxla/stablehlo/issues/593.
+    return failure();
+  }
+
+  // Convert MHLO attributes to StableHLO equivalents.
+  // If an attribute is not defined in MHLO, then it is unchanged,
+  // with the exception of ArrayAttr which is converted recursively.
+  SmallVector<NamedAttribute> stablehloConvertedAttrs;
+  for (NamedAttribute hloAttr : hloOp->getAttrs()) {
+    // Special case Attrs/Values not in StableHLO
+    // precision_config exists in both MHLO and StableHLO, but MHLO's version
+    // has additional enum values not supported in StableHLO.
+    Attribute stablehloAttr;
+    if (hloAttr.getName() == "precision_config") {
+      stablehloAttr = encodePrecisionConfig(hloAttr.getValue());
+    } else {
+      stablehloAttr = convertAttr(hloAttr.getValue());
+    }
+    if (!stablehloAttr) return failure();
+    stablehloConvertedAttrs.push_back({hloAttr.getName(), stablehloAttr});
+  }
+
+  auto stablehloCallTargetName = hloOp->getName().getStringRef();
+  SmallVector<NamedAttribute> stablehloAttrs;
+  stablehloAttrs.push_back(rewriter.getNamedAttr(
+      "call_target_name", rewriter.getStringAttr(stablehloCallTargetName)));
+  stablehloAttrs.push_back(rewriter.getNamedAttr(
+      "mhlo.attributes", rewriter.getDictionaryAttr(stablehloConvertedAttrs)));
+  rewriter.replaceOpWithNewOp<stablehlo::CustomCallOp>(
+      hloOp, stablehloTypes, stablehloOperands, stablehloAttrs);
+  return success();
+}
+
 template <typename HloOpTy>
 class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
  public:
@@ -280,28 +353,8 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
     bool hasExperimentalFeatures = hasExperimentalFeaturesNotInStablehlo(hloOp);
     if (!allowExperimentalFeatures && hasExperimentalFeatures) return failure();
     if (hasPublicFeaturesNotInStablehlo(hloOp) || hasExperimentalFeatures) {
-      if (hloOp->getNumRegions() != 0) {
-        // Extensibility protocol for regions hasn't been implemented yet.
-        // In principle, it should be straightforward to implement by
-        // converting regions into functions and calling them out in
-        // "called_computations".
-        // https://github.com/openxla/stablehlo/issues/593.
-        return failure();
-      }
-
-      auto stablehloCallTargetName = hloOp->getName().getStringRef();
-      std::string stablehloBackendConfig;
-      llvm::raw_string_ostream os(stablehloBackendConfig);
-      os << hloOp->getAttrDictionary();
-
-      SmallVector<NamedAttribute> stablehloAttrs;
-      stablehloAttrs.push_back(rewriter.getNamedAttr(
-          "call_target_name", rewriter.getStringAttr(stablehloCallTargetName)));
-      stablehloAttrs.push_back(rewriter.getNamedAttr(
-          "backend_config", rewriter.getStringAttr(stablehloBackendConfig)));
-      rewriter.replaceOpWithNewOp<stablehlo::CustomCallOp>(
-          hloOp, stablehloTypes, stablehloOperands, stablehloAttrs);
-      return success();
+      return rewriteMhloOpAsCustomCall(hloOp, rewriter, stablehloTypes,
+                                       stablehloOperands);
     }
 
     // Convert MHLO attributes to StableHLO equivalents.

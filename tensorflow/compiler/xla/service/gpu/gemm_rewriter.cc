@@ -80,6 +80,8 @@ Status SetName(HloModule *module, HloInstruction *gemm) {
 // types not compatible with Epilogue Fusion.
 bool SupportsEpilogueFusion(PrimitiveType type) {
   switch (type) {
+    case F8E4M3FN:
+    case F8E5M2:
     case F16:
     case BF16:
     case F32:
@@ -151,6 +153,16 @@ auto CublasLtMatmul(HloInstruction **instr) {
 
 auto GemmOrCublasLtMatmul(HloInstruction **instr) {
   return m::CustomCall(instr, {kGemmCallTarget, kCublasLtMatmulCallTarget});
+}
+
+auto CublasLtMatmulMaybeF8(HloInstruction **instr) {
+  return m::CustomCall(
+      instr, {kCublasLtMatmulCallTarget, kCublasLtMatmulF8CallTarget});
+}
+
+auto GemmOrCublasLtMatmulMaybeF8(HloInstruction **instr) {
+  return m::CustomCall(instr, {kGemmCallTarget, kCublasLtMatmulCallTarget,
+                               kCublasLtMatmulF8CallTarget});
 }
 
 auto BcastConstScalar(HloInstruction **instr, double value) {
@@ -307,7 +319,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     HloInstruction *alpha, *existing_gemm;
     if (Match(instr,
               m::MultiplyAnyOrder(
-                  GemmOrCublasLtMatmul(&existing_gemm).WithOneUser(),
+                  GemmOrCublasLtMatmulMaybeF8(&existing_gemm).WithOneUser(),
                   m::Broadcast(m::ConstantScalar(&alpha)).WithOneUser()))) {
       TF_ASSIGN_OR_RETURN(auto config,
                           existing_gemm->backend_config<GemmBackendConfig>());
@@ -405,6 +417,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       instr = new_add;
     }
 
+    // Do not fuse broadcast unless we can fuse its input, as it will cause
+    // broadcast materialization.
+    auto is_not_broadcast = [](const HloInstruction *instr) {
+      return instr->opcode() != HloOpcode::kBroadcast;
+    };
+
     // add(bitcast(gemm(a, b)), bias) ->
     //   bitcast(add(gemm(a, b), bitcast(bias))) ->
     //   bitcast(gemm(a, b, bitcast(bias))) (later down in this function).
@@ -420,7 +438,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
               m::AddAnyOrder(
                   m::Bitcast(GemmOrCublasLtMatmul(&existing_gemm).WithOneUser())
                       .WithOneUser(),
-                  m::Op(&bias)))) {
+                  m::Op(&bias).WithPredicate(is_not_broadcast)))) {
       HloInstruction *new_bitcast =
           MakeBitcastHlo(bias, existing_gemm->shape(), &bias->metadata());
       TF_ASSIGN_OR_RETURN(HloInstruction * new_add,
@@ -435,7 +453,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     if (Match(instr,
               m::AddAnyOrder(GemmOrCublasLtMatmul(&existing_gemm).WithOneUser(),
-                             m::Op(&bias)))) {
+                             m::Op(&bias).WithPredicate(is_not_broadcast)))) {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
 
@@ -450,11 +468,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (Match(instr,
               m::MaximumAnyOrder(
                   m::AnyOf<HloInstruction>(
-                      m::Slice(&optional_slice_or_bitcast,
-                               CublasLtMatmul(&existing_gemm).WithOneUser()),
-                      m::Bitcast(&optional_slice_or_bitcast,
-                                 CublasLtMatmul(&existing_gemm).WithOneUser()),
-                      CublasLtMatmul(&existing_gemm))
+                      m::Slice(
+                          &optional_slice_or_bitcast,
+                          CublasLtMatmulMaybeF8(&existing_gemm).WithOneUser()),
+                      m::Bitcast(
+                          &optional_slice_or_bitcast,
+                          CublasLtMatmulMaybeF8(&existing_gemm).WithOneUser()),
+                      CublasLtMatmulMaybeF8(&existing_gemm))
                       .WithOneUser(),
                   m::Broadcast(&zeros, m::ConstantScalar(0))))) {
       TF_RETURN_IF_ERROR(FuseReluActivation(instr, zeros, existing_gemm,
@@ -1115,7 +1135,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
                         AsBlasDataType(instr->shape().element_type()));
     TF_ASSIGN_OR_RETURN(const se::blas::ComputationType compute_type,
-                        GetBlasComputationType(instr->shape().element_type()));
+                        GetBlasComputationType(
+                            instr->shape().element_type(),
+                            stream_executor::blas::kDefaultComputePrecision));
     se::blas::DataType scale_type =
         cublas_lt::GetScaleType(output_dtype, compute_type);
 

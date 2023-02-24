@@ -21,6 +21,8 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -32,7 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 
 namespace mlir {
-namespace mhlo {
+namespace xla_framework {
 namespace {
 
 // Given a FuncOp with only memref args/outputs, create a new function that
@@ -124,7 +126,10 @@ struct OutlineXLAFunc : public RewritePattern {
 
     // Finally, mark the called function as private to prevent users from
     // accidentally trying to use it.
-    func.setVisibility(SymbolTable::Visibility::Private);
+    Attribute linkage = mlir::LLVM::LinkageAttr::get(
+        rewriter.getContext(), mlir::LLVM::Linkage::Internal);
+    func->setAttr("llvm.linkage", linkage);
+    func.setPrivate();
 
     return success();
   }
@@ -136,7 +141,8 @@ struct OutlineXLAFunc : public RewritePattern {
 class OutlineWithXLAFrameworkPass
     : public impl::OutlineWithXLAFrameworkBase<OutlineWithXLAFrameworkPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<xla_framework::XLAFrameworkDialect, mlir::BuiltinDialect>();
+    registry.insert<xla_framework::XLAFrameworkDialect, mlir::LLVM::LLVMDialect,
+                    mlir::BuiltinDialect>();
   }
 
  public:
@@ -168,5 +174,5 @@ std::unique_ptr<OperationPass<ModuleOp> > CreateOutlineWithXLAFrameworkPass() {
   return std::make_unique<OutlineWithXLAFrameworkPass>();
 }
 
-}  // namespace mhlo
+}  // namespace xla_framework
 }  // namespace mlir

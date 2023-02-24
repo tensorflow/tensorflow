@@ -78,11 +78,9 @@ cc_library(
     name = "python_op_gen",
     srcs = [
         "python_op_gen.cc",
-        "python_op_gen_internal.cc",
     ],
     hdrs = [
         "python_op_gen.h",
-        "python_op_gen_internal.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -126,6 +124,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:protobuf",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -1023,11 +1022,12 @@ py_library(
         ":device",
         ":dtypes",
         ":error_interpolation",
-        ":indexed_slices",
+        ":op_callbacks",
         ":op_def_registry",
         ":registry",
         ":tensor_conversion_registry",
         ":tensor_shape",
+        ":tensor_util",
         ":traceable_stack",
         ":type_spec",
         ":versions",
@@ -1078,8 +1078,11 @@ py_library(
         ":tensor_conversion_registry",
         ":tensor_shape",
         ":type_spec",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:math_ops_gen",
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
@@ -1104,7 +1107,11 @@ py_library(
     # TODO(b/266747022): remove extra visibility
     visibility = visibility + ["//learning/brain/experimental:__subpackages__"],
     deps = [
-        "//tensorflow/python/eager:context",
+        ":dtypes",
+        "//tensorflow/python/types",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1115,13 +1122,11 @@ py_library(
     deps = [
         ":auto_control_deps",
         ":composite_tensor",
-        ":constant_op",
         ":dtypes",
         ":errors",
         ":indexed_slices",
         ":ops",
         ":tensor_spec",
-        ":tensor_util",
         ":type_spec",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/capture:capture_container",
@@ -1134,10 +1139,8 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:graph_only_ops",
-        "//tensorflow/python/eager:tape",
         "//tensorflow/python/platform",
         "//tensorflow/python/saved_model:save_context",
-        "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
@@ -1320,6 +1323,8 @@ py_library(
         ":tensor_util",
         ":type_spec",
         ":type_spec_registry",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/types",
     ],
 )
@@ -1374,7 +1379,9 @@ py_library(
         ":tensor_spec",
         ":type_spec",
         ":type_spec_registry",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:composite_tensor_ops",
+        "//tensorflow/python/saved_model:nested_structure_coder",
     ],
 )
 
@@ -1409,6 +1416,7 @@ py_library(
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/util",
     ],
 )
@@ -1421,11 +1429,12 @@ pytype_library(
     deps = [
         ":composite_tensor",
         ":dtypes",
+        ":tensor_conversion_registry",
         ":tensor_shape",
-        ":type_spec_registry",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
@@ -1460,9 +1469,8 @@ pytype_library(
 )
 
 py_library(
-    name = "tensor_spec",
-    srcs = ["tensor_spec.py"],
-    srcs_version = "PY3",
+    name = "tensor",
+    srcs = ["tensor.py"],
     deps = [
         ":common_shapes",
         ":dtypes",
@@ -1473,9 +1481,18 @@ py_library(
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/eager:graph_only_ops",
         "//tensorflow/python/platform",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "tensor_spec",
+    srcs = ["tensor_spec.py"],
+    deps = [
+        ":tensor",
     ],
 )
 
@@ -1956,6 +1973,32 @@ tf_py_test(
     ],
 )
 
+# Test that op_allowlist works with ops with namespaces
+tf_gen_op_wrapper_py(
+    name = "test_namespace_ops",
+    out = "test_namespace_ops.py",
+    op_allowlist = ["Namespace>TestStringOutput"],
+    deps = [
+        ":test_ops_kernels",
+    ],
+)
+
+tf_py_test(
+    name = "op_allowlist_namespace_test",
+    size = "small",
+    srcs = ["op_allowlist_namespace_test.py"],
+    main = "op_allowlist_namespace_test.py",
+    python_version = "PY3",
+    tags = ["no_pip"],  # Avoid a missing test dependency error
+    deps = [
+        ":errors",
+        ":for_generated_wrappers",
+        ":framework",
+        ":test_lib",
+        ":test_namespace_ops",
+    ],
+)
+
 tf_py_test(
     name = "ops_enable_eager_test",
     size = "small",
@@ -2046,14 +2089,14 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "tensor_spec_test",
+    name = "tensor_test",
     size = "small",
-    srcs = ["tensor_spec_test.py"],
-    main = "tensor_spec_test.py",
+    srcs = ["tensor_test.py"],
+    main = "tensor_test.py",
     python_version = "PY3",
     deps = [
         ":for_generated_wrappers",
-        ":tensor_spec",
+        ":tensor",
         ":test_lib",
         ":type_utils",
         "//tensorflow/python:platform_test",
@@ -2135,6 +2178,7 @@ tf_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:shape_util",
         "//tensorflow/python:state_ops_gen",
         "//third_party/py/numpy",
     ],

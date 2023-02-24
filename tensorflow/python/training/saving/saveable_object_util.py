@@ -29,7 +29,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -688,7 +688,7 @@ class TrackableSaveable(saveable_object.SaveableObject):
       ret = restore_fn(restored_tensor_dict)
     if ret is not None:
       return ret
-    return control_flow_ops.no_op()
+    return gen_control_flow_ops.no_op()
 
   def get_proto_names_and_checkpoint_keys(self):
     return [(self._prefix + local_name, spec.name)

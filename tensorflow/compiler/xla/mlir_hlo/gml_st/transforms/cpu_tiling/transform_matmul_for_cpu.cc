@@ -365,7 +365,6 @@ FailureOr<TilingResult> tileMatmul(PatternRewriter &rewriter, Operation *op,
                                    ArrayRef<int64_t> tileSizes) {
   TilingOptions opts;
   opts.setTileSizeComputationFn(tileSizes);
-  opts.distribute = true;
   return tileUsingGmlSt(opts, rewriter, cast<TilingInterface>(op));
 }
 
@@ -554,8 +553,7 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
       // Fuse ops into the loop.
       fuseGreedily(rewriter, *tilingRoot->getBlock(),
                    [&](Operation *op) { return fusionCluster.contains(op); });
-      (void)fuseFillOpsIntoParallelOp(
-          rewriter, cast<ParallelOp>(tilingParallelDimsResult->loop));
+      (void)fuseFillOpsIntoParallelOp(rewriter, tilingParallelDimsResult->loop);
     }
 
     // Second level tiling: reduction dimension for matmuls.
@@ -570,10 +568,7 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     // Peel parallel loops.
     //
     // We only want to peel (1) the parallel loop then (2) our kernel.
-    if (auto loop =
-            dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult->loop)) {
-      auto peelingResult = peelAllLoops(loop, rewriter);
-    }
+    auto peelingResult = peelAllLoops(tilingParallelDimsResult->loop, rewriter);
 
     // Peel reduction loop inside the main parallel loop, label the main loop as
     // "perfectly tiled" one, to enable vectorization after canonicalization.

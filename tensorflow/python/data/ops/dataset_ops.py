@@ -245,18 +245,18 @@ class DatasetV2(
     self._options_attr = options_lib.Options()
     for input_dataset in self._inputs():
       input_options = None
-      if isinstance(input_dataset, DatasetV1):
+      if isinstance(input_dataset, data_types.DatasetV1):
         # If the V1 dataset does not have the `_dataset` attribute, we assume it
         # is a dataset source and hence does not have options. Otherwise, we
         # grab the options of `_dataset` object
         if hasattr(input_dataset, "_dataset"):
-          if not isinstance(input_dataset._dataset, DatasetV2):
+          if not isinstance(input_dataset._dataset, data_types.DatasetV2):
             raise TypeError(
                 f"Each input of dataset {type(self)} should be a subclass of "
                 f"`tf.data.Dataset` but encountered "
                 f"{type(input_dataset._dataset)}.")
           input_options = input_dataset._dataset._options_attr
-      elif isinstance(input_dataset, DatasetV2):
+      elif isinstance(input_dataset, data_types.DatasetV2):
         input_options = input_dataset._options_attr
       else:
         raise TypeError(
@@ -2479,7 +2479,7 @@ name=None))
       A new `Dataset` with the transformation applied as described above.
     """
     dataset = transformation_func(self)
-    if not isinstance(dataset, DatasetV2):
+    if not isinstance(dataset, data_types.DatasetV2):
       raise TypeError(
           f"`transformation_func` must return a `tf.data.Dataset` object. "
           f"Got {type(dataset)}.")

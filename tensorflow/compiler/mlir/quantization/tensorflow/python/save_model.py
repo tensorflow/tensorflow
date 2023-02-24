@@ -13,24 +13,25 @@
 # limitations under the License.
 # ==============================================================================
 """Defines utilities involving SavedModel."""
-
 from typing import Collection, Dict, Mapping, Optional, Sequence
 
 from absl import logging
 
+# pylint: disable=g-importing-member
+from google.protobuf.any_pb2 import Any
+# pylint: enable=g-importing-member
 from tensorflow.core.framework import graph_pb2
-from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import constants as saved_model_constants
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.training import saver
 from tensorflow.python.types import core
 
 # Mapping of signature def key -> SignatureDef.
@@ -252,53 +253,6 @@ def _find_file_prefix_tensor(graph: ops.Graph) -> Optional[core.Tensor]:
   return None
 
 
-def _create_empty_variable(
-    node_def: node_def_pb2.NodeDef,
-) -> variables.Variable:
-  """Creates an empty `Variable`.
-
-  Variables with unknown shape and empty value is created.
-
-  Args:
-    node_def: Instance of `NodeDef` of the `VarHandleOp`.
-
-  Returns:
-    Empty `Variable` with only `shared_name` and `dtype` populated according to
-    `node_def`.
-  """
-  shared_name = str(node_def.attr['shared_name'].s, encoding='utf-8')
-  dtype: dtypes.DType = dtypes.as_dtype(node_def.attr['dtype'].type)
-
-  return variables.Variable(
-      [], trainable=False, name=shared_name, dtype=dtype, shape=None
-  )
-
-
-def _find_variables(
-    graph_def: graph_pb2.GraphDef,
-) -> Mapping[str, node_def_pb2.NodeDef]:
-  """Finds existing `VarHandleOp`s in the graph.
-
-  Args:
-    graph_def: `GraphDef` to find variables from.
-
-  Returns:
-    A shared_name -> `NodeDef` mapping that maps each `NodeDef` corresponding to
-    `VarHandleOp` to its `shared_name`.
-  """
-  var_mapping = {}
-  for node in graph_def.node:
-    if node.op == 'VarHandleOp':
-      var_mapping[str(node.attr['shared_name'].s, encoding='utf-8')] = node
-
-  for func in graph_def.library.function:
-    for node in func.node_def:
-      if node.op == 'VarHandleOp':
-        var_mapping[str(node.attr['shared_name'].s, encoding='utf-8')] = node
-
-  return var_mapping
-
-
 def _save_function_alias(
     saved_model_dir: str,
     tags: Collection[str],
@@ -339,9 +293,10 @@ def save_model_v1(
     tags: Collection[str],
     init_op_name: Optional[str] = None,
     restore_op_name: Optional[str] = None,
+    save_op_name: Optional[str] = None,
     checkpoint_dir: Optional[str] = None,
-    variable_shared_names: Optional[Sequence[str]] = None,
     function_aliases: Optional[Mapping[str, str]] = None,
+    asset_file_defs: Sequence[meta_graph_pb2.AssetFileDef] = (),
 ) -> None:
   """Saves the model.
 
@@ -355,12 +310,17 @@ def save_model_v1(
     tags: Tags for the meta graph def.
     init_op_name: Name of the node for initialization.
     restore_op_name: Name of the node for restoration.
+    save_op_name: Name of the node for saving variables.
     checkpoint_dir: Path to checkpoint file where variable values are saved.
-    variable_shared_names: Shared name of the variables in the model.
     function_aliases: Function name -> function alias mapping.
+    asset_file_defs: `AssetFileDef`s that associates the asset files and the
+      name of the tensors to which the asset file names should be fed. The
+      caller should make sure the asset files exist in the output saved model
+      directory.
 
   Raises:
-    ValueError iff the graph does not contain a valid signature.
+    ValueError iff the graph does not contain a valid signature or the file
+    prefix tensor is not found in the graph.
   """
   _create_empty_output_dir(output_dir)
   v1_builder = builder.SavedModelBuilder(output_dir)
@@ -373,38 +333,49 @@ def save_model_v1(
         signature_def_map, ops.get_default_graph()
     )
 
-    # `restore_op_name` is non-empty & non-None when variables should be
-    # restored before saving.
-    if restore_op_name:
-      var_mapping = _find_variables(graph_def)
-      logging.debug(
-          'Shared names of the variables to be saved: %s',
-          str(list(var_mapping.keys())),
+    # Add `AssetFileDef`s to the collection so that correct values are fed to
+    # the tensors that accept asset file paths.
+    for asset_file_def in asset_file_defs:
+      asset_any_proto = Any()
+      asset_any_proto.Pack(asset_file_def)
+      ops.add_to_collection(
+          saved_model_constants.ASSETS_KEY,
+          asset_any_proto,
       )
 
-      for shared_name in variable_shared_names:
-        var_node_def = var_mapping[shared_name]
+    # `restore_op_name` and `save_op_name` are non-empty & non-None when
+    # variables should be restored / saved.
+    model_saver = None
+    if restore_op_name and save_op_name:
+      file_prefix_tensor = _find_file_prefix_tensor(sess.graph)
+      if file_prefix_tensor is None:
+        raise ValueError('Failed to find file prefix tensor.')
 
-        # Variables with unknown shape and empty value is created. This is
-        # just there to register a variable with `shared_name` to the resource
-        # manager and collections, so that the values in checkpoint is
-        # properly restored via `RestoreV2` op. Once restored, the value,
-        # dtype and shape will be properly populated.
-        _create_empty_variable(var_node_def)
-
-      # Restores the variables by running the `RestoreV2` op.
-      # `v1_builder.save()` saves the restored variables to the variables/
-      # directory in `output_dir`.
-      sess.run(
-          _find_op(sess.graph, op_name=restore_op_name),
-          feed_dict={_find_file_prefix_tensor(sess.graph): checkpoint_dir},
+      # TODO(b/268594921): Create SaverDef from the c++ side and pass it along
+      # to the python side.
+      saver_def = saver_pb2.SaverDef(
+          filename_tensor_name=file_prefix_tensor.name,
+          restore_op_name=restore_op_name,
+          # :0 attached to indicate the first result tensor, which should be
+          # the file prefix string tensor.
+          save_tensor_name=f'{save_op_name}:0',
+          version=saver_pb2.SaverDef.V2,
       )
+
+      model_saver = saver.Saver(saver_def=saver_def)
+      logging.info('Saver created with SaverDef: %s', saver_def)
+
+      # Variables should be restored once before exporting as saved model
+      # because the variables are not initialized when the GraphDef was
+      # imported.
+      model_saver.restore(sess, checkpoint_dir)
 
     v1_builder.add_meta_graph_and_variables(
         sess,
         tags,
         signature_def_map=signature_def_map,
         main_op=_find_op(sess.graph, op_name=init_op_name),
+        saver=model_saver,
     )
 
   v1_builder.save()

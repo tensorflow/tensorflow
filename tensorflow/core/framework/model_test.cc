@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/core/framework/model.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 
 #include "tensorflow/core/framework/cancellation.h"
@@ -1362,6 +1364,51 @@ TEST(ModelTest, ModelMetrics) {
   EXPECT_THAT(cell_reader.Read(model_id),
               AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
                     HasSubstr("autotune: true")));
+}
+
+TEST(ModelTest, ModelCollectOptimizationMetrics) {
+  CellReader<std::string> cell_reader("/tensorflow/data/model");
+  model::Model model;
+  std::shared_ptr<Node> root = model::MakeUnknownNode({0, "unknown0", nullptr});
+  model.AddNode([&root](model::Node::Args args) { return root; }, root->name(),
+                nullptr, &root);
+  model.output()->record_element();
+  model.output()->record_start(100);
+  model.output()->record_stop(200);
+  std::string model_id = strings::StrCat(reinterpret_cast<uintptr_t>(&model));
+  // Before optimization, whatever metrics collected are returned.
+  EXPECT_THAT(cell_reader.Read(model_id),
+              AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+                    HasSubstr("autotune: true"), HasSubstr("num_elements: 1"),
+                    HasSubstr("processing_time: 100")));
+  CancellationManager cancellation_manager;
+  model.Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/20,
+                 /*ram_budget=*/1000, /*model_input_time=*/50,
+                 &cancellation_manager);
+  model.output()->record_element();
+  model.output()->record_start(300);
+  model.output()->record_stop(400);
+  // After optimization, metrics collected just before optimization are
+  // returned. Metrics collected after optimization are not returned.
+  EXPECT_THAT(cell_reader.Read(model_id),
+              AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+                    HasSubstr("autotune: true"), HasSubstr("num_elements: 1"),
+                    HasSubstr("processing_time: 100")));
+  // Add gap times.
+  model.RecordIteratorGapTime(10);
+  model.RecordIteratorGapTime(11);
+  model.RecordIteratorGapTime(12);
+  // Call optimization again. Metrics collected after the first optimization
+  // and the added gap times should be returned as well.
+  model.Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/20,
+                 /*ram_budget=*/1000, /*model_input_time=*/50,
+                 &cancellation_manager);
+  EXPECT_THAT(
+      cell_reader.Read(model_id),
+      AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+            HasSubstr("autotune: true"), HasSubstr("num_elements: 2"),
+            HasSubstr("processing_time: 200"), HasSubstr("gap_times: 10"),
+            HasSubstr("gap_times: 11"), HasSubstr("gap_times: 12")));
 }
 
 TEST(ModelTest, ModelCollectAndDestroyRaceCondition) {
@@ -2761,16 +2808,32 @@ TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatioLessThanOne) {
 TEST_F(ModelTimingTest, ComputeTargetTime) {
   model_ = std::make_unique<Model>();
 
+  model_->RecordIteratorGapTime(5);
+  model_->RecordIteratorGapTime(5);
   model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(15);
+  model_->RecordIteratorGapTime(15);
   model_->RecordIteratorGapTime(1000);
   // Gap times that are >= 10 seconds are always dropped.
   model_->RecordIteratorGapTime(10000000);
 
   EXPECT_DOUBLE_EQ(10, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, ComputeTargetTime_Experiment) {
+  model_ = std::make_unique<Model>();
+  model_->AddExperiment("stage_based_autotune_v2");
+
+  model_->RecordIteratorGapTime(5);
+  model_->RecordIteratorGapTime(5);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(15);
+  model_->RecordIteratorGapTime(15);
+  model_->RecordIteratorGapTime(1000);
+  // Gap times that are >= 10 seconds are always dropped.
+  model_->RecordIteratorGapTime(10000000);
+
+  EXPECT_DOUBLE_EQ(5, model_->ComputeTargetTimeNsec() * 1e-3);
 }
 
 TEST_F(ModelTimingTest, ComputeTargetTime_NoOutlier) {

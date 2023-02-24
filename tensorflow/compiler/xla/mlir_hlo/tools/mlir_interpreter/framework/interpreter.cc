@@ -45,6 +45,13 @@ SmallVector<InterpreterValue> interpret(InterpreterState& state,
   }
   state.getOptions().listener->beforeOp(operands, &op);
   auto results = fn(operands, &op, state);
+  for (auto* scope = state.getTopScope(); scope != nullptr;
+       scope = scope->getParentScope()) {
+    scope->verify();
+  }
+  if (state.hasFailure()) {
+    llvm::errs() << "Encountered failure while executing " << op << "\n";
+  }
   state.getOptions().listener->afterOp(results);
   state.step();
   return results;
@@ -99,14 +106,18 @@ void InterpreterState::addFailure(llvm::StringRef failure) {
   options.errorHandler(failure);
 }
 
-InterpreterScope::~InterpreterScope() {
+void InterpreterScope::verify() const {
   for (auto& [_, value] : values) {
-    if (value.isTensor() && value.buffer()->hasOutOfBoundsAccess()) {
-      state.addFailure("Out of bounds access");
+    if (value.isTensor() && value.buffer() &&
+        !value.buffer()->getFailure().empty()) {
+      state.addFailure(value.buffer()->getFailure());
       break;
     }
   }
+}
 
+InterpreterScope::~InterpreterScope() {
+  verify();
   state.topScope = parentScope;
 }
 

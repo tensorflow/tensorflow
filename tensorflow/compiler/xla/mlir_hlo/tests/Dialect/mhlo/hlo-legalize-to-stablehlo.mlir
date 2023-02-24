@@ -1841,6 +1841,17 @@ func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!mhlo.token> {
 
 // -----
 
+func.func @attr_precision_config_invalid() -> tensor<8x8xf32> {
+  // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
+  %0 = "mhlo.custom_call"() {
+    call_target_name = "foo",
+    precision_config = [#mhlo<precision PACKED_NIBBLE>, 1 : i32]
+  } : () -> tensor<8x8xf32>
+  func.return %0 : tensor<8x8xf32>
+}
+
+// -----
+
 func.func @op_add_dependency(%arg0: tensor<16xf32>, %arg1: !mhlo.token) -> tensor<16xf32> {
   // expected-error@+1 {{failed to legalize operation 'mhlo.add_dependency' that was explicitly marked illegal}}
   %0 = "mhlo.add_dependency"(%arg0, %arg1) : (tensor<16xf32>, !mhlo.token) -> tensor<16xf32>

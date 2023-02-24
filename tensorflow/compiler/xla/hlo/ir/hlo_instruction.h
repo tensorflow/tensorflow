@@ -407,16 +407,18 @@ class HloPrintOptions {
 // where <xxx> is an index starting from 0.
 class CanonicalNameMap {
  public:
-  const std::string& LookupOrInsert(const std::string& name) {
-    std::string& canonical_name = canonical_name_map_[name];
+  const std::string& LookupOrInsert(int unique_id) {
+    std::string& canonical_name = canonical_name_map_[unique_id];
     if (canonical_name.empty()) {
       absl::StrAppend(&canonical_name, "tmp_", canonical_name_map_.size() - 1);
     }
     return canonical_name;
   }
 
+  void Reserve(size_t size) { canonical_name_map_.reserve(size); }
+
  private:
-  absl::flat_hash_map<std::string, std::string> canonical_name_map_;
+  absl::flat_hash_map<int, std::string> canonical_name_map_;
 };
 
 // HLO instructions are the atomic unit of the high-level compiler's IR.
@@ -1527,6 +1529,23 @@ class HloInstruction {
   // Prints a string representation of the operand list.
   void PrintOperands(Printer* printer, const HloPrintOptions& options) const;
 
+  // Helper class for PrintExtraAttributes.
+  class AttributePrinter {
+   public:
+    explicit AttributePrinter(std::function<Printer*()> next_printer)
+        : next_printer_(std::move(next_printer)) {}
+
+    void Next(absl::FunctionRef<void(Printer*)> print_func) {
+      print_func(next_printer_());
+    }
+
+   private:
+    std::function<Printer*()> next_printer_;
+  };
+  // Prints the string representation of op-specific attributes.
+  void PrintExtraAttributes(AttributePrinter& printer,
+                            const HloPrintOptions& options) const;
+
   // Returns string representation of op-specific attributes.
   std::vector<std::string> ExtraAttributesToString(
       const HloPrintOptions& options) const;
@@ -2273,11 +2292,9 @@ class HloInstruction {
     LOG(FATAL) << "Unimplemented method.";
   }
 
-  // Implementation for non-common logic of ExtraAttributesToString.
-  virtual std::vector<std::string> ExtraAttributesToStringImpl(
-      const HloPrintOptions& options) const {
-    return {};
-  }
+  // Implementation for non-common logic of PrintExtraAttributes.
+  virtual void PrintExtraAttributesImpl(AttributePrinter& printer,
+                                        const HloPrintOptions& options) const {}
 
   // Implementation for IsElementwise if operand_idx is nullopt and for
   // IsElementwiseOnOperand if otherwise.
@@ -2402,9 +2419,9 @@ extern template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool);
 extern template Status HloInstruction::Visit(DfsHloVisitor* visitor);
 extern template Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
 
-std::string ToString(HloInstruction::FusionKind kind);
+absl::string_view ToString(HloInstruction::FusionKind kind);
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(
-    const std::string& kind_name);
+    absl::string_view kind_name);
 
 // Custom (de)stringification functions for protos that live inside
 // HloInstruction.

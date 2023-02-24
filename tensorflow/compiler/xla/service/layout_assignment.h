@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/container/node_hash_map.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -45,6 +46,7 @@ limitations under the License.
 
 namespace xla {
 
+class LayoutAssignment;
 // Abstract base class for layout constraints. These constraint objects are
 // gathered together in LayoutConstraints object.
 class LayoutConstraint {
@@ -89,15 +91,17 @@ class BufferLayoutConstraint : public LayoutConstraint {
                          bool mandatory, bool dfs, int64_t priority);
 
   const LogicalBuffer& buffer() const { return *buffer_; }
-  const Layout& layout() const { return layout_; }
+  const Layout& layout() const { return layout_[0]; }
   bool UpdateLayout(int64_t priority, const Layout& layout, bool mandatory,
-                    bool dfs);
+                    bool dfs, LayoutAssignment* assignment,
+                    const HloInstruction* from_user = nullptr);
 
   std::string ToString() const override;
 
  private:
-  Layout layout_;
+  absl::InlinedVector<Layout, 2> layout_;
   const LogicalBuffer* buffer_;
+  const HloInstruction* from_user_ = nullptr;
 };
 
 // Constraint on the layout of the operand of an instruction. The constrained
@@ -111,17 +115,19 @@ class OperandLayoutConstraint : public LayoutConstraint {
                           const HloInstruction* instruction, int64_t operand_no,
                           bool mandatory, bool dfs, int64_t priority);
 
-  const ShapeLayout& shape_layout() const { return shape_layout_; }
+  const ShapeLayout& shape_layout() const { return shape_layout_[0]; }
   const HloInstruction* instruction() const { return instruction_; }
   const int64_t operand_no() const { return operand_no_; }
   const HloInstruction* operand() const {
     return instruction_->operand(operand_no_);
   }
-
+  // Return whether the layout should be allowed to be modified.
+  bool UpdateLayout(int64_t priority, const Shape& new_shape, bool mandatory,
+                    bool dfs, LayoutAssignment* assignment);
   std::string ToString() const override;
 
  private:
-  ShapeLayout shape_layout_;
+  absl::InlinedVector<ShapeLayout, 2> shape_layout_;
   const HloInstruction* instruction_;
   int64_t operand_no_;
 };
@@ -277,6 +283,8 @@ class LayoutAssignment : public HloModulePass {
                                      int64_t operand_no) const;
     const OperandLayoutConstraint* GetOperandLayoutConstraint(
         const HloInstruction* instruction, int64_t operand_no) const;
+    OperandLayoutConstraint* MutableOperandLayoutConstraint(
+        const HloInstruction* instruction, int64_t operand_no);
     const ShapeLayout* ResultLayout() const;
     OperandLayoutConstraint* InsertOperandLayoutConstraint(
         const HloInstruction* instruction, int64_t operand_no,
@@ -370,7 +378,8 @@ class LayoutAssignment : public HloModulePass {
     return SetBufferLayout(layout, buffer, mandatory, dfs, current_priority_);
   }
   Status SetBufferLayout(const Layout& layout, const LogicalBuffer& buffer,
-                         bool mandatory, bool dfs, int64_t priority);
+                         bool mandatory, bool dfs, int64_t priority,
+                         const HloInstruction* from_user = nullptr);
   Status SetOperandLayout(const Shape& shape_with_layout,
                           const HloInstruction* instruction, int64_t operand_no,
                           bool mandatory = true, bool dfs = true) {
@@ -385,6 +394,28 @@ class LayoutAssignment : public HloModulePass {
   ComputationLayout& saved_entry_computation_layout() {
     return saved_entry_computation_layout_;
   }
+  virtual bool NegotiateLayout(const HloInstruction* instruction,
+                               const Layout& new_layout,
+                               const Layout& existing_layout,
+                               const HloInstruction* from_user,
+                               const HloInstruction* orig_user) {
+    return false;
+  }
+  virtual bool NegotiateOperandLayout(const HloInstruction* instruction,
+                                      int64_t operand_no,
+                                      const Layout& new_layout,
+                                      const Layout& existing_layout) {
+    return false;
+  }
+  // Should be made consistent with the ChooseOperandLayoutFromOutputLayout
+  // except that a boolean instead of concrete layout is returned.
+  virtual bool OperandLayoutAlwaysPropagateForward(const HloInstruction* user);
+  // Controls when all operands of user must have the same layout.
+  virtual bool OperandLayoutAlwaysPropagateToSiblings(
+      const HloInstruction* user);
+  // Controls when all operands of user must have the same layout as the output.
+  virtual bool OutputLayoutAlwaysPropagateToOperands(
+      const HloInstruction* user);
 
  protected:
   // These methods, invoked by PropagateConstraints, propagate a layout
@@ -416,6 +447,8 @@ class LayoutAssignment : public HloModulePass {
   Status PropagateUnconstraintedBuffers(LayoutConstraints* constraints);
   const BufferLayoutConstraint* GetBufferLayoutConstraint(
       const LogicalBuffer& buffer) const;
+  StatusOr<const BufferLayoutConstraint*> GetInstructionBufferLayoutConstraint(
+      const HloInstruction* instruction) const;
   // Find a bufferset in the bufferset cache. This is useful since we can
   // currently create the flattened buffer set for the same instruction many
   // times, which is often slow.
@@ -443,7 +476,8 @@ class LayoutAssignment : public HloModulePass {
   Status PropagateUseConstraintToDefs(const ShapeLayout& shape_layout,
                                       const HloInstruction* instruction,
                                       LayoutConstraints* constraints,
-                                      int64_t priority);
+                                      int64_t priority,
+                                      const HloInstruction* user = nullptr);
 
   // Propagates the memory space defined in the entry computation to the called
   // computations.

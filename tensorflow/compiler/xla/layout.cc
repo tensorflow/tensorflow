@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -47,13 +46,13 @@ void Tile::Print(Printer* printer) const {
     const auto dim = dims[i];
     if (i != 0) printer->Append(",");
     if (dim >= 0) {
-      printer->Append(std::to_string(dim));
+      printer->Append(dim);
     } else {
       if (dim == kCombineDimension) {
         printer->Append("*");
       } else {
         printer->Append("Invalid value ");
-        printer->Append(std::to_string(dim));
+        printer->Append(dim);
       }
     }
   }
@@ -270,7 +269,7 @@ void Layout::Print(Printer* printer) const {
   if (memory_space() != 0) {
     print_colon();
     printer->Append("S(");
-    printer->Append(std::to_string(memory_space()));
+    printer->Append(memory_space());
     printer->Append(")");
   }
 
@@ -284,7 +283,7 @@ void Layout::Print(Printer* printer) const {
   if (dynamic_shape_metadata_prefix_bytes_ > 0) {
     print_colon();
     printer->Append("M(");
-    printer->Append(std::to_string(dynamic_shape_metadata_prefix_bytes()));
+    printer->Append(dynamic_shape_metadata_prefix_bytes());
     printer->Append(")");
   }
 

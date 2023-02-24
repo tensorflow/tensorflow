@@ -2578,8 +2578,9 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
           window_strides, "VALID", rewriter);
     }
 
+    Value actual_divisor = recursivelyWalkUpDivisor(div_op.getRhs());
     auto rw_rhs =
-        dyn_cast_or_null<mhlo::ReduceWindowOp>(div_op.getRhs().getDefiningOp());
+        dyn_cast_or_null<mhlo::ReduceWindowOp>(actual_divisor.getDefiningOp());
     if (rw_rhs && rw_rhs.getNumResults() == 1) {
       // Check that RHS is a sum-reduce-window.
       if (failed(MatchBinaryReduceFunction<mhlo::AddOp>(rw_rhs.getBody())))
@@ -2638,6 +2639,18 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       return success();
     }
     return failure();
+  }
+
+  // Walks up the divisor and ignore all precedding reshape/broadcast op.
+  // Returns the first producer op which is neither reshape nor broadcast.
+  Value recursivelyWalkUpDivisor(Value divisor) const {
+    while (llvm::isa_and_nonnull<mhlo::BroadcastInDimOp, mhlo::ReshapeOp>(
+        divisor.getDefiningOp())) {
+      Operation* producer = divisor.getDefiningOp();
+      divisor = producer->getOperand(/*idx=*/0);
+    }
+
+    return divisor;
   }
 };
 

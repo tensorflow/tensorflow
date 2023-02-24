@@ -4,7 +4,12 @@ load(
     "tflite_copts",
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-load("//tensorflow/lite/core/c:special_rules.bzl", "common_header_visibility_allowlist")
+load(
+    "//tensorflow/lite/core/c:special_rules.bzl",
+    "c_api_experimental_visibility_allowlist",
+    "c_api_visibility_allowlist",
+    "common_header_visibility_allowlist",
+)
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
@@ -49,7 +54,7 @@ tflite_cc_library_with_c_headers_test(
     copts = tflite_copts(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-    ],
+    ] + c_api_visibility_allowlist(),
     deps = [
         ":c_api_types",
         ":c_api_without_op_resolver",
@@ -224,6 +229,9 @@ tflite_cc_library_with_c_headers_test(
     hdrs = ["c_api_types.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ] + c_api_visibility_allowlist(),
 )
 
 # Test the C extension API code.
@@ -254,6 +262,7 @@ tflite_cc_library_with_c_headers_test(
     ] + common_header_visibility_allowlist(),
     deps = [
         ":c_api_types",
+        "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",
     ] + select({
         "//tensorflow/lite:tensorflow_profiler_config": [
             "//tensorflow/lite:macros",
@@ -265,7 +274,7 @@ tflite_cc_library_with_c_headers_test(
 )
 
 # This is a private target, its visibility is set to public only to be
-# used by "tflite_custom_c_library".
+# used by "tflite_custom_c_library" and "tflite_flex_cc_library".
 # Do not use this target directly and don't consider it as a part of the public API.
 alias(
     name = "private_common",
@@ -285,6 +294,9 @@ tflite_cc_library_with_c_headers_test(
         "c_api_experimental.h",
     ],
     copts = tflite_copts(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ] + c_api_experimental_visibility_allowlist(),
     deps = [
         ":c_api",
         ":common",

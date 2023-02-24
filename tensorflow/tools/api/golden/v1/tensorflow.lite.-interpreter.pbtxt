@@ -4,7 +4,7 @@ tf_class {
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'model_path\', \'model_content\', \'experimental_delegates\', \'num_threads\', \'experimental_op_resolver_type\', \'experimental_preserve_all_tensors\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'OpResolverType.AUTO\', \'False\'], "
+    argspec: "args=[\'self\', \'model_path\', \'model_content\', \'experimental_delegates\', \'num_threads\', \'experimental_op_resolver_type\', \'experimental_preserve_all_tensors\', \'experimental_disable_delegate_clustering\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'OpResolverType.AUTO\', \'False\', \'False\'], "
   }
   member_method {
     name: "allocate_tensors"

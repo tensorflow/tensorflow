@@ -325,9 +325,6 @@ class WorkerConfig(
       worker_address = "localhost:%port%"
     if protocol is None:
       protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
-    if data_transfer_protocol is None:
-      data_transfer_protocol = (
-          _pywrap_utils.TF_DATA_DefaultDataTransferProtocol())
     if data_transfer_address is None:
       data_transfer_address = "localhost:%port%"
     heartbeat_interval_ms = _get_time_or_placeholder(heartbeat_interval_ms)

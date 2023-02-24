@@ -185,7 +185,7 @@ class CapturableResource(base.Trackable, metaclass=_ResourceMetaclass):
     tensor_map[self.resource_handle] = new_resource
     return [self.resource_handle]
 
-  def _trackable_children(self, save_type, **kwargs):
+  def _trackable_children(self, save_type=base.SaveType.CHECKPOINT, **kwargs):
     children = super()._trackable_children(save_type, **kwargs)
     if save_type == "savedmodel":
       @def_function.function(input_signature=[], autograph=False)

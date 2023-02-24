@@ -35,24 +35,25 @@ inline void CheckArithmeticParams(const ArithmeticParams& params) {
   TFLITE_DCHECK_LE(-params.input2_offset, std::numeric_limits<int8_t>::max());
 }
 
-inline void ElementWise(
-    int size, const ArithmeticParams& params, const int8_t* input1_data,
-    const int8_t* input2_data, int8_t* output_data,
-    void (*check_arithmetic_params)(const ArithmeticParams&),
-    int8_t (*binary_func)(int8_t, int8_t, const ArithmeticParams&)) {
+// TODO(b/270589088): move to a more appropriate file (b/270589088#comment2)
+template <typename T>
+void ElementWise(int size, const ArithmeticParams& params, const T* input1_data,
+                 const T* input2_data, T* output_data,
+                 void (*check_arithmetic_params)(const ArithmeticParams&),
+                 T (*binary_func)(T, T, const ArithmeticParams&)) {
   CheckArithmeticParams(params);
   for (int i = 0; i < size; ++i) {
     output_data[i] = binary_func(input1_data[i], input2_data[i], params);
   }
 }
-
-inline void BroadcastBinaryFunction4DSlow(
+// TODO(b/270589088): move to a more appropriate file. (b/270589088#comment2)
+template <typename T>
+void BroadcastBinaryFunction4DSlow(
     const ArithmeticParams& params, const RuntimeShape& input1_shape,
-    const int8_t* input1_data, const RuntimeShape& input2_shape,
-    const int8_t* input2_data, const RuntimeShape& output_shape,
-    int8_t* output_data,
+    const T* input1_data, const RuntimeShape& input2_shape,
+    const T* input2_data, const RuntimeShape& output_shape, T* output_data,
     void (*check_arithmetic_params)(const ArithmeticParams&),
-    int8_t (*binary_func)(int8_t, int8_t, const ArithmeticParams&)) {
+    T (*binary_func)(T, T, const ArithmeticParams&)) {
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,

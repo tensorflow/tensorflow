@@ -410,7 +410,8 @@ def relayout(tensor: ops.Tensor, layout: layout_lib.Layout) -> ops.Tensor:
     A DTensor output from the Relayout op.
   """
   layout_str = layout.to_string()
-  return gen_dtensor_ops.relayout(tensor, layout_str)
+  with run_on(layout.mesh):
+    return gen_dtensor_ops.relayout(tensor, layout_str)
 
 
 def _set_dtensor_device(device: dtensor_device.DTensorDevice) -> None:
@@ -440,8 +441,17 @@ def _reset() -> None:
 
 @ops.RegisterGradient("Relayout")
 def _relayout_gradient(op, grad):
-  del op
+  grad = gen_dtensor_ops.relayout_grad(grad, forward_input=op.inputs[0])
   return grad
+
+
+@ops.RegisterGradient("RelayoutGrad")
+def _relayout_grad_gradient(op, grad):
+  # Gradient of RelayoutGrad is relayout to the original Relayout's output.
+  grad = gen_dtensor_ops.relayout_grad(grad, forward_input=op.inputs[0])
+  # Return None for forward_input's partial gradient since it is not connected
+  # to the target's gradient.
+  return grad, None
 
 
 @ops.RegisterGradient("CopyToMesh")

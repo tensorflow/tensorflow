@@ -404,19 +404,24 @@ void PrepareQuantizePass::runOnOperation() {
   // Currently, only activation stats are imported, so narrow_range = false.
   patterns.add<PrepareQuantStats>(bit_width, false, true,
                                   /*legacy_float_scale=*/false, ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    signalPassFailure();
+  }
 
   SanityCheckAndAdjustment(func);
 
   // Finally, the quantization parameters can be propagated to the rest of the
   // values (tensors).
   ApplyQuantizationParamsPropagation(
-      func, is_signed, !enable_per_channel_quantization_, GetTFOpQuantSpec,
-      GetTfQuantScaleSpec, infer_tensor_range, quant_specs_.legacy_float_scale);
+      func, is_signed, /*bit_width=*/8, !enable_per_channel_quantization_,
+      GetTFOpQuantSpec, GetTfQuantScaleSpec, infer_tensor_range,
+      quant_specs_.legacy_float_scale);
 
   RewritePatternSet patterns2(ctx);
   patterns2.add<MergeConsecutiveQuantizeCast>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns2));
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns2)))) {
+    signalPassFailure();
+  }
 }
 
 }  // namespace

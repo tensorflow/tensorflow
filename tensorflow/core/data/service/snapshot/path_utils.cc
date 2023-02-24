@@ -32,6 +32,7 @@ namespace {
 constexpr const char kDoneFileName[] = "DONE";
 constexpr const char kSnapshotMetadataFileName[] = "snapshot.metadata";
 constexpr const char kDatasetDefFileName[] = "dataset_def.proto";
+constexpr const char kDatasetSpecFileName[] = "dataset_spec.pb";
 constexpr const char kStreamsDirectoryName[] = "streams";
 constexpr const char kSplitsDirectoryName[] = "splits";
 constexpr const char kCheckpointsDirectoryName[] = "checkpoints";
@@ -98,6 +99,10 @@ std::string SnapshotMetadataFilePath(absl::string_view snapshot_path_) {
 
 std::string DatasetDefFilePath(absl::string_view snapshot_path_) {
   return tsl::io::JoinPath(snapshot_path_, kDatasetDefFileName);
+}
+
+std::string DatasetSpecFilePath(absl::string_view snapshot_path_) {
+  return tsl::io::JoinPath(snapshot_path_, kDatasetSpecFileName);
 }
 
 std::string StreamDoneFilePath(absl::string_view snapshot_path,

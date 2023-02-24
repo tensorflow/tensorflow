@@ -215,6 +215,18 @@ PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Client_LookupAddressableDevice(
+    PJRT_Client_LookupAddressableDevice_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Client_LookupAddressableDevice_Args",
+      PJRT_Client_LookupAddressableDevice_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      xla::PjRtDevice * addressable_device,
+      args->client->client->LookupAddressableDevice(args->local_hardware_id));
+  args->addressable_device = GetCDevice(args->client, addressable_device);
+  return nullptr;
+}
+
 // Searches `device_list` for a PJRT_Device* that wraps a provided
 // `xla::PjRtDevice *` (`cpp_device`). If a match is found, that PJRT_Device* is
 // returned. Otherwise, returns nullptr.
@@ -253,6 +265,59 @@ static void PopulatePjrtExecutableAddressableDevices(
   }
 }
 
+namespace {
+
+xla::StatusOr<xla::CompileOptions> ParseCompileOptions(
+    absl::string_view options_str) {
+  xla::CompileOptionsProto options_proto;
+  // Open source ParseFromString doesn't support string_view.
+  if (!options_proto.ParseFromArray(options_str.data(), options_str.size())) {
+    return tsl::errors::InvalidArgument(
+        "PJRT_Client_Compile: failed to deserialize CompileOptionsProto");
+  }
+  return xla::CompileOptions::FromProto(options_proto);
+}
+
+using ProgramVariant =
+    std::variant<mlir::OwningOpRef<mlir::ModuleOp>, xla::XlaComputation>;
+xla::StatusOr<
+    std::variant<mlir::OwningOpRef<mlir::ModuleOp>, xla::XlaComputation>>
+ParsePjrtProgram(std::optional<mlir::MLIRContext>& context,
+                 PJRT_Program* program) {
+  auto format_str = absl::string_view(program->format, program->format_size);
+  auto module_str = absl::string_view(program->code, program->code_size);
+
+  if (format_str == pjrt::kMlirFormat) {
+    if (!context.has_value()) {
+      context.emplace();
+    }
+    TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                        xla::ParseMlirModuleString(module_str, *context));
+
+    return ProgramVariant(std::move(module));
+  } else if (format_str == pjrt::kHloFormat) {
+    xla::HloModuleProto module_proto;
+    // Open source ParseFromString doesn't support string_view.
+    if (!module_proto.ParseFromArray(module_str.data(), module_str.size())) {
+      return tsl::errors::InvalidArgument(
+          "PJRT_Client_Compile: failed to deserialize HloModuleProto");
+    }
+    return ProgramVariant(xla::XlaComputation(module_proto));
+  } else {
+    return tsl::errors::InvalidArgument(ProgramFormatErrorMsg(format_str));
+  }
+}
+
+mlir::ModuleOp UnpackPjrtProgram(mlir::OwningOpRef<mlir::ModuleOp>& module) {
+  return *module;
+}
+const xla::XlaComputation& UnpackPjrtProgram(
+    const xla::XlaComputation& computation) {
+  return computation;
+}
+
+}  // namespace
+
 PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Client_Compile_Args", PJRT_Client_Compile_Args_STRUCT_SIZE,
@@ -260,43 +325,21 @@ PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Program", PJRT_Program_STRUCT_SIZE, args->program->struct_size));
 
-  absl::string_view options_str(args->compile_options,
-                                args->compile_options_size);
-  xla::CompileOptionsProto options_proto;
-  // Open source ParseFromString doesn't support string_view.
-  if (!options_proto.ParseFromArray(options_str.data(), options_str.size())) {
-    PJRT_RETURN_IF_ERROR(tsl::errors::InvalidArgument(
-        "PJRT_Client_Compile: failed to deserialize CompileOptionsProto"));
-  }
-  PJRT_ASSIGN_OR_RETURN(xla::CompileOptions options,
-                        xla::CompileOptions::FromProto(options_proto));
+  PJRT_ASSIGN_OR_RETURN(
+      xla::CompileOptions options,
+      ParseCompileOptions(absl::string_view(args->compile_options,
+                                            args->compile_options_size)));
 
-  absl::string_view format_str(args->program->format,
-                               args->program->format_size);
-  absl::string_view module_str(args->program->code, args->program->code_size);
-
-  std::unique_ptr<xla::PjRtLoadedExecutable> executable;
-  if (format_str == pjrt::kMlirFormat) {
-    mlir::MLIRContext context;
-    PJRT_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                          xla::ParseMlirModuleString(module_str, context));
-
-    PJRT_ASSIGN_OR_RETURN(executable,
-                          args->client->client->Compile(*module, options));
-  } else if (format_str == pjrt::kHloFormat) {
-    xla::HloModuleProto module_proto;
-    // Open source ParseFromString doesn't support string_view.
-    if (!module_proto.ParseFromArray(module_str.data(), module_str.size())) {
-      PJRT_RETURN_IF_ERROR(tsl::errors::InvalidArgument(
-          "PJRT_Client_Compile: failed to deserialize HloModuleProto"));
-    }
-    xla::XlaComputation computation(module_proto);
-    PJRT_ASSIGN_OR_RETURN(executable,
-                          args->client->client->Compile(computation, options));
-  } else {
-    PJRT_RETURN_IF_ERROR(
-        tsl::errors::InvalidArgument(ProgramFormatErrorMsg(format_str)));
-  }
+  std::optional<mlir::MLIRContext> context;
+  PJRT_ASSIGN_OR_RETURN(auto module_or_hlo,
+                        ParsePjrtProgram(context, args->program));
+  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+                        std::visit(
+                            [args, &options](auto& program) {
+                              return args->client->client->Compile(
+                                  UnpackPjrtProgram(program), options);
+                            },
+                            module_or_hlo));
   args->executable =
       new PJRT_LoadedExecutable(std::move(executable), args->client);
   return nullptr;
@@ -480,6 +523,24 @@ PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args) {
   absl::string_view executable_name = args->executable->get()->name();
   args->executable_name = executable_name.data();
   args->executable_name_size = executable_name.size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_NumReplicas(
+    PJRT_Executable_NumReplicas_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_NumReplicas_Args",
+      PJRT_Executable_NumReplicas_Args_STRUCT_SIZE, args->struct_size));
+  args->num_replicas = args->executable->get()->num_replicas();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_NumPartitions(
+    PJRT_Executable_NumPartitions_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_NumPartitions_Args",
+      PJRT_Executable_NumPartitions_Args_STRUCT_SIZE, args->struct_size));
+  args->num_partitions = args->executable->get()->num_partitions();
   return nullptr;
 }
 
@@ -1013,6 +1074,70 @@ PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args) {
   return nullptr;
 }
 
+// ------------------------------ Device Topology ------------------------------
+
+PJRT_Error* PJRT_DeviceTopology_Destroy(
+    PJRT_DeviceTopology_Destroy_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_DeviceTopology_Destroy_Args",
+      PJRT_DeviceTopology_Destroy_Args_STRUCT_SIZE, args->struct_size));
+  delete args->topology;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_DeviceTopology_PlatformName(
+    PJRT_DeviceTopology_PlatformName_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_DeviceTopology_PlatformName_Args",
+      PJRT_DeviceTopology_PlatformName_Args_STRUCT_SIZE, args->struct_size));
+  absl::string_view platform_name = args->topology->topology->platform_name();
+  args->platform_name = platform_name.data();
+  args->platform_name_size = platform_name.size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_DeviceTopology_PlatformVersion(
+    PJRT_DeviceTopology_PlatformVersion_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_DeviceTopology_PlatformVersion_Args",
+      PJRT_DeviceTopology_PlatformVersion_Args_STRUCT_SIZE, args->struct_size));
+  absl::string_view platform_version =
+      args->topology->topology->platform_version();
+  args->platform_version = platform_version.data();
+  args->platform_version_size = platform_version.size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Compile_Args", PJRT_Compile_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Program", PJRT_Program_STRUCT_SIZE, args->program->struct_size));
+
+  xla::PjRtClient* client = nullptr;
+  if (args->client != nullptr) {
+    client = args->client->client.get();
+  }
+  PJRT_ASSIGN_OR_RETURN(
+      xla::CompileOptions options,
+      ParseCompileOptions(absl::string_view(args->compile_options,
+                                            args->compile_options_size)));
+
+  std::optional<mlir::MLIRContext> context;
+  PJRT_ASSIGN_OR_RETURN(auto module_or_hlo,
+                        ParsePjrtProgram(context, args->program));
+  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtExecutable> executable,
+                        std::visit(
+                            [&](auto& program) {
+                              return PjRtCompile(
+                                  options, UnpackPjrtProgram(program),
+                                  *args->topology->topology, client);
+                            },
+                            module_or_hlo));
+  args->executable = new PJRT_Executable(std::move(executable));
+  return nullptr;
+}
+
 // Populates `c_device->attributes` with shallow copy of the vendor specific
 // attributes about the device.
 static void PopulatePjrtDeviceAttributes(PJRT_Device* c_device) {
@@ -1079,6 +1204,13 @@ PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
   CHECK_EQ(c_client->addressable_devices.size(),
            c_client->client->addressable_device_count());
   return c_client;
+}
+
+PJRT_DeviceTopology* CreateWrapperDeviceTopology(
+    std::unique_ptr<xla::PjRtDeviceTopology> cpp_topology) {
+  PJRT_DeviceTopology* c_topology =
+      new PJRT_DeviceTopology{std::move(cpp_topology)};
+  return c_topology;
 }
 
 }  // namespace pjrt

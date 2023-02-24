@@ -157,10 +157,7 @@ struct SelectAndScatterExpanderPattern
     llvm::SmallVector<int64_t> scatterDims(operandShape.size());
     std::iota(scatterDims.begin(), scatterDims.end(), 0);
     Value broadcastedInitValue = builder.create<mhlo::BroadcastOp>(
-        initValue, mlir::DenseIntElementsAttr::get(
-                       RankedTensorType::get(sasType.getShape().size(),
-                                             rewriter.getIntegerType(64, true)),
-                       sasType.getShape()));
+        initValue, rewriter.getI64TensorAttr(sasType.getShape()));
 
     llvm::SmallVector<int64_t> concatenatedIotasDims;
     concatenatedIotasDims.reserve(

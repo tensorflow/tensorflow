@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
@@ -51,7 +50,7 @@ constexpr char kInvalidTensorTransferErrorMsg[] =
     "CopyToMeshOp must be used to send data across mesh.";
 
 constexpr char kInvalidLayoutMsg[] =
-    "found CopyToMesh with invalid layout. Found layout {0}.";
+    "found CopyToMesh with invalid layout. Found layout {0}. Error: {1}.";
 
 // Extracts mesh from `cluster`.
 mlir::LogicalResult ExtractMeshFromCluster(mlir::tf_device::ClusterOp cluster,
@@ -91,8 +90,8 @@ mlir::LogicalResult CloneOpToCluster(mlir::Operation* const_op,
   const std::string layout_attr = copy_to_mesh.getLayout().str();
   StatusOr<Layout> layout = Layout::FromString(layout_attr);
   if (!layout.ok())
-    return copy_to_mesh.emitOpError(
-        llvm::formatv(kInvalidLayoutMsg, layout_attr));
+    return copy_to_mesh.emitOpError(llvm::formatv(
+        kInvalidLayoutMsg, layout_attr, layout.status().error_message()));
 
   mlir::OpBuilder builder(&cluster.GetBody().front());
   mlir::Operation* cloned_op = builder.clone(*const_op);
@@ -176,9 +175,11 @@ mlir::LogicalResult CloneConstantsAcrossMesh(
   return result;
 }
 
-// Erases CopyToMesh within the same cluster.
-// CopyToMesh within the same cluster does should not send or recv.
-mlir::LogicalResult EraseCopyToMeshWithinCluster(
+// Handles CopyToMesh ops within the same cluster. These should not lower to
+// send or recv as we can directly replace it with a Relayout. If the source and
+// target layouts are the same, this is handled separately within Relayout
+// lowering.
+mlir::LogicalResult HandleCopyToMeshWithinCluster(
     mlir::tf_device::ClusterOp cluster) {
   Mesh current_mesh;
   if (mlir::failed(ExtractMeshFromCluster(cluster, &current_mesh))) {
@@ -203,7 +204,10 @@ mlir::LogicalResult EraseCopyToMeshWithinCluster(
         return mlir::WalkResult::interrupt();
       }
     }
-    op->getResult(0).replaceAllUsesWith(input);
+    mlir::OpBuilder builder(op);
+    auto relayout_op = builder.create<mlir::TF::RelayoutOp>(
+        op.getLoc(), input.getType(), input, op.getLayout());
+    op->getResult(0).replaceAllUsesWith(relayout_op.getOutput());
     op->erase();
     return mlir::WalkResult::advance();
   });
@@ -237,7 +241,8 @@ mlir::LogicalResult LowerToSendRecv(mlir::TF::CopyToMeshOp copy_to_mesh,
   auto layout_or_status = Layout::FromString(layout_attr);
   if (!layout_or_status.ok())
     return copy_to_mesh.emitOpError(
-        llvm::formatv(kInvalidLayoutMsg, layout_attr));
+        llvm::formatv(kInvalidLayoutMsg, layout_attr,
+                      layout_or_status.status().error_message()));
 
   // Create send op that sends data from input cluster to target cluster.
   const Layout& target_layout = layout_or_status.value();
@@ -378,7 +383,7 @@ struct DTensorHandleCrossClusterDependencies
               cluster, &context, &send_recv_counter)))
         return signalPassFailure();
 
-      if (mlir::failed(EraseCopyToMeshWithinCluster(cluster)))
+      if (mlir::failed(HandleCopyToMeshWithinCluster(cluster)))
         return signalPassFailure();
     }
 

@@ -761,13 +761,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   Status HandleShiftRightArithmetic(HloInstruction* shr) override {
     if constexpr (std::is_integral_v<ElementwiseT> &&
                   !std::is_same_v<ElementwiseT, bool>) {
-      using SignedT = std::make_signed_t<ElementwiseT>;
+      using SignedT = std::make_signed_t<ReturnT>;
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[shr],
           ElementWiseBinaryOp(
               shr, [](ElementwiseT lhs_elem, ElementwiseT rhs_elem) {
                 SignedT lhs_signed = static_cast<SignedT>(lhs_elem);
-                if (IsShiftOutOfBounds<ElementwiseT>(rhs_elem)) {
+                if (IsShiftOutOfBounds<ReturnT>(rhs_elem)) {
                   return lhs_signed < 0 ? static_cast<SignedT>(-1) : 0;
                 } else {
                   return lhs_signed >> rhs_elem;
@@ -781,13 +781,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   Status HandleShiftRightLogical(HloInstruction* shr) override {
     if constexpr (std::is_integral_v<ElementwiseT> &&
                   !std::is_same_v<ElementwiseT, bool>) {
-      using UnsignedT = std::make_unsigned_t<ElementwiseT>;
+      using UnsignedT = std::make_unsigned_t<ReturnT>;
       TF_ASSIGN_OR_RETURN(parent_->evaluated_[shr],
                           ElementWiseBinaryOp(shr, [](ElementwiseT lhs_elem,
                                                       ElementwiseT rhs_elem) {
                             // If shift amount is greater than the number of
                             // bits, then return 0.
-                            if (IsShiftOutOfBounds<ElementwiseT>(rhs_elem)) {
+                            if (IsShiftOutOfBounds<ReturnT>(rhs_elem)) {
                               return static_cast<ElementwiseT>(0);
                             }
                             return static_cast<ElementwiseT>(
@@ -1068,6 +1068,11 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       } while (IndexUtil::BumpIndices(window_shape,
                                       absl::MakeSpan(rhs_spatial_index)));
 
+      if constexpr (std::is_integral_v<ReturnT>) {
+        auto l = static_cast<ElementwiseT>(std::numeric_limits<ReturnT>::min());
+        auto h = static_cast<ElementwiseT>(std::numeric_limits<ReturnT>::max());
+        result_val = std::max(l, std::min(h, result_val));
+      }
       return static_cast<ReturnT>(result_val);
     };
 
@@ -1446,6 +1451,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
 
     switch (start_indices->shape().element_type()) {
+      case S16: {
+        TF_ASSIGN_OR_RETURN(
+            parent_->evaluated_[dynamic_slice],
+            DynamicSlice<int16_t>(
+                operand_literal,
+                absl::MakeConstSpan(dynamic_slice->operands()).subspan(1),
+                result_shape));
+      } break;
       case S32: {
         TF_ASSIGN_OR_RETURN(
             parent_->evaluated_[dynamic_slice],
@@ -1458,6 +1471,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         TF_ASSIGN_OR_RETURN(
             parent_->evaluated_[dynamic_slice],
             DynamicSlice<int64_t>(
+                operand_literal,
+                absl::MakeConstSpan(dynamic_slice->operands()).subspan(1),
+                result_shape));
+      } break;
+      case U16: {
+        TF_ASSIGN_OR_RETURN(
+            parent_->evaluated_[dynamic_slice],
+            DynamicSlice<uint16_t>(
                 operand_literal,
                 absl::MakeConstSpan(dynamic_slice->operands()).subspan(1),
                 result_shape));
@@ -1511,6 +1532,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& update_literal = parent_->GetEvaluatedLiteralFor(update);
 
     switch (start_indices->shape().element_type()) {
+      case S16: {
+        TF_ASSIGN_OR_RETURN(
+            parent_->evaluated_[dynamic_update_slice],
+            DynamicUpdateSlice<int16_t>(
+                operand_literal, update_literal,
+                absl::MakeConstSpan(dynamic_update_slice->operands())
+                    .subspan(2)));
+      } break;
       case S32: {
         TF_ASSIGN_OR_RETURN(
             parent_->evaluated_[dynamic_update_slice],
@@ -1523,6 +1552,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         TF_ASSIGN_OR_RETURN(
             parent_->evaluated_[dynamic_update_slice],
             DynamicUpdateSlice<int64_t>(
+                operand_literal, update_literal,
+                absl::MakeConstSpan(dynamic_update_slice->operands())
+                    .subspan(2)));
+      } break;
+      case U16: {
+        TF_ASSIGN_OR_RETURN(
+            parent_->evaluated_[dynamic_update_slice],
+            DynamicUpdateSlice<uint16_t>(
                 operand_literal, update_literal,
                 absl::MakeConstSpan(dynamic_update_slice->operands())
                     .subspan(2)));
@@ -1954,7 +1991,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return OkStatus();
   }
 
-  // Enable CLZ only for int32_t, uint32_t, int64_t and uint64_t.
+  // Enable CLZ only for integer types.
   template <typename NativeT,
             typename std::enable_if_t<!std::is_integral_v<NativeT> ||
                                       std::is_same_v<NativeT, bool>>* = nullptr>
@@ -1966,13 +2003,12 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                                   std::is_integral_v<NativeT> &&
                                   !std::is_same_v<NativeT, bool>>* = nullptr>
   Status HandleClz(HloInstruction* clz) {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[clz],
-        ElementWiseUnaryOp(clz, [](ElementwiseT elem_operand) {
-          using UnsignedElementwiseT = std::make_unsigned_t<ElementwiseT>;
-          return (std::numeric_limits<UnsignedElementwiseT>::digits - 1) -
-                 Log2Floor<UnsignedElementwiseT>(elem_operand);
-        }));
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[clz],
+                        ElementWiseUnaryOp(clz, [](ElementwiseT elem_operand) {
+                          using UnsignedT = std::make_unsigned_t<ReturnT>;
+                          return (std::numeric_limits<UnsignedT>::digits - 1) -
+                                 Log2Floor<UnsignedT>(elem_operand);
+                        }));
     return OkStatus();
   }
 
@@ -1994,8 +2030,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[popcnt],
         ElementWiseUnaryOp(popcnt, [](ElementwiseT elem_operand) {
-          return std::bitset<CHAR_BIT * sizeof elem_operand>(elem_operand)
-              .count();
+          return std::bitset<CHAR_BIT * sizeof(ReturnT)>(elem_operand).count();
         }));
     return OkStatus();
   }
@@ -2621,11 +2656,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 // instantiating it.  We explicitly instantiate this class in the various
 // hlo_evaluator_typed_visitor*.cc files.
 extern template class HloEvaluatorTypedVisitor<bool>;
-extern template class HloEvaluatorTypedVisitor<uint8_t>;
-extern template class HloEvaluatorTypedVisitor<uint32_t>;
+extern template class HloEvaluatorTypedVisitor<uint8_t, uint64_t>;
+extern template class HloEvaluatorTypedVisitor<uint16_t, uint64_t>;
+extern template class HloEvaluatorTypedVisitor<uint32_t, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<uint64_t>;
-extern template class HloEvaluatorTypedVisitor<int8_t>;
-extern template class HloEvaluatorTypedVisitor<int32_t>;
+extern template class HloEvaluatorTypedVisitor<int8_t, int64_t>;
+extern template class HloEvaluatorTypedVisitor<int16_t, int64_t>;
+extern template class HloEvaluatorTypedVisitor<int32_t, int64_t>;
 extern template class HloEvaluatorTypedVisitor<int64_t>;
 extern template class HloEvaluatorTypedVisitor<Eigen::half, float>;
 extern template class HloEvaluatorTypedVisitor<float>;

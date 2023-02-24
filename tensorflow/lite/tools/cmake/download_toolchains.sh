@@ -14,6 +14,13 @@
 # limitations under the License.
 # ==============================================================================
 
+# Download GCC 8.3 based toolchains.
+# Using up-to-date toolchain introduces compatibility issues.
+# https://github.com/tensorflow/tensorflow/issues/59631
+#
+# In Bazel build, we uses GCC 11.3 based toolchains to support FP16 better
+# with XNNPACK. https://github.com/tensorflow/tensorflow/pull/57585
+
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

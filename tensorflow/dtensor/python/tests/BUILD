@@ -92,7 +92,6 @@ dtensor_test(
         "//tensorflow/dtensor/python:d_variable",
         "//tensorflow/dtensor/python:dtensor_device",
         "//tensorflow/dtensor/python:layout",
-        "//tensorflow/dtensor/python:numpy_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:math_ops",
@@ -125,7 +124,6 @@ dtensor_test(
         "//tensorflow/dtensor/python:d_variable",
         "//tensorflow/dtensor/python:dtensor_device",
         "//tensorflow/dtensor/python:layout",
-        "//tensorflow/dtensor/python:numpy_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:math_ops",
@@ -198,7 +196,6 @@ dtensor_test(
     env = {
         "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
-        "DTENSOR_DO_NOT_FUSE_REDUCE_SCATTER": "1",  # FIXME(b/266609048): timeout if fused.
     },
     tags = [
         "no_windows",
@@ -243,7 +240,6 @@ dtensor_test(
     env = {
         "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
-        "DTENSOR_DO_NOT_FUSE_REDUCE_SCATTER": "1",  # FIXME(b/266609048): timeout if fused.
     },
     tags = [
         "no_windows",
@@ -287,14 +283,17 @@ dtensor_test(
 )
 
 dtensor_test(
-    name = "spmd_test",
+    name = "xla_spmd_test",
     srcs = ["spmd_test.py"],
-    additional_backends = [TPU_V3_DONUT_BACKEND],
+    additional_backends = [
+        TPU_V3_DONUT_BACKEND,
+    ],
+    disable = ALL_BACKENDS,
+    env = {
+        "DTENSOR_TEST_USE_XLA_SPMD": "1",
+    },
     main = "spmd_test.py",
     shard_count = {
-        "cpu": 25,
-        "gpu": 10,
-        "tpu": 10,
         TPU_V3_DONUT_BACKEND: 32,
     },
     deps = [
@@ -305,6 +304,60 @@ dtensor_test(
         "//tensorflow/dtensor/python:numpy_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_gen",
+        "//tensorflow/python:array_ops_stack",
+        "//tensorflow/python:bitwise_ops_gen",
+        "//tensorflow/python:io_ops_gen",
+        "//tensorflow/python:linalg_ops_gen",
+        "//tensorflow/python:list_ops_gen",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:resource_variable_ops_gen",
+        "//tensorflow/python:special_math_ops",
+        "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python:stateless_random_ops_gen",
+        "//tensorflow/python:string_ops_gen",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/util",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+dtensor_test(
+    name = "spmd_test",
+    srcs = ["spmd_test.py"],
+    additional_backends = [TPU_V3_DONUT_BACKEND],
+    main = "spmd_test.py",
+    shard_count = {
+        "cpu": 25,
+        "gpu": 10,
+        "tpu": 10,
+        TPU_V3_DONUT_BACKEND: 32,
+    },
+    tags = [
+        "no_oss_py38",  # TODO(b/267017937)
+    ],
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:numpy_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_gen",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:bitwise_ops_gen",
         "//tensorflow/python:io_ops_gen",
         "//tensorflow/python:linalg_ops_gen",

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
+
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
@@ -55,8 +57,8 @@ class TFAssertOpConverter : public OpConversionPattern<TFAssertOp> {
 
     rewriter.restoreInsertionPoint(ip);
     rewriter.replaceOpWithNewOp<cf::CondBranchOp>(
-        op, adaptor.getArg(), split_block, llvm::None, error_reporting_block,
-        llvm::None);
+        op, adaptor.getArg(), split_block, std::nullopt, error_reporting_block,
+        std::nullopt);
     return success();
   }
 };

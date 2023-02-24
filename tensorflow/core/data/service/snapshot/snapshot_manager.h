@@ -41,6 +41,7 @@ namespace data {
 //   - DONE
 //   - snapshot.metadata
 //   - dataset_def.proto
+//   - dataset_spec.pb
 //   - chunks
 //     - chunk_<stream_index>_<chunk_index>
 //   - streams
@@ -48,7 +49,6 @@ namespace data {
 //       - DONE
 //       - splits
 //         - source_0
-//           - DONE
 //           - split_<local_split_index>_<global_split_index>
 //       - uncommitted_chucnks
 //         - chunk_<chunk_index>
@@ -92,12 +92,12 @@ class SnapshotManager {
       std::optional<absl::Duration> resume_time_micros = std::nullopt)
       : path_(path), env_(env), resume_time_micros_(resume_time_micros) {}
 
-  // See `Start` above.
+  // Helpers for `Start` above. These update the on-disk state.
   tsl::Status Start(const SnapshotRequest& request);
   tsl::Status WriteOnDiskSkeleton();
   tsl::Status WriteOnDiskMetadata(const SnapshotRequest& request);
 
-  // See `Resume` above.
+  // Helpers for `Resume` above. These update the in-memory state.
   tsl::Status Resume();
   tsl::Status ReadOnDiskMetadata();
   tsl::Status ReadOnDiskStreams();
@@ -107,8 +107,19 @@ class SnapshotManager {
       int64_t stream_index, int64_t source_index,
       absl::flat_hash_set<int64_t>& global_split_indices);
 
-  // Creates a new stream, both in-memory and on-disk, and returns the index.
-  tsl::StatusOr<int64_t> CreateNewStream();
+  // Helpers for `WorkerHeartbeat` above. These may update the in-memory and
+  // on-disk states.
+  tsl::StatusOr<std::optional<int64_t>> MaybeGetOrCreateStreamAssignment(
+      absl::string_view worker_address,
+      const SnapshotTaskProgress* snapshot_progress);
+  tsl::Status ReassignPreviouslyAssignedStream(
+      int64_t stream_index, absl::string_view worker_address);
+  tsl::Status HandleStreamCompletion(int64_t stream_index,
+                                     absl::string_view worker_address);
+  std::optional<int64_t> MaybeAssignOrphanStream(
+      absl::string_view worker_address);
+  tsl::StatusOr<int64_t> CreateAndAssignNewStream(
+      absl::string_view worker_address);
 
   // The filepath of the on-disk state.
   const std::string path_;
@@ -128,6 +139,8 @@ class SnapshotManager {
 
     // A counter of assigned splits for each source.
     std::vector<int64_t> num_assigned_splits;
+    // If `true`, there are no more splits to be processed for this stream.
+    bool done = false;
   };
 
   // All streams for this snapshot.
@@ -152,6 +165,19 @@ class SnapshotManager {
 
   // A counter of assigned aplits for this snapshot.
   int64_t num_assigned_splits_ = 0;
+
+  enum class Mode {
+    // No streams are done.
+    kActive,
+    // At least one source is fully processed, but not all streams are done.
+    kWindingDown,
+    // All streams are done.
+    kDone,
+  };
+
+  // If not `kActive`, at least one source has finished processing and no new
+  // streams are created or assigned.
+  Mode mode_ = Mode::kActive;
 };
 
 }  // namespace data

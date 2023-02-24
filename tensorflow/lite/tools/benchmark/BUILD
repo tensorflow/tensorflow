@@ -177,6 +177,13 @@ cc_library(
 )
 
 cc_library(
+    name = "benchmark_multirun_stats_recorder",
+    hdrs = ["benchmark_multirun_stats_recorder.h"],
+    copts = common_copts,
+    deps = [":benchmark_model_lib"],
+)
+
+cc_library(
     name = "benchmark_performance_options",
     srcs = [
         "benchmark_performance_options.cc",
@@ -184,6 +191,7 @@ cc_library(
     hdrs = ["benchmark_performance_options.h"],
     copts = common_copts,
     deps = [
+        ":benchmark_multirun_stats_recorder",
         ":benchmark_model_lib",
         ":benchmark_params",
         ":benchmark_utils",

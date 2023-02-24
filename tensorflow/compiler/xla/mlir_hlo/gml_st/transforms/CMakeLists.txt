@@ -31,6 +31,10 @@ add_mlir_library(GmlStPasses
   collapse_shape/collapse_shape.cc
   compose_extract_insert_slice/compose_extract_insert_slice.cc
   cpu_tiling/cpu_tiling_pipeline.cc
+  cpu_tiling/fusion_outlining.cc
+  cpu_tiling/fusion_planning_for_cpu.cc
+  cpu_tiling/transform_dot_for_cpu.cc
+  cpu_tiling/transform_generic_for_cpu.cc
   cpu_tiling/transform_map_for_cpu.cc
   cpu_tiling/transform_matmul_for_cpu.cc
   cpu_tiling/transform_reduce_for_cpu.cc
@@ -39,24 +43,19 @@ add_mlir_library(GmlStPasses
   cpu_tiling/transform_sort_for_cpu.cc
   cpu_tiling/transform_transpose_for_cpu.cc
   fusion/fusion.cc
-  gml_st_simtfy/gml_st_simtfy.cc
-  gml_st_to_gpu/gml_st_to_gpu.cc
   gml_st_to_scf/gml_st_to_scf.cc
-  gpu_tiling/greedy_fusion.cc
-  gpu_tiling/tiling_cwise.cc
-  gpu_tiling/tiling_gpu_warp.cc
+  optimize_vector_transfer/optimize_vector_transfer.cc
   peeling/peeling.cc
   rewrite_vector_ops/rewrite_vector_contract.cc
   rewrite_vector_ops/rewrite_vector_multi_reduction.cc
   rewrite_vector_ops/rewrite_vector_transpose.cc
   scalarization/scalarization.cc
+  tiling/tile_by_one.cc
   tiling/tiling.cc
   tiling_softmax/tiling_softmax.cc
-  triton_tiling/transform_matmul_for_triton.cc
   vectorization/vectorization.cc
   vectorization/vectorize_copy.cc
   vectorization/vectorize_for_cpu.cc
-  vectorization/vectorize_for_gpu.cc
 
   DEPENDS
   MLIRGmlStPassIncGen
@@ -72,7 +71,6 @@ add_mlir_library(GmlStPasses
   MLIRAffineDialect
   MLIRArithDialect
   MLIRFuncDialect
-  MLIRGPUOps
   MLIRIR
   MLIRLinalgDialect
   MLIRLinalgTransforms

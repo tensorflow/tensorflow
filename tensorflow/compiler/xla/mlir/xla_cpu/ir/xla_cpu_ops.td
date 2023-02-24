@@ -67,8 +67,6 @@ def AllReduceOp : XlaCpu_Op<"all_reduce",
         OpOperand &opOperand, const bufferization::AnalysisState &state);
     LogicalResult bufferize(RewriterBase &rewriter,
         const bufferization::BufferizationOptions &options);
-    bufferization::BufferRelation bufferRelation(OpResult opResult,
-        const bufferization::AnalysisState &state);
   }];
 }
 
@@ -116,14 +114,11 @@ def CollectivePermuteOp : XlaCpu_Op<"collective_permute", [BufferizableOpInterfa
     bufferization::AliasingOpResultList getAliasingOpResults(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       if (opOperand.getOperandNumber() == 0) return {};
-      return {getOperation()->getOpResult(0)};
+      return {{getOperation()->getOpResult(0),
+               bufferization::BufferRelation::Equivalent}};
     }
     LogicalResult bufferize(RewriterBase &rewriter,
         const bufferization::BufferizationOptions &options);
-    bufferization::BufferRelation bufferRelation(OpResult opResult,
-        const bufferization::AnalysisState &state) {
-      return bufferization::BufferRelation::Equivalent;
-    }
   }];
 }
 
@@ -160,14 +155,11 @@ def AllToAllOp : XlaCpu_Op<"all_to_all",
     bufferization::AliasingOpResultList getAliasingOpResults(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       if (bufferizesToMemoryRead(opOperand, state)) return {};
-      return {getOperation()->getOpResult(opOperand.getOperandNumber() - getNumOperands() / 2)};
+      return {{getOperation()->getOpResult(opOperand.getOperandNumber() - getNumOperands() / 2),
+               bufferization::BufferRelation::Equivalent}};
     }
     LogicalResult bufferize(RewriterBase &rewriter,
         const bufferization::BufferizationOptions &options);
-    bufferization::BufferRelation bufferRelation(OpResult opResult,
-        const bufferization::AnalysisState &state) {
-      return bufferization::BufferRelation::Equivalent;
-    }
   }];
 }
 
@@ -199,14 +191,11 @@ def FftOp : XlaCpu_Op<"fft", [BufferizableOpInterface]> {
     bufferization::AliasingOpResultList getAliasingOpResults(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       if (opOperand.getOperandNumber() == 0) return {};
-      return {getOperation()->getOpResult(0)};
+      return {{getOperation()->getOpResult(0),
+               bufferization::BufferRelation::Equivalent}};
     }
     LogicalResult bufferize(RewriterBase &rewriter,
         const bufferization::BufferizationOptions &options);
-    bufferization::BufferRelation bufferRelation(OpResult opResult,
-        const bufferization::AnalysisState &state) {
-      return bufferization::BufferRelation::Equivalent;
-    }
   }];
 }
 
@@ -238,10 +227,6 @@ def OutfeedOp : XlaCpu_Op<"outfeed", [BufferizableOpInterface]> {
     }
     LogicalResult bufferize(RewriterBase &rewriter,
         const bufferization::BufferizationOptions &options);
-    bufferization::BufferRelation bufferRelation(OpResult opResult,
-        const bufferization::AnalysisState &state) {
-      return bufferization::BufferRelation::Equivalent;
-    }
   }];
 }
 
@@ -289,14 +274,11 @@ def RngBitGeneratorOp : XlaCpu_Op<"rng_bit_generator", [BufferizableOpInterface]
     bufferization::AliasingOpResultList getAliasingOpResults(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       if (opOperand.getOperandNumber() == 0) return {};
-      return {getOperation()->getOpResult(opOperand.getOperandNumber()-1)};
+      return {{getOperation()->getOpResult(opOperand.getOperandNumber()-1),
+               bufferization::BufferRelation::Equivalent}};
     }
     LogicalResult bufferize(RewriterBase &rewriter,
         const bufferization::BufferizationOptions &options);
-    bufferization::BufferRelation bufferRelation(OpResult opResult,
-        const bufferization::AnalysisState &state) {
-      return bufferization::BufferRelation::Equivalent;
-    }
   }];
 }
 
@@ -325,14 +307,11 @@ def AddDependencyOp : XlaCpu_Op<"add_dependency", [BufferizableOpInterface]> {
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       if (opOperand.getOperandNumber() == 0 || opOperand.getOperandNumber() == 1)
         return {};
-      return {getOperation()->getOpResult(0)};
+      return {{getOperation()->getOpResult(0),
+               bufferization::BufferRelation::Unknown, /*isDefinite=*/false}};
     }
     LogicalResult bufferize(RewriterBase &rewriter,
         const bufferization::BufferizationOptions &options);
-    bufferization::BufferRelation bufferRelation(OpResult opResult,
-        const bufferization::AnalysisState &state) {
-      return bufferization::BufferRelation::Unknown;
-    }
   }];
 }
 

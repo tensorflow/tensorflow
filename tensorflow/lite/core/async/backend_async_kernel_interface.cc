@@ -57,17 +57,28 @@ TfLiteStatus UnregisterBuffer(TfLiteAsyncKernel* async_kernel,
 // ===================
 
 // Inspects the buffer / sync implementation types supported by the backend.
-std::vector<const char*> SupportedBufferTypes(
-    const TfLiteAsyncKernel* async_kernel, int32_t io_type) {
-  return reinterpret_cast<const BackendAsyncKernelInterface*>(
-             async_kernel->kernel_data)
-      ->SupportedBufferTypes(static_cast<TfLiteIoType>(io_type));
+void SupportedBufferTypes(const TfLiteAsyncKernel* async_kernel,
+                          int32_t io_type, const char* const** types,
+                          size_t* n_types) {
+  if (types == nullptr || n_types == nullptr) return;
+  const auto& buf_types =
+      reinterpret_cast<const BackendAsyncKernelInterface*>(
+          async_kernel->kernel_data)
+          ->SupportedBufferTypes(static_cast<TfLiteIoType>(io_type));
+  *types = buf_types.data();
+  *n_types = buf_types.size();
 }
-std::vector<const char*> SupportedSynchronizations(
-    const TfLiteAsyncKernel* async_kernel, int32_t io_type) {
-  return reinterpret_cast<const BackendAsyncKernelInterface*>(
-             async_kernel->kernel_data)
-      ->SupportedSynchronizations(static_cast<TfLiteIoType>(io_type));
+
+void SupportedSynchronizations(const TfLiteAsyncKernel* async_kernel,
+                               int32_t io_type, const char* const** types,
+                               size_t* n_types) {
+  if (types == nullptr || n_types == nullptr) return;
+  const auto& sync_types =
+      reinterpret_cast<const BackendAsyncKernelInterface*>(
+          async_kernel->kernel_data)
+          ->SupportedSynchronizations(static_cast<TfLiteIoType>(io_type));
+  *types = sync_types.data();
+  *n_types = sync_types.size();
 }
 
 // Reconciles buffer or sync attributes for tensor at tensor_index.

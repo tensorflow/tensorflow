@@ -881,17 +881,6 @@ func.func @dynamic_iota_is_static(%arg0 : tensor<1xindex>) -> tensor<4xi32> {
   func.return %0 : tensor<4xi32>
 }
 
-// CHECK-LABEL: @dynamic_iota_is_static_constant_arg
-func.func @dynamic_iota_is_static_constant_arg(%arg0: tensor<5xi32>) -> tensor<?xi32> {
-  // CHECK-NOT: mhlo.dynamic_iota
-  // CHECK: [[RESULT:%.*]] = "mhlo.iota"
-  // CHECK: [[CAST:%.*]] = tensor.cast [[RESULT]]
-  // CHECK: return [[CAST]]
-  %0 = mhlo.constant dense<5> : tensor<1xi32>
-  %1 = "mhlo.dynamic_iota"(%0) {iota_dimension = 0 : i64} : (tensor<1xi32>) -> tensor<?xi32>
-  func.return %1 : tensor<?xi32>
-}
-
 // CHECK-LABEL: @dynamic_iota_broadcast
 func.func @dynamic_iota_broadcast(%arg0 : tensor<2xindex>) -> tensor<5x?xi32> {
   // CHECK: [[IOTA:%.+]] = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<5xi32>
@@ -2715,8 +2704,8 @@ func.func @fold_reduce_window(%arg0: tensor<1x1x20xf32>) -> tensor<1x1x20xf32> {
   // CHECK: return %arg0 : tensor<1x1x20xf32>
 }
 
-// CHECK-LABEL: @simplify_real_dynamic_slice
-func.func @simplify_real_dynamic_slice(%arg0: tensor<?x4xf32>) -> tensor<1x4xf32> {
+// CHECK-LABEL: @simplify_real_dynamic_slice_to_slice
+func.func @simplify_real_dynamic_slice_to_slice(%arg0: tensor<?x4xf32>) -> tensor<1x4xf32> {
   %0 = mhlo.constant dense<[0, 0]> : tensor<2xi32>
   %1 = mhlo.constant dense<[1, 4]> : tensor<2xi32>
   %2 = mhlo.constant dense<[1, 1]> : tensor<2xi32>
@@ -2727,4 +2716,21 @@ func.func @simplify_real_dynamic_slice(%arg0: tensor<?x4xf32>) -> tensor<1x4xf32
   // CHECK-DAG-SAME: strides = dense<[1, 1]> : tensor<2xi64>}
   // CHECK: return %[[RESULT]] : tensor<1x4xf32>
   return %3 : tensor<1x4xf32>
+}
+
+// CHECK-LABEL: @simplify_real_dynamic_slice_to_dynamic_slice
+func.func @simplify_real_dynamic_slice_to_dynamic_slice(%arg0: tensor<?x4xf32>, %arg1: tensor<2xi32>) -> tensor<1x4xf32> {
+  %0 = mhlo.constant dense<[1, 4]> : tensor<2xi32>
+  %1 = mhlo.add %arg1, %0 : tensor<2xi32>
+  %2 = mhlo.constant dense<[1, 1]> : tensor<2xi32>
+  %3 = mhlo.real_dynamic_slice %arg0, %arg1, %1, %2 : (tensor<?x4xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x4xf32>
+  return %3 : tensor<1x4xf32>
+  //      CHECK: [[START_INDEX_0_1D:%.*]] = "mhlo.slice"(%arg1) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
+  // CHECK-NEXT: [[START_INDEX_0_0D:%.*]] = mhlo.reshape [[START_INDEX_0_1D]] : (tensor<1xi32>) -> tensor<i32>
+  // CHECK-NEXT: [[START_INDEX_1_1D:%.*]] = "mhlo.slice"(%arg1) {limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
+  // CHECK-NEXT: [[START_INDEX_1_0D:%.*]] = mhlo.reshape [[START_INDEX_1_1D]] : (tensor<1xi32>) -> tensor<i32>
+  // CHECK-NEXT: [[RESULT:%.*]] = "mhlo.dynamic_slice"(%arg0, [[START_INDEX_0_0D]], [[START_INDEX_1_0D]]) {
+  // CHECK-SAME:   slice_sizes = dense<[1, 4]> : tensor<2xi64>
+  // CHECK-SAME: } : (tensor<?x4xf32>, tensor<i32>, tensor<i32>) -> tensor<1x4xf32>
+  // CHECK-NEXT: return [[RESULT]] : tensor<1x4xf32>
 }
