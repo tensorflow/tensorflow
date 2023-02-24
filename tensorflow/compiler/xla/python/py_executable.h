@@ -20,11 +20,13 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_executable.h"
+#include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
@@ -120,19 +122,14 @@ class PyLoadedExecutable
   // args is [num_args x num_devices].
   StatusOr<std::vector<std::vector<PyBuffer::object>>>
   ExecuteShardedOnLocalDevices(
-      absl::Span<const std::vector<PyBuffer::object>> args);
+      absl::Span<const std::vector<std::variant<PyBuffer::object, PyArray>>>
+          args);
 
   StatusOr<
       std::pair<std::vector<std::vector<PyBuffer::object>>, PyShardedToken>>
   ExecuteShardedOnLocalDevicesWithTokens(
-      absl::Span<const std::vector<PyBuffer::object>> args);
-
-  StatusOr<std::vector<PyShardedBuffer>> ExecuteShardedOnLocalDevices(
-      absl::Span<PyShardedBuffer* const> args);
-
-  StatusOr<std::pair<std::vector<PyShardedBuffer>, PyShardedToken>>
-  ExecuteShardedOnLocalDevicesWithTokens(
-      absl::Span<PyShardedBuffer* const> args);
+      absl::Span<const std::vector<std::variant<PyBuffer::object, PyArray>>>
+          args);
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
 

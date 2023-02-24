@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/tracked_tfrt_cpu_device_buffer.h"
 #include "tensorflow/compiler/xla/pjrt/transpose.h"
 #include "tensorflow/compiler/xla/pjrt/worker_thread.h"
+#include "tensorflow/compiler/xla/runtime/cpu_event.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
@@ -230,12 +231,13 @@ class TfrtCpuClient final : public PjRtClient {
     return eigen_intraop_device_.get();
   }
 
-  tfrt::AsyncValueRef<CpuEvent> GetLastCollectiveLaunchEvent() {
+  tfrt::AsyncValueRef<runtime::CpuEvent> GetLastCollectiveLaunchEvent() {
     absl::MutexLock lock(&mu_);
     return last_collective_launch_event_.CopyRef();
   }
 
-  void SetLastCollectiveLaunchEvent(tfrt::AsyncValueRef<CpuEvent> event) {
+  void SetLastCollectiveLaunchEvent(
+      tfrt::AsyncValueRef<runtime::CpuEvent> event) {
     absl::MutexLock lock(&mu_);
     last_collective_launch_event_ = std::move(event);
   }
@@ -270,7 +272,7 @@ class TfrtCpuClient final : public PjRtClient {
   // TODO(zhangqiaorjc): Explore alternatives that allow multiple concurrent
   // collectives.
   mutable absl::Mutex mu_;
-  tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event_
+  tfrt::AsyncValueRef<runtime::CpuEvent> last_collective_launch_event_
       ABSL_GUARDED_BY(mu_);
 
   // A cache for transpose plans. We use transposes to convert
@@ -358,7 +360,7 @@ class TfrtCpuBuffer final : public PjRtBuffer {
   // nullptr if the buffer is already donated or there is outstanding external
   // references.
   TrackedTfrtCpuDeviceBuffer* AcquireUsage(
-      tfrt::AsyncValueRef<CpuEvent> usage_event);
+      tfrt::AsyncValueRef<runtime::CpuEvent> usage_event);
 
   // A helper class for managing a pending donation. It should be committed upon
   // success. Otherwise, the donated buffer is returned to the TfrtCpuBuffer.
@@ -574,7 +576,7 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
-      tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event,
+      tfrt::AsyncValueRef<runtime::CpuEvent> last_collective_launch_event,
       bool fill_future, TfrtCpuDevice* device = nullptr);
 
   TfrtCpuClient* client_;

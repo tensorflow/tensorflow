@@ -137,6 +137,8 @@ the root checkout directory as follows:
 ```sh
 bazel build -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
   --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+  --define=android_dexmerger_tool=d8_dexmerger \
+  --define=android_incremental_dexing_tool=d8_dexbuilder \
   //tensorflow/lite/java:tensorflow-lite
 ```
 

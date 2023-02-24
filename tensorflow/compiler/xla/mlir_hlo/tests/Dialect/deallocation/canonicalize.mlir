@@ -13,26 +13,26 @@ func.func @retain_is_dealloc() {
 
 // -----
 
-func.func @retain_is_noop(%arg: memref<2xf32>) -> memref<2xf32> {
+func.func @retain_is_noop(%arg: memref<*xf32>) -> memref<*xf32> {
   %ret = deallocation.retain(%arg) of(%arg) :
-     (memref<2xf32>, memref<2xf32>) -> (memref<2xf32>)
-  return %ret : memref<2xf32>
+     (memref<*xf32>, memref<*xf32>) -> (memref<*xf32>)
+  return %ret : memref<*xf32>
 }
 
 // CHECK-LABEL: @retain_is_noop
-// CHECK-SAME: (%[[ARG:.*]]: memref<2xf32>)
+// CHECK-SAME: (%[[ARG:.*]]: memref<*xf32>)
 // CHECK-NEXT: return %[[ARG]]
 
 // -----
 
-func.func @retain_of_nothing(%arg: memref<2xf32>) -> memref<2xf32> {
-  %ret = deallocation.retain(%arg) of() : (memref<2xf32>) -> (memref<2xf32>)
-  return %ret : memref<2xf32>
+func.func @retain_of_nothing(%arg: memref<2xf32>) -> memref<*xf32> {
+  %ret = deallocation.retain(%arg) of() : (memref<2xf32>) -> (memref<*xf32>)
+  return %ret : memref<*xf32>
 }
 
 // CHECK-LABEL: @retain_of_nothing
 // CHECK-SAME: (%[[ARG:.*]]: memref<2xf32>
-// CHECK-NEXT: %[[NULL:.*]] = deallocation.null : memref<2xf32>
+// CHECK-NEXT: %[[NULL:.*]] = deallocation.null : memref<*xf32>
 // CHECK-NEXT: return %[[NULL]]
 
 // -----
@@ -50,6 +50,42 @@ func.func @retain_is_dealloc_for(%x: memref<2xf32>, %lb: index, %ub: index, %ste
 // CHECK-LABEL: @retain_is_dealloc_for
 // CHECK: %[[FOR:.*]] = scf.for
 // CHECK: memref.dealloc %[[FOR]]
+
+// -----
+
+func.func @retain_is_dealloc_for_cast(%x: memref<*xf32>, %lb: index, %ub: index, %step: index) {
+  %for = scf.for %i = %lb to %ub step %step iter_args(%arg0 = %x)
+      -> (memref<*xf32>) {
+    %alloc = memref.alloc() : memref<2xf32>
+    %cast = memref.cast %alloc : memref<2xf32> to memref<*xf32>
+    scf.yield %cast : memref<*xf32>
+  }
+  deallocation.retain() of(%for) : (memref<*xf32>) -> ()
+  return
+}
+
+// CHECK-LABEL: @retain_is_dealloc_for_cast
+// CHECK: %[[FOR:.*]] = scf.for
+// CHECK: memref.dealloc %[[FOR]]
+
+// -----
+
+func.func @retain_is_not_dealloc_for(%x: memref<2xf32>, %lb: index, %ub: index, %step: index) {
+  %for = scf.for %i = %lb to %ub step %step iter_args(%arg0 = %x)
+      -> (memref<2xf32>) {
+    %alloc = memref.alloc() : memref<2xf32>
+    %cast = "test.someop"(%alloc) : (memref<2xf32>) -> (memref<2xf32>)
+    scf.yield %cast : memref<2xf32>
+  }
+  deallocation.retain() of(%for) : (memref<2xf32>) -> ()
+  return
+}
+
+// CHECK-LABEL: @retain_is_not_dealloc_for
+// CHECK: %[[FOR:.*]] = scf.for
+// CHECK: deallocation.retain() of(%[[FOR]])
+
+// -----
 
 func.func @retain_is_dealloc_while() {
   %a = memref.alloc() : memref<2xf32>
@@ -99,3 +135,12 @@ func.func @retain_is_dealloc_while_permute() {
 // CHECK: memref.dealloc %[[WHILE]]
 // CHECK: memref.dealloc %[[WHILE]]
 // CHECK: memref.dealloc %[[WHILE]]
+
+func.func @split_retain(%arg0: memref<*xi32>, %arg1: memref<*xf32>) {
+  deallocation.retain() of(%arg0, %arg1) : (memref<*xi32>, memref<*xf32>) -> ()
+  return
+}
+
+// CHECK-LABEL: @split_retain
+// CHECK-DAG: deallocation.retain() of(%{{.*}}) : (memref<*xi32>) -> ()
+// CHECK-DAG: deallocation.retain() of(%{{.*}}) : (memref<*xf32>) -> ()

@@ -125,6 +125,11 @@ void RecordTFDataServiceClientIterators(
     int64_t worker_uid, data::DeploymentMode deployment_mode,
     const data::ProcessingModeDef& processing_mode, bool is_coordinated_read);
 
+// Records that a tf.data service worker client has been created that will use
+// `data_transfer_protocol` to get data from the worker server.
+void RecordTFDataServiceDataTransferProtocolUsed(
+    const string& data_transfer_protocol);
+
 // Records tf.data service cross-trainer cache queries.
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit);
 
@@ -225,6 +230,12 @@ void UpdateTfMlirBridgeGraphAnalysisPerOp(
     const std::string& allow_soft_placement,
     const std::string& use_spmd_for_xla_partitioning,
     const std::string& unsupported_reason, bool has_unsupported_features);
+
+// Records whether a graph contains any of the TF1 features
+void RecordTFVersionByGraphFeatures(const std::string& device_name,
+                                    bool hasControlFlowV1,
+                                    bool hasReferenceVariables,
+                                    bool hasManualControlDeps);
 
 // Convenience class allowing RAII style of reporting for a monitoring::Counter.
 template <int NumLabels>

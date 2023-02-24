@@ -102,7 +102,6 @@ class Node {
   const NodeDef& def() const;
   const OpDef& op_def() const;
 
-  // TODO(mdan): This is only used by control_flow_deps_o_chains. Remove?
   NodeDef* mutable_def();
 
   // input and output types
@@ -539,7 +538,7 @@ class Graph {
   // Clone the current graph into a new one.
   std::unique_ptr<Graph> Clone();
 
-  static const int kControlSlot;
+  static constexpr int kControlSlot = -1;
 
   // The GraphDef version range of this graph (see graph.proto).
   const VersionDef& versions() const;
@@ -688,7 +687,6 @@ class Graph {
   const OpRegistryInterface* op_registry() const { return &ops_; }
   const FunctionLibraryDefinition& flib_def() const { return ops_; }
 
-  // TODO(mdan): This is only used by control_flow_deps_o_chains. Remove?
   FunctionLibraryDefinition* mutable_flib_def() { return &ops_; }
 
   void CheckDeviceNameIndex(int index) {

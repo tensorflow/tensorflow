@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
@@ -68,7 +69,8 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
     const GraphExecutionRunOptions& run_options,
     const SessionMetadata& model_metadata, const Runtime& runtime,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
-    tfrt::ResourceContext* resource_context,
+    tfrt::ResourceContext* resource_context, OpKernelRunnerTable* runner_table,
+    tfd::FallbackResourceArray* resource_array,
     const FallbackState& fallback_state, CostRecorder* cost_recorder = nullptr);
 
 // Runs on a function given input/output and other info.
@@ -79,19 +81,11 @@ tensorflow::Status GraphExecutionRunOnFunction(
     const mlrt::LoadedExecutable* loaded_executable,
     absl::Span<const tensorflow::Tensor> inputs,
     std::vector<tensorflow::Tensor>* outputs,
-    tfrt::ResourceContext* resource_context, const Runtime& runtime,
+    tfrt::ResourceContext* resource_context, OpKernelRunnerTable* runner_table,
+    tfd::FallbackResourceArray* resource_array, const Runtime& runtime,
     const FallbackState& fallback_state,
     tfrt::RequestDeadlineTracker* req_deadline_tracker,
     CostRecorder* cost_recorder = nullptr);
-
-// Creates a ResourceContext and populate it with per model resource from
-// Runtime. If `tpu_target` is set to kTpurt, also call a special
-// `AddTpuResources` function to populate TPU related resources for tpurt.
-//
-// TODO(b/178227859): Remove the need for the special handling for TPU here.
-std::unique_ptr<tfrt::ResourceContext> CreateResourceContext(
-    const Runtime& runtime, tfrt::tpu::TpuModelResource* tpu_model_resource,
-    tensorflow::TfrtDeviceInfraTarget tpu_target);
 
 // Compiles MLIR in TF executor dialect to MLRT bytecode executable.
 StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
@@ -125,15 +119,12 @@ class GraphExecutor {
   class LoadedClientGraph {
    public:
     LoadedClientGraph(
-        std::string name,
-        std::unique_ptr<tfrt::ResourceContext> resource_context,
-        std::unique_ptr<mlir::MLIRContext> mlir_context,
+        std::string name, std::unique_ptr<mlir::MLIRContext> mlir_context,
         mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
         std::shared_ptr<BefContext> bef_context,
         mlrt::bc::Buffer bytecode_buffer,
         std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable)
         : name_(std::move(name)),
-          resource_context_(std::move(resource_context)),
           mlir_context_(std::move(mlir_context)),
           tfrt_mlir_(std::move(tfrt_mlir)),
           bef_context_(std::move(bef_context)),
@@ -155,16 +146,18 @@ class GraphExecutor {
       return bef_context_;
     }
     absl::string_view name() const { return name_; }
-    tfrt::ResourceContext& resource_context() const {
-      return *resource_context_;
-    }
+
+    OpKernelRunnerTable& runner_table() { return runner_table_; }
+    tfd::FallbackResourceArray& resource_array() { return resource_array_; }
+
     mlrt::LoadedExecutable* bytecode_executable() const {
       return bytecode_executable_.get();
     }
 
    private:
     std::string name_;
-    std::unique_ptr<tfrt::ResourceContext> resource_context_;
+    OpKernelRunnerTable runner_table_;
+    tfd::FallbackResourceArray resource_array_;
     std::unique_ptr<mlir::MLIRContext> mlir_context_;
     // Thread-safety resulted from `create_cost_recorder_once_`.
     mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir_;
@@ -204,14 +197,7 @@ class GraphExecutor {
                 tfrt::tpu::TpuModelResource* tpu_model_resource,
                 std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
                     graph_execution_state,
-                std::unique_ptr<mlrt::KernelRegistry> kernel_registry)
-      : options_(std::move(options)),
-        fallback_state_(fallback_state),
-        tpu_model_resource_(tpu_model_resource),
-        graph_execution_state_(std::move(graph_execution_state)),
-        req_deadline_tracker_(
-            options_.runtime->core_runtime()->GetHostContext()),
-        kernel_registry_(std::move(kernel_registry)) {}
+                std::unique_ptr<mlrt::KernelRegistry> kernel_registry);
 
   // Runs on the graph according to given input/output.
   tensorflow::Status Run(
@@ -248,6 +234,8 @@ class GraphExecutor {
     return *options_.runtime;
   }
 
+  tfrt::ResourceContext& resource_context() { return resource_context_; }
+
  private:
   // A set of methods to load a client graph.
   StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>> LoadClientGraph(
@@ -259,8 +247,9 @@ class GraphExecutor {
   ImportClientGraphToMlirModule(const GraphExecutor::ClientGraph& client_graph,
                                 mlir::MLIRContext* context) const;
   StatusOr<tfrt::BefBuffer> CompileMlirModuleToBef(mlir::ModuleOp module) const;
+
   tensorflow::Status InitBef(
-      tfrt::BEFFile* bef_file, tfrt::ResourceContext* resource_context,
+      LoadedClientGraph* loaded_client_graph,
       tensorflow::tfrt_stub::WorkQueueInterface* work_queue);
 
   tensorflow::Status InitBytecode(LoadedClientGraph* loaded_graph);
@@ -280,6 +269,8 @@ class GraphExecutor {
 
   Options options_;
   std::reference_wrapper<const FallbackState> fallback_state_;
+
+  tfrt::ResourceContext resource_context_;
   tfrt::tpu::TpuModelResource* tpu_model_resource_;  // NOT owned.
 
   std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>

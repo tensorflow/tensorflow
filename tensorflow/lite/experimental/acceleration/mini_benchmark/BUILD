@@ -462,6 +462,7 @@ cc_library(
         ":runner",
         ":status_codes",
         ":validator",
+        "@com_google_absl//absl/strings",
         "@flatbuffers",
         "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite:minimal_logging",
@@ -1013,6 +1014,7 @@ cc_test(
 
 cc_test(
     name = "blocking_validator_runner_test",
+    timeout = "moderate",
     srcs = ["blocking_validator_runner_test.cc"],
     deps = [
         ":benchmark_result_evaluator",
@@ -1024,6 +1026,7 @@ cc_test(
         ":validator_runner_entrypoint",
         ":validator_runner_options",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],

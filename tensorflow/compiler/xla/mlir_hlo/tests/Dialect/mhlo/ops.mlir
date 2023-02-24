@@ -5776,30 +5776,6 @@ func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16
 
 // -----
 
-func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
-  // expected-error@+1 {{edge_padding_high length (2) must match operand rank (3)}}
-  %0 = "mhlo.pad"(%arg0, %arg1) {
-    edge_padding_high = dense<[1, 1]> : tensor<2xi64>,
-    edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
-    interior_padding = dense<[0, 0, 1]> : tensor<3xi64>
-  } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<2x4x7xf16>
-  func.return %0 : tensor<2x4x7xf16>
-}
-
-// -----
-
-func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
-  // expected-error@+1 {{interior_padding length (2) must match operand rank (3)}}
-  %0 = "mhlo.pad"(%arg0, %arg1) {
-    edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
-    edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
-    interior_padding = dense<[0, 0]> : tensor<2xi64>
-  } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<2x4x7xf16>
-  func.return %0 : tensor<2x4x7xf16>
-}
-
-// -----
-
 func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<8x8x8xf16> {
   // expected-error@+1 {{'mhlo.pad' op inferred type(s) 'tensor<2x4x7xf16>' are incompatible with return type(s) of operation 'tensor<8x8x8xf16>'}}
   %0 = "mhlo.pad"(%arg0, %arg1) {
@@ -6059,18 +6035,26 @@ func.func @abs_complex(%arg0: tensor<1x2xcomplex<f32>>) -> tensor<1x2xf32> {
 
 // -----
 
-// CHECK-LABEL: func @round_even
-func.func @round_even(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  %0 = "mhlo.round_nearest_even"(%arg0) {} : (tensor<2xf32>) -> tensor<2xf32>
-  func.return %0 : tensor<2xf32>
-}
-
-// -----
-
 func.func @abs_mismatch_element_type(%arg0: tensor<1x2xcomplex<f32>>) -> tensor<1x2xf64> {
 // expected-error@+1 {{'mhlo.abs' op inferred type(s) 'tensor<1x2xf32>' are incompatible with return type(s) of operation 'tensor<1x2xf64>'}}
   %0 = "mhlo.abs"(%arg0) {} : (tensor<1x2xcomplex<f32>>) -> tensor<1x2xf64>
   func.return %0 : tensor<1x2xf64>
+}
+
+// -----
+
+func.func @abs_complex_mismatch_element_type(%arg0: tensor<1x2xcomplex<f32>>) -> tensor<1x2xf64> {
+// expected-error@+1 {{'stablehlo.abs' op inferred type(s) 'tensor<1x2xf32>' are incompatible with return type(s) of operation 'tensor<1x2xf64>'}}
+  %0 = "stablehlo.abs"(%arg0) {} : (tensor<1x2xcomplex<f32>>) -> tensor<1x2xf64>
+  func.return %0 : tensor<1x2xf64>
+}
+
+// -----
+
+// CHECK-LABEL: func @round_even
+func.func @round_even(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.round_nearest_even"(%arg0) {} : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // -----

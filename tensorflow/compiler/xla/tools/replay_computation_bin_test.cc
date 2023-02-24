@@ -37,12 +37,15 @@ TEST(ReplayComputation, AddHloHost) {
   tsl::SubProcess proc;
   proc.SetProgram(replay_computation_bin,
                   {replay_computation_bin, PathToAddHlo(), "--use_fake_data"});
+  proc.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
+  proc.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
 
-  // Just make sure that the process's exit code is 0
-  int status = proc.Communicate(nullptr, nullptr, nullptr);
+  std::string out, err;
+  int status = proc.Communicate(nullptr, &out, &err);
   EXPECT_TRUE(WIFEXITED(status));
-  ASSERT_EQ(0, WEXITSTATUS(status));
+  EXPECT_EQ(0, WEXITSTATUS(status));
+  ASSERT_THAT(err, testing::HasSubstr("iteration complete"));
 }
 
 TEST(ReplayComputation, AddHloInterpreter) {
@@ -53,12 +56,15 @@ TEST(ReplayComputation, AddHloInterpreter) {
   tsl::SubProcess proc;
   proc.SetProgram(replay_computation_bin,
                   {replay_computation_bin, PathToAddHlo(), "--use_fake_data"});
+  proc.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
+  proc.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
 
-  // Just make sure that the process's exit code is 0
-  int status = proc.Communicate(nullptr, nullptr, nullptr);
+  std::string out, err;
+  int status = proc.Communicate(nullptr, &out, &err);
   EXPECT_TRUE(WIFEXITED(status));
-  ASSERT_EQ(0, WEXITSTATUS(status));
+  EXPECT_EQ(0, WEXITSTATUS(status));
+  ASSERT_THAT(err, testing::HasSubstr("iteration complete"));
 }
 
 }  // namespace

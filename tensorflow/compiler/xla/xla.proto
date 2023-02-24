@@ -452,6 +452,9 @@ message DebugOptions {
   // instead.
   bool xla_cpu_enable_mlir_tiling_and_fusion = 184;
 
+  // If set, use the experimental deallocation pass from mlir-hlo.
+  bool xla_cpu_enable_experimental_deallocation = 191;
+
   bool xla_gpu_enable_latency_hiding_scheduler = 186;
 
   enum PartitioningAlgorithm {
@@ -464,7 +467,9 @@ message DebugOptions {
 
   bool xla_gpu_enable_cudnn_int8x32_convolution_reordering = 189;
 
-  // Next id: 190
+  bool xla_gpu_triton_gemm_any = 190;
+
+  // Next id: 192
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -149,12 +149,12 @@ TEST_F(GraphExecutorTest, BasicWithOnlineCostAnalysis) {
 
 TEST_F(GraphExecutorTest, DoOnlineCostAnalysisExactlyOnce) {
   GraphExecutor::LoadedClientGraph loaded_client_graph_0(
-      "name0", /*resource_context=*/nullptr, /*mlir_context=*/nullptr,
-      /*tfrt_mlir=*/{}, /*bef_context=*/nullptr, /*bytecode_buffer=*/{},
+      "name0", /*mlir_context=*/nullptr, /*tfrt_mlir=*/{},
+      /*bef_context=*/nullptr, /*bytecode_buffer=*/{},
       /*bytecode_executable=*/nullptr);
   GraphExecutor::LoadedClientGraph loaded_client_graph_1(
-      "name1", /*resource_context=*/nullptr, /*mlir_context=*/nullptr,
-      /*tfrt_mlir=*/{}, /*bef_context=*/nullptr, /*bytecode_buffer=*/{},
+      "name1", /*mlir_context=*/nullptr, /*tfrt_mlir=*/{},
+      /*bef_context=*/nullptr, /*bytecode_buffer=*/{},
       /*bytecode_executable=*/nullptr);
 
   // For each `LoadedClientGraph`, `MaybeCreateCostRecorder()` only returns a

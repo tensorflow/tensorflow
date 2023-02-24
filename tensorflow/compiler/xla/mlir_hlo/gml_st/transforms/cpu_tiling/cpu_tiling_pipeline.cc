@@ -40,8 +40,12 @@ void addCPUTilingPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(createTransformReduceForCpuPass(
       options.vectorSize, options.reduction1DTileSize,
       options.reduction2DTileSizes));
+  pm.addNestedPass<FuncOp>(
+      createTransformDotForCpuPass(options.matmulTileSizes));
   pm.addNestedPass<FuncOp>(createTransformMatmulForCpuPass(
       options.matmulTileSizes, options.lowerToMmt4d));
+  // TODO(b/270534416): Re-enable.
+  // pm.addNestedPass<FuncOp>(createTransformGenericForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformTransposeForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformMapForCpuPass(options.vectorSize));
   pm.addNestedPass<FuncOp>(createTransformSortForCpuPass());

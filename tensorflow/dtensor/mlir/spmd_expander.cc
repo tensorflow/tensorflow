@@ -96,18 +96,6 @@ Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
   // If op is on an XLA SPMD mesh, then set layout and skip expansion.
   TF_ASSIGN_OR_RETURN(const Mesh& mesh, ExtractDeviceMeshEnclosingCluster(op));
   if (mesh.use_xla_spmd()) {
-    // Expand DTensor Relayout op to real operations.
-    // Perhaps an alternative is to replace a Relayout op with an identity op
-    // with the sharding so that Xla Spmd will instead do the relayout.
-    // TODO(b/256945113) Test emitting an identity with a sharding equal
-    // to Relayout's layout.
-    if (llvm::isa<mlir::TF::RelayoutOp>(op)) {
-      TF_ASSIGN_OR_RETURN(*output, this->ExpandOp(op));
-      SetLayoutOnOp(*output,
-                    absl::Span<std::optional<Layout>>(computed_layout.data(),
-                                                      computed_layout.size()));
-      return OkStatus();
-    }
     *output = op;
     SetLayoutOnOp(*output, absl::Span<std::optional<Layout>>(
                                computed_layout.data(), computed_layout.size()));

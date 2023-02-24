@@ -651,6 +651,31 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_Name_Args, executable_name_size);
 // Returns a string that identifies the executable.
 typedef PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
 
+// TODO(b/269178731): Revisit whether num_replicas is needed.
+struct PJRT_Executable_NumReplicas_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Executable* executable;
+  size_t num_replicas;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_NumReplicas_Args, num_replicas);
+
+// Returns the number of replicas of the executable.
+typedef PJRT_Error* PJRT_Executable_NumReplicas(
+    PJRT_Executable_NumReplicas_Args* args);
+
+struct PJRT_Executable_NumPartitions_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Executable* executable;
+  size_t num_partitions;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_NumPartitions_Args, num_partitions);
+
+// Returns the number of partitions of the executable.
+typedef PJRT_Error* PJRT_Executable_NumPartitions(
+    PJRT_Executable_NumPartitions_Args* args);
+
 struct PJRT_LoadedExecutable_AddressableDevices_Args {
   size_t struct_size;
   void* priv;
@@ -1170,6 +1195,8 @@ typedef struct {
 
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
+  _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumReplicas);
+  _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumPartitions);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumOutputs);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_SizeOfGeneratedCodeInBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_OptimizedProgram);

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
+
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -59,11 +61,11 @@ class FuncOpConverter : public OpConversionPattern<func::FuncOp> {
 llvm::Optional<Value> FindOpKernelContext(Operation *op) {
   auto func = op->getParentOfType<func::FuncOp>();
   if (func.getNumArguments() == 0) {
-    return llvm::None;
+    return std::nullopt;
   }
   Value ctx = func.getArgument(0);
   if (!ctx.getType().isa<OpKernelContextType>()) {
-    return llvm::None;
+    return std::nullopt;
   }
   return ctx;
 }

@@ -23,8 +23,10 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
@@ -57,6 +59,38 @@ typedef ::tensorflow::error::Code Code;
 namespace error {
 typedef ::tensorflow::error::Code Code;
 }  // namespace error
+}  // namespace tsl
+
+// Transparent comparison between tensorflow::error::Code protobuf enum and
+// absl::Status.
+//
+// The longer term objective is to delete these when we have done the transition
+// to absl::Status.
+namespace tensorflow::error {
+inline bool operator==(const ::tensorflow::error::Code& c1,
+                       const absl::StatusCode& c2) {
+  return static_cast<int>(c1) == static_cast<int>(c2);
+}
+
+inline bool operator!=(const ::tensorflow::error::Code& c1,
+                       const absl::StatusCode& c2) {
+  return static_cast<int>(c1) != static_cast<int>(c2);
+}
+}  // namespace tensorflow::error
+
+namespace absl {
+inline bool operator==(const ::absl::StatusCode& c1,
+                       const ::tensorflow::error::Code& c2) {
+  return static_cast<int>(c1) == static_cast<int>(c2);
+}
+
+inline bool operator!=(const ::absl::StatusCode& c1,
+                       const ::tensorflow::error::Code& c2) {
+  return static_cast<int>(c1) != static_cast<int>(c2);
+}
+}  // namespace absl
+
+namespace tsl {
 
 /// @ingroup core
 /// Denotes success or failure of a call in Tensorflow.
@@ -68,7 +102,10 @@ class Status {
 
   /// \brief Create a status with the specified error code and msg as a
   /// human-readable string containing more detailed information.
-  Status(tsl::error::Code code, absl::string_view msg,
+  Status(absl::StatusCode code, absl::string_view msg,
+         SourceLocation loc = SourceLocation::current());
+  // Deprecated constructor using the Tensorflow protobuf enum error code.
+  Status(tsl::errors::Code code, absl::string_view msg,
          SourceLocation loc = SourceLocation::current());
 
   /// Copy the specified status.
@@ -176,7 +213,7 @@ class Status {
   // any time and any mutation on the same Status object during visitation is
   // forbidden and could result in undefined behavior.
   void ForEachPayload(
-      const std::function<void(absl::string_view, absl::string_view)>& visitor)
+      absl::FunctionRef<void(absl::string_view, const absl::Cord&)> visitor)
       const;
 
   // Sets the stack frame associated with this status object.

@@ -1323,8 +1323,8 @@ REGISTER_OP("XlaCallModule")
     .Attr("Sout: list(shape) >= 0")
     .Attr("Tout: list(type) >= 0")
     .Attr("Tin: list(type) >= 0")
-    .Attr("dim_args_spec: list(string) >= 0")
-    .Attr("platforms: list(string) >= 0")
+    .Attr("dim_args_spec: list(string) = []")
+    .Attr("platforms: list(string) = []")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<shape_inference::ShapeHandle> args_shapes;
       TF_RETURN_IF_ERROR(c->input("args", &args_shapes));
@@ -1367,7 +1367,8 @@ Tout: List of output tensor data types.
 Sout: List of output tensor shapes.
 platforms: the list of platforms supported by `module`. If the list is empty,
   the `module` is platform independent or there should be no platform checking
-  or preprocessing. The list can contain the strings "CPU", "GPU", or "TPU".
+  or preprocessing. The list can contain the strings "CPU", "CUDA", "ROCM",
+  or "TPU".
   If the list is not empty then it is an error to compile this op for a
   platform that does not appear in the list. If the list contains more than
   one platform, then the `module` takes one additional 0-dimensional

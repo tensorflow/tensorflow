@@ -161,7 +161,7 @@ class TraceType(metaclass=abc.ABCMeta):
     """
 
   @abc.abstractmethod
-  def placeholder_value(self, placeholder_context=None) -> Any:
+  def placeholder_value(self, placeholder_context) -> Any:
     """Creates a placeholder for tracing.
 
     tf.funcion traces with the placeholder value rather than the actual value.
@@ -177,7 +177,7 @@ class TraceType(metaclass=abc.ABCMeta):
 
     ```python
     class FruitTraceType:
-      def placeholder_value(self, placeholder_context=None):
+      def placeholder_value(self, placeholder_context):
         return Fruit()
     ```
     instructs tf.function to trace with the `Fruit()` objects
@@ -229,7 +229,7 @@ class TraceType(metaclass=abc.ABCMeta):
         self.placeholder_value().
     """
     assert value == self.placeholder_value(
-        PlaceholderContext()), f"Cannt cast {value!r} to type {self!r}."
+        PlaceholderContext()), f"Can not cast {value!r} to type {self!r}"
     return value
 
   @abc.abstractmethod

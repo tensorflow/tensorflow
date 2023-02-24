@@ -569,27 +569,28 @@ class QuantizeFunctionPattern
     if (!call_op->removeAttr(kQuantTraitAttrName) || !f_attr) {
       return failure();
     }
-
-    // Determines if all required float input/outputs are now quantized.
-    bool has_quantized_types = false;
-    if (quantization_method_ ==
-        tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE) {
-      has_quantized_types = IsQuantizedCallforDynamicRange(call_op);
-      if (f_attr.getValue().startswith(kCompositeFuncPrefix) &&
-          !has_quantized_types) {
-        call_op->emitError(
-            "Only quantizable ops need to be in composite function for dynamic"
-            "-range PTQ case.");
-        return failure();
-      }
-    } else {
-      has_quantized_types = IsQuantizedCallforStaticRange(call_op);
-    }
-
-    if (!f_attr.getValue().startswith(kCompositeFuncPrefix) ||
-        !has_quantized_types) {
+    if (!f_attr.getValue().startswith(kCompositeFuncPrefix)) {
       return failure();
     }
+    // Determines if all required float input/outputs are now quantized.
+    bool has_quantized_types = false;
+    switch (quantization_method_) {
+      case tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE:
+        has_quantized_types = IsQuantizedCallforDynamicRange(call_op);
+        break;
+      case tensorflow::quantization::QuantizationMethod::STATIC_RANGE:
+        has_quantized_types = IsQuantizedCallforStaticRange(call_op);
+        break;
+      case tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY:
+        // Skipping input type check for weight-only quantization as it can be
+        // dequantized beforehand for the legacy scheme.
+        has_quantized_types = true;
+        break;
+      default:
+        call_op->emitError("The quantization method is not supported.");
+        return failure();
+    }
+    if (!has_quantized_types) return failure();
 
     SmallVector<Value, 4> args;
     SmallVector<Value, 4> qparam_args;
@@ -1112,7 +1113,8 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
     quant_specs.weight_quantization = true;
     pm.addPass(CreatePrepareQuantizeDRQPass(quant_specs, target_opset_));
     if (quantization_method_ !=
-        tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE) {
+            tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE &&
+        target_opset_ != OpSet::XLA) {
       quant_specs.weight_only_quantization = true;
     }
     pm.addNestedPass<func::FuncOp>(

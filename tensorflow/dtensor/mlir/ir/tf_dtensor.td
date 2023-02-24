@@ -627,13 +627,13 @@ sharded than the input layout.
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Uint32, TF_Int64, TF_Bool]>:$input,
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Uint32, TF_Int64, TF_Bool, TF_Str]>:$input,
     DTensor_LayoutAttr:$input_layout,
     DTensor_LayoutAttr:$output_layout
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Uint32, TF_Int64, TF_Bool]>:$output
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Uint32, TF_Int64, TF_Bool, TF_Str]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;

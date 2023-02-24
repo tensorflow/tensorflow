@@ -18,6 +18,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -31,8 +33,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "stablehlo/transforms/Passes.h"  // from @stablehlo
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -240,7 +241,7 @@ Status AddMainWrapper(int version, mlir::ModuleOp module, int platform_index,
 
   mlir::PassManager pm(module.getContext());
   // Inliner will merge main and _wrapped_main, making subsequent passes
-  // like constant propagation and shape inference work better.
+  // like constant propagation and shape refinement work better.
   pm.addPass(mlir::createInlinerPass());
   if (!mlir::succeeded(pm.run(module))) {
     return errors::InvalidArgument("Module inlining failed");
@@ -254,9 +255,9 @@ Status AddMainWrapper(int version, mlir::ModuleOp module, int platform_index,
 // Refines the dynamic module arguments based on the static argument shapes.
 // This assumes that the module has a "main" function without dimension args,
 // but possibly with dynamic shapes. We read the static shapes of the inputs,
-// then set them as the types of the function parameters, and run TF shape
-// inference to refine all dynamic shapes, and to rewrite the dynamic ops,
-// e.g., to replace dynamic_broadcast_in_dim with broadcast_in_dim.
+// then set them as the types of the function parameters, and run StableHLO
+// shape refinement to specialize all dynamic shapes in the StableHLO program
+// to static shapes.
 Status RefineDynamicShapes(XlaOpKernelContext *ctx,
                            mlir::OwningOpRef<mlir::ModuleOp> *module,
                            int nr_platform_args, int nr_dim_args) {
@@ -299,7 +300,7 @@ Status RefineDynamicShapes(XlaOpKernelContext *ctx,
   // Refine 'main' argument types to use static input types instead.
   // This will only change the argument types and will not propagate the
   // additional type information further. For that, we'll need to run
-  // shape inference as explained below.
+  // shape refinement as explained below.
   auto static_array_output_types = llvm::to_vector(main.getResultTypes());
   for (auto i = 0; i < main_body.getNumArguments(); ++i) {
     auto arg = main_body.getArgument(i);
@@ -318,12 +319,6 @@ Status RefineDynamicShapes(XlaOpKernelContext *ctx,
   }
   main.setType(builder.getFunctionType(static_array_input_types,
                                        static_array_output_types));
-  // --tf-shape-inference, despite its TF-specific name, seems to be general
-  // enough to also work on MHLO. (Although it fails if it doesn't see a
-  // tf.versions attribute on the module, which we hackily attach).
-  auto tf_producer =
-      builder.getNamedAttr("producer", builder.getI32IntegerAttr(0));
-  (**module)->setAttr("tf.versions", builder.getDictionaryAttr({tf_producer}));
 
   // Verify the module before running passes on it.
   // If the module doesn't pass verification, all sorts of weirdness might
@@ -336,49 +331,17 @@ Status RefineDynamicShapes(XlaOpKernelContext *ctx,
   mlir::PassManager pm((*module)->getContext());
   if (VLOG_IS_ON(3)) {
     auto print_before = [](mlir::Pass *, mlir::Operation *) { return true; };
-    auto print_after = [](mlir::Pass *, mlir::Operation *) { return false; };
-    pm.enableIRPrinting(print_before, print_after);
+    auto print_after = [](mlir::Pass *, mlir::Operation *) { return true; };
+    pm.enableIRPrinting(print_before, print_after, /*printModuleScope=*/true,
+                        /*printAfterOnlyOnChange=*/false);
   }
-  // This pipeline is inspired by CreateConvertMlirToXlaHloPipeline. We
-  // need only a few of the passes.
-  // SCCP will resolve get_dimension_size and propagate constants to callees.
-  pm.addPass(mlir::createSCCPPass());
-  // Canonicalizer will turn dynamic_xxx into xxx.
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addPass(mlir::createCSEPass());
+  pm.addPass(mlir::stablehlo::createStablehloRefineShapesPass());
   if (!mlir::succeeded(pm.run(**module))) {
-    return errors::InvalidArgument("Module shape inference failed");
+    return errors::InvalidArgument("Module shape refinement failed");
   }
 
-  // Finally, make sure that no dynamic shapes are left, otherwise all sorts of
-  // weirdness might happen in the HLO exporter.
-  bool moduleHasDynamicShapes = false;
-  auto hasDynamicShape = [](mlir::Value value) {
-    auto shaped_type = value.getType().dyn_cast<mlir::ShapedType>();
-    return shaped_type ? !shaped_type.hasStaticShape() : false;
-  };
-  (*module)->walk([&](mlir::Operation *op) {
-    // It's sufficient to only check results because operands either come from
-    // results or from block arguments which are checked below.
-    bool opHasDynamicShapes = false;
-    opHasDynamicShapes |= llvm::any_of(op->getResults(), hasDynamicShape);
-    for (mlir::Region &region : op->getRegions()) {
-      opHasDynamicShapes |=
-          llvm::any_of(region.getArguments(), hasDynamicShape);
-    }
-    moduleHasDynamicShapes |= opHasDynamicShapes;
-    if (opHasDynamicShapes) {
-      std::string opStr;
-      llvm::raw_string_ostream os(opStr);
-      op->print(os);
-      VLOG(3) << "Operation still has dynamic shapes: " << opStr;
-    }
-  });
-  if (moduleHasDynamicShapes) {
-    return errors::InvalidArgument("Module still has dynamic shapes");
-  }
-
-  VLOG(3) << "XlaCallModule module with inferred types: "
+  VLOG(3) << "XlaCallModule module with refined shapes: "
           << debugString(**module);
   return OkStatus();
 }
@@ -396,9 +359,6 @@ Status LoadAndPreprocessModule(int version,
   context->loadDialect<mlir::stablehlo::StablehloDialect>();
   context->loadDialect<mlir::mhlo::MhloDialect>();
   context->loadDialect<mlir::chlo::ChloDialect>();
-  // Allow TF dialect for now because shape inference uses tf.Cast in
-  // intermediate stages.
-  context->loadDialect<mlir::TF::TensorFlowDialect>();
   // Parses both IR text and bytecode.
   *module = mlir::parseSourceString<mlir::ModuleOp>(llvm::StringRef(module_str),
                                                     context);
@@ -447,6 +407,48 @@ Status LoadAndPreprocessModule(int version,
   return OkStatus();
 }
 
+// Validate that the module represents a statically-shaped StableHLO program,
+// otherwise all sorts of weirdness might happen in the HLO exporter which
+// is much easier to detect here.
+Status ValidateModule(mlir::ModuleOp module) {
+  bool moduleHasUnsupportedDialects = false;
+  bool moduleHasDynamicShapes = false;
+
+  module.walk([&](mlir::Operation *op) {
+    // StableHLO programs created by jax2tf only contain operations
+    // from Builtin, Func and StableHLO dialects.
+    if (!llvm::isa<mlir::BuiltinDialect, mlir::chlo::ChloDialect,
+                   mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect>(
+            op->getDialect())) {
+      moduleHasUnsupportedDialects = true;
+      VLOG(3) << "Operation has unsupported dialects: " << debugString(op);
+    }
+
+    // It's sufficient to only check results because operands either come from
+    // results or from block arguments which are checked below.
+    auto hasDynamicShape = [](mlir::Value value) {
+      auto shaped_type = value.getType().dyn_cast<mlir::ShapedType>();
+      return shaped_type ? !shaped_type.hasStaticShape() : false;
+    };
+    bool opHasDynamicShapes = false;
+    opHasDynamicShapes |= llvm::any_of(op->getResults(), hasDynamicShape);
+    for (mlir::Region &region : op->getRegions()) {
+      opHasDynamicShapes |=
+          llvm::any_of(region.getArguments(), hasDynamicShape);
+    }
+    if (opHasDynamicShapes) {
+      moduleHasDynamicShapes = true;
+      VLOG(3) << "Operation has dynamic shapes: " << debugString(op);
+    }
+  });
+
+  if (moduleHasUnsupportedDialects)
+    return errors::InvalidArgument("Module has unsupported dialects");
+  if (moduleHasDynamicShapes)
+    return errors::InvalidArgument("Module has dynamic shapes");
+  return OkStatus();
+}
+
 class XlaCallModuleOp : public XlaOpKernel {
  public:
   explicit XlaCallModuleOp(OpKernelConstruction *ctx) : XlaOpKernel(ctx) {
@@ -474,7 +476,14 @@ class XlaCallModuleOp : public XlaOpKernel {
         if (current_device_type == DEVICE_CPU_XLA_JIT) {
           current_platform = "CPU";
         } else if (current_device_type == DEVICE_GPU_XLA_JIT) {
-          current_platform = "GPU";
+#if GOOGLE_CUDA
+          current_platform = "CUDA";
+#elif TENSORFLOW_USE_ROCM
+          current_platform = "ROCM";
+#else
+          OP_REQUIRES(ctx, false,
+                      errors::Unimplemented("CUDA or ROCM build required"));
+#endif
         } else if (current_device_type == DEVICE_TPU_XLA_JIT) {
           current_platform = "TPU";
         } else {
@@ -482,6 +491,7 @@ class XlaCallModuleOp : public XlaOpKernel {
                       errors::Unimplemented("Unexpected device type ",
                                             current_device_type));
         }
+        VLOG(3) << "Initialized XlaCallModuleOp on " << current_platform;
         auto found_platform =
             std::find(platforms.begin(), platforms.end(), current_platform);
         OP_REQUIRES(ctx, found_platform != platforms.end(),
@@ -508,6 +518,7 @@ class XlaCallModuleOp : public XlaOpKernel {
                                               (platform_index_ >= 0 ? 1 : 0),
                                               dim_args_spec_.size()));
     }
+    OP_REQUIRES_OK(ctx, ValidateModule(*module_));
 
     std::vector<xla::XlaOp> inputs(ctx->num_inputs());
     for (int i = 0, end = ctx->num_inputs(); i < end; ++i) {

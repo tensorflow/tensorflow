@@ -19,6 +19,7 @@ import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerforma
 
 import android.util.Log;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import tflite.proto.benchmark.DelegatePerformance.BenchmarkEventType;
 import tflite.proto.benchmark.DelegatePerformance.BenchmarkMetric;
@@ -26,35 +27,41 @@ import tflite.proto.benchmark.DelegatePerformance.LatencyCriteria;
 import tflite.proto.benchmark.DelegatePerformance.LatencyResults;
 
 /** Model-level latency benchmark report class. */
-final class LatencyBenchmarkReport extends ModelBenchmarkReport<LatencyResults> {
+final class LatencyBenchmarkReport extends ModelBenchmarkReport {
   private static final String TAG = "LatencyBenchmarkReport";
 
-  private LatencyBenchmarkReport(String modelName, LatencyCriteria criteria) {
+  private LatencyBenchmarkReport(
+      String modelName,
+      List<RawDelegateMetricsEntry> rawDelegateMetricsEntries,
+      LatencyCriteria criteria) {
     super(modelName);
     checkNotNull(criteria);
     this.maxRegressionPercentageAllowed.put(
-        "startup_overhead_latency_us", criteria.getStartupOverheadMaxRegressionPercentageAllowed());
+        "startup_overhead_latency_us",
+        (double) criteria.getStartupOverheadMaxRegressionPercentageAllowed());
     this.maxRegressionPercentageAllowed.put(
         "inference_latency_average_us",
-        criteria.getAverageInferenceMaxRegressionPercentageAllowed());
+        (double) criteria.getAverageInferenceMaxRegressionPercentageAllowed());
     Log.i(TAG, "Creating a latency benchmark report for " + modelName);
+    computeModelReport(rawDelegateMetricsEntries);
   }
 
   /**
    * Parses {@link LatencyResults} into the unified {@link RawDelegateMetricsEntry} format for
    * further processing.
    */
-  @Override
-  public void addResults(LatencyResults results, TfLiteSettingsListEntry entry) {
-    if (results.getEventType() != BenchmarkEventType.BENCHMARK_EVENT_TYPE_END) {
-      Log.i(TAG, "The latency benchmarking is not completed successfully for " + entry.filePath());
-      return;
-    }
+  public static RawDelegateMetricsEntry parseResults(
+      LatencyResults results, TfLiteSettingsListEntry entry) {
     // Use {@code LinkedHashMap} to keep the metrics insertion order.
-    Map<String, Float> metrics = new LinkedHashMap<>();
+    Map<String, Double> metrics = new LinkedHashMap<>();
+    if (results.getEventType() != BenchmarkEventType.BENCHMARK_EVENT_TYPE_END) {
+      Log.w(TAG, "The latency benchmarking is not completed successfully for " + entry.filePath());
+      return RawDelegateMetricsEntry.create(
+          entry.tfliteSettings().delegate(), entry.filePath(), entry.isTestTarget(), metrics);
+    }
     for (BenchmarkMetric metric : results.getMetricsList()) {
       if (metric != null) {
-        metrics.put(metric.getName(), metric.getValue());
+        metrics.put(metric.getName(), (double) metric.getValue());
       }
     }
     checkState(metrics.containsKey("initialization_latency_us"));
@@ -65,12 +72,14 @@ final class LatencyBenchmarkReport extends ModelBenchmarkReport<LatencyResults> 
         metrics.get("initialization_latency_us")
             + metrics.get("warmup_latency_average_us")
             - metrics.get("inference_latency_average_us"));
-    rawDelegateMetrics.add(
-        RawDelegateMetricsEntry.create(
-            entry.tfliteSettings().delegate(), entry.filePath(), entry.isTestTarget(), metrics));
+    return RawDelegateMetricsEntry.create(
+        entry.tfliteSettings().delegate(), entry.filePath(), entry.isTestTarget(), metrics);
   }
 
-  static ModelBenchmarkReport<LatencyResults> create(String modelName, LatencyCriteria criteria) {
-    return new LatencyBenchmarkReport(modelName, criteria);
+  static LatencyBenchmarkReport create(
+      String modelName,
+      List<RawDelegateMetricsEntry> rawDelegateMetricsEntries,
+      LatencyCriteria criteria) {
+    return new LatencyBenchmarkReport(modelName, rawDelegateMetricsEntries, criteria);
   }
 }

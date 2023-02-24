@@ -166,13 +166,14 @@ InterpreterValue broadcast(InterpreterState&, vector::BroadcastOp broadcast,
   auto& resultView = result.view();
 
   // Insert additional leading stride 0 dims.
-  SmallVector<int64_t> strides(broadcast.getVectorType().getRank());
+  SmallVector<int64_t> strides(broadcast.getResultVectorType().getRank());
   llvm::copy(llvm::reverse(resultView.strides), strides.rbegin());
   // Zero out broadcast dimension strides.
   for (int64_t i : broadcast.computeBroadcastedUnitDims()) strides[i] = 0;
 
   resultView.strides = std::move(strides);
-  resultView.sizes = llvm::to_vector(broadcast.getVectorType().getShape());
+  resultView.sizes =
+      llvm::to_vector(broadcast.getResultVectorType().getShape());
   return result;
 }
 
@@ -614,7 +615,7 @@ InterpreterValue shapeCast(InterpreterState&, vector::ShapeCastOp op,
 InterpreterValue shuffle(InterpreterState& state, vector::ShuffleOp shuffle,
                          const InterpreterValue& v0,
                          const InterpreterValue& v1) {
-  auto result = v0.typedAlike(shuffle.getVectorType().getShape());
+  auto result = v0.typedAlike(shuffle.getResultVectorType().getShape());
   auto& resultView = result.view();
   resultView.isVector = true;
 
@@ -711,6 +712,11 @@ InterpreterValue transferRead(InterpreterState& state,
                               ArrayRef<int64_t> offsets,
                               const InterpreterValue& padding,
                               std::optional<TensorOrMemref<bool>> mask) {
+  if (transfer.getVectorType().getElementType().isInteger(1)) {
+    state.addFailure("cannot transfer directly to i1 vector");
+    return {};
+  }
+
   auto* maskChannel = state.getTopScope()->getSideChannel<MaskSideChannel>(
       /*optional=*/true);
   if (maskChannel) {
@@ -761,6 +767,11 @@ llvm::SmallVector<InterpreterValue> transferWrite(
     InterpreterState& state, vector::TransferWriteOp transfer,
     InterpreterValue src, InterpreterValue dst, ArrayRef<int64_t> offsets,
     std::optional<TensorOrMemref<bool>> mask) {
+  if (transfer.getVectorType().getElementType().isInteger(1)) {
+    state.addFailure("cannot transfer directly from i1 vector");
+    return {};
+  }
+
   if (auto* maskChannel = state.getTopScope()->getSideChannel<MaskSideChannel>(
           /*optional=*/true)) {
     if (mask) {

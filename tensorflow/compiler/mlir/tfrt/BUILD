@@ -37,6 +37,7 @@ package_group(
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
         "//smartass/brain/ops/...",
+        "//third_party/mlir_edge/tpgen/...",
         "//tensorflow_serving/servables/tensorflow/google/...",
         "//third_party/tf_runtime_google/...",
     ]),
@@ -379,6 +380,15 @@ cc_library(
 )
 
 cc_library(
+    name = "tfrt_pipeline_options",
+    hdrs = ["transforms/tfrt_pipeline_options.h"],
+    deps = [
+        ":tfrt_compile_options",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
     name = "tf_to_tfrt",
     srcs = [
         "transforms/cross_device_transfer.cc",
@@ -395,6 +405,7 @@ cc_library(
         "transforms/sink_in_invariant_ops.cc",
         "transforms/tf_to_tfrt.cc",
         "transforms/tpu_passes.h",
+        "transforms/xla_rewrite_pass.cc",
     ],
     hdrs = [
         "transforms/passes.h",
@@ -407,7 +418,7 @@ cc_library(
         ":tensor_array_side_effect_analysis",
         ":tf_jitrt_opdefs",
         ":tf_jitrt_pipeline",
-        ":tfrt_compile_options",
+        ":tfrt_pipeline_options",
         ":transforms/gpu_passes",
         ":transforms/set_shape_invariant_in_while_ops",
         "@llvm-project//llvm:Support",

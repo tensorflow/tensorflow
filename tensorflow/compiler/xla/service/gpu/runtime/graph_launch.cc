@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
@@ -180,8 +181,8 @@ static absl::Status LaunchGraph(
     StreamExecutorKernels::Snapshot* kernels,
     StreamExecutorConvRunners::Snapshot* convs,
     StreamExecutorGraphInstances::Snapshot* instances,
-    runtime::Executable* executable, CustomCall::RemainingArgs fwd_args,
-    CustomCall::FunctionOrdinal capture) {
+    GemmConfigs::Snapshot* gemm_config, runtime::Executable* executable,
+    CustomCall::RemainingArgs fwd_args, CustomCall::FunctionOrdinal capture) {
 #if GOOGLE_CUDA
   VLOG(1) << "Launch Cuda Graph: capture=" << capture.ordinal;
 
@@ -194,7 +195,8 @@ static absl::Status LaunchGraph(
   // Forwards user data required for launching kernels.
   auto user_data = [&] {
     return CustomCall::UserData(run_options, debug_options, ptx, cubin,
-                                temp_buffer, kernels, convs, executable);
+                                temp_buffer, kernels, convs, executable,
+                                gemm_config);
   };
 
   absl::StatusOr<GraphInstance*> instance = instances->GetOrCreate(
@@ -255,6 +257,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .UserData<StreamExecutorKernels::Snapshot*>()
         .UserData<StreamExecutorConvRunners::Snapshot*>()
         .UserData<StreamExecutorGraphInstances::Snapshot*>()
+        .UserData<GemmConfigs::Snapshot*>()
         .UserData<Executable*>()
         .RemainingArgs()
         .Attr<CustomCall::FunctionOrdinal>("capture"));

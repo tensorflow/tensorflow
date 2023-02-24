@@ -668,15 +668,7 @@ class Trackable(object):
        lambda name="global_name_for_this_object":
        SaveableObject(name=name, ...)}
     """
-    # TODO(kathywu): In order to remove this circular dependency, remove all
-    # external calls to _gather_saveables_for_checkpoint.
-    # pylint: disable=g-import-not-at-top
-    from tensorflow.python.training.saving import saveable_object_util
-    # pylint: enable=g-import-not-at-top
-    if saveable_object_util.trackable_has_serialize_to_tensor(self):
-      return saveable_object_util.saveable_objects_from_trackable(self)
-    else:
-      return getattr(self, "_self_saveable_object_factories", {})
+    return getattr(self, "_self_saveable_object_factories", {})
 
   def _serialize_to_tensors(self):
     """Gathers tensors to save to the checkpoint.

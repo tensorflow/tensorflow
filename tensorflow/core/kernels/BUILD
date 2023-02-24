@@ -1409,10 +1409,11 @@ tf_cc_test(
         ":ragged_tensor_to_variant_op",
         ":ragged_tensor_variant",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -5059,6 +5060,7 @@ tf_cuda_cc_tests(
     name = "sparse2_tests",
     size = "small",
     srcs = [
+        "sparse_fill_empty_rows_op_test.cc",
         "sparse_tensor_dense_matmul_op_test.cc",
         "sparse_to_dense_op_test.cc",
         "sparse_xent_op_test.cc",
@@ -5076,6 +5078,7 @@ tf_cuda_cc_tests(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 

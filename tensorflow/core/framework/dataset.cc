@@ -874,6 +874,9 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(
 
 Status DatasetBase::DatasetGraphDefBuilder::AddResourceHelper(
     SerializationContext* ctx, const Tensor& t, Node** output) {
+  if (t.NumElements() == 0) {
+    return errors::InvalidArgument("Empty resouce handle");
+  }
   const ResourceHandle& handle = t.flat<ResourceHandle>()(0);
   if (ctx->device_name() != handle.device()) {
     return errors::InvalidArgument("Trying to access resource ", handle.name(),

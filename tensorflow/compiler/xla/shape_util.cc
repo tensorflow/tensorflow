@@ -41,7 +41,6 @@ limitations under the License.
 
 namespace xla {
 
-using absl::StrAppend;
 using absl::StrCat;
 
 namespace {
@@ -72,6 +71,35 @@ constexpr uint8_t primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
     sizeof(float) / 4,   // F8E4M3FN = 20
 };
 constexpr int64_t kAnnotationPrintInterval = 5;
+
+template <bool kPrintLayout>
+void PrintShape(Printer* printer, const Shape& shape) {
+  if constexpr (kPrintLayout) {
+    ShapeUtil::PrintHumanStringWithLayout(printer, shape);
+  } else {
+    ShapeUtil::PrintHumanString(printer, shape);
+  }
+}
+
+template <bool kPrintLayout>
+void PrintTupleShapes(Printer* printer, absl::Span<const Shape> tuple_shapes) {
+  if (ABSL_PREDICT_FALSE(tuple_shapes.empty())) {
+    printer->Append("()");
+    return;
+  }
+  printer->Append("(");
+  PrintShape<kPrintLayout>(printer, tuple_shapes[0]);
+  for (int64_t i = 1; i < tuple_shapes.size(); ++i) {
+    if (i % kAnnotationPrintInterval == 0) {
+      printer->Append(absl::StrFormat(", /*index=%lld*/", i));
+    } else {
+      printer->Append(", ");
+    }
+    PrintShape<kPrintLayout>(printer, tuple_shapes[i]);
+  }
+  printer->Append(")");
+}
+
 }  // namespace
 
 std::string ShapeIndex::ToString() const {
@@ -640,31 +668,26 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ void ShapeUtil::PrintHumanString(xla::Printer* printer,
                                               const Shape& shape) {
   if (shape.IsTuple()) {
-    printer->Append("(");
-    const auto& tuple_shapes = shape.tuple_shapes();
-    for (int64_t i = 0; i < tuple_shapes.size(); ++i) {
-      const Shape& elem_shape = tuple_shapes[i];
-      if (i != 0) {
-        printer->Append(", ");
-        if (i % kAnnotationPrintInterval == 0) {
-          printer->Append(absl::StrFormat("/*index=%lld*/", i));
-        }
-      }
-      PrintHumanString(printer, elem_shape);
-    }
-    printer->Append(")");
+    PrintTupleShapes</*kPrintLayout=*/false>(printer, shape.tuple_shapes());
     return;
   }
   printer->Append(
       primitive_util::LowercasePrimitiveTypeName(shape.element_type()));
+  if (shape.dimensions().empty()) {
+    printer->Append("[]");
+    return;
+  }
   printer->Append("[");
-  const auto dimensions_size = shape.dimensions_size();
-  for (int i = 0; i < dimensions_size; ++i) {
-    if (i != 0) printer->Append(",");
+  auto print_one = [&](int i) {
     if (shape.is_dynamic_dimension(i)) {
       printer->Append("<=");
     }
     printer->Append(shape.dimensions(i));
+  };
+  print_one(0);
+  for (int i = 1, n = shape.dimensions_size(); i < n; ++i) {
+    printer->Append(",");
+    print_one(i);
   }
   printer->Append("]");
 }
@@ -672,32 +695,19 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ void ShapeUtil::PrintHumanStringWithLayout(xla::Printer* printer,
                                                         const Shape& shape) {
   if (shape.IsTuple()) {
-    printer->Append("(");
-    const auto& tuple_shapes = shape.tuple_shapes();
-    for (int64_t i = 0; i < tuple_shapes.size(); ++i) {
-      const Shape& elem_shape = tuple_shapes[i];
-      if (i != 0) {
-        printer->Append(", ");
-        if (i % kAnnotationPrintInterval == 0) {
-          printer->Append(absl::StrFormat("/*index=%lld*/", i));
-        }
-      }
-      PrintHumanStringWithLayout(printer, elem_shape);
-    }
-    printer->Append(")");
+    PrintTupleShapes</*kPrintLayout=*/true>(printer, shape.tuple_shapes());
     return;
   }
   PrintHumanString(printer, shape);
-  if (shape.has_layout()) {
-    if (IsScalar(shape)) {
-      std::string layout_str = LayoutUtil::HumanString(shape.layout());
-      // Don't print "{}" as layout for scalars.
-      if (layout_str != "{}") {
-        printer->Append(layout_str);
-      }
-    } else if (shape.IsArray()) {
-      LayoutUtil::PrintHumanString(printer, shape.layout());
+  if (!shape.has_layout()) return;
+  if (IsScalar(shape)) {
+    std::string layout_str = LayoutUtil::HumanString(shape.layout());
+    // Don't print "{}" as layout for scalars.
+    if (layout_str != "{}") {
+      printer->Append(layout_str);
     }
+  } else if (shape.IsArray()) {
+    LayoutUtil::PrintHumanString(printer, shape.layout());
   }
 }
 
@@ -705,16 +715,21 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     xla::Printer* printer, const ProgramShape& program_shape) {
   printer->Append("(");
   const auto& shape_parameters = program_shape.parameters();
-  for (int i = 0; i < shape_parameters.size(); ++i) {
-    const auto& shape = shape_parameters[i];
-    if (i != 0) printer->Append(", ");
-    if (i < program_shape.parameter_names_size()) {
-      printer->Append(program_shape.parameter_names(i));
-    } else {
-      printer->Append("(unknown)");
+  if (!shape_parameters.empty()) {
+    auto print_one = [&](int i) {
+      if (i < program_shape.parameter_names_size()) {
+        printer->Append(program_shape.parameter_names(i));
+      } else {
+        printer->Append("(unknown)");
+      }
+      printer->Append(": ");
+      PrintHumanString(printer, shape_parameters[i]);
+    };
+    print_one(0);
+    for (int i = 1; i < shape_parameters.size(); ++i) {
+      printer->Append(", ");
+      print_one(i);
     }
-    printer->Append(": ");
-    PrintHumanString(printer, shape);
   }
   printer->Append(") -> ");
   PrintHumanString(printer, program_shape.result());
@@ -1821,8 +1836,13 @@ static std::vector<int64_t> MajorToMinorLayout(const Shape& s) {
   return std::vector<int64_t>{minor_to_major.rbegin(), minor_to_major.rend()};
 }
 
-static std::optional<Vector3> FindTranspose021Helper(
-    const Shape& input_shape, absl::Span<int64_t const> output_to_input) {
+static std::optional<Vector3> GetNormalizedTransposeShapeHelper(
+    const Shape& input_shape, absl::Span<int64_t const> output_to_input,
+    const Vector3& permutation) {
+  // 'permutation' should not be the identity permutation.
+  if (permutation[0] == 0 && permutation[1] == 1 && permutation[2] == 2) {
+    return std::nullopt;
+  }
   std::vector<size_t> segments = ConsecutiveSegments(output_to_input);
   if (segments.size() > 3) {
     return std::nullopt;
@@ -1832,29 +1852,61 @@ static std::optional<Vector3> FindTranspose021Helper(
       ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
           input_shape);
   Shape normalized_shape = MergeDimensions(segments, normalized_input_shape);
-  absl::Span<const int64_t> normalized_dims = normalized_shape.dimensions();
+  std::vector<int64_t> normalized_dims{normalized_shape.dimensions().begin(),
+                                       normalized_shape.dimensions().end()};
   if (segments.size() == 2) {
-    return Vector3{1, normalized_dims[1], normalized_dims[0]};
-  } else if (segments.size() == 3 && output_to_input[0] == 0) {
-    return Vector3{normalized_dims[0], normalized_dims[2], normalized_dims[1]};
+    // If we have two segments, we know that at least one transpose is
+    // happening, otherwise we would have only 1 segment.
+    int64_t untransposed = 0;
+    while (untransposed < permutation.size() &&
+           permutation[untransposed] != untransposed) {
+      ++untransposed;
+    }
+    // The desired permutation may not contain any untransposed dimension. With
+    // just 2 segments, we cannot uniquely match that.
+    if (untransposed == permutation.size()) {
+      return std::nullopt;
+    }
+    // Insert a 1-dimension at the position of the untransposed dimension.
+    normalized_dims.insert(normalized_dims.begin() + untransposed, 1);
+  } else if (segments.size() == 3) {
+    // Derive the order from the segments.
+    Vector3 segment_order{output_to_input[segments[0]],
+                          output_to_input[segments[1]],
+                          output_to_input[segments[2]]};
+    // We expect the same relative order.
+    for (int64_t i = 1; i < 3; ++i) {
+      if ((segment_order[i] > segment_order[i - 1]) !=
+          (permutation[i] > permutation[i - 1])) {
+        return std::nullopt;
+      }
+    }
+  }
+  if (normalized_dims.size() == 3) {
+    return Vector3{normalized_dims[permutation[0]],
+                   normalized_dims[permutation[1]],
+                   normalized_dims[permutation[2]]};
   }
   return std::nullopt;
 }
 
-/* static */ std::optional<Vector3> ShapeUtil::FindLogicalTranspose021(
+/* static */ std::optional<Vector3>
+ShapeUtil::GetNormalizedLogicalTransposeShape(
     const Shape& input_shape, const Shape& output_shape,
-    absl::Span<int64_t const> dimensions) {
+    absl::Span<int64_t const> dimensions, const Vector3& permutation) {
   if (!LayoutUtil::IsMonotonicWithDim0Major(input_shape.layout()) ||
       !LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout())) {
     // Only works on default layouts.
     return std::nullopt;
   }
 
-  return FindTranspose021Helper(input_shape, InversePermutation(dimensions));
+  return GetNormalizedTransposeShapeHelper(
+      input_shape, InversePermutation(dimensions), permutation);
 }
 
-/* static */ std::optional<Vector3> ShapeUtil::FindTranspose021(
-    const Shape& input_shape, const Shape& output_shape) {
+/* static */ std::optional<Vector3> ShapeUtil::GetNormalizedTransposeShape(
+    const Shape& input_shape, const Shape& output_shape,
+    const Vector3& permutation) {
   if (!ShapeUtil::CompatibleIgnoringElementType(input_shape, output_shape)) {
     return std::nullopt;
   }
@@ -1864,7 +1916,8 @@ static std::optional<Vector3> FindTranspose021Helper(
   std::vector<int64_t> output_to_input = ComposePermutations(
       InversePermutation(major_to_minor_output), major_to_minor_input);
 
-  return FindTranspose021Helper(input_shape, output_to_input);
+  return GetNormalizedTransposeShapeHelper(input_shape, output_to_input,
+                                           permutation);
 }
 
 Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {

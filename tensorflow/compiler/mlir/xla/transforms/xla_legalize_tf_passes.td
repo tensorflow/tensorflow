@@ -163,3 +163,16 @@ def TFXLADeviceSpecificTransforms : Pass<"tfxla-device-specific-transforms",
 
   let constructor = "mlir::mhlo::CreateTFXLADeviceSpecificTransformsPass()";
 }
+
+def InfeedOpsXlaAdjustLayout : Pass<"infeed-ops-xla-adjust-layout",
+                                    "mlir::func::FuncOp"> {
+  let summary = "Adjusts Infeed ops layout for XLA.";
+
+  let description = [{"Adjust layouts so infeed send & receive use the same "
+                    "format."}];
+
+  let constructor = "mlir::mhlo::CreateInfeedsOpsXlaAdjustLayoutPass()";
+
+  let dependentDialects = ["mhlo::MhloDialect"];
+
+}

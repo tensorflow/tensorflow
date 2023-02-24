@@ -348,6 +348,16 @@ class AvgPoolingGradOp : public OpKernel {
         OP_REQUIRES_OK(context,
                        GetBroadcastSize(c, in_cols, window_cols, col_stride,
                                         pad_cols, &cindex, &csize));
+        int64_t input_max =
+            ((out_backprop_batch - 1) * in_rows + rindex + rsize - 1) *
+                in_cols +
+            cindex + csize - 1;
+        OP_REQUIRES(
+            context, input_max < output->NumElements(),
+            errors::InvalidArgument("Output only has ", output->NumElements(),
+                                    " elements but computation requested would "
+                                    "use element with index=",
+                                    input_max));
       }
     }
 

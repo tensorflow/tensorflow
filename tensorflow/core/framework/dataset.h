@@ -750,7 +750,8 @@ class IteratorContext {
           symbolic_checkpoint(ctx->symbolic_checkpoint()),
           thread_factory(ctx->thread_factory()),
           thread_pool(ctx->thread_pool()),
-          id_registry(ctx->id_registry()) {}
+          id_registry(ctx->id_registry()),
+          warm_start(ctx->warm_start()) {}
 
     explicit Params(OpKernelContext* ctx)
         : collective_executor(ctx->collective_executor()),
@@ -844,6 +845,11 @@ class IteratorContext {
 
     std::shared_ptr<MemoryCheckpoint::IdRegistry> id_registry =
         std::make_shared<MemoryCheckpoint::IdRegistry>();
+
+    // If `true` background threads of asynchronous operations are started when
+    // the iterator is created. Otherwise, they are started upon first `GetNext`
+    // request. Default value is set to false to ensure backward compatibility.
+    bool warm_start = false;
   };
 
   explicit IteratorContext(IteratorContext* ctx)
@@ -921,6 +927,8 @@ class IteratorContext {
   }
 
   thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
+
+  bool warm_start() { return params_.warm_start; }
 
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {

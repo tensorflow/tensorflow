@@ -1723,13 +1723,14 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
 }
 
 #if GOOGLE_CUDA
-Status IrEmitterUnnested::EmitTritonCustomCall(mlir::Operation* op) {
+Status IrEmitterUnnested::EmitTritonFusion(
+    mlir::Operation* op, tensorflow::AutotuneResult::TritonGemmKey& config) {
   VLOG(3) << MlirToString(op);
-  auto custom_call = mlir::cast<mlir::lmhlo::CustomCallOp>(op);
+  auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
 
   TF_ASSIGN_OR_RETURN(
       const HloComputation* hlo_computation,
-      GetOrCreateSubComputationFromRegion(&custom_call->getRegion(0),
+      GetOrCreateSubComputationFromRegion(&fusion_op->getRegion(0),
                                           /*is_fusion=*/false));
 
   const std::string fingerprint =
@@ -1738,31 +1739,14 @@ Status IrEmitterUnnested::EmitTritonCustomCall(mlir::Operation* op) {
   auto cache_it = triton_cache_.find(fingerprint);
   llvm::Function* impl_fn;
   if (cache_it == triton_cache_.end()) {
-    tensorflow::AutotuneResult::TritonGemmKey autotune_result;
-    if (!tsl::HumanReadableJsonToProto(custom_call.getBackendConfig()
-                                           .value_or(mlir::Attribute())
-                                           .dyn_cast_or_null<mlir::StringAttr>()
-                                           .str(),
-                                       &autotune_result)
-             .ok()) {
-      LOG(WARNING) << "Using fallback triton GEMM config";
-      autotune_result.set_block_m(64);
-      autotune_result.set_block_k(64);
-      autotune_result.set_block_n(64);
-      autotune_result.set_split_k(1);
-      autotune_result.set_num_stages(1);
-      autotune_result.set_num_warps(2);
-    }
-
     const std::string fn_name =
         ir_emitter_context_->name_uniquer()->GetUniqueName(
             llvm_ir::SanitizeFunctionName(
-                custom_call->getName().getStringRef().str()));
-    const std::optional<LaunchDimensions> launch_dimensions =
-        TritonWrapper(fn_name, hlo_computation,
-                      ir_emitter_context_->cuda_compute_capability(),
-                      ir_emitter_context_->gpu_device_info(), autotune_result,
-                      module_, &MatMul);
+                fusion_op->getName().getStringRef().str()));
+    const std::optional<LaunchDimensions> launch_dimensions = TritonWrapper(
+        fn_name, hlo_computation,
+        ir_emitter_context_->cuda_compute_capability(),
+        ir_emitter_context_->gpu_device_info(), config, module_, &MatMul);
     TF_RET_CHECK(launch_dimensions.has_value());
     impl_fn = module_->getFunction(fn_name);
     TF_RET_CHECK(impl_fn);
@@ -1776,7 +1760,7 @@ Status IrEmitterUnnested::EmitTritonCustomCall(mlir::Operation* op) {
   // Call the (cached) impl_fn from the wrapper_fn corresponding to this thunk.
   TF_ASSIGN_OR_RETURN(
       std::vector<llvm_ir::IrArray> ir_arrays,
-      BuildKernelThunk(custom_call, triton_cache_[fingerprint].second));
+      BuildKernelThunk(fusion_op, triton_cache_[fingerprint].second));
   std::vector<llvm::Value*> args;
   args.reserve(ir_arrays.size());
   for (const llvm_ir::IrArray& a : ir_arrays) {
@@ -1908,26 +1892,35 @@ Status IrEmitterUnnested::EmitUnnestedTranspose(
 
   // TODO(cheshire): avoid duplication of FindTiledTranspose function, is it
   // possible?
-  std::optional<Vector3> dims = FindAnyTiledTranspose(**absl::c_find_if(
+  auto dims_and_order = FindAnyTiledTranspose(**absl::c_find_if(
       hlo_roots,
       [](HloInstruction* instr) { return FindAnyTiledTranspose(*instr); }));
 
   // TODO(cheshire): have a more robust way of checking this.
-  CHECK(dims.has_value());
+  CHECK(dims_and_order.has_value());
 
   constexpr int kNumRows = 4;
   CHECK_EQ(WarpSize() % kNumRows, 0);
 
   // 3D view over the input shape.
-  Vector3 permuted_dims = {dims->at(0), dims->at(2), dims->at(1)};
+  Vector3 dims = dims_and_order->first;
+  Vector3 order = dims_and_order->second;
+  // We expect that the last dimension is swapped with a different dimension.
+  CHECK_NE(order[2], 2);
+  Vector3 permuted_dims = {dims[order[0]], dims[order[1]], dims[order[2]]};
+  Vector3 tile_sizes{1, 1, 1};
+  tile_sizes[order[2]] = WarpSize() / kNumRows;
+  Vector3 num_threads{1, 1, WarpSize()};
+  num_threads[order[2]] = kNumRows;
 
   TilingScheme tiling_scheme(
       /*permuted_dims*/ permuted_dims,
-      /*tile_sizes=*/{1, WarpSize() / kNumRows, 1},
-      /*num_threads=*/{1, kNumRows, WarpSize()},
+      /*tile_sizes=*/tile_sizes,
+      /*num_threads=*/num_threads,
       /*indexing_order=*/kLinearIndexingX,
       /*vector_size=*/1,
-      /*scaling_factor=*/1);
+      /*scaling_factor=*/1,
+      /*tiling_dimensions=*/{order[2], 2});
   LaunchDimensions launch_dimensions(
       tiling_scheme.GetNumberOfBlocksPhysical(),
       tiling_scheme.GetNumThreadsPerBlockPhysical());
@@ -1935,7 +1928,7 @@ Status IrEmitterUnnested::EmitUnnestedTranspose(
   TF_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
                       BuildKernelThunk(fusion, launch_dimensions));
 
-  TF_RETURN_IF_ERROR(EmitTranspose021Tile(
+  TF_RETURN_IF_ERROR(EmitTransposeTile(
       fusion, fused_computation,
       absl::MakeSpan(ir_arrays).subspan(0, fusion.getInputBuffers().size()),
       absl::MakeSpan(ir_arrays).subspan(fusion.getInputBuffers().size()),
@@ -1957,6 +1950,28 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
   if (HasAnyTiledTransposeRoot(fused_computation)) {
     return EmitUnnestedTranspose(fusion_op, fused_computation);
   }
+
+#if GOOGLE_CUDA
+  if (auto backend_config = fusion_op.getBackendConfig()
+                                .value_or(mlir::Attribute())
+                                .dyn_cast_or_null<mlir::StringAttr>()) {
+    tensorflow::AutotuneResult::TritonGemmKey triton_config;
+    if (backend_config == kTritonGemmBackendConfig) {
+      LOG(WARNING) << "Using fallback triton GEMM config";
+      triton_config.set_block_m(64);
+      triton_config.set_block_k(64);
+      triton_config.set_block_n(64);
+      triton_config.set_split_k(1);
+      triton_config.set_num_stages(1);
+      triton_config.set_num_warps(2);
+      return EmitTritonFusion(fusion_op, triton_config);
+    } else if (tsl::HumanReadableJsonToProto(backend_config.str(),
+                                             &triton_config)
+                   .ok()) {
+      return EmitTritonFusion(fusion_op, triton_config);
+    }
+  }
+#endif  // GOOGLE_CUDA
 
   auto fusion_results = fusion_op.getFusionResults();
   TF_RET_CHECK(!fusion_results.empty());
@@ -3598,8 +3613,10 @@ static void EmitXTileLoop(
               b->CreateMul(x, constant(stride_x * vector_size)), constant(i));
           llvm::Value* x_loc = b->CreateAdd(x_offset, start_offset_x, "x_loc");
           IrArray::Index source_idx_x =
-              tile_origin_index.AddOffsetToDim(y_loc, kDimY, b)
-                  .AddOffsetToDim(x_loc, kDimX, b);
+              tile_origin_index
+                  .AddOffsetToDim(y_loc, tiling_scheme.GetTilingDimension(0), b)
+                  .AddOffsetToDim(x_loc, tiling_scheme.GetTilingDimension(1),
+                                  b);
           auto emit_element = [&] {
             return (*emit_elem_function)(thread_id_info, source_idx_x, y_loc,
                                          x_loc);
@@ -3622,7 +3639,8 @@ void IrEmitterUnnested::EmitTile(
   auto constant = [&](int64_t val) {
     return llvm::ConstantInt::get(index_ty, val);
   };
-  llvm::Value* num_threads_y = constant(tiling_scheme.GetNumThreadsFor(kDimY));
+  llvm::Value* num_threads_y = constant(
+      tiling_scheme.GetNumThreadsFor(tiling_scheme.GetTilingDimension(0)));
 
   KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
 
@@ -4240,32 +4258,31 @@ IrEmitterUnnested::EmitTilingKernel(
 
   KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
 
-  const IrArray::Index block_coords = [&] {
-    IrArray::Index starting_block(thread_id_info.block_id,
-                                  ShapeUtil::MakeShapeWithDescendingLayout(
-                                      PRED /*arbitrary*/, dims_in_blocks),
-                                  &b_);
-    std::vector<llvm::Value*> multidim = {
-        b_.CreateMul(starting_block[0],
-                     constant(tiling_scheme.GetBlockTileSizeFor(0)),
-                     "block_origin.z"),
-        starting_block[1], starting_block[2]};
-    return IrArray::Index(multidim, dims_in_blocks, index_ty);
-  }();
+  int64_t non_tiling_dimension =
+      tiling_scheme.GetTilingDimension(0) == 1 ? kDimZ : kDimY;
+  const IrArray::Index block_coords(
+      thread_id_info.block_id,
+      ShapeUtil::MakeShapeWithDenseLayout(
+          PRED /*arbitrary*/, dims_in_blocks,
+          // This layout determines the iteration order. We want the
+          // non-tiling dimension to be the slowest varying dimension.
+          {2, 1 - non_tiling_dimension, non_tiling_dimension}),
+      &b_);
 
   ValueVector2 tile_dimensions;
+  // Coordinate access is shifted: 0 corresponds to the first non-tiling
+  // dimension and 1 corresponds to DimX.
+  std::array<int64_t, 2> tiling_coords{1 - non_tiling_dimension, kDimX};
   for (int i = 0; i < 2; ++i) {
-    // Coordinate access is shifted by 1: 0 corresponds to DimY
-    // and 1 corresponds to DimX.
-    int tiling_coord = i + 1;
-
-    int64_t tile_size_for_dim = tiling_scheme.GetBlockTileSizeFor(tiling_coord);
+    int64_t tile_size_for_dim =
+        tiling_scheme.GetBlockTileSizeFor(tiling_coords[i]);
     // Only last row or column may not have full size.
-    llvm::Value* is_last = b_.CreateICmpEQ(
-        block_coords[tiling_coord], constant(dims_in_blocks[tiling_coord] - 1));
+    llvm::Value* is_last =
+        b_.CreateICmpEQ(block_coords[tiling_coords[i]],
+                        constant(dims_in_blocks[tiling_coords[i]] - 1));
     int64_t partial_row =
-        dims_in_elems[tiling_coord] -
-        (dims_in_blocks[tiling_coord] - 1) * tile_size_for_dim;
+        dims_in_elems[tiling_coords[i]] -
+        (dims_in_blocks[tiling_coords[i]] - 1) * tile_size_for_dim;
     tile_dimensions[i] =
         b_.CreateSelect(is_last, constant(partial_row),
                         constant(tile_size_for_dim), "tile_bound");
@@ -4274,7 +4291,7 @@ IrEmitterUnnested::EmitTilingKernel(
   IrArray::Index tile_origin = [&] {
     std::vector<llvm::Value*> elem_multi_index = block_coords.multidim();
     llvm::Type* index_ty = block_coords.GetType();
-    for (int i = kDimY; i < kDimTot; ++i) {
+    for (int i = 0; i < kDimTot; ++i) {
       elem_multi_index[i] =
           b_.CreateMul(block_coords[i],
                        llvm::ConstantInt::get(
@@ -4289,18 +4306,21 @@ IrEmitterUnnested::EmitTilingKernel(
     tile_element_generator(thread_id_info, tile, tile_dimensions);
   };
 
-  if (tiling_scheme.GetBlockTileSizeFor(kDimZ) == 1) {
+  if (tiling_scheme.GetBlockTileSizeFor(non_tiling_dimension) == 1) {
     emit_tile(tile_origin);
   } else {
-    llvm::Value* starting_tile_index_for_dim = tile_origin[kDimZ];
+    llvm::Value* starting_tile_index_for_dim =
+        tile_origin[non_tiling_dimension];
     llvm::Value* block_size_for_dim =
-        constant(tiling_scheme.GetBlockTileSizeFor(kDimZ));
+        constant(tiling_scheme.GetBlockTileSizeFor(non_tiling_dimension));
     llvm::Value* block_id_for_dim =
         b_.CreateUDiv(starting_tile_index_for_dim, block_size_for_dim);
-    llvm::Value* last_block_for_dim = constant(dims_in_blocks[kDimZ] - 1);
-    llvm::Value* last_block_size_for_dim = constant(
-        dims_in_elems[kDimZ] -
-        (dims_in_blocks[kDimZ] - 1) * tiling_scheme.GetBlockTileSizeFor(kDimZ));
+    llvm::Value* last_block_for_dim =
+        constant(dims_in_blocks[non_tiling_dimension] - 1);
+    llvm::Value* last_block_size_for_dim =
+        constant(dims_in_elems[non_tiling_dimension] -
+                 (dims_in_blocks[non_tiling_dimension] - 1) *
+                     tiling_scheme.GetBlockTileSizeFor(non_tiling_dimension));
 
     llvm::Value* num_tiles_in_block =
         b_.CreateSelect(b_.CreateICmpEQ(last_block_for_dim, block_id_for_dim),
@@ -4310,7 +4330,7 @@ IrEmitterUnnested::EmitTilingKernel(
             /*end=*/num_tiles_in_block,
             /*step=*/1, [&](llvm::Value* block_dim_induction_var) {
               IrArray::Index tile_index = tile_origin.AddOffsetToDim(
-                  block_dim_induction_var, kDimZ, &b_);
+                  block_dim_induction_var, non_tiling_dimension, &b_);
               emit_tile(tile_index);
             });
   }
@@ -4330,7 +4350,7 @@ static IrArray::Index PermuteIndex(const IrArray::Index& index,
                         Permute(index.dims(), permutation), index.GetType()};
 }
 
-Status IrEmitterUnnested::EmitTranspose021Tile(
+Status IrEmitterUnnested::EmitTransposeTile(
     mlir::lmhlo::FusionOp fusion, HloComputation* fusion_hlo,
     absl::Span<const llvm_ir::IrArray> operand_arrays,
     absl::Span<const llvm_ir::IrArray> output_arrays,
@@ -4375,14 +4395,16 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
   }
 
   absl::flat_hash_map<const HloInstruction*, llvm::GlobalVariable*> tiles;
+  Vector3 permutation;
   for (const auto& [tile_idx, root] : llvm::enumerate(hlo_roots)) {
-    if (FindAnyTiledTranspose(*root)) {
+    if (auto tr = FindAnyTiledTranspose(*root)) {
+      permutation = tr->second;
       const HloInstruction& hero = FindNonTrivialHero(*root);
       tiles[&hero] =
           AllocateShared(tiling_scheme,
                          llvm_ir::PrimitiveTypeToIrType(
                              hero.operand(0)->shape().element_type(), module_),
-                         {tiling_scheme.GetBlockTileSizeFor(kDimY),
+                         {tiling_scheme.GetBlockTileSizeFor(permutation[kDimX]),
                           tiling_scheme.GetBlockTileSizeFor(kDimX) + 1},
                          absl::StrCat("tr_tile_", tile_idx));
     }
@@ -4438,7 +4460,6 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
 
     EmitSyncThreads();
 
-    Vector3 permutation{0, 2, 1};
     IrArray::Index output_tile_index = PermuteIndex(index, permutation);
     ValueVector2 transposed_tile_dimensions = {tile_dimensions[1],
                                                tile_dimensions[0]};
@@ -4613,7 +4634,7 @@ static int GetPrimitiveBitwidth(mlir::Value i) {
 static int CalculateVirtualThreadScalingFactorForReduction(
     const ReductionDimensions& reduction_dimensions,
     const se::CudaComputeCapability& cc) {
-  int dimx = reduction_dimensions.dimensions[kDimX];
+  int64_t dimx = reduction_dimensions.dimensions[kDimX];
   if (reduction_dimensions.is_row_reduction && dimx <= 128) {
     int rows_per_warp = RowReductionGetRowsPerWarp(dimx);
     if (cc.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
@@ -5458,11 +5479,6 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
       return EmitTriangularSolveCustomCall(op);
     }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if GOOGLE_CUDA
-    if (!call_target.compare(kTritonCallTarget)) {
-      return EmitTritonCustomCall(op);
-    }
-#endif  // GOOGLE_CUDA
 
     return EmitCustomCallThunk(op);
   }

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/Support/Casting.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_status.h"
@@ -171,8 +172,19 @@ std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
     PartialTensorShape partial_shape = r.dtypes_and_shapes().begin()->shape;
     // Set the shape/type of the tensor that the resource points to
     // so that the graph has correct shape/type information that we can use.
-    (*result)->UpdateShapeAndDType(
-        partial_shape.AsProto(), r.dtypes_and_shapes().begin()->dtype, status);
+    const Status s =
+        llvm::cast<ResourceHandleWithLayout>((*result).get())
+            ->UpdateShapeAndDType(partial_shape.AsProto(),
+                                  r.dtypes_and_shapes().begin()->dtype);
+    if (!s.ok()) {
+      TF_SetStatus(
+          status, TF_INTERNAL,
+          absl::StrCat(
+              "Error updating shape and dtype of the resource tensor: ",
+              s.error_message())
+              .c_str());
+      return nullptr;
+    }
   }
 
   if (TF_GetCode(status) != TF_OK) {
@@ -262,6 +274,8 @@ StatusOr<Layout> GetLayoutThroughIdentityOps(Node* op, int output_index) {
 }
 
 }  // namespace
+
+char TensorWithLayoutTf::ID = 0;
 
 tensorflow::Fprint128 TensorWithLayoutTf::CacheKey() const {
   tensorflow::Fprint128 f = tensorflow::Fingerprint128(layout_.ToString());
@@ -381,6 +395,8 @@ std::string TensorWithLayoutTf::DebugString() const {
                       ", type=", DataTypeString(dtype), ")");
 }
 
+char ResourceHandleWithLayout::ID = 0;
+
 StatusOr<std::unique_ptr<ResourceHandleWithLayout>>
 ResourceHandleWithLayout::Wrap(
     std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
@@ -430,30 +446,34 @@ tensorflow::Fprint128 ResourceHandleWithLayout::CacheKey() const {
   return f;
 }
 
-void ResourceHandleWithLayout::UpdateLayout(const Layout& new_layout,
-                                            TF_Status* status) {
+tsl::Status ResourceHandleWithLayout::UpdateLayout(const Layout& new_layout) {
   // Only set the value for deferenced layout if the incoming layout is not
   // empty. This is still hacky as we use empty layout as placeholder for
   // eagerly placed VarHandleOp.
-  if (!dereferenced_layout_.has_value() && new_layout.IsEmpty()) return;
+  if (!dereferenced_layout_.has_value() && new_layout.IsEmpty()) {
+    return tsl::errors::InvalidArgument("New layout is empty.");
+  }
   if (dereferenced_layout_.has_value() &&
       !LayoutsAreCompatible(dereferenced_layout_, new_layout)) {
     // TODO(xiejw, allenl): Consider allowing variables to switch layouts.
-    RETURN_STATUS(status, TF_INVALID_ARGUMENT,
-                  "Attempted to overwrite an existing Layout.");
+    return tsl::errors::InvalidArgument(
+        "Attempted to overwrite an existing Layout.");
   }
   dereferenced_layout_.emplace(new_layout);
+  return tsl::OkStatus();
 }
 
-void ResourceHandleWithLayout::UpdateAttrs(const EmbeddingResourceAttrs& attrs,
-                                           TF_Status* status) {
+tsl::Status ResourceHandleWithLayout::UpdateAttrs(
+    const EmbeddingResourceAttrs& attrs) {
   if (attrs_.has_value()) {
-    RETURN_STATUS(status, TF_INVALID_ARGUMENT,
-                  "Attepted to overwrite an existing embedding resource "
-                  "attribute.");
+    return tsl::errors::InvalidArgument(
+        "Attempted to overwrite an existing embedding resource attribute.");
   }
   attrs_.emplace(attrs);
+  return tsl::OkStatus();
 }
+
+char SparseTensorWithLayout::ID = 0;
 
 StatusOr<std::unique_ptr<SparseTensorWithLayout>> SparseTensorWithLayout::Wrap(
     std::unique_ptr<parallel_device::ParallelTensor> indices_tensor,
@@ -909,10 +929,10 @@ StatusOr<std::vector<parallel_device::ParallelTensor*>> PrepareEmbeddingInputs(
     const std::vector<TensorWithLayoutTf*>& inputs) {
   absl::flat_hash_map<int64_t, std::vector<int64_t>> table_vars_input_index;
   for (int64_t i = 0; i < inputs.size(); ++i) {
-    if (inputs[i]->tensor_type() != kResource) continue;
+    if (!llvm::isa<ResourceHandleWithLayout>(inputs[i])) continue;
 
     const std::optional<EmbeddingResourceAttrs>& resource_attrs =
-        inputs[i]->attrs();
+        llvm::cast<ResourceHandleWithLayout>(inputs[i])->attrs();
     if (resource_attrs.has_value()) {
       table_vars_input_index[resource_attrs->table_id].push_back(i);
     }
@@ -941,7 +961,7 @@ StatusOr<std::map<int64_t, std::vector<Node*>>> GetTPUEmbeddingInputNodes(
   std::vector<TensorWithLayout*> non_sparse_inputs;
   non_sparse_inputs.reserve(inputs.size());
   for (TensorWithLayout* input : inputs) {
-    if (input->tensor_type() != TensorType::kSparse) {
+    if (!llvm::isa<SparseTensorWithLayout>(input)) {
       non_sparse_inputs.push_back(input);
     }
   }
@@ -971,12 +991,17 @@ StatusOr<std::map<int64_t, std::vector<Node*>>> GetTPUEmbeddingInputNodes(
     table_id_node_map[table_id].push_back(node);
 
     // Arg input offset due to device id.
-    if (non_sparse_inputs[arg_id - 1]->attrs().has_value()) continue;
-    non_sparse_inputs[arg_id - 1]->UpdateAttrs(embedding_input_attrs, s);
-    if (!s->status.ok()) {
+    auto* resource =
+        llvm::dyn_cast<ResourceHandleWithLayout>(non_sparse_inputs[arg_id - 1]);
+    if (!resource || resource->attrs().has_value()) continue;
+    const Status status = resource->UpdateAttrs(embedding_input_attrs);
+    if (!status.ok()) {
+      TF_SetStatus(s, static_cast<TF_Code>(status.code()),
+                   status.error_message().c_str());
+      // TODO(b/256016071): Try finding a way to append source locations.
       return errors::Internal(
           "Failed to set embedding resource attrs. \n Got error: ",
-          s->status.error_message());
+          status.error_message());
     }
   }
   return table_id_node_map;
@@ -986,8 +1011,8 @@ StatusOr<std::string> ValidateResourceMeshConsistency(
     const std::vector<TensorWithLayout*>& inputs) {
   std::string mesh_str;
   for (TensorWithLayout* inp : inputs) {
-    if ((inp->tensor_type() != kResource) || !inp->attrs().has_value())
-      continue;
+    auto* resource = llvm::dyn_cast<ResourceHandleWithLayout>(inp);
+    if (!resource || !resource->attrs().has_value()) continue;
     const std::string& input_mesh_str = inp->layout().mesh().ToString();
     if (mesh_str.empty()) {
       mesh_str = input_mesh_str;

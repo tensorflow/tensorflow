@@ -46,6 +46,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import data as data_types
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -701,7 +702,7 @@ class DatasetAdapter(DataAdapter):
 
   @staticmethod
   def can_handle(x, y=None):
-    return (isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)) or
+    return (isinstance(x, (data_types.DatasetV1, data_types.DatasetV2)) or
             _is_distributed_dataset(x))
 
   def __init__(self,

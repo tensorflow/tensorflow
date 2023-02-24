@@ -699,7 +699,7 @@ func.func @op_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<f3
   // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
   %0 = "stablehlo.custom_call"(%arg0) {
     call_target_name = "mhlo.custom_call",
-    backend_config = "{api_version = 4 : i32, backend_config = {foo = \22bar\22}, call_target_name = \22foo\22}"
+    mhlo.attributes = {api_version = 4 : i32, backend_config = {foo = "bar"}, call_target_name = "foo"}
   } : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
 }

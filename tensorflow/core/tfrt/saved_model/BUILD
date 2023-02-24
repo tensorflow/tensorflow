@@ -52,6 +52,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_kernels_alwayslink",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

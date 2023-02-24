@@ -26,6 +26,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/call_once.h"
+#include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
@@ -169,11 +171,22 @@ void Status::MaybeAddSourceLocation(SourceLocation loc) {
   state_->source_locations.push_back(loc);
 }
 
-Status::Status(tsl::error::Code code, absl::string_view msg,
+Status::Status(tsl::errors::Code code, absl::string_view msg,
                SourceLocation loc) {
-  assert(code != tsl::error::OK);
+  assert(code != tsl::errors::Code::OK);
   state_ = std::make_unique<State>();
-  state_->code = code;
+  state_->code = static_cast<tsl::error::Code>(code);
+  state_->msg = std::string(msg);
+  MaybeAddSourceLocation(loc);
+  VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
+          << CurrentStackTrace();
+}
+
+Status::Status(absl::StatusCode code, absl::string_view msg,
+               SourceLocation loc) {
+  assert(code != absl::StatusCode::kOk);
+  state_ = std::make_unique<State>();
+  state_->code = static_cast<tsl::error::Code>(code);
   state_->msg = std::string(msg);
   MaybeAddSourceLocation(loc);
   VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
@@ -308,11 +321,11 @@ bool Status::ErasePayload(absl::string_view type_url) {
 }
 
 void Status::ForEachPayload(
-    const std::function<void(absl::string_view, absl::string_view)>& visitor)
+    absl::FunctionRef<void(absl::string_view, const absl::Cord&)> visitor)
     const {
   if (ok()) return;
   for (const auto& payload : state_->payloads) {
-    visitor(payload.first, std::string(payload.second));
+    visitor(payload.first, payload.second);
   }
 }
 
@@ -348,8 +361,8 @@ absl::Status ToAbslStatus(const ::tsl::Status& s, SourceLocation loc) {
 
   absl::Status converted = internal::MakeAbslStatus(
       s.code(), s.error_message(), s.GetSourceLocations(), loc);
-  s.ForEachPayload([&converted](tsl::StringPiece key, tsl::StringPiece value) {
-    converted.SetPayload(key, absl::Cord(value));
+  s.ForEachPayload([&converted](tsl::StringPiece key, const absl::Cord& value) {
+    converted.SetPayload(key, value);
   });
 
   return converted;
@@ -415,8 +428,8 @@ static constexpr int kMaxAttachedLogMessageSize = 512;
 std::unordered_map<std::string, absl::Cord> StatusGroup::GetPayloads() const {
   std::unordered_map<std::string, absl::Cord> payloads;
   auto capture_payload = [&payloads](absl::string_view key,
-                                     absl::string_view value) {
-    payloads[std::string(key)] = absl::Cord(value);
+                                     const absl::Cord& value) {
+    payloads[std::string(key)] = value;
   };
   for (const auto& status : derived_) {
     status.ForEachPayload(capture_payload);

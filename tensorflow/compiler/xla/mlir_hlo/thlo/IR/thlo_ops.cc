@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Interfaces/DestinationStyleOpInterface.h"
 #include "mlir/Interfaces/TilingInterface.h"
+#include "mlir/Transforms/InliningUtils.h"
 
 namespace mlir {
 namespace {
@@ -184,6 +185,33 @@ SmallVector<Range> getIterationDomainForTensor(OpBuilder &b, Location loc,
 }  // namespace
 }  // namespace mlir
 
+//===----------------------------------------------------------------------===//
+// THLO Dialect Interfaces
+//===----------------------------------------------------------------------===//
+
+namespace mlir {
+namespace {
+
+struct THLOInlinerInterface : public mlir::DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  // Operations in THLO dialect are always legal to inline.
+  bool isLegalToInline(Operation *, Region *, bool, IRMapping &) const final {
+    return true;
+  }
+  // Handle the given inlined terminator by replacing it with a new operation
+  // as necessary. Required when the region has only one block.
+  void handleTerminator(Operation *op,
+                        ArrayRef<Value> valuesToRepl) const final {}
+};
+
+}  // namespace
+}  // namespace mlir
+
+//===----------------------------------------------------------------------===//
+// THLODialect
+//===----------------------------------------------------------------------===//
+
 // Generated dialect definitions.
 #include "thlo/IR/thlo_dialect.cc.inc"
 
@@ -195,6 +223,8 @@ void THLODialect::initialize() {
 #define GET_OP_LIST
 #include "thlo/IR/thlo_ops.cc.inc"
       >();
+
+  addInterfaces<THLOInlinerInterface>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -413,6 +443,25 @@ FailureOr<Value> ConcatenateOp::generateResultTileValue(
       .front()
       ->getResults()
       .front();
+}
+
+LogicalResult ConcatenateOp::reifyResultShapes(
+    OpBuilder &b, ReifiedRankedShapedTypeDims &reifiedReturnShapes) {
+  Location loc = getLoc();
+  Value init = getInit();
+
+  // Assume unique result.
+  if (getNumResults() != 1) return failure();
+  SmallVector<Value> &shape = reifiedReturnShapes.emplace_back();
+
+  // Derive shape from init operand.
+  int64_t rank = init.getType().cast<RankedTensorType>().getRank();
+  shape.reserve(rank);
+  for (int64_t i = 0; i < rank; ++i) {
+    shape.push_back(b.create<tensor::DimOp>(loc, init, i));
+  }
+
+  return success();
 }
 
 ParseResult ConcatenateOp::parse(OpAsmParser &parser, OperationState &result) {

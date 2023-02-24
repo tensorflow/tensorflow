@@ -906,10 +906,9 @@ def _construct_function_from_graph_def(func, graph_def, frozen_func=None):
     while context.context().has_function(f.signature.name):
       context.context().remove_function(f.signature.name)
 
-  # pylint: disable = protected-access
   captures = {
-      t2.name.split(":")[0]: t1
-      for _, (t1, t2) in frozen_func.graph._captures.items()
+      c.internal.name.split(":")[0]: c.external
+      for c in frozen_func.graph._function_captures.by_val_captures.values()  # pylint: disable = protected-access
   }
   new_func = wrap_function.function_from_graph_def(
       graph_def, [tensor.name for tensor in frozen_func.inputs],

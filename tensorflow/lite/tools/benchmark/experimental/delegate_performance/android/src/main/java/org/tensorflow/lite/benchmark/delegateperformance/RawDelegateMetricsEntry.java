@@ -16,8 +16,6 @@ package org.tensorflow.lite.benchmark.delegateperformance;
 
 import java.util.Collections;
 import java.util.Map;
-import org.json.JSONException;
-import org.json.JSONObject;
 import tflite.Delegate;
 
 /**
@@ -36,10 +34,10 @@ final class RawDelegateMetricsEntry {
   // If {@link isTestTarget} is set to {@code true}, the metrics are gathered from the benchmark run
   // with the test target delegate.
   private final boolean isTestTarget;
-  private final Map<String, Float> metrics;
+  private final Map<String, Double> metrics;
 
   private RawDelegateMetricsEntry(
-      int delegate, String path, boolean isTestTarget, Map<String, Float> metrics) {
+      int delegate, String path, boolean isTestTarget, Map<String, Double> metrics) {
     this.delegateName = Delegate.name(delegate);
     this.path = path;
     this.isTestTarget = isTestTarget;
@@ -61,7 +59,7 @@ final class RawDelegateMetricsEntry {
     return isTestTarget;
   }
 
-  Map<String, Float> metrics() {
+  Map<String, Double> metrics() {
     return Collections.unmodifiableMap(metrics);
   }
 
@@ -73,21 +71,8 @@ final class RawDelegateMetricsEntry {
     return delegateName + " (" + path + ")";
   }
 
-  JSONObject toJsonObject() throws JSONException {
-    JSONObject jsonObject = new JSONObject();
-    jsonObject.put("delegate_name", delegateName);
-    jsonObject.put("path", path);
-    jsonObject.put("is_test_target", isTestTarget);
-    JSONObject metricsObject = new JSONObject();
-    for (Map.Entry<String, Float> entry : metrics.entrySet()) {
-      metricsObject.put(entry.getKey(), entry.getValue());
-    }
-    jsonObject.put("metrics", metricsObject);
-    return jsonObject;
-  }
-
   static RawDelegateMetricsEntry create(
-      int delegate, String path, boolean isTestTarget, Map<String, Float> metrics) {
+      int delegate, String path, boolean isTestTarget, Map<String, Double> metrics) {
     return new RawDelegateMetricsEntry(delegate, path, isTestTarget, metrics);
   }
 }

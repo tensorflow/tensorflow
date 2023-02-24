@@ -299,9 +299,6 @@ class ShardedDeviceArray {
   static object Make(pybind11::object aval, ShardingSpec sharding_spec,
                      pybind11::list device_buffers, pybind11::object indices,
                      bool weak_type);
-  static object Make(pybind11::object aval, ShardingSpec sharding_spec,
-                     const xla::PyShardedBuffer& sharded_buffer,
-                     pybind11::object indices, bool weak_type);
 
   static xla::Status RegisterTypes(pybind11::module& m);
   static PyObject* base_type() { return base_type_; }

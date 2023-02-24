@@ -106,7 +106,12 @@ def _new__setattr__(self, key, value):
 def _new__getattribute__(self, key):
   if key not in ('_tf_should_use_helper', '_tf_should_use_wrapped_value'):
     object.__getattribute__(self, '_tf_should_use_helper').sate()
-  if key in ('_tf_should_use_helper', 'mark_used', '__setatt__'):
+  if key in (
+      '_tf_should_use_wrapped_value',
+      '_tf_should_use_helper',
+      'mark_used',
+      '__setattr__',
+  ):
     return object.__getattribute__(self, key)
   return getattr(
       object.__getattribute__(self, '_tf_should_use_wrapped_value'), key)
@@ -163,6 +168,10 @@ OVERLOADABLE_OPERATORS = {
 _WRAPPERS = {}
 
 
+class ShouldUseWrapper(object):
+  pass
+
+
 def _get_wrapper(x, tf_should_use_helper):
   """Create a wrapper for object x, whose class subclasses type(x).
 
@@ -182,7 +191,7 @@ def _get_wrapper(x, tf_should_use_helper):
     return memoized(x, tf_should_use_helper)
 
   # Make a copy of `object`
-  tx = copy.deepcopy(object)
+  tx = copy.deepcopy(ShouldUseWrapper)
   # Prefer using __orig_bases__, which preserve generic type arguments.
   bases = getattr(tx, '__orig_bases__', tx.__bases__)
 

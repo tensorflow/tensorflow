@@ -63,8 +63,8 @@ namespace odml {
 class Translator {
  public:
   // Translates the given MLIR module into TFLite FlatBuffer format and returns
-  // the serialized output. Returns llvm::None on unsupported, invalid inputs or
-  // internal error.
+  // the serialized output. Returns std::nullopt on unsupported, invalid inputs
+  // or internal error.
   static llvm::Optional<std::string> Translate(
       ModuleOp module, const toco::TocoFlags& toco_flags,
       const std::unordered_set<std::string>& tags,
@@ -96,12 +96,12 @@ class Translator {
 
   // Returns TFLite buffer populated with constant value if the operation is
   // TFLite constant operation. Otherwise, returns an empty buffer. Emits error
-  // and returns llvm::None on failure.
+  // and returns std::nullopt on failure.
   llvm::Optional<BufferOffset<::stablehlo::flatbuf::Buffer>> BuildBuffer(
       Value value);
 
   // Builds TFLite tensor from the given value. `buffer_idx` is index of the
-  // corresponding buffer. Emits error and returns llvm::None on failure.
+  // corresponding buffer. Emits error and returns std::nullopt on failure.
   llvm::Optional<BufferOffset<::stablehlo::flatbuf::Tensor>> BuildTensor(
       Value value, const std::string& name, unsigned buffer_idx);
 
@@ -112,7 +112,7 @@ class Translator {
                           ::stablehlo::flatbuf::OperatorCode op_code);
 
   // Builds operator for the given operation with specified operand and result
-  // tensor indices. Emits an error and returns llvm::None on failure.
+  // tensor indices. Emits an error and returns std::nullopt on failure.
   llvm::Optional<BufferOffset<::stablehlo::flatbuf::Operator>> BuildOperator(
       Operation* inst, std::vector<int32_t> operands,
       const std::vector<int32_t>& results);

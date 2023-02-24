@@ -725,48 +725,56 @@ def _trace_gradient_functions(graph, saveable_view):
             f".\n\tProblematic op name: {op.name}\n\tGradient inputs: "
             f"{op.inputs}") from exc
 
-      # The gradient function will capture all intermediate values. These
-      # captures be serialized so that they can be re-bound to the function when
-      # loading.
-      bad_captures = []
-      for capture in grad_fn.captured_inputs:
-        if capture.dtype in _UNCOPIABLE_DTYPES:
-          continue
-        # Tries to find the outermost capture in case the tensor is a constant
-        # or not actually captured in the current function (this could happen if
-        # the function is a while loop body, in which case the captured input
-        # is not the internal captured tensor).
-        outer_fn, outer_capture = _get_outer_most_capture(
-            fn, capture, func_graph_map)
-        if outer_fn is None or isinstance(outer_capture, ops.EagerTensor):
-          if outer_capture not in saveable_view.captured_tensor_node_ids:
-            raise ValueError(f"Found invalid capture {outer_capture} when "
-                             "saving custom gradients.")
-          saveable_view.captured_tensor_node_ids[capture] = (
-              saveable_view.captured_tensor_node_ids[outer_capture])
-        elif outer_capture.graph is outer_fn.graph:
-          capture_name = outer_capture.name
-          # It's possible for EagerDefinedFunctions to save different names for
-          # input tensors when serialized to FunctionDef (all non-alphanumeric
-          # characters are converted to '_').
-          if isinstance(outer_fn, defun._EagerDefinedFunction):  # pylint:disable=protected-access
-            try:
-              arg_index = outer_fn.graph.inputs.index(outer_capture)
-              capture_name = outer_fn.signature.input_arg[arg_index].name + ":0"
-            except ValueError:
-              pass
+      with graph.as_default():
+        # The gradient function will capture all intermediate values. These
+        # captures be serialized so that they can be re-bound to the function
+        # when loading.
+        bad_captures = []
+        for capture in grad_fn.captured_inputs:
+          if capture.dtype in _UNCOPIABLE_DTYPES:
+            continue
+          # Tries to find the outermost capture in case the tensor is a constant
+          # or not actually captured in the current function (this could happen
+          # if the function is a while loop body, in which case the captured
+          # input is not the internal captured tensor).
+          outer_fn, outer_capture = _get_outer_most_capture(
+              fn, capture, func_graph_map
+          )
+          if outer_fn is None or isinstance(outer_capture, ops.EagerTensor):
+            if outer_capture not in saveable_view.captured_tensor_node_ids:
+              raise ValueError(
+                  f"Found invalid capture {outer_capture} when "
+                  "saving custom gradients."
+              )
+            saveable_view.captured_tensor_node_ids[capture] = (
+                saveable_view.captured_tensor_node_ids[outer_capture]
+            )
+          elif outer_capture.graph is outer_fn.graph:
+            capture_name = outer_capture.name
+            # It's possible for EagerDefinedFunctions to save different names
+            # for input tensors when serialized to FunctionDef (all
+            # non-alphanumeric characters are converted to '_').
+            if isinstance(outer_fn, defun._EagerDefinedFunction):  # pylint:disable=protected-access
+              try:
+                arg_index = outer_fn.graph.inputs.index(outer_capture)
+                capture_name = (
+                    outer_fn.signature.input_arg[arg_index].name + ":0"
+                )
+              except ValueError:
+                pass
 
-          node = _CapturedTensor(capture_name, outer_fn.name)
-          saveable_view.add_capture_and_node(capture, node)
+            node = _CapturedTensor(capture_name, outer_fn.name)
+            saveable_view.add_capture_and_node(capture, node)
+          else:
+            bad_captures.append(capture.name)
+        if not bad_captures:
+          grad_fn.add_to_graph(graph)
         else:
-          bad_captures.append(capture.name)
-      if not bad_captures:
-        grad_fn.add_to_graph(graph)
-      else:
-        raise ValueError(
-            f"Cannot save custom gradient {op_type} called in function {fn} "
-            "because SavedModel is unable to serialize the captured "
-            f"inputs: {bad_captures}")
+          raise ValueError(
+              f"Cannot save custom gradient {op_type} called in function {fn} "
+              "because SavedModel is unable to serialize the captured "
+              f"inputs: {bad_captures}"
+          )
 
       saveable_view.gradient_functions.append(grad_fn)
       func_graph_map[grad_fn.graph] = grad_fn
@@ -801,9 +809,11 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   with exported_graph.as_default():
     object_map, tensor_map, asset_info = saveable_view.map_resources()
     signatures = _generate_signatures(signature_functions, object_map)
-    if save_custom_gradients:
-      _trace_gradient_functions(exported_graph, saveable_view)
-
+  if save_custom_gradients:
+    # Custom gradients functions must be traced in the same context as the
+    # when they are registered.
+    _trace_gradient_functions(exported_graph, saveable_view)
+  with exported_graph.as_default():
     # Create initializers for assets and resources.
     for resource_initializer_function in resource_initializers:
       asset_dependencies = []
@@ -1331,6 +1341,9 @@ def save_and_return_nodes(obj,
   # Save debug info, if requested.
   if options.save_debug_info:
     _export_debug_info(exported_graph, export_dir)
+  # For privacy concerns, please see the note in
+  #  tensorflow/cc/saved_model/metrics.h
+  metrics.SetWritePath(saved_model_path=str(export_dir))
   # Clean reference cycles so repeated export()s don't make work for the garbage
   # collector. Before this point, we need to keep references to captured
   # constants in the saved graph.

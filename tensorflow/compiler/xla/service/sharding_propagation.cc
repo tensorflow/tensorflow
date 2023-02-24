@@ -343,8 +343,8 @@ bool SupportSpatialPartitioning(
                                  ->entry_computation()
                                  ->root_instruction() == instruction;
   if (instruction->parent()->root_instruction() == instruction &&
-      computation_map.find(instruction->parent()) == computation_map.end() &
-          !(is_entry_root && allow_spmd_sharding_propagation_to_output)) {
+      computation_map.find(instruction->parent()) == computation_map.end() &&
+      !(is_entry_root && allow_spmd_sharding_propagation_to_output)) {
     // We don't support sharding the root instruction of a computation yet,
     // unless the computation is a while body.
     return false;
@@ -800,23 +800,24 @@ bool InferShardingFromUsers(
   // Propagate manual sharding.
   if (!instruction->has_sharding() || instruction->sharding().IsTileMaximal()) {
     for (const HloInstruction* user : instruction->users()) {
-      if (!user->has_sharding() || !user->sharding().IsManual() ||
-          user->IsCustomCall("SPMDFullToShardShape"))
+      if (!user->has_sharding() || user->IsCustomCall("SPMDFullToShardShape"))
         continue;
-      if (instruction->shape().IsArray()) {
+      if (instruction->shape().IsArray() && user->sharding().IsManual()) {
         instruction->set_sharding(
             HloSharding::Manual(user->sharding().metadata()));
+        return true;
       } else {
         std::optional<HloSharding> user_sharding =
             ShardingPropagation::GetShardingFromUser(
                 *instruction, *user, aggressiveness, is_spmd, call_graph);
-        if (user_sharding) {
+        if (user_sharding && user_sharding->IsManual()) {
           instruction->set_sharding(*user_sharding);
+          return true;
         }
       }
-      return true;
     }
   }
+
   if (!SupportSpatialPartitioning(instruction, computation_map, is_spmd, false,
                                   sharding_helper)) {
     return false;
@@ -1393,7 +1394,7 @@ StatusOr<bool> ProcessShardingInstruction(
   bool changed = false;
   HloInstruction* root_instr = module->entry_computation()->root_instruction();
   if (saved_root_shardings != nullptr && root_instr->shape().IsTuple() &&
-      module->entry_computation()->root_instruction()->has_sharding()) {
+      root_instr->has_sharding()) {
     saved_root_shardings->reserve(
         root_instr->sharding().tuple_elements().size());
     for (const HloSharding& sharding :
@@ -1403,8 +1404,8 @@ StatusOr<bool> ProcessShardingInstruction(
   }
   for (HloComputation* computation : module->computations(execution_threads)) {
     auto instructions = computation->MakeInstructionPostOrder();
-    std::reverse(instructions.begin(), instructions.end());
-    for (HloInstruction* instruction : instructions) {
+    for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
+      HloInstruction* instruction = *it;
       if (!instruction->IsCustomCall("Sharding")) {
         continue;
       }
@@ -1631,6 +1632,17 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
     case HloOpcode::kTuple: {
       auto sub_sharding = user.sharding().GetSubSharding(
           user.shape(), {user.operand_index(&instruction)});
+      // In case the instruction is used as the operands multiple times within
+      // this tuple, we will return the most specific sharding and propagate up.
+      for (int64_t i = 0; i < user.shape().tuple_shapes_size(); ++i) {
+        HloSharding alternative_sub_sharding =
+            user.sharding().GetSubSharding(user.shape(), {i});
+        if (user.operand(i) == &instruction &&
+            hlo_sharding_util::IsShardingMoreSpecific(alternative_sub_sharding,
+                                                      sub_sharding)) {
+          sub_sharding = alternative_sub_sharding;
+        }
+      }
       return sub_sharding;
     }
     case HloOpcode::kGetTupleElement: {

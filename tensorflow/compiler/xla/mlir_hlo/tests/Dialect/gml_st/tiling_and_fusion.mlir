@@ -48,10 +48,10 @@ func.func @reduce_cwise(%lhs: tensor<32x16xf32>, %rhs: tensor<32x16xf32>)
 // CHECK:       %[[FILL:.*]] = linalg.fill
 // CHECK-SAME:      ins(%[[CST]] : f32)
 // CHECK-SAME:      outs(%[[INIT_0]] : tensor<32xf32>)
-// CHECK:       %[[FOR:.*]] = gml_st.for (%[[ARG2:.*]]) = (%[[C0]])
-// CHECK-SAME:      to (%[[C32]])
-// CHECK-SAME:      step (%[[C8]])
-// CHECK-SAME:      outs (%[[ARG3:.*]] = %[[FILL]]: tensor<32xf32>)
+// CHECK:       %[[FOR:.*]] = scf.for %[[ARG2:.*]] = %[[C0]]
+// CHECK-SAME:      to %[[C32]]
+// CHECK-SAME:      step %[[C8]]
+// CHECK-SAME:      iter_args(%[[ARG3:.*]] = %[[FILL]]) -> (tensor<32xf32>)
 // CHECK:         %[[MATERIALIZE:.*]] = tensor.extract_slice %[[ARG0]]
 // CHECK-SAME:      [%[[ARG2]], 0] [8, 16] [1, 1]
 // CHECK:         %[[MATERIALIZE_0:.*]] = tensor.extract_slice %[[ARG1]]
@@ -75,6 +75,6 @@ func.func @reduce_cwise(%lhs: tensor<32x16xf32>, %rhs: tensor<32x16xf32>)
 // CHECK:         ^bb0(%[[ARG4_0:.*]]: f32, %[[ARG5_0:.*]]: f32):
 // CHECK:           %[[ADDF:.*]] = arith.addf %[[ARG4_0]], %[[ARG5_0]]
 // CHECK:           linalg.yield %[[ADDF]]
-// CHECK:         %[[TILE_2_:.*]] = gml_st.tile [%[[ARG2]]] [8] [1]
-// CHECK:         gml_st.set_yield %[[GENERIC_0]] into %[[ARG3]][%[[TILE_2_]]]
+// CHECK:         %[[UPDATE:.*]] = tensor.insert_slice %[[GENERIC_0]] into %[[ARG3]]
+// CHECK:         scf.yield %[[UPDATE]]
 // CHECK:       return %[[FOR]]

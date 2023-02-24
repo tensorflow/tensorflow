@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/runtime/cpu_event.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
 
@@ -64,6 +65,8 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+using ::xla::runtime::CpuEvent;
 
 // A RAII helper class used to set an AsyncValueRef<CpuEvent> to a ready state
 // upon destruction. In many cases in PjRt implementation, there will be

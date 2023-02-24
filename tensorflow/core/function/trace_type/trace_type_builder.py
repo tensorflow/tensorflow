@@ -153,6 +153,12 @@ def from_value(value: Any,
           str(value) + " but got " + str(generated_type))
     return generated_type
 
+  # TODO(b/183107079): Allow these once they're handled properly.
+  if isinstance(value, weakref.ref):
+    raise TypeError(
+        f"weakref input {value} not supported for tf.function."
+    )
+
   if hasattr(value, "__wrapped__"):
     return from_value(value.__wrapped__, context)
 
@@ -178,6 +184,10 @@ def from_value(value: Any,
         tuple(
             from_value(getattr(value, a.name), context)
             for a in value.__attrs_attrs__))
+
+  if util.is_np_ndarray(value):
+    ndarray = value.__array__()
+    return default_types.TENSOR(ndarray.shape, ndarray.dtype)
 
   try:
     ref = weakref.ref(value)

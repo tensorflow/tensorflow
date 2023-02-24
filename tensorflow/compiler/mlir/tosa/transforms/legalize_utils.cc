@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
+#include <optional>
+
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -87,7 +89,7 @@ llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
       if (dim_attr.getType().cast<ShapedType>().getRank() != 0) {
         (void)rewriter.notifyMatchFailure(
             op, "dim for building tosa::ReshapeOp should be rank-0");
-        return llvm::None;
+        return std::nullopt;
       }
       int64_t size = dim_attr.getSplatValue<APInt>().getSExtValue();
 
@@ -97,7 +99,7 @@ llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
           size != static_dims[i]) {
         (void)rewriter.notifyMatchFailure(
             op, "mismatch reshape static dim when creating tosa::ReshapeOp");
-        return llvm::None;
+        return std::nullopt;
       }
 
       static_dims[i] =
@@ -110,7 +112,7 @@ llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
   if (dyn_count > 1) {
     (void)rewriter.notifyMatchFailure(
         op, "multiple dynamic shapes when creating tosa::ReshapeOp");
-    return llvm::None;
+    return std::nullopt;
   }
 
   DenseI64ArrayAttr shape_attr = rewriter.getDenseI64ArrayAttr(static_dims);
@@ -587,7 +589,7 @@ llvm::Optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
 
   if (vec.size() != num_total_elements) {
     op->emitOpError("getConstTensor(): number of elements mismatch.");
-    return llvm::None;
+    return std::nullopt;
   }
 
   auto const_type = tensorflow::GetTypeFromTFTensorShape(
@@ -611,7 +613,7 @@ llvm::Optional<Value> getConstTensor<APInt>(PatternRewriter& rewriter,
 
   if (vec.size() != num_total_elements) {
     op->emitOpError("getConstTensor(): number of elements mismatch.");
-    return llvm::None;
+    return std::nullopt;
   }
 
   auto const_type = tensorflow::GetTypeFromTFTensorShape(
@@ -635,7 +637,7 @@ llvm::Optional<Value> getConstTensor<float>(PatternRewriter& rewriter,
 
   if (vec.size() != num_total_elements) {
     op->emitOpError("getConstTensor(): number of elements mismatch.");
-    return llvm::None;
+    return std::nullopt;
   }
 
   auto const_type =

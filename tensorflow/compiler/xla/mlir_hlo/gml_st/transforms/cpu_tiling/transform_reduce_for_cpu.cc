@@ -51,7 +51,6 @@ FailureOr<TilingResult> tileReduce(PatternRewriter &rewriter,
                                    ArrayRef<int64_t> tileSizes) {
   TilingOptions opts;
   opts.setTileSizeComputationFn(tileSizes);
-  opts.distribute = true;
   return tileUsingGmlSt(opts, rewriter,
                         cast<TilingInterface>(reduceOp.getOperation()));
 }
@@ -328,12 +327,11 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     fuseGreedily(rewriter, *tilingRoot->getBlock(),
                  [&](Operation *op) { return fusionCluster.contains(op); });
 
-    (void)fuseFillOpsIntoParallelOp(
-        rewriter, cast<ParallelOp>(tilingParallelDimsResult->loop));
+    (void)fuseFillOpsIntoParallelOp(rewriter, tilingParallelDimsResult->loop);
 
     // Process main parallel loop.
-    auto peeledParallelLoop = peelAllLoops(
-        cast<ParallelOp>(tilingParallelDimsResult->loop), rewriter);
+    auto peeledParallelLoop =
+        peelAllLoops(tilingParallelDimsResult->loop, rewriter);
 
     ParallelOp mainParallelLoop = peeledParallelLoop.mainLoop;
     if (mainParallelLoop) {
@@ -429,7 +427,7 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       linalg::ReduceOp reduceOp,
       llvm::function_ref<bool(Operation *)> filterFn) const {
     // Find a chain of MapOp users and use the last one as a root of cluster.
-    DenseSet<Operation *> resultOps;
+    SetVector<Operation *> resultOps;
     Operation *rootOp = reduceOp.getOperation();
 
     while (true) {
@@ -474,7 +472,6 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     } else if (isa<linalg::MapOp>(tilingRoot)) {
       TilingOptions opts;
       opts.setTileSizeComputationFn({parallelDimTileSize});
-      opts.distribute = true;
 
       tilingParallelDimsResult =
           tileUsingGmlSt(opts, rewriter, cast<TilingInterface>(tilingRoot));
@@ -498,10 +495,7 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       PatternRewriter &rewriter, const TilingResult &tilingParallelDimsResult,
       const scf::SCFTilingResult &tilingReductionDimsResult) const {
     // Peel parallel loops.
-    if (auto loop =
-            dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult.loop)) {
-      auto peelingResult = peelAllLoops(loop, rewriter);
-    }
+    auto peelingResult = peelAllLoops(tilingParallelDimsResult.loop, rewriter);
 
     // Peel reduction loop inside the main parallel loop, label the main loop
     // as "perfectly tiled" one, to enable vectorization after

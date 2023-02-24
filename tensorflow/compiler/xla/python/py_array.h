@@ -35,30 +35,11 @@ struct PyArray_Storage {
                   std::vector<int64_t> shape, pybind11::object sharding,
                   bool committed, std::shared_ptr<PyClient> py_client,
                   std::shared_ptr<Traceback> traceback,
-                  tsl::RCReference<ifrt::Array> ifrt_array
-                  )
-      : fastpath_enabled(true),
-        aval(std::move(aval)),
-        weak_type(weak_type),
-        dtype(std::move(dtype)),
-        shape(std::move(shape)),
-        sharding(std::move(sharding)),
-        committed(committed),
-        py_client(std::move(py_client)),
-        traceback(std::move(traceback)),
-        ifrt_array(std::move(ifrt_array))
-  {
-    next = this->py_client->arrays_;
-    this->py_client->arrays_ = this;
-    if (next) {
-      next->prev = this;
-    }
-    prev = nullptr;
-  }
+                  tsl::RCReference<ifrt::Array> ifrt_array);
 
   // TODO(yashkatariya): remove this once the transition completes.
   struct DisableFastpath {};
-  explicit PyArray_Storage(DisableFastpath) : fastpath_enabled(false) {}
+  explicit PyArray_Storage(DisableFastpath);
 
   ~PyArray_Storage();
   pybind11::handle AsHandle();
@@ -92,9 +73,6 @@ struct PyArray_Storage {
 // The C++ implementation of jax.Array. A few key methods and data members are
 // implemented in C++ for performance, while most of the functionalities are
 // still implemented in python.
-//
-// TODO(chky): Consider replacing the usage of PyShardedBuffer with PyArray as
-// PyArray is more general.
 class PyArray : public pybind11::object {
  public:
   PYBIND11_OBJECT(PyArray, pybind11::object, PyArray::IsPyArray);
