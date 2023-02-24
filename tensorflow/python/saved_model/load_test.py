@@ -699,8 +699,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(TypeError):
       imported.f(input2)
 
-    self.assertEqual(31, imported.f(input1).numpy())
-    self.assertEqual(32, imported.f(input3).numpy())
+    self.assertEqual(31, imported.f(input1, True).numpy())
+    self.assertEqual(32, imported.f(input3, True).numpy())
 
   def test_structured_output(self, cycles, use_cpp_bindings):
     # TODO(b/264869228) Fix LoadTest
@@ -1215,7 +1215,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
 
-    with self.assertRaisesRegex(ValueError, "Python inputs incompatible"):
+    with self.assertRaisesRegex(
+        TypeError, "Binding inputs to tf.function `f` failed"
+    ):
       # We cannot call the function with a constant of shape ().
       imported.f(constant_op.constant(2)).numpy()
 

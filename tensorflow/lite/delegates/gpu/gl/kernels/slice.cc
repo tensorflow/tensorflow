@@ -72,12 +72,12 @@ class Slice : public NodeShader {
       }
     }
     if (attr.strides.c > 0) {
-      code += "      offset.z += $channels.x$;\n";
+      code += "      offset.z = $channels.x$;\n";
     } else {
       if (attr.ends.c > 0) {
-        code += "      offset.z += $channels.z$;\n";
+        code += "      offset.z = $channels.z$;\n";
       } else {
-        code += "      offset.z += src_channels + $channels.z$;\n";
+        code += "      offset.z = src_channels + $channels.z$;\n";
       }
     }
     code +=

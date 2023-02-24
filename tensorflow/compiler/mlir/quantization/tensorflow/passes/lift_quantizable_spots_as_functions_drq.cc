@@ -37,6 +37,9 @@ namespace mlir {
 namespace quant {
 namespace {
 
+using QuantMethod =
+    tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
+
 class LiftQuantizableSpotsAsFunctionsDRQPass
     : public PassWrapper<LiftQuantizableSpotsAsFunctionsDRQPass,
                          OperationPass<ModuleOp>> {
@@ -49,12 +52,14 @@ class LiftQuantizableSpotsAsFunctionsDRQPass
 
   // Constructor used by manually creating the pass.
   explicit LiftQuantizableSpotsAsFunctionsDRQPass(
-      int min_num_elements_for_weights) {
+      QuantMethod quantization_method, int min_num_elements_for_weights) {
+    quantization_method_ = quantization_method;
     min_num_elements_for_weights_ = min_num_elements_for_weights;
   }
 
   LiftQuantizableSpotsAsFunctionsDRQPass(
       const LiftQuantizableSpotsAsFunctionsDRQPass& other) {
+    quantization_method_ = other.quantization_method_;
     min_num_elements_for_weights_ = other.min_num_elements_for_weights_;
   }
 
@@ -76,18 +81,33 @@ class LiftQuantizableSpotsAsFunctionsDRQPass
 
   void runOnOperation() override;
 
+ private:
   Option<int64_t> min_num_elements_for_weights_{
       *this, "min-num-elements-for-weights", llvm::cl::init(0),
       llvm::cl::desc("The minimum required number of elements in a weight "
                      "array to apply quantization.")};
+
+  Option<QuantMethod> quantization_method_{
+      *this, "quantization-method",
+      llvm::cl::init(
+          tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE),
+      llvm::cl::desc("Choose quantization method."),
+      llvm::cl::values(
+          clEnumValN(
+              tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE,
+              "drq", "Post-training dynamic-range quantizaiton"),
+          clEnumValN(tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY,
+                     "weight_only", "Post-training weight_only quantizaiton"))};
 };
 
 class CheckQuantizableOps
     : public mlir::OpRewritePattern<TF::PartitionedCallOp> {
  public:
   explicit CheckQuantizableOps(MLIRContext* context,
+                               QuantMethod quantization_method,
                                int min_num_elements_for_weights)
       : OpRewritePattern<TF::PartitionedCallOp>(context),
+        quantization_method_(quantization_method),
         min_num_elements_for_weights_(min_num_elements_for_weights) {}
 
  private:
@@ -111,15 +131,20 @@ class CheckQuantizableOps
       }
     }
 
-    StringRef function_name =
-        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
-    if (function_name.contains("gather")) {
-      call_op->removeAttr(kQuantTraitAttrName);
+    if (quantization_method_ ==
+        tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE) {
+      StringRef function_name =
+          call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+      if (function_name.contains("gather") ||
+          function_name.contains("batch_matmul") ||
+          function_name.contains("conv3d")) {
+        call_op->removeAttr(kQuantTraitAttrName);
+      }
     }
 
     return failure();
   }
-
+  QuantMethod quantization_method_;
   int min_num_elements_for_weights_;
 };
 
@@ -133,7 +158,8 @@ void LiftQuantizableSpotsAsFunctionsDRQPass::runOnOperation() {
   ModuleOp module = getOperation();
 
   populateWithGenerated(patterns);
-  patterns.add<CheckQuantizableOps>(ctx, min_num_elements_for_weights_);
+  patterns.add<CheckQuantizableOps>(ctx, quantization_method_,
+                                    min_num_elements_for_weights_);
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
   for (auto func : module.getOps<func::FuncOp>()) {
     if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
@@ -147,9 +173,10 @@ void LiftQuantizableSpotsAsFunctionsDRQPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateLiftQuantizableSpotsAsFunctionsDRQPass(int min_num_elements_for_weights) {
+CreateLiftQuantizableSpotsAsFunctionsDRQPass(QuantMethod quantization_method,
+                                             int min_num_elements_for_weights) {
   return std::make_unique<LiftQuantizableSpotsAsFunctionsDRQPass>(
-      min_num_elements_for_weights);
+      quantization_method, min_num_elements_for_weights);
 }
 
 }  // namespace quant

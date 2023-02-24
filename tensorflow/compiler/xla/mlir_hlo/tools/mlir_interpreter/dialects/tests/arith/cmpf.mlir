@@ -116,3 +116,14 @@ func.func @two_vs_one() -> tensor<16xi1> {
 // CHECK-SAME:  false, false, true, true,
 // CHECK-SAME:  false, true, true, false,
 // CHECK-SAME:  false, true, false, true]
+
+func.func @vector() -> vector<4xi1> {
+  %0 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : vector<4xf32>
+  %1 = arith.constant dense<[10.0, 2.0, 30.0, 4.0]> : vector<4xf32>
+  %ret = arith.cmpf oeq, %0, %1 : vector<4xf32>
+  return %ret : vector<4xi1>
+}
+
+// CHECK-LABEL: @vector
+// CHECK-NEXT: Results
+// CHECK-NEXT: vector<4xi1>: [false, true, false, true]

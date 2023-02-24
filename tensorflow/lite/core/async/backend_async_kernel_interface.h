@@ -99,13 +99,13 @@ class BackendAsyncKernelInterface {
   // Inspects the buffer types supported by the backend.
   // `io_type` specify whether the call returns supported input or output
   // buffer.
-  virtual std::vector<const char*> SupportedBufferTypes(
+  virtual const std::vector<const char*>& SupportedBufferTypes(
       TfLiteIoType io_type) const = 0;
 
   // Inspects the sync object types supported by the backend.
   // `io_type` specify whether the call returns supported input or output
   // sync object.
-  virtual std::vector<const char*> SupportedSynchronizations(
+  virtual const std::vector<const char*>& SupportedSynchronizations(
       TfLiteIoType io_type) const = 0;
 
   // Reconciles buffer or sync attributes for tensor at tensor_index.

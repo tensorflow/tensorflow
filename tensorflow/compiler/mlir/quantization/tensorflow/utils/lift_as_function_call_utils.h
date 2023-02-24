@@ -49,6 +49,12 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
     const llvm::SmallVector<Value> &arguments,
     const llvm::SmallVector<Value> &results);
 
+// Add the second argument to the first argument, which is expected to be an
+// argument list.
+// Used to attach bias to einsum argument list.
+llvm::SmallVector<Value> AppendToVector(
+    const llvm::SmallVector<Value> &arguments, Value append);
+
 }  // namespace quant
 }  // namespace mlir
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_LIFT_AS_FUNCTION_CALL_UTILS_H_

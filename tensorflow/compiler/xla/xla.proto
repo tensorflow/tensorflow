@@ -452,9 +452,24 @@ message DebugOptions {
   // instead.
   bool xla_cpu_enable_mlir_tiling_and_fusion = 184;
 
+  // If set, use the experimental deallocation pass from mlir-hlo.
+  bool xla_cpu_enable_experimental_deallocation = 191;
+
   bool xla_gpu_enable_latency_hiding_scheduler = 186;
 
-  // Next id: 187
+  enum PartitioningAlgorithm {
+    PARTITIONING_ALGORITHM_NOOP = 0;
+  }
+  // The partitioning algorithm to be used in the PartitionAssignment pass.
+  PartitioningAlgorithm xla_partitioning_algorithm = 187;
+
+  bool xla_gpu_enable_triton_gemm = 188;
+
+  bool xla_gpu_enable_cudnn_int8x32_convolution_reordering = 189;
+
+  bool xla_gpu_triton_gemm_any = 190;
+
+  // Next id: 192
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -545,7 +560,13 @@ message ExecutionOptions {
   // which can be used by higher level framework as a way to query intermediate
   // sharding of operations when multiple computation would be chained and
   // merged together.
-  bool allow_spmd_sharding_propagation_to_output = 14;
+  // This is a vector of bool, because the user can control (if the output of
+  // the computation is a tuple) which elements of the tuple can have the
+  // sharding substituted and which don't. If only one boolean value is passed
+  // in the vector that's interpreted as the value to be applied for every
+  // single element of the output tuple. One value per element of the tuple
+  // means that each value is attached to one of the output elements.
+  repeated bool allow_spmd_sharding_propagation_to_output = 14;
 
   // Whether to broadcast args across all replicas. One entry per arg.
   repeated bool param_requires_broadcast_via_collectives = 18;
@@ -609,7 +630,7 @@ message HloModuleConfigProto {
   repeated BoolList phase_ordering_config = 24;
   int32 phase_index = 25;
   reserved 26;  // Was flag_config
-  bool allow_spmd_sharding_propagation_to_output = 27;
+  repeated bool allow_spmd_sharding_propagation_to_output = 27;
   map<string, int64> analysis_allowance_map = 28;
   xla.PrecisionConfig.Precision matrix_unit_operand_precision = 29;
 }

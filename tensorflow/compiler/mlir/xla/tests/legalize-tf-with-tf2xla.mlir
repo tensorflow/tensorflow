@@ -1,4 +1,4 @@
-// RUN: xla-opt "-xla-legalize-tf=device-type=XLA_CPU_JIT allow-partial-conversion=true prefer-tf2xla=true use-tf2xla-fallback=true" %s -verify-diagnostics | FileCheck %s
+// RUN: tf-opt "-xla-legalize-tf=device-type=XLA_CPU_JIT allow-partial-conversion=true prefer-tf2xla=true use-tf2xla-fallback=true" %s -verify-diagnostics | FileCheck %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 
@@ -15,6 +15,13 @@ func.func @unknown_op(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "tf.CustomTestOp"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
 
   func.return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL: add_v2
+func.func @add_v2(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  // CHECK: mhlo.add %arg0, %arg0 : tensor<2xi32>
+  %0 = "tf.AddV2"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  func.return %0: tensor<2xi32>
 }
 
 // CHECK-LABEL: not_allowlisted_op

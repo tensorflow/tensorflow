@@ -517,9 +517,11 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target,
   // two implementations below.
   if (!sharding().IsReplicated()) {
     if (!target.IsReplicated()) {
-      auto reshard = TryComplexReshardHandling(target);
-      if (reshard.has_value()) {
-        return reshard.value();
+      if (sharding().IsTiled() && target.IsTiled()) {
+        auto reshard = TryComplexReshardHandling(target);
+        if (reshard.has_value()) {
+          return reshard.value();
+        }
       }
       if (!allow_full_replication) {
         return *this;
@@ -1792,14 +1794,19 @@ std::optional<std::pair<HloSharding, int>> PatternMatchReshape(
 // targets instead.
 std::optional<HloSharding> PatternMatchPartiallyReplicateDim(
     const HloSharding& source, const HloSharding& target) {
-  if (!(!source.ReplicateOnLastTileDim() && target.ReplicateOnLastTileDim())) {
+  if (!target.ReplicateOnLastTileDim()) {
     return std::nullopt;
   }
   const int64_t target_replicated_dim = target.SubgroupReplicationDim();
+  const int64_t source_replicated_size =
+      source.HasPartialReplication()
+          ? source.tile_assignment().dim(source.SubgroupReplicationDim())
+          : 1;
   CHECK_NE(target_replicated_dim, -1) << "Expected replicated dim";
-  for (int i = 0; i < source.tile_assignment().num_dimensions(); ++i) {
-    if (source.tile_assignment().dim(i) !=
-        target.tile_assignment().dim(target_replicated_dim)) {
+  for (int i = 0; i < source.TiledDataRank(); ++i) {
+    if (source.tile_assignment().dim(i) == 1 ||
+        source.tile_assignment().dim(i) * source_replicated_size !=
+            target.tile_assignment().dim(target_replicated_dim)) {
       continue;
     }
     auto replicated_sharding =
@@ -4746,7 +4753,9 @@ Status SpmdPartitioner::PreprocessSharding(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* hlo : computation->instructions()) {
-      if (hlo->HasSideEffectNoRecurse() && hlo->opcode() != HloOpcode::kRng) {
+      if (hlo->HasSideEffectNoRecurse() && hlo->opcode() != HloOpcode::kRng &&
+          (hlo->opcode() != HloOpcode::kCustomCall ||
+           GetCustomCallPartitioner(hlo->custom_call_target()) == nullptr)) {
         TF_RET_CHECK(hlo->has_sharding())
             << "Side-effect HLO must have sharding: " << hlo->ToString();
         TF_RET_CHECK(!HasReplicatedSharding(hlo->sharding()) ||

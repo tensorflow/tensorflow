@@ -140,5 +140,39 @@ def VerifyTFXLALegalization : Pass<"tfxla-verify-legalization", "mlir::func::Fun
                     "legalized. This pass does not transform any ops and is just"
                     " a verification pass to ensure invariants are true."}];
 
+  let options = [
+    Option<"legalize_chlo_", "legalize-chlo", "bool", /*default=*/"true",
+        "Legalizes intermediate chlo ops to hlo">
+    ];
+
   let constructor = "mlir::mhlo::CreateVerifyTFXLALegalizationPass()";
+}
+
+def TFXLADeviceSpecificTransforms : Pass<"tfxla-device-specific-transforms",
+                                            "mlir::func::FuncOp"> {
+  let summary = "Transforms ops that require device context into device independent TF Ops.";
+
+  let description = [{"Transforms device specific ops into device independent"
+                    "ops."}];
+
+  let options = [
+    Option<"device_type_", "device-type", "std::string",
+        /*default=*/"\"INVALID_DEVICE_TYPE\"",
+        "The device type being targeted.">,
+  ];
+
+  let constructor = "mlir::mhlo::CreateTFXLADeviceSpecificTransformsPass()";
+}
+
+def InfeedOpsXlaAdjustLayout : Pass<"infeed-ops-xla-adjust-layout",
+                                    "mlir::func::FuncOp"> {
+  let summary = "Adjusts Infeed ops layout for XLA.";
+
+  let description = [{"Adjust layouts so infeed send & receive use the same "
+                    "format."}];
+
+  let constructor = "mlir::mhlo::CreateInfeedsOpsXlaAdjustLayoutPass()";
+
+  let dependentDialects = ["mhlo::MhloDialect"];
+
 }

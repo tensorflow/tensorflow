@@ -24,7 +24,6 @@ from .xla_extension import ops as ops
 from .xla_extension import profiler as profiler
 
 from .xla_extension import Buffer as Buffer
-from .xla_extension import ShardedBuffer as ShardedBuffer
 from .xla_extension import ArrayImpl as ArrayImpl
 from .xla_extension import Client as Client
 from .xla_extension import CompileOptions as CompileOptions
@@ -48,7 +47,7 @@ from .xla_extension import XLACompatibleSharding as XLACompatibleSharding
 from .xla_extension import NamedSharding as NamedSharding
 from .xla_extension import SingleDeviceSharding as SingleDeviceSharding
 from .xla_extension import PmapSharding as PmapSharding
-from .xla_extension import OpShardingSharding as OpShardingSharding
+from .xla_extension import GSPMDSharding as GSPMDSharding
 
 _version: int
 
@@ -100,10 +99,13 @@ def make_tpu_client() -> Client:
   ...
 
 
-def make_plugin_device_client() -> Client:
+def make_c_api_client(plugin_name: str) -> Client:
   ...
 
-def maybe_load_pjrt_plugins() -> None:
+def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
+  ...
+
+def make_plugin_device_client() -> Client:
   ...
 
 class OpMetadata:

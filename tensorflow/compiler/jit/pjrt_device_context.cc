@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
-#include "tensorflow/core/tfrt/common/pjrt_util.h"
+#include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 
 namespace tensorflow {
 namespace {
@@ -37,8 +37,9 @@ StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
   xla::Shape shape;
   TF_RETURN_IF_ERROR(
       TensorShapeToXLAShape(cpu_tensor->dtype(), cpu_tensor->shape(), &shape));
-  TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
-                      pjrt_client->LookupDevice(device->parsed_name().id));
+  TF_ASSIGN_OR_RETURN(
+      xla::PjRtDevice * pjrt_device,
+      pjrt_client->LookupAddressableDevice(device->parsed_name().id));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::PjRtBuffer> buffer,
       pjrt_client->BufferFromHostBuffer(

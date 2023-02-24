@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
 #include "tensorflow/lite/delegates/gpu/cl/api.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
@@ -426,7 +426,7 @@ class DelegateKernel {
     return absl::OkStatus();
   }
 
-  // Returns Ok only if serialized data is successsfully found.
+  // Returns Ok only if serialized data is successfully found.
   absl::Status MaybeInitializeSerializedOpenCL(
       TfLiteContext* context, const TfLiteDelegateParams* delegate_params,
       std::unique_ptr<InferenceBuilder>* builder, cl::InferenceOptions* options,

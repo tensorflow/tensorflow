@@ -541,7 +541,7 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
     SmallVector<Value> outputTensors;
     for (auto [out0, out1] : llvm::zip(outputMemrefs, scratchMemrefs)) {
       outputTensors.push_back(b.create<bufferization::ToTensorOp>(
-          b.create<SelectOp>(parity, out1, out0)));
+          b.create<SelectOp>(parity, out1, out0), /*restrict=*/true));
     }
 
     rewriter.replaceOp(op, outputTensors);

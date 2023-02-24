@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/serializer/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/check_accepted_ops_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_tfl_pass.h"
@@ -60,7 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_graph_optimization_pass.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/transforms/passes.h"
@@ -180,18 +181,9 @@ tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelOrMLIR(
 
 tensorflow::Status ConvertStableHLOToFlatbuffer(mlir::ModuleOp module,
                                                 std::string* flatbuffer_str) {
-  // Convert StableHLO MLIR to TFLite Custom Op MLIR
-  mlir::PassManager pm(module->getContext());
-  pm.addNestedPass<func::FuncOp>(CreateStablehloToTflPass());
-  if (failed(pm.run(module))) {
-    return tensorflow::errors::Aborted("HLO to TFL passes failed.");
-  }
-
-  // Convert TFLite Custom Op MLIR to TFLite Flatbuffer
-  tflite::FlatbufferExportOptions options;
-  options.toco_flags.allow_custom_ops();
-  if (!tflite::MlirToFlatBufferTranslateFunction(module, options,
-                                                 flatbuffer_str)) {
+  mlir::odml::FlatbufferExportOptions options;
+  if (!mlir::odml::MlirToFlatBufferTranslateFunction(module, options,
+                                                     flatbuffer_str)) {
     return tensorflow::errors::Aborted("Unable to export flatbuffer");
   }
 
@@ -253,11 +245,6 @@ tensorflow::Status ConvertTFToStableHLO(
 
   AddTFToStablehloPasses(pm, skip_resize, smuggle_disallowed_ops);
 
-  if (verbose) {
-    // Print out a detailed report of non-converted stats.
-    pm.addPass(mlir::odml::createPrintOpStatsPass());
-  }
-
   if (!skip_checks) {
     std::vector<std::string> optional_accepted_dialects;
     if (allow_tf) {
@@ -270,6 +257,13 @@ tensorflow::Status ConvertTFToStableHLO(
   }
 
   mlir::odml::AddStablehloOptimizationPasses(pm);
+
+  if (verbose) {
+    // Print out a detailed report of non-converted stats.
+    // Because this pass aborts the pass if there are unconverted ops,
+    // we need to locate createPrintOpStatsPass after all optimization.
+    pm.addPass(mlir::odml::createPrintOpStatsPass());
+  }
 
   if (failed(pm.run(tf_module))) {
     return tensorflow::errors::Aborted("Lowering to StableHLO failed.");
@@ -369,9 +363,9 @@ void initAllPasses() {
   mlir::lmhlo::registerAllLmhloPasses();
   // These are in compiler/mlir/xla and not part of the above MHLO passes.
   mlir::mhlo::registerTfXlaPasses();
-  mlir::mhlo::registerXlaFrameworkPasses();
   mlir::mhlo::registerLegalizeTFPass();
   mlir::mhlo::registerLegalizeTfTypesPassPass();
+  mlir::xla_framework::registerXlaFrameworkPasses();
   tensorflow::RegisterConvertMlirToXlaHloPipelineWithDefaults();
   tensorflow::RegisterGraphOptimizationPasses();
 }

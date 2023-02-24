@@ -34,7 +34,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_state
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import default_gradient
-from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
@@ -304,7 +304,7 @@ def _SymGrad(op, out_grads):
     f.name = op.type
   for k in op.node_def.attr:
     f.attr[k].CopyFrom(op.node_def.attr[k])
-  in_grads = functional_ops.symbolic_gradient(input=f_in, Tout=f_types, f=f)
+  in_grads = gen_functional_ops.symbolic_gradient(input=f_in, Tout=f_types, f=f)
   return in_grads
 
 

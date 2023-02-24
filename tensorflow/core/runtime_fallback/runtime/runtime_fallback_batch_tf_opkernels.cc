@@ -12,7 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <utility>
+
 #include "absl/strings/str_format.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
@@ -119,7 +122,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
                        int32_t max_enqueued_batches,
                        ArrayRef<int32_t> allowed_batch_sizes,
                        RCReference<const tfrt::Function> bef_func,
-                       bool enable_large_batch_splitting,
+                       bool enable_large_batch_splitting, bool disable_padding,
                        const tfrt::ExecutionContext& exec_ctx,
                        std::unique_ptr<FallbackBatchResource>* resource) {
     BatcherT::Options batcher_options;
@@ -127,12 +130,21 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
     std::shared_ptr<BatcherT> batcher;
     TF_RETURN_IF_ERROR(BatcherT::Create(batcher_options, &batcher));
 
+    const auto* fallback_request_state =
+        exec_ctx.request_ctx()
+            ->GetDataIfExists<KernelFallbackCompatRequestState>();
+    if (!fallback_request_state) {
+      return tensorflow::errors::Internal(
+          "KernelFallbackCompatRequestState not found in RequestContext.");
+    }
+
     resource->reset(new FallbackBatchResource(
-        exec_ctx, std::move(bef_func), std::move(batcher),
+        exec_ctx, *fallback_request_state, std::move(bef_func),
+        std::move(batcher),
         GetBatcherQueueOptions(num_batch_threads, max_batch_size,
                                batch_timeout_micros, max_enqueued_batches,
                                allowed_batch_sizes,
-                               enable_large_batch_splitting),
+                               enable_large_batch_splitting, disable_padding),
         allowed_batch_sizes));
     return OkStatus();
   }
@@ -141,18 +153,28 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
       AdaptiveBatcherT::Options adaptive_shared_batch_scheduler_options,
       int32_t max_batch_size, int32_t batch_timeout_micros,
       int32_t max_enqueued_batches, ArrayRef<int32_t> allowed_batch_sizes,
-      RCReference<const tfrt::Function> bef_func,
+      RCReference<const tfrt::Function> bef_func, bool disable_padding,
       const tfrt::ExecutionContext& exec_ctx,
       std::unique_ptr<FallbackBatchResource>* resource) {
     std::shared_ptr<AdaptiveBatcherT> batcher;
     TF_RETURN_IF_ERROR(AdaptiveBatcherT::Create(
         adaptive_shared_batch_scheduler_options, &batcher));
 
+    const auto* fallback_request_state =
+        exec_ctx.request_ctx()
+            ->GetDataIfExists<KernelFallbackCompatRequestState>();
+    if (!fallback_request_state) {
+      return tensorflow::errors::Internal(
+          "KernelFallbackCompatRequestState not found in RequestContext.");
+    }
+
     resource->reset(new FallbackBatchResource(
-        exec_ctx, std::move(bef_func), std::move(batcher),
-        GetAdaptiveBatcherQueueOptions(
-            max_batch_size, batch_timeout_micros, max_enqueued_batches,
-            true /* enable large batch split */, allowed_batch_sizes),
+        exec_ctx, *fallback_request_state, std::move(bef_func),
+        std::move(batcher),
+        GetAdaptiveBatcherQueueOptions(max_batch_size, batch_timeout_micros,
+                                       max_enqueued_batches,
+                                       true /* enable large batch split */,
+                                       allowed_batch_sizes, disable_padding),
         allowed_batch_sizes));
     return OkStatus();
   }
@@ -173,11 +195,13 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
     }
   };
 
-  FallbackBatchResource(const tfrt::ExecutionContext& exec_ctx,
-                        RCReference<const tfrt::Function> bef_func,
-                        std::shared_ptr<BatcherT> batcher,
-                        const BatcherT::QueueOptions& batcher_queue_options,
-                        ArrayRef<int32_t> allowed_batch_sizes)
+  FallbackBatchResource(
+      const tfrt::ExecutionContext& exec_ctx,
+      const KernelFallbackCompatRequestState& fallback_request_state,
+      RCReference<const tfrt::Function> bef_func,
+      std::shared_ptr<BatcherT> batcher,
+      const BatcherT::QueueOptions& batcher_queue_options,
+      ArrayRef<int32_t> allowed_batch_sizes)
       : BatchResourceBase(
             /*has_process_batch_function=*/true, std::move(batcher),
             batcher_queue_options,
@@ -185,10 +209,13 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
                                  allowed_batch_sizes.end())),
         host_ctx_(exec_ctx.host()),
         resource_context_(exec_ctx.resource_context()),
+        runner_table_(fallback_request_state.runner_table()),
+        resource_array_(fallback_request_state.resource_array()),
         bef_func_(std::move(bef_func)) {}
 
   FallbackBatchResource(
       const tfrt::ExecutionContext& exec_ctx,
+      const KernelFallbackCompatRequestState& fallback_request_state,
       RCReference<const tfrt::Function> bef_func,
       std::shared_ptr<AdaptiveBatcherT> batcher,
       const AdaptiveBatcherT::QueueOptions& batcher_queue_options,
@@ -200,6 +227,8 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
                                  allowed_batch_sizes.end())),
         host_ctx_(exec_ctx.host()),
         resource_context_(exec_ctx.resource_context()),
+        runner_table_(fallback_request_state.runner_table()),
+        resource_array_(fallback_request_state.resource_array()),
         bef_func_(std::move(bef_func)) {}
 
   void ProcessFuncBatchImpl(
@@ -217,6 +246,8 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
 
   HostContext* const host_ctx_;
   tfrt::ResourceContext* const resource_context_;
+  tfrt_stub::OpKernelRunnerTable* runner_table_;
+  FallbackResourceArray* resource_array_;
   RCReference<const tfrt::Function> bef_func_;
 };
 
@@ -253,6 +284,7 @@ class BatchFunctionFallbackKernel : public AsyncOpKernel {
   int32 max_enqueued_batches_;
   std::vector<int32> allowed_batch_sizes_;
   bool enable_large_batch_splitting_;
+  bool disable_padding_;
   RCReference<const tfrt::Function> bef_func_;
 
   // Parameters for adaptive batch scheduler only.
@@ -294,7 +326,12 @@ BatchFunctionFallbackKernel::BatchFunctionFallbackKernel(
         tfrt::FormRef(absl::bit_cast<const tfrt::Function*>(bef_func_intptr));
   }
 
-  DCHECK(!shared_name_.empty());
+  if (shared_name_.empty()) {
+    // If shared_name is not supplied, use name instead (prevent collisions by
+    // default).
+    shared_name_ = name();
+  }
+
   VLOG(1) << "BatchFunctionFallbackKernel(" << this
           << ") container attribute: \"" << container_
           << "\", shared_name attribute: \"" << shared_name_
@@ -305,6 +342,12 @@ BatchFunctionFallbackKernel::BatchFunctionFallbackKernel(
                                  &enable_large_batch_splitting_));
   } else {
     enable_large_batch_splitting_ = false;
+  }
+
+  if (c->HasAttr("disable_padding")) {
+    OP_REQUIRES_OK(c, c->GetAttr("disable_padding", &disable_padding_));
+  } else {
+    disable_padding_ = false;
   }
 
   // Helper function `SetAdaptiveBatchSchedulerOptions` calls
@@ -367,7 +410,7 @@ void BatchFunctionFallbackKernel::ComputeAsync(OpKernelContext* c,
       TF_RETURN_IF_ERROR(FallbackBatchResource::Create(
           adaptive_shared_batch_scheduler_options, max_batch_size_,
           batch_timeout_micros_, max_enqueued_batches_, allowed_batch_sizes_,
-          bef_func_, *exec_ctx, &new_resource));
+          bef_func_, disable_padding_, *exec_ctx, &new_resource));
       *r = new_resource.release();
       return OkStatus();
     };
@@ -379,7 +422,8 @@ void BatchFunctionFallbackKernel::ComputeAsync(OpKernelContext* c,
       TF_RETURN_IF_ERROR(FallbackBatchResource::Create(
           num_batch_threads_, max_batch_size_, batch_timeout_micros_,
           max_enqueued_batches_, allowed_batch_sizes_, bef_func_,
-          enable_large_batch_splitting_, *exec_ctx, &new_resource));
+          enable_large_batch_splitting_, disable_padding_, *exec_ctx,
+          &new_resource));
       *r = new_resource.release();
       return OkStatus();
     };
@@ -486,7 +530,9 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TFTensorToFallbackTensor(
 }
 
 Status SetUpKernelFallbackCompatRequestContextForBatch(
-    tfrt::RequestContextBuilder* builder, tfrt::RequestContext& src_req_ctx) {
+    tfrt::RequestContextBuilder* builder,
+    tfrt_stub::OpKernelRunnerTable* runner_table,
+    FallbackResourceArray* resource_array, tfrt::RequestContext& src_req_ctx) {
   DCHECK(builder);
 
   const auto* src_fallback_request_state =
@@ -506,13 +552,14 @@ Status SetUpKernelFallbackCompatRequestContextForBatch(
       &src_fallback_request_state->process_function_library_runtime();
 
   return SetUpKernelFallbackCompatRequestContext(
-      builder, device_manager, pflr, intra_op_threadpool, session_metadata,
-      /*runner=*/nullptr);
+      builder, device_manager, pflr, runner_table, resource_array,
+      intra_op_threadpool, session_metadata, /*runner=*/nullptr);
 }
 
 StatusOr<RCReference<tfrt::RequestContext>> SetUpRequestContext(
     HostContext* host_ctx, tfrt::ResourceContext* resource_context,
-    tfrt::RequestContext* src_req_ctx) {
+    tfrt_stub::OpKernelRunnerTable* runner_table,
+    FallbackResourceArray* resource_array, tfrt::RequestContext* src_req_ctx) {
   // Using the same logic as in the c'tor of FunctionLibraryRuntime::Options,
   // to avoid clash with any Session-generated step ID. DirectSession and
   // MasterSession generates non-negative step IDs.
@@ -522,7 +569,7 @@ StatusOr<RCReference<tfrt::RequestContext>> SetUpRequestContext(
       host_ctx, resource_context, step_id);
 
   TF_RETURN_IF_ERROR(SetUpKernelFallbackCompatRequestContextForBatch(
-      &request_context_builder, *src_req_ctx));
+      &request_context_builder, runner_table, resource_array, *src_req_ctx));
 
   auto expected_req_ctx = std::move(request_context_builder).build();
   if (!expected_req_ctx) {
@@ -551,7 +598,8 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
   auto& exec_ctx = down_cast<const FallbackBatchTask&>(last_task).tfrt_exec_ctx;
 
   auto statusor =
-      SetUpRequestContext(host_ctx_, resource_context_, exec_ctx.request_ctx());
+      SetUpRequestContext(host_ctx_, resource_context_, runner_table_,
+                          resource_array_, exec_ctx.request_ctx());
   if (!statusor.ok()) {
     done(statusor.status());
     return;
@@ -579,7 +627,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
   // threading, although this doesn't match TFRT's threading model. Keeping
   // this behavior for now, should reconsider when we redo the batching
   // kernels.
-  host_ctx_->Await(results);
+  batch_exec_ctx.work_queue().Await(results);
   for (AsyncValue* arg : arguments) {
     arg->DropRef();
   }
@@ -644,6 +692,7 @@ REGISTER_OP("_BatchFunctionFallback")
     .Attr("Tcaptured: list(type) >= 0")
     .Attr("Tout: list(type)")
     .Attr("enable_large_batch_splitting: bool = false")
+    .Attr("disable_padding: bool = false")
     // TFRT BEF function pointer.
     .Attr("tfrt_bef_func: int")
     .SetShapeFn(shape_inference::UnknownShape);

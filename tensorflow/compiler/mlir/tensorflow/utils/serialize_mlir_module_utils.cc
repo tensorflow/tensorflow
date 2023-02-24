@@ -28,7 +28,6 @@ std::string SerializeMlirModule(mlir::ModuleOp module_op) {
   std::string serialized_mlir_module;
   llvm::raw_string_ostream os(serialized_mlir_module);
   mlir::OpPrintingFlags print_flags;
-  print_flags.enableDebugInfo();
   module_op.print(os, print_flags);
   return std::move(os.str());
 }

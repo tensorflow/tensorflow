@@ -602,10 +602,14 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([3, 1], func([[0], [1.0], [1]]))
     self.assertAllEqual([2, 2], func(numpy.array([[1, 1], [2, 2]])))
 
-    with self.assertRaisesRegex(ValueError, 'incompatible'):
+    with self.assertRaisesRegex(
+        TypeError, 'Binding inputs to tf.function `func` failed'
+    ):
       func([0.0, 1.0, 2.0])  # Wrong shape.
 
-    with self.assertRaisesRegex(ValueError, 'incompatible'):
+    with self.assertRaisesRegex(
+        TypeError, 'Binding inputs to tf.function `func` failed'
+    ):
       func([['wrong dtype']])
 
   def testNestedInputSignatures(self):
@@ -715,12 +719,12 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     defined = quarantine.defun_with_attributes(foo, input_signature=signature)
     a = array_ops.ones([1])
 
-    with self.assertRaisesRegex(ValueError,
-                                'Structure of Python function inputs.*'):
+    with self.assertRaisesRegex(TypeError,
+                                'Binding inputs to tf.function `foo` failed'):
       defined([a, a, a], [a])
 
-    with self.assertRaisesRegex(ValueError,
-                                'Structure of Python function inputs.*'):
+    with self.assertRaisesRegex(TypeError,
+                                'Binding inputs to tf.function `foo` failed'):
       defined([a], [a, a, a])
     defined([a, a], [a, a])
 
@@ -737,7 +741,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     x = constant_op.constant(1.0)
     with self.assertRaisesRegex(
-        TypeError, 'Parameter .* was expected to be of type .* but is .*'):
+        TypeError, 'Binding inputs to tf.function `foo` failed'):
       foo(x, training=False)
 
     self.assertAllEqual(x.numpy(), foo(x).numpy())
@@ -831,17 +835,23 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     # Different number of rows
     rt3 = ragged_factory_ops.constant([[1, 2], [3, 4], [5], [6]])
-    with self.assertRaisesRegex(ValueError, 'incompatible'):
+    with self.assertRaisesRegex(
+        TypeError, 'Binding inputs to tf.function `f` failed'
+    ):
       defined(rt3)
 
     # Different dtype
     rt4 = ragged_factory_ops.constant([[1.0, 2.0], [], [3.0]])
-    with self.assertRaisesRegex(ValueError, 'Structure .* does not match'):
+    with self.assertRaisesRegex(
+        TypeError, 'Binding inputs to tf.function `f` failed'
+    ):
       defined(rt4)
 
     # Different rank
     rt5 = ragged_factory_ops.constant([[[1]], [[2]], [[3]]])
-    with self.assertRaisesRegex(ValueError, 'does not match'):
+    with self.assertRaisesRegex(
+        TypeError, 'Binding inputs to tf.function `f` failed'
+    ):
       defined(rt5)
 
   def testInputSignatureWithKeywordOnlyArgs(self):

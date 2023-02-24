@@ -22,16 +22,30 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 
+GmlStCPUTilingOptions getDefaultCPUPipelineOptions() {
+  GmlStCPUTilingOptions opts;
+  opts.vectorSize = 8;
+  opts.reduction1DTileSize = 32;
+  opts.reduction2DTileSizes = {4, 4};
+  opts.matmulTileSizes = {4, 4, 4};
+  opts.lowerToMmt4d = false;
+  return opts;
+}
+
 void addCPUTilingPipeline(OpPassManager& pm,
-                          const GmlStCPUPipelineOptions& options) {
+                          const GmlStCPUTilingOptions& options) {
   using func::FuncOp;
 
   pm.addNestedPass<FuncOp>(createTransformScatterForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformReduceForCpuPass(
       options.vectorSize, options.reduction1DTileSize,
       options.reduction2DTileSizes));
+  pm.addNestedPass<FuncOp>(
+      createTransformDotForCpuPass(options.matmulTileSizes));
   pm.addNestedPass<FuncOp>(createTransformMatmulForCpuPass(
       options.matmulTileSizes, options.lowerToMmt4d));
+  // TODO(b/270534416): Re-enable.
+  // pm.addNestedPass<FuncOp>(createTransformGenericForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformTransposeForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformMapForCpuPass(options.vectorSize));
   pm.addNestedPass<FuncOp>(createTransformSortForCpuPass());
@@ -43,8 +57,16 @@ void addCPUTilingPipeline(OpPassManager& pm,
 
   pm.addNestedPass<FuncOp>(createComposeExtractInsertSlicePass());
   pm.addNestedPass<FuncOp>(createVectorizeForCPUPass());
+
+  // Tile remaining ops by size one and scalarize what we can.
+  pm.addNestedPass<FuncOp>(createTileByOnePass());
   pm.addNestedPass<FuncOp>(createScalarizationPass());
+
   pm.addNestedPass<FuncOp>(createRewriteVectorContractPass());
+}
+
+void addDefaultCPUTilingPipeline(OpPassManager& pm) {
+  addCPUTilingPipeline(pm, getDefaultCPUPipelineOptions());
 }
 
 }  // namespace gml_st

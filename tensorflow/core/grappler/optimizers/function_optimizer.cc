@@ -1229,6 +1229,12 @@ Status InlineFunctionCalls(const GrapplerItem& item,
     fetch_nodes.insert(ParseTensorName(fetch).node());
   }
   NodeNames keep_nodes(item.keep_ops.begin(), item.keep_ops.end());
+  if (item.save_op.size() > 0) {
+    keep_nodes.insert(item.save_op);
+  }
+  if (item.restore_op.size() > 0) {
+    keep_nodes.insert(item.restore_op);
+  }
 
   std::vector<string> inlined_function_names;
 

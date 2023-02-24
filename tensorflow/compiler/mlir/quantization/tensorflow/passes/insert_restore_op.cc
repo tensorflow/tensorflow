@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -69,31 +70,22 @@ class InsertRestoreOpPass
   void runOnOperation() override;
 };
 
-// Finds `tf.AssignVariableOp(tf.VarHandleOp, tf.Const)` patterns and removes
-// `tf.AssignVariableOp`s and `tf.Const`s. Collects and returns the
-// `tf.VarHandleOp`s that are initialized by these `tf.AssignVariableOp`s.
-std::vector<TF::VarHandleOp> RemoveAssignVariableOpsAndConstOps(
+// Finds `tf.AssignVariableOp(tf.VarHandleOp, tf.Const)` patterns and returns
+// the `tf.VarHandleOp`s that are initialized by these `tf.AssignVariableOp`s.
+std::vector<TF::VarHandleOp> CollectVariableOps(
     func::FuncOp session_init_func) {
   std::vector<TF::VarHandleOp> var_handle_ops{};
 
   for (auto assign_variable_op : llvm::make_early_inc_range(
            session_init_func.getOps<TF::AssignVariableOp>())) {
     Value resource_operand = assign_variable_op.getOperand(0);
-    auto var_handle_op =
-        dyn_cast<TF::VarHandleOp>(resource_operand.getDefiningOp());
-    if (!var_handle_op) continue;
-
     Value assigned_value_operand = assign_variable_op.getOperand(1);
-    auto const_op =
-        dyn_cast<TF::ConstOp>(assigned_value_operand.getDefiningOp());
-    if (!const_op) continue;
 
-    var_handle_ops.emplace_back(var_handle_op);
-
-    assign_variable_op.erase();
-
-    if (const_op->use_empty()) {
-      const_op.erase();
+    if (auto var_handle_op =
+            dyn_cast<TF::VarHandleOp>(resource_operand.getDefiningOp());
+        var_handle_op &&
+        isa<TF::ConstOp>(assigned_value_operand.getDefiningOp())) {
+      var_handle_ops.emplace_back(var_handle_op);
     }
   }
 
@@ -119,7 +111,7 @@ BlockArgument InsertFilePrefixArgument(func::FuncOp func_op,
                                        OpBuilder& builder) {
   const auto filename_op_type = RankedTensorType::get(
       /*shape=*/{}, /*elementType=*/builder.getType<TF::StringType>());
-  const auto file_prefix_attr = builder.getStringAttr("__tf_file_prefix");
+  const auto file_prefix_attr = builder.getStringAttr(kTfFilePrefix);
   const auto arg_attrs = builder.getDictionaryAttr({builder.getNamedAttr(
       kTfSavedModelIndexPathAttr, builder.getArrayAttr({file_prefix_attr}))});
 
@@ -158,6 +150,15 @@ void CreateRestoreV2Op(std::vector<TF::VarHandleOp>& target_var_handle_ops,
   SmallVector<std::string> tensor_names{};
   for (auto var_handle_op : target_var_handle_ops) {
     tensor_names.emplace_back(var_handle_op.getSharedName().str());
+    // Location must be set to the same name as the shared name. The Location is
+    // later tranlated to the op's name when exported to `GraphDef`. This is
+    // required to find the correct variable name to restore when it is
+    // imported back to MLIR. When importing the graph to MLIR, the name of the
+    // op is used to retrieve the tensor values of each variable. See
+    // `InitializeVariablesInSessionInitializer` for further details.
+    const auto loc = NameLoc::get(StringAttr::get(
+        var_handle_op.getContext(), var_handle_op.getSharedName()));
+    var_handle_op->setLoc(loc);
 
     // Ex) If VarHandleOp's type is tensor<!tf_type.resource<tensor<1xf32>>>,
     // then tensor<1xf32> is the subtype.
@@ -200,7 +201,7 @@ void InsertRestoreOpPass::runOnOperation() {
   }
 
   std::vector<TF::VarHandleOp> target_var_handle_ops =
-      RemoveAssignVariableOpsAndConstOps(session_init_func);
+      CollectVariableOps(session_init_func);
   if (target_var_handle_ops.empty()) {
     LOG(INFO) << "There are no VarHandleOps to restore. RestoreV2 op will not "
                  "be created.";

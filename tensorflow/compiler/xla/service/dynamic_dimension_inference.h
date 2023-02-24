@@ -58,7 +58,8 @@ class DynamicDimensionInference {
       HloModule* module,
       CustomCallInferenceHandler custom_call_handler = nullptr,
       ShapeCheckMode shape_check_mode = ShapeCheckMode::kIgnore,
-      const AssertionGenerator& assertion_generator = nullptr);
+      const AssertionGenerator& assertion_generator = nullptr,
+      const absl::flat_hash_set<absl::string_view>& execution_threads_ = {});
 
   std::string ToString() const;
 
@@ -102,7 +103,8 @@ class DynamicDimensionInference {
  private:
   explicit DynamicDimensionInference(
       HloModule* module, CustomCallInferenceHandler custom_call_handler,
-      ShapeCheckMode shape_check_mode, AssertionGenerator assertion_generator);
+      ShapeCheckMode shape_check_mode, AssertionGenerator assertion_generator,
+      const absl::flat_hash_set<absl::string_view>& execution_threads_);
 
   // DynamicDimension is used as a key in the dynamic key-value mapping. It
   // unambiguously represents a dynamic dimension of a instruction at a given
@@ -173,6 +175,8 @@ class DynamicDimensionInference {
   ShapeCheckMode shape_check_mode_;
 
   AssertionGenerator assertion_generator_;
+
+  const absl::flat_hash_set<absl::string_view>& execution_threads_;
 };
 
 }  // namespace xla

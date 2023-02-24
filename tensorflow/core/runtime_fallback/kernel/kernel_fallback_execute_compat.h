@@ -50,6 +50,8 @@ Status SetUpKernelFallbackCompatRequestContext(
     tfrt::RequestContextBuilder* builder,
     const tensorflow::DeviceMgr* device_manager,
     const tensorflow::ProcessFunctionLibraryRuntime* pflr,
+    tfrt_stub::OpKernelRunnerTable* runner_table,
+    FallbackResourceArray* resource_array,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr,
     const absl::optional<SessionMetadata>& model_metadata = absl::nullopt,
     std::function<void(std::function<void()>)>* runner = nullptr,

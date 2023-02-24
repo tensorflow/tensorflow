@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef MLIR_HLO_TOOLS_MLIR_INTERPRETER_FRAMEWORK_TENSOR_OR_MEMREF_H_
 #define MLIR_HLO_TOOLS_MLIR_INTERPRETER_FRAMEWORK_TENSOR_OR_MEMREF_H_
 
+#include <math.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -25,6 +27,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 
@@ -164,8 +167,12 @@ class Buffer {
   }
 
   char* at(std::optional<int64_t> idx, int64_t elementSize) {
-    if (!idx) {
-      setHasOutOfBoundsAccess();
+    if (!idx || isDeallocated) {
+      setFailure("out of bounds access");
+      return &storage.data()[0];
+    }
+    if (isDeallocated) {
+      setFailure("use-after-free");
       return &storage.data()[0];
     }
     assert(!isDeallocated && "accessing deallocated buffer");
@@ -173,8 +180,12 @@ class Buffer {
   }
 
   const char* at(std::optional<int64_t> idx, int64_t elementSize) const {
-    if (!idx) {
-      setHasOutOfBoundsAccess();
+    if (!idx || isDeallocated) {
+      setFailure("out of bounds access");
+      return &storage.data()[0];
+    }
+    if (isDeallocated) {
+      setFailure("use-after-free");
       return &storage.data()[0];
     }
     assert(!isDeallocated && "accessing deallocated buffer");
@@ -186,18 +197,28 @@ class Buffer {
 
   int64_t getByteSize() const { return storage.size(); }
 
-  void deallocate() { isDeallocated = true; }
+  void deallocate() {
+    if (isAlloca) {
+      setFailure("deallocated stack buffer");
+    } else if (isDeallocated) {
+      setFailure("double-free");
+    } else {
+      isDeallocated = true;
+    }
+  }
 
   bool deallocated() const { return isDeallocated; }
 
-  void setHasOutOfBoundsAccess() const { outOfBounds = true; }
+  void setFailure(llvm::StringRef failure) const { this->failure = failure; }
+  llvm::StringRef getFailure() const { return failure; }
 
-  bool hasOutOfBoundsAccess() const { return outOfBounds; }
+  void setIsAlloca() { isAlloca = true; }
 
  private:
   llvm::SmallVector<char> storage;
   bool isDeallocated = false;
-  mutable bool outOfBounds = false;
+  bool isAlloca = false;
+  mutable llvm::StringRef failure;
 };
 
 template <typename T>
@@ -245,7 +266,7 @@ struct TensorOrMemref {
     if (offset) {
       subview.offset = *offset;
     } else {
-      buffer->setHasOutOfBoundsAccess();
+      buffer->setFailure("out of bounds access");
     }
     subview.isVector = true;
     subview.numVectorDims = std::nullopt;

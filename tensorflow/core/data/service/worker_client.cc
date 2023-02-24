@@ -58,6 +58,7 @@ CreateDataServiceWorkerClient(const std::string& address,
   auto client = std::make_unique<DataServiceWorkerClient>(address, protocol,
                                                           transfer_protocol);
   TF_RETURN_IF_ERROR(client->Initialize());
+  metrics::RecordTFDataServiceDataTransferProtocolUsed(transfer_protocol);
   return client;
 }
 

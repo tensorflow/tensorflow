@@ -69,3 +69,25 @@ def LiftGather : Pat<
     (NamedAttributeList
       (NamedAttr<"batch_dims"> $batch_dims))),
   [(IsNotInLiftedFunc $res), (IsConstTensor $params)], (addBenefit 1)>;
+
+def LiftConv3D : Pat<
+  (TF_Conv3DOp:$res $input, $filter, $strides, $padding,
+    IsDataFormatNDHWC:$data_format, $dilations),
+  (LiftAsFunctionCall<"composite_conv3d_fn">
+    (ArgumentList $input, $filter),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"strides"> $strides),
+      (NamedAttr<"padding"> $padding),
+      (NamedAttr<"dilations"> $dilations))),
+  [(IsNotInLiftedFunc $res), (IsConstTensor $filter)], (addBenefit 1)>;
+
+def LiftBatchMatMul : Pat<
+  (TF_BatchMatMulV2Op:$res $x, $y, $adj_x, $adj_y),
+  (LiftAsFunctionCall<"composite_batch_matmul_fn">
+    (ArgumentList $x, $y),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"adj_x"> $adj_x),
+      (NamedAttr<"adj_y"> $adj_y))),
+  [(IsNotInLiftedFunc $res), (IsConstTensor $y)], (addBenefit 1)>;

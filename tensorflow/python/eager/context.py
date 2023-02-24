@@ -601,6 +601,21 @@ class Context:
       if self._is_global_context:
         pywrap_tfe.TFE_Py_SetCEagerContext(self._context_handle)
 
+  def ensure_uninitialized(self):
+    """Uninitialize handle and devices if not already done so."""
+    with self._initialize_lock:
+      if not self._initialized:
+        return
+      self._context_devices = None
+      self._logical_devices = None
+      self._server_def = None
+      self._initialized = False
+
+      if self._is_global_context:
+        pywrap_tfe.TFE_Py_SetCEagerContext(None)
+
+      self._context_handle = None
+
   def mark_as_global_context(self):
     # If the context was already initialized, publish it. Otherwise wait with
     # publication until it's initialized.
@@ -2714,9 +2729,9 @@ def async_clear_error():
   context().clear_executor_errors()
 
 
-def add_function(fdef):
-  """Add a function definition to the context."""
-  context().add_function(fdef)
+def add_function(tf_function):
+  """Add a TF_Function to the context."""
+  context().add_function(tf_function)
 
 
 def remove_function(name):

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
+#include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -47,17 +48,17 @@ constexpr char kNextSplitIndex[] = "next_split_index";
 }  // namespace
 
 SnapshotSplitProvider::SnapshotSplitProvider(
-    const std::string& dispatcher_address,
-    const std::string& dispatcher_protocol, const std::string& worker_address,
-    const SnapshotTaskDef& snapshot_task, int64_t source_index,
-    absl::Duration timeout, Env* env)
-    : dispatcher_address_(dispatcher_address),
-      dispatcher_protocol_(dispatcher_protocol),
-      worker_address_(worker_address),
+    const std::string& worker_address, const SnapshotTaskDef& snapshot_task,
+    int64_t source_index, absl::Duration timeout,
+    std::unique_ptr<DataServiceDispatcherClient> dispatcher, Env* env)
+    : worker_address_(worker_address),
       snapshot_task_(snapshot_task),
       source_index_(source_index),
       timeout_(timeout),
-      env_(env) {}
+      env_(env) {
+  mutex_lock l(mu_);
+  dispatcher_ = std::move(dispatcher);
+}
 
 Status SnapshotSplitProvider::GetNext(Tensor* split, bool* end_of_splits)
     TF_LOCKS_EXCLUDED(mu_) {
@@ -113,12 +114,6 @@ Status SnapshotSplitProvider::GetSplitFromFile(const std::string& split_file,
 
 StatusOr<int64_t> SnapshotSplitProvider::GetSplitFromDispatcher(
     Tensor* split, bool* end_of_splits) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  VLOG(3) << "Getting the next split from dispatcher at "
-          << dispatcher_address_;
-  if (!dispatcher_) {
-    dispatcher_ = std::make_unique<DataServiceDispatcherClient>(
-        dispatcher_address_, dispatcher_protocol_);
-  }
   int64_t local_split_index = 0;
   TF_RETURN_IF_ERROR(grpc_util::Retry(
       [this, split, &local_split_index, end_of_splits]()
@@ -139,15 +134,16 @@ SnapshotSplitProvider::GetSplitsFiles(int64_t start_index) const
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::string splits_directory = SourceDirectory(
       snapshot_task_.base_path(), snapshot_task_.stream_index(), source_index_);
-  std::vector<std::string> split_filenames;
-  TF_RETURN_IF_ERROR(env_->GetChildren(splits_directory, &split_filenames));
   absl::btree_map<int64_t, std::string> splits;
-  for (const std::string& split_filename : split_filenames) {
-    TF_ASSIGN_OR_RETURN(auto split_index, SplitIndex(split_filename));
+
+  TF_ASSIGN_OR_RETURN(std::vector<std::string> split_files,
+                      GetChildren(splits_directory, env_));
+  for (const std::string& split_file : split_files) {
+    TF_ASSIGN_OR_RETURN(auto split_index, SplitIndex(split_file));
     auto [local_split_index, global_split_index] = split_index;
     if (local_split_index >= next_split_index_) {
       splits[local_split_index] =
-          tsl::io::JoinPath(splits_directory, split_filename);
+          tsl::io::JoinPath(splits_directory, split_file);
     }
   }
   TF_RETURN_IF_ERROR(ValidateSplitFiles(splits, start_index));
@@ -203,6 +199,8 @@ Status SnapshotSplitProvider::ValidateSplitFiles(
   return OkStatus();
 }
 
+Status SnapshotSplitProvider::Reset() { return OkStatus(); }
+
 Status SnapshotSplitProvider::Save(
     std::function<std::string(std::string)> full_name,
     IteratorStateWriter* writer) TF_LOCKS_EXCLUDED(mu_) {
@@ -222,11 +220,6 @@ Status SnapshotSplitProvider::Restore(
   next_split_index_ = next_split_index;
   TF_ASSIGN_OR_RETURN(split_to_file_map_, GetSplitsFiles(next_split_index_));
   return OkStatus();
-}
-
-Status SnapshotSplitProvider::Reset() {
-  return errors::FailedPrecondition(
-      "tf.data SnapshotSplitProvider does not support `Reset`.");
 }
 
 }  // namespace data

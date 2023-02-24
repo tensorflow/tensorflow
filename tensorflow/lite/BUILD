@@ -548,6 +548,7 @@ cc_library_with_tflite(
 alias_with_tflite(
     name = "cc_api",
     actual = "cc_api_experimental",
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite/core/shims:__subpackages__",
         "//tensorflow/lite/delegates/flex:__subpackages__",
@@ -583,6 +584,7 @@ cc_library_with_tflite(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite/core/kernels:__subpackages__",
         "//tensorflow/lite/core/shims:__subpackages__",
@@ -667,6 +669,7 @@ cc_library_with_tflite(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     tflite_deps = [
         ":cc_api_stable",
     ],
@@ -729,7 +732,7 @@ cc_library(
         ":kernel_api",
         ":macros",
         "//tensorflow/lite/core:cc_api_experimental",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -835,8 +838,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     defines = select({
         ":tflite_kernel_use_xnnpack_false": [],
-        "//tensorflow:macos": [],
-        "//tensorflow:fuchsia": [],
+        ":tflite_with_xnnpack_explicit_false": [],
         "//conditions:default": [
             "TFLITE_KERNEL_USE_XNNPACK",
         ],
@@ -909,7 +911,7 @@ cc_test(
         ":framework",
         ":string",
         ":string_util",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
@@ -926,7 +928,7 @@ cc_library(
         ":framework",
         ":string_util",
         ":version",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/internal:signature_def",
@@ -1333,7 +1335,7 @@ cc_library_with_tflite(
     testonly = True,
     hdrs = ["test_util.h"],
     tflite_deps = [
-        "//tensorflow/lite/core/shims:c_shims_test_util",
+        "//tensorflow/lite/c:test_util",
     ],
     visibility = [":tflite_test_util_visibility"],
     deps = [

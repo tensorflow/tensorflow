@@ -43,10 +43,9 @@ llvm::SmallVector<InterpreterValue> gmlStLoop(
     MutableArrayRef<InterpreterValue> args, mlir::Operation* op,
     InterpreterState& state) {
   bool isBufferized = op->getNumResults() == 0;
-  auto forOp = llvm::dyn_cast<gml_st::ForOp>(op);
-  auto parallelOp = llvm::dyn_cast<gml_st::ParallelOp>(op);
+  auto parallelOp = llvm::cast<gml_st::ParallelOp>(op);
 
-  auto terminator = forOp ? forOp.getTerminator() : parallelOp.getTerminator();
+  auto terminator = parallelOp.getTerminator();
 
   int64_t numOutputs = terminator.getDsts().size();
   assert((args.size() - numOutputs) % 3 == 0 &&
@@ -60,14 +59,8 @@ llvm::SmallVector<InterpreterValue> gmlStLoop(
   auto steps = unpackInterpreterValues<int64_t>(boundArgs.take_back(numLoops));
 
   SmallVector<InterpreterValue> outputs;
-  if (forOp) {
-    for (size_t i = args.size() - numOutputs; i < args.size(); ++i) {
-      outputs.push_back(getInitOperand(op, i, args));
-    }
-  } else {
-    for (size_t i = args.size() - numOutputs; i < args.size(); ++i) {
-      outputs.push_back(getInitOperand(op, static_cast<int64_t>(i), args));
-    }
+  for (size_t i = args.size() - numOutputs; i < args.size(); ++i) {
+    outputs.push_back(getInitOperand(op, static_cast<int64_t>(i), args));
   }
 
   SmallVector<int64_t> iterSizes;
@@ -144,33 +137,9 @@ InterpreterValue tile(InterpreterState&, gml_st::TileOp op,
   return {result};
 }
 
-llvm::SmallVector<InterpreterValue> materialize(
-    InterpreterState&, gml_st::MaterializeOp op, const InterpreterValue& src,
-    ArrayRef<int64_t> dynamicOffsets, ArrayRef<int64_t> dynamicSizes,
-    ArrayRef<int64_t> dynamicStrides) {
-  auto tile = extractOffsetsSizesStrides(dynamicOffsets, dynamicSizes,
-                                         dynamicStrides, op);
-
-  auto out = src.typedAlike(tile.sizes);
-  out.fill([&](llvm::ArrayRef<int64_t> indices) {
-    llvm::SmallVector<int64_t> srcIndices;
-    for (int64_t i = 0; i < tile.sizes.size(); ++i) {
-      srcIndices.push_back(indices[i] * tile.strides[i] + tile.offsets[i]);
-    }
-    return src.extractElement(srcIndices);
-  });
-
-  if (op->getResultTypes().front().isa<ShapedType>()) {
-    return {out};
-  }
-  return {out.extractElement({})};
-}
-
-REGISTER_MLIR_INTERPRETER_OP("gml_st.for", gmlStLoop);
 REGISTER_MLIR_INTERPRETER_OP("gml_st.parallel", gmlStLoop);
 REGISTER_MLIR_INTERPRETER_OP("gml_st.set_yield", noOpTerminator);
 REGISTER_MLIR_INTERPRETER_OP("gml_st.yield", noOpTerminator);
-REGISTER_MLIR_INTERPRETER_OP(materialize);
 REGISTER_MLIR_INTERPRETER_OP(tile);
 
 }  // namespace

@@ -31,9 +31,9 @@ from tensorflow.python.compiler.tensorrt import trt_convert
 from tensorflow.python.compiler.tensorrt.test import test_utils
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
+from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -162,7 +162,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     g, var, _, _, _ = self._GetGraphForV1(device)
     with self.session(graph=g, config=self._GetConfigProto()) as sess:
       sess.run(var.initializer)
-      graph_def = graph_util.convert_variables_to_constants(
+      graph_def = convert_to_constants.convert_variables_to_constants(
           sess, g.as_graph_def(add_shapes=True), ["output"])
     node_name_to_op = {node.name: node.op for node in graph_def.node}
     self.assertEqual(

@@ -239,5 +239,12 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
                             attributes);
 }
 
+llvm::SmallVector<Value> AppendToVector(
+    const llvm::SmallVector<Value> &arguments, Value append) {
+  llvm::SmallVector<Value> ret(arguments);
+  ret.push_back(append);
+  return ret;
+}
+
 }  // namespace quant
 }  // namespace mlir

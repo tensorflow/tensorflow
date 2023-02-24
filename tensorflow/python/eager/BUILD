@@ -847,6 +847,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
         "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
     ] + tf_additional_rpc_deps(),
 )
 

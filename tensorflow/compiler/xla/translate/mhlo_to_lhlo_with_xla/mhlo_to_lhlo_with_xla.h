@@ -64,7 +64,6 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
       const xla::HloInstruction* instr);
 
   tsl::StatusOr<Operation*> EmitCustomCallOp(const xla::HloInstruction* instr);
-  tsl::StatusOr<lmhlo::FusionOp> EmitSoftmax(const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo_gpu::CholeskyOp> EmitCholesky(
       const xla::HloCustomCallInstruction* custom_call);
   tsl::StatusOr<Operation*> EmitGemm(
@@ -74,6 +73,8 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   tsl::StatusOr<Operation*> EmitCublasLtMatmulF8(
       const xla::HloCustomCallInstruction* custom_call);
   tsl::StatusOr<Operation*> EmitDnnConvolution(
+      const xla::HloCustomCallInstruction* custom_call);
+  tsl::StatusOr<Operation*> EmitDnnConvolutionReorderVectorized(
       const xla::HloCustomCallInstruction* custom_call);
   tsl::StatusOr<Operation*> EmitDnnBatchNorm(
       const xla::HloCustomCallInstruction* custom_call);

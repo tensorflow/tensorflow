@@ -322,6 +322,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":segment_id_ops",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:bincount_ops",
         "//tensorflow/python:check_ops",
@@ -335,6 +336,7 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python/framework:type_spec_registry",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//third_party/py/numpy",
     ],
 )
@@ -348,6 +350,7 @@ py_library(
         ":ragged_tensor_value",
         ":ragged_util",
         ":row_partition",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",
@@ -367,6 +370,7 @@ py_library(
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:composite_tensor_gradient",
         "//tensorflow/python/framework:type_spec_registry",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//third_party/py/numpy",
     ],
 )
@@ -407,6 +411,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python/framework:extension_type",
         "//tensorflow/python/types",
         "//third_party/py/numpy",
     ],
@@ -431,8 +436,7 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:ragged_math_ops_gen",
     ],

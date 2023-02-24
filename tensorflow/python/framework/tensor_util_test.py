@@ -32,6 +32,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import shape_util
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
@@ -1256,12 +1257,12 @@ class MaybeSetStaticShapeTest(test.TestCase):
 
   @contextlib.contextmanager
   def disableSetStaticShape(self):
-    flag_old = tensor_util._ENABLE_MAYBE_SET_STATIC_SHAPE
-    tensor_util._ENABLE_MAYBE_SET_STATIC_SHAPE = False
+    flag_old = shape_util._ENABLE_MAYBE_SET_STATIC_SHAPE
+    shape_util._ENABLE_MAYBE_SET_STATIC_SHAPE = False
     try:
       yield
     finally:
-      tensor_util._ENABLE_MAYBE_SET_STATIC_SHAPE = flag_old
+      shape_util._ENABLE_MAYBE_SET_STATIC_SHAPE = flag_old
 
   def testMaybeSetStaticShape(self):
     shape = constant_op.constant([2, 5], dtype=dtypes.int32)
@@ -1303,7 +1304,7 @@ class ShapeTensorTest(test_util.TensorFlowTestCase):
   def testConversion(self):
     """Make sure fully known TensorShape objects convert to Tensors."""
     shape = tensor_shape.TensorShape([1, tensor_shape.Dimension(2)])
-    shape_tensor = tensor_util.shape_tensor(shape)
+    shape_tensor = shape_util.shape_tensor(shape)
     self.assertAllEqual((1, 2), shape_tensor)
 
 

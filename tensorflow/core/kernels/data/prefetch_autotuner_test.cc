@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/prefetch_autotuner.h"
 
-#include <vector>
-
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -103,39 +101,6 @@ TEST(PrefetchAutotuner, StartWithMin) {
     EXPECT_EQ(8, t.buffer_limit())
         << "Failed at index " << i << " with value: " << consumption_values[i];
   }
-}
-
-TEST(PrefetchAutotunerTest, MemoryConsumption) {
-  PrefetchAutotuner t(model::kAutotune, 0);
-  t.RecordElementSize(10);
-  EXPECT_EQ(1, t.buffer_limit());
-  t.RecordConsumption(1, 80);
-  EXPECT_EQ(1, t.buffer_limit());
-  t.RecordConsumption(0, 80);  // Expect buffer limit to increase.
-  EXPECT_EQ(2, t.buffer_limit());
-  t.RecordConsumption(2, 80);
-  EXPECT_EQ(2, t.buffer_limit());
-  t.RecordConsumption(0, 80);  // Expect buffer limit to increase.
-  EXPECT_EQ(4, t.buffer_limit());
-  t.RecordConsumption(4, 80);
-  EXPECT_EQ(4, t.buffer_limit());
-  t.RecordConsumption(0, 80);  // Expect buffer limit to increase.
-  EXPECT_EQ(8, t.buffer_limit());
-  t.RecordConsumption(8, 80);
-  EXPECT_EQ(8, t.buffer_limit());
-  t.RecordConsumption(0, 80);  // Expect buffer limit to stay the same. No
-                               // memory left.
-  EXPECT_EQ(8, t.buffer_limit());
-  t.RecordConsumption(8, 80);
-  EXPECT_EQ(8, t.buffer_limit());
-  t.RecordConsumption(0, 80);  // Expect buffer limit to stay the same. No
-                               // memory left.
-  EXPECT_EQ(8, t.buffer_limit());
-  t.RecordConsumption(8, 80);
-  EXPECT_EQ(8, t.buffer_limit());
-  t.RecordConsumption(0, 200);  // Expect buffer limit to increase. Free memory
-                                // is increased.
-  EXPECT_EQ(16, t.buffer_limit());
 }
 
 }  // namespace

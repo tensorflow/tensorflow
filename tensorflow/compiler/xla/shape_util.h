@@ -22,6 +22,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <initializer_list>
+#include <numeric>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -104,7 +105,16 @@ class ShapeUtil {
   // Returns the number of elements are contained within the provided shape;
   // e.g. for rank 0 (scalars) the result is always 1.
   // Precondition: shape.IsArray()
-  static int64_t ElementsIn(const Shape& shape);
+  static inline int64_t ElementsIn(const Shape& shape) {
+    DCHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
+    DCHECK_EQ(shape.dimensions_size(), shape.rank());
+    if (shape.dimensions().size() == 1) {
+      return shape.dimensions()[0];
+    }
+    return std::accumulate<decltype(shape.dimensions().begin()), int64_t>(
+        shape.dimensions().begin(), shape.dimensions().end(), 1LL,
+        std::multiplies<int64_t>());
+  }
 
   // As ElementsIn(), but recurses through tuples.
   static int64_t ElementsInRecursive(const Shape& shape);
@@ -763,7 +773,10 @@ class ShapeUtil {
       const Shape& shape,
       const ForEachParallelVisitorFunction& visitor_function);
 
-  // About 0-2-1 transpose:
+  // In this case, we care about transposes that swap two dimensions of a
+  // a shape that can be viewed as three logical components 0-1-2 in the order
+  // of major to minor.
+  // As an example, let's consider a 0-2-1 transpose:
   //
   // If a shape can be viewed as three logical components 0-1-2 in the order of
   // major to minor, a 0-2-1-transpose changes the order of such logical
@@ -773,15 +786,19 @@ class ShapeUtil {
   // normalized shapes. The original input/output shapes are called unnormalized
   // shapes.
   //
+  // 'permutation' specifies the kind of transpose. For a 0-2-1 transpose, it
+  // should be set to {0, 2, 1}.
   // If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
-  // normalized shape of `b` or the 0-2-1 shape.
-  static std::optional<Vector3> FindTranspose021(const Shape& input_shape,
-                                                 const Shape& output_shape);
+  // normalized shape of `b` or the 0-2-1 shape. In general, the
+  // permutation[0]-permutation[1]-permutation[2] shape is returned.
+  static std::optional<Vector3> GetNormalizedTransposeShape(
+      const Shape& input_shape, const Shape& output_shape,
+      const Vector3& permutation);
 
   // Entry point for physical + logical transposition.
-  static std::optional<Vector3> FindLogicalTranspose021(
+  static std::optional<Vector3> GetNormalizedLogicalTransposeShape(
       const Shape& input_shape, const Shape& output_shape,
-      absl::Span<int64_t const> dimensions);
+      absl::Span<int64_t const> dimensions, const Vector3& permutation);
 
   // Strips device-specific information, namely tiling and memory-space
   // information, from a shape.

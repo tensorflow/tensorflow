@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/serializer/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_tfl_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
@@ -230,7 +231,8 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
   }
 
   pass_manager.clear();
-  mlir::odml::AddTFToStablehloPasses(pass_manager, false, false);
+  mlir::odml::AddTFToStablehloPasses(pass_manager, /*skip_resize*/ true,
+                                     /*smuggle_disallowed_ops*/ true);
   // Print out a detailed report of non-converted stats.
   pass_manager.addPass(mlir::odml::createPrintOpStatsPass());
   mlir::odml::AddStablehloOptimizationPasses(pass_manager);
@@ -238,26 +240,14 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
     return statusHandler.ConsumeStatus();
   }
 
-  // return to avoid adding TFL converter path
-
   if (export_to_mlir) {
     llvm::raw_string_ostream os(*result);
     module.print(os);
     return statusHandler.ConsumeStatus();
   }
 
-  // Convert StableHLO MLIR to TFLite Custom Op MLIR
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::odml::CreateStablehloToTflPass());
-  if (failed(pass_manager.run(module))) {
-    return statusHandler.ConsumeStatus();
-  }
-
-  // Write TFLite Custom Op MLIR to Flatbuffer
-  // TODO(b/260112687): will serialize StableHLO to Flatbuffer directly
-  tflite::FlatbufferExportOptions options;
-  options.toco_flags.set_allow_custom_ops(true);
-  if (!tflite::MlirToFlatBufferTranslateFunction(module, options, result)) {
+  mlir::odml::FlatbufferExportOptions options;
+  if (!mlir::odml::MlirToFlatBufferTranslateFunction(module, options, result)) {
     return statusHandler.ConsumeStatus();
   }
 
@@ -300,6 +290,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
           pass_manager.getContext()));
 
   if (pass_config.enable_stablehlo_conversion) {
+    // return to avoid adding TFL converter path
     return ConvertTFExecutorToStablehloFlatbuffer(
         pass_manager, module, export_to_mlir, statusHandler, toco_flags,
         pass_config, session, result);

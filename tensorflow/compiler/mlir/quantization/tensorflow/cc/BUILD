@@ -91,3 +91,56 @@ tf_cc_test(
         "@llvm-project//mlir:Support",
     ],
 )
+
+cc_library(
+    name = "convert_asset_args",
+    srcs = ["convert_asset_args.cc"],
+    hdrs = ["convert_asset_args.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:import_model",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "convert_asset_args_test",
+    srcs = ["convert_asset_args_test.cc"],
+    deps = [
+        ":convert_asset_args",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "status_macro",
+    hdrs = ["status_macro.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/tsl/platform:macros",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+tf_cc_test(
+    name = "status_macro_test",
+    srcs = ["status_macro_test.cc"],
+    deps = [
+        ":status_macro",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status",
+    ],
+)

@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/compiler/xla/service/shape_inference.h"
 
 namespace xla {
 
@@ -181,7 +180,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleRngBitGenerator(HloInstruction*) override;
   Status HandleRngGetAndUpdateState(HloInstruction*) override;
   Status HandleReverse(HloInstruction* reverse) override;
-  Status HandleSort(HloInstruction* sort) override;
+  Status HandleSort(HloInstruction* hlo) override;
   Status HandleConstant(HloInstruction* constant) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
@@ -319,8 +318,8 @@ class TargetVerifierMetadata {
 
   virtual std::unique_ptr<ShapeVerifier> GetVerifier() const = 0;
 
-  TargetVerifierMetadata() {}
-  virtual ~TargetVerifierMetadata() {}
+  TargetVerifierMetadata() = default;
+  virtual ~TargetVerifierMetadata() = default;
 
   TargetVerifierMetadata(const TargetVerifierMetadata&) = delete;
   TargetVerifierMetadata& operator=(const TargetVerifierMetadata&) = delete;

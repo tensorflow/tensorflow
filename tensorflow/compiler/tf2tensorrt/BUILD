@@ -738,7 +738,6 @@ tf_cuda_library(
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:annotated_traceme",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps() + select({
         ":use_efficient_nms_plugin": [":efficient_nms_plugin"],

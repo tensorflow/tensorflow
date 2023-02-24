@@ -85,6 +85,9 @@ absl::Duration ApproximateLatencyEstimator::GetAverageLatency(Duration duration)
   double interval_count =
       static_cast<double>(latency_count_counter_ -
                           latency_count_[PrevSlot(static_cast<int>(duration))]);
+  if (interval_count == 0) {
+    return absl::ZeroDuration();
+  }
   return absl::Duration(absl::Microseconds(interval_latency)) / interval_count;
 }
 

@@ -598,11 +598,16 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e5m2Roundtrip) {
     inputs.push_back(Eigen::half{test_case.input});
     expected_roundtrip.push_back(Eigen::half{test_case.expected_roundtrip});
   }
-
   auto f8 =
       ConvertElementType(ConstantR1<Eigen::half>(&builder, inputs), F8E5M2);
   ConvertElementType(f8, F16);
+  const bool saved =
+      execution_options_.debug_options().xla_allow_excess_precision();
+  execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
+      false);
   ComputeAndCompareR1<Eigen::half>(&builder, expected_roundtrip, {});
+  execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
+      saved);
 }
 
 XLA_TEST_F(ConvertTest, ConvertF8e5m2F16RoundtripExhaustive) {
@@ -671,7 +676,13 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e4m3fnRoundtrip) {
   auto f8 =
       ConvertElementType(ConstantR1<Eigen::half>(&builder, inputs), F8E4M3FN);
   ConvertElementType(f8, F16);
+  const bool saved =
+      execution_options_.debug_options().xla_allow_excess_precision();
+  execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
+      false);
   ComputeAndCompareR1<Eigen::half>(&builder, expected_roundtrip, {});
+  execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
+      saved);
 }
 
 XLA_TEST_F(ConvertTest, ConvertF8e4m3fnF16RoundtripExhaustive) {
@@ -687,7 +698,37 @@ XLA_TEST_F(ConvertTest, ConvertF8e4m3fnF16RoundtripExhaustive) {
   xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e4m3fn>(&builder, all_f8);
   xla::XlaOp all_f8_as_f16 = ConvertElementType(all_f8_as_f8, F16);
   ConvertElementType(all_f8_as_f16, F8E4M3FN);
-  ComputeAndCompareR1<tsl::float8_e4m3fn>(&builder, all_f8, {});
+  ComputeAndCompare(&builder, {}, ErrorSpec(0.));
+}
+
+XLA_TEST_F(ConvertTest, ConvertF8e4m3fnF16RoundtripExhaustive2) {
+  // Convert from FP32 to FP8.
+  XlaBuilder builder(TestName());
+
+  std::vector<float> all_f8;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(static_cast<float>(
+        Eigen::numext::bit_cast<tsl::float8_e4m3fn>(static_cast<uint8_t>(i))));
+  }
+
+  xla::XlaOp all_f8_as_f32 = ConstantR1<float>(&builder, all_f8);
+  ConvertElementType(all_f8_as_f32, F8E4M3FN);
+  ComputeAndCompare(&builder, {}, ErrorSpec(0.));
+}
+
+XLA_TEST_F(ConvertTest, ConvertF8e4m3fnF16RoundtripExhaustive3) {
+  // Convert from FP8 to FP32.
+  XlaBuilder builder(TestName());
+
+  std::vector<tsl::float8_e4m3fn> all_f8;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(
+        Eigen::numext::bit_cast<tsl::float8_e4m3fn>(static_cast<uint8_t>(i)));
+  }
+
+  xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e4m3fn>(&builder, all_f8);
+  ConvertElementType(all_f8_as_f8, F32);
+  ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
 }  // namespace

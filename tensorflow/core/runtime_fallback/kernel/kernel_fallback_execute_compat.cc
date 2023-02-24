@@ -65,7 +65,6 @@ const char kOpKernelRunnerCacheResourceName[] =
 namespace {
 
 using ::tensorflow::tfrt_stub::OpKernelRunner;
-using ::tensorflow::tfrt_stub::OpKernelRunnerTable;
 using ::tensorflow::tfrt_stub::OpKernelRunState;
 using ::tfrt::AsyncValue;
 using ::tfrt::AsyncValueRef;
@@ -116,6 +115,8 @@ Status SetUpKernelFallbackCompatRequestContext(
     tfrt::RequestContextBuilder* builder,
     const tensorflow::DeviceMgr* device_manager,
     const tensorflow::ProcessFunctionLibraryRuntime* pflr,
+    tfrt_stub::OpKernelRunnerTable* runner_table,
+    FallbackResourceArray* resource_array,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
     const absl::optional<SessionMetadata>& model_metadata,
     std::function<void(std::function<void()>)>* runner,
@@ -123,14 +124,8 @@ Status SetUpKernelFallbackCompatRequestContext(
   DCHECK(builder);
   DCHECK(device_manager);
   DCHECK(pflr);
-
-  auto* runner_table =
-      builder->resource_context()->GetOrCreateResource<OpKernelRunnerTable>(
-          kOpKernelRunnerTableResourceName);
-
-  auto* resource_array =
-      builder->resource_context()->GetOrCreateResource<FallbackResourceArray>(
-          kFallbackResourceArray);
+  DCHECK(runner_table);
+  DCHECK(resource_array);
 
   auto& fallback_request_state =
       builder->context_data().emplace<KernelFallbackCompatRequestState>(
@@ -144,7 +139,8 @@ Status SetUpKernelFallbackCompatRequestContext(
 }
 
 Status SetUpKernelFallbackCompatRequestContext(
-    tfrt::RequestContextBuilder* builder, OpKernelRunnerTable* runner_table,
+    tfrt::RequestContextBuilder* builder,
+    tfrt_stub::OpKernelRunnerTable* runner_table,
     tensorflow::EagerContext* eager_context,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
     const absl::optional<SessionMetadata>& model_metadata) {
@@ -153,9 +149,9 @@ Status SetUpKernelFallbackCompatRequestContext(
           kFallbackResourceArray);
 
   if (runner_table == nullptr)
-    runner_table =
-        builder->resource_context()->GetOrCreateResource<OpKernelRunnerTable>(
-            kOpKernelRunnerTableResourceName);
+    runner_table = builder->resource_context()
+                       ->GetOrCreateResource<tfrt_stub::OpKernelRunnerTable>(
+                           kOpKernelRunnerTableResourceName);
 
   auto step_id = builder->id();
 

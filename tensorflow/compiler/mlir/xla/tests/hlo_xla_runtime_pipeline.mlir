@@ -1,4 +1,4 @@
-// RUN: xla-opt -split-input-file -hlo-xla-runtime-pipeline %s | FileCheck %s
+// RUN: tf-opt -split-input-file -hlo-xla-runtime-pipeline %s | FileCheck %s
 
 // CHECK-LABEL: func.func @simple_add(
 func.func @simple_add(%arg0: tensor<f64>) -> tensor<f64> {
@@ -49,4 +49,22 @@ func.func @csr_gendot(%arg0: tensor<32x64xf64, #CSR>,
     : (tensor<32x64xf64, #CSR>,
        tensor<64x32xf64>) -> tensor<32x32xf64>
   return %0 : tensor<32x32xf64>
+}
+
+// -----
+
+#CSR  = #sparse_tensor.encoding<{ dimLevelType = ["dense", "compressed"] }>
+#DCSR = #sparse_tensor.encoding<{ dimLevelType = ["compressed", "compressed"] }>
+
+// CHECK-LABEL: func.func @convert_nop(
+// CHECK-SAME:    %[[PTR:.*0]]: memref<?xindex>,
+// CHECK-SAME:    %[[IDX:.*1]]: memref<?xindex>,
+// CHECK-SAME:    %[[VAL:.*2]]: memref<?xf64>,
+// CHECK-SAME:    %[[SPEC:.*3]]: !llvm.struct<(array<2 x i64>, array<3 x i64>)>
+// CHECK:         return %[[PTR]], %[[IDX]], %[[VAL]], %[[SPEC]] : memref<?xindex>, memref<?xindex>, memref<?xf64>, !llvm.struct<(array<2 x i64>, array<3 x i64>)>
+func.func @convert_nop(%arg0: tensor<10x10xf64, #CSR>) -> tensor<10x10xf64, #CSR> {
+  %0 = sparse_tensor.convert %arg0 : tensor<10x10xf64, #CSR> to tensor<10x10xf64, #DCSR>
+  %1 = sparse_tensor.convert %0 : tensor<10x10xf64, #DCSR> to tensor<10x10xf64, #CSR>
+  %2 = sparse_tensor.convert %1 : tensor<10x10xf64, #CSR> to tensor<10x10xf64, #CSR>
+  return %2 : tensor<10x10xf64, #CSR>
 }

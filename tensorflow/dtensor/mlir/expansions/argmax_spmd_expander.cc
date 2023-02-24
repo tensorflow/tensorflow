@@ -73,7 +73,7 @@ StatusOr<mlir::Operation*> ArgMaxSPMDExpander::ExpandOp(mlir::Operation* op) {
     return errors::InvalidArgument(
         OpName(op), " is missing layouts during SPMD Expansion.");
 
-  auto input = argmax_op.getInput();
+  mlir::Value input = argmax_op.getInput();
   const auto input_rank = ValueRank(input);
 
   TF_ASSIGN_OR_RETURN(auto input_shape, GetShapeOfValue(input));

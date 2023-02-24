@@ -17,17 +17,17 @@ candidate for replacement.
     bazel test some-jax-test
       --test_env=XLA_FLAGS="--xla_cpu_use_xla_runtime --xla_dump_to=/tmp/dump
       --xla_dump_hlo_snapshots" --test_filter=SomeSpecific.Test
-      --test_sharding_strategy=disabled
+      --test_sharding_strategy=disabled --test_strategy=local
     ```
 
 1.  Figure out the culprit module and pass (sorry, no automation yet):
 
     ```
     bazel run tensorflow/compiler/xla/mlir/tools/mlir_replay:mlir_replay -- \
-      --mlir_compilation_trace=/tmp/dump/module_0000.jit__something.mlir-trace.pb \
-      --hlo_snapshot=/tmp/dump/module_0000.jit__something.snapshot.0.pb \
-      --print_changes_only \
-      --execution_trace_dir=/tmp/execution
+      --mlir-compilation-trace=/tmp/dump/module_0000.jit__something.mlir-trace.pb \
+      --hlo-snapshot=/tmp/dump/module_0000.jit__something.snapshot.0.pb \
+      --print-changes-only \
+      --execution-trace-dir=/tmp/execution
     ```
 
     You should see a pass after which results change. You'll want to use the

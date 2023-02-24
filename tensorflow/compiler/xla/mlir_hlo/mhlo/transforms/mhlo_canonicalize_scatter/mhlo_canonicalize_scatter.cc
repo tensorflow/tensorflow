@@ -120,7 +120,9 @@ SmallVector<Value> reshapeUpdatesToEnsureSingleScatterDimension(
   }
   if (numScatterDims == 0) {
     return to_vector(llvm::map_range(updates, [&](Value update) -> Value {
-      return insertDegenerateDimensions(b, loc, update, {0});
+      return insertDegenerateDimensions(
+          b, loc, cast<TypedValue<TensorType>>(update),
+          {0});
     }));
   }
   return updates;
@@ -138,8 +140,9 @@ SmallVector<Value> reshapeUpdatesToMatchOperandShape(
     shiftedScatterDimsToOperandDims.push_back(i + 1);
 
   return to_vector(map_range(updates, [&](Value update) -> Value {
-    return insertDegenerateDimensions(b, loc, update,
-                                      shiftedScatterDimsToOperandDims);
+    return insertDegenerateDimensions(
+        b, loc, cast<TypedValue<TensorType>>(update),
+        shiftedScatterDimsToOperandDims);
   }));
 }
 

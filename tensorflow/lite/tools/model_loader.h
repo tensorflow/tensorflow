@@ -34,7 +34,7 @@ namespace tools {
 // Class to load the Model.
 class ModelLoader {
  public:
-  virtual ~ModelLoader() {}
+  virtual ~ModelLoader() = default;
 
   // Return whether the model is loaded successfully.
   virtual bool Init();

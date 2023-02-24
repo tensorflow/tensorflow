@@ -403,14 +403,6 @@ class Mesh(_pywrap_dtensor_device.Mesh):
         global_devices=global_devices)
     return h_mesh
 
-  def is_remote(self) -> bool:
-    """Returns True if a Mesh contains only remote devices."""
-    return not self._local_device_ids and self._global_device_ids.size > 0
-
-  def local_device_ids(self) -> List[int]:
-    """Returns a list of local device IDs."""
-    return self._local_device_ids
-
   def local_device_locations(self) -> List[Dict[str, int]]:
     """Returns a list of local device locations.
 
@@ -419,27 +411,6 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     """
     mapping = self.unravel_index()
     return [mapping[device_id] for device_id in self.local_device_ids()]
-
-  def local_devices(self) -> List[str]:
-    """Returns a list of local device specs represented as strings."""
-    return [d.to_string() for d in self._local_devices]
-
-  def min_global_device_id(self) -> int:
-    """Returns the minimum global device ID."""
-    # global_device_ids sequentially increases.
-    return self._global_device_ids.flatten()[0]
-
-  def num_local_devices(self) -> int:
-    """Returns the number of local devices."""
-    return len(self._local_devices)
-
-  def shape(self) -> List[int]:
-    """Returns the shape of the mesh."""
-    return [self.dim_size(dim) for dim in self._dim_names]
-
-  @property
-  def size(self) -> int:
-    return len(np.ravel(self._global_device_ids))
 
   @property
   def strides(self) -> List[int]:

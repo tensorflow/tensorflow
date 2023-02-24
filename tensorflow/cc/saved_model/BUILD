@@ -15,6 +15,10 @@ load(
     "if_static",
     "if_static_and_not_mobile",
 )
+load(
+    "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
+    "tf_cc_fuzz_test",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -429,5 +433,18 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "saved_model_fuzz",
+    srcs = ["saved_model_fuzz.cc"],
+    deps = [
+        ":constants",
+        ":loader",
+        ":tag_constants",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
     ],
 )

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_H_
 
 #include <memory>
+#include <optional>
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -47,7 +48,7 @@ namespace mhlo {
 /// used.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass(
     bool allow_partial_conversion = false, bool legalize_chlo = true,
-    llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None,
+    llvm::Optional<StringRef> tf2xla_fallback_device_type = std::nullopt,
     bool prefer_tf2xla = false);
 
 /// Legalize whitelisted Ops using TF2XLA fallback for ops that must also be
@@ -111,7 +112,7 @@ bool HasTf2XlaFallback(Operation* op);
 LogicalResult legalizeTF(
     Operation* op, bool allow_partial_conversion = false,
     bool legalize_chlo = true,
-    llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None,
+    llvm::Optional<StringRef> tf2xla_fallback_device_type = std::nullopt,
     bool prefer_tf2xla = false);
 
 // Legalizes TF/XLA communication ops (TF dialect) to HLO dialect communication
@@ -123,17 +124,28 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCollectivePass();
 
 // Verifies that the TF/XLA ops have all been lowered to MHLO.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateVerifyTFXLALegalizationPass(
+    bool legalize_chlo = true);
+
+// Transforms TFXLA Device specific ops into device independent ops.
 std::unique_ptr<OperationPass<func::FuncOp>>
-CreateVerifyTFXLALegalizationPass();
+CreateTFXLADeviceSpecificTransformsPass(
+    llvm::Optional<StringRef> tf2xla_fallback_device_type = std::nullopt);
+
+// Adjusts XLA layout for Infeed ops.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateInfeedsOpsXlaAdjustLayoutPass();
 
 #define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_CONVERTMHLOQUANTTOINT
+#define GEN_PASS_DECL_INFEEDSOPSXLAADJUSTLAYOUT
 #define GEN_PASS_DECL_LEGALIZETF
 #define GEN_PASS_DECL_LEGALIZETFCOLLECTIVE
 #define GEN_PASS_DECL_LEGALIZETFMODULEPASS
 #define GEN_PASS_DECL_LEGALIZETFNOFALLBACK
 #define GEN_PASS_DECL_LEGALIZETFTYPESPASS
+#define GEN_PASS_DECL_TFXLADEVICESPECIFICTRANSFORMS
 #define GEN_PASS_DECL_VERIFYTFXLALEGALIZATION
-#define GEN_PASS_DECL_CONVERTMHLOQUANTTOINT
 #include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
 
 #define GEN_PASS_REGISTRATION

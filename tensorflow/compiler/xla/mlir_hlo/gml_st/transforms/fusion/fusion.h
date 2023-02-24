@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef MLIR_HLO_GML_ST_TRANSFORMS_FUSION_FUSION_H
 #define MLIR_HLO_GML_ST_TRANSFORMS_FUSION_FUSION_H
 
+#include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
-#include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/PatternMatch.h"
 
@@ -48,7 +49,7 @@ void populateFusionPatterns(
     RewritePatternSet *patterns);
 
 struct FusionCluster {
-  DenseSet<Operation *> operations;
+  SetVector<Operation *> operations;
   Operation *root;
 };
 
@@ -63,11 +64,17 @@ FusionCluster findMapFusionCluster(Operation *op);
 LogicalResult fuseFillOpsIntoParallelOp(PatternRewriter &rewriter,
                                         ParallelOp parallelOp);
 
+// Creates gml_st::TilingOptions from the list of tile sizes.
+gml_st::TilingOptions getGmlStTilingOptions(ArrayRef<int64_t> tileSizes);
+
 // Tiles the op to gml_st.parallel and fuses greedily according to the filter.
 FailureOr<ParallelOp> tileUsingGmlStParallelAndFuseGreedily(
     PatternRewriter &rewriter, Operation *op,
     const mlir::gml_st::TilingOptions &opts, StringRef label,
     llvm::function_ref<bool(Operation *)> fuseFilterFn);
+
+// Creates SCFTilingOptions from the list of tile sizes.
+scf::SCFTilingOptions getSCFTilingOptions(ArrayRef<int64_t> tileSizes);
 
 // Tiles the op to scf.for and fuses greedily according to the filter.
 FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
@@ -79,6 +86,16 @@ FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
 LogicalResult tilePeeledOpsToScalars(
     PatternRewriter &rewriter, const GmlStPeelingResult &peelingResult,
     StringRef label, llvm::function_ref<bool(Operation *)> fuseFilterFn);
+
+// Creates gml_st.fusion op with a region with ops from the fusion cluster.
+// Operands of the ops in the region are replaced with region arguments to
+// isolate the fusion cluster form above. Usages of the ops are replaces with
+// the fusion op results.
+FailureOr<gml_st::FusionOp> wrapFusionCluster(
+    PatternRewriter &rewriter, const FusionCluster &fusionCluster);
+
+// Replaces gml_st.fusion op with ops from the region.
+LogicalResult inlineFusionCluster(FusionOp fusionOp, PatternRewriter &rewriter);
 
 }  // namespace gml_st
 }  // namespace mlir

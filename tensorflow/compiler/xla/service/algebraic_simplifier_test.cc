@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 
 #include <memory>
+#include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -32,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
+#include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -51,6 +55,12 @@ using ::testing::ElementsAre;
 namespace m = match;
 
 class AlgebraicSimplifierTest : public HloTestBase {
+ public:
+  AlgebraicSimplifierTest()
+      : HloTestBase(/*verifier_layout_sensitive=*/true,
+                    /*allow_mixed_precision_in_hlo_verifier=*/true,
+                    LayoutAssignment::InstructionCanChangeLayout) {}
+
  protected:
   AlgebraicSimplifierOptions default_options_;
 };
@@ -5529,9 +5539,17 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfBatchDimsInBatchDotCantSimplify) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
+  auto options = AlgebraicSimplifierOptions();
+
+  options.set_supports_non_canonical_dots(false);
+  AlgebraicSimplifier simplifier(options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&simplifier, module.get()));
   EXPECT_FALSE(changed);
+
+  options.set_supports_non_canonical_dots(true);
+  AlgebraicSimplifier simplifier2(options);
+  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&simplifier2, module.get()));
+  EXPECT_TRUE(changed);
 }
 
 TEST_F(AlgebraicSimplifierTest, TransposeOfNonCanonicalBatchDotCantSimplify) {
@@ -7963,7 +7981,6 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationMultiply) {
               GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
 }
 
-
 TEST_F(AlgebraicSimplifierTest, AbsEliminationPower2) {
   const char* kModuleStr = R"(
     HloModule m
@@ -8994,6 +9011,28 @@ TEST_F(AlgebraicSimplifierTest, SwapConstantEwboWithReverse2) {
                                       m::Reverse(m::Parameter(0)))));
 }
 
+TEST_F(AlgebraicSimplifierTest, SquaredComplexSqrtIsFloat) {
+  const char* const kModuleStr = R"(
+  HloModule module
+
+  ENTRY entry {
+    arg = c64[7]{0} parameter(0)
+    multiply = c64[7]{0} multiply(arg, arg)
+    ROOT sqrt = c64[7]{0} sqrt(multiply)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_TRUE(g);
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Convert(m::Abs(m::Parameter(0)))));
+}
+
 // Don't replace root instruction with the copy-to-operand optimization if
 // sharding is applied.
 TEST_F(AlgebraicSimplifierTest, RootCopySharding) {
@@ -9085,6 +9124,56 @@ TEST_F(AlgebraicSimplifierTest,
               GmockMatch(m::Reshape(m::Reverse())));
   EXPECT_THAT(computation->root_instruction()->operand(0)->dimensions(),
               after_rewrite_rev_dims);
+}
+
+// Make sure the optimization for reshape(dynamic-update-slice) does not more
+// forward if the dus has multiple users.
+TEST_F(AlgebraicSimplifierTest, ReshapeOfDupDoNotCloneMultiUserDup) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[128,1184,1,128]{3,2,1,0} parameter(0)
+      p1 = f32[128,1,1,128]{3,2,1,0} parameter(1)
+      p2 = s32[] parameter(2)
+      constant.6030 = s32[] constant(0)
+      dynamic-update-slice.1854 = f32[128,1184,1,128]{3,2,1,0} dynamic-update-slice(p0, p1, constant.6030, p2, constant.6030, constant.6030)
+      reshape.33672 = f32[128,1,1184,128]{3,1,2,0} reshape(dynamic-update-slice.1854)
+      ROOT tuple.0 = (f32[128,1,1184,128]{3,1,2,0}, f32[128,1184,1,128]{3,2,1,0}) tuple(reshape.33672, dynamic-update-slice.1854)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_FALSE(g);
+}
+
+TEST_F(AlgebraicSimplifierTest, MultiplyOfConvertedPred) {
+  const char* kModuleStr = R"(
+   HloModule m
+   test {
+     p = pred[2,2]{0,1} parameter(0)
+     convert = f32[2,2]{0,1} convert(p)
+     p2 = f32[2,2]{0,1} parameter(1)
+     ROOT multiply = f32[2,2]{0,1} multiply(p2, convert)
+   }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_TRUE(g);
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Select(m::Parameter(0), m::Parameter(1),
+                                   m::Broadcast(m::ConstantScalar(0)))));
+  // Also run the HloVerifier on the resulting module to check that the
+  // generated instructions don't have an invalid layout change now.
+  EXPECT_TRUE(verifier().Run(m.get()).status().ok());
 }
 
 }  // namespace

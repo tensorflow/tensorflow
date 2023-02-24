@@ -496,32 +496,6 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
   return lhs == rhs;
 }
 
-/* static */ absl::Span<const int64_t> LayoutUtil::MinorToMajor(
-    const Shape& shape) {
-  CHECK(shape.IsArray());
-  return shape.layout().minor_to_major();
-}
-
-/* static */ absl::Span<const int64_t> LayoutUtil::MinorToMajor(
-    const Layout& layout) {
-  return layout.minor_to_major();
-}
-
-/* static */ int64_t LayoutUtil::Major(const Layout& layout,
-                                       int64_t physical_dimension_number) {
-  CHECK_LE(0, physical_dimension_number);
-  CHECK_LT(physical_dimension_number, layout.minor_to_major_size());
-  return Minor(layout,
-               layout.minor_to_major_size() - 1 - physical_dimension_number);
-}
-
-/* static */ int64_t LayoutUtil::Minor(const Layout& layout,
-                                       int64_t physical_dimension_number) {
-  CHECK_LE(0, physical_dimension_number);
-  CHECK_LT(physical_dimension_number, layout.minor_to_major_size());
-  return layout.minor_to_major(physical_dimension_number);
-}
-
 /* static */ std::vector<int64_t> LayoutUtil::MakeLogicalToPhysical(
     const Layout& layout) {
   std::vector<int64_t> logical_to_physical(layout.minor_to_major_size());

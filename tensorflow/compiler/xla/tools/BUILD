@@ -17,6 +17,10 @@ load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
+load(
+    "//tensorflow/tsl/platform:build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -135,6 +139,23 @@ xla_cc_binary(
         ":replay_computation_library",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/stream_executor:cuda_platform",
+    ],
+)
+
+xla_cc_test(
+    name = "replay_computation_bin_gpu_test",
+    srcs = ["replay_computation_bin_gpu_test.cc"],
+    data = [
+        "data/add.hlo",
+        ":replay_computation_gpu",
+        ":replay_computation_interpreter",
+    ],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:subprocess",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -267,10 +288,10 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:compilation_environments",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
     ],
 )
 

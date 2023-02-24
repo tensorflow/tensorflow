@@ -52,6 +52,7 @@ INCLUDEPRE_RE = re.compile(r"absl::lts_[0-9]+::base_internal::ThrowStdOutOfRange
                            r"absl::lts_[0-9]+::container_internal|" # for _pywrap_tfcompile
                            r"absl::lts_[0-9]+::Cord|" # for tensorflow::Status
                            r"absl::lts_[0-9]+::Cord::DestroyCordSlow|" # for tensorflow::Status
+                           r"absl::lts_[0-9]+::cord_internal::CordzInfo::MaybeTrackCordImpl" # tensorflow::Status usage of absl::Cord
                            r"google::protobuf::internal::ExplicitlyConstructed|"
                            r"google::protobuf::internal::ArenaImpl::AllocateAligned|" # for contrib/data/_prefetching_ops
                            r"google::protobuf::internal::ArenaImpl::AddCleanup|" # for contrib/data/_prefetching_ops
@@ -303,6 +304,8 @@ def main():
     def_fp.write("\t ??1CoordinatedTask@tensorflow@@UEAA@XZ\n") # for _pywrap_tfe
     def_fp.write("\t ?CopyFrom@CoordinatedTask@tensorflow@@QEAAXAEBV12@@Z\n") # for _pywrap_tfe
     def_fp.write("\t ??0CoordinatedTask@tensorflow@@IEAA@PEAVArena@protobuf@google@@_N@Z\n") # for _pywrap_tfe
+    def_fp.write("\t ?MaybeTrackCordImpl@CordzInfo@cord_internal@lts_20220623@absl@@CAXAEAVInlineData@234@AEBV5234@W4MethodIdentifier@CordzUpdateTracker@234@@Z\n") # for tensorflow::Status usage of absl::Cord
+
 
     # Each symbols returned by undname matches the same position in candidates.
     # We compare on undname but use the decorated name from candidates.

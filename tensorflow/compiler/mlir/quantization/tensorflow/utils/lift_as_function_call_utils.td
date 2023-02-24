@@ -22,6 +22,12 @@ class LiftAsFunctionCall<string func_name, int returns = 1> :
   NativeCodeCall<"LiftAsFunctionCall($_builder, $_loc, "
                     "\""# func_name #"\", $0...)", returns>;
 
+// Add the second argument to the first argument, which is expected to be an
+// argument list.
+// bias(einsum(inputs), bias) --> einsum_with_bias(AppendToVector(inputs, bias))
+// Since inputs is a vector in case of einsum, we cannot use ArgumentList here.
+def AppendToVector : NativeCodeCall<"AppendToVector($0, $1)">;
+
 // The list of arguments of the composite function.
 def ArgumentList : NativeCodeCall<"llvm::SmallVector<Value>{$0...}">;
 
