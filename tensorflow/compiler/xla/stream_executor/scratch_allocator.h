@@ -23,9 +23,9 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/temporary_device_memory.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -51,7 +51,7 @@ class ScratchAllocator {
   //
   // This is a temporary allocation, and the caller is responsible for
   // deallocating at some known-safe point. See the class comment above.
-  virtual port::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
+  virtual tsl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
       int64_t byte_size) = 0;
 };
 
@@ -68,7 +68,7 @@ class OneTimeScratchAllocator : public ScratchAllocator {
 
   int64_t GetMemoryLimitInBytes() override { return -1; }
 
-  port::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
+  tsl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
       int64_t byte_size) override;
 
  private:
@@ -91,7 +91,7 @@ class OwningScratchAllocator : public ScratchAllocator {
 
   int64_t GetMemoryLimitInBytes() override { return -1; }
 
-  port::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
+  tsl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
       int64_t byte_size) override {
     TF_ASSIGN_OR_RETURN(OwningDeviceMemory buffer,
                         allocator_->Allocate(device_ordinal_, byte_size,

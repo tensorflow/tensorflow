@@ -29,9 +29,11 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import nested_structure_coder
+from tensorflow.python.types import internal
 
 
 class NestedStructureCoderTest(test.TestCase):
@@ -434,6 +436,37 @@ class NestedStructureCoderTest(test.TestCase):
     with self.assertRaises(nested_structure_coder.NotEncodableError):
       nested_structure_coder.encode_structure(structure)
 
+  def testBuiltInTypeSpecCodecInvalidInputs(self):
+    class Foo:
+      pass
+
+    class Bar(internal.TypeSpec):
+      pass
+
+    with self.assertRaisesRegex(
+        ValueError, "The type '(.*?)' does not subclass tf.TypeSpec."):
+      nested_structure_coder.BuiltInTypeSpecCodec(Foo, 0)
+    with self.assertRaisesRegex(
+        ValueError, "The type '(.*?)' already has an instantiated codec."):
+      nested_structure_coder.BuiltInTypeSpecCodec(
+          dataset_ops.DatasetSpec, struct_pb2.TypeSpecProto.DATA_DATASET_SPEC)
+    with self.assertRaisesRegex(
+        ValueError, "The proto value '(.*?)' is already registered."):
+      nested_structure_coder.BuiltInTypeSpecCodec(
+          Bar, struct_pb2.TypeSpecProto.DATA_DATASET_SPEC)
+    with self.assertRaisesRegex(
+        ValueError, "The proto value '(.*?)' is invalid."):
+      nested_structure_coder.BuiltInTypeSpecCodec(Bar, 0)
+    with self.assertRaisesRegex(
+        ValueError, "The proto value '(.*?)' is invalid."):
+      nested_structure_coder.BuiltInTypeSpecCodec(Bar, 11)
+    with self.assertRaisesRegex(
+        ValueError, "The proto value '(.*?)' is invalid."):
+      nested_structure_coder.BuiltInTypeSpecCodec(Bar, 12)
+    with self.assertRaisesRegex(
+        ValueError, "The proto value '(.*?)' is invalid."):
+      nested_structure_coder.BuiltInTypeSpecCodec(Bar, 13)
+
 
 # Trivial TypeSpec class for testing.
 class UnregisteredTypeSpec(type_spec.TypeSpec):
@@ -445,7 +478,7 @@ class UnregisteredTypeSpec(type_spec.TypeSpec):
 
 
 # Trivial TypeSpec class for testing.
-@type_spec.register("NestedStructureTest.RegisteredTypeSpec")
+@type_spec_registry.register("NestedStructureTest.RegisteredTypeSpec")
 class RegisteredTypeSpec(type_spec.TypeSpec):
   value_type = property(lambda self: None)
   _component_specs = property(lambda self: ())

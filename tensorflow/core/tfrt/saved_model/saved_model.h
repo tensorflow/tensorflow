@@ -122,6 +122,11 @@ class SavedModel {
     // If not found, will use the path as a normal SavedModel directory.
     bool maybe_load_from_mla = false;
 
+    // If true, the lazy loading path will use tfrt_stub::GraphExecutor.
+    //
+    // TODO(b/216379787): Remove this option once b/239749833 is unblocked.
+    bool lazy_loading_use_graph_executor = false;
+
     GraphExecutionOptions graph_execution_options;
   };
 
@@ -214,10 +219,13 @@ class SavedModelImpl final : public SavedModel {
   SavedModelImpl(
       Options options, tensorflow::MetaGraphDef meta_graph_def,
       tfrt::BefBuffer bef, tfrt::RCReference<tfrt::BEFFile> bef_file,
+      mlrt::bc::Buffer bytecode,
+      std::optional<mlrt::LoadedExecutable> loaded_executable,
       absl::flat_hash_map<std::string, internal::Signature> signatures,
       std::unique_ptr<FallbackState> fallback_state,
       std::unique_ptr<tfrt::tpu::TpuModelResource> tpu_model_resource,
-      std::unique_ptr<tfrt::ResourceContext> resource_context,
+      std::unique_ptr<OpKernelRunnerTable> runner_table,
+      std::unique_ptr<tfd::FallbackResourceArray> resource_array,
       std::unique_ptr<GraphExecutor> graph_executor);
 
   ~SavedModelImpl() override = default;
@@ -254,7 +262,8 @@ class SavedModelImpl final : public SavedModel {
     std::string name;
     tfrt::BefBuffer bef;
     tfrt::RCReference<tfrt::BEFFile> bef_file;
-    std::unique_ptr<tfrt::ResourceContext> resource_context;
+    std::unique_ptr<OpKernelRunnerTable> runner_table;
+    std::unique_ptr<tfd::FallbackResourceArray> resource_array;
   };
 
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,
@@ -288,13 +297,18 @@ class SavedModelImpl final : public SavedModel {
   tensorflow::MetaGraphDef meta_graph_def_;
   tfrt::BefBuffer bef_;
   tfrt::RCReference<tfrt::BEFFile> bef_file_;
+
+  mlrt::bc::Buffer bytecode_;
+  std::optional<mlrt::LoadedExecutable> loaded_executable_;
+
   tfrt::RequestDeadlineTracker req_deadline_tracker_;
   absl::flat_hash_map<std::string, internal::Signature> signatures_;
   std::unique_ptr<FallbackState> fallback_state_;
   // TODO(b/178227859): Change the hardcoding of this specific TPU resource
   // (TpuModelResource) to a general and plugable interface.
   std::unique_ptr<tfrt::tpu::TpuModelResource> tpu_model_resource_;
-  std::unique_ptr<tfrt::ResourceContext> resource_context_;
+  std::unique_ptr<OpKernelRunnerTable> runner_table_;
+  std::unique_ptr<tfd::FallbackResourceArray> resource_array_;
   tensorflow::mutex loading_result_cache_mu_;
   // For pointer stability of values in `absl::flat_hash_map<>`, additional
   // `std::unique_ptr<>` is necessary. (See https://abseil.io/tips/136.)

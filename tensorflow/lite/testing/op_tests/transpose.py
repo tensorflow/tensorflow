@@ -74,7 +74,7 @@ def make_transpose_tests(options):
       perm = parameters["perm"]
       input_tensors = [input_tensor]
     else:
-      shape = [len(parameters["perm"]), 2]
+      shape = len(parameters["perm"])
       perm = tf.compat.v1.placeholder(dtype=tf.int32, name="perm", shape=shape)
       input_tensors = [input_tensor, perm]
 
@@ -94,5 +94,4 @@ def make_transpose_tests(options):
       options,
       test_parameters,
       build_graph,
-      build_inputs,
-      expected_tf_failures=9)
+      build_inputs)

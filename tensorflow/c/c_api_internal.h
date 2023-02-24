@@ -115,6 +115,9 @@ struct TF_OperationDescription {
 
 struct TF_Operation {
   tensorflow::Node node;
+
+ private:
+  ~TF_Operation() = default;
 };
 
 struct TF_Session {

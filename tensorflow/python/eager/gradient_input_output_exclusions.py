@@ -98,6 +98,7 @@ _EXCLUDED_OPS = [
     "CopyToMesh",
     "CopyToMeshGrad",
     "Relayout",
+    "RelayoutGrad",
 ]
 
 

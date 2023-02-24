@@ -242,6 +242,12 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitCos(PrimitiveType prim_type,
                             prim_type);
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTan(PrimitiveType prim_type,
+                                                      llvm::Value* value) {
+  return EmitDeviceMathCall(TargetDeviceFunctionID::kTan, {value}, {prim_type},
+                            prim_type);
+}
+
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExp(
     PrimitiveType prim_type, llvm::Value* value, absl::string_view /*name*/) {
   return EmitDeviceMathCall(TargetDeviceFunctionID::kExp, {value}, {prim_type},

@@ -203,7 +203,7 @@ tf_py_test(
 
 tf_py_test(
     name = "index_shuffle_test",
-    size = "medium",
+    size = "large",
     srcs = ["index_shuffle_test.py"],
     shard_count = 12,
     deps = [
@@ -350,6 +350,7 @@ tf_py_test(
     srcs = ["map_defun_op_test.py"],
     deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",

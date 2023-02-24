@@ -30,6 +30,7 @@ cc_library(
         ":auto_sharding_util",
         ":cluster_environment",
         ":matrix",
+        ":metrics",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:heap_simulator",
@@ -128,6 +129,13 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "metrics",
+    srcs = ["metrics.cc"],
+    hdrs = ["metrics.h"],
+    deps = ["//tensorflow/tsl/lib/monitoring:counter"],
+)
+
 xla_cc_binary(
     name = "auto_sharding_runner",
     srcs = ["auto_sharding_runner.cc"],
@@ -136,6 +144,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/stream_executor:dnn",
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
         "//tensorflow/tsl/platform:platform_port",
     ],

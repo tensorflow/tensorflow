@@ -63,8 +63,8 @@ class DfsHloVisitorBase {
       "HloInstruction*");
 
  public:
-  DfsHloVisitorBase() {}
-  virtual ~DfsHloVisitorBase() {}
+  DfsHloVisitorBase() = default;
+  virtual ~DfsHloVisitorBase() = default;
 
   // These routines are self-descriptive, see class comment for usage
   // information.
@@ -112,26 +112,33 @@ class DfsHloVisitorBase {
   virtual Status HandleCbrt(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
-  virtual Status HandleConvolution(HloInstructionPtr hlo) = 0;
-  virtual Status HandleFft(HloInstructionPtr fft) = 0;
-  virtual Status HandleTriangularSolve(HloInstructionPtr hlo) = 0;
-  virtual Status HandleCholesky(HloInstructionPtr hlo) = 0;
-  virtual Status HandleOptimizationBarrier(HloInstructionPtr hlo) = 0;
+  /* go/keep-sorted start */
   virtual Status HandleAllGather(HloInstructionPtr hlo) = 0;
-  virtual Status HandleAllGatherStart(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllGatherDone(HloInstructionPtr hlo) = 0;
+  virtual Status HandleAllGatherStart(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllReduce(HloInstructionPtr hlo) = 0;
-  virtual Status HandleReduceScatter(HloInstructionPtr hlo) = 0;
-  virtual Status HandleAllReduceStart(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllReduceDone(HloInstructionPtr hlo) = 0;
+  virtual Status HandleAllReduceStart(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllToAll(HloInstructionPtr hlo) = 0;
   virtual Status HandleCollectivePermute(HloInstructionPtr hlo) = 0;
-  virtual Status HandleCollectivePermuteStart(HloInstructionPtr hlo) = 0;
   virtual Status HandleCollectivePermuteDone(HloInstructionPtr hlo) = 0;
-  virtual Status HandleReplicaId(HloInstructionPtr hlo) = 0;
+  virtual Status HandleCollectivePermuteStart(HloInstructionPtr hlo) = 0;
+  virtual Status HandleConvolution(HloInstructionPtr hlo) = 0;
+  virtual Status HandleOptimizationBarrier(HloInstructionPtr hlo) = 0;
   virtual Status HandlePartitionId(HloInstructionPtr hlo) = 0;
+  virtual Status HandleReduceScatter(HloInstructionPtr hlo) = 0;
+  virtual Status HandleReplicaId(HloInstructionPtr hlo) = 0;
+  /* go/keep-sorted end */
+
+  /* go/keep-sorted start */
+  virtual Status HandleCholesky(HloInstructionPtr hlo) = 0;
+  virtual Status HandleFft(HloInstructionPtr fft) = 0;
+  virtual Status HandleTriangularSolve(HloInstructionPtr hlo) = 0;
+  /* go/keep-sorted end */
+
   virtual Status HandleGetDimensionSize(HloInstructionPtr hlo) = 0;
   virtual Status HandleSetDimensionSize(HloInstructionPtr hlo) = 0;
+
   virtual Status HandleCompare(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
@@ -195,6 +202,9 @@ class DfsHloVisitorBase {
   virtual Status HandleSin(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual Status HandleTan(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual Status HandleTanh(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
@@ -240,37 +250,42 @@ class DfsHloVisitorBase {
     return HandleElementwiseUnary(hlo);
   }
 
+  /* go/keep-sorted start */
   virtual Status HandleInfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleOutfeed(HloInstructionPtr hlo) = 0;
+  /* go/keep-sorted end */
+
+  /* go/keep-sorted start */
+  virtual Status HandleBitcast(HloInstructionPtr hlo) = 0;
+  virtual Status HandleBroadcast(HloInstructionPtr hlo) = 0;
+  virtual Status HandleCall(HloInstructionPtr hlo) = 0;
+  virtual Status HandleConditional(HloInstructionPtr hlo) = 0;
+  virtual Status HandleConstant(HloInstructionPtr hlo) = 0;
+  virtual Status HandleCustomCall(HloInstructionPtr hlo) = 0;
+  virtual Status HandleDynamicReshape(HloInstructionPtr hlo) = 0;
+  virtual Status HandleDynamicSlice(HloInstructionPtr hlo) = 0;
+  virtual Status HandleDynamicUpdateSlice(HloInstructionPtr hlo) = 0;
+  virtual Status HandleFusion(HloInstructionPtr hlo) = 0;
+  virtual Status HandleGather(HloInstructionPtr hlo) = 0;
+  virtual Status HandleGetTupleElement(HloInstructionPtr hlo) = 0;
+  virtual Status HandleIota(HloInstructionPtr hlo) = 0;
+  virtual Status HandleMap(HloInstructionPtr hlo) = 0;
+  virtual Status HandleParameter(HloInstructionPtr hlo) = 0;
+  virtual Status HandleReduce(HloInstructionPtr hlo) = 0;
+  virtual Status HandleReduceWindow(HloInstructionPtr hlo) = 0;
+  virtual Status HandleReshape(HloInstructionPtr hlo) = 0;
+  virtual Status HandleReverse(HloInstructionPtr hlo) = 0;
   virtual Status HandleRng(HloInstructionPtr hlo) = 0;
   virtual Status HandleRngBitGenerator(HloInstructionPtr hlo) = 0;
   virtual Status HandleRngGetAndUpdateState(HloInstructionPtr hlo) = 0;
-  virtual Status HandleReverse(HloInstructionPtr hlo) = 0;
-  virtual Status HandleSort(HloInstructionPtr hlo) = 0;
-  virtual Status HandleConstant(HloInstructionPtr hlo) = 0;
-  virtual Status HandleIota(HloInstructionPtr hlo) = 0;
-  virtual Status HandleGetTupleElement(HloInstructionPtr hlo) = 0;
-  virtual Status HandleReduce(HloInstructionPtr hlo) = 0;
-  virtual Status HandleBitcast(HloInstructionPtr hlo) = 0;
-  virtual Status HandleBroadcast(HloInstructionPtr hlo) = 0;
-  virtual Status HandleReshape(HloInstructionPtr hlo) = 0;
-  virtual Status HandleDynamicReshape(HloInstructionPtr hlo) = 0;
-  virtual Status HandleTranspose(HloInstructionPtr hlo) = 0;
-  virtual Status HandleParameter(HloInstructionPtr hlo) = 0;
-  virtual Status HandleFusion(HloInstructionPtr hlo) = 0;
-  virtual Status HandleCall(HloInstructionPtr hlo) = 0;
-  virtual Status HandleCustomCall(HloInstructionPtr hlo) = 0;
-  virtual Status HandleSlice(HloInstructionPtr hlo) = 0;
-  virtual Status HandleDynamicSlice(HloInstructionPtr hlo) = 0;
-  virtual Status HandleDynamicUpdateSlice(HloInstructionPtr hlo) = 0;
-  virtual Status HandleTuple(HloInstructionPtr hlo) = 0;
-  virtual Status HandleMap(HloInstructionPtr hlo) = 0;
-  virtual Status HandleReduceWindow(HloInstructionPtr hlo) = 0;
-  virtual Status HandleSelectAndScatter(HloInstructionPtr hlo) = 0;
-  virtual Status HandleWhile(HloInstructionPtr hlo) = 0;
-  virtual Status HandleConditional(HloInstructionPtr hlo) = 0;
-  virtual Status HandleGather(HloInstructionPtr hlo) = 0;
   virtual Status HandleScatter(HloInstructionPtr hlo) = 0;
+  virtual Status HandleSelectAndScatter(HloInstructionPtr hlo) = 0;
+  virtual Status HandleSlice(HloInstructionPtr hlo) = 0;
+  virtual Status HandleSort(HloInstructionPtr hlo) = 0;
+  virtual Status HandleTranspose(HloInstructionPtr hlo) = 0;
+  virtual Status HandleTuple(HloInstructionPtr hlo) = 0;
+  virtual Status HandleWhile(HloInstructionPtr hlo) = 0;
+  /* go/keep-sorted end */
 
   virtual Status HandlePad(HloInstructionPtr hlo) = 0;
 

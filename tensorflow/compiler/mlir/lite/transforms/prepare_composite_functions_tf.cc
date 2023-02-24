@@ -399,6 +399,21 @@ void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(func::FuncOp func,
     if (failed(ConvertKerasLSTMLayer(func, &builder)))
       return signalPassFailure();
   }
+
+  // LSTM `func::FuncOps` with indy behavior always have the `tf.api_implements`
+  // function attribute prefixed with `"indy_lstm_"`.
+  // IndyLSTMs have diagonal recurrent weight matrices and can benefit from
+  // more efficent operations in TFLite with the correct conversion (i.e. when
+  // the diagonal recurrent weight matrices are provided as vectors).
+  if (attr.getValue().startswith("indy_lstm_")) {
+    // Check if the keras lstm can be fused, if not, we just don't do anything.
+    if (failed(CheckFusableKerasLstm(func, module))) return;
+    func.eraseBody();
+    func.addEntryBlock();
+    OpBuilder builder(func.getBody());
+    if (failed(ConvertKerasLSTMLayer(func, &builder, true)))
+      return signalPassFailure();
+  }
 }
 
 void PrepareCompositeFunctionsPass::runOnOperation() {

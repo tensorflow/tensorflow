@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
@@ -45,11 +47,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/utils.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/cluster_util.h"
 
 namespace mlir {
 namespace TFL {
 namespace tac {
 namespace {
+
+constexpr StringRef kCpuDeviceName = "CPU";
 
 using ::mlir::TFL::common::OpsAdded;
 using ::mlir::TFL::common::Subgraph;
@@ -69,9 +75,9 @@ class RaiseTargetSubgraphsPass
   }
   void runOnOperation() override;
 
-  void RaiseTargetSubgraphsForBlock(Block& block, OpBuilder& builder,
-                                    ModuleOp module, bool skip_cpu,
-                                    int& func_count);
+  void RaiseTargetSubgraphsForBlock(
+      Block& block, OpBuilder& builder, ModuleOp module, bool skip_cpu,
+      int& func_count, const TF::SideEffectAnalysis::Info& side_effect_info);
 };
 
 // After raising ops and adding the Func & Call op, call this function
@@ -118,12 +124,11 @@ void AddAttrs(OpsAdded& ops_added, OpBuilder& builder, int func_count) {
 // is the only device that is allowed to call other devices. I.e. ancestors of a
 // "CPU" `Operation` may only `Operations` without a device or other "CPU"
 // `Operations`. Implied is that "CPU" ops may contain subgraphs of different
-// device types which also need to be raised.
-void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(Block& block,
-                                                            OpBuilder& builder,
-                                                            ModuleOp module,
-                                                            bool skip_cpu,
-                                                            int& func_count) {
+// device types which also need to be raised. The `side_effect_info` is used in
+// the cluster algorithm for ops with side effect.
+void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(
+    Block& block, OpBuilder& builder, ModuleOp module, bool skip_cpu,
+    int& func_count, const TF::SideEffectAnalysis::Info& side_effect_info) {
   llvm::SetVector<Operation*> partition_ops;
 
   auto device_is = [&](InferenceDeviceType t, llvm::StringRef device) -> bool {
@@ -148,7 +153,7 @@ void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(Block& block,
   // other deivice subgraphs that need to be raised. We recur on
   // any nested blocks of "CPU" ops and skip raising "CPU" ops for the
   // remainder of that recursive call.
-  auto extract = [&](llvm::SetVector<Operation*>& partition_ops) -> void {
+  auto extract = [&](const llvm::SetVector<Operation*>& partition_ops) -> void {
     if (partition_ops.empty()) return;
     InferenceDeviceType device =
         GetInferenceDeviceTypeForOp(partition_ops.front()).value();
@@ -160,57 +165,61 @@ void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(Block& block,
     // We recur into these nested blocks to raise those as well. We don't raise
     // "CPU" ops who are themselves nested within a "CPU" op, so set
     // `skip_cpu` to true.
-    if (device_is(device, "CPU")) {
+    if (device_is(device, kCpuDeviceName)) {
       for (auto& block : ops_added.func_op->getRegion(0).getBlocks())
         for (auto& op : block) {
           auto op_device = GetInferenceDeviceTypeForOp(&op);
-          if (op_device_is(op, "CPU"))
+          if (op_device_is(op, kCpuDeviceName))
             // The recently raised func is device type cpu & `op` is a "CPU".
             // Recursivley call again to raise any non-"CPU" subgraphs contained
             // within nested region of `op`.
             for (auto& region : op.getRegions())
               for (auto& block : region.getBlocks())
                 RaiseTargetSubgraphsForBlock(block, builder, module,
-                                             /*skip_cpu=*/true, func_count);
+                                             /*skip_cpu=*/true, func_count,
+                                             side_effect_info);
         }
     }
-    partition_ops.clear();
   };
 
-  // Given a block, partition into lists of similar `Operations` as described.
-  Optional<InferenceDeviceType> current_device_type = llvm::None;
-  for (Operation& current_op : block) {
-    auto next_device_type = GetInferenceDeviceTypeForOp(&current_op);
-    if (!next_device_type.has_value() ||
-        (skip_cpu && device_is(next_device_type.value(), "CPU"))) {
-      // If we aren't raising this op, we only need to raise the current
-      // partition if this op depends on one the the partitioned ops results.
-      for (Value operand : current_op.getOperands()) {
-        if (partition_ops.contains(operand.getDefiningOp()))
-          extract(partition_ops);
-      }
-      continue;
+  auto get_inference_device_type_string = [&](Operation* op) {
+    auto device_type = GetInferenceDeviceTypeForOp(op);
+    if (!device_type.has_value()) {
+      return std::string("");
     }
-    if (next_device_type == current_device_type) {
-      partition_ops.insert(&current_op);
-      continue;
+    std::string concat_inference_device_type_string =
+        absl::StrCat(device_type.value().hardware, "_",
+                     GetInferenceString(device_type.value().inference_type));
+    return concat_inference_device_type_string;
+  };
+
+  auto op_can_be_ignored = [&](Operation* op) {
+    auto device_type = GetInferenceDeviceTypeForOp(op);
+    return !device_type.has_value() ||
+           (skip_cpu && device_is(device_type.value(), kCpuDeviceName));
+  };
+
+  const llvm::StringMap<SmallVector<TF::Cluster>>& all_clusters =
+      TF::BuildAllClusters(block, side_effect_info,
+                           get_inference_device_type_string, op_can_be_ignored);
+  for (const auto& [device, clusters] : all_clusters) {
+    for (const TF::Cluster& cluster : clusters) {
+      extract(cluster.ops);
     }
-    extract(partition_ops);
-    partition_ops.insert(&current_op);
-    current_device_type = next_device_type;
   }
-  extract(partition_ops);
 }
 
 void RaiseTargetSubgraphsPass::runOnOperation() {
   ModuleOp module = getOperation();
+  auto& side_effect_analysis = getAnalysis<TF::SideEffectAnalysis>();
   SmallVector<func::FuncOp> funcs(module.getOps<func::FuncOp>());
   int func_count = -1;
   for (auto func : funcs) {
+    const auto& info = side_effect_analysis.GetAnalysisForFunc(func);
     for (auto& block : func) {
       OpBuilder builder = OpBuilder::atBlockBegin(&block);
-      RaiseTargetSubgraphsForBlock(block, builder, module, /*skip_cpu=*/false,
-                                   func_count);
+      RaiseTargetSubgraphsForBlock(block, builder, module,
+                                   /*skip_cpu=*/false, func_count, info);
     }
   }
 }

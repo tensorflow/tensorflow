@@ -133,7 +133,8 @@ class BatchResourceBase : public ResourceBase {
       : has_process_batch_function_(has_process_batch_function),
         batcher_(std::move(batcher)),
         batcher_queue_options_(batcher_queue_options),
-        allowed_batch_sizes_(std::move(allowed_batch_sizes)) {
+        allowed_batch_sizes_(std::move(allowed_batch_sizes)),
+        disable_padding_(batcher_queue_options.disable_padding) {
     allowed_batch_sizes_str_ = absl::StrJoin(allowed_batch_sizes_, ",");
   }
 
@@ -144,18 +145,19 @@ class BatchResourceBase : public ResourceBase {
       : has_process_batch_function_(has_process_batch_function),
         adaptive_batcher_(std::move(batcher)),
         adaptive_batcher_queue_options_(batcher_queue_options),
-        allowed_batch_sizes_(std::move(allowed_batch_sizes)) {}
+        allowed_batch_sizes_(std::move(allowed_batch_sizes)),
+        disable_padding_(batcher_queue_options.disable_padding) {}
 
   static BatcherT::QueueOptions GetBatcherQueueOptions(
       int32_t num_batch_threads, int32_t max_batch_size,
       int32_t batch_timeout_micros, int32_t max_enqueued_batches,
       const std::vector<int32>& allowed_batch_sizes,
-      bool enable_large_batch_splitting);
+      bool enable_large_batch_splitting, bool disable_padding);
 
   static AdaptiveBatcherT::QueueOptions GetAdaptiveBatcherQueueOptions(
       int32_t max_batch_size, int32_t batch_timeout_micros,
       int32_t max_enqueued_batches, bool enable_large_batch_splitting,
-      const std::vector<int32>& allowed_batch_sizes);
+      const std::vector<int32>& allowed_batch_sizes, bool disable_padding);
 
   // Split 'input' of 'input_task_ptr' along 0th dimension, into a list of
   // 'output_tasks'.
@@ -264,6 +266,9 @@ class BatchResourceBase : public ResourceBase {
   // A concatenated string of <allowed_batch_sizes_>, separated by ",". This is
   // used to record batching parameter.
   string allowed_batch_sizes_str_;
+
+  // If true, the padding will not be appended.
+  bool disable_padding_;
 };
 
 }  // namespace serving

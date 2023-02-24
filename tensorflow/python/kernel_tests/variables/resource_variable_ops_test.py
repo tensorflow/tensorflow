@@ -1473,7 +1473,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       # least 1024 elements. Test that op determinism ensures the op is
       # deterministc.
       v = resource_variable_ops.ResourceVariable(array_ops.zeros([1024]))
-      delta = ops.IndexedSlices(
+      delta = indexed_slices.IndexedSlices(
           values=np.random.normal(size=(1_000_000,)),
           indices=array_ops.zeros((1_000_000,), dtype=np.int32),
           dense_shape=(1024,))

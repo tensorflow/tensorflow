@@ -274,9 +274,8 @@ llvm::Value* EmitF16ToF8e4m3fn(llvm::Value* f16_value, llvm::IRBuilder<>* b) {
 
   // Truncate the mantissa to 3 bits. ReducePrecision cannot deal with
   // f8E4M3FN's NaN representations, so don't use ReducePrecision to handle
-  // exponent reduction.
-  // TODO(b/259609697): ReducePrecision truncates denormal values. Do not do
-  // this for FP8.
+  // exponent reduction. Denormal values are not handled properly here and are
+  // dealt with later in this function.
   StatusOr<Value*> f16_reduced_statusor = EmitReducePrecisionIR(
       /*src_ty=*/F16, f16_value,
       /*dest_exponent_bits=*/5,
@@ -285,6 +284,21 @@ llvm::Value* EmitF16ToF8e4m3fn(llvm::Value* f16_value, llvm::IRBuilder<>* b) {
   CHECK(f16_reduced_statusor.ok());  // Crash OK
   Value* f16_reduced = f16_reduced_statusor.value();
   f16_reduced = b->CreateBitCast(f16_reduced, i16_type);
+
+  // Remove the sign bit.
+  //   f16_reduced = f16_reduced & 0x7FFF
+  f16_reduced = b->CreateAnd(f16_reduced, i16_const(0x7FFF));
+
+  // Bits of the F16 representation of the smallest F8 normal value.
+  constexpr int min_normal_value = 0x2400;
+
+  // Round values smaller than the smallest F8 normal value up to the smallest
+  // F8 normal value. The case where we round to a denormal value is handled
+  // later.
+  //    f16_reduced = max(f16_reduced, min_normal_value)
+  f16_reduced = b->CreateSelect(
+      b->CreateICmpULT(f16_reduced, i16_const(min_normal_value)),
+      i16_const(min_normal_value), f16_reduced);
 
   constexpr int exponent_bias_difference = 15 - 7;
   constexpr int f16_mantissa_bits = 10;
@@ -302,23 +316,52 @@ llvm::Value* EmitF16ToF8e4m3fn(llvm::Value* f16_value, llvm::IRBuilder<>* b) {
       b->CreateLShr(f16_reduced, i16_const(mantissa_bits_difference));
   f8_bits = b->CreateTrunc(f8_bits, i8_type);
 
-  // Bits of the lowest F16 value that gets converted to a normal F8 value.
-  // In binary: 0 01000 1110000000
-  constexpr int min_nonzero_value = 0x2380;
   // Bits of the highest F16 value that gets converted to a finite F8 value.
   // In binary: 0 10111 1101111111
   constexpr int max_finite_value = 0x5F7F;
 
-  // If we're below the minimum F16 value or above the maximum F16 value,
-  // output zero or NaN respectively.
-  //   f8_bits = f16_abs_bits < min_nonzero_value ? 0 : f8_bits
+  // If we're above the maximum F8 value, output NaN.
   //   f8_bits = f16_abs_bits > max_finite_value ? 0x7F : f8_bits
-  f8_bits = b->CreateSelect(
-      b->CreateICmpULT(f16_abs_bits, i16_const(min_nonzero_value)), i8_const(0),
-      f8_bits);
   f8_bits = b->CreateSelect(
       b->CreateICmpUGT(f16_abs_bits, i16_const(max_finite_value)),
       i8_const(0x7F), f8_bits);
+
+  // F16 values that are halfway between denormal F8 values. This is used to
+  // determine how to round to denormal F8 values.
+  const int halfway_points[8] = {
+      0x1400,  // 2**-10;        halfway between [0,            2**-9]
+      0x1A00,  // 1.5 * 2**-9;   halfway between [2**-9,        2**-8]
+      0x1D00,  // 1.25 * 2**-8;  halfway between [2**-8,        1.5 * 2**-8]
+      0x1F00,  // 1.75 * 2**-8;  halfway between [1.5 * 2**-8,  2**-7]
+      0x2080,  // 1.125 * 2**-7; halfway between [2**-7,        1.25 * 2**-7]
+      0x2180,  // 1.375 * 2**-7; halfway between [1.25 * 2**-7, 1.5 * 2**-7]
+      0x2280,  // 1.625 * 2**-7; halfway between [1.5 * 2**-7,  1.75 * 2**-7]
+      0x2380,  // 1.875 * 2**-7; halfway between [1.75 * 2**-7, 2**-6]
+  };
+
+  // Handle case where output is denormal. If we're rounding to a denormal
+  // value, ignore the current value of f8_bits and set it to the correct
+  // denormal value. We emit the equivalent of the following:
+  //
+  //   if (f16_abs_bits <= halfway_points[0]) {
+  //     f8_bits = 0;
+  //   } else if (f16_abs_bits < halfway_points[1]) {
+  //     f8_bits = 1;
+  //   } else if (f16_abs_bits <= halfway_points[2]) {
+  //   ...  // More if-else statements. The comparisons alternate between <=
+  //   ...  // and < to handle round-to-even properly.
+  //   } else if (f16_abs_bits < halfway_points[7])  {
+  //     f8_bits = 7;
+  //   }
+  for (int i = ABSL_ARRAYSIZE(halfway_points) - 1; i >= 0; i--) {
+    Value* comparison;
+    if (i % 2 == 0) {
+      comparison = b->CreateICmpULE(f16_abs_bits, i16_const(halfway_points[i]));
+    } else {
+      comparison = b->CreateICmpULT(f16_abs_bits, i16_const(halfway_points[i]));
+    }
+    f8_bits = b->CreateSelect(comparison, i8_const(i), f8_bits);
+  }
 
   // Set the sign bit.
   //   f8_bits |= f8_sign
@@ -347,9 +390,8 @@ llvm::Value* EmitF8e4m3fnToF16(llvm::Value* f8_value, llvm::IRBuilder<>* b) {
   Value* f8_abs_bits = b->CreateAnd(f8_as_int, i8_const(0x7F));
 
   // We assume below that the value is neither NaN nor denormal. If it NaN or
-  // denormal, the output is set to NaN or zero at the end using a Select
-  // instruction
-  // TODO(b/259609697): Do not truncate denormal values to zero.
+  // denormal, the output is set to NaN or zero at the end using Select
+  // instructions.
 
   // Get the sign:
   //   f16_sign = (f8_as_int & 0x80) << 8
@@ -394,14 +436,29 @@ llvm::Value* EmitF8e4m3fnToF16(llvm::Value* f8_value, llvm::IRBuilder<>* b) {
   Value* is_nan = b->CreateICmpEQ(f8_abs_bits, i8_const(0x7F));
   f16_as_int = b->CreateSelect(is_nan, i16_const(0x7E00), f16_as_int);
 
-  // Set output to zero if input is denormal
-  //   f16_as_int = f8_abs_bits <= f8_mantissa_mask ? 0 : f16_as_int
-  Value* is_denormal =
-      b->CreateICmpULE(f8_abs_bits, i8_const(f8_mantissa_mask));
-  f16_as_int = b->CreateSelect(is_denormal, i16_const(0x0), f16_as_int);
+  // Map from F8 denormal value to F16 value.
+  int f8_denormal_to_f16[8] = {
+      0x0000,  // 0
+      0x1800,  // 2**-9
+      0x1C00,  // 2**-8
+      0x1E00,  // 1.5 * 2**-8
+      0x2000,  // 2**-7
+      0x2100,  // 1.25 * 2**-7
+      0x2200,  // 1.5 * 2**-7
+      0x2300,  // 1.75 * 2**-7
+  };
+
+  // If the F8 value is denormal, use the map above to determine the correct F16
+  // value.
+  //    if (f8_abs_bits < 8) { f16_as_int = f8_denormal_to_f16[f8_abs_bits]; }
+  for (int i = 0; i < ABSL_ARRAYSIZE(f8_denormal_to_f16); i++) {
+    Value* is_denormal_value = b->CreateICmpEQ(f8_abs_bits, i8_const(i));
+    f16_as_int = b->CreateSelect(is_denormal_value,
+                                 i16_const(f8_denormal_to_f16[i]), f16_as_int);
+  }
 
   // Set the sign bit.
-  //   f8_bits |= f8_sign
+  //   f16_as_int |= f16_sign
   f16_as_int = b->CreateOr(f16_as_int, f16_sign);
   return b->CreateBitCast(f16_as_int, b->getHalfTy());
 }
@@ -478,6 +535,18 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
         if (to_type == BF16) {
           return EmitF32ToBF16(EmitIntegralToFloating(operand_value, from_type,
                                                       F32, module_, b_));
+        }
+        if (to_type == F8E5M2) {
+          return EmitF16ToF8e5m2(
+              EmitIntegralToFloating(operand_value, from_type, F16, module_,
+                                     b_),
+              b_);
+        }
+        if (to_type == F8E4M3FN) {
+          return EmitF16ToF8e4m3fn(
+              EmitIntegralToFloating(operand_value, from_type, F16, module_,
+                                     b_),
+              b_);
         }
         return EmitIntegralToFloating(operand_value, from_type, to_type,
                                       module_, b_);
@@ -727,6 +796,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return EmitCos(op->shape().element_type(), operand_value);
     case HloOpcode::kSin:
       return EmitSin(op->shape().element_type(), operand_value);
+    case HloOpcode::kTan:
+      return EmitTan(op->shape().element_type(), operand_value);
     case HloOpcode::kTanh:
       return EmitTanh(op->shape().element_type(), operand_value);
     case HloOpcode::kSqrt:
@@ -862,47 +933,46 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       auto imag_result = FMul(exp_a, sin_b);
       return EmitComposeComplex(op, real_result, imag_result);
     }
-    case HloOpcode::kCos: {
-      // cos(z) = .5(e^(iz) + e^(-iz))
-      // cos(a+bi) = .5(e^(-b+ai) + e^(b-ai))
-      // now, e^(x+yi) = e^x*(cos(y)+sin(y)i), so we have
-      // cos(a+bi) = .5(e^-b*(cos(a)+sin(a)i) + e^b*(cos(-a)+sin(-a)i))
-      // cos(-x) = cos(x) and sin(-x) = -sin(x), so
-      // cos(a+bi) = .5(e^-b*(cos(a)+sin(a)i) + e^b*(cos(a)-sin(a)i))
-      //           = .5(cos(a)*(e^-b+e^b) + i*sin(a)*(e^-b-e^b))
-      auto a = EmitExtractReal(operand_value);
-      auto b = EmitExtractImag(operand_value);
-      auto type = a->getType();
-      TF_ASSIGN_OR_RETURN(auto exp_b, EmitExp(component_type, b, ""));
-      auto half_exp_b = FMul(llvm::ConstantFP::get(type, 0.5), exp_b);
-      auto half_exp_neg_b = FDiv(llvm::ConstantFP::get(type, 0.5), exp_b);
-      TF_ASSIGN_OR_RETURN(auto cos_a, EmitCos(component_type, a));
-      TF_ASSIGN_OR_RETURN(auto sin_a, EmitSin(component_type, a));
-      return EmitComposeComplex(op,
-                                FMul(cos_a, FAdd(half_exp_neg_b, half_exp_b)),
-                                FMul(sin_a, FSub(half_exp_neg_b, half_exp_b)));
-    }
-    case HloOpcode::kSin: {
-      // sin(z) = .5i(e^(-iz) - e^(iz))
-      // sin(a+bi) = .5i(e^(-i(a+bi)) - e^(i(a+bi)))
-      //           = .5i(e^(b-ai) - e^(-b+ai))
-      // now, e^(x+yi) = e^x*(cos(y)+sin(y)i), so we have
-      // sin(a+bi) = 0.5i(e^b*(cos(-a)+sin(-a)i) - e^-b*(cos(a)+sin(a)i))
-      //           = 0.5(e^b*(cos(-a)i-sin(-a)) - e^-b*(cos(a)i-sin(a)))
-      // cos(-x) = cos(x) and sin(-x) = -sin(x), so
-      //           = 0.5(e^b*(cos(a)i+sin(a)) - e^-b*(cos(a)i-sin(a)))
-      //           = 0.5(sin(a)*(e^b+e^-b) + i*cos(a)*(e^b-e^-b)
-      auto a = EmitExtractReal(operand_value);
-      auto b = EmitExtractImag(operand_value);
-      auto type = a->getType();
-      TF_ASSIGN_OR_RETURN(auto exp_b, EmitExp(component_type, b, ""));
-      auto half_exp_b = FMul(llvm::ConstantFP::get(type, 0.5), exp_b);
-      auto half_exp_neg_b = FDiv(llvm::ConstantFP::get(type, 0.5), exp_b);
-      TF_ASSIGN_OR_RETURN(auto cos_a, EmitCos(component_type, a));
-      TF_ASSIGN_OR_RETURN(auto sin_a, EmitSin(component_type, a));
-      return EmitComposeComplex(op,
-                                FMul(sin_a, FAdd(half_exp_b, half_exp_neg_b)),
-                                FMul(cos_a, FSub(half_exp_b, half_exp_neg_b)));
+    case HloOpcode::kCos:
+    case HloOpcode::kSin:
+    case HloOpcode::kTan: {
+      // If the argument is z = x + i*y, let
+      //   sinh(y) = (exp(y) - exp(-y)) / 2
+      //   cosh(y) = (exp(y) + exp(-y)) / 2 ,
+      // then
+      //   sin(x + i*y) = sin(x)*cosh(y) + i*cos(x)*sinh(y)
+      //   cos(x + i*y) = cos(x)*cosh(y) - i*sin(x)*sinh(y)
+      //   tan(x + i*y) = (sin(x)*cos(x) + i*sinh(y)*cosh(y)) /
+      //                    (cos(x)^2 + sinh(y)^2).
+      auto x = EmitExtractReal(operand_value);
+      auto y = EmitExtractImag(operand_value);
+      auto type = y->getType();
+      TF_ASSIGN_OR_RETURN(auto exp_y, EmitExp(component_type, y, ""));
+      auto half_exp_y = FMul(llvm::ConstantFP::get(type, 0.5), exp_y);
+      auto half_exp_neg_y = FDiv(llvm::ConstantFP::get(type, 0.5), exp_y);
+      TF_ASSIGN_OR_RETURN(auto sin_x, EmitSin(component_type, x));
+      TF_ASSIGN_OR_RETURN(auto cos_x, EmitCos(component_type, x));
+      auto sinh_y = FSub(half_exp_y, half_exp_neg_y);
+      auto cosh_y = FAdd(half_exp_y, half_exp_neg_y);
+      llvm::Value* real_result = nullptr;
+      llvm::Value* imag_result = nullptr;
+      if (op->opcode() == HloOpcode::kTan) {
+        auto num_real = FMul(sin_x, cos_x);
+        auto num_imag = FMul(sinh_y, cosh_y);
+        auto denom = FAdd(FMul(cos_x, cos_x), FMul(sinh_y, sinh_y));
+        auto denom_inv = FDiv(llvm::ConstantFP::get(type, 1.0), denom);
+        real_result = FMul(num_real, denom_inv);
+        imag_result = FMul(num_imag, denom_inv);
+      }
+      if (op->opcode() == HloOpcode::kSin) {
+        real_result = FMul(sin_x, cosh_y);
+        imag_result = FMul(cos_x, sinh_y);
+      }
+      if (op->opcode() == HloOpcode::kCos) {
+        real_result = FMul(cos_x, cosh_y);
+        imag_result = FNeg(FMul(sin_x, sinh_y));
+      }
+      return EmitComposeComplex(op, real_result, imag_result);
     }
     case HloOpcode::kTanh: {
       /*
@@ -1066,9 +1136,6 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
     }
     case HloOpcode::kRsqrt: {
       return EmitComplexRsqrt(op, component_type, operand_value);
-    }
-    case HloOpcode::kCbrt: {
-      return EmitComplexCbrt(op, component_type, operand_value);
     }
     case HloOpcode::kNegate:
       return EmitComposeComplex(op, FNeg(EmitExtractReal(operand_value)),
@@ -1527,19 +1594,6 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexRsqrt(
   return EmitComposeComplex(op, real_part, imag_part);
 }
 
-//
-// Using EmitComplexPower with c=1.0/3.0 and d=0
-StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexCbrt(
-    const HloInstruction* op, PrimitiveType prim_type,
-    llvm::Value* operand_value) {
-  auto type = llvm_ir::PrimitiveTypeToIrType(prim_type, module_);
-  auto third = llvm::ConstantFP::get(type, 1.0 / 3.0);
-  auto zero = llvm::ConstantFP::get(type, 0);
-  llvm::Value* a = EmitExtractReal(operand_value);
-  llvm::Value* b = EmitExtractImag(operand_value);
-  return EmitComplexPower(op, a, b, third, zero);
-}
-
 // (a+bi)^(c+di) =
 //    (a*a+b*b)^(0.5c) * exp(-d*atan2(b,a)) * (cos(q) + i*sin(q)),
 //    where q = c*atan2(b,a)+0.5d*ln(a*a+b*b)
@@ -1813,6 +1867,15 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitAtan2(
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
                                                     llvm::Value* value) {
   return Unimplemented("tanh");
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitTan(PrimitiveType prim_type,
+                                                   llvm::Value* value) {
+  auto sin_x = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sin, {value},
+                                            {value->getType()}, b_);
+  auto cos_x = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::cos, {value},
+                                            {value->getType()}, b_);
+  return FDiv(sin_x, cos_x);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitReducePrecision(
@@ -2210,8 +2273,26 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     // because they require non-degenerate basic blocks.
     b_->SetInsertPoint(llvm::BranchInst::Create(
         exit_block, /*InsertAtEnd=*/emit_operand_blocks[operand_id]));
-    llvm_ir::IrArray::Index operand_index(operand_multi_index, operand->shape(),
-                                          source_index.GetType());
+    llvm_ir::IrArray::Index operand_index(source_index.GetType());
+    // If we are concatenating the fastest varying dimension, we can reuse the
+    // linear index.
+    if (source_index.linear() != nullptr && operand->shape().rank() > 1 &&
+        concat_dim == operand->shape().layout().minor_to_major(0)) {
+      llvm::Value* linear_without_concat_dim = b_->CreateUDiv(
+          source_index.linear(), source_index.GetConstantWithIndexType(
+                                     hlo->shape().dimensions(concat_dim)));
+      llvm::Value* adjusted_linear_base =
+          b_->CreateMul(linear_without_concat_dim,
+                        source_index.GetConstantWithIndexType(
+                            operand->shape().dimensions(concat_dim)));
+      llvm::Value* adjusted_linear =
+          b_->CreateAdd(adjusted_linear_base, operand_multi_index[concat_dim]);
+      operand_index = llvm_ir::IrArray::Index(
+          adjusted_linear, operand_multi_index, operand->shape(), b_);
+    } else {
+      operand_index = llvm_ir::IrArray::Index(
+          operand_multi_index, operand->shape(), source_index.GetType());
+    }
 
     TF_ASSIGN_OR_RETURN(llvm::Value * value,
                         operand_to_generator.at(operand)(operand_index));
@@ -2719,6 +2800,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {

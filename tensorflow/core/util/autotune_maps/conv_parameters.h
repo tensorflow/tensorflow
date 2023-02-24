@@ -71,8 +71,11 @@ class ConvParameters {
       // This argument should be set only for test use.
       int version = kVersion);
 
+  ConvParameters(int device_id, const ConvParametersProto& proto);
+
   ConvParameters(se::StreamExecutor* stream_exec,
-                 const ConvParametersProto& proto);
+                 const ConvParametersProto& proto)
+      : ConvParameters(stream_exec->device_ordinal(), proto) {}
 
   bool operator==(const ConvParameters& other) const;
 

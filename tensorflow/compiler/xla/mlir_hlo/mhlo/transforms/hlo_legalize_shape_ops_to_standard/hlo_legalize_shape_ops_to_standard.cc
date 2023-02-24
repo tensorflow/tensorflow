@@ -137,7 +137,7 @@ struct CstrReshapableConversion
                         : rewriter.create<arith::IndexCastOp>(
                               loc, extentType, adaptor.getOperands()[1]);
     auto reduction = rewriter.create<shape::ReduceOp>(
-        loc, newShape, llvm::makeArrayRef({one, zero, zero}));
+        loc, newShape, llvm::ArrayRef({one, zero, zero}));
     {
       PatternRewriter::InsertionGuard g(rewriter);
       auto* body = reduction.getBody();
@@ -158,7 +158,7 @@ struct CstrReshapableConversion
       Value totalElements = rewriter.create<arith::MulIOp>(
           loc, extentOrOne, body->getArgument(2));
       rewriter.create<shape::YieldOp>(
-          loc, llvm::makeArrayRef({totalElements, totalDynamic, totalInvalid}));
+          loc, llvm::ArrayRef({totalElements, totalDynamic, totalInvalid}));
     }
     // Avoid division by zero.
     Value isZeroElements = rewriter.create<arith::CmpIOp>(

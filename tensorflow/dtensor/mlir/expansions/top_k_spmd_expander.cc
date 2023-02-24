@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/top_k_spmd_expander.h"
 
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
@@ -61,7 +61,7 @@ StatusOr<mlir::Operation*> TopKSPMDExpander::ExpandOp(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(Layout new_layout, GetSuggestedLayout(*input_layout));
     TF_ASSIGN_OR_RETURN(
         input, EmitAllGather(builder, input, *input_layout, new_layout));
-    mlir::BlockAndValueMapping mapping;
+    mlir::IRMapping mapping;
     mapping.map(op->getOperand(0), input);
     mlir::Operation* new_op = builder.clone(*op, mapping);
     new_op = InferSPMDExpandedLocalShape(new_op);

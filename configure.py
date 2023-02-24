@@ -619,7 +619,7 @@ def prompt_loop_or_load_from_env(environ_cp,
                          'Assuming to be a scripting mistake.' %
                          (var_name, n_ask_attempts))
 
-  if resolve_symlinks and os.path.islink(val):
+  if resolve_symlinks:
     val = os.path.realpath(val)
   environ_cp[var_name] = val
   return val
@@ -757,7 +757,7 @@ def get_ndk_api_level(environ_cp, android_ndk_home_path):
   android_ndk_api_level = prompt_loop_or_load_from_env(
       environ_cp,
       var_name='ANDROID_NDK_API_LEVEL',
-      var_default='21',  # 21 is required for ARM64 support.
+      var_default='26',  # 26 is required to support AHardwareBuffer.
       ask_for_var=('Please specify the (min) Android NDK API level to use. '
                    '[Available levels: %s]') % api_levels,
       check_success=valid_api_level,
@@ -1188,6 +1188,9 @@ def main():
     # Enable MMA Dynamic Dispatch support if 'gcc' and if linker >= 2.35
     gcc_env = get_gcc_compiler(environ_cp)
     if gcc_env is not None:
+
+      # Use gold linker if 'gcc' and if 'ppc64le'
+      write_to_bazelrc('build --linkopt="-fuse-ld=gold"')
 
       # Get the linker version
       ld_version = run_shell([gcc_env, '-Wl,-version']).split()

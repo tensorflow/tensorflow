@@ -215,7 +215,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Set output dynamic if the `top_k` tensor is not constant, or the input has
   // dynamic dimensions (indicated by dims signature).
-  if (IsConstantTensor(top_k) && !HasUnspecifiedDimension(input)) {
+  if (IsConstantOrPersistentTensor(top_k) && !HasUnspecifiedDimension(input)) {
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
   } else {
     TfLiteTensor* output_indexes;

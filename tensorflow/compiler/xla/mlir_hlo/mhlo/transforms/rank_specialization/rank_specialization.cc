@@ -31,7 +31,7 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Block.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
@@ -142,7 +142,7 @@ struct RankSpecializationClusterPattern : public RewritePattern {
                              SmallVector<Location>(operandTypes.size(), loc));
 
     // Copy operations into the body.
-    BlockAndValueMapping bvm;
+    IRMapping bvm;
     for (auto it : llvm::zip(operands, block->getArguments()))
       bvm.map(std::get<0>(it), std::get<1>(it));
     rewriter.setInsertionPointToStart(block);
@@ -229,7 +229,7 @@ struct MergeRankSpecializationClusterOpsPattern
 
     // Map operands and copy operations of the preceding cluster into the new
     // body.
-    BlockAndValueMapping bvm;
+    IRMapping bvm;
     for (const auto &it : llvm::enumerate(precedingBody->getArguments()))
       bvm.map(it.value(), newBody->getArgument(it.index()));
     for (Operation &nestedOp : precedingBody->without_terminator())
@@ -325,7 +325,7 @@ Type deriveUnrankedTensorTypes(Type ty) {
 }
 
 SmallVector<Value, 8> materializeRankedOperations(
-    OpBuilder &b, Location loc, BlockAndValueMapping &bvm,
+    OpBuilder &b, Location loc, IRMapping &bvm,
     chlo::RankSpecializationClusterOp op) {
   // Create ranked operations.
   for (Operation &nestedOp : op.SingleBlock::getBody()->without_terminator()) {
@@ -461,7 +461,7 @@ Value materializeScalarRankSpecializationCase(
   }
 
   auto ifOp = b.create<scf::IfOp>(
-      loc, op->getResultTypes(), allOthersAreScalar,
+      loc, allOthersAreScalar,
       [&](OpBuilder &b, Location loc) {
         // Compute flat non-scalar shape.
         SmallVector<Value, 4> nonScalarShapes;
@@ -492,7 +492,7 @@ Value materializeScalarRankSpecializationCase(
             }));
 
         // Materialize ranked variants for the element-wise operations.
-        BlockAndValueMapping bvm;
+        IRMapping bvm;
         for (auto it : llvm::zip(op.SingleBlock::getBody()->getArguments(),
                                  rankedOperands))
           bvm.map(std::get<0>(it), std::get<1>(it));
@@ -532,7 +532,7 @@ Value materializeEqualShapesRankSpecializationCase(
   }
 
   auto ifOp = b.create<scf::IfOp>(
-      loc, op->getResultTypes(), allShapesEqOrScalar,
+      loc, allShapesEqOrScalar,
       [&](OpBuilder &b, Location loc) {
         // Flatten non-scalar operands.
         Value flatShape = materializeFlatShape(b, loc, nonScalarShapes);
@@ -545,7 +545,7 @@ Value materializeEqualShapesRankSpecializationCase(
             }));
 
         // Materialize ranked variants for the element-wise operations.
-        BlockAndValueMapping bvm;
+        IRMapping bvm;
         for (auto it :
              llvm::zip(op.SingleBlock::getBody()->getArguments(), flatOperands))
           bvm.map(std::get<0>(it), std::get<1>(it));
@@ -594,7 +594,7 @@ Value materializeTargetRankSpecializationCase(
   }
 
   // Materialize ranked versions of the element-wise operations.
-  BlockAndValueMapping bvm;
+  IRMapping bvm;
   for (auto it : llvm::zip(op.getBody().front().getArguments(), rankedOperands))
     bvm.map(std::get<0>(it), std::get<1>(it));
 
@@ -707,7 +707,7 @@ materializeRankSpecializationForSingleNonScalarShapeEquivalenceClass(
   Value flatShape = materializeFlatShape(rewriter, loc, nonScalarShapes);
 
   // Materialize ranked variants for the element-wise operations.
-  BlockAndValueMapping bvm;
+  IRMapping bvm;
   for (auto it :
        llvm::zip(op.SingleBlock::getBody()->getArguments(), op.getOperands())) {
     Value operand;

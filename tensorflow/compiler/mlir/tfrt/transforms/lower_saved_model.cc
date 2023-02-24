@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -36,6 +36,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
+using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 
 constexpr char kCpuDeviceName[] =
     "/job:localhost/replica:0/task:0/device:CPU:0";
@@ -78,7 +81,7 @@ struct HoistInfo {
 
   // Mapping from the old values produced by hoisted ops before hoisting to the
   // new values after hoisting.
-  mlir::BlockAndValueMapping value_mapping;
+  mlir::IRMapping value_mapping;
 
   // `hoisted_values` is to keep all values that are produced by hoisted ops
   // but used by non-hoisted ops. These values will be replaced by results of
@@ -165,10 +168,11 @@ void ReplaceHoistedValues(
   }
 }
 
-bool OnlyHasReadEffect(mlir::Operation *op) {
+bool OnlyHasReadOrNoEffect(mlir::Operation *op) {
   auto interface = llvm::dyn_cast<mlir::MemoryEffectOpInterface>(op);
   if (!interface) return false;
-  return interface.onlyHasEffect<mlir::MemoryEffects::Read>();
+  return interface.onlyHasEffect<mlir::MemoryEffects::Read>() ||
+         interface.hasNoEffect();
 }
 
 bool CanHoist(const llvm::DenseSet<mlir::TF::ResourceHandle> &read_only_vars,
@@ -332,7 +336,7 @@ void HoistInvariantOps(mlir::ModuleOp module) {
     const auto &vars = iter.second;
     if (std::all_of(vars.begin(), vars.end(), [](mlir::Operation *op) {
           for (auto *user : op->getUsers()) {
-            if (!OnlyHasReadEffect(user)) return false;
+            if (!OnlyHasReadOrNoEffect(user)) return false;
           }
           return true;
         })) {
@@ -458,7 +462,7 @@ class LowerTFSavedModelPass
     mlir::OpBuilder builder(&getContext());
     auto resource_id = builder.getStringAttr("tf.resource_name");
     auto bound_id = builder.getStringAttr("tf_saved_model.bound_input");
-    auto path_id = builder.getStringAttr("tf_saved_model.index_path");
+    auto path_id = builder.getStringAttr(kTfSavedModelIndexPathAttr);
 
     module.walk([resource_id, bound_id, path_id,
                  &builder](mlir::Operation *op) mutable {
@@ -478,7 +482,7 @@ class LowerTFSavedModelPass
           func_op.removeResultAttr(i, path_id);
         }
         if (auto exported_names = func_op->getAttrOfType<mlir::ArrayAttr>(
-                "tf_saved_model.exported_names")) {
+                kTfSavedModelExportedNamesAttr)) {
           bool is_session_initializer = IsSessionInitializer(func_op);
 
           // Create a function for each exported name.
@@ -486,7 +490,7 @@ class LowerTFSavedModelPass
           // TODO(b/148477882): TFRT dialect should have similar concepts of
           // exported names so that a function can be referenced by multiple
           // exported names.
-          func_op->removeAttr("tf_saved_model.exported_names");
+          func_op->removeAttr(kTfSavedModelExportedNamesAttr);
           for (auto exported_name : exported_names) {
             auto exported_func_op = func_op.clone();
             exported_func_op.setName(exported_name.cast<mlir::StringAttr>());

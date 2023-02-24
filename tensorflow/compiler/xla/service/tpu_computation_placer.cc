@@ -27,11 +27,11 @@ template <typename T>
 using StatusOr = TpuComputationPlacer::StatusOr<T>;
 
 TpuComputationPlacer::TpuComputationPlacer() {
-  placer_ = tensorflow::tpu::ExecutorApiFn()->TpuComputationPlacer_NewFn();
+  placer_ = stream_executor::tpu::ExecutorApiFn()->TpuComputationPlacer_NewFn();
 }
 
 TpuComputationPlacer::~TpuComputationPlacer() {
-  tensorflow::tpu::ExecutorApiFn()->TpuComputationPlacer_FreeFn(placer_);
+  stream_executor::tpu::ExecutorApiFn()->TpuComputationPlacer_FreeFn(placer_);
 }
 
 StatusOr<int> TpuComputationPlacer::DeviceId(int replica, int computation,
@@ -44,7 +44,7 @@ StatusOr<xla::DeviceAssignment> TpuComputationPlacer::AssignDevices(
     int replica_count, int computation_count) {
   StatusHelper status;
   xla::DeviceAssignment result(replica_count, computation_count);
-  tensorflow::tpu::ExecutorApiFn()->TpuComputationPlacer_AssignDevicesFn(
+  stream_executor::tpu::ExecutorApiFn()->TpuComputationPlacer_AssignDevicesFn(
       placer_, replica_count, computation_count, result.data(),
       status.c_status);
   if (!status.ok()) {
@@ -59,9 +59,10 @@ TpuComputationPlacer::AssignLocalDevices(TpuHostLocationExternal host_location,
                                          int computation_count) {
   StatusHelper status;
   xla::DeviceAssignment result(replica_count, computation_count);
-  tensorflow::tpu::ExecutorApiFn()->TpuComputationPlacer_AssignLocalDevicesFn(
-      host_location.impl(), replica_count, computation_count, result.data(),
-      status.c_status);
+  stream_executor::tpu::ExecutorApiFn()
+      ->TpuComputationPlacer_AssignLocalDevicesFn(
+          host_location.impl(), replica_count, computation_count, result.data(),
+          status.c_status);
   if (!status.ok()) {
     return status.status();
   }

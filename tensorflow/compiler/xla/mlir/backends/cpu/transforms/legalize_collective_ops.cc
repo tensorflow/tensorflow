@@ -49,19 +49,19 @@ class LegalizeCollectiveOpsPass
 
 Optional<xla_cpu::ReductionKind> MatchReductionComputation(Region& region) {
   if (!region.hasOneBlock()) {
-    return None;
+    return std::nullopt;
   }
 
   auto ret = dyn_cast<mhlo::ReturnOp>(region.front().getTerminator());
   if (!ret || ret->getNumOperands() != 1) {
-    return None;
+    return std::nullopt;
   }
 
   auto computation = ret.getOperand(0).getDefiningOp();
   if (computation->getNumOperands() != 2 ||
       computation->getOperand(0) != region.front().getArgument(0) ||
       computation->getOperand(1) != region.front().getArgument(1)) {
-    return None;
+    return std::nullopt;
   }
 
   if (isa<mhlo::AddOp>(computation)) {
@@ -79,7 +79,7 @@ Optional<xla_cpu::ReductionKind> MatchReductionComputation(Region& region) {
 
   auto type = computation->getOperandTypes().front().dyn_cast<ShapedType>();
   if (!type || !type.getElementType().isInteger(1)) {
-    return None;
+    return std::nullopt;
   }
 
   if (isa<mhlo::AndOp>(computation)) {
@@ -89,7 +89,7 @@ Optional<xla_cpu::ReductionKind> MatchReductionComputation(Region& region) {
     return xla_cpu::ReductionKind::ALL_REDUCE_MAX;
   }
 
-  return None;
+  return std::nullopt;
 }
 
 // Returns a `tensor.empty` with the same shape as `tensor`.
@@ -237,11 +237,41 @@ class OutfeedLowering : public OpRewritePattern<mhlo::OutfeedOp> {
           TypeAttr::get(operand.getType().cast<ShapedType>().getElementType()));
     }
     rewriter.create<xla_cpu::OutfeedOp>(
-        op.getLoc(), llvm::None, op.getInputs(), op.getOutfeedConfigAttr(),
+        op.getLoc(), std::nullopt, op.getInputs(), op.getOutfeedConfigAttr(),
         ArrayAttr::get(op->getContext(), result_types));
 
     // Replacing the op with the token.
     rewriter.replaceOp(op, op.getToken());
+    return success();
+  };
+};
+
+class RngBitGeneratorLowering
+    : public OpRewritePattern<mhlo::RngBitGeneratorOp> {
+  using OpRewritePattern<mhlo::RngBitGeneratorOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::RngBitGeneratorOp op,
+                                PatternRewriter& rewriter) const override {
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    auto state_init = CreateEmptyLike(b, op.getLoc(), op.getOperand());
+    auto output_init =
+        b.create<tensor::EmptyOp>(op.getLoc(), op.getType(1), ValueRange{});
+
+    rewriter.replaceOpWithNewOp<xla_cpu::RngBitGeneratorOp>(
+        op, op->getResultTypes(), op->getOperand(0), state_init, output_init,
+        op.getRngAlgorithmAttr());
+    return success();
+  };
+};
+
+class AddDependencyLowering : public OpRewritePattern<mhlo::AddDependencyOp> {
+  using OpRewritePattern<mhlo::AddDependencyOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::AddDependencyOp op,
+                                PatternRewriter& rewriter) const override {
+    rewriter.replaceOpWithNewOp<xla_cpu::AddDependencyOp>(
+        op, op->getResultTypes(), op->getOperands());
     return success();
   };
 };
@@ -252,11 +282,11 @@ void LegalizeCollectiveOpsPass::runOnOperation() {
 
   // Convert mhlo collective operations to XLA cpu ops.
   RewritePatternSet patterns(ctx);
-  patterns
-      .insert<AllReduceLowering, CollectivePermuteLowering, AllToAllLowering,
-              IdLowering<mhlo::PartitionIdOp, xla_cpu::PartitionIdOp>,
-              IdLowering<mhlo::ReplicaIdOp, xla_cpu::ReplicaIdOp>, FftLowering,
-              OutfeedLowering>(ctx);
+  patterns.insert<AddDependencyLowering, AllReduceLowering, AllToAllLowering,
+                  CollectivePermuteLowering, FftLowering,
+                  IdLowering<mhlo::PartitionIdOp, xla_cpu::PartitionIdOp>,
+                  IdLowering<mhlo::ReplicaIdOp, xla_cpu::ReplicaIdOp>,
+                  OutfeedLowering, RngBitGeneratorLowering>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     return signalPassFailure();

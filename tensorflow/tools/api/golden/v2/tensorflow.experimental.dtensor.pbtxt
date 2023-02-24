@@ -82,15 +82,19 @@ tf_module {
   }
   member_method {
     name: "initialize_accelerator_system"
-    argspec: "args=[\'device_type\', \'enable_coordination_service\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+    argspec: "args=[\'device_type\', \'enable_coordination_service\', \'experimental_reset_context\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'False\'], "
   }
   member_method {
     name: "initialize_multi_client"
-    argspec: "args=[\'device_type\', \'enable_coordination_service\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+    argspec: "args=[\'device_type\', \'enable_coordination_service\', \'experimental_reset_context\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'False\'], "
   }
   member_method {
     name: "initialize_tpu_system"
-    argspec: "args=[\'device_type\', \'enable_coordination_service\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+    argspec: "args=[\'device_type\', \'enable_coordination_service\', \'experimental_reset_context\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'False\'], "
+  }
+  member_method {
+    name: "is_dtensor"
+    argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "job_name"

@@ -40,8 +40,8 @@ enum DataType {
   DT_VARIANT = 21;  // Arbitrary C++ data types
   DT_UINT32 = 22;
   DT_UINT64 = 23;
-  DT_FLOAT8_E5M2 = 24;    // 5 exponent bits, 3 mantissa bits.
-  DT_FLOAT8_E4M3FN = 25;  // 4 exponent bits, 2 mantissa bits, finite-only, with
+  DT_FLOAT8_E5M2 = 24;    // 5 exponent bits, 2 mantissa bits.
+  DT_FLOAT8_E4M3FN = 25;  // 4 exponent bits, 3 mantissa bits, finite-only, with
                           // 2 NaNs (0bS1111111).
 
   // Do not use!  These are only for parameters.  Every enum above

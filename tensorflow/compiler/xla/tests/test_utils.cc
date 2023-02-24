@@ -221,6 +221,43 @@ void PopulateWithFloatingPointData<bfloat16>(Literal* literal,
   }
 }
 
+template <>
+void PopulateWithFloatingPointData<tsl::float8_e5m2>(Literal* literal,
+                                                     std::minstd_rand0* engine,
+                                                     bool no_duplicates,
+                                                     bool use_large_range) {
+  CHECK(engine != nullptr);
+  CHECK_EQ(literal->shape().element_type(),
+           primitive_util::NativeToPrimitiveType<tsl::float8_e5m2>());
+  if (no_duplicates) {
+    PopulateWithNoDuplicateData<tsl::float8_e5m2>(literal, engine);
+  } else if (use_large_range) {
+    PopulateWithRandomFullRangeFloatingPointData<tsl::float8_e5m2>(literal,
+                                                                   engine);
+  } else {
+    PopulateWithRandomFloatingPointData<tsl::float8_e5m2, float>(literal,
+                                                                 engine);
+  }
+}
+
+template <>
+void PopulateWithFloatingPointData<tsl::float8_e4m3fn>(
+    Literal* literal, std::minstd_rand0* engine, bool no_duplicates,
+    bool use_large_range) {
+  CHECK(engine != nullptr);
+  CHECK_EQ(literal->shape().element_type(),
+           primitive_util::NativeToPrimitiveType<tsl::float8_e4m3fn>());
+  if (no_duplicates) {
+    PopulateWithNoDuplicateData<tsl::float8_e4m3fn>(literal, engine);
+  } else if (use_large_range) {
+    PopulateWithRandomFullRangeFloatingPointData<tsl::float8_e4m3fn>(literal,
+                                                                     engine);
+  } else {
+    PopulateWithRandomFloatingPointData<tsl::float8_e4m3fn, float>(literal,
+                                                                   engine);
+  }
+}
+
 // uniform_int_distribution is not defined for 8-bit integers.
 // Use 'short' for those types.
 template <typename IntT>
@@ -300,6 +337,14 @@ StatusOr<Literal> MakeFakeLiteralInternal(
   int64_t max = std::numeric_limits<int64_t>::max();
   int64_t min = std::numeric_limits<int64_t>::lowest();
   switch (shape.element_type()) {
+    case F8E5M2:
+      PopulateWithFloatingPointData<tsl::float8_e5m2>(
+          &literal, engine, no_duplicates, use_large_range);
+      break;
+    case F8E4M3FN:
+      PopulateWithFloatingPointData<tsl::float8_e4m3fn>(
+          &literal, engine, no_duplicates, use_large_range);
+      break;
     case BF16:
       PopulateWithFloatingPointData<bfloat16>(&literal, engine, no_duplicates,
                                               use_large_range);
@@ -802,10 +847,7 @@ bool IsMlirLoweringEnabled() {
     return false;
   }
   return !absl::StrContains(xla_flags, "--xla_cpu_use_xla_runtime=false") &&
-         !absl::StrContains(xla_flags,
-                            "--xla_cpu_enable_mlir_lowering=false") &&
-         (absl::StrContains(xla_flags, "--xla_cpu_use_xla_runtime") ||
-          absl::StrContains(xla_flags, "--xla_cpu_enable_mlir_lowering"));
+         (absl::StrContains(xla_flags, "--xla_cpu_use_xla_runtime"));
 }
 
 }  // namespace xla

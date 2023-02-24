@@ -7,6 +7,7 @@ package_group(
         # copybara:uncomment_begin(google-only)
         # "//platforms/xla/service/cpu/...",
         # "//learning/brain/experimental/tfrt/autofusion/...",
+        # "//third_party/mlir_edge/tpgen/...",
         # # TODO(ezhulenev): Clean up dependencies that are leforvers from Autofusion project.
         # "@tf_runtime//...",
         # "//third_party/tf_runtime_google/...",
@@ -37,7 +38,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_cpu",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:passes",
-        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
+        "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MemRefDialect",

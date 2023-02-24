@@ -33,6 +33,20 @@ constexpr int kDimsTensor = 0;
 constexpr int kValueTensor = 1;
 constexpr int kOutputTensor = 0;
 
+struct OpData {
+  // Indicates that 'Eval' is a noop as the output as written during 'Prepare'.
+  bool noop;
+};
+
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  auto* data = new OpData;
+  return data;
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<OpData*>(buffer);
+}
+
 template <typename T>
 TfLiteStatus ResizeOutputImpl(TfLiteContext* context, const TfLiteTensor* dims,
                               TfLiteTensor* output) {
@@ -68,7 +82,10 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* dims,
 
 }  // namespace
 
+TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node);
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
@@ -77,6 +94,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* value;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kValueTensor, &value));
 
+  op_data->noop =
+      IsConstantOrPersistentTensor(dims) && IsConstantOrPersistentTensor(value);
   // Make sure the 1st input tensor is 1-D.
   TF_LITE_ENSURE_EQ(context, NumDimensions(dims), 1);
 
@@ -100,7 +119,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, value->params.zero_point, 0);
   }
 
-  if (IsConstantTensor(dims)) {
+  if (op_data->noop) {
+    SetTensorToPersistentRo(output);
+    TF_LITE_ENSURE_OK(context, ResizeOutput(context, dims, output));
+    return EvalImpl(context, node);
+  }
+  if (IsConstantOrPersistentTensor(dims)) {
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, dims, output));
   } else {
     SetTensorToDynamic(output);
@@ -123,6 +147,13 @@ TfLiteStatus FillString(const TfLiteTensor* value, TfLiteTensor* output) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  if (reinterpret_cast<const OpData*>(node->user_data)->noop) {
+    return kTfLiteOk;
+  }
+  return EvalImpl(context, node);
+}
+
+TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* value;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kValueTensor, &value));
 
@@ -179,8 +210,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace fill
 
 TfLiteRegistration* Register_FILL() {
-  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
-                                 fill::Prepare, fill::Eval};
+  static TfLiteRegistration r = {fill::Init, fill::Free, fill::Prepare,
+                                 fill::Eval};
   return &r;
 }
 

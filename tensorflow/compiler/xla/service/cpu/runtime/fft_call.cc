@@ -54,7 +54,7 @@ namespace {
 struct XlaFft {
   absl::Status operator()(const ExecutableRunOptions* run_options,
                           MemrefView input, MemrefView output, int32_t fft_type,
-                          llvm::ArrayRef<int64_t> fft_length) const;
+                          absl::Span<const int64_t> fft_length) const;
   static XlaFft Handler() { return XlaFft(); }
 };
 }  // namespace
@@ -62,7 +62,7 @@ struct XlaFft {
 absl::Status XlaFft::operator()(const ExecutableRunOptions* run_options,
                                 MemrefView input, MemrefView output,
                                 int32_t fft_type,
-                                llvm::ArrayRef<int64_t> fft_length) const {
+                                absl::Span<const int64_t> fft_length) const {
   if (fft_length.empty() || fft_length.size() > 3) {
     return absl::InvalidArgumentError(
         "fft_length must contain 1 to 3 elements");
@@ -88,7 +88,7 @@ static bool Fft(xla::runtime::ExecutionContext* ctx, void** args, void** attrs,
                              .Arg<MemrefView>()  // input
                              .Arg<MemrefView>()  // output
                              .Attr<int32_t>("fft_type")
-                             .Attr<llvm::ArrayRef<int64_t>>("fft_length")
+                             .Attr<absl::Span<const int64_t>>("fft_length")
                              .To<RuntimeChecks()>(XlaFft::Handler())
                              .release();
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));

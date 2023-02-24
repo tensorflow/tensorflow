@@ -15,6 +15,7 @@ limitations under the License.
 
 // This file implements logic for lowering LHLO dialect to Affine dialect.
 
+#include <optional>
 #include <utility>
 
 #include "lhlo/IR/lhlo_ops.h"
@@ -212,7 +213,7 @@ static void fillBuffer(Location loc, Value buffer, Value fillValue,
   SmallVector<Value, 4> ivs(rank);
   AffineForOp forOp;
   for (unsigned i = 0; i < rank; ++i) {
-    forOp = builder.create<AffineForOp>(loc, llvm::None, lbMap, dimSizes[i],
+    forOp = builder.create<AffineForOp>(loc, std::nullopt, lbMap, dimSizes[i],
                                         idSymMap);
     builder.setInsertionPointToStart(forOp.getBody());
     ivs[i] = forOp.getInductionVar();
@@ -223,7 +224,7 @@ static void fillBuffer(Location loc, Value buffer, Value fillValue,
           fillValueType.isIntOrFloat()) &&
          "init value has to be a 0-d memref or int or fp");
   Value initVal = fillMemRefType ? builder.create<AffineLoadOp>(
-                                       loc, fillValue, /*indices=*/llvm::None)
+                                       loc, fillValue, /*indices=*/std::nullopt)
                                  : fillValue;
   builder.create<AffineStoreOp>(loc, initVal, buffer, ivs);
 }

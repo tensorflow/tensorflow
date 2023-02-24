@@ -117,7 +117,13 @@ const char* TF_Version() { return TF_VERSION_STRING; }
 // --------------------------------------------------------------------------
 
 // --------------------------------------------------------------------------
-TF_SessionOptions* TF_NewSessionOptions() { return new TF_SessionOptions; }
+TF_SessionOptions* TF_NewSessionOptions() {
+  TF_SessionOptions* out = new TF_SessionOptions;
+  // Disable optimizations for static graph to allow calls to Session::Extend.
+  out->options.config.mutable_experimental()
+      ->set_disable_optimize_for_static_graph(true);
+  return out;
+}
 void TF_DeleteSessionOptions(TF_SessionOptions* opt) { delete opt; }
 
 void TF_SetTarget(TF_SessionOptions* options, const char* target) {
@@ -129,6 +135,9 @@ void TF_SetConfig(TF_SessionOptions* options, const void* proto,
   if (!options->options.config.ParseFromArray(proto, proto_len)) {
     status->status = InvalidArgument("Unparseable ConfigProto");
   }
+  // Disable optimizations for static graph to allow calls to Session::Extend.
+  options->options.config.mutable_experimental()
+      ->set_disable_optimize_for_static_graph(true);
 }
 
 void TF_TensorFromProto(const TF_Buffer* from, TF_Tensor* to,

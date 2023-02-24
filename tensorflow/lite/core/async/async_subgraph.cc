@@ -16,12 +16,12 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/lite/core/c/c_api_types.h"
-#include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
 #include "tensorflow/lite/core/async/common.h"
 #include "tensorflow/lite/core/async/task_internal.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 
@@ -47,7 +47,7 @@ TfLiteAsyncKernel* AsyncSubgraph::async_kernel() const {
 AsyncSubgraph::AsyncSubgraph(Subgraph* subgraph) : subgraph_(subgraph) {
   // Currently we only support one delegate and fully delegated subgph.
   if (!IsFullyDelegated()) {
-    subgraph->ReportError("Model is no fully delegated by 1 backend.");
+    subgraph->ReportError("Model is not fully delegated by 1 backend.");
     return;
   }
   // TODO(b/191883048): Add/Check delegate flag to indicate kernel support.
@@ -58,6 +58,23 @@ AsyncSubgraph::AsyncSubgraph(Subgraph* subgraph) : subgraph_(subgraph) {
   // remove the const cast.
   opaque_node_ =
       reinterpret_cast<TfLiteOpaqueNode*>(const_cast<TfLiteNode*>(&node));
+#define POPULATE_VECTOR(io_type, accessor, dest)                          \
+  {                                                                       \
+    const char* const* types = nullptr;                                   \
+    size_t n_types = 0;                                                   \
+    (*async_kernel_->accessor)(async_kernel_, io_type, &types, &n_types); \
+    dest[io_type] = std::vector<const char*>(types, types + n_types);     \
+  }
+
+  POPULATE_VECTOR(kTfLiteIoInput, supported_buffer_types,
+                  supported_buffer_types_);
+  POPULATE_VECTOR(kTfLiteIoOutput, supported_buffer_types,
+                  supported_buffer_types_);
+  POPULATE_VECTOR(kTfLiteIoInput, supported_synchronizations,
+                  supported_synchronizations_);
+  POPULATE_VECTOR(kTfLiteIoOutput, supported_synchronizations,
+                  supported_synchronizations_);
+#undef POPULATE_VECTOR
 }
 
 bool AsyncSubgraph::IsFullyDelegated() const {
@@ -99,16 +116,14 @@ TfLiteStatus AsyncSubgraph::UnregisterBuffer(TfLiteBufferHandle handle) {
                                              handle);
 }
 
-std::vector<const char*> AsyncSubgraph::SupportedBufferTypes(
+const std::vector<const char*>& AsyncSubgraph::SupportedBufferTypes(
     TfLiteIoType io_type) const {
-  if (async_kernel() == nullptr) return {};
-  return (*async_kernel_->supported_buffer_types)(async_kernel_, io_type);
+  return supported_buffer_types_.at(io_type);
 }
 
-std::vector<const char*> AsyncSubgraph::SupportedSynchronizations(
+const std::vector<const char*>& AsyncSubgraph::SupportedSynchronizations(
     TfLiteIoType io_type) const {
-  if (async_kernel() == nullptr) return {};
-  return (*async_kernel_->supported_synchronizations)(async_kernel_, io_type);
+  return supported_synchronizations_.at(io_type);
 }
 
 bool AsyncSubgraph::ReconcileRestrictions(
@@ -146,14 +161,15 @@ TfLiteStatus AsyncSubgraph::InvokeAsync(TfLiteExecutionTask* task) {
   if (task == nullptr || async_kernel() == nullptr) {
     return kTfLiteError;
   }
-  if (task->task->Scheduled()) {
+  if (task->task->SetScheduled(true)) {
     TFLITE_LOG(tflite::TFLITE_LOG_ERROR,
                "The task has already been scheduled for execution.");
     return kTfLiteError;
   }
-  task->task->SetScheduled(true);
-  return (*async_kernel_->eval)(async_kernel_, opaque_context(), opaque_node_,
-                                task);
+  auto ret = (*async_kernel_->eval)(async_kernel_, opaque_context(),
+                                    opaque_node_, task);
+  task->task->SetStatus(ret);
+  return ret;
 }
 
 TfLiteStatus AsyncSubgraph::Wait(TfLiteExecutionTask* task) {
@@ -161,22 +177,24 @@ TfLiteStatus AsyncSubgraph::Wait(TfLiteExecutionTask* task) {
     return kTfLiteError;
   }
   if (!task->task->Scheduled()) {
-    // Nothing to wait.
-    return kTfLiteOk;
+    // Nothing to wait. Returns the previous status code in case multiple
+    // threads are waiting for the same task.
+    return task->task->Status();
   }
+  auto ret = (*async_kernel_->wait)(async_kernel_, opaque_context(), task);
+  task->task->SetStatus(ret);
   task->task->SetScheduled(false);
-  return (*async_kernel_->wait)(async_kernel_, opaque_context(), task);
+  return ret;
 }
 
 TfLiteStatus AsyncSubgraph::Finish(TfLiteExecutionTask* task) {
   if (async_kernel() == nullptr) return kTfLiteError;
-  if ((*async_kernel_->finish)(async_kernel_, opaque_context(), task) !=
-      kTfLiteOk) {
+  auto ret = (*async_kernel_->finish)(async_kernel_, opaque_context(), task);
+  if (ret != kTfLiteOk) {
     subgraph_->ReportError("Failed to finish task.");
-    return kTfLiteError;
   }
   delete task;
-  return kTfLiteOk;
+  return ret;
 }
 
 }  // namespace async

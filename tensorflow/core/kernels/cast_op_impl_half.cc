@@ -22,17 +22,19 @@ typedef Eigen::GpuDevice GPUDevice;
 
 CastFunctorType GetCpuCastFromHalf(DataType dst_dtype) {
   CURRY_TYPES3(CAST_CASE, CPUDevice, Eigen::half);
+  CAST_CASE(CPUDevice, Eigen::half, float8_e5m2);
+  CAST_CASE(CPUDevice, Eigen::half, float8_e4m3fn);
   return nullptr;
 }
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 CastFunctorType GetGpuCastFromHalf(DataType dst_dtype) {
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-  CAST_CASE(GPUDevice, float, bfloat16);
-#else
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
   CURRY_TYPES3_NO_BF16(CAST_CASE, GPUDevice, Eigen::half);
 #endif
+  CAST_CASE(GPUDevice, Eigen::half, float8_e5m2);
+  CAST_CASE(GPUDevice, Eigen::half, float8_e4m3fn);
   return nullptr;
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

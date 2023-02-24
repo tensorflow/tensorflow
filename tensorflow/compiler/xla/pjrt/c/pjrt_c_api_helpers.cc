@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
@@ -29,6 +30,7 @@ namespace pjrt {
 
 const absl::string_view kHloFormat = "hlo";
 const absl::string_view kMlirFormat = "mlir";
+const absl::string_view kHloWithConfigFormat = "hlo_with_config";
 
 PJRT_ClientDeleter MakeClientDeleter(const PJRT_Api* api) {
   return [api](PJRT_Client* client) -> void {
@@ -75,6 +77,16 @@ PJRT_ExecutableDeleter MakeExecutableDeleter(const PJRT_Api* api) {
   };
 }
 
+PJRT_LoadedExecutableDeleter MakeLoadedExecutableDeleter(const PJRT_Api* api) {
+  return [api](PJRT_LoadedExecutable* executable) -> void {
+    PJRT_LoadedExecutable_Destroy_Args args;
+    args.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.executable = executable;
+    pjrt::LogFatalIfPjrtError(api->PJRT_LoadedExecutable_Destroy(&args), api);
+  };
+}
+
 xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api) {
   xla::Status status;
   if (error != nullptr) {
@@ -82,6 +94,18 @@ xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api) {
                          GetPjrtErrorMessage(error, api));
   }
   return status;
+}
+
+PJRT_DeviceTopologyDeleter MakeDeviceTopologyDeleter(const PJRT_Api* api) {
+  return [api](PJRT_DeviceTopology* topology) -> void {
+    PJRT_DeviceTopology_Destroy_Args destroy_args;
+    destroy_args.struct_size = PJRT_DeviceTopology_Destroy_Args_STRUCT_SIZE;
+    destroy_args.priv = nullptr;
+    destroy_args.topology = topology;
+
+    pjrt::LogFatalIfPjrtError(api->PJRT_DeviceTopology_Destroy(&destroy_args),
+                              api);
+  };
 }
 
 tsl::error::Code PjrtErrorToStatusCode(const PJRT_Error* error,
@@ -364,6 +388,48 @@ xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
     return PjRtFuture<Status>(s);
   }
   return PjRtFuture<Status>(std::move(promise));
+}
+
+PJRT_SerializedExecutableDeleter MakeSerializedExecutableDeleter(
+    const PJRT_Api* api) {
+  return [api](PJRT_SerializedExecutable* serialized_executable) -> void {
+    PJRT_SerializedExecutable_Destroy_Args destroy_args;
+    destroy_args.struct_size =
+        PJRT_SerializedExecutable_Destroy_Args_STRUCT_SIZE;
+    destroy_args.priv = nullptr;
+    destroy_args.serialized_executable = serialized_executable;
+    pjrt::LogFatalIfPjrtError(
+        api->PJRT_SerializedExecutable_Destroy(&destroy_args), api);
+  };
+}
+
+static std::string StructSizeErrorMsg(absl::string_view struct_name,
+                                      size_t expected_size,
+                                      size_t actual_size) {
+  return absl::StrCat("Unexpected ", struct_name, " size: expected ",
+                      expected_size, ", got ", actual_size,
+                      ". Check installed software versions.");
+}
+
+xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
+                                     size_t expected_size, size_t actual_size) {
+  if (expected_size != actual_size) {
+    return tsl::errors::InvalidArgument(
+        StructSizeErrorMsg(struct_name, expected_size, actual_size));
+  }
+  return tsl::OkStatus();
+}
+
+absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api) {
+  PJRT_Client_PlatformVersion_Args args;
+  args.struct_size = PJRT_Client_PlatformVersion_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.client = client;
+  LogFatalIfPjrtError(api->PJRT_Client_PlatformVersion(&args), api);
+
+  absl::string_view platform_version(args.platform_version,
+                                     args.platform_version_size);
+  return platform_version;
 }
 
 }  // namespace pjrt

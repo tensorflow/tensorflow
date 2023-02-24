@@ -235,6 +235,11 @@ Status NodeDefBuilder::Finalize(NodeDef* node_def, bool consume) {
           (*errors_ptr)[0], " while building NodeDef '", node_def_.name(),
           "' using ", SummarizeOpDef(*op_def_));
     } else {
+      if (op_def_ == nullptr) {
+        return errors::InvalidArgument(
+            errors_ptr->size(), " errors while building NodeDef '",
+            node_def_.name(), "':\n", absl::StrJoin(*errors_ptr, "\n"));
+      }
       return errors::InvalidArgument(
           errors_ptr->size(), " errors while building NodeDef '",
           node_def_.name(), "' using ", SummarizeOpDef(*op_def_), ":\n",

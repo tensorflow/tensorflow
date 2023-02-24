@@ -166,7 +166,7 @@ TEST_F(WhileOpTest, WhileOpCPUBuildWithPluggableDevice) {
           std::move(platform_fns_),
           stream_executor::test_util::DestroyPlatformFns,
           std::move(device_fns_), std::move(se_), std::move(timer_fns_)));
-  SE_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
+  TF_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
       std::move(cplatform)));
 
   DeviceFactory::Register(

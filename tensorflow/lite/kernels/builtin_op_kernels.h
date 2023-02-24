@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,21 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_BUILTIN_OP_KERNELS_H_
 #define TENSORFLOW_LITE_KERNELS_BUILTIN_OP_KERNELS_H_
 
-/// For documentation, see
-/// third_party/tensorflow/lite/core/kernels/builtin_op_kernels.h.
-#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"  // IWYU pragma: export
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
+
+namespace tflite {
+namespace ops {
+namespace builtin {
+
+#define TFLITE_OP(NAME) \
+    using ::tflite::ops::builtin::NAME;
+
+#include "tensorflow/lite/core/shims/builtin_ops_list.inc"
+
+#undef TFLITE_OP
+
+}  // namespace builtin
+}  // namespace ops
+}  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_BUILTIN_OP_KERNELS_H_

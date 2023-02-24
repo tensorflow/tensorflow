@@ -119,6 +119,7 @@ TEST_F(BundleV2Test, UpdatesMetrics) {
   // Check that the gauge contains the fingerprint.
   EXPECT_EQ(metrics::SavedModelReadFingerprint().value(),
             kV2ModuleSavedModelChecksum);
+  EXPECT_EQ(metrics::SavedModelReadPath().value(), export_dir);
 }
 
 }  // namespace

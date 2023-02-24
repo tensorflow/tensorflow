@@ -692,7 +692,8 @@ class WorkerPreemptionHandler(object):
         try:
           # TODO(haoyuzhang): support partial cluster recovery
           logging.info("Cluster now being recovered.")
-          context.context().update_server_def(self._server_def)
+          with metric_utils.monitored_timer("server_def_update"):
+            context.context().update_server_def(self._server_def)
 
           # Cluster updated successfully, clear the update signal, and notify
           # all workers that they are recovered from failure.

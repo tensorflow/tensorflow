@@ -18,12 +18,31 @@ import collections
 import inspect
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 
+from absl import logging
+
 from tensorflow.core.function import trace_type
+from tensorflow.core.function.polymorphism import function_type_pb2
+from tensorflow.core.function.trace_type import serialization
 from tensorflow.python.types import trace
 
 # Represents a defined parameter default value that is saved alongside the
 # function's captures.
 CAPTURED_DEFAULT_VALUE = object()
+
+PROTO_TO_PY_ENUM = {
+    function_type_pb2.Parameter.Kind.POSITIONAL_ONLY:
+        inspect.Parameter.POSITIONAL_ONLY,
+    function_type_pb2.Parameter.Kind.POSITIONAL_OR_KEYWORD:
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    function_type_pb2.Parameter.Kind.VAR_POSITIONAL:
+        inspect.Parameter.VAR_POSITIONAL,
+    function_type_pb2.Parameter.Kind.KEYWORD_ONLY:
+        inspect.Parameter.KEYWORD_ONLY,
+    function_type_pb2.Parameter.Kind.VAR_KEYWORD:
+        inspect.Parameter.VAR_KEYWORD,
+}
+
+PY_TO_PROTO_ENUM = {v: k for k, v in PROTO_TO_PY_ENUM.items()}
 
 
 class Parameter(inspect.Parameter):
@@ -53,6 +72,22 @@ class Parameter(inspect.Parameter):
         default=CAPTURED_DEFAULT_VALUE if optional else self.empty,
         annotation=type_constraint
         if type_constraint is not None else self.empty)
+
+  @classmethod
+  def from_proto(cls, proto: Any) -> "Parameter":
+    deserialized_type_constraint = serialization.deserialize(
+        proto.type_constraint) if proto.HasField("type_constraint") else None
+    return Parameter(proto.name, PROTO_TO_PY_ENUM[proto.kind],
+                     proto.is_optional, deserialized_type_constraint)
+
+  def to_proto(self) -> function_type_pb2.Parameter:
+    serialized_type_constraint = serialization.serialize(
+        self.type_constraint) if self.type_constraint else None
+    return function_type_pb2.Parameter(
+        name=self.name,
+        kind=PY_TO_PROTO_ENUM[self.kind],
+        is_optional=self.optional,
+        type_constraint=serialized_type_constraint)
 
   @property
   def optional(self) -> bool:
@@ -165,6 +200,46 @@ class FunctionType(inspect.Signature):
         default_values[p.name] = p.default
     return default_values
 
+  @classmethod
+  def from_proto(cls, proto: Any) -> "FunctionType":
+    return FunctionType([Parameter.from_proto(p) for p in proto.parameters],
+                        collections.OrderedDict([
+                            (c.name,
+                             serialization.deserialize(c.type_constraint))
+                            for c in proto.captures
+                        ]))
+
+  def to_proto(self) -> Any:
+    return function_type_pb2.FunctionType(
+        parameters=[p.to_proto() for p in self.parameters.values()],
+        captures=[
+            function_type_pb2.Capture(
+                name=n, type_constraint=serialization.serialize(t))
+            for n, t in self.captures.items()
+        ])
+
+  def bind_with_defaults(self, args, kwargs, default_values):
+    """Returns BoundArguments with default values filled in."""
+    bound_arguments = self.bind(*args, **kwargs)
+    bound_arguments.apply_defaults()
+
+    with_default_args = collections.OrderedDict()
+    for name, value in bound_arguments.arguments.items():
+      if value is CAPTURED_DEFAULT_VALUE:
+        with_default_args[name] = default_values[name]
+      else:
+        with_default_args[name] = value
+
+    for arg_name in with_default_args:
+      constraint = self.parameters[arg_name].type_constraint
+      if constraint:
+        with_default_args[arg_name] = constraint._cast(  # pylint: disable=protected-access
+            with_default_args[arg_name],
+            trace_type.InternalCastContext(allow_specs=True),
+        )
+    bound_arguments = inspect.BoundArguments(self, with_default_args)
+    return bound_arguments
+
   def is_supertype_of(self, other: "FunctionType") -> bool:
     """Returns True if self is a supertype of other FunctionType."""
     if len(self.parameters) != len(other.parameters):
@@ -217,9 +292,10 @@ class FunctionType(inspect.Signature):
 
     return FunctionType(subtyped_parameters, subtyped_captures)
 
-  def placeholder_arguments(self) -> inspect.BoundArguments:
+  def placeholder_arguments(
+      self, placeholder_context: trace.PlaceholderContext
+  ) -> inspect.BoundArguments:
     """Returns BoundArguments of values that can be used for tracing."""
-    placeholder_context = trace_type.InternalPlaceholderContext()
     arguments = collections.OrderedDict()
     for parameter in self.parameters.values():
       if parameter.kind in {Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD}:
@@ -229,8 +305,8 @@ class FunctionType(inspect.Signature):
       if not parameter.type_constraint:
         raise ValueError("Can not generate placeholder value for "
                          "partially defined function type.")
-
-      arguments[parameter.name] = parameter.type_constraint._placeholder_value(  # pylint: disable=protected-access
+      placeholder_context.update_naming_scope(parameter.name)
+      arguments[parameter.name] = parameter.type_constraint.placeholder_value(
           placeholder_context)
 
     return inspect.BoundArguments(self, arguments)
@@ -250,12 +326,16 @@ class FunctionType(inspect.Signature):
             f"captures={self.captures})")
 
 
-# TODO(fmuham): Raise warning here when load-bearing.
-# In future, replace warning with exception.
-def sanitize_arg_name(name: str) -> str:
-  """Sanitizes Spec names.
+MAX_SANITIZATION_WARNINGS = 5
+sanitization_warnings_given = 0
 
-  Matches Graph Node and Python naming conventions.
+
+# TODO(fmuham): In future, replace warning with exception.
+# TODO(fmuham): Sanitize to graph node conventions.
+def sanitize_arg_name(name: str) -> str:
+  """Sanitizes function argument names.
+
+  Matches Python symbol naming rules.
 
   Without sanitization, names that are not legal Python parameter names can be
   set which makes it challenging to represent callables supporting the named
@@ -267,13 +347,18 @@ def sanitize_arg_name(name: str) -> str:
   Returns:
     A string that meets Python parameter conventions.
   """
-  # Lower case and replace non-alphanumeric chars with '_'
-  swapped = "".join([c if c.isalnum() else "_" for c in name.lower()])
+  # Replace non-alphanumeric chars with '_'
+  swapped = "".join([c if c.isalnum() else "_" for c in name])
+  result = swapped if swapped[0].isalpha() else "arg_" + swapped
 
-  if swapped[0].isalpha():
-    return swapped
-  else:
-    return "arg_" + swapped
+  global sanitization_warnings_given
+  if name != result and sanitization_warnings_given < MAX_SANITIZATION_WARNINGS:
+    logging.warning(
+        "`%s` is not a valid tf.function parameter name. Sanitizing to `%s`.",
+        name, result)
+    sanitization_warnings_given += 1
+
+  return result
 
 
 # TODO(fmuham): Consider forcing kind to be always POSITIONAL_OR_KEYWORD.
@@ -282,7 +367,7 @@ def _make_validated_mono_param(name, value, kind, type_context, poly_type):
   mono_type = trace_type.from_value(value, type_context)
 
   if poly_type and not mono_type.is_subtype_of(poly_type):
-    raise TypeError(f"Parameter {name} was expected to be of type "
+    raise TypeError(f"Parameter `{name}` was expected to be of type "
                     f"{poly_type} but is {mono_type}")
 
   return Parameter(name, kind, False, mono_type)
@@ -332,9 +417,9 @@ def canonicalize_to_monomorphic(
 
     elif poly_parameter.kind is Parameter.VAR_KEYWORD:
       # Unbundle VAR_KEYWORD into individual KEYWORD_ONLY args.
-      for kwarg_name, kwarg_value in arg.items():
+      for kwarg_name in sorted(arg.keys()):
         parameters.append(
-            _make_validated_mono_param(kwarg_name, kwarg_value,
+            _make_validated_mono_param(kwarg_name, arg[kwarg_name],
                                        Parameter.KEYWORD_ONLY, type_context,
                                        poly_parameter.type_constraint))
     else:
@@ -355,6 +440,7 @@ def canonicalize_to_monomorphic(
 
 
 # TODO(fmuham): Share code with canonicalize_to_monomorphic.
+# TODO(fmuham): Lift unnecessary restrictions on input_signature validity.
 def add_type_constraints(function_type: FunctionType, input_signature: Any,
                          default_values: Dict[str, Any]):
   """Adds type constraints to a FunctionType based on the input_signature."""
@@ -373,8 +459,7 @@ def add_type_constraints(function_type: FunctionType, input_signature: Any,
 
     if param.name == "self":
       # Type constraints do not apply on them.
-      parameters.append(
-          Parameter("self", sanitized_kind, param.optional, None))
+      parameters.append(Parameter("self", sanitized_kind, param.optional, None))
 
     elif param.kind is param.VAR_KEYWORD:
       # Disabled when input_signature is specified.
@@ -390,6 +475,12 @@ def add_type_constraints(function_type: FunctionType, input_signature: Any,
     elif (param.kind in [
         param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD, param.KEYWORD_ONLY
     ]):
+      if param.kind is param.KEYWORD_ONLY and param.name not in default_values:
+        raise TypeError(
+            "Since input_signature is defined, keyword-only parameter"
+            f" `{param.name}` must have a default value"
+        )
+
       if constraints:
         parameters.append(
             Parameter(param.name, sanitized_kind, param.optional,
@@ -399,11 +490,12 @@ def add_type_constraints(function_type: FunctionType, input_signature: Any,
         parameters.append(
             Parameter(param.name, sanitized_kind, param.optional,
                       type_constraint))
-      # TODO(fmuham): Add check for insufficient type constraints.
+      else:
+        raise TypeError(
+            f"input_signature missing type constraint for {param.name}")
 
   if constraints:
     raise TypeError(
-        f"input_signature contains {len(constraints)} extra type constraints."
-    )
+        f"input_signature contains {len(constraints)} extra type constraints.")
 
   return FunctionType(parameters)

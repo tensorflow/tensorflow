@@ -144,7 +144,12 @@ typedef absl::flat_hash_map<StringPiece, const AttrValue*> AttrMap;
 inline Status SubstituteFromAttrs(AttrMap& attrs, FullTypeDef& t);
 
 Status SubstituteVar(AttrMap& attrs, FullTypeDef& t) {
-  DCHECK_EQ(t.args_size(), 0);
+  if (t.args_size() != 0) {
+    return Status(
+        error::INVALID_ARGUMENT,
+        absl::StrCat("Unexpected Var type, expected args_size 0, found ",
+                     t.args_size()));
+  }
 
   StringPiece var_name = t.s();
   if (!attrs.contains(var_name)) {

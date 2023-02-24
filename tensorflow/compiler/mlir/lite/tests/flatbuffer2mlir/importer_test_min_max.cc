@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <iostream>
 #include <memory>
+#include <optional>
 
 #include "absl/strings/string_view.h"
 #include "llvm/Support/CommandLine.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 
-using llvm::Optional;
 using llvm::cl::opt;
 
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s.mlir -o - \
@@ -49,12 +49,12 @@ static opt<std::string> inputFileName(llvm::cl::Positional,
 
 namespace mlir {
 namespace {
-Optional<std::unique_ptr<tflite::ModelT>> InjectStatsToFullyConnected(
+std::optional<std::unique_ptr<tflite::ModelT>> InjectStatsToFullyConnected(
     llvm::StringRef buffer) {
   auto model_ptr = tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
       buffer.data(), buffer.size());
   if (nullptr == model_ptr) {
-    return llvm::None;
+    return std::nullopt;
   }
   std::unique_ptr<tflite::ModelT> model(model_ptr->GetModel()->UnPack());
 

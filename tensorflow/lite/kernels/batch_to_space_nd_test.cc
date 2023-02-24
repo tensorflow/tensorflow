@@ -221,7 +221,7 @@ TEST(BatchToSpaceNDOpTest, SimpleDynamicTestInt8EmptyOutput) {
   EXPECT_THAT(m.GetOutput<int8_t>(), ::testing::IsEmpty());
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(BatchToSpaceNDOpTest, InvalidShapeTest) {
   EXPECT_DEATH(
       BatchToSpaceNDOpConstModel({TensorType_FLOAT32, {3, 2, 2, 1}}, {2, 2},

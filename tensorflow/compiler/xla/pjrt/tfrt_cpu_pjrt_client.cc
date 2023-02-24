@@ -24,6 +24,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/runtime/cpu_event.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
 
@@ -58,12 +60,13 @@ limitations under the License.
 #include "tensorflow/tsl/platform/denormal.h"
 #include "tensorflow/tsl/platform/setround.h"
 #include "tensorflow/tsl/profiler/lib/connected_traceme.h"
-#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
 namespace xla {
 namespace {
+
+using ::xla::runtime::CpuEvent;
 
 // A RAII helper class used to set an AsyncValueRef<CpuEvent> to a ready state
 // upon destruction. In many cases in PjRt implementation, there will be
@@ -116,7 +119,7 @@ static void EnqueueWorkWhenReady(
     tsl::thread::ThreadPool* pool,
     llvm::ArrayRef<tfrt::RCReference<tfrt::AsyncValue>> values,
     absl::AnyInvocable<void()> callee) {
-  tfrt::RunWhenReady(values, [pool, callee = std::move(callee)]() mutable {
+  RunWhenReady(values, [pool, callee = std::move(callee)]() mutable {
     EnqueueWork(pool, std::move(callee));
   });
 }
@@ -242,7 +245,8 @@ StatusOr<DeviceAssignment> TfrtCpuClient::GetDefaultDeviceAssignment(
   return computation_placer_->AssignDevices(num_replicas, num_partitions);
 }
 
-StatusOr<std::unique_ptr<HloCostAnalysis>> TfrtCpuClient::GetHloCostAnalysis() {
+StatusOr<std::unique_ptr<HloCostAnalysis>> TfrtCpuClient::GetHloCostAnalysis()
+    const {
   return std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
 }
 
@@ -301,17 +305,10 @@ FindResultBufferAllocationIndex(const BufferAssignment& assignment,
   return {std::move(buffer_indices)};
 }
 
-StatusOr<std::string> TfrtCpuClient::SerializeExecutable(
-    const PjRtLoadedExecutable& executable) const {
-  const TfrtCpuExecutable* tfrt_cpu_executable =
-      tensorflow::down_cast<const TfrtCpuExecutable*>(&executable);
-
-  std::shared_ptr<Executable> cpu_executable =
-      tfrt_cpu_executable->cpu_executable();
-
+StatusOr<std::string> TfrtCpuExecutable::SerializeExecutable() const {
   cpu::CpuCompiler compiler;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
-                      compiler.Export(cpu_executable.get()));
+                      compiler.Export(cpu_executable_.get()));
 
   TF_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
 
@@ -440,7 +437,9 @@ static StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
   DumpHloModuleIfEnabled(*hlo_module, kBeforeOptimizationsDumpName);
 
   // Run Hlo Passes
-  cpu::CpuCompiler compiler;
+  bool allow_sparse_shapes =
+      hlo_module->config().debug_options().xla_cpu_use_xla_runtime();
+  cpu::CpuCompiler compiler(allow_sparse_shapes);
   xla::Compiler::CompileOptions dummy;
   TF_ASSIGN_OR_RETURN(hlo_module,
                       compiler.RunHloPasses(std::move(hlo_module),
@@ -882,10 +881,9 @@ void TfrtCpuBuffer::Delete() {
   // We should also wait for the definition event.
   event_avs.push_back(device_buffer->definition_event().GetAsyncValue());
 
-  tfrt::RunWhenReady(event_avs,
-                     [device_buffer = std::move(device_buffer)]() mutable {
-                       device_buffer.reset();
-                     });
+  RunWhenReady(event_avs, [device_buffer = std::move(device_buffer)]() mutable {
+    device_buffer.reset();
+  });
 }
 
 bool TfrtCpuBuffer::IsDeleted() {
@@ -920,7 +918,7 @@ StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>> TfrtCpuBuffer::Release(
     // defined. Return the first error encountered.
     Status first_error;
     for (const auto& av : events) {
-      tfrt::Await(av.CopyRCRef());
+      BlockUntilReady(av.GetAsyncValue());
       if (auto* error = av.GetErrorIfPresent()) {
         first_error.Update(
             InternalError("Error Execute: %s", error->message()));
@@ -993,7 +991,7 @@ StatusOr<Shape> TfrtCpuBuffer::logical_on_device_shape() {
 
   // Wait for the definition event.
   const auto& av = device_buffer->definition_event();
-  tfrt::Await(av.CopyRCRef());
+  BlockUntilReady(av.GetAsyncValue());
   if (auto* error = av.GetErrorIfPresent()) {
     return InternalError("Error Execute: %s", error->message());
   }
@@ -1764,6 +1762,40 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
   return Result({/*future=*/std::move(future), /*buffers=*/std::move(res)});
 }
 
+static void MaybeDumpHloSnapshot(
+    const HloModule& module, RunId run_id,
+    const std::vector<PjRtBuffer*>& arguments,
+    const std::vector<std::unique_ptr<PjRtBuffer>>& results) {
+  if (!DumpingEnabledForHloModule(module)) {
+    return;
+  }
+  if (!module.config().debug_options().xla_dump_hlo_snapshots()) {
+    return;
+  }
+  xla::HloSnapshot hlo_snapshot;
+  *hlo_snapshot.mutable_hlo()->mutable_hlo_module() = module.ToProto();
+
+  for (auto* argument : arguments) {
+    *hlo_snapshot.add_arguments() = (*argument->ToLiteralSync())->ToProto();
+  }
+
+  // If there are multiple results, wrap them in a tuple.
+  if (results.size() == 1) {
+    *hlo_snapshot.mutable_result() = (*results[0]->ToLiteralSync())->ToProto();
+  } else {
+    std::vector<Literal> result_literals;
+    result_literals.reserve(results.size());
+    for (auto& result : results) {
+      result_literals.push_back(std::move(**result->ToLiteralSync()));
+    }
+    *hlo_snapshot.mutable_result() =
+        LiteralUtil::MakeTupleOwned(std::move(result_literals)).ToProto();
+  }
+
+  DumpToFileInDir(module, "", absl::StrCat("snapshot.", run_id.ToInt(), ".pb"),
+                  hlo_snapshot.SerializeAsString());
+}
+
 StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 TfrtCpuExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
@@ -1819,6 +1851,8 @@ TfrtCpuExecutable::Execute(
       (*returned_futures)[0] = std::move(*statusor->future);
     }
 
+    MaybeDumpHloSnapshot(cpu_executable_->module(), run_id, argument_handles[0],
+                         wrapped_results[0]);
   } else {
     // Gang schedule collectives to ensure that collectives with the same RunId
     // are run at the same time. We conservatively run only one collective at a

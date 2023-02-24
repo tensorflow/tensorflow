@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/tests/pjrt_client_registry.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -66,8 +65,11 @@ StatusOr<ExecutionOutput> PjRtWrappedExecutable::ExecuteAsyncOnStream(
 
 static const int kDeviceIdx = 0;
 
-HloRunnerPjRt::HloRunnerPjRt(std::unique_ptr<PjRtClient> pjrt_client)
-    : pjrt_client_(std::move(pjrt_client)) {}
+HloRunnerPjRt::HloRunnerPjRt(
+    std::unique_ptr<PjRtClient> pjrt_client,
+    DeviceShapeRepresentationFn device_shape_representation_fn)
+    : pjrt_client_(std::move(pjrt_client)),
+      device_shape_representation_fn_(device_shape_representation_fn) {}
 
 HloRunnerPjRt::~HloRunnerPjRt() = default;
 
@@ -138,10 +140,8 @@ StatusOr<Literal> HloRunnerPjRt::Execute(
     absl::Span<const Literal* const> arguments, bool run_hlo_passes,
     ExecutionProfile* profile) {
   // TODO (b/245550554) : Remove UpdateEntryComputationLayout from runner.
-  xla::UpdateEntryComputationLayout(
-      module.get(),
-      GetGlobalPjRtClientTestFactory().GetDeviceShapeRepresentationFn(
-          pjrt_client_.get()));
+  xla::UpdateEntryComputationLayout(module.get(),
+                                    device_shape_representation_fn_);
   TF_ASSIGN_OR_RETURN(auto compile_options, GenerateDefaultCompileOptions(
                                                 module.get(), run_hlo_passes));
 
@@ -237,10 +237,8 @@ StatusOr<std::unique_ptr<Executable>> HloRunnerPjRt::CreateExecutable(
 StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
     const HloRunnerInterface::ReplicatedExecuteOptions& options) {
-  xla::UpdateEntryComputationLayout(
-      module.get(),
-      GetGlobalPjRtClientTestFactory().GetDeviceShapeRepresentationFn(
-          pjrt_client_.get()));
+  xla::UpdateEntryComputationLayout(module.get(),
+                                    device_shape_representation_fn_);
 
   TF_ASSIGN_OR_RETURN(
       auto device_assignment,

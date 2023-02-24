@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_tensor_proxy.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -44,7 +43,7 @@ namespace tensorflow {
 namespace tensorrt {
 
 namespace convert {
-using ::stream_executor::port::StatusOr;
+using ::tsl::StatusOr;
 
 struct EngineConnection {
   // Constructs a non-control edge.
@@ -162,7 +161,8 @@ Status ConvertGraphDefToEngine(
     const bool use_implicit_batch, bool* convert_successfully,
     TrtShapeOptimizationProfile* profiles, absl::string_view engine_name,
     bool use_explicit_precision,
-    tensorflow::grappler::Cluster* cluster = nullptr);
+    tensorflow::grappler::Cluster* cluster = nullptr,
+    const string& device = "");
 
 // Helper class for the segmenter to determine whether an output edge from the
 // TRT segment is valid.

@@ -55,9 +55,9 @@ cc_test(
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:interpreter_test_util",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
@@ -416,21 +416,23 @@ cc_library(
     deps = [
         ":call",
         ":decode_jpeg",
-        ":model_loader",
+        # Link in the GpuModulePlugin statically. It is created by name.
+        ":gpu_module_plugin",  # buildcleaner: keep
         ":status_codes",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
-        "//tensorflow/lite/experimental/acceleration/configuration:delegate_registry",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:constants",
-        "//tensorflow/lite/kernels:builtin_ops",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "//tensorflow/lite/tools:model_loader",
     ],
 )
 
@@ -443,6 +445,7 @@ cc_library(
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
     ],
@@ -456,11 +459,12 @@ cc_library(
         ":benchmark_result_evaluator",
         ":fb_storage",
         ":file_lock",
-        ":model_loader",
         ":runner",
         ":status_codes",
         ":validator",
+        "@com_google_absl//absl/strings",
         "@flatbuffers",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
@@ -470,6 +474,7 @@ cc_library(
         # be invoked.
         "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
+        "//tensorflow/lite/tools:model_loader",
     ],
 )
 
@@ -526,11 +531,9 @@ cc_library(
         ":constants",
         ":fb_storage",
         ":file_lock",
-        ":model_loader",
         ":set_big_core_affinity_h",
         ":status_codes",
         ":validator",
-        ":validator_runner",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
@@ -539,7 +542,7 @@ cc_library(
         # be invoked.
         "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
-        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/tools:model_loader",
     ],
 )
 
@@ -663,6 +666,11 @@ cc_library(
         "mini_benchmark.cc",
     ],
     hdrs = ["mini_benchmark.h"],
+    visibility = [
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
+        "//tensorflow/lite/tools/benchmark:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__",
+    ] + minibenchmark_visibility_allowlist(),
     deps = [
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "@com_google_absl//absl/status:statusor",
@@ -676,6 +684,11 @@ cc_library(
     srcs = [
         "mini_benchmark_implementation.cc",
     ],
+    visibility = [
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
+        "//tensorflow/lite/tools/benchmark:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__",
+    ] + minibenchmark_visibility_allowlist(),
     deps = [
         ":fb_storage",
         ":mini_benchmark",
@@ -753,34 +766,6 @@ cc_test(
 )
 
 cc_library(
-    name = "model_loader",
-    srcs = ["model_loader.cc"],
-    hdrs = ["model_loader.h"],
-    deps = [
-        ":status_codes",
-        "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite:model_builder",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_test(
-    name = "model_loader_test",
-    srcs = ["model_loader_test.cc"],
-    deps = [
-        ":embedded_mobilenet_model",
-        ":mini_benchmark_test_helper",
-        ":model_loader",
-        ":status_codes",
-        "//tensorflow/lite:model_builder",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
-        "@flatbuffers//:runtime_cc",
-    ],
-)
-
-cc_library(
     name = "constants",
     hdrs = ["constants.h"],
 )
@@ -810,9 +795,9 @@ cc_binary(
     linkshared = True,
     deps = [
         ":constants",
-        ":model_loader",
         ":status_codes",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
+        "//tensorflow/lite/tools:model_loader",
         "@com_google_absl//absl/strings",
         "@flatbuffers//:runtime_cc",
     ],
@@ -823,9 +808,9 @@ cc_library(
     srcs = ["runner_test_entry_points.cc"],
     deps = [
         ":constants",
-        ":model_loader",
         ":status_codes",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
+        "//tensorflow/lite/tools:model_loader",
         "@com_google_absl//absl/strings",
         "@flatbuffers//:runtime_cc",
     ],
@@ -881,7 +866,6 @@ cc_binary(
     deps = [
         ":constants",
         ":fb_storage",
-        ":model_loader",
         ":runner",
         ":status_codes",
         ":set_big_core_affinity",
@@ -893,6 +877,7 @@ cc_binary(
         "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
+        "//tensorflow/lite/tools:model_loader",
         "//tensorflow/lite:minimal_logging",
     ] + select({
         # On Android, as the validation runs in a separate process as a
@@ -924,6 +909,22 @@ cc_binary(
     deps = [
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
     ],
+)
+
+cc_library(
+    name = "gpu_module_plugin",
+    srcs = ["gpu_module_plugin.cc"],
+    hdrs = ["gpu_module_plugin.h"],
+    deps = [
+        ":status_codes",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
+        "@com_google_absl//absl/memory",
+        "@flatbuffers",
+    ],
+    alwayslink = 1,
 )
 
 embedded_binary(
@@ -959,7 +960,6 @@ cc_test(
         ":embedded_mobilenet_validation_model",
         ":embedded_mobilenet_model",
         ":mini_benchmark_test_helper",
-        ":model_loader",
         ":status_codes",
         ":validator",
         "@com_google_googletest//:gtest_main",
@@ -972,6 +972,7 @@ cc_test(
         "//tensorflow/lite/experimental/acceleration/configuration:flatbuffer_to_proto",
         "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
         "//tensorflow/lite/experimental/acceleration/configuration:proto_to_flatbuffer",
+        "//tensorflow/lite/tools:model_loader",
         "//tensorflow/lite:stderr_reporter",
     ] + select({
         clean_dep("//tensorflow:android"): [
@@ -996,6 +997,7 @@ cc_test(
         ":status_codes",
         ":validator_runner_entrypoint",
         ":validator_runner_impl",
+        ":validator_runner_options",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
@@ -1006,11 +1008,13 @@ cc_test(
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
     ],
 )
 
 cc_test(
     name = "blocking_validator_runner_test",
+    timeout = "moderate",
     srcs = ["blocking_validator_runner_test.cc"],
     deps = [
         ":benchmark_result_evaluator",
@@ -1022,8 +1026,9 @@ cc_test(
         ":validator_runner_entrypoint",
         ":validator_runner_options",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@flatbuffers//:public_headers_lib",
+        "@flatbuffers",
     ],
 )
 

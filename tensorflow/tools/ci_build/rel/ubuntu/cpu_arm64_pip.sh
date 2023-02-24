@@ -63,8 +63,8 @@ export TF_TEST_FLAGS="${TF_BUILD_FLAGS} \
     --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium \
     --test_output=errors --verbose_failures=true --test_keep_going"
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} ${ARM_SKIP_TESTS}"
-export TF_PIP_TESTS="test_pip_virtualenv_clean"
-export TF_TEST_FILTER_TAGS="-no_oss,-oss_serial,-v1only,-benchmark-test,-no_aarch64"
+export TF_PIP_TESTS="test_pip_virtualenv_clean test_pip_virtualenv_oss_serial"
+export TF_TEST_FILTER_TAGS="-no_oss,-v1only,-benchmark-test,-no_aarch64,-no_oss_py38,-no_oss_py39,-no_oss_py310"
 export TF_PIP_TEST_ROOT="pip_test"
 export TF_AUDITWHEEL_TARGET_PLAT="manylinux2014"
 

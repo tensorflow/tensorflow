@@ -491,7 +491,8 @@ def LegalizeConv2DBackpropInput : Pat<
      /*bias=*/ (CreateNoneValue $input_sizes),
      /*padding=*/ $padding,
      /*stride_h=*/ ExtractI32At<1>:$strides,
-     /*stride_w=*/ ExtractI32At<2>:$strides)>;
+     /*stride_w=*/ ExtractI32At<2>:$strides,
+     /*fused_activation_function=*/TFL_AF_None)>;
 
 def IsRankZeroAttr
   : CPred<"$_self.cast<DenseElementsAttr>().getType().getRank() == 0">;

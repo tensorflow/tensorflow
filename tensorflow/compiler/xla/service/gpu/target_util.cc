@@ -158,6 +158,9 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     case TargetDeviceFunctionID::kSqrt: {
       return {"__nv_sqrt", "__ocml_sqrt"};
     }
+    case TargetDeviceFunctionID::kTan: {
+      return {"__nv_tan", "__ocml_tan"};
+    }
     case TargetDeviceFunctionID::kTanh: {
       return {"__nv_tanh", "__ocml_tanh"};
     }

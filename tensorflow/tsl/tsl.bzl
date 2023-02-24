@@ -20,7 +20,7 @@ load(
     "if_rocm_is_configured",
 )
 load(
-    "//third_party/mkl:build_defs.bzl",
+    "//tensorflow/tsl/mkl:build_defs.bzl",
     "if_enable_mkl",
     "if_mkl",
 )
@@ -113,6 +113,12 @@ def if_libtpu(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
+def if_macos(a, otherwise = []):
+    return select({
+        clean_dep("//tensorflow/tsl:macos"): a,
+        "//conditions:default": otherwise,
+    })
+
 def if_windows(a, otherwise = []):
     return select({
         clean_dep("//tensorflow/tsl:windows"): a,
@@ -177,15 +183,15 @@ def if_no_default_logger(a):
 # Combine with 'if_gpu_is_configured' (XLA) or 'if_cuda_or_rocm' (otherwise).
 def if_nccl(if_true, if_false = []):
     return select({
-        "//tensorflow/tsl:no_nccl_support": if_false,
-        "//tensorflow/tsl:windows": if_false,
+        clean_dep("//tensorflow/tsl:no_nccl_support"): if_false,
+        clean_dep("//tensorflow/tsl:windows"): if_false,
         "//conditions:default": if_true,
     })
 
 def if_with_tpu_support(if_true, if_false = []):
     """Shorthand for select()ing whether to build API support for TPUs when building TSL"""
     return select({
-        "//tensorflow/tsl:with_tpu_support": if_true,
+        clean_dep("//tensorflow/tsl:with_tpu_support"): if_true,
         "//conditions:default": if_false,
     })
 
@@ -272,10 +278,11 @@ def tsl_copts(
 
 def tf_openmp_copts():
     # We assume when compiling on Linux gcc/clang will be used and MSVC on Windows
+    # TODO(zacmustin): Update OSS to use TSL's MKL.
     return select({
         # copybara:uncomment_begin
-        # "//third_party/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
-        # "//third_party/mkl:build_with_mkl_windows_openmp": ["/openmp"],
+        # "//tensorflow/tsl/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
+        # "//tensorflow/tsl/mkl:build_with_mkl_windows_openmp": ["/openmp"],
         # copybara:uncomment_end_and_comment_begin
         "@org_tensorflow//third_party/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
         "@org_tensorflow//third_party/mkl:build_with_mkl_windows_openmp": ["/openmp:llvm"],
@@ -412,7 +419,7 @@ def if_not_mobile_or_arm_or_lgpl_restricted(a):
     })
 
 def tsl_grpc_cc_dependencies():
-    return ["//tensorflow/tsl:grpc++"]
+    return [clean_dep("//tensorflow/tsl:grpc++")]
 
 # Bazel rule for collecting the header files that a target depends on.
 def _transitive_hdrs_impl(ctx):

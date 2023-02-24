@@ -57,39 +57,79 @@ struct NcclCollectivePermuteConfig {
 };
 
 // Thunk that performs a NCCL-based collective permute.
-class NcclCollectivePermuteThunk : public NcclCollectiveThunk {
+class NcclCollectivePermuteThunkBase : public NcclCollectiveThunk {
  public:
-  static NcclCollectivePermuteConfig GetNcclCollectivePermuteConfig(
-      mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
-      int64_t partition_count);
-
-  NcclCollectivePermuteThunk(ThunkInfo thunk_info,
-                             mlir::lmhlo::CollectivePermuteOp op,
-                             int64_t replica_count, int64_t partition_count,
-                             const Buffer& buffer);
-
-  // Returns whether the given instruction can be lowered to a nccl collective
-  // permute thunk.
-  static bool CanImplement(mlir::lmhlo::CollectivePermuteOp op);
-
-  static const char* GetName() { return "CollectivePermute"; }
-  static bool IsDegenerate(mlir::lmhlo::CollectivePermuteOp op,
-                           int64_t replica_count, int64_t partition_count);
-  static CollectiveOpGroupMode GetGroupMode(
-      mlir::lmhlo::CollectivePermuteOp op) {
-    return GetCollectiveOpGroupMode(op.getChannelId().has_value(), std::nullopt)
-        .value();
-  }
+  NcclCollectivePermuteThunkBase(Kind kind, ThunkInfo thunk_info,
+                                 NcclCollectivePermuteConfig config,
+                                 const Buffer& buffer);
 
  protected:
-  Status RunNcclCollective(const ExecuteParams& params,
-                           ncclComm_t comm) override;
+  Status RunCollectivePermute(const ExecuteParams& params, se::Stream& stream,
+                              ncclComm_t comm);
 
   const NcclCollectiveConfig& config() const override { return config_.config; }
 
  private:
   const NcclCollectivePermuteConfig config_;
   const Buffer buffer_;
+};
+
+class NcclCollectivePermuteThunk : public NcclCollectivePermuteThunkBase {
+ public:
+  static NcclCollectivePermuteConfig GetNcclCollectivePermuteConfig(
+      mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
+      int64_t partition_count);
+
+  static bool CanImplement(mlir::lmhlo::CollectivePermuteOp op);
+  static bool IsDegenerate(mlir::lmhlo::CollectivePermuteOp op,
+                           int64_t replica_count, int64_t partition_count);
+  static CollectiveOpGroupMode GetGroupMode(
+      mlir::lmhlo::CollectivePermuteOp op);
+  static const char* GetName() { return "CollectivePermute"; }
+
+  NcclCollectivePermuteThunk(ThunkInfo thunk_info,
+                             mlir::lmhlo::CollectivePermuteOp op,
+                             int64_t replica_count, int64_t partition_count,
+                             const Buffer& buffer);
+
+ protected:
+  Status RunNcclCollective(const ExecuteParams& params,
+                           ncclComm_t comm) override;
+};
+
+class NcclCollectivePermuteStartThunk : public NcclCollectivePermuteThunkBase {
+ public:
+  static NcclCollectivePermuteConfig GetNcclCollectivePermuteConfig(
+      mlir::lmhlo_gpu::CollectivePermuteStartOp op, int64_t replica_count,
+      int64_t partition_count);
+
+  static bool CanImplement(mlir::lmhlo_gpu::CollectivePermuteStartOp op);
+  static bool IsDegenerate(mlir::lmhlo_gpu::CollectivePermuteStartOp op,
+                           int64_t replica_count, int64_t partition_count);
+  static CollectiveOpGroupMode GetGroupMode(
+      mlir::lmhlo_gpu::CollectivePermuteStartOp op);
+  static const char* GetName() { return "CollectivePermuteStart"; }
+
+  NcclCollectivePermuteStartThunk(ThunkInfo thunk_info,
+                                  mlir::lmhlo_gpu::CollectivePermuteStartOp op,
+                                  int64_t replica_count,
+                                  int64_t partition_count,
+                                  const Buffer& buffer);
+
+  AsyncExecutor& async_executor() { return async_; }
+
+ protected:
+  Status RunNcclCollective(const ExecuteParams& params,
+                           ncclComm_t comm) override;
+
+ private:
+  AsyncExecutor async_;
+};
+
+class NcclCollectivePermuteDoneThunk : public NcclCollectiveDoneThunk {
+ public:
+  NcclCollectivePermuteDoneThunk(ThunkInfo thunk_info,
+                                 NcclCollectiveThunk::AsyncExecutor& async);
 };
 
 Status RunCollectivePermute(

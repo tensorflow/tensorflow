@@ -85,7 +85,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       b = constant_op.constant(7.0, shape=[1, 1])
       c = math_ops.matmul(a, b, name='matmul')
     with session.Session(graph=g):
-      result = c.eval()
+      result = self.evaluate(c)
       self.assertAllEqual(result, [[42.0]])
 
   def testUseDefaultGraph(self):
@@ -94,7 +94,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       b = constant_op.constant(7.0, shape=[1, 1])
       c = math_ops.matmul(a, b, name='matmul')
       with session.Session():
-        result = c.eval()
+        result = self.evaluate(c)
         self.assertAllEqual(result, [[42.0]])
 
   def testCreate(self):
@@ -107,7 +107,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       copy_val = copy.eval({'W1:0': arr})
       self.assertAllEqual(arr, copy_val)
       # Test without feed.
-      copy_val = copy.eval()
+      copy_val = self.evaluate(copy)
       self.assertAllEqual(
           np.asarray(
               [[10.0, 10.0, 10.0], [10.0, 10.0, 10.0]], dtype=np.float32),
@@ -175,7 +175,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     with session.Session():
       a = array_ops.placeholder(dtypes.float32)
       with self.assertRaisesOpError(lambda e: e.op == a.op):
-        a.eval()
+        self.evaluate(a)
 
   def testErrorCodeWithNoNodeDef(self):
     with session.Session() as s:
@@ -206,7 +206,7 @@ class SessionTest(test_util.TensorFlowTestCase):
                 e.op._original_op._original_op == a.op)
 
       with self.assertRaisesOpError(exc_predicate):
-        c.eval()
+        self.evaluate(c)
 
   def testFetchNone(self):
     with session.Session() as s:
@@ -574,7 +574,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[4.0, 4.0, 4.0]], results_with_list[0])
       results_with_single = s.run(c)
       self.assertAllEqual([[4.0, 4.0, 4.0]], results_with_single)
-      results_with_get = c.eval()
+      results_with_get = self.evaluate(c)
       self.assertAllEqual([[4.0, 4.0, 4.0]], results_with_get)
       a_val, b_val = s.run([a, b])  # Test multiple fetches.
       self.assertAllEqual([[1.0, 1.0]], a_val)
@@ -1001,25 +1001,25 @@ class SessionTest(test_util.TensorFlowTestCase):
       c = math_ops.matmul(a, b)
       v = variables.Variable(c, name='testExtendWithStatefulOperations_v')
       v.initializer.run()
-      v_val = v.eval()
+      v_val = self.evaluate(v)
       self.assertAllEqual([[4.0, 4.0, 4.0]], v_val)
       d = constant_op.constant(3.0, shape=[2, 3])
       e = math_ops.matmul(a, d)
       assign_e_to_v = state_ops.assign(v, e)
       # Extend will happen here.
-      e_val = e.eval()
+      e_val = self.evaluate(e)
       self.assertAllEqual([[6.0, 6.0, 6.0]], e_val)
-      v_val = v.eval()
+      v_val = self.evaluate(v)
       self.assertAllEqual([[4.0, 4.0, 4.0]], v_val)
       s.run(assign_e_to_v)
-      v_val = v.eval()
+      v_val = self.evaluate(v)
       self.assertAllEqual([[6.0, 6.0, 6.0]], v_val)
 
   def testExtendWithGroupBy(self):
     with session.Session() as s:
       a = constant_op.constant(1.0, shape=[1, 2])
       p = variables.Variable(a, name='testExtendWithGroupBy_p')
-      a_val = a.eval()  # Force an Extend after this op.
+      a_val = self.evaluate(a)  # Force an Extend after this op.
       self.assertAllEqual([[1.0, 1.0]], a_val)
 
       b = constant_op.constant(2.0, shape=[1, 2])
@@ -1038,7 +1038,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       b = constant_op.constant(2.0, shape=[2, 3])
       c = math_ops.matmul(a, b)
 
-      c_val = c.eval()
+      c_val = self.evaluate(c)
       self.assertAllEqual([[4.0, 4.0, 4.0]], c_val)
 
       fed_c_val = c.eval(feed_dict={a.name: [[4.0, 4.0]]})
@@ -1052,19 +1052,19 @@ class SessionTest(test_util.TensorFlowTestCase):
       v = variables.VariableV1(a, a.dtype)
       assign_a_to_v = state_ops.assign(v, a)
 
-      assign_a_to_v.eval()
+      self.evaluate(assign_a_to_v)
 
-      v_val = v.eval()
+      v_val = self.evaluate(v)
       self.assertAllEqual([[1.0, 1.0]], v_val)
 
       assign_b_to_v = state_ops.assign(v, b)
 
-      assign_b_to_v.eval()
-      v_val = v.eval()
+      self.evaluate(assign_b_to_v)
+      v_val = self.evaluate(v)
       self.assertAllEqual([[2.0, 2.0]], v_val)
 
       assign_b_to_v.eval(feed_dict={'b:0': [[3.0, 3.0]]})
-      v_val = v.eval()
+      v_val = self.evaluate(v)
       self.assertAllEqual([[3.0, 3.0]], v_val)
 
   def testDefaultGraph(self):
@@ -1077,17 +1077,17 @@ class SessionTest(test_util.TensorFlowTestCase):
       c = math_ops.matmul(a, b)
       v = variables.Variable(c, name='testDefaultGraph_v')
       v.initializer.run()
-      v_val = v.eval()
+      v_val = self.evaluate(v)
       self.assertAllEqual([[4.0, 4.0, 4.0]], v_val)
       d = constant_op.constant(3.0, shape=[2, 3])
       e = math_ops.matmul(a, d)
       assign_e_to_v = state_ops.assign(v, e)
-      e_val = e.eval()
+      e_val = self.evaluate(e)
       self.assertAllEqual([[6.0, 6.0, 6.0]], e_val)
-      v_val = v.eval()
+      v_val = self.evaluate(v)
       self.assertAllEqual([[4.0, 4.0, 4.0]], v_val)
       s.run(assign_e_to_v)
-      v_val = v.eval()
+      v_val = self.evaluate(v)
       self.assertAllEqual([[6.0, 6.0, 6.0]], v_val)
       self.assertEqual(ops.get_default_graph(), s.graph)
 
@@ -1105,18 +1105,18 @@ class SessionTest(test_util.TensorFlowTestCase):
 
       assign_c_to_v = state_ops.assign(v, c)
       v.initializer.run()
-      assign_c_to_v.eval()
-      v_val = v.eval()
+      self.evaluate(assign_c_to_v)
+      v_val = self.evaluate(v)
       self.assertAllEqual([[4.0, 4.0, 4.0]], v_val)
       d = constant_op.constant(3.0, shape=[2, 3])
       e = math_ops.matmul(a, d)
       assign_e_to_v = state_ops.assign(v, e)
-      e_val = e.eval()
+      e_val = self.evaluate(e)
       self.assertAllEqual([[6.0, 6.0, 6.0]], e_val)
-      v_val = v.eval()
+      v_val = self.evaluate(v)
       self.assertAllEqual([[4.0, 4.0, 4.0]], v_val)
       s.run(assign_e_to_v)
-      v_val = v.eval()
+      v_val = self.evaluate(v)
       self.assertAllEqual([[6.0, 6.0, 6.0]], v_val)
       self.assertEqual(ops.get_default_graph(), s.graph)
 
@@ -1370,10 +1370,10 @@ class SessionTest(test_util.TensorFlowTestCase):
     b = constant_op.constant(1.0, shape=[1, 2])
 
     # Only run the valid op, this should work.
-    b.eval()
+    self.evaluate(b)
 
     with self.assertRaises(errors.InvalidArgumentError):
-      a.eval()
+      self.evaluate(a)
     sess.close()
 
   @test_util.run_v1_only('b/120545219')
@@ -1829,11 +1829,11 @@ class SessionTest(test_util.TensorFlowTestCase):
     c = constant_op.constant(37)
     sess = session.Session()
     with sess.as_default():
-      self.assertEqual(37, c.eval())
+      self.assertEqual(37, self.evaluate(c))
 
     # Ensure that the session remains valid even when it is not captured.
     with session.Session().as_default():
-      self.assertEqual(37, c.eval())
+      self.assertEqual(37, self.evaluate(c))
 
   def testReentry(self):
     sess = session.Session()

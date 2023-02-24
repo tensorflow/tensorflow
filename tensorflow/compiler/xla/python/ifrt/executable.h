@@ -121,7 +121,7 @@ class LoadedExecutable
     // Resulting status of the execution.
     Future<Status> status;
     // Output arrays.
-    std::vector<std::unique_ptr<Array>> outputs;
+    std::vector<tsl::RCReference<Array>> outputs;
   };
 
   // Executes the executable on devices.
@@ -142,7 +142,7 @@ class LoadedExecutable
   // (e.g., having per-argument/output booleans or providing a separate barrier
   // API).
   virtual StatusOr<ExecuteResult> Execute(
-      absl::Span<Array* const> args, const ExecuteOptions& options,
+      absl::Span<tsl::RCReference<Array>> args, const ExecuteOptions& options,
       std::optional<DeviceList> devices) = 0;
 
   // Deletes the executable from the devices. The operation may be asynchronous.

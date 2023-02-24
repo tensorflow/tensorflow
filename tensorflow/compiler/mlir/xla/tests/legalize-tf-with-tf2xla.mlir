@@ -1,4 +1,4 @@
-// RUN: xla-opt "-xla-legalize-tf-with-tf2xla=device-type=XLA_CPU_JIT legalize-test-only-ops" %s -verify-diagnostics | FileCheck %s
+// RUN: tf-opt "-xla-legalize-tf=device-type=XLA_CPU_JIT allow-partial-conversion=true prefer-tf2xla=true use-tf2xla-fallback=true" %s -verify-diagnostics | FileCheck %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 
@@ -17,6 +17,13 @@ func.func @unknown_op(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   func.return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: add_v2
+func.func @add_v2(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  // CHECK: mhlo.add %arg0, %arg0 : tensor<2xi32>
+  %0 = "tf.AddV2"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  func.return %0: tensor<2xi32>
+}
+
 // CHECK-LABEL: not_allowlisted_op
 func.func @not_allowlisted_op(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<?x?x?xf32> {
   // CHECK: tf.TensorListReserve
@@ -29,7 +36,7 @@ func.func @not_allowlisted_op(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: t
 // CHECK-LABEL: unranked_operand
 func.func @unranked_operand(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: tf.Atan2
-  // expected-remark@+1 {{lowering requires static shaped tensor operands}}
+  // expected-remark@+1 {{lowering requires bounded tensor operands}}
   %0 = "tf.Atan2"(%arg0, %arg0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 
   func.return %0 : tensor<*xf32>
@@ -38,7 +45,7 @@ func.func @unranked_operand(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-LABEL: dynamic_operand
 func.func @dynamic_operand(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK: tf.Atan2
-  // expected-remark@+1 {{lowering requires static shaped tensor operands}}
+  // expected-remark@+1 {{lowering requires bounded tensor operands}}
   %0 = "tf.Atan2"(%arg0, %arg0) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
 
   func.return %0 : tensor<?xf32>
@@ -102,13 +109,13 @@ func.func @convert(%arg0: tensor<2xi32>) -> tensor<2xf32> {
 }
 
 // CHECK-LABEL: func @constant
-func.func @constant(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<2xf32>
-  // CHECK: %[[RESULT:.*]] = mhlo.divide %[[ONE]], %arg0 : tensor<2xf32>
+func.func @constant(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK: %[[RESULT:.*]] = mhlo.divide %[[ONE]], %arg0 : tensor<f32>
   // CHECK: return %[[RESULT]]
 
-  %0 = "tf.Inv"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  func.return %0 : tensor<2xf32>
+  %0 = "tf.Inv"(%arg0) : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: func @greater
@@ -357,11 +364,68 @@ func.func @atan2_with_symbol_ref(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   func.return %0 : tensor<2xf32>
 }
 
+func.func private @branch0(tensor<2xf32>) -> tensor<2xf32>
+func.func private @branch1(tensor<2xf32>) -> tensor<2xf32>
+
+func.func @case_with_symbol_ref(%arg0: tensor<i32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: tf.Case
+  // expected-remark@+1 {{ops with symbol references are not supported}}
+  %0 = "tf.Case"(%arg0, %arg1) {branches = [@branch0, @branch1], is_stateless = false} : (tensor<i32>, tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
 // CHECK-LABEL: const
 func.func @const() -> tensor<2xf32> {
   // CHECK: mhlo.const
   %cst = "tf.Const"() {value = dense<2.0> : tensor<2xf32>} : () -> tensor<2xf32>
   func.return %cst : tensor<2xf32>
+}
+
+// CHECK-LABEL: @bounds_propagation
+func.func @bounds_propagation(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<?xf32> {
+  %dimension = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
+  // CHECK: %[[BOUNDED:.*]] = "mhlo.set_dimension_size"
+  // CHECK-SAME: {dimension = 0 : i64} : (tensor<4xf32>, tensor<i32>) -> tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>
+  %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<?xf32>
+
+  %axis = "tf.Const"() { value = dense<0> : tensor<1xi32> } : () -> tensor<1xi32>
+  // CHECK: %[[REVERSED:.*]] = "mhlo.reverse"(%[[BOUNDED]])
+  // CHECK-SAME: {dimensions = dense<0> : tensor<1xi64>}
+  // CHECK-SAME: (tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>) -> tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>
+  %1 = "tf.ReverseV2"(%0, %axis) : (tensor<?xf32>, tensor<1xi32>) -> tensor<?xf32>
+
+  // CHECK: %[[RESULT:.*]] = tensor.cast %[[REVERSED]] : tensor<?xf32, #mhlo.type_extensions<bounds = [4]>> to tensor<?xf32>
+  // CHECK: return %[[RESULT]] : tensor<?xf32>
+  func.return %1 : tensor<?xf32>
+}
+
+// CHECK-LABEL: @bounds_propagation_skip_symbol_ref_ops
+func.func @bounds_propagation_skip_symbol_ref_ops(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<?xf32> {
+  %dimension = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
+  // CHECK: %[[BOUNDED:.*]] = "mhlo.set_dimension_size"
+  // CHECK-SAME: {dimension = 0 : i64} : (tensor<4xf32>, tensor<i32>) -> tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>
+  %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<?xf32>
+
+  // CHECK: %[[ORIGINAL:.*]] = tensor.cast %[[BOUNDED]] : tensor<?xf32, #mhlo.type_extensions<bounds = [4]>> to tensor<?xf32>
+
+  %axis = "tf.Const"() { value = dense<0> : tensor<1xi32> } : () -> tensor<1xi32>
+  // CHECK: tf.ReverseV2
+  // CHECK-SAME: (tensor<?xf32>, tensor<1xi32>) -> tensor<?xf32>
+  // expected-remark@+1 {{lowering requires bounded tensor operands}}
+  %1 = "tf.ReverseV2"(%0, %axis) {_body = @identity} : (tensor<?xf32>, tensor<1xi32>) -> tensor<?xf32>
+
+  func.return %1 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @set_bound
+func.func @set_bound(%arg0: tensor<i32>) -> tensor<i32> {
+  %bound = "tf.Const"() {value = dense<16> : tensor<i32>} : () -> tensor<i32>
+
+  // CHECK: %[[RESULT:.*]] = mhlo.custom_call @SetBound(%arg0) {backend_config = "", mhlo.literal = dense<16> : tensor<i32>}
+  %bounded = "tf.XlaSetBound"(%arg0, %bound) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+
+  // CHECK: return %[[RESULT]]
+  func.return %bounded : tensor<i32>
 }
 
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is

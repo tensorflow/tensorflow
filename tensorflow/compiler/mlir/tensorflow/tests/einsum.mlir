@@ -15,6 +15,16 @@ func.func @einsum_matmul(%arg0: tensor<7x9xf32>, %arg1: tensor<9x5xf32>) -> tens
   // CHECK: return %[[v0]] : tensor<7x5xf32>
 }
 
+func.func @einsum_matmul_dynamic_size(%arg0: tensor<2x?x?x?xf32>, %arg1: tensor<2x?xf32>) -> tensor<2x?x?x1xf32> {
+  %0 = "tf.Einsum"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", equation = "bxyc,bx->bxyc"} : (tensor<2x?x?x?xf32>, tensor<2x?xf32>) -> tensor<2x?x?x1xf32>
+  func.return %0 : tensor<2x?x?x1xf32>
+  // CHECK-LABEL: einsum_matmul_dynamic_size
+  // CHECK-DAG: %[[cst:.*]] = arith.constant dense<[2, -1, 1, 1]> : tensor<4xi64>
+  // CHECK: %[[v0:.*]] = "tf.Reshape"(%arg1, %cst) : (tensor<2x?xf32>, tensor<4xi64>) -> tensor<2x?x1x1xf32>
+  // CHECK: %[[v1:.*]] = "tf.BatchMatMulV2"(%arg0, %0) {adj_x = false, adj_y = false} : (tensor<2x?x?x?xf32>, tensor<2x?x1x1xf32>) -> tensor<2x?x?x1xf32>
+  // CHECK: return %[[v1]] : tensor<2x?x?x1xf32>
+}
+
 func.func @einsum_broadcast(%arg0: tensor<3x4x5xf32>, %arg1: tensor<5x6xf32>) -> tensor<3x4x6xf32> {
   %0 = "tf.Einsum"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", equation = "ijk,km->ijm"}: (tensor<3x4x5xf32>, tensor<5x6xf32>) -> tensor<3x4x6xf32>
   func.return %0 : tensor<3x4x6xf32>

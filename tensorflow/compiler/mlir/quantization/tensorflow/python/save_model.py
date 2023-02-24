@@ -13,13 +13,16 @@
 # limitations under the License.
 # ==============================================================================
 """Defines utilities involving SavedModel."""
-
 from typing import Collection, Dict, Mapping, Optional, Sequence
 
 from absl import logging
 
+# pylint: disable=g-importing-member
+from google.protobuf.any_pb2 import Any
+# pylint: enable=g-importing-member
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
@@ -28,6 +31,8 @@ from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import constants as saved_model_constants
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.training import saver
+from tensorflow.python.types import core
 
 # Mapping of signature def key -> SignatureDef.
 _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
@@ -36,7 +41,7 @@ _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
 def get_signatures_from_saved_model(
     saved_model_path: str,
     signature_keys: Optional[Sequence[str]] = None,
-    tags: Optional[Collection[str]] = None
+    tags: Optional[Collection[str]] = None,
 ) -> Dict[str, meta_graph_pb2.SignatureDef]:
   """Gets a map from signature keys to their SignatureDef.
 
@@ -66,7 +71,8 @@ def get_signatures_from_saved_model(
 
 
 def _restore_output_tensor_names(
-    graph_def: graph_pb2.GraphDef) -> graph_pb2.GraphDef:
+    graph_def: graph_pb2.GraphDef,
+) -> graph_pb2.GraphDef:
   """Restores the output tensor names of the converted model.
 
   During the conversion, the output tensor names of the original model are
@@ -91,8 +97,14 @@ def _restore_output_tensor_names(
         expected_node_name = op.name
         if op.get_attr('tf_saved_model.index_path') is not None:
           index_path_name = op.get_attr('tf_saved_model.index_path')[0]
-          index_path_name = index_path_name.decode('utf-8')
-          expected_node_name = index_path_name.split(':')[0]
+          index_path_name = index_path_name.decode('utf-8').split(':')[0]
+          try:
+            # Only use the index_path name if it points to a Retval node.
+            index_path_node = graph.get_operation_by_name(index_path_name)
+            if index_path_node.type == '_Retval':
+              expected_node_name = index_path_name
+          except KeyError:
+            pass
         retval_input_node_name = op.inputs[0].op.name
         output_renaming_map[retval_input_node_name] = expected_node_name
 
@@ -129,15 +141,18 @@ def _create_empty_output_dir(output_directory: str) -> None:
     output_directory: Output directory.
   """
   if file_io.file_exists_v2(output_directory):
-    logging.info('Deleting existing directory for quantized model output: %s .',
-                 output_directory)
+    logging.info(
+        'Deleting existing directory for quantized model output: %s .',
+        output_directory,
+    )
     file_io.delete_recursively_v2(output_directory)
 
   file_io.recursive_create_dir_v2(output_directory)
 
 
-def _validate_signatures(signature_def_map: _SignatureDefMap,
-                         exported_graph: ops.Graph) -> _SignatureDefMap:
+def _validate_signatures(
+    signature_def_map: _SignatureDefMap, exported_graph: ops.Graph
+) -> _SignatureDefMap:
   """Validates if the tensor names in signatures are consistent with the graph.
 
   This function checks if the input and output tensor names in the signatures
@@ -168,8 +183,9 @@ def _validate_signatures(signature_def_map: _SignatureDefMap,
           tensor_info.name = prefixed_name
         except KeyError:
           raise ValueError(
-              'Cannot find the input tensor with name %s in the graph.' %
-              tensor_info.name) from exc
+              'Cannot find the input tensor with name %s in the graph.'
+              % tensor_info.name
+          ) from exc
 
     for tensor_info in signature_def.outputs.values():
       try:
@@ -181,14 +197,16 @@ def _validate_signatures(signature_def_map: _SignatureDefMap,
           tensor_info.name = prefixed_name
         except KeyError:
           raise ValueError(
-              'Cannot find the output tensor with name %s in the graph.' %
-              tensor_info.name) from exc
+              'Cannot find the output tensor with name %s in the graph.'
+              % tensor_info.name
+          ) from exc
 
   return signature_def_map
 
 
-def _find_op(graph: ops.Graph,
-             op_name: Optional[str]) -> Optional[ops.Operation]:
+def _find_op(
+    graph: ops.Graph, op_name: Optional[str]
+) -> Optional[ops.Operation]:
   """Finds the operation with `op_name`.
 
   Args:
@@ -211,11 +229,75 @@ def _find_op(graph: ops.Graph,
   return init_op
 
 
-def save_model_v1(graph_def: graph_pb2.GraphDef,
-                  output_dir: str,
-                  signature_def_map: _SignatureDefMap,
-                  tags: Collection[str],
-                  init_op_name: Optional[str] = None) -> None:
+def _find_file_prefix_tensor(graph: ops.Graph) -> Optional[core.Tensor]:
+  """Finds the "file_prefix" tensor used for identifying the checkpoint path.
+
+  File prefix tensor can be identified as the output of an `_Arg` node which has
+  the value "__tf_file_prefix" in its "tf_saved_model.index_path" attribute.
+  This attribute should have been set to the file prefix argument by the
+  `InsertRestoreOpPass` when creating the `RestoreV2Op` for the variables.
+
+  Args:
+    graph: The graph to find the file_prefix tensor from.
+
+  Returns:
+    None if not found. True if a "file_prefix" tensor is found.
+  """
+  for op in graph.get_operations():
+    if op.type == '_Arg' and (
+        b'__tf_file_prefix' in op.get_attr('tf_saved_model.index_path')
+    ):
+      candidate_tensor = op.outputs[0]
+      return candidate_tensor
+
+  return None
+
+
+def _save_function_alias(
+    saved_model_dir: str,
+    tags: Collection[str],
+    function_aliases: Mapping[str, str],
+) -> None:
+  """Saves the function alias to the SavedModel.
+
+  SavedModelBuilder (TF1 saved model saver) does not support saving function
+  aliases, so this function loads the SavedModel proto and adds the
+  `function_aliases` field.
+
+  Args:
+    saved_model_dir: Path to the saved model directory.
+    tags: A collection of tags to specify the meta graph.
+    function_aliases: Function name -> function alias mapping.
+  """
+  loader = saved_model_loader.SavedModelLoader(saved_model_dir)
+  meta_graph_def = loader.get_meta_graph_def_from_tags(tags)
+
+  for function_name, function_alias in function_aliases.items():
+    meta_graph_def.meta_info_def.function_aliases[function_name] = (
+        function_alias
+    )
+
+  saved_model_proto_serialized = loader.saved_model.SerializeToString()
+
+  # TODO(b/266015731): Also update and set the SavedModel fingerprint.
+  path = file_io.join(
+      saved_model_dir, saved_model_constants.SAVED_MODEL_FILENAME_PB
+  )
+  file_io.atomic_write_string_to_file(path, saved_model_proto_serialized)
+
+
+def save_model_v1(
+    graph_def: graph_pb2.GraphDef,
+    output_dir: str,
+    signature_def_map: _SignatureDefMap,
+    tags: Collection[str],
+    init_op_name: Optional[str] = None,
+    restore_op_name: Optional[str] = None,
+    save_op_name: Optional[str] = None,
+    checkpoint_dir: Optional[str] = None,
+    function_aliases: Optional[Mapping[str, str]] = None,
+    asset_file_defs: Sequence[meta_graph_pb2.AssetFileDef] = (),
+) -> None:
   """Saves the model.
 
   Saves the provided graph def as SavedModel.
@@ -227,9 +309,18 @@ def save_model_v1(graph_def: graph_pb2.GraphDef,
     signature_def_map: Mapping of signature def key -> SignatureDef.
     tags: Tags for the meta graph def.
     init_op_name: Name of the node for initialization.
+    restore_op_name: Name of the node for restoration.
+    save_op_name: Name of the node for saving variables.
+    checkpoint_dir: Path to checkpoint file where variable values are saved.
+    function_aliases: Function name -> function alias mapping.
+    asset_file_defs: `AssetFileDef`s that associates the asset files and the
+      name of the tensors to which the asset file names should be fed. The
+      caller should make sure the asset files exist in the output saved model
+      directory.
 
   Raises:
-    ValueError iff the graph does not contain a valid signature.
+    ValueError iff the graph does not contain a valid signature or the file
+    prefix tensor is not found in the graph.
   """
   _create_empty_output_dir(output_dir)
   v1_builder = builder.SavedModelBuilder(output_dir)
@@ -238,12 +329,56 @@ def save_model_v1(graph_def: graph_pb2.GraphDef,
   with session.Session(graph=ops.Graph()) as sess:
     importer.import_graph_def(graph_def, name='')
 
-    signature_def_map = _validate_signatures(signature_def_map,
-                                             ops.get_default_graph())
+    signature_def_map = _validate_signatures(
+        signature_def_map, ops.get_default_graph()
+    )
+
+    # Add `AssetFileDef`s to the collection so that correct values are fed to
+    # the tensors that accept asset file paths.
+    for asset_file_def in asset_file_defs:
+      asset_any_proto = Any()
+      asset_any_proto.Pack(asset_file_def)
+      ops.add_to_collection(
+          saved_model_constants.ASSETS_KEY,
+          asset_any_proto,
+      )
+
+    # `restore_op_name` and `save_op_name` are non-empty & non-None when
+    # variables should be restored / saved.
+    model_saver = None
+    if restore_op_name and save_op_name:
+      file_prefix_tensor = _find_file_prefix_tensor(sess.graph)
+      if file_prefix_tensor is None:
+        raise ValueError('Failed to find file prefix tensor.')
+
+      # TODO(b/268594921): Create SaverDef from the c++ side and pass it along
+      # to the python side.
+      saver_def = saver_pb2.SaverDef(
+          filename_tensor_name=file_prefix_tensor.name,
+          restore_op_name=restore_op_name,
+          # :0 attached to indicate the first result tensor, which should be
+          # the file prefix string tensor.
+          save_tensor_name=f'{save_op_name}:0',
+          version=saver_pb2.SaverDef.V2,
+      )
+
+      model_saver = saver.Saver(saver_def=saver_def)
+      logging.info('Saver created with SaverDef: %s', saver_def)
+
+      # Variables should be restored once before exporting as saved model
+      # because the variables are not initialized when the GraphDef was
+      # imported.
+      model_saver.restore(sess, checkpoint_dir)
+
     v1_builder.add_meta_graph_and_variables(
         sess,
         tags,
         signature_def_map=signature_def_map,
-        main_op=_find_op(sess.graph, op_name=init_op_name))
+        main_op=_find_op(sess.graph, op_name=init_op_name),
+        saver=model_saver,
+    )
 
   v1_builder.save()
+
+  if function_aliases:
+    _save_function_alias(output_dir, tags, function_aliases)

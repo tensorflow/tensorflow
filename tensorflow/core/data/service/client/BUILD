@@ -20,7 +20,6 @@ cc_library(
     ],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data/service:common_proto_cc",
         "@com_google_absl//absl/time",
@@ -38,6 +37,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/data:utils",
         "//tensorflow/core/data/service:common",
         "//tensorflow/core/data/service:common_proto_cc",
         "//tensorflow/core/data/service:dispatcher_client",
@@ -73,6 +73,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/data/service:common",
         "//tensorflow/core/data/service:test_cluster",
         "//tensorflow/core/data/service:test_util",
         "//tensorflow/core/platform:status",

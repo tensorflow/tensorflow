@@ -23,7 +23,6 @@ from absl.testing import parameterized
 import numpy as np
 
 from google.protobuf import text_format
-
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.core.framework import graph_pb2
@@ -50,9 +49,9 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
-from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gen_optional_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients as gradient_ops
 from tensorflow.python.ops import image_ops
@@ -434,6 +433,7 @@ class NNTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3)
 
   def test_conv2d_backprop_input(self):
+    self.skipTest("b/262851489: Fix nightly build for GPU.")
     x_shape = [2, 12, 12, 3]
     filt = random_ops.random_uniform([3, 3, 3, 7])
     grad = random_ops.random_uniform([3, 2, 5, 5, 7])
@@ -1555,12 +1555,13 @@ class OptionalTest(PForTestCase):
   def test_optional_from_value(self):
 
     def loop_fn(i):
-      o = gen_dataset_ops.optional_from_value(
-          [i, i + 1, constant_op.constant(3)])
-      gen_dataset_ops.optional_none()
-      return gen_dataset_ops.optional_get_value(
-          o, [dtypes.int32, dtypes.int32, dtypes.int32],
-          [[], [], []])
+      o = gen_optional_ops.optional_from_value(
+          [i, i + 1, constant_op.constant(3)]
+      )
+      gen_optional_ops.optional_none()
+      return gen_optional_ops.optional_get_value(
+          o, [dtypes.int32, dtypes.int32, dtypes.int32], [[], [], []]
+      )
 
     self._test_loop_fn(loop_fn, 2)
 

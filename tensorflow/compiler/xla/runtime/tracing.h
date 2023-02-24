@@ -27,8 +27,6 @@ namespace runtime {
 // XLA run-time representation of the `!rt.hlo_trace` attribute.
 struct HloTrace {
   std::string_view hlo_op;
-  std::string_view module;
-  int64_t program_id;
 };
 
 // Registers type id names for tracing attributes.
@@ -38,9 +36,7 @@ inline void PopulateTraceTypeIdNames(TypeIDNameRegistry& registry) {
 
 // Register XLA runtime custom calls attribute decoding.
 XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
-    HloTrace, AggregateMember<std::string_view>("hlo_op"),
-    AggregateMember<std::string_view>("module"),
-    AggregateMember<int64_t>("program_id"));
+    HloTrace, AggregateMember<std::string_view>("hlo_op"));
 
 }  // namespace runtime
 }  // namespace xla

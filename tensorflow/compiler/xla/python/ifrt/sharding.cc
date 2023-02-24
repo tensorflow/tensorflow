@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/python/ifrt/index_domain.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -43,9 +44,18 @@ std::shared_ptr<const Sharding> SingleDeviceSharding::Create(Device* device) {
 }
 
 StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
-SingleDeviceSharding::Explode(const Shape& shape) const {
+SingleDeviceSharding::Disassemble(const Shape& shape) const {
   DCHECK(this);
-  return InvalidArgument("Single-device sharding does not support explosion");
+  return InvalidArgument("Single-device sharding does not support disassembly");
+}
+
+StatusOr<std::vector<IndexDomain>> SingleDeviceSharding::IndexDomains(
+    const Shape& shape) const {
+  DCHECK(this);
+  std::vector<IndexDomain> result;
+  result.reserve(1);
+  result.push_back(IndexDomain(shape));
+  return result;
 }
 
 std::string SingleDeviceSharding::DebugString() const {
@@ -57,43 +67,44 @@ std::string SingleDeviceSharding::DebugString() const {
 std::shared_ptr<const Sharding> OpaqueSharding::Create(DeviceList devices) {
   return std::shared_ptr<const Sharding>(new OpaqueSharding(
       std::move(devices),
-      ExplodeFunc([](const OpaqueSharding& sharding,
-                     const Shape& shape) -> StatusOr<std::vector<Shape>> {
+      DisassembleFunc([](const OpaqueSharding& sharding,
+                         const Shape& shape) -> StatusOr<std::vector<Shape>> {
         return FailedPrecondition(
-            "Using an opaque sharding that disallows explosion: "
+            "Using an opaque sharding that disallows disassembly: "
             "sharding=%s; shape=%s",
             sharding.DebugString(), shape.DebugString());
       })));
 }
 
 std::shared_ptr<const Sharding> OpaqueSharding::Create(
-    DeviceList devices, ExplodeFunc explode_func) {
+    DeviceList devices, DisassembleFunc disassemble_func) {
   return std::shared_ptr<const Sharding>(
-      new OpaqueSharding(std::move(devices), std::move(explode_func)));
+      new OpaqueSharding(std::move(devices), std::move(disassemble_func)));
 }
 
-OpaqueSharding::ExplodeFunc OpaqueSharding::MakeExplodeFuncFromShapes(
+OpaqueSharding::DisassembleFunc OpaqueSharding::MakeDisassembleFuncFromShapes(
     std::vector<Shape> shapes) {
-  // Capture shapes in a shared_ptr so that the explode function can be copied
-  // cheaply.
-  return ExplodeFunc(
+  // Capture shapes in a shared_ptr so that the disassemble function can be
+  // copied cheaply.
+  return DisassembleFunc(
       [shapes = std::make_shared<std::vector<Shape>>(std::move(shapes))](
           const OpaqueSharding&, const Shape&) -> StatusOr<std::vector<Shape>> {
         return *shapes;
       });
 }
 
-OpaqueSharding::OpaqueSharding(DeviceList devices, ExplodeFunc explode_func)
+OpaqueSharding::OpaqueSharding(DeviceList devices,
+                               DisassembleFunc disassemble_func)
     : llvm::RTTIExtends<OpaqueSharding, Sharding>(std::move(devices)),
-      explode_func_(std::move(explode_func)) {}
+      disassemble_func_(std::move(disassemble_func)) {}
 
 StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
-OpaqueSharding::Explode(const Shape& shape) const {
+OpaqueSharding::Disassemble(const Shape& shape) const {
   DCHECK(this);
-  TF_ASSIGN_OR_RETURN(auto shapes, explode_func_(*this, shape));
+  TF_ASSIGN_OR_RETURN(auto shapes, disassemble_func_(*this, shape));
   if (shapes.size() != devices_.size()) {
     return FailedPrecondition(
-        "ExplodeFunc returned an incorrect number of shapes");
+        "DisassembleFunc returned an incorrect number of shapes");
   }
   std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
   result.reserve(shapes.size());
@@ -102,6 +113,13 @@ OpaqueSharding::Explode(const Shape& shape) const {
         {std::move(shapes[i]), SingleDeviceSharding::Create(devices_[i])});
   }
   return result;
+}
+
+StatusOr<std::vector<IndexDomain>> OpaqueSharding::IndexDomains(
+    const Shape& shape) const {
+  DCHECK(this);
+  return InvalidArgument(
+      "OpaqueSharding does not have index domain information");
 }
 
 std::string OpaqueSharding::DebugString() const {

@@ -62,6 +62,7 @@ struct GpuConvConfig {
   se::dnn::FilterDescriptor filter_descriptor;
   se::dnn::BatchDescriptor output_descriptor;
   se::dnn::ConvolutionDescriptor conv_desc;
+  se::dnn::BatchDescriptor bias_descriptor;
 
   Shape input_shape;
   Shape filter_shape;
@@ -211,8 +212,6 @@ StatusOr<GpuConvParams> GetGpuConvParams(
     const GpuConvConfig& conv_config,
     absl::Span<const se::DeviceMemoryBase> operand_buffers,
     se::DeviceMemoryBase result_buffer);
-
-se::dnn::BatchDescriptor GetBiasDescriptor(const GpuConvConfig& config);
 
 inline se::dnn::DataType BiasTypeForInputType(se::dnn::DataType input_type) {
   switch (input_type) {

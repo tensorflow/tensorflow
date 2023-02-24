@@ -20,6 +20,7 @@ from tensorflow.python.data.ops.options import AutoShardPolicy
 from tensorflow.python.data.util import traverse
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.types import data as data_types
 
 
 # pylint: disable=protected-access
@@ -45,7 +46,7 @@ def auto_shard_dataset(dataset, num_shards, index, num_replicas_in_sync=None):
       AutoShardPolicy.OFF):
     if num_replicas_in_sync is None:
       num_replicas_in_sync = 1
-    if isinstance(dataset, dataset_ops.DatasetV1):
+    if isinstance(dataset, data_types.DatasetV1):
       return distribute._AutoShardDatasetV1(dataset, num_shards, index,
                                             num_replicas_in_sync)
     else:

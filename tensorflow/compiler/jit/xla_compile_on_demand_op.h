@@ -20,6 +20,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_XLA_COMPILE_ON_DEMAND_OP_H_
 
 #include "tensorflow/compiler/jit/device_compilation_profiler.h"
+#include "tensorflow/compiler/jit/variable_info.h"
+#include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
@@ -46,12 +48,15 @@ class XlaCompileOnDemandOp : public OpKernel {
   XlaCompiler::Argument CreateCompilerArgument(OpKernelContext* ctx, int64_t i);
   Status Compile(OpKernelContext* ctx,
                  const XlaCompiler::CompilationResult** result,
-                 XlaCompilationCache** cache,
+                 DeviceCompiler<xla::LocalExecutable, xla::LocalClient>**
+                     xla_device_compiler,
                  DeviceCompilationProfiler** profiler,
                  ResourceVarsSnapshot* variable_args,
                  xla::LocalExecutable** executable);
 
-  Status Run(OpKernelContext* ctx, XlaCompilationCache* cache,
+  Status Run(OpKernelContext* ctx,
+             DeviceCompiler<xla::LocalExecutable, xla::LocalClient>*
+                 xla_device_compiler,
              const XlaCompiler::CompilationResult* result,
              xla::LocalExecutable* executable,
              const ResourceVarsSnapshot& variable_args);

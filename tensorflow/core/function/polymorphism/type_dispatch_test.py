@@ -44,6 +44,9 @@ class MockShape(trace.TraceType):
     ]
     return MockShape(*dims)
 
+  def placeholder_value(self, placeholder_context=None):
+    raise NotImplementedError
+
   def __str__(self):
     return str(self.shape)
 

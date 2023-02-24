@@ -182,7 +182,7 @@ class TrackableState(State):
     }
 
   def _restore_from_tensors(self, restored_tensors):
-    self.assign(restored_tensors["value"])
+    return self.assign(restored_tensors["value"])
 
 
 class SaveableCompatibilityEndToEndTest(test.TestCase):
@@ -220,6 +220,31 @@ class SaveableCompatibilityEndToEndTest(test.TestCase):
     checkpoint.Checkpoint(b=converted_saveable_state).read(
         ckpt_path).assert_existing_objects_matched().expect_partial()
     self.assertEqual(10, self.evaluate(to_convert.read()))
+
+
+class HasSerializeToTensorTest(test.TestCase):
+  def test_has_serialize_to_tensor(self):
+    class ReturnsTrue(base.Trackable):
+      def _serialize_to_tensors(self):
+        return {}
+
+    class ReturnsFalse(base.Trackable):
+      pass
+
+    class SubclassReturnsFalse(ReturnsTrue):
+      def _gather_saveables_for_checkpoint(self):
+        return {}
+
+    self.assertTrue(saveable_object_util.trackable_has_serialize_to_tensor(
+        ReturnsTrue()))
+    self.assertFalse(saveable_object_util.trackable_has_serialize_to_tensor(
+        ReturnsFalse()))
+
+    # This should return False, because even though its parent class has
+    # `_serialize_to_tensors`, the class itself defines
+    # `_gather_saveables_for_checkpoint`.
+    self.assertFalse(saveable_object_util.trackable_has_serialize_to_tensor(
+        SubclassReturnsFalse()))
 
 
 if __name__ == "__main__":

@@ -210,102 +210,62 @@ struct functor_traits<mul_no_nan_op<T>> {
 // constructor. Similarly, scalar_right<> is a unary functor g_y(x) =
 // f(x, y).
 
-template <typename Tout, typename Tin, typename Binary,
-          bool is_scalar_in_host_memory = false>
+template <typename Tout, typename Tin, typename Binary>
 struct scalar_left : private Binary {
   using result_type = Tout;
-  using TinPacket = typename Eigen::internal::packet_traits<Tin>::type;
 
   const Tin* left;
-  TinPacket left_packet;  // initialized iff is_scalar_in_host_memory == true
 
   inline scalar_left(const scalar_left& other) = default;
 
   template <typename... Args>
   EIGEN_DEVICE_FUNC inline explicit scalar_left(const Tin* c, Args... args)
-      : Binary(args...), left(c) {
-    if (is_scalar_in_host_memory) {
-      left_packet = Eigen::internal::pset1<TinPacket>(*left);
-    }
-  }
+      : Binary(args...), left(c) {}
 
   EIGEN_DEVICE_FUNC inline Tout operator()(const Tin& right) const {
     return Binary::operator()(*left, right);
   }
 
-  template <typename Packet,
-            typename std::enable_if<!is_scalar_in_host_memory ||
-                                        !std::is_same<TinPacket, Packet>::value,
-                                    int>::type = 0>
+  template <typename Packet>
   EIGEN_DEVICE_FUNC inline Packet packetOp(const Packet& right_packet) const {
-    const Packet left_packet = Eigen::internal::pset1<Packet>(*left);
-    return Binary::packetOp(left_packet, right_packet);
-  }
-
-  template <typename Packet,
-            typename std::enable_if<is_scalar_in_host_memory &&
-                                        std::is_same<TinPacket, Packet>::value,
-                                    int>::type = 0>
-  EIGEN_DEVICE_FUNC inline Packet packetOp(const Packet& right_packet) const {
-    return Binary::packetOp(left_packet, right_packet);
+    return Binary::packetOp(Eigen::internal::pset1<Packet>(*left),
+                            right_packet);
   }
 };
 
-template <typename Tout, typename Tin, typename Binary,
-          bool is_scalar_in_host_memory>
-struct functor_traits<
-    scalar_left<Tout, Tin, Binary, is_scalar_in_host_memory>> {
+template <typename Tout, typename Tin, typename Binary>
+struct functor_traits<scalar_left<Tout, Tin, Binary>> {
   enum {
     Cost = functor_traits<Binary>::Cost,
     PacketAccess = functor_traits<Binary>::PacketAccess,
   };
 };
 
-template <typename Tout, typename Tin, typename Binary,
-          bool is_scalar_in_host_memory = false>
+template <typename Tout, typename Tin, typename Binary>
 struct scalar_right : private Binary {
   using result_type = Tout;
-  using TinPacket = typename Eigen::internal::packet_traits<Tin>::type;
 
   const Tin* right;
-  TinPacket right_packet;  // initialized iff is_scalar_in_host_memory == true
 
   inline scalar_right(const scalar_right& other) = default;
 
   template <typename... Args>
   EIGEN_DEVICE_FUNC inline explicit scalar_right(const Tin* c, Args... args)
-      : Binary(args...), right(c) {
-    if (is_scalar_in_host_memory) {
-      right_packet = Eigen::internal::pset1<TinPacket>(*right);
-    }
-  }
+      : Binary(args...), right(c) {}
 
   EIGEN_DEVICE_FUNC inline Tout operator()(const Tin& left) const {
     return Binary::operator()(left, *right);
   }
 
-  template <typename Packet,
-            typename std::enable_if<!is_scalar_in_host_memory ||
-                                        !std::is_same<TinPacket, Packet>::value,
-                                    int>::type = 0>
+  template <typename Packet>
   EIGEN_DEVICE_FUNC inline Packet packetOp(const Packet& left_packet) const {
-    const Packet right_packet = Eigen::internal::pset1<Packet>(*right);
-    return Binary::packetOp(left_packet, right_packet);
-  }
-
-  template <typename Packet,
-            typename std::enable_if<is_scalar_in_host_memory &&
-                                        std::is_same<TinPacket, Packet>::value,
-                                    int>::type = 0>
-  EIGEN_DEVICE_FUNC inline Packet packetOp(const Packet& left_packet) const {
-    return Binary::packetOp(left_packet, right_packet);
+    return Binary::packetOp(left_packet,
+                            Eigen::internal::pset1<Packet>(*right));
   }
 };
 
-template <typename Tout, typename Tin, typename Binary,
-          bool is_scalar_in_host_memory>
-struct functor_traits<
-    scalar_right<Tout, Tin, Binary, is_scalar_in_host_memory>> {
+template <typename Tout, typename Tin, typename Binary>
+struct functor_traits<scalar_right<Tout, Tin, Binary>> {
   enum {
     Cost = functor_traits<Binary>::Cost,
     PacketAccess = functor_traits<Binary>::PacketAccess,

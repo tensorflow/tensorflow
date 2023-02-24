@@ -864,51 +864,69 @@ class UnaryOpsTest(xla_test.XLATestCase):
         expected=np.array([14., 22.], dtype=np.float32))
 
   def testCast(self):
-    shapes = [[], [4], [2, 3], [2, 0, 4]]
     types = {
         dtypes.bool, dtypes.float32, dtypes.float64, dtypes.complex64,
         dtypes.int32, dtypes.int64, dtypes.uint32, dtypes.uint64
     }
     for src_type in types:
       for dst_type in types:
-        src_np_dtype = src_type.as_numpy_dtype
-        dst_np_dtype = dst_type.as_numpy_dtype
+        self._testCast(src_type, dst_type)
 
-        for shape in shapes:
-          src = np.arange(np.prod(shape)).astype(src_np_dtype)
+  def testCastFp8(self):
+    fp8_types = {dtypes.float8_e5m2, dtypes.float8_e4m3fn}
+    # TODO(b/259609697): Test casting to bool. Casting from float8 to bool is
+    # currently not supported since the cast is lowered to an Ne (not-equal) op,
+    # and FP8 is currently not supported with Ne.
+    other_types = {
+        dtypes.float32, dtypes.float64, dtypes.complex64,
+        dtypes.int32, dtypes.int64, dtypes.uint32, dtypes.uint64
+    }
+    for fp8_type in fp8_types:
+      for other_type in other_types | fp8_types:
+        self._testCast(fp8_type, other_type)
+        self._testCast(other_type, fp8_type)
 
-          if src_type in self.complex_tf_types:
-            src += (np.arange(np.prod(shape)) * 2j).astype(src_np_dtype)
-          src = src.reshape(shape)
-          dst = src.astype(dst_np_dtype)
-          self._assertOpOutputMatchesExpected(
-              lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
-              src,
-              expected=dst)
+  def _testCast(self, src_type, dst_type):
+    with self.subTest(src_type=src_type, dst_type=dst_type):
+      shapes = [[], [4], [2, 3], [2, 0, 4]]
+      src_np_dtype = src_type.as_numpy_dtype
+      dst_np_dtype = dst_type.as_numpy_dtype
 
-        # Check special values.
-        if src_type.is_integer:
-          imin = np.iinfo(src_np_dtype).min
-          imax = np.iinfo(src_np_dtype).max
-          src = np.array([imin, imax, 0, 1, -1], dtype=src_np_dtype)
-        elif src_type in self.float_tf_types:
-          if dst_type.is_integer:
-            imin = np.iinfo(dst_np_dtype).min
-            imax = np.iinfo(dst_np_dtype).max // 2
-            src = np.array([imin, imax, 0, 1], dtype=src_np_dtype)
-          elif dst_type in self.float_tf_types:
-            fmin = np.finfo(dst_np_dtype).min
-            fmax = np.finfo(dst_np_dtype).max
-            tiny = np.finfo(dst_np_dtype).tiny
-            eps = np.finfo(dst_np_dtype).eps
-            src = np.array(
-                [fmin, fmax, np.nan, eps, -eps, tiny, -tiny, np.inf, -np.inf],
-                dtype=src_np_dtype)
+      for shape in shapes:
+        src = np.arange(np.prod(shape)).astype(src_np_dtype)
+
+        if src_type in self.complex_tf_types:
+          src += (np.arange(np.prod(shape)) * 2j).astype(src_np_dtype)
+        src = src.reshape(shape)
         dst = src.astype(dst_np_dtype)
         self._assertOpOutputMatchesExpected(
             lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
             src,
             expected=dst)
+
+      # Check special values.
+      if src_type.is_integer:
+        imin = np.iinfo(src_np_dtype).min
+        imax = np.iinfo(src_np_dtype).max
+        src = np.array([imin, imax, 0, 1, -1], dtype=src_np_dtype)
+      elif src_type in self.float_tf_types:
+        if dst_type.is_integer:
+          imin = np.iinfo(dst_np_dtype).min
+          imax = np.iinfo(dst_np_dtype).max // 2
+          src = np.array([imin, imax, 0, 1], dtype=src_np_dtype)
+        elif dst_type in self.float_tf_types:
+          fmin = np.finfo(dst_np_dtype).min
+          fmax = np.finfo(dst_np_dtype).max
+          tiny = np.finfo(dst_np_dtype).tiny
+          eps = np.finfo(dst_np_dtype).eps
+          src = np.array(
+              [fmin, fmax, np.nan, eps, -eps, tiny, -tiny, np.inf, -np.inf],
+              dtype=src_np_dtype)
+      dst = src.astype(dst_np_dtype)
+      self._assertOpOutputMatchesExpected(
+          lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
+          src,
+          expected=dst)
 
   def testBitcast(self):
     self._assertOpOutputMatchesExpected(

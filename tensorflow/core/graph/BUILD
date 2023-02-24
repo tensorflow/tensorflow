@@ -30,6 +30,14 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "zen_graph_util",
+    hdrs = ["zen_graph_util.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
 tf_cc_test(
     name = "collective_order_test",
     size = "small",
@@ -269,6 +277,7 @@ tf_cc_tests(
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/util:protos_test_cc",
         "//third_party/eigen3",
         "@com_google_absl//absl/base",

@@ -1,6 +1,6 @@
 path: "tensorflow.metrics.Poisson"
 tf_class {
-  is_instance: "<class \'keras.metrics.metrics.Poisson\'>"
+  is_instance: "<class \'keras.metrics.probabilistic_metrics.Poisson\'>"
   is_instance: "<class \'keras.metrics.base_metric.MeanMetricWrapper\'>"
   is_instance: "<class \'keras.metrics.base_metric.Mean\'>"
   is_instance: "<class \'keras.metrics.base_metric.Reduce\'>"

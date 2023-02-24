@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 
 #include <cstdlib>
+#include <string>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -108,6 +110,21 @@ bool LowerCollectiveGatherToCollectiveGatherV2() {
       std::getenv("LOWER_DTENSOR_GATHER_TO_COLLECTIVE_GATHER_V2");
   if (use_collective_gather == nullptr) return false;
   return true;
+}
+
+bool EnableReplicatedSpmdAsDefault(const std::string& op_name) {
+  // These environment variables enroll MLIR ops of the given name for default
+  // replicated SPMD expansion. No expanders are registered for these Ops,
+  // and without enrolling to the default replicated behavior, SPMD expansion
+  // raises an error for these Op.
+  //
+  // For example, to enroll tf.Mod, set
+  //   DTENSOR_ENABLE_REPLICATED_SPMD_AS_DEFAULT_TF.MOD = 1
+  std::string env_name = "DTENSOR_ENABLE_REPLICATED_SPMD_AS_DEFAULT_" +
+                         absl::AsciiStrToUpper(op_name);
+  char* dtensor_enable_replicated_spmd_as_default =
+      std::getenv(env_name.c_str());
+  return dtensor_enable_replicated_spmd_as_default != nullptr;
 }
 
 }  // namespace dtensor

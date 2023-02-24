@@ -51,8 +51,8 @@ static void ComputeSoftmax(const Eigen::DefaultDevice& d, InT logits,
   const int batch_size = logits.dimension(kBatchDim);
   const int num_classes = logits.dimension(kClassDim);
 
-// These arrays are used to reduce along the class dimension, and broadcast
-// the resulting value to all classes.
+  // These arrays are used to reduce along the class dimension, and broadcast
+  // the resulting value to all classes.
   Eigen::IndexList<Eigen::type2index<kClassDim> > along_class;
   Eigen::IndexList<int, Eigen::type2index<1> > batch_by_one;
   batch_by_one.set(0, batch_size);
@@ -109,8 +109,9 @@ BM_DYNAMIC_ALL(81, 61);
 BM_DYNAMIC_ALL(800, 600);
 BM_DYNAMIC_ALL(802, 602);
 
-#define BM_STATIC_ROW(ROWS, COLS) \
-  BM_SUITE(SoftmaxStaticRow##ROWS##_##COLS, kStaticDim, kDynamicDim, ROWS, COLS)
+#define BM_STATIC_ROW(ROWS, COLS)                                           \
+  BM_SUITE(SoftmaxStaticRow_##ROWS##_##COLS, kStaticDim, kDynamicDim, ROWS, \
+           COLS)
 BM_STATIC_ROW(2, 80);
 BM_STATIC_ROW(8, 6);
 BM_STATIC_ROW(80, 1);

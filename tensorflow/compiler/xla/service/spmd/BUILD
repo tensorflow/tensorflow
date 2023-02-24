@@ -1,7 +1,7 @@
 # Description: SPMD partitioning pass.
 
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -61,7 +61,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/compiler/xla/service:sharding_propagation",
         "//tensorflow/compiler/xla/service:tuple_simplifier",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:numbers",
         "//tensorflow/tsl/platform:statusor",
@@ -77,7 +76,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "spmd_partitioner_test",
     srcs = ["spmd_partitioner_test.cc"],
     deps = [
@@ -99,7 +98,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "canonicalize_all_gather_for_cse_test",
     srcs = ["canonicalize_all_gather_for_cse_test.cc"],
     deps = [
@@ -129,7 +128,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "schedule_aware_collective_ops_cse_test",
     srcs = ["schedule_aware_collective_ops_cse_test.cc"],
     deps = [
@@ -154,7 +153,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -171,7 +170,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "stateful_rng_spmd_partitioner_test",
     srcs = ["stateful_rng_spmd_partitioner_test.cc"],
     deps = [
@@ -208,7 +207,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "collective_permute_motion_test",
     srcs = ["collective_permute_motion_test.cc"],
     deps = [
@@ -217,5 +216,32 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
+    name = "partition_assignment",
+    srcs = [
+        "partition_assignment.cc",
+    ],
+    hdrs = [
+        "partition_assignment.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+    ],
+)
+
+xla_cc_test(
+    name = "partition_assignment_test",
+    srcs = ["partition_assignment_test.cc"],
+    deps = [
+        ":partition_assignment",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test",
     ],
 )

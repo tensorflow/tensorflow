@@ -22,14 +22,11 @@ glob_lit_tests(
 )
 
 # Bundle together all of the test utilities that are used by tests.
-# This intentionally does not pull-in the top-level tf-opt to reduce the
-# dependencies.
 filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "//tensorflow/compiler/mlir:tf-mlir-translate",
-        "//tensorflow/compiler/mlir/xla:xla-opt",
+        "//tensorflow/compiler/mlir:tf-opt",
         "@llvm-project//llvm:FileCheck",
     ],
 )

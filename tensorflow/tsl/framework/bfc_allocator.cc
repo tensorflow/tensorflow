@@ -27,12 +27,10 @@ limitations under the License.
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/numbers.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
 #include "tensorflow/tsl/platform/str_util.h"
 #include "tensorflow/tsl/platform/strcat.h"
 #include "tensorflow/tsl/platform/types.h"
-#ifdef TENSORFLOW_MEM_DEBUG
-#include "tensorflow/tsl/stacktrace.h"
-#endif
 #include "tensorflow/tsl/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 #include "tensorflow/tsl/protobuf/bfc_memory_map.pb.h"
@@ -1195,9 +1193,9 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
 #ifdef TENSORFLOW_MEM_DEBUG
   // Record the recent size history
   int history_len = static_cast<int>(std::min(
-      action_counter_, static_cast<long long>(MEM_DEBUG_SIZE_HISTORY_SIZE)));
+      action_counter_, static_cast<int64>(MEM_DEBUG_SIZE_HISTORY_SIZE)));
   for (int i = action_counter_ - history_len; i < action_counter_; ++i) {
-    SnapShot* ss = md.add_snap_shot();
+    tensorflow::SnapShot* ss = md.add_snap_shot();
     ss->set_action_count(i);
     int slot = i % MEM_DEBUG_SIZE_HISTORY_SIZE;
     ss->set_size(size_history_[slot]);

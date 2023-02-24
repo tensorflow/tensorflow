@@ -253,18 +253,20 @@ def function_def_to_graph_def(fdef, input_shapes=None):
           grad_def.gradient_func = f.grad_func_name
           graph_def.library.gradient.extend([grad_def])
     else:
-      op_def = default_graph._get_op_def(node_def.op)  # pylint: disable=protected-access
+      op_def = default_graph.op_def_for_type(node_def.op)  # pylint: disable=protected-access
 
     for attr in op_def.attr:
       if attr.type == "func":
         fname = node_def.attr[attr.name].func.name
-        if not is_function(fname):
+        # Custom ops may contain a func attr with an empty fname.
+        if fname and not is_function(fname):
           raise ValueError(f"Function {fname} was not found. Please make sure "
                            "the FunctionDef `fdef` is correct.")
       elif attr.type == "list(func)":
         for fn in node_def.attr[attr.name].list.func:
           fname = fn.name
-          if not is_function(fname):
+          # Custom ops may contain a func attr with an empty fname.
+          if fname and not is_function(fname):
             raise ValueError(f"Function {fname} was not found. Please make "
                              "sure the FunctionDef `fdef` is correct.")
 

@@ -5587,19 +5587,14 @@ def non_max_suppression_padded_v2(boxes,
         representing the index of the scores in a sorted descending order.
     """
     with ops.name_scope('sort_scores_and_boxes'):
-      batch_size = array_ops.shape(boxes)[0]
-      num_boxes = array_ops.shape(boxes)[1]
       sorted_scores_indices = sort_ops.argsort(
           scores, axis=1, direction='DESCENDING')
-      index_offsets = math_ops.range(batch_size) * num_boxes
-      indices = array_ops.reshape(
-          sorted_scores_indices + array_ops.expand_dims(index_offsets, 1), [-1])
-      sorted_scores = array_ops.reshape(
-          array_ops.gather(array_ops.reshape(scores, [-1]), indices),
-          [batch_size, -1])
-      sorted_boxes = array_ops.reshape(
-          array_ops.gather(array_ops.reshape(boxes, [-1, 4]), indices),
-          [batch_size, -1, 4])
+      sorted_scores = array_ops.gather(
+          scores, sorted_scores_indices, axis=1, batch_dims=1
+      )
+      sorted_boxes = array_ops.gather(
+          boxes, sorted_scores_indices, axis=1, batch_dims=1
+      )
     return sorted_scores, sorted_boxes, sorted_scores_indices
 
   batch_dims = array_ops.shape(boxes)[:-2]

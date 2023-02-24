@@ -1,6 +1,6 @@
 path: "tensorflow.metrics.MeanRelativeError"
 tf_class {
-  is_instance: "<class \'keras.metrics.metrics.MeanRelativeError\'>"
+  is_instance: "<class \'keras.metrics.regression_metrics.MeanRelativeError\'>"
   is_instance: "<class \'keras.metrics.base_metric.Mean\'>"
   is_instance: "<class \'keras.metrics.base_metric.Reduce\'>"
   is_instance: "<class \'keras.metrics.base_metric.Metric\'>"

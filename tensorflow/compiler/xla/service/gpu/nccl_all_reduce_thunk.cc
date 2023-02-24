@@ -226,11 +226,23 @@ NcclAllReduceThunkBase::NcclAllReduceThunkBase(Thunk::Kind kind,
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
+Status NcclAllReduceThunkBase::RunAllReduce(const ExecuteParams& params,
+                                            se::Stream& stream,
+                                            ncclComm_t comm) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DeviceBufferPair> device_buffers,
+      ConvertToDeviceBuffers(params, buffers_,
+                             config_.config.operand_element_type));
+  return ::xla::gpu::RunAllReduce(config_.reduction_kind, device_buffers,
+                                  stream, comm);
+}
+
 NcclAllReduceThunk::NcclAllReduceThunk(ThunkInfo thunk_info,
                                        mlir::lmhlo::AllReduceOp op,
                                        std::vector<Buffer> buffers)
     : NcclAllReduceThunkBase(Thunk::kNcclAllReduce, thunk_info,
-                             impl::GetNcclAllReduceConfig(op), buffers) {}
+                             impl::GetNcclAllReduceConfig(op),
+                             std::move(buffers)) {}
 
 bool NcclAllReduceThunk::CanImplement(mlir::lmhlo::AllReduceOp op) {
   return impl::CanImplement(op, Thunk::kNcclAllReduce);
@@ -249,24 +261,15 @@ CollectiveOpGroupMode NcclAllReduceThunk::GetGroupMode(
 
 Status NcclAllReduceThunk::RunNcclCollective(const ExecuteParams& params,
                                              ncclComm_t comm) {
-  se::Stream& stream = *params.stream;
-  TF_ASSIGN_OR_RETURN(
-      std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(params, buffers_,
-                             config_.config.operand_element_type));
-  TF_RETURN_IF_ERROR(
-      RunAllReduce(config_.reduction_kind, device_buffers, stream, comm));
-
-  int device_ordinal = stream.parent()->device_ordinal();
-  VLOG(3) << "Done performing all-reduce for ordinal: " << device_ordinal;
-  return OkStatus();
+  return RunAllReduce(params, *params.stream, comm);
 }
 
 NcclAllReduceStartThunk::NcclAllReduceStartThunk(
     ThunkInfo thunk_info, mlir::lmhlo_gpu::AllReduceStartOp op,
     std::vector<Buffer> buffers)
     : NcclAllReduceThunkBase(Thunk::kNcclAllReduceStart, thunk_info,
-                             impl::GetNcclAllReduceConfig(op), buffers) {}
+                             impl::GetNcclAllReduceConfig(op),
+                             std::move(buffers)) {}
 
 bool NcclAllReduceStartThunk::CanImplement(
     mlir::lmhlo_gpu::AllReduceStartOp op) {
@@ -286,55 +289,16 @@ CollectiveOpGroupMode NcclAllReduceStartThunk::GetGroupMode(
 
 Status NcclAllReduceStartThunk::RunNcclCollective(const ExecuteParams& params,
                                                   ncclComm_t comm) {
-  se::Stream& async_comms_stream = *params.async_comms_stream;
-  // Wait until compute inputs are ready.
-  async_comms_stream.ThenWaitFor(params.stream);
-
-  TF_ASSIGN_OR_RETURN(
-      std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(params, buffers_,
-                             config_.config.operand_element_type));
-  TF_RETURN_IF_ERROR(RunAllReduce(config_.reduction_kind, device_buffers,
-                                  async_comms_stream, comm));
-
-  // Create an event on the async stream for the completion of the all-reduce.
-  se::Event done_event(async_comms_stream.parent());
-  TF_RET_CHECK(done_event.Init());
-  async_comms_stream.ThenRecordEvent(&done_event);
-
-  int device_ordinal = async_comms_stream.parent()->device_ordinal();
-
-  {
-    absl::MutexLock lock(&mu_);
-    auto result = done_events_.emplace(device_ordinal, std::move(done_event));
-    TF_RET_CHECK(result.second) << "done event has not been consumed";
-  }
-
-  VLOG(3) << "Done performing all-reduce-start for ordinal: " << device_ordinal;
-  return OkStatus();
-}
-
-StatusOr<se::Event> NcclAllReduceStartThunk::TakeDoneEvent(int device_ordinal) {
-  absl::MutexLock lock(&mu_);
-  auto it = done_events_.find(device_ordinal);
-  TF_RET_CHECK(it != done_events_.end()) << "done event not found";
-  // Take ownership of the event.
-  se::Event done_event = std::move(it->second);
-  done_events_.erase(it);
-  return done_event;
+  return async_.Execute(
+      [this](const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
+        return RunAllReduce(params, stream, comm);
+      },
+      params, comm);
 }
 
 NcclAllReduceDoneThunk::NcclAllReduceDoneThunk(
-    ThunkInfo thunk_info, NcclAllReduceStartThunk& start_thunk)
-    : Thunk(Thunk::kNcclAllReduceDone, thunk_info), start_thunk_(start_thunk) {}
-
-Status NcclAllReduceDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
-  int device_ordinal = params.stream->parent()->device_ordinal();
-  TF_ASSIGN_OR_RETURN(se::Event done_event,
-                      start_thunk_.TakeDoneEvent(device_ordinal));
-  params.stream->ThenWaitFor(&done_event);
-  return OkStatus();
-}
+    ThunkInfo thunk_info, NcclCollectiveThunk::AsyncExecutor& async)
+    : NcclCollectiveDoneThunk(Thunk::kNcclAllReduceDone, thunk_info, async) {}
 
 NcclReduceScatterThunk::NcclReduceScatterThunk(
     ThunkInfo thunk_info, mlir::lmhlo::ReduceScatterOp op,

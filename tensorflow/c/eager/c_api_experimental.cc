@@ -540,11 +540,6 @@ void TFE_ContextOptionsSetTfrt(TFE_ContextOptions* options, bool use_tfrt) {
   options->use_tfrt = use_tfrt;
 }
 
-void TFE_ContextOptionsSetTfrtDistributedRuntime(
-    TFE_ContextOptions* options, bool use_tfrt_distributed_runtime) {
-  options->use_tfrt_distributed_runtime = use_tfrt_distributed_runtime;
-}
-
 TFE_CancellationManager* TFE_NewCancellationManager() {
   return tensorflow::wrap(new tensorflow::CancellationManager);
 }

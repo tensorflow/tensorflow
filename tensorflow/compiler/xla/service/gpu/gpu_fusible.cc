@@ -101,6 +101,15 @@ bool IsInputFusibleReduction(const HloInstruction& instr) {
          IsReductionFromOrToContiguousDimensions(instr);
 }
 
+bool IsNestableVariadicReduction(const HloInstruction& instr) {
+  return instr.shape().IsTuple() &&
+         ((instr.opcode() == HloOpcode::kReduce &&
+           !IsReductionFromOrToContiguousDimensions(instr)) ||
+          (instr.opcode() == HloOpcode::kFusion &&
+           instr.fusion_kind() == HloInstruction::FusionKind::kLoop &&
+           instr.fused_expression_root()->opcode() == HloOpcode::kReduce));
+}
+
 bool IsTransposeInputFusion(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kFusion &&
          HasAnyTiledTransposeRoot(instr.called_computations()[0]);
@@ -228,49 +237,59 @@ bool IsInputFusible(const HloInstruction& instr) {
           IsInputFusibleTranspose(instr));
 }
 
-bool IsLoopFusible(const HloInstruction& instr) {
+bool IsUniversallyLoopFusible(const HloInstruction& instr) {
   // Don't fuse get-tuple-element on GPU: We can, but it's slower than not
   // fusing.  We never generate kernels for unfused GTEs.  Instead, if an
   // unfused GTE is an input to a kernel (including a fusion kernel), we
   // compute the address of the GTE at the top of the kernel.  Often we know the
   // address of the GTE result statically, so we can do this without chasing any
   // pointers.
+  return (
+      (instr.IsElementwise() && instr.operand_count() > 0 &&
+       instr.opcode() != HloOpcode::kCopy) ||
+      (instr.opcode() == HloOpcode::kCopy && !FindAnyTiledTranspose(instr)) ||
+      instr.opcode() == HloOpcode::kBitcast ||
+      instr.opcode() == HloOpcode::kBroadcast ||
+      instr.opcode() == HloOpcode::kConcatenate ||
+      instr.opcode() == HloOpcode::kDynamicSlice ||
+      instr.opcode() == HloOpcode::kDynamicUpdateSlice ||
+      (instr.opcode() == HloOpcode::kFusion &&
+       instr.fusion_kind() == HloInstruction::FusionKind::kLoop) ||
+      instr.opcode() == HloOpcode::kGather ||
+      instr.opcode() == HloOpcode::kPad ||
+      instr.opcode() == HloOpcode::kReduceWindow ||
+      instr.opcode() == HloOpcode::kReshape ||
+      instr.opcode() == HloOpcode::kReverse ||
+      instr.opcode() == HloOpcode::kSlice ||
+      instr.opcode() == HloOpcode::kTranspose);
+}
+
+bool IsLoopFusibleAsConsumer(const HloInstruction& instr) {
+  return instr.IsFusible() && (IsUniversallyLoopFusible(instr) ||
+                               // Any reduction can be fused as a consumer.
+                               instr.opcode() == HloOpcode::kReduce);
+}
+
+bool IsLoopFusibleAsProducer(const HloInstruction& instr) {
   return instr.IsFusible() &&
-         ((instr.IsElementwise() && instr.operand_count() > 0 &&
-           instr.opcode() != HloOpcode::kCopy) ||
-          (instr.opcode() == HloOpcode::kCopy &&
-           !FindAnyTiledTranspose(instr)) ||
-          instr.opcode() == HloOpcode::kBitcast ||
-          instr.opcode() == HloOpcode::kBroadcast ||
-          instr.opcode() == HloOpcode::kConcatenate ||
-          instr.opcode() == HloOpcode::kDynamicSlice ||
-          instr.opcode() == HloOpcode::kDynamicUpdateSlice ||
-          (instr.opcode() == HloOpcode::kFusion &&
-           instr.fusion_kind() == HloInstruction::FusionKind::kLoop) ||
-          instr.opcode() == HloOpcode::kGather ||
-          instr.opcode() == HloOpcode::kIota ||
-          instr.opcode() == HloOpcode::kPad ||
-          (instr.opcode() == HloOpcode::kReduce &&
-           !IsReductionFromOrToContiguousDimensions(instr) &&
-           !instr.shape().IsTuple()) ||  // TODO(b/129089333): Don't fuse
-                                         // variadic reductions.
-          instr.opcode() == HloOpcode::kReduceWindow ||
-          instr.opcode() == HloOpcode::kReshape ||
-          instr.opcode() == HloOpcode::kReverse ||
-          instr.opcode() == HloOpcode::kSlice ||
-          instr.opcode() == HloOpcode::kConstant ||
-          instr.opcode() == HloOpcode::kTranspose);
+         (IsUniversallyLoopFusible(instr) ||
+          (instr.opcode() == HloOpcode::kIota ||
+           instr.opcode() == HloOpcode::kConstant ||
+           // Non-variadic elemental reductions can be fused as producers.
+           (instr.opcode() == HloOpcode::kReduce &&
+            !IsReductionFromOrToContiguousDimensions(instr) &&
+            !instr.shape().IsTuple())));
 }
 
 FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
                                          const HloInstruction& consumer) {
-  if (!IsLoopFusible(producer) &&
+  if (!IsLoopFusibleAsProducer(producer) &&
       !(FindAnyTiledTranspose(producer) &&
         &FindNonTrivialHero(consumer) == &producer)) {
     return "the producer is not loop-fusible";
   }
 
-  if (!IsInputFusible(consumer) && !IsLoopFusible(consumer)) {
+  if (!IsInputFusible(consumer) && !IsLoopFusibleAsConsumer(consumer)) {
     return "the consumer is not input-fusible and not loop-fusible";
   }
 
@@ -332,7 +351,7 @@ FusionDecision IsProducerConsumerMultiOutputFusible(
     return "In-place operations are present";
   }
 
-  if (!IsLoopFusible(producer)) {
+  if (!IsLoopFusibleAsProducer(producer)) {
     return "producer is not loop-fusible";
   } else if (!IsFusibleAsMultiOutputFusionRoot(consumer)) {
     return "consumer is not fusible as multi-output-fusion-root";
@@ -467,13 +486,14 @@ static int64_t NumUnnestedReductions(const HloInstruction& instr,
 // to true to enable more fusion.
 FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
                                   const HloInstruction& instr2,
+                                  const GpuDeviceInfo& device_info,
                                   bool is_consumer_producer_fusion,
                                   FusionInfoCache* cache /*=nullptr*/) {
   if (SharedMemoryUsage(instr1, cache) + SharedMemoryUsage(instr2, cache) >
-      kSharedMemoryBudgetInBytes) {
+      device_info.shared_memory_per_block) {
     return FusionDecision{}
            << "shared memory usage would be over the budget of "
-           << kSharedMemoryBudgetInBytes << "B";
+           << device_info.shared_memory_per_block << "B";
   }
 
   if (NumUnnestedReductions(instr1, cache) +

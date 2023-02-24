@@ -239,6 +239,13 @@ void SparseFillEmptyRowsOpImpl(OpKernelContext* context,
                               indices_t.dim_size(0), ")."),
       done);
   OP_REQUIRES_ASYNC(
+      context, indices_t.dim_size(1) == dense_shape_t.dim_size(0),
+      errors::InvalidArgument("The length of `dense_shape` (",
+                              dense_shape_t.dim_size(0),
+                              ") must match the second dimension of `indices` ",
+                              "(", indices_t.dim_size(1), ")."),
+      done);
+  OP_REQUIRES_ASYNC(
       context, TensorShapeUtils::IsScalar(default_value_t.shape()),
       errors::InvalidArgument("default_value must be a scalar, saw: ",
                               default_value_t.shape().DebugString()),

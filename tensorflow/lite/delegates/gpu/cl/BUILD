@@ -358,7 +358,6 @@ cc_library(
         ":opencl_wrapper",
         ":tensor_type_util",
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/gpu:api",
         "//tensorflow/lite/delegates/gpu:delegate",
@@ -431,14 +430,25 @@ cc_library(
             "-ldl",  # opencl_wrapper calls dlopen()
             "-lm",
         ],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:linux-google": [
+        # "-ldl",
+        # "-rdynamic",
+        # ],
+        # copybara:uncomment_end
         "//conditions:default": ["-ldl"],  # opencl_wrapper calls dlopen()
     }),
     deps = [
-        "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/strings",
         "@opencl_headers",
+        "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/cl/" + if_google("google", "default") + ":qcom_wrapper",
-    ],
+    ] + select({
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:linux-google": ["//third_party/opencl_icd_loader"],
+        # copybara:uncomment_end
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(

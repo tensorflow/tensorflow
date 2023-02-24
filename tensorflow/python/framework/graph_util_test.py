@@ -28,6 +28,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.util import compat
 from tensorflow.python.platform import test
 
 
@@ -213,6 +214,13 @@ class GraphUtilTest(test.TestCase):
     node.attr[key].CopyFrom(
         attr_value_pb2.AttrValue(type=value.as_datatype_enum))
 
+  def set_attr_list(self, node, key, value_list):
+    node.attr[key].CopyFrom(
+        attr_value_pb2.AttrValue(
+            list=attr_value_pb2.AttrValue.ListValue(s=value_list)
+        )
+    )
+
   def set_attr_tensor(self, node, key, value, dtype, shape=None):
     node.attr[key].CopyFrom(
         attr_value_pb2.AttrValue(
@@ -222,11 +230,14 @@ class GraphUtilTest(test.TestCase):
   def testRemoveTrainingNodes(self):
     a_constant_name = "a_constant"
     b_constant_name = "b_constant"
+    c_constant_name = "c_constant"
     a_check_name = "a_check"
     b_check_name = "b_check"
     a_identity_name = "a_identity"
     b_identity_name = "b_identity"
+    c_identity_name = "c_identity"
     add_name = "add"
+    sub_name = "sub"
     graph_def = graph_pb2.GraphDef()
     a_constant = self.create_constant_node_def(
         a_constant_name, value=1, dtype=dtypes.float32, shape=[])
@@ -250,6 +261,20 @@ class GraphUtilTest(test.TestCase):
                                     [a_identity_name, b_identity_name])
     self.set_attr_dtype(add_node, "T", dtypes.float32)
     graph_def.node.extend([add_node])
+    c_constant = self.create_constant_node_def(
+        c_constant_name, value=1, dtype=dtypes.float32, shape=[]
+    )
+    graph_def.node.extend([c_constant])
+    c_identity_node = self.create_node_def(
+        "Identity", c_identity_name, [c_constant_name]
+    )
+    graph_def.node.extend([c_identity_node])
+
+    sub_node = self.create_node_def(
+        "Sub", sub_name, [c_constant_name, c_identity_name]
+    )
+    self.set_attr_list(sub_node, "_class", [compat.as_bytes(c_identity_name)])
+    graph_def.node.extend([sub_node])
 
     expected_output = graph_pb2.GraphDef()
     a_constant = self.create_constant_node_def(
@@ -262,6 +287,20 @@ class GraphUtilTest(test.TestCase):
                                     [a_constant_name, b_constant_name])
     self.set_attr_dtype(add_node, "T", dtypes.float32)
     expected_output.node.extend([add_node])
+    c_constant = self.create_constant_node_def(
+        c_constant_name, value=1, dtype=dtypes.float32, shape=[]
+    )
+    expected_output.node.extend([c_constant])
+    c_identity_node = self.create_node_def(
+        "Identity", c_identity_name, [c_constant_name]
+    )
+    expected_output.node.extend([c_identity_node])
+
+    sub_node = self.create_node_def(
+        "Sub", sub_name, [c_constant_name, c_identity_name]
+    )
+    self.set_attr_list(sub_node, "_class", [compat.as_bytes(c_identity_name)])
+    expected_output.node.extend([sub_node])
 
     output = graph_util.remove_training_nodes(graph_def)
     self.assertProtoEquals(expected_output, output)

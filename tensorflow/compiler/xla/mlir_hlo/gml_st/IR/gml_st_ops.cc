@@ -18,10 +18,11 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <utility>
 
-#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
@@ -29,15 +30,13 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
@@ -45,6 +44,8 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
+#include "mlir/Transforms/InliningUtils.h"
+#include "mlir/Transforms/RegionUtils.h"
 
 namespace mlir {
 namespace {
@@ -54,16 +55,17 @@ void printShapeTypeDimensionsList(AsmPrinter &printer,
   llvm::interleave(
       integers, printer,
       [&](int64_t val) {
-        if (val == ShapedType::kDynamic)
+        if (val == ShapedType::kDynamic) {
           printer << '?';
-        else
+        } else {
           printer << val;
+        }
       },
       "x");
 }
 
-ParseResult parseShapeTypeDimensionsList(
-    AsmParser &parser, FailureOr<SmallVector<int64_t>> &dims) {
+ParseResult parseShapeTypeDimensionsList(AsmParser &parser,
+                                         SmallVectorImpl<int64_t> &dims) {
   SmallVector<int64_t> vals;
   if (failed(parser.parseDimensionList(vals, /*allowDynamic=*/true,
                                        /*withTrailingX=*/false))) {
@@ -73,19 +75,44 @@ ParseResult parseShapeTypeDimensionsList(
   return success();
 }
 
-ParseResult parseAssignmentListWithTypes(
-    OpAsmParser &parser, SmallVectorImpl<OpAsmParser::UnresolvedOperand> &lhs,
-    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &rhs,
-    SmallVectorImpl<Type> &types) {
-  auto parseElt = [&]() -> ParseResult {
-    if (parser.parseOperand(lhs.emplace_back(), /*allowResultNumber=*/false) ||
-        parser.parseEqual() || parser.parseOperand(rhs.emplace_back()) ||
-        parser.parseColon() || parser.parseType(types.emplace_back())) {
-      return failure();
+LogicalResult verifyCompatibleExtractedSubset(Operation *op,
+                                              ShapedType shapedType,
+                                              Type extractedType,
+                                              ArrayRef<int64_t> tileShape) {
+  auto sourceRank = shapedType.getRank();
+  auto elementType = shapedType.getElementType();
+
+  // If the result is a scalar, check that the tile had a single element.
+  if (!extractedType.isa<ShapedType>()) {
+    if (extractedType != elementType) {
+      return op->emitOpError("expected the result type ")
+             << extractedType << " to match source element type "
+             << elementType;
     }
-    return success();
-  };
-  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseElt);
+    if (!ShapedType::isDynamicShape(tileShape) &&
+        ShapedType::getNumElements(tileShape) == 1)
+      return success();
+
+    return op->emitOpError("expected tile type ")
+           << tileShape << " to have a single element shape";
+  }
+
+  // If the result is a shaped type, compare with the inferred type.
+  auto extractedShapedType = extractedType.cast<ShapedType>();
+  unsigned tileRank = tileShape.size();
+  if (tileRank != sourceRank) {
+    return op->emitOpError("expected source rank = ")
+           << sourceRank << " to match tile rank = " << tileRank;
+  }
+
+  auto inferredType = shapedType.clone(tileShape, shapedType.getElementType());
+  if (extractedShapedType != inferredType) {
+    return op->emitOpError("expected result type = ")
+           << extractedShapedType
+           << " to match the inferred type = " << inferredType;
+  }
+
+  return success();
 }
 
 }  // namespace
@@ -106,6 +133,34 @@ namespace mlir {
 namespace gml_st {
 
 //===----------------------------------------------------------------------===//
+// GmlSt Dialect Interfaces
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+struct GmlStInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+  // Operations in GmlSt dialect are always legal to inline since they are
+  // pure.
+  bool isLegalToInline(Operation *, Region *, bool, IRMapping &) const final {
+    return true;
+  }
+  // Handle the given inlined terminator by replacing it with a new operation
+  // as necessary. Required when the region has only one block.
+  void handleTerminator(Operation *op,
+                        ArrayRef<Value> valuesToRepl) const final {
+    auto yieldOp = dyn_cast<gml_st::YieldOp>(op);
+    if (!yieldOp) return;
+
+    for (auto [valueToRepl, operand] :
+         llvm::zip(valuesToRepl, yieldOp.getOperands())) {
+      valueToRepl.replaceAllUsesWith(operand);
+    }
+  }
+};
+}  // namespace
+
+//===----------------------------------------------------------------------===//
 // GmlStDialect
 //===----------------------------------------------------------------------===//
 
@@ -122,6 +177,8 @@ void GmlStDialect::initialize() {
 #define GET_ATTRDEF_LIST
 #include "gml_st/IR/gml_st_attrs.cc.inc"
       >();
+
+  addInterfaces<GmlStInlinerInterface>();
 }
 
 Operation *GmlStDialect::materializeConstant(OpBuilder &builder, Attribute attr,
@@ -134,393 +191,12 @@ Operation *GmlStDialect::materializeConstant(OpBuilder &builder, Attribute attr,
 }
 
 //===----------------------------------------------------------------------===//
-// MaterializeOp
-//===----------------------------------------------------------------------===//
-
-static Type inferReturnType(ShapedType sourceType, Type setType) {
-  if (auto tileType = setType.dyn_cast<TileType>()) {
-    return sourceType.clone(tileType.getShape(), sourceType.getElementType());
-  }
-  assert(false && "could not infer result type");
-  return {};
-}
-
-void MaterializeOp::build(OpBuilder &builder, OperationState &result,
-                          Value source, Value set) {
-  auto sourceType = source.getType().cast<ShapedType>();
-  auto resultType = inferReturnType(sourceType, set.getType());
-  build(builder, result, resultType, source, set);
-}
-
-LogicalResult verifyCompatibleExtractedSubset(Operation *op,
-                                              ShapedType shapedType,
-                                              Type extractedType,
-                                              Type setType) {
-  auto sourceRank = shapedType.getRank();
-  auto elementType = shapedType.getElementType();
-
-  // If the result is a scalar, check that the tile had a single element.
-  if (!extractedType.isa<ShapedType>()) {
-    auto tileType = setType.cast<TileType>();
-    if (extractedType != elementType) {
-      return op->emitOpError("expected the result type ")
-             << extractedType << " to match source element type "
-             << elementType;
-    }
-    if (tileType.hasStaticShape() && tileType.getNumElements() == 1)
-      return success();
-
-    return op->emitOpError("expected tile type ")
-           << tileType << " to have a single element shape";
-  }
-
-  // If the result is a shaped type, compare with the inferred type.
-  auto extractedShapedType = extractedType.cast<ShapedType>();
-  auto tileType = setType.cast<TileType>();
-  int64_t tileRank = tileType.getRank();
-  if (tileRank != sourceRank) {
-    return op->emitOpError("expected source rank = ")
-           << sourceRank << " to match tile rank = " << tileRank;
-  }
-
-  auto inferredType =
-      shapedType.clone(tileType.getShape(), shapedType.getElementType());
-  if (extractedShapedType != inferredType) {
-    return op->emitOpError("expected result type = ")
-           << extractedShapedType
-           << " to match the inferred type = " << inferredType;
-  }
-
-  return success();
-}
-
-LogicalResult MaterializeOp::verify() {
-  // TODO(pifon): Add verification that was removed from TileOp::verify.
-  return verifyCompatibleExtractedSubset(getOperation(), getSource().getType(),
-                                         getType(), getSet().getType());
-}
-
-namespace {
-/// Cleans up UnrealizedConversionCast sets from materialize ops.
-struct FoldMaterializeUnrealizedConversionCast
-    : public OpRewritePattern<MaterializeOp> {
-  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(MaterializeOp op,
-                                PatternRewriter &rewriter) const override {
-    auto cast = op.getSet().getDefiningOp<UnrealizedConversionCastOp>();
-    if (!cast) return failure();
-
-    auto set = cast.getOperand(0);
-    auto newOp = rewriter.create<MaterializeOp>(
-        op.getLoc(), inferReturnType(op.getSource().getType(), set.getType()),
-        op.getSource(), set);
-    rewriter.replaceOpWithNewOp<tensor::CastOp>(op, op.getType(), newOp);
-    return success();
-  }
-};
-
-/// Folds tensor::CastOp sources into MaterializeOp.
-struct FoldSrcCastIntoMaterialize : public OpRewritePattern<MaterializeOp> {
-  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(MaterializeOp op,
-                                PatternRewriter &rewriter) const override {
-    auto cast = op.getSource().getDefiningOp<tensor::CastOp>();
-    if (!cast) return failure();
-
-    auto src = cast.getSource();
-    auto set = op.getSet();
-    rewriter.replaceOpWithNewOp<MaterializeOp>(
-        op, inferReturnType(src.getType(), set.getType()), src, set);
-    return success();
-  }
-};
-}  // namespace
-
-void MaterializeOp::getCanonicalizationPatterns(RewritePatternSet &results,
-                                                MLIRContext *context) {
-  results
-      .add<FoldMaterializeUnrealizedConversionCast, FoldSrcCastIntoMaterialize>(
-          context);
-}
-
-//===----------------------------------------------------------------------===//
-// LoopOp
-//===----------------------------------------------------------------------===//
-
-void LoopOp::build(OpBuilder &builder, OperationState &result,
-                   ValueRange lowerBounds, ValueRange upperBounds,
-                   ValueRange steps, ValueRange inputs, ValueRange outputs,
-                   ArrayAttr iteratorTypes,
-                   function_ref<void(OpBuilder &, Location, ValueRange,
-                                     ValueRange, ValueRange)>
-                       bodyBuilderFn) {
-  build(builder, result, lowerBounds, upperBounds, steps, inputs, outputs,
-        iteratorTypes, llvm::None, bodyBuilderFn);
-}
-
-void LoopOp::build(OpBuilder &builder, OperationState &result,
-                   ValueRange lowerBounds, ValueRange upperBounds,
-                   ValueRange steps, ValueRange inputs, ValueRange outputs,
-                   ArrayAttr iteratorTypes,
-                   Optional<ArrayAttr> distributionTypes,
-                   function_ref<void(OpBuilder &, Location, ValueRange,
-                                     ValueRange, ValueRange)>
-                       bodyBuilderFn) {
-  result.addOperands(lowerBounds);
-  result.addOperands(upperBounds);
-  result.addOperands(steps);
-  result.addOperands(inputs);
-  result.addOperands(outputs);
-  result.addAttribute(
-      LoopOp::getOperandSegmentSizeAttr(),
-      builder.getDenseI32ArrayAttr({static_cast<int32_t>(lowerBounds.size()),
-                                    static_cast<int32_t>(upperBounds.size()),
-                                    static_cast<int32_t>(steps.size()),
-                                    static_cast<int32_t>(inputs.size()),
-                                    static_cast<int32_t>(outputs.size())}));
-  result.addAttribute(getIteratorTypesAttrStrName(), iteratorTypes);
-
-  if (distributionTypes.has_value())
-    result.addAttribute(getDistributionTypesAttrStrName(),
-                        distributionTypes.value());
-
-  // Add output types for `RankedTensorType` output arguments.
-  for (Value output : outputs) {
-    Type outputType = output.getType();
-    if (outputType.isa<RankedTensorType>()) result.addTypes(outputType);
-  }
-
-  OpBuilder::InsertionGuard guard(builder);
-  unsigned numIVs = steps.size();
-  SmallVector<Type, 8> argTypes(numIVs, builder.getIndexType());
-  SmallVector<Location, 8> argLocs(numIVs, result.location);
-  for (Value input : inputs) {
-    argTypes.push_back(input.getType());
-    argLocs.push_back(input.getLoc());
-  }
-  for (Value output : outputs) {
-    argTypes.push_back(output.getType());
-    argLocs.push_back(output.getLoc());
-  }
-  Region *bodyRegion = result.addRegion();
-  Block *bodyBlock = builder.createBlock(bodyRegion, {}, argTypes, argLocs);
-
-  if (bodyBuilderFn) {
-    builder.setInsertionPointToStart(bodyBlock);
-    bodyBuilderFn(builder, result.location,
-                  bodyBlock->getArguments().take_front(numIVs),
-                  bodyBlock->getArguments().slice(numIVs, inputs.size()),
-                  bodyBlock->getArguments().take_back(outputs.size()));
-    LoopOp::ensureTerminator(*bodyRegion, builder, result.location);
-  }
-}
-
-void LoopOp::print(OpAsmPrinter &p) {
-  p << " (" << getInductionVars() << ") = (" << getLowerBound() << ") to ("
-    << getUpperBound() << ") step (" << getStep() << ")";
-
-  if (!getInputs().empty()) {
-    p << " ins (";
-    llvm::interleaveComma(llvm::zip(getRegionInputArgs(), getInputs()), p,
-                          [&](auto it) {
-                            p << std::get<0>(it) << " = " << std::get<1>(it)
-                              << ": " << std::get<1>(it).getType();
-                          });
-    p << ")";
-  }
-  if (!getOutputs().empty()) {
-    p << " outs (";
-    llvm::interleaveComma(llvm::zip(getRegionOutputArgs(), getOutputs()), p,
-                          [&](auto it) {
-                            p << std::get<0>(it) << " = " << std::get<1>(it)
-                              << ": " << std::get<1>(it).getType();
-                          });
-    p << ")";
-  }
-
-  if (llvm::any_of(getIteratorTypes(), [](Attribute attr) {
-        return attr.cast<IteratorTypeAttr>().getValue() !=
-               utils::IteratorType::parallel;
-      }))
-    p << " iterators" << getIteratorTypes();
-
-  if (getDistributionTypes().has_value())
-    p << " distribution" << getDistributionTypes().value();
-
-  p << ' ';
-  p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
-  p.printOptionalAttrDict(
-      getOperation()->getAttrs(),
-      /*elidedAttrs=*/{LoopOp::getOperandSegmentSizeAttr(),
-                       LoopOp::getIteratorTypesAttrName(),
-                       LoopOp::getDistributionTypesAttrName()});
-}
-
-ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
-  auto &builder = parser.getBuilder();
-  // Parse an opening `(` followed by induction variables followed by `)`
-  SmallVector<OpAsmParser::UnresolvedOperand, 4> ivs;
-  if (parser.parseOperandList(ivs, OpAsmParser::Delimiter::Paren,
-                              /*allowResultNumber=*/false))
-    return failure();
-
-  // Parse loop bounds.
-  SmallVector<OpAsmParser::UnresolvedOperand, 4> lower;
-  if (parser.parseEqual() ||
-      parser.parseOperandList(lower, ivs.size(),
-                              OpAsmParser::Delimiter::Paren) ||
-      parser.resolveOperands(lower, builder.getIndexType(), result.operands))
-    return failure();
-
-  SmallVector<OpAsmParser::UnresolvedOperand, 4> upper;
-  if (parser.parseKeyword("to") ||
-      parser.parseOperandList(upper, ivs.size(),
-                              OpAsmParser::Delimiter::Paren) ||
-      parser.resolveOperands(upper, builder.getIndexType(), result.operands))
-    return failure();
-
-  // Parse step values.
-  SmallVector<OpAsmParser::UnresolvedOperand, 4> steps;
-  if (parser.parseKeyword("step") ||
-      parser.parseOperandList(steps, ivs.size(),
-                              OpAsmParser::Delimiter::Paren) ||
-      parser.resolveOperands(steps, builder.getIndexType(), result.operands))
-    return failure();
-
-  // Parse input tensors.
-  SmallVector<OpAsmParser::UnresolvedOperand, 4> inputs, inputRegionArgs;
-  SmallVector<Type, 4> inputTypes;
-  if (succeeded(parser.parseOptionalKeyword("ins"))) {
-    SMLoc inputsOperandsLoc = parser.getCurrentLocation();
-
-    if (parseAssignmentListWithTypes(parser, inputRegionArgs, inputs,
-                                     inputTypes))
-      return failure();
-
-    if (parser.resolveOperands(inputs, inputTypes, inputsOperandsLoc,
-                               result.operands))
-      return failure();
-  }
-
-  // Parse output tensors.
-  SmallVector<OpAsmParser::UnresolvedOperand, 4> outputs, outputRegionArgs;
-  SmallVector<Type, 4> outputTypes;
-  if (succeeded(parser.parseOptionalKeyword("outs"))) {
-    SMLoc outputsOperandsLoc = parser.getCurrentLocation();
-
-    if (parseAssignmentListWithTypes(parser, outputRegionArgs, outputs,
-                                     outputTypes))
-      return failure();
-
-    if (parser.resolveOperands(outputs, outputTypes, outputsOperandsLoc,
-                               result.operands))
-      return failure();
-    for (Type outputType : outputTypes)
-      if (outputType.isa<RankedTensorType>()) result.addTypes(outputType);
-  }
-
-  Attribute iterTypes;
-  if (succeeded(parser.parseOptionalKeyword("iterators"))) {
-    if (parser.parseAttribute(iterTypes)) return failure();
-  } else {
-    // Set all loop iterator types to "parallel" if they are not printed in IR.
-    auto parallelIter =
-        builder.getAttr<IteratorTypeAttr>(utils::IteratorType::parallel);
-    iterTypes = builder.getArrayAttr(
-        SmallVector<Attribute, 4>(ivs.size(), parallelIter));
-  }
-
-  result.addAttribute(LoopOp::getIteratorTypesAttrStrName(), iterTypes);
-
-  if (succeeded(parser.parseOptionalKeyword("distribution"))) {
-    Attribute distributionTypes;
-    if (failed(parser.parseAttribute(distributionTypes))) return failure();
-    result.addAttribute(LoopOp::getDistributionTypesAttrStrName(),
-                        distributionTypes);
-  }
-
-  result.addAttribute(
-      LoopOp::getOperandSegmentSizeAttr(),
-      builder.getDenseI32ArrayAttr({static_cast<int32_t>(lower.size()),
-                                    static_cast<int32_t>(upper.size()),
-                                    static_cast<int32_t>(steps.size()),
-                                    static_cast<int32_t>(inputs.size()),
-                                    static_cast<int32_t>(outputs.size())}));
-
-  // Parse the body.
-  Region *body = result.addRegion();
-
-  SmallVector<Type, 4> regionTypes(ivs.size(), builder.getIndexType());
-  regionTypes.append(inputTypes);
-  regionTypes.append(outputTypes);
-
-  SmallVector<OpAsmParser::UnresolvedOperand, 4> regionOperands(ivs);
-  regionOperands.append(inputRegionArgs);
-  regionOperands.append(outputRegionArgs);
-
-  SmallVector<OpAsmParser::Argument, 4> regionArgs;
-
-  for (auto argAndType : llvm::zip(regionOperands, regionTypes)) {
-    auto &arg = regionArgs.emplace_back();
-    arg.ssaName = std::get<0>(argAndType);
-    arg.type = std::get<1>(argAndType);
-  }
-
-  if (parser.parseRegion(*body, regionArgs)) return failure();
-
-  // Parse optional attributes.
-  if (parser.parseOptionalAttrDict(result.attributes)) return failure();
-
-  return success();
-}
-
-Region &LoopOp::getLoopBody() { return getRegion(); }
-
-LogicalResult LoopOp::verify() {
-  // Check if iterator types are provided for every loop dimension.
-  if (getIteratorTypes().size() != getNumLoops())
-    return emitOpError("expected iterator types array attribute size = ")
-           << getIteratorTypes().size()
-           << " to match the number of loops = " << getNumLoops();
-
-  // Check if types of input arguments match region args types.
-  for (auto &item :
-       llvm::enumerate(llvm::zip(getInputs(), getRegionInputArgs()))) {
-    Value input, inputRegionArg;
-    unsigned index = item.index();
-    std::tie(input, inputRegionArg) = item.value();
-    if (input.getType() != inputRegionArg.getType())
-      return emitOpError("expected input arg ")
-             << index << " with type = " << input.getType()
-             << " to match region arg " << index + getNumLoops()
-             << " type = " << inputRegionArg.getType();
-  }
-
-  // Check if types of output arguments match region args types.
-  for (auto &item :
-       llvm::enumerate(llvm::zip(getOutputs(), getRegionOutputArgs()))) {
-    Value output, outputRegionArg;
-    unsigned index = item.index();
-    std::tie(output, outputRegionArg) = item.value();
-    if (output.getType() != outputRegionArg.getType())
-      return emitOpError("expected output arg ")
-             << index << " with type = " << output.getType()
-             << " to match region arg "
-             << index + getNumLoops() + getInputs().size()
-             << " type = " << outputRegionArg.getType();
-  }
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // LoopLikeOp
 //===----------------------------------------------------------------------===//
 
 namespace {
 
-ParseResult parseForOpOutputArgs(
+ParseResult parseLoopLikeOpOutputArgs(
     OpAsmParser &parser, OperationState &result,
     SmallVectorImpl<OpAsmParser::UnresolvedOperand> &regionOperands,
     SmallVectorImpl<Type> &regionTypes, int32_t *outputCount) {
@@ -537,7 +213,7 @@ ParseResult parseForOpOutputArgs(
         parser.parseType(outputTypes.emplace_back())) {
       return failure();
     }
-    *outputCount = outputs.size();
+    *outputCount = static_cast<int32_t>(outputs.size());
     return success();
   };
   if (succeeded(parser.parseOptionalKeyword("outs"))) {
@@ -587,9 +263,14 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
       parser.resolveOperands(steps, builder.getIndexType(), result.operands))
     return failure();
 
-  SmallVector<int32_t> segmentSizes{static_cast<int32_t>(lower.size()),
-                                    static_cast<int32_t>(upper.size()),
-                                    static_cast<int32_t>(steps.size())};
+  // Parse the output tensors and the body.
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> regionOperands(ivs);
+  SmallVector<Type, 4> regionTypes(ivs.size(), builder.getIndexType());
+
+  int32_t outputCount = 0;
+  if (failed(parseLoopLikeOpOutputArgs(parser, result, regionOperands,
+                                       regionTypes, &outputCount)))
+    return failure();
 
   // Parse distribution type (only for ParallelOp)
   if (std::is_same<LoopTy, ParallelOp>::value) {
@@ -601,18 +282,6 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
       result.addAttribute(ParallelOp::getDistributionTypeAttrName(result.name),
                           distributionType);
     }
-  }
-
-  // Parse the output tensors (only for ForOp) and the body.
-  SmallVector<OpAsmParser::UnresolvedOperand, 4> regionOperands(ivs);
-  SmallVector<Type, 4> regionTypes(ivs.size(), builder.getIndexType());
-
-  if (std::is_same<LoopTy, ForOp>::value) {
-    int32_t outputCount = 0;
-    if (parseForOpOutputArgs(parser, result, regionOperands, regionTypes,
-                             &outputCount))
-      return failure();
-    segmentSizes.push_back(outputCount);
   }
 
   SmallVector<OpAsmParser::Argument, 4> regionArgs;
@@ -631,25 +300,66 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
 
   // Add segment sizes.
   result.addAttribute(LoopTy::getOperandSegmentSizeAttr(),
-                      builder.getDenseI32ArrayAttr(segmentSizes));
+                      builder.getDenseI32ArrayAttr(
+                          {static_cast<int32_t>(lower.size()),
+                           static_cast<int32_t>(upper.size()),
+                           static_cast<int32_t>(steps.size()), outputCount}));
 
   return success();
 }
 
-template <typename LoopLikeOp>
-struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
+template <typename LoopTy>
+void buildLoopLikeOp(
+    OpBuilder &builder, OperationState &result, TypeRange resultTypes,
+    ValueRange lowerBounds, ValueRange upperBounds, ValueRange steps,
+    ValueRange outputs,
+    function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
+        bodyBuilderFn) {
+  result.addOperands(lowerBounds);
+  result.addOperands(upperBounds);
+  result.addOperands(steps);
+  result.addOperands(outputs);
+  result.addTypes(resultTypes);
+  result.addAttribute(
+      LoopTy::getOperandSegmentSizeAttr(),
+      builder.getDenseI32ArrayAttr({static_cast<int32_t>(lowerBounds.size()),
+                                    static_cast<int32_t>(upperBounds.size()),
+                                    static_cast<int32_t>(steps.size()),
+                                    static_cast<int32_t>(outputs.size())}));
+
+  OpBuilder::InsertionGuard guard(builder);
+  unsigned numIvs = steps.size();
+  SmallVector<Type, 8> argTypes(numIvs, builder.getIndexType());
+  SmallVector<Location, 8> argLocs(numIvs, result.location);
+  for (Value output : outputs) {
+    argTypes.push_back(output.getType());
+    argLocs.push_back(output.getLoc());
+  }
+  Region *bodyRegion = result.addRegion();
+  Block *bodyBlock = builder.createBlock(bodyRegion, {}, argTypes, argLocs);
+
+  if (bodyBuilderFn) {
+    builder.setInsertionPointToStart(bodyBlock);
+    bodyBuilderFn(builder, result.location,
+                  bodyBlock->getArguments().take_front(numIvs),
+                  bodyBlock->getArguments().take_back(outputs.size()));
+    LoopTy::ensureTerminator(*bodyRegion, builder, result.location);
+  }
+}
+
+struct CollapseSingleIterationLoops : public OpRewritePattern<ParallelOp> {
   explicit CollapseSingleIterationLoops(
       MLIRContext *context,
-      llvm::function_ref<bool(LoopLikeOp)> filterFn = nullptr,
+      llvm::function_ref<bool(ParallelOp)> filterFn = nullptr,
       PatternBenefit benefit = 1)
-      : OpRewritePattern<LoopLikeOp>(context, benefit), filterFn(filterFn) {}
+      : OpRewritePattern<ParallelOp>(context, benefit), filterFn(filterFn) {}
 
-  LogicalResult matchAndRewrite(LoopLikeOp op,
+  LogicalResult matchAndRewrite(ParallelOp op,
                                 PatternRewriter &rewriter) const override {
     if (filterFn && !filterFn(op))
       return rewriter.notifyMatchFailure(op, "did not match filter");
 
-    BlockAndValueMapping mapping;
+    IRMapping mapping;
     // Compute new loop bounds that omit all single-iteration loop dimensions.
     SmallVector<Value> newLowerBounds, newUpperBounds, newSteps;
     newLowerBounds.reserve(op.getLowerBound().size());
@@ -659,7 +369,7 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
       auto constant =
           dyn_cast_or_null<arith::ConstantIndexOp>(v.getDefiningOp());
       if (constant) return constant.value();
-      return None;
+      return std::nullopt;
     };
     for (auto [lowerBound, upperBound, step, iv] :
          llvm::zip(op.getLowerBound(), op.getUpperBound(), op.getStep(),
@@ -668,6 +378,12 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
       auto lowerBoundConstant = getConstant(lowerBound);
       auto upperBoundConstant = getConstant(upperBound);
       auto stepConstant = getConstant(step);
+      // Remove the loop if it performs zero iterations.
+      if (lowerBoundConstant && upperBoundConstant &&
+          *lowerBoundConstant == *upperBoundConstant) {
+        rewriter.replaceOp(op, op.getOutputs());
+        return success();
+      }
       // Replace the loop induction variable by the lower bound if the loop
       // performs a single iteration. Otherwise, copy the loop bounds.
       if (lowerBoundConstant && upperBoundConstant && stepConstant &&
@@ -685,9 +401,7 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
 
     // All of the loop dimensions perform a single iteration. Inline loop body.
     if (newLowerBounds.empty()) {
-      if constexpr (std::is_same_v<LoopLikeOp, ForOp>) {
-        mapping.map(op.getRegionOutputArgs(), op.getOutputs());
-      }
+      mapping.map(op.getRegionOutputArgs(), op.getOutputs());
       for (auto &bodyOp : op.getBody()->without_terminator()) {
         rewriter.clone(bodyOp, mapping);
       }
@@ -711,13 +425,31 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
         };
 
         if (dst.getType().template isa<TensorType>()) {
-          results.push_back(rewriter.create<tensor::InsertSliceOp>(
-              op.getLoc(), dst.getType(), mapping.lookupOrDefault(src),
-              mapping.lookupOrDefault(dst),
-              getMappedValues(tileOp.getOffsets()),
-              getMappedValues(tileOp.getSizes()),
-              getMappedValues(tileOp.getStrides()), tileOp.getStaticOffsets(),
-              tileOp.getStaticSizes(), tileOp.getStaticStrides()));
+          Value srcVal = mapping.lookupOrDefault(src);
+          if (srcVal.getType().isa<TensorType>()) {
+            results.push_back(rewriter.create<tensor::InsertSliceOp>(
+                op.getLoc(), dst.getType(), srcVal,
+                mapping.lookupOrDefault(dst),
+                getMappedValues(tileOp.getOffsets()),
+                getMappedValues(tileOp.getSizes()),
+                getMappedValues(tileOp.getStrides()), tileOp.getStaticOffsets(),
+                tileOp.getStaticSizes(), tileOp.getStaticStrides()));
+          } else {
+            SmallVector<Value> mappedOffsets =
+                getMappedValues(tileOp.getOffsets());
+            SmallVector<OpFoldResult> ofrs;
+            int idx = 0;
+            for (int64_t offset : tileOp.getStaticOffsets()) {
+              if (ShapedType::isDynamic(offset)) {
+                ofrs.push_back(mappedOffsets[idx++]);
+              } else {
+                ofrs.push_back(rewriter.getIndexAttr(offset));
+              }
+            }
+            results.push_back(rewriter.create<tensor::InsertOp>(
+                op.getLoc(), srcVal, mapping.lookupOrDefault(dst),
+                getAsValues(rewriter, op.getLoc(), ofrs)));
+          }
         } else if (dst.getType().template isa<VectorType>()) {
           results.push_back(rewriter.create<vector::InsertStridedSliceOp>(
               op.getLoc(), dst.getType(), mapping.lookupOrDefault(src),
@@ -735,21 +467,15 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
     }
 
     // Replace the loop by a lower-dimensional loop.
-    LoopLikeOp newOp;
-    if constexpr (std::is_same_v<LoopLikeOp, ParallelOp>) {
-      newOp =
-          rewriter.create<ParallelOp>(op.getLoc(), op.getResultTypes(),
-                                      newLowerBounds, newUpperBounds, newSteps);
-    } else {
-      newOp = rewriter.create<ForOp>(op.getLoc(), op.getResultTypes(),
-                                     newLowerBounds, newUpperBounds, newSteps,
-                                     op.getOutputs(), nullptr);
-    }
+    ParallelOp newOp;
+    newOp = rewriter.create<ParallelOp>(op.getLoc(), op.getResultTypes(),
+                                        newLowerBounds, newUpperBounds,
+                                        newSteps, op.getOutputs());
     // The new loop needs to keep all attributes from the old one, except for
     // "operand_segment_sizes" which captures the outdated information of the
     // old iteration domain.
     for (const auto &namedAttr : op->getAttrs()) {
-      if (namedAttr.getName() == LoopLikeOp::getOperandSegmentSizeAttr())
+      if (namedAttr.getName() == ParallelOp::getOperandSegmentSizeAttr())
         continue;
       newOp->setAttr(namedAttr.getName(), namedAttr.getValue());
     }
@@ -763,7 +489,7 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
   }
 
  private:
-  llvm::function_ref<bool(LoopLikeOp)> filterFn;
+  llvm::function_ref<bool(ParallelOp)> filterFn;
 };
 
 //===----------------------------------------------------------------------===//
@@ -776,45 +502,75 @@ SetYieldOp ParallelOp::getTerminator() {
   return cast<SetYieldOp>(getBody()->getTerminator());
 }
 
-LogicalResult ParallelOp::verify() { return success(); }
+LogicalResult ParallelOp::verify() {
+  if (getNumResults() != getNumOutputs()) {
+    return emitOpError() << "expected the number of output arguments to match "
+                            "the number of results";
+  }
+
+  // Check if types of output arguments match region args types.
+  for (auto &item : llvm::enumerate(
+           llvm::zip(getOutputs(), getRegionOutputArgs(), getResultTypes()))) {
+    Value output, outputRegionArg;
+    Type resultType;
+    unsigned index = item.index();
+    std::tie(output, outputRegionArg, resultType) = item.value();
+    if (output.getType() != outputRegionArg.getType()) {
+      return emitOpError("expected output arg ")
+             << index << " with type = " << output.getType()
+             << " to match region arg " << index + getNumLoops()
+             << " type = " << outputRegionArg.getType();
+    }
+    if (output.getType() != resultType) {
+      return emitOpError("expected output arg ")
+             << index << " with type = " << output.getType()
+             << " to match resultType " << index << " type = " << resultType;
+    }
+    auto terminator = getTerminator();
+    auto numDstOperands = terminator.getNumDstOperands();
+    if (index >= numDstOperands) {
+      const auto *s = index ? "s" : "";
+      return terminator.emitOpError("expected to have at least ")
+             << index + 1 << " destination operand" << s << " (currently "
+             << numDstOperands << ")";
+    }
+
+    if (terminator.getDstOperand(index)->get() != outputRegionArg) {
+      return terminator.emitOpError("expected output block argument ")
+             << index << " to match set_yield destination";
+    }
+  }
+  return success();
+}
 
 void ParallelOp::build(
     OpBuilder &builder, OperationState &result, TypeRange resultTypes,
     ValueRange lowerBounds, ValueRange upperBounds, ValueRange steps,
-    Optional<StringAttr> distributionType,
-    function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn) {
-  result.addOperands(lowerBounds);
-  result.addOperands(upperBounds);
-  result.addOperands(steps);
-  result.addTypes(resultTypes);
-  result.addAttribute(
-      LoopOp::getOperandSegmentSizeAttr(),
-      builder.getDenseI32ArrayAttr({static_cast<int32_t>(lowerBounds.size()),
-                                    static_cast<int32_t>(upperBounds.size()),
-                                    static_cast<int32_t>(steps.size())}));
-
+    ValueRange outputs, std::optional<StringAttr> distributionType,
+    function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
+        bodyBuilderFn) {
   if (distributionType.has_value())
     result.addAttribute(getDistributionTypeAttrName(result.name),
                         distributionType.value());
 
-  OpBuilder::InsertionGuard guard(builder);
-  unsigned numIvs = steps.size();
-  SmallVector<Type, 8> argTypes(numIvs, builder.getIndexType());
-  SmallVector<Location, 8> argLocs(numIvs, result.location);
-  Region *bodyRegion = result.addRegion();
-  Block *bodyBlock = builder.createBlock(bodyRegion, {}, argTypes, argLocs);
-
-  if (bodyBuilderFn) {
-    builder.setInsertionPointToStart(bodyBlock);
-    bodyBuilderFn(builder, result.location,
-                  bodyBlock->getArguments().take_front(numIvs));
-    ParallelOp::ensureTerminator(*bodyRegion, builder, result.location);
-  }
+  buildLoopLikeOp<ParallelOp>(builder, result, resultTypes, lowerBounds,
+                              upperBounds, steps, outputs, bodyBuilderFn);
 }
 
 void ParallelOp::print(OpAsmPrinter &p) {
   p << " (" << getInductionVars() << ") = (" << getLowerBound() << ") to ("
     << getUpperBound() << ") step (" << getStep() << ") ";
+
+  if (!getOutputs().empty()) {
+    p << "outs (";
+    llvm::interleaveComma(
+        llvm::zip(getRegionOutputArgs(), getOutputs()), p, [&](auto it) {
+          Value outputRegionArg, output;
+          std::tie(outputRegionArg, output) = it;
+          p << outputRegionArg << " = " << output << ": " << output.getType();
+        });
+    p << ") ";
+  }
 
   if (getDistributionType().has_value())
     p << "distribution (" << getDistributionTypeAttr() << ") ";
@@ -835,867 +591,110 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseLoopLikeOp<ParallelOp>(parser, result);
 }
 
-ValueRange ParallelOp::getLoopLikeOpInits() {
-  return getTerminator().getDsts();
-}
+namespace {
+
+/// Fold tensor.dim(gml_st.parallel outs(... = %t)) to tensor.dim(%t).
+struct DimOfParallelOp : public OpRewritePattern<tensor::DimOp> {
+  using OpRewritePattern<tensor::DimOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tensor::DimOp dimOp,
+                                PatternRewriter &rewriter) const final {
+    auto parallelOp = dimOp.getSource().getDefiningOp<ParallelOp>();
+    if (!parallelOp) return failure();
+
+    OpOperand &out =
+        parallelOp.getOpOperandForResult(dimOp.getSource().cast<OpResult>());
+    rewriter.updateRootInPlace(
+        dimOp, [&]() { dimOp.getSourceMutable().assign(out.get()); });
+    return success();
+  }
+};
+
+/// Fold tensor.casts into the output arguments of gml_st.parallel.
+struct FoldTensorCastIntoParallelOp
+    : public OpRewritePattern<gml_st::ParallelOp> {
+  using OpRewritePattern<gml_st::ParallelOp>::OpRewritePattern;
+
+  struct TypeCast {
+    Type srcType;
+    Type dstType;
+  };
+
+  LogicalResult matchAndRewrite(gml_st::ParallelOp parallelOp,
+                                PatternRewriter &rewriter) const final {
+    llvm::SmallMapVector<unsigned, TypeCast, 2> tensorCastProducers;
+    llvm::SmallVector<Value> newOutputTensors = parallelOp.getOutputs();
+    for (auto &en : llvm::enumerate(newOutputTensors)) {
+      if (auto castOp = en.value().getDefiningOp<tensor::CastOp>()) {
+        tensorCastProducers[en.index()] =
+            TypeCast{castOp.getSource().getType(), castOp.getType()};
+        en.value() = castOp.getSource();
+      }
+    }
+
+    if (tensorCastProducers.empty()) return failure();
+
+    // Create new loop.
+    Location loc = parallelOp.getLoc();
+    std::optional<StringAttr> distTypeAttr;
+    if (auto distType = parallelOp.getDistributionType())
+      distTypeAttr = rewriter.getStringAttr(*distType);
+    auto newParallelOp = rewriter.create<ParallelOp>(
+        loc, TypeRange{ValueRange{newOutputTensors}},
+        parallelOp.getLowerBound(), parallelOp.getUpperBound(),
+        parallelOp.getStep(), newOutputTensors, distTypeAttr, nullptr);
+
+    Block *loopBody = newParallelOp.getBody();
+
+    // Cast bbArgs back to the original types.
+    OpBuilder::InsertionGuard g(rewriter);
+    rewriter.setInsertionPointToStart(loopBody);
+    SmallVector<Value> castBBArgs =
+        ValueRange{newParallelOp.getRegionOutputArgs()};
+    for (auto &item : tensorCastProducers) {
+      Value &oldTypeBBArg = castBBArgs[item.first];
+      oldTypeBBArg = rewriter.create<tensor::CastOp>(loc, item.second.dstType,
+                                                     oldTypeBBArg);
+    }
+
+    // Move old body into new parallel loop.
+    SmallVector<Value> blockArgs = newParallelOp.getInductionVars();
+    blockArgs.append(castBBArgs);
+    rewriter.mergeBlocks(parallelOp.getBody(), loopBody, blockArgs);
+
+    // Cast `set_yield` destination operands to the new types.
+    SetYieldOp terminator = newParallelOp.getTerminator();
+    rewriter.setInsertionPoint(terminator);
+    SmallVector<Value> castDsts = terminator.getDsts();
+    for (auto &item : tensorCastProducers) {
+      Value &newTypeDsts = castDsts[item.first];
+      newTypeDsts = rewriter.create<tensor::CastOp>(loc, item.second.srcType,
+                                                    newTypeDsts);
+    }
+    terminator.getDstsMutable().assign(castDsts);
+
+    // Cast results back to the original types.
+    rewriter.setInsertionPointAfter(newParallelOp);
+    SmallVector<Value> castResults = newParallelOp.getResults();
+    for (auto &item : tensorCastProducers) {
+      Value &oldTypeResult = castResults[item.first];
+      oldTypeResult = rewriter.create<tensor::CastOp>(loc, item.second.dstType,
+                                                      oldTypeResult);
+    }
+    rewriter.replaceOp(parallelOp, castResults);
+
+    return success();
+  }
+};
+
+}  // namespace
 
 void ParallelOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
-  results.add<CollapseSingleIterationLoops<ParallelOp>>(
-      context,
-      [&](ParallelOp op) { return !op.getDistributionType().has_value(); });
-}
-
-//===----------------------------------------------------------------------===//
-// ForOp
-//===----------------------------------------------------------------------===//
-
-Region &ForOp::getLoopBody() { return getRegion(); }
-
-SetYieldOp ForOp::getTerminator() {
-  return cast<SetYieldOp>(getBody()->getTerminator());
-}
-
-LogicalResult ForOp::verify() {
-  // Check if types of output arguments match region args types.
-  for (auto &item :
-       llvm::enumerate(llvm::zip(getOutputs(), getRegionOutputArgs()))) {
-    Value output, outputRegionArg;
-    unsigned index = item.index();
-    std::tie(output, outputRegionArg) = item.value();
-    if (output.getType() != outputRegionArg.getType()) {
-      return emitOpError("expected output arg ")
-             << index << " with type = " << output.getType()
-             << " to match region arg " << index + getNumLoops()
-             << " type = " << outputRegionArg.getType();
-    }
-    auto terminator = getTerminator();
-    auto numDstOperands = terminator.getNumDstOperands();
-    if (index >= numDstOperands) {
-      const auto *s = index ? "s" : "";
-      return terminator.emitOpError("expected to have at least ")
-             << index + 1 << " destination operand" << s << " (currently "
-             << numDstOperands << ")";
-    }
-
-    if (terminator.getDstOperand(index)->get() != outputRegionArg) {
-      return terminator.emitOpError("expected output block argument ")
-             << index << " to match set_yield destination";
-    }
-  }
-  return success();
-}
-
-void ForOp::build(
-    OpBuilder &builder, OperationState &result, TypeRange resultTypes,
-    ValueRange lowerBounds, ValueRange upperBounds, ValueRange steps,
-    ValueRange outputs,
-    function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
-        bodyBuilderFn) {
-  result.addOperands(lowerBounds);
-  result.addOperands(upperBounds);
-  result.addOperands(steps);
-  result.addOperands(outputs);
-  result.addTypes(resultTypes);
-  result.addAttribute(
-      LoopOp::getOperandSegmentSizeAttr(),
-      builder.getDenseI32ArrayAttr({static_cast<int32_t>(lowerBounds.size()),
-                                    static_cast<int32_t>(upperBounds.size()),
-                                    static_cast<int32_t>(steps.size()),
-                                    static_cast<int32_t>(outputs.size())}));
-
-  OpBuilder::InsertionGuard guard(builder);
-  unsigned numIvs = steps.size();
-  SmallVector<Type, 8> argTypes(numIvs, builder.getIndexType());
-  SmallVector<Location, 8> argLocs(numIvs, result.location);
-  for (Value output : outputs) {
-    argTypes.push_back(output.getType());
-    argLocs.push_back(output.getLoc());
-  }
-  Region *bodyRegion = result.addRegion();
-  Block *bodyBlock = builder.createBlock(bodyRegion, {}, argTypes, argLocs);
-
-  if (bodyBuilderFn) {
-    builder.setInsertionPointToStart(bodyBlock);
-    bodyBuilderFn(builder, result.location,
-                  bodyBlock->getArguments().take_front(numIvs),
-                  bodyBlock->getArguments().take_back(outputs.size()));
-    ForOp::ensureTerminator(*bodyRegion, builder, result.location);
-  }
-}
-
-void ForOp::print(OpAsmPrinter &p) {
-  p << " (" << getInductionVars() << ") = (" << getLowerBound() << ") to ("
-    << getUpperBound() << ") step (" << getStep() << ")";
-
-  if (!getOutputs().empty()) {
-    p << " outs (";
-    llvm::interleaveComma(
-        llvm::zip(getRegionOutputArgs(), getOutputs()), p, [&](auto it) {
-          Value outputRegionArg, output;
-          std::tie(outputRegionArg, output) = it;
-          p << outputRegionArg << " = " << output << ": " << output.getType();
-        });
-    p << ")";
-  }
-
-  p << ' ';
-  p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
-  p.printOptionalAttrDict(getOperation()->getAttrs(),
-                          /*elidedAttrs=*/{ForOp::getOperandSegmentSizeAttr()});
-
-  if (!getResultTypes().empty()) {
-    p << " : ";
-    llvm::interleave(getResultTypes(), p, ", ");
-  }
-}
-
-ParseResult ForOp::parse(OpAsmParser &parser, OperationState &result) {
-  return parseLoopLikeOp<ForOp>(parser, result);
-}
-
-namespace {
-/// Folds CastOp of loop outputs into ForOp
-struct RefineForOpShape : public OpRewritePattern<ForOp> {
-  using OpRewritePattern<ForOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(ForOp op,
-                                PatternRewriter &rewriter) const override {
-    if (llvm::all_of(op.getOutputs(), [](auto out) {
-          return out.template getDefiningOp<tensor::CastOp>() == nullptr;
-        }))
-      return failure();
-
-    Location loc = op.getLoc();
-    // Scans through output args to find what args are produced by `tensor.cast`
-    // ops. Also cache the info since we are gonna reuse it a lot.
-    SmallVector<Value> newOutputs{op.getOutputs()};
-    SmallVector<Type> newTypes{op.getResultTypes()};
-    SmallVector<tensor::CastOp> castOutputs;
-    for (auto &&[out, type] : llvm::zip(newOutputs, newTypes)) {
-      if (auto cast =
-              castOutputs.emplace_back(out.getDefiningOp<tensor::CastOp>())) {
-        out = cast.getSource();
-        type = out.getType();
-      }
-    }
-
-    auto newFor = rewriter.create<ForOp>(loc, newTypes, op.getLowerBound(),
-                                         op.getUpperBound(), op.getStep(),
-                                         newOutputs, nullptr);
-    // The new loop needs to keep all attributes from the old one.
-    newFor->setAttrs(op->getAttrs());
-
-    // Map outputs, insert `tensor.cast` if necessary.
-    BlockAndValueMapping bvm;
-    bvm.map(op.getInductionVars(), newFor.getInductionVars());
-
-    auto innerBuilder = ImplicitLocOpBuilder::atBlockEnd(loc, newFor.getBody());
-    rewriter.setInsertionPointAfter(newFor);
-
-    for (const auto &[oldArg, newArg, cast] :
-         llvm::zip(op.getRegionOutputArgs(), newFor.getRegionOutputArgs(),
-                   castOutputs)) {
-      bvm.map(oldArg,
-              cast ? innerBuilder.create<tensor::CastOp>(cast.getType(), newArg)
-                   : Value(newArg));
-    }
-    // Cast the loop results for downstream uses of the loop if necessary.
-    SmallVector<Value> newResults{newFor.getResults()};
-    for (auto &&[res, cast] : llvm::zip(newResults, castOutputs)) {
-      if (cast) res = rewriter.create<tensor::CastOp>(loc, cast.getType(), res);
-    }
-
-    // Clone loop body.
-    for (auto &o : *(op.getBody())) innerBuilder.clone(o, bvm);
-
-    // Update set_yield destinations to the new type.
-    auto term = cast<SetYieldOp>(newFor.getTerminator());
-    rewriter.updateRootInPlace(term, [&]() {
-      term.getDstsMutable().assign(newFor.getRegionOutputArgs());
-    });
-
-    // Update the original loop by the new loop + CastOp.
-    rewriter.replaceOp(op, newResults);
-    return success();
-  }
-};
-
-// Fold away ForOp iter arguments when:
-// 1) The op yields the iter arguments.
-// 2) The iter arguments have no use and the corresponding outer region
-// iterators (inputs) are yielded.
-// 3) The iter arguments have no use and the corresponding (operation) results
-// have no use.
-//
-// These arguments must be defined outside of the ForOp region and can just be
-// forwarded after simplifying the op inits, yields and returns.
-//
-// The implementation uses `mergeBlockBefore` to steal the content of the
-// original ForOp and avoid cloning.
-struct ForOpIterArgsFolder : public OpRewritePattern<ForOp> {
-  using OpRewritePattern<ForOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(ForOp forOp,
-                                PatternRewriter &rewriter) const final {
-    bool canonicalize = false;
-    auto yieldOp = forOp.getTerminator();
-
-    // An internal flat vector of block transfer
-    // arguments `newBlockTransferArgs` keeps the 1-1 mapping of original to
-    // transformed block argument mappings. This plays the role of a
-    // BlockAndValueMapping for the particular use case of calling into
-    // `mergeBlockBefore`.
-    SmallVector<bool, 4> keepMask;
-    keepMask.reserve(yieldOp.getNumUpdates());
-    SmallVector<Value, 4> newBlockTransferArgs, newOutputArgs, newResultValues;
-    newBlockTransferArgs.reserve(1 + forOp.getNumOutputs());
-    newBlockTransferArgs.push_back(Value());  // iv placeholder with null value
-    newOutputArgs.reserve(forOp.getNumOutputs());
-    newResultValues.reserve(forOp.getNumResults());
-    // [iter from outside, iter inside region, op results, yield sources]
-    for (auto [out, arg, res, yieldSrc] :
-         llvm::zip(forOp.getOutputs(), forOp.getRegionOutputArgs(),
-                   forOp.getResults(), yieldOp.getSrcs())) {
-      // Forwarded is `true` when:
-      // 1) The region `iter` argument is yielded.
-      // 2) The region `iter` argument has no use, and the corresponding iter
-      // operand (input) is yielded.
-      // 3) The region `iter` argument has no use, and the corresponding op
-      // result has no use.
-      bool forwarded =
-          ((arg == yieldSrc) ||
-           (arg.use_empty() && (out == yieldSrc || res.use_empty())));
-      keepMask.push_back(!forwarded);
-      canonicalize |= forwarded;
-      if (forwarded) {
-        newBlockTransferArgs.push_back(out);
-        newResultValues.push_back(out);
-        continue;
-      }
-      newOutputArgs.push_back(out);
-      newBlockTransferArgs.push_back(Value());  // placeholder with null value
-      newResultValues.push_back(Value());       // placeholder with null value
-    }
-
-    if (!canonicalize) return failure();
-
-    auto newForOp = rewriter.create<ForOp>(
-        forOp.getLoc(),
-        llvm::to_vector<1>(llvm::map_range(
-            newOutputArgs, [&](Value v) -> Type { return v.getType(); })),
-        forOp.getLowerBound(), forOp.getUpperBound(), forOp.getStep(),
-        newOutputArgs, nullptr);
-    // The new loop needs to keep all attributes from the old one, except for
-    // "operand_segment_sizes" which captures the outdated information of the
-    // old iteration domain.
-    for (const auto &namedAttr : forOp->getAttrs()) {
-      if (namedAttr.getName() == ForOp::getOperandSegmentSizeAttr()) continue;
-      newForOp->setAttr(namedAttr.getName(), namedAttr.getValue());
-    }
-    Block &newBlock = newForOp.getRegion().front();
-
-    // Replace the null placeholders with newly constructed values.
-    newBlockTransferArgs[0] = newBlock.getArgument(0);  // iv
-    for (unsigned idx = 0, collapsedIdx = 0, e = newResultValues.size();
-         idx != e; ++idx) {
-      Value &blockTransferArg = newBlockTransferArgs[1 + idx];
-      Value &newResultVal = newResultValues[idx];
-      assert((blockTransferArg && newResultVal) ||
-             (!blockTransferArg && !newResultVal));
-      if (!blockTransferArg) {
-        blockTransferArg = newForOp.getRegionOutputArgs()[collapsedIdx];
-        newResultVal = newForOp.getResult(collapsedIdx++);
-      }
-    }
-
-    Block &oldBlock = forOp.getRegion().front();
-    assert(oldBlock.getNumArguments() == newBlockTransferArgs.size() &&
-           "unexpected argument size mismatch");
-
-    // No results case: the ForOp builder already created a zero
-    // result terminator. Merge before this terminator and just get rid of the
-    // original terminator that has been merged in.
-    if (newOutputArgs.empty()) {
-      auto newYieldOp = newForOp.getTerminator();
-      rewriter.mergeBlockBefore(&oldBlock, newYieldOp, newBlockTransferArgs);
-      rewriter.eraseOp(newBlock.getTerminator()->getPrevNode());
-      rewriter.replaceOp(forOp, newResultValues);
-      return success();
-    }
-
-    // No terminator case: merge and rewrite the merged terminator.
-    auto cloneFilteredTerminator = [&](SetYieldOp mergedTerminator) {
-      OpBuilder::InsertionGuard g(rewriter);
-      rewriter.setInsertionPoint(mergedTerminator);
-      SmallVector<Value, 4> filteredSrcs, filteredDsts, filteredSets;
-      filteredSrcs.reserve(newResultValues.size());
-      filteredDsts.reserve(newResultValues.size());
-      filteredSets.reserve(newResultValues.size());
-      for (unsigned idx = 0, e = keepMask.size(); idx < e; ++idx) {
-        if (keepMask[idx]) {
-          filteredSrcs.push_back(mergedTerminator.getSrcs()[idx]);
-          filteredDsts.push_back(mergedTerminator.getDsts()[idx]);
-          filteredSets.push_back(mergedTerminator.getSets()[idx]);
-        }
-      }
-      rewriter.create<SetYieldOp>(mergedTerminator.getLoc(), filteredSrcs,
-                                  filteredDsts, filteredSets);
-    };
-
-    rewriter.mergeBlocks(&oldBlock, &newBlock, newBlockTransferArgs);
-    auto mergedYieldOp = newForOp.getTerminator();
-    cloneFilteredTerminator(mergedYieldOp);
-    rewriter.eraseOp(mergedYieldOp);
-    rewriter.replaceOp(forOp, newResultValues);
-    return success();
-  }
-};
-}  // namespace
-
-void ForOp::getCanonicalizationPatterns(RewritePatternSet &results,
-                                        MLIRContext *context) {
-  results.add<CollapseSingleIterationLoops<ForOp>, RefineForOpShape,
-              ForOpIterArgsFolder>(context);
-}
-
-namespace {
-
-static constexpr int64_t kNoMatch = -1;
-
-// Folds away LoopOp inputs if they have no uses within the body.
-//
-// Example:
-//
-// %0 = gml_st.loop ...  ins (%in_ = %in: tensor<...>,
-//                                  %in_buf_ = %in_buf: memref<...>) {...}
-// Becomes
-//
-// gml_st.loop ...  ins (%in_buf_ = %in_buf: memref<...>) {...}
-struct LoopInputsFolder : public OpRewritePattern<LoopOp> {
-  using OpRewritePattern<LoopOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(LoopOp loop,
-                                PatternRewriter &rewriter) const final {
-    SmallVector<Value, 2> newInputs, regionInputTensorArgs;
-    // Store ids of the corresponding old and new input operands.
-    SmallVector<int64_t, 2> oldInputIdToNew(loop.getInputs().size(), kNoMatch);
-    for (const auto &en : llvm::enumerate(
-             llvm::zip(loop.getInputs(), loop.getRegionInputArgs()))) {
-      Value in, bbArg;
-      size_t index = en.index();
-      std::tie(in, bbArg) = en.value();
-      if (!bbArg.use_empty()) {
-        oldInputIdToNew[index] = newInputs.size();
-        newInputs.push_back(in);
-      }
-    }
-    if (newInputs.size() == loop.getInputs().size()) return failure();
-    Location loc = loop.getLoc();
-    auto newLoop = rewriter.create<LoopOp>(
-        loc, loop.getLowerBound(), loop.getUpperBound(), loop.getStep(),
-        newInputs, loop.getOutputs(), loop.getIteratorTypes(),
-        loop.getDistributionTypes());
-
-    // Clone the region.
-    BlockAndValueMapping bvm;
-    bvm.map(loop.getInductionVars(), newLoop.getInductionVars());
-    bvm.map(loop.getRegionOutputArgs(), newLoop.getRegionOutputArgs());
-    for (const auto &en : llvm::enumerate(oldInputIdToNew))
-      if (en.value() != kNoMatch)
-        bvm.map(loop.getRegionInputArgs()[en.index()],
-                newLoop.getRegionInputArgs()[en.value()]);
-    OpBuilder innerBuilder =
-        OpBuilder::atBlockEnd(newLoop.getBody(), rewriter.getListener());
-    for (auto &op : *loop.getBody()) innerBuilder.clone(op, bvm);
-    rewriter.replaceOp(loop, newLoop.getResults());
-
-    return success();
-  }
-};
-
-}  // namespace
-
-/// A simple, conservative analysis to determine if the loop is shape
-/// conserving. I.e., the type of the arg-th yielded value is the same as the
-/// type of the corresponding basic block argument of the loop.
-/// Note: This function handles only simple cases. Expand as needed.
-static bool isShapePreserving(LoopOp loopOp, int64_t arg) {
-  auto yieldOp = cast<YieldOp>(loopOp.getLoopBody().front().getTerminator());
-  if (yieldOp.getValues().empty())
-    // Loop either has no outputs or is a "memref-based version". In either
-    // case, the loop is shape conserving.
-    return true;
-  assert(arg < static_cast<int64_t>(yieldOp.getValues().size()) &&
-         "arg is out of bounds");
-  Value value = yieldOp.getValues()[arg];
-  while (value) {
-    if (value == loopOp.getRegionOutputArgs()[arg]) return true;
-    OpResult opResult = value.dyn_cast<OpResult>();
-    if (!opResult) return false;
-
-    using tensor::InsertSliceOp;
-    value = llvm::TypeSwitch<Operation *, Value>(opResult.getOwner())
-                .template Case<InsertSliceOp>(
-                    [&](InsertSliceOp op) { return op.getDest(); })
-                .template Case<LoopOp>([&](LoopOp loopOp) {
-                  return isShapePreserving(loopOp, opResult.getResultNumber())
-                             ? loopOp.getOutputs()[opResult.getResultNumber()]
-                             : Value();
-                })
-                .Default([&](auto /*op*/) { return Value(); });
-  }
-  return false;
-}
-
-namespace {
-
-/// Fold dim(x) where `x` is an input/output argument of a LoopOp block
-/// to dim(y) where `y` is the initial input/output value of the argument.
-///
-/// E.g.:
-/// %y = ... : tensor<...>
-/// gml_st.loop ... ins(%x = %y : tensor<...>) {
-///   tensor.dim %x, %c0 : tensor<...>
-/// }
-///
-/// is folded to:
-/// %y = ... : tensor<...>
-/// gml_st.loop ... ins(%x = %y : tensor<...>) {
-///   tensor.dim %y, %c0 : tensor<...>
-/// }
-///
-/// Note: Dim ops are folded only if it can be proven that the runtime type of
-/// the yielded value (in case of outputs) does not change with loop iterations.
-template <typename OpTy>
-struct DimOfLoopInsOutsFolder : public OpRewritePattern<OpTy> {
-  using OpRewritePattern<OpTy>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(OpTy dimOp,
-                                PatternRewriter &rewriter) const final {
-    auto src = dimOp.getSource().template dyn_cast<BlockArgument>();
-    if (!src) return failure();
-    auto loopOp = dyn_cast<LoopOp>(src.getOwner()->getParent()->getParentOp());
-    if (!loopOp) return failure();
-    unsigned numLoops = loopOp.getNumLoops();
-    unsigned numInputArgs = loopOp.getRegionInputArgs().size();
-    if (src.getArgNumber() >= numInputArgs + numLoops &&
-        !isShapePreserving(loopOp,
-                           src.getArgNumber() - numInputArgs - numLoops))
-      return failure();
-
-    auto inputArgs = loopOp.getRegionInputArgs();
-    auto it1 = llvm::find(inputArgs, src);
-    if (it1 != inputArgs.end()) {
-      rewriter.updateRootInPlace(dimOp, [&] {
-        dimOp.getSourceMutable().assign(
-            loopOp.getInputs()[it1 - inputArgs.begin()]);
-      });
-      return success();
-    }
-
-    auto outputArgs = loopOp.getRegionOutputArgs();
-    auto it2 = llvm::find(outputArgs, src);
-    if (it2 != outputArgs.end()) {
-      rewriter.updateRootInPlace(dimOp, [&] {
-        dimOp.getSourceMutable().assign(
-            loopOp.getOutputs()[it2 - outputArgs.begin()]);
-      });
-      return success();
-    }
-
-    return failure();
-  }
-};
-
-/// Fold dim(r) where `r` is the result of a LoopOp to dim(y) where `y`
-/// is the initial output value of the loop.
-///
-/// E.g.:
-/// %y = ... : tensor<...>
-/// %r = gml_st.loop ... outs(%i = %y : tensor<...>) {
-///   ...
-/// }
-/// %0 = tensor.dim %r, %c0 : tensor<...>
-///
-/// is folded to:
-/// %y = ... : tensor<...>
-/// gml_st.loop ... outs(%i = %y : tensor<...>) {
-///   ...
-/// }
-/// %0 = tensor.dim %y, %c0 : tensor<...>
-///
-/// Note: Dim ops are folded only if it can be proven that the runtime type of
-/// the yielded value (in case of outputs) does not change with loop iterations.
-template <typename OpTy>
-struct DimOfLoopResultFolder : public OpRewritePattern<OpTy> {
-  using OpRewritePattern<OpTy>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(OpTy dimOp,
-                                PatternRewriter &rewriter) const final {
-    auto loopOp = dimOp.getSource().template getDefiningOp<LoopOp>();
-    if (!loopOp) return failure();
-    auto opResult = dimOp.getSource().template cast<OpResult>();
-    unsigned resultNumber = opResult.getResultNumber();
-    if (!isShapePreserving(loopOp, resultNumber)) return failure();
-    rewriter.updateRootInPlace(dimOp, [&]() {
-      dimOp.getSourceMutable().assign(loopOp.getOutputs()[resultNumber]);
-    });
-    return success();
-  }
-};
-
-// Folds away LoopOp output tensors when the following conditions are met:
-// * result of `gml_st.loop` has no uses
-// * output tensor is the argument of `gml_st.yield`
-//
-// Example:
-//
-// %0 = gml_st.loop ...  outs (%o_ = %out: tensor<...>,
-//                                   %obuf_ = %out_buf: memref<...>) {
-//   ...
-//   gml_st.yield %o_ : tensor ...
-// }
-//
-// Becomes
-//
-// gml_st.loop ...  outs (%obuf_ = %out_buf: memref<...>) {
-//   ...
-//   gml_st.yield
-// }
-struct LoopResultsFolder : public OpRewritePattern<LoopOp> {
-  using OpRewritePattern<LoopOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(LoopOp loop,
-                                PatternRewriter &rewriter) const final {
-    if (loop.getNumResults() == 0) return failure();
-
-    Block *block = loop.getBody();
-    auto yieldOp = cast<YieldOp>(block->getTerminator());
-
-    // Match the pattern and collect output buffers that will replace the output
-    // tensors and also the ops that will be ignored when cloning the body.
-    SmallVector<Value, 2> newOutputOperands, newYieldArgs;
-    int resultId = 0;
-    // Store ids of the corresponding old and new output operands.
-    SmallVector<int64_t, 2> oldOutputIdToNew(loop.getOutputs().size(),
-                                             kNoMatch);
-    // Store ids of the corresponding old and new results.
-    SmallVector<int64_t, 2> oldResultIdToNew(loop.getNumResults(), kNoMatch);
-    SmallVector<Value, 2> resultReplacement(loop.getNumResults());
-    for (const auto &en : llvm::enumerate(
-             llvm::zip(loop.getOutputs(), loop.getRegionOutputArgs()))) {
-      size_t index = en.index();
-      Value out = std::get<0>(en.value());
-      Value outRegionArg = std::get<1>(en.value());
-
-      if (!out.getType().isa<RankedTensorType>()) {
-        oldOutputIdToNew[index] = newOutputOperands.size();
-        newOutputOperands.push_back(out);
-        continue;
-      }
-      Value result = loop.getResult(resultId);
-      Value yieldArg = yieldOp.getOperand(resultId);
-      if (yieldArg != outRegionArg || !result.use_empty()) {
-        oldOutputIdToNew[index] = newOutputOperands.size();
-        oldResultIdToNew[resultId] = newYieldArgs.size();
-        resultReplacement[resultId] = out;
-        newOutputOperands.push_back(out);
-        newYieldArgs.push_back(yieldArg);
-      }
-      ++resultId;
-    }
-    if (newOutputOperands.size() == loop.getOutputs().size()) return failure();
-
-    Location loc = loop.getLoc();
-    auto newLoop = rewriter.create<LoopOp>(
-        loc, loop.getLowerBound(), loop.getUpperBound(), loop.getStep(),
-        loop.getInputs(), newOutputOperands, loop.getIteratorTypes(),
-        loop.getDistributionTypes());
-
-    // Clone the region.
-    BlockAndValueMapping bvm;
-    bvm.map(loop.getInductionVars(), newLoop.getInductionVars());
-    bvm.map(loop.getRegionInputArgs(), newLoop.getRegionInputArgs());
-    for (const auto &en : llvm::enumerate(oldOutputIdToNew)) {
-      if (en.value() != kNoMatch)
-        bvm.map(loop.getRegionOutputArgs()[en.index()],
-                newLoop.getRegionOutputArgs()[en.value()]);
-      else
-        bvm.map(loop.getRegionOutputArgs()[en.index()],
-                loop.getOutputs()[en.index()]);
-    }
-    OpBuilder innerBuilder =
-        OpBuilder::atBlockEnd(newLoop.getBody(), rewriter.getListener());
-    for (auto &op : loop.getBody()->without_terminator())
-      innerBuilder.clone(op, bvm);
-    innerBuilder.create<YieldOp>(
-        loc, llvm::to_vector<2>(llvm::map_range(
-                 newYieldArgs, [&](Value arg) { return bvm.lookup(arg); })));
-
-    for (const auto &en : llvm::enumerate(oldResultIdToNew))
-      if (en.value() != kNoMatch)
-        resultReplacement[en.index()] = newLoop.getResult(en.value());
-    rewriter.replaceOp(loop, resultReplacement);
-
-    return success();
-  }
-};
-
-/// Pull `gml_st.loop` input/output arguments that are produced by
-/// `tensor.cast` ops inside `gml_st.loop`:
-///
-/// ```
-///   %in = tensor.cast %t0 : tensor<32x1024xf32> to tensor<?x?xf32>
-///   %out = tensor.cast %t1 : tensor<32x1024xf32> to tensor<?x?xf32>
-///   %result = gml_st.loop %i = %c0 to %c1024 step %c32
-///       ins (%in_ = %in: tensor<?x?xf32>)
-///       outs (%out_ = %out: tensor<?x?xf32>) {
-///     %0 = call @do(%in_, %out_)
-///       : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-///     scf.yield %0 : tensor<?x?xf32>
-///   }
-///   %result_cast = tensor.cast %result
-///     : tensor<?x?xf32> to tensor<32x1024xf32>
-///   use_of(%result_cast)
-/// ```
-///
-/// folds into:
-//
-/// ```
-///   %result = gml_st.loop %i = %c0 to %c1024 step %c32
-///       ins (%in_ = %t0: tensor<32x1024xf32>)
-///       outs (%out_ = %t1: tensor<32x1024xf32>) {
-///     %in_cast = tensor.cast %in_ : tensor<32x1024xf32> to tensor<?x?xf32>
-///     %out_cast = tensor.cast %out_ : tensor<32x1024xf32> to tensor<?x?xf32>
-///     %0 = call @do(%in_, %out_)
-///       : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-///     %0_cast = tensor.cast %0 : tensor<?x?xf32> to tensor<32x1024xf32>
-///     scf.yield %0 : tensor<32x1024xf32>
-///   }
-///   use_of(%result)
-/// ```
-struct TensorCastOfLoopInsOutsFolder : public OpRewritePattern<LoopOp> {
-  using OpRewritePattern<LoopOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(LoopOp loop,
-                                PatternRewriter &rewriter) const override {
-    CastOpsOfArgs inputCasts = findTensorCastOps(loop.getInputs());
-    CastOpsOfArgs outputCasts = findTensorCastOps(loop.getOutputs());
-    if (!inputCasts.castFound && !outputCasts.castFound) return failure();
-
-    auto newLoop = rewriter.create<LoopOp>(
-        loop.getLoc(), loop.getLowerBound(), loop.getUpperBound(),
-        loop.getStep(), inputCasts.updatedArgs, outputCasts.updatedArgs,
-        loop.getIteratorTypes(), loop.getDistributionTypes());
-
-    rewriter.replaceOp(loop, insertCastsAndCloneBody(inputCasts, outputCasts,
-                                                     loop, newLoop, rewriter));
-    return success();
-  }
-
- private:
-  struct CastOpsOfArgs {
-    SmallVector<tensor::CastOp, 4> ops;
-    // Contains either old arguments or arguments of `tensor.cast`.
-    SmallVector<Value, 4> updatedArgs;
-    bool castFound = false;
-  };
-
-  // Scans through args to find what args are produced by `tensor.cast` ops.
-  CastOpsOfArgs findTensorCastOps(ValueRange args) const {
-    CastOpsOfArgs result;
-    for (auto arg : args) {
-      if (auto cast = arg.getDefiningOp<tensor::CastOp>()) {
-        result.ops.push_back(cast);
-        result.updatedArgs.push_back(cast.getSource());
-        result.castFound = true;
-        continue;
-      }
-      result.ops.push_back(nullptr);
-      result.updatedArgs.push_back(arg);
-    }
-    return result;
-  }
-
-  SmallVector<Value, 4> insertCastsAndCloneBody(
-      const CastOpsOfArgs &inputCasts, const CastOpsOfArgs &outputCasts,
-      LoopOp loop, LoopOp newLoop, PatternRewriter &rewriter) const {
-    auto loc = newLoop.getLoc();
-    BlockAndValueMapping bvm;
-    bvm.map(loop.getInductionVars(), newLoop.getInductionVars());
-
-    auto innerBuilder =
-        OpBuilder::atBlockEnd(newLoop.getBody(), rewriter.getListener());
-
-    Value oldArg, newArg, yieldArg, result;
-    tensor::CastOp argCast;
-
-    // Map inputs, insert `tensor.cast` if necessary.
-    for (auto item : llvm::zip(loop.getRegionInputArgs(),
-                               newLoop.getRegionInputArgs(), inputCasts.ops)) {
-      std::tie(oldArg, newArg, argCast) = item;
-      if (!argCast) {
-        bvm.map(oldArg, newArg);
-        continue;
-      }
-      Value newCast =
-          innerBuilder.create<tensor::CastOp>(loc, argCast.getType(), newArg);
-      bvm.map(oldArg, newCast);
-    }
-
-    // Map outputs, insert `tensor.cast` and cast the loop results if necessary.
-    SmallVector<Value, 4> newResults;
-    rewriter.setInsertionPointAfter(newLoop);
-    for (auto item :
-         llvm::zip(loop.getRegionOutputArgs(), newLoop.getRegionOutputArgs(),
-                   outputCasts.ops, newLoop.getResults())) {
-      std::tie(oldArg, newArg, argCast, result) = item;
-      if (!argCast) {
-        bvm.map(oldArg, newArg);
-        newResults.push_back(result);
-        continue;
-      }
-      Value newCast =
-          innerBuilder.create<tensor::CastOp>(loc, argCast.getType(), newArg);
-      bvm.map(oldArg, newCast);
-
-      newResults.push_back(
-          rewriter.create<tensor::CastOp>(loc, argCast.getType(), result));
-    }
-
-    // Clone loop body.
-    for (auto &op : loop.getBody()->without_terminator())
-      innerBuilder.clone(op, bvm);
-
-    // Cast yield arguments to the new type.
-    SmallVector<Value, 4> yieldArgs =
-        loop.getBody()->getTerminator()->getOperands();
-    SmallVector<Value, 4> newYieldArgs;
-    for (auto item : llvm::zip(yieldArgs, outputCasts.ops)) {
-      std::tie(yieldArg, argCast) = item;
-      if (!argCast) {
-        newYieldArgs.push_back(bvm.lookup(yieldArg));
-        continue;
-      }
-      newYieldArgs.push_back(innerBuilder.create<tensor::CastOp>(
-          loc, argCast.getSource().getType(), bvm.lookup(yieldArg)));
-    }
-    innerBuilder.create<YieldOp>(loc, newYieldArgs);
-    return newResults;
-  }
-};
-
-/// Removes loops in which at least one lower/upper bound pair consists
-/// of the same values - such loops have an empty iteration domain.
-struct FoldEmptyLoops : public OpRewritePattern<LoopOp> {
-  using OpRewritePattern<LoopOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(LoopOp op,
-                                PatternRewriter &rewriter) const override {
-    for (auto dim : llvm::zip(op.getLowerBound(), op.getUpperBound())) {
-      if (std::get<0>(dim) != std::get<1>(dim)) continue;
-      SmallVector<Value> tensorOutputs;
-      for (Value out : op.getOutputs()) {
-        if (out.getType().isa<RankedTensorType>()) tensorOutputs.push_back(out);
-      }
-      rewriter.replaceOp(op, tensorOutputs);
-      return success();
-    }
-    return failure();
-  }
-};
-
-}  // namespace
-
-void LoopOp::getCanonicalizationPatterns(RewritePatternSet &results,
-                                         MLIRContext *context) {
-  results
-      .add<FoldEmptyLoops, LoopInputsFolder, LoopResultsFolder,
-           DimOfLoopInsOutsFolder<tensor::DimOp>,
-           DimOfLoopInsOutsFolder<memref::DimOp>,
-           DimOfLoopResultFolder<tensor::DimOp>,
-           DimOfLoopResultFolder<memref::DimOp>, TensorCastOfLoopInsOutsFolder>(
-          context);
-}
-
-/// This is used for patterns of the form
-/// ```
-///    gml_st.loop(memrefcast(%src)) -> gml_st.loop(%src)
-/// ```
-/// It folds the source of the memref.cast into the root operation directly.
-LogicalResult LoopOp::fold(ArrayRef<Attribute>,
-                           SmallVectorImpl<OpFoldResult> &) {
-  LoopOp op = *this;
-  bool folded = false;
-  Location loc = op->getLoc();
-
-  Block *body = op.getBody();
-  OpBuilder b = OpBuilder::atBlockBegin(body);
-
-  // Update `input` and `output` operands and block arguments if necessary.
-  // Operands list: [lbs, ubs, steps, inputs, outputs].
-  // Block args list: [ivs, inputs, outputs].
-  for (size_t operandIndex = op.getNumControlOperands(),
-              bbArgIndex = op.getNumLoops(), e = op.getNumOperands();
-       operandIndex < e; ++operandIndex, ++bbArgIndex) {
-    OpOperand &operand = op->getOpOperand(operandIndex);
-
-    auto castOp = operand.get().getDefiningOp<memref::CastOp>();
-    if (castOp && memref::CastOp::canFoldIntoConsumerOp(castOp)) {
-      operand.set(castOp.getOperand());
-      BlockArgument newBbArg = body->insertArgument(
-          bbArgIndex, castOp.getOperand().getType(), op.getLoc());
-      BlockArgument oldBbArg = body->getArgument(newBbArg.getArgNumber() + 1);
-
-      // Insert memref.cast back to the original type.
-      oldBbArg.replaceAllUsesWith(
-          b.create<memref::CastOp>(loc, oldBbArg.getType(), newBbArg));
-      body->eraseArgument(oldBbArg.getArgNumber());
-
-      folded = true;
-    }
-  }
-  return success(folded);
-}
-
-//===----------------------------------------------------------------------===//
-// YieldOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult YieldOp::verify() {
-  auto *parentOp = getOperation()->getParentOp();
-
-  if (auto setYield = dyn_cast<SetYieldOp>(parentOp)) {
-    if (getValues().size() != 1)
-      return emitOpError(
-          "expected a single argument for the terminator of accumulator "
-          "region");
-    return success();
-  }
-  auto loopOp = cast<LoopOp>(parentOp);
-  // Check if output args with tensor types match results types.
-  SmallVector<Value, 2> tensorOuts;
-  llvm::copy_if(
-      loopOp.getOutputs(), std::back_inserter(tensorOuts),
-      [&](Value out) { return out.getType().isa<RankedTensorType>(); });
-  if (tensorOuts.size() != getValues().size())
-    return emitOpError("expected number of tensor output args = ")
-           << tensorOuts.size()
-           << " to match the number of yield operands = " << getValues().size();
-
-  TypeRange tensorTypes{ValueRange{tensorOuts}};
-  for (auto &item :
-       llvm::enumerate(llvm::zip(tensorTypes, getOperandTypes()))) {
-    Type outType, resultType;
-    unsigned index = item.index();
-    std::tie(outType, resultType) = item.value();
-    if (outType != resultType)
-      return emitOpError("expected yield operand ")
-             << index << " with type = " << resultType
-             << " to match output arg type = " << outType;
-  }
-  return success();
+  results.add<CollapseSingleIterationLoops>(context, [&](ParallelOp op) {
+    return !op.getDistributionType().has_value();
+  });
+  results.add<DimOfParallelOp, FoldTensorCastIntoParallelOp>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1711,20 +710,15 @@ struct FoldConstantsIntoTileType : public OpRewritePattern<TileOp> {
 
   LogicalResult matchAndRewrite(TileOp op,
                                 PatternRewriter &rewriter) const override {
-    // No constant operand, just return;
-    if (llvm::none_of(op.getOperands(), [](Value operand) {
-          return matchPattern(operand, matchConstantIndex());
-        }))
-      return failure();
-
-    // At least one of offsets/sizes/strides is a new constant.
-    // Form the new list of operands and constant attributes from the existing.
     SmallVector<OpFoldResult> mixedOffsets(op.getMixedOffsets());
     SmallVector<OpFoldResult> mixedSizes(op.getMixedSizes());
     SmallVector<OpFoldResult> mixedStrides(op.getMixedStrides());
-    canonicalizeSubViewPart(mixedOffsets, ShapedType::isDynamic);
-    canonicalizeSubViewPart(mixedSizes, ShapedType::isDynamic);
-    canonicalizeSubViewPart(mixedStrides, ShapedType::isDynamic);
+
+    // No constant operands were folded, just return;
+    if (failed(foldDynamicIndexList(rewriter, mixedOffsets)) &&
+        failed(foldDynamicIndexList(rewriter, mixedSizes)) &&
+        failed(foldDynamicIndexList(rewriter, mixedStrides)))
+      return failure();
 
     // Create the new tile in canonical form.
     TileOp newOp = rewriter.create<TileOp>(op.getLoc(), mixedOffsets,
@@ -1745,12 +739,9 @@ void TileOp::build(OpBuilder &b, OperationState &result,
                    ArrayRef<NamedAttribute> attrs) {
   SmallVector<int64_t> staticOffsets, staticSizes, staticStrides;
   SmallVector<Value> dynamicOffsets, dynamicSizes, dynamicStrides;
-  dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets,
-                             ShapedType::kDynamic);
-  dispatchIndexOpFoldResults(sizes, dynamicSizes, staticSizes,
-                             ShapedType::kDynamic);
-  dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides,
-                             ShapedType::kDynamic);
+  dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets);
+  dispatchIndexOpFoldResults(sizes, dynamicSizes, staticSizes);
+  dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides);
   auto tileType = TileType::get(b.getContext(), staticSizes);
   build(b, result, tileType, dynamicOffsets, dynamicSizes, dynamicStrides,
         b.getDenseI64ArrayAttr(staticOffsets),
@@ -1769,7 +760,7 @@ void TileOp::build(OpBuilder &b, OperationState &result,
 }
 
 LogicalResult TileOp::inferReturnTypes(
-    MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
+    MLIRContext *ctx, std::optional<Location> /*loc*/, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   // Derive result shape.
@@ -1831,14 +822,14 @@ using AccumulatorRegionBuilderFn =
     function_ref<void(OpBuilder &, Location, Value, Value)>;
 
 void SetYieldOp::build(OpBuilder &builder, OperationState &result) {
-  build(builder, result, llvm::None, llvm::None, llvm::None);
+  build(builder, result, std::nullopt, std::nullopt, std::nullopt);
 }
 
 void SetYieldOp::build(OpBuilder &builder, OperationState &result,
                        ValueRange srcs, ValueRange dsts, ValueRange sets) {
   SmallVector<bool, 2> accumulatorFlags(srcs.size(), false);
   build(builder, result, srcs, dsts, sets,
-        builder.getBoolArrayAttr(accumulatorFlags), llvm::None);
+        builder.getBoolArrayAttr(accumulatorFlags), std::nullopt);
 }
 
 void SetYieldOp::build(
@@ -1890,9 +881,9 @@ void SetYieldOp::build(
 LogicalResult SetYieldOp::verify() {
   for (const auto [dst, src, set] :
        llvm::zip(getDsts(), getSrcs(), getSets())) {
-    if (failed(verifyCompatibleExtractedSubset(getOperation(),
-                                               dst.getType().cast<ShapedType>(),
-                                               src.getType(), set.getType())))
+    if (failed(verifyCompatibleExtractedSubset(
+            getOperation(), dst.getType().cast<ShapedType>(), src.getType(),
+            set.getType().cast<TileType>().getShape())))
       return failure();
   }
   auto accumulatorCount = llvm::count_if(
@@ -2054,6 +1045,98 @@ struct FoldTileCastIntoSetYield : public OpRewritePattern<SetYieldOp> {
 void SetYieldOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
   results.add<FoldTileCastIntoSetYield>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// YieldOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult YieldOp::verify() { return success(); }
+
+//===----------------------------------------------------------------------===//
+// FusionOp
+//===----------------------------------------------------------------------===//
+
+YieldOp FusionOp::getTerminator() {
+  return cast<YieldOp>(getBody()->getTerminator());
+}
+
+void FusionOp::print(OpAsmPrinter &p) {
+  p << " (";
+  llvm::interleaveComma(
+      llvm::zip(getBody()->getArguments(), getInputs()), p, [&](auto it) {
+        Value inputRegionArg, input;
+        std::tie(inputRegionArg, input) = it;
+        p << inputRegionArg << " = " << input << ": " << input.getType();
+      });
+  p << ") ";
+
+  p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
+
+  p.printOptionalAttrDict(getOperation()->getAttrs());
+
+  if (!getResultTypes().empty()) {
+    p << " : ";
+    llvm::interleave(getResultTypes(), p, ", ");
+  }
+}
+
+ParseResult FusionOp::parse(OpAsmParser &parser, OperationState &result) {
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> operands, regionOperands;
+  SmallVector<Type, 4> operandTypes;
+
+  auto parseElt = [&]() -> ParseResult {
+    if (parser.parseOperand(regionOperands.emplace_back(),
+                            /*allowResultNumber=*/false) ||
+        parser.parseEqual()) {
+      return failure();
+    }
+    if (parser.parseOperand(operands.emplace_back()) || parser.parseColon() ||
+        parser.parseType(operandTypes.emplace_back())) {
+      return failure();
+    }
+    return success();
+  };
+
+  // Parse argument list.
+  if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseElt))
+    return failure();
+
+  SMLoc loc = parser.getCurrentLocation();
+  if (parser.resolveOperands(operands, operandTypes, loc, result.operands))
+    return failure();
+
+  // Parse region.
+  SmallVector<OpAsmParser::Argument, 4> regionArgs;
+  for (auto argAndType : llvm::zip(regionOperands, operandTypes)) {
+    auto &arg = regionArgs.emplace_back();
+    std::tie(arg.ssaName, arg.type) = argAndType;
+  }
+  Region *body = result.addRegion();
+  if (parser.parseRegion(*body, regionArgs)) return failure();
+
+  // Parse attributes.
+  if (parser.parseOptionalAttrDict(result.attributes)) return failure();
+
+  // Parser result types.
+  if (parser.parseOptionalColonTypeList(result.types)) return failure();
+
+  return success();
+}
+
+LogicalResult FusionOp::verify() {
+  llvm::SetVector<Value> valuesDefinedAbove;
+  getUsedValuesDefinedAbove(getRegion(), getRegion(), valuesDefinedAbove);
+
+  for (Value v : valuesDefinedAbove) {
+    auto *definingOp = v.getDefiningOp();
+
+    if (!isa_and_nonnull<arith::ConstantOp>(definingOp))
+      return emitOpError() << "using value defined outside the region that is "
+                              "not 'arith.constant'.";
+  }
+
+  return success();
 }
 
 }  // namespace gml_st

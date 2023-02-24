@@ -115,7 +115,7 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        ":dependency_whitelist",
+        ":dependency_allowlist",
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
@@ -127,7 +127,7 @@ package(
 )
 
 package_group(
-    name = "dependency_whitelist",
+    name = "dependency_allowlist",
     packages = [
         "//learning/freud/topic_models/tensorflow/...",
         "//learning/infra/mira/...",
@@ -605,6 +605,7 @@ cc_library(
         "//tensorflow/core/kernels:random_index_shuffle_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:stateful_random_ops",
+        "//tensorflow/core/kernels:sync_ops",
         "//tensorflow/core/kernels:random_binomial_op",
         "//tensorflow/core/kernels:random_poisson_op",
         "//tensorflow/core/kernels:required",
@@ -942,6 +943,7 @@ filegroup(
         "nn_grad",
         "nn_ops_op_lib",
         "no_op_op_lib",
+        "optional_ops_op_lib",
         "parsing_ops_op_lib",
         "portable_op_registrations_and_gradients",
         "ragged_array_ops_op_lib",
@@ -970,6 +972,7 @@ filegroup(
         "stateless_random_ops_v2_op_lib",
         "string_ops_op_lib",
         "summary_ops_op_lib",
+        "sync_ops_op_lib",
         "tpu_configuration_ops_op_lib",
         "tpu_cross_replica_ops_op_lib",
         "tpu_embedding_ops_op_lib",
@@ -1095,7 +1098,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":portable_tensorflow_lib_lite",
-        ":protos_all_cc_impl",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:portable_tensorflow_kernels",
         "//third_party/eigen3",
         "@com_google_protobuf//:protobuf",

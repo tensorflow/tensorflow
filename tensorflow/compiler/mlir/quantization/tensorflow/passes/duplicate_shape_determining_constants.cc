@@ -76,6 +76,15 @@ class DuplicateShapeDeterminingConstantsPass
   void runOnOperation() override;
 };
 
+// Returns True iff the otuput value of `op` is either a compile time constant
+// or bounded from the XLA compiler's perspective, even if it is not a
+// `ConstOp`.
+bool IsOutputCompileTimeConstantOrBounded(Operation* op) {
+  return llvm::isa_and_nonnull<TF::ShapeOp, TF::ShapeNOp, TF::RankOp,
+                               TF::SizeOp, TF::TensorArraySizeV3Op,
+                               TF::XlaSetBoundOp>(op);
+}
+
 // Recursively duplicate constants for `op_operands` upward.
 void RecursivelyDuplicateConstantsForOperands(
     llvm::ArrayRef<OpOperand*> op_operands) {
@@ -116,8 +125,7 @@ void RecursivelyDuplicateConstantsForOperands(
                  << owning_op->getName().getStringRef()
                  << ", operand idx: " << curr_operand->getOperandNumber()
                  << ", loc: " << const_op_cloned->getLoc() << "\n");
-    } else if (llvm::isa_and_nonnull<TF::ShapeOp, TF::ShapeNOp, TF::RankOp,
-                                     TF::SizeOp>(defining_op)) {
+    } else if (IsOutputCompileTimeConstantOrBounded(defining_op)) {
       // Stop the recursion early when the output of the defining op is
       // considered compile-time constant from the XLA compiler's perspective.
       continue;
@@ -341,6 +349,7 @@ void DuplicateShapeDeterminingConstantsPass::runOnOperation() {
       CompileTimeConstantOperand<TF::XlaRemoveDynamicDimensionSizeOp, 1>,
       // $window_dimensions, $window_strides, $padding
       CompileTimeConstantOperand<TF::XlaSelectAndScatterOp, 1, 2, 3>,
+      CompileTimeConstantOperand<TF::XlaSetBoundOp, 1>,  // $bound
       // $dim_index
       CompileTimeConstantOperand<TF::XlaSetDynamicDimensionSizeOp, 1>
       // go/keep-sorted end

@@ -305,6 +305,25 @@ void AddConvSharedWeights(
   }
 }
 
+template <DataType DataTypeT, typename T>
+absl::Status CreateElementwiseTwoInputWithOneConstant(
+    const GpuInfo& gpu_info, const OperationDef& op_def, OperationType op_type,
+    const Node& node, const Value* input, const Value* output,
+    std::unique_ptr<GPUOperation>* gpu_op) {
+  auto attr = std::any_cast<ElementwiseAttributesBase<DataTypeT, T>>(
+      node.operation.attributes);
+  GPUOperation operation;
+  if (input->tensor.shape != output->tensor.shape) {
+    operation = CreateElementwiseWithBroadcast(gpu_info, op_def, op_type, attr,
+                                               input->tensor.shape,
+                                               output->tensor.shape);
+  } else {
+    operation = CreateElementwise(gpu_info, op_def, op_type, attr);
+  }
+  *gpu_op = std::make_unique<GPUOperation>(std::move(operation));
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 absl::Status GPUOperationFromNodePart0(
@@ -741,6 +760,7 @@ absl::Status GPUOperationFromNodePart0(
     case OperationType::GREATER_EQUAL:
     case OperationType::LESS:
     case OperationType::LESS_EQUAL:
+    case OperationType::LOGICAL_AND:
     case OperationType::MAXIMUM:
     case OperationType::MINIMUM:
     case OperationType::MUL:
@@ -779,18 +799,22 @@ absl::Status GPUOperationFromNodePart0(
         *gpu_op = std::make_unique<GPUOperation>(std::move(operation));
         return absl::OkStatus();
       } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
-        auto attr =
-            absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
-        GPUOperation operation;
-        if (inputs[0]->tensor.shape != outputs[0]->tensor.shape) {
-          operation = CreateElementwiseWithBroadcast(
-              gpu_info, op_def, op_type, attr, inputs[0]->tensor.shape,
-              outputs[0]->tensor.shape);
-        } else {
-          operation = CreateElementwise(gpu_info, op_def, op_type, attr);
+        Value* input = inputs[0];
+        Value* output = inputs[0];
+        switch (inputs[0]->tensor.type) {
+          case DataType::BOOL:
+            return CreateElementwiseTwoInputWithOneConstant<DataType::BOOL,
+                                                            bool>(
+                gpu_info, op_def, op_type, node, input, output, gpu_op);
+          case DataType::INT32:
+            return CreateElementwiseTwoInputWithOneConstant<DataType::INT32,
+                                                            int32_t>(
+                gpu_info, op_def, op_type, node, input, output, gpu_op);
+          default:
+            return CreateElementwiseTwoInputWithOneConstant<DataType::FLOAT32,
+                                                            float>(
+                gpu_info, op_def, op_type, node, input, output, gpu_op);
         }
-        *gpu_op = std::make_unique<GPUOperation>(std::move(operation));
-        return absl::OkStatus();
       }
       return absl::UnimplementedError(absl::StrCat(
           "No support of ", node.operation.type, " with this parameters"));

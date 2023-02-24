@@ -40,10 +40,7 @@ def copy_handle_data(source_t, target_t):
   """
   if (target_t.dtype == dtypes.resource or
       target_t.dtype == dtypes.variant):
-    if isinstance(source_t, ops.EagerTensor):
-      handle_data = source_t._handle_data  # pylint: disable=protected-access
-    else:
-      handle_data = get_resource_handle_data(source_t)
+    handle_data = ops.get_handle_data(source_t)
     if (handle_data is not None
         and handle_data.is_set
         and handle_data.shape_and_type):

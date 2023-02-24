@@ -205,6 +205,11 @@ message LayoutProto {
   // a physical shape.
   ShapeProto physical_shape = 10;
 
+  // The dynamic shape metadata size in bytes in front of the shape data. The
+  // field may be non-zero for a static shape whose associated buffer is for a
+  // dynamic shape, e.g. a result of SliceToDynamic.
+  int64 dynamic_shape_metadata_prefix_bytes = 15;
+
   // Important: if any field is added, be sure to modify ShapeUtil::Equal() and
   // LayoutUtil::Hash appropriately to account for the new field.
 
@@ -489,8 +494,10 @@ message LiteralProto {
   bytes bf16s = 13;
   bytes u16s = 16;
   bytes s16s = 17;
+  bytes f8e5m2s = 19;
+  bytes f8e4m3fns = 20;
   repeated int64 sparse_indices = 14;
-  // Next = 19
+  // Next = 21
 }
 
 message WindowDimension {

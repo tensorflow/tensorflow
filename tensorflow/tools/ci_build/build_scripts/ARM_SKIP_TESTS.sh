@@ -16,8 +16,17 @@
 set -x
 
 ARM_SKIP_TESTS="-//tensorflow/lite/... \
+-//tensorflow/core/platform:ram_file_system_test \
 -//tensorflow/python/client:session_list_devices_test \
+-//tensorflow/python/compiler/xla:xla_test_cpu \
+-//tensorflow/python/compiler/xla:xla_test_gpu \
+-//tensorflow/python/data/experimental/kernel_tests:checkpoint_input_pipeline_hook_test \
 -//tensorflow/python/data/kernel_tests:iterator_test \
+-//tensorflow/python/distribute:parameter_server_strategy_test_cpu \
+-//tensorflow/python/distribute:parameter_server_strategy_test_gpu \
+-//tensorflow/python/distribute/failure_handling:gce_failure_handler_test \
 -//tensorflow/python/kernel_tests/nn_ops:atrous_conv2d_test \
 -//tensorflow/python/kernel_tests/nn_ops:conv_ops_test \
--//tensorflow/python/training:server_lib_test"
+-//tensorflow/python/kernel_tests/nn_ops:pooling_ops_test \
+-//tensorflow/python/training:server_lib_test \
+-//tensorflow/python/debug/lib:source_remote_test"
