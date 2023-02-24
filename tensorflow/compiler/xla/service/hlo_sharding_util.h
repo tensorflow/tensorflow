@@ -18,16 +18,19 @@ limitations under the License.
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/service/call_graph.h"
 
 namespace xla {
 namespace hlo_sharding_util {
@@ -37,6 +40,14 @@ struct GatherScatterParallelDims {
   absl::InlinedVector<int64_t, 1> operand_parallel_dims;
   std::vector<int64_t> index_parallel_in_dim;
 };
+
+// Determines if the first operand 'potential_subsharding' is a subsharding of
+// the second operand 'sharding'. Subsharding means that the tiles in
+// 'potential_subsharding' define tiles that have a subset or the same data that
+// the tiles in 'sharding' define.
+bool IsSubTilingOrEqualSharding(const Shape& shape,
+                                const HloSharding& potential_subsharding,
+                                const HloSharding& sharding);
 
 // Returns true if the lhs sharding is preferable over the rhs sharding.
 // The most specific sharding is tile maximal followed by single device tile
@@ -172,12 +183,14 @@ GatherOutputShardingFromOperandOperandPassthroughDimensions(
 // Returns an output sharding of gather by passing through the data operand's
 // sharding on index parallel dimensions
 std::optional<HloSharding> GatherOperandShardingFromOutputParallelDimensions(
-    const HloSharding& output_sharding, const HloScatterInstruction& scatter);
+    const HloSharding& output_sharding, const HloScatterInstruction& scatter,
+    const CallGraph& call_graph);
 
 // Returns a data operand sharding of gather by passing through the output's
 // sharding.
 std::optional<HloSharding> GatherOperandShardingFromOutput(
-    const HloSharding& output_sharding, const HloInstruction& hlo);
+    const HloSharding& output_sharding, const HloInstruction& hlo,
+    const CallGraph& call_graph);
 
 // Returns the slice size for a scatter with given operand and update shapes.
 std::vector<int64_t> GetScatterSliceSize(const Shape& operand_shape,
@@ -193,7 +206,7 @@ std::optional<HloSharding> ScatterOutputShardingFromUpdate(
 // sharding.
 std::optional<HloSharding> ScatterUpdateShardingFromOutput(
     const HloSharding& per_output_sharding,
-    const HloScatterInstruction& scatter);
+    const HloScatterInstruction& scatter, const CallGraph& call_graph);
 
 // Returns an update operand sharding of scatter by passing through the output's
 // sharding on operand pass-through dimensions.
@@ -211,7 +224,8 @@ ScatterUpdateShardingFromOutputOperandPassthroughDimensions(
 // Returns an update operand sharding of scatter by passing through the output's
 // sharding on index parallel dimensions.
 std::optional<HloSharding> ScatterUpdateShardingFromOutputParallelDimensions(
-    const HloSharding& output_sharding, const HloScatterInstruction& scatter);
+    const HloSharding& output_sharding, const HloScatterInstruction& scatter,
+    const CallGraph& call_graph);
 
 // Returns an output sharding of gather or update operand sharding of scatter by
 // passing through the indices' sharding on index parallel dimensions.
@@ -268,15 +282,16 @@ std::optional<HloSharding> TransposeShardingWithCollapsedDims(
 
 // Returns the iota dimension if maybe_iota is an kIota instruction or
 // equivalent to kIota.
-std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota);
+std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota,
+                                           const CallGraph& call_graph);
 
 // Returns identified parallel dimensions of operands and indices for Gather.
 std::optional<GatherScatterParallelDims> GetGatherParallelBatchDims(
-    const HloInstruction& hlo);
+    const HloInstruction& hlo, const CallGraph& call_graph);
 
 // Returns identified parallel dimensions of operands and indices for Scatter.
 std::optional<GatherScatterParallelDims> GetScatterParallelBatchDims(
-    const HloInstruction& hlo);
+    const HloInstruction& hlo, const CallGraph& call_graph);
 
 // Returns the parallel dimensions of the output of a gather based on the
 // parallel dimensions of the operands and indices.
@@ -363,6 +378,13 @@ GroupedSharding GetGroupedReplicatedSharding(const int64_t num_groups,
 // Get group sharding for each manual subgroup.
 GroupedSharding GetManualSubgroupSharding(const HloSharding& sharding);
 
+// Create a group sharding over the partially replicated dimension re-using an
+// existing device group subdivision to avoid unexpected devices reordering.
+std::optional<GroupedSharding>
+PartialReplicatedGroupShardingWithAssignedDeviceGroups(
+    const HloSharding& sharding, int64_t num_shards,
+    const std::vector<std::vector<int64_t>>& device_groups);
+
 // Reconstructs the ungrouped sharding from a GroupedSharding.
 HloSharding UngroupSharding(const GroupedSharding& grouped_sharding);
 
@@ -382,6 +404,17 @@ HloSharding SplitShardingDimension(const HloSharding& sharding,
 // dimensions[dimension] * dimensions[dimension+1}.
 HloSharding MergeShardingDimension(const HloSharding& sharding,
                                    int64_t dimension);
+
+// Creates a tuple sharding by combining sharding on the elements of the tuple.
+// If none of the elements have a sharding, return nullptr.
+std::shared_ptr<const HloSharding> CreateTupleSharding(
+    const Shape& shape, absl::Span<const HloInstruction* const> elements);
+
+// Tests whether the sort operand is sharded along the sort dimension and there
+// exists a free (i.e., unsharded) dimension to move the sharding into.
+bool IsSortOperandShardingMovable(const HloInstruction* sort_operand,
+                                  int64_t sort_dim);
+
 }  // namespace hlo_sharding_util
 }  // namespace xla
 

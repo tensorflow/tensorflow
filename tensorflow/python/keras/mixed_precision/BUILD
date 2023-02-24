@@ -17,6 +17,7 @@
 #   Contains the Keras Mixed Precision API (TensorFlow version).
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         # TODO(scottzhu): Remove these two deps and convert the test to integration test.
         "//tensorflow/python/distribute:__pkg__",  # For collective_all_reduce_strategy_test
@@ -88,6 +89,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:ps_values",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/keras/distribute",
         "//tensorflow/python/types",
     ],

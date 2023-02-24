@@ -306,7 +306,7 @@ def UnrollBatchMatMulPass : Pass<"tf-unroll-batch-matmul", "mlir::func::FuncOp">
   let constructor = "TF::CreateUnrollBatchMatMulPassPass()";
 }
 
-def ClusterFormationPass : Pass<"tf-device-cluster-formation", "mlir::func::FuncOp"> {
+def ClusterFormationPass : Pass<"tf-device-cluster-formation", "mlir::ModuleOp"> {
   let summary = "Form clusters from instructions assigned to same device";
   let constructor = "TFDevice::CreateClusterFormationPass()";
   let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
@@ -368,6 +368,17 @@ def LegalizeTFGToTFPass : Pass<"tfe-legalize-tfg", "ModuleOp"> {
 def ReplicateToIslandPass : Pass<"tf-replicate-to-island", "mlir::func::FuncOp"> {
   let summary = "Lowers device replicate to executor islands";
   let constructor = "TFDevice::CreateReplicateToIslandPass()";
+  let options = [
+    Option<"legacy_graph_export_", "legacy-graph-export", "bool",
+           /*default=*/"true",
+           "Determines whether or not this pass should execute logic that is "
+           "reserved for the legacy graph export pipeline to maintain expected "
+           "invariants. In the case of this pass, that means manually propagating "
+           "controls to lifted parallel execute regions to the graph fetch to "
+           "ensure the ops execute, as well as determining whether or not the "
+           "islands created by this pass should be split after the replicated "
+           "ops have been lifted.">
+  ];
 }
 
 def ReplicaIDToDeviceOrdinalPass : Pass<"tf-replica-id-to-device-ordinal", "mlir::func::FuncOp"> {
@@ -386,6 +397,27 @@ def ConvertReadonlyReferenceVariablesToResourceVariablesPass :
   Pass<"tf-readonly-references-to-resources", "mlir::func::FuncOp"> {
   let summary = "Convert readonly reference variables to resource variables.";
   let constructor = "TF::CreateConvertReadonlyReferenceVariablesToResourceVariablesPass()";
+}
+
+def ReplicateTensorListInitOpsPass : Pass<"tf-replicate-tensor-list-init-ops", "mlir::func::FuncOp"> {
+  let summary =
+    "Replicate TensorList init ops for correct shape assignments in shape inference";
+
+  let description = [{
+    If we pass same TensorList to a while op as multiple arguments or just use
+    the same TensorList at multiple places and assign different
+    TensorListSetItem to elements of TensorList, the shape inference is then
+    unable to identify the Shape of these args and thus the input TensorList
+    shape is unidentifiable.
+    All of these args are supposed to be independent and not related to original
+    creation of TensorList.
+
+    This pass will create multiple instances of TensorList for each arg of the
+    while op and each use and thus there will be not a conflict in resolving the
+    shape of these different inputs.
+  }];
+
+  let constructor = "TF::CreateReplicateTensorListInitOpsPass()";
 }
 
 def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
@@ -902,6 +934,24 @@ def ExecutorTPUV1IslandInliningPass : Pass<"tf-executor-tpu-v1-island-inlining",
   }];
 
   let constructor = "tf_executor::CreateTFExecutorTPUV1IslandInliningPass()";
+}
+
+def TPUPartitionedOpConversionPass : Pass<"tf-tpu-partitioned-op-conversion", "mlir::func::FuncOp"> {
+  let summary = "Rewrite all TPU Partitioned ops into their V2 counterparts.";
+
+  let constructor = "TFTPU::CreateTPUPartitionedOpConversionPass()";
+}
+
+def TPUValidateInputsPass : Pass<"tf-tpu-validate-inputs", "ModuleOp"> {
+  let summary = "Validates inputs to the TPU TF/XLA bridge";
+
+  let description = [{
+    This pass checks that the IR has valid input to TPU TF/XLA bridge.
+    It checks the relations of multiple ops. Properties of single ops are
+    checked by the 'verify' method of ops.
+  }];
+
+  let constructor = "TFTPU::CreateTPUValidateInputsPass()";
 }
 
 def TPUClusterFormationPass : Pass<"tf-tpu-cluster-formation", "ModuleOp"> {
@@ -2181,7 +2231,7 @@ def SplitIntoIslandPerOpPass : Pass<"tf-executor-split-into-island-per-op", "mli
         }
     ```
   }];
-  let constructor = "mlir::CreateSplitIntoIslandPerOpPass()";
+  let constructor = "mlir::TF::CreateSplitIntoIslandPerOpPass()";
   let dependentDialects = ["mlir::tf_executor::TensorFlowExecutorDialect"];
 }
 
@@ -2257,6 +2307,15 @@ def BroadcastFoldPass : Pass<"tf-broadcast-fold", "mlir::func::FuncOp"> {
 def ParallelExecuteToIslandsPass : Pass<"tf-parallel-execute-to-islands", "mlir::func::FuncOp"> {
   let summary = "Lowers device parallel_execute to executor islands";
   let constructor = "TFDevice::CreateParallelExecuteToIslandsPass()";
+  let options = [
+    Option<"legacy_graph_export_", "legacy-graph-export", "bool",
+           /*default=*/"true",
+           "Determines whether or not this pass should execute logic that is "
+           "reserved for the legacy graph export pipeline to maintain expected "
+           "invariants. In the case of this pass, that means manually propagating "
+           "controls to lifted parallel execute regions to the graph fetch to "
+           "ensure the ops execute.">
+  ];
 }
 
 def ConstantOpDeviceAssignmentPass : Pass<"constant-op-device-assignment", "ModuleOp"> {
@@ -2345,7 +2404,7 @@ def DeviceIndexSelectorPass : Pass<"tf-device-index-selector", "mlir::func::Func
   let constructor = "TF::CreateDeviceIndexSelectorPass()";
 }
 
-def OrderByDialectPass : Pass<"tf-order-by-dialect", "mlir::func::FuncOp"> {
+def OrderByDialectPass : Pass<"tf-order-by-dialect", "mlir::ModuleOp"> {
   let summary = "Reorders ops so ops of the same dialect are next to each other.";
   let description = [{
       Performs a reordering of ops so that
@@ -2464,6 +2523,59 @@ def RemoveUnusedWhileResultsPass : Pass<"tf-remove-unused-while-results", "mlir:
   let constructor = "TF::CreateRemoveUnusedWhileResultsPass()";
 }
 
+def HoistLoopInvariantPass : Pass<"tf-hoist-loop-invariant", "mlir::func::FuncOp"> {
+  let summary = "Hoists loop invariant ops to the outside of the loop";
+   let description = [{
+      Hoists loop invariant to the outside of the loop. The pass is similar to
+      LoopInvariantCodeMotion pass, but it also hoists ReadVariableOps,
+      if the variable is read only.
+
+      For example, the following pseudo MLIR code (types are left out for
+      brevity)
+      ```mlir
+        func.func @hoist_loop_invariant(%arg0, %arg1) {
+	  %var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
+          %results:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+          ^bb0(%arg2, %arg3):
+            %0 = "tf.OpA"() {is_stateless = true}
+            "tf.Yield"(%0)
+          }, {
+          ^bb0(%arg2, %arg3):
+	    %1 = "tf.ReadVariableOp"(%var)
+            %2 = "tf.OpB"(%1) {is_stateless = true}
+            %3 = "tf.OpC"(%arg2, %2) {is_stateless = true}
+            %4 = "tf.OpD"(%arg3, %2) {is_stateless = true}
+            "tf.Yield"(%3, %4)
+          }) {is_stateless = true}
+          return %results#0, %results#1
+        }
+      ```
+      would be transformed to
+      ```mlir
+       func.func @hoist_loop_invariant(%arg0, %arg1) {
+	  %var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
+	  %1 = "tf.ReadVariableOp"(%var)
+          %2 = "tf.OpB"(%1) {is_stateless = true}
+          %results:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+          ^bb0(%arg2, %arg3):
+            %0 = "tf.OpA"() {is_stateless = true}
+            "tf.Yield"(%0)
+          }, {
+          ^bb0(%arg2, %arg3):
+            %3 = "tf.OpC"(%arg2, %2) {is_stateless = true}
+            %4 = "tf.OpD"(%arg3, %2) {is_stateless = true}
+            "tf.Yield"(%3, %4)
+          }) {is_stateless = true}
+          return %results#0, %results#1
+        }
+      ```
+      The `tf.ReadVariableOp` and `tf.OpB` can be hoisted to the outside of
+      the loop.
+
+  }];
+  let constructor = "TF::CreateHoistLoopInvariantPass()";
+}
+
 def LocalizeVarHandlesPass : Pass<"tf-localize-var-handles", "ModuleOp"> {
   let summary = "Creates VarHandleOps next to the operations that use them.";
   let description = [{
@@ -2495,7 +2607,7 @@ def LocalizeVarHandlesPass : Pass<"tf-localize-var-handles", "ModuleOp"> {
   let constructor = "TF::CreateLocalizeVarHandlesPass()";
 }
 
-def StripTfAttributesPass : Pass<"tf-strip-tf-attributes", "func::FuncOp"> {
+def StripTfAttributesPass : Pass<"tf-strip-tf-attributes", "ModuleOp"> {
   let summary = "Removes TF specific attributes";
   let description = [{
       Removes attributes that are TF specific (start with "tf.") or that
@@ -2503,4 +2615,16 @@ def StripTfAttributesPass : Pass<"tf-strip-tf-attributes", "func::FuncOp"> {
       to other dialects, to remove any TF remnants.
   }];
   let constructor = "TF::CreateStripTfAttributesPass()";
+}
+
+def NameAnonymousIteratorsPass : Pass<"tf-name-anonymous-iterators", "ModuleOp"> {
+  let summary = "Converts anonymous iterators to named iterators";
+  let description = [{
+      This converts AnonymousIterator ops to Iterator, thus giving them a name.
+      For example, this will convert
+        %0 = "tf.AnonymousIteratorV3"() {...}
+      to
+        %0 = "tf.Iterator"() {shared_name = "_iterator1", ...}
+  }];
+  let constructor = "TF::CreateNameAnonymousIteratorsPass()";
 }

@@ -563,7 +563,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     func.return %1 : tensor<2xi32>
   }
 
-  // Tests extraction of a single outside compiled cluster inside a tf.IfRegion op.
+  // Tests extraction of a single outside compiled cluster inside a tf.IfRegion
+  // op. Check that we mark the rewritten control-flow as stateful even though
+  // the original control-flow is not (this is due to added side-effecting
+  // communication ops).
 
   // CHECK-LABEL: func @outside_compiled_ops_inside_tf_if
   func.func @outside_compiled_ops_inside_tf_if(%arg0: tensor<2xi32>) -> tensor<2xi32> {
@@ -583,7 +586,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NOT:          "tf._XlaSendFromHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK:              "tf.Yield"() : () -> ()
     // CHECK:            _else_func_name = "test_else_name"
-    // CHECK-SAME        _then_func_name = "test_then_name"
+    // CHECK-SAME:       _then_func_name = "test_then_name"
+    // CHECK-SAME:       is_stateless = false
     // CHECK:          "tf_device.cluster"
     // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"
@@ -595,6 +599,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME:         recv_key = "host_compute_channel_0_retvals"
     // CHECK-SAME:         send_key = "host_compute_channel_0_args"
     // CHECK-NEXT:         "tf.Yield"() : () -> ()
+    // CHECK:            is_stateless = false
     %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<2xi32>) {n = 2 : i32} {
       %2 = "tf_device.cluster"() ({
         %3 = "tf.A"() : () -> (tensor<2xi32>)
@@ -602,11 +607,11 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
         %6 = "tf.G"() : () -> (tensor<i1>)
 
         "tf.IfRegion"(%6) ({
-          "tf.D"(%4, %3) {_xla_outside_compilation = "cluster1"} : (tensor<2xi32>, tensor<2xi32>) -> ()
+          "tf.D"(%4, %3) {_xla_outside_compilation = "cluster1", is_stateless = true} : (tensor<2xi32>, tensor<2xi32>) -> ()
           "tf.Yield"() : () -> ()
         }, {
           "tf.Yield"() : () -> ()
-        }) { is_stateless = false, _then_func_name = "test_then_name", _else_func_name = "test_else_name"} : (tensor<i1>) -> ()
+        }) { is_stateless = true, _then_func_name = "test_then_name", _else_func_name = "test_else_name"} : (tensor<i1>) -> ()
 
         %5 = "tf.E"() : () -> tensor<2xi32>
         tf_device.return %5 : tensor<2xi32>
@@ -1023,7 +1028,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     func.return %1 : tensor<2xi32>
   }
 
-  // Tests extraction of a single outside compiled cluster inside a tf.WhileRegion op body.
+  // Tests extraction of a single outside compiled cluster inside a
+  // tf.WhileRegion op body. Check that we mark the rewritten control-flow as
+  // stateful even though the original control-flow is not (this is due to added
+  // side-effecting communication ops).
 
   // CHECK-LABEL: func @outside_compiled_ops_inside_tf_while_body
   func.func @outside_compiled_ops_inside_tf_while_body(%arg0: tensor<2xi32>) -> tensor<2xi32> {
@@ -1042,6 +1050,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:              %[[D_OUTPUT:[0-9]*]] = "tf.D"
     // CHECK:              "tf._XlaSendFromHostV2"(%[[D_OUTPUT]], %[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-NEXT:         "tf.Yield"
+    // CHECK:            is_stateless = false
     // CHECK:          "tf_device.cluster"
     // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"
@@ -1053,6 +1062,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:              %[[C_OUTPUT:[0-9]*]] = "tf.C"
     // CHECK-NEXT:         %[[HOST_COMPUTE_OUTPUT:[0-9]*]] = "tf._XlaHostComputeMlir"
     // CHECK-NEXT:         "tf.Yield"(%[[C_OUTPUT]], %[[HOST_COMPUTE_OUTPUT]])
+    // CHECK:            is_stateless = false
     %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<2xi32>) {n = 2 : i32} {
       %2 = "tf_device.cluster"() ({
         %3 = "tf.A"() : () -> (tensor<3xf32>)
@@ -1061,14 +1071,14 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
         "tf.WhileRegion"(%4, %3) ({
         ^bb0(%arg1: tensor<i32>, %arg2: tensor<3xf32>):
-          %7 = "tf.H"(%arg1) :  (tensor<i32>) -> tensor<i1>
+          %7 = "tf.H"(%arg1) {is_stateless = true} :  (tensor<i32>) -> tensor<i1>
           "tf.Yield"(%7) : (tensor<i1>) -> ()
         }, {
         ^bb0(%arg1: tensor<i32>, %arg2: tensor<3xf32>):
-          %8 = "tf.C"(%arg1) : (tensor<i32>) -> tensor<i32>
-          %9 = "tf.D"(%arg1, %arg2) {_xla_outside_compilation = "cluster1"} : (tensor<i32>, tensor<3xf32>) -> tensor<3xf32>
+          %8 = "tf.C"(%arg1) {is_stateless = true} : (tensor<i32>) -> tensor<i32>
+          %9 = "tf.D"(%arg1, %arg2) {_xla_outside_compilation = "cluster1", is_stateless = true} : (tensor<i32>, tensor<3xf32>) -> tensor<3xf32>
           "tf.Yield"(%8, %9) : (tensor<i32>, tensor<3xf32>) -> ()
-        }) { is_stateless = false} : (tensor<i32>, tensor<3xf32>) -> (tensor<i32>, tensor<3xf32>)
+        }) {is_stateless = true} : (tensor<i32>, tensor<3xf32>) -> (tensor<i32>, tensor<3xf32>)
 
         %5 = "tf.E"() : () -> tensor<2xi32>
         tf_device.return %5 : tensor<2xi32>
@@ -1529,7 +1539,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:            "tf._XlaSendFromHost"(%[[B_OUTPUT]]
     // CHECK:          "tf_device.cluster"
     // CHECK:            %[[HOST_OUTPUT:[0-9]*]] = "tf._XlaHostComputeMlir"()
-    // CHECK-SAME:       host_mlir_module = "module  {\0A  func.func @host_func() -> tensor<?xi32> {\0A    %0 = \22tf.B\22() {_xla_outside_compilation = \22cluster1\22} : () -> tensor<?xi32> loc(#loc1)\0A    return %0 : tensor<?xi32> loc(#loc1)\0A  }
+    // CHECK-SAME:       host_mlir_module = "module {\0A func.func @host_func() -> tensor<?xi32> {\0A %0 = \22tf.B\22() {_xla_outside_compilation = \22cluster1\22} : () -> tensor<?xi32>\0A return %0 : tensor<?xi32>\0A }
     // CHECK:            "tf.C"(%[[HOST_OUTPUT]])
     "tf_device.cluster"() ({
       %0 = "tf.B"() {_xla_outside_compilation = "cluster1"} : () -> (tensor<?xi32>)
@@ -1768,6 +1778,55 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     func.return %1 : tensor<2xi32>
   }
 
+  // Check that a non-XLA value is not routed through the XLA side.
+
+  // CHECK-LABEL: func @nonxla_static
+  func.func @nonxla_static() -> () {
+    "tf_device.cluster"() ({
+      %0 = "tf.A"() : () -> (tensor<i32>)
+      %1 = "tf.B"(%0) {_xla_outside_compilation = "cluster0"} : (tensor<i32>) -> tensor<!tf_type.string>
+      %2 = "tf.C"(%1) {_xla_outside_compilation = "cluster0"} : (tensor<!tf_type.string>) -> tensor<i32>
+      "tf.D"(%2) : (tensor<i32>) -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
+    func.return
+  }
+
+  // Check that a non-XLA value with dynamic shape is not routed through the XLA side.
+
+  // CHECK-LABEL: func @nonxla_dynamic
+  func.func @nonxla_dynamic() -> () {
+    "tf_device.cluster"() ({
+      %0 = "tf.A"() : () -> (tensor<i32>)
+      %1 = "tf.B"(%0) {_xla_outside_compilation = "cluster0"} : (tensor<i32>) -> tensor<?x!tf_type.string>
+      %2 = "tf.C"(%1) {_xla_outside_compilation = "cluster0"} : (tensor<?x!tf_type.string>) -> tensor<i32>
+      "tf.D"(%2) : (tensor<i32>) -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
+    func.return
+  }
+
+  // Reproducer for an operand #x does not dominate this use
+
+  // CHECK-LABEL: func @op_dominate_repro
+  func.func @op_dominate_repro(%writer: tensor<*x!tf_type.resource> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"}) -> () {
+    %step = "tf.Const"() {device = "", value = dense<0> : tensor<i64>} : () -> tensor<i64>
+    %tag = "tf.Const"() {device = "", value = dense<""> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
+    %wmetadata = "tf.Const"() {device = "", value = dense<""> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
+    %pred = "tf.Const"() {device = "", value = dense<0> : tensor<i1>} : () -> tensor<i1>
+    "tf_device.cluster"() ({
+      "tf.IfRegion"(%pred) ({
+        %wtensor = "tf.Const"() {device = "", value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
+        "tf.WriteSummary"(%writer, %step, %wtensor, %tag, %wmetadata) {_xla_outside_compilation = "auto"} : (tensor<*x!tf_type.resource>, tensor<i64>, tensor<f32>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> ()
+        "tf.WriteSummary"(%writer, %step, %wtensor, %tag, %wmetadata) {_xla_outside_compilation = "auto"} : (tensor<*x!tf_type.resource>, tensor<i64>, tensor<f32>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> ()
+        "tf.Yield"() : () -> ()
+      }, {
+        "tf.Yield"() : () -> ()
+      }) {is_stateless = false} : (tensor<i1>) -> ()
+      tf_device.return
+    }) {_replication_info = "cluster__train_single_step", _xla_compile_device_type = "TPU", allow_soft_placement = true, computation_shape = [], device = "", device_assignment = [], host_compute_core = [], num_cores_per_replica = 1 : i64, num_replicas = 1, padding_map = [], step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", tpu_compile_options_proto = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> ()
+    return
+  }
 }
 
 // -----
@@ -1957,3 +2016,25 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 }
 
+// -----
+
+// Tests that an error is reported when an op with _xla_outside_compilation has
+// an ancestor with _xla_outside_compilation.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func.func @outside_comp_ancestor() {
+    "tf_device.cluster"() ({
+      "tf.WhileRegion"() ({
+      ^bb0():
+        // expected-error @+1 {{has an ancestor marked for outside compilation}}
+        %1 = "tf.A"() {_xla_outside_compilation = "cluster1"} : () -> tensor<i1>
+	"tf.Yield"(%1) : (tensor<i1>) -> ()
+      }, {
+      ^bb0():
+        "tf.Yield"() : () -> ()
+      }) {_xla_outside_compilation = "cluster1", is_stateless = true} : () -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
+    func.return
+  }
+}

@@ -217,7 +217,7 @@ bool NotFromQuantOpOrSameQuantType(mlir::Value val, mlir::TypeAttr qtype_attr) {
 
   // Ignore shape details - we're really only trying to
   // check if quantization is the same.
-  auto stripped_src_qtype = GetShapeStrippedType(q_op.qtypeAttr());
+  auto stripped_src_qtype = GetShapeStrippedType(q_op.getQtypeAttr());
   auto stripped_qtype = GetShapeStrippedType(qtype_attr);
   return stripped_src_qtype == stripped_qtype;
 }

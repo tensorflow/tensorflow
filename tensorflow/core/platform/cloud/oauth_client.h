@@ -22,42 +22,10 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/cloud/oauth_client.h"
 
 namespace tensorflow {
-
-/// OAuth 2.0 client.
-class OAuthClient {
- public:
-  OAuthClient();
-  explicit OAuthClient(
-      std::unique_ptr<HttpRequest::Factory> http_request_factory, Env* env);
-  virtual ~OAuthClient() {}
-
-  /// \brief Retrieves a bearer token using a private key.
-  ///
-  /// Retrieves the authentication bearer token using a JSON file
-  /// with the client's private key.
-  virtual Status GetTokenFromServiceAccountJson(
-      Json::Value json, StringPiece oauth_server_uri, StringPiece scope,
-      string* token, uint64* expiration_timestamp_sec);
-
-  /// Retrieves a bearer token using a refresh token.
-  virtual Status GetTokenFromRefreshTokenJson(Json::Value json,
-                                              StringPiece oauth_server_uri,
-                                              string* token,
-                                              uint64* expiration_timestamp_sec);
-
-  /// Parses the JSON response with the token from an OAuth 2.0 server.
-  virtual Status ParseOAuthResponse(StringPiece response,
-                                    uint64 request_timestamp_sec, string* token,
-                                    uint64* expiration_timestamp_sec);
-
- private:
-  std::unique_ptr<HttpRequest::Factory> http_request_factory_;
-  Env* env_;
-  TF_DISALLOW_COPY_AND_ASSIGN(OAuthClient);
-};
-
+using tsl::OAuthClient;  // NOLINT(misc-unused-using-decls)
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_CLOUD_OAUTH_CLIENT_H_

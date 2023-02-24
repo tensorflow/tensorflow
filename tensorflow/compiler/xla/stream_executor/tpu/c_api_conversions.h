@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"

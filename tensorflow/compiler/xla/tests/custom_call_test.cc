@@ -13,24 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <memory>
 #include <utility>
 
 #include "absl/base/dynamic_annotations.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/runtime/ffi/ffi_api.h"
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
+#include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/test.h"
 
@@ -164,6 +168,12 @@ XLA_TEST_F(CustomCallTest, UsedInOtherComputations) {
 }
 
 XLA_TEST_F(CustomCallTest, InputAndOutputLayoutDiffer) {
+  if (IsMlirLoweringEnabled()) {
+    // The MLIR pipeline does /not/ transpose the output here, and there's no
+    // obvious reason why it should.
+    GTEST_SKIP() << "Appears to test an XLA current implementation detail";
+  }
+
   auto module = CreateNewVerifiedModule();
   auto b = HloComputation::Builder(TestName());
 
@@ -196,7 +206,7 @@ XLA_TEST_F(CustomCallTest, LayoutConstrained) {
       b.AddInstruction(HloInstruction::CreateParameter(0, r2f32_, "p"));
 
   const Shape& r2f32_dim0_major =
-      ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0});
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0});
   auto custom_call = b.AddInstruction(HloInstruction::CreateCustomCall(
       r2f32_dim0_major, {input}, "Add1ToValues", {r2f32_dim0_major}));
   b.AddInstruction(
@@ -261,7 +271,7 @@ XLA_TEST_F(CustomCallTest, ReportsFailure) {
   module->AddEntryComputation(builder.Build());
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tensorflow::error::Code::INTERNAL);
+  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
   EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Failed: 42.0"));
 }
 
@@ -285,7 +295,7 @@ XLA_TEST_F(CustomCallTest, ReportsFirstFailure) {
   module->AddEntryComputation(builder.Build());
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tensorflow::error::Code::INTERNAL);
+  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
   EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Failed: 1.0"));
 }
 
@@ -308,11 +318,15 @@ XLA_TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tensorflow::error::Code::INTERNAL);
+  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
   EXPECT_THAT(status.error_message(), HasSubstr("Failed: 1.0"));
 }
 
 XLA_TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
+  if (IsMlirLoweringEnabled()) {
+    GTEST_SKIP() << "Invalid values unsupported by MLIR";
+  }
+
   const char* const kModuleStr = R"(
     HloModule m
     ENTRY test {
@@ -327,7 +341,7 @@ XLA_TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tensorflow::error::Code::INTERNAL);
+  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
   EXPECT_THAT(status.error_message(),
               HasSubstr("Fail with raw backend config str: foo"));
 }
@@ -344,6 +358,62 @@ XLA_TEST_F(CustomCallClientAPITest, IllegalCustomCallTarget) {
   StatusOr<std::unique_ptr<GlobalData>> result =
       Execute(&builder, /*arguments=*/{});
   EXPECT_FALSE(result.ok());
+}
+
+//===----------------------------------------------------------------------===//
+// XLA runtime FFI modules is an external version of custom calls (C API based).
+//===----------------------------------------------------------------------===//
+namespace ffi = ::xla::runtime::ffi;
+
+struct TestFfiModule : ffi::StatelessModule {
+  explicit TestFfiModule(const XLA_FFI_Api* api)
+      : StatelessModule(api, "TestFfiModule",
+                        {{"ffi.add_const", FFI_AddConst}}) {}
+
+  XLA_FFI_DEFINE_FUNCTION(FFI_AddConst, AddConst,
+                          ffi::Ffi::Binding()
+                              .Arg<ffi::StridedBufferArg>()
+                              .Arg<ffi::StridedBufferArg>()
+                              .Attr<float>("cst"));
+
+  static ffi::FfiStatus AddConst(ffi::StridedBufferArg src,
+                                 ffi::StridedBufferArg dst, float cst) {
+    if (src.dtype != ffi::PrimitiveType::F32 ||
+        dst.dtype != ffi::PrimitiveType::F32)
+      return ffi::FfiStatus::Internal("Unsupported data type");
+
+    if (src.sizes.size() != dst.sizes.size())
+      return ffi::FfiStatus::Internal("Sizes must be the same");
+
+    size_t num_values = 1;
+    for (unsigned d = 0; d < src.sizes.size(); ++d) num_values *= src.sizes[d];
+
+    const float* src_data = reinterpret_cast<float*>(src.data);
+    float* dst_data = reinterpret_cast<float*>(dst.data);
+
+    for (size_t i = 0; i < num_values; ++i) dst_data[i] = src_data[i] + cst;
+
+    return ffi::FfiStatus::Ok();
+  }
+};
+
+XLA_REGISTER_FFI_MODULE(std::make_unique<TestFfiModule>(GetXlaFfiApi()));
+
+XLA_TEST_F(CustomCallClientAPITest, FfiAdd) {
+  // TODO(ezhulenev): Remove once XLA runtime is enabled by default.
+  mutable_debug_options()->set_xla_cpu_use_xla_runtime(true);
+
+  XlaBuilder b(TestName());
+  CustomCall(&b, "ffi.add_const",
+             /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128})},
+             ShapeUtil::MakeShape(F32, {128}),
+             /*opaque=*/"{ cst = 2.0 : f32 }",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
+  EXPECT_THAT(result.data<float>(), ::testing::Each(44.0));
 }
 
 }  // namespace

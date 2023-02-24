@@ -73,5 +73,37 @@ TEST(MetricsTest, TestCheckpointSize) {
   EXPECT_EQ(CheckpointSize("foo", 10).value(), 1);
 }
 
+TEST(MetricsTest, TestWriteFingerprint) {
+  EXPECT_EQ(SavedModelWriteFingerprint().value(), "");
+  SavedModelWriteFingerprint().Set("foo");
+  EXPECT_EQ(SavedModelWriteFingerprint().value(), "foo");
+  SavedModelWriteFingerprint().Set("bar");
+  EXPECT_EQ(SavedModelWriteFingerprint().value(), "bar");
+}
+
+TEST(MetricsTest, TestWritePath) {
+  EXPECT_EQ(SavedModelWritePath().value(), "");
+  SavedModelWritePath().Set("foo");
+  EXPECT_EQ(SavedModelWritePath().value(), "foo");
+  SavedModelWritePath().Set("bar");
+  EXPECT_EQ(SavedModelWritePath().value(), "bar");
+}
+
+TEST(MetricsTest, TestReadFingerprint) {
+  EXPECT_EQ(SavedModelReadFingerprint().value(), "");
+  SavedModelReadFingerprint().Set("foo");
+  EXPECT_EQ(SavedModelReadFingerprint().value(), "foo");
+  SavedModelReadFingerprint().Set("bar");
+  EXPECT_EQ(SavedModelReadFingerprint().value(), "bar");
+}
+
+TEST(MetricsTest, TestReadPath) {
+  EXPECT_EQ(SavedModelReadPath().value(), "");
+  SavedModelReadPath().Set("foo");
+  EXPECT_EQ(SavedModelReadPath().value(), "foo");
+  SavedModelReadPath().Set("bar");
+  EXPECT_EQ(SavedModelReadPath().value(), "bar");
+}
+
 }  // namespace metrics
 }  // namespace tensorflow

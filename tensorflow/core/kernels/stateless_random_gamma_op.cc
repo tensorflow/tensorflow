@@ -19,10 +19,14 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/stateless_random_gamma_op.h"
 
+#include <tuple>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/kernels/random_ops_util.h"
 #include "tensorflow/core/kernels/stateless_random_ops.h"
+#include "tensorflow/core/kernels/stateless_random_ops_v2.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/platform/errors.h"
@@ -57,8 +61,13 @@ template <typename T>
 struct StatelessRandomGammaFunctor<CPUDevice, T> {
   static Status Fill(OpKernelContext* ctx, const T* alpha_flat,
                      int64_t num_samples, int64_t num_alphas,
-                     int64_t samples_per_alpha,
-                     const random::PhiloxRandom& random, T* samples_flat) {
+                     int64_t samples_per_alpha, const uint64* key,
+                     const uint64* counter, random::PhiloxRandom random,
+                     T* samples_flat) {
+    if (key != nullptr && counter != nullptr) {
+      random = GetPhiloxRandomFromCounterKeyMem(counter, key);
+    }
+
     typedef random::NormalDistribution<random::PhiloxRandom, double> Normal;
     typedef random::UniformDistribution<random::PhiloxRandom, double> Uniform;
 
@@ -191,72 +200,105 @@ struct StatelessRandomGammaFunctor<CPUDevice, T> {
 
 namespace {
 
-template <typename Device, typename T>
-class StatelessRandomGammaOp : public OpKernel {
- public:
-  explicit StatelessRandomGammaOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
-
-  void Compute(OpKernelContext* context) override {
-    // Sanitize input
-    const Tensor& shape_t = context->input(0);
-    const Tensor& seed_t = context->input(1);
-    TensorShape shape;
-    OP_REQUIRES_OK(context, tensor::MakeShape(shape_t, &shape));
-    OP_REQUIRES(context, seed_t.dims() == 1 && seed_t.dim_size(0) == 2,
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_t.shape().DebugString()));
-
-    // Allocate output
-    Tensor* output;
-    OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output));
-    if (shape.num_elements() == 0) return;
-
-    random::PhiloxRandom::Key key;
-    random::PhiloxRandom::ResultType counter;
-    OP_REQUIRES_OK(context, GenerateKey(seed_t, &key, &counter));
-
-    // Fill in the random numbers
-    Fill(context, random::PhiloxRandom(counter, key), output);
+StatusOr<std::tuple<int64_t, int64_t, int64_t> > GetParams(
+    const Tensor& alpha_t, const TensorShape& samples_shape) {
+  if (!TensorShapeUtils::EndsWith(samples_shape, alpha_t.shape())) {
+    return errors::InvalidArgument(
+        "Shape passed in must end with broadcasted shape.");
   }
 
- private:
-  void Fill(OpKernelContext* ctx, random::PhiloxRandom random, Tensor* output) {
-    const Tensor& alpha_t = ctx->input(2);
+  const int64_t num_alphas = alpha_t.NumElements();
+  if (num_alphas <= 0) {
+    return errors::InvalidArgument(
+        "Input alpha should have non-zero element count, got: ", num_alphas);
+  }
 
+  const int64_t num_samples = samples_shape.num_elements();
+  const int64_t samples_per_alpha = num_samples / num_alphas;
+
+  return std::make_tuple(num_samples, num_alphas, samples_per_alpha);
+}
+
+template <typename Device, typename T>
+class StatelessRandomGammaOp : public StatelessRandomOpBase {
+ public:
+  using StatelessRandomOpBase::StatelessRandomOpBase;
+
+ protected:
+  void Fill(OpKernelContext* ctx, random::PhiloxRandom random,
+            Tensor* output) override {
+    int alpha_input_idx = 2;
+    const Tensor& alpha_t = ctx->input(alpha_input_idx);
     TensorShape samples_shape = output->shape();
-    OP_REQUIRES(ctx, TensorShapeUtils::EndsWith(samples_shape, alpha_t.shape()),
-                errors::InvalidArgument(
-                    "Shape passed in must end with broadcasted shape."));
+    OP_REQUIRES_VALUE(auto params, ctx, GetParams(alpha_t, samples_shape));
+    auto num_samples = std::get<0>(params);
+    auto num_alphas = std::get<1>(params);
+    auto samples_per_alpha = std::get<2>(params);
 
-    const int64_t num_alphas = alpha_t.NumElements();
-    OP_REQUIRES(ctx, num_alphas > 0,
-                errors::InvalidArgument(
-                    "Input alpha should have non-zero element count, got: ",
-                    num_alphas));
-
-    const int64_t num_samples = samples_shape.num_elements();
-    const int64_t samples_per_alpha = num_samples / num_alphas;
     const auto alpha_flat = alpha_t.flat<T>().data();
     auto samples_flat = output->flat<T>().data();
 
-    OP_REQUIRES_OK(ctx, functor::StatelessRandomGammaFunctor<Device, T>::Fill(
-                            ctx, alpha_flat, num_samples, num_alphas,
-                            samples_per_alpha, random, samples_flat));
+    OP_REQUIRES_OK(
+        ctx, functor::StatelessRandomGammaFunctor<Device, T>::Fill(
+                 ctx, alpha_flat, num_samples, num_alphas, samples_per_alpha,
+                 /*key=*/nullptr, /*counter=*/nullptr, random, samples_flat));
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomGammaOp);
 };
 
+// A stateless-random-gamma kernel that takes shape, key, counter and algorithm
+// as the first 4 inputs.
+template <typename Device, typename T>
+class StatelessRandomGammaOpWithKeyCounter
+    : public StatelessRandomOpBaseWithKeyCounter {
+ public:
+  using StatelessRandomOpBaseWithKeyCounter::
+      StatelessRandomOpBaseWithKeyCounter;
+
+ protected:
+  void Fill(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
+            const Tensor& counter, Tensor* output) override {
+    int alpha_input_idx = 4;
+    const Tensor& alpha_t = ctx->input(alpha_input_idx);
+    TensorShape samples_shape = output->shape();
+    OP_REQUIRES_VALUE(auto params, ctx, GetParams(alpha_t, samples_shape));
+    auto num_samples = std::get<0>(params);
+    auto num_alphas = std::get<1>(params);
+    auto samples_per_alpha = std::get<2>(params);
+
+    const auto alpha_flat = alpha_t.flat<T>().data();
+    auto samples_flat = output->flat<T>().data();
+
+    if (alg == RNG_ALG_PHILOX) {
+      auto key_data = key.flat<uint64>().data();
+      auto counter_data = counter.flat<uint64>().data();
+      OP_REQUIRES_OK(ctx, functor::StatelessRandomGammaFunctor<Device, T>::Fill(
+                              ctx, alpha_flat, num_samples, num_alphas,
+                              samples_per_alpha, key_data, counter_data,
+                              random::PhiloxRandom() /*dummy*/, samples_flat));
+    } else {
+      OP_REQUIRES(ctx, false,
+                  errors::InvalidArgument("Unsupported algorithm id: ", alg));
+    }
+  }
+};
+
 // Register CPU kernels for stateless gamma op.
-#define REGISTER_GAMMA_CPU(TYPE)                              \
-  REGISTER_KERNEL_BUILDER(Name("StatelessRandomGammaV2")      \
-                              .Device(DEVICE_CPU)             \
-                              .HostMemory("shape")            \
-                              .HostMemory("seed")             \
-                              .HostMemory("alpha")            \
-                              .TypeConstraint<TYPE>("dtype"), \
-                          StatelessRandomGammaOp<CPUDevice, TYPE>)
+#define REGISTER_GAMMA_CPU(TYPE)                                   \
+  REGISTER_KERNEL_BUILDER(Name("StatelessRandomGammaV2")           \
+                              .Device(DEVICE_CPU)                  \
+                              .HostMemory("shape")                 \
+                              .HostMemory("seed")                  \
+                              .TypeConstraint<TYPE>("dtype"),      \
+                          StatelessRandomGammaOp<CPUDevice, TYPE>) \
+  REGISTER_KERNEL_BUILDER(                                         \
+      Name("StatelessRandomGammaV3")                               \
+          .Device(DEVICE_CPU)                                      \
+          .HostMemory("shape")                                     \
+          .HostMemory("alg")                                       \
+          .TypeConstraint<TYPE>("dtype"),                          \
+      StatelessRandomGammaOpWithKeyCounter<CPUDevice, TYPE>)
 
 TF_CALL_half(REGISTER_GAMMA_CPU);
 TF_CALL_bfloat16(REGISTER_GAMMA_CPU);
@@ -268,13 +310,20 @@ TF_CALL_double(REGISTER_GAMMA_CPU);
 // Register GPU kernels for stateless gamma op.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#define REGISTER_GAMMA_GPU(TYPE)                              \
-  REGISTER_KERNEL_BUILDER(Name("StatelessRandomGammaV2")      \
-                              .Device(DEVICE_GPU)             \
-                              .HostMemory("shape")            \
-                              .HostMemory("seed")             \
-                              .TypeConstraint<TYPE>("dtype"), \
-                          StatelessRandomGammaOp<GPUDevice, TYPE>)
+#define REGISTER_GAMMA_GPU(TYPE)                                   \
+  REGISTER_KERNEL_BUILDER(Name("StatelessRandomGammaV2")           \
+                              .Device(DEVICE_GPU)                  \
+                              .HostMemory("shape")                 \
+                              .HostMemory("seed")                  \
+                              .TypeConstraint<TYPE>("dtype"),      \
+                          StatelessRandomGammaOp<GPUDevice, TYPE>) \
+  REGISTER_KERNEL_BUILDER(                                         \
+      Name("StatelessRandomGammaV3")                               \
+          .Device(DEVICE_GPU)                                      \
+          .HostMemory("shape")                                     \
+          .HostMemory("alg")                                       \
+          .TypeConstraint<TYPE>("dtype"),                          \
+      StatelessRandomGammaOpWithKeyCounter<GPUDevice, TYPE>)
 
 TF_CALL_half(REGISTER_GAMMA_GPU);
 TF_CALL_bfloat16(REGISTER_GAMMA_GPU);

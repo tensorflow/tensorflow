@@ -15,6 +15,7 @@
 """Mid level API for Serving TPU Embeddings."""
 
 from typing import Any, Iterable, Optional, Text, Union, Dict
+from absl import logging
 
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import tpu_strategy
@@ -334,10 +335,17 @@ def _embedding_lookup_for_sparse_tensor(
   Returns:
     Embedding lookup result.
   """
-  if not feature.output_shape and feature.max_sequence_length > 0:
+  inp_rank = inp.shape.rank
+  # The input rank can be None for sequence input tensor.
+  if (
+      not feature.output_shape
+      and feature.max_sequence_length > 0
+      and (inp_rank is None or inp_rank == 2)
+  ):
     batch_size = math_ops.cast(array_ops.shape(inp)[0], dtype=dtypes.int64)
-    sparse_shape = array_ops.stack([batch_size, feature.max_sequence_length],
-                                   axis=0)
+    sparse_shape = array_ops.stack(
+        [batch_size, feature.max_sequence_length], axis=0
+    )
     # TPU Embedding truncates sequences to max_sequence_length, and if we
     # don't truncate, scatter_nd will error out if the index was out of
     # bounds.
@@ -351,7 +359,14 @@ def _embedding_lookup_for_sparse_tensor(
         array_ops.gather(table.read_value(), truncated_inp.values),
         dense_output_shape)
   else:
-    inp_rank = inp.dense_shape.get_shape()[0]
+    if feature.max_sequence_length > 0:
+      logging.warning(
+          (
+              "max_sequence_length setting will be ignored because the rank of"
+              " the input tensor is %d which is not 2."
+          ),
+          inp_rank,
+      )
     if (not feature.validate_weights_and_indices and inp_rank is not None and
         inp_rank <= 2):
       return embedding_ops.embedding_lookup_sparse_v2(

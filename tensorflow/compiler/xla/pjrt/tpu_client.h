@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -89,8 +90,12 @@ class PjRtTpuClient : public PjRtStreamExecutorClient {
   StatusOr<std::string> SerializeExecutable(
       const PjRtLoadedExecutable& executable) const override;
 
+  // For PjRtTpuClient, `options` is mandatory.
+  // This function returns an InvalidArgument error if `std::nullopt` is passed.
+  // TODO(b/237720161): make it actually optional
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
-      absl::string_view serialized, CompileOptions options) override;
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override;
 
  private:
   const std::string platform_version_;

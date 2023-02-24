@@ -32,16 +32,16 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/nnapi/acceleration_test_util.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/kernels/acceleration_test_util.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -178,7 +178,8 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                                      int num_threads,
                                      bool allow_fp32_relax_to_fp16,
                                      bool apply_delegate,
-                                     bool allocate_and_delegate) {
+                                     bool allocate_and_delegate,
+                                     bool use_simple_allocator) {
   input_shapes_ = input_shapes;
   allow_fp32_relax_to_fp16_ = allow_fp32_relax_to_fp16;
   apply_delegate_ = apply_delegate;
@@ -203,7 +204,7 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   uint8_t* buffer_pointer = builder_.GetBufferPointer();
   UpdateOpVersion(buffer_pointer);
 
-  bool use_simple_allocator =
+  use_simple_allocator |=
       tflite::KernelTestDelegateProviders::Get()->ConstParams().Get<bool>(
           tflite::KernelTestDelegateProviders::kUseSimpleAllocator);
 
@@ -288,11 +289,12 @@ TfLiteStatus SingleOpModel::ApplyDelegate() {
 
 TfLiteStatus SingleOpModel::Invoke() { return interpreter_->Invoke(); }
 
-void SingleOpModel::BuildInterpreter(
-    std::vector<std::vector<int>> input_shapes) {
+void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                                     bool use_simple_allocator) {
   BuildInterpreter(input_shapes, /*num_threads=*/-1,
                    /*allow_fp32_relax_to_fp16=*/false,
-                   /*apply_delegate=*/true, /*allocate_and_delegate=*/true);
+                   /*apply_delegate=*/true, /*allocate_and_delegate=*/true,
+                   use_simple_allocator);
 }
 
 // static
@@ -376,6 +378,22 @@ int CountPartitionsExecutedByCpuKernel(const Interpreter* interpreter) {
 
 }  // namespace
 
+/*static*/ AccelerationValidator* AccelerationValidator::Get() {
+  static AccelerationValidator* const validator = new AccelerationValidator();
+  return validator;
+}
+
+void AccelerationValidator::AddCallback(Callback callback) {
+  callbacks_.push_back(std::move(callback));
+}
+
+void AccelerationValidator::Validate(const SingleOpModel& model) const {
+  for (const auto& callback : callbacks_) {
+    if (callback == nullptr) continue;
+    callback(model);
+  }
+}
+
 void SingleOpModel::ExpectOpAcceleratedWithNnapi(const std::string& test_id) {
   std::optional<NnapiAccelerationTestParams> validation_params =
       GetNnapiAccelerationTestParam(test_id);
@@ -407,10 +425,15 @@ void SingleOpModel::ValidateAcceleration() {
   if (GetForceUseNnapi()) {
     ExpectOpAcceleratedWithNnapi(GetCurrentTestId());
   }
+  AccelerationValidator::Get()->Validate(*this);
 }
 
 int SingleOpModel::CountOpsExecutedByCpuKernel() {
   return CountPartitionsExecutedByCpuKernel(interpreter_.get());
+}
+
+int SingleOpModel::CountNumberOfDelegatedPartitions() const {
+  return CountPartitionsDelegatedTo(interpreter_.get(), delegate_);
 }
 
 SingleOpModel::~SingleOpModel() { ValidateAcceleration(); }

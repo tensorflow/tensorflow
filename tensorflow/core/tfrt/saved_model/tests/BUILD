@@ -5,6 +5,7 @@ load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":internal"],
     licenses = ["notice"],
 )
@@ -12,7 +13,6 @@ package(
 package_group(
     name = "internal",
     packages = [
-        # copybara:uncomment "//third_party/auroraml/...",
         "//tensorflow/core/tfrt/saved_model/tests/...",
         "//tensorflow/core/tfrt/tfrt_session/...",
     ],
@@ -561,8 +561,9 @@ genrule(
     exec_tools = ["gen_data"],
 )
 
-tf_cc_test(
-    name = "saved_model_test",
+cc_library(
+    name = "saved_model_testlib",
+    testonly = 1,
     srcs = ["saved_model_test.cc"],
     data = [
         "control_flow_v1/saved_model.pb",
@@ -600,19 +601,40 @@ tf_cc_test(
     deps = [
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/tfrt/fallback:cost_recorder",
         "//tensorflow/core/tfrt/mla:mla_test_utils",
         "//tensorflow/core/tfrt/run_handler_thread_pool:run_handler_concurrent_work_queue",
+        "//tensorflow/core/tfrt/saved_model:saved_model_mira_impl",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "//tensorflow/python/framework:test_ops_kernels",
         "@com_google_googletest//:gtest",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//backends/cpu:core_runtime_alwayslink",
         "@tf_runtime//backends/cpu:tf_ops_alwayslink",
+    ],
+)
+
+tf_cc_test(
+    name = "saved_model_test",
+    srcs = [],
+    tags = ["no_oss"],
+    deps = [
+        ":saved_model_testlib",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "saved_model_test_mlrt",
+    srcs = [],
+    args = ["--enable_mlrt=true"],
+    tags = ["no_oss"],
+    deps = [
+        ":saved_model_testlib",
+        "//tensorflow/core:test_main",
     ],
 )
 

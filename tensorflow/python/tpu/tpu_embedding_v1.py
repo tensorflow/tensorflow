@@ -14,7 +14,7 @@
 # ==============================================================================
 """Mid level API for TPU Embeddings without Embedding Accelerator."""
 
-from typing import Any, Dict, Iterable, Optional, Union, Text
+from typing import Any, Dict, Iterable, Optional, Text, Union
 
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import tpu_strategy
@@ -27,9 +27,9 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_embedding_base
 from tensorflow.python.tpu import tpu_embedding_v2_utils
+from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -334,7 +334,7 @@ class TPUEmbeddingV0(tpu_embedding_base.TPUEmbeddingBase):
       weight = sparse_ops.sparse_tensor_to_dense(weight)
       return inp, weight
 
-    inp, weight = tpu.outside_compilation(
+    inp, weight = tpu_replication.outside_compilation(
         sparse_to_dense_computation, inp=inp, weight=weight)
 
     embeddings = embedding_ops.embedding_lookup_v2(table, inp)
@@ -414,7 +414,7 @@ class TPUEmbeddingV0(tpu_embedding_base.TPUEmbeddingBase):
         inp, weight = inp.to_tensor(), weight.to_tensor()
       return inp, weight
 
-    inp, weight = tpu.outside_compilation(
+    inp, weight = tpu_replication.outside_compilation(
         ragged_to_dense_outside_compilation,
         inp=inp,
         weight=weight,

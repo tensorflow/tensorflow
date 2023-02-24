@@ -22,9 +22,17 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
+
+// Defined in .cc file to avoid inlining these large routines
+Shape::Shape() = default;
+Shape::~Shape() = default;
+Shape::Shape(const Shape&) = default;
+Shape::Shape(Shape&&) = default;
+Shape& Shape::operator=(const Shape&) = default;
 
 Shape::Shape(const ShapeProto& shape_proto) {
   set_element_type(shape_proto.element_type());
@@ -86,6 +94,14 @@ ShapeProto Shape::ToProto() const {
   return proto;
 }
 
+void Shape::Print(Printer* printer, bool print_layout) const {
+  if (print_layout) {
+    ShapeUtil::PrintHumanStringWithLayout(printer, *this);
+  } else {
+    ShapeUtil::PrintHumanString(printer, *this);
+  }
+}
+
 std::string Shape::ToString(bool print_layout) const {
   if (print_layout) {
     return ShapeUtil::HumanStringWithLayout(*this);
@@ -145,6 +161,15 @@ void Shape::DeleteDimension(int64_t dim_to_delete) {
   }
 }
 
+const Shape& Shape::tuple_shapes(int index) const {
+  return tuple_shapes_.at(index);
+}
+
+Shape* Shape::add_tuple_shapes() {
+  tuple_shapes_.push_back(Shape());
+  return &tuple_shapes_.back();
+}
+
 bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
   if (lhs.IsTuple()) {
     return rhs.IsTuple() &&
@@ -193,9 +218,6 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
         if (ignore_tiles_in_layout_) {
           equal.IgnoreTiles();
         }
-        if (ignore_element_size_in_layout_) {
-          equal.IgnoreElementSize();
-        }
         if (ignore_memory_space_in_layout_) {
           equal.IgnoreMemorySpace();
         }
@@ -224,6 +246,12 @@ std::ostream& operator<<(std::ostream& out, const Shape& shape) {
   return out;
 }
 
+ProgramShape::ProgramShape() = default;
+ProgramShape::~ProgramShape() = default;
+ProgramShape::ProgramShape(const ProgramShape&) = default;
+ProgramShape::ProgramShape(ProgramShape&&) = default;
+ProgramShape& ProgramShape::operator=(const ProgramShape&) = default;
+
 ProgramShape::ProgramShape(const ProgramShapeProto& program_shape_proto) {
   for (const ShapeProto& shape_proto : program_shape_proto.parameters()) {
     *add_parameters() = Shape(shape_proto);
@@ -246,15 +274,12 @@ ProgramShapeProto ProgramShape::ToProto() const {
   return proto;
 }
 
+void ProgramShape::Print(Printer* printer) const {
+  ShapeUtil::PrintHumanString(printer, *this);
+}
+
 std::string ProgramShape::ToString() const {
-  std::vector<std::string> parameter_strings(parameters_size());
-  for (int i = 0; i < parameters_size(); ++i) {
-    parameter_strings[i] = absl::StrCat(
-        i < parameter_names_size() ? parameter_names(i) : "(unknown)", ": ",
-        ShapeUtil::HumanString(parameters(i)));
-  }
-  return absl::StrCat("(", absl::StrJoin(parameter_strings, ", "), ") -> ",
-                      ShapeUtil::HumanString(result()));
+  return ShapeUtil::HumanString(*this);
 }
 
 std::ostream& operator<<(std::ostream& out, const ProgramShape& program_shape) {

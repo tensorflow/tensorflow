@@ -99,7 +99,7 @@ StatusOr<mlir::Value> EmitAllGather(
 
   if (newly_created_ops != nullptr) newly_created_ops->insert(all_gather);
 
-  return all_gather.output();
+  return all_gather.getOutput();
 }
 
 StatusOr<const mlir::Value> EmitAllScatter(
@@ -143,7 +143,7 @@ StatusOr<const mlir::Value> EmitAllScatter(
 
   if (newly_created_ops != nullptr) newly_created_ops->insert(all_scatter);
 
-  return all_scatter.output();
+  return all_scatter.getOutput();
 }
 
 StatusOr<mlir::Value> EmitDenseToSparseToDense(
@@ -458,7 +458,7 @@ StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
     return errors::InvalidArgument(
         "Requested halo exchange on unknown mesh dim");
 
-  // TODO(hongjunchoi): Add support fof halo exchange for GPU/CPU.
+  // TODO(b/261485237): Add support for halo exchange for GPU/CPU.
   if (!mesh.is_tpu_mesh())
     return errors::InvalidArgument("Halo exchange is only supported on TPU.");
 

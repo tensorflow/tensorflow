@@ -29,14 +29,10 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/gml_st/IR/gml_st_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace tensorflow {
-#define GEN_PASS_DECL_TILEREDUCTION
-#define GEN_PASS_DECL_TILEMATMUL
-#define GEN_PASS_DECL_TILEFILL
-#define GEN_PASS_DECL_TILECWISE
 #define GEN_PASS_DECL_MATHAPPROXIMATION
 #define GEN_PASS_DECL_CLUSTERING
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
@@ -49,66 +45,17 @@ CreateLinalgTrivialBufferForwardingPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateLinalgTrivialCopyRemovalPass();
 
-// Pass to optimize padding in tiled loops by peeling the final loop iteration.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreatePeelTiledLoopsPass();
-
-// Pass to tile and fuse linalg.generic on tensors that models reduction.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateTileReductionPass();
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateTileReductionPass(int64_t reduction_vector_size,
-                        int64_t reduction_1d_tile_size,
-                        llvm::ArrayRef<int64_t> reduction_2d_tile_sizes);
-
-// Pass to tile and fuse linalg.matmul on tensors.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileMatmulPass();
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileMatmulPass(
-    llvm::ArrayRef<int64_t> matmul_tile_sizes);
-
-// Pass to fuse `linalg.fill` into a tiled reduction.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateFuseFillIntoTiledReductionPass();
-
 // Pass to replace 'i1' tensor types with 'i8' tensor types. This pass is a
 // temporary workaround to avoid the problem of vectorizing 'i1' tensors (see
 // b/205714705).
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateJitRtLegalizeI1TypesPass();
 
-// Rewrite `vector.multi_reduction` into a sequence of `vector.reduction` ops.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createRewriteVectorMultiReductionPass();
-
-// Code generation passes targeting transpose operations.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateTileTransposePass();
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateLowerVectorTransposePass();
-
-// Pass to tile elementwise linalg.generic on tensors.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileCWisePass();
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileCWisePass(
-    int64_t cwise_tile_size);
-
-// Pass to tile linalg.fill on tensors.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileFillPass();
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileFillPass(
-    int64_t cwise_tile_size);
-
 // Pass to split _Fused Tensorflow kernels into primitives.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateFissionPass();
 
 // Pass to fuse Linalg generic operations on Tensors.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateFusionPass();
-
-// Pass to optimize broadcasts based on the symbolic shape constraints.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateSymbolicShapeOptimizationPass(bool constraints_only = false);
-
-// Pass to replace 0-d tensor inputs to LinalgOp with extracted elements.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateDetensorizeLinalgPass();
 
 // Creates `tf_device.cluster` operations according to the TF JitRt clustering
 // policy.
@@ -124,20 +71,6 @@ CreateMathApproximationPass(llvm::ArrayRef<std::string> oplist = {});
 
 // Returns true if the `value` type is a memref that is contiguous in memory.
 bool IsContiguousMemref(mlir::Value value);
-
-// Detects the combiner in the body of LinalgOp if any. Currently, only
-// ops with a single combiner are supported.
-mlir::FailureOr<mlir::Operation *> DetectCombiner(
-    mlir::linalg::LinalgOp linalg_op);
-
-// Sets the attribute to the `op` that indicates that the op was transformed.
-void setTransformationAttr(mlir::OpBuilder &b, mlir::Operation *op);
-
-// Removes the attribute that indicates that it was transformed.
-void removeTransformationAttr(mlir::Operation *op);
-
-// Checks if `op` has the attribute that indicates that it was transformed.
-bool hasTransformationAttr(mlir::Operation *op);
 
 }  // namespace tensorflow
 

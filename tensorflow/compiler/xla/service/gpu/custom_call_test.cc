@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <sstream>
+#include <string>
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -24,8 +25,12 @@ limitations under the License.
 #include "rocm/include/hip/hip_runtime.h"
 #define PLATFORM "ROCM"
 #endif
+
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/runtime/ffi/ffi_api.h"
+#include "tensorflow/compiler/xla/runtime/module.h"
+#include "tensorflow/compiler/xla/runtime/module_registry.h"
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -128,14 +133,18 @@ void Callback_SubBuffers(se::gpu::GpuStreamHandle stream, void** buffers,
 
   // Set output leaf buffers, copying data from the corresponding same-sized
   // inputs.
-  gpuMemcpyAsync(buffers[4], buffers[3], 8 * sizeof(float),
-                 gpuMemcpyDeviceToDevice, stream);
-  gpuMemcpyAsync(buffers[5], buffers[0], 128 * sizeof(float),
-                 gpuMemcpyDeviceToDevice, stream);
-  gpuMemcpyAsync(buffers[6], buffers[1], 256 * sizeof(float),
-                 gpuMemcpyDeviceToDevice, stream);
-  gpuMemcpyAsync(buffers[7], buffers[2], 1024 * sizeof(float),
-                 gpuMemcpyDeviceToDevice, stream);
+  auto err = gpuMemcpyAsync(buffers[4], buffers[3], 8 * sizeof(float),
+                            gpuMemcpyDeviceToDevice, stream);
+  ASSERT_EQ(err, gpuSuccess);
+  err = gpuMemcpyAsync(buffers[5], buffers[0], 128 * sizeof(float),
+                       gpuMemcpyDeviceToDevice, stream);
+  ASSERT_EQ(err, gpuSuccess);
+  err = gpuMemcpyAsync(buffers[6], buffers[1], 256 * sizeof(float),
+                       gpuMemcpyDeviceToDevice, stream);
+  ASSERT_EQ(err, gpuSuccess);
+  err = gpuMemcpyAsync(buffers[7], buffers[2], 1024 * sizeof(float),
+                       gpuMemcpyDeviceToDevice, stream);
+  ASSERT_EQ(err, gpuSuccess);
 }
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_SubBuffers, PLATFORM);
 TEST_F(CustomCallTest, SubBuffers) {
@@ -315,8 +324,166 @@ TEST_F(CustomCallTest, WithStatusFailed) {
       /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/CustomCallApiVersion::API_VERSION_STATUS_RETURNING);
   auto status = Execute(&b, {}).status();
-  EXPECT_EQ(status.code(), tensorflow::error::Code::INTERNAL);
+  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
   EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Failed"));
+}
+
+//===----------------------------------------------------------------------===//
+// Custom calls based on XLA runtime modules.
+//===----------------------------------------------------------------------===//
+
+struct TestModule : runtime::StatelessModule {
+  TestModule() : StatelessModule("TestModule") {}
+
+  // Check that we can use absl::Status to return errors back to the caller.
+  static absl::Status AlwaysFail(runtime::StridedMemrefView arg) {
+    return absl::InternalError("Uh oh, too bad");
+  }
+
+  // Check that we can get access to the stream and launch on device.
+  static absl::Status Memcpy(const ServiceExecutableRunOptions* run_options,
+                             runtime::FlatMemrefView src,
+                             runtime::FlatMemrefView dst) {
+    se::DeviceMemoryBase src_mem(src.data);
+    se::DeviceMemoryBase dst_mem(dst.data);
+
+    if (src.size_in_bytes != dst.size_in_bytes) {
+      return absl::InternalError("Size in bytes must match");
+    }
+
+    run_options->stream()->ThenMemcpyD2D(&dst_mem, src_mem, src.size_in_bytes);
+    return absl::OkStatus();
+  }
+
+  // Write bindings for custom calls and register with runtime.
+  void Export(runtime::DynamicCustomCallRegistry& registry) const final {
+    registry.Register(runtime::CustomCall::Bind("test.always_fail")
+                          .Arg<runtime::StridedMemrefView>()
+                          .To(AlwaysFail));
+
+    registry.Register(runtime::CustomCall::Bind("test.memcpy")
+                          .UserData<const ServiceExecutableRunOptions*>()
+                          .Arg<runtime::FlatMemrefView>()
+                          .Arg<runtime::FlatMemrefView>()
+                          .To(Memcpy));
+  }
+};
+
+XLA_REGISTER_RUNTIME_MODULE(std::make_unique<TestModule>());
+
+TEST_F(CustomCallTest, ExportedAlwaysFail) {
+  // TODO(ezhulenev): Remove once XLA runtime is enabled by default.
+  mutable_debug_options()->set_xla_gpu_enable_xla_runtime_executable(true);
+
+  XlaBuilder b(TestName());
+  CustomCall(&b, "test.always_fail", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {}), /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  auto status = Execute(&b, {}).status();
+  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
+  VLOG(0) << status.error_message();
+  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Uh oh, too bad"));
+}
+
+TEST_F(CustomCallTest, ExportedMemcpy) {
+  // TODO(ezhulenev): Remove once XLA runtime is enabled by default.
+  mutable_debug_options()->set_xla_gpu_enable_xla_runtime_executable(true);
+
+  XlaBuilder b(TestName());
+  CustomCall(&b, "test.memcpy",
+             /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128})},
+             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
+  EXPECT_THAT(result.data<float>(), ::testing::Each(42));
+}
+
+//===----------------------------------------------------------------------===//
+// XLA runtime FFI modules is an external version of custom calls (C API based).
+//===----------------------------------------------------------------------===//
+
+namespace ffi = ::xla::runtime::ffi;
+
+struct TestFfiModule : ffi::StatelessModule {
+  explicit TestFfiModule(const XLA_FFI_Api* api)
+      : StatelessModule(
+            api, "TestFfiModule",
+            {{"ffi.always_fail", FFI_AlwaysFail}, {"ffi.memcpy", FFI_Memcpy}}) {
+  }
+
+  XLA_FFI_DEFINE_FUNCTION(FFI_AlwaysFail, AlwaysFail,
+                          ffi::Ffi::Binding().Arg<ffi::StridedBufferArg>());
+
+  XLA_FFI_DEFINE_FUNCTION(FFI_Memcpy, Memcpy,
+                          ffi::Ffi::Binding()
+                              .Stream<se::gpu::GpuStreamHandle>()
+                              .Arg<ffi::StridedBufferArg>()
+                              .Arg<ffi::StridedBufferArg>());
+
+  // Check that we can use `FfiStatus` to return errors back to the caller.
+  static ffi::FfiStatus AlwaysFail(ffi::StridedBufferArg arg) {
+    return ffi::FfiStatus::Internal("Uh oh, too bad");
+  }
+
+  // Check that we can get access to the stream and launch on device.
+  static ffi::FfiStatus Memcpy(se::gpu::GpuStreamHandle stream,
+                               ffi::StridedBufferArg src,
+                               ffi::StridedBufferArg dst) {
+    se::DeviceMemoryBase src_mem(src.data);
+    se::DeviceMemoryBase dst_mem(dst.data);
+
+    int64_t size_in_bytes = sizeof(float);
+    for (unsigned d = 0; d < src.sizes.size(); ++d)
+      size_in_bytes *= src.sizes[d];
+
+    auto err = gpuMemcpyAsync(dst.data, src.data, size_in_bytes,
+                              gpuMemcpyDeviceToDevice, stream);
+    if (err != gpuSuccess)
+      return ffi::FfiStatus::Internal("Failed to launch memcpy");
+
+    return ffi::FfiStatus::Ok();
+  }
+};
+
+XLA_REGISTER_FFI_MODULE(std::make_unique<TestFfiModule>(GetXlaFfiApi()));
+
+TEST_F(CustomCallTest, ExportedFfiAlwaysFail) {
+  // TODO(ezhulenev): Remove once XLA runtime is enabled by default.
+  mutable_debug_options()->set_xla_gpu_enable_xla_runtime_executable(true);
+
+  XlaBuilder b(TestName());
+  CustomCall(&b, "ffi.always_fail", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {}), /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  auto status = Execute(&b, {}).status();
+  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
+  VLOG(0) << status.error_message();
+  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Uh oh, too bad"));
+}
+
+TEST_F(CustomCallTest, ExportedFfiMemcpy) {
+  // TODO(ezhulenev): Remove once XLA runtime is enabled by default.
+  mutable_debug_options()->set_xla_gpu_enable_xla_runtime_executable(true);
+
+  XlaBuilder b(TestName());
+  CustomCall(&b, "ffi.memcpy",
+             /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128})},
+             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
+  EXPECT_THAT(result.data<float>(), ::testing::Each(42));
 }
 
 }  // anonymous namespace

@@ -1,14 +1,15 @@
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
+    "//tensorflow/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core/lib/histogram:__pkg__",
         "//tensorflow/tsl/lib/monitoring:__pkg__",
@@ -55,7 +56,7 @@ filegroup(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "histogram_test",
     srcs = [
         "histogram_test.cc",

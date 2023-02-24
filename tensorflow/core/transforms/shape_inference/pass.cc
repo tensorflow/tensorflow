@@ -24,8 +24,8 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/ir/importexport/convert_tensor.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/ir/types/dialect.h"
@@ -102,9 +102,8 @@ void ShapeInference::TryToCacheResultsTensorValue(Operation *op) {
   if (op_name == "Const") {
     cached_tensor_values_[op->getResult(0)] =
         op->getAttrOfType<DenseElementsAttr>("value");
-  } else if (op_name == "Identity" ||
-             (op_name == "IdentityN" &&
-              TFOp(op).getNonControlOperands().size() == 1)) {
+  } else if ((op_name == "Identity" || op_name == "IdentityN") &&
+             TFOp(op).getNonControlOperands().size() == 1) {
     DenseElementsAttr operand_tensor_value = GetTensorValue(op->getOperand(0));
     if (!operand_tensor_value) return;
     cached_tensor_values_[op->getResult(0)] = operand_tensor_value;
@@ -208,8 +207,8 @@ void ShapeInference::runOnOperation() {
       ShapedTypeComponents result = std::get<1>(it);
       TensorType inferred_type;
       if (result.hasRank()) {
-        inferred_type = tensorflow::GetTypeFromTFTensorShape(
-            result.getDims(), result.getElementType());
+        inferred_type = mlir::RankedTensorType::get(result.getDims(),
+                                                    result.getElementType());
       } else {
         inferred_type = UnrankedTensorType::get(result.getElementType());
       }

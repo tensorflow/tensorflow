@@ -29,6 +29,8 @@ namespace data {
 namespace experimental {
 namespace {
 
+constexpr char kInputImplEmpty[] = "input_impl_empty";
+
 class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit TakeWhileDatasetOp(OpKernelConstruction* ctx)
@@ -125,6 +127,8 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params) {}
 
+      bool SymbolicCheckpointCompatible() const override { return true; }
+
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
@@ -179,11 +183,10 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
         TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
             dataset()->captured_func_->CheckExternalState()));
         mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            full_name(kInputImplEmpty), static_cast<int64_t>(!input_impl_)));
         if (input_impl_) {
           TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-        } else {
-          TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name("input_impls_empty"), ""));
         }
         return OkStatus();
       }
@@ -191,7 +194,10 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        if (reader->Contains(full_name("input_impls_empty"))) {
+        int64_t input_empty;
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(full_name(kInputImplEmpty), &input_empty));
+        if (static_cast<bool>(input_empty)) {
           input_impl_.reset();
         } else {
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));

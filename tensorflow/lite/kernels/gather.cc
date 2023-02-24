@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -32,7 +32,24 @@ constexpr int kInputTensor = 0;
 constexpr int kInputPositions = 1;
 constexpr int kOutputTensor = 0;
 
+struct OpData {
+  // Indicates that 'Eval' is a noop as the output as written during 'Prepare'.
+  bool noop;
+};
+
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  auto* data = new OpData;
+  return data;
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<OpData*>(buffer);
+}
+
+TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node);
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
@@ -113,7 +130,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   for (int i = axis + 1; i < input->dims->size; ++i) {
     output_shape->data[output_index++] = input->dims->data[i];
   }
-  return context->ResizeTensor(context, output, output_shape);
+  data->noop = IsConstantOrPersistentTensor(input) &&
+               IsConstantOrPersistentTensor(positions);
+  if (data->noop) {
+    SetTensorToPersistentRo(output);
+    TF_LITE_ENSURE_OK(context,
+                      context->ResizeTensor(context, output, output_shape));
+    return EvalImpl(context, node);
+  } else {
+    return context->ResizeTensor(context, output, output_shape);
+  }
 }
 
 template <typename InputT, typename PositionsT>
@@ -171,6 +197,15 @@ TfLiteStatus GatherStrings(TfLiteContext* context, const TfLiteTensor* input,
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  const OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  if (data->noop) {
+    return kTfLiteOk;
+  } else {
+    return EvalImpl(context, node);
+  }
+}
+
+TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
   const auto* params =
       reinterpret_cast<const TfLiteGatherParams*>(node->builtin_data);
   const TfLiteTensor* input;
@@ -273,7 +308,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace gather
 
 TfLiteRegistration* Register_GATHER() {
-  static TfLiteRegistration r = {nullptr, nullptr, gather::Prepare,
+  static TfLiteRegistration r = {gather::Init, gather::Free, gather::Prepare,
                                  gather::Eval};
   return &r;
 }

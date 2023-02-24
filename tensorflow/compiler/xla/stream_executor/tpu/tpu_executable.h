@@ -49,8 +49,9 @@ class TpuExecutable : public xla::TpuExecutableInterface {
       const ServiceExecutableRunOptions& run_options,
       absl::Span<const stream_executor::DeviceMemoryBase> arguments,
       stream_executor::DeviceMemoryBase result,
-      std::optional<stream_executor::DeviceMemoryBase>
-          cross_program_prefetch_addr) override {
+      const std::vector<stream_executor::DeviceMemoryBase>&
+          cross_program_prefetch_addrs,
+      const std::vector<uint32_t>& cross_program_prefetch_offsets) override {
     LOG(FATAL) << "LoadProgramAndEnqueueToStream unimplemented";
   }
 

@@ -18,27 +18,27 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "absl/memory/memory.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "grpcpp/server_builder.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
-#include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
-#include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/random.h"
 #include "tensorflow/tsl/platform/threadpool.h"
+#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 
 namespace {
 constexpr int kBarrierTimedOut = -1000;
 
-std::unique_ptr<tensorflow::CoordinationServiceInterface>
-EnableCoordinationService(
+std::unique_ptr<tsl::CoordinationServiceInterface> EnableCoordinationService(
     const xla::DistributedRuntimeServiceImpl::Options& options) {
   const std::string job_name = "jax_worker";
   tensorflow::CoordinationServiceConfig config;
@@ -54,8 +54,49 @@ EnableCoordinationService(
       config.mutable_coordinated_job_list()->Add();
   job->set_name(job_name);
   job->set_num_tasks(options.num_nodes);
-  return tensorflow::CoordinationServiceInterface::EnableCoordinationService(
+  auto service = tsl::CoordinationServiceInterface::EnableCoordinationService(
       options.env, config, /*cache=*/nullptr);
+  // Convert list of local devices to global device message as EnumerateDevies()
+  // response.
+  service->SetDeviceAggregationFunction(
+      [](const tensorflow::DeviceInfo& raw_global_devices) {
+        xla::GlobalTopologyProto global_topology;
+        int global_device_id = 0;
+        // Assign local devices of the same host to the same slice_index.
+        int next_slice_index = 0;
+        absl::flat_hash_map<std::string, int> boot_id_to_slice_index;
+        // Unwrap result to local device proto.
+        for (const auto& device : raw_global_devices.device()) {
+          xla::LocalTopologyProto local_topology;
+          // Note that tensorflow::DeviceInfo.device is xla.LocalTopologyProto!
+          device.UnpackTo(&local_topology);
+          // Every new boot_id seen is treated as a new host/slice.
+          absl::string_view boot_id = local_topology.boot_id();
+          auto [it, inserted] =
+              boot_id_to_slice_index.try_emplace(boot_id, next_slice_index);
+          if (inserted) {
+            ++next_slice_index;
+          }
+          // Set deterministic global ids.
+          for (xla::DeviceProto& device : *local_topology.mutable_devices()) {
+            device.set_global_device_id(global_device_id++);
+            device.set_slice_index(it->second);
+          }
+          *global_topology.mutable_nodes()->Add() = local_topology;
+        }
+        if (VLOG_IS_ON(10)) {
+          for (auto it = boot_id_to_slice_index.begin();
+               it != boot_id_to_slice_index.end(); ++it) {
+            LOG(INFO) << "BuildGlobalTopology boot_id_to_slice_index "
+                      << it->first << "->" << it->second;
+          }
+        }
+        // Wrap result back in DeviceInfo proto.
+        tensorflow::DeviceInfo global_devices;
+        global_devices.mutable_device()->Add()->PackFrom(global_topology);
+        return global_devices;
+      });
+  return service;
 }
 }  // namespace
 
@@ -83,11 +124,29 @@ DistributedRuntimeServiceImpl::~DistributedRuntimeServiceImpl() {
 void BuildGlobalTopology(absl::Span<LocalTopologyProto> local_topologies,
                          GlobalTopologyProto* global_topology) {
   int next_global_device_id = 0;
+  // Assign local devices of the same host to the same slice_index.
+  int next_slice_index = 0;
+  absl::flat_hash_map<std::string, int> boot_id_to_slice_index;
   for (LocalTopologyProto& local : local_topologies) {
+    // Every new boot_id seen is treated as a new host/slice.
+    absl::string_view boot_id = local.boot_id();
+    auto [it, inserted] =
+        boot_id_to_slice_index.try_emplace(boot_id, next_slice_index);
+    if (inserted) {
+      ++next_slice_index;
+    }
     for (DeviceProto& device : *local.mutable_devices()) {
       device.set_global_device_id(next_global_device_id++);
+      device.set_slice_index(it->second);
     }
     global_topology->add_nodes()->Swap(&local);
+  }
+  if (VLOG_IS_ON(10)) {
+    for (auto it = boot_id_to_slice_index.begin();
+         it != boot_id_to_slice_index.end(); ++it) {
+      LOG(INFO) << "BuildGlobalTopology boot_id_to_slice_index " << it->first
+                << "->" << it->second;
+    }
   }
 }
 
@@ -455,9 +514,11 @@ CoordinationServiceImpl::CoordinationServiceImpl(
   coord_compute_pool_ = std::make_unique<tsl::thread::ThreadPool>(
       options.env, "CoordinationServiceRpcHandler",
       /*num_threads=*/4);
-  coord_rpc_service_ =
-      std::make_unique<tensorflow::GrpcCoordinationServiceImpl>(
-          coord_compute_pool_.get(), builder);
+  coord_rpc_service_ = std::make_unique<tsl::GrpcCoordinationServiceImpl>(
+      coord_compute_pool_.get(), builder);
+  auto* grpc_coord_service =
+      static_cast<tsl::GrpcCoordinationServiceImpl*>(coord_rpc_service_.get());
+  grpc_coord_service->SetCoordinationServiceInstance(coord_service_.get());
   LOG(INFO) << "Experimental coordination service is enabled.";
 }
 
@@ -465,6 +526,8 @@ CoordinationServiceImpl::~CoordinationServiceImpl() {
   // Service object must be destroyed to clear all pending RPCs before shutting
   // down the RPC service.
   coord_service_ = nullptr;
+  static_cast<tsl::GrpcCoordinationServiceImpl*>(coord_rpc_service_.get())
+      ->SetCoordinationServiceInstance(nullptr);
   coord_rpc_service_->Shutdown();
 }
 

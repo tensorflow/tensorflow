@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/dynamic_dimension_simplifier.h"
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {

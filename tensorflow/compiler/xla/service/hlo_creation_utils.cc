@@ -30,11 +30,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_clone_context.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -263,22 +263,20 @@ HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
                                  absl::Span<const int64_t> broadcast_dimensions,
                                  absl::Span<const int64_t> result_shape_bounds,
                                  const OpMetadata* metadata) {
-  HloComputation* computation = operand->parent();
   Shape broadcast_shape = ShapeUtil::MakeShape(operand->shape().element_type(),
                                                result_shape_bounds);
-
-  return computation->AddInstruction(
-      HloInstruction::CreateBroadcast(broadcast_shape, operand,
-                                      broadcast_dimensions),
-      metadata);
+  return MakeBroadcastHlo(operand, broadcast_dimensions, broadcast_shape,
+                          metadata);
 }
 
 HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
                                  absl::Span<const int64_t> broadcast_dimensions,
                                  const Shape& shape,
                                  const OpMetadata* metadata) {
-  return MakeBroadcastHlo(operand, broadcast_dimensions, shape.dimensions(),
-                          metadata);
+  HloComputation* computation = operand->parent();
+  return computation->AddInstruction(
+      HloInstruction::CreateBroadcast(shape, operand, broadcast_dimensions),
+      metadata);
 }
 
 StatusOr<HloInstruction*> MakeGetTupleElementHlo(HloInstruction* operand,
@@ -706,10 +704,16 @@ StatusOr<HloInstruction*> PadVectorWithZeros(HloInstruction* operand,
 HloInstruction* BroadcastZeros(HloComputation* computation,
                                PrimitiveType element_type,
                                absl::Span<const int64_t> broadcast_dimensions) {
-  HloInstruction* zero = computation->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
-  return MakeBroadcastHlo(zero, /*broadcast_dimensions=*/{},
-                          /*result_shape_bounds=*/broadcast_dimensions);
+  return BroadcastZeros(
+      computation, ShapeUtil::MakeShape(element_type, broadcast_dimensions));
+}
+
+HloInstruction* BroadcastZeros(HloComputation* computation,
+                               const Shape& broadcast_shape) {
+  HloInstruction* zero =
+      computation->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::Zero(broadcast_shape.element_type())));
+  return MakeBroadcastHlo(zero, /*broadcast_dimensions=*/{}, broadcast_shape);
 }
 
 HloInstruction* BroadcastOnes(HloComputation* computation,

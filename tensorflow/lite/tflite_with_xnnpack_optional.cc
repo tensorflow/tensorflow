@@ -16,7 +16,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/macros.h"
 
 #ifdef TFLITE_BUILD_WITH_XNNPACK_DELEGATE
@@ -29,24 +29,27 @@ using TfLiteDelegatePtr =
     std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
 
 #ifdef TFLITE_BUILD_WITH_XNNPACK_DELEGATE
-TfLiteDelegatePtr MaybeCreateXNNPACKDelegate(int num_threads) {
+TfLiteDelegatePtr MaybeCreateXNNPACKDelegate(
+    TfLiteContext* context, bool enable_xnnpack_unsigned_quantized) {
   auto opts = TfLiteXNNPackDelegateOptionsDefault();
-  // Note that we don't want to use the thread pool for num_threads == 1.
-  opts.num_threads = num_threads > 1 ? num_threads : 0;
-  return TfLiteDelegatePtr(TfLiteXNNPackDelegateCreate(&opts),
-                           TfLiteXNNPackDelegateDelete);
+  if (enable_xnnpack_unsigned_quantized) {
+    opts.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QU8;
+  }
+  return TfLiteDelegatePtr(
+      TfLiteXNNPackDelegateCreateWithThreadpool(&opts, context),
+      TfLiteXNNPackDelegateDelete);
 }
 #else
 // Using weak symbols to create a delegate allows automatic injection of the
 // delegate simply by adding it as a dependency. See the strong override in
 // lite/tflite_with_xnnpack.cc,
-TFLITE_ATTRIBUTE_WEAK TfLiteDelegatePtr
-AcquireXNNPACKDelegate(int num_threads) {
+TFLITE_ATTRIBUTE_WEAK TfLiteDelegatePtr AcquireXNNPACKDelegate() {
   return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 }
 
-TfLiteDelegatePtr MaybeCreateXNNPACKDelegate(int num_threads) {
-  return AcquireXNNPACKDelegate(num_threads);
+TfLiteDelegatePtr MaybeCreateXNNPACKDelegate(
+    TfLiteContext* context, bool enable_xnnpack_unsigned_quantized) {
+  return AcquireXNNPACKDelegate();
 }
 #endif
 

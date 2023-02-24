@@ -10,15 +10,12 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "internal_tfrt_deps")
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
-)
-load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -131,7 +128,7 @@ filegroup(
         "tfe_tensorhandle_internal.h",
     ],
     visibility = [
-        "//tensorflow/core/function:__pkg__",
+        "//tensorflow/core/function/runtime_client:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
 )
@@ -256,7 +253,6 @@ tf_cuda_cc_test(
         "gradients_test.cc",
     ],
     args = ["--heap_check="],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
         ":abstract_context",
@@ -293,7 +289,6 @@ tf_cuda_cc_test(
         "unified_api_test.cc",
     ],
     args = ["--heap_check="],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156
     deps = [
         ":c_api_experimental",
@@ -337,7 +332,6 @@ tf_cuda_cc_test(
         "gradient_checker_test.cc",
     ],
     args = ["--heap_check="],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/175330074
     ],
@@ -755,7 +749,10 @@ tf_cuda_cc_test(
     tags = [
         "no_oss",  # TODO(b/200848572)
         "no_windows",
+        # TODO(b/136478427): sanitizers report issues due to unclean exit.
         "noasan",  # leaks gRPC server instances
+        "nomsan",  # b/229991646: use of destructed memory due to unclean exit.
+        "notsan",  # b/259602430: race on destructed mutex due to unclean exit.
     ],
     deps = [
         ":c_api",
@@ -885,9 +882,10 @@ tf_cuda_library(
     }) + [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/c:tf_status_helper",
-        "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
+        "//tensorflow/core/distributed_runtime/coordination:coordination_service_error_util",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
@@ -899,6 +897,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core:gpu_runtime",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
     ],
     alwayslink = 1,
 )
@@ -910,7 +909,6 @@ tf_cuda_cc_test(
         "c_api_experimental_test.cc",
     ],
     args = ["--heap_check="],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
         ":c_api",
@@ -933,7 +931,6 @@ tf_cuda_cc_test(
         "c_api_unified_experimental_test.cc",
     ],
     args = ["--heap_check="],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
         ":c_api",
@@ -1014,7 +1011,7 @@ cc_library(
     name = "dlpack",
     srcs = ["dlpack.cc"],
     hdrs = ["dlpack.h"],
-    copts = [
+    copts = tf_copts() + [
         "-fexceptions",
         "-fno-strict-aliasing",
     ],

@@ -1,6 +1,7 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["benchmark"],
     licenses = ["notice"],
 )
@@ -28,8 +29,8 @@ cc_library(
         "benchmark",
     ],
     deps = [
-        "//tensorflow/core/util:stats_calculator_portable",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/tools/benchmark:benchmark_tflite_model_lib",
+        "//tensorflow/tsl/util:stats_calculator_portable",
     ],
 )

@@ -691,6 +691,53 @@ would be transformed into something like
   call @x_2(%c)
 with @x_1, @x_2 and @y_1 filled in.
 ### `-tf-guarantee-all-funcs-one-use`: Guarantee all FuncOp's have only a single use.
+### `-tf-hoist-loop-invariant`: Hoists loop invariant ops to the outside of the loop
+   Hoists loop invariant to the outside of the loop. The pass is similar to
+   LoopInvariantCodeMotion pass, but it also hoists ReadVariableOps,
+   if the variable is read only.
+
+   For example, the following pseudo MLIR code (types are left out for
+   brevity)
+   ```mlir
+     func.func @hoist_loop_invariant(%arg0, %arg1) {
+%var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
+       %results:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+       ^bb0(%arg2, %arg3):
+         %0 = "tf.OpA"() {is_stateless = true}
+         "tf.Yield"(%0)
+       }, {
+       ^bb0(%arg2, %arg3):
+  %1 = "tf.ReadVariableOp"(%var)
+         %2 = "tf.OpB"(%1) {is_stateless = true}
+         %3 = "tf.OpC"(%arg2, %2) {is_stateless = true}
+         %4 = "tf.OpD"(%arg3, %2) {is_stateless = true}
+         "tf.Yield"(%3, %4)
+       }) {is_stateless = true}
+       return %results#0, %results#1
+     }
+   ```
+   would be transformed to
+   ```mlir
+    func.func @hoist_loop_invariant(%arg0, %arg1) {
+%var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
+%1 = "tf.ReadVariableOp"(%var)
+       %2 = "tf.OpB"(%1) {is_stateless = true}
+       %results:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+       ^bb0(%arg2, %arg3):
+         %0 = "tf.OpA"() {is_stateless = true}
+         "tf.Yield"(%0)
+       }, {
+       ^bb0(%arg2, %arg3):
+         %3 = "tf.OpC"(%arg2, %2) {is_stateless = true}
+         %4 = "tf.OpD"(%arg3, %2) {is_stateless = true}
+         "tf.Yield"(%3, %4)
+       }) {is_stateless = true}
+       return %results#0, %results#1
+     }
+   ```
+   The `tf.ReadVariableOp` and `tf.OpB` can be hoisted to the outside of
+   the loop.
+
 ### `-tf-hoist-replicate-invariant-resource-writes`: Hoists writes to replicate invariant resource variables.
 This pass hoists replicate invariant resource variable writes outside
 tf_device.replicate op. These may have been inserted by other passes such as
@@ -834,6 +881,12 @@ Would be transformed to:
 -fold-transpose-in-ops : Whether to fold transposes in ops which can support folding.
 -direction             : Move transposes to the beginning or the end of the block where they are defined.
 ```
+### `-tf-name-anonymous-iterators`: Converts anonymous iterators to named iterators
+This converts AnonymousIterator ops to Iterator, thus giving them a name.
+For example, this will convert
+  %0 = "tf.AnonymousIteratorV3"() {...}
+to
+  %0 = "tf.Iterator"() {shared_name = "_iterator1", ...}
 ### `-tf-optimize`: Optimize TensorFlow module
 ### `-tf-order-by-dialect`: Reorders ops so ops of the same dialect are next to each other.
 Performs a reordering of ops so that
@@ -878,6 +931,11 @@ Would become the following ops (unimportant attribute, type are omitted):
   }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
 ```
 ### `-tf-parallel-execute-to-islands`: Lowers device parallel_execute to executor islands
+
+#### Options
+```
+-legacy-graph-export : Determines whether or not this pass should execute logic that is reserved for the legacy graph export pipeline to maintain expected invariants. In the case of this pass, that means manually propagating controls to lifted parallel execute regions to the graph fetch to ensure the ops execute.
+```
 ### `-tf-promote-resources-to-args`: Promote resources reads/writes to function inputs/outputs.
 This pass promotes resource accesses in function(s) (by default, the main)
 to input arguments and outputs of the function(s).
@@ -1058,7 +1116,24 @@ tf_device.replicate([%0, %1] as %ri: tensor<*x!tf_type.resource>) {n = 2 : i32} 
   tf_device.return
 }
 ```
+### `-tf-replicate-tensor-list-init-ops`: Replicate TensorList init ops for correct shape assignments in shape inference
+If we pass same TensorList to a while op as multiple arguments or just use
+the same TensorList at multiple places and assign different
+TensorListSetItem to elements of TensorList, the shape inference is then
+unable to identify the Shape of these args and thus the input TensorList
+shape is unidentifiable.
+All of these args are supposed to be independent and not related to original
+creation of TensorList.
+
+This pass will create multiple instances of TensorList for each arg of the
+while op and each use and thus there will be not a conflict in resolving the
+shape of these different inputs.
 ### `-tf-replicate-to-island`: Lowers device replicate to executor islands
+
+#### Options
+```
+-legacy-graph-export : Determines whether or not this pass should execute logic that is reserved for the legacy graph export pipeline to maintain expected invariants. In the case of this pass, that means manually propagating controls to lifted parallel execute regions to the graph fetch to ensure the ops execute, as well as determining whether or not the islands created by this pass should be split after the replicated ops have been lifted.
+```
 ### `-tf-resource-device-inference`: Propagates the device attribute on resources from callers to callees.
 A pass that propagates device assignment of resources on a module. It
 performs in-function propagation, as well as cross-function propagation from
@@ -1496,6 +1571,7 @@ The transformation happens only for on-device variables. The above
 transformation requires `%arg0`, `%arg1` to have the same device assignment
 as the `TPUExecute` op.
 ### `-tf-tpu-parallel-execute-sink-resource-write`: Moves tf.AssignVariableOp consumers of tf_device.parallel_execute into tf_device.parallel_execute regions
+### `-tf-tpu-partitioned-op-conversion`: Rewrite all TPU Partitioned ops into their V2 counterparts.
 ### `-tf-tpu-reorder-replicate-partitioned-inputs`: Reorder replicated and partitioned input ops.
 This pass rewrites how data parallelism and model parallelism is expressed for
 inputs. It reorders `tf.TPUPartitionedInput` (model parallelism) and
@@ -1809,6 +1885,10 @@ to 12 feature dimension, which has better performance on TPU.
 ### `-tf-tpu-update-embedding-enqueue-op-inputs`: Updates inputs to TPU embedding enqueue ops depending on whether graph is in training mode or in evaluation mode.
 Updates inputs to TPU embedding enqueue ops depending on whether graph
 is in training mode or in evaluation mode.
+### `-tf-tpu-validate-inputs`: Validates inputs to the TPU TF/XLA bridge
+This pass checks that the IR has valid input to TPU TF/XLA bridge.
+It checks the relations of multiple ops. Properties of single ops are
+checked by the 'verify' method of ops.
 ### `-tf-tpu-variable-runtime-reformatting`: Adds device variable formatting op to allow compilation-guided variable formatting.
 A pass that takes advantage of a loop to add ops that allow the execution to
 avoid repeatedly formatting variables back and forth. The desired formatting

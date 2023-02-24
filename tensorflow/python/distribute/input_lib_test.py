@@ -509,6 +509,32 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
           distribution=[
               strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
               strategy_combinations.mirrored_strategy_with_one_cpu,
+          ],
+          use_iterator=[False, True]))
+  def testIteratorAndDatasetEnumerateError(self, distribution, use_iterator):
+    # enumerate is not supported within tf.function for these types.
+    dataset = dataset_ops.Dataset.range(10).batch(2)
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+
+    if use_iterator:
+      iterable = iter(dist_dataset)
+    else:
+      iterable = dist_dataset
+
+    @def_function.function
+    def enumerate_fn(iterable):
+      for _, batch in enumerate(iterable):
+        distribution.experimental_local_results(batch)
+
+    with self.assertRaises(NotImplementedError):
+      enumerate_fn(iterable)
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_one_cpu,
           ]))
   def testIterableIteratorError(self, distribution):
     dataset = dataset_ops.Dataset.range(10).batch(2)

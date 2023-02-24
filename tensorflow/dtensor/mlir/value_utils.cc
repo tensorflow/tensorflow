@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/value_utils.h"
 
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
@@ -49,7 +51,7 @@ mlir::Value GetForwardedInput(mlir::Value value) {
       // TODO(bfontain): Add cases for identity and control flow return values.
       if (mlir::TF::DTensorLayout layout_op =
               mlir::dyn_cast<mlir::TF::DTensorLayout>(op)) {
-        value = layout_op.input();
+        value = layout_op.getInput();
         value_updated = true;
       }
     }
@@ -90,6 +92,16 @@ mlir::Value IntConst(mlir::OpBuilder& builder, mlir::Location loc,
   mlir::Attribute const_attr =
       mlir::DenseIntElementsAttr::get(const_type, values);
   return builder.create<mlir::TF::ConstOp>(loc, const_attr).getResult();
+}
+
+StatusOr<llvm::SmallVector<int64_t>> GetTFShapeFromType(mlir::Type type) {
+  auto ranked_type = type.dyn_cast<mlir::RankedTensorType>();
+  if (!ranked_type) {
+    return errors::InvalidArgument(
+        llvm::formatv("Type {0} is not a RankedTensorType.", type).str());
+  }
+
+  return ConvertMlirShapeToTF(ranked_type.getShape());
 }
 
 mlir::Value Int64Const(mlir::OpBuilder& builder, mlir::Location loc,
@@ -236,7 +248,7 @@ StatusOr<mlir::Value> SelectScalarValueFromArray(mlir::OpBuilder& builder,
       scalar_size_type.getShape(), builder, location);
   mlir::Value scalar_sliced_value = builder.create<mlir::TF::ReshapeOp>(
       location, mlir::ArrayRef<mlir::Type>{scalar_size_type},
-      mlir::ArrayRef<mlir::Value>{sliced_value.output(), scalar_shape},
+      mlir::ArrayRef<mlir::Value>{sliced_value.getOutput(), scalar_shape},
       mlir::ArrayRef<mlir::NamedAttribute>{});
   return scalar_sliced_value;
 }

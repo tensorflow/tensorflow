@@ -79,8 +79,7 @@ def _deduplicate_indexed_slices(values, indices):
 def _var_key(var):
   """Returns slot key for `var`."""
   # pylint: disable=protected-access
-  if hasattr(var, "_distributed_container"):
-    var = var._distributed_container()
+  var = distribute_utils.value_container(var)
   if (distribute_utils.is_distributed_variable(var) and
       not ops.executing_eagerly_outside_functions()):
     return (var.graph, var._shared_name)
@@ -678,7 +677,7 @@ class Optimizer(
       if g is not None:
         try:
           # Convert the grad to Tensor or IndexedSlices if necessary.
-          g = ops.convert_to_tensor_or_indexed_slices(g)
+          g = indexed_slices.convert_to_tensor_or_indexed_slices(g)
         except TypeError:
           raise TypeError(
               "Gradient must be convertible to a Tensor"
@@ -780,7 +779,7 @@ class Optimizer(
 
       try:
         # Convert the grad to Tensor or IndexedSlices if necessary.
-        g = ops.convert_to_tensor_or_indexed_slices(g)
+        g = indexed_slices.convert_to_tensor_or_indexed_slices(g)
       except TypeError:
         raise TypeError("Gradient must be convertible to a Tensor"
                         " or IndexedSlices, or None: %s" % g)
@@ -942,7 +941,12 @@ class Optimizer(
     for (name, _), variable_object in sorted(self._non_slot_dict.items(),
                                              # Avoid comparing graphs
                                              key=lambda item: item[0][0]):
-      if variable_object._graph_key == current_graph_key:  # pylint: disable=protected-access
+      # Skip checking for graph key for eager mode since there's only one graph.
+      # This is necessary because there are cases where _trackable_children() is
+      # called in a differenr thread from the main thread (e.g., async
+      # checkpoint) and hence the default graph key would be different.
+      if (context.executing_eagerly()
+          or variable_object._graph_key == current_graph_key):  # pylint: disable=protected-access
         current_graph_non_slot_variables[name] = variable_object
     current_graph_non_slot_variables.update(
         super(Optimizer, self)._trackable_children(save_type, **kwargs))
@@ -958,7 +962,7 @@ class Optimizer(
 
   def _get_non_slot_variable(self, name, graph=None):
     non_slot = self._non_slot_dict.get((name, graph), None)
-    if hasattr(non_slot, "_distributed_container"):
+    if distribute_utils.value_container(non_slot) is not non_slot:
       # This is a mirrored non-slot.  In order to enable code like `_finish`
       # to assign to a non-slot, return the current context replica.
       return non_slot.get()

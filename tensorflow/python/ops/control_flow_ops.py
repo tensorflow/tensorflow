@@ -1067,9 +1067,6 @@ def _eager_cond_implementation(pred, true_fn, false_fn, strict, name):
         or not isinstance(false_fn, def_function.Function)):
       raise TypeError("When running tf.cond on a parallel device, 'true_fn' "
                       "and 'false_fn' must be decorated with `tf.function`.")
-    @def_function.function
-    def _parallel_device_cond_wrapper():
-      return cond_v2.cond_v2(pred, true_fn, false_fn, name)
     functions_run_eagerly = def_function.functions_run_eagerly()
     if functions_run_eagerly:
       # We need to use tf.function to deal with variable creation inside the
@@ -1081,7 +1078,7 @@ def _eager_cond_implementation(pred, true_fn, false_fn, strict, name):
           "tf.function to work. This primitive will override the disable.")
     def_function.run_functions_eagerly(False)
     try:
-      return _parallel_device_cond_wrapper()
+      return cond_v2.cond_v2(pred, true_fn, false_fn, name)
     finally:
       if functions_run_eagerly is not None:
         def_function.run_functions_eagerly(functions_run_eagerly)
@@ -1329,6 +1326,33 @@ def _cast_indexed_slice_indices(a, b):
 def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
   """Return `true_fn()` if the predicate `pred` is true else `false_fn()`.
 
+  Note: This op is automatically used in a `tf.function` to convert Python
+  if-statements when the predicate is a `tf.Tensor`, unless `autograph=False` is
+  explicitly specified in `tf.function` args. For example, the following are
+  equivalent:
+
+  >>> @tf.function
+  ... def fun1(x,y):
+  ...   if x > 0:  # AutoGraph converts if-statement to tf.cond().
+  ...     z = y+1
+  ...   else:
+  ...     z = y-1
+  ...   return z
+  >>> fun1(tf.constant(7), tf.constant(3)).numpy()
+  4
+
+  >>> @tf.function
+  ... def fun2(x,y):
+  ...   pred = x > 0
+  ...   true_fn =  lambda: y+1
+  ...   false_fn = lambda: y-1
+  ...   return tf.cond(pred, true_fn, false_fn)  # Use tf.cond() explicitly.
+  >>> fun1(tf.constant(7), tf.constant(3)).numpy()
+  4
+
+  For more information, see [tf.function and AutoGraph guide](
+  https://www.tensorflow.org/guide/function#autograph_transformations).
+
   `true_fn` and `false_fn` both return lists of output tensors. `true_fn` and
   `false_fn` must have the same non-zero number and type of outputs.
 
@@ -1339,10 +1363,11 @@ def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
   it has frequently surprised users who expected a lazier semantics.
   Consider the following simple program:
 
-  ```python
-  z = tf.multiply(a, b)
-  result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
-  ```
+  >>> x, y = tf.constant(2, dtype=tf.int32), tf.constant(4, dtype=tf.int32)
+  >>> z = tf.multiply(x, y)
+  >>> r = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
+  >>> r.numpy()
+  10
 
   If `x < y`, the `tf.add` operation will be executed and `tf.square`
   operation will not be executed. Since `z` is needed for at least one
@@ -1385,15 +1410,15 @@ def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
 
   Example:
 
-  ```python
-  x = tf.constant(2)
-  y = tf.constant(5)
-  def f1(): return tf.multiply(x, 17)
-  def f2(): return tf.add(y, 23)
-  r = tf.cond(tf.less(x, y), f1, f2)
-  # r is set to f1().
-  # Operations in f2 (e.g., tf.add) are not executed.
-  ```
+  >>> x = tf.constant(2)
+  >>> y = tf.constant(5)
+  >>> def f1(): return tf.multiply(x, 7)
+  >>> def f2(): return tf.add(y, 3)
+  >>> r = tf.cond(tf.less(x, y), f1, f2)
+  >>> # r is set to f1().
+  >>> # Operations in f2 (e.g., tf.add) are not executed.
+  >>> r.numpy()
+  14
 
   """
   return cond(pred, true_fn=true_fn, false_fn=false_fn, strict=True, name=name)
@@ -2358,6 +2383,33 @@ def while_loop_v2(cond,
                   name=None):
   """Repeat `body` while the condition `cond` is true.
 
+  Note: This op is automatically used in a `tf.function` to convert Python for-
+  and while- loops when the loop variable is a `tf.Tensor`, unless
+  `autograph=False` is explicitly specified in `tf.function` args. For example,
+  the following are equivalent:
+
+  >>> @tf.function
+  ... def sumSquare(n):
+  ...   i, result = tf.constant(0), tf.constant(0)
+  ...   while i < n: # AutoGraph converts while-loop to tf.while_loop().
+  ...     result += i * i
+  ...     i += 1
+  ...   return result
+  >>> sumSquare(10).numpy()
+  285
+
+  >>> @tf.function
+  ... def sumSquare2(n):
+  ...   i, result = tf.constant(0), tf.constant(0)
+  ...   c = lambda i, _: tf.less(i, n)
+  ...   b = lambda i, result: (i + 1, result + i * i)
+  ...   return tf.while_loop(c, b, [i, result])[1]
+  >>> sumSquare2(10).numpy()
+  285
+
+  For more information, see [tf.function and AutoGraph guide
+  ](https://www.tensorflow.org/guide/function#autograph_transformations).
+
   `cond` is a callable returning a boolean scalar tensor. `body` is a callable
   returning a (possibly nested) tuple, namedtuple or list of tensors of the same
   arity (length and structure) and types as `loop_vars`. `loop_vars` is a
@@ -2380,9 +2432,9 @@ def while_loop_v2(cond,
   is unchanged across the iterations of the loop. An error will be raised
   if the shape of a loop variable after an iteration is determined to be more
   general than or incompatible with its shape invariant. For example, a shape
-  of [11, None] is more general than a shape of [11, 17], and [11, 21] is not
-  compatible with [11, 17]. By default (if the argument `shape_invariants` is
-  not specified), it is assumed that the initial shape of each tensor in
+  of `[11, None]` is more general than a shape of `[11, 17]`, and `[11, 21]` is
+  not compatible with `[11, 17]`. By default (if the argument `shape_invariants`
+  is not specified), it is assumed that the initial shape of each tensor in
   `loop_vars` is the same in every iteration. The `shape_invariants` argument
   allows the caller to specify a less specific shape invariant for each loop
   variable, which is needed if the shape varies between iterations. The
@@ -2392,22 +2444,22 @@ def while_loop_v2(cond,
   SparseTensor and IndexedSlices are treated specially as follows:
 
   a) If a loop variable is a SparseTensor, the shape invariant must be
-  TensorShape([r]) where r is the rank of the dense tensor represented
+  `TensorShape([r])` where `r` is the rank of the dense tensor represented
   by the sparse tensor. It means the shapes of the three tensors of the
-  SparseTensor are ([None], [None, r], [r]). NOTE: The shape invariant here
+  SparseTensor are `([None], [None, r], [r])`. NOTE: The shape invariant here
   is the shape of the SparseTensor.dense_shape property. It must be the shape of
   a vector.
 
   b) If a loop variable is an IndexedSlices, the shape invariant must be
   a shape invariant of the values tensor of the IndexedSlices. It means
-  the shapes of the three tensors of the IndexedSlices are (shape, [shape[0]],
-  [shape.ndims]).
+  the shapes of the three tensors of the IndexedSlices are `(shape, [shape[0]],
+  [shape.ndims])`.
 
   `while_loop` implements non-strict semantics, enabling multiple iterations
   to run in parallel. The maximum number of parallel iterations can be
   controlled by `parallel_iterations`, which gives users some control over
   memory consumption and execution order. For correct programs, `while_loop`
-  should return the same result for any parallel_iterations > 0.
+  should return the same result for any `parallel_iterations > 0`.
 
   For training, TensorFlow stores the tensors that are produced in the
   forward inference and are needed in back propagation. These tensors are a
@@ -2443,38 +2495,37 @@ def while_loop_v2(cond,
 
   Example:
 
-  ```python
-  i = tf.constant(0)
-  c = lambda i: tf.less(i, 10)
-  b = lambda i: (tf.add(i, 1), )
-  r = tf.while_loop(c, b, [i])
-  ```
+  >>> i = tf.constant(0)
+  >>> c = lambda i: tf.less(i, 10)
+  >>> b = lambda i: (tf.add(i, 1), )
+  >>> r = tf.while_loop(c, b, [i])[0]
+  >>> r.numpy()
+  10
 
   Example with nesting and a namedtuple:
 
-  ```python
-  import collections
-  Pair = collections.namedtuple('Pair', 'j, k')
-  ijk_0 = (tf.constant(0), Pair(tf.constant(1), tf.constant(2)))
-  c = lambda i, p: i < 10
-  b = lambda i, p: (i + 1, Pair((p.j + p.k), (p.j - p.k)))
-  ijk_final = tf.while_loop(c, b, ijk_0)
-  ```
+  >>> import collections
+  >>> Pair = collections.namedtuple('Pair', 'j, k')
+  >>> ijk_0 = (tf.constant(0), Pair(tf.constant(1), tf.constant(2)))
+  >>> c = lambda i, p: i < 10
+  >>> b = lambda i, p: (i + 1, Pair((p.j + p.k), (p.j - p.k)))
+  >>> ijk_final = tf.while_loop(c, b, ijk_0)[1]
+  >>> ijk_final[0].numpy(), ijk_final[1].numpy()
+  (32, 64)
 
   Example using shape_invariants:
 
-  ```python
-  i0 = tf.constant(0)
-  m0 = tf.ones([2, 2])
-  c = lambda i, m: i < 10
-  b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
-  tf.while_loop(
-      c, b, loop_vars=[i0, m0],
-      shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])
-  ```
+  >>> i0 = tf.constant(0)
+  >>> m0 = tf.ones([2, 2])
+  >>> c = lambda i, m: i < 10
+  >>> b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
+  >>> tf.while_loop(
+  ...     c, b, loop_vars=[i0, m0],
+  ...     shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])[1]
+  <tf.Tensor: shape=(2048, 2), dtype=float32, numpy=...>
 
   Example which demonstrates non-strict semantics: In the following
-  example, the final value of the counter `i` does not depend on `x`. So
+  example, the final value of `counter` does not depend on `x`. So
   the `while_loop` can increment the counter parallel to updates of `x`.
   However, because the loop counter at one loop iteration depends
   on the value at the previous iteration, the loop counter itself cannot
@@ -2491,26 +2542,30 @@ def while_loop_v2(cond,
   counter thread because the thread incrementing `x` depends on the value
   of the counter.
 
-  ```python
-  import tensorflow as tf
-
-  n = 10000
-  x = tf.constant(list(range(n)))
-  c = lambda i, x: i < n
-  b = lambda i, x: (tf.compat.v1.Print(i + 1, [i]), tf.compat.v1.Print(x + 1,
-  [i], "x:"))
-  i, out = tf.while_loop(c, b, (0, x))
-  with tf.compat.v1.Session() as sess:
-      print(sess.run(i))  # prints [0] ... [9999]
-
-      # The following line may increment the counter and x in parallel.
-      # The counter thread may get ahead of the other thread, but not the
-      # other way around. So you may see things like
-      # [9996] x:[9987]
-      # meaning that the counter thread is on iteration 9996,
-      # while the other thread is on iteration 9987
-      print(sess.run(out).shape)
-  ```
+  >>> with tf.compat.v1.Session() as sess:
+  ...   n = 10
+  ...   c = lambda i, x: i < n
+  ...   b = lambda i, x: (
+  ...       tf.compat.v1.Print(i + 1, [i], "Updating i based on i == "),
+  ...       # Let x depend on i
+  ...       tf.compat.v1.Print(x + i, [i], "Updating x based on i == "))
+  ...
+  ...   # Make x to be a big matrix so its updating thread would run slowly
+  ...   x = tf.zeros([1000, 100], dtype=tf.int32)
+  ...   counter = tf.constant(0)
+  ...   counter_out, x_out = tf.while_loop(c, b, (counter, x))
+  ...
+  ...   # The following line may increment the counter and x in parallel.
+  ...   # The counter thread may get ahead of the x thread, but not the
+  ...   # other way around. For example, the log may contain these messages:
+  ...   # ```
+  ...   # Updating i based on i == [9]
+  ...   # Updating x based on i == [3]
+  ...   # ```
+  ...   # meaning that the counter(i) thread is on iteration 9,
+  ...   # while the x thread is on iteration 3.
+  ...   print(sess.run(x_out).shape)
+  (1000, 100)
 
   """
   return while_loop(
@@ -2982,6 +3037,44 @@ def tuple_v2(tensors, control_inputs=None, name=None):
   dependencies.* Only use `tf.tuple` when working with v1 `tf.Graph` code.
 
   See also `tf.group` and `tf.control_dependencies`.
+
+  Example:
+  >>> with tf.Graph().as_default():
+  ...   with tf.compat.v1.Session() as sess:
+  ...     v = tf.Variable(0.0)
+  ...     a = tf.constant(1.0)
+  ...     sess.run(tf.compat.v1.global_variables_initializer())
+  ...     for i in range(5):
+  ...       update_op = v.assign_add(1.0)
+  ...       b = a + v
+  ...       res_b = sess.run(b)
+  ...       res_v = sess.run(v)
+  ...       print(res_v)
+  0.0
+  0.0
+  0.0
+  0.0
+  0.0
+
+  >>> with tf.Graph().as_default():
+  ...   with tf.compat.v1.Session() as sess:
+  ...     v = tf.Variable(0.0)
+  ...     a = tf.constant(1.0)
+  ...     sess.run(tf.compat.v1.global_variables_initializer())
+  ...     for i in range(5):
+  ...       update_op = v.assign_add(1.0)
+  ...       calc = [a + v]
+  ...       # `tf.tuple` ensures `update_op` is run before `b`
+  ...       b = tf.tuple(calc, [tf.group(update_op)])
+  ...       res_b = sess.run(b)
+  ...       res_v = sess.run(v)
+  ...       print(res_v)
+  1.0
+  2.0
+  3.0
+  4.0
+  5.0
+
 
   Args:
     tensors: A list of `Tensor`s or `IndexedSlices`, some entries can be `None`.

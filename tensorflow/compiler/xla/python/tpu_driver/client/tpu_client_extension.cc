@@ -24,14 +24,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/tpu_driver/client/tpu_client.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/util.h"
-#include "tensorflow/python/lib/core/bfloat16.h"
+#include "tensorflow/tsl/python/lib/core/bfloat16.h"
 
 namespace xla {
 
 namespace py = pybind11;
 
 PYBIND11_MODULE(tpu_client_extension, m) {
-  CHECK(tensorflow::RegisterNumpyBfloat16());
+  CHECK(tsl::RegisterNumpyBfloat16());
 
   py::class_<PyTpuClient, std::shared_ptr<PyTpuClient>>(m, "TpuClient")
       .def_static("Get", &PyTpuClient::Get, py::arg("worker"))
@@ -175,17 +175,6 @@ PYBIND11_MODULE(tpu_client_extension, m) {
              return buffer->CopyToDevice(std::move(dst_device));
            })
       .def("delete", &PyTpuBuffer::Delete)
-      .def("block_host_until_ready",
-           [](PyTpuBuffer* buffer) {
-             // TODO(phawkins): remove 3 months after the release of jaxlib >=
-             // 0.3.2.
-             PythonDeprecationWarning(
-                 "block_host_until_ready() on a JAX array object is "
-                 "deprecated, use block_until_ready() instead.");
-             GlobalPyRefManager()->CollectGarbage();
-             py::gil_scoped_release gil_release;
-             return buffer->BlockHostUntilReady();
-           })
       .def("block_until_ready",
            [](PyTpuBuffer* buffer) {
              GlobalPyRefManager()->CollectGarbage();

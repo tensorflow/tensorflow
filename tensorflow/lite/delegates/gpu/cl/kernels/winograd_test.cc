@@ -39,6 +39,11 @@ TEST_F(OpenCLOperationTest, Winograd4x4To36) {
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
+TEST_F(OpenCLOperationTest, Winograd4x4To36Batch) {
+  auto status = Winograd4x4To36BatchTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
 TEST_F(OpenCLOperationTest, Winograd36To4x4) {
   auto status = Winograd36To4x4Test(&exec_env_);
   ASSERT_TRUE(status.ok()) << status.error_message();

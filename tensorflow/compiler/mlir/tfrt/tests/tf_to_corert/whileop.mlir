@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -tf-executor-to-tfrt-pipeline="enable-native-ops=false enable-optimizer=true tfrt-cost-threshold=1024" %s | FileCheck %s --dump-input=fail
+// RUN: tf-tfrt-opt -tf-executor-to-tfrt-pipeline="enable-optimizer=true tfrt-cost-threshold=1024" %s | FileCheck %s --dump-input=fail
 
 // Check that unused While op results and the associated ops are removed.
 

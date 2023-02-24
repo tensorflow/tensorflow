@@ -1,54 +1,27 @@
-load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
 
-cc_library(
-    name = "translate_cl_registration",
+xla_cc_binary(
+    name = "xla-translate",
     testonly = True,
-    srcs = ["xla_mlir_translate_registration.cc"],
+    srcs = ["xla_translate_main.cc"],
     deps = [
-        ":xla_mlir_translate",
-        "//tensorflow/compiler/mlir/xla:mhlo_to_lhlo_with_xla",
-        "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
-        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:type_to_shape",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:cpu_transfer_manager",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform",
+        "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:translate_registration",
+        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:translate_registration",
+        "//tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla:translate_registration",
+        "//tensorflow/tsl/platform:platform_port",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:SparseTensorDialect",
-        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "xla_mlir_translate",
-    srcs = ["xla_mlir_translate.cc"],
-    hdrs = ["xla_mlir_translate.h"],
-    deps = [
-        "//tensorflow/compiler/jit:xla_cpu_jit",
-        "//tensorflow/compiler/jit:xla_gpu_jit",
-        "//tensorflow/compiler/mlir/xla:mhlo_to_lhlo_with_xla",
-        "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
-        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
-        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:type_to_shape",
-        "//tensorflow/tsl/platform:protobuf",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:TensorDialect",
     ],
 )

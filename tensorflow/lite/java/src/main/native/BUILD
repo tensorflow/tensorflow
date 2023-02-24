@@ -6,6 +6,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tflite", "cc_library_with_tflite")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -93,6 +94,7 @@ cc_library_with_tflite(
     ],
     tflite_deps = [
         ":jni_utils",
+        "//tensorflow/lite:create_op_resolver_header",
         "//tensorflow/lite/core/shims:c_api_without_op_resolver",
         "//tensorflow/lite/core/shims:common",
         "//tensorflow/lite/core/shims:create_op_resolver_header",
@@ -101,6 +103,7 @@ cc_library_with_tflite(
         "//tensorflow/lite/core/shims:jni_utils",
         "//tensorflow/lite/core/shims:xnnpack_plugin",
         "//tensorflow/lite/core/shims:verifier_internal",
+        "//tensorflow/lite/tools:verifier_internal",
     ],
     deps = [
         "//tensorflow/lite:minimal_logging",

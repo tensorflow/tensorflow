@@ -2,7 +2,10 @@
 
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 cuda_py_test(
     name = "bijector_test",

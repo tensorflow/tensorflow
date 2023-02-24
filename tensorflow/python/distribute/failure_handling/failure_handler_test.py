@@ -34,7 +34,7 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.failure_handling import failure_handling
-from tensorflow.python.distribute.failure_handling import gce_util
+from tensorflow.python.distribute.failure_handling import failure_handling_util
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
@@ -45,6 +45,13 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 
+
+try:
+  import dill  # pylint:disable=g-import-not-at-top
+
+  _REGISTER_DECORATOR = dill.register
+except ImportError:
+  _REGISTER_DECORATOR = lambda fn, *_: fn
 
 mock = test.mock
 
@@ -121,7 +128,8 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
                 raise_app_error_on_worker=None,
                 training_restarted=None,
                 training_finished=None,
-                termination_config=failure_handling.TerminationConfig()):
+                termination_config=failure_handling.TerminationConfig(),
+                api_wrapping_train=True):
 
     strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
 
@@ -137,7 +145,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
       def __call__(self):
         return self.v.read_value()
 
-    with mock.patch.object(gce_util, 'on_gcp', lambda: False):
+    with mock.patch.object(failure_handling_util, 'on_gcp', lambda: False):
 
       with strategy.scope():
         model = Model()
@@ -205,7 +213,11 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
         for step in range(
             preemption_handler.total_run_calls % STEPS_PER_EPOCH,
             STEPS_PER_EPOCH):
-          preemption_handler.run(distributed_train_step, epoch, step)
+          if api_wrapping_train:
+            preemption_handler.run(distributed_train_step, epoch, step)
+          else:
+            preemption_handler._save_checkpoint_if_preempted()
+            distributed_train_step(epoch, step)
         # Add some randomness to when preemption actually happens. We should
         # trigger it for sure if the training is coming to an end and it hasn't
         # been triggered yet.
@@ -225,9 +237,12 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
           strategy.num_replicas_in_sync * EPOCHS_TO_RUN * STEPS_PER_EPOCH)
 
   @combinations.generate(
-      combinations.combine(input_arg=['checkpoint', 'manager'],
-                           mwms_mode=['local', 'multi_worker'],))
-  def test_preemption_checkpointing(self, input_arg, mwms_mode):
+      combinations.combine(
+          input_arg=['checkpoint', 'manager'],
+          mwms_mode=['local', 'multi_worker'],
+          api_wrapping_train=[True, False]))
+  def test_preemption_checkpointing(self, input_arg, mwms_mode,
+                                    api_wrapping_train):
     has_chief = False
 
     if _is_oss():
@@ -251,6 +266,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
           args=(checkpoint_dir, cluster_spec, input_arg,
                 [training_started_event
                 ], None, training_restarted, training_finished),
+          kwargs={'api_wrapping_train': api_wrapping_train},
           rpc_layer=rpc_layer,
           return_output=True,
           dependence_on_chief=has_chief)
@@ -444,6 +460,65 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
         self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
                        [training_started_event], None, training_restarted,
                        training_finished, termination_config)
+
+  def test_passed_in_save_fn(self):
+    if _is_oss():
+      rpc_layer = 'grpc'
+    else:
+      rpc_layer = 'grpc+loas'
+
+    checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt')
+    gfile.MakeDirs(checkpoint_dir)
+
+    save_fn = lambda: print('Do nothing')
+    termination_config = failure_handling.TerminationConfig(
+        save_fn=save_fn)
+
+    has_chief = False
+    cluster_spec = multi_worker_test_base.create_cluster_spec(
+        has_chief=has_chief,
+        num_workers=CLUSTER_SIZE)
+    training_started_event = multi_process_runner.manager().Event()
+
+    mpr = multi_process_runner.MultiProcessRunner(
+        self.worker_fn,
+        cluster_spec,
+        args=(checkpoint_dir, cluster_spec, 'checkpoint',
+              [training_started_event], None, None, None, termination_config),
+        rpc_layer=rpc_layer,
+        return_output=True,
+        dependence_on_chief=has_chief)
+
+    logging.info('Cluster starting.')
+    mpr.start()
+    while not training_started_event.is_set():
+      time.sleep(1)
+
+    killed_worker = random.randrange(0, CLUSTER_SIZE)
+    logging.info('sending SIGTERM')
+    os.kill(mpr.get_process_id('worker', killed_worker), signal.SIGTERM)
+    logging.info('SIGTERM sent')
+
+    # 5 is the grace period length
+    raise_if_not_all_exit(5, mpr)
+
+    match_group = [
+        re.search(r'.*ckpt-(\d+).index', a_file)
+        for a_file in gfile.ListDirectory(checkpoint_dir)
+    ]
+
+    # By default, as tested by other test cases, checkpoint will be saved.
+    # This passed in save_fn skips it.
+    self.assertEmpty(match_group)
+
+
+@_REGISTER_DECORATOR(PreemptionCheckpointTest)
+def _save_test_case(pickler, obj):
+  def reconstruct(*args, **kwargs):
+    del args, kwargs
+    return PreemptionCheckpointTest()
+
+  return pickler.save_reduce(reconstruct, (), obj=obj)
 
 
 if __name__ == '__main__':

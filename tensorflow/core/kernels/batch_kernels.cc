@@ -146,10 +146,10 @@ class BatchResource : public serving::BatchResourceBase {
 
     resource->reset(new BatchResource(
         fhandle, flib, std::move(batcher),
-        GetBatcherQueueOptions(num_batch_threads, max_execution_batch_size,
-                               batch_timeout_micros, max_enqueued_batches,
-                               allowed_batch_sizes,
-                               enable_large_batch_splitting),
+        GetBatcherQueueOptions(
+            num_batch_threads, max_execution_batch_size, batch_timeout_micros,
+            max_enqueued_batches, allowed_batch_sizes,
+            enable_large_batch_splitting, /*disable_padding=*/false),
         allowed_batch_sizes));
     return OkStatus();
   }
@@ -169,7 +169,8 @@ class BatchResource : public serving::BatchResourceBase {
         fhandle, flib, std::move(batcher),
         GetAdaptiveBatcherQueueOptions(
             max_batch_size, batch_timeout_micros, max_enqueued_batches,
-            true /* enable large batch split */, allowed_batch_sizes),
+            true /* enable large batch split */, allowed_batch_sizes,
+            /*disable_padding=*/false),
         allowed_batch_sizes));
     return OkStatus();
   }
@@ -895,7 +896,7 @@ class UnbatchGradResource : public ResourceBase {
     const Tensor& batch_key_t = context->input(3);
 
     mutex_lock ml(mu_);
-    if (batch_key_t.NumElements() != 1) {
+    if (!TensorShapeUtils::IsScalar(batch_key_t.shape())) {
       return errors::InvalidArgument("Expected `id` to be scalar. Received ",
                                      batch_key_t.DebugString());
     }

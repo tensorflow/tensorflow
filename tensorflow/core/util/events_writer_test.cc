@@ -80,6 +80,9 @@ void VerifyFile(const string& filename) {
   EXPECT_EQ(actual.file_version(),
             strings::StrCat(EventsWriter::kVersionPrefix,
                             EventsWriter::kCurrentVersion));
+  // Should have the current source metadata.
+  EXPECT_EQ(actual.source_metadata().writer(),
+            EventsWriter::kWriterSourceMetadata);
 
   Event expected;
   CHECK(ReadEventProto(reader, &offset, &actual));

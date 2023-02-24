@@ -16,8 +16,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
 
 #include "absl/strings/str_format.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/platform/numbers.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 #if CUDA_VERSION >= 10020
 
@@ -28,8 +29,8 @@ using ::stream_executor::gpu::GpuContext;
 using ::stream_executor::gpu::GpuDeviceHandle;
 using ::stream_executor::gpu::GpuDevicePtr;
 using ::stream_executor::gpu::GpuDriver;
-using ::stream_executor::port::Status;
-using ::stream_executor::port::StatusOr;
+using ::tsl::Status;
+using ::tsl::StatusOr;
 
 // Rounds value up to the specified power of two alignment.
 size_t AlignUp(size_t value, size_t alignment) {
@@ -48,7 +49,7 @@ Status CheckVirtualAddressManagementSupport(GpuDeviceHandle device,
   TF_ASSIGN_OR_RETURN(bool supports_virtual_address_management,
                       SupportsVirtualAddressManagement(device));
   if (!supports_virtual_address_management) {
-    return stream_executor::port::InternalError(absl::StrFormat(
+    return tsl::errors::Internal(absl::StrFormat(
         "GPU %d does not support virtual memory address management.",
         gpu_id.value()));
   }
@@ -57,13 +58,14 @@ Status CheckVirtualAddressManagementSupport(GpuDeviceHandle device,
 
 }  // namespace
 
-/* static */ stream_executor::port::StatusOr<
-    std::unique_ptr<GpuVirtualMemAllocator>>
+/* static */ tsl::StatusOr<std::unique_ptr<GpuVirtualMemAllocator>>
 GpuVirtualMemAllocator::Create(
     const std::vector<Visitor>& alloc_visitors,
     const std::vector<Visitor>& free_visitors, GpuContext& gpu_context,
     tsl::PlatformDeviceId gpu_id, size_t virtual_address_space_size,
     const std::vector<tsl::PlatformDeviceId>& peer_gpu_ids) {
+  tsl::profiler::TraceMe traceme("GpuVirtualMemAllocator::Create");
+
   std::vector<GpuDeviceHandle> access_gpu_handles;
   access_gpu_handles.reserve(peer_gpu_ids.size() + 1);
 
@@ -101,7 +103,7 @@ GpuVirtualMemAllocator::Create(
       GpuDriver::ReserveVirtualMemory(
           &gpu_context, AlignUp(virtual_address_space_size, max_granularity)));
   VLOG(1) << "Reserved GPU virtual memory at " << vmem.base << " of size "
-          << strings::HumanReadableNumBytes(vmem.size_bytes) << " bytes";
+          << tsl::strings::HumanReadableNumBytes(vmem.size_bytes) << " bytes";
 
   return std::unique_ptr<GpuVirtualMemAllocator>(new GpuVirtualMemAllocator(
       alloc_visitors, free_visitors, gpu_context, gpu_id,
@@ -131,6 +133,8 @@ GpuVirtualMemAllocator::~GpuVirtualMemAllocator() {
 
 void* GpuVirtualMemAllocator::Alloc(size_t alignment, size_t num_bytes,
                                     size_t* bytes_received) {
+  tsl::profiler::TraceMe traceme("GpuVirtualMemAllocator::Alloc");
+
   if (num_bytes == 0) return nullptr;
   size_t padded_bytes = (num_bytes + granularity_ - 1) & ~(granularity_ - 1);
 
@@ -142,7 +146,7 @@ void* GpuVirtualMemAllocator::Alloc(size_t alignment, size_t num_bytes,
   if (next_va + padded_bytes > vmem_.base + vmem_.size_bytes) {
     LOG(ERROR) << "OOM in GPU virtual memory allocator when attempting to "
                   "allocate {request: "
-               << strings::HumanReadableNumBytes(num_bytes)
+               << tsl::strings::HumanReadableNumBytes(num_bytes)
                << ", aligned: " << padded_bytes << "} bytes.";
     return nullptr;
   }
@@ -172,6 +176,8 @@ void* GpuVirtualMemAllocator::Alloc(size_t alignment, size_t num_bytes,
 }
 
 void GpuVirtualMemAllocator::Free(void* ptr, size_t num_bytes) {
+  tsl::profiler::TraceMe traceme("GpuVirtualMemAllocator::Free");
+
   if (ptr == nullptr) return;
 
   auto mapping_it =
@@ -195,8 +201,10 @@ void GpuVirtualMemAllocator::Free(void* ptr, size_t num_bytes) {
   }
   if (total_bytes != num_bytes) {
     LOG(ERROR) << "Invalid size requested for freeing GPU vmem mapping. Got "
-               << strings::HumanReadableNumBytes(num_bytes) << " but expected "
-               << strings::HumanReadableNumBytes(mapping_it->physical.bytes);
+               << tsl::strings::HumanReadableNumBytes(num_bytes)
+               << " but expected "
+               << tsl::strings::HumanReadableNumBytes(
+                      mapping_it->physical.bytes);
     return;
   }
 

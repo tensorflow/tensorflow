@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERIALIZATION_UTILS_H_
 #define TENSORFLOW_CORE_DATA_SERIALIZATION_UTILS_H_
 
+#include <memory>
 #include <string>
 
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset.pb.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -118,6 +121,66 @@ class VariantTensorDataWriter : public IteratorStateWriter {
   bool is_flushed_ = false;
   std::map<string, std::unique_ptr<VariantTensorData>> data_;
   std::map<string, std::vector<string>> keys_;
+};
+
+// Wrapper for encoding/decoding the iterator state stored in a Variant tensor.
+// The `GetData()` method returns an VariantTensorData object which contains all
+// the state needed to restore a single iterator.
+//
+// Usage example:
+//
+// Encoding:
+//
+//   Tensor t(DT_VARIANT, TensorShape({}));
+//   t->scalar<Variant>()() = IteratorStateVariant();
+//
+// Encode() sets the type_name of the VariantTensorData object to
+// IteratorStateVariant::TypeName().
+//
+// Decoding:
+//
+//   Variant v = <VariantTensorDataProto object>;
+//   DecodeUnaryVariant(&v);
+//   IteratorStateVariant* wrapper = v.get<IteratorStateVariant>();
+//   IteratorStateReader reader({wrapper->GetData()});
+//   iterator_resource->Restore(ctx, &reader);
+//
+// The type_name of the VariantTensorData object to be decoded must match
+// IteratorStateVariant::TypeName().
+class IteratorStateVariant {
+ public:
+  IteratorStateVariant() = default;
+  IteratorStateVariant(const IteratorStateVariant& other);
+  IteratorStateVariant& operator=(IteratorStateVariant&& other) = default;
+  IteratorStateVariant& operator=(const IteratorStateVariant& other) = delete;
+
+  static std::string TypeName();
+
+  // Initializes `this` from a VariantTensorData object.
+  Status InitializeFromVariantData(std::unique_ptr<VariantTensorData> data);
+
+  // Returns a borrowed pointer to the underlying VariantTensorData.
+  const VariantTensorData* GetData() const { return data_.get(); }
+
+  // Encodes this `IteratorStateVariant` into `*data`. Data will be compressed
+  // and stored as a scalar `CompressedElement` tensor, or left uncompressed if
+  // compression fails.
+  void Encode(VariantTensorData* data) const;
+
+  // Decodes from `data`. If `data` contains a single scalar `CompressedElement`
+  // tensor, it is assumed to be compressed by `Encode`, and will be
+  // uncompressed as part of `Decode`.
+  bool Decode(VariantTensorData data);
+
+  std::string DebugString() const;
+
+ private:
+  // Returns the compressed element in `data`. If `data` does not contain a
+  // compressed element, returns nullptr.
+  static const CompressedElement* GetCompressedElement(
+      const VariantTensorData& data);
+
+  std::unique_ptr<VariantTensorData> data_;
 };
 
 // Returns a GraphDef representation of the given dataset.

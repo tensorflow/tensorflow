@@ -131,7 +131,7 @@ def TFGraphDialect : Dialect {
 
     // Returns the hook to parse an operation belonging to this dialect, even
     // if unregistered.
-    Optional<ParseOpHook> getParseOperationHook(StringRef opName) const
+    std::optional<ParseOpHook> getParseOperationHook(StringRef opName) const
       override;
 
     // Returns the took to print an operation belonging to this dialect, even
@@ -172,7 +172,6 @@ def TFGraphDialect : Dialect {
   let useDefaultAttributePrinterParser = 1;
   let hasNonDefaultDestructor = 1;
   let hasOperationInterfaceFallback = 1;
-  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 #endif // TFG_DIALECT

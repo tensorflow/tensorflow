@@ -44,8 +44,14 @@ class FractionalAvgPoolOp : public OpKernel {
     OP_REQUIRES(context, pooling_ratio_.size() == 4,
                 errors::InvalidArgument(
                     "pooling_ratio field must specify 4 dimensions"));
+    for (std::size_t i = 0; i < pooling_ratio_.size(); ++i) {
+      OP_REQUIRES(context, pooling_ratio_[i] >= 1,
+                  errors::InvalidArgument(
+                      "pooling_ratio cannot be smaller than 1, got: ",
+                      pooling_ratio_[i]));
+    }
     OP_REQUIRES(
-        context, pooling_ratio_[0] == 1 || pooling_ratio_[3] == 1,
+        context, pooling_ratio_[0] == 1 && pooling_ratio_[3] == 1,
         errors::Unimplemented("Fractional average pooling is not yet "
                               "supported on the batch nor channel dimension."));
     OP_REQUIRES_OK(context, context->GetAttr("deterministic", &deterministic_));
@@ -82,9 +88,11 @@ class FractionalAvgPoolOp : public OpKernel {
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
       input_size[i] = tensor_in.dim_size(i);
       OP_REQUIRES(
-          context, pooling_ratio_[i] <= input_size[i],
-          errors::InvalidArgument(
-              "Pooling ratio cannot be bigger than input tensor dim size."));
+          context, input_size[i] >= pooling_ratio_[i],
+          errors::InvalidArgument("Pooling ratio is higher than input "
+                                  "dimension size for dimension ",
+                                  i, ". Input dim size: ", input_size[i],
+                                  " pooling ratio: ", pooling_ratio_[i]));
     }
     // Output size.
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
@@ -314,7 +322,8 @@ class FractionalAvgPoolGradOp : public OpKernel {
     // Transform orig_input_tensor_shape into TensorShape
     TensorShape in_shape;
     for (auto i = 0; i < tensor_in_and_out_dims; ++i) {
-      in_shape.AddDim(orig_input_tensor_shape_flat(i));
+      OP_REQUIRES_OK(
+          context, in_shape.AddDimWithStatus(orig_input_tensor_shape_flat(i)));
     }
 
     // Create intermediate in_backprop.

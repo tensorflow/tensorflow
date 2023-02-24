@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
 #include "tensorflow/tsl/framework/fixedpoint/FixedPoint.h"
 
 namespace Eigen {

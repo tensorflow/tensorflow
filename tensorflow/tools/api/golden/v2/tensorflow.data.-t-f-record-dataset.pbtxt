@@ -112,8 +112,12 @@ tf_class {
     argspec: "args=[\'self\', \'buffer_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "ragged_batch"
+    argspec: "args=[\'self\', \'batch_size\', \'drop_remainder\', \'row_splits_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \"<dtype: \'int64\'>\", \'None\'], "
+  }
+  member_method {
     name: "random"
-    argspec: "args=[\'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'seed\', \'rerandomize_each_iteration\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "range"
@@ -137,7 +141,7 @@ tf_class {
   }
   member_method {
     name: "sample_from_datasets"
-    argspec: "args=[\'datasets\', \'weights\', \'seed\', \'stop_on_empty_dataset\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
+    argspec: "args=[\'datasets\', \'weights\', \'seed\', \'stop_on_empty_dataset\', \'rerandomize_each_iteration\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "save"
@@ -162,6 +166,10 @@ tf_class {
   member_method {
     name: "snapshot"
     argspec: "args=[\'self\', \'path\', \'compression\', \'reader_func\', \'shard_func\', \'name\'], varargs=None, keywords=None, defaults=[\'AUTO\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "sparse_batch"
+    argspec: "args=[\'self\', \'batch_size\', \'row_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "take"

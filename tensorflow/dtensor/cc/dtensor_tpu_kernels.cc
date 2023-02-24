@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
 #include "tensorflow/core/framework/collective.h"
@@ -35,9 +37,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/kernels/tpu_pod_state.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tpu_system_interface.h"
 
@@ -181,7 +181,8 @@ class ConfigureAndInitializeGlobalTPUOpKernel : public OpKernel {
     int32_t* device_id_output = nullptr;
     auto cleanup = absl::MakeCleanup([&status, &device_id_output]() {
       TF_DeleteStatus(status);
-      tpu::OpsApiFn()->TpuConfigurationApi_FreeInt32ArrayFn(device_id_output);
+      stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_FreeInt32ArrayFn(
+          device_id_output);
     });
 
     InitializeHostForDistributedTpuOp_DoWork_Params params;
@@ -195,7 +196,8 @@ class ConfigureAndInitializeGlobalTPUOpKernel : public OpKernel {
     params.core_id_output = &device_id_output;
     params.status = status;
 
-    tpu::OpsApiFn()->InitializeHostForDistributedTpuOp_DoWorkFn(&params);
+    stream_executor::tpu::OpsApiFn()
+        ->InitializeHostForDistributedTpuOp_DoWorkFn(&params);
     TF_RETURN_IF_ERROR(StatusFromTF_Status(status));
     for (size_t i = 0; i < device_id_output_size; ++i) {
       core_id_output_vec->push_back(device_id_output[i]);
@@ -285,11 +287,15 @@ class SetGlobalTPUArrayOpKernel : public OpKernel {
       : OpKernel(ctx) {}
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "SetGlobalTPUArrayOpKernel op";
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+        errors::InvalidArgument("Expected argument 0 to be a scalar. Received",
+                                ctx->input(0).DebugString()));
     auto tpu_topology = ctx->input(0).scalar<tstring>()();
     TF_Status* status = TF_NewStatus();
 
-    tpu::OpsApiFn()->SetGlobalTPUArrayOp_DoWorkFn(tpu_topology.size(),
-                                                  tpu_topology.data(), status);
+    stream_executor::tpu::OpsApiFn()->SetGlobalTPUArrayOp_DoWorkFn(
+        tpu_topology.size(), tpu_topology.data(), status);
     OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
     TF_DeleteStatus(status);
 

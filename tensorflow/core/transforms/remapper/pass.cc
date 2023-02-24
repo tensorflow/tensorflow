@@ -173,11 +173,95 @@ static std::unique_ptr<OperationState> GetContractionBiasAddOpState(
   state->attributes = contraction_op->getAttrs();
   state->attributes.set("fused_ops", builder.getStrArrayAttr({"BiasAdd"}));
   state->attributes.set("num_args", builder.getI32IntegerAttr(1));
+  // Setting FusedConv2D specific attrs
+  if (helper.getDialect()->IsConv2D(contraction_op)) {
+    TypeAttr dtype_attr = contraction_op->getAttrOfType<TypeAttr>("T");
+    state->attributes.set("TArgs", builder.getArrayAttr({dtype_attr}));
+    state->attributes.set("num_host_args", builder.getI32IntegerAttr(0));
+  }
   // Default values for epsilon and leakyrelu_alpha
   state->attributes.set("epsilon", builder.getF32FloatAttr(0.0001));
   state->attributes.set("leakyrelu_alpha", builder.getF32FloatAttr(0.2));
   return state;
 }
+
+// Convert Softplus+Tanh+Mul to Mish
+// Mul(x, Tanh(Softplus(x))) --> _MklFusedMish
+class MatchSofplusTanhMul : public RemapperPatternBase {
+ public:
+  explicit MatchSofplusTanhMul(OpPropertyHelper &helper)
+      : RemapperPatternBase("tfg.Mul", helper, PatternBenefit(1)) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    // Fusion only available for CPU
+    if (!util::OpHasDevice(op, tensorflow::DEVICE_CPU)) return failure();
+
+    // Not allowing control flow on op
+    if (helper_.HasControlOperandsOrResultUsers(op)) return failure();
+
+    // Fusion only available for float32 and bfloat16 data types
+    auto attr = op->getAttrOfType<TypeAttr>("T");
+    if (!attr) return failure();
+    Type dtype = attr.getValue();
+    if (!dtype.isa<Float32Type, BFloat16Type>()) return failure();
+
+    TFOp mul_wrapper(op);
+
+    // Tanh op
+    Value tanh_value = op->getOperand(0);
+    // Input
+    Value x_value = op->getOperand(1);
+
+    // The Mul op is commutative and the inputs may be swapped.
+    auto CheckTanhOperand = [&](Value tanh_value) {
+      if (!tanh_value) return false;
+      Operation *op = tanh_value.getDefiningOp();
+      return op && this->helper_.getDialect()->IsTanh(op);
+    };
+
+    if (!CheckTanhOperand(tanh_value)) {
+      std::swap(tanh_value, x_value);
+      if (!CheckTanhOperand(tanh_value)) return failure();
+    }
+
+    Operation *tanh_op = tanh_value.getDefiningOp();
+
+    // Softplus op
+    Value softplus_value = tanh_op->getOperand(0);
+    Operation *softplus_op = softplus_value.getDefiningOp();
+
+    if (!(this->helper_.getDialect()->IsSoftplus(op)) &&
+        !(softplus_op->getOperand(0) == x_value)) {
+      return failure();
+    }
+
+    if (!helper_.HasAtMostOneUserOfResult0(tanh_op) ||
+        !helper_.HasAtMostOneUserOfResult0(softplus_op)) {
+      return failure();
+    }
+
+    // TODO(intel-tf): Allow valid control dependencies
+    // Not allowing control flow on Tanh or Softplus
+    if (helper_.HasControlOperandsOrResultUsers(tanh_op) ||
+        helper_.HasControlOperandsOrResultUsers(softplus_op)) {
+      return failure();
+    }
+
+    SmallVector<Value> operands;
+    // Set up non-control operand.
+    operands.push_back(x_value);
+    // Control operands come after regular operands.
+    llvm::append_range(operands, mul_wrapper.getControlOperands());
+
+    Operation *new_op = rewriter.create(
+        op->getLoc(), rewriter.getStringAttr("tfg._MklFusedMish"), operands,
+        op->getResultTypes(), op->getAttrs());
+    rewriter.replaceOp(op, new_op->getResults());
+
+    return success();
+  }
+};
 
 // Contraction + BiasAdd
 // TODO(intel-tf): Support Contraction + {Add, AddV2} fusion in the case it has
@@ -306,6 +390,249 @@ class BasePatternActivationRewriter : public BasePatternRewriter {
   }
 };
 
+// NOTE(ezhulenev): See `BatchnormSpatialPersistentEnabled` documentation in the
+// `tensorflow/compiler/xla/stream_executor/cuda/cuda_dnn.cc` for details.
+bool BatchnormSpatialPersistentEnabled() {
+#if CUDNN_VERSION >= 7402
+  static bool is_enabled = [] {
+    bool is_enabled = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
+        "TF_USE_CUDNN_BATCHNORM_SPATIAL_PERSISTENT",
+        /*default_val=*/false, &is_enabled));
+    return is_enabled;
+  }();
+  return is_enabled;
+#else
+  return false;
+#endif
+}
+
+// FusedBatchNorm[$is_training] + ... -> _FusedBatchNormEx[$is_training]
+//   (1) FusedBatchNorm + <Activation>
+//   (2) FusedBatchNorm + SideInput + <Activation>
+// only supported activation is Relu
+class FusedBatchNormExRewriter : public RemapperPatternBase {
+ public:
+  explicit FusedBatchNormExRewriter(OpPropertyHelper &helper)
+      : RemapperPatternBase("tfg.Relu", helper, PatternBenefit(1)) {}
+
+  // Constructor used by derived pattern rewritter class that may have
+  // different root operation name. Currently, pattern is
+  // matched from root op to its inputs.
+  explicit FusedBatchNormExRewriter(StringRef op_name, OpPropertyHelper &helper,
+                                    PatternBenefit benefit)
+      : RemapperPatternBase(op_name, helper, benefit) {}
+
+  using Pattern = FusedBatchNormEx;
+
+  bool is_valid_batch_norm(Operation *fused_batch_norm_op) const {
+    TFOp fusedbatchnormop_wrapper(fused_batch_norm_op);
+    if (!this->helper_.getDialect()->IsFusedBatchNorm(
+            fusedbatchnormop_wrapper)) {
+      return false;
+    }
+    // We fuse FusedBatchNorm on GPU or oneDNN CPU.
+    if (!this->helper_.isOneDNNEnabled() &&
+        !util::OpHasDevice(fused_batch_norm_op, tensorflow::DEVICE_GPU)) {
+      return false;
+    }
+
+    TypeAttr attr = fused_batch_norm_op->getAttrOfType<TypeAttr>("T");
+    if (!attr) return false;
+    Type dtype_T = attr.getValue();
+
+    if (util::OpHasDevice(fused_batch_norm_op, tensorflow::DEVICE_GPU)) {
+      // GPU supports float and half.
+      // Put this condition before check `isOneDNNEnabled()` because this node
+      // should be processed when it's on GPU and oneDNN CPU is enabled.
+      if (!dtype_T.isa<Float32Type, Float16Type>()) return false;
+    } else {
+      // Bfloat16 is available only with oneDNN.
+      // Half is not available with oneDNN.
+      if (this->helper_.isOneDNNEnabled() &&
+          !dtype_T.isa<Float32Type, BFloat16Type>()) {
+        return false;
+      }
+    }
+
+    // Get the FusedBatchNorm training mode.
+    auto training_attr =
+        fused_batch_norm_op->getAttrOfType<BoolAttr>("is_training");
+    if (!training_attr) return false;
+    bool is_training = training_attr.getValue();
+
+    auto data_format_attr =
+        fused_batch_norm_op->getAttrOfType<StringAttr>("data_format");
+    if (!data_format_attr) return false;
+    StringRef data_format = data_format_attr.getValue();
+
+    if (data_format != "NHWC" && data_format != "NCHW") return false;
+
+    // In training mode we rely on cuDNN for computing FusedBatchNorm with side
+    // inputs and activation, and it has its own limitations. In inference mode
+    // we have a custom CUDA kernel that doesn't not have these constraints.
+    if (is_training &&
+        util::OpHasDevice(fused_batch_norm_op, tensorflow::DEVICE_GPU)) {
+      // cuDNN only supports NHWC data layout.
+      if (data_format != "NHWC") return false;
+
+      // Data type must be Float16.
+      if (!dtype_T.isa<Float16Type>()) return false;
+
+      // Channel dimension must be a multiple of 4.
+      auto fbn_input0_shape =
+          fused_batch_norm_op->getOperand(0).getType().cast<ShapedType>();
+      auto fbn_input0_shape_dims = fbn_input0_shape.getShape();
+
+      const bool valid_channel_dim = (fbn_input0_shape.getRank() == 4) &&
+                                     (fbn_input0_shape_dims[3] % 4 == 0);
+
+      if (!valid_channel_dim) return false;
+
+      // cuDNN must support CUDNN_BATCHNORM_SPATIAL_PERSISTENT mode.
+      if (!BatchnormSpatialPersistentEnabled()) return false;
+    }
+
+    // FusedBatchNormV2 and V3 have an extra type parameter.
+    if (fused_batch_norm_op->getName().getStringRef() != "tfg.FusedBatchNorm") {
+      auto attr = fused_batch_norm_op->getAttrOfType<TypeAttr>("U");
+      if (attr && !attr.getValue().isa<Float32Type>()) {
+        return false;
+      }
+    }
+
+    // Check that only one node consumes the 0-th output of a FusedBatchNorm.
+    if (this->helper_.HasControlOperandsOrResultUsers(fused_batch_norm_op) ||
+        !this->helper_.HasAtMostOneUserOfResult0(fused_batch_norm_op)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  bool matchPattern(Operation *op, Pattern &pattern) const {
+    TFOp activation_tfg_wrapper(op);
+    // Not allowing control flow on Relu
+    if (helper_.HasControlOperandsOrResultUsers(op)) return false;
+    if (activation_tfg_wrapper.getNonControlOperands().empty()) return false;
+
+    Operation *activation_input_op = op->getOperand(0).getDefiningOp();
+    if (activation_input_op == nullptr) return false;
+    if (is_valid_batch_norm(activation_input_op)) {
+      pattern.fused_batch_norm = activation_input_op;
+      pattern.activation = op;
+      pattern.side_input = nullptr;
+      return true;
+    }
+
+    // Input to a Relu can be an Add node with FusedBatchNorm as one of the
+    // inputs
+    if (this->helper_.getDialect()->IsAdd(activation_input_op)) {
+      // Currently no CPU implementation for "FusedBatchNorm + SideInput +
+      // <Activation>"
+      if (this->helper_.isOneDNNEnabled() &&
+          !util::OpHasDevice(op, tensorflow::DEVICE_GPU)) {
+        return false;
+      }
+
+      // Check that only Relu node consumes the output of an Add node.
+      if (helper_.HasControlOperandsOrResultUsers(activation_input_op) ||
+          !helper_.HasAtMostOneUserOfResult0(activation_input_op)) {
+        return false;
+      }
+
+      if (activation_input_op->getOperands().size() < 2 &&
+          TFOp(activation_input_op).getNonControlOperands().size() < 2) {
+        return false;
+      }
+
+      // Add node supports broadcasting, FusedBatchNormEx does not.
+      // Check for symbolic shape equivalence
+      auto add_input0_op = activation_input_op->getOperand(0).getDefiningOp();
+      auto add_input1_op = activation_input_op->getOperand(1).getDefiningOp();
+      if (add_input0_op == nullptr || add_input1_op == nullptr) return false;
+      auto add_input0_shape =
+          activation_input_op->getOperand(0).getType().cast<ShapedType>();
+      auto add_input1_shape =
+          activation_input_op->getOperand(1).getType().cast<ShapedType>();
+      if (add_input0_shape.getShape() != add_input1_shape.getShape()) {
+        return false;
+      }
+
+      if (is_valid_batch_norm(add_input0_op)) {
+        pattern.fused_batch_norm = add_input0_op;
+        pattern.activation = op;
+        pattern.side_input = activation_input_op->getOperand(1);
+        return true;
+      }
+
+      if (is_valid_batch_norm(add_input1_op)) {
+        pattern.fused_batch_norm = add_input1_op;
+        pattern.activation = op;
+        pattern.side_input = activation_input_op->getOperand(0);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  LogicalResult createFusedBatchNormExOpState(OpBuilder &builder,
+                                              FusedBatchNormEx *pattern,
+                                              OperationState &state) const {
+    Operation *fused_batch_norm = pattern->fused_batch_norm;
+    Operation *activation = pattern->activation;
+    Value side_input = pattern->side_input;
+
+    state.addOperands(fused_batch_norm->getOperands());
+    if (side_input) {
+      state.operands.push_back(side_input);
+    }
+    state.addOperands(TFOp(fused_batch_norm).getControlOperands());
+    state.addTypes(fused_batch_norm->getResultTypes());
+    state.attributes = fused_batch_norm->getAttrs();
+    state.attributes.set(
+        "activation_mode",
+        builder.getStringAttr(activation->getName().stripDialect()));
+    if (side_input) {
+      state.attributes.set("num_side_inputs", builder.getI32IntegerAttr(1));
+    } else {
+      state.attributes.set("num_side_inputs", builder.getI32IntegerAttr(0));
+    }
+    return success();
+  }
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    Pattern pattern;
+
+    if (!matchPattern(op, pattern)) return failure();
+
+    OperationState state(op->getLoc(), "tfg._FusedBatchNormEx");
+    LogicalResult create_op_state =
+        createFusedBatchNormExOpState(rewriter, &pattern, state);
+    if (!succeeded(create_op_state)) return failure();
+
+    Operation *fused_op = rewriter.create(state);
+
+    auto fused_batch_norm_op_name = TFOp(pattern.fused_batch_norm).nameAttr();
+    TFOp(fused_op).setName(fused_batch_norm_op_name);
+
+    OperationState identity_op_state(UnknownLoc::get(rewriter.getContext()),
+                                     "tfg.Identity");
+    identity_op_state.addAttribute("T", op->getAttr("T"));
+    identity_op_state.addOperands(fused_op->getResult(0));
+    identity_op_state.addTypes(op->getResultTypes());
+    Operation *identity_op = rewriter.create(identity_op_state);
+    TFOp(identity_op).setName(TFOp(op).nameAttr());
+    if (!TFOp(op).device().empty())
+      TFOp(identity_op).setRequestedDevice(TFOp(op).deviceAttr());
+
+    rewriter.replaceOp(op, identity_op->getResults());
+    return success();
+  }
+};
+
 template <template <OpKind> class PatternT, OpKind... op_kinds,
           typename... Args>
 static void InsertPatterns(RewritePatternSet &patterns, Args &&...args) {
@@ -349,6 +676,7 @@ class Remapper : public impl::RemapperBase<Remapper> {
     }
     if (enable_onednn_patterns_) {
       patterns.insert<MatchMulSigmoid>(context);
+      patterns.insert<MatchSofplusTanhMul>(helper_);
       // TODO(chiahungduan): Currently, the only pattern implemented in PDLL is
       // the same one as `MatchMulSigmoid`. Remove the one of them when there's
       // a decision that which one is preferred.
@@ -360,6 +688,7 @@ class Remapper : public impl::RemapperBase<Remapper> {
     InsertPatterns<ContractionBiasAddActivationRewriter, OpKind::Relu,
                    OpKind::Relu6, OpKind::Elu, OpKind::LeakyRelu, OpKind::Tanh,
                    OpKind::Sigmoid>(patterns, helper_);
+    patterns.insert<FusedBatchNormExRewriter>(helper_);
   }
 
   void populateRemapperPDLLPatterns(RewritePatternSet &patterns) {

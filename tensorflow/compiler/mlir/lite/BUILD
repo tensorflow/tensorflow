@@ -5,9 +5,11 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         # TODO(jpienaar): Make the visibility more restrictive.
         ":friends",
+        "//learning/brain/mobile/programmability:__subpackages__",
         "//tensorflow/lite/experimental/tf_runtime:__subpackages__",
         "//tensorflow/lite/testing:__subpackages__",
     ],
@@ -19,7 +21,6 @@ package_group(
     packages = [
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/mlir/...",
-        "//third_party/auroraml/...",
         "//third_party/iree/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/lite/python/...",
@@ -312,6 +313,7 @@ cc_library(
     ],
     deps = [
         ":cost_estimators",
+        ":size_utils",
         ":tensorflow_lite_op_enums_inc_gen",
         ":tensorflow_lite_op_interfaces_inc_gen",
         ":tensorflow_lite_ops_inc_gen",
@@ -364,6 +366,31 @@ cc_library(
 )
 
 cc_library(
+    name = "size_utils",
+    srcs = [
+        "utils/size_utils.cc",
+    ],
+    hdrs = [
+        "utils/size_utils.h",
+    ],
+    deps = [
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+tf_cc_test(
+    name = "size_utils_test",
+    size = "small",
+    srcs = ["utils/size_utils_test.cc"],
+    deps = [
+        ":size_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "cost_estimators",
     hdrs = [
         "utils/arithmetic_count_util.h",
@@ -385,16 +412,25 @@ cc_library(
         "utils/constant_utils.h",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:statusor",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "low_bit_utils",
+    srcs = [
+        "utils/low_bit_utils.cc",
+    ],
+    hdrs = [
+        "utils/low_bit_utils.h",
     ],
 )
 
@@ -605,6 +641,7 @@ cc_library(
         ":lstm_utils",
         ":nms_utils",
         ":perception_ops_utils",
+        ":size_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":tensorflow_lite_passes_inc_gen",
@@ -696,7 +733,9 @@ cc_library(
         "transforms/post_quantize.cc",
         "transforms/prepare_quantize.cc",
         "transforms/prepare_quantize_dynamic_range.cc",
+        "transforms/prepare_quantize_helper.cc",
         "transforms/quantize.cc",
+        "transforms/quantize_variables.cc",
         "utils/generated_op_quant_spec_getters.inc",
     ],
     hdrs = [
@@ -712,6 +751,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/quantization/lite:tfl_to_std",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -920,6 +960,7 @@ cc_library(
     deps = [
         ":convert_type",
         ":flatbuffer_tflite_operator_lib",
+        ":low_bit_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
@@ -971,6 +1012,8 @@ cc_library(
     deps = [
         ":convert_type",
         ":flatbuffer_tflite_operator_lib",
+        ":low_bit_utils",
+        ":size_utils",
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
@@ -986,6 +1029,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/experimental/remat:metadata_util",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/base",
@@ -1126,12 +1170,13 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
         "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
-        "//tensorflow/compiler/xla/stream_executor/lib",
-        "//tensorflow/compiler/xla/translate:xla_mlir_translate",
+        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:translate",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -1214,16 +1259,15 @@ cc_library(
         ":common",
         ":flatbuffer_translate_lib",
         ":tensorflow_lite",
-        ":tensorflow_lite_legalize_tf",
-        ":tensorflow_lite_optimize",
-        ":tensorflow_lite_quantize",
         ":tf_tfl_passes",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/lite/metrics:error_collector_inst",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
-        "//tensorflow/compiler/mlir/lite/stablehlo:mhlo_tfl",
         "//tensorflow/compiler/mlir/lite/stablehlo:op_stat_pass",
+        "//tensorflow/compiler/mlir/lite/stablehlo:stablehlo_tfl",
         "//tensorflow/compiler/mlir/lite/stablehlo:transforms",
+        "//tensorflow/compiler/mlir/lite/stablehlo/serializer:flatbuffer_export",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -1235,12 +1279,12 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_freeze_variables",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "//tensorflow/lite/tools/optimize:quantize_weights",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",

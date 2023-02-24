@@ -18,13 +18,14 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_domain_metadata.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_isolator.h"
-#include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_remover.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_verifier.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
+#include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
@@ -322,10 +323,13 @@ ENTRY entry {
   p0 = (f32[4]) parameter(0)
   a = f32[4] get-tuple-element(p0), index=0
   token0 = token[] after-all()
-  b = (f32[4], u32[], token[]) send(a, token0), channel_id=1, sharding={maximal device=0}
+  b = (f32[4], u32[], token[]) send(a, token0), channel_id=1,
+             sharding={{maximal device=0},{maximal device=0},{maximal device=0}}
   c = token[] send-done(b), channel_id=1, sharding={maximal device=0}
-  d = (f32[4], u32[], token[]) recv(token0), channel_id=2, sharding={maximal device=0}
-  e = (f32[4], token[]) recv-done(d), channel_id=2, sharding={maximal device=0}
+  d = (f32[4], u32[], token[]) recv(token0), channel_id=2,
+             sharding={{maximal device=0},{maximal device=0},{maximal device=0}}
+  e = (f32[4], token[]) recv-done(d), channel_id=2,
+             sharding={{maximal device=0},{maximal device=0}}
   e_element = f32[4] get-tuple-element(e), index=0, sharding={maximal device=0}
   f = f32[4] add(a, e_element)
   g = f32[4] subtract(a, e_element)
@@ -362,11 +366,14 @@ HloModule Module
 
 ENTRY entry {
   token0 = token[] after-all(), sharding={maximal device=-1}
-  a = (f32[4], u32[], token[]) recv(token0), channel_id=1, sharding={maximal device=-1}
-  b = (f32[4], token[]) recv-done(a), channel_id=1, sharding={maximal device=-1}
+  a = (f32[4], u32[], token[]) recv(token0), channel_id=1,
+        sharding={{maximal device=-1},{maximal device=-1},{maximal device=-1}}
+  b = (f32[4], token[]) recv-done(a), channel_id=1,
+        sharding={{maximal device=-1},{maximal device=-1}}
   b_element = f32[4] get-tuple-element(b), index=0, sharding={maximal device=-1}
   c = f32[4] add(b_element, b_element), sharding={maximal device=-1}
-  d = (f32[4], u32[], token[]) send(c, token0), channel_id=2, sharding={maximal device=-1}
+  d = (f32[4], u32[], token[]) send(c, token0), channel_id=2, 
+        sharding={{maximal device=-1},{maximal device=-1},{maximal device=-1}}
   ROOT e = token[] send-done(d), channel_id=2, sharding={maximal device=-1}
 }
 )";
@@ -386,11 +393,14 @@ HloModule Module
 
 ENTRY entry {
   token0 = token[] after-all(), sharding={maximal device=0}
-  a = (f32[4], u32[], token[]) recv(token0), channel_id=1, sharding={maximal device=0}
-  b = (f32[4], token[]) recv-done(a), channel_id=1, sharding={maximal device=0}
+  a = (f32[4], u32[], token[]) recv(token0), channel_id=1,
+       sharding={{maximal device=0},{maximal device=0},{maximal device=0}}
+  b = (f32[4], token[]) recv-done(a), channel_id=1,
+       sharding={{maximal device=0},{maximal device=0}}
   b_element = f32[4] get-tuple-element(b), index=0, sharding={maximal device=0}
   c = f32[4] add(b_element, b_element)
-  d = (f32[4], u32[], token[]) send(c, token0), channel_id=2, sharding={maximal device=0}
+  d = (f32[4], u32[], token[]) send(c, token0), channel_id=2,
+        sharding={{maximal device=0},{maximal device=0},{maximal device=0}}
   ROOT e = token[] send-done(d), channel_id=2, sharding={maximal device=0}
 }
 )";
@@ -566,7 +576,7 @@ HloModule Module
 ENTRY entry {
   %param = f32[1] parameter(0), sharding={maximal device=0}
   %tuple = (f32[1]) tuple(%param),
-    sharding={maximal device=1}
+    sharding={{maximal device=1}}
   ROOT %gte = f32[1] get-tuple-element(%tuple), index=0,
     sharding={maximal device=1}
 })";
@@ -818,6 +828,73 @@ ENTRY entry {
 
   EXPECT_TRUE(tuple1->has_sharding());
   EXPECT_EQ(tuple0->sharding(), tuple1->sharding());
+}
+
+// Test HloDomainRemover with ShardingPropagation::NormalizeDomain to generate
+// correct shardings after removing doman instruction after tuple instructions
+// with the same sharding for every tuple element.
+TEST_F(HloDomainTest, DomainTupleSameSharding) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+ENTRY entry {
+  p0 = u32[2]{0} parameter(0), sharding={devices=[2]0,1}
+  p1 = u32[2]{0} parameter(1), sharding={devices=[2]0,1}
+  tuple.0 = (u32[2]{0}, u32[2]{0}) tuple(p0, p1), sharding={{devices=[2]0,1}, {devices=[2]0,1}}
+  get-tuple-element.0 = u32[2]{0} get-tuple-element(tuple.0), index=0
+  get-tuple-element.1 = u32[2]{0} get-tuple-element(tuple.0), index=1
+  ROOT add = u32[2]{0} add(get-tuple-element.0, get-tuple-element.1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
+  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  EXPECT_TRUE(isolator_changed);
+
+  HloDomainRemover remover(ShardingMetadata::KindName(),
+                           ShardingPropagation::NormalizeDomain);
+  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  EXPECT_TRUE(remover_changed);
+  auto tuple0 = FindInstruction(module.get(), "tuple.0");
+  EXPECT_TRUE(tuple0->has_sharding());
+  EXPECT_TRUE(tuple0->sharding().IsTuple());
+  EXPECT_EQ(tuple0->sharding().tuple_elements().size(), 2);
+}
+
+TEST_F(HloDomainTest, DomainTupleSameSharding_ClearSharding) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+ENTRY entry {
+  p0 = u32[2]{0} parameter(0), sharding={devices=[2]0,1}
+  p1 = u32[2]{0} parameter(1), sharding={devices=[2]0,1}
+  tuple.0 = (u32[2]{0}, u32[2]{0}) tuple(p0, p1), sharding={{devices=[2]0,1}, {devices=[2]0,1}}
+  get-tuple-element.0 = u32[2]{0} get-tuple-element(tuple.0), index=0
+  get-tuple-element.1 = u32[2]{0} get-tuple-element(tuple.0), index=1
+  ROOT add = u32[2]{0} add(get-tuple-element.0, get-tuple-element.1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
+  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  EXPECT_TRUE(isolator_changed);
+
+  // If tuple does not have sharding, verify that tuple sharding normalization
+  // still happens in NormalizeDomain.
+  auto tuple0 = FindInstruction(module.get(), "tuple.0");
+  tuple0->clear_sharding();
+
+  HloDomainRemover remover(ShardingMetadata::KindName(),
+                           ShardingPropagation::NormalizeDomain);
+  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  EXPECT_TRUE(remover_changed);
+
+  tuple0 = FindInstruction(module.get(), "tuple.0");
+  EXPECT_TRUE(tuple0->has_sharding());
+  EXPECT_TRUE(tuple0->sharding().IsTuple());
+  EXPECT_EQ(tuple0->sharding().tuple_elements().size(), 2);
 }
 
 }  // namespace

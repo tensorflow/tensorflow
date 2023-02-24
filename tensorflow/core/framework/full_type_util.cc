@@ -144,7 +144,12 @@ typedef absl::flat_hash_map<StringPiece, const AttrValue*> AttrMap;
 inline Status SubstituteFromAttrs(AttrMap& attrs, FullTypeDef& t);
 
 Status SubstituteVar(AttrMap& attrs, FullTypeDef& t) {
-  DCHECK_EQ(t.args_size(), 0);
+  if (t.args_size() != 0) {
+    return Status(
+        error::INVALID_ARGUMENT,
+        absl::StrCat("Unexpected Var type, expected args_size 0, found ",
+                     t.args_size()));
+  }
 
   StringPiece var_name = t.s();
   if (!attrs.contains(var_name)) {
@@ -289,6 +294,13 @@ Status SpecializeType(const AttrSlice& attrs, const OpDef& op_def,
   AttrMap map;
   for (const auto& attr : attrs) {
     map.emplace(attr.first, &attr.second);
+  }
+
+  // Add default values (if defined) for any attributes not already specified
+  for (const auto& attr_def : op_def.attr()) {
+    if (attr_def.has_default_value() && !attrs.Find(attr_def.name())) {
+      map.emplace(attr_def.name(), &attr_def.default_value());
+    }
   }
 
   int nargs = op_def.output_arg_size();

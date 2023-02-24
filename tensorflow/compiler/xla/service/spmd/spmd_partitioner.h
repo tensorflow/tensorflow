@@ -16,21 +16,26 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SPMD_PARTITIONER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SPMD_PARTITIONER_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/functional/function_ref.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/custom_call_sharding_helper.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -221,7 +226,8 @@ class SpmdPartitioner : public HloModulePass {
   StatusOr<bool> PartitionComputation(HloComputation* computation,
                                       const HloSharding& root_sharding,
                                       int64_t* next_channel_id,
-                                      SpmdLogger* logger);
+                                      SpmdLogger* logger,
+                                      const CallGraph& call_graph);
 
   // Creates all-gather(s) based on HloSharding. Can be overridden to customize.
   // The default uses a single all-gather even if there are multiple sharded
@@ -250,7 +256,7 @@ class SpmdPartitioner : public HloModulePass {
       HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
       const SPMDCollectiveOpsCreator& collective_ops_creator,
       int64_t* next_channel_id, SpmdLogger* logger,
-      SpmdPartitionerOptions options);
+      SpmdPartitionerOptions options, const CallGraph& call_graph);
 
   HloInstruction* AllGatherShardsInternal(
       SpmdBuilder* b, HloInstruction* operand, const HloSharding& sharding,
@@ -341,12 +347,6 @@ class PartitionedHlo {
       : hlo_(hlo), base_shape_(base_shape), state_(std::move(state)) {
     CHECK(hlo->has_sharding())
         << "PartitionedHlo is missing sharding:" << hlo->ToString();
-    // If the tuple shape instruction does not have a tuple sharding, reassign
-    // to use the tuple sharding. Reshard() implementation assumes this.
-    if (hlo_->shape().IsTuple() && !hlo_->sharding().IsTuple()) {
-      hlo_->set_sharding(
-          hlo_->sharding().GetTupleSharding(hlo_->shape()).value());
-    }
   }
 
   PartitionedHlo CloneWithNewHlo(HloInstruction* hlo) const {
@@ -484,7 +484,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
       HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
       const SPMDCollectiveOpsCreator& collective_ops_creator,
       int64_t* next_channel_id, SpmdLogger* logger,
-      SpmdPartitionerOptions options, SpmdPartitioner* partitioner);
+      SpmdPartitionerOptions options, SpmdPartitioner* partitioner,
+      const CallGraph& call_graph);
 
   Status DefaultAction(HloInstruction* hlo) override;
   Status HandleAllReduce(HloInstruction* hlo) override;
@@ -523,9 +524,10 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   // Implementation of dot partitioning given DotGeneralDimsMapping.
   Status HandleDotHelper(HloInstruction* hlo,
                          const DotConvDimsMapping& dims_mapping,
-                         const std::function<StatusOr<HloInstruction*>(
+                         absl::FunctionRef<StatusOr<HloInstruction*>(
                              HloInstruction*, HloInstruction*, SpmdBuilder*,
-                             const Window& conv_window)>& create_sharded_dot);
+                             const Window& conv_window)>
+                             create_sharded_dot);
 
   // Common handle for elementwise HLOs.
   Status HandleElementwise(HloInstruction* hlo);
@@ -555,7 +557,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   // Convenient wrapper that creates PartitionedHlo from the result of the func
   // and maps it to the given original hlo.
   void SetPartitionedHlo(const HloInstruction* hlo,
-                         const std::function<HloInstruction*()>& func) {
+                         absl::FunctionRef<HloInstruction*()> func) {
     HloInstruction* new_hlo = func();
     new_hlo->set_sharding(hlo->sharding());
     SetPartitionedHlo(
@@ -589,6 +591,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   std::vector<ReplicaGroup> CreateReplicaGroups(
       std::vector<std::vector<int64_t>>& groups);
+
+  const CallGraph& call_graph() { return call_graph_; }
 
   // Information about a loop created for windowed dot-general. Used when
   // DoCodeMotionForWindowedDotGeneralLoops() executes after the visitor
@@ -646,6 +650,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   std::optional<HloInstruction*> visiting_partition_id_;
   std::vector<PartitionedHlo::PartitioningState> visiting_state_;
   std::vector<std::vector<int64_t>> device_groups_;
+  const CallGraph& call_graph_;
 };
 
 }  // namespace spmd

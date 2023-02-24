@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tfrt/runtime_fallback/runtime_fallback_executor.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/utils/host_context.h"
@@ -39,10 +40,10 @@ using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
 
+using ::tfrt::jitrt::HostContextAsyncTaskRunner;
 using ::tfrt::jitrt::RemainingResultsConverter;
 
 using ::xla::runtime::Executable;
-using ::xla::runtime::HostContextAsyncTaskRunner;
 using ::xla::runtime::JitExecutable;
 using ::xla::runtime::MemrefDesc;
 
@@ -91,7 +92,6 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
 
   TfJitRtPipelineOptions tf_jitrt_opts;
   tf_jitrt_opts.vectorize = vectorize;
-  tf_jitrt_opts.codegen_transpose = codegen_transpose;
   JitExecutable& jit_executable =
       CreateJitExecutable(*host, mlir_input, function_name,
                           /*lower_from_tensorflow=*/true, tf_jitrt_opts);

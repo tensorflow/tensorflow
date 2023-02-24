@@ -16,7 +16,6 @@ limitations under the License.
 #define TENSORFLOW_LITE_CORE_SHIMS_CC_INTERPRETER_BUILDER_H_
 
 /// For documentation, see third_party/tensorflow/lite/interpreter_builder.h.
-
 #include "tensorflow/lite/interpreter_builder.h"
 
 namespace tflite_shims {

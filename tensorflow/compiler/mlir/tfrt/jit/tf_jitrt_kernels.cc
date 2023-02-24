@@ -16,6 +16,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -31,7 +32,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_query_of_death.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
-#include "tensorflow/compiler/xla/mlir/utils/runtime/async_runtime_api.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
+#include "tensorflow/compiler/xla/mlir/runtime/utils/async_runtime_api.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
@@ -50,6 +52,7 @@ limitations under the License.
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
+#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/host_buffer.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
@@ -70,8 +73,6 @@ using ::std::any_cast;
 
 using ::llvm::cast;
 using ::llvm::Expected;
-using ::llvm::MutableArrayRef;
-using ::llvm::None;
 using ::llvm::Optional;
 
 using ::tfrt::Argument;
@@ -82,8 +83,6 @@ using ::tfrt::AsyncValueRef;
 using ::tfrt::Attribute;
 using ::tfrt::Chain;
 using ::tfrt::CompilationUnitAttribute;
-using ::tfrt::DecodedDiagnostic;
-using ::tfrt::DType;
 using ::tfrt::EmitErrorAsync;
 using ::tfrt::ExecutionContext;
 using ::tfrt::HostContext;
@@ -290,7 +289,7 @@ static const std::string GetSessionName(RequestContext* req_ctx) {
 
 static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     const CompilationUnitAttribute& kernel, const ExecutionContext& exec_ctx,
-    const Optional<TfJitRtPipelineOpts>& opts = None) {
+    const Optional<TfJitRtPipelineOpts>& opts = std::nullopt) {
   // Request context must be initialized with the tf_jitrt state.
   auto* state = exec_ctx.request_ctx()->GetDataIfExists<TfJitRtRequestState>();
   if (LLVM_UNLIKELY(!state))
@@ -460,37 +459,40 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
                               : JitExecutable::Specialization::kEnabled;
 
     // Register dialects and interfaces required for the compilation pipeline.
-    opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
-      mlir::RegisterAllTensorFlowDialects(registry);
-      RegisterDefaultJitRtDialects(registry);
-    };
+    opts.compiler.register_dialects =
+        [](xla::runtime::DialectRegistry& dialects) {
+          mlir::RegisterAllTensorFlowDialects(*dialects);
+          RegisterDefaultJitRtDialects(dialects);
+        };
 
     // Register a custom pipeline for lowering from Tensorflow dialect to LLVM.
-    opts.compiler.create_compilation_pipeline = [=](mlir::PassManager& pm) {
-      if (GetJitRtFlags().enable_crash_reproducer)
-        SetCrashReproducer(pm, kCrashReproducerStdErr);
+    opts.compiler.create_compilation_pipeline =
+        [=](xla::runtime::PassManager& passes) {
+          if (GetJitRtFlags().enable_crash_reproducer)
+            SetCrashReproducer(*passes, kCrashReproducerStdErr);
 
-      TfJitRtPipelineOptions opts;
-      if (tf_jitrt_opts) {
-        opts.vectorize = tf_jitrt_opts->vectorize;
-        opts.legalize_i1_tensors = tf_jitrt_opts->legalize_i1_tensors;
-      } else {
-        opts.vectorize = GetJitRtFlags().vectorize;
-      }
+          TfJitRtPipelineOptions opts;
+          if (tf_jitrt_opts) {
+            opts.vectorize = tf_jitrt_opts->vectorize;
+            opts.legalize_i1_tensors = tf_jitrt_opts->legalize_i1_tensors;
+          } else {
+            opts.vectorize = GetJitRtFlags().vectorize;
+          }
 
-      // Lower from Tensorflow to Linalg on buffers.
-      CreateTfJitRtPipeline(pm, opts);
+          // Lower from Tensorflow to Linalg on buffers.
+          CreateTfJitRtPipeline(*passes, opts);
 
-      // Use default JitRt compilation pipeline to lower to LLVM.
-      CreateDefaultJitRtCompilationPipeline(pm, copts);
-    };
+          // Use default JitRt compilation pipeline to lower to LLVM.
+          CreateDefaultJitRtCompilationPipeline(passes, copts);
+        };
 
     // Register a custom pipeline to propagate specialization information.
-    opts.compiler.create_specialization_pipeline = [=](mlir::PassManager& pm) {
-      if (GetJitRtFlags().enable_crash_reproducer)
-        SetCrashReproducer(pm, kCrashReproducerStdErr);
-      CreateJitRtSpecializationPipeline(pm);
-    };
+    opts.compiler.create_specialization_pipeline =
+        [=](xla::runtime::PassManager& passes) {
+          if (GetJitRtFlags().enable_crash_reproducer)
+            SetCrashReproducer(*passes, kCrashReproducerStdErr);
+          CreateJitRtSpecializationPipeline(passes);
+        };
 
     // When lowering Tensorflow functions to JitRt we convert all input and
     // result tensors to memrefs, and add a kernel context input.
@@ -725,7 +727,7 @@ static void ExecuteImpl(Executable& executable, ArrayRef<MemrefDesc> memrefs,
   // notify the HostContext to emit the diagnostics for the kernel invocation.
   auto status = executable.Execute(memrefs, converter, opts);
   if (LLVM_UNLIKELY(!status.ok())) {
-    EmitError(exec_ctx, status.message());
+    EmitError(exec_ctx, status.status().message());
     return;
   }
 }
@@ -880,7 +882,7 @@ static void ExecuteImplAndMaybeLogQueryOfDeath(
     RepeatedArguments<FallbackTensor> operands, RemainingResults results,
     const StringAttribute& device, const CompilationUnitAttribute& kernel,
     const ExecutionContext& exec_ctx, bool debug = false,
-    const Optional<TfJitRtPipelineOpts>& opts = None) {
+    const Optional<TfJitRtPipelineOpts>& opts = std::nullopt) {
   if (LLVM_LIKELY(!GetJitRtFlags().log_query_of_death)) {
     return ExecuteImpl(operands, results, device, kernel, exec_ctx, debug,
                        opts);

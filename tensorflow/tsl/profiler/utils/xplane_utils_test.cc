@@ -23,11 +23,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/profiler/utils/math_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/tsl/profiler/utils/xplane_builder.h"
 #include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
@@ -285,7 +285,7 @@ TEST(XPlaneUtilsTest, MergeXPlaneTest) {
   // Check plane level stats,
   EXPECT_EQ(dst_plane.stats_size(), 3);
   absl::flat_hash_map<absl::string_view, absl::string_view> plane_stats;
-  plane.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
+  plane.ForEachStat([&](const XStatVisitor& stat) {
     if (stat.Name() == "plane_stat1") {
       EXPECT_EQ(stat.IntValue(), 1);
     } else if (stat.Name() == "plane_stat2") {

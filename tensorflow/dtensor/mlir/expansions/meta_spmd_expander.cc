@@ -133,12 +133,12 @@ StatusOr<mlir::Operation*> PackSPMDExpander::ExpandOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(const absl::optional<Layout> output_layout,
                       ExtractSingleLayoutFromOp(op));
 
-  const int output_rank = ValueRank(pack.output());
+  const int output_rank = ValueRank(pack.getOutput());
   if (output_rank == -1)
     return errors::Unimplemented("output must have a rank");
 
   TF_ASSIGN_OR_RETURN(
-      int axis, CanonicalizeAxis(pack.axis(), /*packed_rank=*/output_rank));
+      int axis, CanonicalizeAxis(pack.getAxis(), /*packed_rank=*/output_rank));
 
   // TODO(bfontain): This may not be the best, but for now relayout all inputs
   // to match the output layout. E.g. if the output layout is not but the input
@@ -165,7 +165,7 @@ StatusOr<mlir::Operation*> PackSPMDExpander::ExpandOp(mlir::Operation* op) {
 StatusOr<llvm::DenseMap<int, Layout>> PackSPMDExpander::ComputeLayoutForward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
   auto pack = llvm::cast<mlir::TF::PackOp>(op);
-  const int axis = pack.axis();
+  const int axis = pack.getAxis();
   return LayoutFromUnpackedTensors(axis, input_layouts);
 }
 
@@ -175,7 +175,7 @@ StatusOr<llvm::DenseMap<int, Layout>> PackSPMDExpander::ComputeLayoutBackward(
     return llvm::DenseMap<int, Layout>();
 
   auto pack = llvm::cast<mlir::TF::PackOp>(op);
-  const int axis = pack.axis();
+  const int axis = pack.getAxis();
   return LayoutsFromPackedTensor(axis, output_layouts.lookup(0),
                                  pack->getNumOperands());
 }
@@ -194,7 +194,7 @@ StatusOr<mlir::Operation*> UnpackSPMDExpander::ExpandOp(mlir::Operation* op) {
   }
 
   TF_ASSIGN_OR_RETURN(
-      int axis, CanonicalizeAxis(unpack.axis(), /*packed_rank=*/input_rank));
+      int axis, CanonicalizeAxis(unpack.getAxis(), /*packed_rank=*/input_rank));
 
   if (input_layout->num_shards_for_dim(input_layout->dim(axis)) != 1) {
     // If the axis being unpacked is sharded, relayout to replicated along that
@@ -224,7 +224,7 @@ StatusOr<llvm::DenseMap<int, Layout>> UnpackSPMDExpander::ComputeLayoutForward(
     return llvm::DenseMap<int, Layout>();
 
   auto unpack = llvm::cast<mlir::TF::UnpackOp>(op);
-  const int axis = unpack.axis();
+  const int axis = unpack.getAxis();
   return LayoutsFromPackedTensor(axis, input_layouts.lookup(0),
                                  unpack->getNumResults());
 }
@@ -232,7 +232,7 @@ StatusOr<llvm::DenseMap<int, Layout>> UnpackSPMDExpander::ComputeLayoutForward(
 StatusOr<llvm::DenseMap<int, Layout>> UnpackSPMDExpander::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
   auto unpack = llvm::cast<mlir::TF::UnpackOp>(op);
-  const int axis = unpack.axis();
+  const int axis = unpack.getAxis();
   return LayoutFromUnpackedTensors(axis, output_layouts);
 }
 
@@ -296,12 +296,12 @@ StatusOr<llvm::DenseMap<int, Layout>> PadSPMDExpander::ComputeLayoutForward(
   mlir::Value pad_output;
 
   if (auto pad_v2 = llvm::dyn_cast<mlir::TF::PadV2Op>(op)) {
-    pad_output = pad_v2.output();
-    pad_input = pad_v2.input();
+    pad_output = pad_v2.getOutput();
+    pad_input = pad_v2.getInput();
   } else {
     auto pad_op = llvm::cast<mlir::TF::PadOp>(op);
-    pad_output = pad_op.output();
-    pad_input = pad_op.input();
+    pad_output = pad_op.getOutput();
+    pad_input = pad_op.getInput();
   }
 
   TF_RETURN_IF_ERROR(
@@ -320,14 +320,14 @@ StatusOr<llvm::DenseMap<int, Layout>> PadSPMDExpander::ComputeLayoutBackward(
   input_layouts[1] = Layout::ReplicatedOnMesh(mesh, /*rank=*/2);
 
   if (auto pad_v2 = llvm::dyn_cast<mlir::TF::PadV2Op>(op)) {
-    pad_output = pad_v2.output();
-    pad_input = pad_v2.input();
+    pad_output = pad_v2.getOutput();
+    pad_input = pad_v2.getInput();
     // `constant_values` operand
     input_layouts[2] = Layout::ReplicatedOnMesh(mesh, /*rank=*/0);
   } else {
     auto pad_op = llvm::cast<mlir::TF::PadOp>(op);
-    pad_output = pad_op.output();
-    pad_input = pad_op.input();
+    pad_output = pad_op.getOutput();
+    pad_input = pad_op.getInput();
   }
 
   if (output_layouts.find(0) != output_layouts.end()) {
@@ -370,7 +370,7 @@ StatusOr<mlir::Operation*> TileSPMDExpander::ExpandOp(mlir::Operation* op) {
         "TileOP doesn't have a layout after layout propagation");
 
   TF_ASSIGN_OR_RETURN(absl::optional<Layout> operand_layout,
-                      ExtractLayoutFromOperand(tile_op.input()));
+                      ExtractLayoutFromOperand(tile_op.getInput()));
   if (!operand_layout)
     return errors::InvalidArgument(
         "Input operand to TileOp doesn't have a layout after layout "
@@ -384,7 +384,7 @@ StatusOr<mlir::Operation*> TileSPMDExpander::ExpandOp(mlir::Operation* op) {
 
   llvm::SmallVector<int64_t, 4> static_multiples;
   auto status =
-      ExtractConstVectorFromValue(tile_op.multiples(), &static_multiples);
+      ExtractConstVectorFromValue(tile_op.getMultiples(), &static_multiples);
   if (!status.ok())
     return errors::Unimplemented(
         "Tile with a sharded output is not implemented for dynamic "
@@ -443,9 +443,9 @@ StatusOr<mlir::Operation*> TileSPMDExpander::ExpandOp(mlir::Operation* op) {
 
   auto new_tile =
       builder.create<mlir::TF::TileOp>(location, /*output=*/local_type,
-                                       /*input=*/tile_op.input(),
+                                       /*input=*/tile_op.getInput(),
                                        /*multiples=*/multiples_const);
-  tile_op.getResult().replaceAllUsesWith(new_tile.output());
+  tile_op.getResult().replaceAllUsesWith(new_tile.getOutput());
   tile_op.erase();
   return new_tile.getOperation();
 }
@@ -459,7 +459,7 @@ StatusOr<llvm::DenseMap<int, Layout>> TileSPMDExpander::ComputeLayoutForward(
   auto tile_op = llvm::cast<mlir::TF::TileOp>(op);
 
   auto output_ranked_type =
-      tile_op.output().getType().dyn_cast<mlir::RankedTensorType>();
+      tile_op.getOutput().getType().dyn_cast<mlir::RankedTensorType>();
   if (!output_ranked_type || !output_ranked_type.hasStaticShape()) {
     return errors::InvalidArgument(
         llvm::formatv(
@@ -471,7 +471,7 @@ StatusOr<llvm::DenseMap<int, Layout>> TileSPMDExpander::ComputeLayoutForward(
 
   llvm::SmallVector<int64_t, 4> static_multiple;
   auto status =
-      ExtractConstVectorFromValue(tile_op.multiples(), &static_multiple);
+      ExtractConstVectorFromValue(tile_op.getMultiples(), &static_multiple);
 
   // If multiple operands cannot be statically known, output is set to
   // replicated.
@@ -505,7 +505,7 @@ StatusOr<llvm::DenseMap<int, Layout>> TileSPMDExpander::ComputeLayoutBackward(
 
   // Retrieve operand/output shapes of tile op.
   auto input_ranked_type =
-      tile_op.input().getType().dyn_cast<mlir::RankedTensorType>();
+      tile_op.getInput().getType().dyn_cast<mlir::RankedTensorType>();
   if (!input_ranked_type || !input_ranked_type.hasStaticShape()) {
     return errors::InvalidArgument(
         llvm::formatv(
@@ -518,13 +518,15 @@ StatusOr<llvm::DenseMap<int, Layout>> TileSPMDExpander::ComputeLayoutBackward(
   llvm::DenseMap<int, Layout> input_layouts(op->getNumOperands());
 
   // `multiples` operand is always set to have replicated layout.
-  input_layouts[1] = Layout::ReplicatedOnMesh(
-      mesh,
-      tile_op.multiples().getType().cast<mlir::RankedTensorType>().getRank());
+  input_layouts[1] =
+      Layout::ReplicatedOnMesh(mesh, tile_op.getMultiples()
+                                         .getType()
+                                         .cast<mlir::RankedTensorType>()
+                                         .getRank());
 
   llvm::SmallVector<int64_t, 4> static_multiple;
   auto status =
-      ExtractConstVectorFromValue(tile_op.multiples(), &static_multiple);
+      ExtractConstVectorFromValue(tile_op.getMultiples(), &static_multiple);
 
   // If multiple operands cannot be statically known they are set to replicated.
   if (!status.ok()) {
@@ -772,9 +774,9 @@ StatusOr<mlir::Operation*> ReshapeSPMDExpander::ExpandOp(mlir::Operation* op) {
       Layout::GetLayout(tgt_output_layout, input_layout->mesh()));
 
   auto reshape_op = mlir::cast<mlir::TF::ReshapeOp>(op);
-  TF_ASSIGN_OR_RETURN(
-      mlir::Value new_input,
-      EmitRelayout(reshape_op.tensor(), *input_layout, desired_input_layout));
+  TF_ASSIGN_OR_RETURN(mlir::Value new_input,
+                      EmitRelayout(reshape_op.getTensor(), *input_layout,
+                                   desired_input_layout));
 
   mlir::OpBuilder builder(op);
 
@@ -791,7 +793,7 @@ StatusOr<mlir::Operation*> ReshapeSPMDExpander::ExpandOp(mlir::Operation* op) {
       op->getLoc(), new_input, new_reshape_const_op);
 
   TF_ASSIGN_OR_RETURN(auto final_output,
-                      EmitRelayout(new_reshape_op.output(),
+                      EmitRelayout(new_reshape_op.getOutput(),
                                    desired_output_layout, *output_layout));
 
   op->getResult(0).replaceAllUsesWith(final_output);
@@ -807,10 +809,10 @@ StatusOr<llvm::DenseMap<int, Layout>> ReshapeSPMDExpander::ComputeLayoutForward(
   auto reshape_op = mlir::cast<mlir::TF::ReshapeOp>(op);
   TF_ASSIGN_OR_RETURN(
       auto input_shape,
-      GetShapeOfValue(reshape_op.tensor(), /*fail_on_dynamic=*/true));
+      GetShapeOfValue(reshape_op.getTensor(), /*fail_on_dynamic=*/true));
   TF_ASSIGN_OR_RETURN(
       auto output_shape,
-      GetShapeOfValue(reshape_op.output(), /*fail_on_dynamic=*/true));
+      GetShapeOfValue(reshape_op.getOutput(), /*fail_on_dynamic=*/true));
 
   llvm::SmallVector<int64_t, 4> input_segment_start;
   llvm::SmallVector<int64_t, 4> input_segment_end;
@@ -840,10 +842,10 @@ ReshapeSPMDExpander::ComputeLayoutBackward(
   auto reshape_op = mlir::cast<mlir::TF::ReshapeOp>(op);
   TF_ASSIGN_OR_RETURN(
       auto input_shape,
-      GetShapeOfValue(reshape_op.tensor(), /*fail_on_dynamic=*/true));
+      GetShapeOfValue(reshape_op.getTensor(), /*fail_on_dynamic=*/true));
   TF_ASSIGN_OR_RETURN(
       auto output_shape,
-      GetShapeOfValue(reshape_op.output(), /*fail_on_dynamic=*/true));
+      GetShapeOfValue(reshape_op.getOutput(), /*fail_on_dynamic=*/true));
 
   llvm::SmallVector<int64_t, 4> input_segment_start;
   llvm::SmallVector<int64_t, 4> input_segment_end;
@@ -883,7 +885,7 @@ StatusOr<mlir::Operation*> TransposeSPMDExpander::ExpandOp(
 
     auto transpose = mlir::cast<mlir::TF::TransposeOp>(op);
     llvm::SmallVector<int64, 4> perm;
-    TF_RETURN_IF_ERROR(ExtractConstVectorFromValue(transpose.perm(), &perm));
+    TF_RETURN_IF_ERROR(ExtractConstVectorFromValue(transpose.getPerm(), &perm));
 
     for (const auto& p : llvm::enumerate(perm)) {
       if (operand_layout->dim(p.value()).sharding_spec() !=
@@ -909,7 +911,7 @@ TransposeSPMDExpander::ComputeLayoutForward(
 
   auto transpose = mlir::cast<mlir::TF::TransposeOp>(op);
   llvm::SmallVector<int64, 4> perm;
-  TF_RETURN_IF_ERROR(ExtractConstVectorFromValue(transpose.perm(), &perm));
+  TF_RETURN_IF_ERROR(ExtractConstVectorFromValue(transpose.getPerm(), &perm));
 
   const Layout input_layout = input_layouts.lookup(0);
   std::vector<std::string> output_layout_specs;
@@ -927,7 +929,7 @@ TransposeSPMDExpander::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
   auto transpose = mlir::cast<mlir::TF::TransposeOp>(op);
   llvm::SmallVector<int64, 4> perm;
-  TF_RETURN_IF_ERROR(ExtractConstVectorFromValue(transpose.perm(), &perm));
+  TF_RETURN_IF_ERROR(ExtractConstVectorFromValue(transpose.getPerm(), &perm));
   TF_ASSIGN_OR_RETURN(const Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
 
   llvm::DenseMap<int, Layout> input_layouts(transpose->getNumOperands());
@@ -978,7 +980,7 @@ Status RelayoutOneHotInput(const absl::optional<Layout>& input_layout,
 
   TF_ASSIGN_OR_RETURN(
       mlir::Value new_input,
-      EmitRelayout(one_hot.indices(), *input_layout, new_input_layout));
+      EmitRelayout(one_hot.getIndices(), *input_layout, new_input_layout));
 
   one_hot->setOperand(0, new_input);
 
@@ -996,7 +998,7 @@ StatusOr<mlir::Operation*> OneHotSPMDExpander::ExpandOp(mlir::Operation* op) {
 
   TF_ASSIGN_OR_RETURN(const auto output_layout,
                       ExtractSingleLayoutFromOp(one_hot_op));
-  int axis = one_hot_op.axisAttr().getInt();
+  int axis = one_hot_op.getAxisAttr().getInt();
   if (axis == -1) axis = output_layout->rank() - 1;
 
   // For tf.OneHot, relayout input so that it matches the output layout (outside
@@ -1005,7 +1007,7 @@ StatusOr<mlir::Operation*> OneHotSPMDExpander::ExpandOp(mlir::Operation* op) {
       RelayoutOneHotInput(input_layout, output_layout, axis, one_hot_op));
 
   const int num_shards = output_layout->num_shards()[axis];
-  const auto depth = ExtractConstIntFromValue(one_hot_op.depth());
+  const auto depth = ExtractConstIntFromValue(one_hot_op.getDepth());
   const bool depth_statically_divisible_by_sharding =
       (depth.ok() && (*depth) % num_shards == 0);
 
@@ -1059,15 +1061,15 @@ StatusOr<mlir::Operation*> OneHotSPMDExpander::ExpandOp(mlir::Operation* op) {
     mlir::Value selected_sharding_scalar_value =
         builder.create<mlir::TF::ReshapeOp>(
             one_hot_op.getLoc(), mlir::ArrayRef<mlir::Type>{scalar_size_type},
-            mlir::ArrayRef<mlir::Value>{selected_sharding_at_dimension.output(),
-                                        scalar_shape},
+            mlir::ArrayRef<mlir::Value>{
+                selected_sharding_at_dimension.getOutput(), scalar_shape},
             mlir::ArrayRef<mlir::NamedAttribute>{});
 
     // `new_indices` =  `original_indices` - `selected_sharding_scalar_value` *
     // (depth/num_shards)
     mlir::Value id_offset = builder.create<mlir::TF::MulOp>(
         one_hot_op->getLoc(), new_depth, selected_sharding_scalar_value);
-    mlir::Value original_indices = one_hot_op.indices();
+    mlir::Value original_indices = one_hot_op.getIndices();
     mlir::Value new_indices = builder.create<mlir::TF::SubOp>(
         one_hot_op->getLoc(), original_indices, id_offset);
 
@@ -1086,8 +1088,8 @@ StatusOr<llvm::DenseMap<int, Layout>> OneHotSPMDExpander::ComputeLayoutForward(
     return llvm::DenseMap<int, Layout>();
 
   auto one_hot = mlir::dyn_cast<mlir::TF::OneHotOp>(op);
-  int axis = one_hot.axis();
-  if (axis == -1) axis = ValueRank(one_hot.indices());
+  int axis = one_hot.getAxis();
+  if (axis == -1) axis = ValueRank(one_hot.getIndices());
   TF_ASSIGN_OR_RETURN(auto mesh, ExtractDeviceMeshEnclosingCluster(op));
 
   const Layout indices_layout = input_layouts.lookup(0);
@@ -1111,8 +1113,8 @@ StatusOr<llvm::DenseMap<int, Layout>> OneHotSPMDExpander::ComputeLayoutForward(
 StatusOr<llvm::DenseMap<int, Layout>> OneHotSPMDExpander::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
   auto one_hot = mlir::dyn_cast<mlir::TF::OneHotOp>(op);
-  int axis = one_hot.axis();
-  if (axis == -1) axis = ValueRank(one_hot.indices());
+  int axis = one_hot.getAxis();
+  if (axis == -1) axis = ValueRank(one_hot.getIndices());
   TF_ASSIGN_OR_RETURN(auto mesh, ExtractDeviceMeshEnclosingCluster(op));
 
   llvm::DenseMap<int, Layout> input_layouts(one_hot->getNumOperands());

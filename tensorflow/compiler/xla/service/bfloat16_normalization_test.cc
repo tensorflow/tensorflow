@@ -14,12 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
+
+#include <optional>
+#include <vector>
+
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/bfloat16_support.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -31,8 +35,8 @@ namespace xla {
 
 class TestBFloat16Support : public BFloat16Support {
  public:
-  TestBFloat16Support() {}
-  ~TestBFloat16Support() override {}
+  TestBFloat16Support() = default;
+  ~TestBFloat16Support() override = default;
 
   bool SupportsBF16Operand(const HloInstruction& hlo,
                            int64_t operand_index) const override {

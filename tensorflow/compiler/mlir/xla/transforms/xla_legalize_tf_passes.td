@@ -50,7 +50,10 @@ def LegalizeTF : Pass<"xla-legalize-tf", "mlir::func::FuncOp"> {
   let constructor = "mlir::mhlo::createLegalizeTFPass()";
   let dependentDialects = ["arith::ArithDialect, chlo::ChloDialect",
                            "mhlo::MhloDialect",
-                           "shape::ShapeDialect", "func::FuncDialect", "sparse_tensor::SparseTensorDialect"];
+                           "quant::QuantizationDialect",
+                           "shape::ShapeDialect",
+                           "func::FuncDialect",
+                           "sparse_tensor::SparseTensorDialect"];
 }
 
 def LegalizeTFModulePass : Pass<"xla-fallback-legalize-tf-module-pass", "ModuleOp"> {
@@ -73,6 +76,18 @@ def LegalizeTFModulePass : Pass<"xla-fallback-legalize-tf-module-pass", "ModuleO
                            "shape::ShapeDialect", "func::FuncDialect", "sparse_tensor::SparseTensorDialect"];
 }
 
+def ConvertMHLOQuantToInt : Pass<"convert-mhlo-quant-to-int", "mlir::func::FuncOp"> {
+  let summary = "Convert from MHLO quantized ops to MHLO primitive ops.";
+
+  let description = [{
+    Convert from MHLO quantized ops with MHLO quant types to MHLO primitive ops
+    like int ops.
+  }];
+
+  let constructor = "mlir::mhlo::createConvertMHLOQuantToIntPass()";
+  let dependentDialects = ["chlo::ChloDialect", "mhlo::MhloDialect"];
+}
+
 def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::func::FuncOp"> {
   let summary = "Legalize from TF dialect's or HLO dialect's control flow.";
 
@@ -90,13 +105,6 @@ def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::func::Func
   let dependentDialects = ["arith::ArithDialect", "chlo::ChloDialect",
                            "mhlo::MhloDialect",
                            "shape::ShapeDialect", "func::FuncDialect", "sparse_tensor::SparseTensorDialect"];
-}
-
-def LegalizeTFControlFlow : Pass<"xla-legalize-tf-control-flow", "ModuleOp"> {
-  let summary = "Legalize from TF dialect's to HLO dialect's control flow.";
-
-  let constructor = "mlir::mhlo::createLegalizeTFControlFlowPass()";
-  let dependentDialects = ["mhlo::MhloDialect", "sparse_tensor::SparseTensorDialect"];
 }
 
 def LegalizeTfTypesPass : Pass<"xla-legalize-tf-types"> {
@@ -122,4 +130,49 @@ def LegalizeTFCollective : Pass<"xla-legalize-tf-collective", "ModuleOp"> {
 
   let constructor = "mlir::mhlo::CreateLegalizeTFCollectivePass()";
   let dependentDialects = ["mhlo::MhloDialect", "sparse_tensor::SparseTensorDialect"];
+}
+
+def VerifyTFXLALegalization : Pass<"tfxla-verify-legalization", "mlir::func::FuncOp"> {
+  let summary = "Verifies that all TF ops have been legalized to XLA.";
+
+  let description = [{"Ensures that all Tensorflow ops have been legalized to "
+                    "XLA and reports an error about which op has not been"
+                    "legalized. This pass does not transform any ops and is just"
+                    " a verification pass to ensure invariants are true."}];
+
+  let options = [
+    Option<"legalize_chlo_", "legalize-chlo", "bool", /*default=*/"true",
+        "Legalizes intermediate chlo ops to hlo">
+    ];
+
+  let constructor = "mlir::mhlo::CreateVerifyTFXLALegalizationPass()";
+}
+
+def TFXLADeviceSpecificTransforms : Pass<"tfxla-device-specific-transforms",
+                                            "mlir::func::FuncOp"> {
+  let summary = "Transforms ops that require device context into device independent TF Ops.";
+
+  let description = [{"Transforms device specific ops into device independent"
+                    "ops."}];
+
+  let options = [
+    Option<"device_type_", "device-type", "std::string",
+        /*default=*/"\"INVALID_DEVICE_TYPE\"",
+        "The device type being targeted.">,
+  ];
+
+  let constructor = "mlir::mhlo::CreateTFXLADeviceSpecificTransformsPass()";
+}
+
+def InfeedOpsXlaAdjustLayout : Pass<"infeed-ops-xla-adjust-layout",
+                                    "mlir::func::FuncOp"> {
+  let summary = "Adjusts Infeed ops layout for XLA.";
+
+  let description = [{"Adjust layouts so infeed send & receive use the same "
+                    "format."}];
+
+  let constructor = "mlir::mhlo::CreateInfeedsOpsXlaAdjustLayoutPass()";
+
+  let dependentDialects = ["mhlo::MhloDialect"];
+
 }

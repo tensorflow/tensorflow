@@ -18,9 +18,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_VIRTUAL_MEM_ALLOCATOR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_VIRTUAL_MEM_ALLOCATOR_H_
 
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
-#include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/platform/stream_executor.h"
+#include <memory>
+#include <vector>
+
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/framework/device_id.h"
 
 #if GOOGLE_CUDA
@@ -38,15 +40,14 @@ namespace tensorflow {
 // physical memory pages to this virtual address range as requested.
 //
 // This class is not thread-safe.
-class GpuVirtualMemAllocator : public SubAllocator {
+class GpuVirtualMemAllocator : public tsl::SubAllocator {
  public:
-  static stream_executor::port::StatusOr<
-      std::unique_ptr<GpuVirtualMemAllocator>>
-  Create(const std::vector<Visitor>& alloc_visitors,
-         const std::vector<Visitor>& free_visitors,
-         stream_executor::gpu::GpuContext& gpu_context,
-         tsl::PlatformDeviceId gpu_id, size_t virtual_address_space_size,
-         const std::vector<tsl::PlatformDeviceId>& peer_gpu_ids);
+  static tsl::StatusOr<std::unique_ptr<GpuVirtualMemAllocator>> Create(
+      const std::vector<Visitor>& alloc_visitors,
+      const std::vector<Visitor>& free_visitors,
+      stream_executor::gpu::GpuContext& gpu_context,
+      tsl::PlatformDeviceId gpu_id, size_t virtual_address_space_size,
+      const std::vector<tsl::PlatformDeviceId>& peer_gpu_ids);
   ~GpuVirtualMemAllocator() override;
 
   // Allocates memory at least as large as requested by num_bytes. Will be

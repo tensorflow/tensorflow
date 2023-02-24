@@ -651,7 +651,7 @@ def _flip(image, flip_index, scope_name):
 @tf_export('image.rot90')
 @dispatch.add_dispatch_support
 def rot90(image, k=1, name=None):
-  """Rotate image(s) counter-clockwise by 90 degrees.
+  """Rotate image(s) by 90 degrees.
 
 
   For example:
@@ -668,12 +668,17 @@ def rot90(image, k=1, name=None):
   >>> print(a_rot[...,0].numpy())
   [[3 1]
    [4 2]]
+  >>> # rotating `a` clockwise by 180 degrees
+  >>> a_rot=tf.image.rot90(a, k=-2)
+  >>> print(a_rot[...,0].numpy())
+  [[4 3]
+   [2 1]]
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
-    k: A scalar integer tensor. The number of times the image(s) are
-      rotated by 90 degrees.
+    k: A scalar integer tensor. The number of times the image(s) are rotated by
+      90 degrees.
     name: A name for this operation (optional).
 
   Returns:
@@ -4805,7 +4810,8 @@ def crop_and_resize_v2(image,
   sampling or nearest neighbor sampling (possibly with aspect ratio change) to a
   common output size specified by `crop_size`. This is more general than the
   `crop_to_bounding_box` op which extracts a fixed size slice from the input
-  image and does not allow resizing or aspect ratio change.
+  image and does not allow resizing or aspect ratio change. The crops occur
+  first and then the resize.
 
   Returns a tensor with `crops` from the input `image` at positions defined at
   the bounding box locations in `boxes`. The cropped boxes are all resized (with
@@ -4850,25 +4856,49 @@ def crop_and_resize_v2(image,
   Returns:
     A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
 
-  Example:
+  Usage example:
 
-  ```python
-  import tensorflow as tf
-  BATCH_SIZE = 1
-  NUM_BOXES = 5
-  IMAGE_HEIGHT = 256
-  IMAGE_WIDTH = 256
-  CHANNELS = 3
-  CROP_SIZE = (24, 24)
+  >>> BATCH_SIZE = 1
+  >>> NUM_BOXES = 5
+  >>> IMAGE_HEIGHT = 256
+  >>> IMAGE_WIDTH = 256
+  >>> CHANNELS = 3
+  >>> CROP_SIZE = (24, 24)
 
-  image = tf.random.normal(shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH,
-  CHANNELS) )
-  boxes = tf.random.uniform(shape=(NUM_BOXES, 4))
-  box_indices = tf.random.uniform(shape=(NUM_BOXES,), minval=0,
-  maxval=BATCH_SIZE, dtype=tf.int32)
-  output = tf.image.crop_and_resize(image, boxes, box_indices, CROP_SIZE)
-  output.shape  #=> (5, 24, 24, 3)
-  ```
+  >>> image = tf.random.normal(shape=(
+  ...   BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS) )
+  >>> boxes = tf.random.uniform(shape=(NUM_BOXES, 4))
+  >>> box_indices = tf.random.uniform(shape=(NUM_BOXES,), minval=0,
+  ...   maxval=BATCH_SIZE, dtype=tf.int32)
+  >>> output = tf.image.crop_and_resize(image, boxes, box_indices, CROP_SIZE)
+  >>> output.shape
+  TensorShape([5, 24, 24, 3])
+
+  Example with linear interpolation:
+
+  >>> image = np.arange(0, 18, 2).astype('float32').reshape(3, 3)
+  >>> result = tf.image.crop_and_resize(
+  ...   image[None, :, :, None],
+  ...   np.asarray([[0.5,0.5,1,1]]), [0], [3, 3], method='bilinear')
+  >>> result[0][:, :, 0]
+  <tf.Tensor: shape=(3, 3), dtype=float32, numpy=
+    array([[ 8.,  9., 10.],
+           [11., 12., 13.],
+           [14., 15., 16.]], dtype=float32)>
+
+  Example with nearest interpolation:
+
+  >>> image = np.arange(0, 18, 2).astype('float32').reshape(3, 3)
+  >>> result = tf.image.crop_and_resize(
+  ...   image[None, :, :, None],
+  ...   np.asarray([[0.5,0.5,1,1]]), [0], [3, 3], method='nearest')
+  >>> result[0][:, :, 0]
+  <tf.Tensor: shape=(3, 3), dtype=float32, numpy=
+    array([[ 8., 10., 10.],
+           [14., 16., 16.],
+           [14., 16., 16.]], dtype=float32)>
+
+
   """
   return gen_image_ops.crop_and_resize(image, boxes, box_indices, crop_size,
                                        method, extrapolation_value, name)
@@ -5557,19 +5587,14 @@ def non_max_suppression_padded_v2(boxes,
         representing the index of the scores in a sorted descending order.
     """
     with ops.name_scope('sort_scores_and_boxes'):
-      batch_size = array_ops.shape(boxes)[0]
-      num_boxes = array_ops.shape(boxes)[1]
       sorted_scores_indices = sort_ops.argsort(
           scores, axis=1, direction='DESCENDING')
-      index_offsets = math_ops.range(batch_size) * num_boxes
-      indices = array_ops.reshape(
-          sorted_scores_indices + array_ops.expand_dims(index_offsets, 1), [-1])
-      sorted_scores = array_ops.reshape(
-          array_ops.gather(array_ops.reshape(scores, [-1]), indices),
-          [batch_size, -1])
-      sorted_boxes = array_ops.reshape(
-          array_ops.gather(array_ops.reshape(boxes, [-1, 4]), indices),
-          [batch_size, -1, 4])
+      sorted_scores = array_ops.gather(
+          scores, sorted_scores_indices, axis=1, batch_dims=1
+      )
+      sorted_boxes = array_ops.gather(
+          boxes, sorted_scores_indices, axis=1, batch_dims=1
+      )
     return sorted_scores, sorted_boxes, sorted_scores_indices
 
   batch_dims = array_ops.shape(boxes)[:-2]

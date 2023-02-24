@@ -24,8 +24,11 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 class CoordinationServiceAgent;
+}
+
+namespace tensorflow {
 
 namespace activity_watcher {
 
@@ -78,7 +81,7 @@ struct Activity {
 
 // Enable activity wathcer to send own workers activities to coordination
 // service and also fetch all workers' activities.
-void MaybeEnableMultiWorkersWatching(CoordinationServiceAgent* agent);
+void MaybeEnableMultiWorkersWatching(tsl::CoordinationServiceAgent* agent);
 
 namespace tfw_internal {
 

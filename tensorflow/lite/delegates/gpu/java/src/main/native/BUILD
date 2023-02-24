@@ -6,11 +6,18 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
 
-exports_files(srcs = ["gpu_delegate_jni.cc"])
+filegroup(
+    name = "gpu_delegate_jni_srcs",
+    srcs = [
+        "gpu_delegate_jni.cc",
+        "gpu_delegate_native_jni.cc",
+    ],
+)
 
 cc_library_with_tflite(
     name = "compatibility_list_jni",
@@ -44,6 +51,7 @@ cc_library_with_tflite(
     ],
     deps = [
         "//tensorflow/lite/delegates/gpu:delegate",
+        "//tensorflow/lite/delegates/gpu:delegate_options",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/gl:egl_environment",
         "//tensorflow/lite/delegates/gpu/gl:request_gpu_info",

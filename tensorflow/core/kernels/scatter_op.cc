@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/util.h"
 
-
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -154,7 +153,6 @@ class ScatterUpdateOp : public OpKernel {
     }
   }
 };
-
 
 #define REGISTER_SCATTER_KERNEL_INDEX(type, index_type, dev, name, op) \
   REGISTER_KERNEL_BUILDER(Name(name)                                   \

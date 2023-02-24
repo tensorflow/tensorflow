@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -39,21 +40,23 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tpu_embedding_ops_registry.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/mlir_hlo_builder.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -74,6 +77,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace mlir {
 namespace mhlo {
@@ -86,196 +90,215 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
   // all tf2xla kernels.
   // Use a pointer for the static set, so the set is not destructed upon thread
   // end, which would not be thread safe.
-  // clang-format off
 
-  static auto* ops =
-      new llvm::SmallDenseSet<mlir::TypeID, 512>{
-    TypeID::get<TF::AcoshOp>(),
-    TypeID::get<TF::AcosOp>(),
-    TypeID::get<TF::AddNOp>(),
-    TypeID::get<TF::AddV2Op>(),
-    TypeID::get<TF::AngleOp>(),
-    TypeID::get<TF::AdjustContrastv2Op>(),
-    TypeID::get<TF::AdjustHueOp>(),
-    TypeID::get<TF::AdjustSaturationOp>(),
-    TypeID::get<TF::ApproximateEqualOp>(),
-    TypeID::get<TF::ArgMaxOp>(),
-    TypeID::get<TF::ArgMinOp>(),
-    TypeID::get<TF::AsinhOp>(),
-    TypeID::get<TF::AsinOp>(),
-    TypeID::get<TF::Atan2Op>(),
-    TypeID::get<TF::AtanhOp>(),
-    TypeID::get<TF::BatchMatMulV2Op>(),
-    TypeID::get<TF::BatchMatMulV3Op>(),
-    TypeID::get<TF::BatchToSpaceOp>(),
-    TypeID::get<TF::BesselI0eOp>(),
-    TypeID::get<TF::BesselI1eOp>(),
-    TypeID::get<TF::BetaincOp>(),
-    TypeID::get<TF::BiasAddOp>(),
-    TypeID::get<TF::BitwiseAndOp>(),
-    TypeID::get<TF::BitwiseOrOp>(),
-    TypeID::get<TF::BitwiseXorOp>(),
-    TypeID::get<TF::BucketizeOp>(),
-    TypeID::get<TF::CastOp>(),
-    TypeID::get<TF::ClipByValueOp>(),
-    TypeID::get<TF::CholeskyOp>(),
-    TypeID::get<TF::ComplexAbsOp>(),
-    TypeID::get<TF::ConjugateTransposeOp>(),
-    TypeID::get<TF::CoshOp>(),
-    TypeID::get<TF::CrossOp>(),
-    TypeID::get<TF::DataFormatDimMapOp>(),
-    TypeID::get<TF::DataFormatVecPermuteOp>(),
-    TypeID::get<TF::DepthToSpaceOp>(),
-    TypeID::get<TF::DepthwiseConv2dNativeBackpropFilterOp>(),
-    TypeID::get<TF::DepthwiseConv2dNativeBackpropInputOp>(),
-    TypeID::get<TF::DiagOp>(),
-    TypeID::get<TF::DigammaOp>(),
-    TypeID::get<TF::DivNoNanOp>(),
-    TypeID::get<TF::EluGradOp>(),
-    TypeID::get<TF::EluOp>(),
-    TypeID::get<TF::EnsureShapeOp>(),
-    TypeID::get<TF::EqualOp>(),
-    TypeID::get<TF::ErfcOp>(),
-    TypeID::get<TF::ErfinvOp>(),
-    TypeID::get<TF::ErfOp>(),
-    TypeID::get<TF::ExtractImagePatchesOp>(),
-    TypeID::get<TF::FFT2DOp>(),
-    TypeID::get<TF::FFT3DOp>(),
-    TypeID::get<TF::FFTOp>(),
-    TypeID::get<TF::FakeParamOp>(),
-    TypeID::get<TF::FakeQuantWithMinMaxArgsGradientOp>(),
-    TypeID::get<TF::FakeQuantWithMinMaxVarsGradientOp>(),
-    TypeID::get<TF::FakeQuantWithMinMaxVarsPerChannelOp>(),
-    TypeID::get<TF::FakeQuantWithMinMaxVarsPerChannelGradientOp>(),
-    TypeID::get<TF::FloorDivOp>(),
-    TypeID::get<TF::FloorModOp>(),
-    TypeID::get<TF::GreaterOp>(),
-    TypeID::get<TF::HSVToRGBOp>(),
-    TypeID::get<TF::IFFT2DOp>(),
-    TypeID::get<TF::IFFT3DOp>(),
-    TypeID::get<TF::IRFFT2DOp>(),
-    TypeID::get<TF::IRFFT3DOp>(),
-    TypeID::get<TF::IgammaOp>(),
-    TypeID::get<TF::IgammacOp>(),
-    TypeID::get<TF::IgammaGradAOp>(),
-    TypeID::get<TF::InplaceAddOp>(),
-    TypeID::get<TF::InTopKV2Op>(),
-    TypeID::get<TF::InvertOp>(),
-    TypeID::get<TF::InvOp>(),
-    TypeID::get<TF::KthOrderStatisticOp>(),
-    TypeID::get<TF::LRNOp>(),
-    TypeID::get<TF::LRNGradOp>(),
-    TypeID::get<TF::LeakyReluGradOp>(),
-    TypeID::get<TF::LeakyReluOp>(),
-    TypeID::get<TF::LeftShiftOp>(),
-    TypeID::get<TF::LessOp>(),
-    TypeID::get<TF::ListDiffOp>(),
-    TypeID::get<TF::LogicalAndOp>(),
-    TypeID::get<TF::LogicalNotOp>(),
-    TypeID::get<TF::LogOp>(),
-    TypeID::get<TF::LowerBoundOp>(),
-    TypeID::get<TF::MakeUniqueOp>(),
-    TypeID::get<TF::MatMulOp>(),
-    TypeID::get<TF::MatrixDiagV3Op>(),
-    TypeID::get<TF::MatrixInverseOp>(),
-    TypeID::get<TF::MatrixSetDiagV3Op>(),
-    TypeID::get<TF::MatrixSolveOp>(),
-    TypeID::get<TF::MatrixTriangularSolveOp>(),
-    TypeID::get<TF::MaxPool3DGradGradOp>(),
-    TypeID::get<TF::MaxPoolGradGradOp>(),
-    TypeID::get<TF::MirrorPadOp>(),
-    TypeID::get<TF::MirrorPadGradOp>(),
-    TypeID::get<TF::MulOp>(),
-    TypeID::get<TF::MultinomialOp>(),
-    TypeID::get<TF::NdtriOp>(),
-    TypeID::get<TF::NegOp>(),
-    TypeID::get<TF::NextAfterOp>(),
-    TypeID::get<TF::NonMaxSuppressionV4Op>(),
-    TypeID::get<TF::NotEqualOp>(),
-    TypeID::get<TF::PadOp>(),
-    TypeID::get<TF::ParameterizedTruncatedNormalOp>(),
-    TypeID::get<TF::PlaceholderWithDefaultOp>(),
-    TypeID::get<TF::PolygammaOp>(),
-    TypeID::get<TF::PopulationCountOp>(),
-    TypeID::get<TF::PowOp>(),
-    // TODO(hinsu): Canonicalize QuantizeAndDequantize and
-    // QuantizeAndDequantizeV2 to QuantizeAndDequantizeV3 by converting
-    // attributes to operands.
-    TypeID::get<TF::QuantizeAndDequantizeOp>(),
-    TypeID::get<TF::QuantizeAndDequantizeV2Op>(),
-    TypeID::get<TF::QuantizeAndDequantizeV3Op>(),
-    TypeID::get<TF::QuantizeAndDequantizeV4Op>(),
-    TypeID::get<TF::RFFT2DOp>(),
-    TypeID::get<TF::RFFT3DOp>(),
-    TypeID::get<TF::RGBToHSVOp>(),
-    TypeID::get<TF::RandomUniformIntOp>(),
-    TypeID::get<TF::RealDivOp>(),
-    TypeID::get<TF::ReciprocalGradOp>(),
-    TypeID::get<TF::Relu6GradOp>(),
-    TypeID::get<TF::ResizeBilinearOp>(),
-    TypeID::get<TF::ResizeBilinearGradOp>(),
-    TypeID::get<TF::ResizeNearestNeighborOp>(),
-    TypeID::get<TF::ResizeNearestNeighborGradOp>(),
-    TypeID::get<TF::ReverseSequenceOp>(),
-    TypeID::get<TF::RightShiftOp>(),
-    TypeID::get<TF::RintOp>(),
-    TypeID::get<TF::RollOp>(),
-    TypeID::get<TF::RoundOp>(),
-    TypeID::get<TF::SelectV2Op>(),
-    TypeID::get<TF::SelfAdjointEigV2Op>(),
-    TypeID::get<TF::SeluGradOp>(),
-    TypeID::get<TF::SeluOp>(),
-    TypeID::get<TF::SigmoidGradOp>(),
-    TypeID::get<TF::SinOp>(),
-    TypeID::get<TF::SoftplusGradOp>(),
-    TypeID::get<TF::SoftsignGradOp>(),
-    TypeID::get<TF::SoftsignOp>(),
-    TypeID::get<TF::SpaceToBatchNDOp>(),
-    TypeID::get<TF::SpaceToBatchOp>(),
-    TypeID::get<TF::SpaceToDepthOp>(),
-    TypeID::get<TF::SparseToDenseOp>(),
-    TypeID::get<TF::SquareOp>(),
-    TypeID::get<TF::StatelessMultinomialOp>(),
-    TypeID::get<TF::StatelessParameterizedTruncatedNormalOp>(),
-    TypeID::get<TF::StatelessRandomGetAlgOp>(),
-    TypeID::get<TF::StatelessRandomGetKeyCounterOp>(),
-    TypeID::get<TF::StatelessRandomGetKeyCounterAlgOp>(),
-    TypeID::get<TF::StatelessRandomNormalOp>(),
-    TypeID::get<TF::StatelessRandomNormalV2Op>(),
-    TypeID::get<TF::StatelessRandomUniformOp>(),
-    TypeID::get<TF::StatelessRandomUniformFullIntOp>(),
-    TypeID::get<TF::StatelessRandomUniformFullIntV2Op>(),
-    TypeID::get<TF::StatelessRandomUniformV2Op>(),
-    TypeID::get<TF::StatelessRandomUniformIntOp>(),
-    TypeID::get<TF::StatelessRandomUniformIntV2Op>(),
-    TypeID::get<TF::StatelessTruncatedNormalOp>(),
-    TypeID::get<TF::StatelessTruncatedNormalV2Op>(),
-    TypeID::get<TF::SubOp>(),
-    TypeID::get<TF::SvdOp>(),
-    TypeID::get<TF::TanOp>(),
-    TypeID::get<TF::TensorScatterAddOp>(),
-    TypeID::get<TF::TensorScatterSubOp>(),
-    TypeID::get<TF::TPUEmbeddingActivationsOp>(),
-    TypeID::get<TF::TopKUniqueOp>(),
-    TypeID::get<TF::TopKWithUniqueOp>(),
-    TypeID::get<TF::TransposeOp>(),
-    TypeID::get<TF::TridiagonalSolveOp>(),
-    TypeID::get<TF::TridiagonalMatMulOp>(),
-    TypeID::get<TF::TruncateDivOp>(),
-    TypeID::get<TF::TruncatedNormalOp>(),
-    TypeID::get<TF::TruncateModOp>(),
-    TypeID::get<TF::UniqueOp>(),
-    TypeID::get<TF::UnpackOp>(),
-    TypeID::get<TF::UpperBoundOp>(),
-    TypeID::get<TF::XlaBroadcastHelperOp>(),
-    TypeID::get<TF::XlaCustomCallV2Op>(),
-    TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
-    TypeID::get<TF::XlaKeyValueSortOp>(),
-    TypeID::get<TF::XlaPadOp>(),
-    TypeID::get<TF::XlaSetDynamicDimensionSizeOp>(),
-    TypeID::get<TF::XlaSvdOp>(),
-  };
-  // clang-format on
+  static auto* ops = [] {
+    llvm::SmallDenseSet<mlir::TypeID, 512>* ops_set =
+        new llvm::SmallDenseSet<mlir::TypeID, 512>{
+            TypeID::get<TF::AcoshOp>(),
+            TypeID::get<TF::AcosOp>(),
+            TypeID::get<TF::AddNOp>(),
+            TypeID::get<TF::AddV2Op>(),
+            TypeID::get<TF::AngleOp>(),
+            TypeID::get<TF::AdjustContrastv2Op>(),
+            TypeID::get<TF::AdjustHueOp>(),
+            TypeID::get<TF::AdjustSaturationOp>(),
+            TypeID::get<TF::ApproximateEqualOp>(),
+            TypeID::get<TF::ArgMaxOp>(),
+            TypeID::get<TF::ArgMinOp>(),
+            TypeID::get<TF::AsinhOp>(),
+            TypeID::get<TF::AsinOp>(),
+            TypeID::get<TF::Atan2Op>(),
+            TypeID::get<TF::AtanhOp>(),
+            TypeID::get<TF::BatchMatMulV2Op>(),
+            TypeID::get<TF::BatchMatMulV3Op>(),
+            TypeID::get<TF::BatchToSpaceOp>(),
+            TypeID::get<TF::BesselI0eOp>(),
+            TypeID::get<TF::BesselI1eOp>(),
+            TypeID::get<TF::BetaincOp>(),
+            TypeID::get<TF::BiasAddOp>(),
+            TypeID::get<TF::BitwiseAndOp>(),
+            TypeID::get<TF::BitwiseOrOp>(),
+            TypeID::get<TF::BitwiseXorOp>(),
+            TypeID::get<TF::BucketizeOp>(),
+            // CaseOp isn't actually supported but is enabled for testing to
+            // make sure ops with symbol ref attributes are filtered out.
+            TypeID::get<TF::CaseOp>(),
+            TypeID::get<TF::CastOp>(),
+            TypeID::get<TF::ClipByValueOp>(),
+            TypeID::get<TF::CholeskyOp>(),
+            TypeID::get<TF::ComplexAbsOp>(),
+            TypeID::get<TF::ConjugateTransposeOp>(),
+            TypeID::get<TF::CoshOp>(),
+            TypeID::get<TF::CrossOp>(),
+            TypeID::get<TF::CumulativeLogsumexpOp>(),
+            TypeID::get<TF::DataFormatDimMapOp>(),
+            TypeID::get<TF::DataFormatVecPermuteOp>(),
+            TypeID::get<TF::DepthToSpaceOp>(),
+            TypeID::get<TF::DepthwiseConv2dNativeBackpropFilterOp>(),
+            TypeID::get<TF::DepthwiseConv2dNativeBackpropInputOp>(),
+            TypeID::get<TF::DiagOp>(),
+            TypeID::get<TF::DigammaOp>(),
+            TypeID::get<TF::DivNoNanOp>(),
+            TypeID::get<TF::DynamicPartitionOp>(),
+            TypeID::get<TF::EluGradOp>(),
+            TypeID::get<TF::EluOp>(),
+            TypeID::get<TF::EnsureShapeOp>(),
+            TypeID::get<TF::EqualOp>(),
+            TypeID::get<TF::ErfcOp>(),
+            TypeID::get<TF::ErfinvOp>(),
+            TypeID::get<TF::ErfOp>(),
+            TypeID::get<TF::ExtractImagePatchesOp>(),
+            TypeID::get<TF::FFT2DOp>(),
+            TypeID::get<TF::FFT3DOp>(),
+            TypeID::get<TF::FFTOp>(),
+            TypeID::get<TF::FakeParamOp>(),
+            TypeID::get<TF::FakeQuantWithMinMaxArgsGradientOp>(),
+            TypeID::get<TF::FakeQuantWithMinMaxVarsGradientOp>(),
+            TypeID::get<TF::FakeQuantWithMinMaxVarsPerChannelOp>(),
+            TypeID::get<TF::FakeQuantWithMinMaxVarsPerChannelGradientOp>(),
+            TypeID::get<TF::FloorDivOp>(),
+            TypeID::get<TF::FloorModOp>(),
+            TypeID::get<TF::GreaterOp>(),
+            TypeID::get<TF::HSVToRGBOp>(),
+            TypeID::get<TF::IFFT2DOp>(),
+            TypeID::get<TF::IFFT3DOp>(),
+            TypeID::get<TF::IRFFT2DOp>(),
+            TypeID::get<TF::IRFFT3DOp>(),
+            TypeID::get<TF::IgammaOp>(),
+            TypeID::get<TF::IgammacOp>(),
+            TypeID::get<TF::IgammaGradAOp>(),
+            TypeID::get<TF::InplaceAddOp>(),
+            TypeID::get<TF::InTopKV2Op>(),
+            TypeID::get<TF::InvertOp>(),
+            TypeID::get<TF::InvOp>(),
+            TypeID::get<TF::KthOrderStatisticOp>(),
+            TypeID::get<TF::LRNOp>(),
+            TypeID::get<TF::LRNGradOp>(),
+            TypeID::get<TF::LeakyReluGradOp>(),
+            TypeID::get<TF::LeakyReluOp>(),
+            TypeID::get<TF::LeftShiftOp>(),
+            TypeID::get<TF::LessOp>(),
+            TypeID::get<TF::ListDiffOp>(),
+            TypeID::get<TF::LogicalAndOp>(),
+            TypeID::get<TF::LogicalNotOp>(),
+            TypeID::get<TF::LogOp>(),
+            TypeID::get<TF::LowerBoundOp>(),
+            TypeID::get<TF::MakeUniqueOp>(),
+            TypeID::get<TF::MatMulOp>(),
+            TypeID::get<TF::MatrixDiagV3Op>(),
+            TypeID::get<TF::MatrixInverseOp>(),
+            TypeID::get<TF::MatrixSetDiagV3Op>(),
+            TypeID::get<TF::MatrixSolveOp>(),
+            TypeID::get<TF::MatrixTriangularSolveOp>(),
+            TypeID::get<TF::MaxPool3DGradGradOp>(),
+            TypeID::get<TF::MaxPoolGradGradOp>(),
+            TypeID::get<TF::MirrorPadOp>(),
+            TypeID::get<TF::MirrorPadGradOp>(),
+            TypeID::get<TF::MulOp>(),
+            TypeID::get<TF::MultinomialOp>(),
+            TypeID::get<TF::NdtriOp>(),
+            TypeID::get<TF::NegOp>(),
+            TypeID::get<TF::NextAfterOp>(),
+            TypeID::get<TF::NonMaxSuppressionV4Op>(),
+            TypeID::get<TF::NotEqualOp>(),
+            TypeID::get<TF::PadOp>(),
+            TypeID::get<TF::ParameterizedTruncatedNormalOp>(),
+            TypeID::get<TF::PlaceholderWithDefaultOp>(),
+            TypeID::get<TF::PolygammaOp>(),
+            TypeID::get<TF::PopulationCountOp>(),
+            TypeID::get<TF::PowOp>(),
+            TypeID::get<TF::QrOp>(),
+            // TODO(hinsu): Canonicalize QuantizeAndDequantize and
+            // QuantizeAndDequantizeV2 to QuantizeAndDequantizeV3 by converting
+            // attributes to operands.
+            TypeID::get<TF::QuantizeAndDequantizeOp>(),
+            TypeID::get<TF::QuantizeAndDequantizeV2Op>(),
+            TypeID::get<TF::QuantizeAndDequantizeV3Op>(),
+            TypeID::get<TF::QuantizeAndDequantizeV4Op>(),
+            TypeID::get<TF::RFFT2DOp>(),
+            TypeID::get<TF::RFFT3DOp>(),
+            TypeID::get<TF::RGBToHSVOp>(),
+            TypeID::get<TF::RandomUniformIntOp>(),
+            TypeID::get<TF::RealDivOp>(),
+            TypeID::get<TF::ReciprocalGradOp>(),
+            TypeID::get<TF::Relu6GradOp>(),
+            TypeID::get<TF::ResizeBilinearOp>(),
+            TypeID::get<TF::ResizeBilinearGradOp>(),
+            TypeID::get<TF::ResizeNearestNeighborOp>(),
+            TypeID::get<TF::ResizeNearestNeighborGradOp>(),
+            TypeID::get<TF::ReverseSequenceOp>(),
+            TypeID::get<TF::RightShiftOp>(),
+            TypeID::get<TF::RintOp>(),
+            TypeID::get<TF::RollOp>(),
+            TypeID::get<TF::RoundOp>(),
+            TypeID::get<TF::SegmentSumV2Op>(),
+            TypeID::get<TF::SegmentProdV2Op>(),
+            TypeID::get<TF::SegmentMinV2Op>(),
+            TypeID::get<TF::SegmentMaxV2Op>(),
+            TypeID::get<TF::SelectV2Op>(),
+            TypeID::get<TF::SelfAdjointEigV2Op>(),
+            TypeID::get<TF::SeluGradOp>(),
+            TypeID::get<TF::SeluOp>(),
+            TypeID::get<TF::SigmoidGradOp>(),
+            TypeID::get<TF::SinOp>(),
+            TypeID::get<TF::SoftplusGradOp>(),
+            TypeID::get<TF::SoftsignGradOp>(),
+            TypeID::get<TF::SoftsignOp>(),
+            TypeID::get<TF::SpaceToBatchNDOp>(),
+            TypeID::get<TF::SpaceToBatchOp>(),
+            TypeID::get<TF::SpaceToDepthOp>(),
+            TypeID::get<TF::SparseToDenseOp>(),
+            TypeID::get<TF::SquareOp>(),
+            TypeID::get<TF::StatelessMultinomialOp>(),
+            TypeID::get<TF::StatelessParameterizedTruncatedNormalOp>(),
+            TypeID::get<TF::StatelessRandomGetAlgOp>(),
+            TypeID::get<TF::StatelessRandomGetKeyCounterOp>(),
+            TypeID::get<TF::StatelessRandomGetKeyCounterAlgOp>(),
+            TypeID::get<TF::StatelessRandomNormalOp>(),
+            TypeID::get<TF::StatelessRandomNormalV2Op>(),
+            TypeID::get<TF::StatelessRandomUniformOp>(),
+            TypeID::get<TF::StatelessRandomUniformFullIntOp>(),
+            TypeID::get<TF::StatelessRandomUniformFullIntV2Op>(),
+            TypeID::get<TF::StatelessRandomUniformV2Op>(),
+            TypeID::get<TF::StatelessRandomUniformIntOp>(),
+            TypeID::get<TF::StatelessRandomUniformIntV2Op>(),
+            TypeID::get<TF::StatelessTruncatedNormalOp>(),
+            TypeID::get<TF::StatelessTruncatedNormalV2Op>(),
+            TypeID::get<TF::SubOp>(),
+            TypeID::get<TF::SvdOp>(),
+            TypeID::get<TF::TanOp>(),
+            TypeID::get<TF::TensorScatterAddOp>(),
+            TypeID::get<TF::TensorScatterSubOp>(),
+            TypeID::get<TF::TPUEmbeddingActivationsOp>(),
+            TypeID::get<TF::TopKUniqueOp>(),
+            TypeID::get<TF::TopKWithUniqueOp>(),
+            TypeID::get<TF::TransposeOp>(),
+            TypeID::get<TF::TridiagonalSolveOp>(),
+            TypeID::get<TF::TridiagonalMatMulOp>(),
+            TypeID::get<TF::TruncateDivOp>(),
+            TypeID::get<TF::TruncatedNormalOp>(),
+            TypeID::get<TF::TruncateModOp>(),
+            TypeID::get<TF::UniqueOp>(),
+            TypeID::get<TF::UnpackOp>(),
+            TypeID::get<TF::UpperBoundOp>(),
+            TypeID::get<TF::WhereOp>(),
+            TypeID::get<TF::XlaBroadcastHelperOp>(),
+            TypeID::get<TF::XlaCustomCallV2Op>(),
+            TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
+            TypeID::get<TF::XlaKeyValueSortOp>(),
+            TypeID::get<TF::XlaPadOp>(),
+            TypeID::get<TF::XlaSetBoundOp>(),
+            TypeID::get<TF::XlaSetDynamicDimensionSizeOp>(),
+            TypeID::get<TF::XlaSvdOp>(),
+        };
+
+    // Add the ops from the TPUEmbeddingOpsRegistry.
+    for (auto op_type_id :
+         TF::TPUEmbeddingOpsRegistry::Global().GetOpsTypeIds()) {
+      ops_set->insert(op_type_id);
+    }
+    return ops_set;
+  }();
 
   auto abstractOp = op->getRegisteredInfo();
   if (!abstractOp) return false;
@@ -303,6 +326,7 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::BitcastOp>(),
     TypeID::get<TF::BroadcastToOp>(),
     TypeID::get<TF::CollectivePermuteOp>(),
+    TypeID::get<TF::ComplexOp>(),
     TypeID::get<TF::ConcatV2Op>(),
     TypeID::get<TF::ConjOp>(),
     TypeID::get<TF::Conv2DOp>(),
@@ -314,6 +338,7 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::CumprodOp>(),
     TypeID::get<TF::CumsumOp>(),
     TypeID::get<TF::DepthwiseConv2dNativeOp>(),
+    TypeID::get<TF::DivOp>(),
     TypeID::get<TF::DynamicStitchOp>(),
     TypeID::get<TF::_EagerConstOp>(),
     TypeID::get<TF::EmptyOp>(),
@@ -328,6 +353,7 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::FusedBatchNormV3Op>(),
     TypeID::get<TF::GatherNdOp>(),
     TypeID::get<TF::GatherV2Op>(),
+    TypeID::get<TF::GreaterEqualOp>(),
     TypeID::get<TF::IdentityOp>(),
     TypeID::get<TF::IdentityNOp>(),
     TypeID::get<TF::InplaceUpdateOp>(),
@@ -335,7 +361,9 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::IRFFTOp>(),
     TypeID::get<TF::L2LossOp>(),
     TypeID::get<TF::LegacyCallOp>(),
+    TypeID::get<TF::LessEqualOp>(),
     TypeID::get<TF::LinSpaceOp>(),
+    TypeID::get<TF::LogicalOrOp>(),
     TypeID::get<TF::MatrixDiagPartV3Op>(),
     TypeID::get<TF::MaxOp>(),
     TypeID::get<TF::MaximumOp>(),
@@ -371,12 +399,15 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::SparseSoftmaxCrossEntropyWithLogitsOp>(),
     TypeID::get<TF::SplitOp>(),
     TypeID::get<TF::SplitVOp>(),
+    TypeID::get<TF::SqrtGradOp>(),
+    TypeID::get<TF::SquaredDifferenceOp>(),
     TypeID::get<TF::SqueezeOp>(),
     TypeID::get<TF::StatelessParameterizedTruncatedNormalOp>(),
     TypeID::get<TF::StatefulPartitionedCallOp>(),
     TypeID::get<TF::StopGradientOp>(),
     TypeID::get<TF::StridedSliceGradOp>(),
     TypeID::get<TF::SumOp>(),
+    TypeID::get<TF::TanhGradOp>(),
     TypeID::get<TF::TensorScatterUpdateOp>(),
     TypeID::get<TF::TileOp>(),
     TypeID::get<TF::TopKV2Op>(),
@@ -389,27 +420,17 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::XlaAllReduceOp>(),
     TypeID::get<TF::XlaGatherOp>(),
     TypeID::get<TF::Xlog1pyOp>(),
+    TypeID::get<TF::XlogyOp>(),
     TypeID::get<TF::ZerosLikeOp>(),
+    TypeID::get<TF::ZetaOp>(),
   };
   // clang-format on
+
   auto abstractOp = op->getRegisteredInfo();
   if (!abstractOp) return false;
   return ops->count(abstractOp->getTypeID());
 }
 // LINT.ThenChange()
-
-bool IsOpAllowedForTesting(Operation* op) {
-  // clang-format off
-  static auto* ops =
-      new llvm::SmallDenseSet<mlir::TypeID, 16>{
-    // Op used to verify handling of XlaExpression of kind constant.
-    TypeID::get<TF::ConstOp>(),
-  };
-  // clang-format on
-  auto abstractOp = op->getRegisteredInfo();
-  if (!abstractOp) return false;
-  return ops->count(abstractOp->getTypeID());
-}
 
 // List of ops that require falling back to XlaOpKernel legalizations and also
 // require the ability to create functions.
@@ -420,6 +441,12 @@ bool IsOpAllowedTf2XlaFallbackAndCreateFunctions(Operation* op) {
   auto abstractOp = op->getRegisteredInfo();
   if (!abstractOp) return false;
   return ops->count(abstractOp->getTypeID());
+}
+
+bool HasTf2XlaFallback(Operation* op) {
+  return IsOpAllowedTf2XlaFallback(op) ||
+         IsOpAllowedTf2XlaFallbackAndCreateFunctions(op) ||
+         IsOpAllowedTf2XlaPreferred(op);
 }
 
 namespace {
@@ -540,21 +567,53 @@ LogicalResult Tf2XlaRewriter::PrepareParams() {
   return success();
 }
 
+// Returns true if the given type is a ranked tensor type with static or bounded
+// dimensions.
+bool IsBounded(Type ty) {
+  auto ranked_ty = ty.dyn_cast<RankedTensorType>();
+  if (!ranked_ty) return false;
+
+  if (ranked_ty.hasStaticShape()) return true;
+
+  auto encoding =
+      ranked_ty.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>();
+  if (!encoding) return false;
+
+  for (int i = 0; i < ranked_ty.getRank(); ++i) {
+    if (ranked_ty.isDynamicDim(i) &&
+        encoding.getBounds()[i] == ShapedType::kDynamic) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool HasSymbolRefAttr(Operation* op) {
+  for (const auto& attr : op->getAttrs()) {
+    Attribute attr_value = attr.getValue();
+    if (attr_value.isa<SymbolRefAttr>()) {
+      return true;
+    } else if (auto array_attr = attr_value.dyn_cast<ArrayAttr>()) {
+      if (!array_attr.empty() && array_attr.begin()->isa<SymbolRefAttr>()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 LogicalResult Tf2XlaRewriter::LegalizeOp() {
-  // Only static shaped operands are supported in XLA builders for now.
   for (Type ty : op_->getOperandTypes()) {
     auto ranked_ty = ty.dyn_cast<ShapedType>();
-    if (!ranked_ty || !ranked_ty.hasStaticShape()) {
+    // Only bounded operands are supported in the XLA builders.
+    if (!IsBounded(ranked_ty)) {
       return op_->emitRemark()
-             << "lowering requires static shaped tensor operands";
+             << "lowering requires bounded tensor operands " << ranked_ty;
     }
   }
 
-  for (const auto& attr : op_->getAttrs()) {
-    if (attr.getValue().isa<SymbolRefAttr>()) {
-      return op_->emitRemark()
-             << "ops with symbol references are not supported";
-    }
+  if (HasSymbolRefAttr(op_)) {
+    return op_->emitRemark() << "ops with symbol references are not supported";
   }
 
   auto nodedef_or = tensorflow::ConvertTFDialectOpToNodeDef(
@@ -672,11 +731,6 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
           "output");
     }
     mlir::Value value = hlo_builder_.GetValue(expr->AsXlaOp(&hlo_builder_));
-    mlir::OpResult old_result = op_->getResult(i);
-    if (value.getType() != old_result.getType()) {
-      value = hlo_builder_.create<mlir::tensor::CastOp>(old_result.getType(),
-                                                        value);
-    }
     values.push_back(value);
   }
   rewriter_.replaceOp(op_, values);
@@ -716,20 +770,27 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(Value operand,
   return tensorflow::XlaExpression::XlaOp(xla_op, dtype);
 }
 
-class Tf2XlaRewritePattern : public RewritePattern {
+class Tf2XlaRewritePattern : public ConversionPattern {
  public:
-  explicit Tf2XlaRewritePattern(MLIRContext* ctx,
+  explicit Tf2XlaRewritePattern(MLIRContext* ctx, TypeConverter& converter,
                                 const std::string& device_type,
-                                bool prefer_tf2xla, bool legalize_test_only_ops,
-                                bool is_module_pass)
-      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx),
+                                bool prefer_tf2xla, bool is_module_pass)
+      : ConversionPattern(converter, MatchAnyOpTypeTag(), /*benefit=*/1, ctx),
         device_type_(device_type),
         prefer_tf2xla_(prefer_tf2xla),
-        legalize_test_only_ops_(legalize_test_only_ops),
         is_module_pass_(is_module_pass) {}
 
-  LogicalResult matchAndRewrite(Operation* op,
-                                PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(
+      Operation* op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const override {
+    // This pattern is a conversion pattern because we want to specify a type
+    // converter. However, this pattern still uses the original op's operands
+    // while creating the ops so make sure there aren't any type changes between
+    // the original op operands and the operands during the conversion.
+    for (auto&& [old_val, new_val] : llvm::zip(op->getOperands(), operands)) {
+      if (old_val.getType() != new_val.getType()) return failure();
+    }
+
     if (is_module_pass_) {
       // Module passes should only ever legalize ops that have been specifically
       // whitelisted for legalization within a module pass. They will never
@@ -738,8 +799,7 @@ class Tf2XlaRewritePattern : public RewritePattern {
         return failure();
       }
     } else if (!(IsOpAllowedTf2XlaFallback(op) ||
-                 (prefer_tf2xla_ && IsOpAllowedTf2XlaPreferred(op)) ||
-                 (legalize_test_only_ops_ && IsOpAllowedForTesting(op)))) {
+                 (prefer_tf2xla_ && IsOpAllowedTf2XlaPreferred(op)))) {
       return failure();
     }
     return Tf2XlaRewriter::RewriteOp(op, rewriter, device_type_,
@@ -749,52 +809,101 @@ class Tf2XlaRewritePattern : public RewritePattern {
  private:
   std::string device_type_;
   bool prefer_tf2xla_;
-  bool legalize_test_only_ops_;
   bool is_module_pass_;
 };
 
-// Include declaration for LegalizeTFWithTF2XLAOptions
-#define GEN_PASS_DECL_LEGALIZETFWITHTF2XLA
-#define GEN_PASS_DEF_LEGALIZETFWITHTF2XLA
-#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes.h.inc"
+bool ShouldRefineTypeTo(Type original_ty, Type updated_ty) {
+  auto updated = updated_ty.dyn_cast<ShapedType>();
+  auto original = original_ty.dyn_cast<ShapedType>();
 
-class LegalizeTF : public impl::LegalizeTFWithTF2XLABase<LegalizeTF> {
+  // Both types must be shaped types.
+  if (!original || !updated) return false;
+
+  // Element types must match.
+  if (original.getElementType() != updated.getElementType()) return false;
+
+  // If the updated type doesn't have a rank, then it can't be a more refined
+  // type.
+  if (!updated.hasRank()) return false;
+
+  // If the original type doesn't have a rank, then refine as the updated type
+  // has a rank.
+  if (!original.hasRank()) return true;
+
+  // Both types must have the same rank.
+  if (original.getRank() != updated.getRank()) return false;
+
+  // Refine if the updated type is bounded.
+  return IsBounded(updated);
+}
+
+// Propagates more refined type by cloning op using the new operands. This
+// allows all rewrite patterns that requires refined types to work without
+// requiring a rewrite to the conversion pattern. Declarative rewrite pattern
+// (DRR) doesn't even support conversion patterns with TableGen.
+class TypePropagator : public ConversionPattern {
  public:
-  LegalizeTF() = default;
-  explicit LegalizeTF(llvm::StringRef device_type, bool prefer_tf2xla) {
-    device_type_ = device_type.str();
-    prefer_tf2xla_ = prefer_tf2xla;
+  explicit TypePropagator(MLIRContext* ctx)
+      : ConversionPattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx) {}
+
+  LogicalResult matchAndRewrite(
+      Operation* op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const override {
+    // This could be generalized to other ops as needs arise. We could even
+    // remove this restriction altogether except for the terminators that
+    // require function signature change and shouldn't be
+    if (op->getName().getDialectNamespace() !=
+        TF::TensorFlowDialect::getDialectNamespace())
+      return failure();
+
+    // Refining types may have implications to the attached regions or symbol
+    // references so do not update such ops.
+    if (!op->getRegions().empty() || HasSymbolRefAttr(op)) return failure();
+
+    IRMapping mapper;
+    bool has_type_change = false;
+    for (auto [original, updated] : llvm::zip(op->getOperands(), operands)) {
+      Type original_ty = original.getType();
+      Type updated_ty = updated.getType();
+      if (original_ty != updated_ty) has_type_change = true;
+
+      if (!ShouldRefineTypeTo(original_ty, updated_ty)) return failure();
+      mapper.map(original, updated);
+    }
+    if (!has_type_change) return failure();
+
+    Operation* cloned_op = rewriter.clone(*op, mapper);
+    rewriter.replaceOp(op, cloned_op->getResults());
+    return success();
   }
-
-  LegalizeTF(const LegalizeTF&) {}
-
-  void runOnOperation() override {
-    RewritePatternSet patterns(&getContext());
-    patterns.add<Tf2XlaRewritePattern>(&getContext(), device_type_,
-                                       prefer_tf2xla_, legalize_test_only_ops_,
-                                       /*is_module_pass=*/false);
-    if (failed(
-            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
-      signalPassFailure();
-  }
-
- private:
 };
 
 }  // end namespace
 
-void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
-                                          RewritePatternSet& patterns,
-                                          MLIRContext* ctx, bool prefer_tf2xla,
-                                          bool is_module_pass) {
-  patterns.add<Tf2XlaRewritePattern>(ctx, device_type.str(), prefer_tf2xla,
-                                     /*legalize_test_only_ops=*/false,
-                                     is_module_pass);
+Tf2XlaTypeConverter::Tf2XlaTypeConverter() {
+  // Currently, we don't do any type conversions. Any TensorFlow op with a type
+  // that is not supported in MHLO will fail conversion. Quantized types are
+  // going to handled separately so we don't need to handle those.
+  addConversion([](Type ty) { return ty; });
+
+  // This materialization is helpful in cases where we have more refined types
+  // after conversion to mhlo compared to the original type in TF. For example,
+  // a TF op with result type tensor<*xf32> will have a bounded type after
+  // fallback legalization.
+  auto cast_value = [&](OpBuilder& builder, Type result_type, ValueRange inputs,
+                        Location loc) -> Value {
+    return builder.create<mlir::tensor::CastOp>(loc, result_type,
+                                                inputs.front());
+  };
+  addSourceMaterialization(cast_value);
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTfWithTf2XlaPass(
-    llvm::StringRef device_type, bool prefer_tf2xla) {
-  return std::make_unique<LegalizeTF>(device_type, prefer_tf2xla);
+void PopulateLegalizeTfWithTf2XlaPatterns(
+    llvm::StringRef device_type, RewritePatternSet& patterns, MLIRContext* ctx,
+    Tf2XlaTypeConverter& converter, bool prefer_tf2xla, bool is_module_pass) {
+  patterns.add<TypePropagator>(ctx);
+  patterns.add<Tf2XlaRewritePattern>(ctx, converter, device_type.str(),
+                                     prefer_tf2xla, is_module_pass);
 }
 
 }  // end namespace mhlo

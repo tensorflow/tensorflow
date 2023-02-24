@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace tfcompile {

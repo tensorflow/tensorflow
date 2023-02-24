@@ -35,7 +35,6 @@ from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.grappler import tf_optimizer
@@ -617,7 +616,7 @@ class TrtGraphConverter(object):
 
       # Freeze the variables in the SavedModel graph and copy the frozen
       # graph over.
-      frozen_graph_def = graph_util.convert_variables_to_constants(
+      frozen_graph_def = convert_to_constants.convert_variables_to_constants(
           sess, sess.graph.as_graph_def(add_shapes=True),
           list(output_node_names))
       self._grappler_meta_graph_def = meta_graph_pb2.MetaGraphDef()
@@ -907,10 +906,9 @@ def _construct_function_from_graph_def(func, graph_def, frozen_func=None):
     while context.context().has_function(f.signature.name):
       context.context().remove_function(f.signature.name)
 
-  # pylint: disable = protected-access
   captures = {
-      t2.name.split(":")[0]: t1
-      for _, (t1, t2) in frozen_func.graph._captures.items()
+      c.internal.name.split(":")[0]: c.external
+      for c in frozen_func.graph._function_captures.by_val_captures.values()  # pylint: disable = protected-access
   }
   new_func = wrap_function.function_from_graph_def(
       graph_def, [tensor.name for tensor in frozen_func.inputs],
@@ -1136,8 +1134,6 @@ class TrtGraphConverterV2(object):
        inputs with the same dimensions as the input it is created for. The GPU
        engine will be run with optimal performance with such inputs.
      * `Range+Optimal`: create the profiles for both `Range` and `Optimal`.
-     * `ImplicitBatchModeCompatible`: create the profiles that will produce the
-       same GPU engines as the implicit_batch_mode would produce.
   """
 
   def _verify_profile_strategy(self, strategy):
@@ -1146,6 +1142,11 @@ class TrtGraphConverterV2(object):
       raise ValueError(
           ("profile_strategy '{}' is not supported. It should be one of {}"
           ).format(strategy, supported_profile_strategies()))
+    if strategy == "ImplicitBatchModeCompatible":
+      logging.warn(
+          "ImplicitBatchModeCompatible strategy is deprecated, and"
+          " using it may result in errors during engine building. Please"
+          " consider using a different profile strategy.")
 
   @deprecation.deprecated_args(None,
                                "Use individual converter parameters instead",

@@ -31,10 +31,13 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -235,7 +238,7 @@ Status CpuExecutable::ExecuteComputeFunction(
       BufferDesc desc(const_cast<void*>(base.opaque()), base.size());
       descriptor_table.push_back(std::move(desc));
     }
-    Status status = ExecuteXlaRuntime(descriptor_table);
+    Status status = ExecuteXlaRuntime(descriptor_table, run_options);
     record_profile();
     if (!status.ok()) {
       return status;
@@ -256,6 +259,74 @@ Status CpuExecutable::ExecuteComputeFunction(
   }
 
   return OkStatus();
+}
+
+StatusOr<std::unique_ptr<Executable>> CpuExecutable::LoadFromObjFile(
+    std::unique_ptr<HloModule> hlo_module, absl::string_view obj_file,
+    absl::string_view mlir_module,
+    std::unique_ptr<BufferAssignment> buffer_assignment,
+    XlaFrameworkMapping xla_framework_mapping,
+    runtime::JitExecutable::Options opts) {
+  runtime::DialectRegistry dialects;
+  opts.compiler.register_dialects(dialects);
+  auto threading = mlir::MLIRContext::Threading::DISABLED;
+  auto ctx = std::make_unique<mlir::MLIRContext>(*dialects, threading);
+  ctx->loadAllAvailableDialects();
+
+  // Load MLIR module behind the compiled object file.
+  auto module = mlir::parseSourceString<mlir::ModuleOp>(mlir_module, ctx.get());
+  if (!module) return InternalError("Failed to parse AOT compiled module");
+
+  llvm::StringRef data(obj_file.data(), obj_file.size());
+  auto buffer = llvm::MemoryBuffer::getMemBuffer(data, hlo_module->name());
+
+  // Recover function signatures using calling convention and type converter.
+  auto func = mlir::cast<mlir::func::FuncOp>(module->lookupSymbol("main"));
+  mlir::FunctionType func_type = func.getFunctionType();
+  absl::StatusOr<runtime::FunctionType> sig =
+      opts.compiler.type_converter.Convert(func_type);
+  if (!sig.ok())
+    return InternalError("Type converter failed to convert function type");
+
+  mlir::FunctionType runtime_type = opts.compiler.calling_convention(func_type);
+  if (!runtime_type)
+    return InternalError("Calling convention failed to convert function type");
+
+  absl::StatusOr<runtime::FunctionType> runtime_sig =
+      opts.compiler.type_converter.Convert(runtime_type);
+  if (!runtime_sig.ok())
+    return InternalError(
+        "Type converter failed to convert runtime function type");
+
+  // Cpu executable has a single exported function.
+  std::vector<runtime::Executable::LoadFunction> functions;
+  functions.push_back({"main", std::move(*sig), std::move(*runtime_sig)});
+
+  // Load XLA Runtime executable from an object file.
+  auto executable = runtime::Executable::LoadFromObjFile(
+      hlo_module->name(), std::move(buffer), std::move(functions),
+      opts.compiler.symbols_binding);
+
+  if (!executable.ok())
+    return InternalError("Failed to load XLA Runtime executable: %s",
+                         executable.status().message());
+
+  // Instantiate state for all registered FFI modules.
+  auto ffi_modules_state = runtime::ffi::FfiModulesState::Instantiate();
+  if (!ffi_modules_state.ok())
+    return InternalError("Failed to instantiate FFI modules state: %s",
+                         ffi_modules_state.status().message());
+
+  // Move runtime::Executable ownership to the XlaRuntimeCpuExecutable.
+  auto executable_ptr =
+      std::make_unique<runtime::Executable>(std::move(executable.value()));
+  auto xla_runtime_executable = std::make_unique<XlaRuntimeCpuExecutable>(
+      std::move(executable_ptr), xla_framework_mapping,
+      std::move(*ffi_modules_state));
+
+  return std::unique_ptr<Executable>(new CpuExecutable(
+      std::move(hlo_module), nullptr, nullptr, std::move(buffer_assignment),
+      std::move(xla_runtime_executable)));
 }
 
 StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
@@ -407,9 +478,9 @@ static StatusOr<runtime::MemrefDesc> BufferToMemref(
 // converted to MemrefDesc's according to the corresponding operands in the
 // runtime signature.
 Status XlaRuntimeCpuExecutable::Execute(
-    const std::vector<BufferDesc>& descriptor_table) {
-  const runtime::FunctionType& signature =
-      default_executable_->runtime_signature();
+    const std::vector<BufferDesc>& descriptor_table,
+    const ExecutableRunOptions* run_options) {
+  const runtime::FunctionType& signature = GetExecutable().runtime_signature();
 
   size_t num_arguments = xla_framework_mapping_.inputs.size();
   if (xla_framework_mapping_.output_is_tuple) {
@@ -464,8 +535,8 @@ Status XlaRuntimeCpuExecutable::Execute(
   // Skip verification. The MemrefDesc's we created above come from the runtime
   // signature; verifying them against the same signature would be redundant.
   if (auto status =
-          default_executable_->InitializeCallFrame(arguments, &call_frame,
-                                                   /*verify_arguments=*/false);
+          GetExecutable().InitializeCallFrame(arguments, &call_frame,
+                                              /*verify_arguments=*/false);
       !status.ok()) {
     return InternalError("Failed to initialize call frame: %s.",
                          status.message());
@@ -474,18 +545,37 @@ Status XlaRuntimeCpuExecutable::Execute(
   // No results to return; they are returned via out params.
   runtime::NoResultConverter converter;
 
+  // Collect all emitted diagnostic messages.
+  std::string diagnostic;
+  runtime::DiagnosticEngine diagnostic_engine;
+  diagnostic_engine.AddHandler([&](runtime::Diagnostic& d) {
+    absl::StrAppend(&diagnostic, d.status().message());
+    return runtime::success();
+  });
+
+  // Initialize state required for running functions exported from FFI modules.
+  absl::StatusOr<runtime::ffi::FfiStateVector> ffi_state =
+      ffi_modules_state_.state_vector();
+  if (!ffi_state.ok()) return FromAbslStatus(ffi_state.status());
+
+  runtime::CustomCall::UserData user_data(run_options, &ffi_state.value());
+
   runtime::Executable::ExecuteOpts opts;
+  opts.custom_call_data = &user_data;
+  opts.diagnostic_engine = &diagnostic_engine;
+  opts.custom_call_registry = &dynamic_custom_calls_;
 
   // We don't expect to see any async tasks in the XLA Runtime executable.
   opts.async_task_runner =
       reinterpret_cast<runtime::AsyncTaskRunner*>(0xdeadbeef);
 
   // Execute with the prepared call frame.
-  default_executable_->Execute(call_frame, opts);
-  if (auto status = default_executable_->ReturnResults(converter, &call_frame);
+  GetExecutable().Execute(call_frame, opts);
+  if (auto status = GetExecutable().ReturnResults(converter, &call_frame);
       !status.ok()) {
-    return InternalError("Failed to execute XLA Runtime executable: %s.",
-                         status.message());
+    return InternalError("Failed to execute XLA Runtime executable: %s%s%s.",
+                         status.message(), diagnostic.empty() ? "" : ": ",
+                         diagnostic);
   }
   return OkStatus();
 }

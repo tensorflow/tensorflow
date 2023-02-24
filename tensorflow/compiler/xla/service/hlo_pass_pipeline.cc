@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -180,8 +181,20 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
       compilation_stats_->StartPass(pass_name);
     }
     RecordPassStartMetadata(*hlo, pass_name, pipeline_name);
+    // Embed RunHelper into lambda to enable recording of error statuses
+    auto run_helper_lambda =
+        [this, pass_name](
+            HloPassInterface* pass, HloT* hlo,
+            const absl::flat_hash_set<absl::string_view>& execution_threads) {
+          auto status_or = RunHelper(pass, hlo, execution_threads);
+          if (!status_or.ok()) {
+            compilation_stats_->RecordPassError(
+                pass_name, tsl::error_name(status_or.status().code()));
+          }
+          return status_or;
+        };
     TF_ASSIGN_OR_RETURN(bool pass_changed,
-                        RunHelper(pass, hlo, execution_threads));
+                        run_helper_lambda(pass, hlo, execution_threads));
     SetInstructionMetadata(*hlo);
     if (!dump_regex.empty() && (pass_changed || dump_regex != ".*")) {
       MaybeDumpHloAndSaveFilenames(*hlo,
@@ -194,8 +207,18 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
     changed |= pass_changed;
     if (pass_changed) {
       VLOG(3) << "  Pass caused changes " << pass->name();
+      // Embed RunInvariantCheckers into lambda to enable recording of errors
+      auto run_invariant_checkers_lambda = [this](HloT* hlo,
+                                                  absl::string_view pass_name) {
+        auto status = RunInvariantCheckers(hlo, pass_name);
+        if (!status.ok()) {
+          compilation_stats_->RecordPassError(pass_name,
+                                              tsl::error_name(status.code()));
+        }
+        return status;
+      };
+      TF_RETURN_IF_ERROR(run_invariant_checkers_lambda(hlo, pass_name));
     }
-    TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, pass_name));
     if (!pass->IsPassPipeline()) {
       compilation_stats_->EndPass(pass_name);
     }

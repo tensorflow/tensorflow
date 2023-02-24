@@ -71,21 +71,20 @@ class ExtensionTypeFieldTest(test_util.TensorFlowTestCase,
       self.assertEqual(field.default, default)
 
   @parameterized.parameters([
-      ('i', int, 8.3, 'default value for i: expected int, got 8.3'),
-      ('f', float, 8, 'default value for f: expected float, got 8'),
+      ('i', int, 8.3, "default value for i: expected 'int', got 'float'"),
+      ('f', float, 8, "default value for f: expected 'float', got 'int'"),
       ('x', int, 'hello world',
-       "default value for x: expected int, got 'hello world'"),
+       "default value for x: expected 'int', got 'str'"),
       ('seq', typing.Tuple[typing.Union[int, float], ...], [33, 12.8, 'zero'],
-       r'default value for seq\[2\]: expected '
-       r"typing.Union\[int, float\], got 'zero'"),
+       (r'default value for seq\[2\]: expected '
+        r"typing.Union\[int, float\], got 'str'")),
       ('t', tensor_spec.TensorSpec(None, dtypes.int32),
        lambda: constant_op.constant(0.0),
        'Unsupported type annotation TensorSpec.*'),
-      ('x', dict, {}, "In field 'x': Unsupported type annotation `dict`"),
+      ('x', dict, {}, "In field 'x': Unsupported type annotation 'dict'"),
       ('y', typing.Union[int, list], 3,
-       "In field 'y': Unsupported type annotation `list`"),
-      ('z', typing.Mapping[ops.Tensor,
-                           int], {},
+       "In field 'y': Unsupported type annotation 'list'"),
+      ('z', typing.Mapping[ops.Tensor, int], {},
        "In field 'z': Mapping had a key 'Tensor' with type 'type'"),
   ])
   def testConstructionError(self, name, value_type, default, error):
@@ -155,14 +154,14 @@ class ValidateFieldPyTypeTest(test_util.TensorFlowTestCase,
         tp, allow_forward_references=allow_forward_references)
 
   @parameterized.parameters([
-      dict(tp=dict, error='Unsupported type annotation `dict`'),
-      dict(tp=list, error='Unsupported type annotation `list`'),
+      dict(tp=dict, error="Unsupported type annotation 'dict'"),
+      dict(tp=list, error="Unsupported type annotation 'list'"),
       dict(
           tp=typing.Union[int, list],
-          error='Unsupported type annotation `list`'),
+          error="Unsupported type annotation 'list'"),
       dict(
           tp=typing.Tuple[typing.Tuple[int, int, dict], ...],
-          error='Unsupported type annotation `dict`'),
+          error="Unsupported type annotation 'dict'"),
       dict(tp='A', error='Unresolved forward reference .*'),
       dict(tp=typing.Union[int, 'A'], error='Unresolved forward reference .*'),
       dict(tp=typing.Mapping[ops.Tensor, int],
@@ -268,12 +267,13 @@ class FieldValueConverterTest(test_util.TensorFlowTestCase,
       self.assertEqual(converted, expected)
 
   @parameterized.parameters([
-      (12.3, int, 'x: expected int, got 12.3'),
-      (12, float, 'x: expected float, got 12'),
-      ([1, 2, 3.0], typing.Tuple[int, ...], r'x\[2\]: expected int, got 3.0'),
+      (12.3, int, "x: expected 'int', got 'float'"),
+      (12, float, "x: expected 'float', got 'int'"),
+      ([1, 2, 3.0], typing.Tuple[int, ...],
+       r"x\[2\]: expected 'int', got 'float'"),
       ('foo', tensor_shape.TensorShape,
-       "x: expected tf.TensorShape, got 'foo'"),
-      ('foo', dtypes.DType, "x: expected tf.DType, got 'foo'"),
+       "x: expected 'tf.TensorShape', got 'str'"),
+      ('foo', dtypes.DType, "x: expected 'tf.DType', got 'str'"),
   ])
   def testConvertValueError(self, value, value_type, error):
     if callable(value):

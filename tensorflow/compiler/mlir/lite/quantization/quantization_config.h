@@ -42,9 +42,8 @@ struct CustomOpInfo {
 };
 
 using ::tflite::optimize::ReducedPrecisionSupport;
-using StringSet = absl::flat_hash_set<std::string>;
 using CustomOpMap = std::unordered_map<std::string, CustomOpInfo>;
-enum CustomOpUpdateOptions { kINputIndices, kWeightOnly, kNoSideEffect };
+enum CustomOpUpdateOptions { kInputIndices, kWeightOnly, kNoSideEffect };
 
 struct QuantizationSpecs {
   // Which function this node quant specifications belong to.
@@ -91,6 +90,12 @@ struct QuantizationSpecs {
   // input graph. This flag should be set to false for post-training
   // quantization.
   bool disable_infer_tensor_range = false;
+
+  // Whether use the unfrozen variable quantization in MLIR. Typically,
+  // variables are frozen for passing passes, but some variables aren't frozen.
+  // If it is true, QuantizeVariables pass will be added after the
+  // PrepareQuantizePass.
+  bool enable_mlir_variable_quantization = false;
 
   // The node type when the model is exported. Currently this is limited to
   // DT_FLOAT, DT_HALF, DT_QINT8, and DT_QUINT8. When DT_HALF is used, the
@@ -161,12 +166,17 @@ struct QuantizationSpecs {
   // quantization type.
   int64_t GetQuantizationTypeWidth() const {
     switch (inference_type) {
+      case tensorflow::DT_INT8:
+      case tensorflow::DT_UINT8:
       case tensorflow::DT_QINT8:
       case tensorflow::DT_QUINT8:
         return 8;
+      case tensorflow::DT_INT16:
+      case tensorflow::DT_UINT16:
       case tensorflow::DT_QINT16:
       case tensorflow::DT_QUINT16:
         return 16;
+      case tensorflow::DT_INT32:
       case tensorflow::DT_QINT32:
         return 32;
       default:
@@ -189,10 +199,10 @@ struct QuantizationSpecs {
   // Names of ops to block from quantization. Used in QuantizePass.
   // For dynamic range quantization, ops in blocklist are quantized in weight-
   // only manner.
-  StringSet ops_blocklist;
+  absl::flat_hash_set<std::string> ops_blocklist;
 
   // Names of locations to block from quantization. Used in QuantizePass.
-  StringSet nodes_blocklist;
+  absl::flat_hash_set<std::string> nodes_blocklist;
 
   // Map from custom op code to custom op quantization information.
   // For dynamic range quantization, among the custom ops in the graph those

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/tests/testlib_pipeline.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/tests/testlib_pipeline.h"
 #include "tensorflow/compiler/xla/runtime/runner/runner.h"
 
 using namespace xla::runtime;  // NOLINT

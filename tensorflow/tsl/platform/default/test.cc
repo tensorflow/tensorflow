@@ -28,11 +28,11 @@ namespace testing {
 
 string TmpDir() {
   // 'bazel test' sets TEST_TMPDIR
-  const char* env = getenv("TEST_TMPDIR");
+  const char* env = std::getenv("TEST_TMPDIR");
   if (env && env[0] != '\0') {
     return env;
   }
-  env = getenv("TMPDIR");
+  env = std::getenv("TMPDIR");
   if (env && env[0] != '\0') {
     return env;
   }
@@ -45,7 +45,7 @@ string SrcDir() {
 }
 
 int RandomSeed() {
-  const char* env = getenv("TEST_RANDOM_SEED");
+  const char* env = std::getenv("TEST_RANDOM_SEED");
   int result;
   if (env && sscanf(env, "%d", &result) == 1) {
     return result;
@@ -58,8 +58,8 @@ int PickUnusedPortOrDie() { return internal::PickUnusedPortOrDie(); }
 string TensorFlowSrcRoot() {
   // 'bazel test' sets TEST_SRCDIR, and also TEST_WORKSPACE if a new
   // enough version of bazel is used.
-  const char* env = getenv("TEST_SRCDIR");
-  const char* workspace = getenv("TEST_WORKSPACE");
+  const char* env = std::getenv("TEST_SRCDIR");
+  const char* workspace = std::getenv("TEST_WORKSPACE");
   if (env && env[0] != '\0') {
     if (workspace && workspace[0] != '\0') {
       return io::JoinPath(env, workspace, "tensorflow");
@@ -69,6 +69,44 @@ string TensorFlowSrcRoot() {
   LOG(WARNING) << "TEST_SRCDIR environment variable not set: "
                << "using $PWD/tensorflow as TensorFlowSrcRoot() for tests.";
   return "tensorflow";
+}
+
+// Returns the path to XLA in the directory containing data
+// dependencies.
+string XlaSrcRoot() {
+  // 'bazel test' sets TEST_SRCDIR, and also TEST_WORKSPACE if a new
+  // enough version of bazel is used.
+  const char* env = std::getenv("TEST_SRCDIR");
+  const char* workspace = std::getenv("TEST_WORKSPACE");
+  const char* xla_path = "tensorflow/compiler/xla";
+  if (env && env[0] != '\0') {
+    if (workspace && workspace[0] != '\0') {
+      return io::JoinPath(env, workspace, xla_path);
+    }
+    return io::JoinPath(env, xla_path);
+  }
+  LOG(WARNING) << "TEST_SRCDIR environment variable not set: "
+               << "using $PWD/xla as XlaSrcRoot() for tests.";
+  return io::JoinPath(env, xla_path);
+}
+
+// Returns the path to TSL in the directory containing data
+// dependencies.
+string TslSrcRoot() {
+  // 'bazel test' sets TEST_SRCDIR, and also TEST_WORKSPACE if a new
+  // enough version of bazel is used.
+  const char* env = std::getenv("TEST_SRCDIR");
+  const char* workspace = std::getenv("TEST_WORKSPACE");
+  const char* tsl_path = "tensorflow/tsl";
+  if (env && env[0] != '\0') {
+    if (workspace && workspace[0] != '\0') {
+      return io::JoinPath(env, workspace, tsl_path);
+    }
+    return io::JoinPath(env, tsl_path);
+  }
+  LOG(WARNING) << "TEST_SRCDIR environment variable not set: "
+               << "using $PWD/tsl as TslSrcRoot() for tests.";
+  return io::JoinPath(env, tsl_path);
 }
 
 }  // namespace testing

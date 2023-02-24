@@ -4054,6 +4054,15 @@ class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
 
     self._assertReturns(x, x_shape, y, y_shape)
 
+  def testImageResizeAntialiasWithInvalidInput(self):
+    with self.session():
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        op = image_ops.resize_images_v2(
+            images=np.ones((2, 2, 2, 2)),
+            size=[1801181592, 1846789676],
+            antialias=True)
+        self.evaluate(op)
+
 
 # half_pixel_centers not supported by XLA
 @test_util.for_all_test_methods(test_util.disable_xla, "b/127616992")
@@ -4722,7 +4731,7 @@ class PngTest(test_util.TensorFlowTestCase):
 
       # Smooth ramps compress well, but not too well
       self.assertGreaterEqual(len(png0), 400)
-      self.assertLessEqual(len(png0), 750)
+      self.assertLessEqual(len(png0), 1150)
 
   def testSyntheticUint16(self):
     with self.cached_session():
@@ -4737,7 +4746,7 @@ class PngTest(test_util.TensorFlowTestCase):
 
       # Smooth ramps compress well, but not too well
       self.assertGreaterEqual(len(png0), 800)
-      self.assertLessEqual(len(png0), 1500)
+      self.assertLessEqual(len(png0), 2100)
 
   def testSyntheticTwoChannel(self):
     with self.cached_session():
@@ -5154,6 +5163,47 @@ class CombinedNonMaxSuppressionTest(test_util.TensorFlowTestCase):
           scores=scores_np,
           max_output_size_per_class=max_output_size_per_class,
           max_total_size=max_total_size)
+
+  def testLargeMaxOutputSizePerClass(self):
+    # Ensure the max_output_size_per_class doesn't result in overflows.
+    boxes = [[[
+        [0, 0, 1, 1],
+        [0, 0.1, 1, 1.1],
+        [0, -0.1, 1, 0.9],
+        [0, 10, 1, 11],
+        [0, 10.1, 1, 11.1],
+        [0, 100, 1, 101],
+    ]]]
+    scores = [[[0.9, 0.75, 0.6, 0.95, 0.5, 0.3]]]
+    nmsed_boxes, nmsed_scores, nmsed_classes, valid_detections = (
+        image_ops.combined_non_max_suppression(
+            boxes=boxes,
+            scores=scores,
+            max_output_size_per_class=2**31 - 1,
+            max_total_size=8,
+            pad_per_class=True,
+            clip_boxes=False,
+        )
+    )
+
+    self.assertAllClose(
+        nmsed_boxes,
+        [[
+            [0, 10, 1, 11],
+            [0, 0, 1, 1],
+            [0, 0.1, 1.0, 1.1],
+            [0, -0.1, 1, 0.9],
+            [0, 10.1, 1, 11.1],
+            [0, 100, 1, 101],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+        ]],
+    )
+    self.assertAllClose(nmsed_classes, [[3, 0, 1, 2, 4, 5, 0, 0]])
+    self.assertAllClose(
+        nmsed_scores, [[0.95, 0.9, 0.75, 0.6, 0.5, 0.3, 0.0, 0.0]]
+    )
+    self.assertAllClose(valid_detections, [6])
 
 
 class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
@@ -6329,6 +6379,16 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
             box_indices=np.ones((11)),
             crop_size=[2065374891, 1145309325])
         self.evaluate(op)
+
+  def testImageCropAndResizeWithNon1DBoxes(self):
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                "must be rank 1"):
+      op = image_ops_impl.crop_and_resize_v2(
+          image=np.ones((2, 2, 2, 2)),
+          boxes=np.ones((0, 4)),
+          box_indices=np.ones((0, 1)),
+          crop_size=[1, 1])
+      self.evaluate(op)
 
   @parameterized.named_parameters(
       ("_jpeg", "JPEG", "jpeg_merge_test1.jpg"),

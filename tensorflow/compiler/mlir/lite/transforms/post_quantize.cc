@@ -95,7 +95,7 @@ void RemoveQuantizationAdaptorOps(func::FuncOp func) {
     auto arg = bb.getArgument(0);
 
     auto remove_quantize_op = [&](QuantizeOp quantize_op) {
-      auto quantize_output = quantize_op.output();
+      auto quantize_output = quantize_op.getOutput();
       auto quantize_type = quantize_output.getType();
       input_types.push_back(quantize_type);
       auto new_arg = bb.addArgument(quantize_type, loc);
@@ -133,7 +133,7 @@ void RemoveQuantizationAdaptorOps(func::FuncOp func) {
     if (returned_op && returned_op->hasOneUse() &&
         llvm::isa<DequantizeOp>(returned_op)) {
       auto dequantize_op = llvm::cast<DequantizeOp>(returned_op);
-      Value dequantized_result = dequantize_op.input();
+      Value dequantized_result = dequantize_op.getInput();
       output_types.push_back(dequantized_result.getType());
       terminator->setOperand(i, dequantized_result);
       returned_op->erase();
@@ -160,14 +160,14 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
 
   LogicalResult matchAndRewrite(DequantizeOp op,
                                 PatternRewriter& rewriter) const override {
-    auto input_op = op.input().getDefiningOp();
+    auto input_op = op.getInput().getDefiningOp();
     if (auto q = llvm::dyn_cast_or_null<QuantizeOp>(input_op)) {
       if (!q->getAttr(mlir::quant::kVolatileOpAttrName)) return failure();
 
       if (remove_volatile_ops_type == kPreserveInputsAndOutputs) {
         // Don't remove leading and trailing QDQ for PTQ workflow, so the io
         // modifying lib can work correctly.
-        if (!q.input().getDefiningOp()) return failure();
+        if (!q.getInput().getDefiningOp()) return failure();
         if (op->hasOneUse() &&
             op->user_begin()->hasTrait<OpTrait::IsTerminator>())
           return failure();
@@ -176,14 +176,14 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
       // adjustments and should be kept. Instead, moving dequantize op before
       // the requantize op to remove the unnecessary requantize op.
       if (auto qtype = quant::QuantizedType::getQuantizedElementType(
-              q.input().getType())) {
+              q.getInput().getType())) {
         rewriter.setInsertionPoint(op);
-        rewriter.replaceOpWithNewOp<DequantizeOp>(op, op.output().getType(),
-                                                  q.input());
+        rewriter.replaceOpWithNewOp<DequantizeOp>(op, op.getOutput().getType(),
+                                                  q.getInput());
         return success();
       }
 
-      op.replaceAllUsesWith(q.input());
+      op.replaceAllUsesWith(q.getInput());
       return success();
     }
     return failure();
@@ -226,25 +226,25 @@ struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
 
   LogicalResult matchAndRewrite(TransposeOp op,
                                 PatternRewriter& rewriter) const override {
-    Operation* def_op = op.input().getDefiningOp();
+    Operation* def_op = op.getInput().getDefiningOp();
     auto qconst_op = llvm::dyn_cast_or_null<QConstOp>(def_op);
     if (qconst_op == nullptr) return failure();
 
     DenseIntElementsAttr perm_tensor;
-    if (!matchPattern(op.perm(), m_Constant(&perm_tensor))) return failure();
+    if (!matchPattern(op.getPerm(), m_Constant(&perm_tensor))) return failure();
 
-    if (!(getElementTypeOrSelf(op.output().getType()))
+    if (!(getElementTypeOrSelf(op.getOutput().getType()))
              .isa<quant::UniformQuantizedType>())
       return failure();
 
-    ElementsAttr input_tensor = qconst_op.value();
+    ElementsAttr input_tensor = qconst_op.getValue();
 
     assert(perm_tensor.getType().getRank() == 1);
     const int num_dimensions = input_tensor.getType().getRank();
     assert(perm_tensor.getType().getNumElements() == num_dimensions);
 
     ArrayRef<int64_t> input_shape = input_tensor.getType().getShape();
-    auto output_type = op.output().getType().cast<ShapedType>();
+    auto output_type = op.getOutput().getType().cast<ShapedType>();
 
     SmallVector<int32_t, 4> perm;
     SmallVector<int64_t, 4> output_shape;
@@ -284,12 +284,12 @@ struct FoldReshapeOp : public OpRewritePattern<ReshapeOp> {
 
   LogicalResult matchAndRewrite(ReshapeOp op,
                                 PatternRewriter& rewriter) const override {
-    Operation* def_op = op.input().getDefiningOp();
+    Operation* def_op = op.getInput().getDefiningOp();
     auto qconst_op = llvm::dyn_cast_or_null<QConstOp>(def_op);
     if (qconst_op == nullptr) return failure();
 
     auto dense_elements =
-        qconst_op.value().dyn_cast_or_null<DenseElementsAttr>();
+        qconst_op.getValue().dyn_cast_or_null<DenseElementsAttr>();
     if (dense_elements == nullptr) return failure();
 
     // Handle per tensor cases only.
@@ -300,14 +300,14 @@ struct FoldReshapeOp : public OpRewritePattern<ReshapeOp> {
 
     // Remove identity reshape with both static result and input shape.
     auto result_type = op.getType().cast<ShapedType>();
-    auto input_type = op.input().getType().cast<ShapedType>();
+    auto input_type = op.getInput().getType().cast<ShapedType>();
 
     // Constant folding
     // If the result type isn't static, tries to derive the result type from
     // the #2 operand.
     if (!result_type.hasStaticShape()) {
       DenseIntElementsAttr shape_elements;
-      if (!matchPattern(op.shape(), m_Constant(&shape_elements)))
+      if (!matchPattern(op.getShape(), m_Constant(&shape_elements)))
         return failure();
 
       SmallVector<int64_t, 4> shape_data;
@@ -352,7 +352,7 @@ struct PruneUnusedOpsWithSideEffect : public OpRewritePattern<OpTy> {
     auto custom_op = llvm::isa<CustomOp>(op);
     if (custom_op) {
       auto q = llvm::cast<CustomOp>(op);
-      std::string op_name = q.custom_code().str();
+      std::string op_name = q.getCustomCode().str();
       if ((custom_op_map.find(op_name) == custom_op_map.end()) ||
           !custom_op_map.find(op_name)->second.no_side_effect)
         return failure();

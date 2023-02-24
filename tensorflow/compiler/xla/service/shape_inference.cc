@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -263,6 +263,7 @@ StatusOr<PrimitiveType> MaybeUpcast(
     case HloOpcode::kRsqrt:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
       if (!ShapeUtil::ElementIsFloating(shape) &&
           !ShapeUtil::ElementIsComplex(shape)) {
@@ -509,9 +510,10 @@ StatusOr<PrimitiveType> MaybeUpcast(
   TF_RETURN_IF_ERROR(
       ExpectArray(random_shape, "rhs of stochastic convert operation"));
 
-  if (!ShapeUtil::ElementIsIntegral(random_shape)) {
+  if (!primitive_util::IsUnsignedIntegralType(random_shape.element_type())) {
     return InvalidArgument(
-        "Random numbers for stochastic convert must be integers, but got: %s",
+        "Random numbers for stochastic convert must be unsigned integers, but "
+        "got: %s",
         random_shape.ToString());
   }
 
@@ -520,6 +522,15 @@ StatusOr<PrimitiveType> MaybeUpcast(
         "Stochastic convert supports only floating point operand conversion, "
         "but got: %s",
         random_shape.ToString());
+  }
+
+  int operand_bits = primitive_util::BitWidth(operand_shape.element_type());
+  int random_bits = primitive_util::BitWidth(random_shape.element_type());
+  if (operand_bits != random_bits) {
+    return InvalidArgument(
+        "The random number is required to have same bits as the operand. But "
+        "got random bits: %d, operand bits: %d",
+        operand_bits, random_bits);
   }
 
   if (!ShapeUtil::EqualIgnoringElementType(operand_shape, random_shape)) {

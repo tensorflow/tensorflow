@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/profiling/profile_summary_formatter.h"
 
+#include <map>
 #include <memory>
 #include <string>
 

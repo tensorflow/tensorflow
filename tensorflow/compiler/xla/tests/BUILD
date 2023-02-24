@@ -6,11 +6,12 @@ load(
     "//tensorflow/tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "genrule")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -84,7 +85,7 @@ cc_library(
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:transfer_manager",
@@ -110,8 +111,9 @@ cc_library(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings:str_format",
@@ -129,15 +131,50 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_verifier",
-        "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "pjrt_client_registry",
+    srcs = ["pjrt_client_registry.cc"],
+    hdrs = ["pjrt_client_registry.h"],
+    deps = [
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+    ],
+)
+
+cc_library(
+    name = "pjrt_cpu_client_registry",
+    testonly = True,
+    srcs = [
+        "pjrt_cpu_client_registry.cc",
+    ],
+    deps = [
+        ":pjrt_client_registry",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+    ],
+)
+
+cc_library(
+    name = "pjrt_gpu_client_registry",
+    testonly = True,
+    srcs = [
+        "pjrt_gpu_client_registry.cc",
+    ],
+    deps = [
+        ":pjrt_client_registry",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
     ],
 )
 
@@ -150,6 +187,7 @@ cc_library(
         ":filecheck",
         ":literal_test_util",
         ":manifest_checking_test",
+        ":pjrt_client_registry",
         ":test_utils",
         ":verified_hlo_module",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -158,28 +196,28 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo_module_group",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:computation_layout",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_util",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/compiler/xla/service:hlo_runner_interface",
+        "//tensorflow/compiler/xla/service:hlo_runner_pjrt",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:interpreter_plugin",  # reference backend
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "local_client_aot_test_helper",
     srcs = ["local_client_aot_test_helper.cc"],
     deps = [
@@ -190,9 +228,10 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:platform_port",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
     ],
 )
 
@@ -232,8 +271,8 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:test_utils",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/lib/core:bitmap",
+        "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/memory",
@@ -264,9 +303,9 @@ cc_library(
     hdrs = ["codegen_test_base.h"],
     deps = [
         ":hlo_test_base",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:executable",
-        "//tensorflow/compiler/xla/service:hlo",
     ],
 )
 
@@ -282,9 +321,12 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:resource_loader",
+        "//tensorflow/tsl/platform:subprocess",
     ],
 )
 
@@ -315,8 +357,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
@@ -339,7 +381,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
     ],
@@ -357,9 +398,9 @@ xla_test(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:executable",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/memory",
@@ -489,7 +530,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
@@ -517,7 +557,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:stream_pool",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:regexp",
@@ -591,8 +630,8 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:test",
     ],
 )
@@ -626,7 +665,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
     ],
@@ -646,7 +684,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
     ],
@@ -666,7 +703,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
     ],
@@ -691,7 +727,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/strings",
@@ -760,30 +795,9 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "exhaustive_op_test_utils",
-    testonly = True,
-    srcs = ["exhaustive_op_test_utils.cc"],
-    hdrs = ["exhaustive_op_test_utils.h"],
-    tags = ["no_pip"],
-    deps = [
-        ":client_library_test_base",
-        ":literal_test_util",
-        ":test_macros_header",
-        ":xla_internal_test_main",
-        "//tensorflow/compiler/xla:bit_cast",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client/lib:constants",
-        "//tensorflow/compiler/xla/client/lib:math",
-        "//tensorflow/compiler/xla/service:shaped_buffer",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -807,106 +821,6 @@ cc_library(
 )
 
 xla_test(
-    name = "exhaustive_unary_test_f32_or_smaller",
-    srcs = ["exhaustive_unary_test_f32_or_smaller.cc"],
-    real_hardware_only = True,  # Very slow on the interpreter.
-    shard_count = 48,
-    tags = [
-        "optonly",
-        # This is a big test that we skip for capacity reasons in OSS testing.
-        "no_oss",
-        "no_pip",
-    ],
-    deps = [
-        ":client_library_test_base",
-        ":exhaustive_op_test_utils",
-        "//tensorflow/compiler/xla:util",
-    ],
-)
-
-xla_test(
-    name = "exhaustive_unary_test_f64",
-    srcs = ["exhaustive_unary_test_f64.cc"],
-    backends = [
-        "gpu",
-        "cpu",
-    ],
-    shard_count = 48,
-    tags = [
-        "optonly",
-        # This is a big test that we skip for capacity reasons in OSS testing.
-        "no_oss",
-        "no_pip",
-        # TODO(b/151340488): Timed out on 2020-03-18.
-        "nozapfhahn",
-    ],
-    deps = [
-        ":client_library_test_base",
-        ":exhaustive_op_test_utils",
-        "//tensorflow/compiler/xla:util",
-    ],
-)
-
-xla_test(
-    name = "exhaustive_unary_test_complex",
-    srcs = ["exhaustive_unary_test_complex.cc"],
-    backends = [
-        "gpu",
-        "cpu",
-    ],
-    shard_count = 48,
-    tags = [
-        "optonly",
-        # This is a big test that we skip for capacity reasons in OSS testing.
-        "no_oss",
-        "no_pip",
-    ],
-    deps = [
-        ":client_library_test_base",
-        ":exhaustive_op_test_utils",
-        "//tensorflow/compiler/xla:util",
-    ],
-)
-
-xla_test(
-    name = "exhaustive_binary_16_bit_test",
-    srcs = ["exhaustive_binary_16_bit_test.cc"],
-    backends = [
-        "gpu",
-        "cpu",
-    ],
-    shard_count = 48,
-    tags = [
-        "optonly",
-        # This is a big test that we skip for capacity reasons in OSS testing.
-        "no_oss",
-        "no_pip",
-    ],
-    deps = [
-        ":exhaustive_op_test_utils",
-    ],
-)
-
-xla_test(
-    name = "exhaustive_binary_test_f32_f64",
-    srcs = ["exhaustive_binary_test_f32_f64.cc"],
-    backends = [
-        "gpu",
-        "cpu",
-    ],
-    shard_count = 48,
-    tags = [
-        "optonly",
-        # This is a big test that we skip for capacity reasons in OSS testing.
-        "no_oss",
-        "no_pip",
-    ],
-    deps = [
-        ":exhaustive_op_test_utils",
-    ],
-)
-
-xla_test(
     name = "reduce_precision_test",
     srcs = ["reduce_precision_test.cc"],
     deps = [
@@ -924,7 +838,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
@@ -963,10 +876,9 @@ xla_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
@@ -1000,10 +912,9 @@ xla_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
@@ -1041,10 +952,9 @@ xla_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
@@ -1055,6 +965,7 @@ xla_test(
 xla_test(
     name = "gather_operation_test",
     srcs = ["gather_operation_test.cc"],
+    tags = ["test_hlo_pjrt_runner"],
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -1071,6 +982,7 @@ xla_test(
 xla_test(
     name = "scatter_test",
     srcs = ["scatter_test.cc"],
+    tags = ["test_hlo_pjrt_runner"],
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -1107,10 +1019,9 @@ xla_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
@@ -1146,20 +1057,17 @@ xla_test(
         ":hlo_test_base",
         ":literal_test_util",
         ":test_macros_header",
+        ":test_utils",
         ":xla_internal_test_main",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:array4d",
-        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:constants",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:test",
     ],
 )
@@ -1183,7 +1091,6 @@ CONVOLUTION_TEST_DEPS = [
     "//tensorflow/compiler/xla/tests:hlo_test_base",
     "//tensorflow/compiler/xla/tests:literal_test_util",
     "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-    "//tensorflow/core:lib",
     "//tensorflow/tsl/platform:logging",
     "//tensorflow/tsl/platform:test",
     "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
@@ -1352,8 +1259,9 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
+        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "//tensorflow/tsl/platform:test",
     ],
 )
@@ -1378,10 +1286,26 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+xla_test(
+    name = "convolution_cudnn_test",
+    timeout = "long",
+    srcs = ["convolution_cudnn_test.cc"],
+    backend_tags = {"gpu": [
+        "gpu",
+        "requires-gpu-sm80",
+    ]},
+    backends = ["gpu"],
+    deps = [
+        ":hlo_test_base",
+        ":xla_internal_test_main",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1418,7 +1342,7 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:math",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/tsl/lib/math:math_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
@@ -1449,12 +1373,11 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
     ],
@@ -1480,7 +1403,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
     ],
@@ -1549,7 +1471,6 @@ xla_test(
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
@@ -1628,7 +1549,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
@@ -1686,6 +1606,7 @@ xla_test(
     name = "select_and_scatter_test",
     timeout = "long",
     srcs = ["select_and_scatter_test.cc"],
+    shard_count = 25,
     tags = [
         "nomac",  # b/194731834
         "nozapfhahn",
@@ -1707,7 +1628,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
     ],
@@ -1716,22 +1636,22 @@ xla_test(
 xla_test(
     name = "copy_test",
     srcs = ["copy_test.cc"],
+    tags = ["test_hlo_pjrt_runner"],
     deps = [
         ":client_library_test_base",
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":pjrt_client_registry",
         ":test_macros_header",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_runner_pjrt",
+        "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:test",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1742,7 +1662,6 @@ xla_test(
         ":test_macros_header",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/strings",
@@ -1753,14 +1672,12 @@ xla_test(
     name = "token_hlo_test",
     srcs = ["token_hlo_test.cc"],
     deps = [
+        ":hlo_test_base",
         ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla/service:hlo_verifier",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1779,7 +1696,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
     ],
@@ -1794,17 +1710,19 @@ xla_test(
         ":hlo_test_base",
         ":literal_test_util",
         ":test_macros_header",
+        ":test_utils",
         ":xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/runtime/ffi:ffi_api",
         "//tensorflow/compiler/xla/service:custom_call_status",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/base:dynamic_annotations",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1864,7 +1782,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/memory",
@@ -1903,6 +1820,7 @@ xla_test(
 
 xla_test(
     name = "matrix_ops_simple_test",
+    timeout = "long",
     srcs = ["matrix_ops_simple_test.cc"],
     deps = [
         ":test_macros_header",
@@ -1920,7 +1838,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/memory",
@@ -1950,8 +1867,8 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/types:span",
     ],
@@ -1979,7 +1896,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/types:span",
     ],
@@ -1997,7 +1913,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/strings",
@@ -2024,7 +1939,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
     ],
@@ -2066,7 +1980,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/algorithm:container",
@@ -2081,6 +1995,7 @@ xla_test(
         # All reduce is not supported on the interpreter backend.
         "interpreter",
     ],
+    tags = ["test_hlo_pjrt_runner"],
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -2097,7 +2012,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
     ],
@@ -2140,11 +2054,11 @@ xla_test(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_runner",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:blocking_counter",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/memory",
@@ -2183,10 +2097,8 @@ xla_test(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_runner",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
@@ -2210,7 +2122,7 @@ xla_test(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
     ],
@@ -2236,7 +2148,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
     ],
@@ -2275,7 +2186,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/strings",
@@ -2300,8 +2210,8 @@ xla_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
@@ -2331,7 +2241,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:prng",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
@@ -2361,7 +2270,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:global_data",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
@@ -2387,7 +2295,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
     ],
@@ -2450,7 +2357,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
     ],
@@ -2459,6 +2365,7 @@ xla_test(
 xla_test(
     name = "broadcast_test",
     srcs = ["broadcast_test.cc"],
+    tags = ["test_hlo_pjrt_runner"],
     deps = [
         ":hlo_test_base",
         ":literal_test_util",
@@ -2468,13 +2375,13 @@ xla_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/memory",
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "llvm_compiler_test",
     srcs = ["llvm_compiler_test.cc"],
     tags = tf_cuda_tests_tags(),
@@ -2482,10 +2389,10 @@ tf_cc_test(
         ":verified_hlo_module",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
@@ -2513,7 +2420,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/base",
@@ -2536,11 +2443,10 @@ xla_test(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
         "//third_party/eigen3",
@@ -2564,11 +2470,11 @@ xla_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_runner",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
         "@com_google_absl//absl/memory",
@@ -2577,7 +2483,7 @@ xla_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "local_client_aot_test",
     srcs = [
         "local_client_aot_test.cc",
@@ -2586,7 +2492,6 @@ tf_cc_test(
     linkstatic = 1,
     deps = [
         "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
@@ -2608,7 +2513,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:local_client_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
     ],
@@ -2645,7 +2549,7 @@ xla_test(
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
-        "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
@@ -2668,7 +2572,7 @@ xla_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "hlo_metadata_test",
     srcs = [
         "hlo_metadata_test.cc",
@@ -2700,7 +2604,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
     ],
@@ -2725,7 +2628,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/types:span",
@@ -2742,14 +2644,16 @@ xla_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "literal_test_util_test",
     srcs = ["literal_test_util_test.cc"],
     deps = [
+        ":literal_test_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:test_helpers",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
@@ -2775,7 +2679,6 @@ xla_test(
         "//tensorflow/compiler/xla/service:stream_pool",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
@@ -2798,13 +2701,12 @@ xla_test(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
     ],
 )
 
 # A demo of test that loads an hlo module from a file and compares results on gpu and cpu.
-tf_cc_test(
+xla_cc_test(
     name = "sample_file_test",
     srcs = ["sample_file_test.cc"],
     data = ["isolated_convolution.hlo"],
@@ -2818,8 +2720,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:cpu_plugin",  # reference backend
         "//tensorflow/compiler/xla/service:gpu_plugin",  # test backend
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:resource_loader",
         "//tensorflow/tsl/platform:test",
     ],
@@ -2838,7 +2740,6 @@ xla_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
@@ -2861,12 +2762,12 @@ xla_test(
         ":test_macros_header",
         ":xla_internal_test_main",
         "//tensorflow/compiler/xla:error_spec",
-        "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "multiple_devices_on_host_test",
     srcs = ["multiple_devices_on_host_test.cc"],
     args = ["--xla_force_host_platform_device_count=4"],
@@ -2878,8 +2779,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/synchronization",
@@ -2968,6 +2869,7 @@ xla_test(
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
         "//tensorflow/tsl/platform:tensor_float_32_utils",
         "//tensorflow/tsl/platform:test",
     ],
@@ -2983,7 +2885,26 @@ xla_test(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
+    ],
+)
+
+# TODO(ezhulenev): Move this tests to xla/tests once all XLA backends
+# support XLA runtime FFI calls.
+xla_test(
+    name = "xla_ffi_test",
+    srcs = ["xla_ffi_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
+        "//tensorflow/compiler/xla/runtime:ffi",
+        "//tensorflow/compiler/xla/runtime/ffi:ffi_api",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:test_macros_header",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )

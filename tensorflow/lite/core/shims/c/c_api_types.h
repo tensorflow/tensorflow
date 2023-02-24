@@ -15,6 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_SHIMS_C_C_API_TYPES_H_
 #define TENSORFLOW_LITE_CORE_SHIMS_C_C_API_TYPES_H_
 
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 
 #endif  // TENSORFLOW_LITE_CORE_SHIMS_C_C_API_TYPES_H_

@@ -15,9 +15,9 @@ limitations under the License.
 
 #include <functional>
 #include <iostream>
+#include <optional>
 
 #include "absl/strings/str_split.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -53,17 +53,17 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
-#include "tensorflow/compiler/xla/translate/xla_mlir_translate.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/translate.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::func::FuncOp;
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 // Debugging flag to print function mapping in the flatbuffer.
 // NOLINTNEXTLINE
@@ -308,7 +308,7 @@ int main(int argc, char **argv) {
   });
 
   std::string result;
-  llvm::Optional<tensorflow::Session *> session = llvm::None;
+  llvm::Optional<tensorflow::Session *> session = std::nullopt;
   if (bundle) session = bundle->GetSession();
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.value().get(), output_mlir, toco_flags, pass_config, tags,

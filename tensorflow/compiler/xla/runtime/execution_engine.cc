@@ -32,9 +32,14 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
 
 namespace xla {
@@ -125,25 +130,46 @@ static absl::Status SetUpExportedFunction(llvm::Module &module,
   bb->insertInto(callee);
   builder.SetInsertPoint(bb);
 
-  llvm::SmallVector<llvm::Value *, 8> args;
+  llvm::SmallVector<llvm::Value *> args;
   args.reserve(llvm::size(func->args()));
 
   for (auto &indexed_arg : llvm::enumerate(func->args())) {
-    llvm::Value *arg_idx = llvm::Constant::getIntegerValue(
-        builder.getInt64Ty(), llvm::APInt(64, indexed_arg.index()));
-    llvm::Value *arg_ptr_ptr =
-        builder.CreateGEP(builder.getInt8PtrTy(), packed_args, arg_idx);
-    llvm::Value *arg_ptr =
-        builder.CreateLoad(builder.getInt8PtrTy(), arg_ptr_ptr);
     llvm::Type *art_ty = indexed_arg.value().getType();
-    arg_ptr = builder.CreateBitCast(arg_ptr, art_ty->getPointerTo());
-    llvm::Value *arg = builder.CreateLoad(art_ty, arg_ptr);
-    args.push_back(arg);
+
+    llvm::Value *arg_ptr_gep = builder.CreateConstGEP1_64(
+        builder.getPtrTy(), packed_args, indexed_arg.index());
+    llvm::LoadInst *arg_ptr_load =
+        builder.CreateLoad(builder.getPtrTy(), arg_ptr_gep);
+    llvm::LoadInst *arg_load = builder.CreateLoad(art_ty, arg_ptr_load);
+
+    args.emplace_back(arg_load);
   }
 
   // Call the implementation function with the extracted arguments.
-  builder.CreateCall(func, args);
+  auto *call = builder.CreateCall(func, args);
   builder.CreateRetVoid();
+
+  // Make sure that we do not keep exported function in the binary if we do not
+  // have any other callers.
+  func->setLinkage(llvm::GlobalValue::LinkageTypes::PrivateLinkage);
+
+  // Explicitly inline implementation function into the interface function,
+  // because it potentially can have thousands of arguments and it interacts
+  // badly with various SCCP passes in LLVM.
+  llvm::InlineFunctionInfo ifi;
+
+  // If inlined function is a coroutine (result of lowering async function),
+  // then we have to mark the interface function as a corotuine as well.
+  bool is_coro = func->isPresplitCoroutine();
+  if (auto inlined = llvm::InlineFunction(*call, ifi); inlined.isSuccess()) {
+    if (is_coro) callee->setPresplitCoroutine();
+  }
+
+  // Always keep the frame pointer inside jit-compiled modules, so that we can
+  // correctly walk the stack when collecting profiles at run time.
+  for (llvm::Function &fn : module.functions()) {
+    if (!fn.isDeclaration()) fn.addFnAttr("frame-pointer", "all");
+  }
 
   return absl::OkStatus();
 }
@@ -215,13 +241,6 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
   module->setDataLayout(options.target_machine->createDataLayout());
   module->setTargetTriple(options.target_machine->getTargetTriple().str());
 
-  // Run an optimization pipeline over the LLVM module.
-  auto transformer = options.make_optimizing_transformer(
-      options.opt_level, /*sizeLevel=*/0, options.target_machine);
-  if (auto err = transformer(module_ptr))
-    return InternalError("failed to run optimization pipeline: %s",
-                         ToString(err));
-
   // Set up exported functions interface functions in the LLVM module.
   for (std::string_view name : exported) {
     if (auto status = SetUpExportedFunction(*module, name); !status.ok())
@@ -229,6 +248,18 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
           "failed to set up exported function %s interface: %s", name,
           status.message());
   }
+
+  // Run an optimization pipeline over the LLVM module (alway run with default
+  // opt level independent of the options).
+  //
+  // TODO(ezhulenev): We should have out own optimizing transformer pipelines
+  // for different Xla backends, e.g. there is absolutely no need to run
+  // SLV vectorizer for Xla Gpi host side executable.
+  auto transformer = options.make_optimizing_transformer(
+      llvm::CodeGenOpt::Default, /*sizeLevel=*/0, options.target_machine);
+  if (auto err = transformer(module_ptr))
+    return InternalError("failed to run optimization pipeline: %s",
+                         ToString(err));
 
   // Callback to create the object layer with a user-provided section memory
   // mapper and JIT event listeners.
@@ -325,6 +356,14 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
   return std::move(engine);
 }
 
+static void InitializeLlvmNativeTarget() {
+  static const bool initialized = [] {
+    llvm::InitializeNativeTarget();
+    return true;
+  }();
+  (void)initialized;
+}
+
 /*static*/ StatusOr<std::unique_ptr<ExecutionEngine>>
 ExecutionEngine::CreateFromObjFile(
     std::unique_ptr<llvm::MemoryBuffer> obj_file, AotOptions options,
@@ -348,6 +387,9 @@ ExecutionEngine::CreateFromObjFile(
 
     return obj_layer;
   };
+
+  // Initialize LLVM native target before constructing LLJIT.
+  InitializeLlvmNativeTarget();
 
   // Construct the LLJIT with the given compiler and object linking layers.
   auto jit = llvm::orc::LLJITBuilder()

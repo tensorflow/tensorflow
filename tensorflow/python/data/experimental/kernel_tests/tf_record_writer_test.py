@@ -22,7 +22,7 @@ from tensorflow.python.data.experimental.ops import writers
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.lib.io import python_io
@@ -107,7 +107,7 @@ class TFRecordWriterTest(test_base.DatasetTestBase, parameterized.TestCase):
       input_dataset = readers.TFRecordDataset(self._createFile())
       return writers.TFRecordWriter(self._outputFilename()).write(input_dataset)
 
-    @function.defun
+    @def_function.function
     def fn():
       _ = writer_fn()
       return "hello"

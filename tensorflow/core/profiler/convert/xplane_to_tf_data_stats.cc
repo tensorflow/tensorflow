@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_tf_data_stats.h"
 
+#include <optional>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
@@ -72,12 +74,12 @@ void SetIteratorMetadata(int64_t id, const XEventVisitor& event,
 
 // Returns the parent iterator's id if it is a root of a device input
 // pipeline.
-absl::optional<int64_t> FindDeviceInputPipeline(const XEventVisitor& event) {
+std::optional<int64_t> FindDeviceInputPipeline(const XEventVisitor& event) {
   if (event.Type() == HostEventType::kDeviceInputPipelineSecondIterator) {
     auto parent_id_stat = event.GetStat(StatType::kParentId);
     if (parent_id_stat.has_value()) return parent_id_stat->IntValue();
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 // Processes EventForest to do the following:
@@ -129,7 +131,7 @@ void ProcessEventForest(
       // First time processing this iterator.
       SetIteratorMetadata(iterator_id, iterator_event_visitor, &metadata);
       // Find and record device input pipeline ids.
-      absl::optional<int64_t> device_input_pipeline_id =
+      std::optional<int64_t> device_input_pipeline_id =
           FindDeviceInputPipeline(iterator_event_visitor);
       if (device_input_pipeline_id.has_value()) {
         device_input_pipeline_ids->insert(*device_input_pipeline_id);
@@ -155,7 +157,8 @@ void SetInputPipelineMetadata(int64_t id, int64_t name_id,
 
 void ProcessIteratorEvent(const EventNode& iterator_event,
                           InputPipelineStat* input_pipeline_stat,
-                          bool is_blocking) {
+                          bool is_blocking, int level = 0) {
+  if (level > 100) return;
   const XEventVisitor& visitor = iterator_event.GetEventVisitor();
   auto iterator_id_stat = visitor.GetStat(StatType::kStepId);
   if (!iterator_id_stat.has_value()) return;
@@ -177,7 +180,7 @@ void ProcessIteratorEvent(const EventNode& iterator_event,
       int64_t overlap_duration_ps =
           self_time_span.OverlappedDurationPs(child_visitor.GetTimespan());
       ProcessIteratorEvent(*child, input_pipeline_stat,
-                           is_blocking && overlap_duration_ps);
+                           is_blocking && overlap_duration_ps, level + 1);
       // Note: Assume no overlap between child events.
       self_time_ps -= overlap_duration_ps;
     }

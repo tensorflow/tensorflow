@@ -15,20 +15,19 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_lexer.h"
 
+#include <cstring>
 #include <limits>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/base/casts.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
-#include "absl/strings/str_split.h"
-#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/numbers.h"
-#include "tensorflow/tsl/platform/regexp.h"
 
 namespace xla {
 namespace {
@@ -150,6 +149,12 @@ TokKind HloLexer::LexToken() {
         return TokKind::kColon;
       case '*':
         return TokKind::kAsterisk;
+      case '#':
+        return TokKind::kOctothorp;
+      case '+':
+        return TokKind::kPlus;
+      case '~':
+        return TokKind::kTilde;
       case '[':
         return TokKind::kLsquare;
       case ']':
@@ -236,7 +241,7 @@ std::optional<int64_t> HloLexer::LexNanPayload(absl::string_view& consumable) {
   CHECK(absl::EndsWith(slice, ")"));
   slice.remove_suffix(std::strlen(")"));
   uint64_t payload_value;
-  if (tensorflow::strings::HexStringToUint64(slice, &payload_value)) {
+  if (tsl::strings::HexStringToUint64(slice, &payload_value)) {
     if (payload_value <= 0 || payload_value > NanPayloadBitMask<double>()) {
       LOG(ERROR) << "NaN payload out of range: " << payload_value;
       return std::nullopt;
@@ -514,13 +519,19 @@ std::string TokKindToString(TokKind kind) {
     case TokKind::kError:
       return "kError";
     case TokKind::kEqual:
-      return "kEqaul";
+      return "kEqual";
     case TokKind::kComma:
       return "kComma";
     case TokKind::kColon:
       return "kColon";
     case TokKind::kAsterisk:
       return "kAsterisk";
+    case TokKind::kOctothorp:
+      return "kOctothorp";
+    case TokKind::kPlus:
+      return "kPlus";
+    case TokKind::kTilde:
+      return "kTilde";
     case TokKind::kLsquare:
       return "kLsquare";
     case TokKind::kRsquare:

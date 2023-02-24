@@ -20,17 +20,21 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "llvm/IR/IntrinsicsNVPTX.h"
+#include "llvm/IR/Verifier.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -101,7 +105,8 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
 
   PrimitiveType output_primitive_type = dot.shape().element_type();
   bool type_is_allowed =
-      (output_primitive_type == F16 || output_primitive_type == BF16 ||
+      (output_primitive_type == F8E4M3FN || output_primitive_type == F8E5M2 ||
+       output_primitive_type == F16 || output_primitive_type == BF16 ||
        output_primitive_type == F32 || output_primitive_type == F64 ||
        output_primitive_type == C64 || output_primitive_type == C128) ||
       (output_primitive_type == S32 && lhs_shape.element_type() == S8 &&
@@ -127,8 +132,7 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
   return true;
 }
 
-Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions,
-                           se::CudaComputeCapability cuda_compute_capability) {
+Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions) {
   if (reduction_dimensions.is_row_reduction) {
     int64_t tile_z = std::min(reduction_dimensions.dimensions[0],
                               BatchedReductionRaceFreeBound());
@@ -145,8 +149,7 @@ bool IsCustomCallToCusolver(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kCustomCall) {
     return false;
   }
-  const auto& target = hlo.custom_call_target();
-  return target == kCusolverCholeskyCallTarget;
+  return hlo.custom_call_target() == kCusolverCholeskyCallTarget;
 }
 
 static bool IsUnnestedReductionFasterThanElemental(
@@ -415,25 +418,6 @@ llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
   return b->CreateAnd(is_thread0, is_block0);
 }
 
-bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
-                                      const HloInstruction* first_reduce) {
-  if (IsReductionFromOrToContiguousDimensions(*inst)) {
-    // Shapes, layouts and dimensions must be the same for all reduces
-    // inside of this fusion.
-    return ShapeUtil::EqualIgnoringElementType(first_reduce->shape(),
-                                               inst->shape()) &&
-           ShapeUtil::EqualIgnoringElementType(
-               first_reduce->operand(0)->shape(), inst->operand(0)->shape()) &&
-           ShapeUtil::EqualIgnoringElementType(
-               first_reduce->operand(1)->shape(), inst->operand(1)->shape()) &&
-           first_reduce->dimensions() == inst->dimensions();
-  }
-  return ShapeUtil::CompatibleIgnoringElementType(
-             first_reduce->operand(0)->shape(), inst->shape()) &&
-         LayoutUtil::Equal(first_reduce->operand(0)->shape().layout(),
-                           inst->shape().layout());
-}
-
 // Given an LMHLO op, returns the operand index of the first output operand.
 //
 // Notice that an operand alised to an output isn't an output, even though in
@@ -457,41 +441,38 @@ int PartitionLmhloOperandsAndOutputs(mlir::Operation* op) {
   return i + 1;
 }
 
-std::vector<mlir::Value> GetHloOperands(mlir::Operation* op) {
+llvm::SmallVector<mlir::Value> GetHloOperands(mlir::Operation* op) {
   if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
-    return ToStdVector(fusion.getInputBuffers());
+    return fusion.getInputBuffers();
   }
   if (op->getDialect() == op->getContext()->getLoadedDialect("lmhlo")) {
     int output_start = PartitionLmhloOperandsAndOutputs(op);
-    std::vector<mlir::Value> operands;
-    operands.reserve(output_start);
+    llvm::SmallVector<mlir::Value> operands;
     for (int i = 0; i < output_start; i++) {
       operands.push_back(op->getOperand(i));
     }
     return operands;
   }
   if (op->getDialect() == op->getContext()->getLoadedDialect("mhlo")) {
-    return std::vector<mlir::Value>(op->getOperands().begin(),
-                                    op->getOperands().end());
+    return op->getOperands();
   }
   LOG(FATAL) << "Unexpected op: " << MlirToString(op);
 }
 
-std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op) {
+llvm::SmallVector<mlir::Value> GetHloOutputs(mlir::Operation* op) {
   if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
-    return ToStdVector(fusion.getOutputBuffers());
+    return fusion.getOutputBuffers();
   }
   if (op->getDialect() == op->getContext()->getLoadedDialect("lmhlo")) {
     int output_start = PartitionLmhloOperandsAndOutputs(op);
-    std::vector<mlir::Value> outputs;
+    llvm::SmallVector<mlir::Value> outputs;
     for (int i = output_start; i < op->getNumOperands(); i++) {
       outputs.push_back(op->getOperand(i));
     }
     return outputs;
   }
   if (op->getDialect() == op->getContext()->getLoadedDialect("mhlo")) {
-    return std::vector<mlir::Value>(op->getResults().begin(),
-                                    op->getResults().end());
+    return op->getResults();
   }
   LOG(FATAL) << "Unexpected op: " << MlirToString(op);
 }
@@ -539,12 +520,18 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
 
   // We match the following patterns here:
   //  base := ViewOp(arg) | get_global_memref (global_memref) | arg
-  //  root := base | MemRefReinterpretCastOp(base)
+  //  root := base | MemRefReinterpretCastOp(base) | CollapseShapeOp(base)
 
   if (auto cast = mlir::dyn_cast_or_null<mlir::memref::ReinterpretCastOp>(
           v.getDefiningOp())) {
     v = cast.getViewSource();
   }
+  if (auto collapse_shape =
+          mlir::dyn_cast_or_null<mlir::memref::CollapseShapeOp>(
+              v.getDefiningOp())) {
+    v = collapse_shape.getSrc();
+  }
+
   if (auto view =
           mlir::dyn_cast_or_null<mlir::memref::ViewOp>(v.getDefiningOp())) {
     TF_RET_CHECK(view.getSource().isa<mlir::BlockArgument>());
@@ -621,8 +608,8 @@ Shape GetShape(mlir::Value value) {
   return {};
 }
 
-bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
-                         const Vector3& reduction_tiling) {
+bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions) {
+  Vector3 reduction_tiling = GetReductionTiling(reduction_dimensions);
   return (reduction_dimensions.is_row_reduction &&
           reduction_dimensions.dimensions[2] <=
               MinThreadsXRowReduction() * reduction_tiling[2] &&
@@ -659,46 +646,99 @@ std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation) {
   return out;
 }
 
-static std::optional<Vector3> FindTiledTranspose(const HloInstruction& instr) {
+static std::optional<Vector3> FindTiledTranspose(const HloInstruction& instr,
+                                                 Vector3& permutation) {
   if (instr.opcode() != HloOpcode::kCopy) {
     return std::nullopt;
   }
 
-  if (std::optional<Vector3> tr = ShapeUtil::FindTranspose021(
-          instr.operand(0)->shape(), instr.shape())) {
+  if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedTransposeShape(
+          instr.operand(0)->shape(), instr.shape(), Vector3{0, 2, 1})) {
     if (tr->at(1) >= kMinDimensionToTransposeTiled &&
         tr->at(2) >= kMinDimensionToTransposeTiled) {
+      permutation = Vector3{0, 2, 1};
+      return tr;
+    }
+  }
+  if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedTransposeShape(
+          instr.operand(0)->shape(), instr.shape(), Vector3{2, 1, 0})) {
+    if (tr->at(0) >= kMinDimensionToTransposeTiled &&
+        tr->at(2) >= kMinDimensionToTransposeTiled) {
+      permutation = Vector3{2, 1, 0};
       return tr;
     }
   }
   return std::nullopt;
 }
 
-// Find 021 transpose in logical + physical transposition.
-std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr) {
+// Find 021 or 210 transpose in logical + physical transposition.
+std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr,
+                                                 Vector3& permutation) {
   if (instr.opcode() != HloOpcode::kTranspose) {
     return std::nullopt;
   }
 
   // TODO(cheshire): avoid code duplication.
-  if (std::optional<Vector3> tr = ShapeUtil::FindLogicalTranspose021(
-          instr.operand(0)->shape(), instr.shape(), instr.dimensions())) {
+  if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedLogicalTransposeShape(
+          instr.operand(0)->shape(), instr.shape(), instr.dimensions(),
+          Vector3{0, 2, 1})) {
     if (tr->at(1) >= kMinDimensionToTransposeTiled &&
         tr->at(2) >= kMinDimensionToTransposeTiled) {
+      permutation = Vector3{0, 2, 1};
+      return tr;
+    }
+  }
+  if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedLogicalTransposeShape(
+          instr.operand(0)->shape(), instr.shape(), instr.dimensions(),
+          Vector3{2, 1, 0})) {
+    if (tr->at(0) >= kMinDimensionToTransposeTiled &&
+        tr->at(2) >= kMinDimensionToTransposeTiled) {
+      permutation = Vector3{2, 1, 0};
       return tr;
     }
   }
   return std::nullopt;
 }
 
-std::optional<Vector3> FindAnyTiledTranspose(const HloInstruction& instr) {
-  if (std::optional<Vector3> d1 = FindTiledTranspose(instr)) {
-    return d1;
+std::optional<std::pair<Vector3, Vector3>> FindAnyTiledTranspose(
+    const HloInstruction& instr) {
+  const HloInstruction& hero = FindNonTrivialHero(instr);
+
+  Vector3 permutation;
+  if (std::optional<Vector3> d1 = FindTiledTranspose(hero, permutation)) {
+    return std::make_pair(d1.value(), permutation);
   }
-  if (std::optional<Vector3> d2 = FindTiledLogicalTranspose(instr)) {
-    return d2;
+  if (std::optional<Vector3> d2 =
+          FindTiledLogicalTranspose(hero, permutation)) {
+    return std::make_pair(d2.value(), permutation);
   }
   return std::nullopt;
+}
+
+static bool IsIntermediate(const HloInstruction* instr) {
+  return (
+      instr->operand_count() == 1 && instr->user_count() <= 1 &&
+      ((instr->IsElementwise() && instr->opcode() != HloOpcode::kCopy) ||
+       instr->opcode() == HloOpcode::kBitcast ||
+       (instr->opcode() == HloOpcode::kReshape &&
+        ShapeUtil::ReshapeIsBitcast(instr->operand(0)->shape(),
+                                    instr->shape())) ||
+       (instr->opcode() == HloOpcode::kTranspose &&
+        ShapeUtil::TransposeIsBitcast(instr->operand(0)->shape(),
+                                      instr->shape(), instr->dimensions()))));
+}
+
+const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
+  const HloInstruction* idx = &instr;
+
+  // Go up the chain of trivial elementwise(+bitcast, -copy) operations. Such
+  // chains are bound to be quite small, as we restrict the number of users as
+  // well. Note that no memoization is needed due to user number constraints: we
+  // never have to revisit same nodes.
+  while (IsIntermediate(idx)) {
+    idx = idx->operand(0);
+  }
+  return *idx;
 }
 
 bool HasAnyTiledTransposeRoot(HloComputation* computation) {
@@ -713,6 +753,22 @@ bool HasAnyUnnestedReductionRoot(HloComputation* computation) {
       GetFusionRoots(computation), [&](const HloInstruction* instr) {
         return IsReductionFromOrToContiguousDimensions(*instr);
       });
+}
+
+void LogAndVerify(const llvm::Module* m) {
+  if (VLOG_IS_ON(5)) {
+    std::string llir_str;
+    llvm::raw_string_ostream llir_stream(llir_str);
+    llir_stream << *m;
+    llir_stream.flush();
+    XLA_VLOG_LINES(5, llir_str);
+  }
+
+  std::string llir_str;
+  llvm::raw_string_ostream llir_stream(llir_str);
+  bool broken = llvm::verifyModule(*m, &llir_stream);
+  llir_stream.flush();
+  CHECK(!broken) << llir_str;
 }
 
 }  // namespace gpu

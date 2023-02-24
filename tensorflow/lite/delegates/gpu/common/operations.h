@@ -67,6 +67,7 @@ enum class OperationType {
   LESS,
   LESS_EQUAL,
   LOG,
+  LOGICAL_AND,
   LSTM,
   MAXIMUM,
   MAX_UNPOOLING_2D,
@@ -113,15 +114,16 @@ std::string ToString(enum OperationType op);
 
 OperationType OperationTypeFromString(const std::string& name);
 
-typedef absl::variant<absl::monostate, Tensor<HWC, DataType::FLOAT32>,
-                      Tensor<Linear, DataType::FLOAT32>, float>
-    TensorOrScalar;
+template <DataType DataTypeT, typename t>
+using TensorOrScalarBase = std::variant<std::monostate, Tensor<HWC, DataTypeT>,
+                                        Tensor<Linear, DataTypeT>, t>;
+
+using TensorOrScalar = TensorOrScalarBase<DataType::FLOAT32, float>;
 
 struct Padding2D {
-  Padding2D() = default;
   Padding2D& operator=(const Padding2D& value);
-  bool operator==(const Padding2D& value);
-  bool operator!=(const Padding2D& value);
+  bool operator==(const Padding2D& value) const;
+  bool operator!=(const Padding2D& value) const;
   Padding2D& operator-(const Padding2D& value);
 
   // Padding values for every axis (if needed), where 'prepended' defines
@@ -500,9 +502,12 @@ struct Pad3DAttributes {
 // input.
 BHWDC CalculateOutputShape(const BHWDC& input, const Pad3DAttributes& attr);
 
-struct ConstTensorAttributes {
-  Tensor<BHWC, DataType::FLOAT32> tensor;
+template <DataType DataTypeT>
+struct ConstTensorAttributesBase {
+  Tensor<BHWC, DataTypeT> tensor;
 };
+
+using ConstTensorAttributes = ConstTensorAttributesBase<DataType::FLOAT32>;
 
 struct DensifyAttributes {
   Tensor<BHWC, DataType::FLOAT32> tensor;
@@ -562,13 +567,17 @@ BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr);
 // @return shape of a tensor after Mean operation is applied to the given input.
 BHWDC CalculateOutputShape(const BHWDC& input, const MeanAttributes& attr);
 
-struct ElementwiseAttributes {
-  TensorOrScalar param;
+template <DataType DataTypeT, typename t>
+struct ElementwiseAttributesBase {
+  TensorOrScalarBase<DataTypeT, t> param;
   // For elementwise operation with 2 inputs op(A, B), runtime_tensor_is_second
   // true when runtime tensor is B(on second position). this is important for
   // ops that non commutative, for example subtract.
   bool runtime_tensor_is_second = false;
 };
+
+using ElementwiseAttributes =
+    ElementwiseAttributesBase<DataType::FLOAT32, float>;
 
 struct ReshapeAttributes {
   BHWC new_shape;

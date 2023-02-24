@@ -7,6 +7,7 @@ load(
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/core/runtime_fallback:internal"],
     features = ["-layering_check"],
     licenses = ["notice"],
@@ -295,6 +296,7 @@ cc_library(
         ":kernel_fallback_execute_compat",
         ":kernel_fallback_tensor",
         ":kernel_fallback_tensor_conversion_alwayslink",
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner_cache",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
@@ -354,6 +356,7 @@ cc_library(
         ":kernel_fallback_tensor",
         ":kernel_fallback_tensor_conversion_alwayslink",
         ":kernel_fallback_utils",
+        "@com_google_absl//absl/base",
         "@llvm-project//llvm:Support",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
@@ -361,6 +364,7 @@ cc_library(
         "//tensorflow/core/runtime_fallback/util:attr_util",
         "//tensorflow/core/tfrt/fallback:cost_recorder",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner_cache",
         "//tensorflow/core/tfrt/utils:error_util",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "//tensorflow/core/tfrt/utils:tensor_util",
@@ -397,9 +401,12 @@ cc_library(
         "//third_party/tf_runtime_google:__pkg__",
         # Sync fallback kernels need access to the fallback state.
         "//learning/brain/experimental/tfrt/native_lowering/kernels:__subpackages__",
+        "//tensorflow/core/tfrt/graph_executor:__subpackages__",
+        "//tensorflow/core/tfrt/saved_model:__subpackages__",
     ],
     deps = [
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
+        "//tensorflow/core/tfrt/fallback:cost_recorder",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
@@ -433,4 +440,30 @@ cc_library(
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "@com_google_absl//absl/container:inlined_vector",
     ],
+)
+
+cc_library(
+    name = "gpurt_kernels",
+    srcs = ["gpurt_kernels.cc"],
+    visibility = [
+        "//tensorflow/compiler/mlir/tfrt:__pkg__",
+        "//tensorflow/core/runtime_fallback:internal",
+        "//tensorflow/core/tfrt/eager:__pkg__",
+        "//tensorflow/core/tfrt/graph_executor:__pkg__",
+        "//tensorflow/core/tfrt/saved_model:__pkg__",
+    ],
+    deps = [
+        ":kernel_fallback_compat_request_state",
+        ":kernel_fallback_tensor",
+        ":kernel_fallback_utils",
+        ":tensor_util",
+        "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
+        "//tensorflow/core/tfrt/utils:fallback_tensor",
+        "//tensorflow/core/tfrt/utils:tensor_util",
+        "@tf_runtime//:core_runtime",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:support",
+        "@tf_runtime//:tensor_alwayslink",
+    ],
+    alwayslink = True,
 )

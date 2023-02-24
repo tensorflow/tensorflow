@@ -117,7 +117,7 @@ class MergeTfIfOpsPass
       auto if_op = llvm::dyn_cast<mlir::TF::IfOp>(&op);
 
       // Skip non tf.If ops and tf.If ops that are side-effecting.
-      if (!if_op || !if_op.is_stateless()) continue;
+      if (!if_op || !if_op.getIsStateless()) continue;
 
       if_ops_to_merge[if_op].push_back(if_op);
     }
@@ -169,33 +169,34 @@ class MergeTfIfOpsPass
     }
 
     auto branch_function_type = builder.getFunctionType(
-        if_ops.front().input().getTypes(), new_result_types);
+        if_ops.front().getInput().getTypes(), new_result_types);
 
     // Create new branches for the merged tf.If op.
     auto then_branch_name = CreateBranchFunction(
         builder, loc, branch_prefix,
         /*branch_suffix=*/"_then", branch_function_type, if_ops,
-        [](mlir::TF::IfOp op) { return op.then_branchAttr(); });
+        [](mlir::TF::IfOp op) { return op.getThenBranchAttr(); });
 
     auto else_branch_name = CreateBranchFunction(
         builder, loc, branch_prefix,
         /*branch_suffix=*/"_else", branch_function_type, if_ops,
-        [](mlir::TF::IfOp op) { return op.else_branchAttr(); });
+        [](mlir::TF::IfOp op) { return op.getElseBranchAttr(); });
 
     mlir::OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPoint(if_ops.front());
 
     // Create the merged tf.If op using the new branches.
     auto new_if_op = builder.create<mlir::TF::IfOp>(
-        loc, new_result_types, if_ops.front().cond(), if_ops.front().input(),
-        then_branch_name, else_branch_name, /*is_stateless=*/true);
+        loc, new_result_types, if_ops.front().getCond(),
+        if_ops.front().getInput(), then_branch_name, else_branch_name,
+        /*is_stateless=*/true);
 
     // Replace the uses of results of the original tf.If ops with the results of
     // the merged tf.If op.
-    auto new_result_iter = new_if_op.output().begin();
+    auto new_result_iter = new_if_op.getOutput().begin();
     for (auto if_op : if_ops) {
-      for (auto result : if_op.output()) {
-        assert(new_result_iter != new_if_op.output().end());
+      for (auto result : if_op.getOutput()) {
+        assert(new_result_iter != new_if_op.getOutput().end());
         result.replaceAllUsesWith(*new_result_iter);
         ++new_result_iter;
       }
@@ -233,7 +234,7 @@ class MergeTfIfOpsPass
           empty_string_attr);
 
       // The results are the concatenation of the original branches.
-      results.append(call_op.output().begin(), call_op.output().end());
+      results.append(call_op.getOutput().begin(), call_op.getOutput().end());
     }
 
     builder.create<mlir::func::ReturnOp>(loc, results);

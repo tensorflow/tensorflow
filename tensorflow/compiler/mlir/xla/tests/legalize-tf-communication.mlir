@@ -1,4 +1,4 @@
-// RUN: xla-opt -split-input-file -verify-diagnostics -xla-legalize-tf-communication %s | FileCheck %s
+// RUN: tf-opt -split-input-file -verify-diagnostics -xla-legalize-tf-communication %s | FileCheck %s
 
 // Test legalization of `tf._XlaHostComputeMlir` expands into individual
 // `mhlo.send` per operand and `mhlo.recv` per result. Channel Id's are uniquely
@@ -482,7 +482,7 @@ func.func @if_false_branch(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<
 // CHECK-LABEL: func @if_replace_tuple_arg
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<i1>, [[ARG1:%.*]]: tensor<f32>, [[ARG2:%.*]]: tensor<f32>)
 func.func @if_replace_tuple_arg(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
-  // CHECK-NOT:  "mhlo.tuple"([[ARG1]], [[ARG2]])
+  // CHECK-NOT:  mhlo.tuple [[ARG1]], [[ARG2]]
   // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.create_token
 
   // CHECK: [[IF:%.*]] = "mhlo.if"([[ARG0]])
@@ -503,8 +503,8 @@ func.func @if_replace_tuple_arg(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: te
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<i1>, [[ARG1:%.*]]: tuple<tensor<f32>, tensor<f32>>)
 func.func @if_unpack_tuple_arg(%arg0: tensor<i1>, %arg1: tuple<tensor<f32>, tensor<f32>>) -> tensor<f32> {
   // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.create_token
-  // CHECK-DAG:  [[IF_ARG_ELEMENT0:%.*]] = "mhlo.get_tuple_element"([[ARG1]]) {index = 0
-  // CHECK-DAG:  [[IF_ARG_ELEMENT1:%.*]] = "mhlo.get_tuple_element"([[ARG1]]) {index = 1
+  // CHECK-DAG:  [[IF_ARG_ELEMENT0:%.*]] = mhlo.get_tuple_element [[ARG1]][0]
+  // CHECK-DAG:  [[IF_ARG_ELEMENT1:%.*]] = mhlo.get_tuple_element [[ARG1]][1]
   %0 = "mhlo.get_tuple_element"(%arg1) {index = 0 : i32} : (tuple<tensor<f32>, tensor<f32>>) -> tensor<f32>
   %1 = "mhlo.get_tuple_element"(%arg1) {index = 1 : i32} : (tuple<tensor<f32>, tensor<f32>>) -> tensor<f32>
 
@@ -535,7 +535,7 @@ func.func @if_extend_tuple_result(%arg0: tensor<i1>, %arg1: tuple<tensor<f32>, t
   // CHECK:      (tensor<i1>) -> (tensor<f32>, tensor<f32>, !mhlo.token)
   }) : (tensor<i1>) -> (tensor<f32>, tensor<f32>)
 
-  // CHECK:      [[IF_SUBTUPLE_RESULT:%.*]] = "mhlo.tuple"([[IF]]#0, [[IF]]#1)
+  // CHECK:      [[IF_SUBTUPLE_RESULT:%.*]] = mhlo.tuple [[IF]]#0, [[IF]]#1
   %3 = "mhlo.tuple"(%2#0, %2#1) : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>>
   // CHECK:      return [[IF_SUBTUPLE_RESULT]]
   func.return %3 : tuple<tensor<f32>, tensor<f32>>

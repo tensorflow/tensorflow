@@ -11,6 +11,7 @@ load(
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_kernel_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",

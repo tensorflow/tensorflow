@@ -14,26 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_op_handler.h"
 
-#include "tensorflow/core/common_runtime/eager/context.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
-#include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/runtime_fallback/util/attr_util.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
-#include "tensorflow/core/tfrt/utils/error_util.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner_cache.h"
 #include "tfrt/core_runtime/dispatch_utils.h"  // from @tf_runtime
 #include "tfrt/core_runtime/op_invocation.h"  // from @tf_runtime
 #include "tfrt/core_runtime/op_metadata_function.h"  // from @tf_runtime
 #include "tfrt/core_runtime/tensor_handle.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
-#include "tfrt/support/error_util.h"  // from @tf_runtime
 #include "tfrt/support/string_util.h"  // from @tf_runtime
-#include "tfrt/tensor/string_host_tensor.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {
@@ -146,88 +141,6 @@ struct KernelFallbackOpHandlerCompatTraits {
   }
 };
 
-class OpLocationKey {
- public:
-  explicit OpLocationKey(tfrt::Location loc) : loc_(loc) {}
-
-  template <typename H>
-  friend H AbslHashValue(H h, const OpLocationKey& key) {
-    // NOTE: Each BEF file has its own LocationHandler. Using LocationHandler
-    // as part of cache key here can avoid cache collision between different
-    // BEF file.
-    return H::combine(std::move(h), key.loc_.data, key.loc_.GetHandler());
-  }
-
-  friend bool operator==(const OpLocationKey& x, const OpLocationKey& y) {
-    return x.loc_.data == y.loc_.data &&
-           x.loc_.GetHandler() == y.loc_.GetHandler();
-  }
-
- private:
-  tfrt::Location loc_;
-};
-
-// OpKernelRunnerCache is similar to OpKernelRunnerTable but thread-safe.
-class OpKernelRunnerCache {
- public:
-  OpKernelRunnerCache() = default;
-
-  StatusOr<OpKernelRunner*> GetOrCreate(
-      tfrt::Location loc, absl::string_view op_name,
-      absl::string_view device_name, int num_args,
-      const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
-      const tensorflow::DeviceMgr& device_manager,
-      const tensorflow::ProcessFunctionLibraryRuntime&
-          process_function_library_runtime);
-
- private:
-  mutable mutex mu_;
-  absl::flat_hash_map<OpLocationKey, std::unique_ptr<OpKernelRunner>> map_
-      TF_GUARDED_BY(mu_);
-};
-
-StatusOr<OpKernelRunner*> OpKernelRunnerCache::GetOrCreate(
-    tfrt::Location loc, absl::string_view op_name,
-    absl::string_view device_name, int num_args,
-    const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
-    const tensorflow::DeviceMgr& device_manager,
-    const tensorflow::ProcessFunctionLibraryRuntime&
-        process_function_library_runtime) {
-  OpLocationKey key(loc);
-  {
-    tf_shared_lock lock(mu_);
-    auto it = map_.find(key);
-    if (it != map_.end()) {
-      DCHECK_EQ(it->second->op_kernel()->name(), op_name);
-      return it->second.get();
-    }
-  }
-
-  mutex_lock lock(mu_);
-
-  auto it = map_.find(key);
-  if (it != map_.end()) {
-    DCHECK_EQ(it->second->op_kernel()->name(), op_name);
-    return it->second.get();
-  }
-
-  VLOG(1) << "KernelFallbackExecuteCompat creating op " << op_name
-          << " at location " << loc.data << " on device " << device_name;
-
-  TF_ASSIGN_OR_RETURN(
-      auto runner,
-      OpKernelRunner::Create(op_name, device_name, num_args, attr_builder,
-                             device_manager, process_function_library_runtime));
-
-  auto runner_uptr = std::make_unique<OpKernelRunner>(std::move(runner));
-
-  auto* runner_ptr = runner_uptr.get();
-  auto r = map_.emplace(key, std::move(runner_uptr)).second;
-  DCHECK(r);
-
-  return runner_ptr;
-}
-
 }  // namespace
 
 Expected<CoreRuntimeOp> KernelFallbackOpHandler::MakeOp(string_view op_name) {
@@ -278,10 +191,11 @@ Expected<CoreRuntimeOp> KernelFallbackOpHandler::MakeOp(string_view op_name) {
         DCHECK(invocation.exec_ctx.location());
 
         DCHECK(invocation.exec_ctx.request_ctx()->resource_context());
-        auto* runner_cache = invocation.exec_ctx.request_ctx()
-                                 ->resource_context()
-                                 ->GetOrCreateResource<OpKernelRunnerCache>(
-                                     kOpKernelRunnerCacheResourceName);
+        auto* runner_cache =
+            invocation.exec_ctx.request_ctx()
+                ->resource_context()
+                ->GetOrCreateResource<tfrt_stub::OpKernelRunnerCache>(
+                    kOpKernelRunnerCacheResourceName);
 
         auto kernel_runner_or_status = runner_cache->GetOrCreate(
             invocation.exec_ctx.location(),

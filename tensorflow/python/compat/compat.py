@@ -29,7 +29,7 @@ from tensorflow.python.util.tf_export import tf_export
 # This value changes every day with an automatic CL. It can be modified in code
 # via `forward_compatibility_horizon()` or with the environment variable
 # TF_FORWARD_COMPATIBILITY_DELTA_DAYS, which is added to the compatibility date.
-_FORWARD_COMPATIBILITY_HORIZON = datetime.date(2022, 10, 12)
+_FORWARD_COMPATIBILITY_HORIZON = datetime.date(2023, 2, 23)
 _FORWARD_COMPATIBILITY_DELTA_DAYS_VAR_NAME = "TF_FORWARD_COMPATIBILITY_DELTA_DAYS"
 _FORWARD_COMPATIBILITY_DATE_NUMBER = None
 
@@ -67,7 +67,7 @@ def forward_compatible(year, month, day):
   """Return true if the forward compatibility window has expired.
 
   See [Version
-  compatibility](https://tensorflow.org/guide/version_compat#backward_forward).
+  compatibility](https://www.tensorflow.org/guide/versions#backward_and_partial_forward_compatibility).
 
   Forward-compatibility refers to scenarios where the producer of a TensorFlow
   model (a GraphDef or SavedModel) is compiled against a version of the

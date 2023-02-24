@@ -19,11 +19,11 @@ import contextlib
 import enum  # pylint: disable=g-bad-import-order
 import gzip
 import inspect
+import logging
 import os
 from typing import List, Sequence, Tuple, Union
 
 from . import xla_extension as _xla
-
 import numpy as np
 
 # Note this module does *not* depend on any Python protocol buffers. The XLA
@@ -43,15 +43,17 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 98
+_version = 130
 
 # Version number for MLIR:Python components.
-mlir_api_version = 34
+mlir_api_version = 43
 
 xla_platform_names = {
     'cpu': 'Host',
     'gpu': 'CUDA',
 }
+
+logger = logging.getLogger(__name__)
 
 
 def make_interpreter_client():
@@ -59,10 +61,8 @@ def make_interpreter_client():
 
 
 def make_cpu_client(*, use_tfrt: bool = True) -> ...:
-  if use_tfrt:
-    return _xla.get_tfrt_cpu_client(asynchronous=True)
-  else:
-    return _xla.get_cpu_client(asynchronous=True)
+  assert use_tfrt
+  return _xla.get_tfrt_cpu_client(asynchronous=True)
 
 
 def make_gpu_client(distributed_client=None, node_id=0, platform_name=None,
@@ -98,17 +98,42 @@ def make_gpu_client(distributed_client=None, node_id=0, platform_name=None,
 
 
 def make_tfrt_tpu_c_api_client():
-  return _xla.get_tfrt_tpu_c_api_client()
+  return _xla.get_c_api_client('tpu')
 
 
-def make_tpu_client():
-  """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
+def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
+  _xla.load_pjrt_plugin(plugin_name, library_path)
+
+
+def make_c_api_client(plugin_name: str):
+  """Creates a PJRT C API client for a PJRT plugin.
+
+  It is required that load_pjrt_plugin_dynamically is called once with the same
+  plugin_name before this method is called.
+
+  Args:
+     plugin_name: the name of the PJRT plugin.
+
+  Returns:
+     A PJRT C API client for plugin_name.
+  """
+  return _xla.get_c_api_client(plugin_name)
+
+
+def _use_pjrt_c_api() -> bool:
   use_pjrt_c_api = os.getenv('JAX_USE_PJRT_C_API_ON_TPU', 'false')
-  if use_pjrt_c_api not in ('1', 'true', 'false'):
+  if use_pjrt_c_api not in ('1', '0', 'true', 'false'):
     raise ValueError(
-        'JAX_USE_PJRT_C_API_ON_TPU env var must be "1", "true" or "false", '
-        f'got "{use_pjrt_c_api}"')
-  if use_pjrt_c_api in ('1', 'true'):
+        'JAX_USE_PJRT_C_API_ON_TPU env var must be "0", "1", "true" or '
+        f'"false", got "{use_pjrt_c_api}"')
+  return use_pjrt_c_api in ('1', 'true')
+
+
+def make_tpu_client(use_pjrt_c_api: bool = False):
+  """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
+  if use_pjrt_c_api or _use_pjrt_c_api():
+    library_path = os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')
+    load_pjrt_plugin_dynamically('tpu', library_path)
     return make_tfrt_tpu_c_api_client()
 
   max_inflight_computations = os.getenv(
@@ -160,6 +185,8 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
 PrimitiveType = _xla.PrimitiveType
 
 bfloat16 = _xla.bfloat16_dtype()
+float8_e4m3fn = _xla.float8_e4m3fn_dtype()
+float8_e5m2 = _xla.float8_e5m2_dtype()
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
@@ -171,6 +198,8 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.U16: np.dtype('uint16'),
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
+    PrimitiveType.F8E4M3FN: np.dtype(float8_e4m3fn),
+    PrimitiveType.F8E5M2: np.dtype(float8_e5m2),
     PrimitiveType.BF16: np.dtype(bfloat16),
     PrimitiveType.F16: np.dtype('float16'),
     PrimitiveType.F32: np.dtype('float32'),
@@ -415,7 +444,6 @@ XlaOp = _xla.XlaOp
 FftType = _xla.FftType
 Client = _xla.Client
 Buffer = _xla.Buffer
-ShardedBuffer = _xla.ShardedBuffer
 ArrayImpl = _xla.ArrayImpl
 DeviceArrayBase = _xla.DeviceArrayBase
 LoadedExecutable = _xla.LoadedExecutable
@@ -423,10 +451,10 @@ OpSharding = _xla.OpSharding
 HloSharding = _xla.HloSharding
 Sharding = _xla.Sharding
 XLACompatibleSharding = _xla.XLACompatibleSharding
-MeshPspecSharding = _xla.MeshPspecSharding
+NamedSharding = _xla.NamedSharding
 SingleDeviceSharding = _xla.SingleDeviceSharding
 PmapSharding = _xla.PmapSharding
-OpShardingSharding = _xla.OpShardingSharding
+GSPMDSharding = _xla.GSPMDSharding
 
 
 def register_custom_call_target(name, fn, platform='cpu'):

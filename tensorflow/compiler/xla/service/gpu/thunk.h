@@ -16,14 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_THUNK_H_
 
+#include <functional>
 #include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
 #include <vector>
 
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -46,9 +48,9 @@ class Thunk {
  public:
   enum Kind {
     kCholesky,
-    kCollectivePermute,
     kConditional,
     kConvolution,
+    kConvolutionReorder,
     kCopy,
     kCublasLtMatmul,
     kCustomCall,
@@ -63,6 +65,9 @@ class Thunk {
     kNcclAllReduce,
     kNcclAllReduceStart,
     kNcclAllReduceDone,
+    kNcclCollectivePermute,
+    kNcclCollectivePermuteStart,
+    kNcclCollectivePermuteDone,
     kNcclReduceScatter,
     kNcclAllToAll,
     kOutfeed,
@@ -83,12 +88,12 @@ class Thunk {
   // The hlo_instruction argument is meant to be the instruction this thunk was
   // generated from, but Thunk never uses this argument other than to save it
   // to Thunk::hlo_instruction, so it can be null.
-  explicit Thunk(Kind kind, ThunkInfo thunk_info)
+  Thunk(Kind kind, ThunkInfo thunk_info)
       : kind_(kind),
         profile_index_(thunk_info.profile_index),
         profile_annotation_(thunk_info.profile_annotation),
         op_(thunk_info.op) {}
-  virtual ~Thunk() {}
+  virtual ~Thunk() = default;
   Thunk(const Thunk&) = delete;
   Thunk& operator=(const Thunk&) = delete;
 
@@ -162,6 +167,9 @@ struct ShapedSlice {
   Shape shape;
 };
 
+// Returns if the thunk implements a reduction collective (all-reduce or
+// reduce-scatter).
+bool IsReductionCollective(Thunk::Kind kind);
 }  // namespace gpu
 }  // namespace xla
 

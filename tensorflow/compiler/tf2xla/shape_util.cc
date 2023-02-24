@@ -94,7 +94,7 @@ Status XLAShapeToTensorShape(const xla::Shape& shape,
   }
   *tensor_shape = TensorShape();
   for (int i = 0; i < shape.rank(); ++i) {
-    tensor_shape->AddDim(shape.dimensions(i));
+    TF_RETURN_IF_ERROR(tensor_shape->AddDimWithStatus(shape.dimensions(i)));
   }
   return OkStatus();
 }
@@ -113,7 +113,7 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
                                  const PartialTensorShape& tensor_shape) {
   if (tensor_shape.unknown_rank()) {
     // For unknown shape, create a rank 1 size 0 tensor.
-    return xla::ShapeUtil::MakeShapeWithLayout(type, {0}, {0});
+    return xla::ShapeUtil::MakeShapeWithDenseLayout(type, {0}, {0});
   }
   int rank = tensor_shape.dims();
   std::vector<int64_t> dimensions(rank);
@@ -123,13 +123,13 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
     if (dimensions[d] < 0) {
       LOG(WARNING) << "Unable to convert TF shape with dynamic size to XLA "
                       "shape; returning unknown sentinel value";
-      return xla::ShapeUtil::MakeShapeWithLayout(type, {0}, {0});
+      return xla::ShapeUtil::MakeShapeWithDenseLayout(type, {0}, {0});
     }
   }
   // XLA uses minor-to-major; Tensorflow uses major-to-minor.
   std::iota(layout.rbegin(), layout.rend(), 0);
   xla::Shape result =
-      xla::ShapeUtil::MakeShapeWithLayout(type, dimensions, layout);
+      xla::ShapeUtil::MakeShapeWithDenseLayout(type, dimensions, layout);
   return result;
 }
 
@@ -160,7 +160,7 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
   // XLA uses minor-to-major; Tensorflow uses major-to-minor.
   std::iota(layout.rbegin(), layout.rend(), 0);
 
-  return xla::ShapeUtil::MakeShapeWithLayout(type, dimensions, layout);
+  return xla::ShapeUtil::MakeShapeWithDenseLayout(type, dimensions, layout);
 }
 
 StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape) {

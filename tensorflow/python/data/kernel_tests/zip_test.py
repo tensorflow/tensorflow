@@ -22,6 +22,7 @@ from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
@@ -137,7 +138,7 @@ class ZipTest(test_base.DatasetTestBase, parameterized.TestCase):
 class ZipCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                         parameterized.TestCase):
 
-  def _build_dataset(self, arr):
+  def _build_dataset(self, arr, options=None):
     components = [
         np.tile(np.array([[1], [2], [3], [4]]), 20),
         np.tile(np.array([[12], [13], [14], [15]]), 22),
@@ -147,16 +148,22 @@ class ZipCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         dataset_ops.Dataset.from_tensor_slices(component)
         for component in components
     ]
-    return dataset_ops.Dataset.zip((datasets[0], (datasets[1], datasets[2])))
+    dataset = dataset_ops.Dataset.zip((datasets[0], (datasets[1], datasets[2])))
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
-          combinations.combine(elements=[[37.0, 38.0, 39.0, 40.0], [1.0, 2.0]]))
-  )
-  def test(self, verify_fn, elements):
-    verify_fn(self, lambda: self._build_dataset(elements), len(elements))
+          combinations.combine(elements=[[37.0, 38.0, 39.0, 40.0], [1.0, 2.0]]),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, elements, symbolic_checkpoint):
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(self, lambda: self._build_dataset(elements, options),
+              len(elements))
 
 
 class ZipRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):

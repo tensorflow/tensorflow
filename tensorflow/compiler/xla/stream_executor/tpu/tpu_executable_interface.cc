@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable_interface.h"
 
+#include <limits>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -204,11 +205,11 @@ StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
           run_options->run_options().host_to_device_stream()));
 
   // Address of the buffer in TPU memory that is being speculated.
-  std::optional<se::DeviceMemoryBase> cross_program_prefetch_addr;
+  std::vector<se::DeviceMemoryBase> cross_program_prefetch_addrs;
+  std::vector<uint32_t> cross_program_prefetch_offsets;
   if (hlo_module_) {
-    for (const auto& prefetch : hlo_module_->CrossProgramPrefetches()) {
-      const auto& parameter = prefetch.first;
-      const auto& index = prefetch.second;
+    for (const auto& [parameter, index, offset] :
+         hlo_module_->CrossProgramPrefetches()) {
       CHECK_LT(parameter, arguments.size());
       // Ensure the cross program prefetched buffer doesn't alias with any
       // program outputs. If the input and output aliased, the buffer could be
@@ -217,13 +218,18 @@ StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
       auto it = arguments[parameter].MutableBuffers()->find({index});
       CHECK(it != arguments[parameter].MutableBuffers()->end());
       CHECK(!it->second.AsDeviceMemoryBase().is_null());
-      if (absl::c_none_of(result.Result().buffers(), [&](auto index_addr_pair) {
+      CHECK(offset);
+      bool is_prefetch_output_alias =
+          absl::c_any_of(result.Result().buffers(), [&](auto index_addr_pair) {
             return index_addr_pair.second.IsSameAs(
                 it->second.AsDeviceMemoryBase());
-          })) {
-        // Supports only one cross-program prefetch address.
-        cross_program_prefetch_addr = it->second.AsDeviceMemoryBase();
-      }
+          });
+      cross_program_prefetch_addrs.emplace_back(
+          is_prefetch_output_alias ? stream_executor::DeviceMemoryBase()
+                                   : it->second.AsDeviceMemoryBase());
+      cross_program_prefetch_offsets.emplace_back(
+          is_prefetch_output_alias ? std::numeric_limits<uint32_t>::max()
+                                   : *offset);
     }
   }
 
@@ -234,7 +240,7 @@ StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
 
   TF_RETURN_IF_ERROR(LoadProgramAndEnqueueToStream(
       *run_options, memory_bases, result.Result().root_buffer(),
-      cross_program_prefetch_addr));
+      cross_program_prefetch_addrs, cross_program_prefetch_offsets));
   return std::move(result);
 }
 

@@ -23,15 +23,15 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace dtensor {
 
 template <typename T>
-using StatusOr = stream_executor::port::StatusOr<T>;
+using StatusOr = tsl::StatusOr<T>;
 
 inline Status WithContext(const Status& ds, absl::string_view file,
                           int line_number, absl::string_view context = "") {

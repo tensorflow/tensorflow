@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/snappy.h"
 #include "tensorflow/tsl/platform/types.h"
 
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(__linux__)
 #include <sched.h>
 #include <sys/sysinfo.h>
 #else
@@ -89,7 +89,7 @@ int64_t JobUid() { return -1; }
 int64_t TaskId() { return -1; }
 
 int NumSchedulableCPUs() {
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(__linux__)
   for (int ncpus = 1024; ncpus < std::numeric_limits<int>::max() / 2;
        ncpus *= 2) {
     size_t setsize = CPU_ALLOC_SIZE(ncpus);
@@ -136,7 +136,7 @@ int NumTotalCPUs() {
 int GetCurrentCPU() {
 #if defined(__EMSCRIPTEN__)
   return sched_getcpu();
-#elif defined(__linux__) && !defined(__ANDROID__)
+#elif defined(__linux__)
   return sched_getcpu();
   // Attempt to use cpuid on all other platforms.  If that fails, perform a
   // syscall.
@@ -320,6 +320,20 @@ bool Snappy_Compress(const char* input, size_t length, string* output) {
 #endif
 }
 
+bool Snappy_CompressFromIOVec(const struct iovec* iov,
+                              size_t uncompressed_length, string* output) {
+#ifdef TF_USE_SNAPPY
+  output->resize(snappy::MaxCompressedLength(uncompressed_length));
+  size_t outlen;
+  snappy::RawCompressFromIOVec(iov, uncompressed_length, &(*output)[0],
+                               &outlen);
+  output->resize(outlen);
+  return true;
+#else
+  return false;
+#endif
+}
+
 bool Snappy_GetUncompressedLength(const char* input, size_t length,
                                   size_t* result) {
 #ifdef TF_USE_SNAPPY
@@ -418,7 +432,7 @@ std::size_t MallocExtension_GetAllocatedSize(const void* p) {
 
 MemoryInfo GetMemoryInfo() {
   MemoryInfo mem_info = {INT64_MAX, INT64_MAX};
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(__linux__)
   struct sysinfo info;
   int err = sysinfo(&info);
   if (err == 0) {

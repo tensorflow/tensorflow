@@ -59,7 +59,7 @@ class ValidatorRunner {
   // Get results for successfully completed validation runs. The caller can then
   // pick the best configuration based on timings.
   std::vector<const BenchmarkEvent*> GetSuccessfulResults() {
-    return validator_runner_impl_->GetSuccessfulResults();
+    return validator_runner_impl_->GetSuccessfulResultsFromStorage();
   }
 
   // Get results for completed validation runs regardless whether it is
@@ -88,10 +88,5 @@ class ValidatorRunner {
 
 }  // namespace acceleration
 }  // namespace tflite
-
-extern "C" {
-int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
-                                                                char** argv);
-}  // extern "C"
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_VALIDATOR_RUNNER_H_

@@ -153,12 +153,12 @@ mlir::LogicalResult MergeAllReduceGroup(
 
     int num_elements = all_reduce_ranked_type.getNumElements();
     auto flattened = builder.create<mlir::TF::ReshapeOp>(
-        DT_LOC2(loc, "CombinedReduceFlatten"), all_reduce.input(),
+        DT_LOC2(loc, "CombinedReduceFlatten"), all_reduce.getInput(),
         ops_util::GetR1Const({num_elements}, builder, loc));
     flattened_types.push_back(flattened.getType());
     auto indices = ops_util::GetR1Const({offset_num_elements}, builder, loc);
 
-    if (all_reduce.device_type().contains("TPU")) {
+    if (all_reduce.getDeviceType().contains("TPU")) {
       updated = builder.create<mlir::TF::XlaDynamicUpdateSliceOp>(
           DT_LOC2(loc, "CombinedReduceUpdateSlice"), merged.getType(),
           /*input=*/i == 0 ? merged.getResult() : updated,
@@ -179,8 +179,8 @@ mlir::LogicalResult MergeAllReduceGroup(
   // All-reduce the updated merged tensor.
   auto merged_all_reduce = builder.create<mlir::TF::DTensorAllReduceOp>(
       all_reduce_group[0].getLoc(), updated.getType(), updated,
-      all_reduce_group[0].group_assignment(), all_reduce_group[0].reduce_op(),
-      all_reduce_group[0].device_type());
+      all_reduce_group[0].getGroupAssignment(),
+      all_reduce_group[0].getReduceOp(), all_reduce_group[0].getDeviceType());
   SetSingleLayoutOnOp(
       merged_all_reduce,
       ExtractSingleLayoutFromOp(all_reduce_group[0]).value().value());
@@ -317,7 +317,7 @@ mlir::LogicalResult CombineAllReduceOps(
   std::vector<mlir::TF::DTensorAllReduceOp> cross_slice_all_reduces;
   for (mlir::TF::DTensorAllReduceOp all_reduce : all_reduces) {
     mlir::DenseIntElementsAttr group_assignment_attr;
-    if (!matchPattern(all_reduce.group_assignment(),
+    if (!matchPattern(all_reduce.getGroupAssignment(),
                       m_Constant(&group_assignment_attr))) {
       return all_reduce.emitOpError("group_assignment should be a constant");
     }
@@ -333,7 +333,7 @@ mlir::LogicalResult CombineAllReduceOps(
         group_assignment_attr,
         GroupAssignment::ReplicaToDeviceMap::DefaultReplicaToDeviceMap(
             num_slices, slice_size));
-    // LINT.ThenChange(//tensorflow/dtensor/mlir/utils/collective_lowering_google.inc)
+    // LINT.ThenChange(//tensorflow/dtensor/mlir/utils/collective_lowering_google.cc)
     if (!group_assignment.ok()) {
       return all_reduce.emitOpError(
           llvm::formatv("Failed to create a GroupAssignment due to {0}",
@@ -500,7 +500,7 @@ createSubgroupsByReductionAttr(
     llvm::DenseMap<llvm::StringRef, std::vector<mlir::TF::DTensorAllReduceOp>>
         all_reduces_by_attr_reduce_op;
     for (mlir::TF::DTensorAllReduceOp all_reduce : all_reduce_group) {
-      llvm::StringRef attr_reduce_op = all_reduce.reduce_op();
+      llvm::StringRef attr_reduce_op = all_reduce.getReduceOp();
       all_reduces_by_attr_reduce_op[attr_reduce_op].push_back(all_reduce);
     }
     for (const auto& all_reduces_for_reduce_op_attr :
@@ -522,7 +522,7 @@ createSubgroupsByGroupAssignment(
     llvm::DenseMap<mlir::Value, std::vector<mlir::TF::DTensorAllReduceOp>>
         all_reduces_by_group_assignment;
     for (mlir::TF::DTensorAllReduceOp all_reduce : all_reduce_group) {
-      mlir::Value group_assignment = all_reduce.group_assignment();
+      mlir::Value group_assignment = all_reduce.getGroupAssignment();
       bool seen = false;
       for (mlir::Value seen_group_assignment : group_assignments) {
         if (same_group_assignments(group_assignment, seen_group_assignment)) {
@@ -553,7 +553,7 @@ struct DTensorAllReduceCombineOptimization
       llvm::DenseSet<mlir::Block*> blocks;
 
       cluster.GetBody().walk([&](mlir::TF::DTensorAllReduceOp all_reduce) {
-        if (!all_reduce.device_type().contains("TPU")) {
+        if (!all_reduce.getDeviceType().contains("TPU")) {
           // Only combine all reduces for GPU and CPU
           auto all_reduce_ranked_type =
               all_reduce.getType().dyn_cast<mlir::RankedTensorType>();

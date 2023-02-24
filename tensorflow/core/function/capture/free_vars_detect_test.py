@@ -124,6 +124,12 @@ class FreeVarDetectionTest(parameterized.TestCase):
     free_vars = get_var_name(func_map["f"])
     self.assertSequenceEqual(free_vars, ["x"])
 
+  @parameterized.named_parameters(
+      ("lambda_1", lambda _x: 3,), ("lambda_2", lambda _x: 3,))
+  def test_multiple_lambda_w_same_line_num_and_args(self, fn):
+    func_map = free_vars_detect._detect_function_free_vars(fn)
+    self.assertEmpty(func_map)
+
   def test_lambda_wo_free_var(self):
     f = lambda x: x + x
     func_map = free_vars_detect._detect_function_free_vars(f)
@@ -661,6 +667,29 @@ class GenerateLoggingTest(parameterized.TestCase):
     self.assertEqual(lines[0], "Inside function Foo.f(): self.g")
     self.assertEqual(lines[1], "Inside function Foo.g(): x")
 
+  def test_partial_wrapped_partial_func(self):
+
+    def decorator_foo(func):
+
+      def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+
+      return functools.update_wrapper(wrapper, func)
+
+    x = 1
+    y = 2
+
+    def f(a, b):
+      return a + b + x + y
+
+    f = functools.partial(f, a=0)
+    f = decorator_foo(f)
+    f = functools.partial(f, b=0)
+
+    txt = free_vars_detect.generate_free_var_logging(f)
+    txt = self._remove_explanation(txt)
+    self.assertEqual(txt, "Inside function f(): x, y")
+
   def test_freevar_threshold(self):
     a = b = c = d = e = 1
 
@@ -690,6 +719,17 @@ class GenerateLoggingTest(parameterized.TestCase):
     self.assertEqual(lines[0], "Inside function f(): g, h")
     self.assertEqual(lines[1], "Inside function g(): x")
     self.assertEqual(lines[2], "...")
+
+  def test_func_second_call_return_none(self):
+    x = 1
+
+    def f():
+      return x
+
+    logging_txt = free_vars_detect.generate_free_var_logging(f)
+    self.assertIsNotNone(logging_txt)
+    logging_txt = free_vars_detect.generate_free_var_logging(f)
+    self.assertIsNone(logging_txt)
 
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@ StatusOr<unsigned> GetTargetVectorRegisterByteSize(std::string triple) {
   std::unique_ptr<llvm::TargetMachine> target_machine =
       absl::WrapUnique(target->createTargetMachine(
           /*TT=*/triple, /*CPU=*/"", /*Features=*/"", llvm::TargetOptions{},
-          /*RM=*/llvm::None));
+          /*RM=*/std::nullopt));
   cpu::LLVMTargetMachineFeatures target_machine_features(target_machine.get());
   return target_machine_features.vector_register_byte_size(*function);
 }

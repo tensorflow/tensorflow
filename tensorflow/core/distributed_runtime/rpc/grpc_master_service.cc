@@ -33,8 +33,6 @@ limitations under the License.
 #include "grpcpp/alarm.h"
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/distributed_runtime/master.h"
-#include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -42,10 +40,12 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/master.pb.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/grpc_call.h"
 
 namespace tensorflow {
 
-class GrpcMasterService : public AsyncServiceInterface {
+class GrpcMasterService : public tsl::AsyncServiceInterface {
  public:
   GrpcMasterService(Master* master, const ConfigProto& default_session_config,
                     ::grpc::ServerBuilder* builder)
@@ -92,8 +92,8 @@ class GrpcMasterService : public AsyncServiceInterface {
   do {                                                                        \
     mutex_lock l(mu_);                                                        \
     if (!is_shutdown_) {                                                      \
-      Call<GrpcMasterService, grpc::MasterService::AsyncService,              \
-           method##Request, method##Response>::                               \
+      tsl::Call<GrpcMasterService, grpc::MasterService::AsyncService,         \
+                method##Request, method##Response>::                          \
           EnqueueRequest(&master_service_, cq_.get(),                         \
                          &grpc::MasterService::AsyncService::Request##method, \
                          &GrpcMasterService::method##Handler,                 \
@@ -120,8 +120,8 @@ class GrpcMasterService : public AsyncServiceInterface {
     void* tag;
     bool ok;
     while (cq_->Next(&tag, &ok)) {
-      UntypedCall<GrpcMasterService>::Tag* callback_tag =
-          static_cast<UntypedCall<GrpcMasterService>::Tag*>(tag);
+      tsl::UntypedCall<GrpcMasterService>::Tag* callback_tag =
+          static_cast<tsl::UntypedCall<GrpcMasterService>::Tag*>(tag);
       if (callback_tag) {
         callback_tag->OnCompleted(this, ok);
       } else {
@@ -143,8 +143,9 @@ class GrpcMasterService : public AsyncServiceInterface {
   ::grpc::Alarm* shutdown_alarm_ = nullptr;
 
   template <class RequestMessage, class ResponseMessage>
-  using MasterCall = Call<GrpcMasterService, grpc::MasterService::AsyncService,
-                          RequestMessage, ResponseMessage>;
+  using MasterCall =
+      tsl::Call<GrpcMasterService, grpc::MasterService::AsyncService,
+                RequestMessage, ResponseMessage>;
 
   // RPC handler for creating a session.
   void CreateSessionHandler(
@@ -301,7 +302,7 @@ class GrpcMasterService : public AsyncServiceInterface {
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcMasterService);
 };
 
-AsyncServiceInterface* NewGrpcMasterService(
+tsl::AsyncServiceInterface* NewGrpcMasterService(
     Master* master, const ConfigProto& default_session_config,
     ::grpc::ServerBuilder* builder) {
   return new GrpcMasterService(master, default_session_config, builder);

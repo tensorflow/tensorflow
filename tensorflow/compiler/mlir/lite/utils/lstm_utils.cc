@@ -594,6 +594,15 @@ TF::ConstOp CreateScalarConstantOp(int value, Location loc,
   return builder->create<TF::ConstOp>(loc, builder->getI32IntegerAttr(value));
 }
 
+TF::ReshapeOp CreateFlattenOP(const Value& input, Location loc,
+                              OpBuilder* builder) {
+  auto output_shape = Create1DConstantOp({-1}, loc, builder);
+  return builder->create<mlir::TF::ReshapeOp>(
+      loc,
+      /*tensor=*/input,
+      /*shape=*/output_shape.getResult());
+}
+
 LogicalResult CreateEqualSizeSplitVOp(Value input, int axis, int splits,
                                       Location loc, OpBuilder* builder,
                                       Operation** result) {
@@ -602,7 +611,7 @@ LogicalResult CreateEqualSizeSplitVOp(Value input, int axis, int splits,
   int size_of_splits;
   if (input_type.getRank() < axis || axis < 0) return failure();
   for (int i = 0; i < input_type.getRank(); ++i) {
-    int dim = input_type.getDimSize(i);
+    int64_t dim = input_type.getDimSize(i);
     if (i == axis) {
       if (dim % splits != 0) {
         return failure();
@@ -630,9 +639,14 @@ LogicalResult CreateEqualSizeSplitVOp(Value input, int axis, int splits,
   return success();
 }
 
-// TODO(b/147436982): Consider refactor this to be more general.
+// TODO(b/147436982): Consider refactoring these to be more general.
 LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
                                     OpBuilder* builder) {
+  return ConvertKerasLSTMLayer(func_op, builder, false);
+}
+
+LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
+                                    OpBuilder* builder, bool indy) {
   // For argument order, please check out standard_lstm under
   // tensorflow/python/keras/layers/recurrent_v2.py
   Value input = func_op.getArgument(0);
@@ -670,10 +684,10 @@ LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
                            func_op.getLoc());
   }
 
-  int batch = time_majored ? final_input_type.getDimSize(1)
-                           : final_input_type.getDimSize(0);
-  int time = time_majored ? final_input_type.getDimSize(0)
-                          : final_input_type.getDimSize(1);
+  int64_t batch = time_majored ? final_input_type.getDimSize(1)
+                               : final_input_type.getDimSize(0);
+  int64_t time = time_majored ? final_input_type.getDimSize(0)
+                              : final_input_type.getDimSize(1);
 
   // Setup correct weights.
   RankedTensorType weight_type =
@@ -686,7 +700,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
 
   RankedTensorType recurrent_kernel_type =
       recurrent_kernel.getType().cast<RankedTensorType>();
-  const int n_output = recurrent_kernel_type.getDimSize(0);
+  const int64_t n_output = recurrent_kernel_type.getDimSize(0);
 
   Value transpose_recurrent_kernel = Transpose2D(
       builder, recurrent_kernel, recurrent_kernel_type, func_op.getLoc());
@@ -706,6 +720,34 @@ LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
                                      func_op.getLoc(), builder,
                                      &recurrent_weights_array)))
     return failure();
+
+  // Reshape recurrent weights to vectors if indy behaviour is enabled.
+  // IndyLSTMs are a LSTM variant with diagonal recurrent weight
+  // matrices. For optimization purposes these are provided as vectors.
+  Value recurrent_to_input_weights =
+      indy ? CreateFlattenOP(recurrent_weights_array->getResult(0),
+                             func_op.getLoc(), builder)
+                 .getResult()
+                 .cast<Value>()
+           : recurrent_weights_array->getResult(0);
+  Value recurrent_to_forget_weights =
+      indy ? CreateFlattenOP(recurrent_weights_array->getResult(1),
+                             func_op.getLoc(), builder)
+                 .getResult()
+                 .cast<Value>()
+           : recurrent_weights_array->getResult(1);
+  Value recurrent_to_cell_weights =
+      indy ? CreateFlattenOP(recurrent_weights_array->getResult(2),
+                             func_op.getLoc(), builder)
+                 .getResult()
+                 .cast<Value>()
+           : recurrent_weights_array->getResult(2);
+  Value recurrent_to_output_weights =
+      indy ? CreateFlattenOP(recurrent_weights_array->getResult(3),
+                             func_op.getLoc(), builder)
+                 .getResult()
+                 .cast<Value>()
+           : recurrent_weights_array->getResult(3);
 
   // Splits the bias into 4:
   Operation* bias_array;
@@ -731,10 +773,10 @@ LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
       /*input_to_forget_weights=*/weights_array->getResult(1),
       /*input_to_cell_weights=*/weights_array->getResult(2),
       /*input_to_output_weights=*/weights_array->getResult(3),
-      /*recurrent_to_input_weights=*/recurrent_weights_array->getResult(0),
-      /*recurrent_to_forget_weights=*/recurrent_weights_array->getResult(1),
-      /*recurrent_to_cell_weights=*/recurrent_weights_array->getResult(2),
-      /*recurrent_to_output_weights=*/recurrent_weights_array->getResult(3),
+      /*recurrent_to_input_weights=*/recurrent_to_input_weights,
+      /*recurrent_to_forget_weights=*/recurrent_to_forget_weights,
+      /*recurrent_to_cell_weights=*/recurrent_to_cell_weights,
+      /*recurrent_to_output_weights=*/recurrent_to_output_weights,
       /*cell_to_input_weights=*/none,
       /*cell_to_forget_weights=*/none,
       /*cell_to_output_weights=*/none,
@@ -755,6 +797,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
       /*proj_clip*/ builder->getF32FloatAttr(0.0),
       /*time_major*/ builder->getBoolAttr(time_majored),
       /*asymmetric_quantize_inputs=*/mlir::BoolAttr(),
+      /*diagonal_recurrent_tensors=*/builder->getBoolAttr(indy),
       /*input_to_input_intermediate=*/mlir::TypeAttr(),
       /*input_to_forget_intermediate=*/mlir::TypeAttr(),
       /*input_to_cell_intermediate=*/mlir::TypeAttr(),

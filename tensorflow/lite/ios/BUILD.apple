@@ -79,11 +79,14 @@ strip_common_include_path_prefix(
     name = "strip_common_include_path_core",
     hdr_labels = [
         "//tensorflow/lite:builtin_ops.h",
-        "//tensorflow/lite/c:c_api_experimental.h",
-        "//tensorflow/lite/c:common.h",
-        # Here we include the path of the actual c api header instead of the shim header.
+        # Here we include the paths of the actual c library headers in tensorflow/lite/core/c instead of the shim headers in tensorflow/lite/c.
+        "//tensorflow/lite/core/c:c_api_experimental.h",
+        "//tensorflow/lite/core/c:common.h",
         "//tensorflow/lite/core/c:c_api.h",
+        "//tensorflow/lite/core/c:c_api_types.h",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate.h",
+        "//tensorflow/lite/profiling/telemetry/c:profiler.h",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting.h",
     ],
 )
 
@@ -103,9 +106,11 @@ tflite_ios_framework(
         ":builtin_ops.h",
         ":c_api.h",
         ":c_api_experimental.h",
+        ":c_api_types.h",
         ":common.h",
+        ":profiler.h",
+        ":telemetry_setting.h",
         ":xnnpack_delegate.h",
-        "//tensorflow/lite/c:c_api_types.h",
     ],
     allowlist_symbols_file = ":allowlist_TensorFlowLiteC.txt",
     bundle_name = "TensorFlowLiteC",
@@ -123,9 +128,11 @@ ios_static_framework(
         ":builtin_ops.h",
         ":c_api.h",
         ":c_api_experimental.h",
+        ":c_api_types.h",
         ":common.h",
+        ":profiler.h",
+        ":telemetry_setting.h",
         ":xnnpack_delegate.h",
-        "//tensorflow/lite/c:c_api_types.h",
     ],
     bundle_name = "TensorFlowLiteC",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
@@ -146,7 +153,7 @@ ios_static_framework(
 ios_static_framework(
     name = "TensorFlowLiteSelectTfOps_framework",
     avoid_deps = [
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
     bundle_name = "TensorFlowLiteSelectTfOps",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
@@ -197,12 +204,13 @@ cc_library(
     name = "tensorflow_lite_c",
     hdrs = [
         "//tensorflow/lite:builtin_ops.h",
-        "//tensorflow/lite/c:c_api.h",
-        "//tensorflow/lite/c:c_api_experimental.h",
-        "//tensorflow/lite/c:c_api_types.h",
-        "//tensorflow/lite/c:common.h",
-        "//tensorflow/lite/core/c:c_api",
+        "//tensorflow/lite/core/c:c_api.h",
+        "//tensorflow/lite/core/c:c_api_experimental.h",
+        "//tensorflow/lite/core/c:c_api_types.h",
+        "//tensorflow/lite/core/c:common.h",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate.h",
+        "//tensorflow/lite/profiling/telemetry/c:profiler.h",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting.h",
     ],
     tags = [
         "nobuilder",
@@ -210,10 +218,13 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/c:c_api_experimental",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api",
+        "//tensorflow/lite/core/c:c_api_experimental",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/profiling/telemetry/c:profiler",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting",
     ],
 )
 

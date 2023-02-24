@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 
+#include <functional>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -26,6 +30,7 @@ namespace pjrt {
 
 const absl::string_view kHloFormat = "hlo";
 const absl::string_view kMlirFormat = "mlir";
+const absl::string_view kHloWithConfigFormat = "hlo_with_config";
 
 PJRT_ClientDeleter MakeClientDeleter(const PJRT_Api* api) {
   return [api](PJRT_Client* client) -> void {
@@ -72,6 +77,16 @@ PJRT_ExecutableDeleter MakeExecutableDeleter(const PJRT_Api* api) {
   };
 }
 
+PJRT_LoadedExecutableDeleter MakeLoadedExecutableDeleter(const PJRT_Api* api) {
+  return [api](PJRT_LoadedExecutable* executable) -> void {
+    PJRT_LoadedExecutable_Destroy_Args args;
+    args.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.executable = executable;
+    pjrt::LogFatalIfPjrtError(api->PJRT_LoadedExecutable_Destroy(&args), api);
+  };
+}
+
 xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api) {
   xla::Status status;
   if (error != nullptr) {
@@ -81,8 +96,20 @@ xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api) {
   return status;
 }
 
-tensorflow::error::Code PjrtErrorToStatusCode(const PJRT_Error* error,
-                                              const PJRT_Api* api) {
+PJRT_DeviceTopologyDeleter MakeDeviceTopologyDeleter(const PJRT_Api* api) {
+  return [api](PJRT_DeviceTopology* topology) -> void {
+    PJRT_DeviceTopology_Destroy_Args destroy_args;
+    destroy_args.struct_size = PJRT_DeviceTopology_Destroy_Args_STRUCT_SIZE;
+    destroy_args.priv = nullptr;
+    destroy_args.topology = topology;
+
+    pjrt::LogFatalIfPjrtError(api->PJRT_DeviceTopology_Destroy(&destroy_args),
+                              api);
+  };
+}
+
+tsl::error::Code PjrtErrorToStatusCode(const PJRT_Error* error,
+                                       const PJRT_Api* api) {
   PJRT_Error_GetCode_Args args;
   args.struct_size = PJRT_Error_GetCode_Args_STRUCT_SIZE;
   args.priv = nullptr;
@@ -91,75 +118,75 @@ tensorflow::error::Code PjrtErrorToStatusCode(const PJRT_Error* error,
   PJRT_Error_Code code = args.code;
   switch (code) {
     case PJRT_Error_Code_CANCELLED:
-      return tensorflow::error::CANCELLED;
+      return tsl::error::CANCELLED;
     case PJRT_Error_Code_UNKNOWN:
-      return tensorflow::error::UNKNOWN;
+      return tsl::error::UNKNOWN;
     case PJRT_Error_Code_INVALID_ARGUMENT:
-      return tensorflow::error::INVALID_ARGUMENT;
+      return tsl::error::INVALID_ARGUMENT;
     case PJRT_Error_Code_DEADLINE_EXCEEDED:
-      return tensorflow::error::DEADLINE_EXCEEDED;
+      return tsl::error::DEADLINE_EXCEEDED;
     case PJRT_Error_Code_NOT_FOUND:
-      return tensorflow::error::NOT_FOUND;
+      return tsl::error::NOT_FOUND;
     case PJRT_Error_Code_ALREADY_EXISTS:
-      return tensorflow::error::ALREADY_EXISTS;
+      return tsl::error::ALREADY_EXISTS;
     case PJRT_Error_Code_PERMISSION_DENIED:
-      return tensorflow::error::PERMISSION_DENIED;
+      return tsl::error::PERMISSION_DENIED;
     case PJRT_Error_Code_RESOURCE_EXHAUSTED:
-      return tensorflow::error::RESOURCE_EXHAUSTED;
+      return tsl::error::RESOURCE_EXHAUSTED;
     case PJRT_Error_Code_FAILED_PRECONDITION:
-      return tensorflow::error::FAILED_PRECONDITION;
+      return tsl::error::FAILED_PRECONDITION;
     case PJRT_Error_Code_ABORTED:
-      return tensorflow::error::ABORTED;
+      return tsl::error::ABORTED;
     case PJRT_Error_Code_OUT_OF_RANGE:
-      return tensorflow::error::OUT_OF_RANGE;
+      return tsl::error::OUT_OF_RANGE;
     case PJRT_Error_Code_UNIMPLEMENTED:
-      return tensorflow::error::UNIMPLEMENTED;
+      return tsl::error::UNIMPLEMENTED;
     case PJRT_Error_Code_INTERNAL:
-      return tensorflow::error::INTERNAL;
+      return tsl::error::INTERNAL;
     case PJRT_Error_Code_UNAVAILABLE:
-      return tensorflow::error::UNAVAILABLE;
+      return tsl::error::UNAVAILABLE;
     case PJRT_Error_Code_DATA_LOSS:
-      return tensorflow::error::DATA_LOSS;
+      return tsl::error::DATA_LOSS;
     case PJRT_Error_Code_UNAUTHENTICATED:
-      return tensorflow::error::UNAUTHENTICATED;
+      return tsl::error::UNAUTHENTICATED;
   }
 }
 
-PJRT_Error_Code StatusCodeToPjrtErrorCode(tensorflow::error::Code code) {
+PJRT_Error_Code StatusCodeToPjrtErrorCode(tsl::error::Code code) {
   switch (code) {
-    case tensorflow::error::CANCELLED:
+    case tsl::error::CANCELLED:
       return PJRT_Error_Code::PJRT_Error_Code_CANCELLED;
-    case tensorflow::error::UNKNOWN:
+    case tsl::error::UNKNOWN:
       return PJRT_Error_Code::PJRT_Error_Code_UNKNOWN;
-    case tensorflow::error::INVALID_ARGUMENT:
+    case tsl::error::INVALID_ARGUMENT:
       return PJRT_Error_Code::PJRT_Error_Code_INVALID_ARGUMENT;
-    case tensorflow::error::DEADLINE_EXCEEDED:
+    case tsl::error::DEADLINE_EXCEEDED:
       return PJRT_Error_Code::PJRT_Error_Code_DEADLINE_EXCEEDED;
-    case tensorflow::error::NOT_FOUND:
+    case tsl::error::NOT_FOUND:
       return PJRT_Error_Code::PJRT_Error_Code_NOT_FOUND;
-    case tensorflow::error::ALREADY_EXISTS:
+    case tsl::error::ALREADY_EXISTS:
       return PJRT_Error_Code::PJRT_Error_Code_ALREADY_EXISTS;
-    case tensorflow::error::PERMISSION_DENIED:
+    case tsl::error::PERMISSION_DENIED:
       return PJRT_Error_Code::PJRT_Error_Code_PERMISSION_DENIED;
-    case tensorflow::error::UNAUTHENTICATED:
+    case tsl::error::UNAUTHENTICATED:
       return PJRT_Error_Code::PJRT_Error_Code_UNAUTHENTICATED;
-    case tensorflow::error::RESOURCE_EXHAUSTED:
+    case tsl::error::RESOURCE_EXHAUSTED:
       return PJRT_Error_Code::PJRT_Error_Code_RESOURCE_EXHAUSTED;
-    case tensorflow::error::FAILED_PRECONDITION:
+    case tsl::error::FAILED_PRECONDITION:
       return PJRT_Error_Code::PJRT_Error_Code_FAILED_PRECONDITION;
-    case tensorflow::error::ABORTED:
+    case tsl::error::ABORTED:
       return PJRT_Error_Code::PJRT_Error_Code_ABORTED;
-    case tensorflow::error::OUT_OF_RANGE:
+    case tsl::error::OUT_OF_RANGE:
       return PJRT_Error_Code::PJRT_Error_Code_OUT_OF_RANGE;
-    case tensorflow::error::UNIMPLEMENTED:
+    case tsl::error::UNIMPLEMENTED:
       return PJRT_Error_Code::PJRT_Error_Code_UNIMPLEMENTED;
-    case tensorflow::error::INTERNAL:
+    case tsl::error::INTERNAL:
       return PJRT_Error_Code::PJRT_Error_Code_INTERNAL;
-    case tensorflow::error::UNAVAILABLE:
+    case tsl::error::UNAVAILABLE:
       return PJRT_Error_Code::PJRT_Error_Code_UNAVAILABLE;
-    case tensorflow::error::DATA_LOSS:
+    case tsl::error::DATA_LOSS:
       return PJRT_Error_Code::PJRT_Error_Code_DATA_LOSS;
-    case tensorflow::error::OK:
+    case tsl::error::OK:
       CHECK(false) << "Status::OK() cannot be converted to PJRT_Error code, "
                       "use nullptr instead";
     case tensorflow::error::
@@ -301,6 +328,9 @@ PJRT_HostBufferSemantics ConvertToPjRtHostBufferSemantics(
     case xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall:
       return PJRT_HostBufferSemantics::
           PJRT_HostBufferSemantics_kImmutableOnlyDuringCall;
+    case xla::PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes:
+      return PJRT_HostBufferSemantics::
+          PJRT_HostBufferSemantics_kImmutableUntilTransferCompletes;
     case xla::PjRtClient::HostBufferSemantics::kZeroCopy:
       return PJRT_HostBufferSemantics::PJRT_HostBufferSemantics_kZeroCopy;
     default:
@@ -316,9 +346,90 @@ xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
     case PJRT_HostBufferSemantics::
         PJRT_HostBufferSemantics_kImmutableOnlyDuringCall:
       return xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall;
+    case PJRT_HostBufferSemantics::
+        PJRT_HostBufferSemantics_kImmutableUntilTransferCompletes:
+      return xla::PjRtClient::HostBufferSemantics::
+          kImmutableUntilTransferCompletes;
     case PJRT_HostBufferSemantics::PJRT_HostBufferSemantics_kZeroCopy:
       return xla::PjRtClient::HostBufferSemantics::kZeroCopy;
   }
+}
+
+xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
+                                                      const PJRT_Api* c_api) {
+  using xla::Status, xla::PjRtFuture;
+  PJRT_Event_OnReady_Args event_onready_args;
+  event_onready_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
+  event_onready_args.priv = nullptr;
+  event_onready_args.event = c_event;
+
+  PjRtFuture<Status>::Promise promise = PjRtFuture<Status>::CreatePromise();
+  event_onready_args.user_arg = new std::function<void(PJRT_Error*)>(
+      [promise, c_event, c_api](PJRT_Error* error) mutable {
+        if (error != nullptr) {
+          xla::Status s = ::pjrt::PjrtErrorToStatus(error, c_api);
+          promise.Set(s);
+          ::pjrt::MakeErrorDeleter(c_api)(error);
+        } else {
+          promise.Set(tsl::OkStatus());
+        }
+        ::pjrt::MakeEventDeleter(c_api)(c_event);
+      });
+  event_onready_args.callback = [](PJRT_Error* error, void* arg) {
+    std::function<void(PJRT_Error*)>* set_future =
+        reinterpret_cast<std::function<void(PJRT_Error*)>*>(arg);
+    (*set_future)(error);
+    delete set_future;
+  };
+
+  PJRT_Error* error = c_api->PJRT_Event_OnReady(&event_onready_args);
+  if (error != nullptr) {
+    xla::Status s = ::pjrt::PjrtErrorToStatus(error, c_api);
+    return PjRtFuture<Status>(s);
+  }
+  return PjRtFuture<Status>(std::move(promise));
+}
+
+PJRT_SerializedExecutableDeleter MakeSerializedExecutableDeleter(
+    const PJRT_Api* api) {
+  return [api](PJRT_SerializedExecutable* serialized_executable) -> void {
+    PJRT_SerializedExecutable_Destroy_Args destroy_args;
+    destroy_args.struct_size =
+        PJRT_SerializedExecutable_Destroy_Args_STRUCT_SIZE;
+    destroy_args.priv = nullptr;
+    destroy_args.serialized_executable = serialized_executable;
+    pjrt::LogFatalIfPjrtError(
+        api->PJRT_SerializedExecutable_Destroy(&destroy_args), api);
+  };
+}
+
+static std::string StructSizeErrorMsg(absl::string_view struct_name,
+                                      size_t expected_size,
+                                      size_t actual_size) {
+  return absl::StrCat("Unexpected ", struct_name, " size: expected ",
+                      expected_size, ", got ", actual_size,
+                      ". Check installed software versions.");
+}
+
+xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
+                                     size_t expected_size, size_t actual_size) {
+  if (expected_size != actual_size) {
+    return tsl::errors::InvalidArgument(
+        StructSizeErrorMsg(struct_name, expected_size, actual_size));
+  }
+  return tsl::OkStatus();
+}
+
+absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api) {
+  PJRT_Client_PlatformVersion_Args args;
+  args.struct_size = PJRT_Client_PlatformVersion_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.client = client;
+  LogFatalIfPjrtError(api->PJRT_Client_PlatformVersion(&args), api);
+
+  absl::string_view platform_version(args.platform_version,
+                                     args.platform_version_size);
+  return platform_version;
 }
 
 }  // namespace pjrt

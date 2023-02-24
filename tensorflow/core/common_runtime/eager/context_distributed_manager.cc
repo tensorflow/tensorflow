@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "google/protobuf/any.pb.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -39,10 +40,10 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/device_filters.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
@@ -733,20 +734,22 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
       // Coordination agent: connect and wait for all tasks
       std::vector<DeviceAttributes> local_devices;
       server->worker_env()->device_mgr->ListDeviceAttributes(&local_devices);
-      CoordinationServiceDeviceInfo devices;
-      *devices.mutable_tf()->mutable_devices() = {
-          std::make_move_iterator(local_devices.begin()),
-          std::make_move_iterator(local_devices.end())};
+      DeviceInfo devices;
+      for (auto& local_device : local_devices) {
+        devices.mutable_device()->Add()->PackFrom(local_device);
+      }
       LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->Connect());
       LOG_AND_RETURN_IF_ERROR(
           coordination_service_agent_->WaitForAllTasks(devices));
 
       // Add remote devices to eager context.
       std::vector<std::unique_ptr<Device>> remote_devices;
-      for (const auto& d :
-           coordination_service_agent_->GetClusterDeviceInfo().tf().devices()) {
+      for (const auto& device :
+           coordination_service_agent_->GetClusterDeviceInfo().device()) {
         // Treat all devices as remote so that EagerContext::remote_device_mgr
         // maintains all the devices, including both local and remote.
+        DeviceAttributes d;
+        device.UnpackTo(&d);
         remote_devices.emplace_back(NewRemoteDevice(context_->TFEnv(), d));
       }
       LOG_AND_RETURN_IF_ERROR(context_->AddDevices(std::move(remote_devices)));

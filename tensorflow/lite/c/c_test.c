@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/c/c_api.h"
-#include "tensorflow/lite/c/c_api_experimental.h"
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/c_api.h"
+#include "tensorflow/lite/core/c/c_api_experimental.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 
 // This file exists just to verify that the above header files above can build,
 // link, and run as "C" code.
@@ -306,7 +306,7 @@ static void TestInferenceUsingInterpreter(void) {
 
 TfLiteStatus PrepareThatChecksExecutionPlanSizeEqualsTwo(
     TfLiteOpaqueContext* context,
-    struct TfLiteOpaqueDelegateStruct* opaque_delegate, void* data) {
+    TfLiteOpaqueDelegate* opaque_delegate, void* data) {
   bool* delegate_prepared = (bool*)data;
   *delegate_prepared = true;
 
@@ -327,11 +327,11 @@ static void TestTfLiteOpaqueContextGetExecutionPlan(void) {
   TfLiteOpaqueDelegateBuilder opaque_delegate_builder = { NULL };
   opaque_delegate_builder.data = &delegate_prepared;
   opaque_delegate_builder.Prepare = PrepareThatChecksExecutionPlanSizeEqualsTwo;
-  struct TfLiteOpaqueDelegateStruct* opaque_delegate =
+  TfLiteOpaqueDelegate* opaque_delegate =
       TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
-  TfLiteInterpreterOptionsAddOpaqueDelegate(options, opaque_delegate);
+  TfLiteInterpreterOptionsAddDelegate(options, opaque_delegate);
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
 
   // The delegate should have been applied.

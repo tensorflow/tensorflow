@@ -53,7 +53,7 @@ class ServiceExecutableRunOptions {
   StatusOr<StreamPool::Ptr> BorrowStream(int device_ordinal) const {
     return borrow_stream_
                ? borrow_stream_(device_ordinal)
-               : Status(tensorflow::error::UNIMPLEMENTED, "No stream cache");
+               : Status(tsl::error::UNIMPLEMENTED, "No stream cache");
   }
 
  private:

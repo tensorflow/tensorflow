@@ -104,8 +104,11 @@ class Arguments {
     return *(new (&storage_.back()) T(std::forward<Args>(args)...));
   }
 
-  const Argument& operator[](size_t index) const {
-    return *reinterpret_cast<const Argument*>(storage_[index].data);
+  const auto& operator[](size_t index) const {
+    using T = std::conditional_t<sizeof...(Ts) == 1,
+                                 std::tuple_element_t<0, std::tuple<Ts...>>,
+                                 Argument>;
+    return *reinterpret_cast<const T*>(storage_[index].data);
   }
 
   size_t size() const { return storage_.size(); }

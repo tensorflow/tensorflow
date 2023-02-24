@@ -1,6 +1,10 @@
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
+        "//tensorflow_federated:__subpackages__",
+        "//third_party/py/keras:__subpackages__",
+        "//third_party/py/tensorflow:__subpackages__",
     ],
     licenses = ["notice"],
 )

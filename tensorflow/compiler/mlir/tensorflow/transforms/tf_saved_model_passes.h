@@ -60,6 +60,10 @@ CreateLowerVariableOpsToMlProgramPass();
 // Strips saved_model attributes from a module and its functions.
 std::unique_ptr<OperationPass<ModuleOp>> CreateStripSavedModuleMetadataPass();
 
+// Convert the session initializer to a function.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateConvertSessionInitializerToFunctionPass();
+
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_DEDUPBOUNDINPUTBINDINGPASS
 #define GEN_PASS_DECL_FREEZEASSETSPASS

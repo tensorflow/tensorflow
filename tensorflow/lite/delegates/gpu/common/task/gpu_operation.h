@@ -125,6 +125,7 @@ class GPUOperation {
   }
 
   const OperationDef& GetDefinition() const { return definition_; }
+  CalculationsPrecision GetPrecision() const { return definition_.precision; }
 
   void AddSrcTensor(const std::string& tensor_name,
                     const TensorDescriptor& desc);

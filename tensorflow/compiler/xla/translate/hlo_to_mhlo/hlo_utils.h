@@ -19,13 +19,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_HLO_UTILS_H_
 
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/Dialect/SparseTensor/IR/Enums.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/convert_op_folder.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/utils/convert_op_folder.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
@@ -59,8 +61,8 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
 
   bool is_dynamic = false;
   int64_t rank = xla_ty.rank();
-  llvm::SmallVector<int64_t, 4> shape(rank, mlir::ShapedType::kDynamicSize);
-  llvm::SmallVector<int64_t, 4> bounds(rank, mlir::ShapedType::kDynamicSize);
+  llvm::SmallVector<int64_t, 4> shape(rank, mlir::ShapedType::kDynamic);
+  llvm::SmallVector<int64_t, 4> bounds(rank, mlir::ShapedType::kDynamic);
   for (int64_t dim = 0; dim < rank; ++dim) {
     int64_t dim_size = xla_ty.dimensions(dim);
     if (xla_ty.is_dynamic_dimension(dim)) {
@@ -88,23 +90,30 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
     auto layout = xla_ty.layout();
     if (LayoutUtil::IsSparse(layout)) {
       if (is_dynamic)
-        return tensorflow::errors::Unimplemented(
+        return Unimplemented(
             "MHLO doesn't support bounded dynamic shapes for sparse tensors");
-      llvm::SmallVector<SparseTensorEncodingAttr::DimLevelType> dlts;
-      for (auto dlt : layout.dim_level_types()) {
+      llvm::SmallVector<mlir::sparse_tensor::DimLevelType> dlts;
+      for (size_t i = 0, e = layout.dim_level_types().size(); i < e; ++i) {
+        auto dlt = layout.dim_level_types()[i];
+        bool ordered =
+            i < layout.dim_ordered().size() ? layout.dim_ordered()[i] : true;
+        bool unique =
+            i < layout.dim_unique().size() ? layout.dim_unique()[i] : true;
         switch (dlt) {
           case DimLevelType::DIM_DENSE:
-            dlts.push_back(SparseTensorEncodingAttr::DimLevelType::Dense);
+            dlts.push_back(*mlir::sparse_tensor::getDimLevelType(
+                mlir::sparse_tensor::LevelFormat::Dense, ordered, unique));
             break;
           case DimLevelType::DIM_COMPRESSED:
-            dlts.push_back(SparseTensorEncodingAttr::DimLevelType::Compressed);
+            dlts.push_back(*mlir::sparse_tensor::getDimLevelType(
+                mlir::sparse_tensor::LevelFormat::Compressed, ordered, unique));
             break;
           case DimLevelType::DIM_SINGLETON:
-            dlts.push_back(SparseTensorEncodingAttr::DimLevelType::Singleton);
+            dlts.push_back(*mlir::sparse_tensor::getDimLevelType(
+                mlir::sparse_tensor::LevelFormat::Singleton, ordered, unique));
             break;
           default:
-            return tensorflow::errors::InvalidArgument(
-                "Unknown DimLevelType from HLO");
+            return InvalidArgument("Unknown DimLevelType from HLO");
         }
       }
       auto ordering = layout.minor_to_major();

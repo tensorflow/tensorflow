@@ -72,7 +72,7 @@ llvm::Optional<Value> convertRoundOp(PatternRewriter& rewriter, Operation* op,
 
 // Lowers ConcatV2 to TOSA.
 llvm::Optional<Value> convertConcatV2Op(PatternRewriter& rewriter,
-                                        Operation* op, Value result_value,
+                                        Operation* op, ShapedType result_type,
                                         SmallVectorImpl<Value>& values,
                                         int32_t axis);
 
@@ -244,12 +244,41 @@ llvm::Optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
                                          double max, int64_t num_bits,
                                          bool narrow_range);
 
+// Align to TF_MirrorPadOp::mode and TFL_MirrorPadOp::mode
+enum class TFTFLMirrorPaddingType : uint32_t {
+  REFLECT = 0,
+  SYMMETRIC = 1,
+};
+
+llvm::Optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
+                                             Operation* op,
+                                             RankedTensorType output_type,
+                                             Value input, Value pad,
+                                             TFTFLMirrorPaddingType mode);
+
 // Lowers TensorFlow Conv2D to a sequence of TOSA quantization ops.
 llvm::Optional<Value> convertTFConv2DCommon(
     PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
     Value input, Value filter, Value bias, ArrayAttr strides_attr,
     ArrayAttr dilations_attr, ArrayAttr explicit_padding_attr,
     StringRef padding_ref, StringRef data_format_ref);
+
+// Lowers TensorFlow and TensorFlow Lite Conv3D to a sequence of TOSA
+// quantization ops.
+llvm::Optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
+                                          Operation* op, ShapedType output_type,
+                                          Value input, Value filter, Value bias,
+                                          ArrayRef<int64_t> strides,
+                                          ArrayRef<int64_t> dilations,
+                                          StringRef padding_ref,
+                                          StringRef data_format_ref);
+
+// Preprocess TensorFlow Conv3D attributes prior to calling
+// `convertConv3DCommon`
+llvm::Optional<Value> convertTFConv3DCommon(
+    PatternRewriter& rewriter, Operation* op, ShapedType output_type,
+    Value input, Value filter, Value bias, ArrayAttr strides_attr,
+    ArrayAttr dilations_attr, StringRef padding_ref, StringRef data_format_ref);
 
 // Lowers Gather operator to a sequence of TOSA ops.
 llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
@@ -268,6 +297,10 @@ llvm::Optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
                                       Value result_value, Value indices_value,
                                       Value on_value, Value off_value,
                                       int32_t depth, int32_t axis);
+
+// Lowers 32-bit floating sin operator to a sequence of TOSA ops.
+llvm::Optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
+                                   Value input, ShapedType output_type);
 
 };  // namespace tosa
 };  // namespace mlir

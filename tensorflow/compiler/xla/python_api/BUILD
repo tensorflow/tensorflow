@@ -1,7 +1,10 @@
 # Description:
 #   Python API for XLA.
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 py_library(
     name = "types",
@@ -11,7 +14,6 @@ py_library(
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto_py",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:platform",
         "//third_party/py/numpy",
     ],
 )

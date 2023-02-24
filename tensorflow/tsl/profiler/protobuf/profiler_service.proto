@@ -1,0 +1,121 @@
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/tsl/profiler/protobuf/profiler_options.proto";
+import "tensorflow/tsl/profiler/protobuf/profiler_service_monitor_result.proto";
+
+// The ProfilerService service retrieves performance information about
+// the programs running on connected devices over a period of time.
+service ProfilerService {
+  // Starts a profiling session, blocks until it completes, and returns data.
+  rpc Profile(ProfileRequest) returns (ProfileResponse) {}
+  // Signal to terminate the Profile rpc for a on-going profiling session,
+  // The Profile rpc will return successfully and prematurely without timeout.
+  // This is used by programmatic mode to end the session in workers.
+  rpc Terminate(TerminateRequest) returns (TerminateResponse) {}
+  // Collects profiling data and returns user-friendly metrics.
+  rpc Monitor(MonitorRequest) returns (MonitorResponse) {}
+}
+
+message ToolRequestOptions {
+  // Required formats for the tool, it should be one of "json", "proto", "raw"
+  // etc. If not specified (backward compatible), use default format, i.e. most
+  // tools use json format.
+  string output_formats = 2;
+
+  // Whether save the result directly to repository or pass it back to caller.
+  // Default to false for backward compatibilities.
+  bool save_to_repo = 3;
+}
+
+// Next-ID: 9
+message ProfileRequest {
+  // In future, the caller will be able to customize when profiling starts and
+  // stops. For now, it collects `duration_ms` milliseconds worth of data.
+  uint64 duration_ms = 1;
+
+  // The maximum number of events to return. By default (value 0), return all
+  // events.
+  uint64 max_events = 2;
+
+  // Required profiling tools name such as "input_pipeline_analyzer" etc
+  repeated string tools = 3;
+
+  // Specifies the requirement for each tools.
+  map<string, ToolRequestOptions> tool_options = 8;
+
+  // Optional profiling options that control how a TF session will be profiled.
+  ProfileOptions opts = 4;
+
+  // The place where we will dump profile data. We will normally use
+  // MODEL_DIR/plugins/profile/ as the repository root.
+  string repository_root = 5;
+
+  // The user provided profile session identifier.
+  string session_id = 6;
+
+  // The hostname of system where the profile should happen.
+  // We use it as identifier in part of our output filename.
+  string host_name = 7;
+
+  // In future, the caller will indicate which TF session is being profiled, and
+  // only data relating to that program will be returned. For now, we assume
+  // all activity during the profiling period is relevant.
+}
+
+message ProfileToolData {
+  // The file name which this data is associated (e.g. "input_pipeline.json",
+  // "cluster_xxx.memory_viewer.json").
+  string name = 1;
+
+  // The data payload (likely json) for the specific tool.
+  bytes data = 2;
+}
+
+// Next-ID: 8
+message ProfileResponse {
+  // Data payload for each required tools.
+  repeated ProfileToolData tool_data = 6;
+
+  // When we write profiling data directly to repository directory, we need a
+  // way to figure out whether the captured trace is empty.
+  bool empty_trace = 7;
+
+  reserved 1, 2, 3, 4, 5;
+}
+
+message TerminateRequest {
+  // Which session id to terminate.
+  string session_id = 1;
+}
+
+message TerminateResponse {}
+
+// Next-ID: 4
+message MonitorRequest {
+  // Duration for which to profile between each update.
+  uint64 duration_ms = 1;
+
+  // Indicates the level at which we want to monitor. Currently, two levels are
+  // supported:
+  // Level 1: An ultra lightweight mode that captures only some utilization
+  // metrics.
+  // Level 2: More verbose than level 1. Collects utilization metrics, device
+  // information, step time information, etc. Do not use this option if the TPU
+  // host is being very heavily used.
+  int32 monitoring_level = 2;
+  // True to display timestamp in monitoring result.
+  bool timestamp = 3;
+}
+
+// Next-ID: 11
+message MonitorResponse {
+  // Properly formatted string data that can be directly returned back to user.
+  string data = 1;
+
+  // A collection of monitoring results for each field show in data.
+  ProfilerServiceMonitorResult monitor_result = 10;
+
+  reserved 2, 3, 4, 5, 6, 7, 8, 9;
+}

@@ -15,8 +15,13 @@ load(
     "if_static",
     "if_static_and_not_mobile",
 )
+load(
+    "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
+    "tf_cc_fuzz_test",
+)
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -121,6 +126,7 @@ cc_library(
     hdrs = ["loader.h"],
     deps = [
         ":constants",
+        ":fingerprinting",
         ":loader_util",
         ":reader",
     ] + if_not_mobile([
@@ -142,6 +148,7 @@ cc_library(
     hdrs = ["bundle_v2.h"],
     deps = [
         ":constants",
+        ":fingerprinting",
         ":metrics",
         ":reader",
         ":util",
@@ -268,6 +275,7 @@ filegroup(
         "testdata/VarsAndArithmeticObjectGraph/**",
         "testdata/fuzz_generated/**",
         "testdata/SimpleV1Model/**",
+        "testdata/OptimizerSlotVariableModule/**",
     ]),
 )
 
@@ -321,6 +329,7 @@ cc_library(
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/security/fuzzing/cc/ops:__pkg__",  # TODO(b/261455394): Remove.
     ],
     deps = if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
     alwayslink = True,
@@ -379,6 +388,7 @@ cc_library(
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/security/fuzzing/cc/ops:__pkg__",  # TODO(b/261455394): Remove.
     ],
     deps = [
         ":constants",
@@ -423,5 +433,18 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "saved_model_fuzz",
+    srcs = ["saved_model_fuzz.cc"],
+    deps = [
+        ":constants",
+        ":loader",
+        ":tag_constants",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
     ],
 )

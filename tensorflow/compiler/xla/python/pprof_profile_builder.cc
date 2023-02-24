@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/protobuf.h"
@@ -59,7 +60,7 @@ int PprofProfileBuilder::LocationId(PyCodeObject* code, int instruction) {
     location->set_id(ret.first->second);
     auto* line = location->add_line();
     line->set_function_id(FunctionId(code));
-    line->set_line(PyCode_Addr2Line(code, instruction));
+    line->set_line(PyCode_Addr2Line(code, instruction * kLastiWordBytes));
   }
   return ret.first->second;
 }

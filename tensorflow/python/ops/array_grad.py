@@ -246,7 +246,8 @@ def _SliceGrad(op, grad):
   input_vec = op.inputs[0]
   begin_vec = op.inputs[1]
   input_rank = array_ops.rank(input_vec)
-  slice_size = array_ops.shape(op.outputs[0])
+  index_dtype = begin_vec.dtype
+  slice_size = array_ops.shape(op.outputs[0], out_type=index_dtype)
   if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
     return gen_xla_ops.xla_dynamic_update_slice(array_ops.zeros_like(input_vec),
                                                 grad, begin_vec), None, None
@@ -254,7 +255,8 @@ def _SliceGrad(op, grad):
   shape = array_ops.stack([input_rank, 1])
   before_pad = array_ops.reshape(begin_vec, shape)
   after_pad = array_ops.reshape(
-      array_ops.shape(input_vec) - slice_size - begin_vec, shape)
+      array_ops.shape(input_vec, out_type=index_dtype) - slice_size - begin_vec,
+      shape)
   paddings = array_ops.concat([before_pad, after_pad], 1)
   return array_ops.pad(grad, paddings), None, None
 

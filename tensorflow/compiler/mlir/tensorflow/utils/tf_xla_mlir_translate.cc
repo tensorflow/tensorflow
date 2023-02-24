@@ -34,17 +34,18 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -142,7 +143,7 @@ Status ParseArgumentShapes(
       continue;
     }
     TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
-        shape.value().getValue(), &arg_shapes[shape.index()].shape));
+        *shape.value(), &arg_shapes[shape.index()].shape));
   }
 
   return OkStatus();
@@ -232,8 +233,7 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
     TensorShape shape;
     auto input_shapes = std::get<1>(arg_components);
     if (input_shapes.has_value()) {
-      TF_RETURN_IF_ERROR(
-          TensorShapeUtils::MakeShape(input_shapes.getValue(), &shape));
+      TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(*input_shapes, &shape));
     } else {
       TF_RETURN_IF_ERROR(
           TensorShapeUtils::MakeShape(static_cast<int*>(nullptr), 0, &shape));
@@ -371,8 +371,10 @@ static mlir::LogicalResult MlirTfGraphToHloTextTranslateFunction(
 }
 
 static void RegisterMlirInputDialects(mlir::DialectRegistry& registry) {
-  registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                  mlir::TF::TensorFlowDialect>();
+  // TODO(b/259459405): Remove support for stablehlo as an input.
+  registry
+      .insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
+              mlir::TF::TensorFlowDialect, mlir::stablehlo::StablehloDialect>();
 }
 
 static void RegisterGraphInputDialects(mlir::DialectRegistry& registry) {

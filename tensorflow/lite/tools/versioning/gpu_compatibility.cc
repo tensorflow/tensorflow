@@ -872,6 +872,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
     case kTfLiteBuiltinFloorMod:
     case kTfLiteBuiltinGreater:
     case kTfLiteBuiltinGreaterEqual:
+    case kTfLiteBuiltinLogicalAnd:
     case kTfLiteBuiltinLess:
     case kTfLiteBuiltinLessEqual:
     case kTfLiteBuiltinMaximum:

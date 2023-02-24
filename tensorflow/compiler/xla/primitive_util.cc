@@ -38,6 +38,10 @@ int SignificandWidth(PrimitiveType type) {
       return std::numeric_limits<bfloat16>::digits;
     case F16:
       return std::numeric_limits<half>::digits;
+    case F8E5M2:
+      return std::numeric_limits<tsl::float8_e5m2>::digits;
+    case F8E4M3FN:
+      return std::numeric_limits<tsl::float8_e4m3fn>::digits;
     default:
       LOG(FATAL) << "Not a floating data type " << type;
   }
@@ -71,13 +75,18 @@ int OverflowExponent(PrimitiveType type) {
       return std::numeric_limits<bfloat16>::max_exponent;
     case F16:
       return std::numeric_limits<half>::max_exponent;
+    case F8E5M2:
+      return std::numeric_limits<tsl::float8_e5m2>::max_exponent;
+    case F8E4M3FN:
+      return std::numeric_limits<tsl::float8_e4m3fn>::max_exponent;
     default:
       LOG(FATAL) << "Not a floating data type " << type;
   }
 }
 
 bool IsFloatingPointType(PrimitiveType type) {
-  return type == F16 || type == F32 || type == F64 || type == BF16;
+  return type == F16 || type == F32 || type == F64 || type == BF16 ||
+         type == F8E5M2 || type == F8E4M3FN;
 }
 
 bool IsComplexType(PrimitiveType type) { return type == C64 || type == C128; }
@@ -93,48 +102,6 @@ bool IsUnsignedIntegralType(PrimitiveType type) {
 bool IsIntegralType(PrimitiveType type) {
   return IsUnsignedIntegralType(type) || IsSignedIntegralType(type);
 }
-
-int BitWidth(PrimitiveType type) {
-  switch (type) {
-    case PRED:
-      return 1;
-
-    case S8:
-    case U8:
-      return 8;
-
-    case S16:
-    case U16:
-    case F16:
-    case BF16:
-      return 16;
-
-    case U32:
-    case S32:
-    case F32:
-      return 32;
-
-    case U64:
-    case S64:
-    case F64:
-    case C64:
-      return 64;
-
-    case C128:
-      return 128;
-
-    case TUPLE:
-      LOG(FATAL) << "TUPLE is an invalid type for BitWidth";
-
-    case OPAQUE_TYPE:
-      LOG(FATAL) << "OPAQUE_TYPE is an invalid type for BitWidth";
-
-    default:
-      LOG(FATAL) << "Unhandled primitive type " << type;
-  }
-}
-
-int ByteWidth(PrimitiveType type) { return CeilOfRatio(BitWidth(type), 8); }
 
 xla::PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {

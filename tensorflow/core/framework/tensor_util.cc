@@ -304,10 +304,10 @@ static bool IsNegativeZero(Eigen::QUInt16 value) { return false; }
 static bool IsNegativeZero(Eigen::QInt16 value) { return false; }
 static bool IsNegativeZero(Eigen::QInt32 value) { return false; }
 static bool IsNegativeZero(Eigen::half value) {
-  return IsNegativeZero<float>(value);
+  return IsNegativeZero<float>(static_cast<float>(value));
 }
 static bool IsNegativeZero(Eigen::bfloat16 value) {
-  return IsNegativeZero<float>(value);
+  return IsNegativeZero<float>(static_cast<float>(value));
 }
 
 template <typename T>

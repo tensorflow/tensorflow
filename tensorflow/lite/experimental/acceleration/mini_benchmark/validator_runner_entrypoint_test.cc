@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_entrypoint.h"
+
 #include <sys/types.h>
 
 #include <fstream>
@@ -23,9 +25,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
 
 // Note that these tests are not meant to be completely exhaustive, but to test
 // error propagation.
@@ -119,7 +121,7 @@ TEST_F(ValidatorRunnerEntryPointTest, NoValidationRequestFound) {
 
   EXPECT_EQ(BenchmarkEventType_ERROR, event->event_type());
   EXPECT_EQ(kMinibenchmarkNoValidationRequestFound,
-            event->error()->exit_code());
+            event->error()->mini_benchmark_error_code());
 }
 
 TEST_F(ValidatorRunnerEntryPointTest, CannotSetCpuAffinity) {
@@ -132,8 +134,9 @@ TEST_F(ValidatorRunnerEntryPointTest, CannotSetCpuAffinity) {
   const tflite::BenchmarkEvent* event = events[0];
 
   EXPECT_EQ(BenchmarkEventType_RECOVERED_ERROR, event->event_type());
-  EXPECT_EQ(kMinibenchmarkUnableToSetCpuAffinity, event->error()->exit_code());
-  EXPECT_EQ(10, event->error()->mini_benchmark_error_code());
+  EXPECT_EQ(kMinibenchmarkUnableToSetCpuAffinity,
+            event->error()->mini_benchmark_error_code());
+  EXPECT_EQ(10, event->error()->exit_code());
 }
 
 TEST_F(ValidatorRunnerEntryPointTest, CannotLoadNnapi) {
@@ -177,7 +180,7 @@ TEST_F(ValidatorRunnerEntryPointTest, CannotLoadNnapi) {
   const tflite::BenchmarkEvent* event = events[1];
   EXPECT_EQ(BenchmarkEventType_ERROR, event->event_type());
   EXPECT_EQ(kMiniBenchmarkCannotLoadSupportLibrary,
-            event->error()->exit_code());
+            event->error()->mini_benchmark_error_code());
 }
 
 }  // namespace

@@ -477,11 +477,8 @@ ENTRY main {
 
 )";
   CheckLayoutNormalization(hlo, R"(
-// CHECK: [[bitcast_2_0:%[^ ]+]] = f32[] bitcast([[z_1:%[^ ]+]])
-// CHECK: [[bitcast_3_2:%[^ ]+]] = f32[] bitcast([[bitcast_2_0]])
-// CHECK: [[pad_3:%[^ ]+]] = f32[13,15,11]{2,1,0} pad([[bitcast_4_4:%[^ ]+]], [[bitcast_3_2]]), padding=5_5x5_5x5_5
+// CHECK: [[pad_3:%[^ ]+]] = f32[13,15,11]{2,1,0} pad([[bitcast_4_4:%[^ ]+]], [[bitcast_3_2:%[^ ]+]]), padding=5_5x5_5x5_5
 // CHECK: [[abs_5:%[^ ]+]] = f32[13,15,11]{2,1,0} abs([[pad_3]])
-// CHECK: ROOT [[bitcast_6_6:%[^ ]+]] = f32[11,13,15]{0,2,1} bitcast([[abs_5]])
 )");
 }
 
@@ -498,14 +495,8 @@ ENTRY main {
 
 )";
   CheckLayoutNormalization(hlo, R"(
-// CHECK: [[bitcast_0:%[^ ]+]] = f32[3,5]{1,0} bitcast([[a_1:%[^ ]+]])
-// CHECK: [[bitcast_4_2:%[^ ]+]] = f32[3,5,1]{2,1,0} bitcast([[bitcast_0]])
-// CHECK: [[z_3:%[^ ]+]] = f32[] constant(0)
-// CHECK: [[bitcast_2_4:%[^ ]+]] = f32[] bitcast([[z_3]])
-// CHECK: [[bitcast_3_5:%[^ ]+]] = f32[] bitcast([[bitcast_2_4]])
-// CHECK: [[pad_6:%[^ ]+]] = f32[13,7,11]{2,1,0} pad([[bitcast_4_2]], [[bitcast_3_5]]), padding=5_5x1_1x5_5
+// CHECK: [[pad_6:%[^ ]+]] = f32[13,7,11]{2,1,0} pad([[bitcast_4_2:%[^ ]+]], [[bitcast_3_5:%[^ ]+]]), padding=5_5x1_1x5_5
 // CHECK: [[abs_7:%[^ ]+]] = f32[13,7,11]{2,1,0} abs([[pad_6]])
-// CHECK: ROOT [[bitcast_6_8:%[^ ]+]] = f32[11,13,7,1]{0,2,1,3} bitcast([[abs_7]])
 )");
 }
 
@@ -526,8 +517,152 @@ ENTRY R2Window {
 }
 )";
   CheckLayoutNormalization(hlo, R"(
-// CHECK: %reduce-window.1 = f32[384,256]{1,0} reduce-window(%bitcast.5, %bitcast.8), window={size=3x2 pad=1_1x0_1}, to_apply=%mul
+// CHECK: [[reduce_window_1_0:%[^ ]+]] = f32[384,256]{1,0} reduce-window([[bitcast_5_1:%[^ ]+]], [[bitcast_8_2:%[^ ]+]]), window={size=3x2 pad=1_1x0_1}, to_apply=[[mul_3:%[^ ]+]]
   )");
+}
+
+TEST_F(LayoutNormalizationTest, Constant) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p = f32[5,4]{0,1} parameter(0)
+  c = f32[5,4]{0,1} constant({...})
+  ROOT o = f32[5,4]{0,1} add(p, c)
+}
+)";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[p_0:%[^ ]+]] = f32[5,4]{0,1} parameter(0)
+// CHECK-NEXT: [[bitcast_1:%[^ ]+]] = f32[4,5]{1,0} bitcast([[p_0]])
+// CHECK-NEXT: [[constant_2:%[^ ]+]] = f32[4,5]{1,0} constant({...})
+// CHECK-NEXT: [[add_3:%[^ ]+]] = f32[4,5]{1,0} add([[bitcast_1]], [[constant_2]])
+// CHECK-NEXT: ROOT [[bitcast_3_4:%[^ ]+]] = f32[5,4]{0,1} bitcast([[add_3]])
+  )");
+}
+
+TEST_F(LayoutNormalizationTest, Slice) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  input = f32[1,17,9,9]{1,3,2,0} parameter(0)
+  ROOT converted = f32[1,4,6,6]{1,3,2,0} slice(input), slice={[0:1],[0:4],[0:6],[0:6]}
+}
+)";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[input_0:%[^ ]+]] = f32[1,17,9,9]{1,3,2,0} parameter(0)
+// CHECK-NEXT: [[bitcast_1:%[^ ]+]] = f32[9,9,17]{2,1,0} bitcast([[input_0]])
+// CHECK-NEXT: [[slice_2:%[^ ]+]] = f32[6,6,4]{2,1,0} slice([[bitcast_1]]), slice={[0:6], [0:6], [0:4]}
+// CHECK-NEXT: [[bitcast_2_3:%[^ ]+]] = f32[6,6,4]{2,1,0} bitcast([[slice_2]])
+// CHECK-NEXT: ROOT [[bitcast_3_4:%[^ ]+]] = f32[1,4,6,6]{1,3,2,0} bitcast([[bitcast_2_3]])
+  )");
+}
+
+TEST_F(LayoutNormalizationTest, Select) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[1,17,9,9]{1,3,2,0} parameter(0)
+  p1 = f32[1,17,9,9]{1,3,2,0} parameter(1)
+  b = pred[1,17,9,9]{1,3,2,0} parameter(2)
+  ROOT out = f32[1,17,9,9]{1,3,2,0} select(b, p0, p1), metadata={op_name="test"}
+}
+)";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[9,9,17]{2,1,0} select({{.*}}, {{.*}}, {{.*}}), metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, DynamicSlice) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  input = f32[3,4,32]{1,0,2} parameter(0)
+  s1 = s32[] parameter(1)
+  s2 = s32[] parameter(2)
+  s3 = s32[] parameter(3)
+  ROOT out = f32[1,4,32]{1,0,2} dynamic-slice(input, s1, s2, s3), dynamic_slice_sizes={1,4,32}, metadata={op_name="test"}
+}
+  )";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,1,4]{2,1,0} dynamic-slice({{.*}}, {{.*}}, {{.*}}, {{.*}}), dynamic_slice_sizes={32,1,4}, metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, DynamicSliceHasDegenerate) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  input = f32[1,4,32]{1,0,2} parameter(0)
+  s1 = s32[] parameter(1)
+  s2 = s32[] parameter(2)
+  s3 = s32[] parameter(3)
+  ROOT out = f32[1,4,32]{1,0,2} dynamic-slice(input, s1, s2, s3), dynamic_slice_sizes={1,4,32}, metadata={op_name="test"}
+}
+  )";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,4]{1,0} dynamic-slice({{.*}}, {{.*}}, {{.*}}), dynamic_slice_sizes={32,4}, metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, DynamicUpdateSlice) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  to_update = f32[3,1,32]{1,0,2} parameter(0)
+  updates = f32[1,1,32]{1,0,2} parameter(1)
+  p0 = s32[] parameter(2)
+  p1 = s32[] parameter(3)
+  p2 = s32[] parameter(4)
+
+  ROOT out = f32[3,1,32]{1,0,2} dynamic-update-slice(to_update, updates, p0, p1, p2), metadata={op_name="test"}
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,3]{1,0} dynamic-update-slice({{.*}}, {{.*}}, {{.*}}, {{.*}}), metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, DynamicUpdateSliceNonDeg) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  to_update = f32[5,3,32]{1,0,2} parameter(0)
+  updates = f32[1,1,32]{1,0,2} parameter(1)
+  p0 = s32[] parameter(2)
+  p1 = s32[] parameter(3)
+  p2 = s32[] parameter(4)
+
+  ROOT out = f32[5,3,32]{1,0,2} dynamic-update-slice(to_update, updates, p0, p1, p2), metadata={op_name="test"}
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,5,3]{2,1,0} dynamic-update-slice
+)");
+}
+
+TEST_F(LayoutNormalizationTest, Clamp) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  p0 = f32[64,1,32]{1,0,2} parameter(0)
+  p1 = f32[64,1,32]{1,0,2} parameter(1)
+  p2 = f32[64,1,32]{1,0,2} parameter(2)
+  ROOT out = f32[64,1,32]{1,0,2} clamp(f32[64,1,32]{1,0,2} p0, f32[64,1,32]{1,0,2} p1, f32[64,1,32]{1,0,2} p2), metadata={op_name="test"}
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,64]{1,0} clamp({{.*}}, {{.*}}, {{.*}}), metadata={op_name="test"}
+)");
 }
 
 }  // namespace

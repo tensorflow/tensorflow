@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_BACKENDS_CPU_METADATA_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_BACKENDS_CPU_METADATA_UTILS_H_
 
+#include "tensorflow/compiler/xla/backends/profiler/cpu/metadata_utils.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/core/profiler/convert/xla_op_utils.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
@@ -25,30 +26,9 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-class MetadataXPlaneBuilder {
- public:
-  explicit MetadataXPlaneBuilder(XPlane* raw_plane)
-      : plane_(raw_plane),
-        hlo_proto_stat_(plane_.GetOrCreateStatMetadata(
-            GetStatTypeStr(StatType::kHloProto))) {}
-
-  void AddHloProto(uint64_t program_id, const xla::HloProto& hlo_proto) {
-    XEventMetadata* event_metadata =
-        plane_.GetOrCreateEventMetadata(program_id);
-    if (event_metadata->name().empty()) {
-      event_metadata->set_name(HloModuleNameWithProgramId(
-          hlo_proto.hlo_module().name(), program_id));
-      XStatsBuilder<XEventMetadata> event_stats(event_metadata, &plane_);
-      event_stats.AddStatValue(*hlo_proto_stat_, hlo_proto);
-    }
-  }
-
- private:
-  XPlaneBuilder plane_;
-  const XStatMetadata* hlo_proto_stat_ = nullptr;
-};
+using xla::profiler::MetadataXPlaneBuilder;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // _TENSORFLOW_CORE_PROFILER_BACKENDS_CPU_METADATA_UTILS_H_
+#endif  // TENSORFLOW_CORE_PROFILER_BACKENDS_CPU_METADATA_UTILS_H_

@@ -1,5 +1,5 @@
-// RUN: tf-tfrt-opt -tf-to-tfrt=enable-native-ops=false %s | FileCheck %s --dump-input=fail --dump-input-filter=all
-// RUN: tf-tfrt-opt -pass-pipeline='tf-to-tfrt{enable-native-ops=false target-tpurt=true tpu-use-core-selector=false}' %s | FileCheck %s --dump-input=fail --dump-input-filter=all
+// RUN: tf-tfrt-opt -tf-to-tfrt %s | FileCheck %s --dump-input=fail --dump-input-filter=all
+// RUN: tf-tfrt-opt -pass-pipeline='builtin.module(tf-to-tfrt{target-tpurt=true tpu-use-core-selector=false})' %s | FileCheck %s --dump-input=fail --dump-input-filter=all
 
 // CHECK-LABEL: func @_tfrt_fallback_init
 // CHECK-SAME: {{.*}} !tfrt.chain

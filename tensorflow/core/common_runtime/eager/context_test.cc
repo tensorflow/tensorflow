@@ -53,10 +53,11 @@ class EagerContextTest : public ::testing::Test {
                    ContextDevicePlacementPolicy policy, bool async = false) {
     ASSERT_EQ(context_, nullptr);
     InitDeviceManager();
-    context_ = core::RefCountPtr<EagerContext>(
-        new EagerContext(opts, policy, async, device_manager_.get(),
-                         /*device_mgr_owned=*/false, /*rendezvous=*/nullptr,
-                         /*cluster_flr=*/nullptr));
+    context_ = core::RefCountPtr<EagerContext>(new EagerContext(
+        opts, policy, async, device_manager_.get(),
+        /*device_mgr_owned=*/false, /*rendezvous=*/nullptr,
+        /*cluster_flr=*/nullptr, /*collective_executor_mgr=*/nullptr,
+        /*run_eager_op_as_function=*/true));
   }
 
  protected:
@@ -340,19 +341,20 @@ TEST_F(EagerContextTest, XlaCompileDeviceType) {
 
 TEST_F(EagerContextTest, LocalRendezvousCreation) {
   InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
-  std::function<Rendezvous*(const int64_t)> rendezvous_creator =
-      context()->RendezvousCreator();
+  auto rendezvous_creator = context()->RendezvousFactory();
 
   // Create a new rendezvous instance.
   // Initially its ref-count is 2:
-  // one added upopn rendezvous creation, the other one added by EagerContext.
-  Rendezvous* rendezvous_1 = rendezvous_creator(1);
+  // one added upon rendezvous creation, the other one added by EagerContext.
+  Rendezvous* rendezvous_1;
+  TF_ASSERT_OK(rendezvous_creator(1, nullptr, &rendezvous_1));
   EXPECT_EQ(rendezvous_1->RefCount(), 2);
 
   // Create another rendezvous instance with the same step-id.
   // This would add one more ref-count to the existing rendezvous insteance
   // insted of creating a new instance.
-  Rendezvous* rendezvous_2 = rendezvous_creator(1);
+  Rendezvous* rendezvous_2;
+  TF_ASSERT_OK(rendezvous_creator(1, nullptr, &rendezvous_2));
   EXPECT_EQ(rendezvous_2->RefCount(), 3);
 
   // Caller releases rendezvous-1.
@@ -368,16 +370,19 @@ void TestGlobalRendezvous(EagerContext* context, bool reuse_global_rendezvous) {
   context->SetReuseRendezvousForFunctions(reuse_global_rendezvous);
   EXPECT_EQ(context->GetReuseRendezvousForFunctions(), reuse_global_rendezvous);
 
-  auto rendezvous_creator = context->RendezvousCreator();
-  Rendezvous* rendezvous_1 = rendezvous_creator(-1);
+  auto rendezvous_creator = context->RendezvousFactory();
+  Rendezvous* rendezvous_1;
+  TF_ASSERT_OK(rendezvous_creator(-1, nullptr, &rendezvous_1));
   EXPECT_EQ(rendezvous_1->RefCount(), 2);
-  Rendezvous* rendezvous_2 = rendezvous_creator(-1);
+  Rendezvous* rendezvous_2;
+  TF_ASSERT_OK(rendezvous_creator(-1, nullptr, &rendezvous_2));
   EXPECT_EQ(rendezvous_2->RefCount(), 3);
 
   // Global rendezvous's ref-count should be back to 1 after resetting.
   context->ResetGlobalRendezvousForFunction();
 
-  Rendezvous* rendezvous_3 = rendezvous_creator(-1);
+  Rendezvous* rendezvous_3;
+  TF_ASSERT_OK(rendezvous_creator(-1, nullptr, &rendezvous_3));
   EXPECT_EQ(rendezvous_3->RefCount(), 2);
 
   // Callers release rendezvous.

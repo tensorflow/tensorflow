@@ -18,10 +18,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/tpu/tpu_compile_interface.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -89,10 +89,10 @@ std::string GuaranteedConstFingerprint(
   if (fingerprint_in_metadata.empty()) {
     uint64_t fingerprint = 0;
     for (const Tensor& constant : guaranteed_constants) {
-      fingerprint =
-          tpu::OpsApiFn()->TpuCompile_CreateGuaranteedConstFingerprintFn(
-              fingerprint, constant.tensor_data().data(),
-              constant.tensor_data().size());
+      fingerprint = stream_executor::tpu::OpsApiFn()
+                        ->TpuCompile_CreateGuaranteedConstFingerprintFn(
+                            fingerprint, constant.tensor_data().data(),
+                            constant.tensor_data().size());
     }
     return std::to_string(fingerprint);
   } else {
@@ -124,7 +124,7 @@ TpuCompilationCacheKey CreateCompilationCacheKey(
     }
   }
   CompilationCacheKeyResult result =
-      tpu::OpsApiFn()->TpuCompile_CreateCompilationCacheKeyFn(
+      stream_executor::tpu::OpsApiFn()->TpuCompile_CreateCompilationCacheKeyFn(
           CompilationCacheKeyProperty{
               config_prefix.data(), shapes_prefix.data(), function_name.data(),
               mlir_module_fingerprint, flattened_device_ids.data(),
@@ -133,7 +133,8 @@ TpuCompilationCacheKey CreateCompilationCacheKey(
               metadata.num_replicas(), mesh_state.data(), session_id,
               resource_mgr});
   auto buffer_cleanup = gtl::MakeCleanup([result]() {
-    tpu::OpsApiFn()->TpuCompile_DestroyCompilationCacheKeyFn(result);
+    stream_executor::tpu::OpsApiFn()->TpuCompile_DestroyCompilationCacheKeyFn(
+        result);
   });
   TpuCompilationCacheKey key;
   key.prefix = result.key;

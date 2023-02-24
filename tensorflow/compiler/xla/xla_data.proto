@@ -57,6 +57,22 @@ enum PrimitiveType {
 
   F64 = 12;
 
+  // FP8 dtypes, as described in this paper: https://arxiv.org/abs/2209.05433
+  //
+  // F8E5M2 has 5 exponent bits and 2 mantissa bits, and is similar to the
+  // existing IEEE types.
+  //
+  // F8E4M3FN has 4 exponent bits and 3 mantissa bits. The "FN" means only
+  // Finite and NaN values are supported. Unlike IEEE types, infinities are not
+  // supported.  NaN is represented when the exponent and mantissa bits are all
+  // 1s. All other values are finite.
+  //
+  // Support for these dtypes is under development. They do not yet work
+  // properly in most cases.
+  // TODO(b/259609697): Fully support FP8.
+  F8E5M2 = 19;
+  F8E4M3FN = 20;
+
   // Complex values of fixed width.
   C64 = 15;   // Paired F32 (real, imag), as in std::complex<float>.
   C128 = 18;  // Paired F64 (real, imag), as in std::complex<double>.
@@ -82,7 +98,7 @@ enum PrimitiveType {
   // primitive type will have empty dimensions and tuple_shapes fields.
   TOKEN = 17;
 
-  // Next = 19
+  // Next = 21
 }
 // LINT.ThenChange(
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,
@@ -151,6 +167,14 @@ message LayoutProto {
   // array is assumed to be dense.
   repeated DimLevelType dim_level_types = 9;
 
+  // Whether each dimension is unique or ordered.  Each of the following lists
+  // must be empty, or have one entry for each entry of dim_level_types.  If
+  // either list is empty, all dimensions are assumed to be unique and ordered,
+  // respectively.  Entries in this list may not be false for some DimLevelType
+  // values (such as DIM_DENSE in particular).
+  repeated bool dim_unique = 13;
+  repeated bool dim_ordered = 14;
+
   // Sequence of dimension numbers, from minor (fastest varying index) to major
   // (slowest varying index). This field is required.
   repeated int64 minor_to_major = 1;
@@ -162,22 +186,29 @@ message LayoutProto {
   // error.
   repeated TileProto tiles = 6;
 
-  // Bit size of each element. If the size is bigger than what the element
-  // type requires, the value is stored in the least significant
-  // bits and the additional most significant bits are filled with 0's.
-  //
-  // TODO(b/119839262): implement in each backend or add Unimplemented error.
-  int64 element_size_in_bits = 7;
-
   // Memory space where this array resides. The integer field is interpreted in
   // a backend-specific manner.
   int64 memory_space = 8;
+
+  // The integer types to be used for indices and pointers.  These fields must
+  // not be used unless the layout represents a sparse array.  The PrimitiveType
+  // must correspond to an unsigned integer (U8, U16, U32, or U64).
+  // If not provided, the compiler will use the largest unsigned integer
+  // that is naturally supported by the target device (U32 or U64 in currently
+  // supported devices).
+  PrimitiveType index_primitive_type = 11;
+  PrimitiveType pointer_primitive_type = 12;
 
   // The physical, on-device shape used to represent the shape this layout
   // belongs to. Only used for sparse arrays.
   // The layout(s) contained within the physical shape should not also contain
   // a physical shape.
   ShapeProto physical_shape = 10;
+
+  // The dynamic shape metadata size in bytes in front of the shape data. The
+  // field may be non-zero for a static shape whose associated buffer is for a
+  // dynamic shape, e.g. a result of SliceToDynamic.
+  int64 dynamic_shape_metadata_prefix_bytes = 15;
 
   // Important: if any field is added, be sure to modify ShapeUtil::Equal() and
   // LayoutUtil::Hash appropriately to account for the new field.
@@ -190,6 +221,8 @@ message LayoutProto {
   reserved "format";
   reserved 5;
   reserved "max_sparse_elements";
+  reserved 7;
+  reserved "element_size_in_bits";
 }
 // LINT.ThenChange( \
 //     https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,      \
@@ -461,8 +494,10 @@ message LiteralProto {
   bytes bf16s = 13;
   bytes u16s = 16;
   bytes s16s = 17;
+  bytes f8e5m2s = 19;
+  bytes f8e4m3fns = 20;
   repeated int64 sparse_indices = 14;
-  // Next = 19
+  // Next = 21
 }
 
 message WindowDimension {
@@ -790,9 +825,9 @@ message WhileLoopBackendConfig {
   KnownTripCount known_trip_count = 1;
 }
 
-// Specifies a pair of output/operand buffers for kCustomCall that alias each
-// other.
-message CustomCallOutputOperandAliasing {
+// Specifies a pair of output/operand buffers that alias each other for
+// kCustomCall and kFusion
+message OutputOperandAliasing {
   repeated int64 output_shape_index = 1;
   int64 operand_index = 2;
   repeated int64 operand_shape_index = 3;

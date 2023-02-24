@@ -385,14 +385,14 @@ def kron(a, b):  # pylint: disable=missing-function-docstring
   # pylint: disable=protected-access,g-complex-comprehension
   a, b = np_array_ops._promote_dtype(a, b)
   t_a = np_utils.cond(
-      a.ndim < b.ndim,
+      a.shape.rank < b.shape.rank,
       lambda: np_array_ops.reshape(  # pylint: disable=g-long-lambda
-          a, np_array_ops._pad_left_to(b.ndim, a.shape)),
+          a, np_array_ops._pad_left_to(b.shape.rank, a.shape)),
       lambda: a)
   t_b = np_utils.cond(
-      b.ndim < a.ndim,
+      b.shape.rank < a.shape.rank,
       lambda: np_array_ops.reshape(  # pylint: disable=g-long-lambda
-          b, np_array_ops._pad_left_to(a.ndim, b.shape)),
+          b, np_array_ops._pad_left_to(a.shape.rank, b.shape)),
       lambda: b)
 
   def _make_shape(shape, prepend):
@@ -526,9 +526,11 @@ def lcm(x1, x2):  # pylint: disable=missing-function-docstring
     # Same as the `x2_safe` trick above
     d_safe = array_ops.where_v2(
         math_ops.equal(d, 0), constant_op.constant(1, d.dtype), d)
+    x1 = math_ops.abs(x1)
+    x2 = math_ops.abs(x2)
     return array_ops.where_v2(
         math_ops.equal(d, 0), constant_op.constant(0, d.dtype),
-        math_ops.abs(x1 * x2) // d_safe)
+        x1 * (x2 // d_safe))
 
   return _bin_op(f, x1, x2)
 

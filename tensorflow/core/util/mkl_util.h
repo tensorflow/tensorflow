@@ -1947,10 +1947,14 @@ class MklPrimitiveFactory {
   /// For those legacy device(w/o AVX512 and AVX2),
   /// MKL-DNN GEMM will be used.
   static inline bool IsLegacyPlatform() {
+#ifdef DNNL_AARCH64_USE_ACL
+    return false;
+#else
     static const bool is_legacy_platform =
         (!port::TestCPUFeature(port::CPUFeature::AVX512F) &&
          !port::TestCPUFeature(port::CPUFeature::AVX2));
     return is_legacy_platform;
+#endif  // DNNL_AARCH64_USE_ACL
   }
 
   /// Function to check whether primitive memory optimization is enabled
@@ -1978,7 +1982,6 @@ class MklPrimitiveFactory {
     static thread_local LRUCache<MklPrimitive> lru_cache_(kCapacity);
 #else
     static LRUCache<MklPrimitive> lru_cache_(kCapacity);
-    TF_GUARDED_BY(lru_mu_)
 #endif
     return lru_cache_;
   }

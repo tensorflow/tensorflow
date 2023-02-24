@@ -785,6 +785,19 @@ class MultiJobsTest(test.TestCase, parameterized.TestCase):
     v1.assign_add(1)
     self.assertAllEqual(v1.read_value(), 1)
 
+  # TODO(b/249134783): Add a test for task failures by introducing an Op for
+  # reporting errors.
+  def testGetTaskStatesAllOK(self):
+    context.context().configure_coordination_service(
+        service_type='standalone', service_leader='/job:my_ps/replica:0/task:0')
+    remote.connect_to_cluster(self._cluster)
+    context.context().ensure_initialized()
+
+    states = context.context().get_task_states([('my_worker', 2), ('my_ps', 2)])
+    self.assertLen(states, 4)
+    for state in states:
+      self.assertIsNone(state)
+
 
 def _strip_prefix(s, prefix):
   return s[len(prefix):] if s.startswith(prefix) else s
