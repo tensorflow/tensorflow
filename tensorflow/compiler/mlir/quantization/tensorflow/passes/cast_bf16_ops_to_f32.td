@@ -55,6 +55,27 @@ def CastBFloat16ConvToFloat32 : Pat<
    (IsBF16ElementType $filter)],
   (addBenefit 1)>;
 
+// Casts BF16 BiasAdd ops to F32 to optimize quantizable ops followed by
+// BiasAdd ops. This cast will cover Conv + BiasAdd, MatMul + BiasAdd,
+// etc.
+def CastBFloat16BiasAddToFloat32 : Pat<
+  (TF_BiasAddOp:$res
+    $input, $bias, IsDataFormatNHWC:$bias_data_format),
+  (TF_CastOp
+    (TF_BiasAddOp
+      (TF_CastOp
+        $input, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $input))),
+      (TF_CastOp
+        $bias, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $bias))),
+      IsDataFormatNHWC:$bias_data_format,
+      (returnType (CloneTypeWithF32ElementType $res))),
+    /*truncate=*/ConstBoolAttrFalse),
+  [(IsBF16ElementType $input),
+   (IsBF16ElementType $bias)],
+  (addBenefit 1)>;
+
 def CastBFloat16AvgPoolToFloat32 : Pat<
   (TF_AvgPoolOp:$res
     $input, $ksize, $strides, $padding,

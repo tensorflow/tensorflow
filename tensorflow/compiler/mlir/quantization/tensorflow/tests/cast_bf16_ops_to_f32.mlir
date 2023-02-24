@@ -19,6 +19,28 @@ func.func @cast_bf16_conv_to_fp32(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3x2x2
 // CHECK: %[[identity:.*]] = "tf.IdentityN"(%[[conv]]) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
 // CHECK: return %[[identity]] : tensor<1x3x2x2xf32>
 
+func.func @cast_bf16_conv_with_bias_to_fp32(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3x2x2xf32>) {
+  %cst = "tf.Const"() {device = "", value = dense<1.000000e+00> : tensor<2xbf16>} : () -> tensor<2xbf16>
+  %cst_0 = "tf.Const"() {device = "", value = dense<1.000000e+00> : tensor<2x3x3x2xbf16>} : () -> tensor<2x3x3x2xbf16>
+  %0 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3xbf16>
+  %1 = "tf.Conv2D"(%0, %cst_0) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x3x4x3xbf16>, tensor<2x3x3x2xbf16>) -> tensor<1x3x2x2xbf16>
+  %2 = "tf.BiasAdd"(%1, %cst) {data_format = "NHWC", device = ""} : (tensor<1x3x2x2xbf16>, tensor<2xbf16>) -> tensor<1x3x2x2xbf16>
+  %3 = "tf.Identity"(%2) {device = ""} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xbf16>
+  %4 = "tf.Identity"(%3) {device = ""} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xbf16>
+  %5 = "tf.Cast"(%4) {Truncate = false} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xf32>
+  %6 = "tf.Identity"(%5) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
+  %7 = "tf.IdentityN"(%6) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
+  return %7 : tensor<1x3x2x2xf32>
+}
+
+// CHECK: func @cast_bf16_conv_with_bias_to_fp32
+// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
+// CHECK-DAG: %[[cst_0:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
+// CHECK: %[[conv:.*]] = "tf.Conv2D"(%arg0, %[[cst]])
+// CHECK: %[[bias_add:.*]] = "tf.BiasAdd"(%[[conv]], %[[cst_0]])
+// CHECK: %[[identity:.*]] = "tf.IdentityN"(%[[bias_add]]) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
+// CHECK: return %[[identity]] : tensor<1x3x2x2xf32>
+
 func.func @cast_bf16_avg_pool_to_fp32(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3x2x2xf32>) {
   %cst = "tf.Const"() {device = "", value = dense<1.000000e+00> : tensor<2x3x3x2xbf16>} : () -> tensor<2x3x3x2xbf16>
   %0 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3xbf16>
