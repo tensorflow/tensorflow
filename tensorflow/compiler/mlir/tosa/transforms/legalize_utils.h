@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
@@ -197,6 +198,15 @@ void CreateReplaceOpAndInfer(PatternRewriter& rewriter, Operation* op,
       CreateOpAndInfer<TosaOp>(rewriter, op->getLoc(), result_ty, args...);
   rewriter.replaceOp(op, result->getResults());
 }
+
+void TrimQuantizedIntegerRangeMin(mlir::quant::UniformQuantizedType dtype,
+                                  int64_t& val_min);
+
+void TrimQuantizedIntegerRangeMax(mlir::quant::UniformQuantizedType dtype,
+                                  int64_t& val_max);
+
+void TrimQuantizedIntegerRange(mlir::quant::UniformQuantizedType dtype,
+                               int64_t& val_min, int64_t& val_max);
 
 }  // namespace tosa
 }  // namespace mlir

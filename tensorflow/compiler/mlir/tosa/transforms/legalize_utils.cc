@@ -691,5 +691,23 @@ LogicalResult ApplyPatternsWithShapeResolution(
   return success();
 }
 
+void TrimQuantizedIntegerRangeMin(UniformQuantizedType dtype,
+                                  int64_t& val_min) {
+  val_min =
+      val_min < dtype.getStorageTypeMin() ? dtype.getStorageTypeMin() : val_min;
+}
+
+void TrimQuantizedIntegerRangeMax(UniformQuantizedType dtype,
+                                  int64_t& val_max) {
+  val_max =
+      val_max > dtype.getStorageTypeMax() ? dtype.getStorageTypeMax() : val_max;
+}
+
+void TrimQuantizedIntegerRange(UniformQuantizedType dtype, int64_t& val_min,
+                               int64_t& val_max) {
+  TrimQuantizedIntegerRangeMin(dtype, val_min);
+  TrimQuantizedIntegerRangeMax(dtype, val_max);
+}
+
 }  // namespace tosa
 }  // namespace mlir
