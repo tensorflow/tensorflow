@@ -15,7 +15,7 @@ numpy ~= 1.22.0; python_version < '3.11'
 numpy ~= 1.23.2; python_version >= '3.11' # Earliest version for Python 3.11
 opt_einsum ~= 3.3.0
 packaging ~= 21.3
-protobuf ~= 3.20.1
+protobuf >= 3.20.3
 six ~= 1.16.0
 termcolor ~= 2.1.1
 typing_extensions ~= 3.10.0.0
