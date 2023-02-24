@@ -201,6 +201,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_graph",
     ]),
