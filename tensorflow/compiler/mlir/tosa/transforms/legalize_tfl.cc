@@ -3212,9 +3212,10 @@ LogicalResult ConvertTFLTanhOp::matchAndRewrite(
   return success();
 }
 
-static LogicalResult LegalizeFloatingPointLeakyAndPrelu(
-    Operation* op, PatternRewriter& rewriter, Value input, Value alpha,
-    ShapedType output_type) {
+static LogicalResult LegalizeFloatingPointPrelu(Operation* op,
+                                                PatternRewriter& rewriter,
+                                                Value input, Value alpha,
+                                                ShapedType output_type) {
   Value const_zero = getTosaConstTensorSingleF32(rewriter, op, 0.0);
 
   auto mul = CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
@@ -3230,23 +3231,14 @@ static LogicalResult LegalizeFloatingPointLeakyAndPrelu(
   return success();
 }
 
-// Support both PReLU and leaky ReLU. The computation of PReLU is very similar
-// to leaky Relu that, having a parameter `alpha` to control a slope for
-// negative values but alpha in PReLU is a learned tensor, so compared with
-// leaky ReLU, an extra element-wise multiply alpha and input is needed for
-// PReLU.
-static LogicalResult LegalizeQuantizedLeakyAndPrelu(Operation* op,
-                                                    PatternRewriter& rewriter,
-                                                    Value input,
-                                                    double alpha_scale,
-                                                    ShapedType output_type) {
+static LogicalResult LegalizeQuantizedPrelu(Operation* op,
+                                            PatternRewriter& rewriter,
+                                            Value input, double alpha_scale,
+                                            ShapedType output_type) {
   auto tfl_prelu_op = dyn_cast<TFL::PReluOp>(op);
-  auto tfl_leaky_relu_op = dyn_cast<TFL::LeakyReluOp>(op);
 
-  if (tfl_prelu_op == nullptr && tfl_leaky_relu_op == nullptr)
-    return rewriter.notifyMatchFailure(op,
-                                       "op is not either PReLU or leaky ReLU");
-
+  if (tfl_prelu_op == nullptr)
+    return rewriter.notifyMatchFailure(op, "op is not PReLU");
   ShapedType rescale_type = output_type.clone(rewriter.getI32Type());
   ShapedType input_type = input.getType().dyn_cast<ShapedType>();
 
@@ -3264,11 +3256,11 @@ static LogicalResult LegalizeQuantizedLeakyAndPrelu(Operation* op,
 
   double scale_identity = input_qtype.getScale() / output_qtype.getScale();
 
-  // Implement PReLU and leaky ReLU as:
+  // Implement PReLU as:
   //   rescaled_in = rescale(in)
   //   rescaled_alpha = rescale(alpha)
   //   rescaled_identity_in = rescale(in, scale_identity)
-  //   slope_in = if (PReLU) ? mul(rescaled_in, rescaled_alpha) : in
+  //   slope_in = mul(rescaled_in, rescaled_alpha)
   //   rescaled_slope_in = rescale(slope_in, scale_alpha)
   //   cond_result = greater_equal(rescaled_in, 0)
   //   output = select(cond_result, rescaled_identity_in, rescaled_slope_in)
@@ -3288,7 +3280,6 @@ static LogicalResult LegalizeQuantizedLeakyAndPrelu(Operation* op,
 
   // Perform an element-wise multiplication on rescaled alpha and input for
   // PReLU.
-  if (tfl_prelu_op) {
     Value alpha = tfl_prelu_op.getAlpha();
     ShapedType alpha_type = alpha.getType().cast<ShapedType>();
     UniformQuantizedType alpha_qtype =
@@ -3303,7 +3294,6 @@ static LogicalResult LegalizeQuantizedLeakyAndPrelu(Operation* op,
     op_rescale_slope_in = buildRescale(
         rewriter, op, output_type, op_mul, scale_alpha,
         /* input_zp = */ 0, output_qtype.getZeroPoint(), true, true);
-  }
 
   Value op_rescale_identity_in = buildRescale(
       rewriter, op, output_type, input, scale_identity,
@@ -3333,13 +3323,93 @@ LogicalResult ConvertTFLPReluOp::matchAndRewrite(
 
   if (auto alpha_qtype =
           alpha_type.getElementType().dyn_cast<UniformQuantizedType>()) {
-    return LegalizeQuantizedLeakyAndPrelu(op, rewriter, tfl_prelu_op.getInput(),
-                                          alpha_qtype.getScale(), output_type);
+    return LegalizeQuantizedPrelu(op, rewriter, tfl_prelu_op.getInput(),
+                                  alpha_qtype.getScale(), output_type);
   }
 
-  return LegalizeFloatingPointLeakyAndPrelu(
-      op, rewriter, tfl_prelu_op.getInput(), tfl_prelu_op.getAlpha(),
-      output_type);
+  return LegalizeFloatingPointPrelu(op, rewriter, tfl_prelu_op.getInput(),
+                                    tfl_prelu_op.getAlpha(), output_type);
+}
+
+static LogicalResult LegalizeQuantizedLeakyRelu(Operation* op,
+                                                PatternRewriter& rewriter,
+                                                Value input, double alpha,
+                                                ShapedType output_type) {
+  auto tfl_leaky_relu_op = dyn_cast<TFL::LeakyReluOp>(op);
+
+  if (tfl_leaky_relu_op == nullptr)
+    return rewriter.notifyMatchFailure(op, "op is not leaky ReLU");
+
+  ShapedType input_type = input.getType().cast<ShapedType>();
+  ShapedType rescale_type = input_type.clone(rewriter.getI32Type());
+
+  UniformQuantizedType input_qtype =
+      input_type.getElementType().cast<UniformQuantizedType>();
+
+  UniformQuantizedType output_qtype =
+      output_type.getElementType().cast<UniformQuantizedType>();
+
+  double scale_alpha = input_qtype.getScale() * alpha / output_qtype.getScale();
+
+  double scale_identity = input_qtype.getScale() / output_qtype.getScale();
+
+  // Implement leaky ReLU as:
+  //   op_rescale_identity_in = rescale(in, scale_identity)  to Int32
+  //   op_rescale_alpha_in = rescale(in, scale_alpha)        to Int32
+  //
+  //   alpha <= 1: result_int32 = max(op_rescale_identity_in,
+  //                                  op_rescale_alpha_in)
+  //   alpha >= 1: result_int32 = min(op_rescale_identity_in,
+  //                                  op_rescale_alpha_in)
+  //
+  //   output = rescaleFromInt32(result_int32) to output_type
+
+  Value op_rescale_alpha_in =
+      buildRescale(rewriter, op, rescale_type, input, scale_alpha,
+                   input_qtype.getZeroPoint(), 0, true, true);
+
+  Value op_rescale_identity_in =
+      buildRescale(rewriter, op, rescale_type, input, scale_identity,
+                   input_qtype.getZeroPoint(), 0, true, true);
+
+  Value result_int32;
+  if (alpha <= 1.0) {
+    auto max_op = CreateOpAndInfer<tosa::MaximumOp>(
+        rewriter, op->getLoc(), rescale_type, op_rescale_identity_in,
+        op_rescale_alpha_in);
+    result_int32 = max_op.getResult();
+  } else {
+    auto min_op = CreateOpAndInfer<tosa::MinimumOp>(
+        rewriter, op->getLoc(), rescale_type, op_rescale_identity_in,
+        op_rescale_alpha_in);
+    result_int32 = min_op.getResult();
+  }
+
+  Value output = buildRescaleFromInt32(rewriter, op, output_type, result_int32,
+                                       1.0, output_qtype.getZeroPoint());
+
+  rewriter.replaceOp(op, {output});
+
+  return success();
+}
+
+static LogicalResult LegalizeFloatingPointLeakyRelu(Operation* op,
+                                                    PatternRewriter& rewriter,
+                                                    Value input, double alpha,
+                                                    ShapedType output_type) {
+  Value const_alpha = getTosaConstTensorSingleF32(rewriter, op, alpha);
+  auto mul = CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
+                                           input, const_alpha, 0);
+  if (alpha <= 1.0) {
+    // leaky_relu( input ) = max(input*alpha, input)
+    CreateReplaceOpAndInfer<tosa::MaximumOp>(rewriter, op, output_type, mul,
+                                             input);
+  } else {
+    // leaky_relu( input ) = min(input*alpha, input)
+    CreateReplaceOpAndInfer<tosa::MinimumOp>(rewriter, op, output_type, mul,
+                                             input);
+  }
+  return success();
 }
 
 LogicalResult ConvertTFLLeakyReluOp::matchAndRewrite(
@@ -3355,25 +3425,23 @@ LogicalResult ConvertTFLLeakyReluOp::matchAndRewrite(
     return rewriter.notifyMatchFailure(op,
                                        "input or output is not a ShapedType");
 
+  bool input_is_qtype =
+      input_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
   bool output_is_qtype =
       output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
+
+  if (input_is_qtype != output_is_qtype) {
+    return rewriter.notifyMatchFailure(
+        op,
+        "ConvertTFLLeakyReluOp: input/output tensor should be all quantized or "
+        "all floating-point.");
+  }
 
   // Implement LeakyRelu as element-wise:
   //   out = x > 0 ? x : alpha * x
   //
-  // In TOSA ops:
-  //
-  //   const_zero = constant(0)
-  //   op1 = mul(x, alpha)
-  //   op2 = greater_equal(x, const_zero)
-  //   out = select(a2, x, a1)
-  //
-  // If alpha can be constrained to 0.0 <= alpha <= 1.0, then
-  // an alternative simpler lowering could be implemented with:
-  //
-  //   max(mul(x, alapha), x)
-  //
-  // But this alternative is not robust unless alpha meets those constraints.
+  // alpha <= 1:  leaky_relu( x ) = max(x*alpha, x)
+  // alpha >= 1:  leaky_relu( x ) = min(x*alpha, x)
 
   FloatAttr tmpAttr = tfl_leakyrelu_op.getAlphaAttr();
   // There is disagreement between the MLIR .td defaults and TF
@@ -3384,12 +3452,14 @@ LogicalResult ConvertTFLLeakyReluOp::matchAndRewrite(
     alpha = tmpAttr.getValueAsDouble();
   }
 
+  Value input = tfl_leakyrelu_op.input();
+
   if (output_is_qtype) {
-    return LegalizeQuantizedLeakyAndPrelu(
-        op, rewriter, tfl_leakyrelu_op.getInput(), alpha, output_type);
+    return LegalizeQuantizedLeakyRelu(op, rewriter, tfl_leakyrelu_op.getInput(),
+                                      alpha, output_type);
   }
 
-  return LegalizeFloatingPointLeakyAndPrelu(
+  return LegalizeFloatingPointLeakyRelu(
       op, rewriter, tfl_leakyrelu_op.getInput(),
       getTosaConstTensorSingleF32(rewriter, op, alpha), output_type);
 }

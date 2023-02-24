@@ -326,11 +326,10 @@ func.func @test_relu6_dynamic(%arg0: tensor<?x21x3xf32>) -> tensor<?x?x?xf32> {
 // -----
 
 // CHECK-LABEL: test_leaky_relu
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<1x1x1xf32>}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<0.707330704> : tensor<1x1x1xf32>}
-// CHECK-DAG: %[[VAR3:.*]] = "tosa.mul"(%arg0, %[[VAR1]]) {shift = 0 : i32}
-// CHECK-DAG: %[[VAR5:.*]] = "tosa.greater_equal"(%arg0, %[[VAR0]])
-// CHECK: %[[VAR6:.*]] = "tosa.select"(%[[VAR5]], %arg0, %[[VAR3]])
+// CHECK: %[[VAR0:.*]] = "tosa.const"() {value = dense<0.707330704> : tensor<1x1x1xf32>}
+// CHECK: %[[VAR1:.*]] = "tosa.mul"(%arg0, %[[VAR0]]) {shift = 0 : i32}
+// CHECK: %[[VAR2:.*]] = "tosa.maximum"(%[[VAR1]], %arg0) : (tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+// CHECK: return %[[VAR2]] : tensor<13x21x3xf32>
 func.func @test_leaky_relu(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
   %0 = "tfl.leaky_relu"(%arg0)  {alpha = 0.707330704 : f32}  : (tensor<13x21x3xf32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
@@ -1949,12 +1948,11 @@ func.func @test_relu6_qu8(%arg0: tensor<13x21x3x!quant.uniform<u8:f32, 0.04>>) -
 // -----
 
 // CHECK-LABEL: test_leaky_relu_qi8
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0> : tensor<1x1xi32>}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.rescale"(%arg0)
-// CHECK-DAG: %[[VAR3:.*]] = "tosa.greater_equal"(%[[VAR1]], %[[VAR0]])
-// CHECK-DAG: %[[VAR4:.*]] = "tosa.rescale"(%arg0)
-// CHECK-DAG: %[[VAR5:.*]] = "tosa.rescale"(%arg0)
-// CHECK: %[[VAR6:.*]] = "tosa.select"(%[[VAR3]], %[[VAR5]], %[[VAR4]])
+// CHECK: %[[VAR0:.*]] = "tosa.rescale"(%arg0) {double_round = true, input_zp = -1 : i32, multiplier = [2037371008 : i32], output_zp = 0 : i32, per_channel = false, scale32 = true, shift = [31 : i32]}
+// CHECK: %[[VAR1:.*]] = "tosa.rescale"(%arg0) {double_round = true, input_zp = -1 : i32, multiplier = [1073741824 : i32], output_zp = 0 : i32, per_channel = false, scale32 = true, shift = [30 : i32]}
+// CHECK: %[[VAR2:.*]] = "tosa.maximum"(%[[VAR1]], %[[VAR0]])
+// CHECK: %[[VAR3:.*]] = "tosa.rescale"(%[[VAR2]]) {double_round = true, input_zp = 0 : i32, multiplier = [1073741824 : i32], output_zp = -1 : i32, per_channel = false, scale32 = true, shift = [30 : i32]} 
+// CHECK: return %[[VAR3]] : tensor<14x19x!quant.uniform<i8:f32, 0.015519863925874233:-1>>
 func.func @test_leaky_relu_qi8(%arg0: tensor<14x19x!quant.uniform<i8:f32, 0.015519863925874233:-1>>) -> tensor<*x!quant.uniform<i8:f32, 0.015519863925874233:-1>> {
   %0 = "tfl.leaky_relu"(%arg0) {alpha = 0.948724806 : f32} : (tensor<14x19x!quant.uniform<i8:f32, 0.015519863925874233:-1>>) -> tensor<*x!quant.uniform<i8:f32, 0.015519863925874233:-1>>
   func.return %0 : tensor<*x!quant.uniform<i8:f32, 0.015519863925874233:-1>>
