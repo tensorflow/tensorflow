@@ -2733,7 +2733,7 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   (*nodes_to_delete)[matched.contraction] = true;
   (*invalidated_nodes)[matched.activation] = true;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddFusedContractionNode(
