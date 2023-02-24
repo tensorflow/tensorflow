@@ -5,6 +5,7 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":friends",
         "//tensorflow:__pkg__",
@@ -159,6 +160,8 @@ tf_native_cc_binary(
         "tools/tflite_op_coverage_spec_getters_gen.cc",
     ],
     deps = [
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:regexp",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TableGen",

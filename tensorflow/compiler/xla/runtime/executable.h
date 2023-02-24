@@ -42,7 +42,21 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
-class ExecutionContext;
+struct ExecutionContext;
+
+struct DestroyExecutionContext {
+  void operator()(ExecutionContext* ctx);
+};
+
+// If executable has async results, ExecutionReference keeps that
+// execution context alive. For sync executables `Execute` always returns
+// ExecutionReference with nullptr.
+class ExecutionReference
+    : public std::unique_ptr<ExecutionContext, DestroyExecutionContext> {
+  // Bring std::unique_ptr constructors in scope.
+  using std::unique_ptr<ExecutionContext, DestroyExecutionContext>::unique_ptr;
+};
+
 class FunctionRef;
 class JitCompiler;
 
@@ -112,13 +126,13 @@ class Executable {
   //
   // Returns exported function results via the user-provided results converter.
   // If execution completed in the error state, returns error for all results.
-  absl::Status Execute(unsigned ordinal, ArgumentsRef arguments,
-                       const ResultConverter& results, const ExecuteOpts& opts,
-                       bool verify_arguments = true) const;
+  absl::StatusOr<ExecutionReference> Execute(
+      unsigned ordinal, ArgumentsRef arguments, const ResultConverter& results,
+      const ExecuteOpts& opts, bool verify_arguments = true) const;
 
-  absl::Status Execute(ArgumentsRef arguments, const ResultConverter& results,
-                       const ExecuteOpts& opts,
-                       bool verify_arguments = true) const {
+  absl::StatusOr<ExecutionReference> Execute(
+      ArgumentsRef arguments, const ResultConverter& results,
+      const ExecuteOpts& opts, bool verify_arguments = true) const {
     return Execute(0, arguments, results, opts, verify_arguments);
   }
 
@@ -126,8 +140,8 @@ class Executable {
   //
   // It is the caller responsibility to handle the compiled function results
   // stored in the call frame.
-  void Execute(unsigned ordinal, CallFrame& call_frame,
-               const ExecuteOpts& opts) const;
+  ExecutionReference Execute(unsigned ordinal, CallFrame& call_frame,
+                             const ExecuteOpts& opts) const;
 
   void Execute(CallFrame& call_frame, const ExecuteOpts& opts) const {
     Execute(0, call_frame, opts);
@@ -285,7 +299,7 @@ class Executable {
                             void** args, void** attrs, void** rets);
 
  private:
-  friend class JitCompiler;  // see `mlir/transforms/runtime/jit_compiler.h`
+  friend class JitCompiler;  // see `mlir/runtime/transforms/jit_compiler.h`
 
   // Executable exports multiple functions available for users to call into. At
   // run time they are referenced by their ordinal, so that we don't depend on
@@ -293,6 +307,16 @@ class Executable {
   // debugging. Function ordinal is defined by its index in the `functions_`
   // vector.
   struct Function {
+    Function(std::string_view name, ExecutionEngine::ExportedFunctionPtr fptr,
+             FunctionType signature, FunctionType runtime_signature,
+             ArgumentsMemoryLayout arguments_memory_layout,
+             ResultsMemoryLayout results_memory_layout)
+        : name(name),
+          fptr(std::move(fptr)),
+          signature(std::move(signature)),
+          runtime_signature(std::move(runtime_signature)),
+          arguments_memory_layout(std::move(arguments_memory_layout)),
+          results_memory_layout(std::move(results_memory_layout)) {}
     Function(const Function&) = delete;
     Function(Function&&) = default;
 
@@ -374,10 +398,9 @@ class FunctionRef {
  public:
   FunctionRef(const Executable* executable, unsigned ordinal);
 
-  absl::Status operator()(ArgumentsRef arguments,
-                          const ResultConverter& results,
-                          const Executable::ExecuteOpts& opts,
-                          bool verify_arguments = true) const;
+  absl::StatusOr<ExecutionReference> operator()(
+      ArgumentsRef arguments, const ResultConverter& results,
+      const Executable::ExecuteOpts& opts, bool verify_arguments = true) const;
 
  private:
   const Executable* executable_;

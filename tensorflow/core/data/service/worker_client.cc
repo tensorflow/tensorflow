@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/worker_client.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -28,13 +29,13 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/service/worker_impl.h"
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -57,6 +58,7 @@ CreateDataServiceWorkerClient(const std::string& address,
   auto client = std::make_unique<DataServiceWorkerClient>(address, protocol,
                                                           transfer_protocol);
   TF_RETURN_IF_ERROR(client->Initialize());
+  metrics::RecordTFDataServiceDataTransferProtocolUsed(transfer_protocol);
   return client;
 }
 
@@ -108,12 +110,20 @@ class GrpcDataTransferClient : public DataTransferClient {
       }
     }
     grpc::ClientContext ctx;
+    gtl::Cleanup<std::function<void()>> cleanup;
     {
       mutex_lock l(mu_);
       active_contexts_.insert(&ctx);
+      cleanup = gtl::MakeCleanup([this, &ctx] {
+        mutex_lock l(mu_);
+        active_contexts_.erase(&ctx);
+      });
     }
     GetElementResponse resp;
     grpc::Status s = stub_->GetElement(&ctx, req, &resp);
+    if (!s.ok()) {
+      return grpc_util::WrapError("Failed to get element", s);
+    }
     result.end_of_sequence = resp.end_of_sequence();
     result.skip = resp.skip_task();
     switch (resp.element_case()) {
@@ -133,13 +143,6 @@ class GrpcDataTransferClient : public DataTransferClient {
         break;
       case GetElementResponse::ELEMENT_NOT_SET:
         break;
-    }
-    {
-      mutex_lock l(mu_);
-      active_contexts_.erase(&ctx);
-    }
-    if (!s.ok()) {
-      return grpc_util::WrapError("Failed to get element", s);
     }
     return OkStatus();
   }

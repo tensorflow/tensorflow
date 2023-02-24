@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/fingerprinting.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
+#include <unordered_map>
 
 #include "absl/container/btree_map.h"
 #include "absl/strings/strip.h"
@@ -36,12 +38,19 @@ limitations under the License.
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
+#include "tensorflow/tsl/lib/strings/proto_serialization.h"
 
 namespace tensorflow::saved_model::fingerprinting {
 
 // Version of the code that produced the fingerprint.
-const int kFingerprintProducer = 0;
+const int kFingerprintProducer = 1;
 namespace {
+
+uint64 HashSavedModel(const SavedModel& saved_model) {
+  std::string saved_model_string;
+  SerializeToStringDeterministic(saved_model, &saved_model_string);
+  return tensorflow::Fingerprint64(saved_model_string);
+}
 
 uint64 RegularizeAndHashSignatureDefs(
     const google::protobuf::Map<std::string, SignatureDef>& signature_def_map) {
@@ -113,15 +122,14 @@ uint64 HashCheckpointIndexFile(absl::string_view model_dir) {
 
 }  // namespace
 
-FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph,
+FingerprintDef CreateFingerprintDef(const SavedModel& saved_model,
                                     absl::string_view export_dir) {
   // Create a copy of `metagraph` which will be used and mutated for fingerprint
   // computation.
-  MetaGraphDef metagraph_copy = metagraph;
+  MetaGraphDef metagraph_copy = saved_model.meta_graphs(0);
   FingerprintDef fingerprint_def;
   // Set fingerprint field #1.
-  fingerprint_def.set_graph_def_checksum(
-      graph_regularization::ComputeHash(metagraph_copy.graph_def()));
+  fingerprint_def.set_saved_model_checksum(HashSavedModel(saved_model));
   // Set fingerprint field #2.
   graph_regularization::SimpleDelete(*metagraph_copy.mutable_graph_def());
   fingerprint_def.set_graph_def_program_hash(
@@ -141,6 +149,37 @@ FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph,
   version->set_producer(kFingerprintProducer);
 
   return fingerprint_def;
+}
+
+StatusOr<FingerprintDef> ReadSavedModelFingerprint(
+    absl::string_view export_dir) {
+  const string fingerprint_pb_path =
+      io::JoinPath(export_dir, kFingerprintFilenamePb);
+  Status found_pb = Env::Default()->FileExists(fingerprint_pb_path);
+  if (found_pb.ok()) {
+    FingerprintDef fingerprint_proto;
+    Status result = ReadBinaryProto(Env::Default(), fingerprint_pb_path,
+                                    &fingerprint_proto);
+    if (result.ok()) {
+      return fingerprint_proto;
+    }
+    return result;
+  }
+  return found_pb;
+}
+
+std::unordered_map<std::string, uint64_t> MakeFingerprintMap(
+    const FingerprintDef& fingerprint) {
+  std::unordered_map<std::string, uint64_t> fingerprint_map;
+  fingerprint_map["saved_model_checksum"] = fingerprint.saved_model_checksum();
+  fingerprint_map["graph_def_program_hash"] =
+      fingerprint.graph_def_program_hash();
+  fingerprint_map["signature_def_hash"] = fingerprint.signature_def_hash();
+  fingerprint_map["saved_object_graph_hash"] =
+      fingerprint.saved_object_graph_hash();
+  fingerprint_map["checkpoint_hash"] = fingerprint.checkpoint_hash();
+  fingerprint_map["version"] = fingerprint.version().producer();
+  return fingerprint_map;
 }
 
 }  // namespace tensorflow::saved_model::fingerprinting

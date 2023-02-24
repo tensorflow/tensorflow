@@ -326,6 +326,12 @@ std::string VectorString(const std::initializer_list<T>& c) {
   return VectorString<std::initializer_list<T>>(c);
 }
 
+// Returns a string which can losslessly round trip to a float8 E5M2.
+std::string RoundTripFpToString(tsl::float8_e5m2 value);
+
+// Returns a string which can losslessly round trip to a float8 E4M3.
+std::string RoundTripFpToString(tsl::float8_e4m3fn value);
+
 // Returns a string which can losslessly round trip to a bfloat.
 std::string RoundTripFpToString(tsl::bfloat16 value);
 
@@ -475,6 +481,8 @@ constexpr T IPow(T base, int exponent) {
   return result;
 }
 
+// UnsignedIntegerTypeForSize<N> gets an unsigned integer with the given size in
+// bytes.
 template <size_t>
 struct UnsignedIntegerTypeForSize;
 
@@ -498,24 +506,27 @@ struct UnsignedIntegerTypeForSize<8> {
   using type = uint64_t;
 };
 
-template <size_t N>
-struct SignedIntegerTypeForSize {
-  using type = std::make_signed_t<typename UnsignedIntegerTypeForSize<N>::type>;
-};
+template <size_t kBytes>
+using UnsignedIntegerTypeForSizeType =
+    typename UnsignedIntegerTypeForSize<kBytes>::type;
+
+template <size_t kBytes>
+using SignedIntegerTypeForSizeType =
+    std::make_signed_t<UnsignedIntegerTypeForSizeType<kBytes>>;
 
 // Returns the signed magnitude of T.
 template <typename T>
-typename SignedIntegerTypeForSize<sizeof(T)>::type ToSignMagnitude(T input) {
-  auto as_bits =
-      absl::bit_cast<typename SignedIntegerTypeForSize<sizeof(T)>::type>(input);
-  auto sign_mask =
-      absl::bit_cast<typename UnsignedIntegerTypeForSize<sizeof(T)>::type>(
-          tsl::MathUtil::Sign(as_bits));
+SignedIntegerTypeForSizeType<sizeof(T)> ToSignMagnitude(T input) {
+  auto as_bits = absl::bit_cast<SignedIntegerTypeForSizeType<sizeof(T)>>(input);
+  auto sign_mask = absl::bit_cast<UnsignedIntegerTypeForSizeType<sizeof(T)>>(
+      tsl::MathUtil::Sign(as_bits));
   return as_bits ^ (sign_mask >> 1);
 }
 
 template <typename T>
 constexpr int NanPayloadBits() {
+  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
+                "E4M3FN does not have payload");
   // Floating point types with NaNs have payloads.
   if (!std::numeric_limits<T>::has_quiet_NaN) {
     return 0;
@@ -525,14 +536,18 @@ constexpr int NanPayloadBits() {
 
 template <typename T>
 constexpr uint64_t QuietNanWithoutPayload() {
+  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
+                "E4M3FN does not have payload");
   if (const int bits = NanPayloadBits<T>()) {
-    return uint64_t{1} << (bits - 1);
+    return uint64_t{1} << (bits > 0 ? (bits - 1) : 0);
   }
   return 0;
 }
 
 template <typename T>
 constexpr uint64_t NanPayloadBitMask() {
+  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
+                "E4M3FN does not have payload");
   if (const int bits = NanPayloadBits<T>()) {
     return LsbMask<uint64_t>(bits);
   }
@@ -541,7 +556,9 @@ constexpr uint64_t NanPayloadBitMask() {
 
 template <typename T>
 T NanWithSignAndPayload(bool sign, uint64_t nan_payload) {
-  using RepT = typename UnsignedIntegerTypeForSize<sizeof(T)>::type;
+  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
+                "E4M3FN does not have payload");
+  using RepT = UnsignedIntegerTypeForSizeType<sizeof(T)>;
   const T val = std::numeric_limits<T>::quiet_NaN();
   auto rep = absl::bit_cast<RepT>(val);
   rep &= LsbMask<RepT>(std::numeric_limits<RepT>::digits - 1);
@@ -659,6 +676,7 @@ class HloInstruction;
 // A predicate over HLO instruction.
 using HloPredicate = std::function<bool(const HloInstruction*)>;
 
+using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;
 
 }  // namespace xla

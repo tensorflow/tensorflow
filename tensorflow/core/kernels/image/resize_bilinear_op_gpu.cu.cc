@@ -252,7 +252,7 @@ __global__ void ResizeBilinearDeterministicGradKernel(
         max(0, __float2int_ru(
                    (out_x_center - 1 + offset) * inverse_width_scale - offset));
     const float out_x_start = (in_x_start + offset) * width_scale - offset;
-    T acc = 0;
+    T acc = T(0);
     // For clarity, prior to C++17, while loops are preferable to for loops here
     float out_y = out_y_start;
     int in_y = in_y_start;
@@ -515,7 +515,7 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC);
 #define DEFINE_GRAD_GPU_SPEC(T) \
   template struct ResizeBilinearGrad<GPUDevice, T>;
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DEFINE_GRAD_GPU_SPEC);
+TF_CALL_GPU_NUMBER_TYPES(DEFINE_GRAD_GPU_SPEC);
 
 #undef DEFINE_GPU_SPEC
 #undef DEFINE_GRAD_GPU_SPEC

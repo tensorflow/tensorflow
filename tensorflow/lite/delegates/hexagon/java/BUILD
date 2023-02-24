@@ -3,6 +3,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary", "tflite_jni_linkopt
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )

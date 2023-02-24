@@ -90,7 +90,7 @@ mlir::LogicalResult CreateSendRecvOpsToTransferProgramKey(
     mlir::tf_device::LaunchOp compile_op_launch, int* num_send_recv,
     mlir::Value* program_key_output) {
   mlir::OpBuilder builder(module.getContext());
-  mlir::Value compilation_key = *compile_op.program().begin();
+  mlir::Value compilation_key = *compile_op.getProgram().begin();
   absl::Span<const std::string> local_devices = mesh.local_devices();
 
   // Create tensor name mapping for each send/recv pair.
@@ -147,7 +147,7 @@ mlir::LogicalResult CreateSendRecvOpsToTransferProgramKey(
     recv->setAttr("device", builder.getStringAttr(local_devices[i]));
 
     fn_builder.create<mlir::func::ReturnOp>(recv_select_fn.getLoc(),
-                                            recv.tensor());
+                                            recv.getTensor());
 
     compilation_key_functions.emplace_back(recv_select_fn);
   }
@@ -230,7 +230,7 @@ mlir::LogicalResult HandleCompilationOps(
     if (!host_function) {
       host_function = parent_function;
       auto mesh_it = llvm::find_if(computation_map, [&](auto& it) {
-        return it.second.f() == host_function.getSymName();
+        return it.second.getF() == host_function.getSymName();
       });
       if (mesh_it == computation_map.end())
         return compilation_key.emitOpError(
@@ -293,7 +293,7 @@ mlir::LogicalResult HandleCompilationOps(
         GetUniqueControlflowFnName("compilation_host_else", builder));
 
     // Create empty else branch region.
-    auto& host_else_branch = if_host.else_branch();
+    auto& host_else_branch = if_host.getElseBranch();
     host_else_branch.push_back(new mlir::Block);
     builder.setInsertionPointToEnd(&host_else_branch.front());
     builder.create<mlir::TF::YieldOp>(
@@ -302,7 +302,7 @@ mlir::LogicalResult HandleCompilationOps(
 
     // Create then branch region with logic to compile TPU program and send
     // program key to all TPU devices.
-    auto& host_then_branch = if_host.then_branch();
+    auto& host_then_branch = if_host.getThenBranch();
     host_then_branch.push_back(new mlir::Block);
     builder.setInsertionPointToEnd(&host_then_branch.front());
     auto yield = builder.create<mlir::TF::YieldOp>(

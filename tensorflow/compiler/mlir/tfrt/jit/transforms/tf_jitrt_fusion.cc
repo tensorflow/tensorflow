@@ -59,10 +59,11 @@ static bool IsBroadcast(Operation *op) {
   if (!isa<linalg::YieldOp>(generic.getBody()->front())) return false;
 
   // Operation must have single input and output.
-  if (generic.getNumInputs() != 1 || generic.getNumOutputs() != 1) return false;
+  if (generic.getNumDpsInputs() != 1 || generic.getNumDpsInits() != 1)
+    return false;
 
   // Check the input operand indexing map.
-  OpOperand *operand = generic.getInputOperand(0);
+  OpOperand *operand = generic.getDpsInputOperand(0);
   AffineMap indexing_map = generic.getMatchingIndexingMap(operand);
 
   if (!indexing_map.isProjectedPermutation() ||
@@ -148,8 +149,7 @@ struct FusionPass : public impl::FusionBase<FusionPass> {
     // Use TopDownTraversal for compile time reasons.
     mlir::GreedyRewriteConfig grc;
     grc.useTopDownTraversal = true;
-    (void)applyPatternsAndFoldGreedily(op->getRegions(), std::move(patterns),
-                                       grc);
+    (void)applyPatternsAndFoldGreedily(op, std::move(patterns), grc);
   }
 };
 

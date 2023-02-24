@@ -7,6 +7,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor/tpu:__subpackages__",
@@ -324,7 +325,6 @@ cc_library(
     hdrs = ["tpu_embedding_software_deduplication_rewrite_pass.h"],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",

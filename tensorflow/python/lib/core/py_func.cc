@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/python/lib/core/py_func.h"
-
-#include <Python.h>
-
 // clang-format: off
 // Must be included first.
-#include "tensorflow/python/lib/core/numpy.h"
+#include "tensorflow/python/lib/core/py_func.h"
+
+#include "tensorflow/tsl/python/lib/core/numpy.h"
 // clang-format: on
+
+#include <Python.h>
 
 #include <array>
 

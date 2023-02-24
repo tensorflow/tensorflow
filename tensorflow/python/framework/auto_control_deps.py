@@ -102,6 +102,12 @@ LEGACY_RANDOM_OPS = frozenset((
 MUST_RUN_ORDER_INSENSITIVE_STATEFUL_OPS = frozenset((
     "InfeedEnqueue",
     "InfeedEnqueueTuple",
+    "EnqueueTPUEmbeddingSparseBatch",
+    "EnqueueTPUEmbeddingIntegerBatch",
+    "EnqueueTPUEmbeddingSparseTensorBatch",
+    "EnqueueTPUEmbeddingRaggedTensorBatch",
+    "EnqueueTPUEmbeddingArbitraryTensorBatch",
+    "DynamicEnqueueTPUEmbeddingArbitraryTensorBatch",
 ))
 
 # These ops are order-insensitive ans should in theory run, but at the moment
@@ -116,11 +122,6 @@ SKIPPED_ORDER_INSENSITIVE_STATEFUL_OPS = frozenset((
     "CudnnRNNV3",
     "CudnnRNNBackpropV2",
     "CudnnRNNBackpropV3",
-    "EnqueueTPUEmbeddingSparseBatch",
-    "EnqueueTPUEmbeddingIntegerBatch",
-    "EnqueueTPUEmbeddingSparseTensorBatch",
-    "EnqueueTPUEmbeddingRaggedTensorBatch",
-    "EnqueueTPUEmbeddingArbitraryTensorBatch",
     "RestoreV2",
     "SaveV2",
 ))
@@ -197,13 +198,9 @@ class AutomaticControlDependencies(object):
   NOT THREAD SAFE
   """
 
-  def __init__(self,
-               record_initial_resource_uses=False,
-               record_uses_of_resource_ids=None):
+  def __init__(self):
     self._returned_tensors = object_identity.ObjectIdentitySet()
     self.ops_which_must_run = set()
-    self.record_initial_resource_uses = record_initial_resource_uses
-    self.record_uses_of_resource_ids = record_uses_of_resource_ids
     self._independent_ops = []
 
   def mark_as_return(self, tensor):
@@ -379,8 +376,6 @@ class AutomaticControlDependencies(object):
     merge_for_resource = {}
 
     new_operations = self._graph.get_operations()[self._n_operations:]
-    first_use_for_res = {}
-    resources_by_op = {}
 
     # Ensures that uses of resource tensors get serialized properly and all
     # execute. This is done by keeping a map from resource tensor to the last op
@@ -485,38 +480,12 @@ class AutomaticControlDependencies(object):
         # Ensure merges happen after the closing of a cond block
         if input_id in merge_for_resource:
           merge_for_resource[input_id]._add_control_input(op)
-
-        do_record = (
-            self.record_initial_resource_uses and
-            input_id not in first_use_for_res)
-
         if is_read:
-          reads_list = reads_since_last_write_to_resource[input_id]
-          reads_list.append(op)
-
-          if do_record:
-            # Note: this will track the entire list that
-            # reads_since_last_write_to_resource maintains. Updates to it will
-            # and should be tracked, until the first write is encountered. At
-            # that point, reads_since_last_write_to_resource will contain a new
-            # empty list. This logic relies on that behavior.
-            first_use_for_res[input_id] = reads_list
-
+          reads_since_last_write_to_resource[input_id].append(op)
         else:
           control_inputs.update(reads_since_last_write_to_resource[input_id])
           reads_since_last_write_to_resource[input_id] = []
           last_write_to_resource[input_id] = op
-
-          if do_record:
-            first_use_for_res[input_id] = [op]
-
-      if self.record_initial_resource_uses and op_is_stateful(op):
-        if resource_inputs:
-          resources_by_op[op] = tuple(resource_inputs)
-        else:
-          if None not in first_use_for_res:
-            first_use_for_res[None] = [op]
-          resources_by_op[op] = (None,)
 
       if (op_is_stateful(op) and not resource_inputs
           and op._control_flow_context is None):
@@ -546,30 +515,9 @@ class AutomaticControlDependencies(object):
 
       op._add_control_inputs(control_inputs)
 
-    # Record the ops which first use resources touched by "ops which must run".
-    if self.record_initial_resource_uses:
-      first_uses_by_output_ops = {}
-      for op in ops_which_must_run:
-        if op not in resources_by_op:
-          # This may happen with Merge/Switch nodes which are special cased
-          # above.
-          continue
-        for r in resources_by_op[op]:
-          if op not in first_uses_by_output_ops:
-            first_uses_by_output_ops[op] = set()
-          first_uses_by_output_ops[op].update(first_use_for_res[r])
-      # For each "op which must run", set a private attr indicating the ops that
-      # used the same resources it did.
-      for op in first_uses_by_output_ops:
-        others = [
-            other.name.encode() for other in first_uses_by_output_ops[op]
-        ]
-        l = attr_value_pb2.AttrValue.ListValue(s=others)
-        # TODO(mdan): Is there a way which doesn't use anonymous attrs?
-        op._set_attr("_res_first_used_by", attr_value_pb2.AttrValue(list=l))
-
     # Ensure all ops which must run do run
     self.ops_which_must_run.update(ops_which_must_run)
+
     control_output_op = None
     for idx, r in enumerate(
         nest.flatten(list(self._returned_tensors), expand_composites=True)):
@@ -578,13 +526,11 @@ class AutomaticControlDependencies(object):
         if r.graph.building_function:
           # There may be many stateful ops in the graph. Adding them as
           # control inputs to each function output could create excessive
-          # control edges in the graph. Thus we create an intermediate No-op
-          # to chain the control dependencies between stateful ops and
-          # function outputs.
+          # control edges in the graph. Thus we create an intermediate No-op to
+          # chain the control dependencies between stateful ops and function
+          # outputs.
           if idx == 0:
             control_output_op = control_flow_ops.no_op()
-            control_output_op._set_attr("_acd_function_control_output",
-                                        attr_value_pb2.AttrValue(b=True))
             control_output_op._add_control_inputs(self.ops_which_must_run)
           updated_ops_which_must_run = [control_output_op]
         else:

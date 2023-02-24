@@ -2095,7 +2095,7 @@ TEST(IntegerLstmOpTest, Cifg_NoPeephole_Projection_LayerNorm_8x8_8) {
   }
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(LstmOpTest, InvalidTypes) {
   const int n_batch = 1;
   const int n_input = 2;

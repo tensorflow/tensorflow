@@ -32,7 +32,9 @@ namespace xla {
 // hlo proto file), or parsed from a hlo textual IR string.
 class HloRunnerPjRt : public HloRunnerInterface {
  public:
-  explicit HloRunnerPjRt(std::unique_ptr<PjRtClient> pjrt_client);
+  explicit HloRunnerPjRt(
+      std::unique_ptr<PjRtClient> pjrt_client,
+      DeviceShapeRepresentationFn device_shape_representation_fn);
 
   ~HloRunnerPjRt() override;
 
@@ -86,16 +88,34 @@ class HloRunnerPjRt : public HloRunnerInterface {
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) override;
 
+  StatusOr<std::vector<Literal>> ExecuteReplicated(
+      Executable* executable,
+      const HloRunnerInterface::ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment, ExecutionProfile* profile = nullptr);
+
   absl::string_view Name() const override;
 
  private:
   std::unique_ptr<PjRtClient> pjrt_client_;
+  DeviceShapeRepresentationFn device_shape_representation_fn_;
 
   std::vector<PjRtBuffer*> BufferVecToPointerVec(
       const std::vector<std::unique_ptr<PjRtBuffer>>& buffer);
 
+  std::vector<std::vector<PjRtBuffer*>> BufferMatToPointerMat(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>& buffer);
+
   StatusOr<CompileOptions> GenerateDefaultCompileOptions(HloModule* module,
                                                          bool run_hlo_passes);
+
+  StatusOr<std::vector<Literal>> ExecuteReplicatedImpl(
+      std::function<StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>(
+          absl::Span<const std::vector<PjRtBuffer*>>&)>
+          execution_helper,
+      std::function<int64_t(int64_t)> argument_count_provider,
+      std::function<const Literal*(int64_t, int64_t)> argument_provider,
+      const ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment);
 };
 
 }  // namespace xla

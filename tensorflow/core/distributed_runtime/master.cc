@@ -463,6 +463,9 @@ void Master::CreateSession(const CreateSessionRequest* req,
     SessionOptions options;
     options.target = req->target();
     options.config = req->config();
+    // Disable optimizations for static graph to allow calls to Session::Extend.
+    options.config.mutable_experimental()
+        ->set_disable_optimize_for_static_graph(true);
 
     std::vector<string> filtered_worker_list;
     DeviceFinder::GetRemoteWorkers(req->config().device_filters(), env_,

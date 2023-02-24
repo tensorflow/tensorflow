@@ -8,6 +8,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "VERSION",
     "VERSION_MAJOR",
+    "check_deps",
     "if_google",
     "if_oss",
     "if_xla_available",
@@ -15,10 +16,17 @@ load(
     "tf_custom_op_library_additional_deps_impl",
     "tf_monitoring_python_deps",
     "tf_native_cc_binary",
+    "tsl_async_value_deps",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_binary_deps",
+)
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+    "tf_additional_plugin_deps",
+    "tf_additional_profiler_deps",
 )
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -30,14 +38,10 @@ load(
     "ADDITIONAL_API_INDEXABLE_SETTINGS",
     "tf_cc_shared_library",
 )
-load(
-    "//tensorflow/core/platform:build_config_root.bzl",
-    "if_static",
-    "tf_additional_plugin_deps",
-    "tf_additional_profiler_deps",
-)
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 # copybara:uncomment_begin
+# load("//devtools/copybara/rules:copybara.bzl", "copybara_config_test")
 # load("//tools/build_defs/license:license.bzl", "license")
 # copybara:uncomment_end
 
@@ -103,6 +107,7 @@ PACKAGE_STATIC_DEPS = [
     "@mkl_dnn_acl_compatible//:__subpackages__",
     "@mkl_dnn_v1//:__subpackages__",
     "@nccl_archive//:__subpackages__",
+    "@nvtx_archive//:__subpackages__",
     "@org_sqlite//:__subpackages__",
     "@platforms//:__subpackages__",
     "@snappy//:__subpackages__",
@@ -119,7 +124,8 @@ PACKAGE_STATIC_DEPS = [
     "@clog//:__subpackages__",
     "@flatbuffers//:__subpackages__",
     "@nccl_archive//:__subpackages__",
-]
+    "@triton//:__subpackages__",
+] + tsl_async_value_deps()
 
 package(
     # copybara:uncomment default_applicable_licenses = [":license"],
@@ -130,6 +136,49 @@ package(
 # license(
 #     name = "license",
 #     package_name = "tensorflow",
+# )
+#
+# filegroup(
+#     name = "copybara_library",
+#     srcs = glob(
+#         [
+#             "*.bara.sky",
+#             "*.dic",
+#             "*.ftrcp",
+#         ],
+#         exclude = [
+#             "copy.bara.sky",
+#         ],
+#     ),
+#     visibility = ["//visibility:public"],
+# )
+#
+# filegroup(
+#     name = "copybara_config",
+#     srcs = ["copy.bara.sky"],
+#     data = [
+#         ":copybara_library",
+#         "//learning/brain/testing/copybara:all_bara_sky",
+#         "//third_party/tsl:copybara_library",
+#         "//third_party/xla:copybara_library",
+#     ],
+#     visibility = ["//visibility:public"],
+# )
+#
+# copybara_config_test(
+#     name = "copybara_config_test",
+#     config = "copy.bara.sky",
+#     tags = [
+#         "noasan",
+#         "nodfsan",
+#         "nogotsan",
+#         "nogpu",
+#         "nomsan",
+#         "nosan",
+#         "notsan",
+#         "noubsan",
+#     ],
+#     deps = [":copybara_config"],
 # )
 # copybara:uncomment_end
 
@@ -937,23 +986,21 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# copybara:uncomment_begin(configurable API loading)
-# bool_flag(
-#     name = "enable_api_indexable",
-#     build_setting_default = False,
-# )
-#
-# config_setting(
-#     name = "api_indexable_flag",
-#     flag_values = {":enable_api_indexable": "True"},
-# )
-#
-# selects.config_setting_group(
-#     name = "api_indexable",
-#     match_any = [":api_indexable_flag"] + ADDITIONAL_API_INDEXABLE_SETTINGS,
-#     visibility = ["//visibility:public"],
-# )
-# copybara:uncomment_end
+bool_flag(
+    name = "enable_api_indexable",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "api_indexable_flag",
+    flag_values = {":enable_api_indexable": "True"},
+)
+
+selects.config_setting_group(
+    name = "api_indexable",
+    match_any = [":api_indexable_flag"] + ADDITIONAL_API_INDEXABLE_SETTINGS,
+    visibility = ["//visibility:public"],
+)
 
 # DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
 # Instead, please use public APIs or public build rules TF provides.
@@ -968,6 +1015,8 @@ package_group(
         "//learning/brain/tfrt/...",
         "//learning/lib/ami/simple_ml/...",
         "//learning/pathways/...",
+        "//learning/serving/contrib/tfrt/mlir/canonical_ops/...",
+        "//perftools/accelerators/xprof/integration_tests/...",
         "//smartass/brain/configure/...",
         "//tensorflow/...",
         "//tensorflow_decision_forests/...",
@@ -986,12 +1035,12 @@ package_group(name = "ndarray_tensor_allow_list")
 # Packages that use private types symbols, until they are exported.
 # TODO(b/154650521) Remove.
 # If this is modified, then copy.bara.sky must also be modified.
-package_group(name = "types_whitelist")
+package_group(name = "types_allowlist")
 
 # Packages that use StructuredTensors.
 # TODO(b/159007891) Remove this package once StructuredTensor is exported.
 # LINT.IfChange
-package_group(name = "structured_tensor_whitelist")
+package_group(name = "structured_tensor_allowlist")
 # LINT.ThenChange(copy.bara.sky)
 
 filegroup(
@@ -1010,6 +1059,7 @@ bzl_library(
     deps = [
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
+        "//tensorflow/tsl:tsl_bzl",
         "//tensorflow/tsl/platform/default:cuda_build_defs_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//third_party/llvm_openmp:openmp_bzl",
@@ -1030,6 +1080,7 @@ bzl_library(
     deps = [":tensorflow_bzl"],
 )
 
+# TODO(jakeharmon): Remove these in favor of tsl:grpc
 # copybara:comment_begin(oss-only)
 cc_library(
     name = "grpc",
@@ -1098,28 +1149,38 @@ tf_cc_shared_library(
     linkstatic = 1,
     per_os_targets = True,
     roots = [
-        "//tensorflow/c/experimental/filesystem:filesystem_interface",
-        "//tensorflow/c/experimental/stream_executor:stream_executor",
-        "//tensorflow/c:env",
-        "//tensorflow/c:kernels",
-        "//tensorflow/c:kernels_experimental",
-        "//tensorflow/c:logging",
-        "//tensorflow/c:ops",
-        "//tensorflow/cc/saved_model:fingerprinting_impl",
-        "//tensorflow/cc/saved_model:loader_lite_impl",
-        "//tensorflow/cc/saved_model:metrics_impl",
-        "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
-        "//tensorflow/core/common_runtime:core_cpu_impl",
-        "//tensorflow/core:framework_internal_impl",
-        "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
-        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
-        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
-        "//tensorflow/core:lib_internal_impl",
-        "//tensorflow/core/profiler:profiler_impl",
-        "//tensorflow/core/util:determinism",  # Must be linked and exported to libtensorflow_framework.so.
-        "//tensorflow/lite/kernels/shim:tf_kernel_shim",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
-    ] + tf_additional_binary_deps(),
+                "//tensorflow/c/experimental/filesystem:filesystem_interface",
+                "//tensorflow/c/experimental/stream_executor:stream_executor",
+                "//tensorflow/c:env",
+                "//tensorflow/c:kernels",
+                "//tensorflow/c:kernels_experimental",
+                "//tensorflow/c:logging",
+                "//tensorflow/c:ops",
+                "//tensorflow/cc/saved_model:fingerprinting_impl",
+                "//tensorflow/cc/saved_model:loader_lite_impl",
+                "//tensorflow/cc/saved_model:metrics_impl",
+                "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
+                "//tensorflow/core/common_runtime:core_cpu_impl",
+                "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
+                "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
+                "//tensorflow/core:framework_internal_impl",
+                "//tensorflow/core/framework:tensor",
+                "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
+                "//tensorflow/core:lib_internal_impl",
+                "//tensorflow/core/profiler:profiler_impl",
+                "//tensorflow/core/util:determinism",  # Must be linked and exported to libtensorflow_framework.so.
+                "//tensorflow/lite/kernels/shim:tf_kernel_shim",
+                "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
+                "//tensorflow/tsl/framework:bfc_allocator",
+                "//tensorflow/tsl/framework:metrics",
+            ] + tf_additional_binary_deps() +
+            # TODO(b/259305727): Remove this select and include captured_function in macos builds.
+            select({
+                "//tensorflow:macos": [],
+                "//conditions:default": [
+                    "//tensorflow/core/data:captured_function",
+                ],
+            }),
     soversion = VERSION,
     static_deps = PACKAGE_STATIC_DEPS,
     visibility = ["//visibility:public"],
@@ -1263,9 +1324,8 @@ tf_cc_shared_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/sparsity:sparsify_model",
         "//tensorflow/compiler/mlir/python:mlir",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op_and_kernels",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_lib",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
@@ -1289,7 +1349,7 @@ tf_cc_shared_library(
         "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
-        "//tensorflow/core/function:runtime_client_cc",
+        "//tensorflow/core/function/runtime_client:runtime_client_cc",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
@@ -1306,7 +1366,6 @@ tf_cc_shared_library(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
-        "//tensorflow/core/profiler/convert:hlo_to_tools_data_impl",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",
@@ -1364,6 +1423,32 @@ tf_cc_shared_library(
     static_deps = PACKAGE_STATIC_DEPS,
     visibility = ["//visibility:public"],
     win_def_file = ":tensorflow_filtered_def_file",
+)
+
+# To avoid duplication, check that the C++ or python library does not depend on
+# the stream executor cuda plugins. Targets that want to use cuda APIs should
+# instead depend on the dummy plugins in //tensorflow/tsl/platform/default/build_config
+# and use header only targets.
+# TODO(ddunleavy): This seems completely broken. :tensorflow_cc depends on
+# cuda_platform from tf_additional_binary_deps and this doesn't break.
+check_deps(
+    name = "cuda_plugins_check_deps",
+    disallowed_deps = if_static(
+        [],
+        otherwise = [
+            "//tensorflow/compiler/xla/stream_executor/cuda:all_runtime",
+            "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
+            "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
+            "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
+            "//tensorflow/compiler/xla/stream_executor/cuda:cufft_plugin",
+            "//tensorflow/compiler/xla/stream_executor/cuda:curand_plugin",
+            "//tensorflow/compiler/xla/stream_executor:cuda_platform",
+        ],
+    ),
+    deps = if_cuda([
+        "//tensorflow:tensorflow_cc",
+        "//tensorflow/python:pywrap_tensorflow_internal",
+    ]),
 )
 
 # ** Targets for Windows build (start) **
@@ -1467,7 +1552,7 @@ genrule(
         "//tensorflow/c/eager:headers",
         "//tensorflow/cc:headers",
         "//tensorflow/core:headers",
-        "//tensorflow/stream_executor:stream_executor_install_hdrs",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_install_hdrs",
     ],
     outs = ["include"],
     cmd = """
@@ -1581,6 +1666,9 @@ py_library(
         },
     ) + [
         ":tensorflow_py_no_contrib",
+        "//tensorflow/lite/python:analyzer",
+        "//tensorflow/lite/python:lite",
+        "//tensorflow/lite/python/authoring",
         "//tensorflow/python/estimator:estimator_py",
     ],
 )
@@ -1595,6 +1683,11 @@ py_library(
     ],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/python:no_contrib"],
+    deps = [
+        "//tensorflow/lite/python:analyzer",
+        "//tensorflow/lite/python:lite",
+        "//tensorflow/lite/python/authoring",
+        "//tensorflow/python:no_contrib",
+    ],
 )
 # copybara:comment_end

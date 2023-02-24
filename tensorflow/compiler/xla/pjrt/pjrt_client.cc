@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/base/casts.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -37,6 +40,15 @@ StatusOr<std::uintptr_t> PjRtClient::UnsafeBufferPointer(PjRtBuffer* buffer) {
       buffer->AcquireExternalReference());
   const void* ptr = external_reference_hold->OpaqueDeviceMemoryDataPointer();
   return absl::bit_cast<std::uintptr_t>(ptr);
+}
+
+PjRtFuture<Status> PjRtBuffer::CopyRawToHostFuture(
+    PjRtFuture<StatusOr<void*>> dst, int64_t offset, int64_t transfer_size) {
+  StatusOr<void*> awaited_dst = dst.Await();
+  if (!awaited_dst.ok()) {
+    return PjRtFuture<Status>(std::move(awaited_dst).status());
+  }
+  return CopyRawToHost(*awaited_dst, offset, transfer_size);
 }
 
 MultiSliceConfig::~MultiSliceConfig() {}
@@ -59,5 +71,36 @@ std::string CompiledMemoryStats::DebugString() const {
 PjRtHostMemoryForDeviceManager::~PjRtHostMemoryForDeviceManager() = default;
 
 CopyToDeviceStream::~CopyToDeviceStream() = default;
+
+StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+PjRtLoadedExecutable::GetCostAnalysis() const {
+  // Get HLO cost analysis first
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloCostAnalysis> hlo_cost_analysis,
+                      client()->GetHloCostAnalysis());
+
+  // Call into HLO module to accept the analysis, which also calculates the
+  // cost properties
+  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> modules,
+                      GetHloModules());
+  if (modules.empty()) {
+    return NotFound(
+        "Executable '%s' did not have an HloModule to generate "
+        "cost analysis with.",
+        name());
+  } else if (modules.size() > 1) {
+    return Unimplemented(
+        "GetCostAnalysis() doesn't support multiple program "
+        "multiple data executables.");
+  }
+
+  TF_RETURN_IF_ERROR(
+      modules[0]->entry_computation()->Accept(hlo_cost_analysis.get()));
+
+  // Return cost properties
+  absl::flat_hash_map<std::string, PjRtValueType> ret;
+  hlo_cost_analysis->properties().ForEach(
+      [&](absl::string_view key, float val) { ret[key] = val; });
+  return ret;
+}
 
 }  // namespace xla

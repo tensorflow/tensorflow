@@ -30,6 +30,9 @@ from tensorflow.python.util import tf_inspect
 # This lock seems to help avoid linecache concurrency errors.
 _linecache_lock = threading.Lock()
 
+# Cache all the builtin elements in a frozen set for faster lookup.
+_BUILTIN_FUNCTION_IDS = frozenset(id(v) for v in builtins.__dict__.values())
+
 
 def islambda(f):
   if not tf_inspect.isfunction(f):
@@ -58,7 +61,7 @@ def isnamedtuple(f):
 
 def isbuiltin(f):
   """Returns True if the argument is a built-in function."""
-  if any(f is builtin for builtin in builtins.__dict__.values()):
+  if id(f) in _BUILTIN_FUNCTION_IDS:
     return True
   elif isinstance(f, types.BuiltinFunctionType):
     return True

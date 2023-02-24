@@ -107,7 +107,7 @@ extern "C" void _mlir_ciface_tf_report_error(void* op_kernel_ctx,
   }
   auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
   ctx->CtxFailureWithWarning(
-      tensorflow::Status{ConvertAttrToEnumValue(symbol.getValue()), msg});
+      tensorflow::Status{ConvertAttrToEnumValue(symbol.value()), msg});
 }
 
 static void ReportError(void* op_kernel_ctx, ErrorCode error_code,
@@ -182,7 +182,7 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
     tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> status_or_module =
         tensorflow::kernel_gen::GenerateKernelForTfCode(
             context, code, architectures, tile_sizes, unroll_factors,
-            max_supported_rank, /*embed_memref_prints=*/false,
+            max_supported_rank,
             /*print_ptx=*/false, /*print_llvmir=*/false, enable_ftz,
             index_64bit,
             /*jit_compile=*/false,

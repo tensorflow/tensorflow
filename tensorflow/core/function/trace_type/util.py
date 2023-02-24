@@ -14,6 +14,8 @@
 # ==============================================================================
 """Utilities for the trace_type module."""
 
+import numpy as np
+
 
 # TODO(b/225045380): Depend on the abstracted `leaf` lib from 'nest'.
 def is_namedtuple(obj):
@@ -25,3 +27,11 @@ def is_namedtuple(obj):
 def is_attrs(obj):
   return hasattr(type(obj), "__attrs_attrs__")
 
+
+# TODO(b/225045380): Depend on the abstracted `leaf` lib from 'nest'.
+def is_np_ndarray(value):
+  return hasattr(value, "__array__") and not (
+      # For legacy reasons we do not automatically promote Numpy strings.
+      isinstance(value, np.str_)
+      # NumPy dtypes have __array__ as unbound methods.
+      or isinstance(value, type))

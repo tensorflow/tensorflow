@@ -1,7 +1,7 @@
 path: "tensorflow.optimizers.legacy.RMSprop"
 tf_class {
-  is_instance: "<class \'keras.optimizers.optimizer_v2.rmsprop.RMSprop\'>"
-  is_instance: "<class \'keras.optimizers.optimizer_v2.optimizer_v2.OptimizerV2\'>"
+  is_instance: "<class \'keras.optimizers.legacy.rmsprop.RMSprop\'>"
+  is_instance: "<class \'keras.optimizers.legacy.optimizer_v2.OptimizerV2\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {

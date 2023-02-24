@@ -68,7 +68,6 @@ limitations under the License.
 #if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE) && \
     !defined(PLATFORM_FUCHSIA)
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
-#include "tensorflow/core/tfrt/eager/c_api_tfrt_distributed_impl.h"
 #endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE && !PLATFORM_FUCHSIA
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -123,12 +122,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
         opts->session_options.options,
         static_cast<tensorflow::ContextDevicePlacementPolicy>(
             opts->device_placement_policy),
-        opts->async, opts->use_tfrt_distributed_runtime);
-#if !defined(IS_MOBILE_PLATFORM)
-    tfrt_context->SetDistributedManager(
-        tfrt::tf::CreateDistributedManagerContext(
-            tfrt_context->GetCoreRuntime()->GetHostContext()));
-#endif  // !IS_MOBILE_PLATFORM
+        opts->async);
     return tensorflow::wrap(tfrt_context);
 #else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");

@@ -2,6 +2,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/lite:__subpackages__",
@@ -46,9 +47,9 @@ tf_cc_test(
         ":error_collector_inst",
         ":types_util",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",

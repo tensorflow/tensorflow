@@ -4,10 +4,19 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-load("@bazel_skylib//lib:selects.bzl", "selects")
+load(
+    "@local_config_cuda//cuda:build_defs.bzl",
+    "cuda_cc_test",
+    "cuda_library",
+)
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "rocm_copts",
+)
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/tsl:tsl.bzl",
+    "if_not_fuchsia",
     "tsl_copts",
 )
 load(
@@ -20,6 +29,7 @@ load(
     "tf_platform_deps",
     "tf_protobuf_compiler_deps",
     "tf_resource_deps",
+    "tf_stream_executor_deps",
     "tf_testing_deps",
     "tf_windows_aware_platform_deps",
     "tsl_cc_test",
@@ -33,8 +43,10 @@ load(
     "@bazel_skylib//:bzl_library.bzl",
     "bzl_library",
 )
+load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -67,6 +79,7 @@ cc_library(
 cc_library(
     name = "blocking_counter",
     hdrs = ["blocking_counter.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":logging",
         ":mutex",
@@ -120,7 +133,7 @@ cc_library(
         "file_system_helper.h",
         "threadpool.h",
     ],
-    deps = tf_windows_aware_platform_deps("env"),
+    deps = tf_windows_aware_platform_deps("env") + if_static([":env_impl"]),
 )
 
 cc_library(
@@ -142,13 +155,12 @@ cc_library(
     deps = [
         ":logging",
         ":macros",
-        ":platform",
         ":status",
         ":str_util",
         ":strcat",
-        ":types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
     ],
 )
 
@@ -251,20 +263,22 @@ cc_library(
         ":logging",
         ":macros",
         ":mutex",
+        ":platform",
         ":stack_frame",
         ":stacktrace",
         ":str_util",
         ":strcat",
         ":stringprintf",
         ":types",
-        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:optional",
-    ],
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+    ] + tf_platform_deps("status"),
 )
 
 cc_library(
@@ -538,7 +552,7 @@ filegroup(
         "threadpool.h",
         "threadpool_interface.h",
         "tracing.h",
-    ] + selects.with_or({
+    ] + select({
         "//tensorflow/tsl:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [
             "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
@@ -565,7 +579,9 @@ filegroup(
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.cc",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
         "//tensorflow/tsl/platform/profile_utils:i_cpu_utils_helper.h",
-    ],
+    ] + if_not_fuchsia([
+        "subprocess.h",
+    ]),
     compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -645,7 +661,10 @@ exports_files(
         "tracing.h",
         "tracing.cc",
     ],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
 )
 
 filegroup(
@@ -963,6 +982,7 @@ cc_library(
     deps = [
         ":platform",
         ":bfloat16",
+        ":float8",
         ":tstring",
     ] + tf_platform_deps("types"),
 )
@@ -1000,10 +1020,45 @@ cc_library(
 )
 
 cc_library(
+    name = "float8",
+    hdrs = ["float8.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//third_party/eigen3",
+    ],
+)
+
+cuda_library(
+    name = "float8_test_lib",
+    testonly = 1,
+    srcs = ["float8_test.cu.cc"],
+    copts = rocm_copts(),
+    deps = [
+        ":float8",
+        ":test",
+        ":test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+cuda_cc_test(
+    name = "float8_test",
+    deps = [":float8_test_lib"],
+)
+
+cc_library(
     name = "cuda",
     deps = [
         "//tensorflow/tsl/platform/default/build_config:cuda",
     ],
+)
+
+cc_library(
+    name = "dso_loader",
+    hdrs = ["dso_loader.h"],
+    deps = [
+        ":platform",
+    ] + tf_stream_executor_deps("dso_loader"),
 )
 
 cc_library(
@@ -1418,7 +1473,6 @@ tsl_cc_test(
     ],
     deps = [
         ":path",
-        ":resource_loader",
         ":strcat",
         ":subprocess",
         ":test",
@@ -1624,6 +1678,7 @@ tsl_cc_test(
         ":test",
         ":test_main",
         ":types",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1731,5 +1786,12 @@ tsl_cc_test(
         ":test",
         ":test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
+    ],
+)
+
+cc_library(
+    name = "static_threadlocal",
+    hdrs = [
+        "static_threadlocal.h",
     ],
 )

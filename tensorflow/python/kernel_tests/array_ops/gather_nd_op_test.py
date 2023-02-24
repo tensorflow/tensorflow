@@ -46,6 +46,8 @@ class GatherNdTest(test.TestCase):
     self.assertEqual([3], gather_nd_t.get_shape())
 
   def testSimpleDtype(self):
+    self._testSimpleDtype(dtypes.bfloat16.as_numpy_dtype)
+    self._testSimpleDtype(np.float16)
     self._testSimpleDtype(np.float32)
     self._testSimpleDtype(np.float64)
     self._testSimpleDtype(np.int32)

@@ -89,7 +89,7 @@ class BaseRollOpModel : public SingleOpModel {
   int output_;
 };
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(RollOpTest, MismatchSize) {
   EXPECT_DEATH(BaseRollOpModel m(/*input=*/{TensorType_FLOAT32, {1, 2, 4, 2}},
                                  /*shift=*/{2, 3}, /*axis=*/{2},

@@ -476,7 +476,7 @@ Location GraphDefImporter::ConvertLocation(StringRef node_name,
   // Use the first location to generate a name location.
   Location node_name_loc = NameLoc::get(name_loc_id, locs.front());
   // Generate a stack trace using the remaining locations.
-  ArrayRef<Location> callsite_locs = llvm::makeArrayRef(locs).drop_front();
+  ArrayRef<Location> callsite_locs = llvm::ArrayRef(locs).drop_front();
   return callsite_locs.empty() ? node_name_loc
                                : CallSiteLoc::get(node_name_loc, callsite_locs);
 }

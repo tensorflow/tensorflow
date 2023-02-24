@@ -22,19 +22,26 @@ limitations under the License.
 #include <vector>
 
 #include "absl/time/time.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/threadpool.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
-#include "tensorflow/core/protobuf/coordination_service.pb.h"
+#include "tensorflow/tsl/distributed_runtime/call_options.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
+#include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 namespace {
 
 using ::testing::_;
 using ::testing::Return;
+using tsl::CallOptions;
+using tsl::CoordinationClient;
+using tsl::CoordinationClientCache;
+using tsl::CoordinationServiceAgent;
 
 class MockCoordinationServiceAgent : public CoordinationServiceAgent {
  public:
@@ -61,6 +68,8 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
                       std::unique_ptr<CoordinationClient> leader_client,
                       StatusCallback error_fn));
   MOCK_METHOD0(IsInitialized, bool());
+  MOCK_METHOD0(IsConnected, bool());
+  MOCK_METHOD0(IsError, bool());
   MOCK_METHOD0(Connect, Status());
   MOCK_METHOD1(WaitForAllTasks, Status(const DeviceInfo& local_devices));
   MOCK_METHOD0(GetClusterDeviceInfo, const DeviceInfo&());

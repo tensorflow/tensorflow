@@ -2,6 +2,7 @@ load("//tensorflow:tensorflow.bzl", "if_google", "if_oss", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -93,7 +94,6 @@ cc_library(
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
         "//tensorflow/core/runtime_fallback/util:tensor_util",
         "//tensorflow/core/runtime_fallback/util:type_util",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
@@ -300,8 +300,32 @@ cc_library(
 cc_library(
     name = "thread_pool",
     hdrs = ["thread_pool.h"],
+    visibility = [
+        ":friends",
+        # copybara:uncomment "//smartass/brain/server:__pkg__",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:threadpool_interface",
+    ],
+)
+
+cc_library(
+    name = "device_variables_table",
+    hdrs = ["device_variables_table.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+        "@llvm-project//llvm:Support",
+        "@tf_runtime//:hostcontext",
+    ],
+)
+
+cc_library(
+    name = "gpu_variables_table",
+    hdrs = ["gpu_variables_table.h"],
+    deps = [
+        ":device_variables_table",
+        ":fallback_tensor",
     ],
 )

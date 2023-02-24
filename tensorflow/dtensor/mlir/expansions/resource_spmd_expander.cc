@@ -16,21 +16,21 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/resource_spmd_expander.h"
 
 #include <algorithm>
+#include <iterator>
+#include <optional>
 #include <string>
+#include <vector>
 
-#include "absl/strings/str_join.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
-#include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/shape_utils.h"
-#include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -52,6 +51,60 @@ std::vector<AttrType> CreateOrGetMutableAttributeList(
   std::vector<AttrType> output;
   if (array_attribute) auto attr_list = array_attribute.getValue().vec();
   return output;
+}
+
+StatusOr<mlir::Operation*> ExpandVarHandleOp(mlir::Operation* op) {
+  mlir::OpBuilder builder(op);
+  builder.setInsertionPointAfter(op);
+
+  // This is the layout of the value held by the resource.
+  TF_ASSIGN_OR_RETURN(std::optional<Layout> resource_layout,
+                      ExtractSingleLayoutFromOp(op));
+
+  TF_ASSIGN_OR_RETURN(
+      llvm::ArrayRef<int64_t> global_shape,
+      GetGlobalShapeOfValueFromDTensorLayout(op->getOpResult(0)));
+
+  if (!resource_layout) {
+    // If resource does not have a layout, perform local SPMD expansion.
+    return InferSPMDExpandedLocalShape(op);
+  }
+
+  // If resource has a layout, create VarHandleOps with local shape.
+  auto var_op = llvm::cast<mlir::TF::VarHandleOp>(op);
+  const std::vector<int64_t>& local_shape =
+      resource_layout->LocalShapeFromGlobalShape(global_shape);
+
+  // Replace var handle op with a VarHandleOp with local shape
+  auto resource_type = op->getOpResult(0)
+                           .getType()
+                           .cast<mlir::TensorType>()
+                           .getElementType()
+                           .dyn_cast<mlir::TF::ResourceType>();
+
+  auto sub_types = resource_type.getSubtypes();
+  auto resource_arg_sub_type = sub_types.front();
+
+  // The local shape that is to be assigned to this resource output.
+  llvm::SmallVector<int64_t, 4> local_arg_shape(local_shape.begin(),
+                                                local_shape.end());
+
+  auto local_variable_subtype = mlir::RankedTensorType::get(
+      local_arg_shape, resource_arg_sub_type.getElementType());
+  auto new_var_type = mlir::RankedTensorType::get(
+      {}, mlir::TF::ResourceType::get(
+              mlir::ArrayRef<mlir::TensorType>{local_variable_subtype},
+              builder.getContext()));
+
+  auto var_handle_op = builder.create<mlir::TF::VarHandleOp>(
+      var_op->getLoc(), new_var_type, var_op.getContainer(),
+      var_op.getSharedName());
+
+  auto result_op = InferSPMDExpandedLocalShape(var_handle_op);
+  op->getOpResult(0).replaceAllUsesWith(result_op->getOpResult(0));
+  op->erase();
+
+  return result_op;
 }
 
 Status ValidateAndAssignResourceInputLayout(mlir::tf_device::ClusterOp op,
@@ -118,9 +171,12 @@ Status ValidateAndAssignResourceInputLayout(mlir::tf_device::ClusterOp op,
 
 StatusOr<mlir::Operation*> ResourceSPMDExpander::ExpandOp(mlir::Operation* op) {
   // These ops need no special handling.
-  if (llvm::isa<mlir::TF::VarHandleOp, mlir::TF::DestroyResourceOp,
-                mlir::TF::VarIsInitializedOp>(op))
+  if (llvm::isa<mlir::TF::DestroyResourceOp, mlir::TF::VarIsInitializedOp>(op))
     return InferSPMDExpandedLocalShape(op);
+
+  if (llvm::isa<mlir::TF::VarHandleOp>(op)) {
+    return ExpandVarHandleOp(op);
+  }
 
   mlir::OpBuilder builder(op);
 
@@ -135,6 +191,7 @@ StatusOr<mlir::Operation*> ResourceSPMDExpander::ExpandOp(mlir::Operation* op) {
       TF_RETURN_WITH_CONTEXT(errors::Internal("output layout is missing"));
     if (!input_layout)
       TF_RETURN_WITH_CONTEXT(errors::Internal("input layout is missing"));
+
     InferSPMDExpandedLocalShape(op);
     llvm::SmallPtrSet<mlir::Operation*, 4> newly_created_ops;
     TF_ASSIGN_OR_RETURN(
@@ -149,11 +206,11 @@ StatusOr<mlir::Operation*> ResourceSPMDExpander::ExpandOp(mlir::Operation* op) {
                  mlir::TF::AssignSubVariableOp>(op))
     TF_RETURN_WITH_CONTEXT(errors::Internal("unsupported resource op"));
 
-  TF_ASSIGN_OR_RETURN(absl::optional<Layout> output_layout,
+  TF_ASSIGN_OR_RETURN(std::optional<Layout> output_layout,
                       ExtractSingleLayoutFromOp(op));
-  TF_ASSIGN_OR_RETURN(absl::optional<Layout> resource_layout,
+  TF_ASSIGN_OR_RETURN(std::optional<Layout> resource_layout,
                       ExtractLayoutFromOperand(op->getOperand(0)));
-  TF_ASSIGN_OR_RETURN(absl::optional<Layout> value_layout,
+  TF_ASSIGN_OR_RETURN(std::optional<Layout> value_layout,
                       ExtractLayoutFromOperand(op->getOperand(1)));
 
   // For assignment operations, the layout for the resource (first operand),

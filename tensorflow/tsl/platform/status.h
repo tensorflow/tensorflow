@@ -23,17 +23,27 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/platform.h"
 #include "tensorflow/tsl/platform/stack_frame.h"
 #include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/protobuf/error_codes.pb.h"
+
+// Include appropriate platform-dependent parts of status.
+#if defined(PLATFORM_GOOGLE)
+#include "tensorflow/tsl/platform/google/status.h"  // IWYU pragma: export
+#else
+#include "tensorflow/tsl/platform/default/status.h"  // IWYU pragma: export
+#endif
 
 namespace tsl {
 
@@ -41,32 +51,7 @@ namespace tsl {
 class [[nodiscard]] Status;
 #endif
 
-#if ABSL_HAVE_BUILTIN(__builtin_LINE) && ABSL_HAVE_BUILTIN(__builtin_FILE)
-#define TF_INTERNAL_HAVE_BUILTIN_LINE_FILE 1
-#endif
-
-struct SourceLocation {
-  uint32_t line;
-  const char* file_name;
-
-#ifdef TF_INTERNAL_HAVE_BUILTIN_LINE_FILE
-  static SourceLocation current(uint32_t line = __builtin_LINE(),
-                                const char* file_name = __builtin_FILE()) {
-    SourceLocation loc;
-    loc.line = line;
-    loc.file_name = file_name;
-    return loc;
-  }
-#else
-  static SourceLocation current(uint32_t line = 0,
-                                const char* file_name = nullptr) {
-    SourceLocation loc;
-    loc.line = line;
-    loc.file_name = file_name;
-    return loc;
-  }
-#endif
-};
+typedef SourceLocationImpl SourceLocation;
 
 namespace errors {
 typedef ::tensorflow::error::Code Code;
@@ -74,6 +59,38 @@ typedef ::tensorflow::error::Code Code;
 namespace error {
 typedef ::tensorflow::error::Code Code;
 }  // namespace error
+}  // namespace tsl
+
+// Transparent comparison between tensorflow::error::Code protobuf enum and
+// absl::Status.
+//
+// The longer term objective is to delete these when we have done the transition
+// to absl::Status.
+namespace tensorflow::error {
+inline bool operator==(const ::tensorflow::error::Code& c1,
+                       const absl::StatusCode& c2) {
+  return static_cast<int>(c1) == static_cast<int>(c2);
+}
+
+inline bool operator!=(const ::tensorflow::error::Code& c1,
+                       const absl::StatusCode& c2) {
+  return static_cast<int>(c1) != static_cast<int>(c2);
+}
+}  // namespace tensorflow::error
+
+namespace absl {
+inline bool operator==(const ::absl::StatusCode& c1,
+                       const ::tensorflow::error::Code& c2) {
+  return static_cast<int>(c1) == static_cast<int>(c2);
+}
+
+inline bool operator!=(const ::absl::StatusCode& c1,
+                       const ::tensorflow::error::Code& c2) {
+  return static_cast<int>(c1) != static_cast<int>(c2);
+}
+}  // namespace absl
+
+namespace tsl {
 
 /// @ingroup core
 /// Denotes success or failure of a call in Tensorflow.
@@ -85,7 +102,10 @@ class Status {
 
   /// \brief Create a status with the specified error code and msg as a
   /// human-readable string containing more detailed information.
-  Status(tsl::error::Code code, absl::string_view msg,
+  Status(absl::StatusCode code, absl::string_view msg,
+         SourceLocation loc = SourceLocation::current());
+  // Deprecated constructor using the Tensorflow protobuf enum error code.
+  Status(tsl::errors::Code code, absl::string_view msg,
          SourceLocation loc = SourceLocation::current());
 
   /// Copy the specified status.
@@ -95,14 +115,6 @@ class Status {
   Status(Status&& s, SourceLocation loc = SourceLocation::current()) noexcept;
   Status& operator=(Status&& s) noexcept;
 #endif  // SWIG
-
-  // Prefer using OkStatus().
-#ifndef SWIG
-  ABSL_DEPRECATED(
-      "Use `OkStatus()` (preferred) or `Status()` (which is backward "
-      "compatible with TF v2.9 and lower) instead.")
-#endif
-  static Status OK() { return Status(); }
 
   /// Returns true iff the status indicates success.
   bool ok() const { return (state_ == nullptr); }
@@ -188,7 +200,7 @@ class Status {
   // any existing payload for that `type_url`.
   //
   // This function does nothing if the Status is ok.
-  void SetPayload(absl::string_view type_url, absl::string_view payload);
+  void SetPayload(absl::string_view type_url, absl::Cord payload);
 
   // Erases the payload corresponding to the `type_url` key.  Returns `true` if
   // the payload was present.
@@ -201,7 +213,7 @@ class Status {
   // any time and any mutation on the same Status object during visitation is
   // forbidden and could result in undefined behavior.
   void ForEachPayload(
-      const std::function<void(absl::string_view, absl::string_view)>& visitor)
+      absl::FunctionRef<void(absl::string_view, const absl::Cord&)> visitor)
       const;
 
   // Sets the stack frame associated with this status object.
@@ -216,6 +228,8 @@ class Status {
   absl::Span<const SourceLocation> GetSourceLocations() const;
 
  private:
+  friend Status FromAbslStatus(const absl::Status& s, SourceLocation loc);
+
   void MaybeAddSourceLocation(SourceLocation loc);
 
   static const std::string& empty_string();
@@ -227,7 +241,7 @@ class Status {
 
     tsl::error::Code code;
     std::string msg;
-    std::unordered_map<std::string, std::string> payloads;
+    std::unordered_map<std::string, absl::Cord> payloads;
     absl::InlinedVector<SourceLocation, 4> source_locations;
     std::vector<StackFrame> stack_trace;
   };
@@ -246,8 +260,10 @@ class Status {
 // usage of `OkStatus()` when constructing such an OK status.
 Status OkStatus();
 
-Status FromAbslStatus(const absl::Status& s);
-absl::Status ToAbslStatus(const ::tsl::Status& s);
+Status FromAbslStatus(const absl::Status& s,
+                      SourceLocation loc = SourceLocation::current());
+absl::Status ToAbslStatus(const ::tsl::Status& s,
+                          SourceLocation loc = SourceLocation::current());
 
 // TODO(b/197552541) Move this namespace to errors.h.
 namespace errors {
@@ -279,7 +295,7 @@ class StatusGroup {
   // otherwise one payload value will be chosen in an unspecified but
   // deterministic order.
   // NOTE: The payload marking derived statuses as derived will not be returned.
-  std::unordered_map<std::string, std::string> GetPayloads() const;
+  std::unordered_map<std::string, absl::Cord> GetPayloads() const;
 
   // Return a merged status with combined child status messages with a summary.
   Status as_summary_status() const;

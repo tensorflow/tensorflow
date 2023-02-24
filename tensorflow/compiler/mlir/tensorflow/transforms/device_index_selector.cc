@@ -63,7 +63,7 @@ void DeviceIndexSelector::runOnOperation() {
     // future.
     OpBuilder b(op);
     RankedTensorType type = RankedTensorType::get({}, b.getIntegerType(32));
-    int index = op.device_names().size();
+    int index = op.getDeviceNames().size();
     for (auto use : op.getOperation()->getUsers()) {
       // Skip if it doesn't feed into case. Alternatively this could always
       // return the CPU device index if it exists.

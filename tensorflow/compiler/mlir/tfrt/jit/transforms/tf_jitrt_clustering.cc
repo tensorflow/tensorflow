@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_clustering.h"
 
 #include <functional>
+#include <optional>
 #include <utility>
 
 #include "mlir/IR/BuiltinAttributes.h"
@@ -28,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/cluster_ops_by_policy.h"
-#include "tensorflow/compiler/xla/mlir/utils/runtime/constraints.h"
+#include "tensorflow/compiler/xla/mlir/runtime/utils/constraints.h"
 
 namespace tensorflow {
 
@@ -135,7 +136,7 @@ class DefaultClusteringPolicy : public ClusteringPolicy {
  public:
   explicit DefaultClusteringPolicy(
       std::function<bool(Operation*)> filter,
-      llvm::Optional<ValueConstraint> default_constraint = llvm::None)
+      llvm::Optional<ValueConstraint> default_constraint = std::nullopt)
       : filter_(std::move(filter)), default_constraint_(default_constraint) {}
 
   LogicalResult MatchAndUpdateConstraints(
@@ -153,7 +154,7 @@ template <typename OpTy>
 class OpDefaultClusteringPolicy : public DefaultClusteringPolicy {
  public:
   explicit OpDefaultClusteringPolicy(
-      llvm::Optional<ValueConstraint> default_constraint = llvm::None)
+      llvm::Optional<ValueConstraint> default_constraint = std::nullopt)
       : DefaultClusteringPolicy(
             [](Operation* op) -> bool { return mlir::isa<OpTy>(op); },
             default_constraint) {}
@@ -209,19 +210,19 @@ class BroadcastToOpClusteringPolicy
       BroadcastToOp op, const ValuesConstraintSet& results,
       ValuesConstraintSet& operands) const final {
     // Only ranked inputs are supported.
-    operands.Insert(op.input(), ValueConstraint::kRank);
+    operands.Insert(op.getInput(), ValueConstraint::kRank);
 
     if (auto result_constraint = results.GetConstraint(op.getResult())) {
       if (*result_constraint == ValueConstraint::kValue) return failure();
       // For a static output shape we need a constant shape operand.
       if (*result_constraint == ValueConstraint::kShape) {
-        operands.Insert(op.shape(), ValueConstraint::kValue);
+        operands.Insert(op.getShape(), ValueConstraint::kValue);
         return success();
       }
     }
 
     // Producing a ranked output requires a known shape for the shape operand.
-    operands.Insert(op.shape(), ValueConstraint::kShape);
+    operands.Insert(op.getShape(), ValueConstraint::kShape);
 
     return success();
   }
@@ -398,13 +399,13 @@ class ConcatV2OpClusteringPolicy
 
     // Propagate constraint from the result to the input. All inputs always need
     // a known rank.
-    for (auto value : op.values()) {
+    for (auto value : op.getValues()) {
       operands.Insert(value,
-                      result_constraint.getValueOr(ValueConstraint::kRank));
+                      result_constraint.value_or(ValueConstraint::kRank));
     }
 
     // Force axis to be a constant.
-    operands.Insert(op.axis(), ValueConstraint::kValue);
+    operands.Insert(op.getAxis(), ValueConstraint::kValue);
 
     return success();
   }
@@ -423,7 +424,7 @@ class ConstOpClusteringPolicy : public TensorflowOpClusteringPolicy<ConstOp> {
     auto result_constraint = results.GetConstraint(op.getResult());
     if (!result_constraint.has_value()) return failure();
 
-    return IsCompilableConstant(op.value());
+    return IsCompilableConstant(op.getValue());
   }
 };
 
@@ -439,13 +440,13 @@ class ExpandDimsOpClusteringPolicy
     // Propagate constraint from the result to the input.
     if (auto result_constraint = results.GetConstraint(op->getResult(0))) {
       if (*result_constraint == ValueConstraint::kValue) return failure();
-      operands.Insert(op.input(), *result_constraint);
+      operands.Insert(op.getInput(), *result_constraint);
     } else {
-      operands.Insert(op.input(), ValueConstraint::kRank);
+      operands.Insert(op.getInput(), ValueConstraint::kRank);
     }
 
     // The inserted dimension must be always known at compile time.
-    operands.Insert(op.dim(), ValueConstraint::kValue);
+    operands.Insert(op.getDim(), ValueConstraint::kValue);
 
     return success();
   }
@@ -466,12 +467,12 @@ class FusedMatMulOpClusteringPolicy
       return failure();
 
     // Check if we do support a set of fused operations.
-    size_t n = op.fused_ops().size();
+    size_t n = op.getFusedOps().size();
 
     auto fusion =
-        n > 0 ? op.fused_ops()[0].dyn_cast<mlir::StringAttr>() : nullptr;
+        n > 0 ? op.getFusedOps()[0].dyn_cast<mlir::StringAttr>() : nullptr;
     auto activation =
-        n > 1 ? op.fused_ops()[1].dyn_cast<mlir::StringAttr>() : nullptr;
+        n > 1 ? op.getFusedOps()[1].dyn_cast<mlir::StringAttr>() : nullptr;
 
     if ((n > 0 && !fusion) || (n > 1 && !activation)) return failure();
 
@@ -502,11 +503,11 @@ class FillOpClusteringPolicy : public TensorflowOpClusteringPolicy<FillOp> {
 
     // To know the result shape we need to know the shape operand value.
     if (*result_constraint == ValueConstraint::kShape)
-      operands.Insert(op.dims(), ValueConstraint::kValue);
+      operands.Insert(op.getDims(), ValueConstraint::kValue);
 
     // To know the result rank we need to know the shape operand shape.
     if (*result_constraint == ValueConstraint::kRank)
-      operands.Insert(op.dims(), ValueConstraint::kShape);
+      operands.Insert(op.getDims(), ValueConstraint::kShape);
 
     // Value constraint propagation is not supported.
     if (*result_constraint == ValueConstraint::kValue) return failure();
@@ -534,8 +535,8 @@ class OneHotOpClusteringPolicy : public TensorflowOpClusteringPolicy<OneHotOp> {
       if (*constraint == ValueConstraint::kValue) return failure();
 
     // MHLO lowering needs a static shape for the indices and a constant depth.
-    operands.Insert(op.indices(), ValueConstraint::kShape);
-    operands.Insert(op.depth(), ValueConstraint::kValue);
+    operands.Insert(op.getIndices(), ValueConstraint::kShape);
+    operands.Insert(op.getDepth(), ValueConstraint::kValue);
 
     return success();
   }
@@ -561,7 +562,7 @@ class RangeOpClusteringPolicy : public TensorflowOpClusteringPolicy<RangeOp> {
 
     // To know the result shape we need the input values.
     if (*result_constraint == ValueConstraint::kShape) {
-      operands.Insert({op.start(), op.limit(), op.delta()},
+      operands.Insert({op.getStart(), op.getLimit(), op.getDelta()},
                       ValueConstraint::kValue);
     }
 
@@ -582,7 +583,7 @@ class ReshapeOpClusteringPolicy
       ReshapeOp op, const ValuesConstraintSet& results,
       ValuesConstraintSet& operands) const final {
     // The runtime only supports ranked tensors.
-    operands.Insert(op.tensor(), ValueConstraint::kRank);
+    operands.Insert(op.getTensor(), ValueConstraint::kRank);
 
     // Reshape operation does not have any default constraints.
     auto result_constraint = results.GetConstraint(op.getResult());
@@ -591,13 +592,13 @@ class ReshapeOpClusteringPolicy
     // To know the result shape we need to know the shape operand value. We also
     // require a static shape on the input in case there's a -1 in the shape.
     if (*result_constraint == ValueConstraint::kShape) {
-      operands.Insert(op.shape(), ValueConstraint::kValue);
-      operands.Insert(op.tensor(), ValueConstraint::kShape);
+      operands.Insert(op.getShape(), ValueConstraint::kValue);
+      operands.Insert(op.getTensor(), ValueConstraint::kShape);
     }
 
     // To know the result rank we need to know the shape operand shape.
     if (*result_constraint == ValueConstraint::kRank)
-      operands.Insert(op.shape(), ValueConstraint::kShape);
+      operands.Insert(op.getShape(), ValueConstraint::kShape);
 
     // Value constraint propagation is not supported.
     if (*result_constraint == ValueConstraint::kValue) return failure();
@@ -615,7 +616,7 @@ class ShapeOpClusteringPolicy : public TensorflowOpClusteringPolicy<ShapeOp> {
       ShapeOp op, const ValuesConstraintSet& results,
       ValuesConstraintSet& operands) const final {
     // Unranked inputs aren't supported by JitRt.
-    operands.Insert(op.input(), ValueConstraint::kRank);
+    operands.Insert(op.getInput(), ValueConstraint::kRank);
 
     // Check constraint on the result value.
     auto result_constraint = results.GetConstraint(op.getResult());
@@ -623,11 +624,11 @@ class ShapeOpClusteringPolicy : public TensorflowOpClusteringPolicy<ShapeOp> {
 
     // To know the result shape we need only the rank of the input.
     if (*result_constraint == ValueConstraint::kShape)
-      operands.Insert(op.input(), ValueConstraint::kRank);
+      operands.Insert(op.getInput(), ValueConstraint::kRank);
 
     // To know the result value we need to know the shape of the input.
     if (*result_constraint == ValueConstraint::kValue)
-      operands.Insert(op.input(), ValueConstraint::kShape);
+      operands.Insert(op.getInput(), ValueConstraint::kShape);
 
     return success();
   }
@@ -667,9 +668,9 @@ class SqueezeOpClusteringPolicy
     }
 
     // If squeeze_dims is not present we need a static shape.
-    if (op.squeeze_dims().empty()) input_constraint = ValueConstraint::kShape;
+    if (op.getSqueezeDims().empty()) input_constraint = ValueConstraint::kShape;
 
-    operands.Insert(op.input(), input_constraint);
+    operands.Insert(op.getInput(), input_constraint);
     return success();
   }
 };
@@ -692,13 +693,13 @@ class TransposeOpClusteringPolicy
       ValuesConstraintSet& operands) const final {
     // Propagate result constraints to the input, at minimum require known rank.
     if (auto constraint = results.GetConstraint(op.getResult())) {
-      operands.Insert(op.x(), *constraint);
+      operands.Insert(op.getX(), *constraint);
     } else {
-      operands.Insert(op.x(), ValueConstraint::kRank);
+      operands.Insert(op.getX(), ValueConstraint::kRank);
     }
 
     // Permutation must be always known at compile time.
-    operands.Insert(op.perm(), ValueConstraint::kValue);
+    operands.Insert(op.getPerm(), ValueConstraint::kValue);
 
     return success();
   }
@@ -717,12 +718,12 @@ class SliceOpClusteringPolicy : public TensorflowOpClusteringPolicy<SliceOp> {
       if (*constraint == ValueConstraint::kValue) return failure();
 
     // We must know the shape of the input.
-    operands.Insert(op.input(), ValueConstraint::kShape);
+    operands.Insert(op.getInput(), ValueConstraint::kShape);
 
     // Force begin and size to be constants. The restriction on begin could be
     // lifted if we know that there are no `-1` sizes.
     // TODO(kramerb): Revisit this when mhlo.real_dynamic_slice stabilizes.
-    operands.Insert({op.begin(), op.size()}, ValueConstraint::kValue);
+    operands.Insert({op.getBegin(), op.getSize()}, ValueConstraint::kValue);
 
     return success();
   }
@@ -738,10 +739,10 @@ class StridedSliceOpClusteringPolicy
       StridedSliceOp op, const ValuesConstraintSet& results,
       ValuesConstraintSet& operands) const final {
     // We must know the shape of the input.
-    operands.Insert(op.input(), ValueConstraint::kShape);
+    operands.Insert(op.getInput(), ValueConstraint::kShape);
 
     // And values of operands that control the slice size.
-    operands.Insert({op.begin(), op.end(), op.strides()},
+    operands.Insert({op.getBegin(), op.getEnd(), op.getStrides()},
                     ValueConstraint::kValue);
 
     return success();
@@ -915,7 +916,7 @@ mlir::LogicalResult VerifyCluster(const Cluster& cluster) {
 
     // Small constants will be sunk into the compiled function body.
     auto const_op = mlir::dyn_cast<mlir::TF::ConstOp>(op);
-    if (!const_op || failed(IsCompilableConstant(const_op.value())))
+    if (!const_op || failed(IsCompilableConstant(const_op.getValue())))
       return failure();
   }
 

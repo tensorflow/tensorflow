@@ -130,7 +130,7 @@ class SingleReturnTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(f, 2)
     self.assertTransformedEquivalent(f, -2)
 
-  def text_conditional_in_context_manager(self):
+  def test_conditional_in_context_manager(self):
 
     def f(x):
       with ops.name_scope(''):

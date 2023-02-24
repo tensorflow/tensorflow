@@ -228,8 +228,11 @@ size `m` and spatial sizes `w` and `h`):
 \frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h
 \left( \nabla y_{ijkl} \frac{x_{ijkl} - \mu_l}{\sigma^2_l+\epsilon} \right)
 \\\\
+d_l&=
+\frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \nabla y_{ijkl}
+\\\\
 \nabla x_{ijkl} &= \frac{\gamma_{l}}{\sqrt{\sigma^2_{l}+\epsilon}}
-\left( \nabla y_{ijkl} - \mathrm{mean}(\nabla y) - c_l (x_{ijkl} - \mu_{l})
+\left( \nabla y_{ijkl} - d_l - c_l (x_{ijkl} - \mu_{l})
 \right)
 \\\\
 \nabla \gamma_l &= \sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \left( \nabla y_{ijkl}
@@ -861,6 +864,16 @@ The output shape has these dimensions, in this order:
 *   `spatial_dims`: One value for each valid placement of the convolutional
     window.
 
+<div style="width:95%; margin:-5px; margin-bottom:-60px; margin-top:-20px;">
+<img style="width:100%" src="./images/batch_group_counts.svg">
+</div>
+
+The figure above shows how `batch_group_count` field works. Effectively, we
+slice each lhs batch into `batch_group_count` groups, and do the same for the
+output features. Then, for each of these groups we do pairwise convolutions and
+concatenate the output along the output feature dimension. The operational
+semantics of all the other dimensions (feature and spatial) remain the same.
+
 The valid placements of the convolutional window are determined by the strides
 and the size of the base area after padding.
 
@@ -1388,6 +1401,8 @@ using the comparison operator of the element type of `operand`.
 
 <b>`Cbrt(operand)`</b> Element-wise cubic root operation `x -> cbrt(x)`.
 
+<b>`Tan(operand)`</b> Element-wise tangent `x -> tan(x)`.
+
 <b>`Tanh(operand)`</b> Element-wise hyperbolic tangent `x -> tanh(x)`.
 
 <b>`Round(operand)`</b> Element-wise rounding, ties away from zero.
@@ -1731,7 +1746,7 @@ let product:f32[] = reduce_product(padded_v_five);
 
 // Changing padding size will yield different result.
 // sum == 1 + 2 + 3 + 4 + 5 + 6
-let sum':f32[] = reduce_sum(padded_v_six);
+let sum:f32[] = reduce_sum(padded_v_six);
 ```
 
 ## GetTupleElement
@@ -1929,7 +1944,7 @@ XlaOp for the received data.
 The client API of `Recv` operation represents synchronous communication.
 However, the instruction is internally decomposed into 2 HLO instructions
 (`Recv` and `RecvDone`) to enable asynchronous data transfers. See also
-[`HloInstruction::CreateRecv` and `HloInstruction::CreateRecvDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/service/hlo_instruction.h).
+[`HloInstruction::CreateRecv` and `HloInstruction::CreateRecvDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/hlo/ir/hlo_instruction.h).
 
 <b>`Recv(const Shape& shape, int64 channel_id)`</b>
 
@@ -2785,7 +2800,7 @@ that shares the same channel handle. Does not return any data.
 Similar to the `Recv` operation, the client API of `Send` operation represents
 synchronous communication, and is internally decomposed into 2 HLO instructions
 (`Send` and `SendDone`) to enable asynchronous data transfers. See also
-[`HloInstruction::CreateSend` and `HloInstruction::CreateSendDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/service/hlo_instruction.h).
+[`HloInstruction::CreateSend` and `HloInstruction::CreateSendDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/hlo/ir/hlo_instruction.h).
 
 <b>`Send(HloInstruction operand, int64 channel_id)`</b>
 

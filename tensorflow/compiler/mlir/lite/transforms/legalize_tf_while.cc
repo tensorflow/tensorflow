@@ -63,10 +63,10 @@ void RunOnWhile(TF::WhileOp while_op) {
   // Create new TFL While op that will be used to replace TF While op.
   auto new_op = OpBuilder(op).create<TFL::WhileOp>(
       op->getLoc(), op->getResultTypes(), op->getOperands(),
-      while_op.is_stateless());
+      while_op.getIsStateless());
   Location loc = while_op->getLoc();
-  CreateRegionWithCall(while_op.cond_function(), new_op.cond(), loc);
-  CreateRegionWithCall(while_op.body_function(), new_op.body(), loc);
+  CreateRegionWithCall(while_op.cond_function(), new_op.getCond(), loc);
+  CreateRegionWithCall(while_op.body_function(), new_op.getBody(), loc);
 
   op->replaceAllUsesWith(new_op.getResults());
   op->erase();

@@ -65,6 +65,12 @@ auto* graph_unused_outputs = tsl::monitoring::Counter<1>::New(
     "/tensorflow/core/graph_unused_outputs",
     "The number of unused outputs for ops of a given type.", "name");
 
+auto* tf_data_fetch_op_counter = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/fetch_op",
+    "The number of times a tf.data operation that fetches output(s) of a "
+    "tf.data input pipeline (e.g. `IteratorGetNext`) was executed.",
+    "fetch_op");
+
 auto* tf_data_autotune_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/autotune", "tf.data autotuning", "name");
 
@@ -167,6 +173,13 @@ auto* tf_data_service_cross_trainer_cache_size_bytes =
         "/tensorflow/data/service/cross_trainer_cache_size_bytes",
         "tf.data service cross-trainer cache memory usage in bytes.");
 
+auto* tf_data_service_data_transfer_protocol_used =
+    tsl::monitoring::Counter<1>::New(
+        "/tensorflow/data/service/data_transfer_protocol_used",
+        "The number of tf.data service worker clients created that use this "
+        "data transfer protocol.",
+        "data_transfer_protocol");
+
 auto* tf_data_filename_counter = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
     "name", "filename");
@@ -268,6 +281,16 @@ auto* eager_client_error_counter = tsl::monitoring::Counter<2>::New(
     "Count the errors in eager client as a central place.", "error_source",
     "error_type");
 
+auto* mlir_bridge_first_phase_counter = tsl::monitoring::Counter<4>::New(
+    "/tensorflow/core/tf_mlir_bridge_first_phase_count",
+    "Tracks processing state in first phase of mlir bridge", "device",
+    "version", "fallback", "result");
+
+auto* tf_version_graph_counter = tsl::monitoring::Counter<4>::New(
+    "/tensorflow/core/tf_version_graph_counter",
+    "Marks which tf1 feature (if any) a graph contains.", "device_context",
+    "control_flow", "ref_variable", "tf_version");
+
 tsl::monitoring::Counter<2>* GetGraphOptimizationCounter() {
   static auto* graph_optimization_counter = tsl::monitoring::Counter<2>::New(
       "/tensorflow/core/graph_optimization_usecs",
@@ -275,6 +298,10 @@ tsl::monitoring::Counter<2>* GetGraphOptimizationCounter() {
       "optimization pass in microseconds.",
       "kind", "name");
   return graph_optimization_counter;
+}
+
+void RecordTFDataFetchOp(const string& name) {
+  tf_data_fetch_op_counter->GetCell(name)->IncrementBy(1);
 }
 
 void RecordTFDataAutotune(const string& name) {
@@ -387,6 +414,12 @@ void RecordTFDataServiceClientIterators(
   tf_data_service_client_iterators_counter
       ->GetCell(absl::StrCat(worker_uid), deployment_mode_str,
                 sharding_policy_str, coordinated_read_str)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceDataTransferProtocolUsed(
+    const string& data_transfer_protocol) {
+  tf_data_service_data_transfer_protocol_used->GetCell(data_transfer_protocol)
       ->IncrementBy(1);
 }
 
@@ -543,13 +576,10 @@ void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
                                          const std::string& bridge_version,
                                          bool fallback_enabled,
                                          const std::string& result) {
-  static auto* metric = tsl::monitoring::Counter<4>::New(
-      "/tensorflow/core/tf_mlir_bridge_first_phase_count",
-      "Tracks processing state in first phase of mlir bridge", "device",
-      "version", "fallback", "result");
   std::string fallback_status =
       fallback_enabled ? "fallback_enabled" : "fallback_disabled";
-  metric->GetCell(device_type, bridge_version, fallback_status, result)
+  mlir_bridge_first_phase_counter
+      ->GetCell(device_type, bridge_version, fallback_status, result)
       ->IncrementBy(1);
 }
 
@@ -583,6 +613,16 @@ void UpdateTfMlirBridgeGraphAnalysisPerOp(
                 num_cores_per_replica, use_tpu, allow_soft_placement,
                 use_spmd_for_xla_partitioning, unsupported_reason,
                 has_unsupported_features ? "Yes" : "No")
+      ->IncrementBy(1);
+}
+
+void RecordTFVersionByGraphFeatures(const std::string& device_context,
+                                    bool hasControlFlowV1,
+                                    bool hasReferenceVariables) {
+  tf_version_graph_counter
+      ->GetCell(device_context, hasControlFlowV1 ? "true" : "false",
+                hasReferenceVariables ? "true" : "false",
+                hasControlFlowV1 || hasReferenceVariables ? "tf1" : "tf2")
       ->IncrementBy(1);
 }
 

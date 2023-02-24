@@ -221,6 +221,12 @@ class PercentileSampler {
 
   Status status_;
 
+  using LabelArray = std::array<string, NumLabels>;
+  // we need a container here that guarantees pointer stability of the value,
+  // namely, the pointer of the value should remain valid even after more cells
+  // are inserted.
+  std::map<LabelArray, PercentileSamplerCell> cells_ TF_GUARDED_BY(mu_);
+
   // The metric definition. This will be used to identify the metric when we
   // register it for collection.
   const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels> metric_def_;
@@ -235,12 +241,6 @@ class PercentileSampler {
 
   // Registration handle with the CollectionRegistry.
   std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
-
-  using LabelArray = std::array<string, NumLabels>;
-  // we need a container here that guarantees pointer stability of the value,
-  // namely, the pointer of the value should remain valid even after more cells
-  // are inserted.
-  std::map<LabelArray, PercentileSamplerCell> cells_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(PercentileSampler);
 };

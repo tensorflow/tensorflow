@@ -20,8 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/data/compression_utils.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -33,11 +35,15 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/util/determinism_test_util.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
+
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 TEST(DatasetUtilsTest, MatchesAnyVersion) {
   EXPECT_TRUE(MatchesAnyVersion("BatchDataset", "BatchDataset"));
@@ -611,15 +617,17 @@ GetOptimizationsTestCase GetOptimizationTestCase4() {
   options.mutable_optimization_options()->set_parallel_batch(true);
   options.mutable_optimization_options()->set_shuffle_and_repeat_fusion(true);
   options.mutable_optimization_options()->set_inject_prefetch(true);
+  options.mutable_optimization_options()->set_warm_start(true);
   options.set_slack(true);
-  return {options,
-          /*expected_enabled=*/
-          {"filter_fusion", "filter_parallelization", "make_sloppy",
-           "map_and_batch_fusion", "map_and_filter_fusion", "map_fusion",
-           "map_parallelization", "noop_elimination", "parallel_batch",
-           "shuffle_and_repeat_fusion", "slack", "inject_prefetch"},
-          /*expected_disabled=*/{},
-          /*expected_default=*/{}};
+  return {
+      options,
+      /*expected_enabled=*/
+      {"filter_fusion", "filter_parallelization", "make_sloppy",
+       "map_and_batch_fusion", "map_and_filter_fusion", "map_fusion",
+       "map_parallelization", "noop_elimination", "parallel_batch",
+       "shuffle_and_repeat_fusion", "slack", "inject_prefetch", "warm_start"},
+      /*expected_disabled=*/{},
+      /*expected_default=*/{}};
 }
 
 class GetOptimizationsTest
@@ -648,6 +656,8 @@ INSTANTIATE_TEST_SUITE_P(Test, GetOptimizationsTest,
                                            GetOptimizationTestCase4()));
 
 TEST(DeterministicOpsTest, GetOptimizations) {
+  // TODO(b/259305727): Re-enable for MacOS when the bug is fixed.
+#if !defined(__APPLE__)
   tsl::test::DeterministicOpsScope det_scope;
   Options options;
   // options.deterministic should be ignored when deterministic ops are enabled.
@@ -657,6 +667,7 @@ TEST(DeterministicOpsTest, GetOptimizations) {
   EXPECT_THAT(std::vector<string>(actual_enabled.begin(), actual_enabled.end()),
               ::testing::UnorderedElementsAreArray({"make_deterministic"}));
   EXPECT_EQ(actual_disabled.size(), 0);
+#endif
 }
 
 REGISTER_DATASET_EXPERIMENT("test_only_experiment",
@@ -666,6 +677,41 @@ TEST(DatasetUtilsTest, DatasetExperimentRegistry) {
   auto experiments = DatasetExperimentRegistry::Experiments();
   EXPECT_TRUE(experiments.find("test_only_experiment") != experiments.end());
   EXPECT_TRUE(experiments.find("non_existing_experiment") == experiments.end());
+}
+
+TEST(DatasetUtilsTest, CountBytes) {
+  std::vector<Tensor> uncompressed = {
+      CreateTensor<int64_t>(TensorShape{128, 2}),
+      CreateTensor<int64_t>(TensorShape{64, 4})};
+  EXPECT_EQ(GetAllocatedBytes(uncompressed), 4096);
+  EXPECT_EQ(GetTotalBytes(uncompressed), 4096);
+
+  CompressedElement compressed_element;
+  TF_ASSERT_OK(CompressElement(uncompressed, &compressed_element));
+  std::vector<Tensor> compressed{{DT_VARIANT, TensorShape({})}};
+  compressed.front().scalar<Variant>()() = compressed_element;
+  EXPECT_EQ(GetAllocatedBytes(compressed), compressed_element.ByteSizeLong());
+  EXPECT_EQ(GetTotalBytes(compressed), compressed_element.ByteSizeLong());
+}
+
+TEST_F(DatasetOpsTestBase, TestVariantEqualityChecking) {
+  Tensor scalar_0{DT_VARIANT, TensorShape({})};
+  scalar_0.scalar<Variant>()() = TestVariant({CreateTensor<int64_t>({}, {0})});
+  TF_EXPECT_OK(ExpectEqual(scalar_0, scalar_0));
+
+  Tensor scalar_1{DT_VARIANT, TensorShape({})};
+  scalar_1.scalar<Variant>()() = TestVariant({CreateTensor<int64_t>({}, {1})});
+  EXPECT_THAT(ExpectEqual(scalar_0, scalar_1),
+              StatusIs(tsl::error::INTERNAL, HasSubstr("aren't equal")));
+
+  Tensor nonscalar{DT_VARIANT, TensorShape({2})};
+  EXPECT_THAT(ExpectEqual(nonscalar, nonscalar),
+              StatusIs(tsl::error::INTERNAL, HasSubstr("must be scalars")));
+
+  Tensor unsupported{DT_VARIANT, TensorShape({})};
+  unsupported.scalar<Variant>()() = 0;
+  EXPECT_THAT(ExpectEqual(unsupported, unsupported),
+              StatusIs(tsl::error::INTERNAL, HasSubstr("types must be")));
 }
 
 }  // namespace

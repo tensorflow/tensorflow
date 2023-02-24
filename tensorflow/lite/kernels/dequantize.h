@@ -18,7 +18,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/dequantize.h"

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_FRAMEWORK_FUZZING_CC_OP_FUZZ_GEN_H_
 #define TENSORFLOW_CC_FRAMEWORK_FUZZING_CC_OP_FUZZ_GEN_H_
 
+#include "tensorflow/cc/framework/cc_op_gen_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/platform/types.h"
@@ -23,9 +24,11 @@ limitations under the License.
 namespace tensorflow {
 namespace cc_op {
 
-/// Result is written to file fname.
-void WriteFuzzers(const OpList& ops, const ApiDefMap& api_def_map,
-                  const string& fname);
+// String with single fuzzer file content.
+string WriteSingleFuzzer(const OpInfo& op_info, bool is_fuzzable);
+
+// Do we have all we need to create a fuzzer
+bool OpFuzzingIsOk(const OpInfo& op_info);
 
 }  // namespace cc_op
 }  // namespace tensorflow

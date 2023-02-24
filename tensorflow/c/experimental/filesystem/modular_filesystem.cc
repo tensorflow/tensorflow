@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 // TODO(b/139060984): After all filesystems are converted, all calls to
 // methods from `FileSystem` will have to be replaced to calls to private
@@ -561,8 +562,9 @@ Status RegisterFilesystemPlugin(const std::string& dso_path) {
 
   // Step 2: Load symbol for `TF_InitPlugin`
   void* dso_symbol;
-  TF_RETURN_IF_ERROR(
-      env->GetSymbolFromLibrary(dso_handle, "TF_InitPlugin", &dso_symbol));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      env->GetSymbolFromLibrary(dso_handle, "TF_InitPlugin", &dso_symbol),
+      "Failed to load TF_InitPlugin symbol for DSO: ", dso_path);
 
   // Step 3: Call `TF_InitPlugin`
   TF_FilesystemPluginInfo info;

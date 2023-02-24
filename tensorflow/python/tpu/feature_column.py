@@ -23,6 +23,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_function
+from tensorflow.python.tpu import tpu_replication
 # pylint: disable=protected-access
 
 
@@ -453,7 +454,8 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
       def host_computation():
         return fc._EmbeddingColumn._get_dense_tensor(
             self, inputs, weight_collections, trainable)
-      return tpu.outside_compilation(host_computation)
+
+      return tpu_replication.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc._EmbeddingColumn._get_dense_tensor(
@@ -477,7 +479,8 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
       def host_computation():
         return fc._EmbeddingColumn._get_sequence_dense_tensor(
             self, inputs, weight_collections, trainable)
-      return tpu.outside_compilation(host_computation)
+
+      return tpu_replication.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc._EmbeddingColumn._get_sequence_dense_tensor(
@@ -592,7 +595,8 @@ class _TPUSharedEmbeddingColumn(_TPUBaseEmbeddingColumn,
       def host_computation():
         return fc._SharedEmbeddingColumn._get_dense_tensor(
             self, inputs, weight_collections, trainable)
-      return tpu.outside_compilation(host_computation)
+
+      return tpu_replication.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc._SharedEmbeddingColumn._get_dense_tensor(
@@ -615,7 +619,8 @@ class _TPUSharedEmbeddingColumn(_TPUBaseEmbeddingColumn,
       def host_computation():
         return fc._SharedEmbeddingColumn._get_sequence_dense_tensor(
             self, inputs, weight_collections, trainable)
-      return tpu.outside_compilation(host_computation)
+
+      return tpu_replication.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc._SharedEmbeddingColumn._get_sequence_dense_tensor(

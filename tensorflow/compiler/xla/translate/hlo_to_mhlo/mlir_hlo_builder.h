@@ -20,18 +20,23 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -51,7 +56,10 @@ class MlirHloBuilder : public XlaBuilder {
       : XlaBuilder(func.getName().str()),
         builder_(&func.getBody()),
         loc_(builder_.getUnknownLoc()),
-        build_functions_(false) {}
+        build_functions_(false),
+        symbol_table_(builder_.getBlock()
+                          ->getParent()
+                          ->getParentOfType<mlir::ModuleOp>()) {}
 
   // TODO(hinsu): Add a constructor to build a new MLIR function from scratch
   // and override Build methods.
@@ -61,7 +69,10 @@ class MlirHloBuilder : public XlaBuilder {
       : XlaBuilder(name),
         builder_(builder),
         loc_(loc),
-        build_functions_(build_functions) {}
+        build_functions_(build_functions),
+        symbol_table_(builder_.getBlock()
+                          ->getParent()
+                          ->getParentOfType<mlir::ModuleOp>()) {}
 
   MlirHloBuilder(const MlirHloBuilder&) = delete;
   MlirHloBuilder& operator=(const MlirHloBuilder&) = delete;
@@ -112,6 +123,11 @@ class MlirHloBuilder : public XlaBuilder {
   OpTy create(Args&&... args) {
     return builder_.create<OpTy>(loc_, std::forward<Args>(args)...);
   }
+
+  // Sets the FrontendAttributes that will be added to all instructions until
+  // cleared.
+  void SetFrontendAttributes(
+      const FrontendAttributes& frontend_attributes) override;
 
  private:
   XlaOp ConstantLiteral(const LiteralSlice& literal) override;
@@ -278,12 +294,15 @@ class MlirHloBuilder : public XlaBuilder {
                            mlir::Region* region,
                            bool flatten_region_arg_tuple = false);
 
-  Status ImportComputation(const HloModuleProto& computation,
-                           mlir::ModuleOp module);
+  StatusOr<mlir::func::FuncOp> ImportComputationAsFunc(
+      const HloModuleProto& computation);
 
   mlir::OpBuilder builder_;
+  mlir::DictionaryAttr frontend_attributes_;
   mlir::Location loc_;
   bool build_functions_;
+
+  mlir::SymbolTable symbol_table_;
 
   absl::flat_hash_map<int64_t, std::unique_ptr<Shape>> handle_to_shape_;
 };

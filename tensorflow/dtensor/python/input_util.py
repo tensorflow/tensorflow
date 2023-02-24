@@ -75,6 +75,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.types import data as data_types
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -104,7 +105,7 @@ class _DTensorIterator(iterator_ops.IteratorBase):
   tensors onto devices.
   """
 
-  def __init__(self, datasets: Sequence[Tuple[int, dataset_ops.DatasetV2]],
+  def __init__(self, datasets: Sequence[Tuple[int, data_types.DatasetV2]],
                element_spec: tensor_spec.TensorSpec, layouts: Any,
                num_local_devices_per_replica: int):
     """Initializes a distributed iterator for DTensor datasets.
@@ -336,7 +337,7 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """
 
   def __init__(self,
-               dataset: dataset_ops.DatasetV2,
+               dataset: data_types.DatasetV2,
                *,
                mesh: layout_lib.Mesh,
                layouts: Any,
@@ -448,7 +449,7 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
             (per_replica_batch_size, expected_batch_size))
       self._batched_dataset = dataset
 
-    num_global_devices_per_replica = api.num_global_devices(
+    num_global_devices_per_replica = config.num_global_devices(
         mesh.device_type()) // num_global_replicas
     self._num_local_replicas = len(self._local_replica_ids)
     self._num_local_devices_per_replica = mesh.num_local_devices(
@@ -475,7 +476,7 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
     ]
 
   def __iter__(self):
-    datasets: List[Tuple[int, dataset_ops.DatasetV2]] = []
+    datasets: List[Tuple[int, data_types.DatasetV2]] = []
 
     # Start with the batched the dataset.
     local_dataset = self._batched_dataset

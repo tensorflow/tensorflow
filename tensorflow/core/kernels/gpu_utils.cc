@@ -62,7 +62,7 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
   if (RedzoneCheckDisabled()) {
     return;
   }
-  se::port::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
+  tsl::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
       rz_allocator.CheckRedzones();
   if (!rz_status.ok()) {
     static absl::once_flag failure_logged;
@@ -111,7 +111,7 @@ namespace {
 tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
   tensorflow::CudnnVersion cudnn_version;
   if (auto* dnn = stream_executor->AsDnn()) {
-    se::port::StatusOr<se::dnn::VersionInfo> version_or = dnn->GetVersion();
+    tsl::StatusOr<se::dnn::VersionInfo> version_or = dnn->GetVersion();
     if (version_or.ok()) {
       const auto& version = version_or.value();
       cudnn_version.set_major(version.major_version());

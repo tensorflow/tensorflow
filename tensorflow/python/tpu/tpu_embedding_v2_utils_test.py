@@ -93,14 +93,15 @@ class ConfigTest(test.TestCase):
         combiner='sum', name='table')
 
     feature_config = tpu_embedding_v2_utils.FeatureConfig(
-        table=table, name='feature')
+        table=table, output_shape=[16, 4], name='feature')
 
     self.assertEqual(
         repr(feature_config),
         'FeatureConfig(table=TableConfig(vocabulary_size=2, dim=4, '
         'initializer=None, optimizer=None, combiner=\'sum\', '
         'name=\'table\', quantization_config=None), max_sequence_length=0, '
-        'validate_weights_and_indices=True, name=\'feature\')')
+        'validate_weights_and_indices=True, output_shape=TensorShape([16, 4]), '
+        'name=\'feature\')')
 
   def test_quantization_config_num_buckets(self):
     with self.assertRaisesRegex(ValueError, 'num_buckets'):
@@ -141,6 +142,22 @@ class TPUEmbeddingConfigurationTest(test.TestCase):
       self.assertLess(
           len(line), truncate_length,
           'Logging function lines should not be of truncating length.')
+
+
+class TPUEmbeddingUtilityFunctionTest(test.TestCase):
+
+  def test_sort_device_spec_strings(self):
+    device_spec_strings = []
+    for task in [2, 3, 0, 1]:  # Intentionally permuted
+      for device in range(8):
+        device_spec_strings.append(
+            f'/job:trainer/replica:0/task:{task}/device:TPU:{device}'
+        )
+    sorted_specs = tpu_embedding_v2_utils._sort_device_spec_strings(
+        device_spec_strings
+    )
+
+    self.assertEqual(sorted_specs, sorted(device_spec_strings))
 
 
 if __name__ == '__main__':

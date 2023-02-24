@@ -16,22 +16,17 @@
 set -x
 
 ARM_SKIP_TESTS="-//tensorflow/lite/... \
--//tensorflow/python:nn_grad_test \
+-//tensorflow/core/platform:ram_file_system_test \
 -//tensorflow/python/client:session_list_devices_test \
--//tensorflow/python/data/kernel_tests:iterator_test_cpu \
--//tensorflow/python/data/kernel_tests:iterator_test_gpu \
--//tensorflow/python/eager:forwardprop_test \
--//tensorflow/python/kernel_tests/nn_ops:conv_ops_test \
--//tensorflow/python/kernel_tests/nn_ops:conv2d_backprop_filter_grad_test \
+-//tensorflow/python/compiler/xla:xla_test_cpu \
+-//tensorflow/python/compiler/xla:xla_test_gpu \
+-//tensorflow/python/data/experimental/kernel_tests:checkpoint_input_pipeline_hook_test \
+-//tensorflow/python/data/kernel_tests:iterator_test \
+-//tensorflow/python/distribute:parameter_server_strategy_test_cpu \
+-//tensorflow/python/distribute:parameter_server_strategy_test_gpu \
+-//tensorflow/python/distribute/failure_handling:gce_failure_handler_test \
 -//tensorflow/python/kernel_tests/nn_ops:atrous_conv2d_test \
+-//tensorflow/python/kernel_tests/nn_ops:conv_ops_test \
+-//tensorflow/python/kernel_tests/nn_ops:pooling_ops_test \
 -//tensorflow/python/training:server_lib_test \
--//tensorflow/python/kernel_tests/linalg:linalg_grad_test_gpu \
--//tensorflow/python/kernel_tests/linalg:linalg_grad_test_cpu \
--//tensorflow/python/kernel_tests/linalg:linear_operator_block_diag_test_gpu \
--//tensorflow/python/kernel_tests/linalg:linear_operator_block_diag_test_cpu \
--//tensorflow/python/kernel_tests/linalg:linear_operator_block_lower_triangular_test_gpu \
--//tensorflow/python/kernel_tests/linalg:linear_operator_block_lower_triangular_test_cpu \
--//tensorflow/python/kernel_tests/linalg:linalg_ops_test_gpu \
--//tensorflow/python/kernel_tests/linalg:linalg_ops_test_cpu \
--//tensorflow/python/kernel_tests/linalg:linear_operator_composition_test_gpu \
--//tensorflow/python/kernel_tests/linalg:linear_operator_composition_test_cpu"
+-//tensorflow/python/debug/lib:source_remote_test"

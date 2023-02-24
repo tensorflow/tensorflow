@@ -21,8 +21,8 @@ from typing import List, Dict, Optional
 import numpy as np
 
 from tensorflow.dtensor.proto import layout_pb2
+from tensorflow.dtensor.python import config
 from tensorflow.python import _pywrap_dtensor_device
-from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.util.tf_export import tf_export
@@ -30,6 +30,7 @@ from tensorflow.python.util.tf_export import tf_export
 # UNSHARDED indicates a tensor dimension is not sharded over any mesh dimension.
 UNSHARDED = 'unsharded'
 MATCH = 'match'
+USE_XLA_SPMD = False
 
 tf_export(
     'experimental.dtensor.UNSHARDED',
@@ -76,6 +77,7 @@ class Mesh(_pywrap_dtensor_device.Mesh):
   _local_devices = List[tf_device.DeviceSpec]
   _global_devices = Optional[List[tf_device.DeviceSpec]]
   _device_type: str
+  _use_xla_spmd: bool
 
   def __init__(self,
                dim_names: List[str],
@@ -83,7 +85,8 @@ class Mesh(_pywrap_dtensor_device.Mesh):
                local_device_ids: List[int],
                local_devices: List[tf_device.DeviceSpec],
                mesh_name: str = '',
-               global_devices: Optional[List[tf_device.DeviceSpec]] = None):
+               global_devices: Optional[List[tf_device.DeviceSpec]] = None,
+               use_xla_spmd: bool = USE_XLA_SPMD):
     """Builds a Mesh.
 
     The `dim_names` and `global_device_ids` arguments describe the dimension
@@ -123,6 +126,8 @@ class Mesh(_pywrap_dtensor_device.Mesh):
         mostly used to indicate whether it is a CPU, GPU, or TPU-based mesh.
       global_devices (optional): The list of global devices. Set when multiple
         device meshes are in use.
+      use_xla_spmd (optional): Boolean when True, will use XLA SPMD instead of
+        DTensor SPMD.
     """
     # Check if input args are valid.
     if not isinstance(global_device_ids, np.ndarray):
@@ -154,7 +159,7 @@ class Mesh(_pywrap_dtensor_device.Mesh):
 
     super().__init__(mesh_name, dim_names, global_device_ids_shape,
                      global_device_ids_flatten, global_devices_str,
-                     local_device_ids, local_devices_str)
+                     local_device_ids, local_devices_str, use_xla_spmd)
 
     if len(dim_names) != global_device_ids.ndim:
       raise ValueError(
@@ -196,9 +201,12 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     if len(device_types) > 1:
       raise ValueError('Devices containing multiple device_types : %s' %
                        device_types)
-
+    device_type = device_types.pop()
+    if use_xla_spmd and device_type != 'TPU':
+      raise ValueError('XLA SPMD is not currently not supported for %s mesh.' %
+                       device_type)
     # Set object's state.
-    self._device_type = device_types.pop()
+    self._device_type = device_type
     self._dim_names = dim_names
     self._dim_dict = {
         dim_name: MeshDimension(dim_name, global_device_ids.shape[i])
@@ -211,13 +219,15 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     self._name = mesh_name
     self._strides = _compute_mesh_strides(
         [self._dim_dict[dim] for dim in self._dim_names])
+    self._use_xla_spmd = use_xla_spmd
 
   def __eq__(self, other):
     if not isinstance(other, type(self)) and not isinstance(self, type(other)):
       raise ValueError('comparing with type : {0} but expecting : {1}'.format(
           type(other), type(self)))
-    return self.as_proto().SerializeToString() == other.as_proto(
-    ).SerializeToString()
+    return (self.as_proto().SerializeToString(
+        deterministic=True) == other.as_proto().SerializeToString(
+            deterministic=True))
 
   def __getitem__(self, dim_name: str) -> MeshDimension:
     if dim_name not in self._dim_dict:
@@ -266,6 +276,7 @@ class Mesh(_pywrap_dtensor_device.Mesh):
       for d in self._global_devices:
         mesh_proto.global_devices.append(d.to_string())
 
+    mesh_proto.use_xla_spmd = self.use_xla_spmd()
     return mesh_proto
 
   def coords(self, device_idx: int) -> ops.Tensor:
@@ -308,7 +319,7 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     name = proto.name
     dims = [dim.name for dim in proto.mesh_dimensions]
     return Mesh(dims, global_device_ids, local_device_ids, local_devices, name,
-                global_devices)
+                global_devices, proto.use_xla_spmd)
 
   # TODO(panzf): Remove this in the last step of C++/Python unification
   # Removing this method depends on C++ Mesh implements all Python methods
@@ -317,18 +328,23 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     """Construct a mesh instance from input `proto`."""
     # Separate elements of mesh.
     mesh_parts = mesh_str.split('|')
-    global_dev_str = None
+    global_dev_str_or_use_xla_spmd = None
+    use_xla_spmd = False
     if len(mesh_parts) == 5:
       name, mesh_dim_strs, global_id_str, local_id_str, dev_str = mesh_parts
     elif len(mesh_parts) == 6:
       (name, mesh_dim_strs, global_id_str, local_id_str, dev_str,
-       global_dev_str) = mesh_parts
+       global_dev_str_or_use_xla_spmd) = mesh_parts
+    elif len(mesh_parts) == 7:
+      (name, mesh_dim_strs, global_id_str, local_id_str, dev_str,
+       global_dev_str_or_use_xla_spmd, use_xla_spmd) = mesh_parts
     else:
       raise ValueError('Invalid mesh string : %s' % mesh_str)
 
     # Load mesh proto.
     mesh_proto = layout_pb2.MeshProto()
     mesh_proto.name = name
+    mesh_proto.use_xla_spmd = (use_xla_spmd == 'use_xla_spmd')
 
     for mesh_dim_str in mesh_dim_strs.split(','):
       name, size_str = mesh_dim_str.split('=')
@@ -347,9 +363,14 @@ class Mesh(_pywrap_dtensor_device.Mesh):
       for dev in dev_str.split(','):
         mesh_proto.local_devices.append(dev)
 
-    if global_dev_str:
-      for dev in global_dev_str.split(','):
-        mesh_proto.global_devices.append(dev)
+    # Global device ids and use_xla_spmd are both optional strings appended to
+    # the end. When there are 6 arguments, we need to check which argument.
+    if global_dev_str_or_use_xla_spmd:
+      if global_dev_str_or_use_xla_spmd == 'use_xla_spmd':
+        mesh_proto.use_xla_spmd = True
+      else:
+        for dev in global_dev_str_or_use_xla_spmd.split(','):
+          mesh_proto.global_devices.append(dev)
 
     return Mesh.from_proto(mesh_proto)
 
@@ -358,7 +379,7 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     if self.device_type().upper() == 'CPU':
       return self
 
-    v_cpus_counts = len(tf_config.list_logical_devices('CPU'))
+    v_cpus_counts = config.num_local_devices('CPU')
     if v_cpus_counts < len(self._local_devices):
       raise ValueError(
           'Must have at least {0} virtual CPUs for mesh : {1}, '
@@ -382,14 +403,6 @@ class Mesh(_pywrap_dtensor_device.Mesh):
         global_devices=global_devices)
     return h_mesh
 
-  def is_remote(self) -> bool:
-    """Returns True if a Mesh contains only remote devices."""
-    return not self._local_device_ids and self._global_device_ids.size > 0
-
-  def local_device_ids(self) -> List[int]:
-    """Returns a list of local device IDs."""
-    return self._local_device_ids
-
   def local_device_locations(self) -> List[Dict[str, int]]:
     """Returns a list of local device locations.
 
@@ -398,27 +411,6 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     """
     mapping = self.unravel_index()
     return [mapping[device_id] for device_id in self.local_device_ids()]
-
-  def local_devices(self) -> List[str]:
-    """Returns a list of local device specs represented as strings."""
-    return [d.to_string() for d in self._local_devices]
-
-  def min_global_device_id(self) -> int:
-    """Returns the minimum global device ID."""
-    # global_device_ids sequentially increases.
-    return self._global_device_ids.flatten()[0]
-
-  def num_local_devices(self) -> int:
-    """Returns the number of local devices."""
-    return len(self._local_devices)
-
-  def shape(self) -> List[int]:
-    """Returns the shape of the mesh."""
-    return [self.dim_size(dim) for dim in self._dim_names]
-
-  @property
-  def size(self) -> int:
-    return len(np.ravel(self._global_device_ids))
 
   @property
   def strides(self) -> List[int]:
@@ -512,7 +504,6 @@ class Layout(object):
    TPU:4     [[4, 5]]
    TPU:5     [[4, 5]]
   ```
-
   """
 
   def __init__(self, sharding_specs: List[str], mesh: Mesh):
@@ -561,6 +552,9 @@ class Layout(object):
 
   def __repr__(self) -> str:
     return f'Layout(sharding_specs={self.sharding_specs}, mesh={self.mesh})'
+
+  def __hash__(self) -> int:
+    return hash(self.serialized_string())
 
   def as_proto(self) -> layout_pb2.LayoutProto:
     """Create a proto representation of a layout."""
@@ -671,7 +665,7 @@ class Layout(object):
 
   def serialized_string(self) -> bytes:
     """Returns a serialized Protobuf binary string representation."""
-    return self.as_proto().SerializeToString()
+    return self.as_proto().SerializeToString(deterministic=True)
 
   # A layout with no sharding specs is acceptable, therefore we only check the
   # mesh.
@@ -684,11 +678,3 @@ class Layout(object):
 
     mesh_str = 'mesh:' + self.mesh.to_string()
     return sharding_spec_str + ' ' + mesh_str
-
-  def unravel(self, unpacked_tensors: List[np.ndarray]) -> np.ndarray:
-    """Convert a flattened list of shards into a sharded array."""
-    unravelled = np.ndarray([self.num_shards(i) for i in range(self.rank)],
-                            dtype=np.object)
-    for offset, loc in enumerate(self.offset_to_shard()):
-      unravelled[loc] = unpacked_tensors[offset]
-    return unravelled

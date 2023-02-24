@@ -18,6 +18,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdlib.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -29,9 +30,11 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/util.h"
 
@@ -90,7 +93,6 @@ TfLiteQuantization GetQuantizationFromLegacy(
 Interpreter::Interpreter(ErrorReporter* error_reporter)
     : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
-  // TODO(b/128420794): Include the TFLite runtime version in the log.
   // Prod logging is useful for mobile platforms where scraping console logs is
   // critical for debugging.
 #if defined(TFLITE_IS_MOBILE_PLATFORM)
@@ -329,8 +331,7 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
   // by default, in which case, the execution will fall back to default
   // implementation if the XNNPACK delegate fails to be applied.
   for (size_t i = 0; i < delegate_providers.size(); ++i) {
-    auto delegate_ptr =
-        delegate_providers[i](context_->recommended_num_threads);
+    auto delegate_ptr = delegate_providers[i](context_);
     // Note when XNNPACK-by-default is disabled, the corresponding creator (i.e.
     // tflite::MaybeCreateXNNPACKDelegate(...)) will return a nullptr.
     // Therefore, we simply continue with the next one.
@@ -437,6 +438,18 @@ TfLiteStatus Interpreter::SetMetadata(
   return kTfLiteOk;
 }
 
+TfLiteStatus Interpreter::SetTelemetrySettings(
+    std::unique_ptr<TfLiteTelemetryInterpreterSettings> settings) {
+  telemetry_data_ = std::move(settings);
+  return kTfLiteOk;
+}
+
+TfLiteStatus Interpreter::ReportTelemetrySettings(const char* setting_name) {
+  telemetry::TelemetryReportSettings(context_, setting_name,
+                                     telemetry_data_.get());
+  return kTfLiteOk;
+}
+
 bool Interpreter::IsFullyDelegated() const {
   return primary_subgraph().IsFullyDelegated();
 }
@@ -494,5 +507,14 @@ TfLiteStatus Interpreter::EnableCancellation() {
 }
 
 TfLiteStatus Interpreter::Cancel() { return primary_subgraph().Cancel(); }
+
+void Interpreter::AddProfiler(std::unique_ptr<Profiler> profiler) {
+  if (profiler == nullptr) return;
+  if (root_profiler_ == nullptr) {
+    root_profiler_ = std::make_unique<profiling::RootProfiler>();
+  }
+  root_profiler_->AddProfiler(std::move(profiler));
+  SetSubgraphProfiler();
+}
 
 }  // namespace tflite

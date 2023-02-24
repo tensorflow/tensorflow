@@ -95,7 +95,7 @@ void RaiseCustomOpsPass::runOnOperation() {
     }
     custom_op->setAttrs(inner_op->getAttrs());
     builder.create<YieldOp>(loc, inner_op->getResults());
-    custom_op.body().takeBody(region);
+    custom_op.getBody().takeBody(region);
 
     op->replaceAllUsesWith(custom_op);
     op->erase();

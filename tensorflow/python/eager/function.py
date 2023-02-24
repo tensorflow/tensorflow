@@ -18,7 +18,6 @@
 
 # TODO(b/243822285): Reduce this list as much as possible.
 # Constants
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import IMPLEMENTS_ATTRIBUTE_NAME
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import _BACKWARD_PREFIX
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import _FORWARD_PREFIX
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import _INFERENCE_PREFIX
@@ -39,7 +38,6 @@ from tensorflow.python.eager.polymorphic_function.quarantine import clear_functi
 from tensorflow.python.eager.polymorphic_function.quarantine import remove_function_callback
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import _function_callbacks
 
-# TODO(b/244360686): Remove in favor of tf.function.
+# TODO(b/258247871): Remove in favor of tf.function.
 # QUARANTINED - Defun API
-from tensorflow.python.eager.polymorphic_function.quarantine import defun
 from tensorflow.python.eager.polymorphic_function.quarantine import defun_with_attributes

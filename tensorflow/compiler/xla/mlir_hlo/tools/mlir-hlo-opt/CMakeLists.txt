@@ -21,21 +21,27 @@ set(LIBS
         MLIROptLib
 
         AllGmlStPasses
+        AllMhloPasses
+        AllThloPasses
+        DeallocationDialect
+        DeallocationPasses
         GmlStDialect
+        GmlStPasses
         LmhloDialect
         LmhloGPUDialect
-        MhloRegisterDialects
         LmhloPasses
-        AllMhloPasses
         MLIRBufferTransforms
-        MLIRHLOGPUTransforms
         MLIRHLOAnalysis
+        MLIRHLOGPUTransforms
         MLIRHLOTestAnalysis
+        MhloRegisterDialects
+        MhloTestAnalysis
         )
 add_llvm_executable(mlir-hlo-opt mlir-hlo-opt.cc
   DEPENDS
         MLIRLmhloPassIncGen
         MLIRMhloPassIncGen
+        MLIRThloPassIncGen
         LMHLOTransformsPassIncGen
         LMHLOGPUTransformsPassIncGen
 )

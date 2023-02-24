@@ -19,9 +19,12 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
+// Dialect registry is a container for registering dialects supported by the Xla
+// runtime compilation pipeline.
 class DialectRegistry;  // NOLINT
 
-class PassManager;
+// The main Xla runtime pass manager and compilation pipeline builder.
+class PassManager;  // NOLINT
 
 }  // namespace runtime
 }  // namespace xla

@@ -16,10 +16,12 @@ limitations under the License.
 
 #include <initializer_list>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
@@ -41,13 +43,18 @@ class FillOpModel : public SingleOpModel {
   explicit FillOpModel(TensorType dims_tensor_type,
                        std::initializer_list<int> dims_shape,
                        std::initializer_list<dims_type> dims_data,
-                       value_type value, TestType input_tensor_types) {
+                       value_type value, TestType input_tensor_types,
+                       bool constant_tensor) {
     if (input_tensor_types == TestType::kDynamic) {
       dims_ = AddInput(dims_tensor_type);
     } else {
       dims_ = AddConstInput(dims_tensor_type, dims_data, dims_shape);
     }
-    value_ = AddInput(GetTensorType<value_type>());
+    if (constant_tensor) {
+      value_ = AddConstInput(GetTensorType<value_type>(), &value, 1);
+    } else {
+      value_ = AddInput(GetTensorType<value_type>());
+    }
     output_ = AddOutput(GetTensorType<value_type>());
     SetBuiltinOp(BuiltinOperator_FILL, BuiltinOptions_FillOptions,
                  CreateFillOptions(builder_).Union());
@@ -58,7 +65,9 @@ class FillOpModel : public SingleOpModel {
         PopulateTensor<dims_type>(dims_, dims_data);
       }
     }
-    PopulateTensor<value_type>(value_, {value});
+    if (!constant_tensor) {
+      PopulateTensor<value_type>(value_, {value});
+    }
   }
 
   std::vector<value_type> GetOutput() {
@@ -107,19 +116,22 @@ class QuantizedFillOpModel : public SingleOpModel {
   int output_;
 };
 
-class FillOpTest : public ::testing::TestWithParam<TestType> {};
+class FillOpTest : public ::testing::TestWithParam<std::tuple<TestType, bool>> {
+};
 
 TEST_P(FillOpTest, FillInt32) {
+  const bool constant_tensor = std::get<1>(GetParam());
   FillOpModel<int32_t, int32_t> m(TensorType_INT32, {2}, {2, 3}, -11,
-                                  GetParam());
+                                  std::get<0>(GetParam()), constant_tensor);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-11, -11, -11, -11, -11, -11}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
 }
 
 TEST_P(FillOpTest, FillInt64) {
+  const bool constant_tensor = std::get<1>(GetParam());
   FillOpModel<int64_t, int64_t> m(TensorType_INT64, {2}, {2, 4}, 1LL << 45,
-                                  GetParam());
+                                  std::get<0>(GetParam()), constant_tensor);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({1LL << 45, 1LL << 45, 1LL << 45, 1LL << 45,
@@ -128,8 +140,20 @@ TEST_P(FillOpTest, FillInt64) {
 }
 
 TEST_P(FillOpTest, FillFloat) {
+  const bool constant_tensor = std::get<1>(GetParam());
   FillOpModel<int64_t, float> m(TensorType_INT64, {3}, {2, 2, 2}, 4.0,
-                                GetParam());
+                                std::get<0>(GetParam()), constant_tensor);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
+}
+
+TEST_P(FillOpTest, FillFloat16) {
+  const bool constant_tensor = std::get<1>(GetParam());
+  FillOpModel<int64_t, Eigen::half> m(TensorType_INT64, {3}, {2, 2, 2},
+                                      Eigen::half(4.0f),
+                                      std::get<0>(GetParam()), constant_tensor);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0}));
@@ -137,8 +161,9 @@ TEST_P(FillOpTest, FillFloat) {
 }
 
 TEST_P(FillOpTest, FillFloatInt32Dims) {
+  const bool constant_tensor = std::get<1>(GetParam());
   FillOpModel<int32_t, float> m(TensorType_INT32, {3}, {2, 2, 2}, 4.0,
-                                GetParam());
+                                std::get<0>(GetParam()), constant_tensor);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0}));
@@ -146,15 +171,18 @@ TEST_P(FillOpTest, FillFloatInt32Dims) {
 }
 
 TEST_P(FillOpTest, FillOutputScalar) {
-  FillOpModel<int64_t, float> m(TensorType_INT64, {0}, {}, 4.0, GetParam());
+  const bool constant_tensor = std::get<1>(GetParam());
+  FillOpModel<int64_t, float> m(TensorType_INT64, {0}, {}, 4.0,
+                                std::get<0>(GetParam()), constant_tensor);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({4.0}));
   EXPECT_THAT(m.GetOutputShape(), IsEmpty());
 }
 
 TEST_P(FillOpTest, FillBool) {
+  const bool constant_tensor = std::get<1>(GetParam());
   FillOpModel<int64_t, bool> m(TensorType_INT64, {3}, {2, 2, 2}, true,
-                               GetParam());
+                               std::get<0>(GetParam()), constant_tensor);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({true, true, true, true, true,
                                                true, true, true}));
@@ -163,7 +191,7 @@ TEST_P(FillOpTest, FillBool) {
 
 TEST(FillOpTest, FillString) {
   FillOpModel<int64_t, std::string> m(TensorType_INT64, {3}, {2, 2, 2}, "AB",
-                                      TestType::kDynamic);
+                                      TestType::kDynamic, false);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({"AB", "AB", "AB", "AB", "AB",
                                                "AB", "AB", "AB"}));
@@ -171,8 +199,9 @@ TEST(FillOpTest, FillString) {
 }
 
 TEST_P(FillOpTest, FillInt8) {
+  const bool constant_tensor = std::get<1>(GetParam());
   FillOpModel<int64_t, int8_t> m(TensorType_INT64, {3}, {2, 2, 2}, 5,
-                                 GetParam());
+                                 std::get<0>(GetParam()), constant_tensor);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
@@ -210,9 +239,10 @@ TEST(FillOpTest, QuantizedFillInt8) { QuantizedFill<int8_t>(3.14f); }
 
 TEST(FillOpTest, QuantizedFillInt16) { QuantizedFill<int16_t>(3.14f); }
 
-INSTANTIATE_TEST_SUITE_P(FillOpTest, FillOpTest,
-                         ::testing::Values(TestType::kConst,
-                                           TestType::kDynamic));
+INSTANTIATE_TEST_SUITE_P(
+    FillOpTest, FillOpTest,
+    ::testing::Combine(::testing::Values(TestType::kConst, TestType::kDynamic),
+                       ::testing::Bool()));
 
 }  // namespace
 }  // namespace tflite

@@ -121,12 +121,6 @@ SymbolRefAttr lookupGlobalTensor(func::FuncOp func, Value resource,
 }
 
 static LogicalResult convertTFGlobals(ModuleOp module) {
-  if (auto sessionInitializer =
-          tf_saved_model::GetSessionInitializerOp(module)) {
-    return sessionInitializer.emitError()
-           << "Session initializer is not supported yet";
-  }
-
   OpBuilder globalBuilder(module.getBodyRegion());
   DenseMap<Operation *, std::string> opToName;
   for (auto globalTensor : module.getOps<tf_saved_model::GlobalTensorOp>()) {
@@ -155,22 +149,22 @@ static LogicalResult convertTFGlobals(ModuleOp module) {
     }
     bool success = true;
     func.walk([&](mlir::TF::ReadVariableOp op) {
-      auto sym = lookupGlobalTensor(func, op.resource(), syms, opToName);
+      auto sym = lookupGlobalTensor(func, op.getResource(), syms, opToName);
       success &= !!sym;
       if (!success) return;
       OpBuilder builder(op);
       auto load = builder.create<mlir::ml_program::GlobalLoadOp>(
-          op.getLoc(), op.value().getType(), sym);
-      op.value().replaceAllUsesWith(load.getResult());
+          op.getLoc(), op.getValue().getType(), sym);
+      op.getValue().replaceAllUsesWith(load.getResult());
       op.erase();
     });
     func.walk([&](mlir::TF::AssignVariableOp op) {
-      auto sym = lookupGlobalTensor(func, op.resource(), syms, opToName);
+      auto sym = lookupGlobalTensor(func, op.getResource(), syms, opToName);
       success &= !!sym;
       if (!success) return;
       OpBuilder builder(op);
       builder.create<mlir::ml_program::GlobalStoreOp>(op.getLoc(), sym,
-                                                      op.value());
+                                                      op.getValue());
       op.erase();
     });
     if (!success) return failure();

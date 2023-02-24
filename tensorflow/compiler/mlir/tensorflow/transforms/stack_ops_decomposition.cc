@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
 #include <string>
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -139,7 +139,7 @@ LogicalResult HandleWhileOp(
   llvm::SmallDenseMap<Value, Value> body_map;
   auto find_arg_stack_type = [&](int64_t index) -> llvm::Optional<Type> {
     auto it = data_var_to_size_var.find(while_op.getOperand(index));
-    if (it == data_var_to_size_var.end()) return llvm::None;
+    if (it == data_var_to_size_var.end()) return std::nullopt;
     return it->getFirst().getType();
   };
   auto add_size_vars_to_return = [&](ArrayRef<BlockArgument> new_args) {
@@ -211,7 +211,7 @@ LogicalResult HandleIfOp(
 
   auto find_arg_stack_type = [&](int64_t index) -> llvm::Optional<Type> {
     auto it = data_var_to_size_var.find(if_op.getOperand(index + 1));
-    if (it == data_var_to_size_var.end()) return llvm::None;
+    if (it == data_var_to_size_var.end()) return std::nullopt;
     return it->getFirst().getType();
   };
   ModifyFunctionSignature(then_func, &then_map, find_arg_stack_type);
@@ -316,7 +316,7 @@ LogicalResult HandlePartitionedCallOp(
   }
   auto find_arg_stack_type = [&](int64_t index) -> llvm::Optional<Type> {
     auto it = data_var_to_size_var.find(call.getOperand(index));
-    if (it == data_var_to_size_var.end()) return llvm::None;
+    if (it == data_var_to_size_var.end()) return std::nullopt;
     return it->getFirst().getType();
   };
   ModifyFunctionSignature(lowered_callee, &callee_map, find_arg_stack_type);
@@ -355,10 +355,10 @@ LogicalResult HandleStackV2Op(
     llvm::SmallDenseMap<Value, Value>* data_var_to_size_var) {
   // Create a buffer variable and a size variable to replace the stack.
   auto elem_type = cutil::GetElementTypeFromAccess(
-      stack.handle(), module, [](Operation* user) -> llvm::Optional<Type> {
+      stack.getHandle(), module, [](Operation* user) -> llvm::Optional<Type> {
         auto push = llvm::dyn_cast<TF::StackPushV2Op>(user);
-        if (!push) return llvm::None;
-        return push.elem().getType();
+        if (!push) return std::nullopt;
+        return push.getElem().getType();
       });
   if (!elem_type.has_value()) {
     return stack.emitOpError("cannot infer element shape of stack");
@@ -366,7 +366,7 @@ LogicalResult HandleStackV2Op(
   OpBuilder builder(stack);
   Value buffer;
   if (failed(cutil::CreateInitBufferValue(
-          elem_type->getShape(), stack.max_size(), stack,
+          elem_type->getShape(), stack.getMaxSize(), stack,
           elem_type->getElementType(), builder, &buffer))) {
     return failure();
   }
@@ -384,7 +384,7 @@ LogicalResult HandleStackV2Op(
                             cutil::GetR1Const({0LL}, builder, stack.getLoc()),
                             builder, stack.getLoc());
   cutil::WriteLocalVariable(local_var, buffer, builder, stack.getLoc());
-  stack.handle().replaceAllUsesWith(local_var);
+  stack.getHandle().replaceAllUsesWith(local_var);
   (*data_var_to_size_var)[local_var] = local_size_var;
   stack.erase();
   return success();
@@ -393,22 +393,23 @@ LogicalResult HandleStackV2Op(
 LogicalResult HandleStackPushV2Op(
     TF::StackPushV2Op push,
     llvm::SmallDenseMap<Value, Value>* data_var_to_size_var) {
-  auto it = data_var_to_size_var->find(push.handle());
+  auto it = data_var_to_size_var->find(push.getHandle());
   if (it == data_var_to_size_var->end()) {
     return push.emitOpError("unknown stack");
   }
   // Push output simply forward the input element.
-  push.replaceAllUsesWith(push.elem());
+  push.replaceAllUsesWith(push.getElem());
   OpBuilder builder(push);
   // Read the current buffer and size.
   auto stack_val =
-      cutil::ReadLocalVariable(push.handle(), builder, push.getLoc());
+      cutil::ReadLocalVariable(push.getHandle(), builder, push.getLoc());
   auto index =
       cutil::ReadLocalVariable(it->getSecond(), builder, push.getLoc());
-  stack_val =
-      cutil::SetElement(index, stack_val, push.elem(), builder, push.getLoc());
+  stack_val = cutil::SetElement(index, stack_val, push.getElem(), builder,
+                                push.getLoc());
   // Assign the new buffer and size.
-  cutil::WriteLocalVariable(push.handle(), stack_val, builder, push.getLoc());
+  cutil::WriteLocalVariable(push.getHandle(), stack_val, builder,
+                            push.getLoc());
   index = builder.create<TF::AddV2Op>(
       push.getLoc(), ArrayRef<Type>{index.getType()},
       ArrayRef<Value>{index, cutil::GetR1Const({1}, builder, push.getLoc())});
@@ -420,14 +421,14 @@ LogicalResult HandleStackPushV2Op(
 LogicalResult HandleStackPopV2Op(
     TF::StackPopV2Op pop,
     llvm::SmallDenseMap<Value, Value>* data_var_to_size_var) {
-  auto it = data_var_to_size_var->find(pop.handle());
+  auto it = data_var_to_size_var->find(pop.getHandle());
   if (it == data_var_to_size_var->end()) {
     return pop.emitOpError("unknown stack");
   }
   OpBuilder builder(pop);
   // Read the current buffer and size.
   auto stack_val =
-      cutil::ReadLocalVariable(pop.handle(), builder, pop.getLoc());
+      cutil::ReadLocalVariable(pop.getHandle(), builder, pop.getLoc());
   auto size = cutil::ReadLocalVariable(it->getSecond(), builder, pop.getLoc());
   auto new_size = builder.create<TF::SubOp>(
       pop.getLoc(), ArrayRef<Type>{size.getType()},
@@ -501,7 +502,7 @@ LogicalResult DecomposeStackOpsInternal(
         return failure();
       }
     } else if (auto close = llvm::dyn_cast<TF::StackCloseV2Op>(&op)) {
-      data_var_to_size_var->erase(close.handle());
+      data_var_to_size_var->erase(close.getHandle());
       close.erase();
     } else if (auto while_op = llvm::dyn_cast<TF::WhileOp>(&op)) {
       if (failed(HandleWhileOp(while_op, module, *data_var_to_size_var,

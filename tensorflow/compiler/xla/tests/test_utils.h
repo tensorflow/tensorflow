@@ -22,10 +22,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -111,6 +111,10 @@ Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
 std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
                                                       HloInstruction* lhs,
                                                       HloInstruction* rhs);
+
+// Checks whether MLIR lowering is enabled through XLA_FLAGS.
+bool IsMlirLoweringEnabled();
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_TESTS_TEST_UTILS_H_

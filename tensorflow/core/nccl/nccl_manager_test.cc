@@ -269,7 +269,7 @@ class NcclManagerTest : public ::testing::Test {
         auto out_gpu_mem = AsDeviceMemory(out_gpu.flat<Scalar>().data());
         stream->ThenMemcpy(out_cpu.flat<Scalar>().data(), out_gpu_mem,
                            out_cpu.TotalBytes());
-        SE_ASSERT_OK(stream->BlockHostUntilDone());
+        TF_ASSERT_OK(stream->BlockHostUntilDone());
         VLOG(1) << "Verifying rank " << global_rank << " expected shape "
                 << test_case->expected.shape() << " out shape "
                 << out_cpu.shape();
@@ -522,7 +522,7 @@ TYPED_TEST(NcclManagerTest, MultipleCallers) {
     for (int rank = 0; rank < num_ranks; ++rank) {
       auto* device = this->GetDevice(num_ranks, /*node=*/0, rank);
       auto* stream = device->tensorflow_accelerator_device_info()->stream;
-      SE_ASSERT_OK(stream->BlockHostUntilDone());
+      TF_ASSERT_OK(stream->BlockHostUntilDone());
     }
 
     std::shuffle(case_and_rank.begin(), case_and_rank.end(),

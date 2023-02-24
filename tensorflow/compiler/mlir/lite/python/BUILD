@@ -2,10 +2,13 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 licenses(["notice"])
 
-package(default_visibility = [
-    ":friends",
-    "//tensorflow:__pkg__",
-])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [
+        ":friends",
+        "//tensorflow:__pkg__",
+    ],
+)
 
 package_group(
     name = "friends",
@@ -29,7 +32,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -61,7 +63,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/toco:model_flags_proto_cc",
@@ -93,7 +94,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/toco:model_flags_proto_cc",
@@ -125,7 +125,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

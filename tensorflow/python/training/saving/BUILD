@@ -4,6 +4,7 @@
 load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -48,6 +49,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":saveable_object",
+        "//tensorflow/python:control_flow_ops_gen",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/checkpoint:saveable_compat",

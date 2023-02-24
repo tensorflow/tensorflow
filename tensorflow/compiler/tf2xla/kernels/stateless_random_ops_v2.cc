@@ -18,6 +18,7 @@ limitations under the License.
 #include <cmath>
 
 #include "tensorflow/compiler/tf2xla/kernels/random_ops_util.h"
+#include "tensorflow/compiler/tf2xla/kernels/rng_converter_utils.h"
 #include "tensorflow/compiler/tf2xla/lib/random.h"
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -74,18 +75,6 @@ std::tuple<xla::XlaOp, xla::XlaOp> GetKeyCounter(
   }
 }
 
-xla::RandomAlgorithm DefaultRngAlgForDeviceType(
-    absl::string_view device_type_string) {
-  // The Philox algorithm may cause performance regression on other devices.
-  // Turn on the Philox algorithm for the CPU and GPU backends only.
-  if (device_type_string == DEVICE_GPU_XLA_JIT ||
-      device_type_string == DEVICE_CPU_XLA_JIT) {
-    return xla::RandomAlgorithm::RNG_PHILOX;
-  } else {
-    return xla::RandomAlgorithm::RNG_DEFAULT;
-  }
-}
-
 }  // namespace
 
 xla::RngOutput StatelessRngUniformV2(xla::RandomAlgorithm const& alg,
@@ -99,6 +88,7 @@ xla::RngOutput StatelessRngUniformV2(xla::RandomAlgorithm const& alg,
   using std::placeholders::_3;
   auto generator = std::bind(BitGenerator, alg, _1, _2, _3);
   switch (type) {
+    case xla::F16:
     case xla::F32:
     case xla::F64:
       return xla::UniformFloatingPointDistribution(key, counter, generator,
@@ -112,7 +102,7 @@ xla::RngOutput StatelessRngUniformV2(xla::RandomAlgorithm const& alg,
       break;
     default:
       return {builder->ReportError(xla::Unimplemented(
-                  "Types other than F32, S32, S64, U32 and U64 are not "
+                  "Types other than F16, F32, S32, S64, U32 and U64 are not "
                   "implemented by "
                   "StatelessRngUniformV2; got %s",
                   xla::primitive_util::LowercasePrimitiveTypeName(type))),
@@ -179,6 +169,15 @@ xla::XlaOp MaybeSliceCounter(xla::RandomAlgorithm const& alg,
   return counter;
 }
 
+DataType MaybeConvertBF16ToF32(DataType const& dtype) {
+  if (dtype == DT_BFLOAT16) {
+    // We'll go through F32 to generate BF16.
+    // TODO(b/256243456): Generate BF16 directly from U16.
+    return DT_FLOAT;
+  }
+  return dtype;
+}
+
 class StatelessRandomUniformOp : public XlaOpKernel {
  public:
   explicit StatelessRandomUniformOp(OpKernelConstruction* ctx)
@@ -209,7 +208,7 @@ class StatelessRandomUniformOp : public XlaOpKernel {
                                              ctx->InputShape(key_input_idx),
                                              counter_shape));
 
-    DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
+    auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
     xla::PrimitiveType rng_primitive_type = xla_shape.element_type();
@@ -247,8 +246,8 @@ class StatelessRandomUniformOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("StatelessRandomUniformV2")
                     .CompileTimeConstantInput("shape")
                     .CompileTimeConstantInput("alg")
-                    .TypeConstraint("dtype",
-                                    {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16}),
+                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_HALF,
+                                              DT_BFLOAT16}),
                 StatelessRandomUniformOp);
 
 class StatelessRandomUniformIntOp : public XlaOpKernel {
@@ -392,8 +391,7 @@ class StatelessRandomNormalOp : public XlaOpKernel {
                                              ctx->InputShape(key_input_idx),
                                              counter_shape));
 
-    DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
-
+    auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
 
@@ -431,8 +429,8 @@ class StatelessRandomNormalOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("StatelessRandomNormalV2")
                     .CompileTimeConstantInput("shape")
                     .CompileTimeConstantInput("alg")
-                    .TypeConstraint("dtype",
-                                    {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16}),
+                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_HALF,
+                                              DT_BFLOAT16}),
                 StatelessRandomNormalOp);
 
 class StatelessTruncatedNormalOp : public XlaOpKernel {
@@ -464,7 +462,7 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
 
     xla::XlaBuilder* builder = ctx->builder();
 
-    DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
+    auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
 
@@ -488,8 +486,8 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("StatelessTruncatedNormalV2")
                     .CompileTimeConstantInput("shape")
                     .CompileTimeConstantInput("alg")
-                    .TypeConstraint("dtype",
-                                    {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16}),
+                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_HALF,
+                                              DT_BFLOAT16}),
                 StatelessTruncatedNormalOp);
 
 class GetKeyCounterOp : public XlaOpKernel {
@@ -525,20 +523,6 @@ class GetKeyCounterOp : public XlaOpKernel {
 // TODO(hinsu): Dis-allow unsupported int64 seed types.
 REGISTER_XLA_OP(Name("StatelessRandomGetKeyCounter"), GetKeyCounterOp);
 
-Algorithm DecideOutputAlgorithm(xla::RandomAlgorithm alg) {
-  switch (alg) {
-    case xla::RandomAlgorithm::RNG_PHILOX:
-      return RNG_ALG_PHILOX;
-    case xla::RandomAlgorithm::RNG_THREE_FRY:
-      return RNG_ALG_THREEFRY;
-    case xla::RandomAlgorithm::RNG_DEFAULT:  // fall through
-    default:
-      // The output counter will have the maximal size, so it's safe to let
-      // downstream RNG ops choose the algorithm.
-      return RNG_ALG_AUTO_SELECT;
-  }
-}
-
 class GetAlgOp : public XlaOpKernel {
  public:
   explicit GetAlgOp(OpKernelConstruction* ctx)
@@ -549,7 +533,7 @@ class GetAlgOp : public XlaOpKernel {
     auto alg = DefaultRngAlgForDeviceType(device_type_string_);
     auto builder = ctx->builder();
     ctx->SetOutput(
-        0, ConstantR0(builder, static_cast<int>(DecideOutputAlgorithm(alg))));
+        0, ConstantR0(builder, static_cast<int>(ToTensorflowAlgorithm(alg))));
   }
 
  private:
@@ -585,7 +569,7 @@ class GetKeyCounterAlgOp : public XlaOpKernel {
     ctx->SetOutput(0, key);
     ctx->SetOutput(1, counter);
     ctx->SetOutput(
-        2, ConstantR0(builder, static_cast<int>(DecideOutputAlgorithm(alg))));
+        2, ConstantR0(builder, static_cast<int>(ToTensorflowAlgorithm(alg))));
   }
 
  private:

@@ -38,21 +38,18 @@ class CostAnalysis {
  public:
   explicit CostAnalysis(mlir::func::FuncOp func_op) {
     AnalyzeArguments(func_op);
-    TF_CHECK_OK(ReadMeasuredCosts());
     AnalyzeBlock(&func_op.front());
   }
 
-  int64_t GetCost(mlir::Operation* op, int64_t op_key) const;
+  int64_t GetCost(mlir::Operation* op) const;
 
  private:
   void AnalyzeArguments(mlir::func::FuncOp func_op);
   void AnalyzeBlock(mlir::Block* block);
   void EvaluateCost(mlir::Operation* op);
-  Status ReadMeasuredCosts();
 
   int64_t max_arg_size_ = 1;
   llvm::DenseMap<mlir::Operation*, int64_t> cost_map_;
-  tfrt_stub::OpCostMapProto op_cost_map_proto_;
 };
 
 struct CostContext {
@@ -81,6 +78,8 @@ struct CostFunctionRegistration {
     RegisterCostFunction<OpType>(std::move(cost_function));
   }
 };
+
+bool HasCostFunctionRegistered(absl::string_view op_name);
 
 }  // namespace tfrt_compiler
 }  // namespace tensorflow

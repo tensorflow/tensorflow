@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <initializer_list>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -71,11 +72,12 @@ class BacktrackAnalysisInfo {
 
   // Returns the argument index of the region to which the given result number
   // can backtracked to. Such results will be called "function passthrough". If
-  // the result cannot be backtracked to a region argument, returns llvm::None.
+  // the result cannot be backtracked to a region argument, returns
+  // std::nullopt.
   llvm::Optional<int> GetArg(int result_index) const {
     if (auto arg = GetValue(result_index).dyn_cast<BlockArgument>())
       if (arg.getParentBlock() == &region_->front()) return arg.getArgNumber();
-    return llvm::None;
+    return std::nullopt;
   }
 
  private:
@@ -137,10 +139,10 @@ class BacktrackAnalysis {
   }
 
   // Returns the backtrack analysis for the given region if it exists.
-  // If the region has not yet been analyzed, returns llvm::None.
+  // If the region has not yet been analyzed, returns std::nullopt.
   Optional<const InfoT*> GetAnalysisIfExists(Region& region) const {
     auto it = info_map_.find(&region);
-    if (it == info_map_.end()) return llvm::None;
+    if (it == info_map_.end()) return std::nullopt;
     return &it->second;
   }
 
@@ -208,9 +210,9 @@ Value BacktrackAnalysis::BacktrackValue(Value value) {
       // we cannot backtrack the value further.
       Optional<const InfoT*> callee_info = GetAnalysisIfExists(func);
       if (!callee_info) break;
-      Optional<int> passthrough_arg = callee_info.getValue()->GetArg(res_index);
+      Optional<int> passthrough_arg = callee_info.value()->GetArg(res_index);
       if (!passthrough_arg) break;
-      value = call.getArgOperands()[passthrough_arg.getValue()];
+      value = call.getArgOperands()[passthrough_arg.value()];
     } else if (isa<tf_device::LaunchOp, tf_device::ClusterOp>(op)) {
       value = op->getRegion(0).front().getTerminator()->getOperand(res_index);
     } else {
@@ -384,7 +386,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
                                      while_op.body_function()));
     } else if (auto while_region = dyn_cast<WhileRegionOp>(op)) {
       AnalyzeWhileLoop(while_region, backtrack_analysis.GetAnalysisForRegion(
-                                         while_region.body()));
+                                         while_region.getBody()));
     } else if (auto case_op = dyn_cast<CaseOp>(op)) {
       llvm::SmallVector<func::FuncOp, 4> functions;
       case_op.get_branch_functions(functions);
@@ -406,8 +408,8 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
       for (auto result : filter_resources(op->getResults())) {
         auto passthrough_arg = func_info.GetArg(result.getResultNumber());
         if (passthrough_arg) {
-          PropagateInputToOutput(
-              call.getArgOperands()[passthrough_arg.getValue()], result);
+          PropagateInputToOutput(call.getArgOperands()[passthrough_arg.value()],
+                                 result);
         } else {
           AddValueUniqueIDMapping(result, kUnknownResourceId);
         }
@@ -432,7 +434,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
               mem_interface.getEffectOnValue<MemoryEffects::Allocate>(value);
           if (alloc_effect) {
             TypeID mlir_type_id =
-                alloc_effect.getValue().getResource()->getResourceID();
+                alloc_effect.value().getResource()->getResourceID();
             // Update or lookup internal type ID.
             auto emplace_result = type_id_to_internal_type_id_.try_emplace(
                 mlir_type_id, next_unique_type_id);
@@ -502,7 +504,7 @@ void ResourceAliasAnalysisInfo::AnalyzeWhileLoop(
     int result_index = result.getResultNumber();
     passthrough_args[result_index] = body_info.GetArg(result_index);
     if (passthrough_args[result_index]) {
-      int passthru_index = passthrough_args[result_index].getValue();
+      int passthru_index = passthrough_args[result_index].value();
       PropagateInputToOutput(while_op->getOperand(passthru_index), result);
       need_analysis |=
           !IsUnknownResource(result) && passthru_index != result_index;
@@ -525,7 +527,7 @@ void ResourceAliasAnalysisInfo::AnalyzeWhileLoop(
       // If this result has a valid passthrough arg, propagate resource IDs
       // from the result of the passthrough arg
       int result_index = result.getResultNumber();
-      int passthru_index = passthrough_args[result_index].getValue();
+      int passthru_index = passthrough_args[result_index].value();
       change =
           PropagateInputToOutput(while_op->getResult(passthru_index), result) ||
           change;
@@ -556,7 +558,7 @@ void ResourceAliasAnalysisInfo::AnalyzeFunctionalCaseOrIfOp(
         });
     if (all_passthrough_args_known) {
       for (const auto& passthrough_arg : passthrough_args) {
-        Value operand = case_or_if_op.input()[passthrough_arg.getValue()];
+        Value operand = case_or_if_op.getInput()[passthrough_arg.value()];
         PropagateInputToOutput(operand, result);
       }
     } else {

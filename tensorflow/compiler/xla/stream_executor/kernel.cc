@@ -21,11 +21,11 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/demangle.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/platform/demangle.h"
 
 namespace stream_executor {
 
@@ -95,7 +95,7 @@ void KernelBase::set_name(absl::string_view name) {
 
   // CUDA splitter prefixes stub functions with __device_stub_.
   demangled_name_ =
-      port::Demangle(absl::StripPrefix(name, "__device_stub_").data());
+      tsl::port::Demangle(absl::StripPrefix(name, "__device_stub_").data());
 }
 
 }  // namespace stream_executor

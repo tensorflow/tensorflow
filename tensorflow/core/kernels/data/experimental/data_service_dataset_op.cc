@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/captured_function.h"
-#include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/service/client/common.h"
@@ -43,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -449,9 +449,6 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
   if (ctx->HasAttr(kDataTransferProtocol)) {
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr(kDataTransferProtocol, &data_transfer_protocol_));
-  }
-  if (data_transfer_protocol_.empty()) {
-    data_transfer_protocol_ = kGrpcTransferProtocol;
   }
 
   std::string target_workers_str = "AUTO";

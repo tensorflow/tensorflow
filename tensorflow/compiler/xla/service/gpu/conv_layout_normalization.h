@@ -21,15 +21,15 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 namespace gpu {
 
-StatusOr<std::optional<HloInstruction*>>
-NormalizeLayoutForCustomCallConvolution(HloCustomCallInstruction*);
+StatusOr<std::optional<HloInstruction*>> NormalizeLayoutForGpuCustomCalls(
+    HloCustomCallInstruction*);
 
 }  // end namespace gpu
 }  // end namespace xla

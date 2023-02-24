@@ -23,8 +23,8 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -38,8 +38,12 @@ namespace optimize {
 namespace utils {
 
 namespace {
-const int8_t kMinQuantizedValue = -127;
-const int8_t kMaxQuantizedValue = 127;
+
+const int8_t kMinQuantizedValue8bit = -127;
+const int8_t kMaxQuantizedValue8bit = 127;
+
+const int8_t kMinQuantizedValue4bit = -7;
+const int8_t kMaxQuantizedValue4bit = 7;
 
 // The maximum number of dimensions supported in per-channel quantization.
 constexpr int kPerChannelMaxDim = 4;
@@ -230,7 +234,7 @@ TfLiteStatus GetSymmetricScalesFromMaxMin(QuantizationParametersT* quant_params,
   for (int channel_idx = 0; channel_idx < num_channels; ++channel_idx) {
     const float half_range = std::max(std::abs(quant_params->min[channel_idx]),
                                       std::abs(quant_params->max[channel_idx]));
-    scales->at(channel_idx) = half_range / kMaxQuantizedValue;
+    scales->at(channel_idx) = half_range / kMaxQuantizedValue8bit;
   }
   return kTfLiteOk;
 }
@@ -278,7 +282,7 @@ TfLiteStatus AdjustWeightsForBiasScale(QuantizationParametersT* quant_params,
       if (std::abs(bias_data[i]) >=
           0.5 * input_scale * weight_scales[i] * kScale) {
         quant_params->max[i] = 2.0 * std::abs(bias_data[i]) / kScale *
-                               (kMaxQuantizedValue / input_scale);
+                               (kMaxQuantizedValue8bit / input_scale);
         quant_params->min[i] = -quant_params->max[i];
       }
     }
@@ -290,10 +294,10 @@ TfLiteStatus AdjustWeightsForBiasScale(QuantizationParametersT* quant_params,
 
     // Need to adjust weight min/max; not compatible with bias.
     if (bias_half_range / kScale >= 0.5 * input_scale * weight_scales[0]) {
-      quant_params->min[0] =
-          2.0 * bias_half_range / kScale * (kMinQuantizedValue / input_scale);
-      quant_params->max[0] =
-          2.0 * bias_half_range / kScale * (kMaxQuantizedValue / input_scale);
+      quant_params->min[0] = 2.0 * bias_half_range / kScale *
+                             (kMinQuantizedValue8bit / input_scale);
+      quant_params->max[0] = 2.0 * bias_half_range / kScale *
+                             (kMaxQuantizedValue8bit / input_scale);
     }
   }
   return kTfLiteOk;
@@ -324,7 +328,7 @@ TfLiteStatus SymmetricPerChannelQuantization(TensorT* tensor,
 
   // Calculate scales per channel using max and min values from tensor.
   std::vector<float> scale_invs(channel_dim_size);
-  const float half_scale = kMaxQuantizedValue;
+  const float half_scale = kMaxQuantizedValue8bit;
   for (int channel_idx = 0; channel_idx < channel_dim_size; channel_idx++) {
     const float half_range =
         std::max(std::abs(tensor->quantization->min[channel_idx]),
@@ -384,7 +388,8 @@ void SymmetricPerChannelQuantizeValues(const float* const input,
                                        const std::vector<float>& scales_inv,
                                        const std::vector<int32_t>& dimension,
                                        int32_t channel_dim_index,
-                                       std::vector<int8_t>* output_value) {
+                                       std::vector<int8_t>* output_value,
+                                       TfLiteType type) {
   // Quantize the values.
   int indices[dimension.size()];
   RuntimeShape tensor_dims(dimension.size(), dimension.data());
@@ -394,9 +399,15 @@ void SymmetricPerChannelQuantizeValues(const float* const input,
     const float val = input[index];
     const int32_t quantized_value =
         static_cast<int32_t>(TfLiteRound(val * scales_inv[channel_idx]));
-    output_value->at(index) =
-        std::min<int8_t>(kMaxQuantizedValue,
-                         std::max<int8_t>(kMinQuantizedValue, quantized_value));
+    if (type == kTfLiteInt4) {
+      output_value->at(index) =
+          std::min<int8_t>(kMaxQuantizedValue4bit,
+                           std::max<int8_t>(kMinQuantizedValue4bit, quantized_value));
+    } else {
+      output_value->at(index) =
+          std::min<int8_t>(kMaxQuantizedValue8bit,
+                           std::max<int8_t>(kMinQuantizedValue8bit, quantized_value));
+    }
   };
   for (indices[0] = 0; indices[0] < dimension[0]; indices[0]++) {
     for (indices[1] = 0; indices[1] < dimension[1]; indices[1]++) {

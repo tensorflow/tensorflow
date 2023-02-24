@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_LOCATION_IMPORTER_H_
 
 #include "mlir/IR/Location.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 
 namespace mlir {
 namespace mhlo {

@@ -9,6 +9,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
@@ -35,7 +36,7 @@ MKL_DEPS = MKL_SHORT_DEPS + [
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/kernels:concat_lib",
     "//tensorflow/core/kernels:conv_2d",
-    "//tensorflow/core/kernels:eigen_contraction_kernel",
+    "//tensorflow/tsl/framework/contraction:eigen_contraction_kernel",
     "//tensorflow/core/kernels:fill_functor",
     "//tensorflow/core/kernels:gather_functor",
     "//tensorflow/core/kernels:transpose_functor",
@@ -253,6 +254,7 @@ tf_cc_test_mkl(
     deps = [
         ":mkl_eltwise_activation_base_op",
         ":mkl_swish_op",
+        "@com_google_absl//absl/strings",
         "//tensorflow/cc:math_ops",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core:direct_session",
@@ -352,7 +354,10 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_softmax_op",
     prefix = "mkl_softmax",
-    deps = MKL_SHORT_DEPS + ["//third_party/eigen3"],
+    deps = [
+        "//third_party/eigen3",
+        "//tensorflow/core/graph:mkl_graph_util",
+    ] + MKL_SHORT_DEPS,
 )
 
 tf_mkl_kernel_library(
@@ -515,9 +520,27 @@ tf_cc_test_mkl(
 
 tf_mkl_kernel_library(
     name = "mkl_kernel_util",
-    srcs = ["mkl_kernel_util.h"],
+    srcs = ["mkl_kernel_util.cc"],
+    hdrs = ["mkl_kernel_util.h"],
     deps = MKL_DEPS + [
         ":mkl_quantize_op",
+        "//tensorflow/cc:ops",
+        "//tensorflow/core/kernels:quantization_utils",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:direct_session",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
     ],
+)
+
+tf_cc_test_mkl(
+    name = "onednn_nn_ops_benchmark",
+    size = "small",
+    srcs = ["onednn_nn_ops_benchmark.cc"],
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/core/kernels:softmax_op",
+        "//tensorflow/core/kernels/mkl:mkl_softmax_op",
+    ] + MKL_TEST_DEPS,
 )

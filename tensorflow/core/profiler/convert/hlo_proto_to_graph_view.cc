@@ -21,10 +21,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
@@ -111,7 +111,7 @@ StatusOr<std::string> Plot(std::unique_ptr<HloModule> module,
   if (comp) {
     graph_handle =
         xla::RenderGraph(*comp, "", comp->parent()->config().debug_options(),
-                         format, nullptr, render_options);
+                         format, render_options);
   } else {
     graph_handle = xla::RenderNeighborhoodAround(*instr, graph_width, format,
                                                  render_options);
@@ -130,44 +130,51 @@ static constexpr char kGraphTypeName[] = "graph";
 static constexpr char kShortTxtTypeName[] = "short_txt";
 static constexpr char kLongTxtTypeName[] = "long_txt";
 static constexpr char kDefaultFormatString[] = "url";
+static constexpr int kDefaultWidth = 3;
+static constexpr int kDefaultShowMetadata = 0;
+static constexpr int kDefaultMergeFusion = 0;
 
 }  // namespace
 
-StatusOr<GraphViewerParams> ParseGraphViewerParams(
-    const HloToolOptions& options) {
+StatusOr<GraphViewerParams> ParseGraphViewerParams(const ToolOptions& options) {
   GraphViewerParams params;
-  if (!options.type.has_value()) {
+  std::optional<std::string> type = GetParam<std::string>(options, "type");
+  if (!type.has_value()) {
     return errors::InvalidArgument("Graph viewer must provide a type option.");
   }
 
   // For graph type.
-  if (options.type == kGraphTypeName) {
-    params.type = options.type.value();
-    if (options.node_name.has_value()) {
-      params.node_name = options.node_name.value();
+  if (type == kGraphTypeName) {
+    params.type = type.value();
+    if (std::optional<std::string> node_name =
+            GetParam<std::string>(options, "node_name")) {
+      params.node_name = node_name.value();
     }
 
-    params.graph_width = options.graph_width;
-    params.render_options.show_backend_config = options.show_metadata;
-    params.render_options.show_fusion_subcomputations = !options.merge_fusion;
-    params.format =
-        GetRenderFormat(options.format.has_value() ? options.format.value()
-                                                   : kDefaultFormatString);
+    params.graph_width =
+        GetParamWithDefault<int>(options, "graph_width", kDefaultWidth);
+    params.render_options.show_backend_config = GetParamWithDefault<int>(
+        options, "show_metadata", kDefaultShowMetadata);
+    params.render_options.show_fusion_subcomputations =
+        !GetParamWithDefault<int>(options, "merge_fusion", kDefaultMergeFusion);
+    params.format = GetRenderFormat(GetParamWithDefault<std::string>(
+        options, "format", kDefaultFormatString));
 
     return params;
   }
 
   // For txt type.
-  if (options.type == kShortTxtTypeName || options.type == kLongTxtTypeName) {
-    params.type = options.type.value();
-    params.verbose = (options.type == kLongTxtTypeName);
-    params.show_metadata = options.show_metadata;
+  if (type == kShortTxtTypeName || type == kLongTxtTypeName) {
+    params.type = type.value();
+    params.verbose = (type == kLongTxtTypeName);
+    params.show_metadata =
+        GetParamWithDefault(options, "show_metadata", kDefaultShowMetadata);
     return params;
   }
 
   // Unknown type.
   return errors::InvalidArgument("Unknown graph viewer type option: ",
-                                 options.type.value());
+                                 type.value());
 }
 
 xla::RenderedGraphFormat GetRenderFormat(const std::string& format_string) {

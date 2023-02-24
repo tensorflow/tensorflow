@@ -5,6 +5,7 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_extra_arm_config_settings", 
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -66,6 +67,7 @@ cc_library(
 cc_library(
     name = "legacy_types",
     hdrs = ["legacy_types.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":types",
@@ -317,7 +319,7 @@ cc_library(
         ":tensor_utils",
         ":transpose_utils",
         ":types",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
@@ -340,6 +342,7 @@ cc_library(
         "optimized/legacy_optimized_ops.h",
         "optimized/optimized_ops.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":common",
@@ -354,7 +357,7 @@ cc_library(
         ":tensor_utils",
         ":transpose_utils",
         ":types",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
@@ -376,8 +379,8 @@ cc_library(
         ":common",
         ":optimized_base",
         ":types",
-        "//tensorflow/core/kernels:eigen_spatial_convolutions-inl",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/tsl/framework/convolution:eigen_spatial_convolutions-inl",
         "//third_party/eigen3",
     ],
 )
@@ -615,7 +618,7 @@ cc_library(
         ":tensor_utils",
         ":types",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
@@ -688,6 +691,7 @@ cc_library(
         "reference/transpose.h",
         "reference/transpose_conv.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     # We are disabling parse_headers for this header-only target so that the
     # external and internal builds are consistent. The primary issue here is
@@ -709,7 +713,7 @@ cc_library(
         ":tensor_utils",
         ":types",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//third_party/eigen3",
@@ -734,7 +738,7 @@ cc_library(
     deps = [
         ":types",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -754,7 +758,7 @@ cc_library(
     deps = [
         ":types",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -816,7 +820,7 @@ cc_library(
         ":cpu_check",
         ":neon_tensor_utils",
         ":portable_tensor_utils",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:op_macros",
@@ -844,7 +848,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":tensor_utils",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -880,10 +884,46 @@ cc_library(
     ],
 )
 
+# This target is helpful to allow builds that can not use Eigen. See
+# http://b/269699951 for more information. Ideally we could call this target
+# portable_tensor_utils but that name is already being used for
+# reference/portable_tensor_utils.cc and more.
+cc_library(
+    name = "tensor_utils_no_eigen",
+    srcs = [
+        "portable_tensor_utils.cc",
+    ],
+    hdrs = [
+        "portable_tensor_utils.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE,
+    deps = [
+        ":cpu_check",
+        "//tensorflow/lite/core/c:common",
+    ] + selects.with_or({
+        (
+            ":arm_any",
+        ): [":neon_tensor_utils"],
+        (
+            ":x86_any",
+        ): [
+            ":portable_tensor_utils",  # If SSSE3 isn't available, we fall back to portable
+            ":sse_tensor_utils",
+        ],
+        (
+            "//tensorflow/lite:tf_lite_static_memory",
+            "//conditions:default",
+        ): [":portable_tensor_utils"],
+    }),
+)
+
+# Without adding portable_tensor_utils.h in the exported headers, targets will
+# run into layering check build failure unless they list both :tensor_utils and
+# :tensor_utils_no_eigen in their deps which can be quite confusing.
 cc_library(
     name = "tensor_utils",
     srcs = [
-        "portable_tensor_utils.cc",
         "tensor_utils.cc",
     ],
     hdrs = [
@@ -894,8 +934,9 @@ cc_library(
     copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE,
     deps = [
         ":cpu_check",
+        ":tensor_utils_no_eigen",
         "//third_party/eigen3",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ] + selects.with_or({
         (
             ":arm_any",
@@ -941,7 +982,7 @@ cc_test(
         ":common",
         ":quantization_util",
         ":tensor_utils",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",

@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -552,6 +553,25 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
     return *empty_map;
   }
 
+  // Adds or updates an OptimizedFunctionGraph. Key is `function_name`.
+  void AddOptimizedFunctionGraph(const std::string& function_name,
+                                 const OptimizedFunctionGraph& graph) {
+    mutex_lock l(mu_);
+    optimized_function_graph_map_.emplace(function_name, graph);
+  }
+
+  // Look up for OptimizedFunctionGraph given `function_name`. Returns nullptr
+  // if not found.
+  OptimizedFunctionGraph* FindOptimizedFunctionGraph(
+      const std::string& function_name) const {
+    tf_shared_lock l(mu_);
+    if (auto it = optimized_function_graph_map_.find(function_name);
+        it != optimized_function_graph_map_.end()) {
+      return &(it->second);
+    }
+    return nullptr;
+  }
+
  private:
   // Shape inference for functions is handled separately by ShapeRefiner.
 
@@ -607,6 +627,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   gtl::FlatMap<string, std::shared_ptr<FunctionDefAndOpRegistration>>
       function_defs_ TF_GUARDED_BY(mu_);
   gtl::FlatMap<string, string> func_grad_ TF_GUARDED_BY(mu_);
+  // Maps from function name to optimized function graph.
+  gtl::FlatMap<string, OptimizedFunctionGraph> optimized_function_graph_map_
+      TF_GUARDED_BY(mu_);
 };
 
 // Forward declare. Defined in common_runtime/function.h
@@ -828,13 +851,21 @@ class FunctionLibraryRuntime {
   // RPC calls.
   struct Options {
     Options() {}
-    explicit Options(const int64_t step_id) : step_id(step_id) {}
+    explicit Options(const int64_t step_id)
+        : step_id(step_id), cleanup_rendezvous_after_run(false) {}
+
     // Choose a step ID that is guaranteed not to clash with any
     // Session-generated step ID. DirectSession only generates
     // non-negative step IDs (contiguous, starting from 0), and
     // MasterSession generates 56-bit random step IDs whose MSB is
     // always 0, so a negative random step ID should suffice.
     const int64_t step_id = -std::abs(static_cast<int64_t>(random::New64()));
+
+    // Whether to clean up rendezvous after run.
+    // If the function is a remote component of a cross-process function, a
+    // higher level component should determine the end of a step, and cleanup
+    // the rendezvous.
+    const bool cleanup_rendezvous_after_run = true;
 
     // op_id of the function running in eager mode. Set when we want to copy
     // remote outputs lazily. All components of a remote multi-device function
@@ -847,7 +878,7 @@ class FunctionLibraryRuntime {
     CollectiveExecutor* collective_executor = nullptr;
     ScopedStepContainer* step_container = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
-    CoordinationServiceAgent* coordination_service_agent = nullptr;
+    tsl::CoordinationServiceAgent* coordination_service_agent = nullptr;
 
     absl::optional<ManagedStackTrace> stack_trace = absl::nullopt;
 

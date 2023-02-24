@@ -22,6 +22,9 @@ from absl.testing import parameterized
 
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_type
+from tensorflow.core.function.polymorphism import function_type_pb2
+from tensorflow.core.function.trace_type import serialization
+from tensorflow.python.framework import func_graph
 from tensorflow.python.platform import test
 from tensorflow.python.types import trace
 
@@ -105,11 +108,8 @@ class FunctionTypeTest(test.TestCase):
         constraint,
         function_type.FunctionType(
             (function_type.Parameter(
-                "self", function_type.Parameter.POSITIONAL_OR_KEYWORD, False,
+                "x", function_type.Parameter.POSITIONAL_OR_KEYWORD, False,
                 None),
-             function_type.Parameter(
-                 "x", function_type.Parameter.POSITIONAL_OR_KEYWORD, False,
-                 None),
              function_type.Parameter(
                  "y", function_type.Parameter.POSITIONAL_OR_KEYWORD, True,
                  None))))
@@ -251,8 +251,8 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del x, y, z
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type = function_type.canonicalize_to_monomorphic(
-        args, kwargs, polymorphic_type, trace_type.InternalTracingContext())
+    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
+        args, kwargs, {}, {}, polymorphic_type)
 
     self.assertEqual(bound_args.args, (1, 2, 3))
     self.assertEqual(bound_args.kwargs, {})
@@ -283,8 +283,8 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del x, y, z
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type = function_type.canonicalize_to_monomorphic(
-        args, kwargs, polymorphic_type, trace_type.InternalTracingContext())
+    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
+        args, kwargs, {}, {}, polymorphic_type)
 
     self.assertEqual(bound_args.args, (1, 2, 3))
     self.assertEqual(bound_args.kwargs, {})
@@ -311,10 +311,11 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del x, y, z
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type = function_type.canonicalize_to_monomorphic(
-        args, kwargs, polymorphic_type, trace_type.InternalTracingContext())
+    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
+        args, kwargs, function_type.FunctionType.get_default_values(foo), {},
+        polymorphic_type)
 
-    self.assertEqual(bound_args.args, (1, 2))
+    self.assertEqual(bound_args.args, (1, 2, 3))
     self.assertEqual(bound_args.kwargs, {})
 
     type_context = trace_type.InternalTracingContext()
@@ -325,6 +326,9 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
         function_type.Parameter("y",
                                 function_type.Parameter.POSITIONAL_OR_KEYWORD,
                                 False, trace_type.from_value(2, type_context)),
+        function_type.Parameter("z",
+                                function_type.Parameter.POSITIONAL_OR_KEYWORD,
+                                False, trace_type.from_value(3, type_context)),
     ])
 
     self.assertEqual(mono_type, expected_type)
@@ -340,8 +344,8 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del x, y, z
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type = function_type.canonicalize_to_monomorphic(
-        args, kwargs, polymorphic_type, trace_type.InternalTracingContext())
+    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
+        args, kwargs, {}, {}, polymorphic_type)
 
     self.assertEqual(bound_args.args, (1, 2, 3))
     self.assertEqual(bound_args.kwargs, {})
@@ -367,8 +371,8 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del my_var_args
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type = function_type.canonicalize_to_monomorphic(
-        (1, 2, 3), {}, polymorphic_type, trace_type.InternalTracingContext())
+    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
+        (1, 2, 3), {}, {}, {}, polymorphic_type)
 
     self.assertEqual(bound_args.args, (1, 2, 3))
     self.assertEqual(bound_args.kwargs, {})
@@ -394,11 +398,11 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del kwargs
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type = function_type.canonicalize_to_monomorphic((), {
+    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic((), {
         "x": 1,
         "y": 2,
         "z": 3
-    }, polymorphic_type, trace_type.InternalTracingContext())
+    }, {}, {}, polymorphic_type)
 
     self.assertEqual(bound_args.args, ())
     self.assertEqual(bound_args.kwargs, {"x": 1, "y": 2, "z": 3})
@@ -421,10 +425,10 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del args, kwargs
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type = function_type.canonicalize_to_monomorphic((1,), {
+    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic((1,), {
         "y": 2,
         "z": 3
-    }, polymorphic_type, trace_type.InternalTracingContext())
+    }, {}, {}, polymorphic_type)
 
     self.assertEqual(bound_args.args, (1,))
     self.assertEqual(bound_args.kwargs, {"y": 2, "z": 3})
@@ -452,8 +456,8 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del x, y, z
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type = function_type.canonicalize_to_monomorphic(
-        args, kwargs, polymorphic_type, trace_type.InternalTracingContext())
+    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
+        args, kwargs, {}, {}, polymorphic_type)
 
     self.assertEqual(bound_args.args, (1, 2))
     self.assertEqual(bound_args.kwargs, {"z": 3})
@@ -485,8 +489,8 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
     foo = eval("lambda x, y, /, z: x + y + z")  # pylint: disable=eval-used
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type = function_type.canonicalize_to_monomorphic(
-        args, kwargs, polymorphic_type, trace_type.InternalTracingContext())
+    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
+        args, kwargs, {}, {}, polymorphic_type)
 
     self.assertEqual(bound_args.args, (1, 2, 3))
     self.assertEqual(bound_args.kwargs, {})
@@ -567,6 +571,9 @@ class TypeHierarchyTest(test.TestCase):
       def most_specific_common_supertype(self, others):
         return self
 
+      def placeholder_value(self, placeholder_context):
+        raise NotImplementedError
+
       def __eq__(self, other):
         return self is other
 
@@ -582,6 +589,9 @@ class TypeHierarchyTest(test.TestCase):
 
       def most_specific_common_supertype(self, others):
         return supertype
+
+      def placeholder_value(self, placeholder_context):
+        raise NotImplementedError
 
       def __eq__(self, other):
         return self is other
@@ -620,9 +630,12 @@ class TypeHierarchyTest(test.TestCase):
         function_type.Parameter("z", function_type.Parameter.KEYWORD_ONLY,
                                 False, trace_type.from_value(3, type_context)),
     ])
-
-    self.assertEqual(foo.placeholder_arguments().args, (1, 2))
-    self.assertEqual(foo.placeholder_arguments().kwargs, {"z": 3})
+    context_graph = func_graph.FuncGraph("test")
+    placeholder_context = trace_type.InternalPlaceholderContext(context_graph)
+    self.assertEqual(
+        foo.placeholder_arguments(placeholder_context).args, (1, 2))
+    self.assertEqual(
+        foo.placeholder_arguments(placeholder_context).kwargs, {"z": 3})
 
 
 class CapturesTest(test.TestCase):
@@ -681,6 +694,76 @@ class CapturesTest(test.TestCase):
     supertype_5 = self.type_a1_b1_c1.most_specific_common_subtype(
         [self.type_d1])
     self.assertEmpty(supertype_5.captures)
+
+
+class SanitizationTest(test.TestCase):
+
+  def testRename(self):
+    self.assertEqual("arg_42", function_type.sanitize_arg_name("42"))
+    self.assertEqual("a42", function_type.sanitize_arg_name("a42"))
+    self.assertEqual("arg__42", function_type.sanitize_arg_name("_42"))
+    self.assertEqual("a___", function_type.sanitize_arg_name("a%$#"))
+    self.assertEqual("arg____", function_type.sanitize_arg_name("%$#"))
+    self.assertEqual("foo", function_type.sanitize_arg_name("foo"))
+    self.assertEqual("Foo", function_type.sanitize_arg_name("Foo"))
+    self.assertEqual("arg_96ab_cd___53",
+                     function_type.sanitize_arg_name("96ab.cd//?53"))
+
+  def testLogWarning(self):
+
+    with self.assertLogs(level="WARNING") as logs:
+      result = function_type.sanitize_arg_name("96ab.cd//?53")
+
+    self.assertEqual(result, "arg_96ab_cd___53")
+
+    expected_message = (
+        "WARNING:absl:`96ab.cd//?53` is not a valid tf.function parameter name."
+        " Sanitizing to `arg_96ab_cd___53`.")
+    self.assertIn(expected_message, logs.output)
+
+
+class SerializationTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.product(
+      name=["arg_0", "param"],
+      kind=[
+          function_type.Parameter.POSITIONAL_ONLY,
+          function_type.Parameter.POSITIONAL_OR_KEYWORD
+      ],
+      optional=[True, False],
+      type_contraint=[None, trace_type.from_value(1)])
+  def testParameter(self, name, kind, optional, type_contraint):
+    original = function_type.Parameter(name, kind, optional, type_contraint)
+    expected_type_constraint = serialization.serialize(
+        type_contraint) if type_contraint else None
+    expected = function_type_pb2.Parameter(
+        name=name,
+        kind=function_type.PY_TO_PROTO_ENUM[kind],
+        is_optional=optional,
+        type_constraint=expected_type_constraint)
+    self.assertEqual(original.to_proto(), expected)
+    self.assertEqual(function_type.Parameter.from_proto(expected), original)
+
+  def testFunctionType(self):
+    original = function_type.FunctionType([
+        function_type.Parameter("a", function_type.Parameter.POSITIONAL_ONLY,
+                                False, None),
+    ], collections.OrderedDict([("b", trace_type.from_value(1))]))
+    expected = function_type_pb2.FunctionType(
+        parameters=[
+            function_type_pb2.Parameter(
+                name="a",
+                kind=function_type_pb2.Parameter.Kind.POSITIONAL_ONLY,
+                is_optional=False)
+        ],
+        captures=[
+            function_type_pb2.Capture(
+                name="b",
+                type_constraint=serialization.serialize(
+                    trace_type.from_value(1)))
+        ])
+    self.assertEqual(original.to_proto(), expected)
+    self.assertEqual(function_type.FunctionType.from_proto(expected), original)
 
 
 if __name__ == "__main__":

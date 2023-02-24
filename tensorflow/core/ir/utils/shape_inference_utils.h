@@ -66,7 +66,7 @@ using GetAttrValuesFn = llvm::function_ref<tensorflow::Status(
 // in TFG importer. For operations that has different format of attributes, they
 // should give the `get_attr_values_fn` to read the attributes correctly.
 LogicalResult InferReturnTypeComponentsForTFOp(
-    Optional<Location> location, Operation* op, ValueRange operands,
+    std::optional<Location> location, Operation* op, ValueRange operands,
     int64_t graph_version, OperandAsConstantFn operand_as_constant_fn,
     OpResultAsShapeFn op_result_as_shape_fn,
     ResultElementTypeFn result_element_type_fn,
@@ -77,15 +77,11 @@ LogicalResult InferReturnTypeComponentsForTFOp(
 // ConvertOperationToNode to convert the operation to NodeDef to get the attr
 // values.
 LogicalResult InferReturnTypeComponentsForTFOp(
-    Optional<Location> location, Operation* op, ValueRange operands,
+    std::optional<Location> location, Operation* op, ValueRange operands,
     int64_t graph_version, OperandAsConstantFn operand_as_constant_fn,
     OpResultAsShapeFn op_result_as_shape_fn,
     ResultElementTypeFn result_element_type_fn,
     SmallVectorImpl<ShapedTypeComponents>& inferred_return_shapes);
-
-mlir::RankedTensorType GetTypeFromTFTensorShape(llvm::ArrayRef<int64_t> shape,
-                                                mlir::Type elementType,
-                                                mlir::Attribute encoding = {});
 
 }  // namespace tfg
 }  // namespace mlir

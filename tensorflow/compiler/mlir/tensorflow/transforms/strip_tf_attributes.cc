@@ -41,8 +41,7 @@ bool ShouldStripAttr(NamedAttribute &namedAttr) {
   return value == "tf" || value.startswith("tf_");
 }
 
-void StripTfAttributesPass::runOnOperation() {
-  auto func = getOperation();
+void StripFunction(func::FuncOp func) {
   auto stripAttrs = llvm::to_vector<4>(llvm::make_filter_range(
       func->getAttrs(),
       [](NamedAttribute namedAttr) { return ShouldStripAttr(namedAttr); }));
@@ -51,8 +50,10 @@ void StripTfAttributesPass::runOnOperation() {
   }
 
   for (int i = 0; i < func.getNumArguments(); ++i) {
+    llvm::ArrayRef<mlir::NamedAttribute> attrs =
+        mlir::function_interface_impl::getArgAttrs(func, i);
     auto stripAttrs = llvm::to_vector<4>(llvm::make_filter_range(
-        func.getArgAttrs(i),
+        attrs,
         [](NamedAttribute namedAttr) { return ShouldStripAttr(namedAttr); }));
     for (auto namedAttr : stripAttrs) {
       func.removeArgAttr(i, namedAttr.getName());
@@ -69,9 +70,24 @@ void StripTfAttributesPass::runOnOperation() {
   }
 }
 
+void StripTfAttributesPass::runOnOperation() {
+  ModuleOp module = getOperation();
+
+  // strip module itself
+  auto stripAttrs = llvm::to_vector<4>(llvm::make_filter_range(
+      module->getAttrs(),
+      [](NamedAttribute namedAttr) { return ShouldStripAttr(namedAttr); }));
+  for (auto namedAttr : stripAttrs) {
+    module->removeAttr(namedAttr.getName());
+  }
+
+  // strip functions in module
+  module.walk([&](func::FuncOp func) { StripFunction(func); });
+}
+
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateStripTfAttributesPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateStripTfAttributesPass() {
   return std::make_unique<StripTfAttributesPass>();
 }
 

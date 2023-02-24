@@ -12,6 +12,7 @@ load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow:strict.default.bzl", "py_strict_binary")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/cc/experimental/libtf:__subpackages__",
     ],

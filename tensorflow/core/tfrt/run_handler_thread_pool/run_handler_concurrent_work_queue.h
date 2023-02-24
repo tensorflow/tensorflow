@@ -91,9 +91,7 @@ class RunHandlerThreadWorkQueue
 
   tensorflow::StatusOr<
       std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>>
-  InitializeRequest(tfrt::RequestContextBuilder* request_context_builder,
-                    tensorflow::thread::ThreadPoolInterface**
-                        intra_op_threadpool) const override;
+  InitializeRequest(int64_t request_id) const override;
 
   int GetParallelismLevel() const override {
     return options_.num_main_threads + options_.num_complementary_threads;

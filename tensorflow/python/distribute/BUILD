@@ -5,6 +5,7 @@ load("//tensorflow/core/platform:distribute.bzl", "distribute_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
         "//third_party/py/keras:__subpackages__",  # TODO(scottzhu): remove this once keras is relying on tf.__internal__.
@@ -75,7 +76,7 @@ pytype_strict_library(
         "//tensorflow/python:nccl_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:backprop_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:tensor_spec",
@@ -129,6 +130,7 @@ py_library(
         "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/distribute/experimental",
         "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
+        "//tensorflow/python/distribute/failure_handling:preemption_watcher",
     ],
 )
 
@@ -315,7 +317,7 @@ py_library(
         ":packed_distributed_variable",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/tpu:tpu_replication",
     ],
 )
 
@@ -473,6 +475,7 @@ cuda_py_test(
     ],
     python_version = "PY3",
     tags = [
+        "no_pip",  # TODO(b/266520226)
         "no_windows",  # TODO(b/184424727): Re-enable this.
         "noasan",  # TODO(b/180630068)
         "nomsan",  # TODO(b/180630068)
@@ -545,6 +548,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/autograph/operators",
         "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/experimental/ops:cardinality",
         "//tensorflow/python/data/experimental/ops:distribute",
@@ -578,6 +582,7 @@ py_library(
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -696,6 +701,7 @@ distribute_py_test(
 tpu_py_test(
     name = "tpu_strategy_test",
     srcs = ["tpu_strategy_test.py"],
+    args = ["--tpu_use_tfrt=true"],
     disable_experimental = True,
     python_version = "PY3",
     tags = ["no_oss"],
@@ -807,6 +813,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tensor_conversion_registry",
     ],
 )
 
@@ -820,6 +827,7 @@ py_library(
         ":packed_distributed_variable",
         ":reduce_util",
         ":values_util",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:composite_tensor",
         "//tensorflow/python:control_flow_ops",
@@ -830,6 +838,9 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:tape",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/training/saving:saveable_object",
@@ -856,6 +867,7 @@ py_library(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/types",
     ],
 )
@@ -1241,6 +1253,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_pip",  # TODO(b/266520226)
     ],
     deps = [
         ":collective_util",
@@ -2085,6 +2098,7 @@ cuda_py_test(
     shard_count = 12,
     tags = [
         "multi_gpu",
+        "no_pip",  # TODO(b/266520226)
         "noasan",
         "nomsan",
     ],  # b/175904958
@@ -2368,6 +2382,7 @@ tpu_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:summary_test_util",
         "//tensorflow/python/module",
         "//tensorflow/python/platform",
         "//tensorflow/python/tpu:device_assignment",

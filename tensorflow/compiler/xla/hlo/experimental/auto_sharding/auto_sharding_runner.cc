@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/tools/hlo_module_loader.h"

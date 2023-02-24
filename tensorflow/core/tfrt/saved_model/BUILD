@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "if_google")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -13,7 +14,6 @@ package_group(
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/infra/mira/...",
         # copybara:uncomment "//learning/serving/...",
-        # copybara:uncomment "//third_party/auroraml/...",
         "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/saved_model/tests/...",
         "//tensorflow/core/tfrt/graph_executor/...",
@@ -34,7 +34,10 @@ cc_library(
     hdrs = ["saved_model.h"],
     tags = ["no_oss"],
     deps = [
+        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel",
+        "//learning/brain/experimental/tfrt/native_lowering/kernels",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -49,6 +52,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_kernels_alwayslink",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -60,6 +64,7 @@ cc_library(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_op_handler",
+        "//tensorflow/core/runtime_fallback/kernel:gpurt_kernels",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/graph_executor",
@@ -118,4 +123,25 @@ cc_library(
         "//tensorflow/core/tfrt/utils:tfrt_graph_execution_state",
         "@com_google_absl//absl/synchronization",
     ],
+)
+
+cc_library(
+    name = "saved_model_mira_impl",
+    srcs = ["saved_model_mira_impl.cc"],
+    hdrs = ["saved_model_mira_impl.h"],
+    deps = [
+        ":saved_model",
+    ] + if_google([
+        "@com_google_absl//absl/status:statusor",
+        "//learning/infra/mira/tfrt:tfrt_executable",
+        "//learning/infra/mira/tfrt:tfrt_module",
+        "//third_party/mira/mlarchive:status_macro",
+        "//third_party/mira/mlvalue:value",
+        "//third_party/mira/runtime:module",
+        "//third_party/mira/runtime:vm",
+        "//third_party/mira/runtime:vm_session",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/tfrt/runtime",
+    ]),
 )

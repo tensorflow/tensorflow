@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/softsign_op.h"
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -127,7 +128,6 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_SOFTSIGN_GRAD_GPU_SPEC);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SOFTSIGN_GPU_KERNELS);
 #endif
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SOFTSIGN_GRAD_GPU_KERNELS);
-
 #undef REGISTER_SOFTSIGN_GPU_KERNELS
 #undef REGISTER_SOFTSIGN_GRAD_GPU_KERNELS
 

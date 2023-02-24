@@ -11,11 +11,8 @@ load(
     _get_compatible_with_cloud = "get_compatible_with_cloud",
     _get_compatible_with_portable = "get_compatible_with_portable",
     _if_indexing_source_code = "if_indexing_source_code",
-    _if_nccl = "if_nccl",
     _if_not_mobile_or_arm_or_lgpl_restricted = "if_not_mobile_or_arm_or_lgpl_restricted",
     _if_portable = "if_portable",
-    _internal_cuda_deps = "internal_cuda_deps",
-    _internal_hlo_deps = "internal_hlo_deps",
     _internal_tfrt_deps = "internal_tfrt_deps",
     _pybind_extension = "pybind_extension",
     _pybind_library = "pybind_library",
@@ -52,7 +49,6 @@ load(
 
 clean_dep = _clean_dep
 if_not_mobile_or_arm_or_lgpl_restricted = _if_not_mobile_or_arm_or_lgpl_restricted
-if_nccl = _if_nccl
 if_portable = _if_portable
 ADDITIONAL_API_INDEXABLE_SETTINGS = _ADDITIONAL_API_INDEXABLE_SETTINGS
 if_indexing_source_code = _if_indexing_source_code
@@ -91,8 +87,6 @@ tf_generate_proto_text_sources = _tf_generate_proto_text_sources
 tf_kernel_library = _tf_kernel_library
 filegroup = _filegroup
 genrule = _genrule
-internal_hlo_deps = _internal_hlo_deps
 internal_tfrt_deps = _internal_tfrt_deps
-internal_cuda_deps = _internal_cuda_deps
 tf_disable_ptxas_warning_flags = _tf_disable_ptxas_warning_flags
 replace_with_portable_tf_lib_when_required = _replace_with_portable_tf_lib_when_required

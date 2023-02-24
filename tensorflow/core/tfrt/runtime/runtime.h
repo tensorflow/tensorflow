@@ -88,11 +88,29 @@ class Runtime {
     }
   }
 
+  void SetCreateRequestQueueFn(
+      std::function<StatusOr<std::unique_ptr<WorkQueueInterface>>(int64_t)>
+          create_request_queue_fn) {
+    create_request_queue_fn_ = std::move(create_request_queue_fn);
+  }
+
+  // Creates a work queue for a request.
+  StatusOr<std::unique_ptr<WorkQueueInterface>> CreateRequestQueue(
+      int64_t request_id) const {
+    if (create_request_queue_fn_) {
+      return create_request_queue_fn_(request_id);
+    }
+
+    return work_queue_->InitializeRequest(request_id);
+  }
+
  private:
   explicit Runtime(std::unique_ptr<tfrt::CoreRuntime> core_runtime,
                    WorkQueueInterface* work_queue);
 
   std::unique_ptr<tfrt::CoreRuntime> core_runtime_;
+  std::function<StatusOr<std::unique_ptr<WorkQueueInterface>>(int64_t)>
+      create_request_queue_fn_;
   WorkQueueInterface* work_queue_ = nullptr;
   std::vector<std::function<void(tfrt::ResourceContext*)>>
       runtime_resource_fns_;

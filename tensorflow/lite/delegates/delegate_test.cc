@@ -25,15 +25,15 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/c_api_opaque.h"
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/interpreter_builder.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
 #include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
@@ -438,9 +438,9 @@ struct DelegateState {
 struct OpaqueTestDelegate {
   static constexpr int kTestDelegateOutput = 42;
 
-  static inline TfLiteStatus Prepare(
-      TfLiteOpaqueContext* opaque_context,
-      struct TfLiteOpaqueDelegateStruct* opaque_delegate, void* data) {
+  static inline TfLiteStatus Prepare(TfLiteOpaqueContext* opaque_context,
+                                     TfLiteOpaqueDelegate* opaque_delegate,
+                                     void* data) {
     DelegateState* delegate_state = reinterpret_cast<DelegateState*>(data);
     delegate_state->delegate_prepared = true;
 
@@ -464,9 +464,8 @@ struct OpaqueTestDelegate {
   }
 
   static inline TfLiteStatus CopyFromBufferHandle(
-      TfLiteOpaqueContext* context, struct TfLiteOpaqueDelegateStruct* delegate,
-      void* data, TfLiteBufferHandle buffer_handle,
-      TfLiteOpaqueTensor* opaque_tensor) {
+      TfLiteOpaqueContext* context, TfLiteOpaqueDelegate* delegate, void* data,
+      TfLiteBufferHandle buffer_handle, TfLiteOpaqueTensor* opaque_tensor) {
     DelegateState* delegate_state = reinterpret_cast<DelegateState*>(data);
     delegate_state->copy_from_buffer_handle_called = true;
     delegate_state->buffer_handle = buffer_handle;
@@ -484,9 +483,10 @@ struct OpaqueTestDelegate {
     return kTfLiteOk;
   }
 
-  static inline void FreeBufferHandle(
-      TfLiteOpaqueContext* context, struct TfLiteOpaqueDelegateStruct* delegate,
-      void* data, TfLiteBufferHandle* buffer_handle) {
+  static inline void FreeBufferHandle(TfLiteOpaqueContext* context,
+                                      TfLiteOpaqueDelegate* delegate,
+                                      void* data,
+                                      TfLiteBufferHandle* buffer_handle) {
     DelegateState* delegate_state = reinterpret_cast<DelegateState*>(data);
     delegate_state->free_buffer_handle_called = true;
     delegate_state->buffer_handle = *buffer_handle;
@@ -576,6 +576,33 @@ TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
   EXPECT_FALSE(delegate_state.copy_from_buffer_handle_called);
   EXPECT_EQ(delegate_state.buffer_handle, second_buffer_handle);
   EXPECT_TRUE(delegate_state.free_buffer_handle_called);
+}
+
+TEST(TestDelegateKernel, WithoutName) {
+  std::unique_ptr<tflite::FlatBufferModel> model =
+      tflite::FlatBufferModel::BuildFromFile(
+          "third_party/tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+
+  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::InterpreterBuilder builder(*model, resolver);
+  TfLiteDelegate tflite_delegate{};
+  tflite_delegate.Prepare =
+      [](TfLiteContext* context,
+         struct TfLiteDelegate* delegate) -> TfLiteStatus {
+    TfLiteIntArray* execution_plan;
+    TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &execution_plan));
+    TfLiteRegistration registration{};
+    registration.init = [](TfLiteContext* context, const char* buffer,
+                           size_t length) -> void* { return nullptr; };
+    context->ReplaceNodeSubsetsWithDelegateKernels(context, registration,
+                                                   execution_plan, delegate);
+    return kTfLiteOk;
+  };
+  builder.AddDelegate(&tflite_delegate);
+  std::unique_ptr<tflite::Interpreter> interpreter;
+  builder(&interpreter);
+  ASSERT_NE(interpreter, nullptr);
 }
 
 TEST_F(TestDelegate, DelegateCustomOpResolution) {
@@ -1098,6 +1125,46 @@ class TestDelegateWithDynamicTensors : public ::testing::Test {
   TfLiteDelegate delegate_;
 };
 
+TfLiteRegistrationExternal* CreateTfLiteRegistrationExternal() {
+  auto registration = TfLiteRegistrationExternalCreate(
+      kTfLiteBuiltinDelegate, "OpaqueDelegateKernel", 1);
+  TfLiteRegistrationExternalSetPrepare(
+      registration,
+      [](TfLiteOpaqueContext* context,
+         TfLiteOpaqueNode* opaque_node) -> TfLiteStatus {
+        // If tensors are resized, the runtime should propagate shapes
+        // automatically if 'kTfLiteDelegateFlagsRequirePropagatedShapes' flag
+        // is set.
+
+        // Output 0 should be dynamic.
+        TfLiteOpaqueTensor* output0 =
+            TfLiteOpaqueNodeGetOutput(context, opaque_node, 0);
+        EXPECT_EQ(kTfLiteDynamic, TfLiteOpaqueTensorGetAllocationType(output0));
+
+        // Output 1 has the same shape as input.
+        const TfLiteOpaqueTensor* input =
+            TfLiteOpaqueNodeGetInput(context, opaque_node, 0);
+        const TfLiteOpaqueTensor* output1 =
+            TfLiteOpaqueNodeGetOutput(context, opaque_node, 1);
+
+        if (TfLiteOpaqueTensorNumDims(input) !=
+            TfLiteOpaqueTensorNumDims(output1)) {
+          return kTfLiteError;
+        }
+        // When 'kTfLiteDelegateFlagsRequirePropagatedShapes' is *not* set then
+        // changes to the dimensions of the 'input' tensor won't automatically
+        // propagate to the 'output1' tensor dimensions.
+        if (TfLiteOpaqueTensorDim(input, 0) !=
+            TfLiteOpaqueTensorDim(output1, 0)) {
+          return kTfLiteError;
+        }
+
+        return kTfLiteOk;
+      });
+
+  return registration;
+}
+
 class TestOpaqueDelegateBuilderWithDynamicTensors
     : public TestDelegateWithDynamicTensors {
  public:
@@ -1108,30 +1175,20 @@ class TestOpaqueDelegateBuilderWithDynamicTensors
     // uses its opaque_delegate_builder field.
     delegate_.Prepare = nullptr;
     delegate_.opaque_delegate_builder = &delegate_external_;
-    delegate_external_.Prepare =
-        [](TfLiteOpaqueContext* opaque_context,
-           struct TfLiteOpaqueDelegateStruct* opaque_delegate,
-           void* data) -> TfLiteStatus {
-      // Note, ideally this function should not perform any casts on the
-      // provided opaque context or opaque delegate. However, the APIs that
-      // allow a caller to load an execution plan by providing an opaque
-      // context, or replace nodes with a delegate kernel by providing an opaque
-      // delegate, are added in child CLs.
+    delegate_external_.Prepare = [](TfLiteOpaqueContext* opaque_context,
+                                    TfLiteOpaqueDelegate* opaque_delegate,
+                                    void* data) -> TfLiteStatus {
       TfLiteIntArray* execution_plan;
-      TfLiteContext* context = reinterpret_cast<TfLiteContext*>(opaque_context);
-      TfLiteDelegate* delegate =
-          reinterpret_cast<TfLiteDelegate*>(opaque_delegate);
-      TF_LITE_ENSURE_STATUS(
-          context->GetExecutionPlan(context, &execution_plan));
-      TfLiteStatus status = context->ReplaceNodeSubsetsWithDelegateKernels(
-          context, DelegateRegistration(), execution_plan, delegate);
-      return status;
+      TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan);
+      return TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
+          opaque_context, CreateTfLiteRegistrationExternal(), execution_plan,
+          opaque_delegate);
     };
     delegate_external_.flags = kTfLiteDelegateFlagsNone;
   }
 
  private:
-  TfLiteOpaqueDelegateBuilder delegate_external_;
+  TfLiteOpaqueDelegateBuilder delegate_external_{};
 };
 
 TEST_F(TestDelegateWithDynamicTensors, DisallowDynamicTensors) {

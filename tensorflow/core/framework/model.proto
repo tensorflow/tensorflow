@@ -133,4 +133,6 @@ message ModelProto {
   }
 
   OptimizationParams optimization_params = 5;
+
+  repeated uint64 gap_times = 6;
 }

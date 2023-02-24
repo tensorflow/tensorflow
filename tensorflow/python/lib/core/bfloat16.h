@@ -18,20 +18,15 @@ limitations under the License.
 
 #include <Python.h>
 
+#include "tensorflow/tsl/python/lib/core/bfloat16.h"
+
 namespace tensorflow {
-
-// Register the bfloat16 numpy type. Returns true on success.
-bool RegisterNumpyBfloat16();
-
-// Returns a pointer to the bfloat16 dtype object.
-PyObject* Bfloat16Dtype();
-
-// Returns the id number of the bfloat16 numpy type.
-int Bfloat16NumpyType();
-
-// Returns a pointer to the float8_e4m3b11 dtype object.
-PyObject* Float8_E4M3B11Dtype();
-
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::Bfloat16Dtype;
+using tsl::Bfloat16NumpyType;
+using tsl::Float8_E4M3B11Dtype;
+using tsl::RegisterNumpyBfloat16;
+// NOLINTEND(misc-unused-using-decls)
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_LIB_CORE_BFLOAT16_H_

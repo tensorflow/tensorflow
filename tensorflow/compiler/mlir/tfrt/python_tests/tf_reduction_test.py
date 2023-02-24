@@ -175,7 +175,7 @@ class TfReductionTest(test.TestCase):
     compiled = jitrt.compile(
         mlir_function, 'test', vectorize=True, legalize_i1_tensors=True)
 
-    arg0 = np.random.choice(a=[False, True], size=(8, 10)).astype(np.bool)
+    arg0 = np.random.choice(a=[False, True], size=(8, 10)).astype(bool)
 
     [res] = jitrt.execute(compiled, [arg0])
     np.testing.assert_equal(res, np.any(arg0, axis=1))
@@ -193,7 +193,7 @@ class TfReductionTest(test.TestCase):
     compiled = jitrt.compile(
         mlir_function, 'test', vectorize=True, legalize_i1_tensors=True)
 
-    arg0 = np.random.choice(a=[False, True], size=(40, 2)).astype(np.bool)
+    arg0 = np.random.choice(a=[False, True], size=(40, 2)).astype(bool)
 
     [res] = jitrt.execute(compiled, [arg0])
     np.testing.assert_equal(res, np.all(arg0, axis=1))

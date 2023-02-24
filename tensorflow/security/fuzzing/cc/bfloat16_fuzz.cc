@@ -16,7 +16,7 @@ limitations under the License.
 #include <cstdlib>
 #include <vector>
 
-#include "testing/fuzzing/fuzztest.h"
+#include "fuzztest/fuzztest.h"
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/platform/test.h"
 

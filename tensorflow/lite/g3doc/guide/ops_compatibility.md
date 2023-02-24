@@ -102,7 +102,7 @@ Here is a non-exhaustive list of TensorFlow operations that are usually removed
 from the graph:
 
 *   `tf.add`
-*   `tf.check_numerics`
+*   `tf.debugging.check_numerics`
 *   `tf.constant`
 *   `tf.div`
 *   `tf.divide`

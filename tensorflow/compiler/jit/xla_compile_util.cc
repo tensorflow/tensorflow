@@ -15,24 +15,59 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 
+#include <memory>
 #include <vector>
+
+#include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/util/determinism.h"
 
 namespace tensorflow {
 
-XlaCompiler::SingleOpCompileArgument BuildSingleOpCompileArgument(
-    OpKernelContext* ctx) {
-  XlaCompiler::SingleOpCompileArgument single_op_arg;
-  std::vector<DataType> output_dtypes(ctx->num_outputs());
-  for (int i = 0; i < output_dtypes.size(); ++i) {
-    output_dtypes[i] = ctx->expected_output_dtype(i);
+StatusOr<std::unique_ptr<Graph>> CreateSingleOpGraph(
+    const NodeDef& node_def, absl::Span<const XlaArgument> args,
+    absl::Span<const DataType> result_types) {
+  // TODO(b/74182462): We implement this by creating a new dummy Graph including
+  // _Arg nodes, and let CompileGraph walk it. This could be optimized.
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  // First create the actual node we care about computing.
+  TF_ASSIGN_OR_RETURN(Node * main_node, graph->AddNode(node_def));
+
+  // Create dummy _Arg nodes. Link these to `node` and also via a control
+  // dependency edge to the _SOURCE node.
+  for (int64_t i = 0, end = args.size(); i < end; ++i) {
+    Node* node;
+    string arg_name = absl::StrCat("_arg", i);
+    Status status =
+        NodeBuilder(arg_name, FunctionLibraryDefinition::kArgOp)
+            .ControlInput(graph->source_node())
+            .Attr("T", args[i].kind == XlaArgument::kResource ? DT_RESOURCE
+                                                              : args[i].type)
+            .Attr("index", i)
+            .Finalize(graph.get(), &node);
+    TF_RETURN_IF_ERROR(status);
+    graph->AddEdge(node, 0, main_node, i);
   }
-  single_op_arg.output_dtypes = output_dtypes;
-  single_op_arg.node_def = ctx->op_kernel().def();
-  auto* config_proto = ctx->function_library()->config_proto();
-  if (config_proto != nullptr) {
-    single_op_arg.config_proto = *config_proto;
+
+  // Similarly with return values, create dummy _Retval nodes fed by `node`.
+  for (int64_t i = 0, end = result_types.size(); i < end; ++i) {
+    Node* node;
+    string retval_name = absl::StrCat("_retval", i);
+    Status status = NodeBuilder(retval_name, FunctionLibraryDefinition::kRetOp)
+                        .Input(main_node, i)
+                        .Attr("T", result_types[i])
+                        .Attr("index", i)
+                        .Finalize(graph.get(), &node);
+    TF_RETURN_IF_ERROR(status);
   }
-  return single_op_arg;
+  FixupSourceAndSinkEdges(graph.get());
+  return graph;
+}
+
+bool UsePjRtForSingleDeviceCompilation() {
+  return GetXlaOpsCommonFlags()->tf_xla_use_device_api;
 }
 
 }  // namespace tensorflow

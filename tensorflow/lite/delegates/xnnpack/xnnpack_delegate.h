@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_XNNPACK_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_XNNPACK_DELEGATE_H_
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -60,6 +60,12 @@ TfLiteXNNPackDelegateOptionsDefault();
 // details).
 TFL_CAPI_EXPORT TfLiteDelegate* TfLiteXNNPackDelegateCreate(
     const TfLiteXNNPackDelegateOptions* options);
+
+// Performs the same task as TfLiteXNNPackDelegateCreate, with one exception.
+// If the context passed contains a non-null xnnpack_threadpool field,
+// we will use it as the threadpool for the delegate created.
+TfLiteDelegate* TfLiteXNNPackDelegateCreateWithThreadpool(
+    const TfLiteXNNPackDelegateOptions* options, TfLiteContext* context);
 
 // Returns the pthreadpool_t object used for parallelization in XNNPACK.
 // Can return NULL if the XNNPack delegate is single-threaded.

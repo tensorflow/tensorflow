@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -38,7 +39,7 @@ class ThreadSafeMap {
     return *value;
   }
 
-  void ForEachValue(const std::function<void(V&)>& fn) {
+  void ForEachValue(absl::FunctionRef<void(V&)> fn) {
     absl::MutexLock lock(&mutex_);
     for (const auto& [_, value] : map_) fn(*value);
   }
@@ -62,7 +63,7 @@ void AwaitAndLogIfStuck(absl::Mutex& mutex, const absl::Condition& condition,
 template <typename R, typename K, typename V>
 std::shared_ptr<R> RendezvousSingle(
     const K& key, const V& value, size_t num_threads,
-    const std::function<R(absl::Span<const V* const>)>& fn,
+    absl::FunctionRef<R(absl::Span<const V* const>)> fn,
     absl::Duration warn_stuck_timeout = absl::InfiniteDuration(),
     absl::Duration terminate_timeout = absl::InfiniteDuration()) {
   // Fast-path (DO NOT REMOVE: the logic below doesn't work for single thread).
@@ -124,7 +125,7 @@ std::shared_ptr<R> RendezvousSingle(
 // TODO(cjfj): Replace XLA rendezvous code with this simpler implementation.
 template <typename R, typename K>
 std::shared_ptr<R> RendezvousSingle(
-    const K& key, size_t num_threads, const std::function<R()>& fn,
+    const K& key, size_t num_threads, absl::FunctionRef<R()> fn,
     absl::Duration warn_stuck_timeout = absl::InfiniteDuration(),
     absl::Duration terminate_timeout = absl::InfiniteDuration()) {
   // Pass an arbitrary value that is ignored.

@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -pass-pipeline='func.func(canonicalize)' | FileCheck %s
+// RUN: tf-opt %s -pass-pipeline='builtin.module(func.func(canonicalize{test-convergence}))' | FileCheck %s
 
 // CHECK-LABEL: func @tfAssertTrue
 func.func @tfAssertTrue(%arg0: tensor<1x1x6x2xf32>) {
@@ -1988,9 +1988,9 @@ func.func @testDivNoNanAndMulNoNanWithConstantY(%arg0: tensor<2xf32>) -> (tensor
 // CHECK-LABEL: testComplexDivNoNanAndMulNoNanWithConstantY
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<2xcomplex<f32>>)
 func.func @testComplexDivNoNanAndMulNoNanWithConstantY(%arg0: tensor<2xcomplex<f32>>) -> (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) {
-  // CHECK-NEXT: %[[COMP3:.*]] = "tf.Const"() {value = dense<(0.000000e+00,0.000000e+00)> : tensor<2xcomplex<f32>>} : () -> tensor<2xcomplex<f32>>
   // CHECK-NEXT: %[[COMP2:.*]] = "tf.Const"() {value = dense<[(0.000000e+00,0.000000e+00), (2.000000e+00,0.000000e+00)]> : tensor<2xcomplex<f32>>} : () -> tensor<2xcomplex<f32>>
-  // CHECK: %[[COMP1:.*]] = "tf.Const"() {value = dense<[(1.000000e+00,3.000000e+00), (2.000000e+00,4.000000e+00)]> : tensor<2xcomplex<f32>>} : () -> tensor<2xcomplex<f32>>
+  // CHECK-NEXT: %[[COMP1:.*]] = "tf.Const"() {value = dense<[(1.000000e+00,3.000000e+00), (2.000000e+00,4.000000e+00)]> : tensor<2xcomplex<f32>>} : () -> tensor<2xcomplex<f32>>
+  // CHECK-NEXT: %[[COMP3:.*]] = "tf.Const"() {value = dense<(0.000000e+00,0.000000e+00)> : tensor<2xcomplex<f32>>} : () -> tensor<2xcomplex<f32>>
   // CHECK-NEXT: %[[RES1:.*]] = "tf.Mul"(%[[ARG0]], %[[COMP1]]) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
   // CHECK-NEXT: %[[RES2:.*]] = "tf.DivNoNan"(%[[ARG0]], %[[COMP2]]) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
   // CHECK-NEXT: return %[[RES1]], %[[RES2]], %[[COMP3]] : tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>

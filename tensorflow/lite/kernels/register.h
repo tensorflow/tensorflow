@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,17 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_REGISTER_H_
 #define TENSORFLOW_LITE_KERNELS_REGISTER_H_
 
-/// For documentation, see third_party/tensorflow/lite/core/kernels/register.h.
 #include "tensorflow/lite/core/kernels/register.h"
+
+namespace tflite {
+namespace ops {
+namespace builtin {
+using BuiltinOpResolver = ::tflite::ops::builtin::BuiltinOpResolver;
+using BuiltinOpResolverWithoutDefaultDelegates =
+    ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates;
+
+}  // namespace builtin
+}  // namespace ops
+}  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_REGISTER_H_

@@ -13,6 +13,7 @@ load(
 load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     features = ["-layering_check"],
     licenses = ["notice"],
@@ -106,6 +107,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
         "//third_party/eigen3",
     ],
 )

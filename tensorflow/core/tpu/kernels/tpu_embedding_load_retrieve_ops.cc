@@ -222,8 +222,8 @@ void LoadAllTPUEmbeddingParametersOp::Compute(OpKernelContext* ctx) {
     }
   }
   StatusHelper status;
-  tpu::OpsApiFn()->TpuEmbeddingEngine_WriteParametersFn(&(params->c_params),
-                                                        status.c_status);
+  stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_WriteParametersFn(
+      &(params->c_params), status.c_status);
   OP_REQUIRES_OK(ctx, status.status());
 
   VLOG(1) << "LoadAllTPUEmbeddingParameters::Compute done";
@@ -348,8 +348,8 @@ void RetrieveAllTPUEmbeddingParametersOp::Compute(OpKernelContext* ctx) {
     }
   }
   StatusHelper status;
-  tpu::OpsApiFn()->TpuEmbeddingEngine_ReadParametersFn(&(params->c_params),
-                                                       status.c_status);
+  stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_ReadParametersFn(
+      &(params->c_params), status.c_status);
   OP_REQUIRES_OK(ctx, status.status());
 
   if (VLOG_IS_ON(5)) {
