@@ -160,13 +160,12 @@ struct TransformDotForCpuPass
     // reduction), so the first two tileSizes' elements are for parallel
     // dimensions tiling, and the last element is for reduction dimension
     // tiling.
-    // - for dot ops that have 2 parallel dimensions (linalg.matmul): the whole
-    // tileSizes vector will be used.
-    // - for ops that only have only 1 parallel dimension
-    // (linalg.matvec/linalg.vecmat), only the first and last elements of
-    // tileSizes are used.
-    // - for ops that have no parallel dimension (linalg.dot), only the last
-    // element of tileSizes is used.
+    // - for linalg.matmul: the whole tileSizes vector will be used.
+    // - for linalg.matvec: only the first and last elements of tileSizes are
+    // used.
+    // - for linalg.vecmat: only the second and last elements of tileSizes are
+    // used.
+    // - for linalg.dot: only the last element of tileSizes is used.
     assert(tileSizes.size() == 3 &&
            "Tiling sizes for Dot operations should have 3 elements");
 
@@ -175,7 +174,7 @@ struct TransformDotForCpuPass
         ctx, llvm::ArrayRef<int64_t>{tileSizes[0], 0},
         llvm::ArrayRef<int64_t>{0, tileSizes[2]});
     patterns.add<DotTransformPattern<linalg::VecmatOp>>(
-        ctx, llvm::ArrayRef<int64_t>{tileSizes[0], 0},
+        ctx, llvm::ArrayRef<int64_t>{tileSizes[1], 0},
         llvm::ArrayRef<int64_t>{0, tileSizes[2]});
     patterns.add<DotTransformPattern<linalg::DotOp>>(
         ctx, llvm::ArrayRef<int64_t>{}, llvm::ArrayRef<int64_t>{tileSizes[2]});
