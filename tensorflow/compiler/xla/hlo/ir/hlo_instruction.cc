@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_op_metadata.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -2422,20 +2423,25 @@ bool HloInstruction::IdenticalInternal(
         eq_operands,
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations,
-    bool layout_sensitive, bool ignore_channel_id_values,
+    bool layout_sensitive, bool sharding_sensitive,
+    bool ignore_channel_id_values,
     bool ignore_commutative_operand_order) const {
   // An instruction is always identical to itself.
   if (this == &other) {
     return true;
   }
 
-  // Identical instruction must have the same opcode, shape, and identical
-  // operands.
+  // Identical instruction must have the same opcode, shape, shardings and
+  // identical operands.
   if (opcode() != other.opcode()) {
     return false;
   }
   if (!(layout_sensitive ? ShapeUtil::Equal(shape(), other.shape())
                          : ShapeUtil::Compatible(shape(), other.shape()))) {
+    return false;
+  }
+  if (sharding_sensitive && has_sharding() && other.has_sharding() &&
+      sharding() != other.sharding()) {
     return false;
   }
   if (operands().size() != other.operands().size()) {

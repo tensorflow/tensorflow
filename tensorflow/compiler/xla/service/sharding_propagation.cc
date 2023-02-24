@@ -800,23 +800,24 @@ bool InferShardingFromUsers(
   // Propagate manual sharding.
   if (!instruction->has_sharding() || instruction->sharding().IsTileMaximal()) {
     for (const HloInstruction* user : instruction->users()) {
-      if (!user->has_sharding() || !user->sharding().IsManual() ||
-          user->IsCustomCall("SPMDFullToShardShape"))
+      if (!user->has_sharding() || user->IsCustomCall("SPMDFullToShardShape"))
         continue;
-      if (instruction->shape().IsArray()) {
+      if (instruction->shape().IsArray() && user->sharding().IsManual()) {
         instruction->set_sharding(
             HloSharding::Manual(user->sharding().metadata()));
+        return true;
       } else {
         std::optional<HloSharding> user_sharding =
             ShardingPropagation::GetShardingFromUser(
                 *instruction, *user, aggressiveness, is_spmd, call_graph);
-        if (user_sharding) {
+        if (user_sharding && user_sharding->IsManual()) {
           instruction->set_sharding(*user_sharding);
+          return true;
         }
       }
-      return true;
     }
   }
+
   if (!SupportSpatialPartitioning(instruction, computation_map, is_spmd, false,
                                   sharding_helper)) {
     return false;
@@ -1631,6 +1632,17 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
     case HloOpcode::kTuple: {
       auto sub_sharding = user.sharding().GetSubSharding(
           user.shape(), {user.operand_index(&instruction)});
+      // In case the instruction is used as the operands multiple times within
+      // this tuple, we will return the most specific sharding and propagate up.
+      for (int64_t i = 0; i < user.shape().tuple_shapes_size(); ++i) {
+        HloSharding alternative_sub_sharding =
+            user.sharding().GetSubSharding(user.shape(), {i});
+        if (user.operand(i) == &instruction &&
+            hlo_sharding_util::IsShardingMoreSpecific(alternative_sub_sharding,
+                                                      sub_sharding)) {
+          sub_sharding = alternative_sub_sharding;
+        }
+      }
       return sub_sharding;
     }
     case HloOpcode::kGetTupleElement: {

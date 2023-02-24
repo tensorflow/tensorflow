@@ -1294,9 +1294,9 @@ class HloInstruction {
           eq_operands = std::equal_to<const HloInstruction*>(),
       absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations = std::equal_to<const HloComputation*>(),
-      bool layout_sensitive = true) const {
+      bool layout_sensitive = true, bool sharding_sensitive = false) const {
     return IdenticalInternal(other, eq_operands, eq_computations,
-                             layout_sensitive,
+                             layout_sensitive, sharding_sensitive,
                              /*ignore_channel_id_values=*/false,
                              /*ignore_commutative_operand_order=*/false);
   }
@@ -1309,9 +1309,9 @@ class HloInstruction {
           eq_operands = std::equal_to<const HloInstruction*>(),
       absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations = std::equal_to<const HloComputation*>(),
-      bool layout_sensitive = true) const {
+      bool layout_sensitive = true, bool sharding_sensitive = false) const {
     return IdenticalInternal(other, eq_operands, eq_computations,
-                             layout_sensitive,
+                             layout_sensitive, sharding_sensitive,
                              /*ignore_channel_id_values=*/false,
                              /*ignore_commutative_operand_order=*/true);
   }
@@ -1324,9 +1324,9 @@ class HloInstruction {
           eq_operands = std::equal_to<const HloInstruction*>(),
       absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations = std::equal_to<const HloComputation*>(),
-      bool layout_sensitive = true) const {
+      bool layout_sensitive = true, bool sharding_sensitive = false) const {
     return IdenticalInternal(other, eq_operands, eq_computations,
-                             layout_sensitive,
+                             layout_sensitive, sharding_sensitive,
                              /*ignore_channel_id_values=*/true,
                              /*ignore_commutative_operand_order=*/true);
   }
@@ -2278,7 +2278,8 @@ class HloInstruction {
           eq_operands,
       absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations,
-      bool layout_sensitive, bool ignore_channel_id_values,
+      bool layout_sensitive, bool sharding_sensitive,
+      bool ignore_channel_id_values,
       bool ignore_commutative_operand_order) const;
 
   // Implementation for non-common logic of CloneWithNewOperands.
