@@ -4076,15 +4076,6 @@ LogicalResult UniformQuantizedConvolutionOp::verify() {
   return VerifyLhsRhsBothUniformQuantizedOp(*this);
 }
 
-//===----------------------------------------------------------------------===//
-// UniformQuantizedAddOp
-//===----------------------------------------------------------------------===//
-//
-
-LogicalResult UniformQuantizedAddOp::verify() {
-  return VerifyLhsRhsBothUniformQuantizedOp(*this);
-}
-
 }  // namespace TF
 }  // namespace mlir
 
