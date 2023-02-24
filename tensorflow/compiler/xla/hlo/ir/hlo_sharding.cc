@@ -301,16 +301,19 @@ HloSharding HloSharding::Single(const Shape& shape,
 void HloSharding::Print(Printer* printer, bool include_metadata) const {
   if (IsTuple()) {
     CHECK(metadata_.empty());
+    if (ABSL_PREDICT_FALSE(tuple_elements_.empty())) {
+      printer->Append("{}");
+      return;
+    }
     printer->Append("{");
-    for (int i = 0; i < tuple_elements_.size(); ++i) {
-      const HloSharding& element = tuple_elements_[i];
-      if (i != 0) {
+    tuple_elements_[0].Print(printer, include_metadata);
+    for (int i = 1; i < tuple_elements_.size(); ++i) {
+      if (i % 5 == 0) {
+        AppendCat(printer, ", /*index=", i, "*/");
+      } else {
         printer->Append(", ");
-        if (i % 5 == 0) {
-          AppendCat(printer, "/*index=", i, "*/");
-        }
       }
-      element.Print(printer, include_metadata);
+      tuple_elements_[i].Print(printer, include_metadata);
     }
     printer->Append("}");
     return;

@@ -77,7 +77,7 @@ void AppendJoin(Printer* printer, const Range& range,
 template <typename Iterator, typename PrintFunc>
 void AppendJoin(Printer* printer, Iterator start, Iterator end,
                 absl::string_view separator, PrintFunc&& print) {
-  if (start == end) return;
+  if (ABSL_PREDICT_FALSE(start == end)) return;
   print(printer, *start);
   std::advance(start, 1);
   while (start != end) {

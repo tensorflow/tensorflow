@@ -1526,9 +1526,6 @@ class HloInstruction {
 
   // Components of the Print() and ToString() representation:
 
-  // Prints a string representation of the operand list.
-  void PrintOperands(Printer* printer, const HloPrintOptions& options) const;
-
   // Helper class for PrintExtraAttributes.
   class AttributePrinter {
    public:

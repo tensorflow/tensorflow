@@ -41,10 +41,7 @@ TileProto Tile::ToProto() const {
 
 void Tile::Print(Printer* printer) const {
   printer->Append("(");
-  const auto& dims = dimensions();
-  for (int i = 0; i < dims.size(); ++i) {
-    const auto dim = dims[i];
-    if (i != 0) printer->Append(",");
+  AppendJoin(printer, dimensions(), ",", [&](Printer* printer, int64_t dim) {
     if (dim >= 0) {
       printer->Append(dim);
     } else {
@@ -55,7 +52,7 @@ void Tile::Print(Printer* printer) const {
         printer->Append(dim);
       }
     }
-  }
+  });
   printer->Append(")");
 }
 
@@ -207,7 +204,7 @@ absl::string_view DimLevelTypeAbbrev(DimLevelType dim_level_type) {
 
 void Layout::Print(Printer* printer) const {
   printer->Append("{");
-  printer->Append(absl::StrJoin(minor_to_major(), ","));
+  AppendJoin(printer, minor_to_major(), ",");
 
   bool colon_printed = false;
   auto print_colon = [&]() {
@@ -217,12 +214,7 @@ void Layout::Print(Printer* printer) const {
   };
 
   if (!dim_level_types().empty()) {
-    print_colon();
-    printer->Append("D(");
-    for (int i = 0; i < dim_level_types().size(); ++i) {
-      if (i != 0) {
-        printer->Append(",");
-      }
+    auto print_one = [&](int i) {
       printer->Append(DimLevelTypeAbbrev(dim_level_type(i)));
       if (!dim_unique().empty() && !dim_unique(i)) {
         printer->Append("+");
@@ -230,6 +222,13 @@ void Layout::Print(Printer* printer) const {
       if (!dim_ordered().empty() && !dim_ordered(i)) {
         printer->Append("~");
       }
+    };
+    print_colon();
+    printer->Append("D(");
+    print_one(0);
+    for (int i = 1; i < dim_level_types().size(); ++i) {
+      printer->Append(",");
+      print_one(i);
     }
     printer->Append(")");
   }

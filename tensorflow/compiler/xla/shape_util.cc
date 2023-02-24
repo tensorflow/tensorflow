@@ -41,7 +41,6 @@ limitations under the License.
 
 namespace xla {
 
-using absl::StrAppend;
 using absl::StrCat;
 
 namespace {
@@ -72,6 +71,35 @@ constexpr uint8_t primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
     sizeof(float) / 4,   // F8E4M3FN = 20
 };
 constexpr int64_t kAnnotationPrintInterval = 5;
+
+template <bool kPrintLayout>
+void PrintShape(Printer* printer, const Shape& shape) {
+  if constexpr (kPrintLayout) {
+    ShapeUtil::PrintHumanStringWithLayout(printer, shape);
+  } else {
+    ShapeUtil::PrintHumanString(printer, shape);
+  }
+}
+
+template <bool kPrintLayout>
+void PrintTupleShapes(Printer* printer, absl::Span<const Shape> tuple_shapes) {
+  if (ABSL_PREDICT_FALSE(tuple_shapes.empty())) {
+    printer->Append("()");
+    return;
+  }
+  printer->Append("(");
+  PrintShape<kPrintLayout>(printer, tuple_shapes[0]);
+  for (int64_t i = 1; i < tuple_shapes.size(); ++i) {
+    if (i % kAnnotationPrintInterval == 0) {
+      printer->Append(absl::StrFormat(", /*index=%lld*/", i));
+    } else {
+      printer->Append(", ");
+    }
+    PrintShape<kPrintLayout>(printer, tuple_shapes[i]);
+  }
+  printer->Append(")");
+}
+
 }  // namespace
 
 std::string ShapeIndex::ToString() const {
@@ -640,31 +668,26 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ void ShapeUtil::PrintHumanString(xla::Printer* printer,
                                               const Shape& shape) {
   if (shape.IsTuple()) {
-    printer->Append("(");
-    const auto& tuple_shapes = shape.tuple_shapes();
-    for (int64_t i = 0; i < tuple_shapes.size(); ++i) {
-      const Shape& elem_shape = tuple_shapes[i];
-      if (i != 0) {
-        printer->Append(", ");
-        if (i % kAnnotationPrintInterval == 0) {
-          printer->Append(absl::StrFormat("/*index=%lld*/", i));
-        }
-      }
-      PrintHumanString(printer, elem_shape);
-    }
-    printer->Append(")");
+    PrintTupleShapes</*kPrintLayout=*/false>(printer, shape.tuple_shapes());
     return;
   }
   printer->Append(
       primitive_util::LowercasePrimitiveTypeName(shape.element_type()));
+  if (shape.dimensions().empty()) {
+    printer->Append("[]");
+    return;
+  }
   printer->Append("[");
-  const auto dimensions_size = shape.dimensions_size();
-  for (int i = 0; i < dimensions_size; ++i) {
-    if (i != 0) printer->Append(",");
+  auto print_one = [&](int i) {
     if (shape.is_dynamic_dimension(i)) {
       printer->Append("<=");
     }
     printer->Append(shape.dimensions(i));
+  };
+  print_one(0);
+  for (int i = 1, n = shape.dimensions_size(); i < n; ++i) {
+    printer->Append(",");
+    print_one(i);
   }
   printer->Append("]");
 }
@@ -672,32 +695,19 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ void ShapeUtil::PrintHumanStringWithLayout(xla::Printer* printer,
                                                         const Shape& shape) {
   if (shape.IsTuple()) {
-    printer->Append("(");
-    const auto& tuple_shapes = shape.tuple_shapes();
-    for (int64_t i = 0; i < tuple_shapes.size(); ++i) {
-      const Shape& elem_shape = tuple_shapes[i];
-      if (i != 0) {
-        printer->Append(", ");
-        if (i % kAnnotationPrintInterval == 0) {
-          printer->Append(absl::StrFormat("/*index=%lld*/", i));
-        }
-      }
-      PrintHumanStringWithLayout(printer, elem_shape);
-    }
-    printer->Append(")");
+    PrintTupleShapes</*kPrintLayout=*/true>(printer, shape.tuple_shapes());
     return;
   }
   PrintHumanString(printer, shape);
-  if (shape.has_layout()) {
-    if (IsScalar(shape)) {
-      std::string layout_str = LayoutUtil::HumanString(shape.layout());
-      // Don't print "{}" as layout for scalars.
-      if (layout_str != "{}") {
-        printer->Append(layout_str);
-      }
-    } else if (shape.IsArray()) {
-      LayoutUtil::PrintHumanString(printer, shape.layout());
+  if (!shape.has_layout()) return;
+  if (IsScalar(shape)) {
+    std::string layout_str = LayoutUtil::HumanString(shape.layout());
+    // Don't print "{}" as layout for scalars.
+    if (layout_str != "{}") {
+      printer->Append(layout_str);
     }
+  } else if (shape.IsArray()) {
+    LayoutUtil::PrintHumanString(printer, shape.layout());
   }
 }
 
@@ -705,16 +715,21 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     xla::Printer* printer, const ProgramShape& program_shape) {
   printer->Append("(");
   const auto& shape_parameters = program_shape.parameters();
-  for (int i = 0; i < shape_parameters.size(); ++i) {
-    const auto& shape = shape_parameters[i];
-    if (i != 0) printer->Append(", ");
-    if (i < program_shape.parameter_names_size()) {
-      printer->Append(program_shape.parameter_names(i));
-    } else {
-      printer->Append("(unknown)");
+  if (!shape_parameters.empty()) {
+    auto print_one = [&](int i) {
+      if (i < program_shape.parameter_names_size()) {
+        printer->Append(program_shape.parameter_names(i));
+      } else {
+        printer->Append("(unknown)");
+      }
+      printer->Append(": ");
+      PrintHumanString(printer, shape_parameters[i]);
+    };
+    print_one(0);
+    for (int i = 1; i < shape_parameters.size(); ++i) {
+      printer->Append(", ");
+      print_one(i);
     }
-    printer->Append(": ");
-    PrintHumanString(printer, shape);
   }
   printer->Append(") -> ");
   PrintHumanString(printer, program_shape.result());

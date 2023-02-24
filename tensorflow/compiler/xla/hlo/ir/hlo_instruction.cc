@@ -3164,7 +3164,7 @@ void HloInstruction::PrintWithCanonicalNameMap(
 
   // Print opcode, operand(s).
   if (options.syntax_sugar_async_ops() && HloOpcodeIsAsync(opcode())) {
-    std::string suffix = [&]() {
+    absl::string_view suffix = [&]() {
       switch (opcode()) {
         case HloOpcode::kAsyncStart:
           return "-start";
@@ -3172,7 +3172,7 @@ void HloInstruction::PrintWithCanonicalNameMap(
           return "-update";
         default:
           CHECK(opcode() == HloOpcode::kAsyncDone)
-              << "Unexpected async opcode: " << HloOpcodeString(opcode());
+              << "Unexpected async opcode: " << opcode();
           return "-done";
       }
     }();
@@ -3207,34 +3207,21 @@ void HloInstruction::PrintWithCanonicalNameMap(
   }
 }
 
-void HloInstruction::PrintOperands(Printer* printer,
-                                   const HloPrintOptions& options) const {
-  CanonicalNameMap new_map;
-  PrintOperandsWithCanonicalNameMap(printer, options, &new_map);
-}
-
 void HloInstruction::PrintOperandsWithCanonicalNameMap(
     Printer* printer, const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
+  if (operands_.empty()) return;
   absl::Span<HloInstruction* const> slice(operands_);
-  const int64_t kMaxOperandsToShowIfCompact = 4;
+  constexpr int64_t kMaxOperandsToShowIfCompact = 4;
   if (options.compact_operands() &&
       slice.size() > kMaxOperandsToShowIfCompact) {
     slice.remove_suffix(slice.size() - kMaxOperandsToShowIfCompact);
   }
-  for (int64_t i = 0; i < slice.size(); ++i) {
-    HloInstruction* operand = slice[i];
-    if (i != 0) {
-      printer->Append(", ");
-      if (options.print_operand_index_annotation_interval() != 0 &&
-          i % options.print_operand_index_annotation_interval() == 0) {
-        printer->Append(absl::StrFormat("/*index=%lld*/", i));
-      }
-    }
+  auto print_one = [&](const HloInstruction* operand) {
     // If operand is already been deleted, put `null` to the string output.
     if (operand == nullptr) {
       printer->Append("null ");
-      continue;
+      return;
     }
     bool add_space = false;
     if (options.print_operand_shape()) {
@@ -3258,9 +3245,19 @@ void HloInstruction::PrintOperandsWithCanonicalNameMap(
       if (add_space) printer->Append(" ");
       PrintNameInternal(printer, operand->name(), options);
     }
+  };
+  print_one(slice[0]);
+  for (int64_t i = 1; i < slice.size(); ++i) {
+    if (options.print_operand_index_annotation_interval() != 0 &&
+        i % options.print_operand_index_annotation_interval() == 0) {
+      printer->Append(absl::StrFormat(", /*index=%lld*/", i));
+    } else {
+      printer->Append(", ");
+    }
+    print_one(slice[i]);
   }
   const int64_t remaining = operands_.size() - slice.size();
-  if (slice.size() != operands_.size()) {
+  if (remaining > 0) {
     printer->Append(", ...(+");
     printer->Append(remaining);
     printer->Append(")");
