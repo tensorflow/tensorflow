@@ -47,7 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 #define DEBUG_TYPE "tf-tpu-merge-variables-with-execute"
 
@@ -144,6 +144,19 @@ bool AddAccessedResourceIds(
   return false;
 }
 
+/* Resources may be merged with an execute op when they are on its device or a
+ * `COMPOSITE`. Note that a `COMPOSITE` represents a set of devices, they
+ * are typically associated with packed variables. Presently, we assume this
+ * set spans all the devices. So, a variable on a `COMPOSITE` will have a local
+ * instance on the execute op's device.
+ */
+bool IsResourceMergeable(Attribute& resource_attr, Attribute& device_attr) {
+  return resource_attr &&
+         ((resource_attr == device_attr) ||
+          (resource_attr.cast<mlir::StringAttr>().getValue().find(
+               "COMPOSITE") != llvm::StringRef::npos));
+}
+
 // Finds the variable access info for a TPUExecute op.
 //  - `check_device` specifies  whether it checks the device assignment of the
 //  variables to match the TPUExecute op. This is optional in some context,
@@ -181,13 +194,13 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
         read_op->getParentRegion() != execute_parent->getParentRegion())
       continue;
 
-    auto resource = read_op.resource();
+    auto resource = read_op.getResource();
     if (check_device) {
       // TODO(lyandy): Wrap resource ops in tf_device.launch.
       if (auto* resource_op = resource.getDefiningOp()) {
         auto resource_attr = resource_op->getAttr(kDeviceAttr);
         // Check device matching for the node defining the resource.
-        if (!resource_attr || resource_attr != device_attr) continue;
+        if (!IsResourceMergeable(resource_attr, device_attr)) continue;
       } else {
         auto resource_arg = resource.dyn_cast<BlockArgument>();
         assert(resource_arg);
@@ -195,7 +208,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
         // Check device matching for the argument defining the resource.
         auto resource_attr = func.getArgAttrOfType<mlir::StringAttr>(
             resource_arg.getArgNumber(), kFuncDeviceAttr);
-        if (!resource_attr || resource_attr != device_attr) continue;
+        if (!IsResourceMergeable(resource_attr, device_attr)) continue;
       }
     }
 
@@ -230,12 +243,13 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
            first_read->getIterator(), execute_parent->getIterator()))) {
     if (auto read_op = llvm::dyn_cast<TF::ReadVariableOp>(&op)) {
       VLOG(2) << "Processing read op " << debugString(op);
-      auto info_it = var_access_info.per_resource_info.find(read_op.resource());
+      auto info_it =
+          var_access_info.per_resource_info.find(read_op.getResource());
       bool is_merge_candidate =
           info_it != var_access_info.per_resource_info.end();
 
       if (is_merge_candidate &&
-          !IsResourceSafeForMerge(read_op.resource(), resource_analysis_info,
+          !IsResourceSafeForMerge(read_op.getResource(), resource_analysis_info,
                                   var_access_info, resource_ids,
                                   previous_unknown_resource_access)) {
         VLOG(2) << "  removing op from merge candidates";
@@ -272,7 +286,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
 
     auto assign_op = llvm::dyn_cast<TF::AssignVariableOp>(*result.user_begin());
     if (!assign_op) continue;
-    auto resource = assign_op.resource();
+    auto resource = assign_op.getResource();
     auto it = var_access_info.per_resource_info.find(resource);
     if (it == var_access_info.per_resource_info.end()) continue;
     auto& info = it->getSecond();
@@ -307,14 +321,15 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
         bool is_merge_candidate = true;
         if (all_assigns.count(assign_op) == 0) is_merge_candidate = false;
         auto info_it =
-            var_access_info.per_resource_info.find(assign_op.resource());
+            var_access_info.per_resource_info.find(assign_op.getResource());
         if (info_it == var_access_info.per_resource_info.end())
           is_merge_candidate = false;
 
         if (is_merge_candidate &&
-            !IsResourceSafeForMerge(
-                assign_op.resource(), resource_analysis_info, var_access_info,
-                resource_ids, previous_unknown_resource_access)) {
+            !IsResourceSafeForMerge(assign_op.getResource(),
+                                    resource_analysis_info, var_access_info,
+                                    resource_ids,
+                                    previous_unknown_resource_access)) {
           VLOG(2) << "  removing op from merge candidates";
           output_merged[info_it->second.execute_output_index] = false;
           info_it->second.execute_output_index = -1;

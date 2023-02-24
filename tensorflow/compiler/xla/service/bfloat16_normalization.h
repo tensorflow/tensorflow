@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_BFLOAT16_NORMALIZATION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_BFLOAT16_NORMALIZATION_H_
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/bfloat16_support.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -54,7 +54,7 @@ class BFloat16Normalization : public HloModulePass {
 // Despecializer, not by our normal compilation flow on TPU.
 class BFloat16MixedPrecisionRemoval : public HloModulePass {
  public:
-  BFloat16MixedPrecisionRemoval() {}
+  BFloat16MixedPrecisionRemoval() = default;
 
   ~BFloat16MixedPrecisionRemoval() override = default;
 
@@ -75,7 +75,7 @@ class BFloat16MixedPrecisionRemoval : public HloModulePass {
  private:
   class BFloat16SupportForMixedPrecisionRemoval : public BFloat16Support {
    public:
-    BFloat16SupportForMixedPrecisionRemoval() {}
+    BFloat16SupportForMixedPrecisionRemoval() = default;
 
     ~BFloat16SupportForMixedPrecisionRemoval() override = default;
 

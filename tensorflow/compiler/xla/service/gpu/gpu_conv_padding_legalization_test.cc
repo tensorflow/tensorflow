@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -78,12 +78,14 @@ ENTRY %convolution (operand f64[2,2,2,3]{3,2,1,0}) -> (f64[2,2,4,4]{3,2,1,0}, u8
                     .value();
   ASSERT_TRUE(GpuConvPaddingLegalization().Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root,
-              op::Tuple(op::Slice(op::GetTupleElement(
-                            op::CustomCall(kCudnnConvBackwardInputCallTarget, _,
-                                           op::Reverse(op::Constant())),
-                            0)),
-                        op::GetTupleElement()));
+  EXPECT_THAT(
+      root,
+      op::Tuple(
+          op::Slice(op::GetTupleElement(
+              op::CustomCall(std::string(kCudnnConvBackwardInputCallTarget), _,
+                             op::Reverse(op::Constant())),
+              0)),
+          op::GetTupleElement()));
   auto slice = root->operand(0);
   Shape expected_slice_shape = ShapeUtil::MakeShape(F64, {2, 2, 4, 4});
   EXPECT_TRUE(ShapeUtil::Equal(slice->shape(), expected_slice_shape));

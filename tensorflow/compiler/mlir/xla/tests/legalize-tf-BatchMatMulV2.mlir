@@ -1,4 +1,4 @@
-// RUN: xla-opt -xla-legalize-tf=allow-partial-conversion %s | FileCheck %s
+// RUN: tf-opt -xla-legalize-tf=allow-partial-conversion %s | FileCheck %s
 
 //===----------------------------------------------------------------------===//
 // tf.BatchMatMulV2 op legalizations.
@@ -77,11 +77,11 @@ func.func @batchmatmulv2_adj_complex(%arg0: tensor<2x5xcomplex<f32>>, %arg1: ten
 // CHECK:           [[LHSRE:%.*]] = mhlo.real [[LHS]]
 // CHECK:           [[LHSIM:%.*]] = mhlo.imag [[LHS]]
 // CHECK:           [[LHSIMNEG:%.*]] = mhlo.negate [[LHSIM]]
-// CHECK:           [[LHSCONJ:%.*]] = mhlo.complex([[LHSRE]], [[LHSIMNEG]])
+// CHECK:           [[LHSCONJ:%.*]] = mhlo.complex [[LHSRE]], [[LHSIMNEG]]
 // CHECK:           [[RHSRE:%.*]] = mhlo.real [[RHS]]
 // CHECK:           [[RHSIM:%.*]] = mhlo.imag [[RHS]]
 // CHECK:           [[RHSIMNEG:%.*]] = mhlo.negate [[RHSIM]]
-// CHECK:           [[RHSCONJ:%.*]] = mhlo.complex([[RHSRE]], [[RHSIMNEG]])
+// CHECK:           [[RHSCONJ:%.*]] = mhlo.complex [[RHSRE]], [[RHSIMNEG]]
 // CHECK:           shape.shape_of [[LHSCONJ]]
 // CHECK:           shape.shape_of [[RHSCONJ]]
   %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = true, adj_y = true, device = ""} : (tensor<2x5xcomplex<f32>>, tensor<4x2xcomplex<f32>>) -> tensor<5x4xcomplex<f32>>

@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -30,13 +31,28 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/data/root_dataset.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/refcount.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -56,12 +72,48 @@ OpKernelContext::Params CreateParams(
 
 }  // namespace
 
+Iterator::Iterator(IteratorBase* iterator, IteratorContext* ctx,
+                   SerializationContext* serialization_ctx)
+    : iterator_(iterator), ctx_(ctx), serialization_ctx_(serialization_ctx) {}
+
 Status Iterator::GetNext(std::vector<Tensor>* outputs, bool* end_of_input) {
   return iterator_->GetNext(ctx_.get(), outputs, end_of_input);
 }
 
-Iterator::Iterator(IteratorBase* iterator, IteratorContext* ctx)
-    : iterator_(iterator), ctx_(ctx) {}
+StatusOr<Tensor> Iterator::Save() {
+  VariantTensorDataWriter writer;
+  TF_RETURN_IF_ERROR(iterator_->Save(serialization_ctx_.get(), &writer));
+  std::vector<std::unique_ptr<VariantTensorData>> data;
+  writer.ReleaseData(&data);
+
+  int64_t num_tensors = data.size();
+  Tensor serialized(DT_VARIANT, TensorShape({num_tensors}));
+  for (size_t i = 0; i < data.size(); ++i) {
+    IteratorStateVariant variant;
+    TF_RETURN_IF_ERROR(variant.InitializeFromVariantData(std::move(data[i])));
+    serialized.vec<Variant>()(i) = std::move(variant);
+  }
+  return serialized;
+}
+
+Status Iterator::Restore(const Tensor& saved_iterator) {
+  int64_t num_tensors = saved_iterator.dim_size(0);
+  auto saved_vec = saved_iterator.vec<Variant>();
+  std::vector<const VariantTensorData*> data;
+  data.reserve(num_tensors);
+  for (int i = 0; i < num_tensors; ++i) {
+    auto* variant = saved_vec(i).get<IteratorStateVariant>();
+    if (!variant) {
+      return errors::Internal(
+          "Cannot initialize an iterator from tensor ",
+          saved_vec(i).DebugString(),
+          ". Expected a variant tensor of type IteratorStateVariant.");
+    }
+    data.push_back(variant->GetData());
+  }
+  VariantTensorDataReader reader(data);
+  return iterator_->Restore(ctx_.get(), &reader);
+}
 
 Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
                           std::unique_ptr<Dataset>* result) {
@@ -143,13 +195,16 @@ Status Dataset::MakeIterator(
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
   ctx = std::make_unique<IteratorContext>(std::move(params));
+  SerializationContext::Params serialization_params(&op_ctx);
+  auto serialization_ctx =
+      std::make_unique<SerializationContext>(std::move(serialization_params));
 
   // Create the iterator from the dataset.
   std::unique_ptr<IteratorBase> iterator;
   TF_RETURN_IF_ERROR(finalized_dataset_->MakeIterator(
       ctx.get(), /*parent=*/nullptr, "Iterator", &iterator));
-  *result = WrapUnique(new Iterator(iterator.release(), ctx.release()));
-
+  *result = WrapUnique(new Iterator(iterator.release(), ctx.release(),
+                                    serialization_ctx.release()));
   return OkStatus();
 }
 

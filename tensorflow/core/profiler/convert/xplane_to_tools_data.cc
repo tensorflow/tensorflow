@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/hlo_to_tools_data.h"
+#include "tensorflow/core/profiler/convert/multi_xplanes_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_op_profile.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tf_data_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tool_names.h"
-#include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/tsl/profiler/convert/xplane_to_trace_events.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -68,7 +69,7 @@ StatusOr<std::string> ConvertXSpaceToTraceEvents(
   PreprocessSingleHostXSpace(xspace.get(), /*step_grouping=*/true,
                              /*derived_timeline=*/true);
   std::string content;
-  ConvertXSpaceToTraceEventsString(*xspace, &content);
+  tsl::profiler::ConvertXSpaceToTraceEventsString(*xspace, &content);
   return content;
 }
 
@@ -252,8 +253,7 @@ StatusOr<std::string> ConvertMultiXSpacesToToolData(
   } else if (tool_name == "op_profile") {
     return ConvertMultiXSpacesToOpProfileViewer(session_snapshot);
   } else if (tool_name == "memory_viewer" || tool_name == "graph_viewer") {
-    return ConvertHloProtoToToolData(session_snapshot, tool_name,
-                                     ToolOptionsToHloToolOptions(options));
+    return ConvertHloProtoToToolData(session_snapshot, tool_name, options);
   } else if (tool_name == "tool_names") {
     return GetAvailableToolNames(session_snapshot);
   } else if (tool_name == "_xplane.pb") {  // internal test only.

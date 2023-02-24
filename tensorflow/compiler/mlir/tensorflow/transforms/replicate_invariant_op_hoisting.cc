@@ -47,7 +47,7 @@ struct ReplicateInvariantOpHoistingPass
 
 void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
                           Block* replicate_block, TF::ShapeOp shape_op) {
-  Value input = shape_op.input();
+  Value input = shape_op.getInput();
   // If ShapeOp operand is replicate tensor block argument, replace with the
   // associated first replica operand.
   if (auto block_arg = input.dyn_cast<BlockArgument>()) {
@@ -72,7 +72,7 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
   // shape has not changed in replicate prior to read. Currently after both
   // ResourceOpLiftingPass and TPURewritePass, there should not be any updates
   // to resources prior to their respective ReadVariableOp.
-  if (auto block_arg = read_var_op.resource().dyn_cast<BlockArgument>()) {
+  if (auto block_arg = read_var_op.getResource().dyn_cast<BlockArgument>()) {
     if (block_arg.getOwner() != replicate_block) return;
 
     OpBuilder builder(shape_op);
@@ -86,7 +86,7 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
 }
 
 // Check if op uses a device from a list of virtual devices.
-bool UsesVirtualDevice(const Optional<DictionaryAttr>& virtual_devices,
+bool UsesVirtualDevice(const std::optional<DictionaryAttr>& virtual_devices,
                        Operation* operation) {
   if (!virtual_devices.has_value()) return false;
 
@@ -94,7 +94,7 @@ bool UsesVirtualDevice(const Optional<DictionaryAttr>& virtual_devices,
     StringAttr op_device = op->getAttrOfType<StringAttr>(kDeviceAttr);
     if (!op_device) return WalkResult::advance();
 
-    if (virtual_devices.getValue().get(op_device.getValue()))
+    if (virtual_devices.value().get(op_device.getValue()))
       return WalkResult::interrupt();
     return WalkResult::advance();
   });
@@ -132,7 +132,7 @@ void HoistReplicateInvariantOps(tf_device::ReplicateOp replicate_op) {
   });
 
   Region* replicate_region = &replicate_op.getBody();
-  Optional<DictionaryAttr> virtual_device_list = replicate_op.getDevices();
+  std::optional<DictionaryAttr> virtual_device_list = replicate_op.getDevices();
   for (Operation& inner_op :
        llvm::make_early_inc_range(replicate_op.GetBody())) {
     if (llvm::isa<tf_device::ReturnOp>(inner_op)) continue;

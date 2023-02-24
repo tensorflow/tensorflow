@@ -1496,6 +1496,26 @@ class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
     self.coordinator.schedule(worker_fn, args=(distributed_iterator,))
     self.assertEqual(self._tracing_count, 1)
 
+  def testPerWorkerDatasetBuild(self):
+    # Test that we can use Dataset type as input to worker_fn.
+    @def_function.function
+    def worker_fn(dataset):
+      return next(iter(dataset))
+
+    dataset_vals = [1, 2]
+    dataset = dataset_ops.DatasetV2.from_tensor_slices(dataset_vals)
+    per_worker_dataset = self.coordinator.create_per_worker_dataset(dataset)
+    per_worker_dataset = per_worker_dataset.build()
+
+    result = self.coordinator.schedule(worker_fn, args=(per_worker_dataset,))
+    self.coordinator.join()
+    result = result.fetch()
+    self.assertEqual(result, dataset_vals[0])
+
+    # Test that the build() output type specs match the input Dataset spec.
+    for remote_value in per_worker_dataset._values:
+      self.assertEqual(remote_value._type_spec, dataset._type_spec)
+
 
 if __name__ == '__main__':
   v2_compat.enable_v2_behavior()

@@ -52,7 +52,10 @@ class TfrtGraphExecutionState {
 
   struct Options {
     bool run_placer_grappler_on_functions = false;
+    // TODO(b/262826012): Remove the flag after we switch to using bridge.
     bool enable_tfrt_gpu = false;
+    // TODO(b/260915352): Remove the flag and default to using bridge.
+    bool use_bridge_for_gpu = false;
   };
 
   // Creates a `GraphExecutionState` given `graph_def` and `fallback_state`.

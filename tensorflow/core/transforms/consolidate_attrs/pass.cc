@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/transforms/consolidate_attrs/pass.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/ScopeExit.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/importexport/convert_tensor.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/ir/types/dialect.h"
@@ -422,7 +424,7 @@ void PrepareAttributesForExportPassImpl::prepareFunctionAttributes(
     if (auto ranked = type.dyn_cast<RankedTensorType>()) {
       input_shapes.push_back(ShapeAttr::get(&getContext(), ranked.getShape()));
     } else {
-      input_shapes.push_back(ShapeAttr::get(&getContext(), llvm::None));
+      input_shapes.push_back(ShapeAttr::get(&getContext(), std::nullopt));
     }
   }
 
@@ -583,7 +585,7 @@ class MaterializeOutputShapesBase : public RewritePattern {
       if (auto ranked = result.getType().dyn_cast<RankedTensorType>()) {
         shapes.push_back(ShapeAttr::get(op->getContext(), ranked.getShape()));
       } else {
-        shapes.push_back(ShapeAttr::get(op->getContext(), llvm::None));
+        shapes.push_back(ShapeAttr::get(op->getContext(), std::nullopt));
       }
     }
     rewriter.updateRootInPlace(op, [&] {

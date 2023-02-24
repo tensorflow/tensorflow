@@ -4,6 +4,7 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 # TF to TFRT kernels conversion.
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/mlir/tfrt:friends"],
     licenses = ["notice"],
 )
@@ -17,7 +18,7 @@ tfrt_cc_library(
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/xla/mlir/utils/runtime:constraints",
+        "//tensorflow/compiler/xla/mlir/runtime/utils:constraints",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -47,20 +48,11 @@ cc_library(
         "tf_jitrt_buffer_forwarding.cc",
         "tf_jitrt_clustering_pass.cc",
         "tf_jitrt_copy_removal.cc",
-        "tf_jitrt_detensorize_linalg.cc",
         "tf_jitrt_fission.cc",
-        "tf_jitrt_fuse_fill_into_tiled_reduction.cc",
         "tf_jitrt_fusion.cc",
         "tf_jitrt_legalize_i1_type.cc",
-        "tf_jitrt_lower_vector_transpose.cc",
         "tf_jitrt_math_approximation.cc",
         "tf_jitrt_passes.cc",
-        "tf_jitrt_peel_tiled_loops.cc",
-        "tf_jitrt_rewrite_vector_multi_reduction.cc",
-        "tf_jitrt_symbolic_shape_optimization.cc",
-        "tf_jitrt_tile_cwise.cc",
-        "tf_jitrt_tile_reduction.cc",
-        "tf_jitrt_tile_transpose.cc",
     ],
     hdrs = ["tf_jitrt_passes.h"],
     compatible_with = get_compatible_with_cloud(),

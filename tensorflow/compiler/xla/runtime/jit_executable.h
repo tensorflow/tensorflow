@@ -25,9 +25,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/jit_compiler.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/jit_compiler.h"
 #include "tensorflow/compiler/xla/runtime/async_values_cache.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/xla/runtime/constraints.h"
+#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/concurrency/chain.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
@@ -110,7 +112,7 @@ class JitExecutable {
 
   // Returns default executable that accepts all compatible operands
   // (operands rank and all static dimensions should match the operands).
-  tfrt::AsyncValuePtr<Executable> DefaultExecutable() const;
+  tsl::AsyncValuePtr<Executable> DefaultExecutable() const;
 
   // Returns an executable that may be specialized for the arguments. Can return
   // default executable if no specialization is required, or if the specialized
@@ -138,19 +140,19 @@ class JitExecutable {
   //
   // TODO(ezhulenev): Add support for specifying exported function ordinal,
   // currently this will always specialize exported function with ordinal 0.
-  absl::StatusOr<tfrt::AsyncValuePtr<Executable>> GetExecutable(
+  absl::StatusOr<tsl::AsyncValuePtr<Executable>> GetExecutable(
       ArgumentsRef arguments, UserData user_data = {},
       const SpecializationListener* listener = nullptr);
 
   // Returns an async value that becomes ready when all executables owned by
   // this JitExecutable are compiled (no pending compilation tasks).
-  tfrt::AsyncValueRef<tfrt::Chain> AllExecutablesCompiled() const;
+  tsl::AsyncValueRef<tsl::Chain> AllExecutablesCompiled() const;
 
   // JitExecutable is move-only type.
   JitExecutable(const JitExecutable&) = delete;
   JitExecutable(JitExecutable&&) = default;
 
-  std::string mlir_module() { return mlir_module_; }
+  std::string_view mlir_module() { return mlir_module_; }
 
   unsigned num_functions() const { return functions_.size(); }
 

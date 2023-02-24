@@ -101,8 +101,8 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
     TF::WhileRegionOp while_op, tf_device::ReplicateOp replicate,
     TF::TPUExecuteAndUpdateVariablesOp execute,
     tf_device::LaunchOp compile_launch) {
-  Region& body = while_op.body();
-  Region& cond = while_op.cond();
+  Region& body = while_op.getBody();
+  Region& cond = while_op.getCond();
 
   llvm::SmallVector<std::pair<int64_t, llvm::SmallVector<Value, 4>>, 4> mapping;
   auto mirrored_variable_indices_attr =
@@ -111,7 +111,7 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
 
   // Finds the mapping from a replicate argument to an execute operand.
   llvm::SmallDenseMap<int64_t, int64_t, 8> replicate_arg_to_execute_arg;
-  for (auto index_and_arg : llvm::enumerate(execute.args())) {
+  for (auto index_and_arg : llvm::enumerate(execute.getArgs())) {
     auto arg = SkipIdentity(index_and_arg.value(), /*allow_other_use=*/false);
     if (!arg.hasOneUse() ||
         !getElementTypeOrSelf(arg.getType()).isa<TF::ResourceType>()) {
@@ -203,12 +203,12 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
   // Sort the mapping according to execute operand order.
   llvm::sort(mapping, llvm::less_first());
   // Populate the `retval_index_for_sharding` field of the argument metadate.
-  for (auto entry : llvm::enumerate(execute.device_var_reads_indices())) {
+  for (auto entry : llvm::enumerate(execute.getDeviceVarReadsIndices())) {
     int64_t arg_index = entry.value().cast<IntegerAttr>().getInt();
     auto arg_metadata = metadata.mutable_args(arg_index);
     if (arg_metadata->enable_xla_sharding() ==
         ::tensorflow::tpu::TPUCompileMetadataProto_Arg::ALLOWED) {
-      int64_t ret_index = execute.device_var_updates_indices()
+      int64_t ret_index = execute.getDeviceVarUpdatesIndices()
                               .getValue()[entry.index()]
                               .cast<IntegerAttr>()
                               .getInt();
@@ -257,7 +257,7 @@ tf_device::ReplicateOp AddInputsToReplicateOp(
   }
   SmallVector<Value, 4> new_input_values;
   new_input_values.reserve(new_inputs.size());
-  for (auto var : new_inputs) new_input_values.push_back(var.resource());
+  for (auto var : new_inputs) new_input_values.push_back(var.getResource());
   new_replicated_inputs.emplace_back(new_input_values,
                                      new_input_values.front().getType());
   OpBuilder builder(replicate);
@@ -362,7 +362,7 @@ bool HandleReplicateOp(TF::WhileRegionOp while_op,
   });
   if (!execute) return false;
   auto compile =
-      SkipIdentity(execute.key(), /*allow_other_use=*/true).getDefiningOp();
+      SkipIdentity(execute.getKey(), /*allow_other_use=*/true).getDefiningOp();
   if (!compile) return false;
   auto compile_launch = llvm::dyn_cast<tf_device::LaunchOp>(compile);
   if (!compile_launch || !compile_launch.WrapsSingleOp() ||
@@ -379,7 +379,7 @@ bool HandleReplicateOp(TF::WhileRegionOp while_op,
   auto devices_attr = replicate.getDevices();
   if (!devices_attr) return false;
 
-  auto device_map = devices_attr.getValue();
+  auto device_map = devices_attr.value();
   llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>> devices;
   devices.reserve(device_map.size());
 
@@ -408,7 +408,7 @@ bool HandleReplicateOp(TF::WhileRegionOp while_op,
   // `replicate`.
   llvm::SmallVector<Value, 8> reformat_operands;
   for (const auto& entry : execute_arg_to_outer_args) {
-    reformat_operands.push_back(execute.args()[entry.first]);
+    reformat_operands.push_back(execute.getArgs()[entry.first]);
   }
   reformat_operands.push_back(compile_launch.getResult(1));
   reformat_operands.push_back(replicate.GetBody().getArgument(
@@ -433,7 +433,7 @@ bool HandleReplicateOp(TF::WhileRegionOp while_op,
   }
   llvm::SmallVector<Value, 4> state_var_vals(state_vars.size());
   for (const auto& entry : llvm::enumerate(state_vars)) {
-    state_var_vals[entry.index()] = entry.value().resource();
+    state_var_vals[entry.index()] = entry.value().getResource();
   }
   // Add the replicated state var to the end of the replicate operands.
   unformat_replicate_operands.emplace_back(state_var_vals,
@@ -485,7 +485,7 @@ void TPUVariableRuntimeReformattingPass::runOnOperation() {
   bool reshard_was_inserted = false;
   module.walk([&](TF::WhileRegionOp while_op) {
     tf_device::ReplicateOp replicate;
-    while_op.body().walk([&](tf_device::ReplicateOp replicate_op) {
+    while_op.getBody().walk([&](tf_device::ReplicateOp replicate_op) {
       if (replicate == nullptr) {
         replicate = replicate_op;
         return WalkResult::advance();

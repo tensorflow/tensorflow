@@ -16,6 +16,7 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -107,9 +108,9 @@ cc_library(
     deps = [
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core:headers",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools/evaluation:evaluation_delegate_provider",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
@@ -129,7 +130,8 @@ cc_test(
     deps = [
         ":tflite_inference_stage",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
@@ -169,6 +171,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "//tensorflow/tsl/util:stats_calculator_portable",
+        "@FP16",
     ],
 )
 
@@ -180,7 +183,7 @@ cc_test(
     linkstatic = 1,
     deps = [
         ":inference_profiler_stage",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
@@ -195,7 +198,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
@@ -226,7 +229,7 @@ cc_library(
         ":object_detection_average_precision_stage",
         ":tflite_inference_stage",
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/tools/evaluation:evaluation_delegate_provider",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation:utils",

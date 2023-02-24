@@ -689,6 +689,11 @@ struct ReduceType<functor::Sum, Eigen::half> {
   using type = float;
 };
 
+template <>
+struct ReduceType<functor::Sum, Eigen::bfloat16> {
+  using type = float;
+};
+
 namespace functor {
 
 template <typename T, typename Index, typename InitialValueF,

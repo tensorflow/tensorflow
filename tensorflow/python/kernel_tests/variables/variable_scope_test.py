@@ -20,7 +20,7 @@ import threading
 import numpy
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -180,12 +180,12 @@ class VariableScopeTest(test.TestCase):
   def testGetVariableInGraphNestedUnderEagerContext(self):
     with context.eager_mode():
 
-      @function.defun
-      def f():
-        v = variable_scope.get_variable("should_be_resource", [])
+      @def_function.function
+      def f(v):
         self.assertEqual(type(v), resource_variable_ops.ResourceVariable)
 
-      f()
+      var = variable_scope.get_variable("should_be_resource", [])
+      f(var)
 
   def testEagerVariableStore(self):
     with context.eager_mode():
@@ -224,30 +224,6 @@ class VariableScopeTest(test.TestCase):
         self.assertEqual(v.numpy(), -1)
       for v in new_store.variables():
         self.assertEqual(v.numpy(), 1)
-
-  def testEagerVariableStoreWithEagerDefun(self):
-    with context.eager_mode():
-
-      @function.defun
-      def f():
-        x = constant_op.constant([[2.0]])
-        d1 = core_layers.Dense(
-            1, name="my_dense", kernel_initializer=init_ops.ones_initializer())
-        _ = d1(x)  # create variables
-        self.assertEqual(len(d1.variables), 2)
-        v1, v2 = d1.variables
-        d2 = core_layers.Dense(
-            1,
-            name="my_dense",
-            kernel_initializer=init_ops.ones_initializer(),
-            _reuse=True)
-        _ = d2(x)
-        self.assertEqual(len(d2.variables), 2)
-        v3, v4 = d2.variables
-        self.assertIs(v1, v3)
-        self.assertIs(v2, v4)
-
-      f()
 
   # Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one

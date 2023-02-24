@@ -59,7 +59,7 @@ class ValidatorRunner {
   // Get results for successfully completed validation runs. The caller can then
   // pick the best configuration based on timings.
   std::vector<const BenchmarkEvent*> GetSuccessfulResults() {
-    return validator_runner_impl_->GetSuccessfulResults();
+    return validator_runner_impl_->GetSuccessfulResultsFromStorage();
   }
 
   // Get results for completed validation runs regardless whether it is

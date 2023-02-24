@@ -69,8 +69,14 @@ def handle_options(func, x, axis, exclusive, reverse):
 class CumsumTest(test.TestCase):
 
   valid_dtypes = [
-      np.int32, np.int64, np.float16, np.float32, np.float64, np.complex64,
-      np.complex128
+      np.int32,
+      np.int64,
+      np.float16,
+      np.float32,
+      np.float64,
+      np.complex64,
+      np.complex128,
+      dtypes.bfloat16.as_numpy_dtype,
   ]
 
   def _compare(self, x, axis, exclusive, reverse):
@@ -103,7 +109,12 @@ class CumsumTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testNaN(self):
-    for dtype in (np.float16, np.float32, np.float64):
+    for dtype in (
+        np.float16,
+        np.float32,
+        np.float64,
+        dtypes.bfloat16.as_numpy_dtype,
+    ):
       for nan_idx in range(0, 5):
         x = np.arange(1, 6).reshape([5]).astype(dtype)
         x[nan_idx] = np.nan
@@ -202,8 +213,14 @@ class CumsumTest(test.TestCase):
 class CumprodTest(test.TestCase):
 
   valid_dtypes = [
-      np.int32, np.int64, np.float16, np.float32, np.float64, np.complex64,
-      np.complex128
+      np.int32,
+      np.int64,
+      np.float16,
+      np.float32,
+      np.float64,
+      np.complex64,
+      np.complex128,
+      dtypes.bfloat16.as_numpy_dtype,
   ]
 
   def _compare(self, x, axis, exclusive, reverse):

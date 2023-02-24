@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 
 namespace py = pybind11;

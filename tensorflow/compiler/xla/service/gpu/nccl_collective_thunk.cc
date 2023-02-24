@@ -24,10 +24,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -212,7 +210,50 @@ std::string NcclCollectiveThunk::GetDeviceString(
                          global_device_id.value(), device_ordinal);
 }
 
-bool IsTypeSupportedByNccl(PrimitiveType element_type) {
+Status NcclCollectiveThunk::AsyncExecutor::Execute(
+    absl::FunctionRef<Status(const ExecuteParams&, se::Stream&, ncclComm_t)> fn,
+    const ExecuteParams& params, ncclComm_t comm) {
+  se::Stream& async_comms_stream = *params.async_comms_stream;
+  // Wait until compute inputs are ready.
+  async_comms_stream.ThenWaitFor(params.stream);
+
+  TF_RETURN_IF_ERROR(fn(params, async_comms_stream, comm));
+
+  // Create an event on the async stream for the completion of the collective.
+  se::Event done_event(async_comms_stream.parent());
+  TF_RET_CHECK(done_event.Init());
+  async_comms_stream.ThenRecordEvent(&done_event);
+
+  int device_ordinal = async_comms_stream.parent()->device_ordinal();
+  absl::MutexLock lock(&mu_);
+  auto [_, was_inserted] =
+      done_events_.insert({device_ordinal, std::move(done_event)});
+  TF_RET_CHECK(was_inserted) << "done event has not been consumed";
+  return OkStatus();
+}
+
+Status NcclCollectiveThunk::AsyncExecutor::Await(const ExecuteParams& params) {
+  int device_ordinal = params.stream->parent()->device_ordinal();
+  auto done_event = [this, device_ordinal] {
+    absl::MutexLock lock(&mu_);
+    return done_events_.extract(device_ordinal);
+  }();
+  TF_RET_CHECK(done_event) << "done event not found";
+  params.stream->ThenWaitFor(&done_event.mapped());
+  return OkStatus();
+}
+
+NcclCollectiveDoneThunk::NcclCollectiveDoneThunk(
+    Thunk::Kind kind, ThunkInfo thunk_info,
+    NcclCollectiveThunk::AsyncExecutor& async)
+    : Thunk(kind, std::move(thunk_info)), async_(async) {}
+
+Status NcclCollectiveDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
+  return async_.Await(params);
+}
+
+bool IsTypeSupportedByNccl(PrimitiveType element_type,
+                           Thunk::Kind reduction_op) {
   switch (element_type) {
     case S8:
     case PRED:
@@ -230,6 +271,12 @@ bool IsTypeSupportedByNccl(PrimitiveType element_type) {
     case C64:
     case C128:
       return true;
+    case S16:
+    case U16:
+      // 16-bit integer reductions are not directly suppored by NCCL and cannot
+      // be implicitly converted into other 16-bit types like ncclFloat16 as
+      // they involve actual comptation andn not just data movement.
+      return !IsReductionCollective(reduction_op);
     default:
       return false;
   }

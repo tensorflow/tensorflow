@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "llvm/ADT/StringExtras.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/utils/name_utils.h"
 
 namespace mlir {
 namespace mhlo {
@@ -95,19 +94,14 @@ static std::string GetOpTypeFromLoc(Location loc) {
   return llvm::join(loc_op_types.begin(), loc_op_types.end(), ";");
 }
 
-xla::OpMetadata CreateOpMetadataFromLocation(mlir::Operation* op,
-                                             bool legalize_node_names) {
+xla::OpMetadata CreateOpMetadataFromLocation(mlir::Operation* op) {
   xla::OpMetadata metadata;
   mlir::Location loc = op->getLoc();
   if (loc.isa<mlir::UnknownLoc>()) return metadata;
 
   std::string name = GetNameFromLocImpl(loc);
-  if (legalize_node_names) {
-    mlir::LegalizeNodeName(name);
-  }
   metadata.set_op_name(name);
   std::string op_type = GetOpTypeFromLoc(loc);
-  LegalizeNodeName(op_type);
   metadata.set_op_type(op_type);
 
   if (auto name_loc = op->getLoc().dyn_cast<mlir::NameLoc>()) {

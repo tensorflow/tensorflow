@@ -1,6 +1,6 @@
 path: "tensorflow.metrics.Precision"
 tf_class {
-  is_instance: "<class \'keras.metrics.metrics.Precision\'>"
+  is_instance: "<class \'keras.metrics.confusion_metrics.Precision\'>"
   is_instance: "<class \'keras.metrics.base_metric.Metric\'>"
   is_instance: "<class \'keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
@@ -157,6 +157,10 @@ tf_class {
     argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "build_from_config"
+    argspec: "args=[\'self\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "call"
     argspec: "args=[\'self\', \'inputs\'], varargs=args, keywords=kwargs, defaults=None"
   }
@@ -183,6 +187,10 @@ tf_class {
   member_method {
     name: "from_config"
     argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_build_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_config"

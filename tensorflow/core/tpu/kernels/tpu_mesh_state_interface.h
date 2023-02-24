@@ -37,14 +37,14 @@ class TpuMeshStateInterface : public tensorflow::ResourceBase {
 
   ~TpuMeshStateInterface() override {
     if (mesh_state_ != nullptr) {
-      OpsApiFn()->TpuMeshState_FreeFn(mesh_state_);
+      stream_executor::tpu::OpsApiFn()->TpuMeshState_FreeFn(mesh_state_);
     }
   }
 
   static TpuMeshStateInterface* Create() {
     XLA_TpuMeshState* state = nullptr;
-    if (OpsApiFn()->TpuMeshState_CreateFn != nullptr) {
-      state = OpsApiFn()->TpuMeshState_CreateFn();
+    if (stream_executor::tpu::OpsApiFn()->TpuMeshState_CreateFn != nullptr) {
+      state = stream_executor::tpu::OpsApiFn()->TpuMeshState_CreateFn();
     }
     return new TpuMeshStateInterface(state);
   }
@@ -56,7 +56,8 @@ class TpuMeshStateInterface : public tensorflow::ResourceBase {
       return nullptr;
     }
     return static_cast<tensorflow::TpuMeshCommonState*>(
-        OpsApiFn()->TpuMeshState_MeshCommonStateFn(mesh_state_));
+        stream_executor::tpu::OpsApiFn()->TpuMeshState_MeshCommonStateFn(
+            mesh_state_));
   }
 
   // Returns whether we should include the device assignment as a static field
@@ -70,8 +71,8 @@ class TpuMeshStateInterface : public tensorflow::ResourceBase {
     // Static device assignment enables XLA to perform certain optimization when
     // all cores are used in the replicated computation.
     return metadata.num_cores_per_replica() * metadata.num_replicas() ==
-           OpsApiFn()->TpuTopology_AvailableCoreCountFn(mesh_state_,
-                                                        tpu_core_type);
+           stream_executor::tpu::OpsApiFn()->TpuTopology_AvailableCoreCountFn(
+               mesh_state_, tpu_core_type);
   }
 
   string DebugString() const override { return "TpuMeshStateInterface"; }

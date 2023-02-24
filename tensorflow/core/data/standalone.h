@@ -12,19 +12,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #ifndef TENSORFLOW_CORE_DATA_STANDALONE_H_
 #define TENSORFLOW_CORE_DATA_STANDALONE_H_
 
 #include <functional>
 #include <memory>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/data/unbounded_thread_pool.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -74,13 +81,22 @@ class Iterator {
   // indication of whether the end of the input pipeline has been reached.
   Status GetNext(std::vector<Tensor>* outputs, bool* end_of_input);
 
+  // Saves a checkpoint of the iterator. Returns a Tensor that can be called
+  // with `Restore()`.
+  StatusOr<Tensor> Save();
+
+  // Restores the iterator from a checkpoint.
+  Status Restore(const Tensor& saved_iterator);
+
  private:
   friend class Dataset;
 
-  Iterator(IteratorBase* iterator, IteratorContext* ctx);
+  Iterator(IteratorBase* iterator, IteratorContext* ctx,
+           SerializationContext* serialization_ctx);
 
   std::unique_ptr<IteratorBase> iterator_;
   std::unique_ptr<IteratorContext> ctx_;
+  std::unique_ptr<SerializationContext> serialization_ctx_;
 };
 
 // Represents an input pipeline as a collection of data sources and a logical

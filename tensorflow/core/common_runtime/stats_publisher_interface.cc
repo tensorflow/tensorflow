@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "tensorflow/core/framework/graph.pb.h"
 
 namespace tensorflow {
@@ -31,6 +35,8 @@ class NoOpStatsPublisher : public StatsPublisherInterface {
   void PublishGraphProto(
       const std::vector<const GraphDef*>& graph_defs) override {}
 
+  void PublishGraphProto(std::vector<GraphDef> graph_defs) override {}
+
   std::unique_ptr<ProfileHandler> GetProfileHandler(
       uint64 step, int64_t execution_count, const RunOptions& ropts) override {
     return nullptr;
@@ -40,6 +46,27 @@ class NoOpStatsPublisher : public StatsPublisherInterface {
 };
 
 }  // namespace
+
+void StatsPublisherInterface::RegisterStatsPublisher(
+    StatsPublisherFactory factory_fn) {
+  StatsPublisherFactory** factory_ptr = GetStatsPublisherFactoryPtr();
+  if (*factory_ptr == nullptr) {
+    *factory_ptr = new StatsPublisherFactory();
+  } else {
+    LOG(WARNING)
+        << "More than one StatsPublisherFactory functions are registered. Only "
+           "the last registered one will be effective.";
+  }
+  **factory_ptr = factory_fn;
+}
+
+StatsPublisherFactory StatsPublisherInterface::GetStatsPublisherFactory() {
+  const auto* factory_ptr = GetStatsPublisherFactoryPtr();
+  if (*factory_ptr == nullptr) {
+    return CreateNoOpStatsPublisher;
+  }
+  return **factory_ptr;
+}
 
 std::unique_ptr<StatsPublisherInterface> CreateNoOpStatsPublisher(
     const string& session, const BuildGraphOptions& bopts,

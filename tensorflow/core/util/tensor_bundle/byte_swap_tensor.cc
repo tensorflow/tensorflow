@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 
 namespace tensorflow {
@@ -116,50 +115,56 @@ Status ByteSwapTensor(Tensor* t) {
                         t->NumElements());
 }
 
-Status ByteSwapTensorContent(MetaGraphDef* meta_graph_def) {
-  for (auto& function : *meta_graph_def->mutable_graph_def()
-                             ->mutable_library()
-                             ->mutable_function()) {
-    for (auto& node : (*function.mutable_node_def())) {
-      if (node.op() == "Const") {
-        auto node_iterator = node.mutable_attr()->find("value");
-        if (node_iterator != node.mutable_attr()->end()) {
-          AttrValue node_value = node_iterator->second;
-          if (node_value.has_tensor()) {
-            auto tsize = node_value.mutable_tensor()->tensor_content().size();
-            auto p_type = node_value.mutable_tensor()->dtype();
-            // Swap only when there is something in tensor_content field
-            if (tsize != 0 && DataTypeCanUseMemcpy(p_type)) {
-              Tensor parsed(p_type);
-              DCHECK(parsed.FromProto(*node_value.mutable_tensor()));
-              if (!parsed.tensor_data().empty()) {
-                TF_RETURN_IF_ERROR(ByteSwapTensor(&parsed));
-                (*node.mutable_attr())["value"]
-                    .mutable_tensor()
-                    ->set_tensor_content(
-                        string(reinterpret_cast<const char*>(
-                                   parsed.tensor_data().data()),
-                               parsed.tensor_data().size()));
-              } else {
-                void* copy = tensorflow::port::Malloc(tsize);
-                memcpy(copy,
-                       string(node_value.mutable_tensor()->tensor_content())
-                           .data(),
-                       tsize);
-                TF_RETURN_IF_ERROR(
-                    ByteSwapBuffer((char*)copy, tsize, p_type, -1));
-                (*node.mutable_attr())["value"]
-                    .mutable_tensor()
-                    ->set_tensor_content(
-                        string(reinterpret_cast<const char*>(copy), tsize));
-                tensorflow::port::Free(copy);
-              }
-            }
+Status ByteSwapTensorContentInNode(NodeDef& node) {
+  if (node.op() == "Const") {
+    auto node_iterator = node.mutable_attr()->find("value");
+    if (node_iterator != node.mutable_attr()->end()) {
+      AttrValue node_value = node_iterator->second;
+      if (node_value.has_tensor()) {
+        auto tsize = node_value.mutable_tensor()->tensor_content().size();
+        auto p_type = node_value.mutable_tensor()->dtype();
+        // Swap only when there is something in tensor_content field
+        if (tsize != 0 && DataTypeCanUseMemcpy(p_type)) {
+          Tensor parsed(p_type);
+          DCHECK(parsed.FromProto(*node_value.mutable_tensor()));
+          if (!parsed.tensor_data().empty()) {
+            TF_RETURN_IF_ERROR(ByteSwapTensor(&parsed));
+            (*node.mutable_attr())["value"]
+                .mutable_tensor()
+                ->set_tensor_content(string(
+                    reinterpret_cast<const char*>(parsed.tensor_data().data()),
+                    parsed.tensor_data().size()));
+          } else {
+            void* copy = tensorflow::port::Malloc(tsize);
+            memcpy(copy,
+                   string(node_value.mutable_tensor()->tensor_content()).data(),
+                   tsize);
+            TF_RETURN_IF_ERROR(ByteSwapBuffer((char*)copy, tsize, p_type, -1));
+            (*node.mutable_attr())["value"]
+                .mutable_tensor()
+                ->set_tensor_content(
+                    string(reinterpret_cast<const char*>(copy), tsize));
+            tensorflow::port::Free(copy);
           }
         }
       }
     }
   }
+  return OkStatus();
+}
+
+Status ByteSwapTensorContentInMetaGraphDef(MetaGraphDef* meta_graph_def) {
+  for (auto& function : *meta_graph_def->mutable_graph_def()
+                             ->mutable_library()
+                             ->mutable_function())
+    for (auto& node : (*function.mutable_node_def()))
+      TF_RETURN_IF_ERROR(ByteSwapTensorContentInNode(node));
+  return OkStatus();
+}
+
+Status ByteSwapTensorContentInGraphDef(GraphDef* graph_def) {
+  for (auto& node : *graph_def->mutable_node())
+    TF_RETURN_IF_ERROR(ByteSwapTensorContentInNode(node));
   return OkStatus();
 }
 

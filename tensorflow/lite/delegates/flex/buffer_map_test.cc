@@ -22,7 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/delegates/flex/buffer_map_util.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/string_util.h"

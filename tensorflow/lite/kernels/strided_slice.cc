@@ -21,8 +21,8 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -45,6 +45,11 @@ constexpr int kBeginTensor = 1;
 constexpr int kEndTensor = 2;
 constexpr int kStridesTensor = 3;
 constexpr int kOutputTensor = 0;
+
+struct OpData {
+  // Indicates that 'Eval' is a noop as the output as written during 'Prepare'.
+  bool noop;
+};
 
 struct StridedSliceContext {
   StridedSliceContext(TfLiteContext* context, TfLiteNode* node) {
@@ -229,41 +234,8 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  TF_LITE_ENSURE_EQ(context, NumInputs(node), 4);
-  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-
-  StridedSliceContext op_context(context, node);
-
-  // Ensure validity of input tensor and its dimension
-  TF_LITE_ENSURE_EQ(context, NumDimensions(op_context.begin), 1);
-  TF_LITE_ENSURE_EQ(context, NumDimensions(op_context.end), 1);
-  TF_LITE_ENSURE_EQ(context, NumDimensions(op_context.strides), 1);
-  TF_LITE_ENSURE_EQ(context, NumElements(op_context.begin),
-                    NumElements(op_context.end));
-  TF_LITE_ENSURE_EQ(context, op_context.input->type, op_context.output->type);
-
-  // Only INT32 begin/end/strides are supported
-  // TODO(b/253465311): add support for INT64
-  TF_LITE_ENSURE_TYPES_EQ(context, op_context.begin->type, kTfLiteInt32);
-  TF_LITE_ENSURE_TYPES_EQ(context, op_context.end->type, kTfLiteInt32);
-  TF_LITE_ENSURE_TYPES_EQ(context, op_context.strides->type, kTfLiteInt32);
-  TF_LITE_ENSURE_MSG(context, op_context.input_dims <= 5,
-                     "StridedSlice op only supports 1D-5D input arrays.");
-
-  // Postpone allocation of output if any of the indexing tensors is not
-  // constant
-  if (!(IsConstantTensor(op_context.begin) &&
-        IsConstantTensor(op_context.end) &&
-        IsConstantTensor(op_context.strides))) {
-    SetTensorToDynamic(op_context.output);
-    return kTfLiteOk;
-  }
-  return ResizeOutputTensor(context, &op_context);
-}
-
 template <KernelType kernel_type>
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
   StridedSliceContext op_context(context, node);
 
   if (IsDynamicTensor(op_context.output)) {
@@ -323,18 +295,76 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  op_data->noop = false;
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 4);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+
+  StridedSliceContext op_context(context, node);
+
+  // Ensure validity of input tensor and its dimension
+  TF_LITE_ENSURE_EQ(context, NumDimensions(op_context.begin), 1);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(op_context.end), 1);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(op_context.strides), 1);
+  TF_LITE_ENSURE_EQ(context, NumElements(op_context.begin),
+                    NumElements(op_context.end));
+  TF_LITE_ENSURE_EQ(context, op_context.input->type, op_context.output->type);
+
+  // Only INT32 begin/end/strides are supported
+  // TODO(b/253465311): add support for INT64
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.begin->type, kTfLiteInt32);
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.end->type, kTfLiteInt32);
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.strides->type, kTfLiteInt32);
+  TF_LITE_ENSURE_MSG(context, op_context.input_dims <= 5,
+                     "StridedSlice op only supports 1D-5D input arrays.");
+
+  // Postpone allocation of output if any of the indexing tensors is not
+  // constant
+  if (!(IsConstantOrPersistentTensor(op_context.begin) &&
+        IsConstantOrPersistentTensor(op_context.end) &&
+        IsConstantOrPersistentTensor(op_context.strides))) {
+    SetTensorToDynamic(op_context.output);
+    return kTfLiteOk;
+  }
+  if (IsConstantOrPersistentTensor(op_context.input)) {
+    SetTensorToPersistentRo(op_context.output);
+    ResizeOutputTensor(context, &op_context);
+    op_data->noop = true;
+    return EvalImpl<kGenericOptimized>(context, node);
+  }
+  return ResizeOutputTensor(context, &op_context);
+}
+
+template <KernelType kernel_type>
+TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  StridedSliceContext op_context(context, node);
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  if (op_data->noop) {
+    return kTfLiteOk;
+  }
+  return EvalImpl<kernel_type>(context, node);
+}
+
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  return new OpData;
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<OpData*>(buffer);
+}
 }  // namespace strided_slice
 
 TfLiteRegistration* Register_STRIDED_SLICE_REF() {
   static TfLiteRegistration r = {
-      nullptr, nullptr, strided_slice::Prepare,
+      strided_slice::Init, strided_slice::Free, strided_slice::Prepare,
       strided_slice::Eval<strided_slice::kReference>};
   return &r;
 }
 
 TfLiteRegistration* Register_STRIDED_SLICE() {
   static TfLiteRegistration r = {
-      nullptr, nullptr, strided_slice::Prepare,
+      strided_slice::Init, strided_slice::Free, strided_slice::Prepare,
       strided_slice::Eval<strided_slice::kGenericOptimized>};
   return &r;
 }

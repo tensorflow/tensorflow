@@ -412,8 +412,11 @@ Status MakeIteratorFromInputElement(
   // Create an iterator for the dataset that was returned by `f`.
   std::string iterator_prefix = strings::StrCat(prefix, "[", thread_index, "]");
 
-  return returned_dataset->MakeIterator(MakeNestedIteratorContext(ctx), parent,
-                                        iterator_prefix, out_iterator);
+  IteratorContext nested_ctx = MakeNestedIteratorContext(ctx);
+  TF_RETURN_IF_ERROR(returned_dataset->MakeIterator(
+      &nested_ctx, parent, iterator_prefix, out_iterator));
+  ctx->MergeCheckpoint(nested_ctx.checkpoint());
+  return OkStatus();
 }
 
 IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {
@@ -589,6 +592,9 @@ Status CapturedFunction::Instantiate(
       const auto& input = captured_inputs_[i];
       DataType dtype = input.dtype();
       if (dtype == DT_RESOURCE) {
+        if (input.NumElements() == 0) {
+          return errors::InvalidArgument("Empty resouce handle");
+        }
         const auto& handles = input.flat<ResourceHandle>();
         const ResourceHandle& handle0 = handles(0);
         string composite_device;
@@ -719,6 +725,9 @@ Status CapturedFunction::IsMultiDevice(FunctionLibraryRuntime* flr,
   for (const auto& input : captured_inputs_) {
     DataType dtype = input.dtype();
     if (dtype == DT_RESOURCE) {
+      if (input.NumElements() == 0) {
+        return errors::InvalidArgument("Empty resouce handle");
+      }
       const ResourceHandle& handle = input.flat<ResourceHandle>()(0);
       DeviceNameUtils::ParsedName resource_device_name;
       if (!DeviceNameUtils::ParseFullName(handle.device(),

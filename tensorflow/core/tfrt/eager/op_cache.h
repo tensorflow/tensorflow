@@ -158,21 +158,15 @@ class OpCache {
 
   class CacheKeyHash {
    public:
-    tensorflow::Fprint128 FingerprintCat128(
-        const tensorflow::Fprint128& a, const tensorflow::Fprint128& b) const {
-      return {tensorflow::FingerprintCat64(a.low64, b.low64),
-              tensorflow::FingerprintCat64(a.high64, b.high64)};
-    }
-
     size_t operator()(const CacheKey& input_key) const {
       CacheKey key{input_key};
       tensorflow::Fprint128 hash = tensorflow::Fingerprint128(
           {key.OpName().data(), key.OpName().size()});
-      hash = FingerprintCat128(
+      hash = tsl::FingerprintCat128(
           hash, tensorflow::Fingerprint128(
                     {key.DeviceName().data(), key.DeviceName().size()}));
       for (const auto& dtype : key.Dtypes())
-        hash = FingerprintCat128(
+        hash = tsl::FingerprintCat128(
             hash, tensorflow::Fingerprint128({dtype.data(), dtype.size()}));
       return hash.high64 ^ hash.low64;
     }

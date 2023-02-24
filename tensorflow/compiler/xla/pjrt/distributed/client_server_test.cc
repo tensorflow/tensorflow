@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/notification.h"
@@ -31,11 +32,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
+using ::testing::IsEmpty;
+using ::testing::Pair;
+using ::testing::UnorderedElementsAre;
+
 constexpr absl::Duration kHeartbeatInterval = absl::Milliseconds(500);
 constexpr int kMaxMissingHeartbeats = 3;
 constexpr absl::Duration kBarrierTimeout = absl::Milliseconds(200);
@@ -180,9 +186,13 @@ TEST_P(ClientServerTest, ConnectAndShutdownAreBarriers) {
 TEST_P(ClientServerTest, ConnectAndEnumerateDevices) {
   StartService(/*num_nodes=*/2, GetParam().use_coordination_service);
 
+  std::string host_0_boot_id = "foo";
+  std::string host_1_boot_id = "bar";
   std::vector<LocalTopologyProto> locals(2);
   locals[0].set_node_id(0);
   locals[1].set_node_id(1);
+  locals[0].set_boot_id(host_0_boot_id);
+  locals[1].set_boot_id(host_1_boot_id);
   DeviceProto* d0 = locals[0].add_devices();
   d0->set_local_device_ordinal(0);
   DeviceProto* d1 = locals[0].add_devices();
@@ -196,11 +206,17 @@ TEST_P(ClientServerTest, ConnectAndEnumerateDevices) {
   auto* node0 = expected_topology.add_nodes();
   auto* node1 = expected_topology.add_nodes();
   *node0 = locals[0];
+  node0->set_boot_id(host_0_boot_id);
   node0->mutable_devices(0)->set_global_device_id(0);
   node0->mutable_devices(1)->set_global_device_id(1);
   node0->mutable_devices(2)->set_global_device_id(2);
+  node0->mutable_devices(0)->set_slice_index(0);
+  node0->mutable_devices(1)->set_slice_index(0);
+  node0->mutable_devices(2)->set_slice_index(0);
   *node1 = locals[1];
+  node1->set_boot_id(host_1_boot_id);
   node1->mutable_devices(0)->set_global_device_id(3);
+  node1->mutable_devices(0)->set_slice_index(1);
 
   // Used to ensure that thread0's client sends their device after thread1's
   // client. This ensures that devices are sent out of turn (compared to their
@@ -261,6 +277,54 @@ TEST_P(ClientServerTest, ConnectAndEnumerateDevices) {
   }
   TF_EXPECT_OK(statuses[0]);
   TF_EXPECT_OK(statuses[1]);
+}
+
+// Make sure device list is ordered by 0,1,...,10 instead of 0,1,10,2,...,9.
+TEST_P(ClientServerTest, EnumerateElevenDevices) {
+  int num_nodes = 11;
+  StartService(num_nodes, GetParam().use_coordination_service);
+  std::vector<LocalTopologyProto> locals(num_nodes);
+  for (int i = 0; i < num_nodes; ++i) {
+    locals[i].set_node_id(i);
+    // Two unique boot_id, one per host.
+    locals[i].set_boot_id(absl::StrCat("test_boot_id_", i % 2));
+    auto device = locals[i].add_devices();
+    // Split local devices across two hosts.
+    int ordinal = i % (num_nodes / 2);
+    device->set_local_device_ordinal(ordinal);
+    device->set_name("test_device");
+    device->set_vendor("test_vendor");
+  }
+  GlobalTopologyProto expected_topology;
+  for (int i = 0; i < num_nodes; ++i) {
+    auto* node = expected_topology.add_nodes();
+    *node = locals[i];
+    node->mutable_devices(0)->set_global_device_id(i);
+    node->mutable_devices(0)->set_slice_index(i % 2);
+  }
+
+  auto thread_fn = [&](int node_id) -> xla::Status {
+    auto client = GetClient(node_id, GetParam().use_coordination_service);
+    GlobalTopologyProto topology;
+    TF_RETURN_IF_ERROR(client->Connect());
+    TF_RETURN_IF_ERROR(client->EnumerateDevices(locals[node_id], &topology));
+    TF_RET_CHECK(
+        xla::protobuf_util::ProtobufEquals(topology, expected_topology))
+        << topology.DebugString();
+    return OkStatus();
+  };
+
+  std::vector<xla::Status> statuses(num_nodes);
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
+    }
+  }
+  for (int i = 0; i < num_nodes; ++i) {
+    TF_EXPECT_OK(statuses[i]);
+  }
 }
 
 // Setting `init_timeout` to 0 means that the client should attempt connection
@@ -656,6 +720,74 @@ TEST_P(ClientServerTest, WaitAtBarrier_FailWithSameBarrierId) {
   for (int i = 0; i < num_nodes; ++i) {
     EXPECT_EQ(statuses[i].code(), tsl::error::FAILED_PRECONDITION)
         << " node id: " << i;
+  }
+}
+
+TEST_P(ClientServerTest, KeyValueDirGet) {
+  StartService(/*num_nodes=*/1, GetParam().use_coordination_service);
+  auto client = GetClient(/*node_id=*/0, GetParam().use_coordination_service);
+  TF_ASSERT_OK(client->Connect());
+  TF_ASSERT_OK(client->KeyValueSet("test_dir/sub_dir/1", "1"));
+  TF_ASSERT_OK(client->KeyValueSet("test_dir/sub_dir/2", "2"));
+  TF_ASSERT_OK(client->KeyValueSet("test_dir/3", "3"));
+  TF_ASSERT_OK(client->KeyValueSet("test", "4"));  // Not in a directory.
+
+  auto results = client->KeyValueDirGet("test_dir/");
+
+  if (GetParam().use_coordination_service) {
+    TF_ASSERT_OK(results.status());
+    auto kvs = results.value();
+
+    EXPECT_THAT(kvs, UnorderedElementsAre(Pair("test_dir/sub_dir/1", "1"),
+                                          Pair("test_dir/sub_dir/2", "2"),
+                                          Pair("test_dir/3", "3")));
+  } else {
+    EXPECT_EQ(results.status().code(), tsl::error::UNIMPLEMENTED);
+  }
+}
+
+TEST_P(ClientServerTest, KeyValueDelete) {
+  StartService(/*num_nodes=*/1, GetParam().use_coordination_service);
+  auto client = GetClient(/*node_id=*/0, GetParam().use_coordination_service);
+  TF_ASSERT_OK(client->Connect());
+  TF_ASSERT_OK(client->KeyValueSet("to_be_deleted", "deleted"));
+  TF_ASSERT_OK(client->KeyValueSet("to_be_kept", "kept"));
+
+  auto results = client->KeyValueDelete("to_be_deleted");
+
+  if (GetParam().use_coordination_service) {
+    TF_EXPECT_OK(results);
+    auto deleted_kv =
+        client->BlockingKeyValueGet("to_be_deleted", absl::Milliseconds(200));
+    // We time out from attempting to retrieve a deleted key.
+    EXPECT_EQ(deleted_kv.status().code(), tsl::error::DEADLINE_EXCEEDED);
+    // Other key should still exist.
+    auto kept_kv =
+        client->BlockingKeyValueGet("to_be_kept", absl::Milliseconds(200));
+    TF_ASSERT_OK(kept_kv.status());
+    EXPECT_EQ(kept_kv.value(), "kept");
+  } else {
+    EXPECT_EQ(results.code(), tsl::error::UNIMPLEMENTED);
+  }
+}
+
+TEST_P(ClientServerTest, KeyValueDelete_Directory) {
+  StartService(/*num_nodes=*/1, GetParam().use_coordination_service);
+  auto client = GetClient(/*node_id=*/0, GetParam().use_coordination_service);
+  TF_ASSERT_OK(client->Connect());
+  TF_ASSERT_OK(client->KeyValueSet("test_dir/sub_dir/1", "1"));
+  TF_ASSERT_OK(client->KeyValueSet("test_dir/sub_dir/2", "2"));
+  TF_ASSERT_OK(client->KeyValueSet("test_dir/3", "3"));
+
+  auto results = client->KeyValueDelete("test_dir/");
+
+  if (GetParam().use_coordination_service) {
+    TF_EXPECT_OK(results);
+    auto kvs = client->KeyValueDirGet("test_dir/");
+    TF_ASSERT_OK(kvs.status());
+    EXPECT_THAT(kvs.value(), IsEmpty());
+  } else {
+    EXPECT_EQ(results.code(), tsl::error::UNIMPLEMENTED);
   }
 }
 

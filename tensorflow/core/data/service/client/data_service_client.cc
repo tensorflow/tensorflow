@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/worker_client.h"
 #include "tensorflow/core/data/service/worker_impl.h"
+#include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -59,6 +60,7 @@ bool IsColocatedTask(const TaskInfo& task) {
     return absl::AsciiStrToUpper(worker_tag) == kColocatedWorkerTag;
   });
 }
+
 
 }  // namespace
 
@@ -146,15 +148,20 @@ StatusOr<GetNextResult> DataServiceClient::GetNext(
       return GetNextResult::EndOfSequence();
     }
     if (!ResultReady()) {
+      VLOG(3) << "Returning from GetNext with internal error";
       return errors::Internal("Expected a result to be ready, but none were.");
     }
     result = PopNextResult();
     worker_thread_cv_.notify_one();
+    if (result->skip) {
+      VLOG(3) << "Skipping result from task " << result->task_id;
+    }
   } while (result->skip);
 
   GetNextResult next;
   next.end_of_sequence = result->end_of_sequence;
   if (next.end_of_sequence) {
+    VLOG(1) << "Returning end_of_sequence";
     return next;
   }
   VLOG(1) << "Returning the next element from data service dataset's "
@@ -305,12 +312,48 @@ void DataServiceClient::UpdateIterationFinished(bool iteration_finished)
   worker_thread_cv_.notify_all();
 }
 
+StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+DataServiceClient::CreateWorkerClient(const std::string& protocol,
+                                      const TaskInfo& task_info) {
+  for (const auto& transfer_server : task_info.transfer_servers()) {
+    if (transfer_server.protocol() == protocol) {
+      return CreateDataServiceWorkerClient(transfer_server.address(),
+                                           params_.protocol,
+                                           transfer_server.protocol());
+    }
+  }
+  return errors::NotFound("protocol ", protocol,
+                          " is not available for worker ",
+                          task_info.worker_address());
+}
+
+StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
+  if (params_.data_transfer_protocol == kLocalTransferProtocol) {
+    return CreateDataServiceWorkerClient(
+        task_info.worker_address(), params_.protocol, kLocalTransferProtocol);
+  }
+  if (!params_.data_transfer_protocol.empty()) {
+    return CreateWorkerClient(params_.data_transfer_protocol, task_info);
+  }
+  if (std::string default_protocol = DefaultDataTransferProtocol();
+      default_protocol != kGrpcTransferProtocol) {
+    StatusOr<std::unique_ptr<DataServiceWorkerClient>> worker =
+        CreateWorkerClient(default_protocol, task_info);
+    if (worker.ok()) {
+      return worker;
+    }
+    LOG(ERROR) << "failed to start client for data transfer protocol '"
+               << default_protocol << "'; falling back to grpc. "
+               << "Original error: " << worker.status();
+  }
+  return CreateWorkerClient(kGrpcTransferProtocol, task_info);
+}
+
 Status DataServiceClient::AddTask(const TaskInfo& task_info)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<DataServiceWorkerClient> worker,
-                      CreateDataServiceWorkerClient(
-                          task_info.transfer_address(), params_.protocol,
-                          params_.data_transfer_protocol));
+                      CreateWorkerClient(task_info));
   tasks_.push_back(std::make_shared<Task>(task_info, std::move(worker)));
   worker_thread_cv_.notify_one();
   if (IsCoordinatedRead()) {

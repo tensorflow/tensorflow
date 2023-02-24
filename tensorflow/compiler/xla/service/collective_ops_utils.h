@@ -21,11 +21,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/tsl/platform/blocking_counter.h"
@@ -303,7 +304,7 @@ class Rendezvous {
   // Submit a participant to the rendezvous. We get the rendezvous from
   // `rendezvous_getter`, which we can then use to drop the existing reference.
   static StatusOr<O> SubmitParticipant(
-      std::function<std::shared_ptr<Rendezvous<I, O>>()> rendezvous_getter,
+      absl::FunctionRef<std::shared_ptr<Rendezvous<I, O>>()> rendezvous_getter,
       I participant) {
     std::shared_ptr<Rendezvous<I, O>> rendezvous = rendezvous_getter();
     TF_ASSIGN_OR_RETURN(auto p, rendezvous->SubmitParticipant(participant));

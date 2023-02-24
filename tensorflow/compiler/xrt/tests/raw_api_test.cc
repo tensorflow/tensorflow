@@ -134,9 +134,18 @@ xla::LiteralProto CreateR0(T v) {
   return array.ToProto();
 }
 
+tensorflow::SessionOptions GetSessionOptions() {
+  tensorflow::SessionOptions options;
+  // Disable optimizations for static graph to allow calls to Session::Extend.
+  options.config.mutable_experimental()->set_disable_optimize_for_static_graph(
+      true);
+  return options;
+}
+
 class XrtClientSession : public ClientSession {
  public:
-  explicit XrtClientSession(const Scope& scope) : ClientSession(scope) {
+  explicit XrtClientSession(const Scope& scope)
+      : ClientSession(scope, GetSessionOptions()) {
     auto clear_all = ops::XRTReleaseAllAllocations(scope);
     std::vector<Tensor> outputs;
     TF_CHECK_OK(Run(ClientSession::FeedType(), {}, {clear_all}, &outputs));
@@ -287,10 +296,10 @@ xla::XlaComputation Dot() {
   xla::XlaBuilder builder("Dot");
   auto p0 = xla::Parameter(
       &builder, 0,
-      xla::ShapeUtil::MakeShapeWithLayout(xla::F32, {2, 2}, {0, 1}), "P0");
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::F32, {2, 2}, {0, 1}), "P0");
   auto p1 = xla::Parameter(
       &builder, 1,
-      xla::ShapeUtil::MakeShapeWithLayout(xla::F32, {2, 1}, {0, 1}), "P1");
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::F32, {2, 1}, {0, 1}), "P1");
   xla::DotDimensionNumbers ddn;
   ddn.add_lhs_contracting_dimensions(1);
   ddn.add_rhs_contracting_dimensions(0);
@@ -1582,11 +1591,14 @@ TEST(RawApiTest, DotGeneralWithLayoutTest) {
   auto config = c.mutable_config();
   auto shapes = config->mutable_program_shape();
   *shapes->add_parameters() =
-      xla::ShapeUtil::MakeShapeWithLayout(xla::F32, {2, 2}, {0, 1}).ToProto();
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::F32, {2, 2}, {0, 1})
+          .ToProto();
   *shapes->add_parameters() =
-      xla::ShapeUtil::MakeShapeWithLayout(xla::F32, {2, 1}, {0, 1}).ToProto();
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::F32, {2, 1}, {0, 1})
+          .ToProto();
   *shapes->mutable_result() =
-      xla::ShapeUtil::MakeShapeWithLayout(xla::F32, {2, 1}, {0, 1}).ToProto();
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::F32, {2, 1}, {0, 1})
+          .ToProto();
   StoreComputationSnapshot(Dot(), c.mutable_hlo_snapshot());
 
   xrt::XRTExecutionConfig e;

@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <memory>
 
-#include "llvm/ADT/Triple.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/TargetParser/Triple.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {

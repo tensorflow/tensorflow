@@ -19,6 +19,7 @@ limitations under the License.
 #include <assert.h>
 #include <stdint.h>
 #include <sys/types.h>
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -26,7 +27,7 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/eigen_spatial_convolutions.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"

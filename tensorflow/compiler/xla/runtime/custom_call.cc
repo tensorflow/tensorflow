@@ -15,22 +15,24 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 
+#include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace xla {
 namespace runtime {
 
-using llvm::ArrayRef;
 using llvm::raw_ostream;
 
 template <typename T>
 using TensorRef = CustomCall::TensorRef<T>;
 
 static void PrintArr(raw_ostream& os, std::string_view name,
-                     llvm::ArrayRef<int64_t> arr) {
+                     absl::Span<const int64_t> arr) {
   os << " " << name << ": [";
   auto i64_to_string = [](int64_t v) { return std::to_string(v); };
   os << llvm::join(llvm::map_range(arr, i64_to_string), ", ");
@@ -61,6 +63,7 @@ raw_ostream& operator<<(raw_ostream& os, const FlatMemrefView& view) {
 
 void PopulateCustomCallTypeIdNames(TypeIDNameRegistry& r) {
   r.Register<Tagged<void*>>("__type_id_opaque");
+  r.Register<Tagged<std::nullopt_t>>("__type_id_nullopt");
   r.Register<Tagged<std::string_view>>("__type_id_string");
   r.Register<Tagged<CustomCall::FunctionOrdinal>>("__type_id_function_ordinal");
 
@@ -80,19 +83,31 @@ void PopulateCustomCallTypeIdNames(TypeIDNameRegistry& r) {
 
   r.Register<Tagged<MemrefView>>("__type_id_memref_view");
   r.Register<Tagged<StridedMemrefView>>("__type_id_strided_memref_view");
-  r.Register<Tagged<EmptyArrayRef>>("__type_id_empty_array");
+  r.Register<Tagged<EmptyArray>>("__type_id_empty_array");
+  r.Register<Tagged<Dictionary>>("__type_id_dictionary");
 
-  r.Register<Tagged<ArrayRef<int8_t>>>("__type_id_array_int8");
-  r.Register<Tagged<ArrayRef<int16_t>>>("__type_id_array_int16");
-  r.Register<Tagged<ArrayRef<int32_t>>>("__type_id_array_int32");
-  r.Register<Tagged<ArrayRef<int64_t>>>("__type_id_array_int64");
-  r.Register<Tagged<ArrayRef<float>>>("__type_id_array_float");
-  r.Register<Tagged<ArrayRef<double>>>("__type_id_array_double");
+  r.Register<Tagged<absl::Span<const int8_t>>>("__type_id_array_int8");
+  r.Register<Tagged<absl::Span<const int16_t>>>("__type_id_array_int16");
+  r.Register<Tagged<absl::Span<const int32_t>>>("__type_id_array_int32");
+  r.Register<Tagged<absl::Span<const int64_t>>>("__type_id_array_int64");
+  r.Register<Tagged<absl::Span<const float>>>("__type_id_array_float");
+  r.Register<Tagged<absl::Span<const double>>>("__type_id_array_double");
 
   r.Register<Tagged<TensorRef<int32_t>>>("__type_id__tensor_int32_t");
   r.Register<Tagged<TensorRef<int64_t>>>("__type_id_tensor_int64_t");
   r.Register<Tagged<TensorRef<float>>>("__type_id_tensor_float");
   r.Register<Tagged<TensorRef<double>>>("__type_id_tensor_double");
+
+  r.Register<Tagged<tsl::AsyncValueRef<bool>>>("__type_id_async_bool");
+  r.Register<Tagged<tsl::AsyncValueRef<int8_t>>>("__type_id_async_int8");
+  r.Register<Tagged<tsl::AsyncValueRef<int16_t>>>("__type_id_async_int16");
+  r.Register<Tagged<tsl::AsyncValueRef<int32_t>>>("__type_id_async_int32");
+  r.Register<Tagged<tsl::AsyncValueRef<int64_t>>>("__type_id_async_int64");
+  r.Register<Tagged<tsl::AsyncValueRef<float>>>("__type_id_async_float");
+  r.Register<Tagged<tsl::AsyncValueRef<double>>>("__type_id_async_double");
+  r.Register<Tagged<tsl::AsyncValueRef<xla::runtime::MemrefView>>>(
+      "__type_id_async_memref");
+  r.Register<Tagged<tsl::AsyncValueRef<tsl::Chain>>>("__type_id_async_chain");
 }
 
 }  // namespace runtime
@@ -102,12 +117,23 @@ XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(std::string_view);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::StridedMemrefView);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::MemrefView);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::FlatMemrefView);
-XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::EmptyArrayRef);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::EmptyArray);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::Dictionary);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(int32_t);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(int64_t);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(float);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(double);
-XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(ArrayRef<int32_t>);
-XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(ArrayRef<int64_t>);
-XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(ArrayRef<float>);
-XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(ArrayRef<double>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(absl::Span<const int32_t>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(absl::Span<const int64_t>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(absl::Span<const float>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(absl::Span<const double>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(tsl::AsyncValueRef<bool>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(tsl::AsyncValueRef<int8_t>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(tsl::AsyncValueRef<int16_t>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(tsl::AsyncValueRef<int32_t>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(tsl::AsyncValueRef<int64_t>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(tsl::AsyncValueRef<float>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(tsl::AsyncValueRef<double>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(
+    tsl::AsyncValueRef<xla::runtime::MemrefView>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(tsl::AsyncValueRef<tsl::Chain>);

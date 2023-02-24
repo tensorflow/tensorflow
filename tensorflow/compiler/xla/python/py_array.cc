@@ -22,39 +22,95 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "llvm/Support/Casting.h"
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
+#include "tensorflow/compiler/xla/python/util.h"
+#include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
 namespace py = pybind11;
 
-std::vector<std::shared_ptr<PjRtBuffer>> CreatePjRtBuffersFromPyBuffers(
+tsl::RCReference<ifrt::Array> CreateIfRtArrayFromPyBuffers(
+    py::dtype dtype, absl::Span<const int64_t> shape,
     absl::Span<const PyBuffer::object> py_buffers) {
-  std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers;
-  pjrt_buffers.reserve(py_buffers.size());
-
-  for (const auto& py_buffer : py_buffers) {
-    pjrt_buffers.push_back(py_buffer.buf()->shared_ptr_buffer());
+  if (py_buffers.empty()) {
+    // TODO(hyeontaek): Return a Status.
+    throw py::value_error("At least one buffer must be provided.");
   }
 
-  return pjrt_buffers;
+  auto* ifrt_client = py_buffers.front().buf()->client()->ifrt_client();
+
+  std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
+  ifrt_arrays.reserve(py_buffers.size());
+  ifrt::DeviceList::Devices devices;
+  devices.reserve(py_buffers.size());
+  std::vector<ifrt::Shape> shapes;
+  shapes.reserve(py_buffers.size());
+
+  for (const auto& py_buffer : py_buffers) {
+    ifrt_arrays.push_back(tsl::FormRef(py_buffer.buf()->ifrt_array()));
+    devices.push_back(ifrt_arrays.back()->sharding().devices()[0]);
+    shapes.push_back(ifrt_arrays.back()->shape());
+  }
+  auto ifrt_array = ifrt_client->AssembleArrayFromSingleDeviceArrays(
+      ifrt::Shape(shape),
+      ifrt::OpaqueSharding::Create(
+          ifrt::DeviceList(std::move(devices)),
+          xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
+              std::move(shapes))),
+      absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput);
+  if (!ifrt_array.ok()) {
+    // TODO(hyeontaek): Return a Status.
+    throw py::value_error(ifrt_array.status().ToString());
+  }
+  return *std::move(ifrt_array);
 }
 
-std::vector<std::shared_ptr<PjRtBuffer>>
-CreatePjRtBuffersFromSingleShardedPyArrays(
+tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
+    py::object dtype, absl::Span<const int64_t> shape,
     absl::Span<const PyArray> py_arrays) {
-  std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers;
-  pjrt_buffers.reserve(py_arrays.size());
+  if (py_arrays.empty()) {
+    // TODO(hyeontaek): Return a Status.
+    throw py::value_error("At least one array must be provided.");
+  }
+  std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
+  ifrt_arrays.reserve(py_arrays.size());
+  ifrt::DeviceList::Devices devices;
+  devices.reserve(py_arrays.size());
+  std::vector<ifrt::Shape> shapes;
+  shapes.reserve(py_arrays.size());
 
   for (const auto& py_array : py_arrays) {
     DCHECK_EQ(py_array.num_shards(), 1);
-    pjrt_buffers.push_back(py_array.GetSharedPtrBuffer(0));
+    ifrt_arrays.push_back(tsl::FormRef(py_array.ifrt_array()));
+    devices.push_back(ifrt_arrays.back()->sharding().devices().front());
+    shapes.push_back(ifrt_arrays.back()->shape());
   }
+  ifrt::Client* client = ifrt_arrays.front()->client();
 
-  return pjrt_buffers;
+  auto ifrt_dtype = ToIfRtDType(dtype);
+  if (!ifrt_dtype.ok()) {
+    // TODO(hyeontaek): Return a Status.
+    throw py::value_error(ifrt_dtype.status().ToString());
+  }
+  auto ifrt_array = client->AssembleArrayFromSingleDeviceArrays(
+      ifrt::Shape(shape),
+      ifrt::OpaqueSharding::Create(
+          ifrt::DeviceList(std::move(devices)),
+          xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
+              std::move(shapes))),
+      absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput);
+  if (!ifrt_array.ok()) {
+    // TODO(hyeontaek): Return a Status.
+    throw py::value_error(ifrt_array.status().ToString());
+  }
+  return *std::move(ifrt_array);
 }
 
 struct PyArrayObject {
@@ -83,6 +139,9 @@ extern "C" void PyArray_tp_dealloc(PyObject* self) {
   }
 
   GetPyArrayStorageFromObject(obj)->~PyArray_Storage();
+
+  PyObject*& dict = *_PyObject_GetDictPtr(self);
+  Py_CLEAR(dict);
 
   tp->tp_free(self);
   Py_DECREF(tp);
@@ -138,12 +197,15 @@ PyArray::Storage* Construct(PyArrayObject* self, Args&&... args) {
 void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
                      absl::Span<const PyArray> py_arrays, bool committed,
                      bool skip_checks) {
+  auto dtype = aval.attr("dtype");
+  auto shape = pybind11::cast<std::vector<int64_t>>(aval.attr("shape"));
+  auto ifrt_array =
+      CreateIfRtArrayFromSingleDeviceShardedPyArrays(dtype, shape, py_arrays);
   Construct(reinterpret_cast<PyArrayObject*>(self.ptr()), aval,
-            pybind11::cast<bool>(aval.attr("weak_type")), aval.attr("dtype"),
-            pybind11::cast<std::vector<int64_t>>(aval.attr("shape")),
-            std::move(sharding), committed, py_arrays.at(0).py_client(),
-            Traceback::Get(),
-            CreatePjRtBuffersFromSingleShardedPyArrays(py_arrays));
+            pybind11::cast<bool>(aval.attr("weak_type")), std::move(dtype),
+            std::move(shape), std::move(sharding), committed,
+            py_arrays.at(0).py_client(), Traceback::Get(),
+            std::move(ifrt_array));
 
   PyArray py_array = self;
 
@@ -155,11 +217,14 @@ void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
 void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
                      absl::Span<const PyBuffer::object> py_buffers,
                      bool committed, bool skip_checks) {
+  auto dtype = aval.attr("dtype");
+  auto shape = pybind11::cast<std::vector<int64_t>>(aval.attr("shape"));
+  auto ifrt_array = CreateIfRtArrayFromPyBuffers(dtype, shape, py_buffers);
   Construct(reinterpret_cast<PyArrayObject*>(self.ptr()), aval,
-            pybind11::cast<bool>(aval.attr("weak_type")), aval.attr("dtype"),
-            pybind11::cast<std::vector<int64_t>>(aval.attr("shape")),
-            std::move(sharding), committed, py_buffers.at(0).buf()->client(),
-            Traceback::Get(), CreatePjRtBuffersFromPyBuffers(py_buffers));
+            pybind11::cast<bool>(aval.attr("weak_type")), std::move(dtype),
+            std::move(shape), std::move(sharding), committed,
+            py_buffers.at(0).buf()->client(), Traceback::Get(),
+            std::move(ifrt_array));
 
   PyArray py_array = self;
 
@@ -168,11 +233,16 @@ void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
   }
 }
 
+void PyArray::PyInit(py::object self, DisableFastpath) {
+  Construct(reinterpret_cast<PyArrayObject*>(self.ptr()),
+            PyArray_Storage::DisableFastpath());
+}
+
 PyArray::PyArray(py::object aval, bool weak_type, py::dtype dtype,
                  std::vector<int64_t> shape, py::object sharding,
                  std::shared_ptr<PyClient> py_client,
                  std::shared_ptr<Traceback> traceback,
-                 std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers,
+                 tsl::RCReference<ifrt::Array> ifrt_array,
                  bool committed, bool skip_checks) {
   auto* self =
       PyArray_tp_new(reinterpret_cast<PyTypeObject*>(type_), nullptr, nullptr);
@@ -180,7 +250,8 @@ PyArray::PyArray(py::object aval, bool weak_type, py::dtype dtype,
   Construct(reinterpret_cast<PyArrayObject*>(self), std::move(aval), weak_type,
             std::move(dtype), std::move(shape), std::move(sharding), committed,
             std::move(py_client), std::move(traceback),
-            std::move(pjrt_buffers));
+            std::move(ifrt_array)
+  );
 
   if (!skip_checks) {
     CheckAndRearrange();
@@ -197,21 +268,43 @@ const PyArray::Storage& PyArray::GetStorage() const {
 
 void PyArray::CheckAndRearrange() { this->attr("_check_and_rearrange")(); }
 
+void PyArray::SetIfrtArray(tsl::RCReference<ifrt::Array> ifrt_array) {
+  GetStorage().ifrt_array = std::move(ifrt_array);
+}
+
 py::object PyArray::arrays() {
-  // For performance, we only keep pjrt buffers by default. But on python side
-  // "_arrays" returns PyBuffers instead, and subsequent calls to "_arrays"
-  // should return the same PyBuffers (to avoid duplicate device to host
-  // transfers). So we create PyBuffers the first time it is called and reuse
-  // them later.
-  if (pjrt_buffers().empty()) return py::none();
+// For performance, we only keep pjrt buffers by default. But on python side
+// "_arrays" returns PyBuffers instead, and subsequent calls to "_arrays"
+// should return the same PyBuffers (to avoid duplicate device to host
+// transfers). So we create PyBuffers the first time it is called and reuse
+// them later.
+  if (ifrt_array() == nullptr) return py::none();
 
   auto& py_buffers = this->py_buffers();
 
   if (py_buffers.empty()) {
-    py_buffers.reserve(pjrt_buffers().size());
-    for (const auto& pjrt_buffer : pjrt_buffers()) {
+    if (llvm::isa<ifrt::SingleDeviceSharding>(&ifrt_array()->sharding())) {
+      py_buffers.reserve(1);
       py_buffers.push_back(
-          PyBuffer::Make(py_client(), pjrt_buffer, traceback()));
+          PyBuffer::Make(py_client(),
+                         ifrt_array()
+                             ->Reshard(ifrt_array()->shared_ptr_sharding(),
+                                       ifrt::ArrayCopySemantics::kReuseInput)
+                             .value(),
+                         traceback()));
+    } else {
+      auto ifrt_arrays = ifrt_array()->DisassembleIntoSingleDeviceArrays(
+          ifrt::ArrayCopySemantics::kReuseInput);
+      if (!ifrt_arrays.ok()) {
+        throw py::value_error(
+            absl::StrCat("Failed to disassemble into single-device arrays: ",
+                         ifrt_arrays.status().ToString()));
+      }
+      py_buffers.reserve(ifrt_arrays->size());
+      for (auto& ifrt_array : *ifrt_arrays) {
+        py_buffers.push_back(
+            PyBuffer::Make(py_client(), std::move(ifrt_array), traceback()));
+      }
     }
   }
 
@@ -220,7 +313,7 @@ py::object PyArray::arrays() {
 
 Status PyArray::set_arrays(py::object obj) {
   if (obj.is_none()) {
-    pjrt_buffers().clear();
+    SetIfrtArray(tsl::RCReference<ifrt::Array>());
     py_buffers().clear();
     return OkStatus();
   }
@@ -234,9 +327,14 @@ Status PyArray::set_arrays(py::object obj) {
 
   if (list.empty()) return OkStatus();
 
-  pjrt_buffers().clear();
+  SetIfrtArray(tsl::RCReference<ifrt::Array>());
   py_buffers().clear();
-  pjrt_buffers().reserve(list.size());
+  std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
+  ifrt_arrays.reserve(list.size());
+  ifrt::DeviceList::Devices devices;
+  devices.reserve(list.size());
+  std::vector<ifrt::Shape> shapes;
+  shapes.reserve(list.size());
   for (py::handle obj : list) {
     // TODO(chky): Currently only List[Buffer] is handled here. We need to
     // handle List[Array] as well.
@@ -247,32 +345,42 @@ Status PyArray::set_arrays(py::object obj) {
 
     auto* py_buffer = PyBuffer::AsPyBufferUnchecked(obj);
     DCHECK_EQ(py_buffer->client(), py_client());
-    pjrt_buffers().push_back(py_buffer->shared_ptr_buffer());
+    // TODO(hyeontaek): This should return an error instead of failing.
+    CHECK(py_buffer->ifrt_array() != nullptr);
+    ifrt_arrays.push_back(tsl::FormRef(py_buffer->ifrt_array()));
+    devices.push_back(ifrt_arrays.back()->sharding().devices().front());
+    shapes.push_back(ifrt_arrays.back()->shape());
   }
+  TF_ASSIGN_OR_RETURN(
+      auto array,
+      py_client()->ifrt_client()->AssembleArrayFromSingleDeviceArrays(
+          ifrt::Shape(shape()),
+          ifrt::OpaqueSharding::Create(
+              ifrt::DeviceList(std::move(devices)),
+              xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
+                  std::move(shapes))),
+          absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput));
+  SetIfrtArray(std::move(array));
   return OkStatus();
 }
 
 Status PyArray::BlockUntilReady() const {
   pybind11::gil_scoped_release gil_release;
   Status status;
-  for (const auto& pjrt_buffer : pjrt_buffers()) {
-    // PjRtBuffer::BlockHostUntilReady() fix up the error message because some
-    // clients rely on it.
-    auto s = pjrt_buffer->BlockHostUntilReady();
-    if (!s.ok()) status = std::move(s);
+  if (ifrt_array() == nullptr) {
+    return InvalidArgument(
+        "BlockHostUntilReady() called on deleted or donated buffer");
   }
+  return AwaitBuffersReady(ifrt_array());
   return status;
 }
 
 bool PyArray::IsDeleted() const {
-  if (pjrt_buffers().empty()) {
+  if (ifrt_array() == nullptr) {
     return true;
   }
 
-  for (const auto& pjrt_buffer : pjrt_buffers()) {
-    if (pjrt_buffer->IsDeleted()) return true;
-  }
-  return false;
+  return ifrt_array()->IsDeleted();
 }
 
 py::handle PyArray::Storage::AsHandle() {
@@ -282,6 +390,9 @@ py::handle PyArray::Storage::AsHandle() {
 
 PyArray::Storage::~PyArray_Storage() {
   CHECK(PyGILState_Check());
+  if (!fastpath_enabled) {
+    return;
+  }
   if (py_client->arrays_ == this) {
     py_client->arrays_ = next;
   }
@@ -296,10 +407,8 @@ PyArray::Storage::~PyArray_Storage() {
 std::vector<py::object> PyClient::LiveArrays() {
   std::vector<py::object> result;
   for (PyArray::Storage* array = arrays_; array; array = array->next) {
-    bool all_deleted = true;
-    for (auto& buffer : array->pjrt_buffers) {
-      all_deleted &= buffer->IsDeleted();
-    }
+    bool all_deleted =
+        (array->ifrt_array == nullptr || array->ifrt_array->IsDeleted());
     if (!all_deleted) {
       result.push_back(py::reinterpret_borrow<py::object>(array->AsHandle()));
     }
@@ -372,6 +481,12 @@ Status PyArray::RegisterTypes(py::module& m) {
       },
       py::is_method(type), py::arg("aval"), py::arg("sharding"),
       py::arg("arrays"), py::arg("committed"), py::arg("_skip_checks") = false);
+  // TODO(yashkatariya): remove this once the transition completes.
+  type.attr("_init_with_fastpath_disabled") = py::cpp_function(
+      [](py::object self) {
+        PyArray::PyInit(self, PyArray::DisableFastpath());
+      },
+      py::is_method(type));
   type.attr("_sharding") = jax::property_readonly(&PyArray::sharding);
   type.attr("aval") = jax::property(&PyArray::aval, &PyArray::set_aval);
   type.attr("_arrays") = jax::property(&PyArray::arrays, &PyArray::set_arrays);
@@ -384,6 +499,8 @@ Status PyArray::RegisterTypes(py::module& m) {
         return self;
       },
       py::is_method(type));
+  type.attr("is_ready") = py::cpp_function(
+      [](PyArray self) { return self.IsReady(); }, py::is_method(type));
   type.attr("is_deleted") =
       py::cpp_function(&PyArray::IsDeleted, py::is_method(type));
   type.attr("traceback") = jax::property_readonly(&PyArray::traceback);

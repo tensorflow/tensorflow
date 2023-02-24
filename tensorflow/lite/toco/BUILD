@@ -8,8 +8,10 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -48,6 +50,7 @@ cc_library(
         "runtime/common.h",
         "runtime/types.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [

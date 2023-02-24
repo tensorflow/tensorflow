@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -102,7 +103,7 @@ SE_DeviceMemoryAllocator ToC(
             ->Allocate(device_ordinal, size, retry_on_failure, memory_space);
     if (!allocation.ok()) {
       auto status = allocation.status();
-      tensorflow::tpu::ExecutorApiFn()->TpuStatus_SetFn(
+      stream_executor::tpu::ExecutorApiFn()->TpuStatus_SetFn(
           se_status, status.code(), status.error_message().data(),
           status.error_message().size());
     } else {
@@ -117,7 +118,7 @@ SE_DeviceMemoryAllocator ToC(
     auto status = reinterpret_cast<stream_executor::DeviceMemoryAllocator*>(ctx)
                       ->Deallocate(device_ordinal, ApiConverter::FromC(*base));
     if (!status.ok()) {
-      tensorflow::tpu::ExecutorApiFn()->TpuStatus_SetFn(
+      stream_executor::tpu::ExecutorApiFn()->TpuStatus_SetFn(
           se_status, status.code(), status.error_message().data(),
           status.error_message().size());
     }
@@ -160,13 +161,12 @@ stream_executor::DeviceMemoryBase FromC(const SE_DeviceMemoryBase& se_base) {
 // with types that require a static_cast.
 template <typename Src, typename Dst, typename DstList>
 static void CreateVectorBase(const absl::Span<Src> src, DstList* dst) {
-  static_assert(sizeof(Src) == sizeof(Dst), "Mismatched types");
   dst->size = src.size();
   if (dst->size > TPU_C_API_MAX_INLINED) {
     dst->heap = new Dst[dst->size];
-    memcpy(dst->heap, src.data(), dst->size * sizeof(Src));
+    std::copy(src.begin(), src.end(), dst->heap);
   } else {
-    memcpy(dst->inlined, src.data(), dst->size * sizeof(Src));
+    std::copy(src.begin(), src.end(), dst->inlined);
   }
 }
 
@@ -185,6 +185,9 @@ void CreateVector(const absl::Span<const bool> src, BoolList* dst) {
 static void CreateVector(const absl::Span<const xla::DimLevelType> src,
                          IntList* dst) {
   CreateVectorBase<const xla::DimLevelType, int, IntList>(src, dst);
+}
+static void CreateVector(const absl::Span<const bool> src, IntList* dst) {
+  CreateVectorBase<const bool, int, IntList>(src, dst);
 }
 
 static void CreateVector(const absl::Span<const xla::Tile> src, TileList* dst) {
@@ -291,7 +294,13 @@ void Destroy(XLA_Shape* c_shape) {
 void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
   CreateVector(layout.minor_to_major(), &c_layout->minor_to_major);
   CreateVector(layout.dim_level_types(), &c_layout->dim_level_types);
+  CreateVector(layout.dim_unique(), &c_layout->dim_unique);
+  CreateVector(layout.dim_ordered(), &c_layout->dim_ordered);
+  c_layout->index_primitive_type = layout.index_primitive_type();
+  c_layout->pointer_primitive_type = layout.pointer_primitive_type();
   c_layout->memory_space = layout.memory_space();
+  c_layout->dynamic_shape_metadata_prefix_bytes =
+      layout.dynamic_shape_metadata_prefix_bytes();
   CreateVector(layout.tiles(), &c_layout->tiles);
 }
 
@@ -304,6 +313,12 @@ xla::Layout FromC(const XLA_Layout* c_layout) {
   for (int dim_level_type : dim_level_type_ints) {
     dim_level_types.push_back(static_cast<xla::DimLevelType>(dim_level_type));
   }
+  absl::Span<const int> dim_unique_ints = MakeSpan(c_layout->dim_unique);
+  absl::InlinedVector<bool, xla::InlineRank()> dim_unique(
+      dim_unique_ints.begin(), dim_unique_ints.end());
+  absl::Span<const int> dim_ordered_ints = MakeSpan(c_layout->dim_unique);
+  absl::InlinedVector<bool, xla::InlineRank()> dim_ordered(
+      dim_ordered_ints.begin(), dim_ordered_ints.end());
   absl::InlinedVector<xla::Tile, 1> tiles;
   const XLA_Tile* c_tiles = c_layout->tiles.size > TPU_C_API_MAX_INLINED
                                 ? c_layout->tiles.heap
@@ -312,8 +327,12 @@ xla::Layout FromC(const XLA_Layout* c_layout) {
   for (int i = 0; i < c_layout->tiles.size; ++i) {
     tiles.push_back(FromC(&c_tiles[i]));
   }
-  return xla::Layout(minor_to_major, dim_level_types, tiles,
-                     c_layout->memory_space);
+  return xla::Layout(
+      minor_to_major, dim_level_types, dim_unique, dim_ordered, tiles,
+      static_cast<xla::PrimitiveType>(c_layout->index_primitive_type),
+      static_cast<xla::PrimitiveType>(c_layout->pointer_primitive_type),
+      c_layout->memory_space, /*physical_shape=*/nullptr,
+      c_layout->dynamic_shape_metadata_prefix_bytes);
 }
 
 void Destroy(XLA_Layout* c_layout) {
@@ -458,8 +477,8 @@ XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config) {
   hlo_config.num_partitions = config.num_partitions();
   hlo_config.use_spmd_partitioning = config.use_spmd_partitioning();
   hlo_config.use_auto_spmd_partitioning = config.use_auto_spmd_partitioning();
-  hlo_config.allow_spmd_sharding_propagation_to_output =
-      config.allow_spmd_sharding_propagation_to_output();
+  CreateVector(config.allow_spmd_sharding_propagation_to_output(),
+               &hlo_config.allow_spmd_sharding_propagation_to_output);
   CreateVector(config.auto_spmd_partitioning_mesh_shape(),
                &hlo_config.auto_spmd_partitioning_mesh_shape);
   CreateVector(config.auto_spmd_partitioning_mesh_ids(),
@@ -507,7 +526,7 @@ xla::HloModuleConfig FromC(const XLA_HloModuleConfig& c_config) {
   config.set_use_spmd_partitioning(c_config.use_spmd_partitioning);
   config.set_use_auto_spmd_partitioning(c_config.use_auto_spmd_partitioning);
   config.set_allow_spmd_sharding_propagation_to_output(
-      c_config.allow_spmd_sharding_propagation_to_output);
+      MakeSpan(c_config.allow_spmd_sharding_propagation_to_output));
   absl::Span<const int64_t> mesh_shape_span =
       MakeSpan(c_config.auto_spmd_partitioning_mesh_shape);
   std::vector<int64_t> mesh_shape(mesh_shape_span.begin(),

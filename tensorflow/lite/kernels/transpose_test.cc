@@ -55,7 +55,7 @@ class TransposeOpModel : public SingleOpModel {
 // Tests case where perm is a const tensor.
 //
 // Example usage is as follows:
-//    SpaceToBatchNDOpConstModel m(input_shape, perm_shape, perm_data);
+//    TransposeModel m(input_shape, perm_shape, perm_data);
 //    m.SetInput(input_data);
 //    m.Invoke();
 class TransposeOpConstModel : public TransposeOpModel {
@@ -92,7 +92,7 @@ class TransposeOpDynamicModel : public TransposeOpModel {
   }
 };
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(TransposeTest, TestUnequalPermSize) {
   EXPECT_DEATH(TransposeOpConstModel({1, 3, 3, 1}, {2}, {2, 2}), "2 != 4");
 }
@@ -376,7 +376,7 @@ TEST(TransposeTest, 5DDividedIntoTwo2DsThird) {
   EXPECT_EQ(m.GetOutput(), out);
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(TransposeTest, Test7DInputTensor) {
   EXPECT_DEATH(
       TransposeOpConstModel({1, 2, 3, 4, 5, 6, 7}, {6}, {0, 1, 2, 3, 4, 5}),

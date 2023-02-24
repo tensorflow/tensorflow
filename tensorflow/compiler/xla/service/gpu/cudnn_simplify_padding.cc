@@ -164,36 +164,43 @@ std::optional<int64_t> NumTrailingZeroOutputFeatures(HloInstruction* conv) {
     for (int64_t dim : dims) {
       multi_index.push_back(dim - 1);
     }
-    while (true) {
+    // This iterates through the literal with feature_dim as the most
+    // major dimension looking for the final non-zero feature.
+    auto decrement_multi_index = [&] {
+      for (int i = 0; i < multi_index.size(); ++i) {
+        if (i != feature_dim) {
+          int64_t& idx = multi_index[i];
+          --idx;
+          if (idx == -1) {
+            idx = dims[i] - 1;
+          } else {
+            return true;
+          }
+        }
+      }
+      int64_t& idx = multi_index[feature_dim];
+      --idx;
+      return idx != -1;
+    };
+    do {
       if (!lit.IsZero(multi_index)) {
         break;
       }
-      multi_index[multi_index.size() - 1]--;
-      for (int i = multi_index.size() - 2; i > 0; i--) {
-        if (multi_index[i] == -1) {
-          multi_index[i] = dims[i] - 1;
-          multi_index[i - 1]--;
-        } else {
-          break;
-        }
-      }
-      if (multi_index[0] == -1) {
-        break;
-      }
-    }
+    } while (decrement_multi_index());
 
-    VLOG(2) << "First nonzero index in weights constant is "
-            << absl::StrJoin(multi_index, ",");
-    int64_t first_nonzero_feature = multi_index[feature_dim];
-    // "round up" the first nonzero feature index if it's not *all* zeros.
-    for (int i = 0; i < multi_index.size(); i++) {
-      if (i != feature_dim && multi_index[i] != 0) {
-        first_nonzero_feature++;
-        break;
-      }
+    // The iteration stops if a feature has a non-zero value (or -1), but we
+    // want the first zero feature which is always the next one (or 0 if -1).
+    int64_t first_trailing_zero_feature = multi_index[feature_dim] + 1;
+
+    if (first_trailing_zero_feature == 0) {
+      VLOG(2) << "Weights constant is entirely zero.";
+    } else {
+      VLOG(2) << "First nonzero index in weights constant is "
+              << absl::StrJoin(multi_index, ",");
     }
-    int64_t ret = std::max<int64_t>(
-        0, weights->shape().dimensions(feature_dim) - first_nonzero_feature);
+    int64_t ret =
+        std::max<int64_t>(0, weights->shape().dimensions(feature_dim) -
+                                 first_trailing_zero_feature);
     VLOG(2) << "Success: weights is a constant; num zero trailing output "
                "features is "
             << ret;
@@ -333,8 +340,10 @@ StatusOr<bool> TrySimplifyPadding(HloInstruction* instr) {
 
   // We're only allowed to slice the feature dim.
   for (int64_t dim = 0; dim < slice->slice_limits().size(); dim++) {
-    if (dim != output_feature_dim &&
-        slice->slice_limits(dim) != slice->shape().dimensions(dim)) {
+    if (slice->slice_starts(dim) != 0 || slice->slice_strides(dim) != 1 ||
+        (dim != output_feature_dim &&
+         slice->slice_limits(dim) !=
+             slice->operand(0)->shape().dimensions(dim))) {
       VLOG(2) << "fail: Slice removes something other than the features dim.";
       return false;
     }

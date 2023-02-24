@@ -118,6 +118,24 @@ class MetricsTest(test.TestCase):
   def test_invalid_file(self):
     self.assertEqual(metrics.CalculateFileSize("not_a_file.txt"), -1)
 
+  def test_SM_fingerprint(self):
+    self.assertEqual(metrics.GetReadFingerprint(), "")
+    metrics.SetReadFingerprint(saved_model_checksum="foo")
+    self.assertEqual(metrics.GetReadFingerprint(), "foo")
+
+    self.assertEqual(metrics.GetWriteFingerprint(), "")
+    metrics.SetWriteFingerprint(saved_model_checksum="foo")
+    self.assertEqual(metrics.GetWriteFingerprint(), "foo")
+
+  def test_SM_path(self):
+    self.assertEqual(metrics.GetReadPath(), "")
+    metrics.SetReadPath(saved_model_path="foo")
+    self.assertEqual(metrics.GetReadPath(), "foo")
+
+    self.assertEqual(metrics.GetWritePath(), "")
+    metrics.SetWritePath(saved_model_path="foo")
+    self.assertEqual(metrics.GetWritePath(), "foo")
+
 
 if __name__ == "__main__":
   test.main()

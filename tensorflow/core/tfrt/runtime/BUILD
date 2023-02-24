@@ -3,6 +3,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -11,7 +12,6 @@ package_group(
     name = "friends",
     packages = [
         # Authorized users go here.
-        # copybara:uncomment "//third_party/auroraml/...",
         "//tensorflow/compiler/xla/service/gpu/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/runtime_fallback/...",

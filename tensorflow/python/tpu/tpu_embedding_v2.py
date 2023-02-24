@@ -43,6 +43,7 @@ from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_embedding_v2_utils
+from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.trackable import base
@@ -181,7 +182,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
       strategy.run(tpu_step, args=(tpu_features, ))
 
   @tf.function
-  def evalution_step(dataset_iterator, num_steps):
+  def evaluation_step(dataset_iterator, num_steps):
     def tpu_step(tpu_features):
       activations = embedding.dequeue()
       model_output = model(activations)
@@ -325,15 +326,17 @@ class TPUEmbedding(autotrackable.AutoTrackable):
 
     if self._using_tpu:
       # Extract a list of callable learning rates also in fixed order. Each
-      # table in the confix proto will get a index into this list and we will
+      # table in the config proto will get an index into this list, and we will
       # pass this list in the same order after evaluation to the
       # send_tpu_embedding_gradients op.
-      self._dynamic_learning_rates = list({
-          table.optimizer.learning_rate for table in self._table_config if
-          callable(table.optimizer.learning_rate)})
+      self._dynamic_learning_rates = []
+      for table in self._table_config:
+        if (callable(table.optimizer.learning_rate) and
+            table.optimizer.learning_rate not in self._dynamic_learning_rates):
+          self._dynamic_learning_rates.append(table.optimizer.learning_rate)
 
       # We need to list of host devices for the load/retrieve operations.
-      self._hosts = get_list_of_hosts(self._strategy)
+      self._hosts = tpu_embedding_v2_utils.get_list_of_hosts(self._strategy)
 
     self._built = False
     self._verify_output_shapes_on_enqueue = True
@@ -888,6 +891,15 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         # Add one dimension to the last axis.
         sample_indices = array_ops.pad(
             sample_indices, paddings=[[0, 0], [0, 1]])
+    else:
+      if feature.max_sequence_length > 0:
+        logging.warning(
+            (
+                "Input tensor is rank %d which is above 2, the"
+                " max_sequence_length setting will be ignored."
+            ),
+            tensor.shape.rank,
+        )
     indices.append(sample_indices)
     values.append(math_ops.cast(tensor.values, dtypes.int64))
     # If we have weights they must be a SparseTensor.
@@ -993,7 +1005,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
     while graph is not None:
       ctx = graph._get_control_flow_context()  # pylint: disable=protected-access
       while ctx is not None:
-        if isinstance(ctx, tpu.TPUReplicateContext):
+        if isinstance(ctx, tpu_replication.TPUReplicateContext):
           in_tpu_ctx = True
           break
         ctx = ctx.outer_context
@@ -1005,9 +1017,9 @@ class TPUEmbedding(autotrackable.AutoTrackable):
           "Current graph {} does not match graph which contains "
           "TPUReplicateContext {}. This is most likely due to the fact that "
           "enqueueing embedding data is called inside control flow or a "
-          "nested function inside `strategy.run`. This is not supported "
-          "because outside compilation fails to extract the enqueue ops as "
-          "head of computation.".format(ops.get_default_graph(), graph))
+          "tf.function inside `strategy.run`. This is not supported because "
+          "outside compilation fails to extract the enqueue ops as the head of "
+          "a computation.".format(ops.get_default_graph(), graph))
     return in_tpu_ctx
 
   def _raise_error_for_non_direct_inputs(self, features):
@@ -1100,7 +1112,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
            a. If feature config has max_sequence_length equals 0 or output shape
               set (the max_sequence_length setting will be ignored), the
               output shape will be the input shape excluding the last dimension.
-           b. Otherwize if the tensor is rank 2, the output shape will be input
+           b. Otherwise, if the tensor is rank 2, the output shape will be input
               shape  with last dimension set as max_sequence_length. If the
               tensor is above rank 2, the output shape will be the input shape
               excluding the last dimension and the last dimension of the output
@@ -1261,11 +1273,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         if name is not None:
           _add_key_attr(enqueue_op, name)
 
-        # Ensure that this op has outbound control flow, otherwise it won't be
-        # executed.
-        ops.get_default_graph().control_outputs.append(enqueue_op)
-
-      tpu.outside_compilation(generate_enqueue_ops)
+      tpu_replication.outside_compilation(generate_enqueue_ops)
 
     elif device is None:
       mode_override = "train" if training else "inference"
@@ -1294,7 +1302,6 @@ class TPUEmbedding(autotrackable.AutoTrackable):
           if name is not None:
             _add_key_attr(enqueue_op, name)
           enqueue_ops.append(enqueue_op)
-      ops.get_default_graph().control_outputs.extend(enqueue_ops)
     else:
       mode_override = "train" if training else "inference"
       device_spec = tf_device.DeviceSpec.from_string(device)
@@ -1311,7 +1318,6 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         # Apply the name tag to the op.
         if name is not None:
           _add_key_attr(enqueue_op, name)
-        ops.get_default_graph().control_outputs.append(enqueue_op)
 
   def _get_input_shapes(self, tensors,
                         in_tpu_context: bool) -> List[TensorShape]:
@@ -1574,25 +1580,6 @@ registration.register_tf_checkpoint_saver(
     # SavedModel.
     strict_predicate_restore=False
 )
-
-
-def get_list_of_hosts(strategy: tpu_strategy.TPUStrategy) -> List[Text]:
-  """Returns a sorted list of CPU devices for the remote jobs.
-
-  Args:
-    strategy: A TPUStrategy object.
-
-  Returns:
-    A sort list of device strings.
-  """
-  list_of_hosts = []
-  # Assume this is sorted by task
-  for tpu_device in strategy.extended.worker_devices:
-    host = device_util.get_host_for_device(tpu_device)
-    if host not in list_of_hosts:
-      list_of_hosts.append(host)
-  assert len(list_of_hosts) == strategy.extended.num_hosts
-  return list_of_hosts
 
 
 def extract_variable_info(

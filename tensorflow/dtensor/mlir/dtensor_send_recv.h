@@ -40,24 +40,24 @@ StatusOr<mlir::Operation*> GetCorrespondingDTensorSendRecvOp(
   if (std::is_same<DTensorOp, mlir::TF::DTensorSend>::value) {
     module.walk([&](mlir::Operation* op) {
       if (auto xla_recv_tpu = llvm::dyn_cast<mlir::TF::XlaRecvFromHostOp>(op)) {
-        if (dtensor_op.key() == xla_recv_tpu.key()) {
+        if (dtensor_op.getKey() == xla_recv_tpu.getKey()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
       } else if (auto xla_recv_cpu =
                      llvm::dyn_cast<mlir::TF::_XlaRecvAtHostV2Op>(op)) {
-        if (dtensor_op.key() == xla_recv_cpu.key()) {
+        if (dtensor_op.getKey() == xla_recv_cpu.getKey()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
       } else if (auto dtensor_recv =
                      llvm::dyn_cast<mlir::TF::DTensorRecv>(op)) {
-        if (dtensor_op.key() == dtensor_recv.key()) {
+        if (dtensor_op.getKey() == dtensor_recv.getKey()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
       } else if (auto host_recv = llvm::dyn_cast<mlir::TF::_HostRecvOp>(op)) {
-        if (dtensor_op.key() == host_recv.tensor_name()) {
+        if (dtensor_op.getKey() == host_recv.getTensorName()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
@@ -72,24 +72,24 @@ StatusOr<mlir::Operation*> GetCorrespondingDTensorSendRecvOp(
     }
     module.walk([&](mlir::Operation* op) {
       if (auto xla_send_tpu = llvm::dyn_cast<mlir::TF::XlaSendToHostOp>(op)) {
-        if (dtensor_op.key() == xla_send_tpu.key()) {
+        if (dtensor_op.getKey() == xla_send_tpu.getKey()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
       } else if (auto xla_send_cpu =
                      llvm::dyn_cast<mlir::TF::_XlaSendFromHostV2Op>(op)) {
-        if (dtensor_op.key() == xla_send_cpu.key()) {
+        if (dtensor_op.getKey() == xla_send_cpu.getKey()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
       } else if (auto dtensor_send =
                      llvm::dyn_cast<mlir::TF::DTensorSend>(op)) {
-        if (dtensor_op.key() == dtensor_send.key()) {
+        if (dtensor_op.getKey() == dtensor_send.getKey()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
       } else if (auto host_send = llvm::dyn_cast<mlir::TF::_HostSendOp>(op)) {
-        if (dtensor_op.key() == host_send.tensor_name()) {
+        if (dtensor_op.getKey() == host_send.getTensorName()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }

@@ -18,13 +18,13 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_domain_metadata.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_isolator.h"
-#include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_remover.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_verifier.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -857,6 +857,41 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
   EXPECT_TRUE(remover_changed);
   auto tuple0 = FindInstruction(module.get(), "tuple.0");
+  EXPECT_TRUE(tuple0->has_sharding());
+  EXPECT_TRUE(tuple0->sharding().IsTuple());
+  EXPECT_EQ(tuple0->sharding().tuple_elements().size(), 2);
+}
+
+TEST_F(HloDomainTest, DomainTupleSameSharding_ClearSharding) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+ENTRY entry {
+  p0 = u32[2]{0} parameter(0), sharding={devices=[2]0,1}
+  p1 = u32[2]{0} parameter(1), sharding={devices=[2]0,1}
+  tuple.0 = (u32[2]{0}, u32[2]{0}) tuple(p0, p1), sharding={{devices=[2]0,1}, {devices=[2]0,1}}
+  get-tuple-element.0 = u32[2]{0} get-tuple-element(tuple.0), index=0
+  get-tuple-element.1 = u32[2]{0} get-tuple-element(tuple.0), index=1
+  ROOT add = u32[2]{0} add(get-tuple-element.0, get-tuple-element.1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
+  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  EXPECT_TRUE(isolator_changed);
+
+  // If tuple does not have sharding, verify that tuple sharding normalization
+  // still happens in NormalizeDomain.
+  auto tuple0 = FindInstruction(module.get(), "tuple.0");
+  tuple0->clear_sharding();
+
+  HloDomainRemover remover(ShardingMetadata::KindName(),
+                           ShardingPropagation::NormalizeDomain);
+  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  EXPECT_TRUE(remover_changed);
+
+  tuple0 = FindInstruction(module.get(), "tuple.0");
   EXPECT_TRUE(tuple0->has_sharding());
   EXPECT_TRUE(tuple0->sharding().IsTuple());
   EXPECT_EQ(tuple0->sharding().tuple_elements().size(), 2);

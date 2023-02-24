@@ -2,6 +2,7 @@
 #   Contains the Keras initializer API (internal TensorFlow version).
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/python/keras:__subpackages__"],
     licenses = ["notice"],
 )

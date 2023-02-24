@@ -5,12 +5,10 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_gen_op_libs")
-
-# For platform specific build config
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
+    "//tensorflow:tensorflow.default.bzl",
+    "filegroup",
+    "tf_gen_op_libs",
 )
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -24,6 +22,7 @@ load(
 # A lot of packages try to minimize binary size by depending on individual ops,\
 # so they need access here.
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -71,6 +70,7 @@ tf_gen_op_libs(
         "nccl_ops",
         "nn_ops",
         "no_op",
+        "optional_ops",
         "parsing_ops",
         "random_grad",
         "random_index_shuffle_ops",
@@ -90,6 +90,7 @@ tf_gen_op_libs(
         "state_ops",
         "stateless_random_ops",
         "stateless_random_ops_v2",
+        "sync_ops",
         "summary_ops",
         "training_ops",
     ],
@@ -284,6 +285,7 @@ cc_library(
         ":image_ops_op_lib",
         ":io_ops_op_lib",
         ":linalg_ops_op_lib",
+        ":sync_ops_op_lib",
         ":list_ops_op_lib",
         ":map_ops_op_lib",
         ":logging_ops_op_lib",
@@ -293,6 +295,7 @@ cc_library(
         ":nccl_ops_op_lib",
         ":nn_ops_op_lib",
         ":no_op_op_lib",
+        ":optional_ops_op_lib",
         ":parsing_ops_op_lib",
         ":ragged_ops",
         ":random_index_shuffle_ops_op_lib",
@@ -436,7 +439,6 @@ tf_cc_test(
     name = "ops_array_grad_test",
     size = "small",
     srcs = ["array_grad_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":ops",
         "//tensorflow/cc:cc_ops",
@@ -464,7 +466,6 @@ tf_cc_test(
     name = "ops_math_grad_test",
     size = "small",
     srcs = ["math_grad_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_gpu"],
     deps = [
         ":ops",
@@ -519,7 +520,6 @@ tf_cc_test(
         "training_ops_test.cc",
         "uniform_quant_ops_test.cc",
     ],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":ops",
         "//tensorflow/cc:cc_ops",
@@ -534,6 +534,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:type_inference",
         "//third_party/eigen3",
     ],
 )

@@ -14,7 +14,7 @@
 # ==============================================================================
 """Test configs for transpose_conv."""
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -129,8 +129,8 @@ def make_transpose_conv_tests(options):
     if not parameters["const_weight_bias"]:
       input_tensors = [input_tensor, filter_input]
       conv_outputs = tf.nn.conv2d(
-          input_tensor,
-          filter_input,
+          input=input_tensor,
+          filters=filter_input,
           strides=parameters["strides"],
           padding=parameters["padding"],
           data_format=parameters["data_format"])

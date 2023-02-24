@@ -40,7 +40,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "fixedpoint/fixedpoint.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
@@ -4882,6 +4882,9 @@ inline void TransposeConvV2(
   const int stride_height = params.stride_height;
   const int stride_width = params.stride_width;
 
+  const float output_activation_min = params.float_activation_min;
+  const float output_activation_max = params.float_activation_max;
+
   const int hwoi_ordered_filter_total_size =
       filter_height * filter_width * output_depth;
 
@@ -4914,14 +4917,19 @@ inline void TransposeConvV2(
   output_data_p = output_data;
   BiasAdd(output_data_p, bias_data, batch_size, output_height, output_width,
           output_depth);
+
+  for (int i = 0; i < output_offset * batch_size; ++i) {
+    output_data[i] = std::min(std::max(output_data[i], output_activation_min),
+                              output_activation_max);
+  }
 }
 
 inline void Quantize(int32_t multiplier, int32_t shift, int32_t total_size,
-                     int32_t output_zp, int32_t* scratch, uint8_t* output) {
+                     int32_t output_zp, const int32_t output_min,
+                     const int32_t output_max, int32_t* scratch,
+                     uint8_t* output) {
   ruy::profiler::ScopeLabel label("Quantize/uint8");
   int i = 0;
-  const int32_t output_min = std::numeric_limits<uint8_t>::min();
-  const int32_t output_max = std::numeric_limits<uint8_t>::max();
 
 #ifdef USE_NEON
   const int32x4_t output_zp_dup = vdupq_n_s32(output_zp);
@@ -5381,6 +5389,9 @@ inline void TransposeConvV2(
   const int stride_height = params.stride_height;
   const int stride_width = params.stride_width;
 
+  const int32 output_activation_min = params.quantized_activation_min;
+  const int32 output_activation_max = params.quantized_activation_max;
+
   const int hwoi_ordered_filter_total_size =
       filter_height * filter_width * output_depth;
 
@@ -5421,8 +5432,8 @@ inline void TransposeConvV2(
           output_depth);
 
   Quantize(params.output_multiplier, params.output_shift,
-           output_shape.FlatSize(), params.output_offset, scratch_data,
-           output_data);
+           output_shape.FlatSize(), params.output_offset, output_activation_min,
+           output_activation_max, scratch_data, output_data);
 }
 
 // Integer-only version of ResizeNearestNeighbor. Since scales are represented
@@ -7184,8 +7195,7 @@ template <typename T>
 inline void Transpose3D(const TransposeParams& params,
                         const RuntimeShape& input_shape, const T* input_data,
                         const RuntimeShape& output_shape, T* output_data) {
-  int s1, s2, s3;
-  s1 = input_shape.Dims(0);
+  int s2, s3;
   s2 = input_shape.Dims(1);
   s3 = input_shape.Dims(2);
 

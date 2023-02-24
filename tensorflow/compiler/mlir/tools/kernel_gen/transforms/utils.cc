@@ -58,7 +58,7 @@ Value CreateOrFindGlobalStringConstant(Location loc, StringRef global_name,
         ValueRange{c0, c0});
   }
   return LLVM::createGlobalString(loc, *b, global_name, content,
-                                  LLVM::Linkage::Internal);
+                                  LLVM::Linkage::Internal, false);
 }
 
 }  // namespace transforms

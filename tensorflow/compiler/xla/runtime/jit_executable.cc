@@ -25,8 +25,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/STLExtras.h"
-#include "tensorflow/compiler/xla/mlir/utils/runtime/constraints.h"
+#include "tensorflow/compiler/xla/mlir/runtime/utils/constraints.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
+#include "tfrt/concurrency/async_value.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
@@ -38,8 +39,8 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-using tfrt::MakeAvailableAsyncValueRef;
-using tfrt::MakeErrorAsyncValueRef;
+using tsl::MakeAvailableAsyncValueRef;
+using tsl::MakeErrorAsyncValueRef;
 
 using Specialization = JitExecutable::Specialization;
 
@@ -58,7 +59,7 @@ static bool HasValueConstraints(Span<const ArgumentConstraint> constraints) {
 // Returns true if all function operands have statically known shape.
 static bool HasStaticShapeOperands(const FunctionType& signature) {
   auto is_dynamic = [](Span<const int64_t> sizes) -> bool {
-    return llvm::any_of(sizes, mlir::ShapedType::isDynamic);
+    return llvm::any_of(sizes, MemrefType::IsDynamic);
   };
 
   for (unsigned i = 0; i < signature.num_operands(); ++i) {
@@ -79,7 +80,7 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
 
     // All other types are non-shaped and thus have "statically known shape".
 
-    // TODO(ezhulenev): Run time types might need to support type interfaces or
+    // TODO(ezhulenev): Run-time types might need to support type interfaces or
     // a hierarchy with a base `ShapedType` so that users can define their own
     // types that can participate in shape specialization. This becomes
     // complicated for container-like types (e.g. async value) that might
@@ -110,14 +111,14 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
 
   for (unsigned ordinal = 0; ordinal < (*compiler)->num_exported(); ordinal++) {
     auto fn = (*compiler)->exported(ordinal);
-
     // Get resolved operands constraints for the exported function.
     auto constraints = GetArgumentsConstraints(fn);
     if (!constraints.ok()) return constraints.status();
 
     // Get the exported function signature, it will be later required to
     // compute the specialized function signature from the operands at runtime.
-    auto signature = opts.compiler.type_converter.Convert(fn.getFunctionType());
+    auto signature = opts.compiler.type_converter.Convert(
+        llvm::cast<mlir::FunctionType>(fn.getFunctionType()));
     if (!signature.ok()) return signature.status();
 
     JitExecutable::Function function{fn.getName(), std::move(*signature),
@@ -201,7 +202,7 @@ AsyncValuePtr<Executable> JitExecutable::DefaultExecutable() const {
 }
 
 // Combines `hash` with a hash value computed from a value constrained operands.
-static llvm::hash_code CombineWithValueConstraineOperands(
+static llvm::hash_code CombineWithValueConstrainedOperands(
     llvm::hash_code hash, ArgumentsRef arguments,
     Span<const ArgumentConstraint> constraints) {
   for (int i = 0; i < constraints.size(); ++i) {
@@ -285,7 +286,7 @@ StatusOr<AsyncValuePtr<Executable>> JitExecutable::GetExecutable(
   // Combine with a hash value computed from the value constrained operands.
   if (LLVM_UNLIKELY(fn.has_value_constraints))
     *hash =
-        CombineWithValueConstraineOperands(*hash, arguments, fn.constraints);
+        CombineWithValueConstrainedOperands(*hash, arguments, fn.constraints);
 
   // Maybe return Executable from the cache.
   if (auto cached = specializations_->Find(*hash)) {

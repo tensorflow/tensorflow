@@ -285,7 +285,7 @@ TEST_F(MiniBenchmarkTest, DelegatePluginNotSupported) {
     const auto& t = event.benchmark_event;
     if (t == nullptr) continue;
     if (t->event_type == tflite::BenchmarkEventType_ERROR &&
-        t->error->exit_code ==
+        t->error->mini_benchmark_error_code ==
             tflite::acceleration::kMinibenchmarkDelegateNotSupported) {
       is_found = true;
       break;

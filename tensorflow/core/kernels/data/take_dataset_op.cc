@@ -108,6 +108,9 @@ class TakeDataset::EmptyIterator : public DatasetIterator<TakeDataset> {
  public:
   explicit EmptyIterator(const Params& params)
       : DatasetIterator<TakeDataset>(params) {}
+
+  bool SymbolicCheckpointCompatible() const override { return true; }
+
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) override {
     *end_of_sequence = true;
@@ -136,6 +139,8 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
  public:
   explicit FiniteIterator(const Params& params)
       : DatasetIterator<TakeDataset>(params), i_(0) {}
+
+  bool SymbolicCheckpointCompatible() const override { return true; }
 
   Status Initialize(IteratorContext* ctx) override {
     return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
@@ -173,10 +178,10 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
                       IteratorStateWriter* writer) override {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIndex), i_));
+    TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty),
+                                           static_cast<int64_t>(!input_impl_)));
     if (input_impl_) {
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-    } else {
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
     }
     return OkStatus();
   }
@@ -185,7 +190,10 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
                          IteratorStateReader* reader) override {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurIndex), &i_));
-    if (!reader->Contains(full_name(kInputImplEmpty))) {
+    int64_t input_empty;
+    TF_RETURN_IF_ERROR(
+        reader->ReadScalar(full_name(kInputImplEmpty), &input_empty));
+    if (!static_cast<bool>(input_empty)) {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
     } else {
       input_impl_.reset();

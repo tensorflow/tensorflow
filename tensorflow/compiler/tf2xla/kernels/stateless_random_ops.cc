@@ -67,6 +67,10 @@ xla::BitGeneratorTy GetBitGeneratorForDevice(
 xla::XlaOp MaybeConvertF32ToBF16(xla::XlaOp input, DataType dtype) {
   if (dtype == DT_BFLOAT16) {
     xla::XlaBuilder* builder = input.builder();
+    // TODO(b/256243456): Instead of doing
+    // `ConvertElementType(BitcastConvertType(u32, F32), BF16)` we should do
+    // `BitcastConvertType(ConvertElementType(u32, U16), BF16)`, to avoid the
+    // unclear `ConvertElementType(f32, BF16)` behavior.
     xla::XlaOp output = xla::BitcastConvertType(input, xla::U32) &
                         xla::ConstantR0<uint32>(builder, 0xFFFF0000);
     return xla::ConvertElementType(xla::BitcastConvertType(output, xla::F32),
@@ -87,6 +91,7 @@ xla::XlaOp StatelessRngUniform(absl::string_view device_type_string,
   xla::XlaOp initial_state = xla::ConstantR0WithType(builder, xla::U64, 0);
   xla::PrimitiveType type = shape.element_type();
   switch (type) {
+    case xla::F16:
     case xla::F32:
     case xla::F64:
       return xla::UniformFloatingPointDistribution(
@@ -94,7 +99,7 @@ xla::XlaOp StatelessRngUniform(absl::string_view device_type_string,
                  GetBitGeneratorForDevice(device_type_string), minval, maxval,
                  shape)
           .value;
-    case xla::S32:  // fall through
+    case xla::S32:
     case xla::S64:
       return UniformIntDistribution(
                  key, initial_state,
@@ -104,7 +109,7 @@ xla::XlaOp StatelessRngUniform(absl::string_view device_type_string,
       break;
     default:
       return builder->ReportError(xla::Unimplemented(
-          "Types other than F32, S32 and S64 are not implemented by "
+          "Types other than F16, F32, S32 and S64 are not implemented by "
           "StatelessRngUniform; got %s",
           xla::primitive_util::LowercasePrimitiveTypeName(type)));
   }
@@ -139,6 +144,15 @@ xla::XlaOp StatelessRngUniformFullInt(absl::string_view device_type_string,
   }
 }
 
+DataType MaybeConvertBF16ToF32(DataType const& dtype) {
+  if (dtype == DT_BFLOAT16) {
+    // We'll go through F32 to generate BF16.
+    // TODO(b/256243456): Generate BF16 directly from U16.
+    return DT_FLOAT;
+  }
+  return dtype;
+}
+
 class StatelessRandomUniformOp : public XlaOpKernel {
  public:
   explicit StatelessRandomUniformOp(OpKernelConstruction* ctx)
@@ -159,7 +173,7 @@ class StatelessRandomUniformOp : public XlaOpKernel {
                                         seed_shape.DebugString()));
     xla::XlaOp seed = ctx->Input(1);
 
-    DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
+    auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
     xla::PrimitiveType rng_primitive_type = xla_shape.element_type();
@@ -182,7 +196,8 @@ class StatelessRandomUniformOp : public XlaOpKernel {
 // TODO(phawkins): generalize to non-float, non-int32 seed types.
 REGISTER_XLA_OP(Name("StatelessRandomUniform")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16})
+                    .TypeConstraint("dtype",
+                                    {DT_DOUBLE, DT_FLOAT, DT_HALF, DT_BFLOAT16})
                     .TypeConstraint("Tseed", DT_INT32),
                 StatelessRandomUniformOp);
 
@@ -295,9 +310,8 @@ class StatelessRandomNormalOp : public XlaOpKernel {
                 errors::InvalidArgument("seed must have shape [2], not ",
                                         seed_shape.DebugString()));
     xla::XlaOp seed = ctx->Input(1);
+    auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
     xla::Shape xla_shape;
-
-    DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
 
     xla::XlaBuilder* builder = seed.builder();
@@ -325,7 +339,8 @@ class StatelessRandomNormalOp : public XlaOpKernel {
 // TODO(phawkins): generalize to non-float, non-int32 seed types.
 REGISTER_XLA_OP(Name("StatelessRandomNormal")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16})
+                    .TypeConstraint("dtype",
+                                    {DT_DOUBLE, DT_FLOAT, DT_HALF, DT_BFLOAT16})
                     .TypeConstraint("Tseed", DT_INT32),
                 StatelessRandomNormalOp);
 
@@ -348,7 +363,7 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
     xla::XlaOp seed = ctx->Input(1);
     xla::XlaBuilder* builder = ctx->builder();
 
-    DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
+    auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
     xla::XlaOp uniform = StatelessRngUniform(
@@ -369,7 +384,8 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("StatelessTruncatedNormal")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16})
+                    .TypeConstraint("dtype",
+                                    {DT_DOUBLE, DT_FLOAT, DT_HALF, DT_BFLOAT16})
                     .TypeConstraint("Tseed", DT_INT32),
                 StatelessTruncatedNormalOp);
 
@@ -392,8 +408,7 @@ class StatelessParameterizedTruncatedNormalOp : public XlaOpKernel {
     xla::XlaOp seed = ctx->Input(1);
     xla::XlaBuilder* builder = ctx->builder();
 
-    DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
-
+    auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
 
@@ -432,7 +447,8 @@ class StatelessParameterizedTruncatedNormalOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("StatelessParameterizedTruncatedNormal")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16})
+                    .TypeConstraint("dtype",
+                                    {DT_DOUBLE, DT_FLOAT, DT_HALF, DT_BFLOAT16})
                     .TypeConstraint("Tseed", DT_INT32),
                 StatelessParameterizedTruncatedNormalOp);
 

@@ -36,8 +36,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/array.h"
-#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
-#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -229,21 +228,6 @@ std::optional<HloSharding> PropagateReduceWindowSharding(
   }
 
   return input_spec;
-}
-
-// Pass through the custom call marker and get the source instruction
-inline const HloInstruction* PassThroughCustomCallMarkerGetSource(
-    const HloInstruction* ins) {
-  while (ins->opcode() == HloOpcode::kGetTupleElement &&
-         IsCustomCallMarker(ins->operand(0))) {
-    const HloInstruction* custom_call = ins->operand(0);
-    const HloInstruction* tuple = custom_call->operand(0);
-    while (IsCustomCallMarker(tuple)) {
-      tuple = tuple->operand(0);
-    }
-    ins = tuple->operand(ins->tuple_index());
-  }
-  return ins;
 }
 
 // Depth analysis (breadth first search).
@@ -446,6 +430,7 @@ void BatchDimMapForward(const std::vector<HloInstruction*>& instructions,
       case HloOpcode::kSin:
       case HloOpcode::kSqrt:
       case HloOpcode::kCbrt:
+      case HloOpcode::kTan:
       case HloOpcode::kTanh:
       // Binary elementwise operations
       case HloOpcode::kAdd:
@@ -704,6 +689,7 @@ void BatchDimMapBackward(const std::vector<HloInstruction*>& instructions,
       case HloOpcode::kSin:
       case HloOpcode::kSqrt:
       case HloOpcode::kCbrt:
+      case HloOpcode::kTan:
       case HloOpcode::kTanh:
       // Binary elementwise operations
       case HloOpcode::kAdd:
@@ -968,58 +954,7 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies) {
   }
 }
 
-// Filter strategies according to the solver_option.force_batch_dim_to_mesh_dim.
-// This can be used to forcibly generate data-parallel strategies.
-Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
-                      std::unique_ptr<StrategyVector>& strategies,
-                      const ClusterEnvironment& cluster_env,
-                      const InstructionBatchDimMap& batch_map,
-                      const AutoShardingSolverOption& solver_option) {
-  int mesh_dim = solver_option.force_batch_dim_to_mesh_dim;
-  int batch_dim = batch_map.at(GetBatchDimMapKey(ins));
-  const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
 
-  if (shape.dimensions(batch_dim) % device_mesh.dim(mesh_dim) != 0) {
-    return tsl::errors::InvalidArgument(
-        "The length of batch dimension is "
-        "not divisible by the number of devices");
-  }
-
-  std::vector<ShardingStrategy> new_leaf_vector;
-  for (auto& stra : strategies->leaf_vector) {
-    std::vector<int64_t> tensor_dim_to_mesh_dim =
-        cluster_env.GetTensorDimToMeshDimWrapper(shape, stra.output_sharding);
-
-    if (device_mesh.dim(mesh_dim) > 1) {
-      // If the mesh dim is not one, the output tensor must be
-      // tiled along the mesh dim.
-      if (tensor_dim_to_mesh_dim[batch_dim] == mesh_dim) {
-        new_leaf_vector.push_back(std::move(stra));
-      }
-    } else {
-      // If the mesh dim is one, the output tensor must be replicated
-      // on the mesh dim.
-      if (tensor_dim_to_mesh_dim[batch_dim] == -1) {
-        new_leaf_vector.push_back(std::move(stra));
-      }
-    }
-  }
-  CHECK(!new_leaf_vector.empty())
-      << ins->ToString() << " does not have any valid strategies";
-  strategies->leaf_vector = std::move(new_leaf_vector);
-
-  return OkStatus();
-}
-
-inline std::pair<int, int> ParseMeshDims(const std::string& strategy_name) {
-  if (absl::StrContains(strategy_name, "{0,1}")) {
-    return {0, 1};
-  }
-  return {1, 0};
-}
-
-// Return whether the tensor shape is divisible by
-// the number of devices along multiple dimensions.
 bool IsDivisible(const HloInstruction* ins, const Array<int64_t>& device_mesh,
                  absl::Span<const int64_t> tensor_dims,
                  absl::Span<const int64_t> mesh_dims) {
@@ -1034,181 +969,6 @@ bool IsDivisible(const HloInstruction* ins, const Array<int64_t>& device_mesh,
   return true;
 }
 
-// Return the output sharding of the reduce-scatter variant of a given strategy.
-HloSharding GetReduceScatterOutput(const HloInstruction* ins,
-                                   const ShardingStrategy& strategy,
-                                   const ClusterEnvironment& cluster_env) {
-  const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
-  const Array<int64_t>& device_mesh_1d = cluster_env.device_mesh_1d_;
-
-  if (ins->opcode() == HloOpcode::kDot) {
-    const DotDimensionNumbers& dot_dnums = ins->dot_dimension_numbers();
-    int64_t space_base_dim = dot_dnums.lhs_batch_dimensions_size();
-
-    if (absl::StartsWith(strategy.name, "SR = SS x SR") ||
-        absl::StartsWith(strategy.name, "RS = RS x SS")) {
-      int mesh_dim0, mesh_dim1;
-      std::tie(mesh_dim0, mesh_dim1) = ParseMeshDims(strategy.name);
-
-      if (!IsDivisible(ins, device_mesh, {space_base_dim, space_base_dim + 1},
-                       {mesh_dim0, mesh_dim1})) {
-        // XLA supports uneven partitioning by adding padding.
-        // However, the ShardingSpec in Jax does not support uneven
-        // partitioning.
-        return Undefined();
-      }
-
-      return Tile(ins->shape(), {space_base_dim, space_base_dim + 1},
-                  {mesh_dim0, mesh_dim1}, device_mesh);
-    }
-    if (absl::StartsWith(strategy.name, "SbR = SbSk x SbSk")) {
-      int mesh_dim0, mesh_dim1;
-      std::tie(mesh_dim0, mesh_dim1) = ParseMeshDims(strategy.name);
-
-      if (!IsDivisible(ins, device_mesh, {0, space_base_dim},
-                       {mesh_dim0, mesh_dim1})) {
-        // XLA supports uneven partitioning by adding padding.
-        // However, the ShardingSpec in Jax does not support uneven
-        // partitioning.
-        return Undefined();
-      }
-
-      return Tile(ins->shape(), {0, space_base_dim}, {mesh_dim0, mesh_dim1},
-                  device_mesh);
-    }
-    if (absl::StartsWith(strategy.name, "RR = RS x SR")) {
-      int mesh_dim = absl::StrContains(strategy.name, "{0}") ? 0 : 1;
-
-      if (!IsDivisible(ins, device_mesh, {space_base_dim}, {mesh_dim})) {
-        return Undefined();
-      }
-
-      return Tile(ins->shape(), {space_base_dim}, {mesh_dim}, device_mesh);
-    }
-    if (absl::StartsWith(strategy.name, "R = Sk x Sk")) {
-      int mesh_dim = 0;
-
-      if (!IsDivisible(ins, device_mesh_1d, {space_base_dim}, {mesh_dim})) {
-        return Undefined();
-      }
-
-      return Tile(ins->shape(), {space_base_dim}, {mesh_dim}, device_mesh_1d);
-    }
-  } else if (ins->opcode() == HloOpcode::kConvolution) {
-    const ConvolutionDimensionNumbers& conv_dnums =
-        ins->convolution_dimension_numbers();
-    int out_batch_dim = conv_dnums.output_batch_dimension();
-    int out_out_channel_dim = conv_dnums.output_feature_dimension();
-
-    if (absl::StartsWith(strategy.name, "SR = SS x SR") ||
-        absl::StartsWith(strategy.name, "RS = RS x SS")) {
-      int mesh_dim0, mesh_dim1;
-      std::tie(mesh_dim0, mesh_dim1) = ParseMeshDims(strategy.name);
-
-      if (!IsDivisible(ins, device_mesh, {out_batch_dim, out_out_channel_dim},
-                       {mesh_dim0, mesh_dim1})) {
-        return Undefined();
-      }
-
-      return Tile(ins->shape(), {out_batch_dim, out_out_channel_dim},
-                  {mesh_dim0, mesh_dim1}, device_mesh);
-    }
-    if (absl::StartsWith(strategy.name, "R = Sk x Sk")) {
-      int mesh_dim = 0;
-
-      if (!IsDivisible(ins, device_mesh_1d, {out_batch_dim}, {mesh_dim})) {
-        return Undefined();
-      }
-
-      return Tile(ins->shape(), {out_batch_dim}, {mesh_dim}, device_mesh_1d);
-    }
-  } else if (ins->opcode() == HloOpcode::kReduce) {
-    // TODO(zhuohan): support more cases.
-    CHECK_EQ(ins->shape().rank(), 1);
-
-    int mesh_dim;
-    if (absl::StrContains(strategy.name, "allreduce @ [0]")) {
-      mesh_dim = 0;
-    } else {
-      mesh_dim = 1;
-    }
-
-    if (strategy.output_sharding.IsReplicated()) {
-      if (absl::StrContains(strategy.name, "1d")) {
-        if (!IsDivisible(ins, device_mesh_1d, {0}, {mesh_dim})) {
-          return Undefined();
-        }
-
-        return Tile(ins->shape(), {0}, {mesh_dim}, device_mesh_1d);
-      }
-      if (!IsDivisible(ins, device_mesh, {0}, {mesh_dim})) {
-        return Undefined();
-      }
-
-      return Tile(ins->shape(), {0}, {mesh_dim}, device_mesh);
-    }
-    if (!IsDivisible(ins, device_mesh_1d, {0}, {0})) {
-      return Undefined();
-    }
-
-    Array<int64_t> tile_assignment = strategy.output_sharding.tile_assignment();
-    tile_assignment.Reshape({cluster_env.total_devices_});
-    return HloSharding::Tile(std::move(tile_assignment));
-
-  } else {
-    LOG(FATAL) << "Invalid instruction: " << ins->ToString();
-  }
-
-  return Undefined();
-}
-
-// Return whether an instruction has the opportunity to generate reduce-scatter.
-bool HasReduceScatterOpportunity(
-    const HloInstruction* inst, const StrategyMap& strategy_map,
-    const CostGraph& cost_graph, absl::Span<const int64_t> s_val,
-    const StableHashSet<const HloInstruction*>& modified) {
-  // If the operand is already modified by other ops, skip this instruction to
-  // avoid conflicts.
-  for (const HloInstruction* operand : inst->operands()) {
-    if (modified.contains(operand)) {
-      return false;
-    }
-  }
-  if (modified.contains(inst)) {
-    return false;
-  }
-
-  if (inst->opcode() == HloOpcode::kReduce && inst->shape().rank() == 1) {
-    return true;
-  }
-  if (inst->opcode() == HloOpcode::kDot) {
-    if (GetShardingStrategy(inst->operand(0), strategy_map, cost_graph, s_val)
-            .output_sharding.IsReplicated() &&
-        GetShardingStrategy(inst->operand(1), strategy_map, cost_graph, s_val)
-            .output_sharding.IsReplicated()) {
-      // This dot is replicated on all devices. Do not split it.
-      // TODO(zhuohan): improve this condition.
-      return false;
-    }
-
-    return true;
-  }
-  if (inst->opcode() == HloOpcode::kConvolution) {
-    return true;
-  }
-
-  return false;
-}
-
-// Return whether all users of an instruction is reduce.
-bool AllUsersAreReduce(const HloInstruction* inst) {
-  for (const HloInstruction* user : inst->users()) {
-    if (user->opcode() != HloOpcode::kReduce) {
-      return false;
-    }
-  }
-  return true;
-}
 
 // Set sharding, and apply transpose if necessary.
 void SetSharding(HloInstruction* to_split, const HloSharding& output_spec,
@@ -1226,8 +986,6 @@ void SetSharding(HloInstruction* to_split, const HloSharding& output_spec,
   }
 }
 
-// Return whether the instruction is always replicated.
-// (e.g., constant, broadcasted constant, scalar)
 bool IsAlwaysReplicated(const HloInstruction* inst) {
   if (inst->opcode() == HloOpcode::kConstant) {
     return true;
@@ -1241,149 +999,7 @@ bool IsAlwaysReplicated(const HloInstruction* inst) {
   return false;
 }
 
-// Return whether this instruction is a convert on a parameter.
-bool IsParameterConvert(const HloInstruction* inst) {
-  if (inst->opcode() == HloOpcode::kConvert &&
-      inst->operand(0)->opcode() == HloOpcode::kParameter) {
-    return true;
-  }
-  return false;
-}
 
-// Pass through the custom call marker and get the acutal operand.
-inline HloInstruction* PassThroughCustomCallMarkerOperand(
-    HloInstruction* raw_operand, const HloInstruction* inst) {
-  if (!IsCustomCallMarker(raw_operand)) {
-    return raw_operand;
-  }
-
-  CHECK_EQ(inst->opcode(), HloOpcode::kGetTupleElement);
-
-  int index = inst->tuple_index();
-  return raw_operand->mutable_operand(0)->mutable_operand(index);
-}
-
-// Return whether the tuple is only used by a custom call marker.
-inline bool IsCustomCallMarkerTuple(const HloInstruction* inst) {
-  return inst->opcode() == HloOpcode::kTuple && inst->users().size() == 1 &&
-         IsCustomCallMarker(inst->users().front());
-}
-
-// Pass through the custom call marker and get the actual user.
-inline HloInstruction* PassThroughCustomCallMarkerUser(
-    HloInstruction* raw_user, const HloInstruction* inst) {
-  if (!IsCustomCallMarkerTuple(raw_user)) {
-    return raw_user;
-  }
-
-  const HloInstruction* custom_call = raw_user->users().front();
-
-  int index = -1;
-  for (int i = 0; i < raw_user->operand_count(); i++) {
-    if (raw_user->operand(i) == inst) {
-      index = i;
-      break;
-    }
-  }
-  CHECK_NE(index, -1);
-
-  HloInstruction* ret = nullptr;
-  for (HloInstruction* user : custom_call->users()) {
-    CHECK_EQ(user->opcode(), HloOpcode::kGetTupleElement);
-    if (user->tuple_index() == index) {
-      CHECK_EQ(ret, nullptr);
-      ret = user;
-    }
-  }
-
-  return ret == nullptr ? raw_user : ret;
-}
-
-// Return the users of an instruction and its alias,
-// excluding the final output tuple.
-inline StableHashSet<HloInstruction*> UsersWithAlias(
-    const HloInstruction* inst, const AliasMap& alias_map,
-    const HloInstruction* output) {
-  StableHashSet<HloInstruction*> users;
-
-  for (HloInstruction* user : inst->users()) {
-    users.insert(PassThroughCustomCallMarkerUser(user, inst));
-  }
-
-  auto iter = alias_map.find(inst);
-  if (iter != alias_map.end()) {
-    for (HloInstruction* user : iter->second->users()) {
-      users.insert(PassThroughCustomCallMarkerUser(user, iter->second));
-    }
-  }
-
-  users.erase(output);
-  return users;
-}
-
-// DFS to find the replicated set starting from cur instruction.
-void FindReplicateSet(
-    HloInstruction* cur, const AliasMap& alias_map, const CostGraph& cost_graph,
-    absl::Span<const int64_t> s_val, const StrategyMap& strategy_map,
-    const ShardingStrategy& strategy, const HloInstruction* output,
-    bool do_all_gather_after_backward, HloInstruction*& transpose_inst,
-    StableHashSet<HloInstruction*>& replicated_set,
-    StableHashSet<HloInstruction*>& boundary_set,
-    StableHashSet<HloInstruction*>& consumer_set,
-    StableHashSet<const HloInstruction*>& visited) {
-  visited.insert(cur);
-
-  // Check whether the node is a boundary node.
-  StableHashSet<HloInstruction*> users = UsersWithAlias(cur, alias_map, output);
-  for (HloInstruction* consumer : users) {
-    const HloInstruction* shape_inst = cur;
-
-    // Allow at most one transpose
-    if (consumer->opcode() == HloOpcode::kTranspose &&
-        (transpose_inst == nullptr ||
-         DimensionsEqual(transpose_inst->shape(), consumer->shape()))) {
-      shape_inst = consumer;
-      transpose_inst = consumer;
-      // TODO(zhuohan): fix output_sharding comparison.
-    }
-
-    if (consumer->opcode() == HloOpcode::kTuple ||
-        (do_all_gather_after_backward && IsParameterConvert(consumer)) ||
-        GetShardingStrategy(consumer, strategy_map, cost_graph, s_val)
-                .output_sharding != strategy.output_sharding ||
-        !DimensionsEqual(consumer->shape(), shape_inst->shape())) {
-      boundary_set.insert(cur);
-      return;
-    }
-  }
-
-  // If this node is not a boundary node, propagate from this node.
-  replicated_set.insert(cur);
-  for (HloInstruction* consumer : users) {
-    if (!visited.contains(consumer)) {
-      consumer_set.insert(consumer);
-      FindReplicateSet(consumer, alias_map, cost_graph, s_val, strategy_map,
-                       strategy, output, do_all_gather_after_backward,
-                       transpose_inst, replicated_set, boundary_set,
-                       consumer_set, visited);
-    }
-  }
-
-  for (size_t i = 0; i < cur->operand_count(); ++i) {
-    HloInstruction* operand = cur->mutable_operand(i);
-    operand = PassThroughCustomCallMarkerOperand(operand, cur);
-
-    if (!visited.contains(operand) && !IsAlwaysReplicated(operand) &&
-        GetShardingStrategy(operand, strategy_map, cost_graph, s_val)
-                .output_sharding == strategy.output_sharding &&
-        DimensionsEqual(operand->shape(), cur->shape())) {
-      FindReplicateSet(operand, alias_map, cost_graph, s_val, strategy_map,
-                       strategy, output, do_all_gather_after_backward,
-                       transpose_inst, replicated_set, boundary_set,
-                       consumer_set, visited);
-    }
-  }
-}
 
 // Try to reduce the boundary set to its common ancestor
 void TryReduceWithCommonAncestor(StableHashSet<HloInstruction*>& replicated_set,
@@ -1473,281 +1089,6 @@ void UseAllReduceForGradAcc(StableHashSet<HloInstruction*>& replicated_set,
     };
 
     dfs_remove(add);
-  }
-}
-
-// Substitute all-reduce strategies with their reduce-scatter variants.
-void GenerateReduceScatter(const HloInstructionSequence& sequence,
-                           const AliasMap& alias_map,
-                           const InstructionDepthMap& depth_map,
-                           const StrategyMap& strategy_map,
-                           const CostGraph& cost_graph,
-                           absl::Span<const int64_t> s_val,
-                           const ClusterEnvironment& cluster_env,
-                           const AutoShardingSolverOption& solver_option) {
-  const std::vector<HloInstruction*>& instructions = sequence.instructions();
-
-  // Propagation ends at output
-  const HloInstruction* output = instructions.back();
-  if (IsCustomCallMarker(output)) {
-    output = output->operand(0);
-  }
-
-  // A debug option: whether to do all-gather after backward pass.
-  // This controls the location of all-gather.
-  // If true, all-gather happens after backward pass, which is desired for
-  // gradient accumulation. If false, all-gather happens before forward pass,
-  // which can partitions more tensors.
-  bool do_all_gather_after_backward = true;
-
-  // If true, do not actually generate reduce-scatter + all-gather,
-  // but generate all-reduce + all-gather instead.
-  // This saves less memory but is more friendly to gradient accumulation.
-  // This is a temporary workaround due to implementation difficulty.
-  // Ideally, we should be able to generate a gradient-accumulation-friendly
-  // reduce-scatter + all-gather, but for now it is not easy to implement this
-  // in our current system. So we generate a gradient-accumulation-friendly
-  // all-reduce + all-gather, which has the same memory consumption but with 50%
-  // communication overhead.
-  bool use_all_reduce_for_grad_acc =
-      solver_option.reduce_scatter_grad_acc_friendly;
-
-  std::vector<HloInstruction*> insert_all_gather;
-  StableHashSet<const HloInstruction*> modified;
-
-  for (HloInstruction* inst : instructions) {
-    if (!HasReduceScatterOpportunity(inst, strategy_map, cost_graph, s_val,
-                                     modified)) {
-      continue;
-    }
-    const ShardingStrategy& strategy =
-        GetShardingStrategy(inst, strategy_map, cost_graph, s_val);
-    if (!absl::StrContains(strategy.name, "allreduce")) {
-      continue;
-    }
-
-    StableHashSet<HloInstruction*> replicated_set;
-    StableHashSet<HloInstruction*> boundary_set;
-    StableHashSet<HloInstruction*> consumer_set;
-    StableHashSet<const HloInstruction*> visited;
-
-    // We allow at most one transpose in the path of replication analysis.
-    HloInstruction* transpose_inst = nullptr;
-
-    // Find the replicated set starting from the all-reduce instruction.
-    visited.insert(output);
-    FindReplicateSet(inst, alias_map, cost_graph, s_val, strategy_map, strategy,
-                     output, do_all_gather_after_backward, transpose_inst,
-                     replicated_set, boundary_set, consumer_set, visited);
-
-    // Try to reduce the boundary set to its common ancestor
-    TryReduceWithCommonAncestor(replicated_set, boundary_set, consumer_set,
-                                alias_map);
-
-    // Analyze the instructions after which all-gather should be inserted.
-    std::vector<HloInstruction*> need_all_gather;
-    for (HloInstruction* node : boundary_set) {
-      if (consumer_set.contains(node)) {
-        if (AllUsersAreReduce(node)) {
-          // If users are reduce, the all-gather cost after this instruction
-          // should be small, so we ignore all-gather cost of these
-          // instructions.
-          replicated_set.insert(node);
-        } else {
-          need_all_gather.push_back(node);
-        }
-      }
-    }
-
-    // If we do all-gather on some parameters, move this all-gather after
-    // backward.
-    if (do_all_gather_after_backward && need_all_gather.size() == 1) {
-      HloInstruction* point = need_all_gather.front();
-      std::vector<HloInstruction*> path;
-
-      HloInstruction* root = point;
-      while (true) {
-        path.push_back(root);
-        if (root->opcode() == HloOpcode::kGetTupleElement) {
-          root = PassThroughCustomCallMarkerOperand(root->mutable_operand(0),
-                                                    root);
-        } else {
-          break;
-        }
-      }
-
-      if (root->opcode() == HloOpcode::kParameter) {
-        for (auto x : path) {
-          replicated_set.erase(x);
-          boundary_set.erase(x);
-        }
-        need_all_gather.clear();
-        for (auto x : replicated_set) {
-          auto iter = alias_map.find(x);
-          if (iter != alias_map.end() && iter->second == root) {
-            boundary_set.insert(x);
-            need_all_gather.push_back(x);
-            break;
-          }
-        }
-      }
-    }
-
-    // Analyze how many parameters can be partitioned if we do this
-    // transformation.
-    int num_replicated_parameters = 0;
-    for (const HloInstruction* node : replicated_set) {
-      if (node->opcode() == HloOpcode::kParameter) {
-        num_replicated_parameters++;
-      }
-    }
-    for (const HloInstruction* to_split : need_all_gather) {
-      if (to_split->users().size() == 1 &&
-          to_split->users().front() == output && alias_map.contains(to_split)) {
-        // Move the all-gather to its alias parameter.
-        num_replicated_parameters++;
-      }
-    }
-
-    // Print replicated set and boundary set for debugging.
-    VLOG(10) << inst->ToString(HloPrintOptions::ShortParsable()) << "\n";
-    VLOG(10) << "replicated set (#parameter: " << num_replicated_parameters
-             << "):\n";
-    for (auto x : replicated_set) {
-      VLOG(10) << "  " << x->ToString(HloPrintOptions::ShortParsable()) << "\n";
-    }
-    VLOG(10) << "boundary set (#incompatible: " << need_all_gather.size()
-             << "):\n";
-    for (auto x : boundary_set) {
-      VLOG(10) << "  " << x->ToString(HloPrintOptions::ShortParsable()) << " "
-               << absl::c_linear_search(need_all_gather, x) << "\n";
-    }
-
-    // If applicable, replace all-reduce with reduce-scatter by
-    // setting instructions' sharding.
-    if (num_replicated_parameters >= 1 && need_all_gather.size() <= 1 &&
-        replicated_set.size() >= 5) {
-      HloSharding output_spec =
-          GetReduceScatterOutput(inst, strategy, cluster_env);
-      if (IsUndefined(output_spec)) {
-        continue;
-      }
-
-      VLOG(10) << "SET:  " << output_spec.ToString();
-
-      if (absl::StartsWith(strategy.name, "RR = RS x SR")) {
-        // If set the sharding for this dot instruction, the SPMD
-        // partitioner will generate bad fallback code.
-        replicated_set.erase(inst);
-      }
-
-      if (use_all_reduce_for_grad_acc) {
-        UseAllReduceForGradAcc(replicated_set, inst);
-      }
-
-      for (HloInstruction* to_split : replicated_set) {
-        SetSharding(to_split, output_spec, inst, transpose_inst, modified);
-      }
-
-      if (!solver_option.reduce_scatter_aggressive_partition) {
-        // The normal case
-        for (HloInstruction* to_split : need_all_gather) {
-          SetSharding(to_split, output_spec, inst, transpose_inst, modified);
-
-          if (!do_all_gather_after_backward && to_split->users().size() == 1 &&
-              to_split->users().front() == output &&
-              alias_map.contains(to_split)) {
-            // Move the all-gather to its alias parameter.
-            // This partitions more tensors but introduces communication
-            // in the forward pass, which is not desired in gradient
-            // accumulation.
-            SetSharding(alias_map.at(to_split), output_spec, inst,
-                        transpose_inst, modified);
-            insert_all_gather.push_back(alias_map.at(to_split));
-          } else {
-            insert_all_gather.push_back(to_split);
-
-            if (to_split->opcode() == HloOpcode::kGetTupleElement &&
-                IsCustomCallMarker(to_split->operand(0)) &&
-                to_split->users().size() == 1 &&
-                to_split->users().front() == output) {
-              insert_all_gather.push_back(PassThroughCustomCallMarkerOperand(
-                  to_split->mutable_operand(0), to_split));
-            }
-          }
-        }
-      } else {
-        // Aggressively partition more parameter tensors.
-        // This can result in a strategy similar to ZeRO stage 3.
-        // NOTE: The combination of this branch with pipeline parallel is not
-        // tested.
-        for (HloInstruction* to_split : need_all_gather) {
-          SetSharding(to_split, output_spec, inst, transpose_inst, modified);
-
-          if (to_split->users().size() == 1 &&
-              to_split->users().front() == output &&
-              alias_map.contains(to_split)) {
-            // Move the all-gather to its alias parameter.
-            HloInstruction* param = alias_map.at(to_split);
-
-            // Find the branching point (i.e., skip elementwise ops like
-            // convert)
-            HloInstruction* cur = param;
-            while (cur->users().size() == 1) {
-              // TODO(zhuohan): handle tuple.
-              CHECK(cur->shape().IsArray());
-              SetSharding(cur, output_spec, inst, transpose_inst, modified);
-              cur = cur->users().front();
-            }
-            SetSharding(cur, output_spec, inst, transpose_inst, modified);
-
-            CHECK(!cur->users().empty());
-
-            // Find the first user
-            HloInstruction* first_user = nullptr;
-            int64_t min_depth = ((int64_t)1) << 50;
-            for (const auto& x : cur->users()) {
-              auto iter = depth_map.find(x);
-              if (iter == depth_map.end()) {
-                LOG(FATAL) << "ERROR: " << x->ToString();
-              }
-              if (x->opcode() != HloOpcode::kConvolution &&
-                  x->opcode() != HloOpcode::kDot) {
-                // Only apply this aggressive optimization for dot and conv
-                continue;
-              }
-              if (iter->second < min_depth) {
-                first_user = x;
-                min_depth = iter->second;
-              }
-            }
-
-            if (first_user != nullptr) {
-              // Insert an identity to prevent CSE of all-gather
-              HloInstruction* identity = inst->parent()->AddInstruction(
-                  HloInstruction::CreateCustomCall(cur->shape(), {cur},
-                                                   kIdentityMarker));
-              SetSharding(identity, output_spec, inst, transpose_inst,
-                          modified);
-              ReplaceOperand(first_user, cur, identity);
-            }
-          }
-        }
-      }
-    }
-
-    VLOG(10) << "-----------------------done\n";
-  }
-
-  // Insert all-gather on the output of boundary nodes by setting
-  // their shardings. This also works as CSE of all-gather.
-  for (HloInstruction* inst : insert_all_gather) {
-    HloInstruction* replace_with = inst->parent()->AddInstruction(
-        HloInstruction::CreateReshape(inst->shape(), inst));
-    replace_with->set_sharding(
-        GetShardingStrategy(inst, strategy_map, cost_graph, s_val)
-            .output_sharding);
-    TF_CHECK_OK(inst->ReplaceAllUsesWith(replace_with));
   }
 }
 
@@ -2029,133 +1370,21 @@ void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
   TF_CHECK_OK(inst->ReplaceOperandWith(operand_num, replace_with));
 }
 
-template <typename T>
-inline std::vector<int> Argsort(const std::vector<T>& scores) {
-  std::vector<int> index;
-  index.reserve(scores.size());
-  for (size_t i = 0; i < scores.size(); ++i) {
-    index.push_back(i);
+bool IsParameterConvert(const HloInstruction* inst) {
+  if (inst->opcode() == HloOpcode::kConvert &&
+      inst->operand(0)->opcode() == HloOpcode::kParameter) {
+    return true;
   }
-  auto cmp = [&scores](int l, int r) { return scores[l] > scores[r]; };
-  std::sort(index.begin(), index.end(), cmp);
-  return index;
+  return false;
 }
 
-void AnnotateShardingWithSimpleHeuristic(
-    HloModule* module, const std::string& heuristic, const AliasMap& alias_map,
-    const ClusterEnvironment& cluster_env) {
-  const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
-  const Array<int64_t>& device_mesh_1d = cluster_env.device_mesh_1d_;
-  int64_t num_devices = device_mesh.num_elements();
-
-  // Count the non-one mesh dimension.
-  size_t mesh_nn_dims = 0;
-  for (int dim : device_mesh.dimensions()) {
-    if (dim > 1) {
-      mesh_nn_dims++;
+bool AllUsersAreReduce(const HloInstruction* inst) {
+  for (const HloInstruction* user : inst->users()) {
+    if (user->opcode() != HloOpcode::kReduce) {
+      return false;
     }
   }
-
-  // Shard instructions
-  HloComputation* entry_computation = module->entry_computation();
-  for (HloInstruction* inst : entry_computation->instructions()) {
-    if (inst->opcode() == HloOpcode::kParameter) {
-      HloSharding output_spec = HloSharding::Replicate();
-      inst->set_sharding(output_spec);
-
-      if (heuristic == "shard-largest") {
-        std::vector<int64_t> lengths;
-        for (int64_t i = 0; i < inst->shape().rank(); ++i) {
-          lengths.push_back(inst->shape().dimensions(i));
-        }
-
-        std::vector<int> indices = Argsort(lengths);
-        int common_dims = std::min(mesh_nn_dims, indices.size());
-
-        if (common_dims < 1) {
-          continue;
-        }
-
-        if (common_dims == 1) {
-          int dim = indices[0];
-          int length = lengths[dim];
-          if (length % num_devices == 0) {
-            output_spec = Tile(inst->shape(), {dim}, {0}, device_mesh_1d);
-          }
-        } else {
-          int dim1 = indices[0];
-          int length1 = lengths[dim1];
-          int dim0 = indices[1];
-          int length0 = lengths[dim0];
-
-          if (length0 % device_mesh.dim(0) == 0 &&
-              length1 % device_mesh.dim(1) == 0) {
-            output_spec =
-                Tile(inst->shape(), {dim0, dim1}, {0, 1}, device_mesh);
-          }
-        }
-      } else if (heuristic == "shard-first") {
-        if (inst->shape().rank() > 0 &&
-            inst->shape().dimensions(0) % num_devices == 0) {
-          output_spec = Tile(inst->shape(), {0}, {0}, device_mesh_1d);
-        }
-      } else if (heuristic == "shard-last") {
-        int64_t last_dim = inst->shape().rank() - 1;
-        if (inst->shape().rank() > 0 &&
-            inst->shape().dimensions(last_dim) % num_devices == 0) {
-          output_spec = Tile(inst->shape(), {last_dim}, {0}, device_mesh_1d);
-        }
-      } else {
-        LOG(FATAL) << "Invalid heuristic: " << heuristic;
-      }
-
-      inst->set_sharding(output_spec);
-      // std::cerr << "ins: " << inst->ToString() << ", spec: " <<
-      // output_spec.ToString() << std::endl;
-    } else if (inst->opcode() == HloOpcode::kDot) {
-      const HloInstruction* lhs = inst->operand(0);
-      const HloInstruction* rhs = inst->operand(1);
-      const DotDimensionNumbers& dot_dnums = inst->dot_dimension_numbers();
-      // const auto& lhs_con_dims = dot_dnums.lhs_contracting_dimensions();
-      // const auto& rhs_con_dims = dot_dnums.rhs_contracting_dimensions();
-      std::vector<int64_t> lhs_space_dims, rhs_space_dims;
-      std::tie(lhs_space_dims, rhs_space_dims) =
-          GetSpaceDims(lhs->shape(), rhs->shape(), dot_dnums);
-    }
-  }
-
-  // Meet the alias requirement for the output tuple.
-  HloInstruction* output = entry_computation->root_instruction();
-  const Shape& out_shape = output->shape();
-  ShapeTree<HloSharding> tuple_sharding(out_shape, HloSharding::Replicate());
-  std::vector<HloSharding> flattened_shardings;
-
-  std::function<void(HloInstruction*)> get_flattened_shardings;
-  get_flattened_shardings = [&](HloInstruction* cur) {
-    for (int64_t i = 0; i < cur->operand_count(); ++i) {
-      HloInstruction* operand = cur->mutable_operand(i);
-
-      if (operand->shape().IsTuple()) {
-        get_flattened_shardings(operand);
-      } else {
-        if (alias_map.contains(operand)) {
-          operand = alias_map.at(operand);
-        }
-        if (!operand->has_sharding()) {
-          operand->set_sharding(HloSharding::Replicate());
-        }
-        CHECK(operand->has_sharding());
-        flattened_shardings.push_back(operand->sharding());
-      }
-    }
-  };
-  get_flattened_shardings(output);
-  int i = 0;
-  for (auto& leaf : tuple_sharding.leaves()) {
-    leaf.second = flattened_shardings[i++];
-  }
-  CHECK_EQ(i, flattened_shardings.size());
-  output->set_sharding(HloSharding::Tuple(tuple_sharding));
+  return true;
 }
 
 std::vector<int64_t> GetDimensionMapping(
@@ -2633,7 +1862,6 @@ bool AdjustShardingsWithPartialMeshShape(
     if (!inst->has_sharding()) {
       continue;
     }
-    LOG(INFO) << inst->ToString();
     if (inst->shape().IsTuple()) {
       ShapeTree<HloSharding> output_tuple_sharding(inst->shape(), Undefined());
       std::vector<HloSharding> output_flattened_shardings;
@@ -2703,5 +1931,18 @@ bool OutputInputSameShapes(const HloInstruction* ins) {
   return true;
 }
 
+bool IsEntryComputationInputOrOutput(const HloModule* module,
+                                     const HloInstruction* ins) {
+  for (const auto param :
+       module->entry_computation()->parameter_instructions()) {
+    if (param->name() == ins->name()) {
+      return true;
+    }
+  }
+  if (module->entry_computation()->root_instruction() == ins) {
+    return true;
+  }
+  return false;
+}
 }  // namespace spmd
 }  // namespace xla

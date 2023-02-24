@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_concurrent_work_queue.h"
 
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <utility>
 
@@ -59,21 +60,15 @@ RunHandlerThreadWorkQueue::RunHandlerThreadWorkQueue(const Options& options)
 }
 
 tensorflow::StatusOr<std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>>
-RunHandlerThreadWorkQueue::InitializeRequest(
-    tfrt::RequestContextBuilder* request_context_builder,
-    tensorflow::thread::ThreadPoolInterface** intra_op_threadpool) const {
-  DCHECK(intra_op_threadpool);
+RunHandlerThreadWorkQueue::InitializeRequest(int64_t request_id) const {
   RunHandlerOptions options;
-  options.priority = request_context_builder->request_options().priority;
-  std::unique_ptr<RunHandler> handler = handler_pool_->Get(
-      request_context_builder->id(), options_.init_timeout_ms, options);
+  std::unique_ptr<RunHandler> handler =
+      handler_pool_->Get(request_id, options_.init_timeout_ms, options);
   if (!handler) {
     return tensorflow::errors::Internal(absl::StrCat(
         "Could not obtain RunHandler for request after waiting for ",
         options_.init_timeout_ms, " ms."));
   }
-
-  *intra_op_threadpool = handler->AsIntraThreadPoolInterface();
 
   return {std::make_unique<RunHandlerWorkQueue>(std::move(handler))};
 }
@@ -89,7 +84,7 @@ Optional<TaskFunction> RunHandlerThreadWorkQueue::AddBlockingTask(
   } else {
     return blocking_work_queue_.RunBlockingTask(std::move(work));
   }
-  return llvm::None;
+  return std::nullopt;
 }
 
 void RunHandlerThreadWorkQueue::Quiesce() {

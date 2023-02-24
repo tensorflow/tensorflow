@@ -15,20 +15,21 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/device_mem_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 #include "tensorflow/core/common_runtime/shared_counter.h"
@@ -87,9 +88,10 @@ GPUProcessState::GPUProcessState() : gpu_device_enabled_(false) {
 
 int GPUProcessState::BusIdForGPU(tsl::TfDeviceId tf_device_id) {
   // Return the NUMA node associated with the GPU's StreamExecutor.
-  se::StreamExecutor* se = DeviceIdUtil::ExecutorForTfDeviceId(
-                               DEVICE_GPU, GPUMachineManager(), tf_device_id)
-                               .value();
+  se::StreamExecutor* se =
+      se::DeviceIdUtil::ExecutorForTfDeviceId(
+          DEVICE_GPU, se::GPUMachineManager(), tf_device_id)
+          .value();
   int numa_node = se->GetDeviceDescription().numa_node();
   // bus_id must be non-negative.  If the numa_node is not known,
   // use 0.
@@ -101,8 +103,8 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
     const GPUOptions& options, tsl::PlatformDeviceId platform_device_id,
     const std::vector<SubAllocator::Visitor>& alloc_visitors,
     size_t total_bytes, const std::vector<tsl::TfDeviceId>& peer_gpu_ids) {
-  auto executor = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
-                                                            platform_device_id)
+  auto executor = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                      se::GPUMachineManager(), platform_device_id)
                       .value();
 
   // FIXME(imintz): Observed OOM issues when using the virtual memory
@@ -158,8 +160,8 @@ Allocator* GPUProcessState::GetGPUAllocator(
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   const string& allocator_type = options.allocator_type();
   mutex_lock lock(mu_);
-  DeviceIdUtil::CheckValidTfDeviceId(DEVICE_GPU, GPUMachineManager(),
-                                     tf_device_id);
+  se::DeviceIdUtil::CheckValidTfDeviceId(DEVICE_GPU, se::GPUMachineManager(),
+                                         tf_device_id);
 
   if (tf_device_id.value() >= static_cast<int64_t>(gpu_allocators_.size())) {
     gpu_allocators_.resize(tf_device_id.value() + 1);
@@ -229,7 +231,7 @@ Allocator* GPUProcessState::GetGPUAllocator(
       // TODO: **WARNING** probably will not work in a multi-gpu scenario
       gpu_bfc_allocator.reset();
       gpu_allocator =
-          new GpuCudaMallocAsyncAllocator(platform_device_id, total_bytes);
+          new se::GpuCudaMallocAsyncAllocator(platform_device_id, total_bytes);
     }
 
     Allocator* recording_allocator = nullptr;
@@ -267,8 +269,8 @@ SharedCounter* GPUProcessState::GPUAllocatorCounter(
   DCHECK(process_state_);
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
-  DeviceIdUtil::CheckValidTfDeviceId(DEVICE_GPU, GPUMachineManager(),
-                                     tf_device_id);
+  se::DeviceIdUtil::CheckValidTfDeviceId(DEVICE_GPU, se::GPUMachineManager(),
+                                         tf_device_id);
   mutex_lock l(mu_);
   if (tf_device_id.value() >= static_cast<int64_t>(gpu_allocators_.size())) {
     LOG(ERROR) << "Asked for counter for GPU allocator " << tf_device_id.value()
@@ -291,7 +293,8 @@ SharedCounter* GPUProcessState::GPUAllocatorCounter(
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
-Allocator* GPUProcessState::GetGpuHostAllocator(int numa_node) {
+Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
+                                                int numa_node) {
   CHECK(process_state_);
   if (!HasGPUDevice() ||
       !process_state_->ProcessState::FLAGS_brain_mem_reg_gpu_dma) {
@@ -328,14 +331,27 @@ Allocator* GPUProcessState::GetGpuHostAllocator(int numa_node) {
   se::StreamExecutor* se = nullptr;
   for (int i = 0; i < static_cast<int>(gpu_allocators_.size()); ++i) {
     if (gpu_allocators_[i].allocator != nullptr) {
-      se = DeviceIdUtil::ExecutorForTfDeviceId(DEVICE_GPU, GPUMachineManager(),
-                                               tsl::TfDeviceId(i))
+      se = se::DeviceIdUtil::ExecutorForTfDeviceId(
+               DEVICE_GPU, se::GPUMachineManager(), tsl::TfDeviceId(i))
                .value();
       break;
     }
   }
 
   CHECK_NE(nullptr, se);
+
+  int64_t mem_limit_bytes =
+      options.experimental().gpu_host_mem_limit_in_mb() * (1LL << 20);
+  if (mem_limit_bytes <= 0) {
+    int64_t limit_mb = -1;
+    Status status =
+        tsl::ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
+                                 1LL << 17 /*2^17 MB == 128GB*/, &limit_mb);
+    if (!status.ok()) {
+      LOG(ERROR) << "GetGpuHostAllocator: " << status.error_message();
+    }
+    mem_limit_bytes = limit_mb * (1LL << 20);
+  }
 
   while (static_cast<int>(gpu_host_allocators_.size()) <= numa_node) {
     while (gpu_host_alloc_visitors_.size() <= numa_node) {
@@ -347,21 +363,13 @@ Allocator* GPUProcessState::GetGpuHostAllocator(int numa_node) {
     SubAllocator* sub_allocator = new DeviceHostAllocator(
         se, numa_node, gpu_host_alloc_visitors_[numa_node],
         gpu_host_free_visitors_[numa_node]);
-    // TODO(zheng-xq): evaluate whether 64GB by default is the best choice.
-    int64_t gpu_host_mem_limit_in_mb = -1;
-    Status status = tsl::ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
-                                             1LL << 16 /*64GB max by default*/,
-                                             &gpu_host_mem_limit_in_mb);
-    if (!status.ok()) {
-      LOG(ERROR) << "GetGpuHostAllocator: " << status.error_message();
-    }
-    int64_t gpu_host_mem_limit = gpu_host_mem_limit_in_mb * (1LL << 20);
 
     tsl::BFCAllocator::Options allocator_opts;
-    allocator_opts.allow_growth = true;
-    tsl::Allocator* allocator = new tsl::BFCAllocator(
-        absl::WrapUnique(sub_allocator), gpu_host_mem_limit,
-        /*name=*/"gpu_host_bfc", allocator_opts);
+    allocator_opts.allow_growth =
+        !options.experimental().gpu_host_mem_disallow_growth();
+    tsl::Allocator* allocator =
+        new tsl::BFCAllocator(absl::WrapUnique(sub_allocator), mem_limit_bytes,
+                              /*name=*/"gpu_host_bfc", allocator_opts);
 
     if (LogMemory::IsEnabled() && !allocator->TracksAllocationSizes()) {
       // Wrap the allocator to track allocation ids for better logging

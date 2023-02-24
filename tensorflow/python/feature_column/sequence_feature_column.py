@@ -17,9 +17,7 @@
 NOTE: This API is a work in progress and will likely be changing frequently.
 """
 
-
 import collections
-
 
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.feature_column import utils as fc_utils
@@ -30,7 +28,24 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
+
+_FEATURE_COLUMN_DEPRECATION_WARNING = """\
+    Warning: tf.feature_column is not recommended for new code. Instead,
+    feature preprocessing can be done directly using either [Keras preprocessing
+    layers](https://www.tensorflow.org/guide/migrate/migrating_feature_columns)
+    or through the one-stop utility [`tf.keras.utils.FeatureSpace`](https://www.tensorflow.org/api_docs/python/tf/keras/utils/FeatureSpace)
+    built on top of them. See the [migration guide](https://tensorflow.org/guide/migrate)
+    for details.
+    """
+
+_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING = (
+    'Use Keras preprocessing layers instead, either directly or via the '
+    '`tf.keras.utils.FeatureSpace` utility. Each of `tf.feature_column.*` has '
+    'a functional equivalent in `tf.keras.layers` for feature preprocessing '
+    'when training a Keras model.')
 
 
 # pylint: disable=protected-access
@@ -83,9 +98,12 @@ def concatenate_context_input(context_input, sequence_input):
   return array_ops.concat([sequence_input, tiled_context_input], 2)
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.sequence_categorical_column_with_identity')
-def sequence_categorical_column_with_identity(
-    key, num_buckets, default_value=None):
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+def sequence_categorical_column_with_identity(key,
+                                              num_buckets,
+                                              default_value=None):
   """Returns a feature column that represents sequences of integers.
 
   Pass this to `embedding_column` or `indicator_column` to convert sequence
@@ -112,11 +130,11 @@ def sequence_categorical_column_with_identity(
 
   Args:
     key: A unique string identifying the input feature.
-    num_buckets: Range of inputs. Namely, inputs are expected to be in the
-      range `[0, num_buckets)`.
+    num_buckets: Range of inputs. Namely, inputs are expected to be in the range
+      `[0, num_buckets)`.
     default_value: If `None`, this column's graph operations will fail for
-      out-of-range inputs. Otherwise, this value must be in the range
-      `[0, num_buckets)`, and will replace out-of-range inputs.
+      out-of-range inputs. Otherwise, this value must be in the range `[0,
+      num_buckets)`, and will replace out-of-range inputs.
 
   Returns:
     A `SequenceCategoricalColumn`.
@@ -127,14 +145,15 @@ def sequence_categorical_column_with_identity(
   """
   return fc.SequenceCategoricalColumn(
       fc.categorical_column_with_identity(
-          key=key,
-          num_buckets=num_buckets,
-          default_value=default_value))
+          key=key, num_buckets=num_buckets, default_value=default_value))
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.sequence_categorical_column_with_hash_bucket')
-def sequence_categorical_column_with_hash_bucket(
-    key, hash_bucket_size, dtype=dtypes.string):
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+def sequence_categorical_column_with_hash_bucket(key,
+                                                 hash_bucket_size,
+                                                 dtype=dtypes.string):
   """A sequence of categorical terms where ids are set by hashing.
 
   Pass this to `embedding_column` or `indicator_column` to convert sequence
@@ -173,15 +192,18 @@ def sequence_categorical_column_with_hash_bucket(
   """
   return fc.SequenceCategoricalColumn(
       fc.categorical_column_with_hash_bucket(
-          key=key,
-          hash_bucket_size=hash_bucket_size,
-          dtype=dtype))
+          key=key, hash_bucket_size=hash_bucket_size, dtype=dtype))
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.sequence_categorical_column_with_vocabulary_file')
-def sequence_categorical_column_with_vocabulary_file(
-    key, vocabulary_file, vocabulary_size=None, num_oov_buckets=0,
-    default_value=None, dtype=dtypes.string):
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+def sequence_categorical_column_with_vocabulary_file(key,
+                                                     vocabulary_file,
+                                                     vocabulary_size=None,
+                                                     num_oov_buckets=0,
+                                                     default_value=None,
+                                                     dtype=dtypes.string):
   """A sequence of categorical terms where ids use a vocabulary file.
 
   Pass this to `embedding_column` or `indicator_column` to convert sequence
@@ -243,9 +265,14 @@ def sequence_categorical_column_with_vocabulary_file(
           dtype=dtype))
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.sequence_categorical_column_with_vocabulary_list')
-def sequence_categorical_column_with_vocabulary_list(
-    key, vocabulary_list, dtype=None, default_value=-1, num_oov_buckets=0):
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+def sequence_categorical_column_with_vocabulary_list(key,
+                                                     vocabulary_list,
+                                                     dtype=None,
+                                                     default_value=-1,
+                                                     num_oov_buckets=0):
   """A sequence of categorical terms where ids use an in-memory list.
 
   Pass this to `embedding_column` or `indicator_column` to convert sequence
@@ -276,8 +303,8 @@ def sequence_categorical_column_with_vocabulary_list(
     vocabulary_list: An ordered iterable defining the vocabulary. Each feature
       is mapped to the index of its value (if present) in `vocabulary_list`.
       Must be castable to `dtype`.
-    dtype: The type of features. Only string and integer types are supported.
-      If `None`, it will be inferred from `vocabulary_list`.
+    dtype: The type of features. Only string and integer types are supported. If
+      `None`, it will be inferred from `vocabulary_list`.
     default_value: The integer ID value to return for out-of-vocabulary feature
       values, defaults to `-1`. This can not be specified with a positive
       `num_oov_buckets`.
@@ -305,13 +332,14 @@ def sequence_categorical_column_with_vocabulary_list(
           num_oov_buckets=num_oov_buckets))
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.sequence_numeric_column')
-def sequence_numeric_column(
-    key,
-    shape=(1,),
-    default_value=0.,
-    dtype=dtypes.float32,
-    normalizer_fn=None):
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+def sequence_numeric_column(key,
+                            shape=(1,),
+                            default_value=0.,
+                            dtype=dtypes.float32,
+                            normalizer_fn=None):
   """Returns a feature column that represents sequences of numeric data.
 
   Example:
@@ -380,6 +408,8 @@ def _assert_all_equal_and_return(tensors, name=None):
       return array_ops.identity(tensors[0])
 
 
+
+
 class SequenceNumericColumn(
     fc.SequenceDenseColumn,
     collections.namedtuple(
@@ -439,8 +469,7 @@ class SequenceNumericColumn(
         sp_tensor, default_value=self.default_value)
     # Reshape into [batch_size, T, variable_shape].
     dense_shape = array_ops.concat(
-        [array_ops.shape(dense_tensor)[:1], [-1], self.variable_shape],
-        axis=0)
+        [array_ops.shape(dense_tensor)[:1], [-1], self.variable_shape], axis=0)
     dense_tensor = array_ops.reshape(dense_tensor, shape=dense_shape)
 
     # Get the number of timesteps per example

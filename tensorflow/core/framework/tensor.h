@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_H_
 
 #include <cstdint>
+#include <iosfwd>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -269,6 +270,10 @@ class Tensor {
   explicit Tensor(T* t) = delete;
 
   ~Tensor();
+
+  // I/O operators.
+  friend std::ostream&  // NOLINT: iosfwd
+  operator<<(std::ostream& out, const Tensor& tensor);
 
   /// Returns the data type.
   DataType dtype() const { return shape_.data_type(); }

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/optimize_cross_host_control_deps.h"
 
+#include <vector>
+
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -98,6 +100,34 @@ TEST(OptimizeCrossHostControlDepsTest, OptimizeCrossHostControlInputEdges) {
   EXPECT_EQ(control_before->op_def().name(), "NoOp");
   EXPECT_EQ(control_before->assigned_device_name(),
             "/job:worker/task:0/device:CPU:0");
+}
+
+TEST(OptimizeCrossHostControlDepsTest, LargeGraph) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  constexpr int size = 1000;
+
+  std::vector<Operation> layer1;
+  for (int i = 0; i < size; ++i) {
+    auto n = ops::Const(scope, 1.0f);
+    n.node()->set_assigned_device_name("/job:worker/task:0/CPU:0");
+    layer1.push_back(n.op());
+  }
+
+  for (int j = 0; j < size; ++j) {
+    auto d = ops::Const(scope.WithControlDependencies(layer1), 1.0f);
+    d.node()->set_assigned_device_name("/job:worker/task:0/CPU:0");
+  }
+
+  Graph graph(OpRegistry::Global());
+  TF_ASSERT_OK(scope.ToGraph(&graph));
+  ASSERT_EQ(graph.num_op_nodes(), size * 2);
+
+  TF_ASSERT_OK(OptimizeCrossHostControlInputEdges(
+      &graph, /*cross_host_edges_threshold=*/size));
+  TF_ASSERT_OK(OptimizeCrossHostControlOutputEdges(
+      &graph, /*cross_host_edges_threshold=*/size));
+  ASSERT_EQ(graph.num_op_nodes(), size * 4);
 }
 
 }  // namespace

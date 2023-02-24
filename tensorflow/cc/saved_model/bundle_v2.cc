@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/cc/saved_model/fingerprinting.h"
 #include "tensorflow/cc/saved_model/metrics.h"
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/cc/saved_model/util.h"
@@ -121,6 +122,7 @@ Status SavedModelV2Bundle::Load(const std::string& export_dir,
   metrics::SavedModelReadApi(kCCLoadBundleV2Label).IncrementBy(1);
   SavedModel saved_model_proto;
   TF_RETURN_IF_ERROR(ReadSavedModelProto(export_dir, &saved_model_proto));
+  metrics::SavedModelReadPath().Set(export_dir);
 
   // Load MetaGraphDef.
   // In version 2 SavedModels, there is only one MetaGraphDef.
@@ -136,7 +138,8 @@ Status SavedModelV2Bundle::Load(const std::string& export_dir,
 
   // Correct the endiness of Tensor content on big-endian system
   if (!port::kLittleEndian) {
-    TF_RETURN_IF_ERROR(ByteSwapTensorContent(&(bundle->meta_graph_def_)));
+    TF_RETURN_IF_ERROR(
+        ByteSwapTensorContentInMetaGraphDef(&(bundle->meta_graph_def_)));
   }
 
   // Load GraphDebugInfo.
@@ -162,6 +165,14 @@ Status SavedModelV2Bundle::Load(const std::string& export_dir,
     // Deserialize the object graph proto from the tensor bundle.
     TF_RETURN_IF_ERROR(ReadCheckpointObjectGraph(
         bundle->variable_reader_.get(), &bundle->trackable_object_graph_));
+  }
+  // Read the fingerprint.
+  auto fingerprint_proto =
+      saved_model::fingerprinting::ReadSavedModelFingerprint(export_dir);
+  if (fingerprint_proto.ok()) {
+    // Set gauge cell with saved_model_checksum.
+    metrics::SavedModelReadFingerprint().Set(
+        std::to_string(fingerprint_proto->saved_model_checksum()));
   }
   return OkStatus();
 }

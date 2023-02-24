@@ -18,8 +18,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
@@ -70,7 +69,6 @@ struct HloRenderOptions {
 StatusOr<std::string> RenderGraph(
     const HloComputation& computation, absl::string_view label,
     const DebugOptions& debug_options, RenderedGraphFormat format,
-    const HloExecutionProfile* hlo_execution_profile = nullptr,
     HloRenderOptions hlo_render_options = {});
 
 // Like RenderGraph, but renders only nodes "near" the given node in the graph.

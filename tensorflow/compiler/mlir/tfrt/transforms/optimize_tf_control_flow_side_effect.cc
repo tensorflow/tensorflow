@@ -32,7 +32,7 @@ bool FunctionHasSideEffect(
 
   auto op_has_side_effect = [&](mlir::Operation* op) {
     if (auto while_op = llvm::dyn_cast<mlir::TF::WhileOp>(op)) {
-      if (while_op.is_stateless()) return false;
+      if (while_op.getIsStateless()) return false;
 
       return FunctionHasSideEffect(while_op.cond_function(),
                                    function_side_effect) ||
@@ -41,7 +41,7 @@ bool FunctionHasSideEffect(
     }
 
     if (auto if_op = llvm::dyn_cast<mlir::TF::IfOp>(op)) {
-      if (if_op.is_stateless()) return false;
+      if (if_op.getIsStateless()) return false;
 
       return FunctionHasSideEffect(if_op.else_function(),
                                    function_side_effect) ||
@@ -53,7 +53,7 @@ bool FunctionHasSideEffect(
     // ops' callee functions contain them, we treat them as non-side-effecting.
     if (llvm::isa<mlir::TF::AssertOp, mlir::TF::TimestampOp>(op)) return false;
 
-    return !mlir::MemoryEffectOpInterface::hasNoEffect(op);
+    return !mlir::isMemoryEffectFree(op);
   };
 
   // Speculatively setting the function to have no side effect to avoid infinite
@@ -96,7 +96,7 @@ class OptimizeTfControlFlowSideEffectPass
     mlir::Builder builder(module.getContext());
     module.walk([&](mlir::Operation* op) {
       if (auto while_op = llvm::dyn_cast<mlir::TF::WhileOp>(op)) {
-        if (while_op.is_stateless()) return;
+        if (while_op.getIsStateless()) return;
 
         if (!FunctionHasSideEffect(while_op.cond_function(),
                                    function_side_effect) &&
@@ -107,7 +107,7 @@ class OptimizeTfControlFlowSideEffectPass
       }
 
       if (auto if_op = llvm::dyn_cast<mlir::TF::IfOp>(op)) {
-        if (if_op.is_stateless()) return;
+        if (if_op.getIsStateless()) return;
 
         if (!FunctionHasSideEffect(if_op.else_function(),
                                    function_side_effect) &&

@@ -35,9 +35,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-// We don't support integers for convolutions, so we list the supported types
-// here.
-std::vector<DataType> GetXlaConvTypes();
+// We don't support integers for convolutions for GPU, so we list the supported
+// types for non-gpu and gpu here.
+std::vector<DataType> GetXlaConvTypesForNonGpu();
+std::vector<DataType> GetXlaConvTypesForGpu();
 
 // ConvOpAttrs contains all of the metadata necessary to specify a TF or XLA
 // convolution.

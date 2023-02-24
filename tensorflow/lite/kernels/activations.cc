@@ -20,8 +20,8 @@ limitations under the License.
 #include <functional>
 #include <limits>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -595,14 +595,14 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
     // insignificant. Use a symmetric output range of [-1.0; 1.0] and double as
     // FloatT for backward compatibility.
     data->params.exp_lut = data->exp_lut;
-    LUTPopulate<int16_t, double>(
+    LUTPopulate<int16_t>(
         10.0 / range, std::numeric_limits<int16_t>::max(), 2.0 / range, 0,
         [](double value) { return std::exp(value); }, data->params.exp_lut);
 
     // Input is in the [0; 1] range and use a symmetric output range of
     // [-1.0; 1.0] and double as FloatT for backward compatibility.
     data->params.one_over_one_plus_x_lut = data->one_over_one_plus_x_lut;
-    LUTPopulate<int16_t, double>(
+    LUTPopulate<int16_t>(
         1.0 / range, std::numeric_limits<int16_t>::min(), 2.0 / range, 0,
         [](double value) { return 1.0 / (1.0 + value); },
         data->params.one_over_one_plus_x_lut);

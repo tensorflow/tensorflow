@@ -26,8 +26,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
@@ -126,6 +126,48 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
   }
   TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
   return LoadModuleFromData(data, format, ovr_config, config_modifier_hook);
+}
+
+StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>> LoadInputFromData(
+    const std::string& data, absl::string_view format) {
+  HloSnapshot proto;
+  if (format == "pb") {
+    if (!proto.ParseFromString(data) &&
+        !proto.mutable_hlo()->ParseFromString(data) &&
+        !proto.mutable_hlo()->mutable_hlo_module()->ParseFromString(data)) {
+      return InvalidArgument("Failed to parse input as HLO protobuf binary");
+    }
+  } else if (format == "pbtxt") {
+    if (!tsl::protobuf::TextFormat::ParseFromString(data, &proto) &&
+        !tsl::protobuf::TextFormat::ParseFromString(data,
+                                                    proto.mutable_hlo()) &&
+        !tsl::protobuf::TextFormat::ParseFromString(
+            data, proto.mutable_hlo()->mutable_hlo_module())) {
+      return InvalidArgument("Failed to parse input as HLO protobuf text");
+    }
+  } else {
+    return InvalidArgument(
+        "Invalid format from file extension: '%s'. Expected: pb, "
+        "or pbtxt",
+        format);
+  }
+
+  auto iteration_literals_proto =
+      std::make_unique<RunHloModuleIterationLiterals>();
+  for (const auto& i : proto.arguments()) {
+    *iteration_literals_proto->add_arguments() = i;
+  }
+  return std::move(iteration_literals_proto);
+}
+
+StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>> LoadInputFromFile(
+    const std::string& path, std::string format) {
+  std::string data;
+  if (format.empty()) {
+    format = std::string(tsl::io::Extension(path));
+  }
+  TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
+  return LoadInputFromData(data, format);
 }
 
 }  // namespace xla

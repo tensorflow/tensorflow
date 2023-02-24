@@ -18,20 +18,40 @@ limitations under the License.
 
 #include <utility>
 
+#include "llvm/ADT/ArrayRef.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
+#include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 
 namespace xla {
 namespace gpu {
 
-// Disable all CustomCall checks in optimized build.
+template <auto T>
+using FunctionWrapper = xla::runtime::CustomCall::FunctionWrapper<T>;
+
+struct DotDimensionNumbers {
+  absl::Span<const int64_t> lhs_batch;
+  absl::Span<const int64_t> lhs_contract;
+  absl::Span<const int64_t> rhs_batch;
+  absl::Span<const int64_t> rhs_contract;
+};
+
+// Disable expensive CustomCall checks in optimized build.
 inline constexpr runtime::CustomCall::RuntimeChecks checks =  // NOLINT
 #if defined(NDEBUG)
-    runtime::CustomCall::RuntimeChecks::kNone;
+    runtime::CustomCall::RuntimeChecks::kLess;
 #else
     runtime::CustomCall::RuntimeChecks::kDefault;
 #endif
+
+template <typename T>
+absl::StatusOr<T> ToAbsl(StatusOr<T> status_or) {
+  if (!status_or.ok()) return ToAbslStatus(status_or.status());
+  return std::move(status_or).value();
+}
 
 inline se::DeviceMemoryBase GetDeviceAddress(
     const runtime::FlatMemrefView& memref) {
@@ -66,11 +86,52 @@ inline Shape ToShape(const runtime::StridedMemrefView& memref) {
   minor_to_major.reserve(indexed_strides.size());
   for (auto& pair : indexed_strides) minor_to_major.push_back(pair.second);
 
-  return ShapeUtil::MakeShapeWithLayout(memref.dtype, memref.sizes,
-                                        minor_to_major);
+  return ShapeUtil::MakeShapeWithDenseLayout(memref.dtype, memref.sizes,
+                                             minor_to_major);
+}
+
+inline StatusOr<GemmConfig> GetGemmConfig(
+    const runtime::StridedMemrefView& lhs,
+    const runtime::StridedMemrefView& rhs,
+    const runtime::StridedMemrefView& out, int64_t algorithm, double alpha_real,
+    double alpha_imag, double beta, absl::Span<const int64_t> lhs_batch,
+    absl::Span<const int64_t> lhs_contract, absl::Span<const int64_t> rhs_batch,
+    absl::Span<const int64_t> rhs_contract, int64_t compute_precision) {
+  return GemmConfig::For(ToShape(lhs), lhs_batch, lhs_contract, ToShape(rhs),
+                         rhs_batch, rhs_contract, ToShape(out), alpha_real,
+                         alpha_imag, beta, algorithm, compute_precision);
+}
+
+// adds Dot Dimension Attribute encodings for calls to Gemm and cuBLASLt
+inline void PopulateDotDimsAttrEncoding(
+    runtime::CustomCallAttrEncodingSet& encoding) {
+  using DotDimsAttr = mlir::mhlo::DotDimensionNumbersAttr;
+  encoding.Add<
+      xla::runtime::AggregateAttrEncoding<DotDimsAttr, DotDimensionNumbers>>(
+      encoding,
+      xla::runtime::AggregateAttrDef<DotDimsAttr>()
+          .Add("lhs_batch", &DotDimsAttr::getLhsBatchingDimensions)
+          .Add("lhs_contract", &DotDimsAttr::getLhsContractingDimensions)
+          .Add("rhs_batch", &DotDimsAttr::getRhsBatchingDimensions)
+          .Add("rhs_contract", &DotDimsAttr::getRhsContractingDimensions));
 }
 
 }  // namespace gpu
+}  // namespace xla
+
+namespace xla {
+namespace runtime {
+
+// using llvm::ArrayRef;
+
+XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
+    xla::gpu::DotDimensionNumbers,
+    AggregateMember<absl::Span<const int64_t>>("lhs_batch"),
+    AggregateMember<absl::Span<const int64_t>>("lhs_contract"),
+    AggregateMember<absl::Span<const int64_t>>("rhs_batch"),
+    AggregateMember<absl::Span<const int64_t>>("rhs_contract"));
+
+}  // namespace runtime
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_SUPPORT_H_

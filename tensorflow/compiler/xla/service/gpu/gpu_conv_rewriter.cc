@@ -24,12 +24,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -661,10 +661,6 @@ CudnnConvBackendConfig GetDefaultBackendConfig() {
 // Helper function to create a custom_call instruction to replace the given
 // conv instruction
 static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
-  if (conv->batch_group_count() > 1) {
-    conv = ConvertBatchGroupedToFeatureGroupedConvolution(conv);
-  }
-
   if (ConvolutionMatch m = MatchBackwardInput(conv)) {
     auto& [window, dnums, rhs] = *m;
     return CreateGpuConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
@@ -681,6 +677,10 @@ static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
 
   // If all else fails, try a forward convolution.
   if (CanImplementAsGpuForwardConv(conv)) {
+    if (conv->batch_group_count() > 1) {
+      conv = ConvertBatchGroupedToFeatureGroupedConvolution(conv);
+    }
+
     return CreateGpuConv(kCudnnConvForwardCallTarget, conv->shape(),
                          conv->mutable_operand(0), conv->mutable_operand(1),
                          conv->window(), conv->convolution_dimension_numbers(),

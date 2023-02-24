@@ -29,9 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
 #include "tensorflow/tsl/platform/threadpool.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace xla {
 

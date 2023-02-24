@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/ir/importexport/mangling.h"
@@ -71,7 +71,9 @@ void ConvertTFQuantOpsToMHLOPass::runOnOperation() {
 
   RewritePatternSet patterns(ctx);
   mhlo::PopulateLegalizeTfQuantizationPatterns(ctx, &patterns);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    signalPassFailure();
+  }
 }
 
 }  // namespace

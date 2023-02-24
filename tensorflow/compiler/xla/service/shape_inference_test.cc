@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/padding.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -413,11 +413,50 @@ TEST_F(ShapeInferenceTest, AllGatherStart) {
   EXPECT_TRUE(ShapeUtil::Equal(inferred_ag_shape.value(), expected_shape));
 }
 
+TEST_F(ShapeInferenceTest, AllGatherStartMultiOperand) {
+  const Shape operand0 = ShapeUtil::MakeShape(F32, {1, 8, 4});
+  const Shape operand1 = ShapeUtil::MakeShape(BF16, {1, 5});
+  const Shape expected_output0_shape = ShapeUtil::MakeShape(F32, {8, 8, 4});
+  const Shape expected_output1_shape = ShapeUtil::MakeShape(BF16, {8, 5});
+  const Shape expected_shape = ShapeUtil::MakeTupleShape(
+      {/* tuple of all input shapes*/
+       ShapeUtil::MakeTupleShape({operand0, operand1}),
+       /* tuple of all output shapes*/
+       ShapeUtil::MakeTupleShape(
+           {expected_output0_shape, expected_output1_shape})});
+
+  auto inferred_ag_shape = ShapeInference::InferAllGatherStartShape(
+      {&operand0, &operand1}, /*all_gather_dimension=*/0, /*shard_count=*/8);
+  EXPECT_TRUE(inferred_ag_shape.ok());
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_ag_shape.value(), expected_shape));
+}
+
 TEST_F(ShapeInferenceTest, AllGatherDone) {
   const Shape input_shape =
       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {1, 8, 4}),
                                  ShapeUtil::MakeShape(F32, {8, 8, 4})});
   const Shape expected_shape = ShapeUtil::MakeShape(F32, {8, 8, 4});
+
+  auto inferred_ag_done_shape =
+      ShapeInference::InferAllGatherDoneShape(input_shape);
+  EXPECT_TRUE(inferred_ag_done_shape.ok());
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_ag_done_shape.value(), expected_shape));
+}
+
+TEST_F(ShapeInferenceTest, AllGatherDoneMultiOperand) {
+  const Shape operand0 = ShapeUtil::MakeShape(F32, {1, 8, 4});
+  const Shape operand1 = ShapeUtil::MakeShape(BF16, {1, 5});
+  const Shape expected_output0_shape = ShapeUtil::MakeShape(F32, {8, 8, 4});
+  const Shape expected_output1_shape = ShapeUtil::MakeShape(BF16, {8, 5});
+  const Shape input_shape = ShapeUtil::MakeTupleShape(
+      {/* tuple of all input shapes*/
+       ShapeUtil::MakeTupleShape({operand0, operand1}),
+       /* tuple of all output shapes*/
+       ShapeUtil::MakeTupleShape(
+           {expected_output0_shape, expected_output1_shape})});
+
+  const Shape expected_shape = ShapeUtil::MakeTupleShape(
+      {expected_output0_shape, expected_output1_shape});
 
   auto inferred_ag_done_shape =
       ShapeInference::InferAllGatherDoneShape(input_shape);

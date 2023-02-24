@@ -53,7 +53,7 @@ cc_library(
     name = "proto_parsing",
     copts = tsl_copts(),
     deps = [
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/protobuf:protos_all_cc",
     ],
 )
 
@@ -64,21 +64,6 @@ cc_library(
     name = "minimal",
     srcs = [],
     copts = tsl_copts(),
-)
-
-cc_library(
-    name = "platformlib",
-    copts = tsl_copts(),
-    deps = [
-        ":gif",
-        ":jpeg",
-        "//tensorflow/core:protos_all_cc",
-        "@com_googlesource_code_re2//:re2",
-        "@farmhash_archive//:farmhash",
-        "@fft2d",
-        "@highwayhash//:sip_hash",
-        "@zlib",
-    ],
 )
 
 cc_library(

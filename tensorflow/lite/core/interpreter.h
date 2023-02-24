@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /// \file
+///
 /// Main abstraction controlling the tflite interpreter.
 /// Do NOT include this file directly,
 /// instead include third_party/tensorflow/lite/interpreter.h
@@ -39,9 +40,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/common.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/async/async_signature_runner.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/c/common.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/experimental/resource/initialization_status.h"
@@ -51,6 +53,7 @@ limitations under the License.
 #include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/profiling/root_profiler.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
 #include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/string_type.h"
@@ -58,6 +61,7 @@ limitations under the License.
 
 namespace tflite {
 
+#ifndef DOXYGEN_SKIP
 class InterpreterTest;  // Class for friend declarations.
 
 namespace delegates {
@@ -71,6 +75,7 @@ class TestDelegation;  // Class for friend declarations.
 namespace interpreter_wrapper {
 class InterpreterWrapper;  // Class for friend declarations.
 }  // namespace interpreter_wrapper
+#endif  // DOXYGEN_SKIP
 
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
@@ -105,8 +110,14 @@ class InterpreterWrapper;  // Class for friend declarations.
 /// Note: For nearly all practical use cases, one should not directly construct
 /// an Interpreter object, but rather use the InterpreterBuilder.
 ///
-/// WARNING: This class is *not* thread-safe. The client is responsible for
+/// \warning This class is *not* thread-safe. The client is responsible for
 /// ensuring serialized interaction to avoid data races and undefined behavior.
+using Interpreter = impl::Interpreter;
+
+namespace impl {
+
+class InterpreterBuilder;  // Class for friend declarations.
+
 class Interpreter {
  public:
   // Instantiate an interpreter. All errors associated with reading and
@@ -255,7 +266,7 @@ class Interpreter {
   /// Return the number of ops in the model.
   size_t nodes_size() const { return primary_subgraph().nodes_size(); }
 
-  /// WARNING: Experimental interface, subject to change
+  /// \warning Experimental interface, subject to change.
   const std::vector<int>& execution_plan() const {
     return primary_subgraph().execution_plan();
   }
@@ -310,9 +321,9 @@ class Interpreter {
     return nullptr;
   }
 
-  /// WARNING: Experimental interface, subject to change
-  /// Returns list of all keys of different method signatures defined in the
-  /// model.
+  /// \warning Experimental interface, subject to change. \n
+  /// \brief Returns list of all keys of different method signatures defined
+  /// in the model.
   /// Note, pointers returned have lifetime same as the Interpreter object.
   std::vector<const std::string*> signature_keys() const {
     std::vector<const std::string*> signature_keys;
@@ -323,10 +334,10 @@ class Interpreter {
     return signature_keys;
   }
 
-  /// WARNING: Experimental interface, subject to change
-  /// Returns a pointer to the SignatureRunner instance to run the part of the
-  /// graph identified by a SignatureDef. The nullptr is returned if the given
-  /// signature key is not valid.
+  /// \warning Experimental interface, subject to change. \n
+  /// \brief Returns a pointer to the SignatureRunner instance to run the part
+  /// of the graph identified by a SignatureDef. The nullptr is returned if the
+  /// given signature key is not valid.
   /// If you need to specify delegates, you have to do that before calling this
   /// function. This function will additionally apply default delegates. Thus,
   /// applying delegates after that might lead to undesirable behaviors.
@@ -334,9 +345,17 @@ class Interpreter {
   /// and the SignatureRunner class is *not* thread-safe.
   SignatureRunner* GetSignatureRunner(const char* signature_key);
 
-  /// WARNING: Experimental interface, subject to change
-  /// Return the subgraph index that corresponds to a SignatureDef, defined by
-  /// 'signature_key'.
+  /// \warning Experimental interface, subject to change. \n
+  /// \brief Returns a pointer to the AsyncSignatureRunner instance to run the
+  /// part of the graph identified by a SignatureDef. The nullptr is returned if
+  /// the given signature key is not valid.
+  /// The async delegate should be applied before calling this function.
+  async::AsyncSignatureRunner* GetAsyncSignatureRunner(
+      const char* signature_key);
+
+  /// \warning Experimental interface, subject to change. \n
+  /// \brief Return the subgraph index that corresponds to a SignatureDef,
+  /// defined by 'signature_key'.
   /// If invalid name passed, -1 will be returned.
   int GetSubgraphIndexFromSignature(const char* signature_key) const {
     for (const auto& signature : signature_defs_) {
@@ -347,8 +366,8 @@ class Interpreter {
     return -1;
   }
 
-  /// WARNING: Experimental interface, subject to change
-  /// Returns the mapping of inputs to tensor index in the signature
+  /// \warning Experimental interface, subject to change. \n
+  /// \brief Returns the mapping of inputs to tensor index in the signature
   /// specified through 'signature_key'.
   /// If invalid name passed, an empty list will be returned.
   const std::map<std::string, uint32_t>& signature_inputs(
@@ -361,8 +380,8 @@ class Interpreter {
     return *default_empty_list;
   }
 
-  /// WARNING: Experimental interface, subject to change
-  /// Returns the mapping of outputs to tensor index in the signature
+  /// \warning Experimental interface, subject to change. \n
+  /// \brief Returns the mapping of outputs to tensor index in the signature
   /// specified through 'signature_key'.
   /// If invalid name passed, an empty list will be returned.
   const std::map<std::string, uint32_t>& signature_outputs(
@@ -375,9 +394,9 @@ class Interpreter {
     return *default_empty_list;
   }
 
-  /// WARNING: Experimental interface, subject to change
-  /// Returns the input tensor identified by 'signature_input_name' in the
-  /// signature identified by 'signature_key'.
+  /// \warning Experimental interface, subject to change. \n
+  /// \brief Returns the input tensor identified by 'signature_input_name' in
+  /// the signature identified by 'signature_key'.
   /// Returns nullptr if not found.
   TfLiteTensor* input_tensor_by_signature(const char* signature_input_name,
                                           const char* signature_key) {
@@ -389,9 +408,9 @@ class Interpreter {
     return subgraph(subgraph_index)->tensor(tensor_index);
   }
 
-  /// WARNING: Experimental interface, subject to change
-  /// Returns the output tensor identified by 'signature_output_name' in the
-  /// signature identified by 'signature_key'.
+  /// \warning Experimental interface, subject to change. \n
+  /// \brief Returns the output tensor identified by 'signature_output_name' in
+  /// the signature identified by 'signature_key'.
   /// Returns nullptr if not found.
   const TfLiteTensor* output_tensor_by_signature(
       const char* signature_output_name, const char* signature_key) const {
@@ -469,9 +488,10 @@ class Interpreter {
   TfLiteStatus ResizeInputTensorStrict(int tensor_index,
                                        const std::vector<int>& dims);
 
-  /// This releases memory held by non-persistent tensors. It does NOT
+  /// \warning Experimental interface, subject to change. \n
+  /// \brief This releases memory held by non-persistent tensors. It does NOT
   /// re-perform memory planning. AllocateTensors needs to be called before next
-  /// invocation. WARNING: Experimental interface, subject to change
+  /// invocation.
   TfLiteStatus ReleaseNonPersistentMemory();
 
   /// Update allocations for all tensors. This will redim dependent tensors
@@ -521,31 +541,31 @@ class Interpreter {
   /// This method will be removed in a future release.
   void SetAllowFp16PrecisionForFp32(bool allow);
 
-  /// Get the half precision flag.
-  /// WARNING: This is an experimental API and subject to change.
+  /// \warning Experimental interface, subject to change. \n
+  /// \brief Get the half precision flag.
   bool GetAllowFp16PrecisionForFp32() const {
     return context_->allow_fp32_relax_to_fp16;
   }
 
-  /// Sets the cancellation function pointer in order to cancel a request in the
-  /// middle of a call to Invoke(). The interpreter queries this function during
-  /// inference, between op invocations; when it returns true, the interpreter
-  /// will abort execution and return `kTfLiteError`. The `data` parameter
-  /// contains any data used by the cancellation function, and if non-null,
-  /// remains owned by the caller.
-  /// WARNING: This is an experimental API and subject to change.
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Sets the cancellation function pointer in order to cancel a request
+  /// in the middle of a call to Invoke(). The interpreter queries this function
+  /// during inference, between op invocations; when it returns true, the
+  /// interpreter will abort execution and return `kTfLiteError`. The `data`
+  /// parameter contains any data used by the cancellation function, and if
+  /// non-null, remains owned by the caller.
   void SetCancellationFunction(void* data, bool (*check_cancelled_func)(void*));
 
-  /// Attempts to cancel in flight invocation if any.
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief  Attempts to cancel in flight invocation if any.
   /// This will not affect `Invoke`s that happends after the cancellation.
   /// Non blocking. Thread safe.
   /// Returns kTfLiteError if cancellation is not enabled, otherwise returns
   /// kTfLiteOk.
-  /// WARNING: This is an experimental API and subject to change.
   TfLiteStatus Cancel();
 
-  /// Allow a delegate to look at the graph and modify the graph to handle
-  /// parts of the graph themselves. After this is called, the graph may
+  /// \brief Allow a delegate to look at the graph and modify the graph to
+  /// handle parts of the graph themselves. After this is called, the graph may
   /// contain new nodes that replace 1 more nodes.
   /// 'delegate' must outlive the interpreter.
   /// Returns one of the following status codes:
@@ -561,17 +581,17 @@ class Interpreter {
   /// 4. kTfLiteUnresolvedOps: Delegation failed because the model has an
   /// operator that cannot be resolved. This can happen when the op is not
   /// registered or built with the TF Lite framework.
-  /// 5. kTfLiteError: Unexpected/runtime failure.
-  /// WARNING: This is an experimental API and subject to change.
+  /// 5. kTfLiteError: Unexpected/runtime failure. \n
+  /// \warning This is an experimental API and subject to change. \n
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
   // Owning handle to a TfLiteDelegate instance.
   using TfLiteDelegatePtr =
       std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
 
-  /// Same as ModifyGraphWithDelegate except this interpreter takes
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Same as ModifyGraphWithDelegate except this interpreter takes
   /// ownership of the provided delegate.
-  /// WARNING: This is an experimental API and subject to change.
   template <typename Delegate, typename Deleter>
   inline TfLiteStatus ModifyGraphWithDelegate(
       std::unique_ptr<Delegate, Deleter> delegate) {
@@ -594,14 +614,16 @@ class Interpreter {
   TfLiteStatus ModifyGraphWithDelegate(
       std::unique_ptr<TfLiteDelegate> delegate) = delete;
 
-  /// Ensure the data in `tensor.data` is readable. In case delegate is used,
-  /// it might require to copy the data from delegate buffer to raw memory.
-  /// WARNING: This is an experimental API and subject to change.
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Ensure the data in `tensor.data` is readable. In case delegate is
+  /// used, it might require to copy the data from delegate buffer to raw
+  /// memory.
   TfLiteStatus EnsureTensorDataIsReadable(int tensor_index) {
     return primary_subgraph().EnsureTensorDataIsReadable(tensor_index);
   }
 
-  /// Set the delegate buffer handle to a tensor. It can be called in the
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Set the delegate buffer handle to a tensor. It can be called in the
   /// following cases:
   /// 1. Set the buffer handle to a tensor that's not being written by a
   ///    delegate. For example, feeding an OpenGL texture as the input of the
@@ -609,42 +631,47 @@ class Interpreter {
   /// 2. Set the buffer handle to a tensor that uses the same delegate.
   ///    For example, set an OpenGL texture as the output of inference, while
   ///    the node which produces output is an OpenGL delegate node.
-  /// WARNING: This is an experimental API and subject to change.
   TfLiteStatus SetBufferHandle(int tensor_index,
                                TfLiteBufferHandle buffer_handle,
                                TfLiteDelegate* delegate);
 
-  /// Get the delegate buffer handle, and the delegate which can process the
-  /// buffer handle.
-  /// WARNING: This is an experimental API and subject to change.
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Get the delegate buffer handle, and the delegate which can process
+  /// the buffer handle.
   TfLiteStatus GetBufferHandle(int tensor_index,
                                TfLiteBufferHandle* buffer_handle,
                                TfLiteDelegate** delegate);
 
-  /// Sets the profiler to tracing execution. The caller retains ownership
-  /// of the profiler and must ensure its validity.
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Sets the profiler to tracing execution. The caller retains
+  /// ownership of the profiler and must ensure its validity.
   /// Previously registered profilers will be unregistered.
   /// If `profiler` is nullptr, all previously installed profilers will be
   /// removed.
-  /// WARNING: This is an experimental API and subject to change.
   void SetProfiler(Profiler* profiler);
 
-  /// Same as SetProfiler except this interpreter takes ownership
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Same as SetProfiler except this interpreter takes ownership
   /// of the provided profiler.
   /// Previously registered profilers will be unregistered.
   /// If `profiler` is nullptr, all previously installed profilers will be
   /// removed.
-  /// WARNING: This is an experimental API and subject to change.
   void SetProfiler(std::unique_ptr<Profiler> profiler);
 
-  /// Adds the profiler to tracing execution. The caller retains ownership
-  /// of the profiler and must ensure its validity.
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Adds the profiler to tracing execution. The caller retains
+  /// ownership of the profiler and must ensure its validity.
   /// nullptr `profiler` will be ignored.
-  /// WARNING: This is an experimental API and subject to change.
   void AddProfiler(Profiler* profiler);
 
-  /// Gets the profiler used for op tracing.
-  /// WARNING: This is an experimental API and subject to change.
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Adds the profiler to tracing execution. Transfers
+  /// ownership of the profiler to the interpreter.
+  /// nullptr `profiler` will be ignored.
+  void AddProfiler(std::unique_ptr<Profiler> profiler);
+
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Gets the profiler used for op tracing.
   Profiler* GetProfiler();
 
   // The default capacity of `tensors_` vector.
@@ -655,23 +682,23 @@ class Interpreter {
   /// pointers to existing tensors.
   static constexpr int kTensorsCapacityHeadroom = 16;
 
-  /// Set if buffer handle output is allowed.
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Set if buffer handle output is allowed.
   ///
   /// When using hardware delegation, Interpreter will make the data of output
   /// tensors available in `tensor->data` by default. If the application can
   /// consume the buffer handle directly (e.g. reading output from OpenGL
   /// texture), it can set this flag to false, so Interpreter won't copy the
   /// data from buffer handle to CPU memory.
-  /// WARNING: This is an experimental API and subject to change.
   void SetAllowBufferHandleOutput(bool allow_buffer_handle_output) {
     allow_buffer_handle_output_ = allow_buffer_handle_output;
   }
 
-  /// Reset all variable tensors to the default value.
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Reset all variable tensors to the default value.
   /// If a variable tensor doesn't have a buffer, reset it to zero.
   /// TODO(b/115961645): Implement - If a variable tensor has a buffer, reset it
   /// to the value of the buffer.
-  /// WARNING: This is an experimental API and subject to change.
   TfLiteStatus ResetVariableTensors();
 
   /// Retrieve an operator's description of its work, for profiling purposes.
@@ -687,8 +714,8 @@ class Interpreter {
   void SetExternalContext(TfLiteExternalContextType type,
                           TfLiteExternalContext* ctx);
 
-  /// Assigns (or reassigns) a custom memory allocation for the given tensor.
-  /// `flags` is a bitmask, see TfLiteCustomAllocationFlags.
+  /// \brief Assigns (or reassigns) a custom memory allocation for the given
+  /// tensor. `flags` is a bitmask, see TfLiteCustomAllocationFlags.
   /// The runtime does NOT take ownership of the underlying memory.
   ///
   /// NOTE: User needs to call AllocateTensors() after this.
@@ -707,23 +734,22 @@ class Interpreter {
   ///    defined in lite/util.h. (Currently 64 bytes)
   ///    This check is skipped if kTfLiteCustomAllocationFlagsSkipAlignCheck is
   ///    set through `flags`.
-  ///
-  /// WARNING: This is an experimental interface that is subject to change.
+  /// \warning This is an experimental API and subject to change. \n
   TfLiteStatus SetCustomAllocationForTensor(
       int tensor_index, const TfLiteCustomAllocation& allocation,
       int64_t flags = kTfLiteCustomAllocationFlagsNone);
 
-  /// Apply InterpreterOptions which tunes behavior of the interpreter.
-  /// WARNING: This is an experimental interface that is subject to change.
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Apply InterpreterOptions which tunes behavior of the interpreter.
   TfLiteStatus ApplyOptions(InterpreterOptions* options);
 
 #ifndef DOXYGEN_SKIP
-  /// Return the number of subgraphs in the model.
-  /// WARNING: This is an experimental API and subject to change.
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Return the number of subgraphs in the model.
   size_t subgraphs_size() const { return subgraphs_.size(); }
 
-  /// Get a pointer to a subgraph if in bounds.
-  /// WARNING: This is an experimental API and subject to change.
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Get a pointer to a subgraph if in bounds.
   const Subgraph* subgraph(int subgraph_index) const {
     if (subgraph_index < 0 ||
         static_cast<size_t>(subgraph_index) >= subgraphs_size()) {
@@ -732,33 +758,35 @@ class Interpreter {
     return subgraphs_[subgraph_index].get();
   }
 
-  /// WARNING: This is an experimental API and subject to change.
+  /// \warning This is an experimental API and subject to change.
   Subgraph* subgraph(int subgraph_index) {
     return const_cast<Subgraph*>(
         static_cast<const Interpreter*>(this)->subgraph(subgraph_index));
   }
 
-  /// WARNING: Experimental interface, subject to change
+  /// \warning Experimental interface, subject to change.
   Subgraph& primary_subgraph() {
-    return *subgraphs_.front();  /// Safe as subgraphs_ always has 1 entry.
+    return *subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
   }
 
-  /// WARNING: Experimental interface, subject to change
+  /// \warning Experimental interface, subject to change.
   const Subgraph& primary_subgraph() const {
     return *subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
   }
 #endif  // DOXYGEN_SKIP
 
-  /// WARNING: Experimental interface, subject to change
-  /// Get the error reporter associated with this interpreter.
+  /// \warning Experimental interface, subject to change. \n
+  /// \brief Get the error reporter associated with this interpreter.
   ErrorReporter* error_reporter() const { return error_reporter_; }
 
  private:
-  friend class InterpreterBuilder;
+  friend class tflite::impl::InterpreterBuilder;
+#ifndef DOXYGEN_SKIP
   friend class tflite::InterpreterTest;
   friend class tflite::delegates::InterpreterUtils;
   friend class tflite::delegates::test_utils::TestDelegation;
   friend class tflite::interpreter_wrapper::InterpreterWrapper;
+#endif  // DOXYGEN_SKIP
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
@@ -841,6 +869,14 @@ class Interpreter {
   // Used by InterpreterBuilder, should be called after setting up subgraphs.
   TfLiteStatus SetMetadata(const std::map<std::string, std::string>& metadata);
 
+  // Sets telemetry settings on model information and interpreter settings.
+  // Used by InterpreterBuilder.
+  TfLiteStatus SetTelemetrySettings(
+      std::unique_ptr<TfLiteTelemetryInterpreterSettings> telemetry_settings);
+
+  // Reports the telemetry settings with the given setting name.
+  TfLiteStatus ReportTelemetrySettings(const char* setting_name);
+
   /// Adds `subgraphs_to_add` subgraphs, preserving pre-existing Subgraph
   /// entries. The value pointed to by `first_new_subgraph_index` will be set to
   /// the index of the first new subgraph if `first_new_subgraph_index` is
@@ -907,7 +943,7 @@ class Interpreter {
   // An empty one means there's no delegate to be applied by default or
   // delegates have been applied and doesn't need to be applied again.
   using TfLiteDelegateCreator =
-      std::function<TfLiteDelegatePtr(int /*num_threads*/)>;
+      std::function<TfLiteDelegatePtr(TfLiteContext* /*context*/)>;
   using TfLiteDelegateCreators = std::vector<TfLiteDelegateCreator>;
   TfLiteDelegateCreators lazy_delegate_providers_;
 
@@ -919,9 +955,18 @@ class Interpreter {
   // its SignatureDef.
   std::map<std::string, SignatureRunner> signature_runner_map_;
 
+  // Map of signature key to its corresponding AsyncSignatureRunner object.
+  // An AsyncSignatureRunner is basically a wrapper of the AsyncSubgraph
+  // corresponding to its SignatureDef.
+  std::map<std::string, async::AsyncSignatureRunner>
+      async_signature_runner_map_;
+
   // Model metadata stored as mapping of name (key) to buffer (value).
   // Data is mapped from the Metadata in TFLite flatbuffer model.
   std::map<std::string, std::string> metadata_;
+
+  // Telemery data including model metadata and interpreter settings.
+  std::unique_ptr<TfLiteTelemetryInterpreterSettings> telemetry_data_;
 
   // InterpreterOptions object which is being used.
   std::unique_ptr<InterpreterOptions> options_;
@@ -943,6 +988,8 @@ class Interpreter {
   std::atomic_flag continue_invocation_{false};
   bool cancellation_enabled_ = false;
 };
+
+}  // namespace impl
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_CORE_INTERPRETER_H_

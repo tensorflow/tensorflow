@@ -273,7 +273,7 @@ class MirroredStrategy(distribute_lib.Strategy):
   Args:
     devices: a list of device strings such as `['/gpu:0', '/gpu:1']`.  If
       `None`, all available GPUs are used. If no GPUs are found, CPU is used.
-    cross_device_ops: optional, a descedant of `CrossDeviceOps`. If this is not
+    cross_device_ops: optional, a descendant of `CrossDeviceOps`. If this is not
       set, `NcclAllReduce()` will be used by default.  One would customize this
       if NCCL isn't available or if a special implementation that exploits
       the particular hardware is available.

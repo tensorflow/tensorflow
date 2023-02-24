@@ -23,16 +23,19 @@ limitations under the License.
 
 namespace tensorflow {
 
-std::ostream& operator<<(std::ostream& os, TfrtTpuInfraTarget tpu_target) {
-  switch (tpu_target) {
-    case TfrtTpuInfraTarget::kNoTpu:
-      return os << "NoTpu";
-    case TfrtTpuInfraTarget::kTpurt:
+std::ostream& operator<<(std::ostream& os,
+                         TfrtDeviceInfraTarget device_target) {
+  switch (device_target) {
+    case TfrtDeviceInfraTarget::kCpu:
+      return os << "Cpu";
+    case TfrtDeviceInfraTarget::kTpurt:
       return os << "Tpurt";
-    case TfrtTpuInfraTarget::kTfFallback:
+    case TfrtDeviceInfraTarget::kTfFallback:
       return os << "TfFallback";
-    case TfrtTpuInfraTarget::kBridgeFallback:
+    case TfrtDeviceInfraTarget::kBridgeFallback:
       return os << "BridgeFallback";
+    case TfrtDeviceInfraTarget::kGpu:
+      return os << "Gpu";
   }
 }
 
@@ -41,10 +44,9 @@ std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options) {
             << "variable_device = " << options.variable_device
             << ", default_device = " << options.default_device
             << ", enable_optimizer = " << options.enable_optimizer
-            << ", enable_native_ops = " << options.enable_native_ops
             << ", enable_grappler = " << options.enable_grappler
             << ", force_data_format = " << options.force_data_format
-            << ", tpu_target = " << options.tpu_target
+            << ", device_target = " << options.device_target
             << ", tpu_fuse_ops = " << options.tpu_fuse_ops
             << ", tpu_move_resource_gather_to_host = "
             << options.tpu_move_resource_gather_to_host

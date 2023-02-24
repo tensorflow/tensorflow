@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -93,6 +94,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/signal",
     ],
 )

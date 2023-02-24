@@ -11,12 +11,11 @@ load(
     "tf_copts",
     "tf_cuda_library",
 )
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_grpc_cc_dependencies")
-
-# For platform specific build config
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
+    "//tensorflow:tensorflow.default.bzl",
+    "filegroup",
+    "tf_cuda_cc_test",
+    "tf_grpc_cc_dependencies",
 )
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -24,6 +23,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = if_google(
         ["//tensorflow:internal"],
         ["//visibility:public"],
@@ -48,6 +48,7 @@ cc_library(
     name = "partial_run_mgr",
     srcs = ["partial_run_mgr.cc"],
     hdrs = ["partial_run_mgr.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":worker_interface",
         "//tensorflow/core:framework",
@@ -59,6 +60,7 @@ tf_cc_test(
     name = "partial_run_mgr_test",
     size = "small",
     srcs = ["partial_run_mgr_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":partial_run_mgr",
         "//tensorflow/core:lib",
@@ -71,6 +73,7 @@ cc_library(
     name = "message_wrappers",
     srcs = ["message_wrappers.cc"],
     hdrs = ["message_wrappers.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -83,6 +86,7 @@ tf_cc_test(
     name = "message_wrappers_test",
     size = "small",
     srcs = ["message_wrappers_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":message_wrappers",
         "//tensorflow/core:protos_all_cc",
@@ -94,18 +98,28 @@ tf_cc_test(
 
 cc_library(
     name = "worker_session",
-    srcs = [
-        "cluster_function_library_runtime.cc",
-        "worker_session.cc",
-    ],
-    hdrs = [
-        "cluster_function_library_runtime.h",
-        "worker_session.h",
-    ],
+    srcs = ["worker_session.cc"],
+    hdrs = ["worker_session.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":graph_mgr",
         ":worker_cache",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "cluster_function_library_runtime",
+    srcs = ["cluster_function_library_runtime.cc"],
+    hdrs = ["cluster_function_library_runtime.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
+    deps = [
+        ":worker_cache",
         ":worker_interface",
+        ":worker_session",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -119,11 +133,12 @@ cc_library(
 tf_cc_test(
     name = "cluster_function_library_runtime_test",
     srcs = ["cluster_function_library_runtime_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = [
         "no_windows",
     ],
     deps = [
+        ":cluster_function_library_runtime",
         ":worker_session",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib_internal",
@@ -142,7 +157,9 @@ cc_library(
     name = "session_mgr",
     srcs = ["session_mgr.cc"],
     hdrs = ["session_mgr.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
+        ":cluster_function_library_runtime",
         ":error_payloads",
         ":graph_mgr",
         ":remote_device",
@@ -154,10 +171,11 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core/activity_watcher",
-        "//tensorflow/core/distributed_runtime/coordination:coordination_service",
-        "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
-        "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_rpc_handler",
+        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
     ],
 )
 
@@ -165,6 +183,7 @@ tf_cc_test(
     name = "session_mgr_test",
     size = "small",
     srcs = ["session_mgr_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":error_payloads",
         ":session_mgr",
@@ -181,6 +200,7 @@ tf_cc_test(
 cc_library(
     name = "worker_env",
     hdrs = ["worker_env.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = ["//tensorflow/core:lib"],
 )
 
@@ -190,6 +210,7 @@ cc_library(
     hdrs = [
         "tensor_coding.h",
     ],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -204,6 +225,7 @@ cc_library(
     hdrs = [
         "worker_interface.h",
     ],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":call_options",
         ":message_wrappers",
@@ -216,6 +238,7 @@ cc_library(
 cc_library(
     name = "error_payloads",
     hdrs = ["error_payloads.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     visibility = ["//visibility:public"],
 )
 
@@ -225,6 +248,7 @@ tf_cuda_library(
     hdrs = [
         "worker.h",
     ],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":error_payloads",
         ":graph_mgr",
@@ -246,6 +270,7 @@ tf_cuda_library(
 cc_library(
     name = "call_options",
     hdrs = ["call_options.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/tsl/distributed_runtime:call_options",
     ],
@@ -255,6 +280,7 @@ tf_cc_test(
     name = "call_options_test",
     size = "small",
     srcs = ["call_options_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":call_options",
         "//tensorflow/core:test",
@@ -266,6 +292,7 @@ cc_library(
     name = "cancellable_call",
     srcs = ["cancellable_call.cc"],
     hdrs = ["cancellable_call.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":call_options",
         ":worker_cache",
@@ -278,6 +305,7 @@ tf_cc_test(
     name = "tensor_coding_test",
     size = "small",
     srcs = ["tensor_coding_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     linkstatic = 1,
     deps = [
         ":tensor_coding",
@@ -296,6 +324,7 @@ tf_cc_test(
 cc_library(
     name = "worker_cache",
     hdrs = ["worker_cache.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":worker_interface",
         "//tensorflow/core:lib",
@@ -308,6 +337,7 @@ cc_library(
 cc_library(
     name = "worker_cache_wrapper",
     hdrs = ["worker_cache_wrapper.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [":worker_cache"],
 )
 
@@ -315,6 +345,7 @@ cc_library(
     name = "remote_device",
     srcs = ["remote_device.cc"],
     hdrs = ["remote_device.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":worker_cache",
         ":worker_interface",
@@ -328,6 +359,7 @@ cc_library(
 cc_library(
     name = "master_interface",
     hdrs = ["master_interface.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":call_options",
         ":message_wrappers",
@@ -341,6 +373,7 @@ cc_library(
     name = "master",
     srcs = ["master.cc"],
     hdrs = ["master.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":call_options",
         ":master_env",
@@ -365,6 +398,7 @@ cc_library(
     name = "master_session",
     srcs = ["master_session.cc"],
     hdrs = ["master_session.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":call_options",
         ":master_env",
@@ -389,6 +423,7 @@ cc_library(
     name = "local_master",
     srcs = ["local_master.cc"],
     hdrs = ["local_master.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":master",
         ":master_interface",
@@ -400,6 +435,7 @@ cc_library(
     name = "rendezvous_mgr_interface",
     srcs = [],
     hdrs = ["rendezvous_mgr_interface.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":worker_env",
         "//tensorflow/core:framework_internal",
@@ -411,6 +447,7 @@ cc_library(
     name = "scheduler",
     srcs = ["scheduler.cc"],
     hdrs = ["scheduler.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -423,7 +460,9 @@ cc_library(
     name = "base_rendezvous_mgr",
     srcs = ["base_rendezvous_mgr.cc"],
     hdrs = ["base_rendezvous_mgr.h"],
-    copts = tf_copts(),
+    copts =
+        # copybara:uncomment ["-Wthread-safety-analysis"] +
+        tf_copts(),
     deps = [
         ":rendezvous_mgr_interface",
         ":worker_env",
@@ -443,6 +482,7 @@ cc_library(
 cc_library(
     name = "master_env",
     hdrs = ["master_env.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":worker_cache",
         "//tensorflow/core:protos_all_cc",
@@ -454,6 +494,7 @@ cc_library(
     name = "graph_mgr",
     srcs = ["graph_mgr.cc"],
     hdrs = ["graph_mgr.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":message_wrappers",
         ":rendezvous_mgr_interface",
@@ -475,6 +516,7 @@ cc_library(
     name = "worker_cache_partial",
     srcs = ["worker_cache_partial.cc"],
     hdrs = ["worker_cache_partial.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":worker_cache",
         ":worker_interface",
@@ -489,6 +531,7 @@ cc_library(
     name = "worker_cache_logger",
     srcs = ["worker_cache_logger.cc"],
     hdrs = ["worker_cache_logger.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
@@ -500,6 +543,7 @@ cc_library(
     name = "server_lib",
     srcs = ["server_lib.cc"],
     hdrs = ["server_lib.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -510,6 +554,7 @@ cc_library(
 tf_cc_test(
     name = "server_lib_test",
     srcs = ["server_lib_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":server_lib",
         "//tensorflow/core:lib",
@@ -522,6 +567,7 @@ cc_library(
     name = "rpc_collective_executor_mgr",
     srcs = ["rpc_collective_executor_mgr.cc"],
     hdrs = ["rpc_collective_executor_mgr.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":collective_param_resolver_distributed",
         ":collective_rma_distributed",
@@ -536,6 +582,7 @@ cc_library(
 tf_cc_test(
     name = "rpc_collective_executor_mgr_test",
     srcs = ["rpc_collective_executor_mgr_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":collective_param_resolver_distributed",
         ":device_resolver_distributed",
@@ -556,6 +603,7 @@ cc_library(
     name = "collective_rma_distributed",
     srcs = ["collective_rma_distributed.cc"],
     hdrs = ["collective_rma_distributed.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":call_options",
         ":cancellable_call",
@@ -575,6 +623,7 @@ tf_cc_test(
     name = "collective_rma_distributed_test",
     size = "small",
     srcs = ["collective_rma_distributed_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = [
         "no_windows",  # TODO(b/187863739): Fix failure and remove.
     ],
@@ -598,6 +647,7 @@ cc_library(
     name = "collective_param_resolver_distributed",
     srcs = ["collective_param_resolver_distributed.cc"],
     hdrs = ["collective_param_resolver_distributed.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":cancellable_call",
         ":device_resolver_distributed",
@@ -615,6 +665,7 @@ cc_library(
     name = "test_utils",
     srcs = [],
     hdrs = ["test_utils.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":worker_cache",
         ":worker_interface",
@@ -626,6 +677,7 @@ tf_cc_test(
     name = "collective_param_resolver_distributed_test",
     size = "small",
     srcs = ["collective_param_resolver_distributed_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":collective_param_resolver_distributed",
         ":device_resolver_distributed",
@@ -651,6 +703,7 @@ cc_library(
     name = "device_resolver_distributed",
     srcs = ["device_resolver_distributed.cc"],
     hdrs = ["device_resolver_distributed.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":worker_cache",
         "//tensorflow/core:core_cpu_internal",
@@ -666,6 +719,7 @@ tf_cc_test(
     name = "device_resolver_distributed_test",
     size = "small",
     srcs = ["device_resolver_distributed_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":device_resolver_distributed",
         ":test_utils",
@@ -686,7 +740,7 @@ tf_cuda_cc_test(
     srcs = [
         "master_test.cc",
     ],
-    linkstatic = tf_kernel_tests_linkstatic(),
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = tf_cuda_tests_tags(),
     deps = [
         ":master",
@@ -722,7 +776,7 @@ tf_cuda_cc_test(
     name = "remote_device_test",
     size = "small",
     srcs = ["remote_device_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = tf_cuda_tests_tags() + [
         "manual",
         "notap",  # Memory leak due to b/62910646
@@ -754,6 +808,7 @@ tf_cuda_cc_test(
     name = "rpcbench_test",
     size = "small",
     srcs = ["rpcbench_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     linkstatic = 1,
     tags = tf_cuda_tests_tags(),
     deps = [
@@ -783,6 +838,7 @@ cc_library(
     name = "request_id",
     srcs = ["request_id.cc"],
     hdrs = ["request_id.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -793,6 +849,7 @@ tf_cc_test(
     name = "request_id_test",
     size = "small",
     srcs = ["request_id_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":request_id",
         "//tensorflow/core:test",
@@ -804,6 +861,7 @@ cc_library(
     name = "recent_request_ids",
     srcs = ["recent_request_ids.cc"],
     hdrs = ["recent_request_ids.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":message_wrappers",
         "//tensorflow/core:lib",
@@ -816,6 +874,7 @@ tf_cc_test(
     name = "recent_request_ids_test",
     size = "small",
     srcs = ["recent_request_ids_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":recent_request_ids",
         ":request_id",
@@ -839,7 +898,7 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/core/function:__pkg__",
+        "//tensorflow/core/function/runtime_client:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
 )

@@ -216,7 +216,7 @@ func.func @exp_complex(%arg0 : tensor<2xcomplex<f32>>) -> (tensor<2xcomplex<f32>
   // CHECK-DAG: [[SIN:%.+]] = mhlo.sine [[IMAG]]
   // CHECK-DAG: [[OUTR:%.+]] = mhlo.multiply [[COS]], [[EXP]]
   // CHECK-DAG: [[OUTI:%.+]] = mhlo.multiply [[SIN]], [[EXP]]
-  // CHECK-DAG: [[OUT:%.+]] = mhlo.complex([[OUTR]], [[OUTI]])
+  // CHECK-DAG: [[OUT:%.+]] = mhlo.complex [[OUTR]], [[OUTI]]
   %0 = mhlo.exponential %arg0 : (tensor<2xcomplex<f32>>) -> (tensor<2xcomplex<f32>>)
 
   // CHECK: [[OUT]]
@@ -232,7 +232,7 @@ func.func @exp_unranked(%arg0 : tensor<*xcomplex<f32>>) -> (tensor<*xcomplex<f32
   // CHECK-DAG: [[SIN:%.+]] = mhlo.sine [[IMAG]]
   // CHECK-DAG: [[OUTR:%.+]] = mhlo.multiply [[COS]], [[EXP]]
   // CHECK-DAG: [[OUTI:%.+]] = mhlo.multiply [[SIN]], [[EXP]]
-  // CHECK-DAG: [[OUT:%.+]] = mhlo.complex([[OUTR]], [[OUTI]])
+  // CHECK-DAG: [[OUT:%.+]] = mhlo.complex [[OUTR]], [[OUTI]]
   %0 = mhlo.exponential %arg0 : (tensor<*xcomplex<f32>>) -> (tensor<*xcomplex<f32>>)
 
   // CHECK: [[OUT]]

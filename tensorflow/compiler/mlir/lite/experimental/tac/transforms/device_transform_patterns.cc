@@ -207,7 +207,7 @@ SmallVector<Value, 4> SliceOutputs(Operation* split_op, Value input,
 LogicalResult LowerPackIntoConcatReshape::matchAndRewrite(
     TFL::PackOp pack_op, PatternRewriter& rewriter) const {
   // Pack op should have same shape type.
-  SmallVector<Value, 5> pack_inputs(pack_op.values());
+  SmallVector<Value, 5> pack_inputs(pack_op.getValues());
   auto input_type = pack_inputs[0].getType().dyn_cast<RankedTensorType>();
   if (!input_type) return failure();
 
@@ -216,7 +216,7 @@ LogicalResult LowerPackIntoConcatReshape::matchAndRewrite(
   SmallVector<int64_t, 4> pack_out_shape;
 
   const int64_t rank = input_type.getRank();
-  int64_t pack_axis = pack_op.axis();
+  int64_t pack_axis = pack_op.getAxis();
   size_t count = pack_inputs.size();
   if (pack_axis < 0) {
     pack_axis += rank;
@@ -248,7 +248,8 @@ LogicalResult LowerPackIntoConcatReshape::matchAndRewrite(
   auto concat_out_type =
       RankedTensorType::get(concat_out_shape, input_type.getElementType());
   auto concat_op = rewriter.create<TFL::ConcatenationOp>(
-      pack_op.getLoc(), concat_out_type, pack_inputs, pack_op.axis(), "NONE");
+      pack_op.getLoc(), concat_out_type, pack_inputs, pack_op.getAxis(),
+      "NONE");
 
   auto reshape_op =
       InsertReshapeOp(pack_op.getLoc(), concat_op, input_type.getElementType(),
@@ -263,8 +264,8 @@ LogicalResult LowerPackIntoConcatReshape::matchAndRewrite(
 
 LogicalResult SquaredDifference::matchAndRewrite(
     TFL::SquaredDifferenceOp squared_diff_op, PatternRewriter& rewriter) const {
-  auto x = squared_diff_op.lhs();
-  auto y = squared_diff_op.rhs();
+  auto x = squared_diff_op.getLhs();
+  auto y = squared_diff_op.getRhs();
   auto x_type = x.getType().dyn_cast<RankedTensorType>();
   auto y_type = y.getType().dyn_cast<RankedTensorType>();
   if (!x_type || !y_type) return failure();
@@ -287,8 +288,8 @@ LogicalResult SquaredDifference::matchAndRewrite(
 
 LogicalResult UnrollSplit::matchAndRewrite(TFL::SplitOp split_op,
                                            PatternRewriter& rewriter) const {
-  auto num_splits = split_op.num_splits();
-  auto input = split_op.value();
+  auto num_splits = split_op.getNumSplits();
+  auto input = split_op.getValue();
   auto input_type = input.getType().dyn_cast<RankedTensorType>();
   if (input_type == nullptr || !input_type.hasStaticShape()) return failure();
 
@@ -318,17 +319,17 @@ LogicalResult UnrollSplit::matchAndRewrite(TFL::SplitOp split_op,
 LogicalResult UnrollSplitV::matchAndRewrite(TFL::SplitVOp splitv_op,
                                             PatternRewriter& rewriter) const {
   // We need to make sure both splits & split dim are constants.
-  auto splits = splitv_op.size_splits().getDefiningOp();
+  auto splits = splitv_op.getSizeSplits().getDefiningOp();
   mlir::DenseIntElementsAttr splits_attr;
   if (!splits || !matchPattern(splits, m_Constant(&splits_attr)))
     return failure();
 
-  auto split_dim = splitv_op.split_dim().getDefiningOp();
+  auto split_dim = splitv_op.getSplitDim().getDefiningOp();
   mlir::ElementsAttr split_dim_attr;
   if (!split_dim || !matchPattern(split_dim, m_Constant(&split_dim_attr)))
     return failure();
 
-  auto input = splitv_op.value();
+  auto input = splitv_op.getValue();
   auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
   if (!input_type || !input_type.hasRank()) return failure();
 
@@ -349,7 +350,7 @@ LogicalResult UnrollSplitV::matchAndRewrite(TFL::SplitVOp splitv_op,
   if (dim < 0) dim += rank;
 
   const SmallVector<Value, 4>& slice_outputs = SliceOutputs(
-      splitv_op, input, input_type, dim, splitv_op.num_splits(), &rewriter);
+      splitv_op, input, input_type, dim, splitv_op.getNumSplits(), &rewriter);
   rewriter.replaceOp(splitv_op, slice_outputs);
 
   return success();
@@ -369,17 +370,17 @@ LogicalResult PadSlice::matchAndRewrite(TFL::SliceOp slice_op,
                                         PatternRewriter& rewriter) const {
   // We have to know the shape of the input, as well as the begin/size.
   // also, begin and size have to be constants.
-  auto input = slice_op.input();
+  auto input = slice_op.getInput();
   auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
   if (!input_type || !input_type.hasStaticShape()) return failure();
 
   if (input_type.getRank() >= 4) return failure();
 
-  auto begin = slice_op.begin();
+  auto begin = slice_op.getBegin();
   auto begin_type = begin.getType().dyn_cast_or_null<RankedTensorType>();
   if (!begin_type || !begin_type.hasStaticShape()) return failure();
 
-  auto size = slice_op.size();
+  auto size = slice_op.getSize();
   auto size_type = size.getType().dyn_cast_or_null<RankedTensorType>();
   if (!size_type || !size_type.hasStaticShape()) return failure();
 
@@ -470,12 +471,12 @@ LogicalResult PadSlice::matchAndRewrite(TFL::SliceOp slice_op,
 LogicalResult FullyConnectedToConv::matchAndRewrite(
     TFL::FullyConnectedOp fc_op, PatternRewriter& rewriter) const {
   // We have to know the shape of the input.
-  auto input = fc_op.input();
+  auto input = fc_op.getInput();
   auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
   if (!input_type || !input_type.hasStaticShape()) return failure();
 
   // We have to know the shape of the weight.
-  auto weight = fc_op.filter();
+  auto weight = fc_op.getFilter();
   auto weight_type = weight.getType().dyn_cast_or_null<RankedTensorType>();
   if (!weight_type || !weight_type.hasStaticShape()) return failure();
 
@@ -509,8 +510,8 @@ LogicalResult FullyConnectedToConv::matchAndRewrite(
                                                 output_type.getElementType());
   auto conv = rewriter.create<TFL::Conv2DOp>(
       fc_op.getLoc(), conv_output_type, reshaped_input, reshaped_weight,
-      fc_op.bias(), rewriter.getI32IntegerAttr(1),
-      rewriter.getI32IntegerAttr(1), fc_op.fused_activation_functionAttr(),
+      fc_op.getBias(), rewriter.getI32IntegerAttr(1),
+      rewriter.getI32IntegerAttr(1), fc_op.getFusedActivationFunctionAttr(),
       rewriter.getStringAttr("VALID"), rewriter.getI32IntegerAttr(1),
       rewriter.getI32IntegerAttr(1));
 
@@ -530,7 +531,7 @@ LogicalResult FullyConnectedToConv::matchAndRewrite(
 LogicalResult PadConcat::matchAndRewrite(TFL::ConcatenationOp concat_op,
                                          PatternRewriter& rewriter) const {
   int rank = -1;
-  for (auto input : concat_op.values()) {
+  for (auto input : concat_op.getValues()) {
     auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
     if (!input_type || !input_type.hasStaticShape()) return failure();
 
@@ -545,7 +546,7 @@ LogicalResult PadConcat::matchAndRewrite(TFL::ConcatenationOp concat_op,
   // All values should have the same rank.
   // We will insert a reshape op after every input.
   SmallVector<Value, 4> reshape_ops;
-  for (auto input : concat_op.values()) {
+  for (auto input : concat_op.getValues()) {
     auto input_type = input.getType().cast<RankedTensorType>();
     // Get the new shape.
     SmallVector<int64_t, 4> new_shape;
@@ -564,7 +565,7 @@ LogicalResult PadConcat::matchAndRewrite(TFL::ConcatenationOp concat_op,
 
   // Deal with the axis.
   // We don't need to handle axis < 0, since it's counting reversely.
-  int32_t axis = concat_op.axis();
+  int32_t axis = concat_op.getAxis();
   if (axis >= 0) {
     axis += (4 - rank);
   }
@@ -583,7 +584,7 @@ LogicalResult PadConcat::matchAndRewrite(TFL::ConcatenationOp concat_op,
 
   auto new_concat = rewriter.create<TFL::ConcatenationOp>(
       concat_op.getLoc(), new_output_type, reshape_ops, axis,
-      concat_op.fused_activation_function());
+      concat_op.getFusedActivationFunction());
 
   // Append a reshape at the bottom.
   auto output_reshape_op = InsertReshapeOp(concat_op.getLoc(), new_concat,
@@ -601,14 +602,15 @@ LogicalResult PadConcat::matchAndRewrite(TFL::ConcatenationOp concat_op,
 // scales.
 LogicalResult ReduceMeanToAvgPool::matchAndRewrite(
     TFL::MeanOp mean_op, PatternRewriter& rewriter) const {
-  auto input = mean_op.input();
+  auto input = mean_op.getInput();
   auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
   // Only 4d is supported here.
   if (!input_type || input_type.getRank() != 4) return failure();
 
   // The axes has to be [1, 2].
   DenseElementsAttr axis_const;
-  if (!matchPattern(mean_op.axis(), m_Constant(&axis_const))) return failure();
+  if (!matchPattern(mean_op.getAxis(), m_Constant(&axis_const)))
+    return failure();
   if (axis_const.size() != 2) return failure();
   auto axis_values = axis_const.getValues<APInt>();
   int i = 1;
@@ -616,7 +618,7 @@ LogicalResult ReduceMeanToAvgPool::matchAndRewrite(
     if (axis_value != i++) return failure();
   }
 
-  auto output = mean_op.output();
+  auto output = mean_op.getOutput();
   auto output_type = output.getType().dyn_cast_or_null<RankedTensorType>();
   if (!output_type) return failure();
 
@@ -647,7 +649,7 @@ LogicalResult ReduceMeanToAvgPool::matchAndRewrite(
 
   // If it's not keep dim, we need to insert a reshape after the average
   // pool.
-  if (!mean_op.keep_dims()) {
+  if (!mean_op.getKeepDims()) {
     // Insert the reshape.
     SmallVector<int64_t, 2> new_shape({batch, channel});
     auto reshape_op =
@@ -666,7 +668,7 @@ LogicalResult ReduceMeanToAvgPool::matchAndRewrite(
 // loose accuracy, so we need to use this very very carefully.
 LogicalResult InsertRequantForReduceMean::matchAndRewrite(
     TFL::MeanOp mean_op, PatternRewriter& rewriter) const {
-  auto input = mean_op.input();
+  auto input = mean_op.getInput();
   auto input_type = input.getType().dyn_cast_or_null<ShapedType>();
   if (!input_type) return failure();
 
@@ -675,7 +677,7 @@ LogicalResult InsertRequantForReduceMean::matchAndRewrite(
       quant::QuantizedType::getQuantizedElementType(input_type);
   if (!input_quantized_type) return failure();
 
-  auto output = mean_op.output();
+  auto output = mean_op.getOutput();
   auto output_type = output.getType().dyn_cast_or_null<ShapedType>();
   if (!output_type) return failure();
   auto output_quantized_type =
@@ -688,7 +690,7 @@ LogicalResult InsertRequantForReduceMean::matchAndRewrite(
       RankedTensorType::get(output_type.getShape(), input_quantized_type);
   auto new_mean_op =
       rewriter.create<TFL::MeanOp>(mean_op->getLoc(), new_output_type, input,
-                                   mean_op.axis(), mean_op.keep_dims());
+                                   mean_op.getAxis(), mean_op.getKeepDims());
 
   // Insert a requant op.
   rewriter.replaceOpWithNewOp<TFL::QuantizeOp>(

@@ -29,6 +29,7 @@ limitations under the License.
 #include <random>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
@@ -36,13 +37,15 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -69,11 +72,10 @@ T Nibble1(T t) {
 //
 // Anyway this is relatively safe as-is because hlo_evaluator_typed_visitor.h is
 // a "private" header that's not exposed outside of hlo_evaluator.cc.
-//
-// Not using an alias template to work around MSVC 14.00 bug.
 template <typename T>
-struct is_complex_t : std::disjunction<std::is_same<T, complex64>,
-                                       std::is_same<T, complex128>> {};
+struct is_complex_t : std::false_type {};
+template <typename T>
+struct is_complex_t<std::complex<T>> : std::true_type {};
 
 template <typename T>
 inline constexpr bool is_complex_v = is_complex_t<T>::value;
@@ -100,33 +102,6 @@ auto ToArithmeticSafeType(T t) {
     return std::move(t);
   }
 }
-
-// UintWithSize<N> gets an unsigned integer with the given size in bytes.
-template <size_t kBytes>
-struct UintWithSize {};
-
-template <>
-struct UintWithSize<1> {
-  using type = uint8_t;
-};
-
-template <>
-struct UintWithSize<2> {
-  using type = uint16_t;
-};
-
-template <>
-struct UintWithSize<4> {
-  using type = uint32_t;
-};
-
-template <>
-struct UintWithSize<8> {
-  using type = uint64_t;
-};
-
-template <size_t kBytes>
-using UintWithSizeType = typename UintWithSize<kBytes>::type;
 
 // Templated DfsHloVisitor for use by HloEvaluator.
 //
@@ -277,16 +252,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   template <typename NativeT,
             typename std::enable_if_t<!is_complex_v<NativeT>>* = nullptr>
   Status HandleRoundNearestEven(HloInstruction* round) {
-    // Saves current rounding direction.
-    int curr_direction = fegetround();
-    fesetround(FE_TONEAREST);
+    // Verify the current rounding direction.
+    TF_RET_CHECK(fegetround() == FE_TONEAREST);
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[round],
         ElementWiseUnaryOp(round, [](ElementwiseT elem_operand) {
           return std::nearbyint(elem_operand);
         }));
-    // Restores default rounding direction.
-    fesetround(curr_direction);
     return OkStatus();
   }
 
@@ -508,9 +480,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             return (ElementwiseT(0) < elem_operand) -
                    (elem_operand < ElementwiseT(0));
           }
-          if constexpr (std::is_same_v<NativeT, bfloat16> ||
-                        std::is_same_v<NativeT, Eigen::half> ||
-                        std::is_floating_point_v<NativeT>) {
+          if constexpr (std::is_floating_point_v<ElementwiseT>) {
             return std::isnan(elem_operand)
                        ? elem_operand
                        : std::copysign(elem_operand != ElementwiseT(0),
@@ -686,34 +656,16 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return OkStatus();
   }
 
-  template <typename NativeT,
-            typename std::enable_if_t<is_complex_v<NativeT>>* = nullptr>
-  Status HandleCbrt(HloInstruction* cbrt) {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[cbrt],
-        ElementWiseUnaryOp(cbrt, [](ElementwiseT elem_operand) -> ElementwiseT {
-          return std::pow(elem_operand, static_cast<ElementwiseT>(1.0 / 3.0));
-          return elem_operand.real() < 0
-                     ? -std::pow(-elem_operand,
-                                 static_cast<ElementwiseT>(1.0 / 3.0))
-                     : std::pow(elem_operand,
-                                static_cast<ElementwiseT>(1.0 / 3.0));
-        }));
-    return OkStatus();
-  }
-
-  template <typename NativeT,
-            typename std::enable_if_t<!is_complex_v<NativeT>>* = nullptr>
-  Status HandleCbrt(HloInstruction* cbrt) {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[cbrt],
-                        ElementWiseUnaryOp(cbrt, [](ElementwiseT elem_operand) {
-                          return std::cbrt(elem_operand);
-                        }));
-    return OkStatus();
-  }
-
   Status HandleCbrt(HloInstruction* cbrt) override {
-    return HandleCbrt<ElementwiseT>(cbrt);
+    if constexpr (!is_complex_v<ElementwiseT>) {
+      TF_ASSIGN_OR_RETURN(
+          parent_->evaluated_[cbrt],
+          ElementWiseUnaryOp(cbrt, [](ElementwiseT elem_operand) {
+            return std::cbrt(elem_operand);
+          }));
+      return OkStatus();
+    }
+    return UnsupportedTypeError(cbrt);
   }
 
   Status HandleRsqrt(HloInstruction* rsqrt) override {
@@ -809,13 +761,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   Status HandleShiftRightArithmetic(HloInstruction* shr) override {
     if constexpr (std::is_integral_v<ElementwiseT> &&
                   !std::is_same_v<ElementwiseT, bool>) {
-      using SignedT = std::make_signed_t<ElementwiseT>;
+      using SignedT = std::make_signed_t<ReturnT>;
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[shr],
           ElementWiseBinaryOp(
               shr, [](ElementwiseT lhs_elem, ElementwiseT rhs_elem) {
                 SignedT lhs_signed = static_cast<SignedT>(lhs_elem);
-                if (IsShiftOutOfBounds<ElementwiseT>(rhs_elem)) {
+                if (IsShiftOutOfBounds<ReturnT>(rhs_elem)) {
                   return lhs_signed < 0 ? static_cast<SignedT>(-1) : 0;
                 } else {
                   return lhs_signed >> rhs_elem;
@@ -829,13 +781,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   Status HandleShiftRightLogical(HloInstruction* shr) override {
     if constexpr (std::is_integral_v<ElementwiseT> &&
                   !std::is_same_v<ElementwiseT, bool>) {
-      using UnsignedT = std::make_unsigned_t<ElementwiseT>;
+      using UnsignedT = std::make_unsigned_t<ReturnT>;
       TF_ASSIGN_OR_RETURN(parent_->evaluated_[shr],
                           ElementWiseBinaryOp(shr, [](ElementwiseT lhs_elem,
                                                       ElementwiseT rhs_elem) {
                             // If shift amount is greater than the number of
                             // bits, then return 0.
-                            if (IsShiftOutOfBounds<ElementwiseT>(rhs_elem)) {
+                            if (IsShiftOutOfBounds<ReturnT>(rhs_elem)) {
                               return static_cast<ElementwiseT>(0);
                             }
                             return static_cast<ElementwiseT>(
@@ -847,8 +799,18 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   Status HandleStochasticConvert(HloInstruction* stochastic_convert) override {
-    // TODO(b/232442915): Add support for stochastic convert.
-    return UnsupportedTypeError(stochastic_convert);
+    const HloInstruction* operand = stochastic_convert->operand(0);
+    const HloInstruction* random = stochastic_convert->operand(1);
+    const Shape& result_shape = stochastic_convert->shape();
+    TF_RET_CHECK(ShapeUtil::SameDimensions(operand->shape(), random->shape()));
+    TF_RET_CHECK(ShapeUtil::SameDimensions(operand->shape(), result_shape));
+
+    const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
+    const Literal& random_literal = parent_->GetEvaluatedLiteralFor(random);
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[stochastic_convert],
+        StochasticConvertOp(operand_literal, random_literal, result_shape));
+    return OkStatus();
   }
 
   Status HandleClamp(HloInstruction* clamp) override {
@@ -909,8 +871,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
     Literal result(result_shape);
 
-    TF_RETURN_IF_ERROR(
-        result.Populate<ReturnT>([&](absl::Span<const int64_t> out_index) {
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+        [&](absl::Span<const int64_t> out_index, int) {
           std::vector<int64_t> from_index(out_index.begin(), out_index.end());
           for (const int64_t dim : reverse_dimensions) {
             from_index[dim] = result_shape.dimensions(dim) - 1 - out_index[dim];
@@ -1006,8 +968,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       const int64_t feature_group_index =
           out_index[output_z_dim] / output_feature_group_size;
 
-      const int64_t depthwise_multiplier =
-          batch_group_count > 1 ? output_z_size / input_batch_size : 1;
+      const int64_t depthwise_multiplier = output_z_size / batch_group_count;
       const int64_t batch_group_index =
           out_index[output_z_dim] / depthwise_multiplier;
 
@@ -1080,9 +1041,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           // This approach works out automatically for 'groups' in batches
           // with group_size > 1, because we already descend down the batch
           // dimension for the 'output_batch_dim' above.
-          lhs_linear_index +=
-              ((batch_group_index * batch_group_size) % input_batch_size) *
-              lhs_dim_multipliers[input_batch_dim];
+          lhs_linear_index += (batch_group_index * batch_group_size) *
+                              lhs_dim_multipliers[input_batch_dim];
 
           lhs_linear_index += iz * lhs_dim_multipliers[input_z_dim];
           int64_t rhs_linear_index = rhs_linear_spatial_index;
@@ -1108,6 +1068,11 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       } while (IndexUtil::BumpIndices(window_shape,
                                       absl::MakeSpan(rhs_spatial_index)));
 
+      if constexpr (std::is_integral_v<ReturnT>) {
+        auto l = static_cast<ElementwiseT>(std::numeric_limits<ReturnT>::min());
+        auto h = static_cast<ElementwiseT>(std::numeric_limits<ReturnT>::max());
+        result_val = std::max(l, std::min(h, result_val));
+      }
       return static_cast<ReturnT>(result_val);
     };
 
@@ -1341,7 +1306,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
               auto rhs_n0 = ToArithmeticSafeType(Nibble0(rhs));
               auto rhs_n1 = ToArithmeticSafeType(Nibble1(rhs));
               result_val += (lhs_n0 * rhs_n0) + (lhs_n1 * rhs_n1);
-
             } else {
               result_val +=
                   ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
@@ -1421,8 +1385,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     ReturnT scalar =
         parent_->GetEvaluatedLiteralFor(pad->operand(1)).Get<ReturnT>({});
     Literal result(pad->shape());
-    TF_RETURN_IF_ERROR(result.Populate<ReturnT>(
-        [&scalar](absl::Span<const int64_t> multi_index) { return scalar; }));
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+        [&scalar](absl::Span<const int64_t> multi_index, int) {
+          return scalar;
+        }));
 
     const Literal& evaluated_operand =
         parent_->GetEvaluatedLiteralFor(pad->operand(0));
@@ -1485,6 +1451,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
 
     switch (start_indices->shape().element_type()) {
+      case S16: {
+        TF_ASSIGN_OR_RETURN(
+            parent_->evaluated_[dynamic_slice],
+            DynamicSlice<int16_t>(
+                operand_literal,
+                absl::MakeConstSpan(dynamic_slice->operands()).subspan(1),
+                result_shape));
+      } break;
       case S32: {
         TF_ASSIGN_OR_RETURN(
             parent_->evaluated_[dynamic_slice],
@@ -1497,6 +1471,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         TF_ASSIGN_OR_RETURN(
             parent_->evaluated_[dynamic_slice],
             DynamicSlice<int64_t>(
+                operand_literal,
+                absl::MakeConstSpan(dynamic_slice->operands()).subspan(1),
+                result_shape));
+      } break;
+      case U16: {
+        TF_ASSIGN_OR_RETURN(
+            parent_->evaluated_[dynamic_slice],
+            DynamicSlice<uint16_t>(
                 operand_literal,
                 absl::MakeConstSpan(dynamic_slice->operands()).subspan(1),
                 result_shape));
@@ -1550,6 +1532,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& update_literal = parent_->GetEvaluatedLiteralFor(update);
 
     switch (start_indices->shape().element_type()) {
+      case S16: {
+        TF_ASSIGN_OR_RETURN(
+            parent_->evaluated_[dynamic_update_slice],
+            DynamicUpdateSlice<int16_t>(
+                operand_literal, update_literal,
+                absl::MakeConstSpan(dynamic_update_slice->operands())
+                    .subspan(2)));
+      } break;
       case S32: {
         TF_ASSIGN_OR_RETURN(
             parent_->evaluated_[dynamic_update_slice],
@@ -1562,6 +1552,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         TF_ASSIGN_OR_RETURN(
             parent_->evaluated_[dynamic_update_slice],
             DynamicUpdateSlice<int64_t>(
+                operand_literal, update_literal,
+                absl::MakeConstSpan(dynamic_update_slice->operands())
+                    .subspan(2)));
+      } break;
+      case U16: {
+        TF_ASSIGN_OR_RETURN(
+            parent_->evaluated_[dynamic_update_slice],
+            DynamicUpdateSlice<uint16_t>(
                 operand_literal, update_literal,
                 absl::MakeConstSpan(dynamic_update_slice->operands())
                     .subspan(2)));
@@ -1660,6 +1658,16 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       }
       case S64: {
         TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int64_t>(map));
+        break;
+      }
+      case F8E5M2: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map],
+                            MapImpl<tsl::float8_e5m2>(map));
+        break;
+      }
+      case F8E4M3FN: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map],
+                            MapImpl<tsl::float8_e4m3fn>(map));
         break;
       }
       case F16: {
@@ -1848,7 +1856,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Shape window_shape = ShapeUtil::MakeShape(
         input_arrays[0]->shape().element_type(), window_dimension_sizes);
 
-    const int num_threads = tsl::port::MaxParallelism() + 1;
+    const int num_threads = ShapeUtil::GetForEachIndexParallelThreadCount() + 1;
     std::vector<std::unique_ptr<HloEvaluator>> embedded_evaluators;
     embedded_evaluators.reserve(num_threads);
     for (int i = 0; i < num_threads; ++i) {
@@ -1968,7 +1976,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     const int64_t rank = operand->shape().rank();
     const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
-    auto func = [&](absl::Span<const int64_t> out_index) {
+    auto func = [&](absl::Span<const int64_t> out_index, int) {
       DimensionVector operand_index(rank);
       for (int64_t i = 0; i < rank; ++i) {
         operand_index[i] =
@@ -1978,12 +1986,12 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     };
 
     Literal result(shape);
-    TF_RETURN_IF_ERROR(result.Populate<ReturnT>(func));
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(func));
     parent_->evaluated_[slice] = std::move(result);
     return OkStatus();
   }
 
-  // Enable CLZ only for int32_t, uint32_t, int64_t and uint64_t.
+  // Enable CLZ only for integer types.
   template <typename NativeT,
             typename std::enable_if_t<!std::is_integral_v<NativeT> ||
                                       std::is_same_v<NativeT, bool>>* = nullptr>
@@ -1995,13 +2003,12 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                                   std::is_integral_v<NativeT> &&
                                   !std::is_same_v<NativeT, bool>>* = nullptr>
   Status HandleClz(HloInstruction* clz) {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[clz],
-        ElementWiseUnaryOp(clz, [](ElementwiseT elem_operand) {
-          using UnsignedElementwiseT = std::make_unsigned_t<ElementwiseT>;
-          return (std::numeric_limits<UnsignedElementwiseT>::digits - 1) -
-                 Log2Floor<UnsignedElementwiseT>(elem_operand);
-        }));
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[clz],
+                        ElementWiseUnaryOp(clz, [](ElementwiseT elem_operand) {
+                          using UnsignedT = std::make_unsigned_t<ReturnT>;
+                          return (std::numeric_limits<UnsignedT>::digits - 1) -
+                                 Log2Floor<UnsignedT>(elem_operand);
+                        }));
     return OkStatus();
   }
 
@@ -2023,8 +2030,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[popcnt],
         ElementWiseUnaryOp(popcnt, [](ElementwiseT elem_operand) {
-          return std::bitset<CHAR_BIT * sizeof elem_operand>(elem_operand)
-              .count();
+          return std::bitset<CHAR_BIT * sizeof(ReturnT)>(elem_operand).count();
         }));
     return OkStatus();
   }
@@ -2033,33 +2039,38 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return HandlePopulationCount<ElementwiseT>(popcnt);
   }
 
-  template <typename NativeT, typename std::enable_if_t<
-                                  std::is_floating_point_v<NativeT>>* = nullptr>
-  Status HandleSin(HloInstruction* sin) {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[sin],
-                        ElementWiseUnaryOp(sin, [](ElementwiseT elem_operand) {
-                          return std::sin(elem_operand);
-                        }));
-    return OkStatus();
-  }
-
-  template <typename NativeT,
-            typename std::enable_if_t<std::is_integral_v<NativeT> ||
-                                      is_complex_v<NativeT>>* = nullptr>
-  Status HandleSin(HloInstruction* sin) {
+  Status HandleSin(HloInstruction* sin) override {
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      TF_ASSIGN_OR_RETURN(
+          parent_->evaluated_[sin],
+          ElementWiseUnaryOp(sin, [](ElementwiseT elem_operand) {
+            return std::sin(elem_operand);
+          }));
+      return OkStatus();
+    }
     return UnsupportedTypeError(sin);
   }
 
-  Status HandleSin(HloInstruction* sin) override {
-    return HandleSin<ElementwiseT>(sin);
+  Status HandleCos(HloInstruction* cos) override {
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      TF_ASSIGN_OR_RETURN(
+          parent_->evaluated_[cos],
+          ElementWiseUnaryOp(cos, [](ElementwiseT elem_operand) {
+            return std::cos(elem_operand);
+          }));
+      return OkStatus();
+    }
+    return UnsupportedTypeError(cos);
   }
 
   template <typename NativeT, typename std::enable_if_t<
                                   std::is_floating_point_v<NativeT>>* = nullptr>
-  Status HandleCos(HloInstruction* cos) {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[cos],
-                        ElementWiseUnaryOp(cos, [](ElementwiseT elem_operand) {
-                          return std::cos(elem_operand);
+  Status HandleTan(HloInstruction* tan) {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[tan],
+                        ElementWiseUnaryOp(tan, [](ElementwiseT elem_operand) {
+                          return std::tan(elem_operand);
                         }));
     return OkStatus();
   }
@@ -2067,17 +2078,16 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   template <typename NativeT,
             typename std::enable_if_t<std::is_integral_v<NativeT> ||
                                       is_complex_v<NativeT>>* = nullptr>
-  Status HandleCos(HloInstruction* cos) {
-    return UnsupportedTypeError(cos);
+  Status HandleTan(HloInstruction* tan) {
+    return UnsupportedTypeError(tan);
   }
 
-  Status HandleCos(HloInstruction* cos) override {
-    return HandleCos<ElementwiseT>(cos);
+  Status HandleTan(HloInstruction* tan) override {
+    return HandleTan<ElementwiseT>(tan);
   }
 
   template <typename NativeT, typename std::enable_if_t<
-                                  std::is_same_v<NativeT, float> ||
-                                  std::is_same_v<NativeT, double>>* = nullptr>
+                                  std::is_floating_point_v<NativeT>>* = nullptr>
   Status HandleReducePrecision(HloInstruction* reduce_precision) {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[reduce_precision],
@@ -2089,7 +2099,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           const uint32_t dest_mantissa_bits = reduce_precision->mantissa_bits();
           const uint32_t dest_exponent_bits = reduce_precision->exponent_bits();
 
-          using Uint = UintWithSizeType<sizeof(NativeT)>;
+          using Uint = UnsignedIntegerTypeForSizeType<sizeof(NativeT)>;
           Uint value_as_int = absl::bit_cast<Uint>(elem);
 
           // Code is based on the CPU/GPU implementation in LLVM-emitting code.
@@ -2186,143 +2196,118 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return HandleReducePrecision<ElementwiseT>(reduce_precision);
   }
 
-  template <typename NativeT,
-            typename std::enable_if_t<
-                std::is_same_v<NativeT, bfloat16> ||
-                std::is_same_v<NativeT, Eigen::half> ||
-                std::is_integral_v<NativeT> || is_complex_v<NativeT> ||
-                std::is_floating_point_v<NativeT>>* = nullptr>
-  Status HandleIota(HloInstruction* instruction) {
+  Status HandleIota(HloInstruction* instruction) override {
     auto* iota = Cast<HloIotaInstruction>(instruction);
-
-    Literal result(iota->shape());
-    ShapeUtil::ForEachIndex(iota->shape(), [&](absl::Span<const int64_t> idx) {
-      result.Set(idx, static_cast<NativeT>(idx[iota->iota_dimension()]));
-      return true;
-    });
-    parent_->evaluated_[iota] = std::move(result);
-    return OkStatus();
-  }
-  template <typename NativeT,
-            typename std::enable_if_t<
-                !(std::is_same_v<NativeT, bfloat16> ||
-                  std::is_same_v<NativeT, Eigen::half> ||
-                  std::is_integral_v<NativeT> || is_complex_v<NativeT> ||
-                  std::is_floating_point_v<NativeT>)>* = nullptr>
-  Status HandleIota(HloInstruction* iota) {
+    if constexpr (std::is_integral_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT> ||
+                  std::is_floating_point_v<ElementwiseT>) {
+      Literal result(iota->shape());
+      ShapeUtil::ForEachIndex(
+          iota->shape(), [&](absl::Span<const int64_t> idx) {
+            result.Set(idx, static_cast<ReturnT>(idx[iota->iota_dimension()]));
+            return true;
+          });
+      parent_->evaluated_[iota] = std::move(result);
+      return OkStatus();
+    }
     return UnsupportedTypeError(iota);
   }
-  Status HandleIota(HloInstruction* iota) override {
-    return HandleIota<ReturnT>(iota);
-  }
 
-  template <typename NativeT,
-            typename std::enable_if_t<!(std::is_integral_v<NativeT> ||
-                                        std::is_floating_point_v<NativeT>)>* =
-                nullptr>
-  Status HandleRng(HloInstruction* random) {
-    return UnsupportedTypeError(random);
-  }
-  template <
-      typename NativeT,
-      typename std::enable_if_t<(std::is_floating_point_v<NativeT>)>* = nullptr>
-  Status HandleRng(HloInstruction* random) {
-    RandomDistribution distribution = random->random_distribution();
-    const auto result_shape = random->shape();
-    Literal result(result_shape);
-
-    switch (distribution) {
-      case RNG_UNIFORM: {
-        const Literal& low =
-            parent_->GetEvaluatedLiteralFor(random->operand(0));
-        const Literal& high =
-            parent_->GetEvaluatedLiteralFor(random->operand(1));
-
-        // std::uniform_real_distribution(a, b) can sometimes return a value
-        // equal to b.  Unclear if this is a spec bug or an implementation bug
-        // or WAI [0] [1] [2].  Anyway for our purposes we want a half-open
-        // interval, so we have to re-sample if we get `b` out.
-        //
-        // [0] https://gcc.gnu.org/bugzilla/show_bug.cgi?id=63176
-        // [1] https://bugs.llvm.org/show_bug.cgi?id=18767
-        // [2] http://open-std.org/JTC1/SC22/WG21/docs/lwg-active.html#2524
-        auto low_val = low.Get<NativeT>({});
-        auto high_val = high.Get<NativeT>({});
-        std::uniform_real_distribution<NativeT> generator(low_val, high_val);
-        TF_RETURN_IF_ERROR(result.Populate<NativeT>(
-            [&](absl::Span<const int64_t> /*indexes*/) {
-              while (true) {
-                NativeT v = generator(parent_->engine_);
-                if (v != high_val) {
-                  return v;
-                }
-              }
-            }));
-        break;
-      }
-      case RNG_NORMAL: {
-        const Literal& mean =
-            parent_->GetEvaluatedLiteralFor(random->operand(0));
-        const Literal& stddev =
-            parent_->GetEvaluatedLiteralFor(random->operand(1));
-
-        std::normal_distribution<NativeT> generator(mean.Get<NativeT>({}),
-                                                    stddev.Get<NativeT>({}));
-
-        TF_RETURN_IF_ERROR(result.Populate<NativeT>(
-            [&](absl::Span<const int64_t> /*indexes*/) {
-              return generator(parent_->engine_);
-            }));
-        break;
-      }
-      default:
-        return UnimplementedStrCat("The distribution ",
-                                   RandomDistribution_Name(distribution),
-                                   " is not implemented.");
-    }
-    parent_->evaluated_[random] = std::move(result);
-    return OkStatus();
-  }
-  template <typename NativeT,
-            typename std::enable_if_t<(std::is_integral_v<NativeT>)>* = nullptr>
-  Status HandleRng(HloInstruction* random) {
-    RandomDistribution distribution = random->random_distribution();
-    const auto result_shape = random->shape();
-    Literal result(result_shape);
-
-    switch (distribution) {
-      case RNG_UNIFORM: {
-        const Literal& low =
-            parent_->GetEvaluatedLiteralFor(random->operand(0));
-        const Literal& high =
-            parent_->GetEvaluatedLiteralFor(random->operand(1));
-
-        // Note std::uniform_int_distribution assumes interval is closed, i.e.,
-        // [low, high], but we want [low, high) instead. Hence high-1 is used as
-        // the upper range.
-        std::uniform_int_distribution<int64_t> generator(
-            low.Get<NativeT>({}), high.Get<NativeT>({}) - 1);
-
-        TF_RETURN_IF_ERROR(result.Populate<NativeT>(
-            [&](absl::Span<const int64_t> /*indexes*/) {
-              return static_cast<NativeT>(generator(parent_->engine_));
-            }));
-        break;
-      }
-      case RNG_NORMAL: {
-        return Unimplemented(
-            "Normal distribution is not supported for integral types.");
-      }
-      default:
-        return UnimplementedStrCat("The distribution ",
-                                   RandomDistribution_Name(distribution),
-                                   " is not implemented.");
-    }
-    parent_->evaluated_[random] = std::move(result);
-    return OkStatus();
-  }
   Status HandleRng(HloInstruction* random) override {
-    return HandleRng<ReturnT>(random);
+    RandomDistribution distribution = random->random_distribution();
+    const auto result_shape = random->shape();
+    Literal result(result_shape);
+
+    if constexpr (std::is_floating_point_v<ElementwiseT>) {
+      switch (distribution) {
+        case RNG_UNIFORM: {
+          const Literal& low =
+              parent_->GetEvaluatedLiteralFor(random->operand(0));
+          const Literal& high =
+              parent_->GetEvaluatedLiteralFor(random->operand(1));
+
+          // std::uniform_real_distribution(a, b) can sometimes return a value
+          // equal to b.  Unclear if this is a spec bug or an implementation bug
+          // or WAI [0] [1] [2].  Anyway for our purposes we want a half-open
+          // interval, so we have to re-sample if we get `b` out.
+          //
+          // [0] https://gcc.gnu.org/bugzilla/show_bug.cgi?id=63176
+          // [1] https://bugs.llvm.org/show_bug.cgi?id=18767
+          // [2] http://open-std.org/JTC1/SC22/WG21/docs/lwg-active.html#2524
+          const ReturnT low_val = low.Get<ReturnT>({});
+          const ReturnT high_val = high.Get<ReturnT>({});
+          std::uniform_real_distribution<ElementwiseT> generator(
+              static_cast<ElementwiseT>(low_val),
+              static_cast<ElementwiseT>(high_val));
+          TF_RETURN_IF_ERROR(result.Populate<ReturnT>(
+              [&](absl::Span<const int64_t> /*indexes*/) {
+                while (true) {
+                  const ReturnT v =
+                      static_cast<ReturnT>(generator(parent_->engine_));
+                  if (v >= low_val && v < high_val) {
+                    return v;
+                  }
+                }
+              }));
+          break;
+        }
+        case RNG_NORMAL: {
+          const Literal& mean =
+              parent_->GetEvaluatedLiteralFor(random->operand(0));
+          const Literal& stddev =
+              parent_->GetEvaluatedLiteralFor(random->operand(1));
+
+          std::normal_distribution<ElementwiseT> generator(
+              static_cast<ElementwiseT>(mean.Get<ReturnT>({})),
+              static_cast<ElementwiseT>(stddev.Get<ReturnT>({})));
+
+          TF_RETURN_IF_ERROR(result.Populate<ReturnT>(
+              [&](absl::Span<const int64_t> /*indexes*/) {
+                return static_cast<ReturnT>(generator(parent_->engine_));
+              }));
+          break;
+        }
+        default:
+          return UnimplementedStrCat("The distribution ",
+                                     RandomDistribution_Name(distribution),
+                                     " is not implemented.");
+      }
+      parent_->evaluated_[random] = std::move(result);
+      return OkStatus();
+    }
+    if constexpr (std::is_integral_v<ElementwiseT>) {
+      switch (distribution) {
+        case RNG_UNIFORM: {
+          const Literal& low =
+              parent_->GetEvaluatedLiteralFor(random->operand(0));
+          const Literal& high =
+              parent_->GetEvaluatedLiteralFor(random->operand(1));
+
+          // Note std::uniform_int_distribution assumes interval is closed,
+          // i.e., [low, high], but we want [low, high) instead. Hence high-1 is
+          // used as the upper range.
+          std::uniform_int_distribution<int64_t> generator(
+              low.Get<ReturnT>({}), high.Get<ReturnT>({}) - 1);
+
+          TF_RETURN_IF_ERROR(result.Populate<ReturnT>(
+              [&](absl::Span<const int64_t> /*indexes*/) {
+                return static_cast<ReturnT>(generator(parent_->engine_));
+              }));
+          break;
+        }
+        case RNG_NORMAL: {
+          return Unimplemented(
+              "Normal distribution is not supported for integral types.");
+        }
+        default:
+          return UnimplementedStrCat("The distribution ",
+                                     RandomDistribution_Name(distribution),
+                                     " is not implemented.");
+      }
+      parent_->evaluated_[random] = std::move(result);
+      return OkStatus();
+    }
+    return UnsupportedTypeError(random);
   }
 
  private:
@@ -2494,8 +2479,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     Literal result(shape);
 
-    TF_RETURN_IF_ERROR(
-        result.Populate<ReturnT>([&](absl::Span<const int64_t> multi_index) {
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+        [&](absl::Span<const int64_t> multi_index, int) {
           return ConvertBinaryFunction(binary_op)(
               lhs_literal.Get<ReturnT>(multi_index),
               rhs_literal.Get<ReturnT>(multi_index));
@@ -2521,14 +2506,139 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     Literal result(shape);
 
-    TF_RETURN_IF_ERROR(
-        result.Populate<ReturnT>([&](absl::Span<const int64_t> multi_index) {
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+        [&](absl::Span<const int64_t> multi_index, int) {
           return ternary_op(lhs_literal.Get<LhsType>(multi_index),
                             rhs_literal.Get<RhsType>(multi_index),
                             ehs_literal.Get<EhsType>(multi_index));
         }));
 
     return std::move(result);
+  }
+
+  template <typename Fp, typename Uint, typename ResultT>
+  StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
+                                        const Literal& random_literal,
+                                        const Shape& result_shape) {
+    std::function<ResultT(Fp, Uint)> stochastic_convert_op =
+        [](Fp operand, Uint random) -> ResultT {
+      bool is_negative = ToSignMagnitude(operand) < 0;
+      if (Eigen::numext::isinf(operand)) {
+        return is_negative ? std::numeric_limits<ResultT>::min()
+                           : std::numeric_limits<ResultT>::max();
+      }
+      if (Eigen::numext::isnan(operand)) {
+        return static_cast<ResultT>(0);
+      }
+      if (operand >= static_cast<Fp>(std::numeric_limits<ResultT>::max())) {
+        return std::numeric_limits<ResultT>::max();
+      }
+      if (operand <= static_cast<Fp>(std::numeric_limits<ResultT>::min())) {
+        return std::numeric_limits<ResultT>::min();
+      }
+
+      operand = Eigen::numext::abs(operand);
+
+      // Gets the integral piece of the floating point input.
+      auto truncated = static_cast<ResultT>(operand);
+
+      // Removes the integral piece to obtain the fractional piece.
+      Fp fractional = operand - static_cast<Fp>(truncated);
+      if (fractional == Fp{0}) {
+        // No rounding necessary.
+        return is_negative ? -truncated : truncated;
+      }
+
+      // Compares fractional values against unsigned random values by
+      // normalizing random values into [0, 1): fractional vs. (random /
+      // random_max). This equals to comparing (fractional * random_max) vs.
+      // random.
+      auto fixed_fractional = static_cast<Uint>(std::ldexp(
+          static_cast<double>(fractional), std::numeric_limits<Uint>::digits));
+
+      // Rounds the integer output up if the fractional pieces is larger than
+      // the input random number.
+      if (random < fixed_fractional) {
+        // This only happens when the operand is in the (min, -max) range and
+        // should be rounded to min.
+        if (truncated == std::numeric_limits<ResultT>::max()) {
+          return std::numeric_limits<ResultT>::min();
+        }
+        truncated++;
+      }
+      return is_negative ? -truncated : truncated;
+    };
+
+    Literal result(result_shape);
+    TF_RETURN_IF_ERROR(
+        result.Populate<ResultT>([&](absl::Span<const int64_t> multi_index) {
+          return stochastic_convert_op(operand_literal.Get<Fp>(multi_index),
+                                       random_literal.Get<Uint>(multi_index));
+        }));
+    return std::move(result);
+  }
+
+  // Converts from primitive types to native types.
+  template <PrimitiveType operand_type, PrimitiveType random_type,
+            PrimitiveType result_type>
+  StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
+                                        const Literal& random_literal,
+                                        const Shape& result_shape) {
+    return StochasticConvertOp<
+        typename primitive_util::PrimitiveTypeToNative<operand_type>::type,
+        typename primitive_util::PrimitiveTypeToNative<random_type>::type,
+        typename primitive_util::PrimitiveTypeToNative<result_type>::type>(
+        operand_literal, random_literal, result_shape);
+  }
+
+  // Evaluates all possible paths of converting to different integers.
+  template <PrimitiveType operand_type, PrimitiveType random_type>
+  StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
+                                        const Literal& random_literal,
+                                        const Shape& result_shape) {
+    switch (result_shape.element_type()) {
+#define CONVERT_IF_RESULT_TYPES_MATCH(type)                        \
+  case (type):                                                     \
+    return StochasticConvertOp<operand_type, random_type, (type)>( \
+        operand_literal, random_literal, result_shape);
+      CONVERT_IF_RESULT_TYPES_MATCH(S32)
+      CONVERT_IF_RESULT_TYPES_MATCH(S16)
+      CONVERT_IF_RESULT_TYPES_MATCH(S8)
+#undef CONVERT_IF_RESULT_TYPES_MATCH
+      default:
+        break;
+    }
+    // TODO(b/232442915): Enable converting big floats to small floats.
+    return Unimplemented(
+        "Stochastically converting from type %s to type %s is not implemented.",
+        PrimitiveType_Name(operand_literal.shape().element_type()),
+        PrimitiveType_Name(result_shape.element_type()));
+  }
+
+  StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
+                                        const Literal& random_literal,
+                                        const Shape& result_shape) {
+    switch (operand_literal.shape().element_type()) {
+      case F16:
+        return StochasticConvertOp<F16, U16>(operand_literal, random_literal,
+                                             result_shape);
+      case BF16:
+        return StochasticConvertOp<BF16, U16>(operand_literal, random_literal,
+                                              result_shape);
+      case F32:
+        return StochasticConvertOp<F32, U32>(operand_literal, random_literal,
+                                             result_shape);
+      case F64:
+        return StochasticConvertOp<F64, U64>(operand_literal, random_literal,
+                                             result_shape);
+      default:
+        break;
+    }
+    // TODO(b/232442915): Enable converting big floats to small floats.
+    return Unimplemented(
+        "Stochastically converting from type %s to type %s is not implemented.",
+        PrimitiveType_Name(operand_literal.shape().element_type()),
+        PrimitiveType_Name(result_shape.element_type()));
   }
 
   template <typename NativeT>
@@ -2546,11 +2656,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 // instantiating it.  We explicitly instantiate this class in the various
 // hlo_evaluator_typed_visitor*.cc files.
 extern template class HloEvaluatorTypedVisitor<bool>;
-extern template class HloEvaluatorTypedVisitor<uint8_t>;
-extern template class HloEvaluatorTypedVisitor<uint32_t>;
+extern template class HloEvaluatorTypedVisitor<uint8_t, uint64_t>;
+extern template class HloEvaluatorTypedVisitor<uint16_t, uint64_t>;
+extern template class HloEvaluatorTypedVisitor<uint32_t, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<uint64_t>;
-extern template class HloEvaluatorTypedVisitor<int8_t>;
-extern template class HloEvaluatorTypedVisitor<int32_t>;
+extern template class HloEvaluatorTypedVisitor<int8_t, int64_t>;
+extern template class HloEvaluatorTypedVisitor<int16_t, int64_t>;
+extern template class HloEvaluatorTypedVisitor<int32_t, int64_t>;
 extern template class HloEvaluatorTypedVisitor<int64_t>;
 extern template class HloEvaluatorTypedVisitor<Eigen::half, float>;
 extern template class HloEvaluatorTypedVisitor<float>;
@@ -2558,6 +2670,8 @@ extern template class HloEvaluatorTypedVisitor<double>;
 extern template class HloEvaluatorTypedVisitor<complex64>;
 extern template class HloEvaluatorTypedVisitor<complex128>;
 extern template class HloEvaluatorTypedVisitor<bfloat16, float>;
+extern template class HloEvaluatorTypedVisitor<tsl::float8_e5m2, float>;
+extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3fn, float>;
 
 }  // namespace xla
 

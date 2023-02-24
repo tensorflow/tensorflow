@@ -857,17 +857,16 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
        "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
        "EnqueueTPUEmbeddingSparseTensorBatch",
        "EnqueueTPUEmbeddingRaggedTensorBatch",
-       "EnqueueTPUEmbeddingArbitraryTensorBatch"
+       "EnqueueTPUEmbeddingArbitraryTensorBatch",
+       "DynamicEnqueueTPUEmbeddingArbitraryTensorBatch",
 
        // SaveV2 and RestoreV2 should be allowed to operate in parallel on
        // multiple hosts.
-       "SaveV2",
-       "RestoreV2"
+       "SaveV2", "RestoreV2",
 
        // InfeedEnqueue are stateful but should not be serialized for the
        // input pipeline
-       "InfeedEnqueue",
-       "InfeedEnqueueTuple"});
+       "InfeedEnqueue", "InfeedEnqueueTuple"});
   // LINT.ThenChange(//tensorflow/python/framework/auto_control_deps.py)
   return exemption->contains(op);
 }
@@ -1230,6 +1229,12 @@ Status InlineFunctionCalls(const GrapplerItem& item,
     fetch_nodes.insert(ParseTensorName(fetch).node());
   }
   NodeNames keep_nodes(item.keep_ops.begin(), item.keep_ops.end());
+  if (item.save_op.size() > 0) {
+    keep_nodes.insert(item.save_op);
+  }
+  if (item.restore_op.size() > 0) {
+    keep_nodes.insert(item.restore_op);
+  }
 
   std::vector<string> inlined_function_names;
 

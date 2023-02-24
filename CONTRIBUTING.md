@@ -243,7 +243,7 @@ There are two ways to run TensorFlow unit tests.
     For a single component e.g. softmax op:
 
     ```bash
-    bazel test ${flags} tensorflow/python/kernel_tests:softmax_op_test
+    bazel test ${flags} tensorflow/python/kernel_tests/nn_ops:softmax_op_test
     ```
 
     For a single/parameterized test e.g. `test_capture_variables` in

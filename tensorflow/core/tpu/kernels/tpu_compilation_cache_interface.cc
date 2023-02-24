@@ -393,7 +393,7 @@ std::string TpuCompilationCacheInterface::FindCacheKey(
   }
   iter = fingerprint_key_map_.find(strings::StrCat(
       subgraph_key.prefix, subgraph_key.guaranteed_const_fingerprint()));
-  if (iter != session_key_map_.end()) {
+  if (iter != fingerprint_key_map_.end()) {
     return iter->second;
   }
   VLOG(1) << "No matching cache key found for key " << subgraph_key.ToString();
@@ -438,7 +438,8 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
 
     // Check if caller has disabled compilation. Set using
     // internal::ScopedTpuCompileDisabler.
-    if (!OpsApiFn()->TpuCompile_IsTpuCompilationEnabledFn()) {
+    if (!stream_executor::tpu::OpsApiFn()
+             ->TpuCompile_IsTpuCompilationEnabledFn()) {
       const std::string error_msg = strings::StrCat(
           "[TpuCompilationDisabled]: Compilation cache miss, but compilation "
           "disabled, session_name(",

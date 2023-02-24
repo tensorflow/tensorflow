@@ -329,6 +329,12 @@ TF_CAPI_EXPORT extern TF_Library* TF_LoadPluggableDeviceLibrary(
 TF_CAPI_EXPORT extern void TF_DeletePluggableDeviceLibraryHandle(
     TF_Library* lib_handle);
 
+// Removes `func_name` from `g`. If `func_name` is not in `g`, an error will be
+// returned.
+TF_CAPI_EXPORT extern void TF_GraphRemoveFunction(TF_Graph* g,
+                                                  const char* func_name,
+                                                  TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

@@ -26,10 +26,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/delegates/utils.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"

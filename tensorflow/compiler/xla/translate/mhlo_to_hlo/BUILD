@@ -1,9 +1,10 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_native_cc_binary")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -35,7 +36,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
     ],
 )
 
@@ -44,7 +45,6 @@ cc_library(
     srcs = ["location_exporter.cc"],
     hdrs = ["location_exporter.h"],
     deps = [
-        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -73,13 +73,14 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/client/lib:quantize",
         "//tensorflow/compiler/xla/client/lib:slicing",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/mlir/utils:error_util",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
-        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/tsl/platform:float8",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -88,14 +89,16 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
-tf_native_cc_binary(
+cc_binary(
     name = "operator_writer_gen",
     srcs = ["operator_writer_gen.cc"],
     deps = [
@@ -111,7 +114,7 @@ gentbl_cc_library(
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [([], "operator_writers.inc")],
     tblgen = ":operator_writer_gen",
-    td_file = "//tensorflow/compiler/xla/mlir_hlo:include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
+    td_file = "//tensorflow/compiler/xla/mlir_hlo:mhlo/IR/hlo_ops.td",
     deps = [
         "//tensorflow/compiler/xla/mlir_hlo:hlo_ops_td_files",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
@@ -162,11 +165,12 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SparseTensorDialect",
+        "@llvm-project//mlir:SparseTensorEnums",
         "@llvm-project//mlir:Support",
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "type_to_shape_test",
     srcs = ["type_to_shape_test.cc"],
     deps = [

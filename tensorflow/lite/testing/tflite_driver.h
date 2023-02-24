@@ -19,14 +19,14 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #if !defined(__APPLE__)
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #endif
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/kernels/register_ref.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/testing/test_runner.h"
 

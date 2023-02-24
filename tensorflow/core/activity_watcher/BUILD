@@ -2,6 +2,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_not_android")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -47,5 +48,6 @@ cc_library(
     deps = [
         ":activity_watcher",
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/strings",
     ],
 )

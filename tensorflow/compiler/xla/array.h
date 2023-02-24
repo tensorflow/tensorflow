@@ -28,6 +28,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -39,29 +40,10 @@ namespace xla {
 
 namespace array_impl {
 
-// conjunction
-//
-// Performs a compile-time logical AND operation on the passed types (which
-// must have  `::value` members convertible to `bool`. Short-circuits if it
-// encounters any `false` members (and does not compare the `::value` members
-// of any remaining arguments).
-//
-// This metafunction is designed to be a drop-in replacement for the C++17
-// `std::conjunction` metafunction.
-template <typename... Ts>
-struct conjunction;
-
-template <typename T, typename... Ts>
-struct conjunction<T, Ts...>
-    : std::conditional<T::value, conjunction<Ts...>, T>::type {};
-
-template <>
-struct conjunction<> : std::true_type {};
-
 // A type trait that is valid when all elements in a parameter pack are of
 // integral type. Not using an alias template to work around MSVC 14.00 bug.
 template <typename... Ts>
-struct pack_is_integral : conjunction<std::is_integral<Ts>...> {};
+struct pack_is_integral : std::conjunction<std::is_integral<Ts>...> {};
 
 // Compares three same-sized vectors elementwise. For each item in `values`,
 // returns false if any of values[i] is outside the half-open range [starts[i],
@@ -138,10 +120,12 @@ class Array {
     CHECK(idx == num_elements());
   }
 
-  // Creates a 2D array of a floating-point type (half, bfloat16, float,
+  // Creates a 2D array of a floating-point type (float8, half, bfloat16, float,
   // or double) from an initializer list of float values.
   template <typename T2, typename = typename std::enable_if<
-                             (std::is_same<T, Eigen::half>::value ||
+                             (std::is_same<T, tsl::float8_e4m3fn>::value ||
+                              std::is_same<T, tsl::float8_e5m2>::value ||
+                              std::is_same<T, Eigen::half>::value ||
                               std::is_same<T, bfloat16>::value ||
                               std::is_same<T, float>::value ||
                               std::is_same<T, double>::value) &&
@@ -345,7 +329,7 @@ class Array {
 
   // Invokes a callback with the (indices, value_ptr) for each cell in the
   // array.
-  void Each(std::function<void(absl::Span<const int64_t>, T*)> f) {
+  void Each(absl::FunctionRef<void(absl::Span<const int64_t>, T*)> f) {
     std::vector<int64_t> index(sizes_.size());
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       f(index, &values_[i]);
@@ -353,7 +337,7 @@ class Array {
   }
 
   // Invokes a callback with the (indices, value) for each cell in the array.
-  void Each(std::function<void(absl::Span<const int64_t>, T)> f) const {
+  void Each(absl::FunctionRef<void(absl::Span<const int64_t>, T)> f) const {
     std::vector<int64_t> index(sizes_.size());
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       f(index, values_[i]);
@@ -363,7 +347,8 @@ class Array {
   // Invokes a callback with the (indices, value_ptr) for each cell in the
   // array. If a callback returns a non-OK status, returns that else returns
   // OkStatus().
-  Status EachStatus(std::function<Status(absl::Span<const int64_t>, T*)> f) {
+  Status EachStatus(
+      absl::FunctionRef<Status(absl::Span<const int64_t>, T*)> f) {
     std::vector<int64_t> index(sizes_.size());
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       Status s = f(index, &values_[i]);
@@ -378,7 +363,7 @@ class Array {
   // If a callback returns a non-OK status, returns that else returns
   // OkStatus().
   Status EachStatus(
-      std::function<Status(absl::Span<const int64_t>, T)> f) const {
+      absl::FunctionRef<Status(absl::Span<const int64_t>, T)> f) const {
     std::vector<int64_t> index(sizes_.size());
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       Status s = f(index, values_[i]);

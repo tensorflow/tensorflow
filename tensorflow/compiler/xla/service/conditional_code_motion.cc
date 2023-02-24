@@ -27,15 +27,15 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
@@ -49,6 +49,64 @@ limitations under the License.
 namespace xla {
 
 namespace conditional_opt {
+
+HloInstruction* CloneNestedTuples(HloInstruction* tuple) {
+  if (!tuple->shape().IsTuple()) {
+    return tuple;
+  }
+  std::vector<HloInstruction*> tuple_users, gte_users;
+  for (int i = 0; i < tuple->shape().tuple_shapes_size(); ++i) {
+    gte_users.push_back(nullptr);
+  }
+  for (auto* tuple_user : tuple->users()) {
+    VLOG(2) << "tuple_user: " << tuple_user->ToString() << "\n";
+    if (tuple_user->opcode() != HloOpcode::kGetTupleElement ||
+        tuple_user == tuple->parent()->root_instruction()) {
+      tuple_users.push_back(tuple_user);
+    } else {
+      gte_users[tuple_user->tuple_index()] = tuple_user;
+    }
+  }
+  // If tuple has no user, it is part of the nested tuple being created.
+  if (!tuple_users.empty() || tuple->user_count() == 0 ||
+      tuple == tuple->parent()->root_instruction()) {
+    VLOG(5) << "CLONING: " << tuple->ToString() << "\n";
+    int64_t tuple_size = tuple->shape().tuple_shapes_size();
+    std::vector<HloInstruction*> operands;
+    operands.reserve(tuple_size);
+    for (int64_t j = 0; j < tuple_size; ++j) {
+      HloInstruction* gte =
+          (gte_users[j] == nullptr)
+              ? tuple->parent()->AddInstruction(
+                    HloInstruction::CreateGetTupleElement(
+                        tuple->shape().tuple_shapes(j), tuple, j))
+              : gte_users[j];
+      CHECK_NE(gte, nullptr);
+      operands.push_back(CloneNestedTuples(gte));
+    }
+    HloInstruction* new_tuple =
+        tuple->parent()->AddInstruction(HloInstruction::CreateTuple(operands));
+
+    VLOG(2) << "new_tuple: " << new_tuple->ToString() << "\n";
+    if (tuple == tuple->parent()->root_instruction()) {
+      tuple->parent()->set_root_instruction(new_tuple,
+                                            /* accept_different_shape =*/true);
+    } else {
+      for (auto tuple_user : tuple_users) {
+        TF_CHECK_OK(tuple->ReplaceUseWithDifferentShape(tuple_user, new_tuple));
+      }
+    }
+    return new_tuple;
+  }
+  // If tuple is not cloned, check its gtes for cloning.
+  for (auto gte_user : gte_users) {
+    if (gte_user != nullptr) {
+      auto gte = CloneNestedTuples(gte_user);
+      CHECK_NE(gte, nullptr);
+    }
+  }
+  return tuple;
+}
 
 class BoundaryVisitor {
  public:
@@ -971,16 +1029,14 @@ Status ReplaceInputAndMoveIntoBranches(
     auto branch_param = branch_comp->parameter_instruction(0);
     auto* param_shape = &user->shape();
     VLOG(2) << "param_shape: " << param_shape->ToString() << "\n";
-    auto original_tuple_size = branch_param->shape().IsTuple()
-                                   ? branch_param->shape().tuple_shapes_size()
-                                   : 0;
-    *branch_param->mutable_shape() = *param_shape;
     VLOG(2) << "branch parameter: " << branch_param->ToString() << "\n";
     // The surrounding tuple containing the new instruction operands.
     HloInstruction* param_tuple = branch_param;
     if (matching_tuple_indices.empty()) {
       VLOG(2) << "The original input is passed in as conditional parameter "
                  "directly.";
+      VLOG(5) << branch_comp->ToString() << "\n";
+      *branch_param->mutable_shape() = *param_shape;
       if (branch_param == branch_comp->root_instruction()) {
         VLOG(2) << "Cloning root user";
         auto new_user =
@@ -996,50 +1052,24 @@ Status ReplaceInputAndMoveIntoBranches(
       // input.
       for (int64_t matching_index = matching_tuple_indices.size() - 1;
            matching_index >= 0; --matching_index) {
-        std::vector<HloInstruction*> tuple_users, gte_users;
+        auto* new_tuple = CloneNestedTuples(branch_param);
+        CHECK_NE(new_tuple, nullptr);
+        VLOG(5) << "Cloned new tuple:" << new_tuple->parent()->ToString()
+                << "\n";
+        std::vector<HloInstruction*> gte_users;
         for (int64_t j = 0; j < branch_param->shape().tuple_shapes_size();
              ++j) {
           gte_users.push_back(nullptr);
         }
         for (auto* param_user : branch_param->users()) {
-          if (param_user->opcode() != HloOpcode::kGetTupleElement) {
-            tuple_users.push_back(param_user);
-          } else {
+          if (param_user->opcode() == HloOpcode::kGetTupleElement) {
             CHECK_LT(param_user->tuple_index(), gte_users.size());
             gte_users[param_user->tuple_index()] = param_user;
           }
         }
 
-        if (!tuple_users.empty() ||
-            branch_param == branch_comp->root_instruction()) {
-          VLOG(2) << "Processing tuple users";
-          std::vector<HloInstruction*> operands;
-          CHECK_LE(original_tuple_size,
-                   branch_param->shape().tuple_shapes_size());
-          operands.reserve(original_tuple_size);
-          for (int64_t j = 0; j < original_tuple_size; ++j) {
-            VLOG(2) << "Checking GTE of tuple at " << j;
-            if (gte_users[j] == nullptr) {
-              gte_users[j] = branch_comp->AddInstruction(
-                  HloInstruction::CreateGetTupleElement(
-                      branch_param->shape().tuple_shapes(j), branch_param, j));
-            }
-            operands.push_back(gte_users[j]);
-          }
-          HloInstruction* new_user = branch_comp->AddInstruction(
-              HloInstruction::CreateTuple(operands));
-          VLOG(2) << "new_user: " << new_user->ToString() << "\n";
-          if (branch_param == branch_comp->root_instruction()) {
-            branch_comp->set_root_instruction(
-                new_user, /* accept_different_shape =*/true);
-          } else {
-            for (auto param_user : tuple_users) {
-              TF_RETURN_IF_ERROR(branch_param->ReplaceUseWithDifferentShape(
-                  param_user, new_user));
-            }
-          }
-        }
         used = false;
+        *branch_param->mutable_shape() = *param_shape;
         const Shape* new_param_shape = nullptr;
         for (auto param_user : gte_users) {
           if (param_user == nullptr) continue;
@@ -1059,7 +1089,6 @@ Status ReplaceInputAndMoveIntoBranches(
                           : new_param_shape->ToString());
           if (new_param_shape == nullptr) {
             branch_param = param_user;
-            original_tuple_size = branch_param->shape().tuple_shapes_size();
             if (matching_index > 0) {
               param_tuple = branch_param;
             }
@@ -1116,6 +1145,23 @@ Status ReplaceInputAndMoveIntoBranches(
             }
           };
       UpdateTupleUsers(inserted);
+    }
+    // We can create invalid get-tuple-element() instructions when the output
+    // is not a tuple. Clean them away here.
+    // The algorithm creates some get-tuple-element() instructions, then when
+    // instructions are added to the conditional branch the algorithm can
+    // replace the operand of the GTE with an array shape. Because we use
+    // ReplaceWithDifferentShape() that's accepted. We used to rely on the
+    // TupleSimplifier to clean that up, but we shouldn't (because cleaning up
+    // invalid patterns is not the job of the TupleSimplifier).
+    // TODO(b/263496154): Change the algorithm in conditional code motion to
+    // avoid having invalid patterns lingering around at the end of the
+    // algorithm.
+    while (branch_comp->root_instruction()->opcode() ==
+               HloOpcode::kGetTupleElement &&
+           !branch_comp->root_instruction()->operand(0)->shape().IsTuple()) {
+      branch_comp->set_root_instruction(
+          branch_comp->root_instruction()->mutable_operands()[0]);
     }
   }
   return OkStatus();

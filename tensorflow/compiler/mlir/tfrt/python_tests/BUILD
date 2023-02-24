@@ -1,6 +1,8 @@
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 licenses(["notice"])
 
 py_strict_test(
@@ -302,6 +304,30 @@ py_strict_test(
         "no_oss",
         "no_pip",
     ],  # TODO(b/201803253): TFRT pybindings not in OSS.
+    deps = [
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_test(
+    name = "tf_reverse_test",
+    srcs = ["tf_reverse_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],  # TODO(b/201803253): TFRT pybindings not in OSS.
+    deps = [
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_test(
+    name = "tf_scatter_test",
+    srcs = ["tf_scatter_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",

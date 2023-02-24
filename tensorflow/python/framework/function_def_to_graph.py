@@ -34,7 +34,8 @@ from tensorflow.python.ops import resource_variable_ops
 def function_def_to_graph(fdef,
                           structured_input_signature=None,
                           structured_outputs=None,
-                          input_shapes=None):
+                          input_shapes=None,
+                          propagate_device_spec=False):
   """Converts a FunctionDef to a FuncGraph (sub-class Graph).
 
   The returned FuncGraph's `name`, `inputs` and `outputs` fields will be set.
@@ -56,6 +57,8 @@ def function_def_to_graph(fdef,
       specified, its length must match length of `fdef.signature.input_arg`. If
       a shape is None, the corresponding input placeholder will have unknown
       shape.
+    propagate_device_spec: Optional. Whether to propagate assigned device
+      information when constructing a new Graph from a FunctionDef.
 
   Returns:
     A FuncGraph.
@@ -84,7 +87,8 @@ def function_def_to_graph(fdef,
 
   with func_graph.as_default():
     # Add all function nodes to the graph.
-    importer.import_graph_def_for_function(graph_def, name="")
+    importer.import_graph_def_for_function(
+        graph_def, name="", propagate_device_spec=propagate_device_spec)
 
     # Initialize fields specific to FuncGraph.
 
@@ -249,18 +253,20 @@ def function_def_to_graph_def(fdef, input_shapes=None):
           grad_def.gradient_func = f.grad_func_name
           graph_def.library.gradient.extend([grad_def])
     else:
-      op_def = default_graph._get_op_def(node_def.op)  # pylint: disable=protected-access
+      op_def = default_graph.op_def_for_type(node_def.op)  # pylint: disable=protected-access
 
     for attr in op_def.attr:
       if attr.type == "func":
         fname = node_def.attr[attr.name].func.name
-        if not is_function(fname):
+        # Custom ops may contain a func attr with an empty fname.
+        if fname and not is_function(fname):
           raise ValueError(f"Function {fname} was not found. Please make sure "
                            "the FunctionDef `fdef` is correct.")
       elif attr.type == "list(func)":
         for fn in node_def.attr[attr.name].list.func:
           fname = fn.name
-          if not is_function(fname):
+          # Custom ops may contain a func attr with an empty fname.
+          if fname and not is_function(fname):
             raise ValueError(f"Function {fname} was not found. Please make "
                              "sure the FunctionDef `fdef` is correct.")
 

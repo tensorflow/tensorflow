@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for static hashtable."""
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import ExtraConvertOptions
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
@@ -41,7 +41,8 @@ def make_static_hashtable_tests(options):
     initializer = tf.lookup.KeyValueTensorInitializer(key_tensor, value_tensor)
     table = tf.lookup.StaticHashTable(initializer, default_value)
 
-    with tf.control_dependencies([tf.initializers.tables_initializer()]):
+    with tf.control_dependencies(
+        [tf.compat.v1.initializers.tables_initializer()]):
       input_value = tf.compat.v1.placeholder(
           dtype=key_dtype, name="input", shape=parameters["input_shape"])
       out = table.lookup(key_tensor)

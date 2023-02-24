@@ -1,7 +1,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -10,38 +10,18 @@ package(
 
 cc_library(
     name = "grpc_coordination_client",
-    srcs = ["grpc_coordination_client.cc"],
     hdrs = ["grpc_coordination_client.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        "//tensorflow/core/protobuf:coordination_service_proto_cc",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/distributed_runtime:call_options",
-        "//tensorflow/core/distributed_runtime/coordination:coordination_client",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_client_cq_tag",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_state",
-    ] + tf_grpc_cc_dependencies(),
+        "//tensorflow/tsl/distributed_runtime/rpc/coordination:grpc_coordination_client",
+    ],
 )
 
 cc_library(
     name = "grpc_coordination_service_impl",
-    srcs = ["grpc_coordination_service_impl.cc"],
     hdrs = ["grpc_coordination_service_impl.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        "//tensorflow/core/platform:thread_annotations",
-        "//tensorflow/core/protobuf:coordination_service_proto_cc",
-        "//tensorflow/core/protobuf:coordination_service_cc_grpc_proto",
-        "//tensorflow/core:framework",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core:platform_base",
-        "//tensorflow/core:ptr_util",
-        "//tensorflow/core/distributed_runtime/coordination:coordination_service_rpc_handler",
-        "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
-        "//tensorflow/tsl/distributed_runtime/rpc:grpc_call",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
-        "//tensorflow/tsl/distributed_runtime/rpc:grpc_util",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
-        "//tensorflow/core/platform",
-    ] + tf_grpc_cc_dependencies(),
+        "//tensorflow/tsl/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
+    ],
 )

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 #include "absl/strings/numbers.h"
@@ -28,8 +29,8 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/flex/buffer_map_util.h"
 #include "tensorflow/lite/delegates/flex/subgraph_resource.h"
@@ -64,7 +65,11 @@ REGISTER_OP("TfLiteSubgraphExecute")
 class TfLiteSubgraphExecute : public OpKernel {
  public:
   explicit TfLiteSubgraphExecute(OpKernelConstruction* ctx)
-      : OpKernel(ctx), tfl_tensors_need_allocation_(true) {}
+      : OpKernel(ctx),
+        tfl_tensors_need_allocation_(true),
+        fill_output_to_input_map_(true),
+        first_run_(true),
+        output_tensors_can_be_shared_(true) {}
 
   void Compute(OpKernelContext* ctx) override {
     // Fetch the TF Lite subgraph to execute.
@@ -82,6 +87,7 @@ class TfLiteSubgraphExecute : public OpKernel {
     mutex_lock lock(resource->GetExclusiveLock());
     tflite::Subgraph& subgraph_selected = resource->GetSubgraphResource();
 
+    OutputToInputMap(ctx, subgraph_selected);
     OP_REQUIRES(ctx, ctx->num_inputs() == subgraph_selected.inputs().size() + 1,
                 errors::InvalidArgument("TF Lite subgraph expects ",
                                         subgraph_selected.inputs().size(),
@@ -90,24 +96,152 @@ class TfLiteSubgraphExecute : public OpKernel {
 
     // Resize input tensors if necessary.
     ResizeInputTensor(ctx, subgraph_selected);
+    SetCustomAllocatorsForInputTensors(ctx, subgraph_selected);
 
     if (tfl_tensors_need_allocation_) {
       OP_REQUIRES(ctx, subgraph_selected.AllocateTensors() == kTfLiteOk,
                   errors::Internal("Failed to call allocate tensors"));
       tfl_tensors_need_allocation_ = false;
+      output_tensors_can_be_shared_ = !subgraph_selected.HasDynamicTensors();
     }
 
+    if (output_tensors_can_be_shared_) {
+      SetCustomAllocatorsForOutputTensors(ctx, subgraph_selected);
+      // The output tensors have been allocated by
+      // `SetCustomAllocatorsForOutputTensors`. They have also been arena
+      // allocated by `AllocateTensors`. Calling `ReleaseMemory` and
+      // `AllocateTensors` allows us to reduce peak memory usage by no longer
+      // allocating the output tensors in the arena. This only needs to be done
+      // once as subsequent calls to `AllocateTensors` will not allocate the
+      // output tensors as they have been set to
+      // `kTfLiteCustom`.
+      if (first_run_) {
+        subgraph_selected.ReleaseMemory();
+        TfLiteStatus status = subgraph_selected.AllocateTensors();
+        if (status != kTfLiteOk) {
+          CleanUpCustomOutputs();
+          ctx->CtxFailure(errors::Internal("Failed to call allocate tensors",
+                                           subgraph_selected.GetName()));
+          return;
+        }
+        first_run_ = false;
+      }
+    }
     // Copy input tensors to subgraph.
     SetSubgraphInput(ctx, subgraph_selected, resource->GetFlexDelegate());
 
-    OP_REQUIRES(ctx, subgraph_selected.Invoke() == kTfLiteOk,
-                errors::Internal("Failed to invoke tflite subgraph"));
+    TfLiteStatus status = subgraph_selected.Invoke();
+    if (status != kTfLiteOk) {
+      CleanUpCustomOutputs();
+      ctx->CtxFailure(errors::Internal("Failed to invoke tflite subgraph",
+                                       subgraph_selected.GetName()));
+      return;
+    }
 
     // Copy tflite results.
     CopyTFLiteSubgraphResult(ctx, subgraph_selected);
   }
 
  private:
+  void CleanUpCustomOutputs() {
+    for (void* ptr : custom_output_ptrs_) {
+      tensorflow::cpu_allocator()->DeallocateRaw(ptr);
+    }
+  }
+  // Identifies subgraph inputs which are also outputs and maps the output
+  // tensor id to the input number. This means that tensors which are both
+  // subgraph inputs and outputs can be handled with zero copies.
+  void OutputToInputMap(OpKernelContext* ctx,
+                        tflite::Subgraph& subgraph_selected) {
+    if (!fill_output_to_input_map_) {
+      return;
+    }
+    for (int i = 0; i < subgraph_selected.inputs().size(); ++i) {
+      int input_idx = subgraph_selected.inputs()[i];
+      for (int j = 0; j < subgraph_selected.outputs().size(); ++j) {
+        int output_idx = subgraph_selected.outputs()[j];
+        if (input_idx == output_idx) {
+          output_to_input_map_[output_idx] = i;
+          break;
+        }
+      }
+    }
+    fill_output_to_input_map_ = false;
+  }
+
+  bool TensorCanBeShared(const TfLiteTensor* tensor) const {
+    if ((tensor->type == kTfLiteResource || tensor->type == kTfLiteVariant ||
+         tensor->type == kTfLiteString)) {
+      return false;
+    }
+    if (tensor->allocation_type != kTfLiteArenaRw &&
+        tensor->allocation_type != kTfLiteArenaRwPersistent &&
+        tensor->allocation_type != kTfLiteCustom) {
+      return false;
+    }
+    return true;
+  }
+
+  // Sets custom allocators for all output tensors which are not Resources,
+  // Variants or Strings. This means that these tensors can share the same
+  // memory as the TF tensors, reducing memcpys and memory usage.
+  void SetCustomAllocatorsForOutputTensors(
+      OpKernelContext* ctx, tflite::Subgraph& subgraph_selected) {
+    custom_output_ptrs_.clear();
+    for (int i = 0; i < subgraph_selected.outputs().size(); ++i) {
+      int tensor_idx = subgraph_selected.outputs()[i];
+      TfLiteTensor* subgraph_output = subgraph_selected.tensor(tensor_idx);
+      if (!TensorCanBeShared(subgraph_output)) {
+        continue;
+      }
+      if (output_to_input_map_.find(tensor_idx) != output_to_input_map_.end()) {
+        continue;
+      }
+      void* ptr = tensorflow::cpu_allocator()->AllocateRaw(
+          EIGEN_MAX_ALIGN_BYTES, subgraph_output->bytes);
+      custom_output_ptrs_.push_back(ptr);
+      TfLiteCustomAllocation allocation{ptr, subgraph_output->bytes};
+      OP_REQUIRES(
+          ctx,
+          subgraph_selected.SetCustomAllocationForTensor(
+              tensor_idx, allocation,
+              // Using kTfLiteCustomAllocationFlagsSkipAlignCheck is
+              // safe as the pointer comes from TensorFlow.
+              // TODO(b/257964109): Remove this flag when fixed.
+              kTfLiteCustomAllocationFlagsSkipAlignCheck) == kTfLiteOk,
+          errors::Internal(
+              "Failed to set custom allocation for output tensor %d, name: %s",
+              tensor_idx, subgraph_output->name));
+    }
+  }
+
+  // Sets custom allocators for all input tensors which are not Resources,
+  // Variants or Strings. This means that these tensors can share the same
+  // memory as the TF tensors, reducing memcpys and memory usage.
+  void SetCustomAllocatorsForInputTensors(OpKernelContext* ctx,
+                                          tflite::Subgraph& subgraph_selected) {
+    for (int i = 0; i < subgraph_selected.inputs().size(); ++i) {
+      int tensor_idx = subgraph_selected.inputs()[i];
+      TfLiteTensor* subgraph_input = subgraph_selected.tensor(tensor_idx);
+      if (!TensorCanBeShared(subgraph_input)) {
+        continue;
+      }
+      const Tensor& tf_tensor = ctx->input(i + 1);
+      TfLiteCustomAllocation allocation{tf_tensor.data(),
+                                        tf_tensor.AllocatedBytes()};
+      OP_REQUIRES(ctx,
+                  subgraph_selected.SetCustomAllocationForTensor(
+                      tensor_idx, allocation,
+                      // Using kTfLiteCustomAllocationFlagsSkipAlignCheck is
+                      // safe as the pointer comes from TensorFlow.
+                      // TODO(b/257964109): Remove this flag when fixed.
+                      kTfLiteCustomAllocationFlagsSkipAlignCheck) == kTfLiteOk,
+                  errors::Internal(
+                      "Failed to set custom allocation for input tensor %d",
+                      tensor_idx));
+    }
+  }
+
   void ResizeInputTensor(OpKernelContext* ctx,
                          tflite::Subgraph& subgraph_selected) {
     for (int i = 0; i < subgraph_selected.inputs().size(); ++i) {
@@ -116,12 +250,15 @@ class TfLiteSubgraphExecute : public OpKernel {
       TfLiteTensor* subgraph_input =
           subgraph_selected.tensor(subgraph_selected.inputs()[i]);
 
-      bool need_resize = false;
-      for (int dim = 0; dim < tf_tensor.shape().dims(); dim++) {
-        if (tf_tensor.shape().dim_size(dim) !=
-            subgraph_input->dims->data[dim]) {
-          need_resize = true;
-          break;
+      // Always resize for unranked tensors.
+      bool need_resize = (subgraph_input->dims->size == 0);
+      if (!need_resize) {
+        for (int dim = 0; dim < tf_tensor.shape().dims(); dim++) {
+          if (tf_tensor.shape().dim_size(dim) !=
+              subgraph_input->dims->data[dim]) {
+            need_resize = true;
+            break;
+          }
         }
       }
       if (need_resize) {
@@ -189,7 +326,7 @@ class TfLiteSubgraphExecute : public OpKernel {
         }
       } else if (subgraph_input->type == kTfLiteVariant) {
         InitializeVariantOrResource(tf_tensor, subgraph_input);
-      } else {
+      } else if (!TensorCanBeShared(subgraph_input)) {
         tensorflow::StringPiece tensor_data = tf_tensor.tensor_data();
         OP_REQUIRES(ctx, subgraph_input->bytes == tensor_data.size(),
                     errors::Internal("tensor size doesn't match"));
@@ -212,20 +349,54 @@ class TfLiteSubgraphExecute : public OpKernel {
       TfLiteTensor* subgraph_output =
           subgraph_selected.tensor(subgraph_selected.outputs()[i]);
 
-      // Forcing a memcpy for each tensor output from the called dataset
-      // subgraph. This is because the callee subgraph might be invoked
+      // If the output is also an input, create the output tensor using the same
+      // buffer as the input tensor so that no copy is needed and to also save
+      // memory.
+      int output_idx = subgraph_selected.outputs()[i];
+      auto it = output_to_input_map_.find(output_idx);
+      if (it != output_to_input_map_.end()) {
+        const Tensor& tf_tensor = ctx->input(it->second + 1);
+        Tensor tensor(tf_tensor);
+        ctx->set_output(i, std::move(tensor));
+        continue;
+      }
+      // Take ownership of the TFLite output ptr where possible, otherwise copy
+      // the output. This is because the callee subgraph might be invoked
       // repeatedly for each item in the dataset, and the result TfLiteTensor's
       // data should be immediately copied into tensorflow::Tensor.
       Tensor tensor;
-      OP_REQUIRES_OK(
-          ctx, tflite::flex::SetTfTensorFromTfLite(subgraph_output, &tensor,
-                                                   /*allow_reusing=*/false));
+      if (output_tensors_can_be_shared_ && TensorCanBeShared(subgraph_output)) {
+        tflite::flex::TfLiteTensorBuffer* buf =
+            new tflite::flex::TfLiteTensorBuffer(subgraph_output, true);
+        buf->TakeOwnershipOfBuffer();
+        tensorflow::TensorShape shape;
+        int num_dims = subgraph_output->dims->size;
+        for (int i = 0; i < num_dims; ++i) {
+          OP_REQUIRES_OK(
+              ctx, shape.AddDimWithStatus(subgraph_output->dims->data[i]));
+        }
+        tensor = tensorflow::TensorCApi::MakeTensor(
+            tflite::flex::GetTensorFlowDataType(subgraph_output->type), shape,
+            buf);
+        buf->Unref();
+      } else {
+        OP_REQUIRES_OK(
+            ctx, tflite::flex::SetTfTensorFromTfLite(subgraph_output, &tensor,
+                                                     /*allow_reusing=*/false));
+      }
       ctx->set_output(i, std::move(tensor));
     }
   }
 
   // Tells if the target subgraph needs to invoko AllocateTensors().
   bool tfl_tensors_need_allocation_;
+  bool fill_output_to_input_map_;
+  // NOLINTNEXTLINE - absl::flat_hash_map increases binary size by 106kB.
+  std::unordered_map<int, int> output_to_input_map_;
+  bool first_run_;
+  bool output_tensors_can_be_shared_;
+  std::vector<void*> custom_output_ptrs_;
+  std::vector<TfLiteAllocationType> original_allocation_type_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TfLiteSubgraphExecute").Device(DEVICE_CPU),

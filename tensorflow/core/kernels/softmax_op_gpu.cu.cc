@@ -34,30 +34,6 @@ namespace tensorflow {
 
 namespace {
 
-template <typename U, typename T>
-__device__ __host__ EIGEN_STRONG_INLINE
-    typename std::enable_if<!std::is_same<T, U>::value, U>::type
-    strict_cast(T t);
-
-template <typename U, typename T>
-__device__ __host__ EIGEN_STRONG_INLINE
-    typename std::enable_if<std::is_same<T, U>::value, U>::type
-    strict_cast(T t) {
-  return t;
-}
-
-template <>
-__device__ __host__ EIGEN_STRONG_INLINE float strict_cast<float, Eigen::half>(
-    Eigen::half t) {
-  return functor::HalfToFloat()(t);
-}
-
-template <>
-__device__ __host__ EIGEN_STRONG_INLINE Eigen::half
-strict_cast<Eigen::half, float>(float t) {
-  return functor::FloatToHalf()(t);
-}
-
 template <typename T>
 struct softmax_traits {
   using accumulator_type = T;
@@ -65,6 +41,11 @@ struct softmax_traits {
 
 template <>
 struct softmax_traits<Eigen::half> {
+  using accumulator_type = float;
+};
+
+template <>
+struct softmax_traits<Eigen::bfloat16> {
   using accumulator_type = float;
 };
 
@@ -84,8 +65,8 @@ __global__ void GenerateNormalizedProb(const T* logits, const U* sum_probs,
     row = tid / num_cols;
     col = tid % num_cols;
     if (row < num_rows && col < num_cols) {
-      input[i] = strict_cast<U>(logits[tid]);
-      max_val[i] = strict_cast<U>(ldg(max_logits + row));
+      input[i] = static_cast<U>(logits[tid]);
+      max_val[i] = static_cast<U>(ldg(max_logits + row));
     }
     tid += gridDim.x * blockDim.x;
   }
@@ -100,7 +81,7 @@ __global__ void GenerateNormalizedProb(const T* logits, const U* sum_probs,
       } else {
         result[i] = exp(input[i] - max_val[i]) / ldg(sum_probs + row);
       }
-      output[tid] = strict_cast<T>(result[i]);
+      output[tid] = static_cast<T>(result[i]);
     }
     tid += gridDim.x * blockDim.x;
   }
@@ -130,14 +111,14 @@ __global__ void GenerateNormalizedProb<Eigen::half, float, 8>(
     for (int i = 0; i < kUnroll; i++) {
       idx[i] = tid * kUnroll + i;
       row[i] = idx[i] / num_cols;
-      input[i] = strict_cast<float>(logits_h[i]);
-      max_val[i] = strict_cast<float>(ldg(max_logits + row[i]));
+      input[i] = static_cast<float>(logits_h[i]);
+      max_val[i] = static_cast<float>(ldg(max_logits + row[i]));
       if (in_log_space) {
         result[i] = input[i] - max_val[i] - log(ldg(sum_probs + row[i]));
       } else {
         result[i] = exp(input[i] - max_val[i]) / ldg(sum_probs + row[i]);
       }
-      output_h[i] = strict_cast<Eigen::half>(result[i]);
+      output_h[i] = static_cast<Eigen::half>(result[i]);
     }
 
     *reinterpret_cast<ulonglong2*>(output + tid * kUnroll) = output_d;
@@ -146,14 +127,14 @@ __global__ void GenerateNormalizedProb<Eigen::half, float, 8>(
       if (tid * kUnroll + i < num_rows * num_cols) {
         idx[i] = tid * kUnroll + i;
         row[i] = idx[i] / num_cols;
-        input[i] = strict_cast<float>(logits[idx[i]]);
-        max_val[i] = strict_cast<float>(ldg(max_logits + row[i]));
+        input[i] = static_cast<float>(logits[idx[i]]);
+        max_val[i] = static_cast<float>(ldg(max_logits + row[i]));
         if (in_log_space) {
           result[i] = input[i] - max_val[i] - log(ldg(sum_probs + row[i]));
         } else {
           result[i] = exp(input[i] - max_val[i]) / ldg(sum_probs + row[i]);
         }
-        output[idx[i]] = strict_cast<Eigen::half>(result[i]);
+        output[idx[i]] = static_cast<Eigen::half>(result[i]);
       }
     }
   }
@@ -169,7 +150,7 @@ struct SubtractAndExpFunctor {
   __host__ __device__ U operator()(const int gid) const {
     // TODO(jamesqin): change to half2 load when inputs are Eigen::half.
     const U diff =
-        strict_cast<U>(logits_[gid] - ldg(max_logits_ + gid / num_cols_));
+        static_cast<U>(logits_[gid] - ldg(max_logits_ + gid / num_cols_));
     return exp(diff);
   }
 
@@ -226,7 +207,6 @@ class SoftmaxOpGPU : public OpKernel {
       DoRowReduction<T, gpuprim::Max, const T*>(
           context, const_cast<T*>(max_logits.flat<T>().data()),
           reinterpret_cast<const T*>(logits_in_.flat<T>().data()), rows, cols);
-
 
       gpuprim::CountingInputIterator<int> counting_iterator(0);
       using InputIterType =

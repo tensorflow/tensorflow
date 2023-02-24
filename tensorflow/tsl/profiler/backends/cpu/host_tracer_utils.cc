@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/profiler/backends/cpu/traceme_recorder.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/profiler/utils/parse_annotation.h"
 #include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
 #include "tensorflow/tsl/profiler/utils/xplane_builder.h"

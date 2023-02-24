@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/common_runtime/optimize_function_graph_utils.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -86,7 +87,7 @@ Status TransformGraphFunction(const std::string& func_name,
     VLOG(1) << "TransformGraphFunction(): " << device_name << " is unknown."
             << " default device for placer is not set.";
 
-  TF_RETURN_IF_ERROR(ProcessFunctionLibraryRuntime::PinArgsAndRets(
+  TF_RETURN_IF_ERROR(PinArgsAndRets(
       input_device_names, output_device_names, device_set, arg_nodes, ret_nodes,
       func_lib_def,
       eager_ctx->AllowSoftPlacement() ? default_device : nullptr));

@@ -24,7 +24,6 @@ from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import layout
 from tensorflow.dtensor.python import tpu_util
 from tensorflow.python.eager import context
-from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -53,10 +52,7 @@ def _make_device_specs(
   if devices is None:
     if device_type is None:
       device_type = 'CPU'
-    devices = [
-        tf_device.DeviceSpec.from_string(d.name)
-        for d in tf_config.list_logical_devices(device_type)
-    ]
+    devices = config.local_devices(device_type)
   else:
     devices = [tf_device.DeviceSpec.from_string(d) for d in devices]
     if device_type is None:
@@ -73,7 +69,8 @@ def _make_device_specs(
 def create_mesh(mesh_dims: Optional[List[Tuple[str, int]]] = None,
                 mesh_name: str = '',
                 devices: Optional[List[str]] = None,
-                device_type: Optional[str] = None) -> layout.Mesh:
+                device_type: Optional[str] = None,
+                use_xla_spmd: bool = layout.USE_XLA_SPMD) -> layout.Mesh:
   """Creates a single-client mesh.
 
   If both `mesh_dims` and `devices` are specified, they must match each otehr.
@@ -89,6 +86,8 @@ def create_mesh(mesh_dims: Optional[List[Tuple[str, int]]] = None,
       of tf.DeviceSpec, e.g. 'CPU:0'. Defaults to all available logical devices.
     device_type: If `devices` is missing, the type of devices to use. Defaults
       to 'CPU'.
+    use_xla_spmd: Boolean when True, will use XLA SPMD instead of
+      DTensor SPMD.
 
   Returns:
     A single-client mesh created from specified or default arguments.
@@ -118,7 +117,8 @@ def create_mesh(mesh_dims: Optional[List[Tuple[str, int]]] = None,
       global_device_ids=global_device_ids,
       local_device_ids=local_device_ids,
       local_devices=device_specs,
-      mesh_name=mesh_name)
+      mesh_name=mesh_name,
+      use_xla_spmd=use_xla_spmd)
   _print_context(
       num_global_devices=len(device_specs),
       num_clients=1,
@@ -129,10 +129,12 @@ def create_mesh(mesh_dims: Optional[List[Tuple[str, int]]] = None,
 
 
 @tf_export('experimental.dtensor.create_distributed_mesh', v1=[])
-def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
-                            mesh_name: str = '',
-                            local_devices: Optional[List[str]] = None,
-                            device_type: Optional[str] = None) -> layout.Mesh:
+def create_distributed_mesh(
+    mesh_dims: List[Tuple[str, int]],
+    mesh_name: str = '',
+    local_devices: Optional[List[str]] = None,
+    device_type: Optional[str] = None,
+    use_xla_spmd: bool = layout.USE_XLA_SPMD) -> layout.Mesh:
   """Creates a distributed mesh.
 
   This is similar to `create_mesh`, but with a different set of arguments to
@@ -151,7 +153,9 @@ def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
       part of tf.DeviceSpec, e.g. 'CPU:0'. Defaults to all available local
       logical devices.
     device_type: Type of device to build the mesh for. Defaults to 'CPU'.
-      Supported values are 'CPU', 'GPU', 'TPU'.
+      Supported values are 'CPU', 'GPU', 'TPU'.6
+    use_xla_spmd: Boolean when True, will use XLA SPMD instead of
+      DTensor SPMD.
 
   Returns:
     A mesh that spans evenly across all DTensor clients in the cluster.
@@ -203,23 +207,33 @@ def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
         global_device_ids=global_device_ids,
         local_device_ids=local_device_ids,
         local_devices=device_specs,
-        mesh_name=mesh_name)
+        mesh_name=mesh_name,
+        use_xla_spmd=use_xla_spmd)
     _print_context(num_global_devices, config.num_clients(), config.client_id(),
                    device_type, mesh)
     return mesh
 
   if device_type.upper() == 'TPU':
-    mesh = tpu_util.create_tpu_mesh(dim_names, shape, mesh_name)
+    mesh = tpu_util.create_tpu_mesh(
+        mesh_dim_names=dim_names,
+        mesh_shape=shape,
+        mesh_name=mesh_name,
+        use_xla_spmd=use_xla_spmd)
     _print_context(
-        api.num_global_devices(device_type), config.num_clients(),
+        config.num_global_devices(device_type), config.num_clients(),
         config.client_id(), device_type, mesh)
     return mesh
 
   raise ValueError(f'Device type {device_type} is not CPU, GPU or TPU')
 
 
+_BARRIER_DICT = {}
+
+
 @tf_export('experimental.dtensor.barrier', v1=[])
-def barrier(mesh: layout.Mesh, barrier_name: Optional[str] = None):
+def barrier(mesh: layout.Mesh,
+            barrier_name: Optional[str] = None,
+            timeout_in_ms: Optional[int] = None):
   """Runs a barrier on the mesh.
 
   Upon returning from the barrier, all operations run before the barrier
@@ -244,7 +258,9 @@ def barrier(mesh: layout.Mesh, barrier_name: Optional[str] = None):
 
   Args:
     mesh: The mesh to run the barrier on.
-    barrier_name: The name of the barrier. mainly used for logging purpose.
+    barrier_name: The name of the barrier. Mainly used for logging purpose.
+    timeout_in_ms: The timeout of the barrier in ms. If omitted, blocks
+      indefinitely till the barrier is reached from all clients.
   """
   if barrier_name is None:
     barrier_name = '(barrier)'
@@ -269,6 +285,16 @@ def barrier(mesh: layout.Mesh, barrier_name: Optional[str] = None):
   # TODO(hthu): This isn't strictly needed but might cause confusing behaviors
   # from users. Consider dropping this if there is a `big` performance hit.
   context.async_wait()
+
+  if context.context().coordination_service:
+    if timeout_in_ms is None:
+      timeout_in_ms = 24 * 60 * 60 * 1000  # 24 hours to stand in for infinite.
+
+    num_calls = _BARRIER_DICT.setdefault(barrier_name, 0)
+    _BARRIER_DICT[barrier_name] = num_calls + 1
+
+    barrier_id = f'{barrier_name}:{num_calls}'
+    context.context().wait_at_barrier(barrier_id, timeout_in_ms)
 
   logging.info('finished running barrier across all clients after '
                'op: %s', barrier_name)

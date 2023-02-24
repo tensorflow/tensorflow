@@ -76,7 +76,7 @@ using mlir::Operation;
 using mlir::SymbolTable;
 using mlir::Value;
 using mlir::func::FuncOp;
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 namespace {
 
@@ -220,7 +220,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
     *node_def->mutable_device() = device_attr.getValue().str();
 
   llvm::ArrayRef<mlir::NamedAttribute> func_arg_i_attrs =
-      func.getArgAttrs(index);
+      mlir::function_interface_impl::getArgAttrs(func, index);
   absl::flat_hash_set<absl::string_view> attrs_to_ignore = {kDeviceAttr,
                                                             kAliasingAttr};
   TF_RETURN_IF_ERROR(ConvertAttributes(func_arg_i_attrs, attrs_to_ignore,
@@ -279,7 +279,8 @@ Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
     TF_RET_CHECK(node_it != nodes_.end())
         << "Use of OpResult encountered before def!";
     if (input_result.getType().isa<mlir::tf_executor::ControlType>()) {
-      graph_->AddControlEdge(node_it->second, dst_node);
+      graph_->AddControlEdge(node_it->second, dst_node,
+                             /*allow_duplicates=*/true);
     } else {
       graph_->AddEdge(node_it->second, input_result.getResultNumber(), dst_node,
                       dst_index);
@@ -769,7 +770,7 @@ StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
   return graphdef;
 }
 
-stream_executor::port::Status ConvertMlirFunctionToFunctionLibraryDef(
+tsl::Status ConvertMlirFunctionToFunctionLibraryDef(
     FuncOp func, const GraphExportConfig& configs, FunctionDef* function_def) {
   Dialect* tf_dialect = func.getContext()->getLoadedDialect("tf");
   FunctionDefLibrary flib;

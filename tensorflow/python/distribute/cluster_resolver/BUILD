@@ -3,6 +3,7 @@
 load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -25,7 +26,7 @@ py_library(
         ":tfconfig_cluster_resolver_py",
         ":tpu_cluster_resolver_py",
         "//tensorflow/python:util",
-    ],
+    ],  # placeholder for google-internal dependencies,,
 )
 
 py_library(

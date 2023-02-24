@@ -7,6 +7,7 @@ load(
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//learning/brain/testing/tf2_migration_tools:__pkg__",
         "//tensorflow:internal",

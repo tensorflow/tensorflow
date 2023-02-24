@@ -24,10 +24,19 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
     licenses = ["notice"],
+)
+
+filegroup(
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "byte_swap_array.cc",
+        "byte_swap_array.h",
+    ],
 )
 
 filegroup(
@@ -62,6 +71,7 @@ filegroup(
 filegroup(
     name = "framework_internal_private_hdrs",
     srcs = [
+        "byte_swap_array.h",
         "command_line_flags.h",
         "device_name_utils.h",
         "env_var.h",
@@ -75,7 +85,6 @@ filegroup(
 filegroup(
     name = "framework_internal_impl_srcs",
     srcs = [
-        "device_name_utils.cc",
         "use_cudnn.cc",
     ],
 )
@@ -112,6 +121,17 @@ filegroup(
         "ptr_util.h",
         "stat_summarizer_options.h",
         "use_cudnn.h",
+    ],
+)
+
+cc_library(
+    name = "byte_swap_array",
+    srcs = ["byte_swap_array.cc"],
+    hdrs = ["byte_swap_array.h"],
+    deps = [
+        "//tensorflow/tsl/platform:byte_order",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
     ],
 )
 
@@ -206,7 +226,6 @@ cc_library(
         "//tensorflow/tsl:__subpackages__",
     ],
     deps = [
-        "//tensorflow/core/util:test_log_proto_impl_cc",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:errors",
@@ -214,6 +233,7 @@ cc_library(
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:str_util",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/protobuf:test_log_proto_cc",
     ],
 )
 
@@ -228,7 +248,7 @@ cc_library(
     ],
     copts = tsl_copts(),
     visibility = [
-        "//tensorflow:internal",
+        "//tensorflow/tsl:internal",
     ],
 )
 

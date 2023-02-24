@@ -109,6 +109,7 @@ static void EmitOptionBuilders(const RecordKeeper &record_keeper,
     SmallVector<std::string, 8> options;
     // Add options due to attributes (not-derived).
     auto *arg_values = def->getValueAsDag("arguments");
+    mlir::tblgen::Operator op(*def);
     for (unsigned i = 0, e = arg_values->getNumArgs(); i != e; ++i) {
       auto arg = arg_values->getArg(i);
       DefInit *arg_def = dyn_cast<DefInit>(arg);
@@ -130,8 +131,9 @@ static void EmitOptionBuilders(const RecordKeeper &record_keeper,
         if (IsLstmOp(op_name) && arg_name.take_back(12) == "intermediate")
           continue;
         os << formatv(
-            "  auto {0} = Convert{1}ForOptionWriter(op.{0}(), fbb);\n",
-            arg_name, mlir::tblgen::Attribute(arg_def).getAttrDefName());
+            "  auto {0} = Convert{1}ForOptionWriter(op.{2}(), fbb);\n",
+            arg_name, mlir::tblgen::Attribute(arg_def).getAttrDefName(),
+            op.getGetterName(arg_name));
         options.push_back(arg_name.str());
       }
     }
@@ -146,8 +148,9 @@ static void EmitOptionBuilders(const RecordKeeper &record_keeper,
                 "unsupported attribute modelling, only single class expected");
           }
           os << formatv(
-              "  auto {0} = Convert{1}ForOptionWriter(op.{0}(), fbb);\n",
-              val.getName(), record->getClasses()[0]->getName());
+              "  auto {0} = Convert{1}ForOptionWriter(op.{2}(), fbb);\n",
+              val.getName(), record->getClasses()[0]->getName(),
+              op.getGetterName(val.getName()));
           options.push_back(std::string(val.getName()));
         }
       }
@@ -246,7 +249,7 @@ static void EmitGetBuiltinOpCode(const std::vector<Record *> &defs,
        << "    return tflite::BuiltinOperator_" << operator_name << ";\n";
   }
 
-  os << "  return llvm::None;\n"
+  os << "  return std::nullopt;\n"
         "}\n";
 }
 
@@ -332,7 +335,7 @@ static void EmitBuildOperator(const std::vector<Record *> &defs,
        << "fbb);\n";
   }
 
-  os << "  return llvm::None;\n"
+  os << "  return std::nullopt;\n"
         "}\n";
 }
 
@@ -496,7 +499,7 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os, RecordKeeper &records) {
        << "::VerifyTflRuntimeConstraints(::mlir::Operation *op, bool "
           "emit_error_on_verify_fail) {\n";
     os << "  auto top = cast<" << op.getCppClassName() << ">(op); (void)top;\n";
-    verify_ctx.withOp("top");
+    verify_ctx.addSubst("_op", "top");
 
     for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
       auto &value = op.getOperand(i);

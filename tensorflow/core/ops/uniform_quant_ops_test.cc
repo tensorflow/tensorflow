@@ -28,6 +28,8 @@ namespace {
 
 constexpr int32_t kInt8Min = std::numeric_limits<int8_t>::min();
 constexpr int32_t kInt8Max = std::numeric_limits<int8_t>::max();
+constexpr int32_t kInt32Min = std::numeric_limits<int32_t>::min();
+constexpr int32_t kInt32Max = std::numeric_limits<int32_t>::max();
 
 }  // namespace
 
@@ -68,42 +70,114 @@ TEST(UniformQuantizedOpsTest, UniformQuantizedDotHybridShapeInference) {
 }
 
 TEST(UniformQuantizedOpsTest,
-     UniformQuantizedConvolutionHybridShapeInferencePerTensor) {
-  ShapeInferenceTestOp op("UniformQuantizedConvolutionHybrid");
-  TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantizedConvolutionHybrid")
+     UniformQuantizedConvolutionShapeInferencePerTensor) {
+  ShapeInferenceTestOp op("UniformQuantizedConvolution");
+  TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantizedConvolution")
                    .Input(FakeInput(DT_QINT8))
                    .Input(FakeInput(DT_QINT8))
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_INT32))
-                   .Attr("Tlhs", DT_QINT8)
-                   .Attr("Trhs", DT_QINT8)
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("Tin", DT_QINT8)
                    .Attr("Tout", DT_QINT32)
+                   .Attr("lhs_quantization_min_val", kInt8Min)
+                   .Attr("lhs_quantization_max_val", kInt8Max)
                    .Attr("rhs_quantization_min_val", kInt8Min)
                    .Attr("rhs_quantization_max_val", kInt8Max)
+                   .Attr("output_quantization_min_val", kInt32Min)
+                   .Attr("output_quantization_max_val", kInt32Max)
                    .Attr("padding", "VALID")
                    .Finalize(&op.node_def));
   // Uses default Attrs (and default conv_params settings).
-  //
-  // batch_group_count = 1
   // feature_group_count = 1
+  // batch_group_count = 1
   // strides = [1, 1]
   // dimension_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
-  // lhs_dilation = [1, 1]
-  // rhs_dilation = [1, 1]
 
-  INFER_OK(op, "[2,3,40,50];[6,3,4,5];[];[]", "[2,6,37,46]");
+  INFER_OK(op, "[2,3,40,50];[6,3,4,5];[];[];[];[];[];[]", "[2,6,37,46]");
 
-  INFER_OK(op, "?;?;[];[]", "?");
-  INFER_OK(op, "[2,3,40,50];?;[];[]", "[?,?,?,?]");
-  INFER_OK(op, "?;[6,3,4,5];[];[]", "[?,?,?,?]");
-  INFER_OK(op, "[?,3,40,50];[6,3,4,5];[];[]", "[?,?,?,?]");
-
-  // lhs and rhs must have same rank.
-  INFER_ERROR("lhs and rhs must have same rank", op,
-              "[2,3,40,50];[6,3,4];[];[]");
+  // lhs feature dimension size and rhs input feature dimension size must match.
+  INFER_ERROR("", op, "[2,3,40,50];[6,9,4,5];[];[];[];[];[];[]");
+  // lhs scales and zero_points must be scalar tensors.
+  INFER_ERROR("", op, "[2,3,40,50];[6,3,4,5];[2];[2];[];[];[];[]");
   // scales and zero_points must have same rank.
   INFER_ERROR("scales and zero_points must have same rank.", op,
-              "[2,3,40,50];[6,3,4,5];[6];[]");
+              "[2,3,40,50];[6,3,4,5];[];[];[6];[];[];[]");
+  // Output scales and zero_points must be scalar tensors is rhs scales and
+  // zero_points are scalar tensors.
+  INFER_ERROR("", op, "[2,3,40,50];[6,3,4,5];[];[];[];[];[12];[12]");
+}
+
+TEST(UniformQuantizedOpsTest,
+     UniformQuantizedConvolutionShapeInferencePerChannelRhs) {
+  ShapeInferenceTestOp op("UniformQuantizedConvolution");
+  TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantizedConvolution")
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("Tin", DT_QINT8)
+                   .Attr("Tout", DT_QINT32)
+                   .Attr("rhs_quantization_axis", 0)
+                   .Attr("lhs_quantization_min_val", kInt8Min)
+                   .Attr("lhs_quantization_max_val", kInt8Max)
+                   .Attr("rhs_quantization_min_val", kInt8Min)
+                   .Attr("rhs_quantization_max_val", kInt8Max)
+                   .Attr("output_quantization_min_val", kInt32Min)
+                   .Attr("output_quantization_max_val", kInt32Max)
+                   .Attr("padding", "VALID")
+                   .Finalize(&op.node_def));
+  // Uses default Attrs (and default conv_params settings).
+  // feature_group_count = 1
+  // batch_group_count = 1
+  // strides = [1, 1]
+  // dimension_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
+
+  INFER_OK(op, "[2,3,40,50];[6,3,4,5];[];[];[6];[6];[];[]", "[2,6,37,46]");
+
+  // If rhs scales and zero_points are not scalar tensors, both of their
+  // dim_size[0] must be equal to rhs output feature dimension size.
+  INFER_ERROR("", op, "[2,3,40,50];[6,3,4,5];[];[];[12];[12];[];[]");
+}
+
+TEST(UniformQuantizedOpsTest,
+     UniformQuantizedConvolutionShapeInferencePerChannelRhsAndOutput) {
+  ShapeInferenceTestOp op("UniformQuantizedConvolution");
+  TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantizedConvolution")
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("Tin", DT_QINT8)
+                   .Attr("Tout", DT_QINT32)
+                   .Attr("rhs_quantization_axis", 0)
+                   .Attr("output_quantization_axis", 1)
+                   .Attr("lhs_quantization_min_val", kInt8Min)
+                   .Attr("lhs_quantization_max_val", kInt8Max)
+                   .Attr("rhs_quantization_min_val", kInt8Min)
+                   .Attr("rhs_quantization_max_val", kInt8Max)
+                   .Attr("output_quantization_min_val", kInt32Min)
+                   .Attr("output_quantization_max_val", kInt32Max)
+                   .Attr("padding", "VALID")
+                   .Finalize(&op.node_def));
+  // Uses default Attrs (and default conv_params settings).
+  // feature_group_count = 1
+  // batch_group_count = 1
+  // strides = [1, 1]
+  // dimension_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
+
+  INFER_OK(op, "[2,3,40,50];[6,3,4,5];[];[];[6];[6];[6];[6]", "[2,6,37,46]");
 }
 
 TEST(UniformQuantizedOpsTest,

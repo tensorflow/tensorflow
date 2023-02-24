@@ -20,8 +20,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
-#include "absl/types/span.h"
-#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/support/ref_count.h"  // from @tf_runtime
@@ -212,7 +210,7 @@ class PjRtFuture {
     CHECK(IsValid());
     if (!promise_ref_.IsAvailable()) {
       const auto keys = on_block_start_();
-      tfrt::Await({promise_ref_.GetAsyncValue()});
+      BlockUntilReady(promise_ref_.GetAsyncValue());
       on_block_end_(keys);
     }
     DCHECK(promise_ref_.IsConcrete());
