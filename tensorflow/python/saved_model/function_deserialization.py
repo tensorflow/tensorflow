@@ -153,9 +153,8 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto):
       saved_object_graph_pb2.FunctionSpec.JitCompile.OFF: False,
   }.get(function_spec_proto.jit_compile)
 
-  return function_spec_lib.FunctionSpec(
+  return function_spec_lib.FunctionSpec.from_fullargspec_and_signature(
       fullargspec=fullargspec,
-      is_bound_method=False,
       input_signature=input_signature,
       jit_compile=jit_compile)
 

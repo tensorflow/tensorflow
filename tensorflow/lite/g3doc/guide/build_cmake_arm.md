@@ -148,20 +148,23 @@ Raspberry Pi Zero.
 
 #### Download toolchain
 
-These commands install arm-rpi-linux-gnueabihf toolchain under
-${HOME}/toolchains.
+These commands install gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf toolchain
+under ${HOME}/toolchains.
 
 ```sh
-curl -L https://github.com/rvagg/rpi-newer-crosstools/archive/eb68350c5c8ec1663b7fe52c742ac4271e3217c5.tar.gz -o rpi-toolchain.tar.gz
-tar xzf rpi-toolchain.tar.gz -C ${HOME}/toolchains
-mv ${HOME}/toolchains/rpi-newer-crosstools-eb68350c5c8ec1663b7fe52c742ac4271e3217c5 ${HOME}/toolchains/arm-rpi-linux-gnueabihf
+curl -LO https://storage.googleapis.com/mirror.tensorflow.org/developer.arm.com/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz
+mkdir -p ${HOME}/toolchains
+tar xvf gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz -C ${HOME}/toolchains
 ```
+
+**Note:** Binaries built with GCC 8.3 require glibc 2.28 or higher. If your
+target has lower glibc version, you need to use older GCC toolchain.
 
 #### Run CMake
 
 ```sh
-ARMCC_PREFIX=${HOME}/toolchains/arm-rpi-linux-gnueabihf/x64-gcc-6.5.0/arm-rpi-linux-gnueabihf/bin/arm-rpi-linux-gnueabihf-
-ARMCC_FLAGS="-march=armv6 -mfpu=vfp -funsafe-math-optimizations"
+ARMCC_FLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=hard -funsafe-math-optimizations"
+ARMCC_PREFIX=${HOME}/toolchains/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/bin/arm-linux-gnueabihf-
 cmake -DCMAKE_C_COMPILER=${ARMCC_PREFIX}gcc \
   -DCMAKE_CXX_COMPILER=${ARMCC_PREFIX}g++ \
   -DCMAKE_C_FLAGS="${ARMCC_FLAGS}" \

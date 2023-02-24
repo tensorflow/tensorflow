@@ -499,6 +499,8 @@ Status PyArray::RegisterTypes(py::module& m) {
         return self;
       },
       py::is_method(type));
+  type.attr("is_ready") = py::cpp_function(
+      [](PyArray self) { return self.IsReady(); }, py::is_method(type));
   type.attr("is_deleted") =
       py::cpp_function(&PyArray::IsDeleted, py::is_method(type));
   type.attr("traceback") = jax::property_readonly(&PyArray::traceback);

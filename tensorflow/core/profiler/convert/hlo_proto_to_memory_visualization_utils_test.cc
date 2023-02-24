@@ -38,10 +38,12 @@ static constexpr char kHLOBase[] = R"pb(
       name: "test_computation"
       instructions {
         name: "fusion.1"
+        id: 0
         shape { tuple_shapes { element_type: U64 } }
       }
       instructions {
         name: "fusion.2"
+        id: 1
         shape { tuple_shapes { element_type: U64 } }
       }
     }
@@ -58,13 +60,13 @@ static constexpr char kHLOBase[] = R"pb(
       id: 1
       size: 524288
       color: 0
-      defined_at { instruction_name: "fusion.1" shape_index: 0 }
+      defined_at { instruction_id: 0 shape_index: 0 }
     }
     logical_buffers {
       id: 2
       size: 524288
       color: 0
-      defined_at { instruction_name: "fusion.2" shape_index: 0 }
+      defined_at { instruction_id: 1 shape_index: 0 }
     }
     heap_simulator_traces { %s }
   }
@@ -104,6 +106,7 @@ TEST(MemoryViewerTest, TestHeapSimulatorTraceShareWith_2) {
       PreprocessResult preprocess_result,
       ConvertHloProtoToPreprocessResult(hlo_proto, /*small_buffer_size=*/0));
   EXPECT_EQ(preprocess_result.peak_heap_mib(), 0.5);
+  EXPECT_FALSE(preprocess_result.allocation_timeline().empty());
 }
 
 }  // namespace

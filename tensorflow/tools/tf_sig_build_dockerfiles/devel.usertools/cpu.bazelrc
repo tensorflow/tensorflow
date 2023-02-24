@@ -10,7 +10,7 @@ build:sigbuild_remote_cache_push --remote_cache="https://storage.googleapis.com/
 # Change the value of CACHEBUSTER when upgrading the toolchain, or when testing
 # different compilation methods. E.g. for a PR to test a new CUDA version, set
 # the CACHEBUSTER to the PR number.
-build --action_env=CACHEBUSTER=482629424
+build --action_env=CACHEBUSTER=501872366
 
 # Use Python 3.X as installed in container image
 build --action_env PYTHON_BIN_PATH="/usr/bin/python3"
@@ -50,8 +50,8 @@ test --test_summary=short
 # Pass --config=nonpip to run the same suite of tests. If you want to run just
 # one test for investigation, you don't need --config=nonpip; just run the
 # bazel test invocation as normal.
-test:nonpip_filters --test_tag_filters=-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
-test:nonpip_filters --build_tag_filters=-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+test:nonpip_filters --test_tag_filters=-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:nonpip_filters --build_tag_filters=-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310
 test:nonpip_filters --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
 test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
@@ -74,8 +74,8 @@ test:pip_venv --python_path="/bazel_pip/bin/python3"
 test:pip_venv --define=no_tensorflow_py_deps=true
 test:pip --config=pip_venv
 # Yes, we don't exclude the gpu tests on pip for some reason.
-test:pip_filters --test_tag_filters=-nopip,-no_pip,-no_oss,-oss_serial,-v1only
-test:pip_filters --build_tag_filters=-nopip,-no_pip,-no_oss,-oss_serial,-v1only
+test:pip_filters --test_tag_filters=-nopip,-no_pip,-no_oss,-oss_serial,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:pip_filters --build_tag_filters=-nopip,-no_pip,-no_oss,-oss_serial,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310
 test:pip_filters --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
 test:pip --config=pip_filters -- //bazel_pip/tensorflow/... -//bazel_pip/tensorflow/python/integration_testing/... -//bazel_pip/tensorflow/compiler/tf2tensorrt/... -//bazel_pip/tensorflow/compiler/xrt/... -//bazel_pip/tensorflow/core/tpu/... -//bazel_pip/tensorflow/lite/... -//tensorflow/tools/toolchains/...
 

@@ -31,6 +31,7 @@ from tensorflow.python.trackable import base
 from tensorflow.python.trackable import constants
 from tensorflow.python.trackable import python_state
 from tensorflow.python.trackable import trackable_utils
+from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util import object_identity
 
 
@@ -152,12 +153,6 @@ class CheckpointPosition(object):
           python_positions: list,
           registered_savers: dict)
     """
-    # pylint:disable=g-import-not-at-top
-    # There are circular dependencies between Trackable and SaveableObject,
-    # so we must import it here.
-    # TODO(b/224069573): Remove this code from Trackable.
-    from tensorflow.python.training.saving import saveable_object_util
-    # pylint:enable=g-import-not-at-top
 
     recorded_registered_saver = self.get_registered_saver_name()
     if not (self.object_proto.attributes or recorded_registered_saver):
@@ -507,12 +502,6 @@ def restore_nodes(save_path, nodes_to_restore):
     raise ValueError(
         "Expecting a dictionary of node_id to Trackable for nodes_to_restore.")
 
-  # pylint:disable=g-import-not-at-top
-  # There are circular dependencies between Trackable and SaveableObject,
-  # so we must import it here.
-  from tensorflow.python.training.saving import saveable_object_util
-  # pylint:enable=g-import-not-at-top
-
   ckpt_view = checkpoint_view.CheckpointView(save_path)
   ckpt_view_descendants = ckpt_view.descendants()
   for node_id, trackable in nodes_to_restore.items():
@@ -539,7 +528,8 @@ def restore_nodes(save_path, nodes_to_restore):
         current_trackable)
     if not trackable_has_serialize_to_tensor:
       if not node.attributes:
-        if current_trackable._gather_saveables_for_checkpoint():  # pylint: disable=protected-access
+        if saveable_object_util.saveable_objects_from_trackable(
+            current_trackable):
           raise ValueError(
               f"Trackable {current_trackable} expects checkpointed values but "
               "checkpoint does not contain serialized tensors for node_id: "

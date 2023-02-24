@@ -46,18 +46,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLhloLegalizeToAffinePass();
 // Lowers from LHLO dialect to GPU dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeToGpuPass();
 
-// Fuses linalg ops obtained after LHLO lowering. To enable fusion,
-// operations are first tiled.
-//
-// When 'use_parallel_loops' is set, the tiling will use scf.parallel
-// operations. Otherwise, scf.for operations are used.
-//
-// 'tile_sizes' provides the tile sizes to use for tiling. If the linalg
-// operation has more dimensions than tile sizes provided, 1 is used as
-// default.
-std::unique_ptr<OperationPass<func::FuncOp>> createLhloFuseLinalgPass(
-    bool useParallelLoops = false, llvm::ArrayRef<unsigned> tileSizes = {});
-
 // Lowers from LHLO dialect to parallel loops.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeLhloToParallelLoopsPass();

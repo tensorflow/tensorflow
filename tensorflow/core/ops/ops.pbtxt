@@ -4201,6 +4201,10 @@ op {
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -8133,6 +8137,72 @@ op {
   is_stateful: true
 }
 op {
+  name: "CollectiveAllToAllV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "group_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "group_key"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "instance_key"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "ordering_token"
+    type: DT_RESOURCE
+    number_attr: "Nordering_token"
+  }
+  output_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_HALF
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "communication_hint"
+    type: "string"
+    default_value {
+      s: "auto"
+    }
+  }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "Nordering_token"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  is_stateful: true
+  is_distributed_communication: true
+}
+op {
   name: "CollectiveAllToAllV3"
   input_arg {
     name: "input"
@@ -8715,6 +8785,101 @@ op {
   is_distributed_communication: true
 }
 op {
+  name: "CollectiveReduceScatterV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "group_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "group_key"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "instance_key"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "ordering_token"
+    type: DT_RESOURCE
+    number_attr: "Nordering_token"
+  }
+  output_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_HALF
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "merge_op"
+    type: "string"
+    allowed_values {
+      list {
+        s: "Min"
+        s: "Max"
+        s: "Mul"
+        s: "Add"
+      }
+    }
+  }
+  attr {
+    name: "final_op"
+    type: "string"
+    allowed_values {
+      list {
+        s: "Id"
+        s: "Div"
+      }
+    }
+  }
+  attr {
+    name: "communication_hint"
+    type: "string"
+    default_value {
+      s: "auto"
+    }
+  }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "Nordering_token"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "max_subdivs_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  is_stateful: true
+  is_distributed_communication: true
+}
+op {
   name: "CollectiveReduceV2"
   input_arg {
     name: "input"
@@ -9106,6 +9271,18 @@ op {
     name: "batch_size"
     type: DT_INT64
   }
+}
+op {
+  name: "ComputeDedupDataTupleMask"
+  output_arg {
+    name: "output_shape"
+    type: DT_INT32
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  is_stateful: true
 }
 op {
   name: "Concat"
@@ -12317,6 +12494,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
@@ -26238,6 +26416,10 @@ op {
         type: DT_DOUBLE
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -27966,6 +28148,13 @@ op {
         type: DT_BFLOAT16
         type: DT_FLOAT
       }
+    }
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -40498,6 +40687,25 @@ op {
   }
 }
 op {
+  name: "RelayoutGrad"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "forward_input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
   name: "Relu"
   input_arg {
     name: "features"
@@ -48800,6 +49008,68 @@ op {
   }
 }
 op {
+  name: "SegmentMaxV2"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "segment_ids"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "num_segments"
+    type_attr: "Tnumsegments"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_INT64
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tnumsegments"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "SegmentMean"
   input_arg {
     name: "data"
@@ -48897,6 +49167,68 @@ op {
   }
 }
 op {
+  name: "SegmentMinV2"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "segment_ids"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "num_segments"
+    type_attr: "Tnumsegments"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_INT64
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tnumsegments"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "SegmentProd"
   input_arg {
     name: "data"
@@ -48940,6 +49272,75 @@ op {
   attr {
     name: "Tindices"
     type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "SegmentProdV2"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "segment_ids"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "num_segments"
+    type_attr: "Tnumsegments"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tnumsegments"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
     allowed_values {
       list {
         type: DT_INT32
@@ -55013,6 +55414,13 @@ op {
     name: "tuple_mask"
     type: "string"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "SplitV"
@@ -58070,6 +58478,10 @@ op {
   }
 }
 op {
+  name: "SyncDevice"
+  is_stateful: true
+}
+op {
   name: "TFRecordDataset"
   input_arg {
     name: "filenames"
@@ -60442,6 +60854,13 @@ op {
   attr {
     name: "element_dtype"
     type: "type"
+  }
+  attr {
+    name: "resize_if_index_out_of_bounds"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
 }
 op {
@@ -63488,6 +63907,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }

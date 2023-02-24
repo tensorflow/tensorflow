@@ -42,6 +42,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_C_COMMON_H_
 #define TENSORFLOW_LITE_CORE_C_COMMON_H_
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -648,23 +649,26 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
 TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst);
 
 // Change the size of the memory block owned by `tensor` to `num_bytes`.
-// Tensors with allocation types other than kTfLiteDynamic will be ignored.
+// Tensors with allocation types other than `kTfLiteDynamic` will be ignored and
+// a kTfLiteOk will be returned.
 // `tensor`'s internal data buffer will be assigned a pointer
 // which can safely be passed to free or realloc if `num_bytes` is zero.
-// Behaviour is undefined if `tensor` is NULL.
 // If `preserve_data` is true, tensor data will be unchanged in the range from
-// the start of the region up to the minimum of the old and new sizes.
-void TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
-                                 bool preserve_data);
+// the start of the region up to the minimum of the old and new sizes. In the
+// case of NULL tensor, or an error allocating new memory, returns
+// `kTfLiteError`.
+TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
+                                         bool preserve_data);
 
 // Change the size of the memory block owned by `tensor` to `num_bytes`.
-// Tensors with allocation types other than kTfLiteDynamic will be ignored.
+// Tensors with allocation types other than kTfLiteDynamic will be ignored and
+// a kTfLiteOk will be returned.
 // `tensor`'s internal data buffer will be assigned a pointer
 // which can safely be passed to free or realloc if `num_bytes` is zero.
-// Behaviour is undefined if `tensor` is NULL.
 // Tensor data will be unchanged in the range from the start of the region up to
-// the minimum of the old and new sizes.
-void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
+// the minimum of the old and new sizes. In the case
+// of NULL tensor, or an error allocating new memory, returns `kTfLiteError`.
+TfLiteStatus TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
 #endif  // TF_LITE_STATIC_MEMORY
 
 // WARNING: This is an experimental interface that is subject to change.
@@ -1134,6 +1138,20 @@ TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
 // Deletes the provided opaque 'delegate'.  This function has no effect if the
 // 'delegate' is a null pointer.
 void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* delegate);
+
+// Returns a pointer to the data associated with the provided opaque 'delegate'.
+//
+// A null pointer will be returned when:
+// - The 'delegate' is null.
+// - The 'data' field of the 'TfLiteOpaqueDelegateBuilder' used to construct the
+//   'delegate' was null.
+// - Or in case of any other error.
+// - The 'delegate' has been constructed via a 'TfLiteOpaqueDelegateBuilder',
+//   but the 'data' field of the 'TfLiteOpaqueDelegateBuilder' is null.
+//
+//  The data_ field of 'delegate' will be returned if the
+//  'opaque_delegate_builder' field is null.
+void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate);
 
 #ifdef __cplusplus
 }  // extern "C"

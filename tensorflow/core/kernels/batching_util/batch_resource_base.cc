@@ -347,7 +347,7 @@ BatchResourceBase::GetBatcherQueueOptions(
     int32_t num_batch_threads, int32_t max_batch_size,
     int32_t batch_timeout_micros, int32_t max_enqueued_batches,
     const std::vector<int32>& allowed_batch_sizes,
-    bool enable_large_batch_splitting) {
+    bool enable_large_batch_splitting, bool disable_padding) {
   BatcherT::QueueOptions batcher_queue_options;
   batcher_queue_options.input_batch_size_limit = max_batch_size;
   batcher_queue_options.max_enqueued_batches = max_enqueued_batches;
@@ -370,6 +370,7 @@ BatchResourceBase::GetBatcherQueueOptions(
           *allowed_batch_sizes.rbegin();
     }
   }
+  batcher_queue_options.disable_padding = disable_padding;
 
   return batcher_queue_options;
 }
@@ -378,7 +379,7 @@ BatchResourceBase::GetBatcherQueueOptions(
 BatchResourceBase::GetAdaptiveBatcherQueueOptions(
     int32_t max_batch_size, int32_t batch_timeout_micros,
     int32_t max_enqueued_batches, bool enable_large_batch_splitting,
-    const std::vector<int32>& allowed_batch_sizes) {
+    const std::vector<int32>& allowed_batch_sizes, bool disable_padding) {
   AdaptiveBatcherT::QueueOptions batcher_queue_options;
   batcher_queue_options.max_input_task_size =
       absl::make_optional(max_batch_size);
@@ -399,6 +400,7 @@ BatchResourceBase::GetAdaptiveBatcherQueueOptions(
                             max_batch_size, output_tasks);
     };
   }
+  batcher_queue_options.disable_padding = disable_padding;
 
   return batcher_queue_options;
 }
@@ -443,10 +445,12 @@ Status BatchResourceBase::ConcatInputTensors(
 
   const int padded_batch_size = RoundToLowestAllowedBatchSize(batch.size());
   const int padding_amount = padded_batch_size - batch.size();
-  profiler::TraceMe trace_me([padded_batch_size, padding_amount]() {
+  profiler::TraceMe trace_me([padded_batch_size, padding_amount,
+                              disable_padding = disable_padding_]() {
     return profiler::TraceMeEncode(
         "ConcatInputTensors", {{"batch_size_after_padding", padded_batch_size},
-                               {"padding_amount", padding_amount}});
+                               {"padding_amount", padding_amount},
+                               {"disable_padding", disable_padding}});
   });
   RecordPaddingSize(padding_amount, GetModelName(context), padded_batch_size,
                     context->op_kernel().name());
@@ -472,9 +476,9 @@ Status BatchResourceBase::ConcatInputTensors(
       to_concatenate.push_back(batch.task(task_idx).inputs.at(i));
     }
 
-    // Add padding as needed. Use the first row of the first task's tensor as
-    // the data for padding.
-    if (padding_amount > 0) {
+    // Add padding as needed if padding is allowed. Use the first row of the
+    // first task's tensor as the data for padding.
+    if (padding_amount > 0 && !disable_padding_) {
       const Tensor& padding_source = batch.task(0).inputs.at(i);
       Tensor padding;
       if (padding_source.shape().dim_size(0) == 0) {
@@ -611,7 +615,9 @@ Status BatchResourceBase::SplitOutputTensors(
     task_sizes_plus_optional_padding.push_back(batch->task(i).size());
   }
   const int padding_size =
-      RoundToLowestAllowedBatchSize(batch->size()) - batch->size();
+      disable_padding_
+          ? 0
+          : RoundToLowestAllowedBatchSize(batch->size()) - batch->size();
   if (padding_size > 0) {
     task_sizes_plus_optional_padding.push_back(padding_size);
   }

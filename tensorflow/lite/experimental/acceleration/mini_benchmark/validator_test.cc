@@ -80,7 +80,9 @@ TEST_F(ValidatorTest, HappyPathOnCpuWithEmbeddedValidation) {
   Validator validator(std::move(validation_model_loader_),
                       default_compute_settings_);
   Validator::Results results;
-  EXPECT_EQ(validator.RunValidation(&results), kMinibenchmarkSuccess);
+  Validator::Status validation_run = validator.RunValidation(&results);
+  EXPECT_EQ(validation_run.status, kMinibenchmarkSuccess);
+  EXPECT_EQ(validation_run.stage, BenchmarkStage_UNKNOWN);
   EXPECT_TRUE(results.ok);
   EXPECT_GE(results.metrics.size(), 0);
   EXPECT_EQ(results.delegate_error, 0);
@@ -121,7 +123,10 @@ TEST_F(ValidatorTest, HappyPathOnCpuWithCustomValidation) {
   Validator validator(std::move(model_loader), default_compute_settings_);
   // Verify.
   Validator::Results results;
-  EXPECT_EQ(validator.RunValidation(&results), kMinibenchmarkSuccess);
+  Validator::Status validation_run = validator.RunValidation(&results);
+
+  EXPECT_EQ(validation_run.status, kMinibenchmarkSuccess);
+  EXPECT_EQ(validation_run.stage, BenchmarkStage_UNKNOWN);
   EXPECT_FALSE(results.ok);
   EXPECT_EQ(results.metrics.size(), 0);
   EXPECT_EQ(results.delegate_error, 0);
@@ -138,16 +143,20 @@ TEST_F(ValidatorTest, DelegateNotSupported) {
 
   Validator validator(std::move(validation_model_loader_), settings);
   Validator::Results results;
-  EXPECT_EQ(validator.RunValidation(&results),
-            kMinibenchmarkDelegateNotSupported);
+  Validator::Status validation_run = validator.RunValidation(&results);
+
+  EXPECT_EQ(validation_run.status, kMinibenchmarkDelegateNotSupported);
+  EXPECT_EQ(validation_run.stage, BenchmarkStage_INITIALIZATION);
 }
 
 TEST_F(ValidatorTest, NoValidationSubgraph) {
   Validator validator(std::move(plain_model_loader_),
                       default_compute_settings_);
   Validator::Results results;
-  EXPECT_EQ(validator.RunValidation(&results),
-            kMinibenchmarkValidationSubgraphNotFound);
+  Validator::Status validation_run = validator.RunValidation(&results);
+
+  EXPECT_EQ(validation_run.status, kMinibenchmarkValidationSubgraphNotFound);
+  EXPECT_EQ(validation_run.stage, BenchmarkStage_INITIALIZATION);
 }
 
 TEST_F(ValidatorTest, NoValidationInputData) {
@@ -165,8 +174,10 @@ TEST_F(ValidatorTest, NoValidationInputData) {
 
   Validator validator(std::move(model_loader), default_compute_settings_);
   Validator::Results results;
-  EXPECT_EQ(validator.RunValidation(&results),
-            kMinibenchmarkValidationInputMissing);
+  Validator::Status validation_run = validator.RunValidation(&results);
+
+  EXPECT_EQ(validation_run.status, kMinibenchmarkValidationInputMissing);
+  EXPECT_EQ(validation_run.stage, BenchmarkStage_INITIALIZATION);
 }
 
 TEST_F(ValidatorTest, InvalidModel) {
@@ -179,13 +190,19 @@ TEST_F(ValidatorTest, InvalidModel) {
   Validator validator(std::make_unique<tools::PathModelLoader>(dump_path),
                       default_compute_settings_);
   Validator::Results results;
-  EXPECT_EQ(validator.RunValidation(&results), kMinibenchmarkModelInitFailed);
+  Validator::Status validation_run = validator.RunValidation(&results);
+
+  EXPECT_EQ(validation_run.status, kMinibenchmarkModelInitFailed);
+  EXPECT_EQ(validation_run.stage, BenchmarkStage_INITIALIZATION);
 }
 
 TEST_F(ValidatorTest, EmptyModelLoader) {
   Validator validator(nullptr, default_compute_settings_);
   Validator::Results results;
-  EXPECT_EQ(validator.RunValidation(&results), kMinibenchmarkModelReadFailed);
+  Validator::Status validation_run = validator.RunValidation(&results);
+
+  EXPECT_EQ(validation_run.status, kMinibenchmarkModelReadFailed);
+  EXPECT_EQ(validation_run.stage, BenchmarkStage_INITIALIZATION);
 }
 
 }  // namespace

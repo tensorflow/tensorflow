@@ -155,13 +155,13 @@ add {
 }
 
 // CHECK-LABEL:  func private @test_atan2
-// CHECK-SAME:    ([[VAL_0:%.*]]: tensor<4xi32>, [[VAL_1:%.*]]: tensor<4xi32>) -> tensor<4xi32>
-%test_atan2 (Arg_0.1: s32[4], Arg_1.2: s32[4]) -> s32[4] {
-  %Arg_0.1 = s32[4] parameter(0)
-  %Arg_1.2 = s32[4] parameter(1)
+// CHECK-SAME:    ([[VAL_0:%.*]]: tensor<4xf32>, [[VAL_1:%.*]]: tensor<4xf32>) -> tensor<4xf32>
+%test_atan2 (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
+  %Arg_0.1 = f32[4] parameter(0)
+  %Arg_1.2 = f32[4] parameter(1)
 
   // CHECK:  mhlo.atan2 [[VAL_0]], [[VAL_1]]
-  ROOT %atan2 = s32[4] atan2(s32[4] %Arg_0.1, s32[4] %Arg_1.2)
+  ROOT %atan2 = f32[4] atan2(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
 // CHECK-LABEL:  func private @test_broadcast_in_dim
@@ -421,6 +421,24 @@ add {
 
   // CHECK-NEXT:  mhlo.cosine %arg0 : tensor<1x16x16x3xf32>
   ROOT %cosine.3 = f32[1,16,16,3]{3,2,1,0} cosine(f32[1,16,16,3]{3,2,1,0} %arg0.1)
+}
+
+// CHECK-LABEL:  func private @test_tan(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
+%test_tan (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
+  %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
+
+  // CHECK-NEXT:  mhlo.tan %arg0 : tensor<1x16x16x3xf32>
+  ROOT %tan.3 = f32[1,16,16,3]{3,2,1,0} tan(f32[1,16,16,3]{3,2,1,0} %arg0.1)
+}
+
+// CHECK-LABEL:  func private @test_set_bound
+// CHECK-SAME:  [[ARG_0:%.*]]: tensor<2x3xf32>) -> tensor<2x3xf32>
+%test_set_bound (arg1: f32[2,3]) -> f32[2,3] {
+  %arg1 = f32[2,3] parameter(0)
+  // CHECK:  mhlo.custom_call @SetBound([[ARG_0]]) {
+  // CHECK-SAME: mhlo.literal = dense<1>
+  // CHECK-SAME: : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  ROOT %custom-call = f32[2,3] custom-call(f32[2,3] %arg1), custom_call_target="SetBound", literal=s32[] 1
 }
 
 // CHECK-LABEL:  func private @test_custom_call
@@ -1667,6 +1685,12 @@ add {
 // CHECK: tensor<10x10xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], pointerBitWidth = 32, indexBitWidth = 32 }>>) -> tensor<10x10xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], pointerBitWidth = 32, indexBitWidth = 32 }>>
 %sparse {
   ROOT root = f32[10,10]{1,0:D(D,C)} parameter(0)
+}
+
+// CHECK-LABEL : func private @sparse-nu-no
+// CHECK: tensor<3x4x5xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed-nu", "singleton-nu-no", "singleton-no" ], pointerBitWidth = 32, indexBitWidth = 32 }>>) -> tensor<3x4x5xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed-nu", "singleton-nu-no", "singleton-no" ], pointerBitWidth = 32, indexBitWidth = 32 }>>
+%sparse-nu-no {
+  ROOT root = f32[3,4,5]{2,1,0:D(C+,S+~,S~)} parameter(0)
 }
 
 // CHECK-LABEL: func private @add_dependency

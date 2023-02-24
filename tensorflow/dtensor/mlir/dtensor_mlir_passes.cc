@@ -283,7 +283,17 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
     // Prepare for XLA SPMD integration for XLA SPMD mesh. If there are layout
     // operations on XLA SPMD mesh, then convert all of them to appropriate
     // XLA sharding attributes.
-    pm->addPass(CreateDTensorXlaSpmdIntegration());
+    pm->addPass(CreateDTensorSetHloShardingPass(
+        /*check_layout_use_xla_spmd=*/true));
+    pm->addPass(CreateDTensorReplaceAuxiliaryDTensorLayoutOpPass());
+    pm->addPass(CreateDTensorRemoveDTensorLayoutPass());
+    // We lower all remaining Relayout to Identity here to make XLA happy.
+    // Under XLA SPMD the RelayoutOp is not expanded by DTensor's SPMD expander.
+    // Note that we do not lower much earlier because
+    // canonicalization / const folding may produce chains of
+    // DTensorLayout that confuses DTensorReplaceAuxiliaryDTensorLayoutOpPass.
+    pm->addNestedPass<mlir::func::FuncOp>(
+        CreateDTensorReplaceRelayoutWithIdentityPass());
 
     // Rename functions with unique names, to avoid collisions in the function
     // library.

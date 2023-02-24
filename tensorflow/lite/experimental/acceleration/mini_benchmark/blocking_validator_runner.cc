@@ -59,7 +59,7 @@ BlockingValidatorRunner::BlockingValidatorRunner(
           : std::make_unique<CustomValidationEmbedder>(
                 options.custom_input_batch_size, options.custom_input_data,
                 options.error_reporter),
-      options.error_reporter, options.nnapi_sl,
+      options.error_reporter, options.nnapi_sl, options.gpu_plugin_handle,
       options.validation_entrypoint_name, options.benchmark_result_evaluator);
 }
 
@@ -138,6 +138,9 @@ std::vector<FlatBufferBuilder> BlockingValidatorRunner::TriggerValidation(
           fbb, CreateTFLiteSettings(fbb, &settings_obj),
           BenchmarkEventType_ERROR, /* result */ 0,
           CreateBenchmarkError(fbb, BenchmarkStage_UNKNOWN,
+                               /* exit_code */ 0, /* signal */ 0,
+                               /* error_code */ 0,
+                               /* mini_benchmark_error_code */
                                kMinibenchmarkCompletionEventMissing),
           Validator::BootTimeMicros(), Validator::WallTimeMicros()));
       results.emplace_back(std::move(fbb));

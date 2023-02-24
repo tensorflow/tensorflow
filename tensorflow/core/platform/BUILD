@@ -208,6 +208,12 @@ cc_library(
     ],
 )
 
+# Required to avoid ODR issues in the pybind wrapper.
+cc_library(
+    name = "cpu_feature_guard_hdr",
+    hdrs = ["cpu_feature_guard.h"],
+)
+
 cc_library(
     name = "casts",
     hdrs = ["casts.h"],

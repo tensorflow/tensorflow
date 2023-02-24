@@ -28,7 +28,9 @@ limitations under the License.
 #else
 #include <unistd.h>
 #endif
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
@@ -40,15 +42,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_timer.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel_cache_config.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/mathutil.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/numbers.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/path.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/process_state.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
@@ -56,6 +51,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/stream_executor/timer.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/numbers.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 // LOG(ERROR) uses a const named ERROR, so a macro with the same name is
 // always unwanted. This happens on Windows that defines such a macro.
@@ -159,7 +158,7 @@ bool GpuExecutor::FindOnDiskForComputeCapability(
 
   std::string cc_specific =
       absl::StrCat(filename, ".cc", cc_major_, cc_minor_, canonical_suffix);
-  if (port::FileExists(cc_specific).ok()) {
+  if (tsl::Env::Default()->FileExists(cc_specific).ok()) {
     VLOG(2) << "found compute-capability-specific file, using that: "
             << cc_specific;
     *found_filename = cc_specific;
@@ -168,7 +167,7 @@ bool GpuExecutor::FindOnDiskForComputeCapability(
 
   VLOG(2) << "could not find compute-capability specific file at: "
           << cc_specific;
-  if (port::FileExists(std::string(filename)).ok()) {
+  if (tsl::Env::Default()->FileExists(std::string(filename)).ok()) {
     *found_filename = std::string(filename);
     return true;
   }
@@ -189,7 +188,7 @@ bool GpuExecutor::FindOnDiskForISAVersion(absl::string_view filename,
 //                 returned string. Example: calling this from /usr/bin/foo
 //                 would return /usr/bin.
 static std::string GetBinaryDir(bool strip_exe) {
-  std::string exe_path = port::GetExecutablePath();
+  std::string exe_path = tsl::Env::Default()->GetExecutablePath();
   if (strip_exe) {
     // The exe is the last component of the path, so remove one component.
     std::vector<std::string> components = absl::StrSplit(exe_path, '/');
@@ -238,7 +237,7 @@ tsl::Status GpuExecutor::LoadModuleFromPtx(const char* ptx, CUmodule* module) {
 
 tsl::Status GpuExecutor::LoadModuleFromHsaco(const char* hsaco,
                                              CUmodule* module) {
-  return port::InternalError(
+  return tsl::errors::Internal(
       "Feature not supported on CUDA platform (LoadModuleFromHsaco)");
 }
 
@@ -260,7 +259,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     kernelname = &spec.cuda_ptx_in_memory().kernelname();
 
     if (cc_major_ == 0 && cc_minor_ == 0) {
-      return port::InternalError("Compute capability not set");
+      return tsl::errors::Internal("Compute capability not set");
     }
 
     const char* ptx = spec.cuda_ptx_in_memory().text(cc_major_, cc_minor_);
@@ -275,12 +274,12 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     TF_RETURN_IF_ERROR(LoadModuleFromPtx(ptx, &module));
     kernel_to_gpu_binary_[kernel] = ptx;
   } else {
-    return port::InternalError("No method of loading CUDA kernel provided");
+    return tsl::errors::Internal("No method of loading CUDA kernel provided");
   }
   VLOG(2) << "getting function " << *kernelname << " from module " << module;
   if (!GpuDriver::GetModuleFunction(context_, module, kernelname->c_str(),
                                     cuda_kernel->gpu_function_ptr())) {
-    return port::InternalError("Could not find the corresponding function");
+    return tsl::errors::Internal("Could not find the corresponding function");
   }
 
   // We have to trust the kernel loader spec arity because there doesn't appear
@@ -342,11 +341,11 @@ tsl::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
     return ::tsl::OkStatus();
   } else if (spec.has_cuda_ptx_in_memory()) {
     if (cc_major_ == 0 && cc_minor_ == 0) {
-      return port::InternalError("Compute capability not set");
+      return tsl::errors::Internal("Compute capability not set");
     }
 
     if (!spec.cuda_ptx_in_memory()) {
-      return port::InternalError("PTX not found in spec");
+      return tsl::errors::Internal("PTX not found in spec");
     }
 
     absl::MutexLock lock{&in_memory_modules_mu_};
@@ -356,7 +355,7 @@ tsl::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
         const_cast<void*>(static_cast<const void*>(spec.cuda_ptx_in_memory())));
     return ::tsl::OkStatus();
   }
-  return port::InternalError("No method of loading CUDA module provided");
+  return tsl::errors::Internal("No method of loading CUDA module provided");
 }
 
 bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
@@ -386,7 +385,7 @@ int fpus_per_core(int cc_major, int cc_minor) {
 
 }  // namespace
 
-port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 GpuExecutor::CreateOrShareConstant(Stream* stream,
                                    const std::vector<uint8_t>& content) {
   absl::MutexLock lock{&shared_constants_mu_};
@@ -413,7 +412,7 @@ GpuExecutor::CreateOrShareConstant(Stream* stream,
     DeviceMemoryBase* new_constant =
         new DeviceMemoryBase(Allocate(content.size(), /*memory_space=*/0));
     if (new_constant->opaque() == nullptr) {
-      return port::InternalError(absl::StrFormat(
+      return tsl::errors::Internal(absl::StrFormat(
           "Failed to allocate %d bytes for new constant", content.size()));
     }
 
@@ -422,7 +421,7 @@ GpuExecutor::CreateOrShareConstant(Stream* stream,
             .BlockHostUntilDone();
     if (!status.ok()) {
       Deallocate(new_constant);
-      status.Update(port::InternalError(absl::StrFormat(
+      status.Update(tsl::errors::Internal(absl::StrFormat(
           "Memcpy to device address %p failed", new_constant->opaque())));
       return status;
     }
@@ -708,13 +707,14 @@ bool GpuExecutor::MemcpyDeviceToDevice(Stream* stream,
 }
 
 bool GpuExecutor::HostCallback(Stream* stream,
-                               std::function<tsl::Status()> callback) {
-  auto callback_ptr = new std::function<void()>([callback]() {
-    tsl::Status s = callback();
-    if (!s.ok()) {
-      LOG(WARNING) << "Host callback failed: " << s;
-    }
-  });
+                               absl::AnyInvocable<tsl::Status() &&> callback) {
+  auto callback_ptr =
+      new absl::AnyInvocable<void() &&>([cb = std::move(callback)]() mutable {
+        tsl::Status s = std::move(cb)();
+        if (!s.ok()) {
+          LOG(WARNING) << "Host callback failed: " << s;
+        }
+      });
   return GpuDriver::AddStreamCallback(context_, AsGpuStreamValue(stream),
                                       InternalHostCallback, callback_ptr);
 }
@@ -722,9 +722,8 @@ bool GpuExecutor::HostCallback(Stream* stream,
 /* static */ void GpuExecutor::InternalHostCallback(CUstream stream,
                                                     CUresult status,
                                                     void* data) {
-  std::function<void()>* callback =
-      reinterpret_cast<std::function<void()>*>(data);
-  (*callback)();
+  auto* callback = reinterpret_cast<absl::AnyInvocable<void() &&>*>(data);
+  std::move (*callback)();
   delete callback;
 }
 
@@ -746,7 +745,7 @@ tsl::Status GpuExecutor::WaitForEvent(Stream* stream, Event* event) {
     return ::tsl::OkStatus();
   } else {
     return tsl::Status(
-        port::error::INTERNAL,
+        tsl::error::INTERNAL,
         absl::StrFormat("error recording waiting for CUDA event on stream %p",
                         stream));
   }
@@ -810,7 +809,7 @@ tsl::Status GpuExecutor::BlockHostUntilDone(Stream* stream) {
 
 blas::BlasSupport* GpuExecutor::CreateBlas() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  port::StatusOr<PluginRegistry::BlasFactory> status =
+  tsl::StatusOr<PluginRegistry::BlasFactory> status =
       registry->GetFactory<PluginRegistry::BlasFactory>(cuda::kCudaPlatformId,
                                                         plugin_config_.blas());
   if (!status.ok()) {
@@ -824,7 +823,7 @@ blas::BlasSupport* GpuExecutor::CreateBlas() {
 
 dnn::DnnSupport* GpuExecutor::CreateDnn() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  port::StatusOr<PluginRegistry::DnnFactory> status =
+  tsl::StatusOr<PluginRegistry::DnnFactory> status =
       registry->GetFactory<PluginRegistry::DnnFactory>(cuda::kCudaPlatformId,
                                                        plugin_config_.dnn());
   if (!status.ok()) {
@@ -838,7 +837,7 @@ dnn::DnnSupport* GpuExecutor::CreateDnn() {
 
 fft::FftSupport* GpuExecutor::CreateFft() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  port::StatusOr<PluginRegistry::FftFactory> status =
+  tsl::StatusOr<PluginRegistry::FftFactory> status =
       registry->GetFactory<PluginRegistry::FftFactory>(cuda::kCudaPlatformId,
                                                        plugin_config_.fft());
   if (!status.ok()) {
@@ -852,7 +851,7 @@ fft::FftSupport* GpuExecutor::CreateFft() {
 
 rng::RngSupport* GpuExecutor::CreateRng() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  port::StatusOr<PluginRegistry::RngFactory> status =
+  tsl::StatusOr<PluginRegistry::RngFactory> status =
       registry->GetFactory<PluginRegistry::RngFactory>(cuda::kCudaPlatformId,
                                                        plugin_config_.rng());
   if (!status.ok()) {
@@ -992,7 +991,7 @@ static int TryToReadNumaNode(const std::string& pci_bus_id,
   content = buf;
 
   int32_t value;
-  if (port::safe_strto32(content, &value)) {
+  if (absl::SimpleAtoi(content, &value)) {
     if (value < 0) {  // See http://b/18228951 for details on this path.
       LOG(INFO) << "successful NUMA node read from SysFS had negative value ("
                 << value
@@ -1017,7 +1016,7 @@ static int TryToReadNumaNode(const std::string& pci_bus_id,
 #endif
 }
 
-port::StatusOr<std::unique_ptr<DeviceDescription>>
+tsl::StatusOr<std::unique_ptr<DeviceDescription>>
 GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   GpuDeviceHandle device;
   auto status = GpuDriver::GetDevice(device_ordinal, &device);
@@ -1094,9 +1093,9 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
           .value();
   builder.set_l2_cache_size(l2_cache_bytes);
 
-  port::StatusOr<int> mem_clock_khz = GpuDriver::GetDeviceAttribute(
+  tsl::StatusOr<int> mem_clock_khz = GpuDriver::GetDeviceAttribute(
       CU_DEVICE_ATTRIBUTE_MEMORY_CLOCK_RATE, device_ordinal);
-  port::StatusOr<int> mem_bus_width_bits = GpuDriver::GetDeviceAttribute(
+  tsl::StatusOr<int> mem_bus_width_bits = GpuDriver::GetDeviceAttribute(
       CU_DEVICE_ATTRIBUTE_GLOBAL_MEMORY_BUS_WIDTH, device_ordinal);
   if (mem_clock_khz.ok() && mem_bus_width_bits.ok()) {
     // Times 2 because HBM is DDR memory; it gets two data bits per each data

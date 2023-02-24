@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/resource_loader.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/test.h"
 
@@ -33,9 +33,9 @@ namespace xla_compile {
 namespace {
 
 TEST(XlaCompileTest, LoadCpuExecutable) {
-  std::string path = tsl::GetDataDependencyFilepath(
-      "tensorflow/compiler/xla/service/"
-      "xla_aot_compile_stablehlo_test_cpu_executable");
+  std::string path =
+      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
+                        "xla_aot_compile_stablehlo_test_cpu_executable");
   std::string serialized_aot_result;
   TF_ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));

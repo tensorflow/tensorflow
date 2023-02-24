@@ -22,6 +22,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <initializer_list>
+#include <numeric>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -35,6 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
@@ -103,7 +105,16 @@ class ShapeUtil {
   // Returns the number of elements are contained within the provided shape;
   // e.g. for rank 0 (scalars) the result is always 1.
   // Precondition: shape.IsArray()
-  static int64_t ElementsIn(const Shape& shape);
+  static inline int64_t ElementsIn(const Shape& shape) {
+    DCHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
+    DCHECK_EQ(shape.dimensions_size(), shape.rank());
+    if (shape.dimensions().size() == 1) {
+      return shape.dimensions()[0];
+    }
+    return std::accumulate<decltype(shape.dimensions().begin()), int64_t>(
+        shape.dimensions().begin(), shape.dimensions().end(), 1LL,
+        std::multiplies<int64_t>());
+  }
 
   // As ElementsIn(), but recurses through tuples.
   static int64_t ElementsInRecursive(const Shape& shape);
@@ -139,6 +150,18 @@ class ShapeUtil {
   // `ByteSizeOf(shape) == ByteSizeOfElements(shape)`. This
   // size also includes padding if present in the layout.
   static int64_t ByteSizeOfElements(const Shape& shape);
+
+  // Prints a human-readable string that represents the given shape, with or
+  // without layout. e.g. "f32[42x12] {0, 1}" or "f32[64]".
+  static void PrintHumanString(xla::Printer* printer, const Shape& shape);
+  static void PrintHumanStringWithLayout(xla::Printer* printer,
+                                         const Shape& shape);
+
+  // As above, but for program shapes, prints a string for the form:
+  //
+  // (param_name: f32[42x12], ...) -> f32[24x42]
+  static void PrintHumanString(xla::Printer* printer,
+                               const ProgramShape& program_shape);
 
   // Returns a human-readable string that represents the given shape, with or
   // without layout. e.g. "f32[42x12] {0, 1}" or "f32[64]".
@@ -722,10 +745,18 @@ class ShapeUtil {
   // A parallel version of ForEachIndex(WithStatus). This can only be used if
   // the visitor_function is thread-safe and the order of iteration does not
   // matter.
+  //
+  // Please use GetForEachIndexParallelThreadCount() to get the number of
+  // threads in the threadpool of ForEachIndexParallel*. This will not change
+  // during the runtime of the process. Please DO NOT use
+  // tsl::port::MaxParallelism() for this purpose, as it may change.
   static void ForEachIndexParallel(
       const Shape& shape, absl::Span<const int64_t> base,
       absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
       const ForEachParallelVisitorFunction& visitor_function);
+
+  // Returns the number of threads in the threadpool of ForEachIndexParallel*.
+  static int GetForEachIndexParallelThreadCount();
 
   static Status ForEachIndexParallelWithStatus(
       const Shape& shape, absl::Span<const int64_t> base,
@@ -742,7 +773,10 @@ class ShapeUtil {
       const Shape& shape,
       const ForEachParallelVisitorFunction& visitor_function);
 
-  // About 0-2-1 transpose:
+  // In this case, we care about transposes that swap two dimensions of a
+  // a shape that can be viewed as three logical components 0-1-2 in the order
+  // of major to minor.
+  // As an example, let's consider a 0-2-1 transpose:
   //
   // If a shape can be viewed as three logical components 0-1-2 in the order of
   // major to minor, a 0-2-1-transpose changes the order of such logical
@@ -752,15 +786,19 @@ class ShapeUtil {
   // normalized shapes. The original input/output shapes are called unnormalized
   // shapes.
   //
+  // 'permutation' specifies the kind of transpose. For a 0-2-1 transpose, it
+  // should be set to {0, 2, 1}.
   // If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
-  // normalized shape of `b` or the 0-2-1 shape.
-  static std::optional<Vector3> FindTranspose021(const Shape& input_shape,
-                                                 const Shape& output_shape);
+  // normalized shape of `b` or the 0-2-1 shape. In general, the
+  // permutation[0]-permutation[1]-permutation[2] shape is returned.
+  static std::optional<Vector3> GetNormalizedTransposeShape(
+      const Shape& input_shape, const Shape& output_shape,
+      const Vector3& permutation);
 
   // Entry point for physical + logical transposition.
-  static std::optional<Vector3> FindLogicalTranspose021(
+  static std::optional<Vector3> GetNormalizedLogicalTransposeShape(
       const Shape& input_shape, const Shape& output_shape,
-      absl::Span<int64_t const> dimensions);
+      absl::Span<int64_t const> dimensions, const Vector3& permutation);
 
   // Strips device-specific information, namely tiling and memory-space
   // information, from a shape.
@@ -829,6 +867,10 @@ class ShapeUtil {
 
     int64_t IncrementDim();
     bool IsZeroElementArray() const;
+
+    // Returns the number of visited elements assuming that the iteration will
+    // not be interrupted.
+    int64_t CalculateNumSteps() const;
   };
 
   static Status ForEachIndexInternal(

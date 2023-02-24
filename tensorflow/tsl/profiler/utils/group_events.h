@@ -19,6 +19,7 @@ limitations under the License.
 #include <deque>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/utils/xplane_builder.h"
 #include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
 
 namespace tsl {
@@ -73,7 +75,7 @@ class EventNode {
     child->parents_.push_back(this);
   }
 
-  absl::optional<int64_t> GetGroupId() const { return group_id_; }
+  std::optional<int64_t> GetGroupId() const { return group_id_; }
 
   std::string GetGroupName() const;
 
@@ -84,7 +86,7 @@ class EventNode {
 
   const XEventVisitor& GetEventVisitor() const { return visitor_; }
 
-  absl::optional<XStatVisitor> GetContextStat(int64_t stat_type) const;
+  std::optional<XStatVisitor> GetContextStat(int64_t stat_type) const;
 
   void AddStepName(absl::string_view step_name);
 
@@ -116,7 +118,7 @@ class EventNode {
   XEventVisitor visitor_;
   std::vector<EventNode*> parents_;
   std::vector<EventNode*> children_;
-  absl::optional<int64_t> group_id_;
+  std::optional<int64_t> group_id_;
   // Root event level.
   // By default root_level_ is set to 0, which means it is not a root event.
   // Events with root_level_ greater than 0 are considered as root events.
@@ -204,10 +206,6 @@ class EventForest {
   // iteraton to `tf_loop_root_events_`.
   void ProcessTensorFlowLoop();
 
-  // Processes the worker thread by connecting a FunctionRun with the following
-  // eager ops (e.g., for Keras callback).
-  void ProcessWorker();
-
   EventNodeMap event_node_map_;
   std::vector<XPlaneVisitor> visitors_;
   // std::deque for pointer stability.
@@ -229,6 +227,24 @@ void GroupTfEvents(tensorflow::profiler::XSpace* space);
 
 // Returns true if the given space has TF's loop ops.
 bool CheckLoopOp(const tensorflow::profiler::XSpace& space);
+
+// Adds step names from GroupMetadataMap to "Steps" line in plane.
+// The event name is updated when converted to trace events.
+void AddGroupMetadataToStepEvents(const GroupMetadataMap& group_metadata_map,
+                                  XLineBuilder& line);
+
+void GroupHostAndPlanes(
+    tensorflow::profiler::XSpace* space,
+    const std::vector<tensorflow::profiler::XPlane*>& device_traces,
+    EventForest* event_forest);
+
+void GroupXplaneEvents(tensorflow::profiler::XPlane* plane,
+                       const GroupMetadataMap& group_metadata_map);
+
+void GroupTpuEventsOSS(
+    tensorflow::profiler::XSpace* space,
+    const std::vector<tensorflow::profiler::XPlane*>& device_traces,
+    EventForest* event_forest);
 
 }  // namespace profiler
 }  // namespace tsl

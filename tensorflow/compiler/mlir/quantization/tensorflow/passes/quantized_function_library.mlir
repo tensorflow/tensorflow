@@ -46,6 +46,14 @@ module {
     func.return %add : tensor<*xf32>
   }
 
+  func.func private @internal_dequantize_i8_fn(%input : tensor<*xi8>, %scale : tensor<*xf32>, %zp : tensor<*xi32>) -> tensor<*xf32> {
+    %input_i32 = "tf.Cast"(%input) : (tensor<*xi8>) -> tensor<*xi32>
+    %output = "tf.Sub"(%input_i32, %zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+    %cast = "tf.Cast"(%output) : (tensor<*xi32>) -> tensor<*xf32>
+    %mul = "tf.Mul"(%cast, %scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    func.return %mul : tensor<*xf32>
+  }
+
   // Requantizes and clips to the range of quantized type if there is no specific activation.
   func.func private @internal_requantize_no_activation_fn(%accumulation : tensor<*xi32>,
                          %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
@@ -129,10 +137,10 @@ module {
     %i8_max = "tf.Const"() {value = dense<127> : tensor<i8>} : () -> tensor<i8>
 
     %clip_min = "tf.PartitionedCall"(%i8_min, %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@dequantize_i8
+        config = "", config_proto = "", executor_type = "", f=@internal_dequantize_i8_fn
       } : (tensor<i8>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
     %clip_max = "tf.PartitionedCall"(%i8_max, %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@dequantize_i8
+        config = "", config_proto = "", executor_type = "", f=@internal_dequantize_i8_fn
       } : (tensor<i8>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
 
     %clamp_max = "tf.Maximum"(%dequantize, %clip_min) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
@@ -154,10 +162,10 @@ module {
     %i8_max = "tf.Const"() {value = dense<127> : tensor<i8>} : () -> tensor<i8>
 
     %clip_min_0 = "tf.PartitionedCall"(%i8_min, %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@dequantize_i8
+        config = "", config_proto = "", executor_type = "", f=@internal_dequantize_i8_fn
       } : (tensor<i8>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
     %clip_max = "tf.PartitionedCall"(%i8_max, %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@dequantize_i8
+        config = "", config_proto = "", executor_type = "", f=@internal_dequantize_i8_fn
       } : (tensor<i8>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
 
     %clip_min = "tf.Relu"(%clip_min_0) : (tensor<*xf32>) -> tensor<*xf32>
@@ -182,10 +190,10 @@ module {
     %relu6_upper = "tf.Const"() {value = dense<6.0>: tensor<f32>} : () -> tensor<f32>
 
     %clip_min_0 = "tf.PartitionedCall"(%i8_min, %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@dequantize_i8
+        config = "", config_proto = "", executor_type = "", f=@internal_dequantize_i8_fn
       } : (tensor<i8>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
     %clip_max_0 = "tf.PartitionedCall"(%i8_max, %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@dequantize_i8
+        config = "", config_proto = "", executor_type = "", f=@internal_dequantize_i8_fn
       } : (tensor<i8>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
 
     %clip_min = "tf.Relu"(%clip_min_0) : (tensor<*xf32>) -> tensor<*xf32>
@@ -376,7 +384,9 @@ module {
   }
 
   func.func @dequantize_i8(%input : tensor<*xi8>, %scale : tensor<*xf32>, %zp : tensor<*xi32>) -> tensor<*xf32> {
-    %input_i32 = "tf.Cast"(%input) : (tensor<*xi8>) -> tensor<*xi32>
+    // Use identity op to avoid the weight being constant-folded.
+    %identity = "tf.Identity"(%input) : (tensor<*xi8>) -> tensor<*xi8>
+    %input_i32 = "tf.Cast"(%identity) : (tensor<*xi8>) -> tensor<*xi32>
     %output = "tf.Sub"(%input_i32, %zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
     %cast = "tf.Cast"(%output) : (tensor<*xi32>) -> tensor<*xf32>
     %mul = "tf.Mul"(%cast, %scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>

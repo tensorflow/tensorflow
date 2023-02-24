@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/core/framework/model.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 
 #include "tensorflow/core/framework/cancellation.h"
@@ -85,9 +87,13 @@ TEST_P(AsyncInterleaveManyTest, Model) {
   });
   Model::NodeValues input_times;
   input_times[kModelInputTimeKey] = input_time;
+  EXPECT_EQ(async_interleave_many->buffered_bytes(), 0);
+  EXPECT_EQ(async_interleave_many->peak_buffered_bytes(), 0);
   EXPECT_EQ(async_interleave_many->TotalBufferedBytes(), 0);
   EXPECT_EQ(async_interleave_many->TotalMaximumBufferedBytes(), 0);
   async_interleave_many->record_buffer_event(110, 10);
+  EXPECT_EQ(async_interleave_many->buffered_bytes(), 110);
+  EXPECT_EQ(async_interleave_many->peak_buffered_bytes(), 110);
   EXPECT_EQ(async_interleave_many->TotalBufferedBytes(), 110);
   EXPECT_EQ(async_interleave_many->TotalMaximumBufferedBytes(),
             110 * parallelism / 10);
@@ -155,9 +161,13 @@ TEST_P(AsyncKnownRatioTest, Model) {
   async_known_many->add_input(source2);
   Model::NodeValues input_times;
   input_times[kModelInputTimeKey] = input_time;
+  EXPECT_EQ(async_known_many->buffered_bytes(), 0);
+  EXPECT_EQ(async_known_many->peak_buffered_bytes(), 0);
   EXPECT_EQ(async_known_many->TotalBufferedBytes(), 0);
   EXPECT_EQ(async_known_many->TotalMaximumBufferedBytes(), 0);
   async_known_many->record_buffer_event(110, 10);
+  EXPECT_EQ(async_known_many->buffered_bytes(), 110);
+  EXPECT_EQ(async_known_many->peak_buffered_bytes(), 110);
   EXPECT_EQ(async_known_many->TotalBufferedBytes(), 110);
   EXPECT_EQ(async_known_many->TotalMaximumBufferedBytes(),
             num_inputs_per_output == 0
@@ -397,9 +407,13 @@ TEST_P(AsyncUnknownRatioTest, Model) {
   async_unknown_many->add_input(source2);
   Model::NodeValues input_times;
   input_times[kModelInputTimeKey] = input_time;
+  EXPECT_EQ(async_unknown_many->buffered_bytes(), 0);
+  EXPECT_EQ(async_unknown_many->peak_buffered_bytes(), 0);
   EXPECT_EQ(async_unknown_many->TotalBufferedBytes(), 0);
   EXPECT_EQ(async_unknown_many->TotalMaximumBufferedBytes(), 0);
   async_unknown_many->record_buffer_event(110, 10);
+  EXPECT_EQ(async_unknown_many->buffered_bytes(), 110);
+  EXPECT_EQ(async_unknown_many->peak_buffered_bytes(), 110);
   EXPECT_EQ(async_unknown_many->TotalBufferedBytes(), 110);
   EXPECT_EQ(async_unknown_many->TotalMaximumBufferedBytes(),
             110.0 * parallelism / 10);
@@ -548,23 +562,27 @@ TEST(BufferedBytesTest, Node) {
 
   EXPECT_EQ(node->buffered_bytes(), 0);
   EXPECT_EQ(node->buffered_elements(), 0);
+  EXPECT_EQ(node->peak_buffered_bytes(), 0);
   EXPECT_EQ(node->TotalBufferedBytes(), 0);
   EXPECT_EQ(node->TotalMaximumBufferedBytes(), 0);
 
   node->record_buffer_event(20, 1);
   EXPECT_EQ(node->buffered_bytes(), 20);
+  EXPECT_EQ(node->peak_buffered_bytes(), 20);
   EXPECT_EQ(node->buffered_elements(), 1);
   EXPECT_EQ(node->TotalBufferedBytes(), 20);
   EXPECT_EQ(node->TotalMaximumBufferedBytes(), 60);
 
   node->record_buffer_event(10, 1);
   EXPECT_EQ(node->buffered_bytes(), 30);
+  EXPECT_EQ(node->peak_buffered_bytes(), 30);
   EXPECT_EQ(node->buffered_elements(), 2);
   EXPECT_EQ(node->TotalBufferedBytes(), 30);
   EXPECT_EQ(node->TotalMaximumBufferedBytes(), 45);
 
   node->record_buffer_event(18, 1);
   EXPECT_EQ(node->buffered_bytes(), 48);
+  EXPECT_EQ(node->peak_buffered_bytes(), 48);
   EXPECT_EQ(node->buffered_elements(), 3);
   EXPECT_EQ(node->bytes_produced(), 0);
   EXPECT_EQ(node->num_elements(), 0);
@@ -575,6 +593,7 @@ TEST(BufferedBytesTest, Node) {
   node->record_element();
   node->record_bytes_produced(20);
   EXPECT_EQ(node->buffered_bytes(), 28);
+  EXPECT_EQ(node->peak_buffered_bytes(), 48);
   EXPECT_EQ(node->buffered_elements(), 2);
   EXPECT_EQ(node->bytes_produced(), 20);
   EXPECT_EQ(node->num_elements(), 1);
@@ -585,6 +604,7 @@ TEST(BufferedBytesTest, Node) {
   node->record_element();
   node->record_bytes_produced(10);
   EXPECT_EQ(node->buffered_bytes(), 18);
+  EXPECT_EQ(node->peak_buffered_bytes(), 48);
   EXPECT_EQ(node->buffered_elements(), 1);
   EXPECT_EQ(node->bytes_produced(), 30);
   EXPECT_EQ(node->num_elements(), 2);
@@ -612,6 +632,8 @@ TEST(BufferedBytesTest, Node) {
 
   input->record_buffer_event(28, 1);
   EXPECT_EQ(node->bytes_consumed(), 0);
+  EXPECT_EQ(node->buffered_bytes(), 18);
+  EXPECT_EQ(node->peak_buffered_bytes(), 48);
   EXPECT_EQ(node->TotalBufferedBytes(), 46);
   EXPECT_EQ(node->TotalMaximumBufferedBytes(), 119.5);
 
@@ -620,6 +642,8 @@ TEST(BufferedBytesTest, Node) {
   input->record_bytes_produced(28);
   node->record_bytes_consumed(28);
   EXPECT_EQ(node->bytes_consumed(), 28);
+  EXPECT_EQ(node->buffered_bytes(), 18);
+  EXPECT_EQ(node->peak_buffered_bytes(), 48);
   EXPECT_EQ(node->TotalBufferedBytes(), 18);
   EXPECT_EQ(node->TotalMaximumBufferedBytes(), 119.5);
 
@@ -1340,6 +1364,51 @@ TEST(ModelTest, ModelMetrics) {
   EXPECT_THAT(cell_reader.Read(model_id),
               AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
                     HasSubstr("autotune: true")));
+}
+
+TEST(ModelTest, ModelCollectOptimizationMetrics) {
+  CellReader<std::string> cell_reader("/tensorflow/data/model");
+  model::Model model;
+  std::shared_ptr<Node> root = model::MakeUnknownNode({0, "unknown0", nullptr});
+  model.AddNode([&root](model::Node::Args args) { return root; }, root->name(),
+                nullptr, &root);
+  model.output()->record_element();
+  model.output()->record_start(100);
+  model.output()->record_stop(200);
+  std::string model_id = strings::StrCat(reinterpret_cast<uintptr_t>(&model));
+  // Before optimization, whatever metrics collected are returned.
+  EXPECT_THAT(cell_reader.Read(model_id),
+              AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+                    HasSubstr("autotune: true"), HasSubstr("num_elements: 1"),
+                    HasSubstr("processing_time: 100")));
+  CancellationManager cancellation_manager;
+  model.Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/20,
+                 /*ram_budget=*/1000, /*model_input_time=*/50,
+                 &cancellation_manager);
+  model.output()->record_element();
+  model.output()->record_start(300);
+  model.output()->record_stop(400);
+  // After optimization, metrics collected just before optimization are
+  // returned. Metrics collected after optimization are not returned.
+  EXPECT_THAT(cell_reader.Read(model_id),
+              AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+                    HasSubstr("autotune: true"), HasSubstr("num_elements: 1"),
+                    HasSubstr("processing_time: 100")));
+  // Add gap times.
+  model.RecordIteratorGapTime(10);
+  model.RecordIteratorGapTime(11);
+  model.RecordIteratorGapTime(12);
+  // Call optimization again. Metrics collected after the first optimization
+  // and the added gap times should be returned as well.
+  model.Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/20,
+                 /*ram_budget=*/1000, /*model_input_time=*/50,
+                 &cancellation_manager);
+  EXPECT_THAT(
+      cell_reader.Read(model_id),
+      AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+            HasSubstr("autotune: true"), HasSubstr("num_elements: 2"),
+            HasSubstr("processing_time: 200"), HasSubstr("gap_times: 10"),
+            HasSubstr("gap_times: 11"), HasSubstr("gap_times: 12")));
 }
 
 TEST(ModelTest, ModelCollectAndDestroyRaceCondition) {
@@ -2371,7 +2440,8 @@ TEST_F(ModelTimingTest, OptimizeStageBased_OneStage) {
         id: 1
         name: "ParallelMapV2"
         autotune: true
-        num_elements: 100
+        num_elements: 97
+        buffered_elements: 3
         processing_time: 5000
         bytes_produced: 10000
         node_class: ASYNC_KNOWN_RATIO
@@ -2408,7 +2478,6 @@ TEST_F(ModelTimingTest, OptimizeStageBased_OneStage) {
         num_elements: 100
         processing_time: 1000
         node_class: KNOWN_RATIO
-        ratio: 2
       }
     }
     output: 1
@@ -2739,16 +2808,32 @@ TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatioLessThanOne) {
 TEST_F(ModelTimingTest, ComputeTargetTime) {
   model_ = std::make_unique<Model>();
 
+  model_->RecordIteratorGapTime(5);
+  model_->RecordIteratorGapTime(5);
   model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(15);
+  model_->RecordIteratorGapTime(15);
   model_->RecordIteratorGapTime(1000);
   // Gap times that are >= 10 seconds are always dropped.
   model_->RecordIteratorGapTime(10000000);
 
   EXPECT_DOUBLE_EQ(10, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, ComputeTargetTime_Experiment) {
+  model_ = std::make_unique<Model>();
+  model_->AddExperiment("stage_based_autotune_v2");
+
+  model_->RecordIteratorGapTime(5);
+  model_->RecordIteratorGapTime(5);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(15);
+  model_->RecordIteratorGapTime(15);
+  model_->RecordIteratorGapTime(1000);
+  // Gap times that are >= 10 seconds are always dropped.
+  model_->RecordIteratorGapTime(10000000);
+
+  EXPECT_DOUBLE_EQ(5, model_->ComputeTargetTimeNsec() * 1e-3);
 }
 
 TEST_F(ModelTimingTest, ComputeTargetTime_NoOutlier) {

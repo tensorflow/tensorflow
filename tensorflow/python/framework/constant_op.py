@@ -19,15 +19,14 @@ See the [constants guide](https://tensorflow.org/api_guides/python/constant_op).
 
 # Must be separate from array_ops to avoid a cyclic dependency.
 
-from tensorflow.core.framework import attr_value_pb2
+import contextlib
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.profiler import trace
 from tensorflow.python.util.tf_export import tf_export
 
@@ -39,7 +38,7 @@ def _eager_reshape(tensor, shape, ctx):
       [shape], ctx, [dtypes.int32, dtypes.int64], dtypes.int32)
   inputs_flat = [tensor, shape]
   attrs = ("T", attr_t, "Tshape", attr_tshape)
-  result, = execute.execute(
+  [result] = execute.execute(
       b"Reshape", 1, inputs=inputs_flat, attrs=attrs, ctx=ctx)
   return result
 
@@ -50,7 +49,7 @@ def _eager_fill(dims, value, ctx):
   dims = convert_to_eager_tensor(dims, ctx, dtypes.int32)
   inputs_flat = [dims, value]
   attrs = ("T", attr_t, "index_type", types_pb2.DT_INT32)
-  result, = execute.execute(
+  [result] = execute.execute(
       b"Fill", 1, inputs=inputs_flat, attrs=attrs, ctx=ctx)
   return result
 
@@ -58,16 +57,8 @@ def _eager_fill(dims, value, ctx):
 def _eager_identity(tensor, ctx):
   """Eager-only version of Identity op; requires tensor is an eager Tensor."""
   attrs = ("T", tensor.dtype.as_datatype_enum)
-  result, = execute.execute(
+  [result] = execute.execute(
       b"Identity", 1, inputs=[tensor], attrs=attrs, ctx=ctx)
-  return result
-
-
-def _eager_const(tensor, ctx):
-  """Copy a constant to the current device."""
-  attrs = ("T", tensor.dtype.as_datatype_enum)
-  result, = execute.execute(
-      b"_EagerConst", 1, inputs=[tensor], attrs=attrs, ctx=ctx)
   return result
 
 
@@ -268,34 +259,35 @@ def constant(value, dtype=None, shape=None, name="Const"):
                         allow_broadcast=True)
 
 
+def maybe_convert_tensor_to_weak_type(tensor, weak_type):
+  """Converts the Tensor inplace, to a weakly-typed one if needed.
+
+  Args:
+    tensor: A Tensor instance in either Eager or Graph mode.
+    weak_type: Boolean type, whether `tensor` needs to be converted.
+  """
+  if weak_type and not dtypes.is_weak_type(tensor.dtype):
+    tensor._weak_dtype = dtypes.type_to_weak_type[tensor.dtype]  # pylint: disable=protected-access
+
+
 def _constant_impl(
     value, dtype, shape, name, verify_shape, allow_broadcast):
   """Implementation of constant."""
+  is_weak_type = dtypes.is_weak_type(dtype)
+
   ctx = context.context()
   if ctx.executing_eagerly():
-    if trace.enabled:
-      with trace.Trace("tf.constant"):
-        return _constant_eager_impl(ctx, value, dtype, shape, verify_shape)
-    return _constant_eager_impl(ctx, value, dtype, shape, verify_shape)
+    with contextlib.ExitStack() as stack:
+      if trace.enabled:
+        stack.enter_context(trace.Trace("tf.constant"))
+      res = _constant_eager_impl(ctx, value, dtype, shape, verify_shape)
+      maybe_convert_tensor_to_weak_type(res, is_weak_type)
+      return res
 
-  g = ops.get_default_graph()
-  tensor_value = attr_value_pb2.AttrValue()
-  tensor_value.tensor.CopyFrom(
-      tensor_util.make_tensor_proto(
-          value, dtype=dtype, shape=shape, verify_shape=verify_shape,
-          allow_broadcast=allow_broadcast))
-  dtype_value = attr_value_pb2.AttrValue(type=tensor_value.tensor.dtype)
-  attrs = {"value": tensor_value, "dtype": dtype_value}
-  const_tensor = g._create_op_internal(  # pylint: disable=protected-access
-      "Const", [], [dtype_value.type], attrs=attrs, name=name).outputs[0]
-
-  if op_callbacks.should_invoke_op_callbacks():
-    # TODO(b/147670703): Once the special-op creation code paths
-    # are unified. Remove this `if` block.
-    callback_outputs = op_callbacks.invoke_op_callbacks(
-        "Const", tuple(), attrs, (const_tensor,), op_name=name, graph=g)
-    if callback_outputs is not None:
-      const_tensor, = callback_outputs
+  const_tensor = ops._create_graph_constant(  # pylint: disable=protected-access
+      value, dtype, shape, name, verify_shape, allow_broadcast
+  )
+  maybe_convert_tensor_to_weak_type(const_tensor, is_weak_type)
   return const_tensor
 
 
@@ -343,9 +335,9 @@ def _constant_tensor_conversion_function(v, dtype=None, name=None,
   return constant(v, dtype=dtype, name=name)
 
 
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     (list, tuple), _constant_tensor_conversion_function, 100)
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     object, _constant_tensor_conversion_function, 200)
 
 
@@ -379,7 +371,7 @@ def _tensor_shape_tensor_conversion_function(s,
   return constant(s_list, dtype=dtype, name=name)
 
 
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     tensor_shape.TensorShape, _tensor_shape_tensor_conversion_function, 100)
 
 
@@ -402,5 +394,5 @@ def _dimension_tensor_conversion_function(d,
   return constant(d.value, dtype=dtype, name=name)
 
 
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     tensor_shape.Dimension, _dimension_tensor_conversion_function, 100)

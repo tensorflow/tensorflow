@@ -36,8 +36,9 @@ RepresentativeDatasetMapping = Mapping[str, RepresentativeDataset]
 
 # A type alias expressing that it can be either a RepresentativeDataset or
 # a mapping of signature key to RepresentativeDataset.
-RepresentativeDatasetOrMapping = Union[RepresentativeDataset,
-                                       RepresentativeDatasetMapping]
+RepresentativeDatasetOrMapping = Union[
+    RepresentativeDataset, RepresentativeDatasetMapping
+]
 
 
 class RepresentativeDatasetSaver:
@@ -51,8 +52,9 @@ class RepresentativeDatasetSaver:
   as files.
   """
 
-  def save(self,
-           representative_dataset: RepresentativeDatasetOrMapping) -> None:
+  def save(
+      self, representative_dataset: RepresentativeDatasetOrMapping
+  ) -> None:
     """Saves the representative dataset.
 
     Args:
@@ -81,8 +83,8 @@ class RepresentativeDatasetLoader:
 
 
 def replace_tensors_by_numpy_ndarrays(
-    repr_ds: RepresentativeDataset,
-    sess: session.Session) -> RepresentativeDataset:
+    repr_ds: RepresentativeDataset, sess: session.Session
+) -> RepresentativeDataset:
   """Replaces tf.Tensors in samples by their evaluated numpy arrays.
 
   Note: This should be run in graph mode (default in TF1) only.

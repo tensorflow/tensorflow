@@ -22,11 +22,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/stream_executor/fft.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin.h"
 #include "tensorflow/compiler/xla/stream_executor/rng.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -91,15 +91,15 @@ class PluginRegistry {
   // Retrieves the factory registered for the specified kind,
   // or a tsl::Status on error.
   template <typename FactoryT>
-  port::StatusOr<FactoryT> GetFactory(Platform::Id platform_id,
-                                      PluginId plugin_id);
+  tsl::StatusOr<FactoryT> GetFactory(Platform::Id platform_id,
+                                     PluginId plugin_id);
 
   // TODO(b/22689637): Deprecated/temporary. Will be deleted once all users are
   // on MultiPlatformManager / PlatformId.
   template <typename FactoryT>
   ABSL_DEPRECATED("Use MultiPlatformManager / PlatformId instead.")
-  port::StatusOr<FactoryT> GetFactory(PlatformKind platform_kind,
-                                      PluginId plugin_id);
+  tsl::StatusOr<FactoryT> GetFactory(PlatformKind platform_kind,
+                                     PluginId plugin_id);
 
  private:
   // Containers for the sets of registered factories, by plugin kind.
@@ -128,7 +128,7 @@ class PluginRegistry {
 
   // Actually performs the work of factory retrieval.
   template <typename FactoryT>
-  port::StatusOr<FactoryT> GetFactoryInternal(
+  tsl::StatusOr<FactoryT> GetFactoryInternal(
       PluginId plugin_id, const std::map<PluginId, FactoryT>& factories,
       const std::map<PluginId, FactoryT>& generic_factories) const;
 
@@ -167,10 +167,10 @@ class PluginRegistry {
       Platform::Id platform_id, PluginId plugin_id, const std::string& name, \
       PluginRegistry::FACTORY_TYPE factory);                                 \
   template <>                                                                \
-  port::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(   \
+  tsl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
       Platform::Id platform_id, PluginId plugin_id);                         \
   template <>                                                                \
-  port::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(   \
+  tsl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
       PlatformKind platform_kind, PluginId plugin_id)
 
 DECLARE_PLUGIN_SPECIALIZATIONS(BlasFactory);

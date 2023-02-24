@@ -15,18 +15,32 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 
 #include <string>
+#include <vector>
 
+#include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/service/test_util.h"
+#include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/io/compression.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
+
+using ::testing::ElementsAre;
+using ::testing::IsEmpty;
+using tsl::testing::IsOkAndHolds;
+using tsl::testing::StatusIs;
 
 tsl::StatusOr<std::string> CreateTestDirectory() {
   std::string directory;
@@ -55,6 +69,67 @@ TEST_P(AtomicallyWriteStringToFileTest, WriteString) {
 
 INSTANTIATE_TEST_SUITE_P(FileContents, AtomicallyWriteStringToFileTest,
                          ::testing::ValuesIn<std::string>({"OK", ""}));
+
+TEST(FileUtilsTest, AtomicallyWriteBinaryProto) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
+  std::string test_file = tsl::io::JoinPath(directory, "test_file");
+  DatasetDef out = testing::RangeDataset(/*range=*/10);
+  TF_ASSERT_OK(AtomicallyWriteBinaryProto(test_file, out, tsl::Env::Default()));
+
+  DatasetDef in;
+  TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
+  TF_ASSERT_OK(ReadBinaryProto(tsl::Env::Default(), test_file, &in));
+  EXPECT_THAT(in, testing::EqualsProto(out));
+}
+
+TEST(FileUtilsTest, AtomicallyWriteTextProto) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
+  std::string test_file = tsl::io::JoinPath(directory, "test_file");
+  DatasetDef out = testing::RangeDataset(/*range=*/10);
+  TF_ASSERT_OK(AtomicallyWriteTextProto(test_file, out, tsl::Env::Default()));
+
+  DatasetDef in;
+  TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
+  TF_ASSERT_OK(ReadTextProto(tsl::Env::Default(), test_file, &in));
+  EXPECT_THAT(in, testing::EqualsProto(out));
+}
+
+TEST(FileUtilsTest, AtomicallyWriteTFRecord) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
+  std::string test_file = tsl::io::JoinPath(directory, "test_file");
+  Tensor out = CreateTensor<int64_t>(TensorShape({2}), {1, 2});
+  TF_ASSERT_OK(AtomicallyWriteTFRecord(
+      test_file, out, tsl::io::compression::kSnappy, tsl::Env::Default()));
+
+  std::vector<Tensor> in;
+  TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
+  snapshot_util::TFRecordReader reader(test_file, tsl::io::compression::kSnappy,
+                                       {DT_INT64});
+  TF_ASSERT_OK(reader.Initialize(tsl::Env::Default()));
+  TF_ASSERT_OK(reader.ReadTensors(&in));
+  EXPECT_EQ(out.DebugString(), in.front().DebugString());
+}
+
+TEST(FileUtilsTest, GetChildren) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
+  std::string test_file = tsl::io::JoinPath(directory, "test_file");
+  TF_ASSERT_OK(AtomicallyWriteStringToFile(test_file, "", tsl::Env::Default()));
+  std::string tmp_file = tsl::io::JoinPath(directory, "test_file.tmp");
+  TF_ASSERT_OK(AtomicallyWriteStringToFile(tmp_file, "", tsl::Env::Default()));
+  EXPECT_THAT(GetChildren(directory, tsl::Env::Default()),
+              IsOkAndHolds(ElementsAre("test_file")));
+}
+
+TEST(FileUtilsTest, GetChildrenEmptyDirectory) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string empty_directory, CreateTestDirectory());
+  EXPECT_THAT(GetChildren(empty_directory, tsl::Env::Default()),
+              IsOkAndHolds(IsEmpty()));
+}
+
+TEST(FileUtilsTest, GetChildrenDirectoryNotFound) {
+  EXPECT_THAT(GetChildren("Not exist", tsl::Env::Default()),
+              StatusIs(tsl::error::NOT_FOUND));
+}
 
 }  // namespace
 }  // namespace data

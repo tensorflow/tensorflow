@@ -37,11 +37,18 @@
 // compatibility, new fields MUST ONLY be added at the END of messages,
 // and fields should NEVER be deleted, but instead can only be deprecated.
 //
+// WARNING: before modifying this file, you should copy the previous contents
+// of this file to 'testdata/configuration.proto_prev'.  This is used to test
+// that your changes will preserve binary backwards compatibility.
+//
 // WARNING: you need to manually generate and update the generated flatbuffer
 // code (configuration_generated.h) when modifying this file. See BUILD for
-// more information.
-
-// LINT.IfChange
+// more information. Below are manual steps for reference:
+// bazel build
+// //tensorflow/lite/experimental/acceleration/configuration:proto_to_flatbuffer
+// && cp
+// bazel-bin/tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
+// tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h.oss
 
 syntax = "proto2";
 
@@ -222,7 +229,7 @@ enum GPUInferenceUsage {
 // See
 // https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/gpu/delegate.h
 message GPUSettings {
-  // Ignored if inference_priority1/2/3 are set.
+  // Obsolete: Ignored if inference_priority1/2/3 are set.
   optional bool is_precision_loss_allowed = 1;
   optional bool enable_quantized_inference = 2 [default = true];
   optional GPUBackend force_backend = 3;
@@ -408,6 +415,9 @@ message EdgeTpuInactivePowerConfig {
 
 // EdgeTPU Delegate settings.
 //
+// For security reasons, only certain apps that are part of the platform's
+// trusted code base are permitted to use the features defined in this message.
+// General apps should use `GoogleEdgeTpuSettings` instead.
 message EdgeTpuSettings {
   // Float truncation types for EdgeTPU.
   enum FloatTruncationType {
@@ -443,6 +453,35 @@ message EdgeTpuSettings {
 
   // QoS class to determine chunking size for PRO onward.
   optional QosClass qos_class = 7 [default = QOS_UNDEFINED];
+
+  // Cluster IDs the model will be compiled for.
+  repeated int32 hardware_cluster_ids = 8 [packed = true];
+}
+
+// Google EdgeTPU delegate settings.
+message GoogleEdgeTpuSettings {
+  enum Priority {
+    PRIORITY_UNDEFINED = 0;
+    PRIORITY_LOW = 1;
+    PRIORITY_MEDIUM = 2;
+    PRIORITY_HIGH = 3;
+  }
+
+  // Controls the verbosity level of the delegate log messages. Set to -1 to let
+  // the delegate choose. Otherwise, it must range from 0 to 10 (inclusive),
+  // where lower values indicate less verbosity. A higher verbosity level may
+  // have an adverse impact on the delegate performance.
+  optional int32 log_verbosity = 1 [default = -1];
+
+  // Whether or not the client requests detailed delegate traces.
+  // The resulting traces can be used for performance analysis with tools such
+  // as perfetto (https://perfetto.dev/docs/quickstart/android-tracing).
+  // Enabling tracing may have an adverse impact on the delegate performance.
+  optional bool enable_tracing = 2 [default = false];
+
+  // Specifies the execution priority. The priority is global. Requests from
+  // different clients are prioritized relative to one another.
+  optional Priority priority = 3;
 }
 
 // Coral Dev Board / USB accelerator delegate settings.
@@ -502,6 +541,7 @@ message TFLiteSettings {
   optional int32 max_delegated_partitions = 7;
 
   // For configuring the EdgeTpuDelegate.
+  // See also `google_edgetpu_settings` below.
   optional EdgeTpuSettings edgetpu_settings = 8;
 
   // For configuring the Coral EdgeTpu Delegate.
@@ -527,6 +567,9 @@ message TFLiteSettings {
   // See
   // tensorflow/lite/delegates/utils/experimental/sample_stable_delegate
   optional StableDelegateLoaderSettings stable_delegate_loader_settings = 13;
+
+  // For configuring the Google EdgeTpu Delegate.
+  optional GoogleEdgeTpuSettings google_edgetpu_settings = 14;
 }
 
 // Whether to automatically fallback to TFLite CPU path on delegation errors.
@@ -602,6 +645,7 @@ message BenchmarkMetric {
 // well as sent to server for monitoring.
 //
 // Used with event type END.
+// Next ID: 7
 message BenchmarkResult {
   // Time to load model and apply acceleration. Initialization may get run
   // multiple times to get information on variance.
@@ -618,6 +662,16 @@ message BenchmarkResult {
   optional bool ok = 4;
   // Metrics that were used to determine the 'ok' status.
   repeated BenchmarkMetric metrics = 5;
+
+  message InferenceOutput {
+    // The matching Flatbuffer type is ubyte.
+    optional bytes value = 1;
+  }
+  // Model output in byte format. Each InferenceOutput comes from one output
+  // tensor. It is ordered the same as tflite::Interpreter::output_tensor(),
+  // i.e. the value of output_tensor(i) is stored in actual_output[i]. Only
+  // populated in custom validation case.
+  repeated InferenceOutput actual_output = 6;
 }
 
 // A handled error.
@@ -781,5 +835,3 @@ message BenchmarkEventStorage {
   optional ModelIdGroup model_id_group = 1;
   optional BenchmarkEvent benchmark_event = 2;
 }
-
-// LINT.ThenChange(//tensorflow/lite/experimental/acceleration/configuration/testdata/configuration.proto_prev)

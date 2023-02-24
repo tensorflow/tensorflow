@@ -328,13 +328,21 @@ Offset<EdgeTpuSettings> ConvertEdgeTpuSettings(
     model_token = builder.CreateString(settings.model_token());
   }
 
+  // First convert to std::vector, then convert to flatbuffer.
+  std::vector<int32_t> hardware_cluster_ids_std{
+      settings.hardware_cluster_ids().begin(),
+      settings.hardware_cluster_ids().end()};
+  auto hardware_cluster_ids_fb =
+      builder.CreateVector<int32_t>(hardware_cluster_ids_std);
+
   return CreateEdgeTpuSettings(
       builder, ConvertEdgeTpuPowerState(settings.inference_power_state()),
       inactive_power_configs, settings.inference_priority(),
       edgetpu_device_spec, model_token,
       static_cast<tflite::EdgeTpuSettings_::FloatTruncationType>(
           settings.float_truncation_type()),
-      static_cast<tflite::EdgeTpuSettings_::QosClass>(settings.qos_class()));
+      static_cast<tflite::EdgeTpuSettings_::QosClass>(settings.qos_class()),
+      hardware_cluster_ids_fb);
 }
 
 Offset<CoralSettings> ConvertCoralSettings(const proto::CoralSettings& settings,

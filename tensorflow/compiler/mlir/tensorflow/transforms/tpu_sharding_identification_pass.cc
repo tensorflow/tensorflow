@@ -76,7 +76,7 @@ std::optional<llvm::StringRef> GetXlaShardingFromOperand(Value value) {
     value_to_visit = read_var.getResource();
 
   if (auto partitioned_input =
-          value_to_visit.getDefiningOp<TF::TPUPartitionedInputOp>())
+          value_to_visit.getDefiningOp<TF::TPUPartitionedInputV2Op>())
     return partitioned_input.get_XlaSharding();
 
   return std::nullopt;
@@ -280,12 +280,13 @@ std::optional<llvm::StringRef> GetXlaShardingFromResult(Value value) {
 
   Operation* user = *value.getUsers().begin();
   if (auto partitioned_output =
-          llvm::dyn_cast<TF::TPUPartitionedOutputOp>(user))
+          llvm::dyn_cast<TF::TPUPartitionedOutputV2Op>(user))
     return partitioned_output.get_XlaSharding();
 
   if (auto assign_var = llvm::dyn_cast<TF::AssignVariableOp>(user))
     if (auto partitioned_input =
-            assign_var.getResource().getDefiningOp<TF::TPUPartitionedInputOp>())
+            assign_var.getResource()
+                .getDefiningOp<TF::TPUPartitionedInputV2Op>())
       return partitioned_input.get_XlaSharding();
 
   return std::nullopt;

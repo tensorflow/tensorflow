@@ -23,13 +23,20 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/experimental/next_pluggable_device/c_api.h"
 #include "tensorflow/c/kernels.h"
+#include "tensorflow/c/kernels_experimental.h"
 #include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/c_plugin_variable.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent_helper.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/plugin_variable.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 
 constexpr int kInvalidLineNumber = -1;
 
@@ -52,6 +59,23 @@ Status CPluginOpKernelConstruction::GetInt32Attr(std::string_view attr_name,
   TF_StatusPtr c_status_ptr(TF_NewStatus());
   TF_Status* status = c_status_ptr.get();
   TF_OpKernelConstruction_GetAttrInt32(ctx_, attr_name.data(), value, status);
+  return StatusFromTF_Status(status);
+}
+
+Status CPluginOpKernelConstruction::GetInt32AttrList(
+    std::string_view attr_name, std::vector<int32_t>* value) const {
+  TF_StatusPtr c_status_ptr(TF_NewStatus());
+  TF_Status* status = c_status_ptr.get();
+  int32_t list_size;
+  int32_t total_size;  // total_size is undefined for int32 attribute.
+  TF_OpKernelConstruction_GetAttrSize(ctx_, attr_name.data(), &list_size,
+                                      &total_size, status);
+  TF_RETURN_IF_ERROR(StatusFromTF_Status(status));
+
+  value->reserve(list_size);
+
+  TF_OpKernelConstruction_GetAttrInt32List(
+      ctx_, attr_name.data(), value->data(), /*max_vals=*/list_size, status);
   return StatusFromTF_Status(status);
 }
 
@@ -135,12 +159,58 @@ CPluginOpKernelContext::GetPluginCoordinationServiceAgent() const {
   return CreatePluginCoordinationServiceAgent(agent);
 }
 
+Status CPluginOpKernelContext::CreatePluginVariable(
+    int index, PluginVariable** variable) const {
+  TF_StatusPtr c_status_ptr(TF_NewStatus());
+  TF_VariableInfo* c_var_info =
+      TF_CreateVariableInfoFromContext(ctx_, index, c_status_ptr.get());
+  if (TF_GetCode(c_status_ptr.get()) != TF_OK) {
+    return StatusFromTF_Status(c_status_ptr.get());
+  }
+  *variable = new CPluginVariable(c_var_info);
+  return tsl::OkStatus();
+}
+
+Status CPluginOpKernelContext::AllocateTempForPluginVariable(
+    PluginVariable* variable) {
+  TF_StatusPtr c_status_ptr(TF_NewStatus());
+  CPluginVariable* c_plugin_variable =
+      reinterpret_cast<CPluginVariable*>(variable);
+  TF_AllocateTempForVariableInfo(ctx_, c_plugin_variable->var_info_,
+                                 c_status_ptr.get());
+  tsl::Status status = StatusFromTF_Status(c_status_ptr.get());
+  if (status.ok()) {
+    // Invalidate the cached tensor since we allocated a new one.
+    c_plugin_variable->tensor_obtained_ = false;
+  }
+  return status;
+}
+
 Status CPluginOpKernelContext::GetInput(int index, Tensor* tensor) const {
   TF_StatusPtr c_status_ptr(TF_NewStatus());
   TF_Tensor* c_tensor;
   TF_GetInput(ctx_, index, &c_tensor, c_status_ptr.get());
   TF_TensorPtr c_tensor_ptr(c_tensor);
+  if (TF_GetCode(c_status_ptr.get()) != TF_OK) {
+    return StatusFromTF_Status(c_status_ptr.get());
+  }
   return TF_TensorToTensor(c_tensor, tensor);
+}
+
+Status CPluginOpKernelContext::GetInput(const char* name,
+                                        const Tensor** tensor) {
+  TF_StatusPtr c_status_ptr(TF_NewStatus());
+  TF_Tensor* c_tensor;
+  TF_GetInputByName(ctx_, name, &c_tensor, c_status_ptr.get());
+  TF_TensorPtr c_tensor_ptr(c_tensor);
+  Tensor tensor_tmp;
+  tsl::Status status = TF_TensorToTensor(c_tensor, &tensor_tmp);
+  if (status.ok()) {
+    mutex_lock lock(mu_);
+    obtained_tensors_.push_back(std::move(tensor_tmp));
+    *tensor = &(obtained_tensors_.back());
+  }
+  return status;
 }
 
 Status CPluginOpKernelContext::GetInputRange(std::string_view name,
@@ -153,6 +223,16 @@ Status CPluginOpKernelContext::GetInputRange(std::string_view name,
   range->first = args.start;
   range->second = args.stop;
   return OkStatus();
+}
+
+DataType CPluginOpKernelContext::GetInputDataType(int index) const {
+  return static_cast<DataType>(TF_InputDatatype(ctx_, index));
+}
+
+std::string_view CPluginOpKernelContext::GetOpKernelRequestedInput(
+    int index) const {
+  TF_StringView requested_input = TF_GetOpKernelRequestedInput(ctx_, index);
+  return {requested_input.data, requested_input.len};
 }
 
 std::string_view CPluginOpKernelContext::GetOpKernelName() const {
@@ -188,6 +268,24 @@ Status CPluginOpKernelContext::GetFunctionLibraryDefinition(
   auto flib_def_ptr =
       new FunctionLibraryDefinition(OpRegistry::Global(), fdef_lib);
   *flib_def = flib_def_ptr;
+  return OkStatus();
+}
+
+Status CPluginOpKernelContext::GetResourceHandle(
+    int index, const ResourceHandle** handle) const {
+  TF_BufferPtr serialized_resource_handle_ptr(TF_NewBuffer());
+  TF_StatusPtr c_status_ptr(TF_NewStatus());
+
+  TF_GetSerializedResourceHandleProto(
+      ctx_, index, serialized_resource_handle_ptr.get(), c_status_ptr.get());
+  TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status_ptr.get()));
+
+  ResourceHandleProto handle_proto;
+  TF_RETURN_IF_ERROR(
+      BufferToMessage(serialized_resource_handle_ptr.get(), &handle_proto));
+  const ResourceHandle* handle_ptr = new ResourceHandle(handle_proto);
+
+  *handle = handle_ptr;
   return OkStatus();
 }
 

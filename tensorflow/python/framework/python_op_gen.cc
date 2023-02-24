@@ -14,8 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/python/framework/python_op_gen.h"
 
+#include <float.h>
+#include <stdio.h>
+
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
+#include <iomanip>
+#include <locale>
+#include <set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -23,6 +30,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/escaping.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -31,6 +41,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -38,10 +50,14 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/python/framework/python_op_gen_internal.h"
+#include "tensorflow/python/framework/python_op_gen_annotator.h"
 
 namespace tensorflow {
 namespace {
+
+// Names specified in tf_export decorators are exported to
+// TensorFlow 2.0 by default.
+const int kLatestAPIExportVersion = 2;
 
 const int kRightMargin = 78;
 
@@ -145,20 +161,84 @@ string TensorPBString(const TensorProto& pb) {
   return strings::StrCat("\"\"\"", message_short_text, "\"\"\"");
 }
 
-class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
+// Returns true if s is a Python keyword or built-in.
+bool IsPythonReserved(const string& s);
+
+// Whether the op should be prefixed with underscore.
+bool IsOpWithUnderscorePrefix(const string& s);
+
+// Add a _ to the end of s if necessary to avoid a Python keyword or built-in.
+// Also convert namespace characters ('>') to '_' because python does not
+// support '>' in names
+string AvoidPythonReserved(const string& s);
+
+// Convert an AttrValue with type `type` to the Python representation for
+// that value.
+string AttrValueToPython(const string& type, const AttrValue& value,
+                         const string& dtype_module = "tf.");
+
+void GenerateLowerCaseOpName(const string& str, string* result);
+
+string DataTypeToPython(DataType dtype, const string& dtype_module);
+
+// Names that corresponds to a single input parameter.
+class ParamNames {
  public:
-  GenEagerPythonOp(const OpDef& op_def, const ApiDef& api_def,
-                   const string& function_name, bool add_type_annotations)
-      : python_op_gen_internal::GenPythonOp(op_def, api_def, function_name,
-                                            add_type_annotations) {
+  // Create param based on Arg.
+  ParamNames(const string& name, const string& rename_to) : name_(name) {
+    rename_to_ = AvoidPythonReserved(rename_to);
+  }
+
+  // Get original parameter name.
+  string GetName() const { return name_; }
+
+  // Get the name to rename the parameter to. Note that AvoidPythonReserved
+  // has already been applied.
+  string GetRenameTo() const { return rename_to_; }
+
+ private:
+  // Original parameter name.
+  string name_;
+  // API name for this parameter.
+  string rename_to_;
+};
+
+class GenPythonOp {
+ public:
+  GenPythonOp(
+      const OpDef& op_def, const ApiDef& api_def, const string& function_name,
+      bool add_type_annotations,
+      python_op_gen_internal::GeneratedCodeAnnotator* annotator = nullptr)
+      : op_def_(op_def),
+        api_def_(api_def),
+        function_name_(function_name),
+        add_type_annotations_(add_type_annotations),
+        num_outs_(op_def.output_arg_size()),
+        annotator_(annotator) {
     op_name_ = function_name_;
     absl::ConsumePrefix(&op_name_, "_");
   }
-  ~GenEagerPythonOp() override = default;
+  ~GenPythonOp() = default;
 
-  string Code() override;
+  string Code();
 
  protected:
+  void AddDefLine(const string& function_name, const string& parameters);
+  void AddDefLine(const string& parameters);
+
+  // Format the Op's descriptions so that it can be a Python docstring.
+  void AddDocStringDescription();
+
+  void AddDocStringArgs();
+  void AddDocStringInputs();
+  void AddDocStringAttrs();
+  void AddDocStringNameArg();
+  void AddOutputGlobals();
+  void AddDocStringOutputs();
+  void AddBody(const string& prefix);
+  void AddBodyNoReturn(const string& apply_prefix);
+  void AddExport();
+
   void HandleGraphMode(const string& function_setup,
                        const std::vector<string>& output_sizes);
 
@@ -219,29 +299,750 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
   string FlattenInputs(const std::vector<int>* input_indices,
                        std::vector<string>* output_sizes) const;
 
+  // From constructor arguments
+  const OpDef& op_def_;
+  const ApiDef& api_def_;
+  const string function_name_;
+  bool add_type_annotations_;
+  const int num_outs_;
+  python_op_gen_internal::GeneratedCodeAnnotator* annotator_ = nullptr;
+
+  // Return value from Code() is prelude_ + result_.
+  string prelude_;  // Code before function definition
+  string result_;   // Function definition
+
+  // Map from attr name to the first input arg it is inferred from
+  std::unordered_map<string, string> inferred_attrs_;
+
+  // The names of the non-inferred attrs, in parameter order
+  std::vector<string> attrs_;
+
+  // All parameters, including inputs & non-inferred attrs, required and those
+  // with defaults, except "name"
+  std::vector<ParamNames> param_names_;
+
   StringPiece op_name_;
   typedef std::unordered_map<string, std::vector<int>> AttrToArgMap;
   AttrToArgMap attr_to_args_;
   std::unordered_map<string, string> attr_expressions_;
   // This has all the input args followed by those attrs that don't have
   // defaults.
-  std::vector<python_op_gen_internal::ParamNames> params_no_default_;
+  std::vector<ParamNames> params_no_default_;
   // The parameters with defaults (these have to be listed after those without).
   // No input args are included, just attrs.
-  std::vector<std::pair<python_op_gen_internal::ParamNames, string>>
-      params_with_default_;
+  std::vector<std::pair<ParamNames, string>> params_with_default_;
 };
 
-string GetEagerPythonOp(const OpDef& op_def, const ApiDef& api_def,
-                        const string& function_name,
-                        bool add_type_annotations) {
-  return GenEagerPythonOp(op_def, api_def, function_name, add_type_annotations)
+string GetEagerPythonOp(
+    const OpDef& op_def, const ApiDef& api_def, const string& function_name,
+    bool add_type_annotations,
+    python_op_gen_internal::GeneratedCodeAnnotator* annotator = nullptr) {
+  return GenPythonOp(op_def, api_def, function_name, add_type_annotations,
+                     annotator)
       .Code();
 }
 
-string GenEagerPythonOp::FlattenInputs(
-    const std::vector<int>* input_indices,
-    std::vector<string>* output_sizes) const {
+bool IsPythonReserved(const string& s) {
+  static const std::set<string>* const kPythonReserved = new std::set<string>(
+      {// Keywords in Python, from:
+       //   import keyword
+       //   print keyword.kwlist
+       "and", "as", "assert", "break", "class", "continue", "def", "del",
+       "elif", "else", "except", "exec", "finally", "for", "from", "global",
+       "if", "import", "in", "is", "lambda", "not", "or", "pass", "print",
+       "raise", "return", "try", "while", "with", "yield",
+       // Built-in functions and types in Python, from:
+       //   [x for x in dir(__builtins__) if not x[0].islower()]
+       "ArithmeticError", "AssertionError", "AttributeError", "BaseException",
+       "BufferError", "BytesWarning", "DeprecationWarning", "EOFError",
+       "Ellipsis", "EnvironmentError", "Exception", "False",
+       "FloatingPointError", "FutureWarning", "GeneratorExit", "IOError",
+       "ImportError", "ImportWarning", "IndentationError", "IndexError",
+       "KeyError", "KeyboardInterrupt", "LookupError", "MemoryError",
+       "NameError", "None", "NotImplemented", "NotImplementedError", "OSError",
+       "OverflowError", "PendingDeprecationWarning", "ReferenceError",
+       "RuntimeError", "RuntimeWarning", "StandardError", "StopIteration",
+       "SyntaxError", "SyntaxWarning", "SystemError", "SystemExit", "TabError",
+       "True", "TypeError", "UnboundLocalError", "UnicodeDecodeError",
+       "UnicodeEncodeError", "UnicodeError", "UnicodeTranslateError",
+       "UnicodeWarning", "UserWarning", "ValueError", "Warning",
+       "ZeroDivisionError", "__debug__", "__doc__", "__import__", "__name__",
+       "__package__"});
+
+  return kPythonReserved->count(s) > 0;
+}
+
+bool IsOpWithUnderscorePrefix(const string& s) {
+  static const std::set<string>* const kUnderscoreOps = new std::set<string>(
+      {// Lowercase built-in functions and types in Python, from:
+       // [x for x in dir(__builtins__) if x[0].islower()] except "round".
+       // These need to be excluded so they don't conflict with actual built-in
+       // functions since we use '*' imports.
+       "abs", "all", "any", "apply", "bin", "bool", "buffer", "bytearray",
+       "bytes", "callable", "chr", "classmethod", "cmp", "coerce", "compile",
+       "complex", "copyright", "credits", "delattr", "dict", "dir", "divmod",
+       "enumerate", "eval", "execfile", "exit", "file", "filter", "float",
+       "format", "frozenset", "getattr", "globals", "hasattr", "hash", "help",
+       "hex", "id", "input", "int", "intern", "isinstance", "issubclass",
+       "iter", "len", "license", "list", "locals", "long", "map", "max",
+       "memoryview", "min", "next", "object", "oct", "open", "ord", "pow",
+       "print", "property", "quit", "range", "raw_input", "reduce", "reload",
+       "repr", "reversed", "set", "setattr", "slice", "sorted", "staticmethod",
+       "str", "sum", "super", "tuple", "type", "unichr", "unicode", "vars",
+       "xrange", "zip",
+       // These have the same name as ops defined in Python and might be used
+       // incorrectly depending on order of '*' imports.
+       // TODO(annarev): reduce usage of '*' imports and remove these from the
+       // list.
+       "fused_batch_norm", "histogram_fixed_width", "stack",
+       "batch_norm_with_global_normalization", "clip_by_value"});
+  return kUnderscoreOps->count(s) > 0;
+}
+
+string AvoidPythonReserved(const string& s) {
+  // Convert namespace separators ('>' characters) to joiners
+  string result = absl::StrReplaceAll(s, {{">", "_"}});
+
+  if (IsPythonReserved(result)) return strings::StrCat(result, "_");
+  return result;
+}
+
+// Indent the first line by "initial" spaces and all following lines
+// by "rest" spaces.
+string Indent(int initial, int rest, StringPiece in) {
+  // TODO(josh11b): Also word-wrapping?
+  string copy(in.data(), in.size());
+  absl::StripTrailingAsciiWhitespace(&copy);
+  std::vector<string> v = str_util::Split(copy, '\n');
+
+  string result;
+  bool first = true;
+  for (const string& line : v) {
+    if (first) {
+      result = strings::StrCat(Spaces(initial), line, "\n");
+      first = false;
+    } else {
+      if (line.empty()) {
+        strings::StrAppend(&result, "\n");
+      } else {
+        strings::StrAppend(&result, Spaces(rest), line, "\n");
+      }
+    }
+  }
+  return result;
+}
+
+// Adds append to *dest, with a space if the first line will be <= width,
+// or a newline otherwise.
+void AppendWithinWidth(string* dest, StringPiece append, int width) {
+  auto first_line = append.find('\n');
+  if (first_line == string::npos) first_line = append.size();
+  if (dest->size() + first_line + 1 /* space */ > static_cast<size_t>(width)) {
+    strings::StrAppend(dest, "\n", append);
+  } else {
+    strings::StrAppend(dest, " ", append);
+  }
+}
+
+// Like DataTypeString() but uses the Python names for the
+// float types.
+string PythonDataTypeString(DataType dtype) {
+  switch (dtype) {
+    case DT_FLOAT:
+      return "float32";
+    case DT_DOUBLE:
+      return "float64";
+    default:
+      return DataTypeString(dtype);
+  }
+}
+
+string TypeString(DataType dtype, bool ref) {
+  if (ref) {
+    return strings::StrCat("mutable `", PythonDataTypeString(dtype), "`");
+  } else {
+    return strings::StrCat("`", PythonDataTypeString(dtype), "`");
+  }
+}
+
+string TypeListString(const AttrValue& value) {
+  string ret;
+  for (int t : value.list().type()) {
+    if (!ret.empty()) strings::StrAppend(&ret, ", ");
+    DataType dtype = static_cast<DataType>(t);
+    if (IsRefType(dtype)) {
+      strings::StrAppend(&ret, PythonDataTypeString(RemoveRefType(dtype)),
+                         " mutable");
+    } else {
+      strings::StrAppend(&ret, "`", PythonDataTypeString(dtype), "`");
+    }
+  }
+  return ret;
+}
+
+string SingleTensorName(DataType dtype, bool is_ref) {
+  const string type_str = TypeString(dtype, is_ref);
+  return strings::StrCat("A `Tensor` of type ", type_str, ".");
+}
+
+const char kUnknownTensorType[] = {"A `Tensor`."};
+
+string ArgTypeName(const OpDef& op_def, const OpDef::ArgDef& arg,
+                   const std::unordered_map<string, string>& inferred_attrs,
+                   bool is_output) {
+  if (!arg.number_attr().empty()) {
+    // N Tensors with the same type
+    const string* original_arg =
+        gtl::FindOrNull(inferred_attrs, arg.number_attr());
+    string prefix;
+    if (original_arg == nullptr) {
+      prefix = strings::StrCat("A list of `", arg.number_attr(), "`");
+    } else if (*original_arg == arg.name()) {
+      const OpDef::AttrDef* attr = FindAttr(arg.number_attr(), op_def);
+      if (attr->has_minimum() && attr->minimum() > 0) {
+        prefix = strings::StrCat("A list of at least ", attr->minimum());
+      } else {
+        prefix = "A list of";
+      }
+    } else {
+      prefix = strings::StrCat("A list with the same length as `",
+                               AvoidPythonReserved(*original_arg), "` of");
+    }
+
+    if (arg.type() != DT_INVALID) {
+      return strings::StrCat(prefix, " `Tensor` objects with type ",
+                             TypeString(arg.type(), arg.is_ref()), ".");
+    } else {
+      original_arg = gtl::FindOrNull(inferred_attrs, arg.type_attr());
+      if (arg.is_ref()) {
+        strings::StrAppend(&prefix, " mutable");
+      }
+      if (original_arg == nullptr) {
+        return strings::StrCat(prefix, " `Tensor` objects with type `",
+                               arg.type_attr(), "`.");
+      } else if (*original_arg == arg.name()) {
+        const OpDef::AttrDef* attr = FindAttr(arg.type_attr(), op_def);
+        if (attr->has_allowed_values()) {
+          return strings::StrCat(prefix,
+                                 " `Tensor` objects with the same type in: ",
+                                 TypeListString(attr->allowed_values()), ".");
+        } else {
+          return strings::StrCat(prefix,
+                                 " `Tensor` objects with the same type.");
+        }
+      } else {
+        return strings::StrCat(prefix,
+                               " `Tensor` objects with the same type as `",
+                               AvoidPythonReserved(*original_arg), "`.");
+      }
+    }
+  } else if (!arg.type_attr().empty() || !arg.type_list_attr().empty()) {
+    const bool is_list = !arg.type_list_attr().empty();
+    const string attr_name = is_list ? arg.type_list_attr() : arg.type_attr();
+    const OpDef::AttrDef* attr = FindAttr(attr_name, op_def);
+    const string mutable_str = arg.is_ref() ? "mutable " : "";
+    const string prefix =
+        is_list ? strings::StrCat("A list of ", mutable_str, "`Tensor` objects")
+                : strings::StrCat("A ", mutable_str, "`Tensor`");
+    const string* original_arg = gtl::FindOrNull(inferred_attrs, attr_name);
+    if (original_arg == nullptr) {
+      return strings::StrCat(prefix, " of type `", attr_name, "`.");
+    } else if (*original_arg == arg.name()) {
+      if (attr->has_allowed_values()) {
+        if (is_list) {
+          return strings::StrCat(prefix, " with types from: ",
+                                 TypeListString(attr->allowed_values()), ".");
+        } else {
+          return strings::StrCat(prefix,
+                                 is_output
+                                     ? ". Has one of the following types: "
+                                     : ". Must be one of the following types: ",
+                                 TypeListString(attr->allowed_values()), ".");
+        }
+      } else {
+        return strings::StrCat(prefix, ".");
+      }
+    } else {
+      return strings::StrCat(prefix,
+                             is_output ? ". Has the same type as `"
+                                       : ". Must have the same type as `",
+                             AvoidPythonReserved(*original_arg), "`.");
+    }
+  } else {
+    return SingleTensorName(arg.type(), arg.is_ref());
+  }
+}
+
+string GetReturns(const OpDef& op_def,
+                  const std::vector<string>& output_type_string) {
+  string result;
+  DCHECK_EQ(op_def.output_arg_size(), output_type_string.size());
+  const int num_outs = op_def.output_arg_size();
+  strings::StrAppend(&result, "\n  Returns:\n");
+  if (num_outs == 0) {
+    strings::StrAppend(&result, "    The created Operation.\n");
+  } else {
+    if (num_outs == 1) {
+      StringPiece description = op_def.output_arg(0).description();
+      if (ConsumeEquals(&description)) {  // Skip the generated type info.
+        strings::StrAppend(&result, Indent(4, 4, description));
+      } else {
+        // Special case of one output, don't use the name of the output unless
+        // there is no description.
+        string desc = output_type_string.empty() ? kUnknownTensorType
+                                                 : output_type_string[0];
+        if (desc == kUnknownTensorType) {
+          // Special case where we don't understand how the output tensor type
+          // depends on the input tensor types, just use the output arg
+          // description if we can.
+          if (!description.empty()) {
+            desc = op_def.output_arg(0).description();
+          } else if (!op_def.output_arg(0).name().empty()) {
+            desc = strings::StrCat(" The ", op_def.output_arg(0).name(),
+                                   " `Tensor`.");
+          }
+        } else if (!description.empty()) {
+          AppendWithinWidth(&desc, description, kRightMargin - 4 /* indent */);
+        }
+        strings::StrAppend(&result, Indent(4, 4, desc));
+      }
+    } else {
+      std::vector<string> out_names(num_outs);
+      for (int i = 0; i < num_outs; ++i) {
+        if (!op_def.output_arg(i).name().empty()) {
+          out_names[i] = op_def.output_arg(i).name();
+        } else {
+          out_names[i] = strings::StrCat("output", i);
+        }
+      }
+      strings::StrAppend(&result, "    A tuple of `Tensor` objects (",
+                         absl::StrJoin(out_names, ", "), ").\n\n");
+      for (int i = 0; i < num_outs; ++i) {
+        string desc = strings::StrCat(out_names[i], ": ");
+        StringPiece description = op_def.output_arg(i).description();
+        if (ConsumeEquals(&description)) {  // Skip the generated type info.
+          strings::StrAppend(&desc, description);
+        } else {
+          const string type = static_cast<size_t>(i) < output_type_string.size()
+                                  ? output_type_string[i]
+                                  : kUnknownTensorType;
+          if (!description.empty()) {
+            if (type == kUnknownTensorType) {
+              // Special case where we don't understand how the output tensor
+              // type depends on the input tensor types, so we just use the
+              // output arg description.
+              strings::StrAppend(&desc, description);
+            } else {
+              strings::StrAppend(&desc, type, " ", description);
+            }
+          } else {
+            strings::StrAppend(&desc, type);
+          }
+        }
+        strings::StrAppend(&result, Indent(4, 6, desc));
+      }
+    }
+  }
+  return result;
+}
+
+string StringToPython(const string& str) {
+  return strings::StrCat("\"", absl::CEscape(str), "\"");
+}
+
+string DataTypeToPython(DataType dtype, const string& dtype_module) {
+  return strings::StrCat(dtype_module, PythonDataTypeString(dtype));
+}
+
+string ShapeToPython(const TensorShapeProto& shape) {
+  if (shape.unknown_rank()) {
+    return "None";
+  }
+  string python = "[";
+  for (const auto& dim : shape.dim()) {
+    if (python.size() > 1) strings::StrAppend(&python, ", ");
+    if (!dim.name().empty()) {
+      strings::StrAppend(&python, "(", StringToPython(dim.name()), ", ",
+                         dim.size(), ")");
+    } else {
+      strings::StrAppend(&python, dim.size());
+    }
+  }
+  strings::StrAppend(&python, "]");
+  return python;
+}
+
+string TensorToPython(const TensorProto& proto) {
+  return proto.ShortDebugString();
+}
+
+string AttrListToPython(const AttrValue& value,
+                        const string& dtype_module = "tf.") {
+  string ret;
+  if (value.list().s_size() > 0) {
+    for (int i = 0; i < value.list().s_size(); ++i) {
+      if (i > 0) strings::StrAppend(&ret, ", ");
+      strings::StrAppend(&ret, StringToPython(value.list().s(i)));
+    }
+  } else if (value.list().i_size() > 0) {
+    for (int i = 0; i < value.list().i_size(); ++i) {
+      if (i > 0) strings::StrAppend(&ret, ", ");
+      strings::StrAppend(&ret, value.list().i(i));
+    }
+  } else if (value.list().f_size() > 0) {
+    for (int i = 0; i < value.list().f_size(); ++i) {
+      if (i > 0) strings::StrAppend(&ret, ", ");
+      strings::StrAppend(&ret, value.list().f(i));
+    }
+  } else if (value.list().b_size() > 0) {
+    for (int i = 0; i < value.list().b_size(); ++i) {
+      if (i > 0) strings::StrAppend(&ret, ", ");
+      strings::StrAppend(&ret, value.list().b(i) ? "True" : "False");
+    }
+  } else if (value.list().type_size() > 0) {
+    for (int i = 0; i < value.list().type_size(); ++i) {
+      if (i > 0) strings::StrAppend(&ret, ", ");
+      strings::StrAppend(&ret,
+                         DataTypeToPython(value.list().type(i), dtype_module));
+    }
+  } else if (value.list().shape_size() > 0) {
+    for (int i = 0; i < value.list().shape_size(); ++i) {
+      if (i > 0) strings::StrAppend(&ret, ", ");
+      strings::StrAppend(&ret, ShapeToPython(value.list().shape(i)));
+    }
+  } else if (value.list().tensor_size() > 0) {
+    for (int i = 0; i < value.list().tensor_size(); ++i) {
+      if (i > 0) strings::StrAppend(&ret, ", ");
+      strings::StrAppend(&ret, TensorToPython(value.list().tensor(i)));
+    }
+  } else if (value.list().func_size() > 0) {
+    for (int i = 0; i < value.list().func_size(); ++i) {
+      if (i > 0) strings::StrAppend(&ret, ", ");
+      strings::StrAppend(&ret, StringToPython(value.list().func(i).name()));
+    }
+  }
+  return ret;
+}
+
+// NOTE: The return value may contain spaces (for example, it could be
+// a string "foo bar" with an embedded space) and is not safe to pass
+// to WordWrap().
+string AttrValueToPython(const string& type, const AttrValue& value,
+                         const string& dtype_module) {
+  if (type == "string") {
+    return StringToPython(value.s());
+  } else if (type == "int") {
+    return strings::StrCat(value.i());
+  } else if (type == "float") {
+    if (std::isnan(value.f()) || std::isinf(value.f())) {
+      return strings::StrCat("float('", value.f(), "')");
+    } else {
+      // Use locale-independent conversion.
+      static_assert(FLT_DIG < 10, "FLT_DIG is too big");
+      std::ostringstream s;
+      s.imbue(std::locale::classic());
+      s << std::setprecision(FLT_DIG) << value.f();
+      // If there is no I/O error for `std::ostringstream s` return s.str(),
+      // otherwise fallback to strings::StrCat(value.f()).
+      if (s.good()) {
+        return s.str();
+      }
+      return strings::StrCat(value.f());
+    }
+  } else if (type == "bool") {
+    return value.b() ? "True" : "False";
+  } else if (type == "type") {
+    return DataTypeToPython(value.type(), dtype_module);
+  } else if (type == "shape") {
+    return ShapeToPython(value.shape());
+  } else if (type == "tensor") {
+    return TensorToPython(value.tensor());
+  } else if (type == "func") {
+    return StringToPython(value.func().name());
+  } else if (absl::StartsWith(type, "list(")) {
+    return strings::StrCat("[", AttrListToPython(value, dtype_module), "]");
+  } else {
+    return "?";
+  }
+}
+
+void GenerateLowerCaseOpName(const string& str, string* result) {
+  const char joiner = '_';
+  const char namespace_separator = '>';
+  const int last_index = str.size() - 1;
+  for (int i = 0; i <= last_index; ++i) {
+    const char c = str[i];
+    // Convert namespace separators ('>' characters) to joiners
+    if (c == namespace_separator) {
+      result->push_back(joiner);
+      continue;
+    }
+
+    // Emit a joiner only if a previous-lower-to-now-upper or a
+    // now-upper-to-next-lower transition happens.
+    // (But don't emit an extra joiner if we just saw a namespace separator
+    if (isupper(c) && (i > 0)) {
+      if (islower(str[i - 1]) || ((i < last_index) && islower(str[i + 1]))) {
+        if (!(str[i - 1] == namespace_separator)) {
+          result->push_back(joiner);
+        }
+      }
+    }
+    result->push_back(tolower(c));
+  }
+}
+
+static void AddDelimiter(string* append_to, const string& delim) {
+  if (!append_to->empty()) strings::StrAppend(append_to, delim);
+}
+
+const ApiDef::Attr* FindAttr(StringPiece name, const ApiDef& api_def) {
+  for (int i = 0; i < api_def.attr_size(); ++i) {
+    if (api_def.attr(i).name() == name) {
+      return &api_def.attr(i);
+    }
+  }
+  return nullptr;
+}
+
+void GenPythonOp::AddExport() {
+  if (api_def_.visibility() != ApiDef::VISIBLE) {
+    return;
+  }
+  // Whether op should be available in latest export version.
+  bool op_available_in_latest =
+      !api_def_.deprecation_version() ||
+      api_def_.deprecation_version() > kLatestAPIExportVersion;
+
+  string names;
+  string names_v1;
+  string deprecated_endpoints;
+
+  for (const auto& endpoint : api_def_.endpoint()) {
+    string endpoint_name;
+    GenerateLowerCaseOpName(endpoint.name(), &endpoint_name);
+    if (endpoint.deprecated() || endpoint.deprecation_version() > 0) {
+      AddDelimiter(&deprecated_endpoints, ", ");
+      strings::StrAppend(&deprecated_endpoints, "'", endpoint_name, "'");
+    }
+    // Add all endpoints to TensorFlow 1.* API.
+    AddDelimiter(&names_v1, ", ");
+    strings::StrAppend(&names_v1, "'", endpoint_name, "'");
+    // Add non-deprecated endpoints to TensorFlow 2.* API.
+    if (op_available_in_latest &&
+        (!endpoint.deprecation_version() ||
+         endpoint.deprecation_version() > kLatestAPIExportVersion)) {
+      AddDelimiter(&names, ", ");
+      strings::StrAppend(&names, "'", endpoint_name, "'");
+    }
+  }
+
+  // tf_export decorator has the following format:
+  // @tf_export(v2_name, v2_name, v1=[v1_name, v1_name])
+  if (names != names_v1) {
+    AddDelimiter(&names, ", ");
+    strings::StrAppend(&names, "v1=[", names_v1, "]");
+  }
+  strings::StrAppend(&result_, "@tf_export(", names, ")\n");
+
+  // If all endpoints are deprecated, add @deprecated decorator.
+  if (!api_def_.deprecation_message().empty()) {
+    const string instructions = api_def_.deprecation_message();
+    strings::StrAppend(&result_, "@deprecated(None, '", instructions, "')\n");
+  }
+  // Add @deprecated_endpoints decorator.
+  if (!deprecated_endpoints.empty()) {
+    strings::StrAppend(&result_, "@deprecated_endpoints(", deprecated_endpoints,
+                       ")\n");
+  }
+}
+
+void GenPythonOp::AddDefLine(const string& function_name,
+                             const string& parameters) {
+  strings::StrAppend(&result_, "def ", function_name, "(", parameters, "):\n");
+}
+
+void GenPythonOp::AddDefLine(const string& parameters) {
+  AddDefLine(function_name_, parameters);
+}
+
+void GenPythonOp::AddDocStringDescription() {
+  string comment;
+  if (api_def_.summary().empty()) {
+    comment = "TODO: add doc.\n";
+  } else {
+    comment = strings::StrCat(api_def_.summary(), "\n");
+    if (!api_def_.description().empty()) {
+      strings::StrAppend(&comment, "\n", Indent(2, 2, api_def_.description()));
+    }
+  }
+  strings::StrAppend(&result_, "  r\"\"\"", comment, "\n");
+}
+
+void GenPythonOp::AddDocStringArgs() {
+  strings::StrAppend(&result_, "  Args:\n");
+}
+
+void GenPythonOp::AddDocStringInputs() {
+  for (int i = 0; i < api_def_.arg_order_size(); ++i) {
+    const auto& arg = *FindInputArg(api_def_.arg_order(i), op_def_);
+    const auto& api_def_arg = *FindInputArg(api_def_.arg_order(i), api_def_);
+    StringPiece description = api_def_arg.description();
+    string desc;
+    if (ConsumeEquals(&description)) {  // Skip the generated type info.
+      desc = strings::StrCat(param_names_[i].GetRenameTo(), ": ");
+    } else {
+      desc = strings::StrCat(param_names_[i].GetRenameTo(), ": ",
+                             ArgTypeName(op_def_, arg, inferred_attrs_, false));
+    }
+    if (!description.empty()) {
+      AppendWithinWidth(&desc, description, kRightMargin - 4 /* indent */);
+    }
+    strings::StrAppend(&result_, Indent(4, 6, desc));
+  }
+}
+
+void GenPythonOp::AddDocStringAttrs() {
+  for (const string& name : attrs_) {
+    const auto& attr = *FindAttr(name, op_def_);
+    const auto& api_def_attr = *FindAttr(name, api_def_);
+    string desc =
+        strings::StrCat(AvoidPythonReserved(api_def_attr.rename_to()), ": ");
+
+    static const char* const kAttrTypeName[][2] = {
+        {"string", "`string`"},
+        {"list(string)", "list of `strings`"},
+        {"int", "`int`"},
+        {"list(int)", "list of `ints`"},
+        {"float", "`float`"},
+        {"list(float)", "list of `floats`"},
+        {"bool", "`bool`"},
+        {"list(bool)", "list of `bools`"},
+        {"type", "`tf.DType`"},
+        {"list(type)", "list of `tf.DTypes`"},
+        {"shape", "`tf.TensorShape` or list of `ints`"},
+        {"list(shape)",
+         "list of shapes (each a `tf.TensorShape` or list of `ints`)"},
+        {"tensor", "`tf.TensorProto`"},
+        {"list(tensor)", "list of `tf.TensorProto` objects"},
+        {"func", "function decorated with @Defun"},
+        {"list(func)", "list of functions decorated with @Defun"},
+    };
+    for (size_t i = 0; i < TF_ARRAYSIZE(kAttrTypeName); ++i) {
+      if (attr.type() == kAttrTypeName[i][0]) {
+        string s;
+        if (api_def_attr.has_default_value()) {
+          s = strings::StrCat("optional ", kAttrTypeName[i][1]);
+        } else {
+          s = kAttrTypeName[i][1];
+        }
+        if (s[0] == 'o' || (s[0] == '`' && (s[1] == 'i' || s[1] == 'o'))) {
+          strings::StrAppend(&desc, "An ", s);
+        } else {
+          strings::StrAppend(&desc, "A ", s);
+        }
+        break;
+      }
+    }
+
+    if (attr.has_allowed_values()) {
+      strings::StrAppend(&desc, " from: `",
+                         AttrListToPython(attr.allowed_values()), "`");
+    }
+
+    if (attr.has_minimum()) {
+      if (attr.type() == "int") {
+        strings::StrAppend(&desc, " that is `>= ", attr.minimum(), "`");
+      } else if (attr.minimum() > 0) {
+        strings::StrAppend(&desc, " that has length `>= ", attr.minimum(), "`");
+      }
+    }
+
+    strings::StrAppend(&desc, ".");
+
+    if (api_def_attr.has_default_value()) {
+      strings::StrAppend(
+          &desc, " Defaults to `",
+          AttrValueToPython(attr.type(), api_def_attr.default_value()), "`.");
+    }
+    if (!api_def_attr.description().empty()) {
+      AppendWithinWidth(&desc, api_def_attr.description(),
+                        kRightMargin - 4 /* indent */);
+    }
+    strings::StrAppend(&result_, Indent(4, 6, desc));
+  }
+}
+
+void GenPythonOp::AddDocStringNameArg() {
+  strings::StrAppend(&result_,
+                     "    name: A name for the operation (optional).\n");
+}
+
+void GenPythonOp::AddOutputGlobals() {
+  // Generate a namedtuple class to hold the outputs, if there are multiple.
+  // Example:
+  //
+  // _OpOutputs = collections.namedtuple(
+  //     "_OpOutputs",
+  //     "out1 out2 out3")
+  if (num_outs_ > 1) {
+    std::vector<string> out_names;
+    out_names.reserve(num_outs_);
+    for (int i = 0; i < num_outs_; ++i) {
+      const string out_name = !api_def_.out_arg(i).rename_to().empty()
+                                  ? api_def_.out_arg(i).rename_to()
+                                  : strings::StrCat("output", i);
+      out_names.push_back(strings::StrCat("\"", out_name, "\""));
+    }
+
+    strings::StrAppend(&prelude_, "_", AvoidPythonReserved(op_def_.name()),
+                       "Output = collections.namedtuple(\n");
+    strings::StrAppend(&prelude_, "    \"", AvoidPythonReserved(op_def_.name()),
+                       "\",\n");
+    strings::StrAppend(&prelude_, "    [", absl::StrJoin(out_names, ", "),
+                       "])");
+    strings::StrAppend(&prelude_, "\n\n");
+  }
+  strings::StrAppend(&prelude_, "\n");
+}
+
+void GenPythonOp::AddDocStringOutputs() {
+  std::vector<string> output_type_string;
+  output_type_string.reserve(num_outs_);
+  for (int i = 0; i < num_outs_; ++i) {
+    output_type_string.push_back(
+        ArgTypeName(op_def_, op_def_.output_arg(i), inferred_attrs_, true));
+  }
+  strings::StrAppend(&result_, GetReturns(op_def_, output_type_string));
+}
+
+void GenPythonOp::AddBody(const string& prefix) {
+  const string apply_prefix = strings::StrCat(
+      prefix, "_result = _op_def_lib.apply_op(\"", op_def_.name(), "\", ");
+  AddBodyNoReturn(apply_prefix);
+  if (num_outs_ > 1) {
+    strings::StrAppend(&result_, prefix, "_result = _",
+                       AvoidPythonReserved(op_def_.name()),
+                       "Output._make(_result)\n");
+  }
+  strings::StrAppend(&result_, prefix, "return _result\n");
+}
+
+void GenPythonOp::AddBodyNoReturn(const string& apply_prefix) {
+  string args;
+  for (size_t i = 0; i < param_names_.size(); ++i) {
+    strings::StrAppend(&args, AvoidPythonReserved(param_names_[i].GetName()),
+                       "=", param_names_[i].GetRenameTo(), ", ");
+  }
+  strings::StrAppend(&args, "name=name)");
+
+  strings::StrAppend(&result_,
+                     // Wrap the arguments, and indent to the (.
+                     WordWrap(apply_prefix, args, kRightMargin), "\n");
+}
+
+string GenPythonOp::FlattenInputs(const std::vector<int>* input_indices,
+                                  std::vector<string>* output_sizes) const {
   string inputs;
   enum { STARTING, WAS_LIST_INPUT, WAS_SOLO_INPUT } inputs_state = STARTING;
   const int n = input_indices != nullptr ? input_indices->size()
@@ -287,7 +1088,7 @@ string GenEagerPythonOp::FlattenInputs(
   return inputs;
 }
 
-string GenEagerPythonOp::Code() {
+string GenPythonOp::Code() {
   if (api_def_.visibility() == ApiDef::SKIP) {
     return "";
   }
@@ -314,8 +1115,7 @@ string GenEagerPythonOp::Code() {
       if (api_def_attr.has_default_value()) {
         if (attr.type() == "tensor") {
           params_with_default_.emplace_back(
-              python_op_gen_internal::ParamNames(api_def_attr.name(),
-                                                 api_def_attr.rename_to()),
+              ParamNames(api_def_attr.name(), api_def_attr.rename_to()),
               strings::StrCat(
                   "_execute.make_tensor(",
                   TensorPBString(api_def_attr.default_value().tensor()), ", \"",
@@ -326,17 +1126,15 @@ string GenEagerPythonOp::Code() {
             pbtxt.emplace_back(TensorPBString(pb));
           }
           params_with_default_.emplace_back(
-              python_op_gen_internal::ParamNames(api_def_attr.name(),
-                                                 api_def_attr.rename_to()),
+              ParamNames(api_def_attr.name(), api_def_attr.rename_to()),
               strings::StrCat("[_execute.make_tensor(_pb, \"",
                               api_def_attr.rename_to(), "\") for _pb in ",
                               VectorToTuple(pbtxt), "]"));
         } else {
           params_with_default_.emplace_back(
-              python_op_gen_internal::ParamNames(api_def_attr.name(),
-                                                 api_def_attr.rename_to()),
-              python_op_gen_internal::AttrValueToPython(
-                  attr.type(), api_def_attr.default_value(), "_dtypes."));
+              ParamNames(api_def_attr.name(), api_def_attr.rename_to()),
+              AttrValueToPython(attr.type(), api_def_attr.default_value(),
+                                "_dtypes."));
         }
       } else {
         params_no_default_.emplace_back(api_def_attr.name(),
@@ -451,7 +1249,7 @@ string GenEagerPythonOp::Code() {
   return prelude_ + result_;
 }
 
-std::unordered_map<string, string> GenEagerPythonOp::GetTypeAnnotations() {
+std::unordered_map<string, string> GenPythonOp::GetTypeAnnotations() {
   std::unordered_map<string, string> type_annotations;
   // Map attrs to TypeVars
   for (const auto& attr : op_def_.attr()) {
@@ -486,7 +1284,7 @@ std::unordered_map<string, string> GenEagerPythonOp::GetTypeAnnotations() {
 }
 
 // Generate TypeVars using attrs
-void GenEagerPythonOp::GenerateTypeVars(
+void GenPythonOp::GenerateTypeVars(
     const std::unordered_map<string, string>& type_annotations) {
   bool added_typevar = false;
   for (const auto& attr : op_def_.attr()) {
@@ -494,8 +1292,7 @@ void GenEagerPythonOp::GenerateTypeVars(
       std::vector<string> allowed_types;
       for (int t : attr.allowed_values().list().type()) {
         DataType dtype = static_cast<DataType>(t);
-        const string py_dtype =
-            python_op_gen_internal::DataTypeToPython(dtype, "_dtypes.");
+        const string py_dtype = DataTypeToPython(dtype, "_dtypes.");
         allowed_types.emplace_back(dtype_type.at(py_dtype));
       }
 
@@ -526,7 +1323,7 @@ void GenEagerPythonOp::GenerateTypeVars(
   if (added_typevar) strings::StrAppend(&result_, "\n");
 }
 
-void GenEagerPythonOp::AddReturnTypeAnnotation(
+void GenPythonOp::AddReturnTypeAnnotation(
     const std::unordered_map<string, string>& type_annotations) {
   if (op_def_.output_arg_size() == 1) {
     const auto& arg = op_def_.output_arg(0);
@@ -540,8 +1337,8 @@ void GenEagerPythonOp::AddReturnTypeAnnotation(
   }
 }
 
-void GenEagerPythonOp::HandleGraphMode(
-    const string& function_setup, const std::vector<string>& output_sizes) {
+void GenPythonOp::HandleGraphMode(const string& function_setup,
+                                  const std::vector<string>& output_sizes) {
   if (api_def_.visibility() == ApiDef::VISIBLE) {
     strings::StrAppend(&result_, "  else:\n");
     AddTypeBasedDispatch("    ");
@@ -618,10 +1415,9 @@ void GenEagerPythonOp::HandleGraphMode(
       // For list outputs, convert the right subrange of _result into a list.
       Unflatten("  ", output_sizes, "_result", &result_);
       // Convert to a named tuple.
-      strings::StrAppend(
-          &result_, "  _result = _",
-          python_op_gen_internal::AvoidPythonReserved(op_def_.name()),
-          "Output._make(_result)\n");
+      strings::StrAppend(&result_, "  _result = _",
+                         AvoidPythonReserved(op_def_.name()),
+                         "Output._make(_result)\n");
     }
     strings::StrAppend(&result_, "  return _result\n\n");
   } else {
@@ -629,7 +1425,7 @@ void GenEagerPythonOp::HandleGraphMode(
   }
 }
 
-string GenEagerPythonOp::GetEagerNotAllowedError() {
+string GenPythonOp::GetEagerNotAllowedError() {
   bool eager_allowed = true;
   string ref_arg;
   for (int i = 0; i < op_def_.input_arg_size(); ++i) {
@@ -656,8 +1452,8 @@ string GenEagerPythonOp::GetEagerNotAllowedError() {
                          ref_arg, "' is a ref.\")\n");
 }
 
-void GenEagerPythonOp::ExpectListArg(const string& indentation,
-                                     const string& arg_name, string* output) {
+void GenPythonOp::ExpectListArg(const string& indentation,
+                                const string& arg_name, string* output) {
   strings::StrAppend(output, indentation, "if not isinstance(", arg_name,
                      ", (list, tuple)):\n", indentation, "  raise TypeError(\n",
                      indentation, "      \"Expected list for '", arg_name,
@@ -665,8 +1461,8 @@ void GenEagerPythonOp::ExpectListArg(const string& indentation,
                      "' Op, not %r.\" % ", arg_name, ")\n");
 }
 
-bool GenEagerPythonOp::GetEagerFunctionSetup(const string& indentation,
-                                             string* function_setup) {
+bool GenPythonOp::GetEagerFunctionSetup(const string& indentation,
+                                        string* function_setup) {
   // Validate list inputs, infer length attrs.
   for (int i = 0; i < op_def_.attr_size(); ++i) {
     const auto& attr(op_def_.attr(i));
@@ -789,7 +1585,7 @@ bool GenEagerPythonOp::GetEagerFunctionSetup(const string& indentation,
 // If output i is list output, output_sizes[i] will be set to a
 // string with the python expression that will evaluate to its
 // length. output_sizes[i] is empty for non-list outputs.
-void GenEagerPythonOp::GetOutputSizesAndNumOutputsExpr(
+void GenPythonOp::GetOutputSizesAndNumOutputsExpr(
     std::vector<string>* output_sizes, string* num_outputs_expr) {
   // Expression representing the number of outputs.
   int num_fixed_outputs = 0;
@@ -829,7 +1625,7 @@ void GenEagerPythonOp::GetOutputSizesAndNumOutputsExpr(
   }
 }
 
-void GenEagerPythonOp::AddEagerFunctionTeardown(
+void GenPythonOp::AddEagerFunctionTeardown(
     const string& indentation, const std::vector<string>& output_sizes,
     bool execute_record_gradient) {
   if (num_outs_ > 0) {
@@ -853,10 +1649,9 @@ void GenEagerPythonOp::AddEagerFunctionTeardown(
       // For list outputs, convert the right subrange of _result into a list.
       Unflatten(indentation, output_sizes, "_result", &result_);
       // Convert to a named tuple.
-      strings::StrAppend(
-          &result_, indentation, "_result = _",
-          python_op_gen_internal::AvoidPythonReserved(op_def_.name()),
-          "Output._make(_result)\n");
+      strings::StrAppend(&result_, indentation, "_result = _",
+                         AvoidPythonReserved(op_def_.name()),
+                         "Output._make(_result)\n");
     }
   } else {
     strings::StrAppend(&result_, indentation, "_result = None\n");
@@ -864,7 +1659,7 @@ void GenEagerPythonOp::AddEagerFunctionTeardown(
   strings::StrAppend(&result_, indentation, "return _result\n\n");
 }
 
-bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
+bool GenPythonOp::AddEagerFastPathAndGraphCode(
     const string& parameters, const std::vector<string>& output_sizes,
     const string& eager_not_allowed_error,
     const std::unordered_map<string, string>& type_annotations) {
@@ -877,6 +1672,12 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
   }
 
   AddExport();
+  if (annotator_ != nullptr) {
+    // The generated function name will start at the character after
+    // the current cursor + len("def ")
+    annotator_->AddAnnotation(op_def_, function_name_,
+                              /*offset_start =*/result_.length() + 5);
+  }
   AddDefLine(function_name_, parameters);
   if (add_type_annotations_) {
     AddReturnTypeAnnotation(type_annotations);
@@ -914,7 +1715,7 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
   return true;
 }
 
-bool GenEagerPythonOp::AddEagerFallbackCode(
+bool GenPythonOp::AddEagerFallbackCode(
     const string& parameters, const std::vector<string>& output_sizes,
     const string& num_outputs_expr, const string& eager_not_allowed_error,
     const std::unordered_map<string, string>& type_annotations) {
@@ -949,7 +1750,7 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
   return true;
 }
 
-void GenEagerPythonOp::AddEagerFastPathExecute() {
+void GenPythonOp::AddEagerFastPathExecute() {
   string fastpath_execute_params =
       strings::StrCat("_ctx, \"", op_def_.name(), "\", ", "name");
   string fallback_params;
@@ -983,9 +1784,8 @@ void GenEagerPythonOp::AddEagerFastPathExecute() {
       "\n");
 
   if (op_def_.output_arg_size() > 1) {
-    const string output_tuple_name = strings::StrCat(
-        "_", python_op_gen_internal::AvoidPythonReserved(op_def_.name()),
-        "Output");
+    const string output_tuple_name =
+        strings::StrCat("_", AvoidPythonReserved(op_def_.name()), "Output");
     strings::StrAppend(&result_, "      ", "_result = ", output_tuple_name,
                        "._make(_result)\n");
   }
@@ -1018,7 +1818,7 @@ void GenEagerPythonOp::AddEagerFastPathExecute() {
   AddFallbackDispatch("    ");
 }
 
-void GenEagerPythonOp::AddEagerInferredAttrs(const string& indentation) {
+void GenPythonOp::AddEagerInferredAttrs(const string& indentation) {
   // Figure out values for inferred attrs, and cast to eager tensors.
   for (int i = 0; i < op_def_.attr_size(); ++i) {
     const auto& attr(op_def_.attr(i));
@@ -1035,8 +1835,7 @@ void GenEagerPythonOp::AddEagerInferredAttrs(const string& indentation) {
         strings::StrAppend(&conversion, ", [");
         for (int t : attr.allowed_values().list().type()) {
           DataType dtype = static_cast<DataType>(t);
-          const string py_dtype =
-              python_op_gen_internal::DataTypeToPython(dtype, "_dtypes.");
+          const string py_dtype = DataTypeToPython(dtype, "_dtypes.");
           strings::StrAppend(&conversion, py_dtype, ", ");
         }
         strings::StrAppend(&conversion, "]");
@@ -1044,8 +1843,8 @@ void GenEagerPythonOp::AddEagerInferredAttrs(const string& indentation) {
         if (attr.has_default_value()) {
           strings::StrAppend(
               &conversion, ", ",
-              python_op_gen_internal::AttrValueToPython(
-                  attr.type(), api_def_attr.default_value(), "_dtypes."));
+              AttrValueToPython(attr.type(), api_def_attr.default_value(),
+                                "_dtypes."));
         }
         strings::StrAppend(&conversion, ")");
         const string var_name = AttrVarName(attr.name(), &attr_expressions_);
@@ -1106,21 +1905,20 @@ void GenEagerPythonOp::AddEagerInferredAttrs(const string& indentation) {
   }
 }
 
-void GenEagerPythonOp::AddEagerInputCasts(const string& indentation) {
+void GenPythonOp::AddEagerInputCasts(const string& indentation) {
   // Cast remaining args to eager tensors
   for (int i = 0; i < op_def_.input_arg_size(); ++i) {
     const auto& arg(op_def_.input_arg(i));
     if (!arg.type_attr().empty() || !arg.type_list_attr().empty()) continue;
     const string& param = param_names_[i].GetRenameTo();
     const string fn = arg.number_attr().empty() ? "" : "n_";
-    const string dtype =
-        python_op_gen_internal::DataTypeToPython(arg.type(), "_dtypes.");
+    const string dtype = DataTypeToPython(arg.type(), "_dtypes.");
     strings::StrAppend(&result_, indentation, param, " = _ops.convert_", fn,
                        "to_tensor(", param, ", ", dtype, ")\n");
   }
 }
 
-void GenEagerPythonOp::AddEagerAttrs(const string& indentation) {
+void GenPythonOp::AddEagerAttrs(const string& indentation) {
   // Compute eager attrs
   if (op_def_.attr_size() > 0) {
     string attr_values;
@@ -1141,8 +1939,8 @@ void GenEagerPythonOp::AddEagerAttrs(const string& indentation) {
   }
 }
 
-void GenEagerPythonOp::AddEagerExecute(const string& indentation,
-                                       const string& num_outputs_expr) {
+void GenPythonOp::AddEagerExecute(const string& indentation,
+                                  const string& num_outputs_expr) {
   const string return_prefix =
       strings::StrCat(indentation, "_result = _execute.execute(");
   const string return_args = strings::StrCat(
@@ -1153,7 +1951,7 @@ void GenEagerPythonOp::AddEagerExecute(const string& indentation,
                      WordWrap(return_prefix, return_args, kRightMargin), "\n");
 }
 
-void GenEagerPythonOp::AddFallbackDispatch(const string& prefix) {
+void GenPythonOp::AddFallbackDispatch(const string& prefix) {
   if (api_def_.visibility() != ApiDef::VISIBLE) return;
 
   strings::StrAppend(&result_, prefix, "except (TypeError, ValueError):\n");
@@ -1169,7 +1967,7 @@ void GenEagerPythonOp::AddFallbackDispatch(const string& prefix) {
   strings::StrAppend(&result_, prefix, "  raise\n");
 }
 
-void GenEagerPythonOp::AddTypeBasedDispatcherAlias() {
+void GenPythonOp::AddTypeBasedDispatcherAlias() {
   // It's possible for the name of a parameter to be the same as the name of
   // an op, in which case the parameter shadows the op's function.  To avoid
   // this, we add a private variable with the dispatcher, and access that
@@ -1179,7 +1977,7 @@ void GenEagerPythonOp::AddTypeBasedDispatcherAlias() {
                        function_name_, "._tf_type_based_dispatcher.Dispatch\n");
   }
 }
-void GenEagerPythonOp::AddTypeBasedDispatch(const string& prefix) {
+void GenPythonOp::AddTypeBasedDispatch(const string& prefix) {
   if (api_def_.visibility() != ApiDef::VISIBLE) return;
   std::string args("(");
   for (const auto& name : param_names_) {
@@ -1194,12 +1992,11 @@ void GenEagerPythonOp::AddTypeBasedDispatch(const string& prefix) {
                      prefix, "  return _result\n");
 }
 
-void GenEagerPythonOp::AddRawOpExport(const string& parameters) {
+void GenPythonOp::AddRawOpExport(const string& parameters) {
   // Example:
   //
   // Identity = tf_export("raw_ops.Identity")(_ops._to_raw_op(identity))
-  const string raw_function_name =
-      python_op_gen_internal::AvoidPythonReserved(op_def_.name());
+  const string raw_function_name = AvoidPythonReserved(op_def_.name());
   strings::StrAppend(&result_, raw_function_name, " = tf_export(\"raw_ops.",
                      raw_function_name, "\")", "(_ops.to_raw_op(",
                      function_name_, "))\n");
@@ -1207,9 +2004,12 @@ void GenEagerPythonOp::AddRawOpExport(const string& parameters) {
 
 string GetPythonOpsImpl(
     const OpList& ops, const ApiDefMap& api_defs,
-    absl::Span<const string> hidden_ops,
+    const OpRegOffsets& op_reg_offsets, absl::Span<const string> hidden_ops,
     absl::Span<const string> source_file_list,
     const std::unordered_set<string>& type_annotate_ops = {}) {
+  python_op_gen_internal::GeneratedCodeAnnotator annotator;
+  bool annotate = !op_reg_offsets.offsets().empty();
+
   string result;
   // Header
   // TODO(josh11b): Mention the library for which wrappers are being generated.
@@ -1245,6 +2045,9 @@ from tensorflow.python.util.tf_export import tf_export
 
 from typing import TypeVar
 )");
+  if (annotate) {
+    annotator.SetBase(result.length());
+  }
 
   for (const auto& op_def : ops.op()) {
     const auto* api_def = api_defs.GetApiDef(op_def.name());
@@ -1266,9 +2069,8 @@ from typing import TypeVar
     }
 
     string function_name;
-    python_op_gen_internal::GenerateLowerCaseOpName(op_def.name(),
-                                                    &function_name);
-    bool is_reserved = python_op_gen_internal::IsPythonReserved(function_name);
+    GenerateLowerCaseOpName(op_def.name(), &function_name);
+    bool is_reserved = IsPythonReserved(function_name);
 
     // Prefix an op with underscore if the op is listed in hidden_ops or
     // name is reserved or it is of the exceptions in IsOpWithUnderscorePrefix.
@@ -1276,7 +2078,7 @@ from typing import TypeVar
     // TODO(annarev): don't prefix with underscores even if op is in hidden_ops.
     if (is_hidden) {
       if (!hidden_by_api_def || is_reserved ||
-          python_op_gen_internal::IsOpWithUnderscorePrefix(function_name)) {
+          IsOpWithUnderscorePrefix(function_name)) {
         function_name = strings::StrCat("_", function_name);
       }
     } else if (is_reserved) {
@@ -1290,9 +2092,18 @@ from typing import TypeVar
     auto iter = type_annotate_ops.find(op_def.name());
     bool add_type_annotations = iter != type_annotate_ops.end();
 
-    strings::StrAppend(&result,
-                       GetEagerPythonOp(op_def, *api_def, function_name,
-                                        add_type_annotations));
+    strings::StrAppend(
+        &result,
+        GetEagerPythonOp(op_def, *api_def, function_name, add_type_annotations,
+                         annotate ? &annotator : nullptr));
+    if (annotate) {
+      annotator.SetBase(result.length());
+    }
+  }
+
+  if (annotate) {
+    annotator.FillSourceOffsets(op_reg_offsets);
+    strings::StrAppend(&result, annotator.BuildKytheMetadata());
   }
 
   return result;
@@ -1301,19 +2112,21 @@ from typing import TypeVar
 }  // namespace
 
 string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
+                    const OpRegOffsets& op_reg_offsets,
                     absl::Span<const string> hidden_ops,
                     absl::Span<const string> source_file_list,
                     const std::unordered_set<string>& type_annotate_ops) {
-  return GetPythonOpsImpl(ops, api_defs, hidden_ops, source_file_list,
-                          type_annotate_ops);
+  return GetPythonOpsImpl(ops, api_defs, op_reg_offsets, hidden_ops,
+                          source_file_list, type_annotate_ops);
 }
 
 void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
+                    const OpRegOffsets& op_reg_offsets,
                     absl::Span<const string> hidden_ops,
                     absl::Span<const string> source_file_list,
                     const std::unordered_set<string>& type_annotate_ops) {
-  printf("%s", GetPythonOpsImpl(ops, api_defs, hidden_ops, source_file_list,
-                                type_annotate_ops)
+  printf("%s", GetPythonOpsImpl(ops, api_defs, op_reg_offsets, hidden_ops,
+                                source_file_list, type_annotate_ops)
                    .c_str());
 }
 
@@ -1322,7 +2135,7 @@ string GetPythonWrappers(const char* op_list_buf, size_t op_list_len) {
   ops.ParseFromArray(op_list_buf, op_list_len);
 
   ApiDefMap api_def_map(ops);
-  return GetPythonOpsImpl(ops, api_def_map, {}, {});
+  return GetPythonOpsImpl(ops, api_def_map, OpRegOffsets(), {}, {});
 }
 
 string GetArgAnnotation(
@@ -1333,8 +2146,7 @@ string GetArgAnnotation(
     return "_ops.Tensor[" + type_annotations.at(arg.type_attr()) + "]";
   } else {
     // Get the dtype of the Tensor
-    const string py_dtype =
-        python_op_gen_internal::DataTypeToPython(arg.type(), "_dtypes.");
+    const string py_dtype = DataTypeToPython(arg.type(), "_dtypes.");
     return "_ops.Tensor[" + dtype_type.at(py_dtype) + "]";
   }
 

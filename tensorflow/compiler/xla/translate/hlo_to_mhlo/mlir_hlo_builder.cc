@@ -218,8 +218,6 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
     CustomCallSchedule schedule, CustomCallApiVersion api_version) {
   TF_RET_CHECK(output_operand_aliasing.empty())
       << "MLIR CustomCallOp does not support output_operand_aliasing yet";
-  TF_RET_CHECK(literal == nullptr)
-      << "MLIR CustomCallOp does not support literal yet";
   TF_RET_CHECK(!window.has_value())
       << "MLIR CustomCallOp does not support ConvolutionDimensionNumbers yet";
   TF_RET_CHECK(!dnums.has_value())
@@ -261,6 +259,12 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
       "has_side_effect", builder_.getBoolAttr(has_side_effect)));
   attributes.push_back(
       builder_.getNamedAttr("backend_config", builder_.getStringAttr(opaque)));
+
+  if (literal) {
+    TF_ASSIGN_OR_RETURN(auto literal_attr,
+                        CreateDenseElementsAttrFromLiteral(*literal, builder_));
+    attributes.push_back(builder_.getNamedAttr("mhlo.literal", literal_attr));
+  }
 
   if (computation && !computation->IsNull()) {
     // Create new function(s) to represent the called computations. As a result,

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
 #include <string>
 
 #include "mlir/Conversion/LLVMCommon/Pattern.h"  // from @llvm-project
@@ -237,7 +238,7 @@ class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
     FlatSymbolRefAttr tf_func_ref =
         GetOrInsertLLVMFunction(GetFuncName(), GetFuncType(), op, &rewriter);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
-        op, llvm::None, tf_func_ref,
+        op, std::nullopt, tf_func_ref,
         llvm::ArrayRef({adaptor.getCtx(), allocated_bytes_ptr}));
     return success();
   }
@@ -335,7 +336,7 @@ class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
     Value one = rewriter.create<LLVM::ConstantOp>(
         loc, i64_ty, rewriter.getI64IntegerAttr(1));
     auto result_ptr =
-        rewriter.create<LLVM::AllocaOp>(loc, result_ptr_ty, one, llvm::None);
+        rewriter.create<LLVM::AllocaOp>(loc, result_ptr_ty, one, std::nullopt);
     Type void_ptr_ty = getVoidPtrType();
     auto result_void_ptr =
         rewriter.create<LLVM::BitcastOp>(loc, void_ptr_ty, result_ptr);
@@ -363,7 +364,7 @@ class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
     FlatSymbolRefAttr tf_func_ref =
         GetOrInsertLLVMFunction(GetFuncName(), GetFuncType(), op, &rewriter);
     rewriter.create<LLVM::CallOp>(
-        loc, llvm::None, tf_func_ref,
+        loc, std::nullopt, tf_func_ref,
         ValueRange{adaptor.getCtx(), adaptor.getCallable(), result_void_ptr,
                    num_args, args_void_ptr});
 
@@ -416,7 +417,7 @@ class ReportErrorOpConverter
         loc, typeConverter->convertType(rewriter.getI32Type()),
         adaptor.getErrorCodeAttr());
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
-        op, llvm::None, tf_func_ref,
+        op, std::nullopt, tf_func_ref,
         llvm::ArrayRef({adaptor.getCtx(), error_code, message_constant}));
     return success();
   }
@@ -515,17 +516,23 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
         UnrankedMemRefDescriptor::undef(rewriter, loc, llvm_result_type);
     desc.setRank(rewriter, loc, zero);
 
+    // Extract address space and element type.
+    auto targetType =
+        null_memref_op.getResult().getType().cast<UnrankedMemRefType>();
+    unsigned addressSpace =
+        *getTypeConverter()->getMemRefAddressSpace(targetType);
+
     // Due to the current way of handling unranked memref results escaping, we
     // have to actually construct a ranked underlying descriptor instead of just
     // setting its pointer to NULL.
     SmallVector<Value, 4> sizes;
     UnrankedMemRefDescriptor::computeSizes(rewriter, loc, *getTypeConverter(),
-                                           desc, sizes);
+                                           desc, addressSpace, sizes);
     Value underlying_desc_ptr = rewriter.create<LLVM::AllocaOp>(
-        loc, getVoidPtrType(), sizes.front(), llvm::None);
+        loc, getVoidPtrType(), sizes.front(), std::nullopt);
 
     // Populate underlying ranked descriptor.
-    Type elem_ptr_ptr_type = LLVM::LLVMPointerType::get(
+    LLVM::LLVMPointerType elem_ptr_ptr_type = LLVM::LLVMPointerType::get(
         LLVM::LLVMPointerType::get(llvm_elem_type, address_space));
 
     Value null = rewriter.create<LLVM::NullOp>(

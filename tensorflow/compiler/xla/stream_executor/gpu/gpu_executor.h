@@ -32,16 +32,17 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/stream_executor/event.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_kernel.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/tsl/platform/fingerprint.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -208,7 +209,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
                             uint64_t size) override;
 
   bool HostCallback(Stream* stream,
-                    std::function<tsl::Status()> callback) override;
+                    absl::AnyInvocable<tsl::Status() &&> callback) override;
 
   bool AllocateStream(Stream* stream) override;
 

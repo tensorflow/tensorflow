@@ -56,8 +56,9 @@ GetElementResult MakeElementResult(T value) {
 
 TEST(DataTransferTest, RegisterDataTransferServerBuilder) {
   bool called = false;
-  DataTransferServer::Register("test", [&called](auto _) {
-    return std::make_shared<TestDataTransferServer>(&called);
+  DataTransferServer::Register("test", [&called](auto ignore, auto* server) {
+    *server = std::make_shared<TestDataTransferServer>(&called);
+    return OkStatus();
   });
 
   std::shared_ptr<DataTransferServer> server;

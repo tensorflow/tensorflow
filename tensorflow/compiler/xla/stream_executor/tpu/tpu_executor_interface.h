@@ -19,10 +19,10 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tpu {
 class TpuCore;

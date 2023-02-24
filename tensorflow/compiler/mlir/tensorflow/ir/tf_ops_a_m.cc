@@ -139,7 +139,8 @@ void AddOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // AddNOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult AddNOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult AddNOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   if (operands.size() == 1) return *getInputs().begin();
 
   // Fold if there is only one single non-zero operand or all operands are zero.
@@ -190,7 +191,8 @@ void AddV2Op::getCanonicalizationPatterns(RewritePatternSet& results,
   results.add<AddV2OfNegLeft, AddV2OfNegRight>(context);
 }
 
-OpFoldResult AddV2Op::fold(ArrayRef<Attribute> operands) {
+OpFoldResult AddV2Op::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   return IdentityArithmeticOpFolder<AddV2Op>(*this, operands);
 }
 
@@ -672,7 +674,7 @@ LogicalResult BroadcastToOp::verify() {
   return success();
 }
 
-OpFoldResult BroadcastToOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult BroadcastToOp::fold(FoldAdaptor) {
   Value input = this->getInput();
 
   // Fold broadcast if operand and result types are the same and all dimensions
@@ -792,7 +794,7 @@ LogicalResult BroadcastGradientArgsOp::verify() {
 }
 
 LogicalResult BroadcastGradientArgsOp::fold(
-    ArrayRef<Attribute> operands, SmallVectorImpl<OpFoldResult>& results) {
+    FoldAdaptor, SmallVectorImpl<OpFoldResult>& results) {
   SmallVector<int64_t, 4> s0_shape, s1_shape;
   DenseIntElementsAttr s0, s1;
   if (!ExtractInputConstShape(*this, s0, s1, s0_shape, s1_shape))
@@ -1046,7 +1048,7 @@ void CaseRegionOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // CastOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult CastOp::fold(FoldAdaptor) {
   // Cast with the same type is a no-op.
   Value operand = getOperand();
   if (getType() == operand.getType()) return operand;
@@ -1068,6 +1070,22 @@ OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
 //    return any string here, as long as it is the same string for all op
 //    instances without ordering tokens.
 std::optional<std::string> CollectiveReduceV2Op::GetResourceInstanceStr() {
+  return getNorderingToken() == 0 ? std::optional<std::string>("")
+                                  : std::nullopt;
+}
+
+std::optional<std::string>
+CollectiveReduceScatterV2Op::GetResourceInstanceStr() {
+  return getNorderingToken() == 0 ? std::optional<std::string>("")
+                                  : std::nullopt;
+}
+
+std::optional<std::string> CollectiveAllToAllV2Op::GetResourceInstanceStr() {
+  return getNorderingToken() == 0 ? std::optional<std::string>("")
+                                  : std::nullopt;
+}
+
+std::optional<std::string> CollectiveGatherV2Op::GetResourceInstanceStr() {
   return getNorderingToken() == 0 ? std::optional<std::string>("")
                                   : std::nullopt;
 }
@@ -1536,8 +1554,9 @@ LogicalResult ConcatOffsetOp::verify() {
   return success();
 }
 
-LogicalResult ConcatOffsetOp::fold(ArrayRef<Attribute> operands,
+LogicalResult ConcatOffsetOp::fold(FoldAdaptor adaptor,
                                    SmallVectorImpl<OpFoldResult>& results) {
+  auto operands = adaptor.getOperands();
   // ConcatOffset must have its first operand be concat_dim and at least two
   // shape tensors in variadic shapes operand.
   if (operands.size() < 3) return failure();
@@ -1604,8 +1623,8 @@ void ConstOp::getAsmResultNames(
   setNameFn(getResult(), "cst");
 }
 
-OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
-  assert(operands.empty() && "constant has no operands");
+OpFoldResult ConstOp::fold(FoldAdaptor adaptor) {
+  assert(adaptor.getOperands().empty() && "constant has no operands");
 
   // Return the held attribute value.
   return getValue();
@@ -2279,7 +2298,8 @@ void DivOp::getCanonicalizationPatterns(RewritePatternSet& results,
   results.add<DivWithSqrtDivisor>(context);
 }
 
-OpFoldResult DivOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult DivOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   return IdentityArithmeticOpFolder<DivOp>(*this, operands);
 }
 
@@ -2400,7 +2420,8 @@ LogicalResult EinsumOp::verify() {
 // EmptyOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult EmptyOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult EmptyOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   assert(operands.size() == 1 && "empty op has one operand");
 
   Attribute attr = operands.front();
@@ -2514,7 +2535,7 @@ EnqueueTPUEmbeddingSparseTensorBatchOp::GetResourceInstanceStr() {
 // EnsureShapeOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult EnsureShapeOp::fold(llvm::ArrayRef<mlir::Attribute>) {
+OpFoldResult EnsureShapeOp::fold(FoldAdaptor) {
   ShapedType type = getInput().getType().dyn_cast<ShapedType>();
   if (!type || !type.hasRank()) return {};
   // If shape attribute equals input operand's type's shape, fold it to input.
@@ -2760,7 +2781,8 @@ void FillOp::build(OpBuilder& builder, OperationState& result, Value dims,
   FillOp::build(builder, result, InferFillOpType(dims, value), dims, value);
 }
 
-OpFoldResult FillOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult FillOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   assert(operands.size() == 2 && "fill op has two operand");
 
   auto type = getType().cast<ShapedType>();
@@ -3116,7 +3138,8 @@ LogicalResult InvertPermutationOp::verify() {
 // LeakyReluOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult LeakyReluOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   assert(operands.size() == 1 && "leaky relu has one operand");
 
   // leaky_relu(x, alpha: 1) -> x
@@ -3179,7 +3202,8 @@ void LogOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // LogicalAndOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult LogicalAndOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult LogicalAndOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   // TODO(b/264429950): Expand this to work for broadcastable shapes and other
   // conditions (e.g. one operand is always True).
   auto result_type = getType();
@@ -3383,7 +3407,8 @@ void MulNoNanOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // MulOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   return IdentityArithmeticOpFolder<MulOp>(*this, operands);
 }
 

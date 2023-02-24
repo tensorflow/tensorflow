@@ -186,67 +186,12 @@ void CompilationEnvironments::RegisterProcessNewEnvFn(
 
 Status CompilationEnvironments::AddEnv(
     std::unique_ptr<tsl::protobuf::Message> env) {
-  ProcessNewEnvFn process_new_env = GetProcessNewEnvFn(env->GetDescriptor());
-  if (process_new_env == nullptr) {
+  if (!env) {
     return tsl::errors::InvalidArgument(
-        "Unknown compilation environment type: %s",
-        env->GetDescriptor()->full_name());
+        "Can not add a null compilation environment.");
   }
-  AddProcessedEnv(process_new_env(std::move(env)));
-  return OkStatus();
-}
-
-CompilationEnvironments::ProcessNewEnvFn
-CompilationEnvironments::GetProcessNewEnvFn(
-    const tsl::protobuf::Descriptor* descriptor) {
-  absl::MutexLock l(&process_new_env_fns_mu);
-  if (process_new_env_fns == nullptr) {
-    return nullptr;
-  }
-  const auto it = process_new_env_fns->find(descriptor);
-  if (it == process_new_env_fns->end()) {
-    return nullptr;
-  }
-  return it->second;
-}
-
-void CompilationEnvironments::DefaultEnvCreatedByCompilationEnvironments(
-    std::string_view env_type) {
-  GlobalCompEnvStats::GetSingleton().DefaultEnvCreatedByCompilationEnvironments(
-      env_type);
-}
-
-void CompilationEnvironments::EnvAdded(std::string_view env_type) {
-  GlobalCompEnvStats::GetSingleton().EnvAdded(env_type);
-}
-
-void CompilationEnvironments::AddProcessedEnv(
-    std::unique_ptr<tsl::protobuf::Message> env) {
-  // Check if we already have an environment of env's type
-  auto descriptor = env->GetDescriptor();
-  if (environments_.contains(descriptor)) {
-    LOG(WARNING) << "Replacing CompilationEnvironment of type "
-                 << descriptor->full_name();
-  }
-
-  // Check for unknown fields
-  const tsl::protobuf::UnknownFieldSet& unknown_fields =
-      env->GetReflection()->GetUnknownFields(*env);
-  std::vector<int> unknown_tags;
-  unknown_tags.reserve(unknown_fields.field_count());
-  for (int i = 0; i < unknown_fields.field_count(); ++i) {
-    const tsl::protobuf::UnknownField& field = unknown_fields.field(i);
-    unknown_tags.push_back(field.number());
-  }
-  if (!unknown_tags.empty()) {
-    LOG(WARNING) << "CompilationEnvironment " << descriptor->full_name()
-                 << " contains unknown fields with tag numbers: "
-                 << absl::StrJoin(unknown_tags, ", ");
-  }
-
-  // Actually add the env
-  environments_.insert({descriptor, std::move(env)});
-  EnvAdded(descriptor->full_name());
+  const tsl::protobuf::Descriptor& descriptor = *env->GetDescriptor();
+  return AddEnvImpl(descriptor, std::move(env));
 }
 
 CompilationEnvironmentsProto CompilationEnvironments::ToProto() const {
@@ -267,6 +212,69 @@ CompilationEnvironmentsProto CompilationEnvironments::ToProto() const {
     proto.add_environments()->PackFrom(*environments_.at(descriptor));
   }
   return proto;
+}
+
+CompilationEnvironments::ProcessNewEnvFn
+CompilationEnvironments::GetProcessNewEnvFn(
+    const tsl::protobuf::Descriptor& descriptor) {
+  absl::MutexLock l(&process_new_env_fns_mu);
+  if (process_new_env_fns == nullptr) {
+    return nullptr;
+  }
+  const auto it = process_new_env_fns->find(&descriptor);
+  if (it == process_new_env_fns->end()) {
+    return nullptr;
+  }
+  return it->second;
+}
+
+void CompilationEnvironments::DefaultEnvCreatedByCompilationEnvironments(
+    std::string_view env_type) {
+  GlobalCompEnvStats::GetSingleton().DefaultEnvCreatedByCompilationEnvironments(
+      env_type);
+}
+
+void CompilationEnvironments::EnvAdded(std::string_view env_type) {
+  GlobalCompEnvStats::GetSingleton().EnvAdded(env_type);
+}
+
+Status CompilationEnvironments::AddEnvImpl(
+    const tsl::protobuf::Descriptor& descriptor,
+    std::unique_ptr<tsl::protobuf::Message> env) {
+  // Check if we already have an environment of env's type
+  if (environments_.contains(&descriptor)) {
+    return tsl::errors::InvalidArgument(
+        "Replacing CompilationEnvironment of type %s.", descriptor.full_name());
+  }
+
+  // Process env
+  ProcessNewEnvFn process_new_env = GetProcessNewEnvFn(descriptor);
+  if (!process_new_env) {
+    return tsl::errors::InvalidArgument(
+        "Unknown compilation environment type: %s", descriptor.full_name());
+  }
+  std::unique_ptr<tsl::protobuf::Message> processed_env =
+      process_new_env(std::move(env));
+
+  // Check for unknown fields
+  const tsl::protobuf::UnknownFieldSet& unknown_fields =
+      processed_env->GetReflection()->GetUnknownFields(*processed_env);
+  std::vector<int> unknown_tags;
+  unknown_tags.reserve(unknown_fields.field_count());
+  for (int i = 0; i < unknown_fields.field_count(); ++i) {
+    const tsl::protobuf::UnknownField& field = unknown_fields.field(i);
+    unknown_tags.push_back(field.number());
+  }
+  if (!unknown_tags.empty()) {
+    LOG(WARNING) << "CompilationEnvironment " << descriptor.full_name()
+                 << " contains unknown fields with tag numbers: "
+                 << absl::StrJoin(unknown_tags, ", ");
+  }
+
+  // Actually add the env
+  environments_.insert({&descriptor, std::move(processed_env)});
+  EnvAdded(descriptor.full_name());
+  return OkStatus();
 }
 
 }  // namespace xla

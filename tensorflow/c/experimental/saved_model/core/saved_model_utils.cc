@@ -435,9 +435,11 @@ Status PartiallyReviveSavedModelObjects(const MetaGraphDef& metagraph,
       resource_revival_state.device = node.resource().device();
       objects->restored_resources[i] = std::move(resource_revival_state);
     } else if (node.kind_case() == SavedObject::kFunction) {
-      // Get the SavedFunction node and validate it has a single concrete func.
+      // Get the SavedFunction node and skip if it has no concrete functions.
       const SavedFunction& saved_function = node.function();
-      TF_RETURN_IF_ERROR(ValidateSingleConcreteFunction(saved_function));
+      if (saved_function.concrete_functions_size() < 1) {
+        continue;
+      }
 
       // Retrieve related function information.
       const std::string& function_name = saved_function.concrete_functions(0);

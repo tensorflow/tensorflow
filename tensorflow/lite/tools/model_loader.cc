@@ -56,14 +56,21 @@ bool PathModelLoader::InitInternal() {
 
 bool MmapModelLoader::InitInternal() {
   if (model_fd_ < 0 || model_offset_ < 0 || model_size_ < 0) {
+    TFLITE_LOG_PROD(
+        TFLITE_LOG_ERROR,
+        "Invalid model file descriptor. file descriptor: %d model_offset: "
+        "%d model_size: %d",
+        model_fd_, model_offset_, model_size_);
     return false;
   }
   if (!MMAPAllocation::IsSupported()) {
+    TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "MMAPAllocation is not supported.");
     return false;
   }
   auto allocation = std::make_unique<MMAPAllocation>(
       model_fd_, model_offset_, model_size_, tflite::DefaultErrorReporter());
   if (!allocation->valid()) {
+    TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "MMAPAllocation is not valid.");
     return false;
   }
   model_ = FlatBufferModel::VerifyAndBuildFromAllocation(std::move(allocation));
@@ -72,6 +79,8 @@ bool MmapModelLoader::InitInternal() {
 
 bool PipeModelLoader::InitInternal() {
   if (pipe_fd_ < 0) {
+    TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Invalid pipe file descriptor %d",
+                    pipe_fd_);
     return false;
   }
 
@@ -89,7 +98,7 @@ bool PipeModelLoader::InitInternal() {
   // Close the read pipe.
   close(pipe_fd_);
   if (read_bytes < 0 || remaining_bytes != 0) {
-    TFLITE_LOG_PROD(TFLITE_LOG_INFO,
+    TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
                     "Read Model from pipe failed: %s. Expect to read %d bytes, "
                     "%d bytes missing.",
                     std::strerror(errno), model_size_, remaining_bytes);
@@ -104,31 +113,28 @@ bool PipeModelLoader::InitInternal() {
 #endif  // !_WIN32
 
 std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path) {
+#ifndef _WIN32
   if (absl::StartsWith(path, "fd:")) {
-#ifdef _WIN32
-    return kMinibenchmarkUnsupportedPlatform;
-#endif  // _WIN32
     std::vector<std::string> parts = absl::StrSplit(path, ':');
     int model_fd;
     size_t model_offset, model_size;
     if (parts.size() != 4 || !absl::SimpleAtoi(parts[1], &model_fd) ||
         !absl::SimpleAtoi(parts[2], &model_offset) ||
         !absl::SimpleAtoi(parts[3], &model_size)) {
+      TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Failed to parse model path: %s", path);
       return nullptr;
     }
     return std::make_unique<MmapModelLoader>(model_fd, model_offset,
                                              model_size);
   }
   if (absl::StartsWith(path, "pipe:")) {
-#ifdef _WIN32
-    return kMinibenchmarkUnsupportedPlatform;
-#endif  // _WIN32
     std::vector<std::string> parts = absl::StrSplit(path, ':');
     int read_fd, write_fd;
     size_t model_size;
     if (parts.size() != 4 || !absl::SimpleAtoi(parts[1], &read_fd) ||
         !absl::SimpleAtoi(parts[2], &write_fd) ||
         !absl::SimpleAtoi(parts[3], &model_size)) {
+      TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Failed to parse model path: %s", path);
       return nullptr;
     }
     // If set, close the write pipe for the read process / thread.
@@ -137,6 +143,7 @@ std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path) {
     }
     return std::make_unique<PipeModelLoader>(read_fd, model_size);
   }
+#endif  // !_WIN32
   return std::make_unique<PathModelLoader>(path);
 }
 

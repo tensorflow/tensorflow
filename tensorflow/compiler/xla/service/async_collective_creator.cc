@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/frontend_attributes.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
@@ -139,6 +140,9 @@ StatusOr<bool> AsyncCollectiveCreator::Run(
                   operand, cp->mutable_operand(1), cp->mutable_operand(2),
                   cp->mutable_operand(3), cp->source_target_pairs(),
                   cp->dynamic_slice_sizes_list(), cp->channel_id()));
+          if (HasDisjointReadWriteRegionsAttr(cp)) {
+            SetDisjointReadWriteRegionsAttr(collective_permute_start);
+          }
         }
         collective_permute_start->set_metadata(cp->metadata());
         collective_permute_start->CopyBackendConfigFrom(cp);

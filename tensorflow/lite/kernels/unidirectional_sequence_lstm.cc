@@ -1450,6 +1450,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             /*aux_input_zp=*/nullptr,
             GetTemporary(context, node, kOutputStateZeroPoints), row_sums,
             row_sums_size, &op_data->compute_row_sums,
+            /*recurrent_to_input_is_diag=*/
+            (recurrent_to_input_weights == nullptr ||
+             recurrent_to_input_weights->dims->size == 1),
+            /*recurrent_to_forget_is_diag=*/
+            (recurrent_to_forget_weights->dims->size == 1),
+            /*recurrent_to_cell_is_diag=*/
+            (recurrent_to_cell_weights->dims->size == 1),
+            /*recurrent_to_output_is_diag=*/
+            (recurrent_to_output_weights->dims->size == 1),
             CpuBackendContext::GetFromContext(context));
       } else {
         TfLiteTensor* scratch0;

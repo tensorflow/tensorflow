@@ -1,7 +1,7 @@
 // RUN: xla-translate -verify-diagnostics -split-input-file -mlir-hlo-to-hlo %s | FileCheck %s
 // RUN: xla-translate -verify-diagnostics -split-input-file -mlir-hlo-to-hlo --via-builder=true %s | FileCheck %s
 
-module attributes { mhlo.cross_program_prefetches = [ #mhlo.cross_program_prefetch<parameter = 1, indices = [0]> ] } {
+module attributes { mhlo.cross_program_prefetches = [ #mhlo.cross_program_prefetch<parameter = 1, indices = [0], offset = 0> ] } {
   func.func @copy(%arg0 : tuple<tensor<2x3xi32>, tensor<i32>>) -> tuple<tensor<2x3xi32>, tensor<i32>> attributes {execution_thread = "main"} {
     %0 = "mhlo.copy"(%arg0) {is_cross_program_prefetch} : (tuple<tensor<2x3xi32>, tensor<i32>>) -> (tuple<tensor<2x3xi32>, tensor<i32>>)
     return %0 : tuple<tensor<2x3xi32>, tensor<i32>>
@@ -21,7 +21,7 @@ module attributes { mhlo.cross_program_prefetches = [ #mhlo.cross_program_prefet
 // -----
 
 // expected-error@+1 {{cross_program_prefetch: parameter 2 out of range. main has only 2 arguments}}
-module attributes { mhlo.cross_program_prefetches = [ #mhlo.cross_program_prefetch<parameter = 2, indices = [0]> ] } {
+module attributes { mhlo.cross_program_prefetches = [ #mhlo.cross_program_prefetch<parameter = 2, indices = [0], offset = 0> ] } {
   func.func @copy(%arg0 : tuple<tensor<2x3xi32>, tensor<i32>>) -> tuple<tensor<2x3xi32>, tensor<i32>> attributes {execution_thread = "main"} {
     %0 = "mhlo.copy"(%arg0) {is_cross_program_prefetch} : (tuple<tensor<2x3xi32>, tensor<i32>>) -> (tuple<tensor<2x3xi32>, tensor<i32>>)
     return %0 : tuple<tensor<2x3xi32>, tensor<i32>>
@@ -36,7 +36,7 @@ module attributes { mhlo.cross_program_prefetches = [ #mhlo.cross_program_prefet
 // -----
 
 // expected-error@+1 {{cross_program_prefetch: no subshape at given index: 0, 1}}
-module attributes { mhlo.cross_program_prefetches = [ #mhlo.cross_program_prefetch<parameter = 1, indices = [0,1]> ] } {
+module attributes { mhlo.cross_program_prefetches = [ #mhlo.cross_program_prefetch<parameter = 1, indices = [0,1], offset = 0> ] } {
   func.func @copy(%arg0 : tuple<tensor<2x3xi32>, tensor<i32>>) -> tuple<tensor<2x3xi32>, tensor<i32>> attributes {execution_thread = "main"} {
     %0 = "mhlo.copy"(%arg0) {is_cross_program_prefetch} : (tuple<tensor<2x3xi32>, tensor<i32>>) -> (tuple<tensor<2x3xi32>, tensor<i32>>)
     return %0 : tuple<tensor<2x3xi32>, tensor<i32>>

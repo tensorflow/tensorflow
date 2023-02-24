@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #else
 #include "tensorflow/lite/delegates/gpu/delegate.h"
+#include "tensorflow/lite/delegates/gpu/delegate_options.h"
 #endif
 
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
@@ -36,6 +37,9 @@ using tflite::GPUSettings;
 using tflite::GPUSettingsBuilder;
 using tflite::TFLiteSettings;
 using tflite::TFLiteSettingsBuilder;
+#else
+constexpr int kGpuBackendOpenCl = 1;
+constexpr int kGpuBackendOpenGl = 2;
 #endif
 
 extern "C" {
@@ -43,7 +47,7 @@ extern "C" {
 JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
     JNIEnv* env, jclass clazz, jboolean precision_loss_allowed,
     jboolean quantized_models_allowed, jint inference_preference,
-    jstring serialization_dir, jstring model_token) {
+    jstring serialization_dir, jstring model_token, jint force_backend) {
   if (!tflite::jni::CheckJniInitializedOrThrow(env)) return 0;
 
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
@@ -99,6 +103,10 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
     gpu_settings_builder.add_inference_preference(
         static_cast<tflite::GPUInferenceUsage>(inference_preference));
   }
+  if (force_backend) {
+    gpu_settings_builder.add_force_backend(
+        static_cast<tflite::GPUBackend>(force_backend));
+  }
   Offset<GPUSettings> gpu_settings = gpu_settings_builder.Finish();
   TFLiteSettingsBuilder tflite_settings_builder(flatbuffer_builder);
   tflite_settings_builder.add_gpu_settings(gpu_settings);
@@ -137,6 +145,11 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
   if (options.serialization_dir && options.model_token) {
     options.experimental_flags |=
         TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_SERIALIZATION;
+  }
+  if (force_backend == kGpuBackendOpenCl) {
+    options.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_CL_ONLY;
+  } else if (force_backend == kGpuBackendOpenGl) {
+    options.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_GL_ONLY;
   }
   return reinterpret_cast<jlong>(TfLiteGpuDelegateV2Create(&options));
 #endif  // TFLITE_DISABLE_SELECT_JAVA_APIS

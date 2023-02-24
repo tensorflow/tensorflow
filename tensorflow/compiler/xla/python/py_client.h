@@ -24,17 +24,16 @@ limitations under the License.
 
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/ifrt/client.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 
 class PyBuffer;
-class PyShardedBuffer;
 class PyClient;
 class PyLoadedExecutable;
 class PyArray;
@@ -139,12 +138,8 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   int addressable_device_count() const {
     return ifrt_client_->addressable_device_count();
   }
-  int device_count() const {
-    return ifrt_client_->device_count();
-  }
-  int process_index() const {
-    return ifrt_client_->process_index();
-  }
+  int device_count() const { return ifrt_client_->device_count(); }
+  int process_index() const { return ifrt_client_->process_index(); }
 
   std::vector<ClientAndPtr<PjRtDevice>> Devices();
   std::vector<ClientAndPtr<PjRtDevice>> LocalDevices();
@@ -184,13 +179,9 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
   StatusOr<pybind11::object> BufferFromPyval(
       pybind11::handle argument, PjRtDevice* device, bool force_copy,
-      ifrt::Client::HostBufferSemantics host_buffer_semantics
-  );
+      ifrt::Client::HostBufferSemantics host_buffer_semantics);
 
   StatusOr<std::shared_ptr<PyLoadedExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options,
-      std::vector<pybind11::capsule> host_callbacks);
-  StatusOr<std::shared_ptr<PyLoadedExecutable>> CompileMlir(
       std::string mlir_module, CompileOptions options,
       std::vector<pybind11::capsule> host_callbacks);
 
@@ -259,7 +250,6 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
  private:
   friend class PyBuffer;
-  friend class PyShardedBuffer;
   friend class PyLoadedExecutable;
   friend class PyArray;
   friend struct PyArray_Storage;
@@ -274,7 +264,6 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   std::vector<PyBuffer*> buffers_;
   PyLoadedExecutable* executables_ = nullptr;
   PyArray_Storage* arrays_ = nullptr;
-  PyShardedBuffer* sharded_buffers_ = nullptr;
 };
 
 }  // namespace xla

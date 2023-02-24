@@ -745,7 +745,7 @@ TEST_F(StreamExecutorTest, HostCallbackError) {
   Stream stream(executor);
   stream.Init();
   std::function<tsl::Status()> callback = []() -> tsl::Status {
-    return port::UnimplementedError("Unimplemented");
+    return tsl::errors::Unimplemented("Unimplemented");
   };
   stream.ThenDoHostCallbackWithStatus(callback);
   ASSERT_FALSE(stream.ok());

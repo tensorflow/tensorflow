@@ -299,6 +299,8 @@ void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
   c_layout->index_primitive_type = layout.index_primitive_type();
   c_layout->pointer_primitive_type = layout.pointer_primitive_type();
   c_layout->memory_space = layout.memory_space();
+  c_layout->dynamic_shape_metadata_prefix_bytes =
+      layout.dynamic_shape_metadata_prefix_bytes();
   CreateVector(layout.tiles(), &c_layout->tiles);
 }
 
@@ -329,7 +331,8 @@ xla::Layout FromC(const XLA_Layout* c_layout) {
       minor_to_major, dim_level_types, dim_unique, dim_ordered, tiles,
       static_cast<xla::PrimitiveType>(c_layout->index_primitive_type),
       static_cast<xla::PrimitiveType>(c_layout->pointer_primitive_type),
-      c_layout->memory_space);
+      c_layout->memory_space, /*physical_shape=*/nullptr,
+      c_layout->dynamic_shape_metadata_prefix_bytes);
 }
 
 void Destroy(XLA_Layout* c_layout) {
@@ -474,8 +477,8 @@ XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config) {
   hlo_config.num_partitions = config.num_partitions();
   hlo_config.use_spmd_partitioning = config.use_spmd_partitioning();
   hlo_config.use_auto_spmd_partitioning = config.use_auto_spmd_partitioning();
-  hlo_config.allow_spmd_sharding_propagation_to_output =
-      config.allow_spmd_sharding_propagation_to_output();
+  CreateVector(config.allow_spmd_sharding_propagation_to_output(),
+               &hlo_config.allow_spmd_sharding_propagation_to_output);
   CreateVector(config.auto_spmd_partitioning_mesh_shape(),
                &hlo_config.auto_spmd_partitioning_mesh_shape);
   CreateVector(config.auto_spmd_partitioning_mesh_ids(),
@@ -523,7 +526,7 @@ xla::HloModuleConfig FromC(const XLA_HloModuleConfig& c_config) {
   config.set_use_spmd_partitioning(c_config.use_spmd_partitioning);
   config.set_use_auto_spmd_partitioning(c_config.use_auto_spmd_partitioning);
   config.set_allow_spmd_sharding_propagation_to_output(
-      c_config.allow_spmd_sharding_propagation_to_output);
+      MakeSpan(c_config.allow_spmd_sharding_propagation_to_output));
   absl::Span<const int64_t> mesh_shape_span =
       MakeSpan(c_config.auto_spmd_partitioning_mesh_shape);
   std::vector<int64_t> mesh_shape(mesh_shape_span.begin(),

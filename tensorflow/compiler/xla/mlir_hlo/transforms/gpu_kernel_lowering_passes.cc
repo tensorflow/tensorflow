@@ -76,7 +76,7 @@ static void populateCommonPatterns(LLVMTypeConverter& converter,
                                    RewritePatternSet& patterns) {
   arith::populateArithToLLVMConversionPatterns(converter, patterns);
   populateMathToLLVMConversionPatterns(converter, patterns);
-  populateMemRefToLLVMConversionPatterns(converter, patterns);
+  populateFinalizeMemRefToLLVMConversionPatterns(converter, patterns);
   populateFuncToLLVMConversionPatterns(converter, patterns);
   cf::populateControlFlowToLLVMConversionPatterns(converter, patterns);
   populateComplexToLLVMConversionPatterns(converter, patterns);

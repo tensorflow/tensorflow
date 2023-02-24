@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_FUSIBLE_H_
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
 // TODO(b/112957171): Extract logic to determine fusibility of HLO ops from
@@ -92,6 +93,7 @@ bool IsInputFusibleScatter(const HloInstruction& instr);
 // the producer, set consumer_producer_fusion to true to enable more fusion.
 FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
                                   const HloInstruction& instr2,
+                                  const GpuDeviceInfo& device_info,
                                   bool is_consumer_producer_fusion = false,
                                   FusionInfoCache* cache = nullptr);
 

@@ -516,10 +516,6 @@ class DeviceDescriptionBuilder {
 bool ThreadDimOk(const DeviceDescription &device_description,
                  const ThreadDim &thread_dim);
 
-// Equivalent to ceil(double(element_count) / threads_per_block).
-ABSL_DEPRECATED("Use MathUtil::CeilOfRatio directly instead.")
-int64_t DivideCeil(int64_t x, int64_t y);
-
 // Calculate the number of threads/blocks required to process element_count
 // elements. Note that you can still end up with more threads than
 // element_count due to rounding, so kernels often start with an "is this

@@ -31,12 +31,10 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
@@ -85,8 +83,8 @@ class ConvertLmhloToGpuLaunchPass
 // not want to define a separate `HloOpcode`. These operations emitted as device
 // kernels (similar to fusions), and we detect such custom calls by name, and
 // handle them similar to how we handle fusions.
-static std::array<std::string_view, 3> kCustomCallIntrinsics = {
-    "SliceToDynamic", "PadToStatic", "__triton"};
+static std::array<std::string_view, 2> kCustomCallIntrinsics = {
+    "SliceToDynamic", "PadToStatic"};
 
 //===-----------------------------------------------------------------------===/
 
@@ -166,17 +164,6 @@ static Value MakeBitPatternConstant(OpBuilder& b, Location loc, Type type,
   return b.create<arith::ConstantIndexOp>(loc, 0);
 }
 
-// Replaces lmhlo ops within a module with gpu.launch_func and gpu.memcpy ops.
-struct KernelOpsPattern : OpRewritePattern<ModuleOp> {
-  KernelOpsPattern(MLIRContext* context, ThunkSequence* thunk_sequence)
-      : OpRewritePattern(context), thunk_sequence(thunk_sequence) {}
-
-  LogicalResult matchAndRewrite(ModuleOp module_op,
-                                PatternRewriter& rewriter) const override;
-
-  ThunkSequence* thunk_sequence;
-};
-
 static void ExtractThunksForOp(Operation* op, ThunkSequence& thunk_sequence,
                                ThunkSequence* thunks_for_op) {
   for (std::unique_ptr<Thunk>& thunk : thunk_sequence) {
@@ -228,44 +215,44 @@ static absl::StatusOr<std::unique_ptr<ThunkSequence>> Match(
   return std::move(thunks_for_op);
 }
 
-static void LowerThunkToGpuOp(Operation* op, PatternRewriter& rewriter,
+static void LowerThunkToGpuOp(Operation* op, OpBuilder& b,
                               GPUModuleOp gpu_module, Thunk* thunk);
 
 // Replaces op with gpu.launch_func, gpu.memcpy, gpu.memset ops.
-static void Rewrite(Operation* op, PatternRewriter& rewriter,
-                    SymbolTable& symbol_table, ThunkSequence* thunks) {
-  OpBuilder::InsertionGuard guard(rewriter);
+static void Rewrite(Operation* op, OpBuilder& b, SymbolTable& symbol_table,
+                    ThunkSequence* thunks) {
+  OpBuilder::InsertionGuard guard(b);
   auto loc = op->getLoc();
 
-  rewriter.setInsertionPoint(op->getParentOfType<func::FuncOp>());
-  auto gpu_module = rewriter.create<GPUModuleOp>(loc, "gpu_module");
+  b.setInsertionPoint(op->getParentOfType<func::FuncOp>());
+  auto gpu_module = b.create<GPUModuleOp>(loc, "gpu_module");
   symbol_table.insert(gpu_module);
 
   for (const std::unique_ptr<Thunk>& thunk : *thunks) {
-    LowerThunkToGpuOp(op, rewriter, gpu_module, thunk.get());
+    LowerThunkToGpuOp(op, b, gpu_module, thunk.get());
   }
 
-  rewriter.eraseOp(op);
+  op->erase();
 }
 
-static void LowerThunkToGpuOp(Operation* op, PatternRewriter& rewriter,
+static void LowerThunkToGpuOp(Operation* op, OpBuilder& b,
                               GPUModuleOp gpu_module, Thunk* thunk) {
   auto loc = op->getLoc();
 
   if (thunk->kind() == Thunk::kSequential) {
     const auto* seq_thunk = static_cast<const SequentialThunk*>(thunk);
     for (const std::unique_ptr<Thunk>& thunk : seq_thunk->thunks()) {
-      LowerThunkToGpuOp(op, rewriter, gpu_module, thunk.get());
+      LowerThunkToGpuOp(op, b, gpu_module, thunk.get());
     }
     return;
   }
 
   if (thunk->kind() == Thunk::kCopy) {
     const auto* copy_thunk = static_cast<const DeviceToDeviceCopyThunk*>(thunk);
-    rewriter.setInsertionPoint(op);
-    rewriter.create<MemcpyOp>(loc, TypeRange(), ValueRange(),
-                              copy_thunk->destination_value(),
-                              copy_thunk->source_value());
+    b.setInsertionPoint(op);
+    b.create<MemcpyOp>(loc, TypeRange(), ValueRange(),
+                       copy_thunk->destination_value(),
+                       copy_thunk->source_value());
     return;
   }
 
@@ -273,11 +260,9 @@ static void LowerThunkToGpuOp(Operation* op, PatternRewriter& rewriter,
                             uint32_t memset_value, Value buffer_arg) {
     auto element_type =
         buffer_arg.getType().cast<MemRefType>().getElementType();
-    rewriter.setInsertionPoint(op);
-    Value value =
-        MakeBitPatternConstant(rewriter, loc, element_type, memset_value);
-    rewriter.create<MemsetOp>(loc, TypeRange(), ValueRange(), buffer_arg,
-                              value);
+    b.setInsertionPoint(op);
+    Value value = MakeBitPatternConstant(b, loc, element_type, memset_value);
+    b.create<MemsetOp>(loc, TypeRange(), ValueRange(), buffer_arg, value);
   };
 
   if (thunk->kind() == Thunk::kMemset32BitValue) {
@@ -294,25 +279,24 @@ static void LowerThunkToGpuOp(Operation* op, PatternRewriter& rewriter,
   }
 
   const auto* kernel_thunk = static_cast<const KernelThunk*>(thunk);
-  rewriter.setInsertionPointToStart(gpu_module.getBody());
+  b.setInsertionPointToStart(gpu_module.getBody());
 
   SmallVector<Value> kernel_args;
   for (auto kernel_arg : kernel_thunk->values())
     kernel_args.push_back(kernel_arg);
 
-  auto func_type = rewriter.getType<FunctionType>(
-      TypeRange(ValueRange(kernel_args)), TypeRange());
+  auto func_type =
+      b.getType<FunctionType>(TypeRange(ValueRange(kernel_args)), TypeRange());
 
-  gpu::GPUFuncOp kernel_func = rewriter.create<gpu::GPUFuncOp>(
-      loc, kernel_thunk->kernel_name(), func_type);
-  kernel_func->setAttr(GPUDialect::getKernelFuncAttrName(),
-                       rewriter.getUnitAttr());
-  rewriter.setInsertionPointToEnd(&kernel_func.getBody().back());
-  rewriter.create<ReturnOp>(loc);
+  gpu::GPUFuncOp kernel_func =
+      b.create<gpu::GPUFuncOp>(loc, kernel_thunk->kernel_name(), func_type);
+  kernel_func->setAttr(GPUDialect::getKernelFuncAttrName(), b.getUnitAttr());
+  b.setInsertionPointToEnd(&kernel_func.getBody().back());
+  b.create<ReturnOp>(loc);
 
   auto make_const_idx = [&](int64_t value) {
-    auto attr = rewriter.getIndexAttr(value);
-    return rewriter.create<arith::ConstantOp>(loc, attr).getResult();
+    auto attr = b.getIndexAttr(value);
+    return b.create<arith::ConstantOp>(loc, attr).getResult();
   };
 
   auto make_kernel_dim3 = [&](const auto& dim3) {
@@ -322,15 +306,15 @@ static void LowerThunkToGpuOp(Operation* op, PatternRewriter& rewriter,
 
   const auto& launch_dims = kernel_thunk->launch_dimensions();
 
-  rewriter.setInsertionPoint(op);
+  b.setInsertionPoint(op);
   auto grid_size = make_kernel_dim3(launch_dims.block_counts());
   auto block_size = make_kernel_dim3(launch_dims.thread_counts_per_block());
-  auto shmem_size = rewriter.create<arith::ConstantOp>(
-      loc, rewriter.getI32IntegerAttr(
-               kernel_thunk->launch_dimensions().SharedMemBytes()));
+  auto shmem_size = b.create<arith::ConstantOp>(
+      loc,
+      b.getI32IntegerAttr(kernel_thunk->launch_dimensions().SharedMemBytes()));
 
-  rewriter.create<LaunchFuncOp>(loc, kernel_func, grid_size, block_size,
-                                shmem_size, kernel_args);
+  b.create<LaunchFuncOp>(loc, kernel_func, grid_size, block_size, shmem_size,
+                         kernel_args);
 }
 
 // An overload set for defining predicates for operations that should
@@ -347,32 +331,34 @@ static bool HasGpuEmitter(lmhlo::CustomCallOp custom_call) {
   });
 }
 
-LogicalResult KernelOpsPattern::matchAndRewrite(
-    ModuleOp module_op, PatternRewriter& rewriter) const {
-  // No thunks to lower from. Skip pass.
-  if (thunk_sequence == nullptr) {
-    return failure();
-  }
+//===-----------------------------------------------------------------------===/
 
+void ConvertLmhloToGpuLaunchPass::runOnOperation() {
+  ModuleOp module = getOperation();
+
+  // No thunks to lower from. Skip pass.
+  if (thunk_sequence_ == nullptr) return signalPassFailure();
+
+  // Collect thunks for rewriting each compatible operation in the module into
+  // the sequence of device kernel launches. Some operation might have an empty
+  // thunk sequence (e.g. redundant copy operation that does not require running
+  // anything on device).
   absl::flat_hash_map<Operation*, std::unique_ptr<ThunkSequence>> rewrites;
 
   // Get data to rewrite kernel ops without changing the IR.
   auto walk = [&](auto op_type_tag) {
-    using OpTy = decltype(op_type_tag);
-
-    return module_op.walk([&](OpTy op) -> WalkResult {
+    return module.walk([&](decltype(op_type_tag) op) -> WalkResult {
       if (!HasGpuEmitter(op)) return success();
 
-      auto data = Match(op, *thunk_sequence);
-      if (!data.ok())
-        return rewriter.notifyMatchFailure(op, data.status().message());
+      auto data = Match(op, *thunk_sequence_);
+      if (!data.ok()) return op.emitOpError(data.status().message());
 
       rewrites[op] = std::move(*data);
       return success();
     });
   };
 
-  // Compile all operations that have GPU code emitters to the GPU binary,
+  // Collect all operations that have GPU code emitters.
   if (walk(lmhlo::FusionOp()).wasInterrupted() ||
       walk(lmhlo::RngGetAndUpdateStateOp()).wasInterrupted() ||
       walk(lmhlo::ScatterOp()).wasInterrupted() ||
@@ -380,37 +366,21 @@ LogicalResult KernelOpsPattern::matchAndRewrite(
       walk(lmhlo::SortOp()).wasInterrupted() ||
       walk(lmhlo::CustomCallOp()).wasInterrupted() ||
       walk(LaunchFuncOp()).wasInterrupted())
-    return failure();
+    return signalPassFailure();
 
-  if (rewrites.empty()) {
-    return rewriter.notifyMatchFailure(module_op, "No kernel ops");
+  // No operations that should be lowered to sequence of device launches.
+  if (rewrites.empty()) return;
+
+  OpBuilder b(module);
+  SymbolTable symbol_table(module);
+
+  // Replace matched operations with gpu.launch_func's.
+  for (const auto& [op, thunks] : rewrites) {
+    Rewrite(op, b, symbol_table, thunks.get());
   }
 
   // Mark module as gpu.container_module.
-  rewriter.updateRootInPlace(module_op, [&] {
-    module_op->setAttr(GPUDialect::getContainerModuleAttrName(),
-                       rewriter.getUnitAttr());
-  });
-
-  // Replace the kernel ops with gpu.launch_func.
-  SymbolTable symbol_table(module_op);
-  for (const auto& rewrite : rewrites) {
-    Rewrite(rewrite.first, rewriter, symbol_table, rewrite.second.get());
-  }
-
-  return success();
-}
-
-//===-----------------------------------------------------------------------===/
-
-void ConvertLmhloToGpuLaunchPass::runOnOperation() {
-  MLIRContext* ctx = &getContext();
-
-  RewritePatternSet patterns(ctx);
-  patterns.insert<KernelOpsPattern>(ctx, thunk_sequence_);
-
-  if (failed(applyOpPatternsAndFold(getOperation(), std::move(patterns))))
-    return signalPassFailure();
+  module->setAttr(GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
 }
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

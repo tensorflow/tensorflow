@@ -139,7 +139,18 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorInferShapesForRestoreV2Op();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateDTensorXlaSpmdIntegration();
+CreateDTensorSetHloShardingPass(llvm::Optional<bool> check_layout_use_xla_spmd =
+                                    llvm::Optional<bool>(false));
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorReplaceAuxiliaryDTensorLayoutOpPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorRemoveDTensorLayoutPass();
+
+// Creates a pass that replaces `tf.Relayout` with `tf.Identity`.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateDTensorReplaceRelayoutWithIdentityPass();
 
 // Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

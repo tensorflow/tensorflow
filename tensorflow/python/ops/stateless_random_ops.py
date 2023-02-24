@@ -19,13 +19,13 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_random_index_shuffle_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import shape_util
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
@@ -497,7 +497,7 @@ def stateless_random_uniform(shape,
     maxval = 1
   with ops.name_scope(name, "stateless_random_uniform",
                       [shape, seed, minval, maxval]) as name:
-    shape = tensor_util.shape_tensor(shape)
+    shape = shape_util.shape_tensor(shape)
     if dtype.is_integer and minval is None:
       key, counter, alg = _get_key_counter_alg(seed, alg)
       result = (
@@ -521,7 +521,7 @@ def stateless_random_uniform(shape,
         rnd = gen_stateless_random_ops_v2.stateless_random_uniform_v2(
             shape, key=key, counter=counter, dtype=dtype, alg=alg)
         result = math_ops.add(rnd * (maxval - minval), minval, name=name)
-    tensor_util.maybe_set_static_shape(result, shape)
+    shape_util.maybe_set_static_shape(result, shape)
     return result
 
 
@@ -584,14 +584,14 @@ def stateless_random_binomial(shape,
   """
   with ops.name_scope(name, "stateless_random_binomial",
                       [shape, seed, counts, probs]) as name:
-    shape = tensor_util.shape_tensor(shape)
+    shape = shape_util.shape_tensor(shape)
     probs = ops.convert_to_tensor(
         probs, dtype_hint=dtypes.float32, name="probs")
     counts = ops.convert_to_tensor(
         counts, dtype_hint=probs.dtype, name="counts")
     result = gen_stateless_random_ops.stateless_random_binomial(
         shape=shape, seed=seed, counts=counts, probs=probs, dtype=output_dtype)
-    tensor_util.maybe_set_static_shape(result, shape)
+    shape_util.maybe_set_static_shape(result, shape)
     return result
 
 
@@ -680,7 +680,7 @@ def stateless_random_gamma(shape,
   """
   with ops.name_scope(name, "stateless_random_gamma",
                       [shape, seed, alpha, beta]) as name:
-    shape = tensor_util.shape_tensor(shape)
+    shape = shape_util.shape_tensor(shape)
     alpha = ops.convert_to_tensor(alpha, dtype=dtype, name="alpha")
     beta = ops.convert_to_tensor(
         beta if beta is not None else 1, name="beta", dtype=dtype)
@@ -693,7 +693,7 @@ def stateless_random_gamma(shape,
         shape, key=key, counter=counter, alg=alg, alpha=alpha_broadcast)
     result = math_ops.maximum(
         np.finfo(alpha.dtype.as_numpy_dtype).tiny, rnd / beta)
-    tensor_util.maybe_set_static_shape(result, shape)
+    shape_util.maybe_set_static_shape(result, shape)
     return result
 
 
@@ -753,10 +753,10 @@ def stateless_random_poisson(shape,
   """
   with ops.name_scope(name, "stateless_random_poisson",
                       [shape, seed, lam]) as name:
-    shape = tensor_util.shape_tensor(shape)
+    shape = shape_util.shape_tensor(shape)
     result = gen_stateless_random_ops.stateless_random_poisson(
         shape, seed=seed, lam=lam, dtype=dtype)
-    tensor_util.maybe_set_static_shape(result, shape)
+    shape_util.maybe_set_static_shape(result, shape)
     return result
 
 
@@ -796,14 +796,14 @@ def stateless_random_normal(shape,
   """
   with ops.name_scope(name, "stateless_random_normal",
                       [shape, seed, mean, stddev]) as name:
-    shape = tensor_util.shape_tensor(shape)
+    shape = shape_util.shape_tensor(shape)
     mean = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     key, counter, alg = _get_key_counter_alg(seed, alg)
     rnd = gen_stateless_random_ops_v2.stateless_random_normal_v2(
         shape, key=key, counter=counter, dtype=dtype, alg=alg)
     result = math_ops.add(rnd * stddev, mean, name=name)
-    tensor_util.maybe_set_static_shape(result, shape)
+    shape_util.maybe_set_static_shape(result, shape)
     return result
 
 
@@ -846,14 +846,14 @@ def stateless_truncated_normal(shape,
   """
   with ops.name_scope(name, "stateless_truncated_normal",
                       [shape, seed, mean, stddev]) as name:
-    shape = tensor_util.shape_tensor(shape)
+    shape = shape_util.shape_tensor(shape)
     mean = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     key, counter, alg = _get_key_counter_alg(seed, alg)
     rnd = gen_stateless_random_ops_v2.stateless_truncated_normal_v2(
         shape, key=key, counter=counter, dtype=dtype, alg=alg)
     result = math_ops.add(rnd * stddev, mean, name=name)
-    tensor_util.maybe_set_static_shape(result, shape)
+    shape_util.maybe_set_static_shape(result, shape)
     return result
 
 
@@ -1015,7 +1015,7 @@ def stateless_parameterized_truncated_normal(shape,
   """
   with ops.name_scope(name, "stateless_parameterized_truncated_normal",
                       [shape, means, stddevs, minvals, maxvals]) as name:
-    shape_tensor = tensor_util.shape_tensor(shape)
+    shape_tensor = shape_util.shape_tensor(shape)
     means_tensor = ops.convert_to_tensor(means, name="means")
     stddevs_tensor = ops.convert_to_tensor(stddevs, name="stddevs")
     minvals_tensor = ops.convert_to_tensor(minvals, name="minvals")
@@ -1023,5 +1023,5 @@ def stateless_parameterized_truncated_normal(shape,
     rnd = gen_stateless_random_ops.stateless_parameterized_truncated_normal(
         shape_tensor, seed, means_tensor, stddevs_tensor, minvals_tensor,
         maxvals_tensor)
-    tensor_util.maybe_set_static_shape(rnd, shape)
+    shape_util.maybe_set_static_shape(rnd, shape)
     return rnd

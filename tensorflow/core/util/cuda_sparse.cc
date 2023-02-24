@@ -508,6 +508,7 @@ TF_CALL_LAPACK_TYPES(CSRMV_INSTANCE);
 
 #else
 
+#if CUDA_VERSION < 12000
 template <typename Scalar>
 static inline Status CsrmvExImpl(cudaDataType_t dtype, OpKernelContext* context,
                                  cusparseHandle_t cusparse_handle,
@@ -546,6 +547,7 @@ static inline Status CsrmvExImpl(cudaDataType_t dtype, OpKernelContext* context,
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyMatDescr(descrA));
   return OkStatus();
 }
+#endif  // CUDA_VERSION < 12000
 
 template <typename Scalar>
 static inline Status SpMVImpl(cudaDataType_t dtype, OpKernelContext* context,
@@ -569,10 +571,16 @@ static inline Status SpMVImpl(cudaDataType_t dtype, OpKernelContext* context,
       cusparseCreateDnVec(&vecX, sizeX, const_cast<Scalar*>(x), dtype));
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateDnVec(&vecY, sizeY, y, dtype));
 
+#if CUDA_VERSION >= 12000
+  cusparseSpMVAlg_t algo = CUSPARSE_SPMV_CSR_ALG1;
+#else
+  cusparseSpMVAlg_t algo = CUSPARSE_CSRMV_ALG1;
+#endif
+
   size_t bufferSize;
-  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpMV_bufferSize(
-      cusparse_handle, transA, alpha_host, matA, vecX, beta_host, vecY, dtype,
-      CUSPARSE_CSRMV_ALG1, &bufferSize));
+  TF_RETURN_IF_GPUSPARSE_ERROR(
+      cusparseSpMV_bufferSize(cusparse_handle, transA, alpha_host, matA, vecX,
+                              beta_host, vecY, dtype, algo, &bufferSize));
 
   Tensor buffer;
   TF_RETURN_IF_ERROR(context->allocate_temp(
@@ -580,9 +588,9 @@ static inline Status SpMVImpl(cudaDataType_t dtype, OpKernelContext* context,
   auto pBuffer = buffer.flat<int8>();
   DCHECK(pBuffer.data() != nullptr);
 
-  TF_RETURN_IF_GPUSPARSE_ERROR(
-      cusparseSpMV(cusparse_handle, transA, alpha_host, matA, vecX, beta_host,
-                   vecY, dtype, CUSPARSE_CSRMV_ALG1, pBuffer.data()));
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpMV(cusparse_handle, transA, alpha_host,
+                                            matA, vecX, beta_host, vecY, dtype,
+                                            algo, pBuffer.data()));
 
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnVec(vecY));
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnVec(vecX));
@@ -590,6 +598,7 @@ static inline Status SpMVImpl(cudaDataType_t dtype, OpKernelContext* context,
   return OkStatus();
 }
 
+#if CUDA_VERSION < 12000
 #define CSRMV_INSTANCE(Scalar, cudaDataType)                                   \
   template <>                                                                  \
   Status GpuSparse::Csrmv<Scalar>(                                             \
@@ -608,6 +617,20 @@ static inline Status SpMVImpl(cudaDataType_t dtype, OpKernelContext* context,
                       csrSortedColIndA, x, beta_host, y);                      \
     }                                                                          \
   }
+#else
+#define CSRMV_INSTANCE(Scalar, cudaDataType)                                  \
+  template <>                                                                 \
+  Status GpuSparse::Csrmv<Scalar>(                                            \
+      cusparseOperation_t transA, int m, int n, int nnz,                      \
+      const Scalar* alpha_host, const Scalar* csrSortedValA,                  \
+      const int* csrSortedRowPtrA, const int* csrSortedColIndA,               \
+      const Scalar* x, const Scalar* beta_host, Scalar* y) const {            \
+    DCHECK(initialized_);                                                     \
+    return SpMVImpl(cudaDataType, context_, *gpusparse_handle_, transA, m, n, \
+                    nnz, alpha_host, csrSortedValA, csrSortedRowPtrA,         \
+                    csrSortedColIndA, x, beta_host, y);                       \
+  }
+#endif  // CUDA_VERSION < 12000
 
 TF_CALL_CUSPARSE_DTYPES(CSRMV_INSTANCE);
 
@@ -758,7 +781,7 @@ static inline Status CsrgeamBufferSizeExtImpl(
 
 TF_CALL_LAPACK_TYPES(CSRGEAM_BUFFERSIZE_INSTANCE);
 
-#if CUDA_VERSION < 10000
+#if (GOOGLE_CUDA && (CUDA_VERSION < 10000)) || TENSORFLOW_USE_ROCM
 
 Status GpuSparse::CsrgemmNnz(
     cusparseOperation_t transA, cusparseOperation_t transB, int m, int k, int n,
@@ -816,7 +839,7 @@ static inline Status CsrgemmImpl(
 
 TF_CALL_LAPACK_TYPES(CSRGEMM_INSTANCE);
 
-#else
+#elif GOOGLE_CUDA && (CUDA_VERSION < 12000)
 
 template <typename T>
 static const T* one_ptr() {
@@ -909,7 +932,61 @@ static inline Status CsrgemmImpl(
 
 TF_CALL_LAPACK_TYPES(CSRGEMM_INSTANCE);
 
-#endif  // CUDA_VERSION < 10000
+#elif GOOGLE_CUDA  // CUDA_VERSION >= 12000
+
+#define SPGEMM_WORKESTIMATION_INSTANCE(Scalar, dtype)                      \
+  template <>                                                              \
+  Status GpuSparse::SpGEMM_workEstimation<Scalar>(                         \
+      GpuSparseConstSpMatDescr & matA, GpuSparseConstSpMatDescr & matB,    \
+      GpuSparseSpMatDescr & matC, GpuSparseSpGEMMDescr & spgemmDescr,      \
+      size_t * bufferSize1, void* externalBuffer1) {                       \
+    DCHECK(initialized_);                                                  \
+    Scalar alpha = static_cast<Scalar>(1.0);                               \
+    Scalar beta = static_cast<Scalar>(0.0);                                \
+    TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpGEMM_workEstimation(            \
+        *gpusparse_handle_, CUSPARSE_OPERATION_NON_TRANSPOSE,              \
+        CUSPARSE_OPERATION_NON_TRANSPOSE, &alpha, matA.get(), matB.get(),  \
+        &beta, matC.get(), dtype, CUSPARSE_SPGEMM_ALG1, spgemmDescr.get(), \
+        bufferSize1, externalBuffer1));                                    \
+    return OkStatus();                                                     \
+  }
+TF_CALL_CUSPARSE_DTYPES(SPGEMM_WORKESTIMATION_INSTANCE);
+
+#define SPGEMM_COMPUTE_INSTANCE(Scalar, dtype)                             \
+  template <>                                                              \
+  Status GpuSparse::SpGEMM_compute<Scalar>(                                \
+      GpuSparseConstSpMatDescr & matA, GpuSparseConstSpMatDescr & matB,    \
+      GpuSparseSpMatDescr & matC, GpuSparseSpGEMMDescr & spgemmDescr,      \
+      size_t * bufferSize2, void* externalBuffer2) {                       \
+    DCHECK(initialized_);                                                  \
+    Scalar alpha = static_cast<Scalar>(1.0);                               \
+    Scalar beta = static_cast<Scalar>(0.0);                                \
+    TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpGEMM_compute(                   \
+        *gpusparse_handle_, CUSPARSE_OPERATION_NON_TRANSPOSE,              \
+        CUSPARSE_OPERATION_NON_TRANSPOSE, &alpha, matA.get(), matB.get(),  \
+        &beta, matC.get(), dtype, CUSPARSE_SPGEMM_ALG1, spgemmDescr.get(), \
+        bufferSize2, externalBuffer2));                                    \
+    return OkStatus();                                                     \
+  }
+TF_CALL_CUSPARSE_DTYPES(SPGEMM_COMPUTE_INSTANCE);
+
+#define SPGEMM_COPY_INSTANCE(Scalar, dtype)                                  \
+  template <>                                                                \
+  Status GpuSparse::SpGEMM_copy<Scalar>(                                     \
+      GpuSparseConstSpMatDescr & matA, GpuSparseConstSpMatDescr & matB,      \
+      GpuSparseSpMatDescr & matC, GpuSparseSpGEMMDescr & spgemmDescr) {      \
+    DCHECK(initialized_);                                                    \
+    Scalar alpha = static_cast<Scalar>(1.0);                                 \
+    Scalar beta = static_cast<Scalar>(0.0);                                  \
+    TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpGEMM_copy(                        \
+        *gpusparse_handle_, CUSPARSE_OPERATION_NON_TRANSPOSE,                \
+        CUSPARSE_OPERATION_NON_TRANSPOSE, &alpha, matA.get(), matB.get(),    \
+        &beta, matC.get(), dtype, CUSPARSE_SPGEMM_ALG1, spgemmDescr.get())); \
+    return OkStatus();                                                       \
+  }
+TF_CALL_CUSPARSE_DTYPES(SPGEMM_COPY_INSTANCE);
+
+#endif
 
 template <typename Scalar, typename BufferSizeFnT, typename SparseFnT>
 static inline Status Csru2csrImpl(SparseFnT op, BufferSizeFnT buffer_size_op,
@@ -995,11 +1072,16 @@ static inline Status Csr2cscImpl(cudaDataType_t dtype, OpKernelContext* context,
                                  const int* csrRowPtr, const int* csrColInd,
                                  Scalar* cscVal, int* cscRowInd, int* cscColPtr,
                                  const cusparseAction_t copyValues) {
+#if CUDA_VERSION < 12000
+  cusparseCsr2CscAlg_t algo = CUSPARSE_CSR2CSC_ALG2;
+#else
+  cusparseCsr2CscAlg_t algo = CUSPARSE_CSR2CSC_ALG1;
+#endif
   size_t bufferSize;
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCsr2cscEx2_bufferSize(
       cusparse_handle, m, n, nnz, AsCudaComplex(csrVal), csrRowPtr, csrColInd,
       AsCudaComplex(cscVal), cscColPtr, cscRowInd, dtype, copyValues,
-      CUSPARSE_INDEX_BASE_ZERO, CUSPARSE_CSR2CSC_ALG2, &bufferSize));
+      CUSPARSE_INDEX_BASE_ZERO, algo, &bufferSize));
 
   Tensor buffer;
   TF_RETURN_IF_ERROR(context->allocate_temp(
@@ -1008,11 +1090,10 @@ static inline Status Csr2cscImpl(cudaDataType_t dtype, OpKernelContext* context,
 
   DCHECK(buffer.flat<Scalar>().data() != nullptr);
 
-  TF_RETURN_IF_GPUSPARSE_ERROR(
-      cusparseCsr2cscEx2(cusparse_handle, m, n, nnz, AsCudaComplex(csrVal),
-                         csrRowPtr, csrColInd, AsCudaComplex(cscVal), cscColPtr,
-                         cscRowInd, dtype, copyValues, CUSPARSE_INDEX_BASE_ZERO,
-                         CUSPARSE_CSR2CSC_ALG2, buffer.flat<Scalar>().data()));
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCsr2cscEx2(
+      cusparse_handle, m, n, nnz, AsCudaComplex(csrVal), csrRowPtr, csrColInd,
+      AsCudaComplex(cscVal), cscColPtr, cscRowInd, dtype, copyValues,
+      CUSPARSE_INDEX_BASE_ZERO, algo, buffer.flat<Scalar>().data()));
 
   return OkStatus();
 }

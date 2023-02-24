@@ -30,11 +30,11 @@ cc_library(
     srcs = [
         "add_hlo_trace_annotations.cc",
         "gpu_to_gpu_runtime.cc",
-        "launch_func_to_cuda_graph.cc",
         "lmhlo_gpu_to_gpu_runtime.cc",
         "lmhlo_to_gpu_launch.cc",
         "lmhlo_to_gpu_runtime.cc",
         "memref_get_global_to_arg.cc",
+        "outline_cuda_graphs.cc",
         "passes.cc",
         "uid_generator.h",
     ],

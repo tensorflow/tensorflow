@@ -279,7 +279,8 @@ Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
     TF_RET_CHECK(node_it != nodes_.end())
         << "Use of OpResult encountered before def!";
     if (input_result.getType().isa<mlir::tf_executor::ControlType>()) {
-      graph_->AddControlEdge(node_it->second, dst_node);
+      graph_->AddControlEdge(node_it->second, dst_node,
+                             /*allow_duplicates=*/true);
     } else {
       graph_->AddEdge(node_it->second, input_result.getResultNumber(), dst_node,
                       dst_index);

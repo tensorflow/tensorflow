@@ -17,7 +17,6 @@ limitations under the License.
 #include <string>
 
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/lite/core/experimental/acceleration/configuration/c/stable_delegate.h"
 
 namespace tflite {
 namespace delegates {

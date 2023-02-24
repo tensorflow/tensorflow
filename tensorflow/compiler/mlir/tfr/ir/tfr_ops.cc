@@ -74,7 +74,7 @@ class TFRInlinerInterface : public DialectInlinerInterface {
   // Returns true if the given region 'src' can be inlined into the region
   // 'dest' that is attached to an operation registered to the current dialect.
   bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
-                       BlockAndValueMapping &) const final {
+                       IRMapping &) const final {
     return true;
   }
 
@@ -82,7 +82,7 @@ class TFRInlinerInterface : public DialectInlinerInterface {
   // dialect, can be inlined into the region 'dest' that is attached to an
   // operation registered to the current dialect.
   bool isLegalToInline(Operation *op, Region *dest, bool wouldBeCloned,
-                       BlockAndValueMapping &) const final {
+                       IRMapping &) const final {
     return true;
   }
 
@@ -896,14 +896,17 @@ void TFRQuantScaleFactorOp::getCanonicalizationPatterns(
   results.add<RemoveScaleFactorOp>(context);
 }
 
-OpFoldResult TFR::EqualOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult TFR::EqualOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   assert(operands.size() == 2 && "equal op has two operands");
   auto ctx = getContext();
   if (operands[0] == operands[1]) return BoolAttr::get(ctx, true);
   return BoolAttr::get(ctx, false);
 }
 
-OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ConstOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
+  (void)operands;
   assert(operands.empty() && "constant has no operands");
 
   // Return the held attribute value.

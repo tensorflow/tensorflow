@@ -4,6 +4,9 @@
 TENSORFLOW_API_INIT_FILES_V1 = [
     # BEGIN GENERATED FILES
     "__init__.py",
+    "__internal__/__init__.py",
+    "__internal__/types/__init__.py",
+    "__internal__/types/data/__init__.py",
     "app/__init__.py",
     "audio/__init__.py",
     "autograph/__init__.py",
@@ -89,6 +92,7 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "summary/__init__.py",
     "sysconfig/__init__.py",
     "test/__init__.py",
+    "test/experimental/__init__.py",
     "tpu/experimental/embedding/__init__.py",
     "tpu/experimental/__init__.py",
     "tpu/__init__.py",

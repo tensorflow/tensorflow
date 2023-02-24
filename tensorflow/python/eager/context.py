@@ -462,7 +462,6 @@ class Context:
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
     self._use_tfrt = is_tfrt_enabled()
-    self._use_tfrt_distributed_runtime = None
     self._jit_compile_rewrite = jit_compile_rewrite_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
@@ -504,9 +503,10 @@ class Context:
     # to int.
     try:
       hash(seed)
+      self._rng = random.Random(seed)
     except TypeError:
       seed = int(np.array(seed))
-    self._rng = random.Random(seed)
+      self._rng = random.Random(seed)
     # Also clear the kernel cache, to reset any existing seeds
     if self._context_handle is not None:
       pywrap_tfe.TFE_ContextClearCaches(self._context_handle)
@@ -577,11 +577,6 @@ class Context:
           pywrap_tfe.TFE_ContextOptionsSetAsync(opts, True)
         if self._use_tfrt is not None:
           pywrap_tfe.TFE_ContextOptionsSetTfrt(opts, self._use_tfrt)
-        # pylint: disable=g-backslash-continuation
-        if self._use_tfrt is not None and \
-            self._use_tfrt_distributed_runtime is not None:
-          pywrap_tfe.TFE_ContextOptionsSetTfrtDistributedRuntime(
-              opts, self._use_tfrt_distributed_runtime)
         pywrap_tfe.TFE_ContextOptionsSetRunEagerOpAsFunction(opts, True)
         pywrap_tfe.TFE_ContextOptionsSetJitCompileRewrite(
             opts, self._jit_compile_rewrite)
@@ -605,6 +600,21 @@ class Context:
 
       if self._is_global_context:
         pywrap_tfe.TFE_Py_SetCEagerContext(self._context_handle)
+
+  def ensure_uninitialized(self):
+    """Uninitialize handle and devices if not already done so."""
+    with self._initialize_lock:
+      if not self._initialized:
+        return
+      self._context_devices = None
+      self._logical_devices = None
+      self._server_def = None
+      self._initialized = False
+
+      if self._is_global_context:
+        pywrap_tfe.TFE_Py_SetCEagerContext(None)
+
+      self._context_handle = None
 
   def mark_as_global_context(self):
     # If the context was already initialized, publish it. Otherwise wait with
@@ -1751,9 +1761,22 @@ class Context:
     pywrap_tfe.TFE_SetLogicalCpuDevices(self._context_handle, num_cpus, prefix)
     self._initialize_logical_devices()
 
-  def get_compiler_ir(self, device_name, function_name, args, stage="hlo"):
-    return pywrap_tfe.TF_GetCompilerIr(self._context_handle, function_name,
-                                       stage, device_name, args)
+  def get_compiler_ir(
+      self,
+      device_name,
+      function_name,
+      flat_args,
+      captured_inputs,
+      stage="hlo",
+  ):
+    return pywrap_tfe.TF_GetCompilerIr(
+        self._context_handle,
+        function_name,
+        stage,
+        device_name,
+        flat_args,
+        captured_inputs,
+    )
 
   @deprecated(
       None, "XLA:CPU and XLA:GPU devices are deprecated", warn_once=True)
@@ -1941,28 +1964,6 @@ class Context:
       if self._initialized:
         raise ValueError("use_tfrt should be set before being initialized.")
       self._use_tfrt = tfrt
-
-  @property
-  def use_tfrt_distributed_runtime(self):
-    return self._use_tfrt_distributed_runtime
-
-  @use_tfrt_distributed_runtime.setter
-  def use_tfrt_distributed_runtime(self, enable):
-    """Sets whether to use TFRT distributed runtime.
-
-    This is only effective when use_tfrt is also true. Note that currently TFRT
-    distributed runtime is not function complete and this config is for testing
-    only.
-    Args:
-      enable: A boolean to set whether to use TFRT distributed runtime.
-    """
-    if not isinstance(enable, bool):
-      raise ValueError("Expecting a boolean but got %s" % type(enable))
-
-    if self._use_tfrt_distributed_runtime != enable:
-      if self._initialized:
-        raise ValueError("use_tfrt should be set before being initialized.")
-      self._use_tfrt_distributed_runtime = enable
 
   @property
   def operation_timeout_in_ms(self):
@@ -2728,9 +2729,9 @@ def async_clear_error():
   context().clear_executor_errors()
 
 
-def add_function(fdef):
-  """Add a function definition to the context."""
-  context().add_function(fdef)
+def add_function(tf_function):
+  """Add a TF_Function to the context."""
+  context().add_function(tf_function)
 
 
 def remove_function(name):

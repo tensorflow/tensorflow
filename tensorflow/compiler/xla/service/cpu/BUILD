@@ -205,6 +205,7 @@ cc_library(
         ":target_machine_features",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:ArithDialect",
@@ -215,6 +216,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:ToLLVMIRTranslation",
+        "//tensorflow/compiler/xla/mlir/tools/mlir_replay/public:compiler_trace_instrumentation",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/service/cpu/runtime:collectives",
         "//tensorflow/compiler/xla/service/cpu/runtime:custom_call",
@@ -456,6 +458,7 @@ cc_library(
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",  # fixdeps: keep
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla:types",
@@ -598,6 +601,7 @@ cc_library(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//mlir:IR",
     ],
 )

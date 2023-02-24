@@ -98,7 +98,7 @@ tf_module {
   }
   member {
     name: "Graph"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
   }
   member {
     name: "GraphDef"
@@ -166,7 +166,7 @@ tf_module {
   }
   member {
     name: "Operation"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
   }
   member {
     name: "OptimizerOptions"
@@ -1358,7 +1358,7 @@ tf_module {
   }
   member_method {
     name: "function"
-    argspec: "args=[\'func\', \'input_signature\', \'autograph\', \'jit_compile\', \'reduce_retracing\', \'experimental_implements\', \'experimental_autograph_options\', \'experimental_relax_shapes\', \'experimental_compile\', \'experimental_follow_type_hints\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'False\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'func\', \'input_signature\', \'autograph\', \'jit_compile\', \'reduce_retracing\', \'experimental_implements\', \'experimental_autograph_options\', \'experimental_attributes\', \'experimental_relax_shapes\', \'experimental_compile\', \'experimental_follow_type_hints\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'False\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "gather"
@@ -2431,10 +2431,6 @@ tf_module {
   member_method {
     name: "to_int64"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToInt64\'], "
-  }
-  member_method {
-    name: "tpu_partitioned_output_v2"
-    argspec: "args=[\'inputs\', \'num_splits\', \'partition_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "trace"

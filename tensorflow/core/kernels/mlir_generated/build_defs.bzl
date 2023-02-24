@@ -10,7 +10,6 @@ load(
     "if_gpu_is_configured",
 )
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain", "use_cpp_toolchain")
-load("//tensorflow:tensorflow.bzl", "if_oss")
 
 def _lookup_file(filegroup, path):
     """Extracts file at (relative) path in filegroup."""
@@ -143,7 +142,7 @@ def _gen_kernel_bin_impl(ctx):
 
     # cc_binary seems not to bring its dependencies with it, so do that explicitly here.
     ctx.actions.run(
-        inputs = [ctx.file.mlir_op] + if_oss([ctx.file._tfso], []),
+        inputs = [ctx.file.mlir_op, ctx.file._tfso],
         outputs = [gpu_bin],
         executable = ctx.executable._tool,
         arguments = cmd_args + [
@@ -190,7 +189,7 @@ _gen_kernel_bin_rule = rule(
         "extra_args": attr.string_list(),
         # cc_binary seems not to bring its dependencies with it, so do that explicitly here.
         "_tfso": attr.label(
-            default = if_oss(Label("//tensorflow:libtensorflow_framework.so.2"), None),
+            default = Label("//tensorflow:libtensorflow_framework.so.2"),
             cfg = "exec",
             allow_single_file = True,
         ),

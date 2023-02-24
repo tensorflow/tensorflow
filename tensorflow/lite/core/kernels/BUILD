@@ -1,5 +1,6 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_self_contained_libs_test_suite")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite/core:special_rules.bzl", "builtin_ops_visibility_allowlist")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -24,7 +25,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-    ],
+    ] + builtin_ops_visibility_allowlist(),
     deps = [
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:tflite_with_xnnpack_optional",

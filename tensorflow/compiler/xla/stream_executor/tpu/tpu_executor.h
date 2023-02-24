@@ -22,12 +22,11 @@ limitations under the License.
 #include <optional>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/device_options.h"
 #include "tensorflow/compiler/xla/stream_executor/event.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
@@ -39,6 +38,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream.h"
 #include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/types.h"
 
 namespace stream_executor {
@@ -122,7 +123,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   CreateEventImplementation() override;
 
   bool HostCallback(Stream* stream,
-                    std::function<tsl::Status()> callback) override;
+                    absl::AnyInvocable<tsl::Status() &&> callback) override;
 
   bool Memcpy(Stream* stream, void* host_dst,
               const ::stream_executor::DeviceMemoryBase& device_src,

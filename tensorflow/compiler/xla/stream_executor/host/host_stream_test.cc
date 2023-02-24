@@ -56,7 +56,7 @@ TEST(HostStream, ReportsHostCallbackError) {
   stream.Init();
 
   stream.ThenDoHostCallbackWithStatus(
-      []() { return se::port::InternalError("error!"); });
+      []() { return tsl::errors::Internal("error!"); });
 
   auto status = stream.BlockHostUntilDone();
   ASSERT_EQ(status.code(), tsl::error::INTERNAL);
@@ -71,9 +71,9 @@ TEST(HostStream, ReportsFirstHostCallbackError) {
   stream.Init();
 
   stream.ThenDoHostCallbackWithStatus(
-      []() { return se::port::InternalError("error 1"); });
+      []() { return tsl::errors::Internal("error 1"); });
   stream.ThenDoHostCallbackWithStatus(
-      []() { return se::port::InternalError("error 2"); });
+      []() { return tsl::errors::Internal("error 2"); });
 
   // "error 2" is just lost.
   ASSERT_EQ(stream.BlockHostUntilDone().error_message(), "error 1");

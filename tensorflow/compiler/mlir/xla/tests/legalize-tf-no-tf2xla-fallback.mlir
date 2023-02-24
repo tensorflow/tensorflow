@@ -1,4 +1,4 @@
-// RUN: xla-opt "-xla-legalize-tf-no-fallback=allow-partial-conversion" -split-input-file %s | FILECHECK_OPTS="" FileCheck %s
+// RUN: tf-opt "-xla-legalize-tf-no-fallback=allow-partial-conversion" -split-input-file %s | FILECHECK_OPTS="" FileCheck %s
 
 //===----------------------------------------------------------------------===//
 // BatchNorm op legalizations.
@@ -2351,7 +2351,7 @@ func.func @acos_dynamic(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-LABEL: @tan
 // CHECK-SAME: (%[[ARG:.*]]: tensor<2xf32>) -> tensor<2xf32>
 func.func @tan(%arg : tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK: chlo.tan %[[ARG]] : tensor<2xf32>
+  // CHECK: mhlo.tan %[[ARG]] : tensor<2xf32>
   %result = "tf.Tan"(%arg) : (tensor<2xf32>) -> tensor<2xf32>
   func.return %result : tensor<2xf32>
 }
@@ -2361,7 +2361,7 @@ func.func @tan(%arg : tensor<2xf32>) -> tensor<2xf32> {
 // CHECK-LABEL: @tan_unranked
 // CHECK-SAME: (%[[ARG:.*]]: tensor<*xf32>) -> tensor<*xf32>
 func.func @tan_unranked(%arg : tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK: chlo.tan %[[ARG]] : tensor<*xf32>
+  // CHECK: mhlo.tan %[[ARG]] : tensor<*xf32>
   %result = "tf.Tan"(%arg) : (tensor<*xf32>) -> tensor<*xf32>
   func.return %result : tensor<*xf32>
 }
@@ -5090,27 +5090,33 @@ func.func @random_shuffle_3D(%input: tensor<4x?x16xf32>) -> tensor<4x?x16xf32> {
   // CHECK:   [[CMP:%.*]] = mhlo.compare LT, [[ITER_ARG]], [[LIMIT]], NOTYPE
   // CHECK:   mhlo.return [[CMP]]
   // CHECK: } do {
-  // CHECK:   [[SRC_IDX:%.*]] = "mhlo.dynamic_slice"([[ITER_ARG2]], [[ITER_ARG]]) {slice_sizes = dense<1> : tensor<i64>} : (tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
-  // CHECK:   [[SWP_IDX:%.*]] = "mhlo.dynamic_slice"([[ITER_ARG1]], [[ITER_ARG]]) {slice_sizes = dense<1> : tensor<i64>} : (tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
+  // CHECK:   [[SRC_IDX:%.*]] = "mhlo.dynamic_slice"([[ITER_ARG2]], [[ITER_ARG]]) {slice_sizes = dense<1> : tensor<1xi64>} : (tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
+  // CHECK:   [[SWP_IDX:%.*]] = "mhlo.dynamic_slice"([[ITER_ARG1]], [[ITER_ARG]]) {slice_sizes = dense<1> : tensor<1xi64>} : (tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
   // CHECK:   [[SWP:%.*]] = mhlo.reshape [[SWP_IDX]] : (tensor<1xi32>) -> tensor<i32>
-  // CHECK:   [[TGT_IDX:%.*]] = "mhlo.dynamic_slice"([[ITER_ARG2]], [[SWP]]) {slice_sizes = dense<1> : tensor<i64>}
+  // CHECK:   [[TGT_IDX:%.*]] = "mhlo.dynamic_slice"([[ITER_ARG2]], [[SWP]]) {slice_sizes = dense<1> : tensor<1xi64>}
   // CHECK:   [[INDICES1:%.*]] = mhlo.dynamic_update_slice [[ITER_ARG2]], [[TGT_IDX]], [[ITER_ARG]] : (tensor<4xi32>, tensor<1xi32>, tensor<i32>) -> tensor<4xi32>
   // CHECK:   [[INDICES2:%.*]] = mhlo.dynamic_update_slice [[INDICES1]], [[SRC_IDX]], [[SWP]] : (tensor<4xi32>, tensor<1xi32>, tensor<i32>) -> tensor<4xi32>
   // CHECK:   [[ONE:%.*]] = mhlo.constant dense<1> : tensor<i32>
   // CHECK:   [[NEW_IV:%.*]] = chlo.broadcast_add [[ITER_ARG]], [[ONE]]
   // CHECK:   mhlo.return [[NEW_IV]], [[ITER_ARG1]], [[INDICES2]]
 
-  // CHECK: [[GATHER:%.*]] = "mhlo.gather"([[INPUT]], [[WHILE_OUT]]#2)
+  // CHECK: [[CONSTANT1:%.*]] = mhlo.constant dense<1> : tensor<1xi64>
+  // CHECK: [[ARITH_CONSTANT:%.*]] = arith.constant 1 : index
+  // CHECK: [[SHAPE_DIM:%.*]] = shape.dim %arg0, [[ARITH_CONSTANT]] : tensor<4x?x16xf32>, index -> index
+  // CHECK: [[INDEX_CAST:%.*]] = arith.index_cast [[SHAPE_DIM]] : index to i64
+  // CHECK: [[FROM_ELEMENTS:%.*]] = tensor.from_elements [[INDEX_CAST]] : tensor<1xi64>
+  // CHECK: [[CONSTANT2:%.*]] = mhlo.constant dense<16> : tensor<1xi64>
+  // CHECK: [[CONCATENATE:%.*]] = "mhlo.concatenate"([[CONSTANT1]], [[FROM_ELEMENTS]], [[CONSTANT2]]) {dimension = 0 : i64} : (tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<3xi64>
+  // CHECK: [[DYNAMIC_GATHER:%.*]] = "mhlo.dynamic_gather"([[INPUT]], [[WHILE_OUT]]#2, [[CONCATENATE]])
   // CHECK-SAME:   dimension_numbers =
   // CHECK-SAME:     offset_dims = [1, 2]
   // CHECK-SAME:     collapsed_slice_dims = [0]
   // CHECK-SAME:     start_index_map = [0]
   // CHECK-SAME:     index_vector_dim = 1
   // CHECK-SAME: indices_are_sorted = false
-  // CHECK-SAME: slice_sizes = dense<[1, -1, 16]>
-  // CHECK: (tensor<4x?x16xf32>, tensor<4xi32>) -> tensor<4x?x16xf32>
+  // CHECK-SAME:: (tensor<4x?x16xf32>, tensor<4xi32>, tensor<3xi64>) -> tensor<4x?x16xf32>
 
-  // CHECK: return [[GATHER]]
+  // CHECK: return [[DYNAMIC_GATHER]]
 
   %0 = "tf.RandomShuffle"(%input) : (tensor<4x?x16xf32>) -> (tensor<4x?x16xf32>)
   func.return %0: tensor<4x?x16xf32>

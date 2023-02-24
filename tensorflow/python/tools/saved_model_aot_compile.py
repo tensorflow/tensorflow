@@ -24,7 +24,7 @@ from typing import List, Tuple
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
-from tensorflow.python.framework import graph_util
+from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
@@ -281,7 +281,7 @@ def freeze_model(checkpoint_path: str,
     if restorer is not None:
       restorer.restore(sess, checkpoint_path)
     graph_def.CopyFrom(
-        graph_util.convert_variables_to_constants(
+        convert_to_constants.convert_variables_to_constants(
             sess,
             graph_def,
             output_node_names=[

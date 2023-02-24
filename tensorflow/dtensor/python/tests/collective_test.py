@@ -24,9 +24,7 @@ from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import d_variable
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import layout as layout_lib
-from tensorflow.dtensor.python import numpy_util
 from tensorflow.dtensor.python.tests import test_util
-from tensorflow.python.eager import context
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -63,137 +61,6 @@ class CollectiveTest(test_util.DTensorBaseTest):
         self.mesh, _MESH_DIM_X, 2)
     self.scalar_layout = Layout.replicated(self.mesh, rank=0)
 
-  # Create two independent global AllReduce ops that should get combined.
-  def testGlobalAllReduceCombiner(self):
-    self.skipForDeviceType(['TPU'],
-                           'This test requires 8 TPU cores.',
-                           unless_device_count_equals_to=8)
-
-    # Create and use an eight-device mesh just for this test.
-    global_ids = test_util.create_device_ids_array((8,))
-    local_ids = np.ravel(global_ids).tolist()
-    mesh_dict = {
-        device: layout_lib.Mesh([_MESH_DIM_X], global_ids, local_ids,
-                                test_util.create_device_list((8,), device))
-        for device in ('CPU', 'GPU', 'TPU')
-    }
-
-    context.async_wait()
-    super(CollectiveTest, self).maybeShutdownTpuSystem()
-
-    mesh = self.configTestMesh(mesh_dict)
-    fully_replicated_layout_1d = Layout.replicated(mesh, rank=1)
-    first_dimension_sharded_layout_2d = Layout.batch_sharded(
-        mesh, _MESH_DIM_X, 2)
-
-    @polymorphic_function.function
-    def func(a, b):
-      a = math_ops.reduce_sum(a, axis=[0])
-      b = math_ops.reduce_sum(b, axis=[0])
-      # Do something with the results before adding them, to make sure the MLIR
-      # pass can handle dependent ops sandwiched between two all-reduce ops.
-      return gen_math_ops.square(a) + gen_math_ops.square(b)
-
-    row = constant_op.constant(np.array([[1., 2.0]]), dtype=dtypes.float32)
-    a = array_ops.repeat(row, repeats=[8], axis=0)
-    b = gen_array_ops.reverse_v2(a, axis=[1])
-    expected_result = func(a, b)
-
-    a = numpy_util.pack_numpy(a, first_dimension_sharded_layout_2d)
-    b = numpy_util.pack_numpy(b, first_dimension_sharded_layout_2d)
-    dtensor_result = func(a, b)
-
-    self.assertDTensorEqual(expected_result, fully_replicated_layout_1d,
-                            dtensor_result)
-
-  # Create two independent global AllReduce ops that should get combined.
-  # Create two independent global AllReduce ops with different reductions, that
-  # should not get combined
-
-  def testGlobalAllReduceCombinerDifferentReduce(self):
-    self.skipForDeviceType(['TPU'],
-                           'This test requires 8 TPU cores.',
-                           unless_device_count_equals_to=8)
-
-    # Create and use an eight-device mesh just for this test.
-    global_ids = test_util.create_device_ids_array((8,))
-    local_ids = np.ravel(global_ids).tolist()
-    mesh_dict = {
-        device: layout_lib.Mesh([_MESH_DIM_X], global_ids, local_ids,
-                                test_util.create_device_list((8,), device))
-        for device in ('CPU', 'GPU', 'TPU')
-    }
-
-    context.async_wait()
-    super(CollectiveTest, self).maybeShutdownTpuSystem()
-
-    mesh = self.configTestMesh(mesh_dict)
-    fully_replicated_layout_1d = Layout.replicated(mesh, rank=1)
-    first_dimension_sharded_layout_2d = Layout.batch_sharded(
-        mesh, _MESH_DIM_X, 2)
-
-    @polymorphic_function.function
-    def func(a, b):
-      a = math_ops.reduce_sum(a, axis=[0])
-      b = math_ops.reduce_mean(b, axis=[0])
-
-      # Do something with the results before adding them, to make sure the MLIR
-      # pass can handle dependent ops sandwiched between two all-reduce ops.
-      return gen_math_ops.square(a) + gen_math_ops.square(b)
-
-    row = constant_op.constant(np.array([[1., 2.0]]), dtype=dtypes.float32)
-    a = array_ops.repeat(row, repeats=[8], axis=0)
-    b = gen_array_ops.reverse_v2(a, axis=[1])
-    expected_result = func(a, b)
-
-    a = numpy_util.pack_numpy(a, first_dimension_sharded_layout_2d)
-    b = numpy_util.pack_numpy(b, first_dimension_sharded_layout_2d)
-    dtensor_result = func(a, b)
-
-    self.assertDTensorEqual(expected_result, fully_replicated_layout_1d,
-                            dtensor_result)
-
-  # Create two independent subgroup AllReduce ops that should get combined.
-  def testSubgroupAllReduceCombiner(self):
-    self.skipForDeviceType(['TPU'],
-                           'This test requires 8 TPU cores.',
-                           unless_device_count_equals_to=8)
-
-    # Create and use an eight-device mesh just for this test.
-    global_ids = test_util.create_device_ids_array((4, 2))
-    local_ids = np.ravel(global_ids).tolist()
-    mesh_dict = {
-        device: layout_lib.Mesh(_MESH_DIMS, global_ids, local_ids,
-                                test_util.create_device_list((4, 2), device))
-        for device in ('CPU', 'GPU', 'TPU')
-    }
-
-    context.async_wait()
-    super(CollectiveTest, self).maybeShutdownTpuSystem()
-
-    mesh = self.configTestMesh(mesh_dict)
-    fully_sharded_layout_2d = Layout(_MESH_DIMS, mesh)
-
-    @polymorphic_function.function
-    def func(a, b):
-      a = math_ops.reduce_sum(a, axis=[0])
-      b = math_ops.reduce_sum(b, axis=[0])
-      # Do something with the results before adding them, to make sure the MLIR
-      # pass can handle dependent ops sandwiched between two all-reduce ops.
-      return gen_math_ops.square(a) + gen_math_ops.square(b)
-
-    row = constant_op.constant(np.array([[1., 2.0]]), dtype=dtypes.float32)
-    a = array_ops.repeat(row, repeats=[8], axis=0)
-    b = gen_array_ops.reverse_v2(a, axis=[1])
-    expected_result = func(a, b)
-
-    a = numpy_util.pack_numpy(a, fully_sharded_layout_2d)
-    b = numpy_util.pack_numpy(b, fully_sharded_layout_2d)
-    dtensor_result = func(a, b)
-
-    self.assertDTensorEqual(expected_result, Layout([_MESH_DIM_Y], mesh),
-                            dtensor_result)
-
   def testReduceOnBfloat16(self):
     self.skipForDeviceType(['GPU'],
                            'GPUs do not support bfloat16 collective reduce')
@@ -205,7 +72,7 @@ class CollectiveTest(test_util.DTensorBaseTest):
         np.array([[1, 2, 3, 4], [5.0, 6.0, 7.0, 8.0]]), dtype=dtypes.bfloat16)
     expected_result = math_ops.reduce_sum(a)
 
-    sharded_a = numpy_util.pack_numpy(a, self.first_dimension_sharded_layout_2d)
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
     dtensor_result = math_ops.reduce_sum(sharded_a)
 
     self.assertDTensorEqual(expected_result, self.scalar_layout, dtensor_result)
@@ -216,7 +83,7 @@ class CollectiveTest(test_util.DTensorBaseTest):
 
     expected_result = math_ops.reduce_sum(a)
 
-    sharded_a = numpy_util.pack_numpy(a, self.first_dimension_sharded_layout_2d)
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
     dtensor_result = math_ops.reduce_sum(sharded_a)
 
     self.assertDTensorEqual(expected_result, self.scalar_layout, dtensor_result)
@@ -237,8 +104,8 @@ class CollectiveTest(test_util.DTensorBaseTest):
 
     expected_result = math_ops.reduce_sum(a) * math_ops.reduce_sum(b)
 
-    sharded_a = numpy_util.pack_numpy(a, self.first_dimension_sharded_layout_2d)
-    sharded_b = numpy_util.pack_numpy(b, self.first_dimension_sharded_layout_2d)
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
+    sharded_b = api.relayout(b, self.first_dimension_sharded_layout_2d)
     sharded_v = d_variable.DVariable(sharded_b)
 
     @polymorphic_function.function
@@ -269,68 +136,10 @@ class CollectiveTest(test_util.DTensorBaseTest):
         dtype=dtypes.bool)
     expected_result = reduction(a)
 
-    sharded_a = numpy_util.pack_numpy(a, self.first_dimension_sharded_layout_2d)
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
     dtensor_result = reduction(sharded_a)
 
     self.assertDTensorEqual(expected_result, self.scalar_layout, dtensor_result)
-
-  # TODO(b/188605096): also add a MixedPrecisionReduceScatter test
-  def testMixedPrecisionAllReduce(self):
-    has_enable_dtensor_mixed_precision_reduce = 'DTENSOR_ENABLE_MIXED_PRECISION_REDUCE' in os.environ
-    has_dtensor_reduce_in_bfloat16_max_group_size = 'DTENSOR_REDUCE_IN_BFLOAT16_MAX_GROUP_SIZE' in os.environ
-    if has_dtensor_reduce_in_bfloat16_max_group_size:
-      old_dtensor_reduce_in_bfloat16_max_group_size = os.environ[
-          'DTENSOR_REDUCE_IN_BFLOAT16_MAX_GROUP_SIZE']
-    os.environ['DTENSOR_ENABLE_MIXED_PRECISION_REDUCE'] = ''
-    os.environ['DTENSOR_REDUCE_IN_BFLOAT16_MAX_GROUP_SIZE'] = '4'
-
-    self.skipForDeviceType(['GPU'],
-                           'GPUs do not support bfloat16 reduce')
-    self.skipForDeviceType(['TPU'],
-                           'This test requires 8 TPU cores.',
-                           unless_device_count_equals_to=8)
-
-    # Create and use an 8-device mesh just for this test. Mixed-precision
-    # AllReduce will be in effect since the reduction will be across 8 devices
-    # which is larger than the max group size flag value of 4.
-    global_ids = test_util.create_device_ids_array((8,))
-    local_ids = np.ravel(global_ids).tolist()
-    mesh_dict = {
-        device: layout_lib.Mesh([_MESH_DIM_X], global_ids, local_ids,
-                                test_util.create_device_list((8,), device))
-        for device in ('CPU', 'GPU', 'TPU')
-    }
-
-    context.async_wait()
-    super(CollectiveTest, self).maybeShutdownTpuSystem()
-
-    mesh = self.configTestMesh(mesh_dict)
-    replicated_layout_1d = Layout.replicated(mesh, rank=1)
-    first_dim_sharded_layout_1d = Layout.batch_sharded(
-        mesh, _MESH_DIM_X, rank=2)
-
-    @polymorphic_function.function
-    def func(x):
-      return math_ops.reduce_sum(x, axis=0)
-
-    # Reduce across 8 devices.
-    inp = constant_op.constant(
-        np.arange(48.).reshape((8, 6)), dtype=dtypes.bfloat16)
-    expected_result = np.sum(inp, axis=0)
-
-    inp_dtensor = numpy_util.pack_numpy(inp, first_dim_sharded_layout_1d)
-    dtensor_result = func(inp_dtensor)
-
-    self.assertDTensorEqual(
-        expected_result, replicated_layout_1d, dtensor_result)
-
-    if not has_enable_dtensor_mixed_precision_reduce:
-      del os.environ['DTENSOR_ENABLE_MIXED_PRECISION_REDUCE']
-    if has_dtensor_reduce_in_bfloat16_max_group_size:
-      os.environ[
-          'DTENSOR_REDUCE_IN_BFLOAT16_MAX_GROUP_SIZE'] = old_dtensor_reduce_in_bfloat16_max_group_size
-    else:
-      del os.environ['DTENSOR_REDUCE_IN_BFLOAT16_MAX_GROUP_SIZE']
 
   def testAllToAllOnBool(self):
     # TODO(b/193531363): Track the work to support int32 reduce.
@@ -343,7 +152,7 @@ class CollectiveTest(test_util.DTensorBaseTest):
     a = constant_op.constant(
         np.array([[True, False, False, True], [False, False, False, True]]),
         dtype=dtypes.bool)
-    sharded_a = numpy_util.pack_numpy(a, self.first_dimension_sharded_layout_2d)
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
     unsharded_a = api.relayout(sharded_a, self.fully_replicated_layout_2d)
 
     self.assertDTensorEqual(a, self.fully_replicated_layout_2d, unsharded_a)
@@ -359,7 +168,7 @@ class CollectiveTest(test_util.DTensorBaseTest):
                            unless_device_count_equals_to=2)
 
     a = constant_op.constant(np.array([[1, 2], [3, 4]]), dtype=dtypes.int32)
-    sharded_a = numpy_util.pack_numpy(a, self.first_dimension_sharded_layout_2d)
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
     unsharded_a = api.relayout(sharded_a, self.fully_replicated_layout_2d)
 
     self.assertDTensorEqual(a, self.fully_replicated_layout_2d, unsharded_a)
@@ -374,7 +183,7 @@ class CollectiveTest(test_util.DTensorBaseTest):
         dtype=dtypes.float32)
     expected_result = a
 
-    sharded_a = numpy_util.pack_numpy(a, self.first_dimension_sharded_layout_2d)
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
     dtensor_result = api.relayout(sharded_a, self.fully_replicated_layout_2d)
 
     self.assertDTensorEqual(expected_result, self.fully_replicated_layout_2d,
@@ -447,6 +256,237 @@ class CollectiveTest(test_util.DTensorBaseTest):
     self.assertEqual(device.fetch_layout(dtensor_result), layout_x)
     dtensor_result = [t.numpy() for t in device.unpack(dtensor_result)]
     self.assertAllEqual(expected_result, dtensor_result)
+
+  def testDifferentShapesBetweenCalls(self):
+    self.skipForTfrt(
+        'b/269333905, TFRT cpu fails due to step_id not propagated.'
+    )
+    self.skipForDeviceType(
+        ['TPU'],
+        'Known failure under TPU for legalization requires a static shape.',
+    )
+
+    # The error only happens across the batch, where the value of
+    # tf.unique are differnet.
+    def produce_data(inputs, label):
+      inputs = api.relayout(
+          inputs, Layout.batch_sharded(self.mesh, _MESH_DIM_X, 1)
+      )
+      label = api.relayout(
+          label, Layout.batch_sharded(self.mesh, _MESH_DIM_X, 1)
+      )
+      return inputs, label
+
+    @polymorphic_function.function
+    def train_fn(inputs, label):
+      inputs, indices = array_ops.unique(inputs)
+      return math_ops.unsorted_segment_sum(label, indices, len(inputs))
+
+    input1, label1 = produce_data([6, 0, 6, 0], [1, 2, 3, 4])
+    input2, label2 = produce_data([2, 1, 2, 0], [1, 2, 3, 4])
+
+    result1 = train_fn(input1, label1)
+    result2 = train_fn(input2, label2)
+    self.assertAllEqual(
+        result1.numpy(),
+        [
+            4,
+            6,
+        ],
+    )
+    self.assertAllEqual(
+        result2.numpy(),
+        [
+            4,
+            2,
+            4,
+        ],
+    )
+
+
+class CollectiveTestWithCustomMesh(test_util.DTensorBaseTest):
+
+  # Create two independent global AllReduce ops that should get combined.
+  def testGlobalAllReduceCombiner(self):
+    self.skipForDeviceType(['TPU'],
+                           'This test requires 8 TPU cores.',
+                           unless_device_count_equals_to=8)
+
+    # Create and use an eight-device mesh just for this test.
+    global_ids = test_util.create_device_ids_array((8,))
+    local_ids = np.ravel(global_ids).tolist()
+    mesh_dict = {
+        device: layout_lib.Mesh([_MESH_DIM_X], global_ids, local_ids,
+                                test_util.create_device_list((8,), device))
+        for device in ('CPU', 'GPU', 'TPU')
+    }
+
+    mesh = self.configTestMesh(mesh_dict)
+    fully_replicated_layout_1d = Layout.replicated(mesh, rank=1)
+    first_dimension_sharded_layout_2d = Layout.batch_sharded(
+        mesh, _MESH_DIM_X, 2)
+
+    @polymorphic_function.function
+    def func(a, b):
+      a = math_ops.reduce_sum(a, axis=[0])
+      b = math_ops.reduce_sum(b, axis=[0])
+      # Do something with the results before adding them, to make sure the MLIR
+      # pass can handle dependent ops sandwiched between two all-reduce ops.
+      return gen_math_ops.square(a) + gen_math_ops.square(b)
+
+    row = constant_op.constant(np.array([[1., 2.0]]), dtype=dtypes.float32)
+    a = array_ops.repeat(row, repeats=[8], axis=0)
+    b = gen_array_ops.reverse_v2(a, axis=[1])
+    expected_result = func(a, b)
+
+    a = api.relayout(a, first_dimension_sharded_layout_2d)
+    b = api.relayout(b, first_dimension_sharded_layout_2d)
+    dtensor_result = func(a, b)
+
+    self.assertDTensorEqual(expected_result, fully_replicated_layout_1d,
+                            dtensor_result)
+
+  # Create two independent global AllReduce ops that should get combined.
+  # Create two independent global AllReduce ops with different reductions, that
+  # should not get combined
+
+  def testGlobalAllReduceCombinerDifferentReduce(self):
+    self.skipForDeviceType(['TPU'],
+                           'This test requires 8 TPU cores.',
+                           unless_device_count_equals_to=8)
+
+    # Create and use an eight-device mesh just for this test.
+    global_ids = test_util.create_device_ids_array((8,))
+    local_ids = np.ravel(global_ids).tolist()
+    mesh_dict = {
+        device: layout_lib.Mesh([_MESH_DIM_X], global_ids, local_ids,
+                                test_util.create_device_list((8,), device))
+        for device in ('CPU', 'GPU', 'TPU')
+    }
+
+    mesh = self.configTestMesh(mesh_dict)
+    fully_replicated_layout_1d = Layout.replicated(mesh, rank=1)
+    first_dimension_sharded_layout_2d = Layout.batch_sharded(
+        mesh, _MESH_DIM_X, 2)
+
+    @polymorphic_function.function
+    def func(a, b):
+      a = math_ops.reduce_sum(a, axis=[0])
+      b = math_ops.reduce_mean(b, axis=[0])
+
+      # Do something with the results before adding them, to make sure the MLIR
+      # pass can handle dependent ops sandwiched between two all-reduce ops.
+      return gen_math_ops.square(a) + gen_math_ops.square(b)
+
+    row = constant_op.constant(np.array([[1., 2.0]]), dtype=dtypes.float32)
+    a = array_ops.repeat(row, repeats=[8], axis=0)
+    b = gen_array_ops.reverse_v2(a, axis=[1])
+    expected_result = func(a, b)
+
+    a = api.relayout(a, first_dimension_sharded_layout_2d)
+    b = api.relayout(b, first_dimension_sharded_layout_2d)
+    dtensor_result = func(a, b)
+
+    self.assertDTensorEqual(expected_result, fully_replicated_layout_1d,
+                            dtensor_result)
+
+  # Create two independent subgroup AllReduce ops that should get combined.
+  def testSubgroupAllReduceCombiner(self):
+    self.skipForDeviceType(['TPU'],
+                           'This test requires 8 TPU cores.',
+                           unless_device_count_equals_to=8)
+
+    # Create and use an eight-device mesh just for this test.
+    global_ids = test_util.create_device_ids_array((4, 2))
+    local_ids = np.ravel(global_ids).tolist()
+    mesh_dict = {
+        device: layout_lib.Mesh(_MESH_DIMS, global_ids, local_ids,
+                                test_util.create_device_list((4, 2), device))
+        for device in ('CPU', 'GPU', 'TPU')
+    }
+
+    mesh = self.configTestMesh(mesh_dict)
+    fully_sharded_layout_2d = Layout(_MESH_DIMS, mesh)
+
+    @polymorphic_function.function
+    def func(a, b):
+      a = math_ops.reduce_sum(a, axis=[0])
+      b = math_ops.reduce_sum(b, axis=[0])
+      # Do something with the results before adding them, to make sure the MLIR
+      # pass can handle dependent ops sandwiched between two all-reduce ops.
+      return gen_math_ops.square(a) + gen_math_ops.square(b)
+
+    row = constant_op.constant(np.array([[1., 2.0]]), dtype=dtypes.float32)
+    a = array_ops.repeat(row, repeats=[8], axis=0)
+    b = gen_array_ops.reverse_v2(a, axis=[1])
+    expected_result = func(a, b)
+
+    a = api.relayout(a, fully_sharded_layout_2d)
+    b = api.relayout(b, fully_sharded_layout_2d)
+    dtensor_result = func(a, b)
+
+    self.assertDTensorEqual(expected_result, Layout([_MESH_DIM_Y], mesh),
+                            dtensor_result)
+
+  # TODO(b/188605096): also add a MixedPrecisionReduceScatter test
+  def testMixedPrecisionAllReduce(self):
+    has_enable_dtensor_mixed_precision_reduce = (
+        'DTENSOR_ENABLE_MIXED_PRECISION_REDUCE' in os.environ
+    )
+    has_dtensor_reduce_in_bfloat16_max_group_size = (
+        'DTENSOR_REDUCE_IN_BFLOAT16_MAX_GROUP_SIZE' in os.environ
+    )
+    if has_dtensor_reduce_in_bfloat16_max_group_size:
+      old_dtensor_reduce_in_bfloat16_max_group_size = os.environ[
+          'DTENSOR_REDUCE_IN_BFLOAT16_MAX_GROUP_SIZE']
+    os.environ['DTENSOR_ENABLE_MIXED_PRECISION_REDUCE'] = ''
+    os.environ['DTENSOR_REDUCE_IN_BFLOAT16_MAX_GROUP_SIZE'] = '4'
+
+    self.skipForDeviceType(['GPU'],
+                           'GPUs do not support bfloat16 reduce')
+    self.skipForDeviceType(['TPU'],
+                           'This test requires 8 TPU cores.',
+                           unless_device_count_equals_to=8)
+
+    # Create and use an 8-device mesh just for this test. Mixed-precision
+    # AllReduce will be in effect since the reduction will be across 8 devices
+    # which is larger than the max group size flag value of 4.
+    global_ids = test_util.create_device_ids_array((8,))
+    local_ids = np.ravel(global_ids).tolist()
+    mesh_dict = {
+        device: layout_lib.Mesh([_MESH_DIM_X], global_ids, local_ids,
+                                test_util.create_device_list((8,), device))
+        for device in ('CPU', 'GPU', 'TPU')
+    }
+
+    mesh = self.configTestMesh(mesh_dict)
+    replicated_layout_1d = Layout.replicated(mesh, rank=1)
+    first_dim_sharded_layout_1d = Layout.batch_sharded(
+        mesh, _MESH_DIM_X, rank=2)
+
+    @polymorphic_function.function
+    def func(x):
+      return math_ops.reduce_sum(x, axis=0)
+
+    # Reduce across 8 devices.
+    inp = constant_op.constant(
+        np.arange(48.).reshape((8, 6)), dtype=dtypes.bfloat16)
+    expected_result = np.sum(inp, axis=0)
+
+    inp_dtensor = api.relayout(inp, first_dim_sharded_layout_1d)
+    dtensor_result = func(inp_dtensor)
+
+    self.assertDTensorEqual(
+        expected_result, replicated_layout_1d, dtensor_result)
+
+    if not has_enable_dtensor_mixed_precision_reduce:
+      del os.environ['DTENSOR_ENABLE_MIXED_PRECISION_REDUCE']
+    if has_dtensor_reduce_in_bfloat16_max_group_size:
+      os.environ['DTENSOR_REDUCE_IN_BFLOAT16_MAX_GROUP_SIZE'] = (
+          old_dtensor_reduce_in_bfloat16_max_group_size
+      )
+    else:
+      del os.environ['DTENSOR_REDUCE_IN_BFLOAT16_MAX_GROUP_SIZE']
 
 
 if __name__ == '__main__':

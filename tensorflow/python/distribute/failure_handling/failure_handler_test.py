@@ -46,6 +46,13 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 
 
+try:
+  import dill  # pylint:disable=g-import-not-at-top
+
+  _REGISTER_DECORATOR = dill.register
+except ImportError:
+  _REGISTER_DECORATOR = lambda fn, *_: fn
+
 mock = test.mock
 
 
@@ -312,7 +319,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
         caught_exit = True
         # We cannot use assertRaise instead, since termination is not always
         # triggered.
-        self.assertEqual(exit_error.code, 0)  # pylint: disable=g-assert-in-except
+        self.assertEqual(exit_error.code, 42)  # pylint: disable=g-assert-in-except
 
       preemption_sender_thread.join(10)
       if not training_finished.is_set():
@@ -442,7 +449,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
         caught_exit = True
         # We cannot use assertRaise instead, since termination is not always
         # triggered.
-        self.assertEqual(exit_error.code, 0)  # pylint: disable=g-assert-in-except
+        self.assertEqual(exit_error.code, 42)  # pylint: disable=g-assert-in-except
 
       preemption_sender_thread.join(10)
       if not training_finished.is_set():
@@ -503,6 +510,15 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
     # By default, as tested by other test cases, checkpoint will be saved.
     # This passed in save_fn skips it.
     self.assertEmpty(match_group)
+
+
+@_REGISTER_DECORATOR(PreemptionCheckpointTest)
+def _save_test_case(pickler, obj):
+  def reconstruct(*args, **kwargs):
+    del args, kwargs
+    return PreemptionCheckpointTest()
+
+  return pickler.save_reduce(reconstruct, (), obj=obj)
 
 
 if __name__ == '__main__':

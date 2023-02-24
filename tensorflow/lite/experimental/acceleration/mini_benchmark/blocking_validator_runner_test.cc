@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
@@ -58,7 +59,8 @@ class BlockingValidatorRunnerTest : public ::testing::Test {
     ASSERT_TRUE(!options_.model_path.empty());
 
     options_.data_directory_path = ::testing::TempDir();
-    options_.storage_path = ::testing::TempDir() + "/storage_path.fb";
+    options_.storage_path =
+        absl::StrCat(::testing::TempDir(), "/storage_path.fb");
     options_.per_test_timeout_ms = 5000;
 
     plain_model_path_ = MiniBenchmarkTestHelper::DumpToTempFile(
@@ -83,6 +85,40 @@ TEST_F(BlockingValidatorRunnerTest, SucceedWithEmbeddedValidation) {
     std::cerr << "Skipping test";
     return;
   }
+
+  BlockingValidatorRunner runner(options_);
+  ASSERT_EQ(runner.Init(), kMinibenchmarkSuccess);
+  FlatBufferBuilder fbb;
+#ifdef __ANDROID__
+  fbb.Finish(CreateTFLiteSettings(fbb, Delegate_GPU));
+#else
+  fbb.Finish(CreateTFLiteSettings(fbb));
+#endif  // __ANDROID__
+
+  std::vector<FlatBufferBuilder> results = runner.TriggerValidation(
+      {flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer())});
+  EXPECT_THAT(results, testing::Not(testing::IsEmpty()));
+  for (auto& result : results) {
+    const BenchmarkEvent* event =
+        GetRoot<BenchmarkEvent>(result.GetBufferPointer());
+    EXPECT_EQ(event->event_type(), BenchmarkEventType_END);
+    EXPECT_TRUE(event->result()->ok());
+  }
+}
+
+TEST_F(BlockingValidatorRunnerTest, SucceedWithFdCloexecEmbeddedValidation) {
+  if (!should_perform_test_) {
+    std::cerr << "Skipping test";
+    return;
+  }
+
+  options_.model_fd = open(options_.model_path.c_str(), O_RDONLY | O_CLOEXEC);
+  ASSERT_GE(options_.model_fd, 0);
+  struct stat stat_buf = {0};
+  ASSERT_EQ(fstat(options_.model_fd, &stat_buf), 0);
+  options_.model_size = stat_buf.st_size;
+  options_.model_offset = 0;
+  options_.model_path.clear();
 
   BlockingValidatorRunner runner(options_);
   ASSERT_EQ(runner.Init(), kMinibenchmarkSuccess);
@@ -174,7 +210,7 @@ TEST_F(BlockingValidatorRunnerTest, ReturnErrorWhenTimedOut) {
     std::cerr << "Skipping test";
     return;
   }
-  options_.per_test_timeout_ms = 100;
+  options_.per_test_timeout_ms = 50;
   BlockingValidatorRunner runner(options_);
   ASSERT_EQ(runner.Init(), kMinibenchmarkSuccess);
   FlatBufferBuilder fbb;
@@ -187,12 +223,17 @@ TEST_F(BlockingValidatorRunnerTest, ReturnErrorWhenTimedOut) {
     const BenchmarkEvent* event =
         GetRoot<BenchmarkEvent>(result.GetBufferPointer());
     EXPECT_EQ(event->event_type(), BenchmarkEventType_ERROR);
-#ifdef __ANDROID__
-    EXPECT_EQ(event->error()->exit_code(), kMinibenchmarkCommandTimedOut);
-#else
-    EXPECT_EQ(event->error()->exit_code(),
-              kMinibenchmarkCompletionEventMissing);
-#endif
+    ASSERT_NE(nullptr, event->error());
+    // The timeout can result in two different behaviors:
+    // 1. The popen() subprocess got killed by the detached thread because the
+    // timeout has reached, and the thread wrote error code
+    // kMinibenchmarkCommandTimedOut, or
+    // 2. The thread didn't respond the main process in time, and the main
+    // process returned after the timeout, with error code
+    // kMinibenchmarkCompletionEventMissing.
+    EXPECT_THAT(event->error()->mini_benchmark_error_code(),
+                testing::AnyOf(kMinibenchmarkCommandTimedOut,
+                               kMinibenchmarkCompletionEventMissing));
   }
 }
 

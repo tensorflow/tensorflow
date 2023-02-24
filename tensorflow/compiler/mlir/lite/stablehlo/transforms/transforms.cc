@@ -58,7 +58,6 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addNestedPass<func::FuncOp>(
       mlir::quant::CreateConvertTFQuantOpsToMHLOPass());
-  pm.addPass(mhlo::createLegalizeTFControlFlowPass());
   pm.addPass(mlir::createCanonicalizerPass());
   AddLegalizeTFToStablehloPasses(pm, /*skip_quantization_ops=*/false,
                                  skip_resize);

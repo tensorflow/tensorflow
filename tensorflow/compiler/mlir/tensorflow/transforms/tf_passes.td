@@ -399,6 +399,27 @@ def ConvertReadonlyReferenceVariablesToResourceVariablesPass :
   let constructor = "TF::CreateConvertReadonlyReferenceVariablesToResourceVariablesPass()";
 }
 
+def ReplicateTensorListInitOpsPass : Pass<"tf-replicate-tensor-list-init-ops", "mlir::func::FuncOp"> {
+  let summary =
+    "Replicate TensorList init ops for correct shape assignments in shape inference";
+
+  let description = [{
+    If we pass same TensorList to a while op as multiple arguments or just use
+    the same TensorList at multiple places and assign different
+    TensorListSetItem to elements of TensorList, the shape inference is then
+    unable to identify the Shape of these args and thus the input TensorList
+    shape is unidentifiable.
+    All of these args are supposed to be independent and not related to original
+    creation of TensorList.
+
+    This pass will create multiple instances of TensorList for each arg of the
+    while op and each use and thus there will be not a conflict in resolving the
+    shape of these different inputs.
+  }];
+
+  let constructor = "TF::CreateReplicateTensorListInitOpsPass()";
+}
+
 def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
   let summary =
     "Shape inference on TF dialect and ops implementing InferTypeOpInterface";
@@ -919,6 +940,18 @@ def TPUPartitionedOpConversionPass : Pass<"tf-tpu-partitioned-op-conversion", "m
   let summary = "Rewrite all TPU Partitioned ops into their V2 counterparts.";
 
   let constructor = "TFTPU::CreateTPUPartitionedOpConversionPass()";
+}
+
+def TPUValidateInputsPass : Pass<"tf-tpu-validate-inputs", "ModuleOp"> {
+  let summary = "Validates inputs to the TPU TF/XLA bridge";
+
+  let description = [{
+    This pass checks that the IR has valid input to TPU TF/XLA bridge.
+    It checks the relations of multiple ops. Properties of single ops are
+    checked by the 'verify' method of ops.
+  }];
+
+  let constructor = "TFTPU::CreateTPUValidateInputsPass()";
 }
 
 def TPUClusterFormationPass : Pass<"tf-tpu-cluster-formation", "ModuleOp"> {

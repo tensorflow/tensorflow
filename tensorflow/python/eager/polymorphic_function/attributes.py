@@ -59,16 +59,16 @@ XLA_COMPILE_OPTIONAL = "_XlaCompile"
 XLA_SCOPE = "_XlaScope"
 XLA_SEPERATE_COMPILED_GRADIENTS = "_XlaSeparateCompiledGradients"
 
-# TODO(b/264429815): Promote needed attributes from below for defun migration.
-POLYMORPHIC_FUNCTION_ALLOWLIST = frozenset()
+POLYMORPHIC_FUNCTION_ALLOWLIST = frozenset({
+    API_IMPLEMENTS,
+    API_PREFERRED_DEVICE,
+    IMPLEMENTS,
+})
 
 TRACING_COMPILER_ALLOWLIST = frozenset().union(
     POLYMORPHIC_FUNCTION_ALLOWLIST,
     {
-        API_IMPLEMENTS,
-        API_PREFERRED_DEVICE,
         GO_BACKWARDS,
-        IMPLEMENTS,
         INTS_ON_DEVICE,
         NO_INLINE,
         OUTPUTS_ON_OP_DEVICE,

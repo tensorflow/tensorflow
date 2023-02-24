@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_DEVICE_INFO_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_DEVICE_INFO_H_
 
+#include <string>
+
 #include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
@@ -26,6 +28,7 @@ namespace gpu {
 // se::DeviceDescription, but separating these out lets us write code that does
 // not depend on stream executor.
 struct GpuDeviceInfo {
+  std::string name;
   int threads_per_block_limit;
   int threads_per_warp;
   int shared_memory_per_block;
@@ -39,6 +42,7 @@ struct GpuDeviceInfo {
   int64_t memory_bandwidth;
   int64_t l2_cache_size;
   float clock_rate_ghz;
+  int64_t device_memory_size;
 
   stream_executor::GpuDeviceInfoProto ToProto() const {
     stream_executor::GpuDeviceInfoProto proto;
@@ -55,6 +59,7 @@ struct GpuDeviceInfo {
     proto.set_memory_bandwidth(memory_bandwidth);
     proto.set_l2_cache_size(l2_cache_size);
     proto.set_clock_rate_ghz(clock_rate_ghz);
+    proto.set_device_memory_size(device_memory_size);
     return proto;
   }
 
@@ -73,10 +78,13 @@ struct GpuDeviceInfo {
     memory_bandwidth = proto.memory_bandwidth();
     l2_cache_size = proto.l2_cache_size();
     clock_rate_ghz = proto.clock_rate_ghz();
+    device_memory_size = proto.device_memory_size();
   }
 };
 
-GpuDeviceInfo GetGpuDeviceInfo(stream_executor::StreamExecutor* stream_exec);
+GpuDeviceInfo GetGpuDeviceInfo(
+    const stream_executor::StreamExecutor* stream_exec);
+GpuDeviceInfo GetGpuDeviceInfo(const stream_executor::Platform* platform);
 
 }  // namespace gpu
 }  // namespace xla

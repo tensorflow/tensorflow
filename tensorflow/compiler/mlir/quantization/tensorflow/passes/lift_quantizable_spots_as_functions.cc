@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -26,7 +27,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -37,9 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace mlir {
 namespace quant {
@@ -117,46 +114,55 @@ class CheckQuantizableOps
       return failure();
     }
 
-    tensorflow::Status check_status;
-    switch (op_set_) {
-      case OpSet::XLA:
-        check_status = checkQuantizableOpsForXla(call_op, function_name,
-                                                 enable_two_input_tensors_);
-        break;
-      default:
-        check_status = tensorflow::OkStatus();
-        break;
+    absl::Status check_status;
+    // Skip quantization for read-only ops as only weight-only is supported.
+    if (function_name.contains("gather")) {
+      check_status.Update(absl::InternalError("Weight-only op is skipped."));
+    }
+
+    if (op_set_ == OpSet::XLA) {
+      check_status.Update(checkQuantizableOpsForXla(call_op, function_name,
+                                                    enable_two_input_tensors_));
+    }
+
+    // Only the composite functions with f32 inputs are quantizable.
+    if (call_op.getResults().size() == 1 && !call_op->getResult(0)
+                                                 .getType()
+                                                 .cast<ShapedType>()
+                                                 .getElementType()
+                                                 .isF32()) {
+      check_status.Update(absl::InternalError(
+          "Composite functions for quantization should be f32 type."));
     }
 
     // The OK status means this op is quantizable. Return failure since the
     // pattern doesn't rewrite anything yet.
     if (check_status.ok()) return failure();
     call_op->removeAttr(kQuantTraitAttrName);
-    removeAttrMapAttribute(call_op, function_name,
-                           check_status.error_message());
+    removeAttrMapAttribute(call_op, function_name, check_status.message());
     return success();
   }
 
-  tensorflow::Status checkQuantizableOpsForXla(
-      TF::PartitionedCallOp call_op, StringRef function_name,
-      bool enable_two_input_tensors) const {
+  absl::Status checkQuantizableOpsForXla(TF::PartitionedCallOp call_op,
+                                         StringRef function_name,
+                                         bool enable_two_input_tensors) const {
     // Disable quantization for the DepthwiseConv since it has no benefits in
     // the XLA opset.
     if (function_name.contains("depthwise_conv2d")) {
-      return tensorflow::errors::Unknown(
+      return absl::InternalError(
           "DepthwiseConv2D doesn't get any benefit of quantization in XLA.");
     } else if (function_name.contains("conv2d")) {
       // For Conv2D, the channel dimension must be static to calculate the
       // feature group count.
       if (!HasStaticShapeAtDims(call_op->getOperand(0), /*dims=*/3)) {
-        return tensorflow::errors::Unknown(
+        return absl::InternalError(
             "The channel dimension of Conv2D is required to be static.");
       }
     } else if (function_name.contains("conv3d")) {
       // For Conv3D, the channel dimension must be static to calculate the
       // feature group count.
       if (!HasStaticShapeAtDims(call_op->getOperand(0), /*dims=*/4)) {
-        return tensorflow::errors::Unknown(
+        return absl::InternalError(
             "The channel dimension of Conv3D is required to be static.");
       }
     } else if (function_name.contains("batch_matmul")) {
@@ -164,8 +170,7 @@ class CheckQuantizableOps
       auto shaped_type =
           call_op->getOperand(0).getType().dyn_cast<ShapedType>();
       if (!shaped_type || !shaped_type.hasRank()) {
-        return tensorflow::errors::Unknown(
-            "The input of BatchMatMul must have rank.");
+        return absl::InternalError("The input of BatchMatMul must have rank.");
       }
     }
 
@@ -189,12 +194,12 @@ class CheckQuantizableOps
 
       if (!is_weight_constant) {
         if (!enable_two_input_tensors || !function_name.contains("matmul")) {
-          return tensorflow::errors::Unknown(
+          return absl::InternalError(
               "Non-constant weights are not supported at the moment.");
         }
       }
     }
-    return tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   void removeAttrMapAttribute(TF::PartitionedCallOp call_op,

@@ -177,6 +177,10 @@ TfLiteRegistration* Register_UNSORTED_SEGMENT_MIN();
 TfLiteRegistration* Register_UNSORTED_SEGMENT_SUM();
 TfLiteRegistration* Register_ATAN2();
 TfLiteRegistration* Register_SIGN();
+TfLiteRegistration* Register_CALL_ONCE();
+TfLiteRegistration* Register_VAR_HANDLE();
+TfLiteRegistration* Register_READ_VARIABLE();
+TfLiteRegistration* Register_ASSIGN_VARIABLE();
 TfLiteRegistration* Register_AVERAGE_POOL_3D();
 TfLiteRegistration* Register_MAX_POOL_3D();
 
@@ -462,7 +466,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_MIRROR_PAD, Register_MIRROR_PAD(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_UNIQUE, Register_UNIQUE());
   AddBuiltin(BuiltinOperator_REVERSE_V2, Register_REVERSE_V2(),
              /* min_version = */ 1,
@@ -517,8 +521,16 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              Register_UNSORTED_SEGMENT_SUM());
   AddBuiltin(BuiltinOperator_ATAN2, Register_ATAN2());
   AddBuiltin(BuiltinOperator_SIGN, Register_SIGN());
+<<<<<<< HEAD
   AddBuiltin(BuiltinOperator_AVERAGE_POOL_3D, Register_AVERAGE_POOL_3D());
   AddBuiltin(BuiltinOperator_MAX_POOL_3D, Register_MAX_POOL_3D());
+=======
+  AddBuiltin(BuiltinOperator_CALL_ONCE,
+             tflite::ops::builtin::Register_CALL_ONCE());
+  AddBuiltin(BuiltinOperator_VAR_HANDLE, Register_VAR_HANDLE());
+  AddBuiltin(BuiltinOperator_READ_VARIABLE, Register_READ_VARIABLE());
+  AddBuiltin(BuiltinOperator_ASSIGN_VARIABLE, Register_ASSIGN_VARIABLE());
+>>>>>>> upstream/master
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that

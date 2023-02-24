@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/data/service/client/common.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
@@ -135,6 +136,10 @@ class DataServiceClient {
   void TryBlockRound(int64_t round) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void UpdateIterationFinished(bool iteration_finished);
   Status AddTask(const TaskInfo& task_info);
+  StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateWorkerClient(
+      const TaskInfo& task_info);
+  StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateWorkerClient(
+      const std::string& protocol, const TaskInfo& task_info);
   void Heartbeat();
   void UpdateTasks(const ClientHeartbeatResponse& resp);
   bool ShouldReadFromTask(const TaskInfo& task) const;

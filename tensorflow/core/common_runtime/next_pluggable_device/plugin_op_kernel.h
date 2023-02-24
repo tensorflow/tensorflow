@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -32,6 +33,7 @@ class ConfigProto;
 class FunctionLibraryDefinition;
 class OpInputList;
 class PluginCoordinationServiceAgent;
+class PluginVariable;
 class Tensor;
 class TensorShape;
 
@@ -65,6 +67,8 @@ class PluginOpKernelConstruction {
 
   virtual Status GetBoolAttr(std::string_view attr_name, bool* value) const = 0;
   virtual Status GetInt32Attr(std::string_view attr_name, int* value) const = 0;
+  virtual Status GetInt32AttrList(std::string_view attr_name,
+                                  std::vector<int32_t>* value) const = 0;
   virtual Status GetInt64Attr(std::string_view attr_name,
                               int64_t* value) const = 0;
   virtual Status GetStringAttr(std::string_view attr_name,
@@ -95,12 +99,27 @@ class PluginOpKernelContext {
   virtual PluginCoordinationServiceAgent* GetPluginCoordinationServiceAgent()
       const = 0;
 
+  // This method will allocate a new `PluginVariable`. Caller is responsible
+  // for managing it's lifetime.
+  virtual Status CreatePluginVariable(int index,
+                                      PluginVariable** variable) const = 0;
+
+  virtual Status AllocateTempForPluginVariable(PluginVariable* variable) = 0;
+
   virtual int NumInputs() const = 0;
 
   virtual Status GetInput(int index, Tensor* tensor) const = 0;
 
+  // This method is not marked const because CPluginOpKernel need to do some
+  // extra bookkeeping work.
+  virtual Status GetInput(const char* name, const Tensor** tensor) = 0;
+
   virtual Status GetInputRange(std::string_view name,
                                std::pair<int, int>* range) const = 0;
+
+  virtual DataType GetInputDataType(int index) const = 0;
+
+  virtual std::string_view GetOpKernelRequestedInput(int index) const = 0;
 
   virtual std::string_view GetOpKernelName() const = 0;
 
@@ -108,17 +127,28 @@ class PluginOpKernelContext {
 
   virtual int64_t GetIterId() const = 0;
 
+  virtual int64_t GetStepId() const = 0;
+
+  virtual int GetDeviceId() const = 0;
+
   virtual std::string GetSessionName() const = 0;
 
   virtual Status GetConfigProto(const ConfigProto** config_proto) const = 0;
 
-  virtual void MaybeDeleteConfigProto(const ConfigProto* config_proto) = 0;
+  virtual void MaybeDeleteConfigProto(
+      const ConfigProto* config_proto) const = 0;
 
   virtual Status GetFunctionLibraryDefinition(
       const FunctionLibraryDefinition** flib_def) const = 0;
 
   virtual void MaybeDeleteFunctionLibraryDefinition(
       const FunctionLibraryDefinition* flib_def) const = 0;
+
+  virtual Status GetResourceHandle(int index,
+                                   const ResourceHandle** handle) const = 0;
+
+  virtual void MaybeDeleteResourceHandle(
+      const ResourceHandle* handle) const = 0;
 
   virtual int GetGraphDefVersion() const = 0;
 

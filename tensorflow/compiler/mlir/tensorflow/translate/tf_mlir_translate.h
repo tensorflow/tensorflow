@@ -27,7 +27,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 

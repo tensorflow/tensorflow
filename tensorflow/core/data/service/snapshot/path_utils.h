@@ -16,8 +16,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_PATH_UTILS_H_
 
 #include <string>
+#include <utility>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -45,12 +47,28 @@ std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
                       int64_t source_id, int64_t local_index,
                       int64_t global_index);
 
+// Returns a pair of {local_split_index, global_split_index} of the split. The
+// expected format of `split_path` is:
+// split_<local_split_index>_<global_split_index>
+tsl::StatusOr<std::pair<int64_t, int64_t>> SplitIndex(
+    absl::string_view split_path);
+
 // Returns the path of the DONE file of a snapshot stream.
 std::string StreamDoneFilePath(absl::string_view snapshot_path,
                                int64_t stream_index);
 
+// Returns the path of the DONE file of a snapshot stream.
+std::string SnapshotDoneFilePath(absl::string_view snapshot_path);
+
+// Returns the path of the serialized metadata for a snapshot.
+std::string SnapshotMetadataFilePath(absl::string_view snapshot_path);
+
 // Returns the path of the serialized graph of the dataset for a snapshot.
 std::string DatasetDefFilePath(absl::string_view snapshot_path);
+
+// Returns the path of the serialized element spec of the dataset for a
+// snapshot.
+std::string DatasetSpecFilePath(absl::string_view snapshot_path);
 
 // Returns the directory path for snapshot checkpoints.
 std::string CheckpointsDirectory(absl::string_view snapshot_path,

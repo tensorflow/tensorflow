@@ -9,6 +9,7 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/tensorflow/tensorflow/badge)](https://api.securityscorecards.dev/projects/github.com/tensorflow/tensorflow)
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow)
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow-py.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow-py)
+[![OSSRank](https://shields.io/endpoint?url=https://ossrank.com/shield/44)](https://ossrank.com/p/44)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v1.4%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
 
 **`Documentation`** |
@@ -103,6 +104,19 @@ for general questions and discussion, and please direct specific questions to
 
 The TensorFlow project strives to abide by generally accepted best practices in
 open-source software development.
+
+## Patching guidelines
+
+Follow these steps to patch a specific version of TensorFlow, for example, to
+apply fixes to bugs or security vulnerabilities:
+
+*   Clone the TensorFlow repo and switch to the corresponding branch for your
+    desired TensorFlow version, for example, branch `r2.8` for version 2.8.
+*   Apply (that is, cherry pick) the desired changes and resolve any code
+    conflicts.
+*   Run TensorFlow tests and ensure they pass.
+*   [Build](https://www.tensorflow.org/install/source) the TensorFlow pip
+    package from source.
 
 ## Continuous build status
 

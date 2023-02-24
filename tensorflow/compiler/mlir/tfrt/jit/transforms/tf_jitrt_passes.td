@@ -106,29 +106,6 @@ def Clustering : Pass<"tf-jitrt-clustering", "mlir::func::FuncOp"> {
   ];
 }
 
-def LowerTranspose : Pass<"tf-jitrt-lower-vector-transpose", "mlir::func::FuncOp"> {
-  let summary = "Lower vector transpose operations";
-  let constructor = "tensorflow::CreateLowerVectorTransposePass()";
-  let dependentDialects = [
-    "mlir::vector::VectorDialect",
-    "mlir::LLVM::LLVMDialect"
-  ];
-}
-
-def RewriteVectorMultiReductionPass :
-    Pass<"tf-jitrt-rewrite-vector-multi-reduction", "mlir::func::FuncOp"> {
-  let summary = "Convert `vector.multi_reduction` into `vector.reduction` ops.";
-  let constructor = "tensorflow::createRewriteVectorMultiReductionPass()";
-  let dependentDialects = ["mlir::memref::MemRefDialect"];
-}
-
-
-def DetensorizeLinalg : Pass<"tf-jitrt-detensorize-linalg", "mlir::func::FuncOp"> {
-  let summary = "Replace 0d tensor inputs to LinalgOp with extracted elements.";
-  let constructor = "tensorflow::CreateDetensorizeLinalgPass()";
-  let dependentDialects = ["mlir::linalg::LinalgDialect"];
-}
-
 def MathApproximation : Pass<"tf-jitrt-math-approximation", "mlir::func::FuncOp"> {
   let summary = "Approximate math operations with an implementation meant to "
                 "match Eigen's results. This is a useful property to have when "

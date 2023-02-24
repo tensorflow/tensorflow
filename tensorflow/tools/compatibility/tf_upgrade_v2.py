@@ -556,9 +556,8 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
     self.change_to_function = {}
 
     # pylint: disable=line-too-long
-    # This list should just contain names of functions that had
-    # their arguments reordered. After adding a function name to the list
-    # run the following to update reorders_v2.py:
+    # This list contains names of functions that had their arguments reordered.
+    # After modifying this list, run the following to update reorders_v2.py:
     # bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
     # pylint: enable=line-too-long
     self.reordered_function_names = {
@@ -665,9 +664,6 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.estimator.BaselineRegressor",
         "tf.initializers.uniform_unit_scaling",
         "tf.uniform_unit_scaling_initializer",
-        "tf.train.sdca_fprint",
-        "tf.train.sdca_optimizer",
-        "tf.train.sdca_shrink_l1",
         "tf.data.experimental.TensorStructure",
         "tf.data.experimental.SparseTensorStructure",
         "tf.data.experimental.RaggedTensorStructure",
@@ -1425,6 +1421,7 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
     }
     all_renames_v2.add_contrib_direct_import_support(self.function_arg_warnings)
 
+    # pylint: disable=line-too-long
     # Specially handled functions
     # Each transformer is a callable which will be called with the arguments
     #   transformer(parent, node, full_name, name, logs)
@@ -1440,6 +1437,9 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
     #   may get messy)
     # - a replacement for node, if the whole call node was replaced. The caller
     #   will take care of changing parent.
+    # After modifying this dict, run the following to update reorders_v2.py:
+    # bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
+    # pylint: enable=line-too-long
     canned_estimator_msg_optimizer = (
         "tf.keras.optimizers.* only, so the call was converted to compat.v1. "
         "Please note that tf.train.Optimizers have one-to-one correspondents "

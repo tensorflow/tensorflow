@@ -172,12 +172,9 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
     if mode == 'mkl':
       config.append((dtypes.float32, gelu_exact, b'GeluExact'))
       config.append((dtypes.float32, gelu_approximate, b'GeluApproximate'))
-      # Gelu exact (approximate=False) is not supported with bfloat16 precision
-      # since no support for Erf with bfloat16 data type.
-      # TODO(intel-tf): Enable gelu exact with bfloat16, when Erf op is
-      # supported with bfloat16.
       if _pywrap_utils.IsBF16SupportedByOneDNNOnThisCPU():
         config.append((dtypes.bfloat16, gelu_approximate, b'GeluApproximate'))
+        config.append((dtypes.bfloat16, gelu_exact, b'GeluExact'))
     elif mode == 'cuda':
       config.append((dtypes.float32, gelu_approximate, b'GeluApproximate'))
       config.append((dtypes.float16, gelu_approximate, b'GeluApproximate'))

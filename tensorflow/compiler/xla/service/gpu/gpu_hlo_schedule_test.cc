@@ -17,11 +17,14 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
@@ -37,17 +40,27 @@ class GpuHloScheduleTest : public HloTestBase {
   // Pre-canned shapes.
   Shape f32_2x2_ = ShapeUtil::MakeShape(F32, {2, 2});
 
-  static SequentialHloOrdering BuildHloOrdering(HloModule* module) {
-    HloSchedule schedule =
-        ScheduleGpuModule(module, /*pointer_size=*/8).value();
-    return SequentialHloOrdering{schedule};
+  SequentialHloOrdering BuildHloOrdering(HloModule* module) {
+    Backend& test_backend = backend();
+    const GpuDeviceInfo gpu_device_info =
+        GetGpuDeviceInfo(test_backend.default_stream_executor());
+    TF_CHECK_OK(ScheduleGpuModule(module, /*pointer_size=*/8, gpu_device_info));
+    return SequentialHloOrdering{module->schedule()};
   }
 
-  std::unique_ptr<HloModule> CreateNewVerifiedModule() {
+  HloModuleConfig GetModuleConfig(bool enable_latency_hiding_scheduler) {
     HloModuleConfig config;
-    auto debug_options = GetDebugOptionsForTest();
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_latency_hiding_scheduler(
+        enable_latency_hiding_scheduler);
     config.set_debug_options(debug_options);
-    return std::make_unique<HloModule>("test_module", config);
+    return config;
+  }
+
+  std::unique_ptr<HloModule> CreateNewVerifiedModule(
+      bool enable_latency_hiding_scheduler = false) {
+    return std::make_unique<HloModule>(
+        "test_module", GetModuleConfig(enable_latency_hiding_scheduler));
   }
 };
 
@@ -165,76 +178,6 @@ TEST_F(GpuHloScheduleTest, AsyncCustomCall) {
   EXPECT_TRUE(order.ExecutesBefore(blocking_call, add4));
 }
 
-TEST_F(GpuHloScheduleTest, AsyncAllReduce) {
-  // All-reduce reduction computation.
-  HloComputation::Builder reduction_builder("add");
-  HloInstruction* x0 =
-      reduction_builder.AddInstruction(HloInstruction::CreateParameter(
-          /*parameter_number=*/0, ShapeUtil::MakeScalarShape(F32),
-          /*name=*/"x"));
-  HloInstruction* y0 =
-      reduction_builder.AddInstruction(HloInstruction::CreateParameter(
-          /*parameter_number=*/1, ShapeUtil::MakeScalarShape(F32),
-          /*name=*/"y"));
-  HloInstruction* add =
-      reduction_builder.AddInstruction(HloInstruction::CreateBinary(
-          ShapeUtil::MakeScalarShape(F32), HloOpcode::kAdd, x0, y0));
-
-  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
-  HloComputation* reduction_computation =
-      module->AddEmbeddedComputation(reduction_builder.Build(add));
-
-  HloComputation::Builder builder("entry_computation");
-  HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, f32_2x2_, /*name=*/"x"));
-  HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, f32_2x2_, /*name=*/"y"));
-  HloInstruction* z = builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/2, f32_2x2_, /*name=*/"z"));
-  HloInstruction* add0 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, x, y));
-  HloInstruction* add1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add0, y));
-  HloInstruction* add2 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, z));
-
-  Shape all_reduce_start_shape =
-      ShapeUtil::MakeTupleShape({f32_2x2_, f32_2x2_});
-  HloInstruction* all_reduce_start =
-      builder.AddInstruction(HloInstruction::CreateAllReduceStart(
-          all_reduce_start_shape, {add0}, reduction_computation,
-          /*replica_groups=*/{}, /*constrain_layout=*/false,
-          /*channel_id=*/std::nullopt, /*use_global_device_ids=*/true));
-  // In addition, add control_dependency: add1->nonblocking_call.
-  TF_CHECK_OK(add1->AddControlDependencyTo(all_reduce_start));
-  // Blocking call, which only add4 depends on.
-  HloInstruction* all_reduce_done =
-      builder.AddInstruction(HloInstruction::CreateUnary(
-          f32_2x2_, HloOpcode::kAllReduceDone, all_reduce_start));
-  HloInstruction* add3 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, add2));
-  HloInstruction* add4 = builder.AddInstruction(HloInstruction::CreateBinary(
-      f32_2x2_, HloOpcode::kAdd, add3, all_reduce_done));
-
-  module->AddEntryComputation(builder.Build(add4));
-
-  SequentialHloOrdering order = BuildHloOrdering(module.get());
-  VLOG(2) << order.ToString();
-
-  // Order constrained by data dependency.
-  EXPECT_TRUE(order.ExecutesBefore(add0, all_reduce_start));
-  // Order constrained by control dependency.
-  EXPECT_TRUE(order.ExecutesBefore(add1, all_reduce_start));
-  // Test that all_reduce_start is scheduled before add2.
-  EXPECT_TRUE(order.ExecutesBefore(all_reduce_start, add2));
-  EXPECT_TRUE(order.ExecutesBefore(all_reduce_start, add3));
-  EXPECT_TRUE(order.ExecutesBefore(all_reduce_start, add4));
-
-  // Test that all_reduce_done is scheduled after add3.
-  EXPECT_TRUE(order.ExecutesBefore(add3, all_reduce_done));
-  EXPECT_TRUE(order.ExecutesBefore(all_reduce_done, add4));
-}
-
 TEST_F(GpuHloScheduleTest, AsyncCollectivePermute) {
   std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
 
@@ -289,6 +232,153 @@ TEST_F(GpuHloScheduleTest, AsyncCollectivePermute) {
   EXPECT_TRUE(order.ExecutesBefore(add3, collective_permute_done));
   EXPECT_TRUE(order.ExecutesBefore(collective_permute_done, add4));
 }
+
+TEST_F(GpuHloScheduleTest, LHSCostModel) {
+  const char* hlo_text = R"(
+  HloModule AsyncAR
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY ar {
+    p0 = f32[32] parameter(0)
+    p1 = f32[32, 32] parameter(1)
+    p2 = f32[32, 32] parameter(2)
+    p3 = f32[32] parameter(3)
+   
+    dot0 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    dot1 = f32[32,32]{1,0} custom-call(dot0, p2), custom_call_target="__cublas$gemm"
+    dot2 = f32[32,32]{1,0} custom-call(dot1, p2), custom_call_target="__cublas$gemm"
+    dot3 = f32[32,32]{1,0} custom-call(dot2, p2), custom_call_target="__cublas$gemm"
+    dot4 = f32[32,32]{1,0} custom-call(dot3, p2), custom_call_target="__cublas$gemm"
+    dot5 = f32[32,32]{1,0} custom-call(dot4, p2), custom_call_target="__cublas$gemm"
+    dot6 = f32[32,32]{1,0} custom-call(dot5, p2), custom_call_target="__cublas$gemm"
+  
+    ar-start = f32[32] all-reduce-start(p0), to_apply=apply_op
+    ar-done = f32[32] all-reduce-done(ar-start)
+
+    ar-start1 = f32[32] all-reduce-start(p3), to_apply=apply_op
+    ar-done1 = f32[32] all-reduce-done(ar-start1)
+
+    add0 = f32[32,32] add(dot0, dot1)
+    add1 = f32[32,32] add(add0, dot2)
+    add2 = f32[32,32] add(add1, dot3)
+    add3 = f32[32,32] add(add2, dot4)
+    add4 = f32[32,32] add(add3, dot5)
+    add5 = f32[32,32] add(add4, dot6)
+   
+    ROOT t = (f32[32], f32[32], f32[32,32]) tuple(ar-done, ar-done1, add5)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(
+          hlo_text, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true)));
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+
+  // With a better cost model, the latency hiding scheduler should distribute
+  // the dots between both ar-start/done pairs. With a Nop cost model, they will
+  // be clustered between only one of the pairs.
+  HloComputation* entry = module->entry_computation();
+  std::vector<int64_t> count_between_pairs;
+  bool in_between = false;
+  for (const HloInstruction* inst :
+       order.SequentialOrder(*entry)->instructions()) {
+    if (inst->opcode() == HloOpcode::kAllReduceStart) {
+      in_between = true;
+      count_between_pairs.push_back(0);
+    } else if (inst->opcode() == HloOpcode::kAllReduceDone) {
+      in_between = false;
+    } else if (in_between && inst->opcode() == HloOpcode::kCustomCall) {
+      count_between_pairs.back()++;
+    }
+  }
+
+  EXPECT_EQ(count_between_pairs.size(), 2);
+  EXPECT_GT(count_between_pairs[0], 0);
+  EXPECT_GT(count_between_pairs[1], 0);
+}
+
+class GpuHloScheduleParameterizedTest
+    : public GpuHloScheduleTest,
+      public ::testing::WithParamInterface<bool> {};
+
+TEST_P(GpuHloScheduleParameterizedTest, AsyncAllReduce) {
+  // All-reduce reduction computation.
+  HloComputation::Builder reduction_builder("add");
+  HloInstruction* x0 =
+      reduction_builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/0, ShapeUtil::MakeScalarShape(F32),
+          /*name=*/"x"));
+  HloInstruction* y0 =
+      reduction_builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/1, ShapeUtil::MakeScalarShape(F32),
+          /*name=*/"y"));
+  HloInstruction* add =
+      reduction_builder.AddInstruction(HloInstruction::CreateBinary(
+          ShapeUtil::MakeScalarShape(F32), HloOpcode::kAdd, x0, y0));
+
+  const bool use_latency_hiding_scheduler = GetParam();
+  std::unique_ptr<HloModule> module =
+      CreateNewVerifiedModule(use_latency_hiding_scheduler);
+  HloComputation* reduction_computation =
+      module->AddEmbeddedComputation(reduction_builder.Build(add));
+
+  HloComputation::Builder builder("entry_computation");
+  HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, f32_2x2_, /*name=*/"x"));
+  HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, f32_2x2_, /*name=*/"y"));
+  HloInstruction* z = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/2, f32_2x2_, /*name=*/"z"));
+  HloInstruction* add0 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, x, y));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add0, y));
+  HloInstruction* add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, z));
+
+  Shape all_reduce_start_shape =
+      ShapeUtil::MakeTupleShape({f32_2x2_, f32_2x2_});
+  HloInstruction* all_reduce_start =
+      builder.AddInstruction(HloInstruction::CreateAllReduceStart(
+          all_reduce_start_shape, {add0}, reduction_computation,
+          /*replica_groups=*/{}, /*constrain_layout=*/false,
+          /*channel_id=*/std::nullopt, /*use_global_device_ids=*/true));
+  // In addition, add control_dependency: add1->nonblocking_call.
+  TF_CHECK_OK(add1->AddControlDependencyTo(all_reduce_start));
+  // Blocking call, which only add4 depends on.
+  HloInstruction* all_reduce_done =
+      builder.AddInstruction(HloInstruction::CreateUnary(
+          f32_2x2_, HloOpcode::kAllReduceDone, all_reduce_start));
+  HloInstruction* add3 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, add2));
+  HloInstruction* add4 = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32_2x2_, HloOpcode::kAdd, add3, all_reduce_done));
+
+  module->AddEntryComputation(builder.Build(add4));
+
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+  VLOG(2) << order.ToString();
+
+  // Order constrained by data dependency.
+  EXPECT_TRUE(order.ExecutesBefore(add0, all_reduce_start));
+  // Order constrained by control dependency.
+  EXPECT_TRUE(order.ExecutesBefore(add1, all_reduce_start));
+  // Test that all_reduce_start is scheduled before add2.
+  EXPECT_TRUE(order.ExecutesBefore(all_reduce_start, add2));
+  EXPECT_TRUE(order.ExecutesBefore(all_reduce_start, add3));
+  EXPECT_TRUE(order.ExecutesBefore(all_reduce_start, add4));
+
+  // Test that all_reduce_done is scheduled after add3.
+  EXPECT_TRUE(order.ExecutesBefore(add3, all_reduce_done));
+  EXPECT_TRUE(order.ExecutesBefore(all_reduce_done, add4));
+}
+
+INSTANTIATE_TEST_SUITE_P(GpuHloScheduleParameterizedTest,
+                         GpuHloScheduleParameterizedTest, ::testing::Bool());
 
 }  // namespace gpu
 }  // namespace xla

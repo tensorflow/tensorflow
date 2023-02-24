@@ -15,6 +15,7 @@
 """Tracing Compiler implementation."""
 
 import collections
+import contextlib
 import threading
 import types as types_lib
 from typing import List
@@ -30,11 +31,11 @@ from tensorflow.python.eager.polymorphic_function import function_context
 from tensorflow.python.eager.polymorphic_function import function_spec
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
 from tensorflow.python.framework import func_graph as func_graph_module
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.util import compat
 from tensorflow.python.util import lazy_loader
-from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
@@ -195,23 +196,20 @@ class TracingCompiler:
       *args: inputs to specialize on.
       **kwargs: inputs to specialize on.
     """
-    if self.input_signature:
-      self._function_spec.validate_inputs_with_signature(args, kwargs)
+    if self.input_signature and (args or kwargs):
+      # Check to see if a valid type can be generated from the args, kwargs
+      self._function_spec.make_canonicalized_monomorphic_type(args, kwargs)
 
     with self._lock:
       concrete_function, _ = self._maybe_define_concrete_function(args, kwargs)
       seen_names = set()
-      captured = object_identity.ObjectIdentitySet(
-          concrete_function.graph.internal_captures)
-      # pylint: disable=protected-access
-      concrete_function._arg_keywords = []
+      concrete_function._arg_keywords = []  # pylint: disable=protected-access
       prefix_counts = {}
-      # pylint: enable=protected-access
-      num_positional = 0
-      for arg in concrete_function.graph.inputs:
-        if arg in captured:
-          break
-        num_positional += 1
+      graph = concrete_function.graph
+      num_captures = len(
+          graph.internal_captures + graph.deferred_internal_captures)
+      num_positional = len(graph.inputs) - num_captures
+      for arg in concrete_function.graph.inputs[:num_positional]:
         user_arg_name = compat.as_str(arg.op.get_attr("_user_specified_name"))
         proposal = user_arg_name
         while proposal in seen_names:
@@ -283,13 +281,23 @@ class TracingCompiler:
     arglen = len(args)
     base_arg_names = self._function_spec.arg_names[:arglen]
     num_missing_args = arglen - len(self._function_spec.arg_names)
-    missing_arg_names = [self._function_spec.vararg_name] * num_missing_args
-    # Produce a list of missing args of the form ["arg_0", "arg_1", ...],
-    # where arg is based on the self._function_spec.vararg_name.
-    missing_arg_names = [
-        "%s_%d" % (arg, i) for i, arg in enumerate(missing_arg_names)
-    ]
-    arg_names = base_arg_names + missing_arg_names
+    if num_missing_args > 0:
+      # Must have variable positional args if there are missing args.
+      var_arg_name = next(
+          p.name
+          for p in self._function_spec.function_type.parameters.values()
+          if p.kind is function_type_lib.Parameter.VAR_POSITIONAL
+      )
+      missing_arg_names = [var_arg_name] * num_missing_args
+      # Produce a list of missing args of the form ["arg_0", "arg_1", ...],
+      # where arg is based on the self._function_spec.vararg_name.
+      missing_arg_names = [
+          "%s_%d" % (arg, i) for i, arg in enumerate(missing_arg_names)
+      ]
+      arg_names = base_arg_names + missing_arg_names
+    else:
+      arg_names = base_arg_names
+
     concrete_function = monomorphic_function.ConcreteFunction(
         func_graph_module.func_graph_from_py_func(
             self._name,
@@ -354,7 +362,11 @@ class TracingCompiler:
     if concrete_function is not None:
       return concrete_function, filtered_flat_args
 
-    with monitoring.MonitoredTimer(_graph_building_time_counter.get_cell()):
+    # Use a timer for graph building only if not already inside a function. This
+    # avoids double counting graph building time for nested functions.
+    with monitoring.MonitoredTimer(
+        _graph_building_time_counter.get_cell()
+    ) if not ops.inside_function() else contextlib.nullcontext():
       with trace.Trace("tf.function-graph_building"):
         logging.vlog(
             1, "Creating new FuncGraph for Python function %r (key: %r, %r)",
@@ -380,11 +392,7 @@ class TracingCompiler:
           with func_graph.as_default():
             placeholder_bound_args = target_func_type.placeholder_arguments(
                 placeholder_context)
-          if self.function_spec.is_method:
-            # TODO(fmuham): canonicalize_function_inputs removes self arg.
-            args = placeholder_bound_args.args[1:]
-          else:
-            args = placeholder_bound_args.args
+          args = placeholder_bound_args.args
           kwargs = placeholder_bound_args.kwargs
 
           concrete_function = self._create_concrete_function(
@@ -398,12 +406,10 @@ class TracingCompiler:
           captures = graph_capture_container.get_by_ref_snapshot()
 
           # Create a cache_key with args and captures
-          traced_func_deletion_observer = lookup_func_context.deletion_observer
           traced_func_type = _insert_capture_type(
               target_func_type, captures, lookup_func_context)
 
           self._function_cache.add(current_func_context, traced_func_type,
-                                   traced_func_deletion_observer,
                                    concrete_function)
 
           return concrete_function, filtered_flat_args

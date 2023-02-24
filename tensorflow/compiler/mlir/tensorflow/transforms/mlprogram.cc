@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 
@@ -66,8 +66,6 @@ void PopulateLowerToMlProgramAndHloPipeline(mlir::OpPassManager& pm) {
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
       tf2xla_fallback_device_type, /*prefer_tf2xla=*/false));
-
-  pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
 
   pm.addPass(mlir::TF::CreateStripTfAttributesPass());
 

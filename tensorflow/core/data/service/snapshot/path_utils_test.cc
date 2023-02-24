@@ -14,13 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 
+#include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
+using ::testing::HasSubstr;
 using ::testing::MatchesRegex;
+using ::testing::Pair;
+using tsl::testing::IsOkAndHolds;
+using tsl::testing::StatusIs;
 
 TEST(PathUtilsTest, StreamsDirectory) {
   EXPECT_THAT(StreamsDirectory("/path/to/snapshot"),
@@ -51,14 +57,57 @@ TEST(PathUtilsTest, SplitPath) {
           "/path/to/snapshot.streams.stream_0.splits.source_1.split_2_3"));
 }
 
+TEST(PathUtilsTest, SplitIndex) {
+  EXPECT_THAT(SplitIndex("split_0_1"), IsOkAndHolds(Pair(0, 1)));
+}
+
+TEST(PathUtilsTest, InvalidSplitFile) {
+  EXPECT_THAT(
+      SplitIndex(""),
+      StatusIs(error::INVALID_ARGUMENT,
+               HasSubstr(
+                   "Expected split_<local_split_index>_<global_split_index>")));
+  EXPECT_THAT(
+      SplitIndex("split_123"),
+      StatusIs(error::INVALID_ARGUMENT,
+               HasSubstr(
+                   "Expected split_<local_split_index>_<global_split_index>")));
+  EXPECT_THAT(
+      SplitIndex("split_-1_(-1)"),
+      StatusIs(error::INVALID_ARGUMENT,
+               HasSubstr(
+                   "Expected split_<local_split_index>_<global_split_index>")));
+  EXPECT_THAT(
+      SplitIndex("split_5_0"),
+      StatusIs(
+          error::INVALID_ARGUMENT,
+          HasSubstr(
+              "The local split index 5 exceeds the global split index 0")));
+}
+
 TEST(PathUtilsTest, StreamDoneFilePath) {
   EXPECT_THAT(StreamDoneFilePath("/path/to/snapshot", /*stream_index=*/0),
               MatchesRegex("/path/to/snapshot.streams.stream_0.DONE"));
 }
 
+TEST(PathUtilsTest, SnapshotDoneFilePath) {
+  EXPECT_THAT(SnapshotDoneFilePath("/path/to/snapshot"),
+              MatchesRegex("/path/to/snapshot.DONE"));
+}
+
+TEST(PathUtilsTest, SnapshotMetadataFilePath) {
+  EXPECT_THAT(SnapshotMetadataFilePath("/path/to/snapshot"),
+              MatchesRegex("/path/to/snapshot.snapshot.metadata"));
+}
+
 TEST(PathUtilsTest, DatasetDefFilePath) {
   EXPECT_THAT(DatasetDefFilePath("/path/to/snapshot"),
               MatchesRegex("/path/to/snapshot.dataset_def.proto"));
+}
+
+TEST(PathUtilsTest, DatasetSpefFilePath) {
+  EXPECT_THAT(DatasetSpecFilePath("/path/to/snapshot"),
+              MatchesRegex("/path/to/snapshot.dataset_spec.pb"));
 }
 
 TEST(PathUtilsTest, CheckpointsDirectory) {
@@ -68,7 +117,7 @@ TEST(PathUtilsTest, CheckpointsDirectory) {
 
 TEST(PathUtilsTest, CommittedChunksDirectory) {
   EXPECT_THAT(CommittedChunksDirectory("/path/to/snapshot"),
-              MatchesRegex("/path/to/snapshot.committed_chunks"));
+              MatchesRegex("/path/to/snapshot.chunks"));
 }
 
 TEST(PathUtilsTest, UncommittedChunksDirectory) {

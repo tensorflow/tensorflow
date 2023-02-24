@@ -82,6 +82,11 @@ CreateTFRegionControlFlowToFunctional();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateMaterializePassthroughOpPass();
 
+// Replicates the TensorList init op by undoing some CSE needed for correct
+// shape assignment in shape_inference.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateReplicateTensorListInitOpsPass();
+
 // Performs Shape Inference on the TensorFlow dialect using the global registry.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass();
 
@@ -487,6 +492,8 @@ CreateTPUPartitionedOpConversionPass();
 // `_replication_info` attribute.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass();
 
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUValidateInputsPass();
+
 // Creates a pass that cleans up `_replication_info` attribute on operations
 // that are inside a cluster.
 std::unique_ptr<OperationPass<ModuleOp>>
@@ -683,6 +690,7 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TPUSHARDINGIDENTIFICATIONPASS
 #define GEN_PASS_DECL_TPUSPACETODEPTHPASS
 #define GEN_PASS_DECL_TPUUPDATEEMBEDDINGENQUEUEOPINPUTSPASS
+#define GEN_PASS_DECL_TPUVALIDATEINPUTSPASS
 #define GEN_PASS_DECL_TPUVARIABLERUNTIMEREFORMATTINGPASS
 #define GEN_PASS_DECL_TENSORARRAYOPSDECOMPOSITIONPASS
 #define GEN_PASS_DECL_TENSORDEVICECOPYCONVERSIONPASS

@@ -2,6 +2,7 @@ load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_zendnn",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_copts",
@@ -475,6 +476,7 @@ tf_cuda_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
         "@farmhash_archive//:farmhash",
+        "//tensorflow/tsl/profiler/lib:connected_traceme",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -564,6 +566,9 @@ cc_library(
     }) + if_mkl([
         ":mkl_eager_op_rewrite",
         "//tensorflow/core/graph:mkl_graph_util",
+    ]) + if_zendnn([
+        ":zen_eager_op_rewrite",
+        "//tensorflow/core/graph:zen_graph_util",
     ]),
 )
 
@@ -573,10 +578,12 @@ tf_cc_test(
     deps = [
         ":core",
         ":execute",
+        "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:math",
+        "//tensorflow/core/lib/monitoring:cell_reader",
     ],
 )
 
@@ -596,6 +603,21 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/memory",
     ],
+)
+
+cc_library(
+    name = "zen_eager_op_rewrite",
+    srcs = ["zen_eager_op_rewrite.cc"],
+    copts = tf_copts(),
+    deps = [
+        ":eager_op_rewrite_registry",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/graph:zen_graph_util",
+    ],
+    alwayslink = 1,
 )
 
 tf_mkl_kernel_library(

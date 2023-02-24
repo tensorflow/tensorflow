@@ -203,8 +203,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return std::optional<std::string>();
   }
 
-  StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const override;
+  virtual StatusOr<std::string> SerializeExecutable(
+      const PjRtLoadedExecutable& executable) const;
 
   // For PjRtStreamExecutorClient, `options` is mandatory.
   // This function returns an InvalidArgument error if `std::nullopt` is passed.
@@ -796,6 +796,10 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
   void Delete() override { executables_.clear(); }
 
   bool IsDeleted() override { return executables_.empty(); }
+
+  StatusOr<std::string> SerializeExecutable() const override {
+    return client_->SerializeExecutable(*this);
+  }
 
   bool IsReturnedFutureSupported() const override { return true; }
 

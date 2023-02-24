@@ -18,7 +18,7 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
       broadcast_dimensions = [0, 2]
       { op_label = "producer" }
 
-  %bcast_sub = gml_st.materialize %bcast[%i, %j, %k] [3, 4, %arg_dim] [1, 1, 1]
+  %bcast_sub = tensor.extract_slice %bcast[%i, %j, %k] [3, 4, %arg_dim] [1, 1, 1]
       : tensor<?x?x?xf32> to tensor<3x4x?xf32>
   func.return { op_label = "consumer" } %bcast_sub : tensor<3x4x?xf32>
 }
@@ -42,9 +42,9 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
 // CHECK:      %[[SELECT_0:.*]] = arith.select %[[CMPI_1]], %[[C0]], %[[K]]
 // CHECK:      %[[SELECT_1:.*]] = arith.select %[[CMPI_0]], %[[C1]], %[[C3]]
 // CHECK:      %[[SELECT_2:.*]] = arith.select %[[CMPI_1]], %[[C1]], %[[ARG_DIM]]
-// CHECK:      %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]]
+// CHECK:      %[[INIT_SUB:.*]] = tensor.extract_slice %[[INIT]]
 // CHECK-SAME:     [%[[I]], %[[J]], %[[K]]] [3, 4, %[[ARG_DIM]]]
-// CHECK:      %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]]
+// CHECK:      %[[ARG_SUB:.*]] = tensor.extract_slice %[[ARG]]
 // CHECK-SAME:     [%[[SELECT]], %[[SELECT_0]]]
 // CHECK-SAME:     [%[[SELECT_1]], %[[SELECT_2]]]
 // CHECK-SAME:     [1, 1]
@@ -56,64 +56,62 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
 
 // -----
 
-func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
-    %b: tensor<?x?xi32>, %c: tensor<?x?xi32>, %i: index, %j: index,
-    %arg_dim0: index, %arg_dim1: index) -> tensor<?x?xi32> {
-  %concat = thlo.concatenate
-      ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
-      outs(%init : tensor<?x?xi32>)
-      dimension = 1
+// CHECK-LABEL: @nary_concatenate_with_unit_dims
+// CHECK-SAME:  %[[INIT:.*]]: tensor<?x?xi32>, %[[ARG_A:.*]]: tensor<?x?xi32>, %[[ARG_B:.*]]: tensor<?x?xi32>, %[[ARG_C:.*]]: tensor<?x?xi32>, %[[I:.*]]: index, %[[J:.*]]: index, %[[N:.*]]: index
+func.func @nary_concatenate_with_unit_dims(%init : tensor<?x?xi32>,
+    %a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>, %i: index,
+    %j: index, %n: index) -> tensor<?x1xi32> {
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1
+  // CHECK:     %[[DIM:.*]] = tensor.dim %[[ARG_A]], %[[C1]]
+  // CHECK:     %[[CMPI:.*]] = arith.cmpi ult, %[[J]], %[[DIM]]
+  // CHECK:     %[[IF:.*]] = scf.if %[[CMPI]] -> (tensor<?x1xi32>)
+  // CHECK:       %[[MATERIALIZE:.*]] = tensor.extract_slice %[[ARG_A]][%[[I]], %[[J]]] [%[[N]], 1] [1, 1]
+  // CHECK:       scf.yield %[[MATERIALIZE]]
+  // CHECK:     else
+  // CHECK:       %[[SUBI:.*]] = arith.subi %[[J]], %[[DIM]]
+  // CHECK:       %[[DIM_0:.*]] = tensor.dim %[[ARG_B]], %[[C1]]
+  // CHECK:       %[[CMPI_0:.*]] = arith.cmpi ult, %[[SUBI]], %[[DIM_0]]
+  // CHECK:       %[[IF_0:.*]] = scf.if %[[CMPI_0]] -> (tensor<?x1xi32>)
+  // CHECK:         %[[MATERIALIZE_0:.*]] = tensor.extract_slice %[[ARG_B]][%[[I]], %[[SUBI]]] [%[[N]], 1] [1, 1]
+  // CHECK:         scf.yield %[[MATERIALIZE_0]]
+  // CHECK:       else
+  // CHECK:         %[[SUBI_0:.*]] = arith.subi %[[SUBI]], %[[DIM_0]]
+  // CHECK:         %[[MATERIALIZE_1:.*]] = tensor.extract_slice %[[ARG_C]][%[[I]], %[[SUBI_0]]] [%[[N]], 1] [1, 1]
+  // CHECK:         scf.yield %[[MATERIALIZE_1]]
+  // CHECK:       scf.yield %[[IF_0]]
+  // CHECK:     return {op_label = "consumer"} %[[IF]]
+  %concat = thlo.concatenate ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>,
+      %c : tensor<?x?xi32>) outs(%init : tensor<?x?xi32>) dimension = 1
       { op_label = "producer" }
-  %concat_sub = gml_st.materialize %concat[%i, %j] [%arg_dim0, %arg_dim1] [1, 1] 
-      : tensor<?x?xi32> to tensor<?x?xi32>
-  func.return { op_label = "consumer" } %concat_sub : tensor<?x?xi32>
+  %tiled_concat = tensor.extract_slice %concat[%i, %j] [%n, 1] [1, 1]
+      : tensor<?x?xi32> to tensor<?x1xi32>
+  func.return { op_label = "consumer" } %tiled_concat : tensor<?x1xi32>
 }
-// CHECK-LABEL: @concatenate
-// CHECK-SAME:  (%[[INIT:[a-z0-9]+]]: tensor<?x?xi32>, %[[A:[a-z0-9]+]]: tensor<?x?xi32>,
-// CHECK-SAME:  %[[B:[a-z0-9]+]]: tensor<?x?xi32>, %[[C:[a-z0-9]+]]: tensor<?x?xi32>,
-// CHECK-SAME:  %[[I:[a-z0-9]+]]: index, %[[J:[a-z0-9]+]]: index,
-// CHECK-SAME:  %[[ARG_DIM0:[a-z0-9]+]]: index, %[[ARG_DIM1:[a-z0-9]+]]: index)
 
-// CHECK-DAG:  %[[C0:.*]] = arith.constant 0
-// CHECK-DAG:  %[[C1:.*]] = arith.constant 1
+// -----
 
-// CHECK:      %[[DIM_2:.*]] = tensor.dim %[[A]], %[[C1]]
-// CHECK:      %[[MINUI:.*]] = arith.minui %[[J]], %[[DIM_2]]
-// CHECK:      %[[SUBI:.*]] = arith.subi %[[DIM_2]], %[[MINUI]]
-// CHECK:      %[[MINUI_0:.*]] = arith.minui %[[SUBI]], %[[ARG_DIM1]]
-// CHECK:      %[[A_SUB:.*]] = gml_st.materialize %[[A]]
-// CHECK-SAME:     [%[[I]], %[[MINUI]]]
-// CHECK-SAME:     [%[[ARG_DIM0]], %[[MINUI_0]]]
-
-// CHECK:      %[[CMPI:.*]] = arith.cmpi ule, %[[J]], %[[DIM_2]]
-// CHECK:      %[[SUBI_0:.*]] = arith.subi %[[J]], %[[DIM_2]]
-// CHECK:      %[[SELECT:.*]] = arith.select %[[CMPI]], %[[C0]], %[[SUBI_0]]
-// CHECK:      %[[DIM_3:.*]] = tensor.dim %[[B]], %[[C1]]
-// CHECK:      %[[MINUI_1:.*]] = arith.minui %[[SELECT]], %[[DIM_3]]
-// CHECK:      %[[SUBI_1:.*]] = arith.subi %[[DIM_3]], %[[MINUI_1]]
-// CHECK:      %[[MINUI_2:.*]] = arith.minui %[[SUBI_1]], %[[ARG_DIM1]]
-// CHECK:      %[[B_SUB:.*]] = gml_st.materialize %[[B]]
-// CHECK-SAME:     [%[[I]], %[[MINUI_1]]]
-// CHECK-SAME:     [%[[ARG_DIM0]], %[[MINUI_2]]]
-
-// CHECK:      %[[CMPI_0:.*]] = arith.cmpi ule, %[[SELECT]], %[[DIM_3]]
-// CHECK:      %[[SUBI_2:.*]] = arith.subi %[[SELECT]], %[[DIM_3]]
-// CHECK:      %[[SELECT_0:.*]] = arith.select %[[CMPI_0]], %[[C0]], %[[SUBI_2]]
-// CHECK:      %[[DIM_4:.*]] = tensor.dim %[[C]], %[[C1]]
-// CHECK:      %[[MINUI_3:.*]] = arith.minui %[[SELECT_0]], %[[DIM_4]]
-// CHECK:      %[[SUBI_3:.*]] = arith.subi %[[DIM_4]], %[[MINUI_3]]
-// CHECK:      %[[MINUI_4:.*]] = arith.minui %[[SUBI_3]], %[[ARG_DIM1]]
-// CHECK:      %[[C_SUB:.*]] = gml_st.materialize %[[C]]
-// CHECK-SAME:     [%[[I]], %[[MINUI_3]]]
-// CHECK-SAME:     [%[[ARG_DIM0]], %[[MINUI_4]]]
-// CHECK:      %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]]
-// CHECK-SAME:     [%[[I]], %[[J]]] [%[[ARG_DIM0]], %[[ARG_DIM1]]]
-// CHECK:      %[[CONCATENATE:.*]] = thlo.concatenate
-// CHECK-SAME:     ins(%[[A_SUB]] : tensor<?x?xi32>, %[[B_SUB]] : tensor<?x?xi32>,
-// CHECK-SAME:         %[[C_SUB]] : tensor<?x?xi32>)
-// CHECK-SAME:     outs(%[[INIT_SUB]] : tensor<?x?xi32>)
-// CHECK-SAME:     dimension = 1
-// CHECK:      return {op_label = "consumer"} %[[CONCATENATE]]
+// CHECK-LABEL: @binary_concatenate_with_unit_dims
+// CHECK-SAME:  %[[INIT:.*]]: tensor<?x?xi32>, %[[ARG_A:.*]]: tensor<?x?xi32>, %[[ARG_B:.*]]: tensor<?x?xi32>, %[[I:.*]]: index, %[[J:.*]]: index, %[[N:.*]]: index
+func.func @binary_concatenate_with_unit_dims(%init : tensor<?x?xi32>,
+    %a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %i: index, %j: index, %n: index)
+    -> tensor<?x1xi32> {
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1
+  // CHECK:     %[[DIM:.*]] = tensor.dim %[[ARG_A]], %[[C1]]
+  // CHECK:     %[[CMPI:.*]] = arith.cmpi ult, %[[J]], %[[DIM]]
+  // CHECK:     %[[IF:.*]] = scf.if %[[CMPI]] -> (tensor<?x1xi32>)
+  // CHECK:       %[[MATERIALIZE:.*]] = tensor.extract_slice %[[ARG_A]][%[[I]], %[[J]]] [%[[N]], 1] [1, 1]
+  // CHECK:       scf.yield %[[MATERIALIZE]]
+  // CHECK:     else
+  // CHECK:       %[[SUBI:.*]] = arith.subi %[[J]], %[[DIM]]
+  // CHECK:       %[[MATERIALIZE_0:.*]] = tensor.extract_slice %[[ARG_B]][%[[I]], %[[SUBI]]] [%[[N]], 1] [1, 1]
+  // CHECK:       scf.yield %[[MATERIALIZE_0]]
+  // CHECK:     return {op_label = "consumer"} %[[IF]]
+  %concat = thlo.concatenate ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>)
+      outs(%init : tensor<?x?xi32>) dimension = 1 { op_label = "producer" }
+  %tiled_concat = tensor.extract_slice %concat[%i, %j] [%n, 1] [1, 1]
+      : tensor<?x?xi32> to tensor<?x1xi32>
+  func.return { op_label = "consumer" } %tiled_concat : tensor<?x1xi32>
+}
 
 // -----
 
@@ -132,7 +130,7 @@ func.func @add(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>, %i: index,
     %add = arith.addf %lhs_scalar, %rhs_scalar : f32
     linalg.yield %add : f32
   } -> tensor<32x32xf32>
-  %result = gml_st.materialize %linalg[%i, %j] [%arg_dim0, %arg_dim1] [1, 1]
+  %result = tensor.extract_slice %linalg[%i, %j] [%arg_dim0, %arg_dim1] [1, 1]
       : tensor<32x32xf32> to tensor<?x?xf32>
   return { op_label = "consumer" } %result : tensor<?x?xf32>
 }
@@ -143,11 +141,11 @@ func.func @add(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>, %i: index,
 // CHECK-SAME:  %[[ARG_DIM0:[a-z0-9]+]]: index, %[[ARG_DIM1:[a-z0-9]+]]: index)
 
 // CHECK:      %[[INIT:.*]] = tensor.empty()
-// CHECK:      %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]]
+// CHECK:      %[[LHS_SUB:.*]] = tensor.extract_slice %[[LHS]]
 // CHECK-SAME:     [%[[I]], %[[J]]] [%[[ARG_DIM0]], %[[ARG_DIM1]]]
-// CHECK:      %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]]
+// CHECK:      %[[RHS_SUB:.*]] = tensor.extract_slice %[[RHS]]
 // CHECK-SAME:     [%[[I]], %[[J]]] [%[[ARG_DIM0]], %[[ARG_DIM1]]]
-// CHECK:      %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]]
+// CHECK:      %[[INIT_SUB:.*]] = tensor.extract_slice %[[INIT]]
 // CHECK-SAME:     [%[[I]], %[[J]]] [%[[ARG_DIM0]], %[[ARG_DIM1]]]
 // CHECK:      %[[GENERIC:.*]] = linalg.generic
 // CHECK-SAME:     iterator_types = ["parallel", "parallel"]
@@ -179,7 +177,7 @@ func.func @empty(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
     linalg.yield %arg2 : f32
   } -> tensor<?x?xf32>
 
-  %elem =  gml_st.materialize %result[%i, %j] [1, 1] [1, 1]
+  %elem =  tensor.extract_slice %result[%i, %j] [1, 1] [1, 1]
     : tensor<?x?xf32> to tensor<1x1xf32>
   return { op_label = "consumer" } %elem : tensor<1x1xf32>
 }
@@ -193,7 +191,7 @@ func.func @empty(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
 // CHECK:      %[[DIM_0:.*]] = tensor.dim %[[ARG0]], %[[C1]]
 // CHECK:      %[[INIT:.*]] = tensor.empty(%[[DIM]], %[[DIM_0]])
 
-// CHECK:      %[[MATERIALIZE:.*]] = gml_st.materialize %[[INIT]]
+// CHECK:      %[[MATERIALIZE:.*]] = tensor.extract_slice %[[INIT]]
 // CHECK-SAME:   [%[[I]], %[[J]]] [1, 1]
 // CHECK:      return {op_label = "consumer"} %[[MATERIALIZE]]
 
@@ -217,7 +215,7 @@ func.func @dim_reification_fission(%arg: tensor<?xf32>) -> index {
 func.func @dim_reification_materialize(%arg: tensor<?x?xf32>,
     %arg_dim0: index, %arg_dim1: index) -> index {
   %c0 = arith.constant 0 : index
-  %0 = gml_st.materialize %arg[0, 0] [%arg_dim0, %arg_dim1] [1, 1]
+  %0 = tensor.extract_slice %arg[0, 0] [%arg_dim0, %arg_dim1] [1, 1]
     : tensor<?x?xf32> to tensor<?x?xf32>
   %1 = tensor.dim %0, %c0 : tensor<?x?xf32>
   return %1 : index
@@ -312,12 +310,15 @@ func.func @fusion_into_materialize_element(
     %0 = arith.negf %in : f32
     linalg.yield %0 : f32
   } -> tensor<?xf32>
-  %res = gml_st.materialize %neg[%idx] [1] [1] : tensor<?xf32> to f32
-  return { op_label="consumer" } %res : f32
+  %res_slice = tensor.extract_slice %neg[%idx] [1] [1]
+    : tensor<?xf32> to tensor<1xf32>
+  %c0 = arith.constant 0 : index
+  %res = tensor.extract %res_slice[%c0] { op_label="consumer" } : tensor<1xf32>
+  return  %res : f32
 }
 // CHECK-LABEL: @fusion_into_materialize_element
-// CHECK: %[[RES:.*]] = tensor.extract
-// CHECK: return {{.*}} %[[RES]]
+// CHECK-COUNT-2: tensor.extract_slice
+// CHECK:         linalg.generic
 
 // -----
 
@@ -340,12 +341,12 @@ func.func @matmul(%lhs: tensor<128x16xf32>,
   %fill = linalg.fill { op_label = "producer" } ins(%cst : f32)
       outs(%init : tensor<128x256xf32>) -> tensor<128x256xf32>
   %matmul = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c128, %c256)
-      step (%c8, %c8) {
-    %lhs_sub = gml_st.materialize %lhs[%i, 0] [8, 16] [1, 1]
+      step (%c8, %c8) outs (%out = %fill: tensor<128x256xf32>) {
+    %lhs_sub = tensor.extract_slice %lhs[%i, 0] [8, 16] [1, 1]
       : tensor<128x16xf32> to tensor<8x16xf32>
-    %rhs_sub = gml_st.materialize %rhs[0, %j] [16, 8] [1, 1]
+    %rhs_sub = tensor.extract_slice %rhs[0, %j] [16, 8] [1, 1]
       : tensor<16x256xf32> to tensor<16x8xf32>
-    %out_sub = gml_st.materialize %fill[%i, %j] [8, 8] [1, 1]
+    %out_sub = tensor.extract_slice %out[%i, %j] [8, 8] [1, 1]
       : tensor<128x256xf32> to tensor<8x8xf32>
 
     %matmul_sub = linalg.matmul { op_label="consumer" }
@@ -353,7 +354,7 @@ func.func @matmul(%lhs: tensor<128x16xf32>,
       outs(%out_sub : tensor<8x8xf32>) -> tensor<8x8xf32>
 
     %out_tile = gml_st.tile [%i, %j] [8, 8] [1, 1] : !gml_st.tile<8x8>
-    gml_st.set_yield %matmul_sub into %fill[%out_tile]
+    gml_st.set_yield %matmul_sub into %out[%out_tile]
       : tensor<8x8xf32> into tensor<128x256xf32>[!gml_st.tile<8x8>]
   } : tensor<128x256xf32>
   return %matmul : tensor<128x256xf32>
@@ -365,11 +366,12 @@ func.func @matmul(%lhs: tensor<128x16xf32>,
 // CHECK:      %[[C0:.*]] = arith.constant 0 : index
 // CHECK:      %[[EMPTY:.*]] = tensor.empty() : tensor<128x256xf32>
 // CHECK:       gml_st.parallel (%[[I:[a-z0-9]+]], %[[J:[a-z0-9]+]])
-// CHECK:        %[[OUT_SUB:.*]] = gml_st.materialize %[[EMPTY]] [%[[I]], %[[J]]] [8, 8] [1, 1]
+// CHECK-SAME:     outs (%[[OUT_:.*]] = %[[EMPTY]]:
+// CHECK:        %[[OUT_SUB:.*]] = tensor.extract_slice %[[OUT_]][%[[I]], %[[J]]] [8, 8] [1, 1]
 // CHECK:        %[[FILL:.*]] = linalg.fill
 // CHECK-SAME:     outs(%[[OUT_SUB]] : tensor<8x8xf32>) -> tensor<8x8xf32>
 // CHECK:        %[[MATMUL:.*]] = linalg.matmul
 // CHECK-SAME:     outs(%[[FILL]] : tensor<8x8xf32>) -> tensor<8x8xf32>
 // CHECK:        %[[OUT_TILE:.*]] = gml_st.tile [%[[I]], %[[J]]] [8, 8] [1, 1]
-// CHECK:        gml_st.set_yield %[[MATMUL]] into %[[EMPTY]][%[[OUT_TILE]]]
+// CHECK:        gml_st.set_yield %[[MATMUL]] into %[[OUT_]][%[[OUT_TILE]]]
 // CHECK-SAME:     : tensor<8x8xf32> into tensor<128x256xf32>[!gml_st.tile<8x8>]

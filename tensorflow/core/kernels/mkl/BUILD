@@ -354,7 +354,10 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_softmax_op",
     prefix = "mkl_softmax",
-    deps = MKL_SHORT_DEPS + ["//third_party/eigen3"],
+    deps = [
+        "//third_party/eigen3",
+        "//tensorflow/core/graph:mkl_graph_util",
+    ] + MKL_SHORT_DEPS,
 )
 
 tf_mkl_kernel_library(

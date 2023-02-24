@@ -554,9 +554,11 @@ Status XlaRuntimeCpuExecutable::Execute(
   });
 
   // Initialize state required for running functions exported from FFI modules.
-  runtime::ffi::FfiStateVector ffi_state = ffi_modules_state_.state_vector();
+  absl::StatusOr<runtime::ffi::FfiStateVector> ffi_state =
+      ffi_modules_state_.state_vector();
+  if (!ffi_state.ok()) return FromAbslStatus(ffi_state.status());
 
-  runtime::CustomCall::UserData user_data(run_options, &ffi_state);
+  runtime::CustomCall::UserData user_data(run_options, &ffi_state.value());
 
   runtime::Executable::ExecuteOpts opts;
   opts.custom_call_data = &user_data;

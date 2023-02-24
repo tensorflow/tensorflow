@@ -62,7 +62,7 @@ PACKAGES=(
   "pandas"
   "packaging"
   "portpicker"
-  "protobuf"
+  "protobuf==3.20.3"
   "psutil"
   "py-cpuinfo"
   "pybind11"

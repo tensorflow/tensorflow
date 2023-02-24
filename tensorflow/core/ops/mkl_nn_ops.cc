@@ -1852,6 +1852,11 @@ REGISTER_OP("_MklFusedBatchMatMulV2")
     .Attr("adj_y: bool = false")
     .Attr("num_args: int >= 0")
     .Attr("fused_ops: list(string) = []")
+    // Attributes for the FusedBatchNorm ------------------------------------ //
+    .Attr("epsilon: float = 0.0001")
+    // Attributes for the LeakyRelu ----------------------------------------- //
+    .Attr("leakyrelu_alpha: float = 0.2")
+    // ---------------------------------------------------------------------- //
     .SetShapeFn(shape_inference::BatchMatMulV2Shape)
     .Doc(R"doc(
 *NOTE*: Do not invoke this operator directly in Python. Grappler is

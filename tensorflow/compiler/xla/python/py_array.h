@@ -92,9 +92,6 @@ struct PyArray_Storage {
 // The C++ implementation of jax.Array. A few key methods and data members are
 // implemented in C++ for performance, while most of the functionalities are
 // still implemented in python.
-//
-// TODO(chky): Consider replacing the usage of PyShardedBuffer with PyArray as
-// PyArray is more general.
 class PyArray : public pybind11::object {
  public:
   PYBIND11_OBJECT(PyArray, pybind11::object, PyArray::IsPyArray);
@@ -149,6 +146,16 @@ class PyArray : public pybind11::object {
 
   const std::shared_ptr<Traceback>& traceback() const {
     return GetStorage().traceback;
+  }
+
+  // Returns xla::InvalidArgument if the buffer has been deleted.
+  // See `PjRtFuture` for the semantics of `IsReady` and `IsKnownReady`.
+  StatusOr<bool> IsReady() {
+    ifrt::Array* ifrt_array_ptr = ifrt_array();
+    if (ifrt_array_ptr->IsDeleted()) {
+      return InvalidArgument("Array has been deleted.");
+    }
+    return ifrt_array_ptr->GetReadyFuture().IsReady();
   }
 
   ifrt::Array* ifrt_array() const { return GetStorage().ifrt_array.get(); }

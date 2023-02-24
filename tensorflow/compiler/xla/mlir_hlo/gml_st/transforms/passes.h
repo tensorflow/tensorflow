@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Pass/Pass.h"
 
 #define GEN_PASS_DECL
@@ -28,11 +29,6 @@ limitations under the License.
 
 namespace mlir {
 namespace gml_st {
-
-/// The key to the attribute corresponding to the distribution type of
-/// operations that have been SIMTfied.
-inline constexpr const char kDistributionLabelKey[] =
-    "gml-st-distribution-label";
 
 /// Pass to tile ops using TilingInterface.
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
@@ -43,56 +39,34 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
     StringRef producer = "", StringRef consumer = "");
 
-/// Pass to tile and fuse all cwise ops.
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass(
-    bool distribute, ArrayRef<int64_t> tileSizes,
-    StringRef distributionLabel = "");
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass();
-
-/// Pass to tile warp-level ops on GPU.
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingGpuWarpPass();
-
 /// Pass to match, tile, and fuse softmax implementations.
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass(
-    bool distribute, ArrayRef<int64_t> tileSizes,
-    StringRef distributionLabel = "");
+    ArrayRef<int64_t> tileSizes);
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass();
 
 /// Pass to tile the root operation and to greedily fuse producers into it.
-std::unique_ptr<OperationPass<func::FuncOp>> createGreedyTilingAndFusionPass(
-    bool distribute, ArrayRef<int64_t> tileSizes, StringRef distributionLabel);
-std::unique_ptr<OperationPass<func::FuncOp>> createGreedyTilingAndFusionPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createGreedyFusionPass(
+    ArrayRef<int64_t> tileSizes);
+std::unique_ptr<OperationPass<func::FuncOp>> createGreedyFusionPass();
 
 // Pass to collapse dimensions of bcasts, reductions, and cwise ops.
 std::unique_ptr<OperationPass<func::FuncOp>> createCollapseShapePass();
 std::unique_ptr<OperationPass<func::FuncOp>> createCollapseShapePass(
     const CollapseShapePassOptions &options);
 
-/// Pass to collapse (or uncollapse) materialize operations.
-std::unique_ptr<OperationPass<func::FuncOp>> createCollapseMaterializeOpsPass();
+// Pass to tile all tileable ops to size 1.
+std::unique_ptr<OperationPass<func::FuncOp>> createTileByOnePass();
 
-/// Pass to lower `gml_st.parallel` to `gpu.launch`, transforming the code into
-/// its SIMT interpretation.
-std::unique_ptr<OperationPass<func::FuncOp>> createGmlStSimtfyPass(
-    StringRef blockDistributionLabel = "block");
-
-/// Pass to eliminate the remaining `gml_st` ops after SIMTfication.
-std::unique_ptr<OperationPass<func::FuncOp>> createGmlStToGpuPass(
-    StringRef warpDistributionLabel = "warp");
+/// Pass to compose tensor.extract_slice/insert_slice ops.
+std::unique_ptr<OperationPass<func::FuncOp>>
+createComposeExtractInsertSlicePass();
 
 /// Create a pass to convert `gml_st.loop` to `scf.for` and `scf.parallel`
 /// loops and memref.load/memref.store accesses.
 std::unique_ptr<OperationPass<func::FuncOp>> createGmlStToScfPass();
 
-/// Pass to vectorize linalg.generic ops tiled to gml_st.parallel and gml_st.for
-/// loops.
-std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeGmlStLoopsPass(
-    bool vectorizeGmlStOps = false,
-    ArrayRef<StringRef> distributionLabels = {});
-
-/// Pass to vectorize gml_st.for loops that are tiled perfectly.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createVectorizePerfectlyTiledLoopsPass();
+/// Pass to vectorize compute ops and scf.for loops that are tiled perfectly.
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeForCPUPass();
 
 /// Pass to vectorize `memref.copy`.
 std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass();
@@ -100,21 +74,31 @@ std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass();
 /// Pass to eliminate dead `memref.copy`.
 std::unique_ptr<OperationPass<func::FuncOp>> createSimplifyDeadCopyPass();
 
-/// Pass to lower vector.contract.
-std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorContractPass();
+/// Pass to rewrite vector.contract.
+std::unique_ptr<OperationPass<func::FuncOp>> createRewriteVectorContractPass();
+
+/// Pass to rewrite vector.transpose.
+std::unique_ptr<OperationPass<func::FuncOp>> createRewriteVectorTransposePass();
+
+/// Pass to rewrite vector.multi_reduction.
+std::unique_ptr<OperationPass<func::FuncOp>>
+createRewriteVectorMultiReductionPass();
+
+/// Pass to optimize vector.transpose, vector.transfer_read and
+/// vector.transfer_write.
+std::unique_ptr<OperationPass<func::FuncOp>> createOptimizeVectorTransferPass();
 
 /// Pass to transform a thlo.scatter op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
+
+/// Pass to transform a dot operation for CPU backend.
+std::unique_ptr<OperationPass<func::FuncOp>> createTransformDotForCpuPass(
+    ArrayRef<int64_t> dotTileSizes = std::nullopt);
 
 /// Pass to transform a linalg.matmul op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForCpuPass(
     ArrayRef<int64_t> matmulTileSizes = std::nullopt,
     bool lowerToMmt4DOp = false);
-
-/// Pass to transform a linalg.matmul op for Triton.
-std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForTritonPass(
-    ArrayRef<int64_t> matmulTileSizes = std::nullopt,
-    StringRef distributionLabel = "");
 
 /// Pass to fuse linalg on tensor operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionOfTensorOpsPass();
@@ -131,6 +115,10 @@ std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformReduceForCpuPass(int64_t vectorSize = 8, int64_t tileSize1D = 32,
                                 ArrayRef<int64_t> tileSizes2D = {});
 
+/// Pass to transform a thlo.reverse op for CPU backend.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createTransformReverseForCpuPass(int64_t vectorSize = 8);
+
 /// Pass to transform a linalg.transpose op for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformTransposeForCpuPass(ArrayRef<int64_t> tileSizes = std::nullopt);
@@ -139,11 +127,34 @@ createTransformTransposeForCpuPass(ArrayRef<int64_t> tileSizes = std::nullopt);
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformSortForCpuPass();
 
-struct GmlStCPUPipelineOptions
-    : public mlir::PassPipelineOptions<GmlStCPUPipelineOptions> {
-  Option<bool> vectorize{*this, "vectorize",
-                         llvm::cl::desc("Enable tiling for vectorization."),
-                         llvm::cl::init(false)};
+/// Pass to transform a linalg.generic op for CPU backend.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createTransformGenericForCpuPass();
+
+/// Pass to create fusion clusters.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createFusionPlanningForCpuPass();
+
+/// Pass to outline fusion regions into functions.
+std::unique_ptr<OperationPass<ModuleOp>> createFusionOutliningPass();
+
+/// Pass to inline fusion clusters.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createInlineFusionClustersPass();
+
+/// Pass to add debug info to be propagated into LLVM backend.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAddDebugInfoPass();
+
+struct GmlStCPUTilingOptions
+    : public mlir::PassPipelineOptions<GmlStCPUTilingOptions> {
+  GmlStCPUTilingOptions() = default;
+  GmlStCPUTilingOptions(const GmlStCPUTilingOptions &opts) {
+    this->lowerToMmt4d = opts.lowerToMmt4d;
+    this->matmulTileSizes = opts.matmulTileSizes;
+    this->reduction1DTileSize = opts.reduction1DTileSize;
+    this->reduction2DTileSizes = opts.reduction2DTileSizes;
+    this->vectorSize = opts.vectorSize;
+  }
 
   Option<int64_t> vectorSize{*this, "vector-size",
                              llvm::cl::desc("Vector size for a 1D reduction."),
@@ -170,14 +181,16 @@ struct GmlStCPUPipelineOptions
       llvm::cl::init(false)};
 };
 
-// Make GmlStCPUPipelineOptions hashable.
-inline ::llvm::hash_code hashValue(const GmlStCPUPipelineOptions &opts) {
-  return ::llvm::hash_value(static_cast<bool>(opts.vectorize));
-}
+// Returns default "optimized" tiling parameters.
+GmlStCPUTilingOptions getDefaultCPUPipelineOptions();
 
 // Adds tiling-fusion-vectorization passes for tHLO/Linalg ops mix.
-void addTileableOpsTransformationsForCPU(
-    OpPassManager &pm, const GmlStCPUPipelineOptions &options);
+void addCPUTilingPipeline(OpPassManager &pm,
+                          const GmlStCPUTilingOptions &options);
+
+// Adds tiling-fusion-vectorization passes for tHLO/Linalg ops mix with the
+// "optimized" tiling parameters.
+void addDefaultCPUTilingPipeline(OpPassManager &pm);
 
 #define GEN_PASS_REGISTRATION
 #include "gml_st/transforms/passes.h.inc"

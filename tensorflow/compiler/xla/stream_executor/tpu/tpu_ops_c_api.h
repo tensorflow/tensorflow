@@ -227,8 +227,10 @@ typedef struct TpuExecutable_LoadProgramAndEnqueueToStream_Params {
   SE_DeviceMemoryBase* arguments;
   size_t arguments_len;
   SE_DeviceMemoryBase* result;
-  bool has_cross_program_prefetch_addr;
-  SE_DeviceMemoryBase* cross_program_prefetch_addr;
+  size_t cross_program_prefetch_addrs_len;
+  SE_DeviceMemoryBase* cross_program_prefetch_addrs;
+  size_t cross_program_prefetch_offsets_len;
+  const uint32_t* cross_program_prefetch_offsets;
   int32_t rng_seed;
   XLA_DeviceAssignment* device_assignment;
   SE_Stream* stream;
@@ -669,7 +671,6 @@ typedef struct TpuEmbeddingEngine_RecvActivationsComputation_Params {
 
   TpuSerializedProto tpu_embedding_config;
   XLA_Shape* deduplication_data_shape;
-  const XLA_TpuMeshState* tpu_mesh_state;
   TpuSerializedProto* op_sharding;
 
   // out
@@ -686,7 +687,6 @@ typedef struct
   void* priv;
 
   TpuSerializedProto tpu_embedding_config;
-  const XLA_TpuMeshState* tpu_mesh_state;
   TpuSerializedProto* op_sharding;
   // out
   TpuSerializedProto* xla_computation;
@@ -704,7 +704,6 @@ typedef struct TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params {
 
   int32_t num_inputs;
   TpuSerializedProto tpu_embedding_config;
-  const XLA_TpuMeshState* tpu_mesh_state;
   XLA_Shape* learning_rate_tuple_shape;
   XLA_Shape* deduplication_data_shape;
   XLA_Shape* gradient_tuple_shape;
@@ -716,6 +715,19 @@ typedef struct TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params {
 
 TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation(
     TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params* params);
+
+typedef struct TpuEmbeddingEngine_DedupDataTupleMaskComputation_Params {
+  int32_t struct_size;
+  void* priv;
+
+  TpuSerializedProto tpu_embedding_config;
+  // out
+  TpuSerializedProto* xla_computation;
+  TF_Status* status;
+} TpuEmbeddingEngine_DedupDataTupleMaskComputation_Params;
+
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_DedupDataTupleMaskComputation(
+    TpuEmbeddingEngine_DedupDataTupleMaskComputation_Params* params);
 
 struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CompileAndBuild);
@@ -817,6 +829,7 @@ struct TfTpu_OpsApiFn {
       TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation);
   TFTPU_ADD_FN_IN_STRUCT(
       TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_DedupDataTupleMaskComputation);
 };
 
 }  // extern "C"

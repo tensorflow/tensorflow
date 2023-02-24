@@ -26,6 +26,8 @@ NextPluggableDeviceAllocator::NextPluggableDeviceAllocator(int device_ordinal)
   TF_StringView device_allocator_name =
       api_->TFNPD_DeviceAllocatorName(device_allocator_);
   device_allocator_name_ = device_allocator_name.data;
+  allocates_opaque_handle_ =
+      api_->TFNPD_DeviceAllocatorAllocatesOpaqueHandle(device_allocator_);
 }
 
 NextPluggableDeviceAllocator::~NextPluggableDeviceAllocator() {

@@ -102,9 +102,8 @@ void ShapeInference::TryToCacheResultsTensorValue(Operation *op) {
   if (op_name == "Const") {
     cached_tensor_values_[op->getResult(0)] =
         op->getAttrOfType<DenseElementsAttr>("value");
-  } else if (op_name == "Identity" ||
-             (op_name == "IdentityN" &&
-              TFOp(op).getNonControlOperands().size() == 1)) {
+  } else if ((op_name == "Identity" || op_name == "IdentityN") &&
+             TFOp(op).getNonControlOperands().size() == 1) {
     DenseElementsAttr operand_tensor_value = GetTensorValue(op->getOperand(0));
     if (!operand_tensor_value) return;
     cached_tensor_values_[op->getResult(0)] = operand_tensor_value;

@@ -31,12 +31,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// The amount of shared memory a CUDA kernel can use.
-//
-// Stay on the conservative side, this is smaller than full 64kB, but allows
-// some extra space for cache.
-inline constexpr int64_t kSharedMemoryBudgetInBytes = 48 * 1024;
-
 // If a dimensions is smaller than this, untiled transposition may be more
 // efficient.
 inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
@@ -56,10 +50,9 @@ inline constexpr int64_t MinThreadsXRowReduction() { return 1024; }
 // When doing batched row reduction, how big the batch dimension could be.
 inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
 
-// Returns true if `hlo` is a matched softmax fusion.
-bool IsSoftmaxCustomCall(const HloInstruction& hlo);
-
-extern const char* const kSoftmaxCallTarget;
+// GemmRewriterTriton sets backend_config of Triton GEMM custom fusions to
+// this string. TritonAutotuner replaces it with TritonGemmKey proto.
+inline constexpr absl::string_view kTritonGemmBackendConfig = "__triton_gemm";
 
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
@@ -229,9 +222,14 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
 // Whether there is a fusion root triggering transposition emitter.
 bool HasAnyTiledTransposeRoot(HloComputation* computation);
 
-std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr);
+std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr,
+                                                 Vector3& permutation);
 
-std::optional<Vector3> FindAnyTiledTranspose(const HloInstruction& instr);
+std::optional<std::pair<Vector3, Vector3>> FindAnyTiledTranspose(
+    const HloInstruction& instr);
+
+// Log and verify an LLVM module.
+void LogAndVerify(const llvm::Module* m);
 
 }  // namespace gpu
 }  // namespace xla

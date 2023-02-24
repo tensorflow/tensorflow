@@ -21,6 +21,7 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <numeric>
+#include <optional>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
@@ -159,7 +160,7 @@ static llvm::Optional<int64_t> GetIntegerHLOAxisFromTFAxis(Value value,
   DenseIntElementsAttr attrs;
   if (!matchPattern(value, m_Constant(&attrs)) ||
       attrs.getType().getRank() != 0) {
-    return llvm::None;
+    return std::nullopt;
   }
   int64_t axis = attrs.getValues<IntegerAttr>()[0].getInt();
   return axis < 0 ? axis + rank : axis;
@@ -5721,19 +5722,24 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
 
   LogicalResult matchAndRewrite(TF::RandomShuffleOp op,
                                 PatternRewriter &rewriter) const override {
+    auto no_op = [&]() {
+      rewriter.replaceOp(op, op.getValue());
+      return success();
+    };
+
     auto input_type = op.getValue().getType().dyn_cast<RankedTensorType>();
     if (!input_type) return failure();
+    if (input_type.hasStaticShape() && input_type.getNumElements() <= 1)
+      // No shuffling is required, so copy input directly to output.
+      return no_op();
 
     int64_t input_rank = input_type.getRank();
     int64_t first_dim_size = input_type.getDimSize(0);
     if (ShapedType::isDynamic(first_dim_size)) return failure();
 
-    // We are shuffling along the first dimension. If its size is <= 1, then
-    // shuffling is a no-op.
-    if (first_dim_size <= 1) {
-      rewriter.replaceOp(op, op.getValue());
-      return success();
-    }
+    if (first_dim_size <= 1)
+      // No shuffling is required, so copy input directly to output.
+      return no_op();
 
     // For vectors, shuffle values by sorting instead of the obvious
     // Fisher-Yates algorithm. Fisher-Yates is simple to implement and correct,
@@ -5815,11 +5821,11 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
 
       auto scalar_i32_type =
           tensorflow::GetTypeFromTFTensorShape({}, builder->getIntegerType(32));
-      auto scalar_i64_type =
-          tensorflow::GetTypeFromTFTensorShape({}, builder->getIntegerType(64));
+      auto one_cross_i64_type = tensorflow::GetTypeFromTFTensorShape(
+          {1}, builder->getIntegerType(64));
 
       auto scalar_one =
-          DenseIntElementsAttr::get(scalar_i64_type, ArrayRef<int64_t>(1));
+          DenseIntElementsAttr::get(one_cross_i64_type, ArrayRef<int64_t>(1));
 
       // We need to swap the indices[i] with indices[swaps[i]]. First get
       // these index values.
@@ -5859,9 +5865,32 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
         /*collapsed_slice_dims=*/{0},
         /*start_index_map=*/{0},
         /*index_vector_dim=*/1);
-    rewriter.replaceOpWithNewOp<mhlo::GatherOp>(
-        op, op.getType(), op.getValue(), swaped_indices, dims_attr,
-        GetI64ElementsAttr(slice_sizes, &rewriter));
+
+    SmallVector<Value> slice_sizes_values;
+    for (auto i = 0; i < slice_sizes.size(); ++i) {
+      if (slice_sizes[i] == tensorflow::kTFDynamicSize) {
+        Value i_const = rewriter.create<arith::ConstantOp>(
+            op.getLoc(), rewriter.getIndexAttr(i));
+        Value slice_size_index =
+            rewriter.create<shape::DimOp>(op.getLoc(), op.getValue(), i_const);
+        Value index_to_i64 = rewriter.create<arith::IndexCastOp>(
+            op.getLoc(), rewriter.getI64Type(), slice_size_index);
+        Value i64_to_tensor = rewriter.create<tensor::FromElementsOp>(
+            op.getLoc(),
+            tensorflow::GetTypeFromTFTensorShape({1}, rewriter.getI64Type()),
+            index_to_i64);
+        slice_sizes_values.push_back(i64_to_tensor);
+      } else {
+        slice_sizes_values.push_back(rewriter.create<mhlo::ConstantOp>(
+            op.getLoc(), GetI64ElementsAttr({slice_sizes[i]}, &rewriter)));
+      }
+    }
+
+    auto slice_sizes_concat = rewriter.create<mhlo::ConcatenateOp>(
+        op.getLoc(), slice_sizes_values, rewriter.getI64IntegerAttr(0));
+    rewriter.replaceOpWithNewOp<mhlo::DynamicGatherOp>(
+        op, op.getType(), op.getValue(), swaped_indices, slice_sizes_concat,
+        dims_attr);
 
     return success();
   }
@@ -6549,7 +6578,7 @@ inline llvm::Optional<xla::RandomAlgorithm> TensorFlowRngAlgToXla(
   } else if (alg == tensorflow::RNG_ALG_AUTO_SELECT) {
     return xla::RandomAlgorithm::RNG_DEFAULT;
   }
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Converts tf.XlaRngBitGenerator op to mhlo.RngBitGenerator op.
@@ -6664,10 +6693,102 @@ class ConvertXlaReducePrecisionOp
   }
 };
 
+class LowerYieldOp : public OpConversionPattern<TF::YieldOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      TF::YieldOp op, TF::YieldOp::Adaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<mhlo::ReturnOp>(op, adaptor.getOperands());
+    return success();
+  }
+};
+
+// Returns a new tensor type from the given type with element type updated to
+// the given type.
+TensorType UpdateElementTypeTo(Type ty, Type element_ty) {
+  auto ranked_ty = ty.dyn_cast<RankedTensorType>();
+  if (!ranked_ty) {
+    return UnrankedTensorType::get(element_ty);
+  }
+  return RankedTensorType::get(ranked_ty.getShape(), element_ty,
+                               ranked_ty.getEncoding());
+}
+
+template <typename SrcOpT, typename DstOpT>
+class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
+ public:
+  using OpConversionPattern<SrcOpT>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      SrcOpT op, typename SrcOpT::Adaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    DstOpT mhlo_op;
+    Location loc = op.getLoc();
+
+    // To handle quant type conversions, use the converted operands' element
+    // types and original source op's shapes and encoding to get converted op's
+    // result types. This is only done for the While op for now.
+    llvm::SmallVector<Type, 4> element_types;
+    int64_t num_results = op.getNumResults();
+    if constexpr (std::is_same<DstOpT, mhlo::WhileOp>::value) {
+      element_types.reserve(num_results);
+      for (Value value : adaptor.getOperands()) {
+        element_types.push_back(getElementTypeOrSelf(value.getType()));
+      }
+    }
+
+    if constexpr (std::is_same<DstOpT, mhlo::CaseOp>::value) {
+      // Explicitly handle the Case op because it has variadic regions and takes
+      // the number of regions as an input along with the operands.
+      mhlo_op = rewriter.create<DstOpT>(loc, op.getResultTypes(),
+                                        adaptor.getBranchIndex(),
+                                        op.getBranches().size());
+    } else if constexpr (std::is_same<DstOpT, mhlo::WhileOp>::value) {
+      llvm::SmallVector<Type, 4> while_result_types;
+      while_result_types.reserve(num_results);
+      for (int64_t idx = 0; idx < num_results; ++idx) {
+        auto ty = UpdateElementTypeTo(op.getType(idx), element_types[idx]);
+        while_result_types.push_back(ty);
+      }
+
+      mhlo_op = rewriter.create<DstOpT>(loc, TypeRange(while_result_types),
+                                        adaptor.getOperands());
+    } else {
+      mhlo_op = rewriter.create<DstOpT>(loc, op.getResultTypes(),
+                                        adaptor.getOperands());
+    }
+
+    // Replace all uses of `op` results with the newly created op.
+    rewriter.replaceOp(op, mhlo_op.getResults());
+
+    int64_t num_regions = op.getNumRegions();
+    for (int64_t idx = 0; idx < num_regions; ++idx) {
+      Region &region = mhlo_op.getBodyRegion(idx);
+      rewriter.inlineRegionBefore(op.getBodyRegion(idx), region, region.end());
+
+      // Update region's entry blocks argument types to handle quantized element
+      // types.
+      if constexpr (std::is_same<DstOpT, mhlo::WhileOp>::value) {
+        TypeConverter::SignatureConversion signature(num_results);
+        Block &block = region.front();
+        for (auto &[block_idx, original_ty] :
+             llvm::enumerate(block.getArgumentTypes())) {
+          TensorType updated_ty =
+              UpdateElementTypeTo(original_ty, element_types[block_idx]);
+          signature.addInputs(block_idx, {updated_ty});
+        }
+        rewriter.applySignatureConversion(&region, signature);
+      }
+    }
+    return success();
+  }
+};
 }  // end namespace
 
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
-
+// LINT.IfChange
 void PopulateLegalizeTfPatterns(MLIRContext *context,
                                 RewritePatternSet *patterns) {
   populateWithGenerated(*patterns);
@@ -6766,9 +6887,13 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertSigmoidGradOpDynamic,
     ConvertConv2DDynamic,
     ConvertPadOpDynamic,
-    ConvertGatherNdOpDynamic>(context);
+    ConvertGatherNdOpDynamic,
+    LowerControlFlowOp<TF::CaseRegionOp, mhlo::CaseOp>,
+    LowerControlFlowOp<TF::IfRegionOp, mhlo::IfOp>,
+    LowerControlFlowOp<TF::WhileRegionOp, mhlo::WhileOp>,
+    LowerYieldOp>(context);
   // clang-format on
 }
-
+// LINT.ThenChange(:MlirPreferredOps)
 }  // end namespace mhlo
 }  // end namespace mlir

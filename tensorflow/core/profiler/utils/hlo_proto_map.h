@@ -43,11 +43,17 @@ class HloProtoMap {
   // Returns whether <hlo_proto> is new to HloProtoMap.
   bool AddHloProto(uint64_t program_id, const xla::HloProto* hlo_proto);
 
+  size_t size() const { return hlo_protos_by_program_id_.size(); }
+
   auto begin() const { return hlo_protos_by_program_id_.begin(); }
   auto end() const { return hlo_protos_by_program_id_.end(); }
 
   bool contains(absl::string_view name) const {
     return hlo_protos_by_name_.contains(name);
+  }
+
+  bool contains(uint64_t program_id) const {
+    return hlo_protos_by_program_id_.contains(program_id);
   }
 
   // Returns a list of module names (not sorted).

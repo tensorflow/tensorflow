@@ -30,10 +30,10 @@ import time
 from tensorflow.core.distributed_runtime.preemption import gen_check_preemption_op
 from tensorflow.python.checkpoint import checkpoint as checkpoint_lib
 from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute.failure_handling import failure_handling_util
 from tensorflow.python.eager import context
-from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -42,7 +42,10 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
+
 
 _INITIAL_RUN_COUNT_KEY = 'RUN_TO_CHECKPOINT'
 _FINAL_RUN_COUNT_KEY = 'LAST_RUN_TO_CHECKPOINT'
@@ -213,7 +216,7 @@ class BorgTerminationConfig(TerminationConfig):
       grace_period=None,
       save_fn=None):
     self.termination_watcher_fn = termination_watcher_fn
-    default_exit_fn = lambda: sys.exit(0)
+    default_exit_fn = lambda: sys.exit(42)
     self.exit_fn = exit_fn or default_exit_fn
     self.grace_period = grace_period or 0
     self.save_fn = save_fn
@@ -331,7 +334,7 @@ class PreemptionCheckpointHandler(object):
   """Preemption and error handler for synchronous training.
 
   Note: This API only supports use with
-  `tf.distribute.MultiWorkerMirroredStrategy` for now.
+  `tf.distribute.MultiWorkerMirroredStrategy` and `tf.distribute.TPUStrategy`.
 
   A `PreemptionCheckpointHandler` coordinates all workers to save a checkpoint
   upon receiving a preemption signal. It also helps disseminate application
@@ -339,36 +342,84 @@ class PreemptionCheckpointHandler(object):
   `PreemptionCheckpointHandler` object is created, it restores values from
   the latest checkpoint file if any exists.
 
-  Right after the initialization, a thread starts to watch out for a termination
+  Right after the initialization, the object starts to watch out for termination
   signal for any member in the cluster. If receiving a signal, the next time the
-  worker enters a `PreemptionCheckpointHandler.run` call, the
-  `PreemptionCheckpointHandler` will align the worker steps to save a checkpoint
-  and maybe exit -- depending on the `exit_fn` in
-  `tf.distribute.experimental.TerminationConfig`.
+  worker executes `PreemptionCheckpointHandler.run`, the
+  `PreemptionCheckpointHandler` will align all workers to save a checkpoint.
+  Then, if an `exit_fn` is configured via
+  `tf.distribute.experimental.TerminationConfig`, it will be invoked. Otherwise,
+  the process will simply exit and later the platform should restart it.
 
-  Note: by default, the program exits after saving a checkpoint. Users of
-  `tf.distribute.MultiWorkerMirroredStrategy` who choose to configure their own
-  `exit_fn` in `tf.distribute.experimental.TerminationConfig` must include a
-  `sys.exit(CODE_OR_MESSAGE)` in the `exit_fn` to guarantee that after the
-  restart, the workers can initialize communication services correctly.
+  Note: We advise users of `tf.distribute.MultiWorkerMirroredStrategy` who
+  choose to configure their
+  own `exit_fn` in `tf.distribute.experimental.TerminationConfig` to include a
+  `sys.exit(CODE_OR_MESSAGE)` in the `exit_fn` so that after the restart, all
+  workers can initialize communication services correctly. For users of
+  `tf.distribute.TPUStrategy`, if they do not wish to do a cluster restart but
+  would like an in-process restart (i.e., keep the coordinator alive and re-do
+  the steps to connect to cluster, initialize TPU system, and make the
+  `TPUStrategy` object), they could configure the `exit_fn` to a no-op.
 
-  Example usage:
+  For users of `tf.distribute.MultiWorkerMirroredStrategy`, the core API is
+  `PreemptionCheckpointHandler.run`:
+
   ```python
   strategy = tf.distribute.MultiWorkerMirroredStrategy()
+
+  trained_epoch = tf.Variable(initial_value=tf.constant(0, dtype=tf.dtypes.int64), name='epoch')
+  step_in_epoch = tf.Variable(initial_value=tf.constant(0, dtype=tf.dtypes.int64), name='step_in_epoch')
 
   with strategy.scope():
     dataset, model, optimizer = ...
 
-    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+    checkpoint = tf.train.Checkpoint(optimizer=optimizer,
+                                     model=model,
+                                     trained_epoch=trained_epoch,
+                                     step_in_epoch=step_in_epoch)
 
-    preemption_handler = tf.distribute.experimental.PreemptionCheckpointHandler(cluster_resolver, checkpoint, checkpoint_directory)
+    preemption_checkpoint_handler = tf.distribute.experimental.PreemptionCheckpointHandler(cluster_resolver, checkpoint, checkpoint_dir)
 
-    # preemption_handler.total_run_calls will be restored to its saved value if
-    # training is restored after interruption.
-    for epoch in range(preemption_handler.total_run_calls // STEPS_PER_EPOCH, num_epochs):
-      for step in range(preemption_handler.total_run_calls % STEPS_PER_EPOCH, STEPS_PER_EPOCH):
-        # distributed_train_step is a single-step training function wrapped by tf.distribute.Strategy.run.
-        loss += preemption_handler.run(distributed_train_step, args=(next(dataset),))
+  while trained_epoch.numpy() < NUM_EPOCH:
+
+    while step_in_epoch.numpy() < STEPS_PER_EPOCH:
+
+      # distributed_train_function contains a call to strategy.run.
+      loss += preemption_checkpoint_handler.run(distributed_train_function, args=(next(iterator),))
+      # For users of MultiWorkerMirroredStrategy, usually
+      # STEPS_PER_TRAIN_FUNCTION = 1.
+      step_in_epoch.assign_add(STEPS_PER_TRAIN_FUNCTION)
+      ...
+
+    epoch.assign_add(1)
+    step_in_epoch.assign(0)
+  ```
+
+  For users of `tf.distribute.TPUStrategy`, the core APIs are
+  `PreemptionCheckpointHandler.run` and
+  `PreemptionCheckpointHandler.watch_preemption_scope`:
+
+  ```python
+
+  strategy = tf.distribute.TPUStrategy(tpu_cluster_resolver)
+
+  # Rest of TPU init omitted, see documentation for TPUSTrategy.
+
+  with preemption_checkpoint_handler.watch_preemption_scope():
+    while trained_epoch.numpy() < NUM_EPOCH:
+
+      while step_in_epoch.numpy() < STEPS_PER_EPOCH:
+
+        # distributed_train_function contains a call to strategy.run.
+        loss += preemption_checkpoint_handler.run(distributed_train_function, args=(next(iterator),))
+
+        # For users of TPUStrategy, usually STEPS_PER_TRAIN_FUNCTION >> 1 since
+        # clustering multiple steps within a tf.function amortizes the overhead
+        # of launching a multi-device function on TPU Pod.
+        step_in_epoch.assign_add(STEPS_PER_TRAIN_FUNCTION)
+        ...
+
+      epoch.assign_add(1)
+      step_in_epoch.assign(0)
   ```
 
   Not all interruptions come with advance notice so that the
@@ -385,47 +436,14 @@ class PreemptionCheckpointHandler(object):
   from the directory, no matter it's saved by the user themselves or saved by
   the `PreemptionCheckpointHandler` before preemption happens.
 
-  If a user cannot infer the start epoch and start step from
-  `PreemptionCheckpointHandler.total_run_calls` (e.g., if there is no preknown
-  `STEPS_PER_EPOCH` or if their `STEPS_PER_EPOCH` may vary from epoch to epoch),
-  we recommend tracking the epoch and step numbers themselves and save them in
-  the passed-in checkpoint:
-
-  ```python
-  strategy = tf.distribute.MultiWorkerMirroredStrategy()
-
-  trained_epoch = tf.Variable(initial_value=tf.constant(0, dtype=tf.dtypes.int64), name='epoch')
-  step_in_epoch = tf.Variable(initial_value=tf.constant(0, dtype=tf.dtypes.int64), name='step_in_epoch')
-
-  with strategy.scope():
-    dataset, model, optimizer = ...
-
-    checkpoint = tf.train.Checkpoint(optimizer=optimizer,
-                                     model=model,
-                                     trained_epoch=trained_epoch,
-                                     step_in_epoch=step_in_epoch)
-
-    preemption_handler = tf.distribute.experimental.PreemptionCheckpointHandler(cluster_resolver, checkpoint, checkpoint_dir)
-
-  while trained_epoch.numpy() < NUM_EPOCH:
-
-    while step_in_epoch.numpy() < STEPS_PER_EPOCH:
-
-      loss += failure_handler.run(train_step, args=(next(iterator),))
-      step_in_epoch.assign_add(1)
-      ...
-
-    epoch.assign_add(1)
-    step_in_epoch.assign(0)
-  ```
-
   **A note on the platform:**
 
   `PreemptionCheckpointHandler` can only handle the kind of termination with
-  advance notice. For now, the API recognizes the Google Borg and the Google
-  Cloud Platform, where it can automatically adopt the correct
-  preemption/maintenance notification detection mechanism. Users of other
-  platforms can configure it through a
+  advance notice. For now, the API recognizes the termination signal for CPU,
+  GPU, and TPU on Google Borg and CPU and GPU on the Google Cloud Platform. In
+  these cases, `PreemptionCheckpointHandler` will automatically adopt the
+  correct preemption/maintenance notification detection mechanism. Users of
+  other platforms can configure a detection monitoring behavior through the
   `tf.distribute.experimental.TerminationConfig`. Customization for the exit
   behavior and grace period length could also be done here.
   """
@@ -571,7 +589,7 @@ class PreemptionCheckpointHandler(object):
     # step number to save a checkpoint has been aligned.
     self._received_checkpoint_step = threading.Event()
 
-    distribution_strategy_api_counter.get_cell(
+    distribute_lib.distribution_strategy_input_api_counter.get_cell(
         self._platform_device.name,
         'PreemptionCheckpointHandler').increase_by(1)
 
@@ -727,8 +745,15 @@ class PreemptionCheckpointHandler(object):
     self._stop_poll_termination_signal_thread()
 
   @property
+  @deprecated(None,
+              'Track steps using a tf.Variable saved in checkpoint instead.')
+  @doc_controls.do_not_generate_docs
   def total_run_calls(self):
     """Returns the number of times `PreemptionCheckpointHandler.run` is called.
+
+    DEPRECATED: user should track total steps themselves, as this API provides
+    little expressivity gain but could easily be misused and incurs extra
+    synchronization cost for TPUStrategy users.
 
     This value tracks the number of all calls to
     `PreemptionCheckpointHandler.run` including those before the program is
@@ -831,13 +856,13 @@ class PreemptionCheckpointHandler(object):
                                                  *args, **kwargs)
 
   def _run_for_tpu(self, distributed_train_function, *args, **kwargs):
-    """PreemptionCheckpointManager.run implementation for TPUStrategy."""
+    """PreemptionCheckpointHandler.run implementation for TPUStrategy."""
     gen_check_preemption_op.check_preemption(preemption_key=PREEMPTION_KEY)
     return distributed_train_function(*args, **kwargs)
 
   def _run_for_multi_worker_mirrored(self, distributed_train_function, *args,
                                      **kwargs):
-    """PreemptionCheckpointManager.run implementation for MWMS."""
+    """PreemptionCheckpointHandler.run implementation for MWMS."""
     try:
       self._check_preemption_and_maybe_checkpoint()
       run_begin_time = time.time()
@@ -859,20 +884,23 @@ class PreemptionCheckpointHandler(object):
 
     return result
 
-  # TODO(wxinyi): maybe export as public API.
   # Disabling line-too-long check since we do not want to break the line when
   # converted to public documentation.
   # pylint: disable=line-too-long
   def _save_checkpoint_if_preempted(self, *args, **kwargs):
     """Saves a checkpoint if a preemption signal has been made available.
 
-    This method works for both tf.distribute.MultiWorkerMirroredStrategy and
-    tf.distribute.TPUStrategy. However, this method will add a synchronization
-    point between worker and coordinator in the use case of TPUStrategy. If this
-    is a concern, use `watch_error_scope` and `run` instead.
+    This is an alternative API for `PreemptionCheckpointManager.run` and
+    `PreemptionCheckpointManager.watch_preemption_scope`. This method works for
+    both `tf.distribute.MultiWorkerMirroredStrategy` and
+    `tf.distribute.TPUStrategy`. However, **for TPUStrategy, this method will
+    add a synchronization point between workers and the coordinator** and thus
+    may have performance implication. If this is a concern, use the combination
+    of `PreemptionCheckpointManager.watch_preemption_scope` and
+    `PreemptionCheckpointManager.run` instead.
 
     ```python
-    strategy = tf.distribute.TPUStrategy()
+    strategy = tf.distribute.TPUStrategy(tpu_cluster_resolver)
     # initialization omitted
 
     with strategy.scope():
@@ -884,7 +912,8 @@ class PreemptionCheckpointHandler(object):
 
     while trained_step.numpy() < NUM_STEPS:
       train_multi_step_function()
-      preemption_handler.save_checkpoint_if_preempted()
+      trained_step.assign_add(STEPS_IN_FUNCTION)
+      preemption_handler._save_checkpoint_if_preempted()
     ```
 
     Args:
@@ -921,9 +950,35 @@ class PreemptionCheckpointHandler(object):
       self._estimated_run_time = 0
 
   @tf_contextlib.contextmanager
-  def _watch_error_scope(self):
-    """Sync error and maybe save checkpoint."""
-    # TODO(wxinyi): export as public API
+  def watch_preemption_scope(self):
+    """Syncs error and maybe save checkpoint for usage with TPUStrategy.
+
+    Note: Usage with `tf.distribute.MultiWorkerMirroredStrategy` does not need
+    this API.
+
+    Example usage:
+
+    ```python
+    with preemption_checkpoint_handler.watch_preemption_scope():
+      while trained_step.numpy() < NUM_STEPS:
+
+        # distributed_train_function contains a call to strategy.run.
+        loss += preemption_checkpoint_handler.run(distributed_train_function, args=(next(iterator),))
+        trained_step.assign_add(STEPS_PER_TRAIN_FUNCTION)
+    ```
+
+    In this workflow, `PreemptionCheckpointHandler.run` will flag preemption
+    signal received, and `watch_preemption_scope` will handle the preemption
+    signal by saving a checkpoint and then either exit to restart or execute a
+    user-passed `exit_fn` in `tf.distribute.experimental.TerminationConfig`. If
+    no preemption signal is received during execution of ops and function inside
+    the scope, `watch_preemption_scope` ensures the completion of all async op
+    and function execution when exiting and will raises exceptions if async
+    execution results in an error state.
+
+    Yields:
+      None
+    """
     if self._platform_device == failure_handling_util.PlatformDevice.INTERNAL_TPU:
       try:
         with context.async_scope():
@@ -955,7 +1010,7 @@ class PreemptionCheckpointHandler(object):
 
   def _save_checkpoint(self, *args, **kwargs):
     """Saves the checkpoint and exit program."""
-    distribution_strategy_api_counter.get_cell(
+    distribute_lib.distribution_strategy_input_api_counter.get_cell(
         self._platform_device.name,
         'PreemptionCheckpointHandler Saving Checkpoint').increase_by(1)
     logging.info('PreemptionCheckpointHandler: Starting saving a checkpoint.')
@@ -1163,12 +1218,3 @@ class PreemptionCheckpointHandler(object):
 # TODO(wxinyi): remove this line after we move the Keras callback prototype and
 # change gce test usage.
 WorkerPreemptionHandler = PreemptionCheckpointHandler
-
-
-# ------------------------------------------------------------------------------
-# Metrics to track which distribution strategy APIs (reusable by future APIs)
-distribution_strategy_api_counter = monitoring.Counter(
-    '/tensorflow/api/distribution_strategy/api',
-    'Counter to track the usage of the distribute strategy APIs',
-    'platform or accelerator',
-    'api')

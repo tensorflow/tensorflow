@@ -113,6 +113,22 @@ def device_name() -> str:
   return _dtensor_device().name
 
 
+@tf_export("experimental.dtensor.is_dtensor", v1=[])
+def is_dtensor(tensor) -> bool:
+  """Check whether the input tensor is a DTensor.
+
+  In Python, a DTensor has the same type as a `tf.Tensor`. This method will
+  let you check and handle the tensor differently if a tf.Tensor is a DTensor.
+
+  Args:
+    tensor: an object to be checked.
+
+  Returns:
+    bool, True if the given tensor is a DTensor.
+  """
+  return _dtensor_device().is_dtensor(tensor)
+
+
 # -----------------------------------------------------------------------------
 # Data transfer methods.
 
@@ -126,7 +142,7 @@ def copy_to_mesh(
 
   Copies a regular tf.Tensor onto the DTensor device. Use the mesh attached to
   `layout` as target mesh. This method currently only supports replicated
-  layouts. To get a DTensor with a sharded layout, use the `pack` method.
+  layouts, or one-to-one copies for sharded layouts.
 
   Args:
     tensor: A regular tf.Tensor to be copied as a DTensor.
@@ -138,7 +154,8 @@ def copy_to_mesh(
     A DTensor on the DTensor device with the given layout.
   """
   del source_layout
-  return _dtensor_device().copy_to_mesh(tensor, layout)
+  with run_on(layout.mesh):
+    return gen_dtensor_ops.copy_to_mesh(tensor, layout.to_string())
 
 
 @tf_export("experimental.dtensor.pack", v1=[])
@@ -393,7 +410,8 @@ def relayout(tensor: ops.Tensor, layout: layout_lib.Layout) -> ops.Tensor:
     A DTensor output from the Relayout op.
   """
   layout_str = layout.to_string()
-  return gen_dtensor_ops.relayout(tensor, layout_str)
+  with run_on(layout.mesh):
+    return gen_dtensor_ops.relayout(tensor, layout_str)
 
 
 def _set_dtensor_device(device: dtensor_device.DTensorDevice) -> None:
@@ -423,8 +441,17 @@ def _reset() -> None:
 
 @ops.RegisterGradient("Relayout")
 def _relayout_gradient(op, grad):
-  del op
+  grad = gen_dtensor_ops.relayout_grad(grad, forward_input=op.inputs[0])
   return grad
+
+
+@ops.RegisterGradient("RelayoutGrad")
+def _relayout_grad_gradient(op, grad):
+  # Gradient of RelayoutGrad is relayout to the original Relayout's output.
+  grad = gen_dtensor_ops.relayout_grad(grad, forward_input=op.inputs[0])
+  # Return None for forward_input's partial gradient since it is not connected
+  # to the target's gradient.
+  return grad, None
 
 
 @ops.RegisterGradient("CopyToMesh")

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SNAPSHOT_UTILS_H_
 #define TENSORFLOW_CORE_DATA_SNAPSHOT_UTILS_H_
 
+#include <optional>
+
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -238,10 +240,13 @@ class Reader {
 class TFRecordReader : public Reader {
  public:
   TFRecordReader(const std::string& filename, const string& compression_type,
-                 const DataTypeVector& dtypes);
+                 const DataTypeVector& dtypes,
+                 std::optional<int64_t> output_buffer_size = std::nullopt);
 
   Status Initialize(Env* env) override;
 
+  // Reads Tensors into `read_tensors`. Returns OK on success, OutOfRange for
+  // end of file, or an error status if there is an error.
   Status ReadTensors(std::vector<Tensor>* read_tensors) override;
 
   ~TFRecordReader() override = default;
@@ -254,6 +259,7 @@ class TFRecordReader : public Reader {
 
   const string compression_type_;
   const DataTypeVector dtypes_;
+  const std::optional<int64_t> output_buffer_size_;
 };
 
 // Reads snapshots previously written with `CustomWriter`.

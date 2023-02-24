@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/support/byte_buffer.h"
+#include "absl/strings/cord.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/stringpiece.h"
@@ -61,7 +62,7 @@ inline bool IsStreamRemovedError(const ::grpc::Status& s) {
 
 inline std::string SerializePayloads(const Status& s) {
   tensorflow::distributed_runtime::GrpcPayloadContainer container;
-  s.ForEachPayload([&container](StringPiece key, StringPiece value) {
+  s.ForEachPayload([&container](StringPiece key, const absl::Cord& value) {
     (*container.mutable_payloads())[std::string(key)] = std::string(value);
   });
   return container.SerializeAsString();
@@ -71,12 +72,12 @@ inline void InsertSerializedPayloads(Status& s, std::string payloads) {
   tensorflow::distributed_runtime::GrpcPayloadContainer container;
   if (container.ParseFromString(payloads)) {
     for (const auto& key_val : container.payloads()) {
-      s.SetPayload(key_val.first, key_val.second);
+      s.SetPayload(key_val.first, absl::Cord(key_val.second));
     }
   } else {
     s.SetPayload(kGrpcPayloadsLost,
-                 tensorflow::distributed_runtime::GrpcPayloadsLost()
-                     .SerializeAsString());
+                 absl::Cord(tensorflow::distributed_runtime::GrpcPayloadsLost()
+                                .SerializeAsString()));
   }
 }
 

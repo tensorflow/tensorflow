@@ -23,6 +23,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
@@ -52,6 +56,56 @@ std::unique_ptr<FlatBufferBuilder> CopyModel(
   copy->Finish(CreateModel(*copy, &model_obj));
 
   return copy;
+}
+
+// A simple holder for file descriptor that will close the file descriptor at
+// destruction time.
+class FdHolder {
+ public:
+  explicit FdHolder(int fd) : fd_(fd) {}
+
+  // Move only.
+  FdHolder(FdHolder&& other) = default;
+  FdHolder& operator=(FdHolder&& other) = default;
+
+  ~FdHolder() {
+    if (fd_ > 0) {
+      close(fd_);
+    }
+  }
+
+ private:
+  int fd_;
+};
+
+// Returns a FdHolder that will close the duped file descriptor when going out
+// of scope. If the model is passed in as a file descriptor, update the
+// model_path with a duped file descriptor. The original file descriptor may be
+// opened with FD_CLOEXEC, and cannot be read from the child process.
+std::unique_ptr<FdHolder> UpdateModelPathIfUsingFd(std::string& model_path) {
+  if (!absl::StartsWith(model_path, "fd:")) {
+    return nullptr;
+  }
+  std::vector<std::string> parts = absl::StrSplit(model_path, ':');
+  int model_fd;
+  if (!absl::SimpleAtoi(parts[1], &model_fd)) {
+    TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
+                    "Failed to parse file descriptor %s from model_path %s",
+                    parts[1].c_str(), model_path.c_str());
+    return nullptr;
+  }
+  int new_fd = dup(model_fd);
+  if (new_fd < 0) {
+    TFLITE_LOG_PROD(
+        TFLITE_LOG_ERROR,
+        "Failed to dup() file descriptor. Original fd: %d errno: %d", model_fd,
+        errno);
+    return nullptr;
+  }
+
+  parts[1] = std::to_string(new_fd);
+  model_path = absl::StrJoin(parts, ":");
+  return std::make_unique<FdHolder>(new_fd);
 }
 
 }  // namespace
@@ -107,6 +161,13 @@ MinibenchmarkStatus ValidatorRunnerImpl::Init() {
     return status;
   }
 
+  status = gpu_helper_.Load();
+  if (status != kMinibenchmarkSuccess) {
+    TF_LITE_REPORT_ERROR(error_reporter_, "Failed to load GPU Module: %d",
+                         static_cast<int>(status));
+    return status;
+  }
+
   status = validation_entrypoint_helper_.Validate();
   if (status != kMinibenchmarkSuccess) {
     return status;
@@ -136,19 +197,24 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
   // error_reporter is not passed in because the ownership cannot be passed to
   // the thread.
   std::thread detached_thread(
-      [model_path = fd_or_model_path_, storage_path = storage_path_,
+      [original_model_path = fd_or_model_path_, storage_path = storage_path_,
        data_directory_path = data_directory_path_,
        tflite_settings = std::move(tflite_settings),
        validation_entrypoint_name =
            validation_entrypoint_helper_.name().c_str(),
        validation_entrypoint = validation_entrypoint_helper_.LoadEntrypoint(),
        nnapi_sl_path = nnapi_helper_.nnapi_sl_path(),
+       gpu_so_path = gpu_helper_.gpu_so_path(),
        model_with_custom_input = CopyModel(model_with_custom_input_.get()),
        timeout_ms = timeout_ms_]() {
         FileLock lock(storage_path + ".parent_lock");
         if (!lock.TryLock()) {
           return;
         }
+
+        std::string model_path = original_model_path;
+        std::unique_ptr<FdHolder> fd_holder =
+            UpdateModelPathIfUsingFd(model_path);
         for (auto& one_setting : *tflite_settings) {
           FlatbufferStorage<BenchmarkEvent> storage(storage_path);
           TFLiteSettingsT tflite_settings_obj;
@@ -180,8 +246,8 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
                     fbb, CreateTFLiteSettings(fbb, &tflite_settings_obj),
                     BenchmarkEventType_ERROR, /* result */ 0,
                     CreateBenchmarkError(fbb, BenchmarkStage_INITIALIZATION,
-                                         status, signal, /* error_code */ {},
-                                         exitcode),
+                                         exitcode, signal, /* error_code */ {},
+                                         status),
                     Validator::BootTimeMicros(), Validator::WallTimeMicros()));
             continue;
           }
@@ -191,14 +257,24 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
           }
           args.push_back(storage_path);
           args.push_back(data_directory_path);
-          if (!nnapi_sl_path.empty() &&
-              tflite_settings_obj.delegate == tflite::Delegate_NNAPI) {
+          // If NNAPI or GPU is provided as a shared object file, pass the file
+          // path as a commandline flag.
+          if (tflite_settings_obj.delegate == tflite::Delegate_NNAPI &&
+              !nnapi_sl_path.empty()) {
             TFLITE_LOG_PROD(
                 TFLITE_LOG_INFO,
                 "Running benchmark using NNAPI support library at path '%s'",
                 nnapi_sl_path.c_str());
             args.push_back(nnapi_sl_path);
+          } else if (tflite_settings_obj.delegate == tflite::Delegate_GPU &&
+                     !gpu_so_path.empty()) {
+            TFLITE_LOG_PROD(
+                TFLITE_LOG_INFO,
+                "Running benchmark using GPU Delegate Module at path '%s'",
+                gpu_so_path.c_str());
+            args.push_back(gpu_so_path);
           }
+
           std::string output;
           status = runner.Run(model_with_custom_input.get(), args, &output,
                               &exitcode, &signal);
@@ -210,8 +286,8 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
                 CreateBenchmarkEvent(
                     fbb, CreateTFLiteSettings(fbb, &tflite_settings_obj),
                     BenchmarkEventType_ERROR, /* result */ 0,
-                    CreateBenchmarkError(fbb, BenchmarkStage_UNKNOWN, status,
-                                         signal, {}, exitcode),
+                    CreateBenchmarkError(fbb, BenchmarkStage_UNKNOWN, exitcode,
+                                         signal, {}, status),
                     Validator::BootTimeMicros(), Validator::WallTimeMicros()));
           }
         }
@@ -231,9 +307,13 @@ ValidatorRunnerImpl::GetSuccessfulResultsFromStorage() {
     if (benchmark_evaluator_->IsValidationSuccessEvent(*event)) {
       results.push_back(event);
     } else if (event->event_type() == BenchmarkEventType_ERROR) {
-      TFLITE_LOG(TFLITE_LOG_WARNING,
-                 "Benchmark event failed with error code (%d).",
-                 event->error()->error_code());
+      TFLITE_LOG(
+          TFLITE_LOG_WARNING,
+          "Benchmark event failed with error code (%d), signal (%d), exit code "
+          "(%d), stage (%d), mini benchmark error code (%d).\n",
+          event->error()->error_code(), event->error()->signal(),
+          event->error()->exit_code(), event->error()->stage(),
+          event->error()->mini_benchmark_error_code());
     }
   }
   return results;
@@ -329,5 +409,23 @@ MinibenchmarkStatus ValidatorRunnerImpl::NnapiHelper::Load() {
   return kMinibenchmarkSuccess;
 }
 
+MinibenchmarkStatus ValidatorRunnerImpl::GpuHelper::Load() {
+  if (gpu_plugin_handle_) {
+#ifndef _WIN32
+    Dl_info dl_info;
+    // Looking for the file where GPU is loaded from. This file will be passed
+    // to validator in a separate process.
+    int status = dladdr(gpu_plugin_handle_, &dl_info);
+    if (status == 0 || !dl_info.dli_fname) {
+      return kMinibenchmarkCannotLoadGpuModule;
+    }
+    gpu_so_path_ = dl_info.dli_fname;
+  }
+#else   // _WIN32
+    return kMinibenchmarkUnsupportedPlatform;
+  }
+#endif  // !_WIN32
+  return kMinibenchmarkSuccess;
+}
 }  // namespace acceleration
 }  // namespace tflite

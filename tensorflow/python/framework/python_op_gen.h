@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/python/framework/op_reg_offset.pb.h"
 
 namespace tensorflow {
 
@@ -32,9 +33,13 @@ namespace tensorflow {
 // api_defs is typically constructed directly from ops.
 // hidden_ops should be a list of Op names that should get a leading _
 // in the output.
-// source_file_name is optional and contains the name of the original C++ source
+// source_file_list is optional and contains the name of the original C++ source
 // file where the ops' REGISTER_OP() calls reside.
+// op_reg_offsets contains the location of the ops' REGISTER_OP() calls
+// in the file. If specified, returned string will contain a metadata comment
+// which contains indexing information for Kythe.
 string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
+                    const OpRegOffsets& op_reg_offsets,
                     absl::Span<const string> hidden_ops,
                     absl::Span<const string> source_file_list,
                     const std::unordered_set<string>& type_annotate_ops);
@@ -45,6 +50,7 @@ string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
 // Optional fourth argument is the name of the original C++ source file
 // where the ops' REGISTER_OP() calls reside.
 void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
+                    const OpRegOffsets& op_reg_offsets,
                     absl::Span<const string> hidden_ops,
                     absl::Span<const string> source_file_list,
                     const std::unordered_set<string>& type_annotate_ops);

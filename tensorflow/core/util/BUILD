@@ -187,6 +187,7 @@ filegroup(
         "util.h",
         "work_sharder.h",
         "xla_config_registry.h",
+        "zen_util.h",
         "//tensorflow/tsl/util:framework_internal_private_hdrs",
     ],
 )
@@ -753,7 +754,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_plugin",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_wrapper",
@@ -779,6 +779,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
     ] + if_cuda([
         "//tensorflow/compiler/xla/stream_executor/cuda:cusparse_lib",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_blas_utils",
+        "//tensorflow/compiler/xla/stream_executor:data_type",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
         "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",

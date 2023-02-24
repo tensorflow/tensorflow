@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/softsign_op.h"
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -108,10 +109,8 @@ namespace functor {
 
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_SOFTSIGN_GPU_SPEC);
-TF_CALL_bfloat16(DECLARE_SOFTSIGN_GPU_SPEC);
 #endif
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_SOFTSIGN_GRAD_GPU_SPEC);
-TF_CALL_bfloat16(DECLARE_SOFTSIGN_GRAD_GPU_SPEC);
 }  // namespace functor
 
 // Registration of the GPU implementations.
@@ -127,11 +126,8 @@ TF_CALL_bfloat16(DECLARE_SOFTSIGN_GRAD_GPU_SPEC);
 
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SOFTSIGN_GPU_KERNELS);
-TF_CALL_bfloat16(REGISTER_SOFTSIGN_GPU_KERNELS);
 #endif
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SOFTSIGN_GRAD_GPU_KERNELS);
-TF_CALL_bfloat16(REGISTER_SOFTSIGN_GRAD_GPU_KERNELS);
-
 #undef REGISTER_SOFTSIGN_GPU_KERNELS
 #undef REGISTER_SOFTSIGN_GRAD_GPU_KERNELS
 

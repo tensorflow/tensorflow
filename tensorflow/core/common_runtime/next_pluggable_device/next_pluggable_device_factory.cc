@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -48,6 +48,11 @@ Status NextPluggableDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const std::string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
   TF_Status* c_status = TF_NewStatus();
+
+  // Setup per-device states or resources that are internal to plugin.
+  api_->TFNPD_InitPluginInternalDeviceStates(c_status);
+  TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status));
+
   int32_t device_count = api_->TFNPD_GetDeviceCount(c_status);
   TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status));
   TF_DeleteStatus(c_status);

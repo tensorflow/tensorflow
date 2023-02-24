@@ -106,8 +106,9 @@ struct XlaBuilderFriend {
                                           const XlaOp operands,
                                           const Shape& shape);
 
-  static XlaOp BuildCopyStart(XlaBuilder* builder, const XlaOp operand,
-                              bool is_cross_program_prefetch);
+  static XlaOp BuildCopyStart(
+      XlaBuilder* builder, XlaOp operand,
+      std::optional<int> cross_program_prefetch_index = std::nullopt);
   static XlaOp BuildCopyDone(XlaBuilder* builder, const XlaOp operand,
                              const Shape& shape);
 
@@ -453,7 +454,7 @@ class XlaBuilder {
                            int64_t target_dim_num);
 
   // Adds a new input/output alias. Since the input/output shape information are
-  // not available until the computation is built, and eventual error in the
+  // not available until the computation is built, any eventual error in the
   // arguments of this API will be detected only at computation Build() time.
   //
   // Note: Except when 'must-alias' is true, alias is assumed to be 'may-alias'
@@ -1497,6 +1498,7 @@ class XlaBuilder {
   friend XlaOp Clz(XlaOp operand);
   friend XlaOp Cos(XlaOp operand);
   friend XlaOp Sin(XlaOp operand);
+  friend XlaOp Tan(XlaOp operand);
   friend XlaOp Tanh(XlaOp operand);
   friend XlaOp Real(XlaOp operand);
   friend XlaOp Imag(XlaOp operand);
@@ -2561,6 +2563,9 @@ XlaOp Cos(XlaOp operand);
 
 // Enqueues a sine instruction onto the computation.
 XlaOp Sin(XlaOp operand);
+
+// Enqueues a tan instruction onto the computation.
+XlaOp Tan(XlaOp operand);
 
 // Enqueues a tanh instruction onto the computation.
 XlaOp Tanh(XlaOp operand);

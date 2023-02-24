@@ -153,4 +153,3 @@ def FuseAffineOpWithBiasAddAndMul : Pat<
    (CanBeSymmetricallyQuantized $weight),
    (CanBeSymmetricallyQuantized $bias),
    (HasEqualShape $bias, $mul_rhs_value)]>;
-

@@ -596,7 +596,7 @@ foreach Mapping = [
                    [TF_SinOp, MHLO_SineOp],
                    [TF_SqrtOp, MHLO_SqrtOp],
                    [TF_TanhOp, MHLO_TanhOp],
-                   [TF_TanOp, CHLO_TanOp]
+                   [TF_TanOp, MHLO_TanOp]
                   ] in {
  def : Pat<(Mapping[0] MHLO_Tensor:$input),
            (Mapping[1] $input)>;

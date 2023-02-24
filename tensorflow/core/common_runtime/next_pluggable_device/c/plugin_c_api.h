@@ -66,6 +66,9 @@ typedef void TFNPD_DeviceDeallocateRaw(TFNPD_DeviceAllocator* allocator,
 typedef TF_StringView TFNPD_DeviceAllocatorName(
     TFNPD_DeviceAllocator* allocator);
 
+typedef bool TFNPD_DeviceAllocatorAllocatesOpaqueHandle(
+    TFNPD_DeviceAllocator* allocator);
+
 typedef void TFNPD_DeviceAllocatorDelete(TFNPD_DeviceAllocator* allocator);
 
 // ------------------------  Tensor Transfers  ---------------------------------
@@ -89,7 +92,7 @@ typedef TFNPD_DeviceEvent* TFNPD_SameDeviceTensorCopy(
 
 typedef void TFNPD_DeviceContextDelete(TFNPD_DeviceContext* context);
 
-// ------------------------  TF2XLA  ---------------------------------
+// ------------------------------  TF2XLA  -------------------------------------
 // TODO(b/254484247): either separate XLA_Shape to its own file, or use PJRT
 // solution when it is ready.
 typedef void TFNPD_XlaShapeToDeviceShapeRepresentation(
@@ -99,6 +102,9 @@ typedef void TFNPD_XlaShapeToDeviceShapeRepresentation(
 
 // -----------------------  Plugin System related  -----------------------------
 typedef int32_t TFNPD_GetDeviceCount(TF_Status* status);
+
+// Initialize any per-device states or resources that are internal to plugin.
+typedef void TFNPD_InitPluginInternalDeviceStates(TF_Status* status);
 
 // --------------------------- C API access ------------------------------------
 #define TFNPD_API_STRUCT_FN(fn_type) fn_type* fn_type
@@ -117,6 +123,7 @@ typedef struct {
   TFNPD_API_STRUCT_FN(TFNPD_DeviceAllocateRaw);
   TFNPD_API_STRUCT_FN(TFNPD_DeviceDeallocateRaw);
   TFNPD_API_STRUCT_FN(TFNPD_DeviceAllocatorName);
+  TFNPD_API_STRUCT_FN(TFNPD_DeviceAllocatorAllocatesOpaqueHandle);
   TFNPD_API_STRUCT_FN(TFNPD_DeviceAllocatorDelete);
 
   TFNPD_API_STRUCT_FN(TFNPD_DeviceContextCreate);
@@ -131,12 +138,25 @@ typedef struct {
   TFNPD_API_STRUCT_FN(TFNPD_XlaShapeToDeviceShapeRepresentation);
 
   TFNPD_API_STRUCT_FN(TFNPD_GetDeviceCount);
+  TFNPD_API_STRUCT_FN(TFNPD_InitPluginInternalDeviceStates);
 } TFNPD_Api;
 
 const size_t TFNPD_Api_STRUCT_SIZE =
-    TF_OFFSET_OF_END(TFNPD_Api, TFNPD_GetDeviceCount);
+    TF_OFFSET_OF_END(TFNPD_Api, TFNPD_InitPluginInternalDeviceStates);
 
 #undef TFNPD_API_STRUCT_FN
+
+typedef struct TFNPD_PluginParams {
+  size_t struct_size;
+  void* ext;  // reserved for future use
+
+  const char* device_type;              // output, set by plugin
+  const char* compilation_device_name;  // output, set by plugin
+} TFNPD_PluginParams;
+const size_t TFNPD_PLUGIN_PARAMS_STRUCT_SIZE =
+    TF_OFFSET_OF_END(TFNPD_PluginParams, compilation_device_name);
+const TFNPD_Api* TFNPD_InitPlugin(TFNPD_PluginParams* params,
+                                  TF_Status* tf_status);
 
 #if defined(__cplusplus)
 }  // extern "C"

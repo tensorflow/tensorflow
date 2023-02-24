@@ -31,11 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/threadpool.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_diagnostics.h"
@@ -43,6 +40,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/hash.h"
 #include "tensorflow/tsl/util/determinism.h"
 #include "tensorflow/tsl/util/env_var.h"
@@ -223,31 +222,31 @@ namespace wrap {
 
 #else
 
-#define STREAM_EXECUTOR_MIOPEN_WRAP(__name)                               \
-  struct DynLoadShim__##__name {                                          \
-    static const char* kName;                                             \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
-    static void* GetDsoHandle() {                                         \
-      auto s = internal::CachedDsoLoader::GetMiopenDsoHandle();           \
-      return s.value();                                              \
-    }                                                                     \
-    static FuncPtrT LoadOrDie() {                                         \
-      void* f;                                                            \
-      auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
-                                                          kName, &f);     \
-      CHECK(s.ok()) << "could not find " << kName                         \
-                    << " in miopen DSO; dlerror: " << s.error_message();  \
-      return reinterpret_cast<FuncPtrT>(f);                               \
-    }                                                                     \
-    static FuncPtrT DynLoad() {                                           \
-      static FuncPtrT f = LoadOrDie();                                    \
-      return f;                                                           \
-    }                                                                     \
-    template <typename... Args>                                           \
-    miopenStatus_t operator()(Args... args) {                             \
-      return DynLoad()(args...);                                          \
-    }                                                                     \
-  } __name;                                                               \
+#define STREAM_EXECUTOR_MIOPEN_WRAP(__name)                              \
+  struct DynLoadShim__##__name {                                         \
+    static const char* kName;                                            \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;         \
+    static void* GetDsoHandle() {                                        \
+      auto s = internal::CachedDsoLoader::GetMiopenDsoHandle();          \
+      return s.value();                                                  \
+    }                                                                    \
+    static FuncPtrT LoadOrDie() {                                        \
+      void* f;                                                           \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
+                                                         kName, &f);     \
+      CHECK(s.ok()) << "could not find " << kName                        \
+                    << " in miopen DSO; dlerror: " << s.error_message(); \
+      return reinterpret_cast<FuncPtrT>(f);                              \
+    }                                                                    \
+    static FuncPtrT DynLoad() {                                          \
+      static FuncPtrT f = LoadOrDie();                                   \
+      return f;                                                          \
+    }                                                                    \
+    template <typename... Args>                                          \
+    miopenStatus_t operator()(Args... args) {                            \
+      return DynLoad()(args...);                                         \
+    }                                                                    \
+  } __name;                                                              \
   const char* DynLoadShim__##__name::kName = #__name;
 
 #endif
@@ -751,7 +750,7 @@ tsl::Status MIOpenSupport::Init() {
     }
   }
 
-  return tsl::Status{port::error::INTERNAL,
+  return tsl::Status{tsl::error::INTERNAL,
                      absl::StrCat("miopen library could not create a handle: ",
                                   ToString(status))};
 }
@@ -1879,7 +1878,7 @@ class MixinBase<void> {};
 #define RETURN_IF_MIOPEN_ERROR(STATUS, ...)                              \
   if (!SE_PREDICT_TRUE((STATUS) == miopenStatusSuccess)) {               \
     string error_msg = absl::StrCat(ToString(STATUS), " ", __VA_ARGS__); \
-    SetFailure(::tsl::Status(port::error::UNKNOWN, error_msg));          \
+    SetFailure(::tsl::Status(tsl::error::UNKNOWN, error_msg));           \
     LOG(ERROR) << error_msg;                                             \
     return;                                                              \
   }
@@ -2045,7 +2044,7 @@ class MIOpenRnnSequenceTensorDescriptor
       string error_msg =
           absl::StrCat("sequence length must be positive: ", seq_length);
       LOG(ERROR) << error_msg;
-      SetFailure(tsl::Status(port::error::UNKNOWN, error_msg));
+      SetFailure(tsl::Status(tsl::error::UNKNOWN, error_msg));
       return;
     }
     auto status = wrap::miopenCreateTensorDescriptor(&handle);
@@ -2591,7 +2590,7 @@ tsl::Status MIOpenSupport::DoPrepareForCtcLoss(
   if (status != miopenStatusSuccess) {
     LOG(FATAL) << "call to miopenDestroyCTCLossDescriptor failed: "
                << ToString(status);
-    return port::InternalError(
+    return tsl::errors::Internal(
         "Failed to determine scratch memory size for MIOpen CTC Loss");
   }
 
@@ -2600,9 +2599,8 @@ tsl::Status MIOpenSupport::DoPrepareForCtcLoss(
   // Allocate the workspace.
   if (workspace_size_in_bytes != 0) {
     if (scratch_allocator == nullptr) {
-      return port::InternalError(
-          absl::StrCat("An allocator must be specified when scratch memory is "
-                       "needed"));
+      return tsl::errors::Internal(
+          "An allocator must be specified when scratch memory is needed");
     }
     auto scratch_or = scratch_allocator->AllocateBytes(workspace_size_in_bytes);
     if (scratch_or.ok()) {
@@ -2615,9 +2613,9 @@ tsl::Status MIOpenSupport::DoPrepareForCtcLoss(
              "larger number (e.g. 8192) to increase the max memory limit.\n"
           << "\tIncreasing the max memory limit might help resolve this "
              "error";
-      return port::InternalError(absl::StrCat(
+      return tsl::errors::Internal(
           "Failed to allocate scratch memory for MIOpen CTC Loss, of size: ",
-          workspace_size_in_bytes));
+          workspace_size_in_bytes);
     }
   }
 
@@ -2648,7 +2646,7 @@ tsl::Status MIOpenSupport::DoCtcLossImpl(
       scratch_memory.opaque(), scratch_memory.size());
   if (status != miopenStatusSuccess) {
     LOG(FATAL) << "call to miopenCTCLoss failed: " << ToString(status);
-    return port::InternalError("Failure during MIOpen CTC Loss");
+    return tsl::errors::Internal("Failure during MIOpen CTC Loss");
   }
 
   return tsl::OkStatus();
@@ -2665,7 +2663,7 @@ tsl::Status MIOpenSupport::DoCtcLoss(
     int ctc_loss_algo_id) {
   // Current MIOPen CTC Loss only supports the float datatype
   if (element_type != dnn::DataType::kFloat) {
-    return tsl::Status(port::error::INVALID_ARGUMENT,
+    return tsl::Status(tsl::error::INVALID_ARGUMENT,
                        "MIOpenCTCLossDescriptor is supported only when the "
                        "DataType is float");
   }
@@ -2695,14 +2693,14 @@ MIOpenSupport::createRnnDescriptor(
   // ROCM TODO: batch_size is used in dynamic persistent RNN algorithm and is
   // not supported by MIOpen now.
   if (use_padded_io) {
-    return tsl::Status(port::error::INVALID_ARGUMENT,
+    return tsl::Status(tsl::error::INVALID_ARGUMENT,
                        "ROCm MIOpen only supports packed input output.");
   }
 
   bool use_projection = cell_size != 0 && hidden_size < cell_size;
   if (use_projection) {
     return tsl::Status(
-        port::error::INVALID_ARGUMENT,
+        tsl::error::INVALID_ARGUMENT,
         "ROCm MIOpen does not support RNN ProjectionLayers yet.");
   }
 
@@ -3044,9 +3042,8 @@ tsl::Status MIOpenSupport::DoPrepareForConvolution(
   // allocate scratch memory
   if (scratch_memory_size != 0) {
     if (scratch_allocator == nullptr) {
-      return port::InternalError(
-          absl::StrCat("An allocator must be specified when scratch memory is "
-                       "needed"));
+      return tsl::errors::Internal(
+          "An allocator must be specified when scratch memory is needed");
     }
     auto allocated = scratch_allocator->AllocateBytes(scratch_memory_size);
     if (allocated.ok()) {
@@ -3059,8 +3056,8 @@ tsl::Status MIOpenSupport::DoPrepareForConvolution(
              "larger number (e.g. 8192) to increase the max memory limit.\n"
           << "\tIncreasing the max memory limit might help resolve this "
              "error";
-      return port::InternalError(absl::StrCat(
-          "Failed to allocate scratch memory of size: ", scratch_memory_size));
+      return tsl::errors::Internal(
+          "Failed to allocate scratch memory of size: ", scratch_memory_size);
     }
   }
 
@@ -3114,14 +3111,14 @@ class RocmConvRunner : public dnn::ConvRunner {
     if (is_profiling) {
       timer.reset(new GpuTimer(parent_));
       if (!timer->Init()) {
-        return tsl::Status(port::error::INTERNAL, "Failed to init timer");
+        return tsl::Status(tsl::error::INTERNAL, "Failed to init timer");
       }
       // The start and stop of the timer should be as close to the MIOpen call
       // as possible. It is still possible for other threads to issue workload
       // on to this stream. So it could take multiple profiling measurements.
       if (!timer->Start(AsGpuStream(stream))) {
         timer->Destroy();
-        return tsl::Status(port::error::INTERNAL, "Failed to start timer");
+        return tsl::Status(tsl::error::INTERNAL, "Failed to start timer");
       }
     }
 
@@ -3186,14 +3183,14 @@ class RocmConvRunner : public dnn::ConvRunner {
         break;
       }
       default:
-        return port::InternalError(absl::StrCat("Unexpected convolution kind ",
-                                                static_cast<int>(kind_)));
+        return tsl::errors::Internal("Unexpected convolution kind ",
+                                     static_cast<int>(kind_));
     }
 
     if (is_profiling) {
       if (!timer->Stop(AsGpuStream(stream))) {
         timer->Destroy();
-        return tsl::Status(port::error::INTERNAL, "Failed to stop timer");
+        return tsl::Status(tsl::error::INTERNAL, "Failed to stop timer");
       }
       if (status == miopenStatusSuccess) {
         dnn::AlgorithmDesc algotype(algo_id_, false);
@@ -3205,9 +3202,8 @@ class RocmConvRunner : public dnn::ConvRunner {
     }
 
     if (status != miopenStatusSuccess) {
-      return port::InternalError(
-          absl::StrCat("Failed to enqueue convolution on stream: ",
-                       ::stream_executor::gpu::ToString(status)));
+      return tsl::errors::Internal("Failed to enqueue convolution on stream: ",
+                                   ::stream_executor::gpu::ToString(status));
     }
 
     return tsl::OkStatus();
@@ -3273,7 +3269,7 @@ tsl::Status MIOpenSupport::GetConvolveRunners(
     ScratchAllocator* scratch_allocator,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_runners) {
   if (input_type != output_type) {
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         absl::StrFormat("MIOpen backend does not support different input and "
                         "output types: %d != %d",
                         input_type, output_type));
@@ -3285,7 +3281,7 @@ tsl::Status MIOpenSupport::GetConvolveRunners(
           filter_descriptor, filter_data, output_descriptor, output_data,
           convolution_descriptor, scratch_allocator, &profile_results)) {
     return tsl::Status(
-        port::error::UNKNOWN,
+        tsl::error::UNKNOWN,
         "GetConvolveRunners: GetMIOpenConvolveAlgorithms failed");
   }
 
@@ -3310,7 +3306,7 @@ MIOpenSupport::ConvolveRunnerFromDesc(
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor) {
   if (input_type != output_type) {
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         absl::StrFormat("MIOpen backend does not support different input and "
                         "output types: %d != %d",
                         input_type, output_type));
@@ -3318,7 +3314,7 @@ MIOpenSupport::ConvolveRunnerFromDesc(
 
   auto workspace_size = algorithm_desc.workspace_size();
   if (!workspace_size) {
-    return port::InvalidArgumentError(
+    return tsl::errors::InvalidArgument(
         "MIOpenSupport::ConvolveRunnerFromDesc requires "
         "AlgorithmProto.workspace_size, but it was missing.");
   }
@@ -3926,7 +3922,7 @@ tsl::Status MIOpenSupport::DoFusedConvolve(
     ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
-  return port::UnimplementedError("fused convolve not implemented yet");
+  return tsl::errors::Unimplemented("fused convolve not implemented yet");
 }
 
 bool MIOpenSupport::DoTransformTensor(Stream* stream,
@@ -4141,7 +4137,7 @@ tsl::Status MIOpenSupport::DoPoolForward(
     const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
     ScratchAllocator* workspace_allocator) {
   if (element_type == dnn::DataType::kDouble) {
-    return tsl::Status(port::error::INVALID_ARGUMENT,
+    return tsl::Status(tsl::error::INVALID_ARGUMENT,
                        "MIOpen does not support pooling for double type yet");
   }
 
@@ -4167,9 +4163,9 @@ tsl::Status MIOpenSupport::DoPoolForward(
     auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
         pooling_desc.handle(), dest_desc.handle(), &workspace_size);
     if (status != miopenStatusSuccess) {
-      return port::InternalError(absl::StrCat(
+      return tsl::errors::Internal(
           "Failed to obtain workspace size for backward pooling on stream: ",
-          ToString(status)));
+          ToString(status));
     }
     if (workspace_size != 0) {
       PoolingWorkspaceDescriptor* pdesc = 0;
@@ -4199,8 +4195,8 @@ tsl::Status MIOpenSupport::DoPoolForward(
       input_data.opaque(), &beta, dest_desc.handle(), output_data.opaque(),
       do_backward, workspace, workspace_size);
   if (status != miopenStatusSuccess) {
-    return port::InternalError(absl::StrCat(
-        "Failed to enqueue forward pooling on stream: ", ToString(status)));
+    return tsl::errors::Internal(
+        "Failed to enqueue forward pooling on stream: ", ToString(status));
   }
   return tsl::OkStatus();
 }
@@ -4300,7 +4296,7 @@ tsl::Status MIOpenSupport::DoPoolBackward(
     DeviceMemoryBase input_diff_data, DeviceMemoryBase output_diff_data,
     ScratchAllocator* workspace_allocator) {
   if (element_type == dnn::DataType::kDouble) {
-    return tsl::Status(port::error::INVALID_ARGUMENT,
+    return tsl::Status(tsl::error::INVALID_ARGUMENT,
                        "MIOpen does not support pooling for double type yet");
   }
 
@@ -4326,9 +4322,9 @@ tsl::Status MIOpenSupport::DoPoolBackward(
   auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
       pooling_desc.handle(), dest_desc.handle(), &workspace_size_in_bytes);
   if (status != miopenStatusSuccess) {
-    return port::InternalError(absl::StrCat(
+    return tsl::errors::Internal(
         "Failed to obtain workspace size for backward pooling on stream: ",
-        ToString(status)));
+        ToString(status));
   }
 
   // Allocate the workspace.
@@ -4348,7 +4344,7 @@ tsl::Status MIOpenSupport::DoPoolBackward(
       auto allocated =
           workspace_allocator->AllocateBytes(workspace_size_in_bytes);
       if (!allocated.ok() || (workspace = allocated.value()) == nullptr) {
-        return port::InternalError(
+        return tsl::errors::Internal(
             "Failed to allocate backward pooling workspace");
       }
       DeviceMemory<uint8> dest2;  // duplicated dest from forward:
@@ -4369,7 +4365,7 @@ tsl::Status MIOpenSupport::DoPoolBackward(
         assert(workspace_allocator);
         auto allocated = workspace_allocator->AllocateBytes(dest2_size);
         if (!allocated.ok() || (dest2 = allocated.value()) == nullptr) {
-          return port::InternalError(
+          return tsl::errors::Internal(
               "Failed to allocate backward pooling workspace");
         }
       } else {
@@ -4383,9 +4379,9 @@ tsl::Status MIOpenSupport::DoPoolBackward(
           workspace.opaque(), workspace_size_in_bytes);
 
       if (status != miopenStatusSuccess) {
-        return port::InternalError(absl::StrCat(
+        return tsl::errors::Internal(
             "Failed to enqueue forward pooling (before backward) on stream: ",
-            ToString(status)));
+            ToString(status));
       }
       workspace_ptr = reinterpret_cast<uint8*>(workspace.opaque());
     }
@@ -4398,8 +4394,8 @@ tsl::Status MIOpenSupport::DoPoolBackward(
       output_diff_data.opaque(), workspace_ptr);
 
   if (status != miopenStatusSuccess) {
-    return port::InternalError(absl::StrCat(
-        "Failed to enqueue backward pooling on stream: ", ToString(status)));
+    return tsl::errors::Internal(
+        "Failed to enqueue backward pooling on stream: ", ToString(status));
   }
   return tsl::OkStatus();
 }

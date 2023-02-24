@@ -16,6 +16,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -72,8 +73,6 @@ using ::std::any_cast;
 
 using ::llvm::cast;
 using ::llvm::Expected;
-using ::llvm::MutableArrayRef;
-using ::llvm::None;
 using ::llvm::Optional;
 
 using ::tfrt::Argument;
@@ -84,8 +83,6 @@ using ::tfrt::AsyncValueRef;
 using ::tfrt::Attribute;
 using ::tfrt::Chain;
 using ::tfrt::CompilationUnitAttribute;
-using ::tfrt::DecodedDiagnostic;
-using ::tfrt::DType;
 using ::tfrt::EmitErrorAsync;
 using ::tfrt::ExecutionContext;
 using ::tfrt::HostContext;
@@ -292,7 +289,7 @@ static const std::string GetSessionName(RequestContext* req_ctx) {
 
 static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     const CompilationUnitAttribute& kernel, const ExecutionContext& exec_ctx,
-    const Optional<TfJitRtPipelineOpts>& opts = None) {
+    const Optional<TfJitRtPipelineOpts>& opts = std::nullopt) {
   // Request context must be initialized with the tf_jitrt state.
   auto* state = exec_ctx.request_ctx()->GetDataIfExists<TfJitRtRequestState>();
   if (LLVM_UNLIKELY(!state))
@@ -480,9 +477,6 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
             opts.legalize_i1_tensors = tf_jitrt_opts->legalize_i1_tensors;
           } else {
             opts.vectorize = GetJitRtFlags().vectorize;
-            opts.enable_xla_cpu_transformations =
-                tensorflow::GetJitRtFlags().enable_xla_cpu_transformations;
-            opts.lower_to_mmt4d = tensorflow::GetJitRtFlags().pack_matmul;
           }
 
           // Lower from Tensorflow to Linalg on buffers.
@@ -733,7 +727,7 @@ static void ExecuteImpl(Executable& executable, ArrayRef<MemrefDesc> memrefs,
   // notify the HostContext to emit the diagnostics for the kernel invocation.
   auto status = executable.Execute(memrefs, converter, opts);
   if (LLVM_UNLIKELY(!status.ok())) {
-    EmitError(exec_ctx, status.message());
+    EmitError(exec_ctx, status.status().message());
     return;
   }
 }
@@ -888,7 +882,7 @@ static void ExecuteImplAndMaybeLogQueryOfDeath(
     RepeatedArguments<FallbackTensor> operands, RemainingResults results,
     const StringAttribute& device, const CompilationUnitAttribute& kernel,
     const ExecutionContext& exec_ctx, bool debug = false,
-    const Optional<TfJitRtPipelineOpts>& opts = None) {
+    const Optional<TfJitRtPipelineOpts>& opts = std::nullopt) {
   if (LLVM_LIKELY(!GetJitRtFlags().log_query_of_death)) {
     return ExecuteImpl(operands, results, device, kernel, exec_ctx, debug,
                        opts);

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/any.h"
+#include "tensorflow/compiler/xla/frontend_attributes.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -1842,6 +1843,33 @@ Status CopyInsertion::AddCopiesToResolveInterference(
              HloDataflowAnalysis::GetInPlaceInputOutputPairs(instruction)) {
           const HloOperandIndex& operand_index = operand_and_output_index.first;
           if (copied_operands.contains(operand_index.operand_number)) {
+            continue;
+          }
+
+          bool can_share_buffer = false;
+          if (can_share_buffer_ != nullptr) {
+            auto maybe_can_share_buffer = can_share_buffer_(
+                instruction, instruction->operand(operand_index.operand_number),
+                operand_index.operand_index);
+            if (maybe_can_share_buffer.has_value()) {
+              can_share_buffer = maybe_can_share_buffer.value();
+            }
+          }
+
+          // Skip copies for aliasing input/output pairs iff:
+          // *) Operand can share buffer with 'instruction' output.
+          // *) Instruction has frontend attribute which indicates that the
+          //    write region of the input/output aliased buffer updated by
+          //    'instruction' is disjoint from the read region of the shared
+          //    buffer.
+          // *) All uses of the operand are 'instruction'.
+          if (can_share_buffer &&
+              HasDisjointReadWriteRegionsAttr(instruction) &&
+              absl::c_all_of(
+                  instruction->operand(operand_index.operand_number)->users(),
+                  [&instruction](const HloInstruction* user) {
+                    return user == instruction;
+                  })) {
             continue;
           }
           copied_operands.insert(operand_index.operand_number);

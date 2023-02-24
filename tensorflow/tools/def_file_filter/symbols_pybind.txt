@@ -104,6 +104,8 @@ tensorflow::SessionState::kTensorHandleResourceTypeName
 [//tensorflow/core/data/service:dispatcher_client] # dispatcher_client
 tensorflow::data::DataServiceDispatcherClient::EnsureInitialized
 tensorflow::data::DataServiceDispatcherClient::GetDataServiceMetadata
+tensorflow::data::DataServiceDispatcherClient::GetSnapshotSplit
+tensorflow::data::DataServiceDispatcherClient::Initialize
 
 [//tensorflow/core/data/service:grpc_util] # grpc_util
 tensorflow::data::grpc_util::Retry
@@ -114,7 +116,9 @@ tensorflow::data::GrpcDataServerBase::Start
 tensorflow::data::GrpcDataServerBase::Stop
 tensorflow::data::GrpcDataServerBase::BoundPort
 tensorflow::data::DispatchGrpcDataServer::NumWorkers
+tensorflow::data::DispatchGrpcDataServer::SnapshotStreams
 tensorflow::data::WorkerGrpcDataServer::NumTasks
+tensorflow::data::WorkerGrpcDataServer::SnapshotTaskProgresses
 tensorflow::data::NewDispatchServer
 tensorflow::data::NewWorkerServer
 
@@ -288,6 +292,8 @@ tensorflow::ExtendSession
 tensorflow::GetHandleShapeAndType
 tensorflow::SetHandleShapeAndType
 tensorflow::AddWhileInputHack
+tensorflow::RecordMutation
+tensorflow::Graph::IsControlEdge
 
 [//tensorflow/tsl/python/lib/core:numpy] # tf_session
 tsl::ImportNumpy
@@ -442,6 +448,8 @@ tensorflow::metrics::SavedModelWriteApi
 tensorflow::metrics::SavedModelReadApi
 tensorflow::metrics::SavedModelWriteFingerprint
 tensorflow::metrics::SavedModelReadFingerprint
+tensorflow::metrics::SavedModelWritePath
+tensorflow::metrics::SavedModelReadPath
 tensorflow::metrics::CheckpointReadDuration
 tensorflow::metrics::CheckpointWriteDuration
 tensorflow::metrics::AsyncCheckpointWriteDuration
@@ -451,6 +459,7 @@ tensorflow::metrics::CheckpointSize
 [//tensorflow/cc/saved_model:fingerprinting_impl] # SavedModel Fingerprinting
 tensorflow::saved_model::fingerprinting::CreateFingerprintDef
 tensorflow::saved_model::fingerprinting::ReadSavedModelFingerprint
+tensorflow::saved_model::fingerprinting::MakeFingerprintMap
 
 
 [//tensorflow/compiler/jit:flags] # tfe
@@ -504,6 +513,9 @@ tensorflow::CopyPythonAPITensorLists
 [//tensorflow/core/platform:statusor] # tfe
 tensorflow::internal_statusor::Helper::Crash
 
+[//tensorflow/core/platform:cpu_feature_guard] # cpu_feature_guard
+tensorflow::port::InfoAboutUnusedCPUFeatures
+
 [//tensorflow/core/function:runtime_client_cc] # runtime_client
 tensorflow::core::function::GlobalEagerContext
 tensorflow::core::function::GlobalPythonEagerContext
@@ -549,9 +561,11 @@ tensorflow::dtensor::TPUCoreLocationsToIDs
 tensorflow::dtensor::Pack
 tensorflow::dtensor::Unpack
 tensorflow::dtensor::FetchLayout
+tensorflow::dtensor::IsDTensor
 tensorflow::dtensor::SparsePack
 tensorflow::dtensor::IsSparseDTensor
 tensorflow::dtensor::GetFunctionCacheHitAndMissCount
+tensorflow::dtensor::SetIteratorElementLayouts
 
 [//tensorflow/dtensor/cc:tensor_layout] # DTensor
 tensorflow::dtensor::Mesh

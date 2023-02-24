@@ -160,8 +160,9 @@ bool Initialize() {
     return false;
   }
 
+  bool float8_already_registered;
   if (!tsl::custom_float_internal::RegisterNumpyDtype<float8_e4m3fn>(
-          numpy.get())) {
+          numpy.get(), &float8_already_registered)) {
     return false;
   }
   if (!tsl::custom_float_internal::RegisterNumpyDtype<float8_e5m2>(
@@ -169,8 +170,13 @@ bool Initialize() {
     return false;
   }
 
-  // Register casts between float8 types.
-  if (!tsl::custom_float_internal::RegisterCustomFloatCast<float8_e4m3fn,
+  // Register casts between float8 types. Only perform the cast if
+  // float8_e4m3b11 hasn't been previously registered, presumably by a different
+  // library. In this case, we assume the cast has also already been registered,
+  // and registering it again can cause segfaults due to accessing an
+  // uninitialized type descriptor in this library.
+  if (!float8_already_registered &&
+      !tsl::custom_float_internal::RegisterCustomFloatCast<float8_e4m3fn,
                                                            float8_e5m2>()) {
     return false;
   }

@@ -45,10 +45,10 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/autograph/utils",
+        "//tensorflow/python/autograph/utils:type_registry",
         "//tensorflow/python/data/experimental/ops:cardinality",
         "//tensorflow/python/data/experimental/ops:scan_ops",
         "//tensorflow/python/data/experimental/ops:take_while_ops",
-        "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
 )

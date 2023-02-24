@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/fingerprint.h"
 
@@ -153,6 +154,13 @@ class PjRtDevice {
   // reference will remain valid for the lifetime of the PjRtDevice.
   virtual const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
   Attributes() const = 0;
+
+  // Returns allocator stats for the device. Only some PjRtDevice
+  // implementations support allocator_stats, and those that do not will return
+  // an Unimplemented error.
+  virtual StatusOr<tsl::AllocatorStats> GetAllocatorStats() const {
+    return Unimplemented("GetAllocatorStats is not supported");
+  }
 };
 
 // Forward declaration.
@@ -469,15 +477,9 @@ class PjRtClient {
   virtual StatusOr<std::optional<std::string>> ExecutableFingerprint(
       const PjRtLoadedExecutable& executable) const = 0;
 
-  // Returns a platform-specific serialization of `executable`. The
-  // serialization is not guaranteed to be stable over time. `executable` must
-  // have been produced by this client.
-  virtual StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const = 0;
-
   // Deserializes a serialized executable as produced by
-  // SerializeExecutable(). `serialized` must have been produced by a client of
-  // the same platform and version as this one.
+  // PjRtExecutable::SerializeExecutable(). `serialized` must have been
+  // produced by a compiler of the same platform and version as this one.
   //
   // Pending completion of b/237720161, `options` is a mandatory argument in
   // most implementations of this interface. They _are_ optional for
@@ -510,6 +512,12 @@ class PjRtClient {
   // Creates a buffer on the device without initializing or copying any data.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) = 0;
+
+  // Creates buffer that carries an error future without allocating memory.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
+      Status error, const Shape& shape, PjRtDevice* device) {
+    return Unimplemented("CreateErrorBuffer not supported.");
+  }
 
   // A client may want to create a buffer, and hand the buffer to other PjRt
   // methods, before the data to store in the buffer is available to the client.
@@ -565,10 +573,10 @@ class PjRtClient {
 
     // Transfers 'data' into buffer_index. 'data' must be already laid out in
     // the correct on-device format, for example returned by a call to
-    // buffer->CopyRawToHost. No transfer calls into buffer_index can be made
-    // after this call. on_done is called when the transfer is complete but
-    // before the buffers are made available to their consumers. 'data' must
-    // remain in scope until on_done is called.
+    // buffer->CopyRawToHost. No transfer calls (or SetBufferError calls) into
+    // buffer_index can be made after this call. on_done is called when the
+    // transfer is complete but before the buffers are made available to their
+    // consumers. 'data' must remain in scope until on_done is called.
     virtual Status TransferRawDataToBuffer(
         int buffer_index, absl::string_view data,
         absl::AnyInvocable<void() &&> on_done) = 0;
@@ -579,23 +587,19 @@ class PjRtClient {
     // buffer->CopyRawToHost. If is_last_transfer is false then the buffer
     // remains unavailable to consumers after the transfer completes. If
     // is_last_transfer is true then the buffer becomes available to consumers
-    // after the transfer completes, and no transfer calls into buffer_index can
-    // be made after this call. on_done is called when the transfer is complete
-    // but before the buffers are made available to their consumers. 'data' must
-    // remain in scope until on_done is called.
+    // after the transfer completes, and no transfer calls (or SetBufferError
+    // calls) into buffer_index can be made after this call. on_done is called
+    // when the transfer is complete but before the buffers are made available
+    // to their consumers. 'data' must remain in scope until on_done is called.
     virtual Status TransferRawDataToSubBuffer(
         int buffer_index, const void* data, int64_t offset,
         int64_t transfer_size, bool is_last_transfer,
         absl::AnyInvocable<void() &&> on_done) = 0;
 
-    // Indicates that a client error occurred and the transfers will never
-    // complete. Puts all buffers in an error state. For the stream executor
-    // client, since error states are not well supported, this triggers a fatal
-    // error.
-    //
-    // SetTransferError may be called at most once, and may not be called unless
-    // at least one buffer has not yet had its final transfer initiated.
-    virtual void SetTransferError(Status error) = 0;
+    // Indicates that a specific buffer should result in an error status. No
+    // transfer calls (or further SetBufferError calls) into buffer_index can
+    // be made after this call.
+    virtual void SetBufferError(int buffer_index, Status error) = 0;
 
     // Adds the specified key/value metadata for the transfer operation.
     // This is typically used for debugging purposes, such as adding a handle

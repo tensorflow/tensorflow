@@ -27,9 +27,6 @@ namespace data {
 // Returns the default protocol to use for tf.data service control flow.
 std::string DefaultProtocol();
 
-// Returns the default protocol to use for tf.data service data transfer.
-std::string DefaultDataTransferProtocol();
-
 }  // namespace data
 }  // namespace tensorflow
 

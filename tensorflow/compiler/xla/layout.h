@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -49,6 +50,8 @@ class Tile {
     return dimensions() == other.dimensions();
   }
   bool operator!=(const Tile& other) const { return !(*this == other); }
+
+  void Print(Printer* printer) const;
 
   std::string ToString() const;
 
@@ -103,7 +106,8 @@ class Layout {
                   PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
                   PrimitiveType element_primitive_type = PRIMITIVE_TYPE_INVALID,
                   int64_t memory_space = 0,
-                  std::unique_ptr<Shape> physical_shape = nullptr);
+                  std::unique_ptr<Shape> physical_shape = nullptr,
+                  int64_t dynamic_shape_metadata_prefix_bytes = 0);
 
   Layout& operator=(const Layout& other);
   Layout& operator=(Layout&& other);
@@ -113,6 +117,9 @@ class Layout {
 
   // Returns a LayoutProto representation of the Layout.
   LayoutProto ToProto() const;
+
+  // Prints a human-readable string that represents this layout.
+  void Print(Printer* printer) const;
 
   // Returns a human-readable string that represents this layout.
   std::string ToString() const;

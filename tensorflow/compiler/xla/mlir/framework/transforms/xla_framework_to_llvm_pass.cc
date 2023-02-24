@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 
 namespace mlir {
-namespace mhlo {
+namespace xla_framework {
 namespace {
 
 // Create a memref descriptor given a pointer and memref type information.
@@ -130,7 +130,7 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<func::FuncOp> {
            "xla_entry function lowered with result values when memrefs should "
            "be caller supplied");
 
-    BlockAndValueMapping mapping;
+    IRMapping mapping;
     auto num_refs = funcOp.getFunctionType().getNumInputs();
     auto result_index = 0;
     for (unsigned i = 0; i < num_refs; ++i) {
@@ -270,5 +270,5 @@ CreateLegalizeXLAFrameworkToLLVMPass() {
   return std::make_unique<LegalizeXLAFrameworkToLLVMPass>();
 }
 
-}  // namespace mhlo
+}  // namespace xla_framework
 }  // namespace mlir

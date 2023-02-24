@@ -10,7 +10,7 @@ build:sigbuild_remote_cache_push --remote_cache="https://storage.googleapis.com/
 # Change the value of CACHEBUSTER when upgrading the toolchain, or when testing
 # different compilation methods. E.g. for a PR to test a new CUDA version, set
 # the CACHEBUSTER to the PR number.
-build --action_env=CACHEBUSTER=484302174
+build --action_env=CACHEBUSTER=501872366
 
 # Use Python 3.X as installed in container image
 build --action_env PYTHON_BIN_PATH="/usr/bin/python3"
@@ -31,6 +31,13 @@ build --distinct_host_configuration=false
 # Target the AVX instruction set
 build --copt=-mavx --host_copt=-mavx
 
+# Disable clang extention that rejects type definitions within offsetof. 
+# This was added in clang-16 by https://reviews.llvm.org/D133574.
+# Can be removed once upb is updated, since a type definition is used within
+# offset of in the current version of ubp.
+# See https://github.com/protocolbuffers/upb/blob/9effcbcb27f0a665f9f345030188c0b291e32482/upb/upb.c#L183.
+build --copt=-Wno-gnu-offsetof-extensions
+
 # Store performance profiling log in the mounted artifact directory.
 # The profile can be viewed by visiting chrome://tracing in a Chrome browser.
 # See https://docs.bazel.build/versions/main/skylark/performance.html#performance-profiling
@@ -45,7 +52,7 @@ build --action_env=TF_CUDA_VERSION="11"
 build --action_env=TF_CUDNN_VERSION="8"
 build --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-11.8"
 build --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
-build --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-15/bin/clang"
+build --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-16/bin/clang"
 build --action_env=TF_CUDA_CLANG="1"
 build --action_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
 build --crosstool_top="@sigbuild-r2.12-clang_config_cuda//crosstool:toolchain"

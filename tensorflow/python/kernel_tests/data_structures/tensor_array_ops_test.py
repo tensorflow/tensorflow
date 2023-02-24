@@ -1846,6 +1846,22 @@ class TensorArrayTest(test.TestCase):
     ta = ta.write(0, [0])
     self.assertEqual([42, 1], ta.stack().shape.as_list())
 
+  def testTensorArrayConcatFailsWhenMissingStepContainer(self):
+    @def_function.function
+    def func():
+      y = data_flow_ops.TensorArrayConcatV2(
+          handle=["a", "b"],
+          flow_in=0.1,
+          dtype=dtypes.int32,
+          element_shape_except0=1,
+      )
+      return y
+
+    with self.assertRaisesRegex(
+        errors.NotFoundError, "Container .* does not exist"
+    ):
+      self.evaluate(func())
+
 
 class TensorArrayBenchmark(test.Benchmark):
 

@@ -127,6 +127,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kCos:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kTan:
       return ShapeUtil::ElementIsComplex(instruction.shape());
 
     // We say that integer div/mod by a constant is cheap because it gets

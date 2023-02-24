@@ -30,7 +30,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffers.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
 #include "tensorflow/lite/profiling/telemetry/profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"
@@ -66,6 +67,10 @@ namespace tflite {
 /// Interpreter. Note: The user must ensure the lifetime of the model (and error
 /// reporter, if provided) is at least as long as interpreter's lifetime, and
 /// a single model instance may safely be used with multiple interpreters.
+using InterpreterBuilder = impl::InterpreterBuilder;
+
+namespace impl {
+
 class InterpreterBuilder {
  public:
   /// For this constructor, the ErrorReporter will be extracted from the
@@ -129,7 +134,7 @@ class InterpreterBuilder {
   TfLiteStatus ParseTensors(
       const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
       const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors,
-      Subgraph* subgraph);
+      Subgraph* subgraph, TfLiteTelemetrySubgraphInfo* subgraph_info);
   TfLiteStatus ApplyDelegates(Interpreter* interpreter);
   TfLiteStatus ParseQuantization(const QuantizationParameters* src_quantization,
                                  TfLiteQuantization* quantization,
@@ -140,6 +145,7 @@ class InterpreterBuilder {
       const flatbuffers::Vector<flatbuffers::Offset<SignatureDef>>*
           signature_def_list,
       Interpreter* interpreter);
+  void ParseConversionMetadata(TfLiteTelemetryInterpreterSettings* settings);
 
   const ::tflite::Model* model_;
   const OpResolver& op_resolver_;
@@ -163,6 +169,8 @@ class InterpreterBuilder {
 
   std::unique_ptr<telemetry::TelemetryProfiler> telemetry_profiler_;
 };
+
+}  // namespace impl
 
 }  // namespace tflite
 

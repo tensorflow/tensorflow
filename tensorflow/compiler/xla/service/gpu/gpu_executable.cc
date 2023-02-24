@@ -36,7 +36,9 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/type_converter.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
@@ -44,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
+#include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/collectives.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/executable.h"
@@ -79,6 +82,7 @@ bool IsXlaRuntimeExecutableEnabled(const HloModuleConfig& config) {
 namespace {
 
 using ::tsl::profiler::ScopedAnnotation;
+using ::tsl::profiler::ScopedAnnotationAlways;
 
 bool NeedsAsyncCommsStream(Thunk& thunk) {
   switch (thunk.kind()) {
@@ -137,19 +141,6 @@ GpuExecutable::~GpuExecutable() {
   if (has_module()) {
     XlaDebugInfoManager::Get()->UnregisterModule(module().unique_id());
   }
-
-  {
-    // We could have issued host->device mem copies in ResolveConstantGlobals.
-    // Wait for those to finish so that we can safely deallocate the backing HLO
-    // module.
-    //
-    // We need for the host->device memcpies to finish they are concurrently
-    // reading memory (xla::Literal's) owned by the HLO module.
-    absl::MutexLock lock(&module_handle_mutex_);
-    for (const auto& pair : module_globals_) {
-      CHECK(pair.first->SynchronizeAllActivity());
-    }
-  }
 }
 
 Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
@@ -203,7 +194,7 @@ Status ExecuteThunks(const std::string& module_name, ModuleIdentifier module_id,
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
-  ScopedAnnotation annotation([&] {
+  ScopedAnnotationAlways annotation([&] {
     std::string module_id_str;
     if (module_id >= 0) {
       module_id_str = absl::StrFormat(",program_id=%d", module_id);
@@ -288,6 +279,10 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
     TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
   }
 
+  // A flag signalling if constant initialization submitted memcpy operations
+  // to the `stream`.
+  int submitted_mem_copies = 0;
+
   for (const ConstantInfo& info : constants_) {
     StatusOr<stream_executor::DeviceMemoryBase> global_status;
     if (static_cast<bool>(module_handle)) {
@@ -307,6 +302,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
         // This means the constant did not have an initializer in the PTX and
         // therefore must be initialized by XLA here.
         stream->ThenMemcpy(&global, info.content.data(), info.content.size());
+        submitted_mem_copies = true;
       }
     } else {
       // The constant was not defined in the PTX and therefore must be both
@@ -327,6 +323,13 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
     if (info.allocation_index != -1) {
       InsertOrDie(&globals, info.allocation_index, global);
     }
+  }
+
+  // Wait for the completion of all host->device transfers, to guarantee that
+  // destructor will not race with any operations in flight (deallocate
+  // xla::Literal owned by the HLO module).
+  if (submitted_mem_copies) {
+    TF_CHECK_OK(stream->BlockHostUntilDone());
   }
 
   module_handles_.emplace(executor,
@@ -456,14 +459,15 @@ static Status ExecuteXlaRuntime(const std::string& module_name,
                                 const std::vector<uint8_t>& binary,
                                 const BufferAllocations& buffer_allocations,
                                 const BufferAllocation* temp_buffer,
-                                bool block_host_until_done) {
+                                bool block_host_until_done,
+                                NonAtomicallyUpgradeableRWLock& gpu_lock) {
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
-  ScopedAnnotation annotation([&] {
+  ScopedAnnotationAlways annotation([&] {
     std::string module_id_str;
     if (module_id >= 0) {
       module_id_str = absl::StrFormat(",program_id=%d", module_id);
@@ -473,7 +477,7 @@ static Status ExecuteXlaRuntime(const std::string& module_name,
   });
 
   auto executed = gpu_runtime_executable.Execute(
-      run_options, asm_text, binary, buffer_allocations, temp_buffer);
+      run_options, asm_text, binary, buffer_allocations, gpu_lock, temp_buffer);
   if (!executed.ok()) return executed;
 
   return MaybeSyncAndProfile(
@@ -496,7 +500,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   // Lock the GPU with a shared lock so that we don't interfere with autotuning
   // that may be running during JIT compilation while allowing multiple XLA
   // computations to use the same GPU simultaneously.
-  absl::ReaderMutexLock gpu_lock(&GetGpuMutex(executor));
+  NonAtomicallyUpgradeableRWLock gpu_lock(&GetGpuMutex(executor));
 
   const GpuExecutable::BufferAllocToDeviceMemoryMap* globals;
   {
@@ -627,8 +631,8 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     buffers_in_result.insert(result_buffer);
   }
 
-  TF_RETURN_IF_ERROR(ExecuteThunksOrXlaRuntime(run_options, buffer_allocations,
-                                               block_host_until_done));
+  TF_RETURN_IF_ERROR(ExecuteThunksOrXlaRuntime(
+      run_options, buffer_allocations, block_host_until_done, gpu_lock));
 
   // Free all temporary allocations.
   TF_RETURN_IF_ERROR(
@@ -643,7 +647,8 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 
 Status GpuExecutable::ExecuteThunksOrXlaRuntime(
     const ServiceExecutableRunOptions* run_options,
-    const BufferAllocations& buffer_allocations, bool block_host_until_done) {
+    const BufferAllocations& buffer_allocations, bool block_host_until_done,
+    NonAtomicallyUpgradeableRWLock& gpu_lock) {
   TF_RETURN_IF_ERROR(
       CheckCompatibilityWithServiceExecutableRunOptions(run_options));
 
@@ -675,7 +680,7 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
     }
     return ExecuteXlaRuntime(module_name_, unique_id, *gpu_runtime_executable_,
                              run_options, text_, binary_, buffer_allocations,
-                             temp_buffer, block_host_until_done);
+                             temp_buffer, block_host_until_done, gpu_lock);
   }
 
   return FailedPrecondition("Expected XLA gpu executable is not supplied.");
@@ -834,6 +839,73 @@ GpuExecutable::GpuExecutable(
       module().unique_id(), shared_module(), debug_buffer_assignment_);
 }
 
+// Returns a list of functions exported from the `module` that should be loaded
+// from the object file. Entrypoint functions always loaded with ordinal 0.
+static StatusOr<std::vector<runtime::Executable::LoadFunction>>
+GetFunctionsToLoad(mlir::ModuleOp module, std::string_view entry) {
+  std::vector<runtime::Executable::LoadFunction> functions;
+
+  // Use canonical type converter because we currently do not support any
+  // user-defined types in XLA:GPU executables.
+  runtime::TypeConverter type_converter;
+
+  // Converts function type and adds load function metadata. In XLA:GPU exported
+  // function runtime signature is the same as regular signature with an extra
+  // execution context argument at index 0.
+  auto convert = [&](mlir::func::FuncOp func) -> Status {
+    auto signature = type_converter.Convert(func.getFunctionType());
+    if (!signature.ok())
+      return InternalError("Failed to convert entry function type: %s",
+                           signature.status().message());
+
+    // TODO(ezhulenev): Copy `signature` once FunctionType is copyable.
+    auto rt_signature = type_converter.Convert(func.getFunctionType());
+    rt_signature->insert_operand(
+        0, std::make_unique<runtime::ExecutionContextOperandType>());
+
+    functions.push_back({func.getName().str(), std::move(*signature),
+                         std::move(*rt_signature)});
+
+    return OkStatus();
+  };
+
+  mlir::SymbolTable sym_table(module);
+
+  // Load entrypoint function first at ordinal 0.
+  TF_CHECK_OK(convert(module.lookupSymbol<mlir::func::FuncOp>(entry)));
+
+  // Load all functions explicitly exported from the module (in XLA:GPU it's
+  // always CUDA graph capture functions). We explicitly sort them by ordinal,
+  // to make sure they are loaded in correct order.
+  auto export_ops = llvm::to_vector(module.getOps<runtime::ExportOp>());
+  llvm::sort(export_ops, [](runtime::ExportOp a, runtime::ExportOp b) {
+    return b.getOrdinal()->getSExtValue() < b.getOrdinal()->getSExtValue();
+  });
+  for (runtime::ExportOp exported : export_ops) {
+    TF_CHECK_OK(convert(
+        sym_table.lookup<mlir::func::FuncOp>(exported.getFunctionRef())));
+  }
+
+  return functions;
+}
+
+// Get arguments buffer sizes from the entry function signature.
+static StatusOr<std::vector<int64_t>> GetBufferSizes(runtime::FunctionType& f) {
+  std::vector<int64_t> buffer_sizes;
+  for (unsigned i = 0; i < f.num_operands(); ++i) {
+    auto* memref = llvm::dyn_cast<runtime::MemrefType>(f.operand(i));
+
+    // Entry function argument must be a statically shaped 1d I8 memref.
+    if (memref == nullptr || memref->element_type() != PrimitiveType::S8 ||
+        memref->rank() != 1 || runtime::MemrefType::IsDynamic(memref->size(0)))
+      return InternalError("Illegal buffer argument type: %s",
+                           f.operand(0)->ToString());
+
+    buffer_sizes.push_back(memref->size(0));
+  }
+  return buffer_sizes;
+}
+
 StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
     std::shared_ptr<HloModule> hlo_module, absl::string_view obj_file,
     absl::string_view mlir_module,
@@ -844,6 +916,8 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   VLOG(1) << "Load serialized Gpu executable from object file: module="
           << hlo_module->name();
 
+  std::string_view entry = hlo_module->entry_computation()->name();
+
   // Load MLIR module behind the compiled object file to recover XLA allocations
   // and output info details. Also recover buffer sizes from the entrypoint
   // function signature.
@@ -853,20 +927,17 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   auto module = mlir::parseSourceString<mlir::ModuleOp>(mlir_module, &context);
   if (!module) return InternalError("Failed to parse AOT compiled module");
 
-  // Get the XLA module entrypoint function.
-  auto func = mlir::cast<mlir::func::FuncOp>(
-      module->lookupSymbol(hlo_module->entry_computation()->name()));
+  // Get the list of functions to be loaded from the object file.
+  TF_ASSIGN_OR_RETURN(std::vector<runtime::Executable::LoadFunction> functions,
+                      GetFunctionsToLoad(*module, entry));
+  VLOG(2) << "Found " << functions.size() << " functions to load";
 
-  // Get the buffer sizes from the entrypoint function signature.
-  std::vector<int64_t> buffer_sizes;
-  buffer_sizes.reserve(func.getNumArguments());
-  for (auto type : func.getArgumentTypes()) {
-    auto memref = type.dyn_cast<mlir::MemRefType>();
-    if (!memref || !memref.hasStaticShape() || memref.getRank() != 1)
-      return InternalError("Illegal entrypoint argument type: %s",
-                           mlir::debugString(type));
-    buffer_sizes.push_back(memref.getDimSize(0));
-  }
+  // Get the buffer sizes from the entry function signature.
+  TF_ASSIGN_OR_RETURN(std::vector<int64_t> buffer_sizes,
+                      GetBufferSizes(functions[0].signature));
+
+  // Get the XLA module entrypoint function.
+  auto func = mlir::cast<mlir::func::FuncOp>(module->lookupSymbol(entry));
 
   // Infer XLA allocations and output info from the MLIR module.
   std::vector<BufferAllocation> allocations;
@@ -879,29 +950,8 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   llvm::StringRef data(obj_file.data(), obj_file.size());
   auto buffer = llvm::MemoryBuffer::getMemBuffer(data, hlo_module->name());
 
-  // Create a XLA Runtime function signature (all arguments passed as 1d
-  // memrefs).
-  std::vector<std::unique_ptr<runtime::Type>> args;
-  std::vector<std::unique_ptr<runtime::Type>> rt_args;
-  rt_args.push_back(std::make_unique<runtime::ExecutionContextOperandType>());
-
-  for (int64_t size : buffer_sizes) {
-    auto s8 = PrimitiveType::S8;
-    std::array<int64_t, 1> dims = {size};
-    args.push_back(std::make_unique<runtime::MemrefType>(dims, s8));
-    rt_args.push_back(std::make_unique<runtime::MemrefType>(dims, s8));
-  }
-
-  runtime::FunctionType signature(std::move(args), /*results=*/{});
-  runtime::FunctionType rt_signature(std::move(rt_args), /*results=*/{});
-
   auto symbol_map = runtime::ToSymbolsBinding(RegisterXlaGpuRuntimeCustomCalls,
                                               RegisterXlaGpuTypeIdNames);
-
-  // Gpu executable has a single exported function.
-  std::vector<runtime::Executable::LoadFunction> functions;
-  functions.push_back({hlo_module->entry_computation()->name(),
-                       std::move(signature), std::move(rt_signature)});
 
   // Load XLA Runtime executable from an object file, and link it with Gpu
   // runtime intrinsics implementing Gpu custom calls.

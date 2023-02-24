@@ -319,7 +319,7 @@ class BlasScratchAllocator : public se::ScratchAllocator {
 
     if (memory_limit_ > 0 && byte_size > memory_limit_) {
       return tsl::Status{
-          se::port::error::UNAVAILABLE,
+          tsl::error::UNAVAILABLE,
           absl::StrCat("Requested memory size (", byte_size,
                        ") exceeds the memory limit (", memory_limit_, ").")};
     }
@@ -329,7 +329,7 @@ class BlasScratchAllocator : public se::ScratchAllocator {
         DT_UINT8, TensorShape({byte_size}), &temporary_memory));
     if (!allocation_status.ok()) {
       return tsl::Status{
-          se::port::error::UNAVAILABLE,
+          tsl::error::UNAVAILABLE,
           absl::StrCat("Failed to allocate requested memory of (", byte_size,
                        ").")};
     }

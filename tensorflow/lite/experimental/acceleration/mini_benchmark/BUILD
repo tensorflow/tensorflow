@@ -416,7 +416,10 @@ cc_library(
     deps = [
         ":call",
         ":decode_jpeg",
+        # Link in the GpuModulePlugin statically. It is created by name.
+        ":gpu_module_plugin",  # buildcleaner: keep
         ":status_codes",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:c_api",
@@ -426,11 +429,10 @@ cc_library(
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:constants",
-        "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/tools:model_loader",
-        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -443,6 +445,7 @@ cc_library(
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
     ],
@@ -459,7 +462,9 @@ cc_library(
         ":runner",
         ":status_codes",
         ":validator",
+        "@com_google_absl//absl/strings",
         "@flatbuffers",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
@@ -529,7 +534,6 @@ cc_library(
         ":set_big_core_affinity_h",
         ":status_codes",
         ":validator",
-        ":validator_runner",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
@@ -539,7 +543,6 @@ cc_library(
         "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
         "//tensorflow/lite/tools:model_loader",
-        "//tensorflow/lite:minimal_logging",
     ],
 )
 
@@ -908,6 +911,22 @@ cc_binary(
     ],
 )
 
+cc_library(
+    name = "gpu_module_plugin",
+    srcs = ["gpu_module_plugin.cc"],
+    hdrs = ["gpu_module_plugin.h"],
+    deps = [
+        ":status_codes",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
+        "@com_google_absl//absl/memory",
+        "@flatbuffers",
+    ],
+    alwayslink = 1,
+)
+
 embedded_binary(
     name = "embedded_nnapi_sl_fake_impl",
     testonly = 1,
@@ -995,6 +1014,7 @@ cc_test(
 
 cc_test(
     name = "blocking_validator_runner_test",
+    timeout = "moderate",
     srcs = ["blocking_validator_runner_test.cc"],
     deps = [
         ":benchmark_result_evaluator",
@@ -1006,6 +1026,7 @@ cc_test(
         ":validator_runner_entrypoint",
         ":validator_runner_options",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],

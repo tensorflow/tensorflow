@@ -474,6 +474,7 @@ REGISTER_OP("SplitDedupData")
     .Attr("integer_type: {int32, int64, uint32, uint64}")
     .Attr("float_type: {half, bfloat16, float}")
     .Attr("tuple_mask: string")
+    .Attr("config: string = ''")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
       std::string tuple_mask_str;
       TF_RETURN_IF_ERROR(c->GetAttr("tuple_mask", &tuple_mask_str));
@@ -517,6 +518,16 @@ REGISTER_OP("SplitDedupData")
         }
       }
 
+      string config_string;
+      TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
+      if (!config_string.empty()) {
+        tpu::TPUEmbeddingConfiguration config;
+        if (!config.ParseFromString(config_string)) {
+          return errors::InvalidArgument(
+              "Malformed config attribute in the SplitDedupData node.");
+        }
+      }
+
       const shape_inference::DimensionHandle integer_tensor_dim =
           c->MakeDim(integer_offset);
       const shape_inference::DimensionHandle float_tensor_dim =
@@ -536,6 +547,13 @@ REGISTER_OP("MergeDedupData")
     .Attr("tuple_mask: string")
     .Attr("integer_type: {int32, int64, uint32, uint64}")
     .Attr("float_type: {half, bfloat16, float}")
+    .Attr("config: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
+
+REGISTER_OP("ComputeDedupDataTupleMask")
+    .Output("output_shape: int32")
+    .Attr("config: string")
+    .SetIsStateful()
     .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
 }  // namespace tensorflow

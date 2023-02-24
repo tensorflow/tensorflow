@@ -23,7 +23,7 @@ limitations under the License.
 #include "gml_st/transforms/passes.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -43,7 +43,7 @@ struct ParallelOpToSCFPattern : public OpRewritePattern<ParallelOp> {
     if (!loop.hasBufferSemantics()) return failure();
 
     auto cloneBody = [&](OpBuilder &builder, Location /*loc*/, ValueRange ivs) {
-      BlockAndValueMapping bvm;
+      IRMapping bvm;
       bvm.map(loop.getInductionVars(), ivs);
 
       for (auto &op : loop.getBody()->without_terminator())
@@ -59,42 +59,11 @@ struct ParallelOpToSCFPattern : public OpRewritePattern<ParallelOp> {
   }
 };
 
-/// Converts gml_st.for to SCF loop nest.
-struct ForOpToSCFPattern : public OpRewritePattern<ForOp> {
-  using OpRewritePattern<ForOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(ForOp loop,
-                                PatternRewriter &rewriter) const override {
-    auto cloneBody = [&](OpBuilder &builder, Location /*loc*/, ValueRange ivs,
-                         ValueRange iterArgs) {
-      BlockAndValueMapping bvm;
-      bvm.map(loop.getInductionVars(), ivs);
-      bvm.map(loop.getRegionOutputArgs(), iterArgs);
-
-      for (auto &op : loop.getBody()->without_terminator())
-        builder.clone(op, bvm);
-
-      scf::ValueVector result;
-      llvm::transform(loop.getTerminator().getSrcs(),
-                      std::back_inserter(result),
-                      [&](Value src) { return bvm.lookupOrDefault(src); });
-      return result;
-    };
-
-    scf::LoopNest nest = scf::buildLoopNest(
-        rewriter, loop.getLoc(), loop.getLowerBound(), loop.getUpperBound(),
-        loop.getStep(), loop.getOutputs(), cloneBody);
-    rewriter.replaceOp(loop, nest.results);
-    return success();
-  }
-};
-
 struct GmlStToScfPass : public impl::GmlStToScfBase<GmlStToScfPass> {
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
-    patterns.add<ForOpToSCFPattern, ParallelOpToSCFPattern>(
-        patterns.getContext());
+    patterns.add<ParallelOpToSCFPattern>(patterns.getContext());
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       signalPassFailure();

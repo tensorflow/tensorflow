@@ -185,7 +185,7 @@ func.func @extra_argument(%arg0: tensor<4xf64>, %arg2: tensor<i1>) -> tensor<f64
 
 // -----
 
-func.func @scatter_f32(%indices: tensor<1x2xindex>,
+func.func @scatter_f32_with_update_computation(%indices: tensor<1x2xindex>,
     %updates: tensor<1x?x?xf32>, %init: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %0 = thlo.scatter ins(%indices: tensor<1x2xindex>, %updates: tensor<1x?x?xf32>)
                     outs(%init: tensor<?x?xf32>)
@@ -195,7 +195,7 @@ func.func @scatter_f32(%indices: tensor<1x2xindex>,
     }
   return %0: tensor<?x?xf32>
 }
-// CHECK-LABEL: func.func @scatter_f32(
+// CHECK-LABEL: func.func @scatter_f32_with_update_computation(
 // CHECK-SAME:      %[[INDICES:.*]]: tensor<1x2xindex>,
 // CHECK-SAME:      %[[UPDATES:.*]]: tensor<1x?x?xf32>,
 // CHECK-SAME:      %[[INIT:.*]]: tensor<?x?xf32>) -> tensor<?x?xf32> {
@@ -208,71 +208,38 @@ func.func @scatter_f32(%indices: tensor<1x2xindex>,
 // CHECK-DAG:  %[[UPDATES_DIM_2:.*]] = tensor.dim %[[UPDATES]], %[[C2]]
 // CHECK-DAG:  %[[INIT_DIM_0:.*]] = tensor.dim %[[INIT]], %[[C0]]
 // CHECK-DAG:  %[[INIT_DIM_1:.*]] = tensor.dim %[[INIT]], %[[C1]]
-// CHECK-DAG:  %[[INIT_TILE:.*]] = gml_st.tile [0, 0] [%[[INIT_DIM_0]], %[[INIT_DIM_1]]
 
 // Extract scatter indices from `indices` arg.
 // CHECK-DAG:  %[[INDEX_0:.*]] = tensor.extract %[[INDICES]][%[[C0]],
 // CHECK-DAG:  %[[INDEX_1:.*]] = tensor.extract %[[INDICES]][%[[C0]],
 
-// Check bounds of the slice.
-// CHECK-NEXT:    %[[DIM_1_PLUS_INDEX_0:.*]] = arith.addi %[[UPDATES_DIM_1]], %[[INDEX_0]]
-// CHECK-NEXT:    %[[DIM_2_PLUS_INDEX_1:.*]] = arith.addi %[[UPDATES_DIM_2]], %[[INDEX_1]]
-// CHECK-NEXT:    %[[LIMIT_DIM_0:.*]] = arith.subi %[[DIM_1_PLUS_INDEX_0]], %[[C1]]
-// CHECK-NEXT:    %[[LIMIT_DIM_1:.*]] = arith.subi %[[DIM_2_PLUS_INDEX_1]], %[[C1]]
-// CHECK-NEXT:    arith.cmpi sge, %[[LIMIT_DIM_0]], %[[C0]]
-// CHECK-NEXT:    arith.cmpi slt, %[[LIMIT_DIM_0]], %[[INIT_DIM_0]]
-// CHECK-NEXT:    arith.andi
-// CHECK-NEXT:    arith.cmpi sge, %[[LIMIT_DIM_1]], %[[C0]]
-// CHECK-NEXT:    arith.cmpi slt, %[[LIMIT_DIM_1]], %[[INIT_DIM_1]]
-// CHECK-NEXT:    arith.andi
-// CHECK-NEXT:    arith.andi
-// CHECK-NEXT:    arith.cmpi sge, %[[INDEX_0]], %[[C0]]
-// CHECK-NEXT:    arith.cmpi slt, %[[INDEX_0]], %[[INIT_DIM_0]]
-// CHECK-NEXT:    arith.andi
-// CHECK-NEXT:    arith.cmpi sge, %[[INDEX_1]], %[[C0]]
-// CHECK-NEXT:    arith.cmpi slt, %[[INDEX_1]], %[[INIT_DIM_1]]
-// CHECK-NEXT:    arith.andi
-// CHECK-NEXT:    arith.andi
-// CHECK-NEXT:    %[[VALID_ACCESS:.*]] = arith.andi
-// CHECK-NEXT:    %[[RESULT:.*]] = scf.if %[[VALID_ACCESS]]
+// CHECK-COUNT-7: arith.andi
 
-// Iterate over window dimensions..
-// CHECK-NEXT:      %[[SCATTER:.*]] = gml_st.for (%[[I:.*]], %[[J:.*]]) = (%[[C0]],
-// CHECK-SAME:          %[[C0]]) to (%[[UPDATES_DIM_1]], %[[UPDATES_DIM_2]])
-// CHECK-SAME:          step (%[[C1]], %[[C1]])
-// CHECK-SAME:          outs (%[[INIT_:.*]] = %[[INIT]]: tensor<?x?xf32>) {
+// CHECK:      scf.if
+// CHECK-NEXT: %[[EXTRACTED:.*]] = tensor.extract_slice %[[INIT]][%[[INDEX_0]],
+// CHECK-SAME:   %[[INDEX_1]]] [%[[UPDATES_DIM_1]], %[[UPDATES_DIM_2]]] [%[[C1]],
+// CHECK-SAME:   %[[C1]]] : tensor<?x?xf32> to tensor<?x?xf32>
 
-// CHECK-NEXT:        %[[I_PLUS_INDEX_0:.*]] = arith.addi %[[I]], %[[INDEX_0]]
-// CHECK-NEXT:        %[[J_PLUS_INDEX_1:.*]] = arith.addi %[[J]], %[[INDEX_1]]
+// CHECK-NEXT: %[[SUM:.*]] = linalg.reduce ins(%[[UPDATES]] : tensor<1x?x?xf32>)
+// CHECK-SAME:   outs(%[[EXTRACTED]] : tensor<?x?xf32>) dimensions = [0]
+// CHECK-NEXT:   (%[[ARG1:.*]]: f32, %[[ARG2:.*]]: f32) {
+// CHECK-NEXT:     %[[ADD:.*]] = arith.addf %[[ARG1]], %[[ARG2]] : f32
+// CHECK-NEXT:     linalg.yield %[[ADD]] : f32
+// CHECK-NEXT:   }
 
-// Extracts elements of `updates` and `init` tensors and combine.
-// CHECK-NEXT:        %[[UPDATES_ELEM:.*]] = gml_st.materialize %[[UPDATES]]
-// CHECK-SAME:          [%[[C0]], %[[I]], %[[J]]] [1, 1, 1] [1, 1, 1]
-// CHECK-SAME:          : tensor<1x?x?xf32> to f32
-
-// CHECK-NEXT:        %[[INIT_ELEM:.*]] = gml_st.materialize %[[INIT_]]
-// CHECK-SAME:          [%[[I_PLUS_INDEX_0]], %[[J_PLUS_INDEX_1]]] [1, 1] [1, 1]
-// CHECK-SAME:          : tensor<?x?xf32> to f32
-
-// CHECK-NEXT:        %[[COMBINED_ELEMS:.*]] = arith.addf %[[UPDATES_ELEM]],
-// CHECK-SAME:          %[[INIT_ELEM]] : f32
-
-// CHECK-NEXT:        %[[UPDATED_INIT:.*]] = tensor.insert %[[COMBINED_ELEMS]]
-// CHECK-SAME:          into %[[INIT_]][%[[I_PLUS_INDEX_0]], %[[J_PLUS_INDEX_1]]]
-// CHECK-SAME:          : tensor<?x?xf32>
-// CHECK-NEXT:        gml_st.set_yield %[[UPDATED_INIT]]
-// CHECK-SAME:          into %[[INIT_]][%[[INIT_TILE]]]
-// CHECK-SAME:          : tensor<?x?xf32> into tensor<?x?xf32>[!gml_st.tile<?x?>]
-// CHECK-NEXT:      } : tensor<?x?xf32>
-// CHECK-NEXT:      scf.yield %[[SCATTER]] : tensor<?x?xf32>
-// CHECK-NEXT:    } else {
-// CHECK-NEXT:      scf.yield %[[INIT]] : tensor<?x?xf32>
-// CHECK-NEXT:    }
-// CHECK-NEXT:    return %[[RESULT]] : tensor<?x?xf32>
+// CHECK-NEXT: %[[INSERTED:.*]] = tensor.insert_slice %[[SUM]] into %[[INIT]]
+// CHECK-SAME:   [%[[INDEX_0]], %[[INDEX_1]]] [%[[UPDATES_DIM_1]],
+// CHECK-SAME:   %[[UPDATES_DIM_2]]] [%[[C1]], %[[C1]]] : tensor<?x?xf32>
+// CHECK-SAME:   into tensor<?x?xf32>
+// CHECK-NEXT:       scf.yield %[[INSERTED]] : tensor<?x?xf32>
+// CHECK-NEXT:   } else {
+// CHECK-NEXT:       scf.yield %[[INIT]] : tensor<?x?xf32>
+// CHECK-NEXT:   }
+// CHECK-NEXT:   return
 
 // -----
 
-func.func @scatter_i64(%indices: tensor<1x1xindex>,
+func.func @scatter_i64_no_update_computation(%indices: tensor<1x1xindex>,
                            %updates: tensor<1x1x3x4xi64>,
                            %init: tensor<3x3x4xi64>) -> tensor<3x3x4xi64> {
  %0 = thlo.scatter ins(%indices : tensor<1x1xindex>,
@@ -283,35 +250,32 @@ func.func @scatter_i64(%indices: tensor<1x1xindex>,
  }
  func.return %0 : tensor<3x3x4xi64>
 }
-// CHECK-LABEL: func.func @scatter_i64(
-// CHECK-SAME:      %[[INDICES:.*]]: tensor<1x1xindex>,
-// CHECK-SAME:      %[[UPDATES:.*]]: tensor<1x1x3x4xi64>,
-// CHECK-SAME:      %[[INIT:.*]]: tensor<3x3x4xi64>) -> tensor<3x3x4xi64> {
+// CHECK-LABEL:   func.func @scatter_i64_no_update_computation(
+// CHECK-SAME:         %[[INDICES:.*]]: tensor<1x1xindex>,
+// CHECK-SAME:         %[[UPDATES:.*]]: tensor<1x1x3x4xi64>,
+// CHECK-SAME:         %[[INIT:.*]]: tensor<3x3x4xi64>) -> tensor<3x3x4xi64> {
 
-// CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
-// CHECK-DAG:   %[[C3:.*]] = arith.constant 3 : index
-// CHECK-DAG:   %[[C4:.*]] = arith.constant 4 : index
+// CHECK:           %[[C0:.*]] = arith.constant 0 : index
+// CHECK:           %[[C1:.*]] = arith.constant 1 : index
+// CHECK:           %[[C3:.*]] = arith.constant 3 : index
 
-// CHECK-DAG:       %[[INDEX_0:.*]] = tensor.extract %[[INDICES]]
-// CHECK-NEXT:    %[[INIT_TILE:.*]] = gml_st.tile [0, 0, 0] [3, 3, 4]
+// CHECK:           %[[INDEX_0:.*]] = tensor.extract %[[INDICES]]{{\[}}%[[C0]],
+// CHECK-SAME:      %[[C0]]] : tensor<1x1xindex>
 
-// CHECK:       gml_st.for (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
-// CHECK-SAME:       to (%[[C3]], %[[C4]]) step (%[[C1]], %[[C1]])
-// CHECK-SAME:       outs (%[[INIT_:.*]] = %[[INIT]]: tensor<3x3x4xi64>) {
-
-// CHECK:         %[[UPDATES_ELEM:.*]] = gml_st.materialize %[[UPDATES]]
-// CHECK-SAME:      [%[[C0]], %[[C0]], %[[I]], %[[J]]]
-// CHECK-SAME:      [1, 1, 1, 1] [1, 1, 1, 1]
-// CHECK-SAME:      : tensor<1x1x3x4xi64> to i64
-
-// CHECK:         %[[UPDATED_INIT:.*]] = tensor.insert %[[UPDATES_ELEM]] into
-// CHECK-SAME:    %[[INIT_]][%[[INDEX_0]], %[[I]], %[[J]]] : tensor<3x3x4xi64>
-
-// CHECK-NEXT:    gml_st.set_yield %[[INIT_AFTER_INSERTION:.*]] into %[[INIT_]]
-// CHECK-SAME:       [%[[INIT_TILE]]] : tensor<3x3x4xi64>
-// CHECK-SAME:       into tensor<3x3x4xi64>[!gml_st.tile<3x3x4>]
-// CHECK:       } : tensor<3x3x4xi64>
+// CHECK:         scf.if
+// CHECK-NEXT:      %[[EXTRACTED:.*]] = tensor.extract_slice %[[UPDATES]][%[[C0]],
+// CHECK-SAME:        %[[C0]], %[[C0]], %[[C0]]] [1, 1, 3, 4]
+// CHECK-SAME:        [%[[C1]], %[[C1]], %[[C1]], %[[C1]]]
+// CHECK-SAME:        : tensor<1x1x3x4xi64> to tensor<1x3x4xi64>
+// CHECK-NEXT:      %[[INSERTED:.*]] = tensor.insert_slice %[[EXTRACTED]] into
+// CHECK-SAME:        %[[INIT]][%[[INDEX_0]], %[[C0]], %[[C0]]] [1, 3, 4]
+// CHECK-SAME:        [%[[C1]], %[[C1]], %[[C1]]]
+// CHECK-SAME:        : tensor<1x3x4xi64> into tensor<3x3x4xi64>
+// CHECK-NEXT:      scf.yield %[[INSERTED]] : tensor<3x3x4xi64>
+// CHECK-NEXT:    } else {
+// CHECK-NEXT:      scf.yield %[[INIT]] : tensor<3x3x4xi64>
+// CHECK-NEXT:    }
+// CHECK-NEXT:    return
 
 // -----
 
@@ -339,12 +303,13 @@ func.func @gather(%indices: tensor<1x2xindex>,
 //   CHECK-DAG:   %[[CLAMPED_INDEX0_:.*]] = arith.maxsi %[[CLAMPED_INDEX0]], %[[C0]]
 //   CHECK-DAG:   %[[CLAMPED_INDEX1:.*]] = arith.minsi %[[INDEX1]], %[[C5]]
 //   CHECK-DAG:   %[[CLAMPED_INDEX1_:.*]] = arith.maxsi %[[CLAMPED_INDEX1]], %[[C0]]
-//       CHECK:    gml_st.for (%[[J:.*]]) = (%[[C0]]) to (%[[C3]])
-//   CHECK-DAG:      %[[OFFSET_J:.*]] = arith.addi %[[J]], %[[CLAMPED_INDEX0_]]
-//       CHECK:      %[[INIT_TILE:.*]] = gml_st.tile [%[[C0]], %[[J]]]
-//       CHECK:      %[[VAL:.*]] = gml_st.materialize %[[OPERAND]]
-//       CHECK-SAME:   [%[[OFFSET_J]], %[[CLAMPED_INDEX1_]], 0]
-//       CHECK:      gml_st.set_yield %[[VAL]] into {{.*}}[%[[INIT_TILE]]]
+//       CHECK:    scf.for %[[J:.*]] = %[[C0]] to %[[C3]]
+//       CHECK:      %[[OFFSET_J:.*]] = arith.addi %[[J]], %[[CLAMPED_INDEX0_]]
+
+//       CHECK:      %[[VAL:.*]] = tensor.extract %[[OPERAND]]
+//       CHECK-SAME:   [%[[OFFSET_J]], %[[CLAMPED_INDEX1_]], %[[C0]]]
+//       CHECK-NEXT: %[[UPDATED:.*]] = tensor.insert %[[VAL]]
+//       CHECK:      scf.yield %[[UPDATED]]
 
 // -----
 
@@ -355,8 +320,9 @@ func.func @fold_extract_from_elements_into_gml_st(%in: tensor<8x2xf32>,
   %c2 = arith.constant 2 : index
   %c8 = arith.constant 8 : index
 
-  %copy = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c8, %c2) step (%c1, %c1) {
-    %in_sub = gml_st.materialize %in[%i, %j] [1, 1] [1, 1]
+  %copy = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c8, %c2) step (%c1, %c1)
+      outs (%out_ = %out: tensor<8x2xf32>) {
+    %in_sub = tensor.extract_slice %in[%i, %j] [1, 1] [1, 1]
       : tensor<8x2xf32> to tensor<1x1xf32>
 
     %elem = tensor.extract %in_sub[%c0, %c0] : tensor<1x1xf32>
@@ -364,19 +330,36 @@ func.func @fold_extract_from_elements_into_gml_st(%in: tensor<8x2xf32>,
     %out_sub = tensor.from_elements %elem : tensor<1x1xf32>
 
     %tile = gml_st.tile [%i, %j] [1, 1] [1, 1] : !gml_st.tile<1x1>
-    gml_st.set_yield %out_sub into %out[%tile]
+    gml_st.set_yield %out_sub into %out_[%tile]
       : tensor<1x1xf32> into tensor<8x2xf32>[!gml_st.tile<1x1>]
   } : tensor<8x2xf32>
   func.return %copy: tensor<8x2xf32>
 }
 // CHECK-LABEL: func @fold_extract_from_elements_into_gml_st
 
-// CHECK:       %[[ELEM:.*]] = gml_st.materialize
-// CHECK-SAME:    : tensor<8x2xf32> to f32
+// CHECK:       %[[SLICE:.*]] = tensor.extract_slice
+// CHECK-SAME:    : tensor<8x2xf32> to tensor<1x1xf32>
+// CHECK-NEXT:  %[[ELEM:.*]] = tensor.extract %[[SLICE]]
 // CHECK-NEXT:       = gml_st.tile
 
 // CHECK-NEXT:  gml_st.set_yield %[[ELEM]]
 // CHECK-SAME:    : f32 into tensor<8x2xf32>[!gml_st.tile<1x1>]
+
+// -----
+
+func.func @fold_from_elements_into_insert_slice(%elem: f32,
+    %out: tensor<8x2xf32>) -> tensor<8x2xf32>  {
+  %elem_tensor = tensor.from_elements %elem : tensor<1x1xf32>
+  %updated = tensor.insert_slice %elem_tensor into %out[0, 1] [1, 1] [1, 1]
+    : tensor<1x1xf32> into tensor<8x2xf32>
+
+  func.return %updated: tensor<8x2xf32>
+}
+// CHECK-LABEL: func @fold_from_elements_into_insert_slice
+// CHECK-SAME:      %[[ELEM:.*]]: f32, %[[OUT:.*]]: tensor<8x2xf32>
+
+// CHECK:         %[[UPDATE:.*]] = tensor.insert %[[ELEM]] into %[[OUT]]
+// CHECK-NEXT:    return %[[UPDATE]]
 
 // -----
 
@@ -426,7 +409,7 @@ func.func @concatenate(
 // CHECK-NEXT:  %[[DIM_ARG_0:.*]] = tensor.dim %[[ARG_0]], %[[C1]]
 // CHECK-NEXT:  %[[CMP_0:.*]] = arith.cmpi ne, %[[DIM_ARG_0]], %[[C0]]
 // CHECK:       %[[RESULT:.*]] = scf.if %[[CMP_0]]
-// CHECK:         %[[MAT_0:.*]] = gml_st.materialize %[[ARG_0]]
+// CHECK:         %[[MAT_0:.*]] = tensor.extract_slice %[[ARG_0]]
 // CHECK-SAME:        [0, 0, 0] [%[[DIM0]], 1, %[[DIM2]]] [1, 1, 1]
 // CHECK:         %[[RES_0:.*]] = tensor.insert_slice %[[MAT_0]] into %[[INIT]]
 // CHECK-NEXT:    scf.yield %[[RES_0]]
@@ -436,14 +419,14 @@ func.func @concatenate(
 // CHECK-NEXT:    %[[DIM_ARG_1:.*]] = tensor.dim %[[ARG_1]], %[[C1]]
 // CHECK-NEXT:    %[[CMP_1:.*]] = arith.cmpi ne, %[[DIM_ARG_1]], %[[C0]]
 // CHECK-NEXT:    %[[RESULT_1:.*]] = scf.if %[[CMP_1]]
-// CHECK-NEXT:      %[[MAT_1:.*]] = gml_st.materialize %[[ARG_1]]
+// CHECK-NEXT:      %[[MAT_1:.*]] = tensor.extract_slice %[[ARG_1]]
 // CHECK-SAME:        [0, 0, 0] [%[[DIM0]], 1, %[[DIM2]]] [1, 1, 1]
 // CHECK-NEXT:      %[[RES_1:.*]] = tensor.insert_slice %[[MAT_1]] into %[[INIT]]
 // CHECK-NEXT:      scf.yield %[[RES_1]]
 // CHECK-NEXT:    } else {
 
 // Otherwise extract elements from arg2, because arg0 and arg1 are empty.
-// CHECK-NEXT:      %[[MAT_2:.*]] = gml_st.materialize %[[ARG_2]]
+// CHECK-NEXT:      %[[MAT_2:.*]] = tensor.extract_slice %[[ARG_2]]
 // CHECK-SAME:        [0, 0, 0] [%[[DIM0]], 1, %[[DIM2]]] [1, 1, 1]
 // CHECK-NEXT:      %[[RES_2:.*]] = tensor.insert_slice %[[MAT_2]] into %[[INIT]]
 // CHECK-NEXT:      scf.yield %[[RES_2]]
@@ -542,16 +525,94 @@ func.func @linalg_matmul(%lhs: tensor<1x1xf32>,
 
 // -----
 
-func.func @thlo_reverse(%arg : tensor<1x1xf32>,
-                                    %init: tensor<1x1xf32>)
-                                    -> tensor<1x1xf32>  {
+func.func @thlo_reverse(%arg : tensor<1x1xf32>, %init: tensor<1x1xf32>)
+    -> tensor<1x1xf32> {
   %0 = thlo.reverse ins(%arg : tensor<1x1xf32>)
         outs(%init : tensor<1x1xf32>)
         reverse_dimensions = [0, 1]
   func.return %0 : tensor<1x1xf32>
 }
+
 // CHECK-LABEL: @thlo_reverse(
 //  CHECK-SAME: %[[ARG:.*]]: tensor<1x1xf32>, %[[INIT:.*]]: tensor<1x1xf32>)
-      // CHECK:   %[[C0:.*]] = arith.constant 0 : index
-//  CHECK-NEXT:   %[[ELEM:.*]] = tensor.extract %[[ARG]][%[[C0]], %[[C0]]]
-//  CHECK-NEXT:   %[[UPDATED:.*]] = tensor.from_elements %[[ELEM]]
+//       CHECK:   return %[[ARG]]
+
+// -----
+
+func.func @ite_1d(%arg0: i1, %arg1: tensor<1xf32>, %arg2: tensor<1xf32>)
+    -> tensor<1xf32> {
+  %0 = scf.if %arg0 -> (tensor<1xf32>) {
+    scf.yield %arg2 : tensor<1xf32>
+  } else {
+    scf.yield %arg1 : tensor<1xf32>
+  }
+  return %0 : tensor<1xf32>
+}
+
+// CHECK:     func.func @ite_1d(%[[ARG0:.*]]: i1, %[[ARG1:.*]]: tensor<1xf32>, %[[ARG2:.*]]: tensor<1xf32>)
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
+// CHECK:       %[[IF:.*]] = scf.if %[[ARG0]] -> (f32)
+// CHECK:         %[[EXTRACTED:.*]] = tensor.extract %[[ARG2]][%[[C0]]]
+// CHECK:         scf.yield %[[EXTRACTED]] : f32
+// CHECK:       else
+// CHECK:         %[[EXTRACTED_0:.*]] = tensor.extract %[[ARG1]][%[[C0]]]
+// CHECK:         scf.yield %[[EXTRACTED_0]] : f32
+// CHECK:       %[[FROM_ELEMENTS:.*]] = tensor.from_elements %[[IF]]
+// CHECK:       return %[[FROM_ELEMENTS]]
+
+// -----
+
+func.func @ite_2d(%arg0: i1, %arg1: tensor<1x1xf32>, %arg2: tensor<1x1xf32>)
+    -> tensor<1x1xf32> {
+  %0 = scf.if %arg0 -> (tensor<1x1xf32>) {
+    scf.yield %arg2 : tensor<1x1xf32>
+  } else {
+    scf.yield %arg1 : tensor<1x1xf32>
+  }
+  return %0 : tensor<1x1xf32>
+}
+
+// CHECK:     func.func @ite_2d(%[[ARG0:.*]]: i1, %[[ARG1:.*]]: tensor<1x1xf32>, %[[ARG2:.*]]: tensor<1x1xf32>)
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
+// CHECK:       %[[IF:.*]] = scf.if %[[ARG0]] -> (f32)
+// CHECK:         %[[EXTRACTED:.*]] = tensor.extract %[[ARG2]][%[[C0]], %[[C0]]]
+// CHECK:         scf.yield %[[EXTRACTED]] : f32
+// CHECK:       else
+// CHECK:         %[[EXTRACTED_0:.*]] = tensor.extract %[[ARG1]][%[[C0]], %[[C0]]]
+// CHECK:         scf.yield %[[EXTRACTED_0]] : f32
+// CHECK:       %[[FROM_ELEMENTS:.*]] = tensor.from_elements %[[IF]]
+// CHECK:       return %[[FROM_ELEMENTS]]
+
+
+// -----
+
+func.func @scalarize_for_op(%initValue: f32, %input: tensor<10xf32>) -> f32 {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c10 = arith.constant 10 : index
+
+  %initTensor = tensor.from_elements %initValue : tensor<1x1xf32>
+
+  %sum = scf.for %i = %c0 to %c10 step %c1
+      iter_args(%acc = %initTensor) -> (tensor<1x1xf32>) {
+    %input_elem = tensor.extract %input[%i] : tensor<10xf32>
+
+    %acc_elem = tensor.extract %acc[%c0, %c0] : tensor<1x1xf32>
+    %add = arith.addf %acc_elem, %input_elem : f32
+    %from_elements = tensor.from_elements %add : tensor<1x1xf32>
+
+    scf.yield %from_elements : tensor<1x1xf32>
+  }
+  %sum_elem = tensor.extract %sum[%c0, %c0] : tensor<1x1xf32>
+  func.return %sum_elem : f32
+}
+// CHECK-LABEL: @scalarize_for_op
+
+// CHECK:      scf.for %[[I:[a-z0-9]+]] =
+// CHECK-NEXT:   %[[ELEM:.*]] = tensor.extract %{{.*}}[%[[I]]] : tensor<10xf32>
+// CHECK-NEXT:   %[[ADD:.*]] = arith.addf %{{.*}}, %[[ELEM]] : f32
+// CHECK-NEXT:   scf.yield
+// CHECK-NEXT: }
+// CHECK-NEXT: return
+
+

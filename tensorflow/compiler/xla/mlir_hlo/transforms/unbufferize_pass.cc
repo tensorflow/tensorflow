@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Value.h"
 #include "transforms/passes.h"
 
@@ -51,7 +51,7 @@ void UnbufferizePass::runOnOperation() {
   FuncOp funcOp = getOperation();
   IRRewriter rewriter(funcOp.getContext());
   BitVector argsToErase(funcOp.getNumArguments());
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   llvm::SmallDenseSet<BlockArgument> insertedArgs;
   funcOp->walk([&](bufferization::ToTensorOp op) {
     auto arg = op.getMemref().dyn_cast<BlockArgument>();

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
+#include <optional>
+
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -87,7 +89,7 @@ llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
       if (dim_attr.getType().cast<ShapedType>().getRank() != 0) {
         (void)rewriter.notifyMatchFailure(
             op, "dim for building tosa::ReshapeOp should be rank-0");
-        return llvm::None;
+        return std::nullopt;
       }
       int64_t size = dim_attr.getSplatValue<APInt>().getSExtValue();
 
@@ -97,7 +99,7 @@ llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
           size != static_dims[i]) {
         (void)rewriter.notifyMatchFailure(
             op, "mismatch reshape static dim when creating tosa::ReshapeOp");
-        return llvm::None;
+        return std::nullopt;
       }
 
       static_dims[i] =
@@ -110,7 +112,7 @@ llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
   if (dyn_count > 1) {
     (void)rewriter.notifyMatchFailure(
         op, "multiple dynamic shapes when creating tosa::ReshapeOp");
-    return llvm::None;
+    return std::nullopt;
   }
 
   DenseI64ArrayAttr shape_attr = rewriter.getDenseI64ArrayAttr(static_dims);
@@ -313,13 +315,9 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
   table.push_back(
       static_cast<int16_t>(std::min(std::max(max_val, -32768), 32767)));
 
-  auto element_qtype =
-      UniformQuantizedType::get(true, rewriter.getIntegerType(16),
-                                rewriter.getF32Type(), 1.0f, 0, -32768, 32767);
-  auto const_type = tensorflow::GetTypeFromTFTensorShape({513}, element_qtype);
-  auto storage_type = tensorflow::GetTypeFromTFTensorShape(
-      {513}, element_qtype.getStorageType());
-  auto const_attr = DenseElementsAttr::get(storage_type, llvm::ArrayRef(table));
+  auto const_type =
+      tensorflow::GetTypeFromTFTensorShape({513}, rewriter.getIntegerType(16));
+  auto const_attr = DenseElementsAttr::get(const_type, llvm::ArrayRef(table));
 
   auto const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
@@ -591,7 +589,7 @@ llvm::Optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
 
   if (vec.size() != num_total_elements) {
     op->emitOpError("getConstTensor(): number of elements mismatch.");
-    return llvm::None;
+    return std::nullopt;
   }
 
   auto const_type = tensorflow::GetTypeFromTFTensorShape(
@@ -615,7 +613,7 @@ llvm::Optional<Value> getConstTensor<APInt>(PatternRewriter& rewriter,
 
   if (vec.size() != num_total_elements) {
     op->emitOpError("getConstTensor(): number of elements mismatch.");
-    return llvm::None;
+    return std::nullopt;
   }
 
   auto const_type = tensorflow::GetTypeFromTFTensorShape(
@@ -639,7 +637,7 @@ llvm::Optional<Value> getConstTensor<float>(PatternRewriter& rewriter,
 
   if (vec.size() != num_total_elements) {
     op->emitOpError("getConstTensor(): number of elements mismatch.");
-    return llvm::None;
+    return std::nullopt;
   }
 
   auto const_type =
@@ -680,7 +678,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // type stripping changing.
   func.walk([&](tosa::ConstOp op) {
     auto ety = op.getValue().getType().getElementType();
-    auto new_ty = op.getType().cast<ShapedType>().clone(ety);
+    auto new_ty = op.getType().cast<TensorType>().clone(ety);
     op.getResult().setType(new_ty);
   });
 

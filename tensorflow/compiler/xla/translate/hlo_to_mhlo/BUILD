@@ -91,6 +91,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SparseTensorDialect",
+        "@llvm-project//mlir:SparseTensorEnums",
     ],
 )
 
@@ -124,8 +125,8 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/service:shape_inference",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:type_to_shape",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",

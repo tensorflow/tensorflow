@@ -89,13 +89,14 @@ class DispatcherState {
   struct Worker {
     explicit Worker(const RegisterWorkerUpdate& register_worker)
         : address(register_worker.worker_address()),
-          transfer_address(register_worker.transfer_address()),
+          transfer_servers({register_worker.transfer_servers().begin(),
+                            register_worker.transfer_servers().end()}),
           tags(register_worker.worker_tags().begin(),
                register_worker.worker_tags().end()),
           uid(register_worker.worker_uid()) {}
 
     const std::string address;
-    const std::string transfer_address;
+    const std::vector<DataTransferServerInfo> transfer_servers;
     const std::vector<std::string> tags;
     const int64_t uid;
   };
@@ -207,7 +208,8 @@ class DispatcherState {
         : task_id(create_task_update.task_id()),
           iteration(iteration),
           worker_address(create_task_update.worker_address()),
-          transfer_address(create_task_update.transfer_address()),
+          transfer_servers(create_task_update.transfer_servers().begin(),
+                           create_task_update.transfer_servers().end()),
           worker_tags(create_task_update.worker_tags().begin(),
                       create_task_update.worker_tags().end()),
           worker_uid(create_task_update.worker_uid()) {}
@@ -215,7 +217,7 @@ class DispatcherState {
     const int64_t task_id;
     const std::shared_ptr<Iteration> iteration;
     const std::string worker_address;
-    const std::string transfer_address;
+    const std::vector<DataTransferServerInfo> transfer_servers;
     const std::vector<std::string> worker_tags;
     const int64_t worker_uid;
     int64_t starting_round = 0;
@@ -294,9 +296,10 @@ class DispatcherState {
   // deterministically sharding a dataset among a fixed set of workers.
   StatusOr<int64_t> GetWorkerIndex(absl::string_view worker_address) const;
 
-  // Returns the directories of all active or completed snapshots.
-  const absl::flat_hash_set<std::string>& ListSnapshotDirectories() const {
-    return snapshot_directories_;
+  // Returns the paths of all snapshots inititated during the lifetime of this
+  // journal.
+  const absl::flat_hash_set<std::string>& ListSnapshotPaths() const {
+    return snapshot_paths_;
   }
 
  private:
@@ -362,8 +365,8 @@ class DispatcherState {
   // Tasks, keyed by worker addresses. The values are a map from task id to
   // task.
   absl::flat_hash_map<std::string, TasksById> tasks_by_worker_;
-  // Directories of all active or completed snapshots.
-  absl::flat_hash_set<std::string> snapshot_directories_;
+  // Paths for all snapshots initiated during the lifetime of this journal.
+  absl::flat_hash_set<std::string> snapshot_paths_;
 };
 
 }  // namespace data

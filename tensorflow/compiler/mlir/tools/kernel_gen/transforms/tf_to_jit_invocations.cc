@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -25,9 +26,9 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -81,7 +82,7 @@ struct TFToJITInvocationsPattern : public RewritePattern {
     // Create the JIT compile op.
     auto jit_compile_op = rewriter.create<tf_framework::JITCompileOp>(
         loc, rewriter.getType<tf_framework::JITCallableType>(),
-        /*ctx=*/llvm::None);
+        /*ctx=*/std::nullopt);
 
     // Move the TF operation into the body.
     {
@@ -91,7 +92,7 @@ struct TFToJITInvocationsPattern : public RewritePattern {
                                           op->getOperandTypes(), locs);
 
       // Map operands.
-      BlockAndValueMapping bvm;
+      IRMapping bvm;
       for (auto it : llvm::zip(op->getOperands(), block->getArguments()))
         bvm.map(std::get<0>(it), std::get<1>(it));
 
@@ -136,7 +137,7 @@ struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
       auto callable_ty = b.getType<tf_framework::JITCallableType>();
       auto jit_compile_op = b.create<tf_framework::JITCompileOp>(
           loc, callable_ty, /*ctx=*/Value());
-      BlockAndValueMapping bvm;
+      IRMapping bvm;
       {
         OpBuilder::InsertionGuard g(b);
         Block *block =
@@ -163,8 +164,7 @@ struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
 
     // Create and replace in two steps to clone the original op.
     auto ifOp = rewriter.create<scf::IfOp>(
-        loc, op->getResultTypes(), large_tensor_predicate, jit_body_builder_fn,
-        aot_body_builder_fn);
+        loc, large_tensor_predicate, jit_body_builder_fn, aot_body_builder_fn);
     rewriter.replaceOp(op, ifOp.getResults());
     return success();
   }

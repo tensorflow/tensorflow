@@ -236,6 +236,7 @@ void populateScalarHloToArithmeticConversionPatterns(
       ScalarHloToArithmeticPattern<mhlo::SineOp>,
       ScalarHloToArithmeticPattern<mhlo::SqrtOp>,
       ScalarHloToArithmeticPattern<mhlo::SubtractOp>,
+      ScalarHloToArithmeticPattern<mhlo::TanOp>,
       ScalarHloToArithmeticPattern<mhlo::TanhOp>,
       ScalarHloToArithmeticPattern<mhlo::XorOp>
   >(typeConverter, context, filterFn);

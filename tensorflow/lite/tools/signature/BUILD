@@ -1,7 +1,7 @@
 # Utilities for signature_defs in TFLite
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "replace_with_portable_tf_lib_when_required")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pybind_extension", "replace_with_portable_tf_lib_when_required")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -15,6 +15,7 @@ cc_library(
     name = "signature_def_util",
     srcs = ["signature_def_util.cc"],
     hdrs = ["signature_def_util.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = replace_with_portable_tf_lib_when_required([
         "//tensorflow/core:lib_proto_parsing",

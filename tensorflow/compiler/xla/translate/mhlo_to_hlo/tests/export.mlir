@@ -354,24 +354,26 @@ func.func @main(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %offset: ten
 // -----
 
 // CHECK:  HloModule
-func.func @main(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) {
-  // CHECK:  [[VAL_1:%.*]] = s32[4] parameter(0)
-  // CHECK:  [[VAL_2:%.*]] = s32[4] parameter(1)
-  // CHECK:  [[ATAN2:%.*]] = s32[4] atan2(s32[4] [[VAL_1]], s32[4] [[VAL_2]])
-  %0 = mhlo.atan2 %arg0, %arg1 : tensor<4xi32>
+func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>, %arg2: tensor<4xi32>, %arg3: tensor<4xi32>) -> (tensor<4xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) {
+  // CHECK:  [[VAL_1:%.*]] = f32[4] parameter(0)
+  // CHECK:  [[VAL_2:%.*]] = f32[4] parameter(1)
+  // CHECK:  [[ATAN2:%.*]] = f32[4] atan2(f32[4] [[VAL_1]], f32[4] [[VAL_2]])
+  // CHECK:  [[VAL_3:%.*]] = s32[4] parameter(2)
+  // CHECK:  [[VAL_4:%.*]] = s32[4] parameter(3)
+  %0 = mhlo.atan2 %arg0, %arg1 : tensor<4xf32>
 
-  // CHECK:  [[SHL:%.*]] = s32[4] shift-left(s32[4] [[VAL_1]], s32[4] [[VAL_2]])
-  %1 = mhlo.shift_left %arg0, %arg1 : tensor<4xi32>
+  // CHECK:  [[SHL:%.*]] = s32[4] shift-left(s32[4] [[VAL_3]], s32[4] [[VAL_4]])
+  %1 = mhlo.shift_left %arg2, %arg3 : tensor<4xi32>
 
-  // CHECK:  [[SHRA:%.*]] = s32[4] shift-right-arithmetic(s32[4] [[VAL_1]], s32[4] [[VAL_2]])
-  %2 = mhlo.shift_right_arithmetic %arg0, %arg1 : tensor<4xi32>
+  // CHECK:  [[SHRA:%.*]] = s32[4] shift-right-arithmetic(s32[4] [[VAL_3]], s32[4] [[VAL_4]])
+  %2 = mhlo.shift_right_arithmetic %arg2, %arg3 : tensor<4xi32>
 
-  // CHECK:  [[SHRL:%.*]] = s32[4] shift-right-logical(s32[4] [[VAL_1]], s32[4] [[VAL_2]])
-  %3 = mhlo.shift_right_logical %arg0, %arg1 : tensor<4xi32>
+  // CHECK:  [[SHRL:%.*]] = s32[4] shift-right-logical(s32[4] [[VAL_3]], s32[4] [[VAL_4]])
+  %3 = mhlo.shift_right_logical %arg2, %arg3 : tensor<4xi32>
 
   // CHECK:  ROOT
-  // CHECK-SAME:  [[VAL_7:%.*]] = (s32[4], s32[4], s32[4], s32[4]) tuple(s32[4] [[ATAN2]], s32[4] [[SHL]], s32[4] [[SHRA]], s32[4] [[SHRL]])
-  func.return %0, %1, %2, %3 : tensor<4xi32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>
+  // CHECK-SAME:  [[VAL_9:%.*]] = (f32[4], s32[4], s32[4], s32[4]) tuple(f32[4] [[ATAN2]], s32[4] [[SHL]], s32[4] [[SHRA]], s32[4] [[SHRL]])
+  func.return %0, %1, %2, %3 : tensor<4xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>
 }
 
 // -----
@@ -768,7 +770,7 @@ func.func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 
 // CHECK:  HloModule
 func.func @copy_0(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> attributes {execution_thread = "main"} {
-  %0 = "mhlo.copy"(%arg0) { is_cross_program_prefetch } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  %0 = "mhlo.copy"(%arg0) {cross_program_prefetch_index = 0 : i32} : (tensor<128x32xf32>) -> tensor<128x32xf32>
   func.return %0 : tensor<128x32xf32>
 }
 
@@ -781,7 +783,7 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
 // CHECK: ENTRY
 // CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
 // CHECK: %[[OUTPUT:.*]] = (f32[128,32], f32[128,32], u32[]) copy-start(f32[128,32] %[[INPUT]])
-// CHECK-SAME:  is_cross_program_prefetch
+// CHECK-SAME:  cross_program_prefetch_index=0
 // CHECK: ROOT {{.*}} f32[128,32] copy-done((f32[128,32], f32[128,32], u32[]) %[[OUTPUT]]
 
 
@@ -802,6 +804,21 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 // CHECK:  ROOT %[[RESULT:.*]] = f32[10] all-reduce(f32[10] %[[ARG0]])
 // CHECK-SAME{LITERAL}:  replica_groups={{0,2,4,6},{1,3,5,7}}
 // CHECK-SAME:  to_apply=%[[SUM_COMPUTATION]]
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "SetBound", mhlo.literal = dense<1> : tensor<i32>} : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  func.return %0 : tensor<2x3xf32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[VAL_1:%.*]] = f32[2,3] parameter(0)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[2,3] custom-call(f32[2,3] [[VAL_1]])
+// CHECK-SAME:  custom_call_target="SetBound"
+// CHECK-SAME:  literal=s32[] 1
 
 // -----
 
@@ -2091,6 +2108,16 @@ func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: %[[ARG0:.*]] = f32[2] parameter(0)
   %0 = "mhlo.round_nearest_even"(%arg0) {} : (tensor<2xf32>) -> tensor<2xf32>
   // CHECK: round-nearest-even(f32[2] %[[ARG0]])
+  func.return %0 : tensor<2xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: %[[ARG0:.*]] = f32[2] parameter(0)
+  %0 = "mhlo.tan"(%arg0) {} : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: tan(f32[2] %[[ARG0]])
   func.return %0 : tensor<2xf32>
 }
 

@@ -796,6 +796,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return EmitCos(op->shape().element_type(), operand_value);
     case HloOpcode::kSin:
       return EmitSin(op->shape().element_type(), operand_value);
+    case HloOpcode::kTan:
+      return EmitTan(op->shape().element_type(), operand_value);
     case HloOpcode::kTanh:
       return EmitTanh(op->shape().element_type(), operand_value);
     case HloOpcode::kSqrt:
@@ -931,47 +933,46 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       auto imag_result = FMul(exp_a, sin_b);
       return EmitComposeComplex(op, real_result, imag_result);
     }
-    case HloOpcode::kCos: {
-      // cos(z) = .5(e^(iz) + e^(-iz))
-      // cos(a+bi) = .5(e^(-b+ai) + e^(b-ai))
-      // now, e^(x+yi) = e^x*(cos(y)+sin(y)i), so we have
-      // cos(a+bi) = .5(e^-b*(cos(a)+sin(a)i) + e^b*(cos(-a)+sin(-a)i))
-      // cos(-x) = cos(x) and sin(-x) = -sin(x), so
-      // cos(a+bi) = .5(e^-b*(cos(a)+sin(a)i) + e^b*(cos(a)-sin(a)i))
-      //           = .5(cos(a)*(e^-b+e^b) + i*sin(a)*(e^-b-e^b))
-      auto a = EmitExtractReal(operand_value);
-      auto b = EmitExtractImag(operand_value);
-      auto type = a->getType();
-      TF_ASSIGN_OR_RETURN(auto exp_b, EmitExp(component_type, b, ""));
-      auto half_exp_b = FMul(llvm::ConstantFP::get(type, 0.5), exp_b);
-      auto half_exp_neg_b = FDiv(llvm::ConstantFP::get(type, 0.5), exp_b);
-      TF_ASSIGN_OR_RETURN(auto cos_a, EmitCos(component_type, a));
-      TF_ASSIGN_OR_RETURN(auto sin_a, EmitSin(component_type, a));
-      return EmitComposeComplex(op,
-                                FMul(cos_a, FAdd(half_exp_neg_b, half_exp_b)),
-                                FMul(sin_a, FSub(half_exp_neg_b, half_exp_b)));
-    }
-    case HloOpcode::kSin: {
-      // sin(z) = .5i(e^(-iz) - e^(iz))
-      // sin(a+bi) = .5i(e^(-i(a+bi)) - e^(i(a+bi)))
-      //           = .5i(e^(b-ai) - e^(-b+ai))
-      // now, e^(x+yi) = e^x*(cos(y)+sin(y)i), so we have
-      // sin(a+bi) = 0.5i(e^b*(cos(-a)+sin(-a)i) - e^-b*(cos(a)+sin(a)i))
-      //           = 0.5(e^b*(cos(-a)i-sin(-a)) - e^-b*(cos(a)i-sin(a)))
-      // cos(-x) = cos(x) and sin(-x) = -sin(x), so
-      //           = 0.5(e^b*(cos(a)i+sin(a)) - e^-b*(cos(a)i-sin(a)))
-      //           = 0.5(sin(a)*(e^b+e^-b) + i*cos(a)*(e^b-e^-b)
-      auto a = EmitExtractReal(operand_value);
-      auto b = EmitExtractImag(operand_value);
-      auto type = a->getType();
-      TF_ASSIGN_OR_RETURN(auto exp_b, EmitExp(component_type, b, ""));
-      auto half_exp_b = FMul(llvm::ConstantFP::get(type, 0.5), exp_b);
-      auto half_exp_neg_b = FDiv(llvm::ConstantFP::get(type, 0.5), exp_b);
-      TF_ASSIGN_OR_RETURN(auto cos_a, EmitCos(component_type, a));
-      TF_ASSIGN_OR_RETURN(auto sin_a, EmitSin(component_type, a));
-      return EmitComposeComplex(op,
-                                FMul(sin_a, FAdd(half_exp_b, half_exp_neg_b)),
-                                FMul(cos_a, FSub(half_exp_b, half_exp_neg_b)));
+    case HloOpcode::kCos:
+    case HloOpcode::kSin:
+    case HloOpcode::kTan: {
+      // If the argument is z = x + i*y, let
+      //   sinh(y) = (exp(y) - exp(-y)) / 2
+      //   cosh(y) = (exp(y) + exp(-y)) / 2 ,
+      // then
+      //   sin(x + i*y) = sin(x)*cosh(y) + i*cos(x)*sinh(y)
+      //   cos(x + i*y) = cos(x)*cosh(y) - i*sin(x)*sinh(y)
+      //   tan(x + i*y) = (sin(x)*cos(x) + i*sinh(y)*cosh(y)) /
+      //                    (cos(x)^2 + sinh(y)^2).
+      auto x = EmitExtractReal(operand_value);
+      auto y = EmitExtractImag(operand_value);
+      auto type = y->getType();
+      TF_ASSIGN_OR_RETURN(auto exp_y, EmitExp(component_type, y, ""));
+      auto half_exp_y = FMul(llvm::ConstantFP::get(type, 0.5), exp_y);
+      auto half_exp_neg_y = FDiv(llvm::ConstantFP::get(type, 0.5), exp_y);
+      TF_ASSIGN_OR_RETURN(auto sin_x, EmitSin(component_type, x));
+      TF_ASSIGN_OR_RETURN(auto cos_x, EmitCos(component_type, x));
+      auto sinh_y = FSub(half_exp_y, half_exp_neg_y);
+      auto cosh_y = FAdd(half_exp_y, half_exp_neg_y);
+      llvm::Value* real_result = nullptr;
+      llvm::Value* imag_result = nullptr;
+      if (op->opcode() == HloOpcode::kTan) {
+        auto num_real = FMul(sin_x, cos_x);
+        auto num_imag = FMul(sinh_y, cosh_y);
+        auto denom = FAdd(FMul(cos_x, cos_x), FMul(sinh_y, sinh_y));
+        auto denom_inv = FDiv(llvm::ConstantFP::get(type, 1.0), denom);
+        real_result = FMul(num_real, denom_inv);
+        imag_result = FMul(num_imag, denom_inv);
+      }
+      if (op->opcode() == HloOpcode::kSin) {
+        real_result = FMul(sin_x, cosh_y);
+        imag_result = FMul(cos_x, sinh_y);
+      }
+      if (op->opcode() == HloOpcode::kCos) {
+        real_result = FMul(cos_x, cosh_y);
+        imag_result = FNeg(FMul(sin_x, sinh_y));
+      }
+      return EmitComposeComplex(op, real_result, imag_result);
     }
     case HloOpcode::kTanh: {
       /*
@@ -1868,6 +1869,15 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   return Unimplemented("tanh");
 }
 
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitTan(PrimitiveType prim_type,
+                                                   llvm::Value* value) {
+  auto sin_x = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sin, {value},
+                                            {value->getType()}, b_);
+  auto cos_x = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::cos, {value},
+                                            {value->getType()}, b_);
+  return FDiv(sin_x, cos_x);
+}
+
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitReducePrecision(
     const HloInstruction* hlo, llvm::Value* x) {
   return EmitReducePrecisionIR(
@@ -2263,8 +2273,26 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     // because they require non-degenerate basic blocks.
     b_->SetInsertPoint(llvm::BranchInst::Create(
         exit_block, /*InsertAtEnd=*/emit_operand_blocks[operand_id]));
-    llvm_ir::IrArray::Index operand_index(operand_multi_index, operand->shape(),
-                                          source_index.GetType());
+    llvm_ir::IrArray::Index operand_index(source_index.GetType());
+    // If we are concatenating the fastest varying dimension, we can reuse the
+    // linear index.
+    if (source_index.linear() != nullptr && operand->shape().rank() > 1 &&
+        concat_dim == operand->shape().layout().minor_to_major(0)) {
+      llvm::Value* linear_without_concat_dim = b_->CreateUDiv(
+          source_index.linear(), source_index.GetConstantWithIndexType(
+                                     hlo->shape().dimensions(concat_dim)));
+      llvm::Value* adjusted_linear_base =
+          b_->CreateMul(linear_without_concat_dim,
+                        source_index.GetConstantWithIndexType(
+                            operand->shape().dimensions(concat_dim)));
+      llvm::Value* adjusted_linear =
+          b_->CreateAdd(adjusted_linear_base, operand_multi_index[concat_dim]);
+      operand_index = llvm_ir::IrArray::Index(
+          adjusted_linear, operand_multi_index, operand->shape(), b_);
+    } else {
+      operand_index = llvm_ir::IrArray::Index(
+          operand_multi_index, operand->shape(), source_index.GetType());
+    }
 
     TF_ASSIGN_OR_RETURN(llvm::Value * value,
                         operand_to_generator.at(operand)(operand_index));
@@ -2772,6 +2800,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {

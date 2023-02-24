@@ -317,7 +317,7 @@ py_library(
         ":packed_distributed_variable",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/tpu:tpu_replication",
     ],
 )
 
@@ -475,6 +475,7 @@ cuda_py_test(
     ],
     python_version = "PY3",
     tags = [
+        "no_pip",  # TODO(b/266520226)
         "no_windows",  # TODO(b/184424727): Re-enable this.
         "noasan",  # TODO(b/180630068)
         "nomsan",  # TODO(b/180630068)
@@ -547,6 +548,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/autograph/operators",
         "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/experimental/ops:cardinality",
         "//tensorflow/python/data/experimental/ops:distribute",
@@ -580,6 +582,7 @@ py_library(
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -810,6 +813,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tensor_conversion_registry",
     ],
 )
 
@@ -823,6 +827,7 @@ py_library(
         ":packed_distributed_variable",
         ":reduce_util",
         ":values_util",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:composite_tensor",
         "//tensorflow/python:control_flow_ops",
@@ -834,6 +839,8 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/training/saving:saveable_object",
@@ -860,6 +867,7 @@ py_library(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/types",
     ],
 )
@@ -1245,6 +1253,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_pip",  # TODO(b/266520226)
     ],
     deps = [
         ":collective_util",
@@ -2089,6 +2098,7 @@ cuda_py_test(
     shard_count = 12,
     tags = [
         "multi_gpu",
+        "no_pip",  # TODO(b/266520226)
         "noasan",
         "nomsan",
     ],  # b/175904958

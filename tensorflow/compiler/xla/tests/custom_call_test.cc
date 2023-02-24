@@ -371,7 +371,7 @@ struct TestFfiModule : ffi::StatelessModule {
                         {{"ffi.add_const", FFI_AddConst}}) {}
 
   XLA_FFI_DEFINE_FUNCTION(FFI_AddConst, AddConst,
-                          ffi::Ffi::Bind("ffi.add_const")
+                          ffi::Ffi::Binding()
                               .Arg<ffi::StridedBufferArg>()
                               .Arg<ffi::StridedBufferArg>()
                               .Attr<float>("cst"));

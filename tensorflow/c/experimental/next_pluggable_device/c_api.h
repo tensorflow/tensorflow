@@ -53,14 +53,14 @@ extern "C" {
 // through TF_OpKernelContext, and is opaque to plugin.
 typedef struct TF_Device TF_Device;
 
+typedef struct TF_VariableInfo TF_VariableInfo;
+
 // Returns a `TF_Device` pointer, which actually points to a C++ `Device`.
 // Currently we only allow `NextPluggableDevice` to be casted as `TF_Device`,
 // but in theory every this is a C API for every kind of device.
 TF_CAPI_EXPORT extern TF_Device* TF_GetDevice(TF_OpKernelContext* ctx);
 
-TF_CAPI_EXPORT extern size_t TF_GetDeviceOrdinal(TF_Device* device);
-
-// ---------------------------  Resource ---------------------------------------
+// --------------------------  Resource  ---------------------------------------
 // Create a `tensorflow::PluginResource` to the ResourceMgr provided by the
 // `ctx`. The `tensorflow::PluginResource` wraps a resource by plugin (as a
 // opaque pointer, since TensorFlow cannot parse it). `delete_func` is needed
@@ -83,7 +83,23 @@ TF_CAPI_EXPORT extern void TF_LookupOrCreatePluginResource(
     void* (*create_func)(void*), void* create_func_args,
     void (*delete_func)(void*), TF_Status* status);
 
-// ----------------------   Coordination service -------------------------------
+// -------------------------  VariableInfo  ------------------------------------
+TF_CAPI_EXPORT extern TF_VariableInfo* TF_CreateVariableInfoFromContext(
+    TF_OpKernelContext* ctx, int index, TF_Status* status);
+
+TF_CAPI_EXPORT extern void TF_LockVariableInfos(TF_VariableInfo** vars,
+                                                int num_vars,
+                                                TF_Status* status);
+
+TF_CAPI_EXPORT extern void TF_AllocateTempForVariableInfo(
+    TF_OpKernelContext* ctx, TF_VariableInfo* var_info, TF_Status* status);
+
+TF_CAPI_EXPORT extern TF_Tensor* TF_GetTensorFromVariableInfo(
+    TF_VariableInfo* var_info, TF_Status* status);
+
+TF_CAPI_EXPORT extern void TF_DeleteVariableInfo(TF_VariableInfo* var_info);
+
+// ---------------------  Coordination service  --------------------------------
 // Returns a not owning pointer to the coordination service agent, which is
 // opaque to plugin. Plugin OpKernels need to use the accompanying C APIs to
 // access coordination service functionalities.
@@ -108,7 +124,7 @@ TF_CAPI_EXPORT extern TF_Buffer* TF_CoordinationServiceGetKeyValue(
 TF_CAPI_EXPORT extern void TF_CoordinationServiceDeleteKeyValue(
     const char* key, TF_CoordinationServiceAgent* agent, TF_Status* status);
 
-// ---------------------------  PJRT -------------------------------------------
+// ----------------------------  PJRT  -----------------------------------------
 TF_CAPI_EXPORT extern void TF_CreateAndSetPjRtCApiClient(
     const char* device_type, TF_Status* status);
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <iterator>
@@ -23,6 +24,8 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
+#include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -53,7 +56,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -1338,7 +1340,9 @@ Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
         copy, HloInstruction::CreateUnary(copy->shape(), HloOpcode::kCopy, op));
   }
   // All copies can be eliminated (assuming layout constraints are satisfied).
-  if (ReplaceInstructionIfCompatible(copy, copy->mutable_operand(0))) {
+  if ((!copy->has_sharding() ||
+       copy->GetModule()->entry_computation()->root_instruction() != copy) &&
+      ReplaceInstructionIfCompatible(copy, copy->mutable_operand(0))) {
     return OkStatus();
   }
 
@@ -2777,7 +2781,8 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         lhs->shape().rank()) ||
        (dnums.rhs_contracting_dimensions_size() +
             dnums.rhs_batch_dimensions_size() ==
-        rhs->shape().rank()))) {
+        rhs->shape().rank())) &&
+      ShouldStrengthReduceDotToReduce(dot)) {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_lhs,
                         NormalizeDotOperandToBatchMajorAndContractingMinor(
                             lhs, dnums.lhs_batch_dimensions(),
@@ -3167,8 +3172,7 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
                       m::Op(&convert_operand)
                           .WithShape(m::Shape().WithElementType(PRED)))))) {
       HloInstruction* zero_like_multiply =
-          BroadcastZeros(computation_, multiply->shape().element_type(),
-                         multiply->shape().dimensions());
+          BroadcastZeros(computation_, multiply->shape());
       return ReplaceWithNewInstruction(
           multiply, HloInstruction::CreateTernary(
                         multiply->shape(), HloOpcode::kSelect, convert_operand,
@@ -4174,8 +4178,7 @@ std::unique_ptr<HloInstruction> TryRemainderToAnd(
     int64_t b_value = c->literal().GetFirstElement<T>();
     if (b_value > 0 && absl::has_single_bit(static_cast<uint64_t>(b_value))) {
       // Handle negative dividends by negating the result of the division.
-      HloInstruction* zero_like_a = BroadcastZeros(
-          computation, a->shape().element_type(), a->shape().dimensions());
+      HloInstruction* zero_like_a = BroadcastZeros(computation, a->shape());
 
       Shape compare_shape = ShapeUtil::ChangeElementType(a->shape(), PRED);
       simplifier->UpdateLayout(&compare_shape);
@@ -4548,12 +4551,14 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
         reshape->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
     // 1-sized dimensions added and removed will be one sized in both the update
     // slice and the dynamic-update-slice result.
+    // Make sure dus has only one user; otherwise an extra copy is resulted.
     if (trivial_reshape.has_value() &&
         Match(reshape->mutable_operand(0),
               m::Op(&dus)
                   .WithOpcode(HloOpcode::kDynamicUpdateSlice)
                   .WithOperand(1, m::Op(&slice))) &&
-        !dus->has_sharding() && !dus->operand(0)->has_sharding()) {
+        dus->user_count() == 1 && !dus->has_sharding() &&
+        !dus->operand(0)->has_sharding()) {
       auto new_operand = reshape->AddInstruction(HloInstruction::CreateReshape(
           reshape->shape(), dus->mutable_operand(0)));
       std::vector<int64_t> new_slice_shape;
@@ -6408,6 +6413,21 @@ Status AlgebraicSimplifierVisitor::HandleSqrt(HloInstruction* sqrt) {
   HloInstruction* sqrt_operand = sqrt->mutable_operand(0);
   if (sqrt_operand->opcode() == HloOpcode::kMultiply &&
       sqrt_operand->operand(0) == sqrt_operand->operand(1)) {
+    PrimitiveType element_type = sqrt_operand->shape().element_type();
+    // For 'A' of type C{64,128}, |A| has type F{32,64}, and the transformation
+    // requires an additional cast.
+    if (primitive_util::IsComplexType(element_type)) {
+      auto abs_shape = sqrt_operand->shape();
+      abs_shape.set_element_type(
+          primitive_util::ComplexComponentType(element_type));
+
+      HloInstruction* abs =
+          sqrt->parent()->AddInstruction(HloInstruction::CreateUnary(
+              abs_shape, HloOpcode::kAbs, sqrt_operand->mutable_operand(0)));
+
+      return ReplaceWithNewInstruction(
+          sqrt, HloInstruction::CreateConvert(sqrt_operand->shape(), abs));
+    }
     return ReplaceWithNewInstruction(
         sqrt, HloInstruction::CreateUnary(
                   sqrt_operand->mutable_operand(0)->shape(), HloOpcode::kAbs,
@@ -6461,7 +6481,8 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
 
   // Convert transpose(dot(a,b)) to dot(b,a).
   auto do_transpose_of_dot = [&]() -> StatusOr<bool> {
-    if (operand->opcode() != HloOpcode::kDot || operand->user_count() != 1) {
+    if (options_.supports_non_canonical_dots() ||
+        operand->opcode() != HloOpcode::kDot || operand->user_count() != 1) {
       return false;
     }
     HloInstruction* dot = operand;
@@ -6509,6 +6530,62 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
   TF_ASSIGN_OR_RETURN(bool did_transpose_of_dot, do_transpose_of_dot());
   if (did_transpose_of_dot) {
     return OkStatus();
+  }
+
+  // Transpose(dot(a,b))->dot(b,a) for any dot.
+  HloInstruction *lhs, *rhs, *dot;
+  if (options_.supports_non_canonical_dots() &&
+      Match(operand, m::Dot(&dot, m::Op(&lhs), m::Op(&rhs))) &&
+      dot->user_count() == 1) {
+    TF_ASSIGN_OR_RETURN(bool did_transform, [&]() -> StatusOr<bool> {
+      const auto& dnums = dot->dot_dimension_numbers();
+      const int64_t num_batch_dims = dnums.lhs_batch_dimensions_size();
+      for (int64_t i = 0; i < num_batch_dims; ++i) {
+        if (transpose->dimensions(i) >= num_batch_dims) {
+          return false;
+        }
+      }
+      const int64_t num_rhs_outer_dims =
+          rhs->shape().rank() - (dnums.rhs_contracting_dimensions_size() +
+                                 dnums.rhs_batch_dimensions_size());
+      const int64_t num_lhs_outer_dims =
+          lhs->shape().rank() - (dnums.lhs_contracting_dimensions_size() +
+                                 dnums.lhs_batch_dimensions_size());
+      for (int64_t i = 0; i < num_rhs_outer_dims; ++i) {
+        if (transpose->dimensions(i + num_batch_dims) !=
+            i + num_batch_dims + num_lhs_outer_dims) {
+          return false;
+        }
+      }
+      for (int64_t i = 0; i < num_lhs_outer_dims; ++i) {
+        if (transpose->dimensions(i + num_batch_dims + num_rhs_outer_dims) !=
+            i + num_batch_dims) {
+          return false;
+        }
+      }
+      DotDimensionNumbers new_dnums;
+      *new_dnums.mutable_lhs_contracting_dimensions() =
+          dnums.rhs_contracting_dimensions();
+      *new_dnums.mutable_rhs_contracting_dimensions() =
+          dnums.lhs_contracting_dimensions();
+      for (int64_t batch_dim = 0; batch_dim < num_batch_dims; ++batch_dim) {
+        new_dnums.add_lhs_batch_dimensions(
+            dnums.rhs_batch_dimensions(transpose->dimensions(batch_dim)));
+        new_dnums.add_rhs_batch_dimensions(
+            dnums.lhs_batch_dimensions(transpose->dimensions(batch_dim)));
+      }
+      HloInstruction* new_dot =
+          MakeDotHlo(rhs, lhs, new_dnums,
+                     SwapOperandsInDotPrecisionConfig(dot->precision_config()),
+                     dot->shape().element_type())
+              .value();
+      dot->SetupDerivedInstruction(new_dot);
+      TF_CHECK_OK(ReplaceInstruction(transpose, new_dot));
+      return true;
+    }());
+    if (did_transform) {
+      return OkStatus();
+    }
   }
 
   // Replace transpose with a reshape if more than one degenerate method is

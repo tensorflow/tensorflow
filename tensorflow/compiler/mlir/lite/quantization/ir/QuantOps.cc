@@ -40,7 +40,7 @@ void QuantizationForkDialect::initialize() {
       >();
 }
 
-OpFoldResult StorageCastOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult StorageCastOp::fold(FoldAdaptor) {
   // Matches x -> [scast -> scast] -> y, replacing the second scast with the
   // value of x if the casts invert each other.
   auto srcScastOp = getArg().getDefiningOp<StorageCastOp>();

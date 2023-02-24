@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/protobuf/memory_viewer_preprocess.pb.h"
@@ -63,6 +62,10 @@ const Shape* ResolveShapeIndex(const Shape* shape,
     shape = &shape->tuple_shapes(value);
   }
   return shape;
+}
+
+std::string ShapeDescription(const Shape& shape) {
+  return ShapeUtil::HumanStringWithLayout(shape);
 }
 
 // A wrapper around ShapeUtil::ByteSizeOf that clears out the layout/padding,
@@ -113,6 +116,12 @@ class BufferAllocationStruct {
     }
   }
 
+  std::string description() const {
+    return absl::StrFormat(
+        "buffer_allocation_id:%d\nsize:%d\nbuffer_counts:%d\n",
+        buffer_allocation_.index(), size(), buffer_allocation_.assigned_size());
+  }
+
  private:
   const BufferAllocationProto& buffer_allocation_;
   std::optional<int64_t> heap_simulator_trace_id_;
@@ -129,9 +138,7 @@ struct LogicalBufferStruct {
         *ResolveShapeIndex(&top_level_shape, proto.defined_at().shape_index());
   }
 
-  absl::string_view instruction_name() const {
-    return proto.defined_at().instruction_name();
-  }
+  absl::string_view instruction_name() const { return hlo_instruction.name(); }
 
   int64_t color() const { return proto.color(); }
   size_t size() const { return proto.size(); }
@@ -139,31 +146,39 @@ struct LogicalBufferStruct {
 
   // reference counting related
   int64_t inc() {
-    if (cannonical_buffer) return cannonical_buffer->inc();
+    if (canonical_buffer) return canonical_buffer->inc();
     return ++ref_count;
   }
   int64_t dec() {
-    if (cannonical_buffer) return cannonical_buffer->dec();
+    if (canonical_buffer) return canonical_buffer->dec();
     return --ref_count;
   }
   int64_t share_with(LogicalBufferStruct* buffer) {
-    cannonical_buffer = buffer;
-    return cannonical_buffer->inc();
+    canonical_buffer = buffer;
+    return canonical_buffer->inc();
   }
-  LogicalBufferStruct* get_cannonical_buffer() {
-    return cannonical_buffer ? cannonical_buffer->get_cannonical_buffer()
-                             : this;
+  LogicalBufferStruct* get_canonical_buffer() {
+    return canonical_buffer ? canonical_buffer->get_canonical_buffer() : this;
   }
 
   // Get the instruction name with shape index for a logical buffer.
   std::string GetInstructionNameWithShapeIndex() const {
     if (proto.defined_at().shape_index().empty()) {
-      return proto.defined_at().instruction_name();
+      return std::string(instruction_name());
     } else {
-      return absl::StrCat(proto.defined_at().instruction_name(), "{",
+      return absl::StrCat(instruction_name(), "{",
                           absl::StrJoin(proto.defined_at().shape_index(), ","),
                           "}");
     }
+  }
+
+  std::string description() const {
+    return absl::StrFormat(
+        "buffer_id:%d\nhlo_op:%s\nshape:%s\nsize:%d\nunpadded_size:%d\n"
+        "offset:%d\nspan:(%lld,%lld)",
+        proto.id(), instruction_name(), ShapeDescription(shape), size(),
+        unpadded_size(), offset, span ? span->first : -1,
+        span ? span->second : -1);
   }
 
   const LogicalBufferProto& proto;
@@ -174,7 +189,7 @@ struct LogicalBufferStruct {
   std::optional<std::pair<uint64_t, uint64_t>> span;
   xla::Shape shape;
   int64_t ref_count = 0;
-  LogicalBufferStruct* cannonical_buffer = nullptr;
+  LogicalBufferStruct* canonical_buffer = nullptr;
 };
 
 // A wrapper of HLO BufferAssignment, with lookup maps for logical buffers and
@@ -251,9 +266,16 @@ class HloProtoBufferWrapper {
  private:
   // Initialize the mappings of logical buffers and buffer allocations.
   void Init() {
+    // A mapping from name to HLO instruction.
+    absl::flat_hash_map<absl::string_view, const ::xla::HloInstructionProto*>
+        name_to_hlo;
+    absl::flat_hash_map<uint64_t, const ::xla::HloInstructionProto*>
+        unique_id_to_hlo;
+
     for (const auto& computation : hlo_proto_.hlo_module().computations()) {
       for (const auto& instruction : computation.instructions()) {
-        name_to_hlo_[instruction.name()] = &instruction;
+        name_to_hlo[instruction.name()] = &instruction;
+        unique_id_to_hlo[instruction.id()] = &instruction;
       }
     }
 
@@ -273,10 +295,15 @@ class HloProtoBufferWrapper {
       for (const auto& assigned : buffer_allocation.assigned()) {
         const auto id = assigned.logical_buffer_id();
         const auto* logical_buffer = id_to_logical_buffer_proto.at(id);
-        const auto& instruction =
-            *name_to_hlo_.at(logical_buffer->defined_at().instruction_name());
+        const auto& instruction_name =
+            logical_buffer->defined_at().instruction_name();
+        const auto* instruction =
+            instruction_name.empty()
+                ? unique_id_to_hlo.at(
+                      logical_buffer->defined_at().instruction_id())
+                : name_to_hlo.at(instruction_name);
         id_to_logical_buffer_[id] = std::make_unique<LogicalBufferStruct>(
-            *logical_buffer, *buffer_allocation_s, instruction,
+            *logical_buffer, *buffer_allocation_s, *instruction,
             assigned.offset());
       }
     }
@@ -338,10 +365,6 @@ class HloProtoBufferWrapper {
   // Reference to the original HLO proto.
   const ::xla::HloProto& hlo_proto_;
 
-  // A mapping from name to HLO instruction.
-  absl::flat_hash_map<absl::string_view, const ::xla::HloInstructionProto*>
-      name_to_hlo_;
-
   // A mapping from logical buffer ID to logical buffer.
   absl::flat_hash_map<int64_t, std::unique_ptr<LogicalBufferStruct>>
       id_to_logical_buffer_;
@@ -353,10 +376,6 @@ class HloProtoBufferWrapper {
 
 double BytesToMiB(int64_t bytes) {
   return static_cast<double>(bytes) / (1ULL << 20);
-}
-
-std::string ShapeDescription(const Shape& shape) {
-  return ShapeUtil::HumanStringWithLayout(shape);
 }
 
 HeapObject MakeHeapObjectCommon(std::string label, int32_t color,
@@ -636,7 +655,7 @@ Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
         // There is no more reference to the canonical buffer, the canonical
         // buffer is finally freed. Update memory usage and memory timespan
         // using the metadata of canonical buffer.
-        auto& canonical_buffer = *logical_buffer.get_cannonical_buffer();
+        auto& canonical_buffer = *logical_buffer.get_canonical_buffer();
         TF_RETURN_IF_ERROR(stats->DecreaseMemoryUsage(&canonical_buffer));
       }
     } else if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
@@ -726,9 +745,208 @@ void CreatePeakUsageSnapshot(const HloProtoBufferWrapper& wrapper,
   peak_snapshot->FinalizeBufferUsage();
 }
 
+void ConvertAllocationTimeline(const HloProtoBufferWrapper& wrapper,
+                               const HeapSimulatorStats& simulator_stats,
+                               const int64_t memory_color,
+                               PreprocessResult* result) {
+  // The color constants from https://graphviz.org/doc/info/colors.html.
+  const char* lb_colors[] = {
+      "antiquewhite3",
+      "aqua",
+      "aquamarine",
+      "bisque",
+      "blanchedalmond",
+      "blue",
+      "blueviolet",
+      "brown",
+      "burlywood",
+      "cadetblue",
+      "chartreuse",
+      "chocolate",
+      "coral",
+      "cornflowerblue",
+      "crimson",
+      "cyan",
+      "darkblue",
+      "darkcyan",
+      "darkgoldenrod",
+      "darkgray",
+      "darkgreen",
+      "darkkhaki",
+      "darkmagenta",
+      "darkolivegreen",
+      "darkorange",
+      "darkorchid",
+      "darkred",
+      "darksalmon",
+      "darkseagreen",
+      "darkslateblue",
+      "darkslategray",
+      "darkturquoise",
+      "darkviolet",
+      "deeppink",
+      "deepskyblue",
+      "dimgray",
+      "dodgerblue",
+      "firebrick",
+      "floralwhite",
+      "forestgreen",
+      "fuchsia",
+      "gainsboro",
+      "gold",
+      "goldenrod",
+      "green",
+      "greenyellow",
+      "goldenrod",
+      "greenyellow",
+      "honeydew",
+      "hotpink",
+      "indianred",
+      "indigo",
+      "ivory3",
+      "khaki",
+      "lavender",
+      "lavenderblush",
+      "lawngreen",
+      "lemonchiffon",
+      "lightblue",
+      "lightcoral",
+      "lightcyan",
+      "lightpink",
+      "limegreen",
+      "lightsalmon",
+      "lightseagreen",
+      "lightskyblue",
+      "lime",
+      "magenta",
+      "maroon",
+      "mediumaquamarine",
+      "mediumblue",
+      "mediumorchid",
+      "mediumpurple",
+      "midnightblue",
+      "mediumvioletred",
+      "mistyrose",
+      "moccasin",
+      "olive",
+      "orange",
+      "orangered",
+      "orchid",
+      "palegoldenrod"
+      "palegreen",
+      "paleturquoise",
+      "palevioletred",
+      "papayawhip",
+      "peachpuff",
+      "peachpuff",
+      "pink",
+      "plum",
+      "powderblue",
+      "purple",
+      "rebeccapurple",
+      "red",
+      "rosybrown",
+      "royalblue",
+      "salmon",
+      "sandybrown",
+      "seagreen",
+      "seashell",
+      "sienna",
+      "skyblue",
+      "tan",
+      "teal",
+      "turquoise",
+      "tomato",
+      "violet",
+      "violetred",
+      "yellow",
+  };
+
+  struct RenderOptions {
+    size_t graph_width = 2048;
+    size_t graph_height = 2048;
+  } render_options;
+
+  const char* ba_colors[] = {
+      "azure",
+      "beige",
+      "cornsilk",
+  };
+
+  int num_lb_colors = sizeof(lb_colors) / sizeof(lb_colors[0]);
+  int num_ba_colors = sizeof(ba_colors) / sizeof(ba_colors[0]);
+  std::vector<size_t> buffer_allocation_offsets;
+  size_t total_y_size = 0;  // Range of y dimension.
+  size_t total_x_size = 0;  // Range of x dimension.
+  std::vector<std::string> rects;
+  auto buffer_allocations = wrapper.GetBufferAllocations(memory_color);
+  const auto& heap_simulator_traces =
+      wrapper.GetHloProto().buffer_assignment().heap_simulator_traces();
+  for (const auto& buffer_allocation : buffer_allocations) {
+    // Exclude BAs for "global variables". The timeline provides little value.
+    if (buffer_allocation->IsIndefinite()) continue;
+    auto heap_simulator_trace_id = buffer_allocation->heap_simulator_trace_id();
+    if (!heap_simulator_trace_id) continue;
+    buffer_allocation_offsets.push_back(total_y_size);
+    total_y_size += buffer_allocation->size();
+    total_x_size = std::max<size_t>(
+        total_x_size,
+        heap_simulator_traces.at(*heap_simulator_trace_id).events_size());
+  }
+  if (!total_y_size || !total_x_size) return;
+  double scale_x =
+      static_cast<double>(render_options.graph_width) / total_x_size;
+  double scale_y =
+      static_cast<double>(render_options.graph_height) / total_y_size;
+
+  int node_id = 0;
+  auto add_rect = [&](size_t x, size_t y, size_t width, size_t height,
+                      const string& description, const char* color) {
+    size_t center_x = x + (width >> 1);
+    size_t center_y = y + (height >> 1);
+    int pos_x = center_x * scale_x;
+    int pos_y = center_y * scale_y;
+    int rect_w = width * scale_x;
+    int rect_h = height * scale_y;
+    // Skip when block size is smaller than half a pixel in output size.
+    if (height * scale_y < 0.5) return;
+    rect_h = std::max(rect_h, 1);  // Rounding up.
+    std::string rect = absl::StrFormat(
+        R"("%d" [tooltip="%s", pos="%d,%d!", width="%d!", height="%d!", color=%s];)",
+        node_id++, description, pos_x, pos_y, rect_w, rect_h, color);
+    rects.push_back(rect);
+  };
+  int buffer_id = 0;
+  for (const auto& buffer_allocation : buffer_allocations) {
+    // Exclude BAs for "global variables". The timeline provides little value.
+    if (buffer_allocation->IsIndefinite()) continue;
+    auto buffer_allocation_offset = buffer_allocation_offsets[buffer_id++];
+    add_rect(0, buffer_allocation_offset, total_x_size,
+             buffer_allocation->size(), buffer_allocation->description(),
+             ba_colors[buffer_id % num_ba_colors]);
+
+    for (const auto& assigned : buffer_allocation->proto().assigned()) {
+      const LogicalBufferStruct& logical_buffer =
+          wrapper.GetLogicalBuffer(assigned.logical_buffer_id());
+      // Exclude non-canonical logical buffers.
+      if (!logical_buffer.span || logical_buffer.canonical_buffer) continue;
+      size_t width = logical_buffer.span->second - logical_buffer.span->first;
+      size_t height = buffer_allocation_offset + logical_buffer.size();
+      add_rect(logical_buffer.span->first, logical_buffer.offset, width, height,
+               logical_buffer.description(),
+               lb_colors[node_id % num_lb_colors]);
+    }
+  }
+  VLOG(1) << "rects:" << rects.size();
+  result->set_allocation_timeline(
+      absl::StrFormat("graph G {\n node [shape=box,style=filled];\n %s\n}",
+                      absl::StrJoin(rects, "\n")));
+}
+
 void GeneratePreprocessResult(const HloProtoBufferWrapper& wrapper,
                               const HeapSimulatorStats& simulator_stats,
                               const PeakUsageSnapshot& peak_snapshot,
+                              const int64_t memory_color,
                               PreprocessResult* result) {
   // Module info.
   result->set_module_name(wrapper.GetHloProto().hlo_module().name());
@@ -803,6 +1021,8 @@ void GeneratePreprocessResult(const HloProtoBufferWrapper& wrapper,
   }
 
   NoteSpecialAllocations(wrapper, peak_snapshot.small_buffer_size, result);
+
+  ConvertAllocationTimeline(wrapper, simulator_stats, memory_color, result);
 }
 
 }  // namespace
@@ -826,7 +1046,8 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
   CreatePeakUsageSnapshot(wrapper, memory_color, &peak_snapshot);
 
   PreprocessResult result;
-  GeneratePreprocessResult(wrapper, simulator_stats, peak_snapshot, &result);
+  GeneratePreprocessResult(wrapper, simulator_stats, peak_snapshot,
+                           memory_color, &result);
   return result;
 }
 

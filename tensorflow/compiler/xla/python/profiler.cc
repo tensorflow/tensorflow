@@ -75,7 +75,8 @@ void BuildProfilerSubmodule(py::module* m) {
              tensorflow::profiler::XSpace xspace;
              // Disables the ProfilerSession
              TF_RETURN_IF_ERROR(sess->CollectData(&xspace));
-             return tsl::profiler::ExportToTensorBoard(xspace, tensorboard_dir);
+             return tsl::profiler::ExportToTensorBoard(
+                 xspace, tensorboard_dir, /* also_export_trace_json= */ true);
            });
 
   py::class_<tensorflow::ProfileOptions> profile_options_class(

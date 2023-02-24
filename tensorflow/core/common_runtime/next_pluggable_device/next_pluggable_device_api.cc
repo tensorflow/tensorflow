@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 
+#include <string>
+
+#include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/tsl/platform/errors.h"
+
 namespace tensorflow {
 
 static const TFNPD_Api* tfnpd_api;
@@ -22,5 +27,19 @@ static const TFNPD_Api* tfnpd_api;
 const TFNPD_Api* TfnpdApi() { return tfnpd_api; }
 
 void SetTfnpdApi(const TFNPD_Api* api) { tfnpd_api = api; }
+
+tsl::Status InitNextPluggableDevicePlugin(
+    TFNPDInitPluginFn init_fn, std::string* device_type,
+    std::string* compilation_device_name) {
+  TFNPD_PluginParams params{TFNPD_PLUGIN_PARAMS_STRUCT_SIZE};
+  TF_StatusPtr c_status_ptr(TF_NewStatus());
+  const TFNPD_Api* api = init_fn(&params, c_status_ptr.get());
+  TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status_ptr.get()));
+
+  SetTfnpdApi(api);
+  *device_type = std::string(params.device_type);
+  *compilation_device_name = std::string(params.compilation_device_name);
+  return ::tensorflow::OkStatus();
+}
 
 }  // namespace tensorflow

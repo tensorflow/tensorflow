@@ -28,6 +28,7 @@ py_library(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:func_graph",
+        "//tensorflow/python:functional_ops",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:graph_to_function_def",
         "//tensorflow/python:handle_data_util",
@@ -39,8 +40,6 @@ py_library(
         "//tensorflow/python/eager:forwardprop_util",
         "//tensorflow/python/eager:graph_only_ops",
         "//tensorflow/python/eager:tape",
-        "//tensorflow/python/ops/numpy_ops:numpy",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -63,6 +62,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":attributes",
+        ":compiler_ir",
         ":function_spec",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",
@@ -70,7 +70,6 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python/distribute/parallel_device",
         "//tensorflow/python/eager:context",
@@ -332,9 +331,7 @@ py_library(
     deps = [
         "//tensorflow/python:constant_op",
         "//tensorflow/python/saved_model/registration",
-        "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:base",
-        "//tensorflow/python/trackable:resource",
     ],
 )
 
@@ -378,5 +375,53 @@ tf_py_test(
         "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
+    name = "compiler_ir",
+    srcs = ["compiler_ir.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core/function/trace_type",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/util",
+    ],
+)
+
+tf_xla_py_test(
+    name = "compiler_ir_test",
+    srcs = ["compiler_ir_test.py"],
+    disabled_backends = [
+        "cpu_ondemand",
+    ],
+    enable_mlir_bridge = True,
+    python_version = "PY3",
+    tags = [
+        "no_mac",
+        "no_pip",
+        "no_tfrt",  # TODO(b/185944215)
+        "no_windows",
+    ],
+    use_xla_device = False,
+    deps = [
+        ":compiler_ir",
+        ":polymorphic_function",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_gen",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/util",
     ],
 )

@@ -74,10 +74,10 @@ from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -1007,10 +1007,15 @@ def cast(x, dtype, name=None):
       # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
       x = ops.convert_to_tensor(x, name="x")
+      if x.dtype.is_complex and base_type.is_floating:
+        logging.warn(
+            f"You are casting an input of type {x.dtype.name} to an "
+            f"incompatible dtype {base_type.name}.  This will "
+            "discard the imaginary part and may not be what you "
+            "intended."
+        )
       if x.dtype != base_type:
         x = gen_math_ops.cast(x, base_type, name=name)
-    if x.dtype.is_complex and base_type.is_floating:
-      logging.warn("Casting complex to real discards imaginary part.")
     return x
 
 
@@ -2177,8 +2182,8 @@ def _range_tensor_conversion_function(value, dtype=None, name=None,
   return range(value.start, value.stop, value.step, dtype=dtype, name=name)
 
 
-ops.register_tensor_conversion_function(builtins.range,
-                                        _range_tensor_conversion_function)
+tensor_conversion_registry.register_tensor_conversion_function(
+    builtins.range, _range_tensor_conversion_function)
 
 
 # Reduction operations
@@ -3877,40 +3882,6 @@ tf_export(v1=["sparse_matmul"])(sparse_matmul)
 @dispatch.add_dispatch_support
 
 
-@ops.RegisterStatistics("MatMul", "flops")
-def _calc_mat_mul_flops(graph, node):
-  """Calculates the compute resources needed for MatMul."""
-  transpose_a = node.attr["transpose_a"].b
-  a_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
-  a_shape.assert_is_fully_defined()
-  if transpose_a:
-    k = int(a_shape[0])
-  else:
-    k = int(a_shape[1])
-  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
-  output_shape.assert_is_fully_defined()
-  output_count = np.prod(output_shape.as_list())
-  return ops.OpStats("flops", (k * output_count * 2))
-
-
-@ops.RegisterStatistics("BatchMatMul", "flops")
-@ops.RegisterStatistics("BatchMatMulV2", "flops")
-@ops.RegisterStatistics("BatchMatMulV3", "flops")
-def _calc_batch_mat_mul_flops(graph, node):
-  """Calculates the compute resources needed for BatchMatMul."""
-  transpose_a = node.attr["transpose_a"].b
-  a_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
-  a_shape.assert_is_fully_defined()
-  if transpose_a:
-    k = int(a_shape[-2])
-  else:
-    k = int(a_shape[-1])
-  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
-  output_shape.assert_is_fully_defined()
-  output_count = np.prod(output_shape.as_list())
-  return ops.OpStats("flops", (k * output_count * 2))
-
-
 def _as_indexed_slices(x, optimize=True):
   """Convert 'x' to IndexedSlices.
 
@@ -4093,7 +4064,7 @@ def add_n(inputs, name=None):
   if not inputs or not isinstance(inputs, collections_abc.Iterable):
     raise ValueError("Inputs must be an iterable of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape.")
-  inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
+  inputs = indexed_slices.convert_n_to_tensor_or_indexed_slices(inputs)
   if not all(
       isinstance(x, (ops.Tensor, indexed_slices.IndexedSlices))
       for x in inputs):
@@ -4109,7 +4080,6 @@ def add_n(inputs, name=None):
       return array_ops.identity(values, name=name)
     return values
   return gen_math_ops.add_n(inputs, name=name)
-
 
 
 @tf_export("math.accumulate_n", v1=["math.accumulate_n", "accumulate_n"])
@@ -4171,7 +4141,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
 
   if not inputs or not isinstance(inputs, (list, tuple)):
     raise _input_error()
-  inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
+  inputs = indexed_slices.convert_n_to_tensor_or_indexed_slices(inputs)
   if not all(isinstance(x, ops.Tensor) for x in inputs):
     raise _input_error()
   if not all(x.dtype == inputs[0].dtype for x in inputs):

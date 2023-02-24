@@ -267,7 +267,7 @@ static absl::Status CollectivePermuteStartImpl(
   async_stream->ThenWaitFor(stream);
 
   auto status = CollectivePermuteImplCommon(
-      run_options, stream, args, group_mode, op_id, replica_group_offsets,
+      run_options, async_stream, args, group_mode, op_id, replica_group_offsets,
       replica_group_values, source_peers, target_peers);
   if (!status.ok()) return status;
 

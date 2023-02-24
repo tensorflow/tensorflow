@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
 
 #include "absl/strings/str_format.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/tsl/platform/numbers.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
@@ -50,7 +49,7 @@ Status CheckVirtualAddressManagementSupport(GpuDeviceHandle device,
   TF_ASSIGN_OR_RETURN(bool supports_virtual_address_management,
                       SupportsVirtualAddressManagement(device));
   if (!supports_virtual_address_management) {
-    return stream_executor::port::InternalError(absl::StrFormat(
+    return tsl::errors::Internal(absl::StrFormat(
         "GPU %d does not support virtual memory address management.",
         gpu_id.value()));
   }

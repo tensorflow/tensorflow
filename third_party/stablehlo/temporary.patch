@@ -1,116 +1,344 @@
-diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.h b/stablehlo/stablehlo/dialect/AssemblyFormat.h
---- stablehlo/stablehlo/dialect/AssemblyFormat.h
-+++ stablehlo/stablehlo/dialect/AssemblyFormat.h
-@@ -59,7 +59,7 @@
-                                     OpTypes... types) {
-   static_assert(sizeof...(types) > 0);  // Must be non empty, must have result
-   SmallVector<Type> typesVec{types...};
--  ArrayRef<Type> typesRef = makeArrayRef(typesVec);
-+  ArrayRef<Type> typesRef = ArrayRef(typesVec);
-   return detail::printSameOperandsAndResultTypeImpl(
-       p, op, typesRef.drop_back(1), typesRef.back());
- }
-@@ -69,7 +69,7 @@
-                                            OpTypes&... types) {
-   static_assert(sizeof...(types) > 0);  // Must be non empty, must have result
-   SmallVector<Type*> typesVec{&types...};
--  ArrayRef<Type*> typesRef = makeArrayRef(typesVec);
-+  ArrayRef<Type*> typesRef = ArrayRef(typesVec);
-   return detail::parseSameOperandsAndResultTypeImpl(
-       parser, typesRef.drop_back(1), *typesRef.back());
- }
-diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
---- stablehlo/stablehlo/dialect/TypeInference.cpp
-+++ stablehlo/stablehlo/dialect/TypeInference.cpp
-@@ -2184,7 +2184,9 @@
-   }
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -53,6 +53,7 @@
  
-   auto getSliceDim = [&sliceSizes](int64_t index) -> int64_t {
--    return sliceSizes.getValues<int64_t>()[index];
-+    return sliceSizes.getValues<int64_t>()[index] == -1
-+               ? ShapedType::kDynamic
-+               : sliceSizes.getValues<int64_t>()[index];
-   };
+ gentbl_cc_library(
+     name = "base_attr_interfaces_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-attr-interface-decls"],
+@@ -65,7 +66,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/Base.td",
+-    strip_include_prefix = ".",
+     deps = [":stablehlo_ops_td_files"],
+ )
  
-   return inferGatherReturnTypeComponents(
-diff --ruN a/stablehlo/stablehlo/integrations/c/StablehloAttributes.cpp b/stablehlo/stablehlo/integrations/c/StablehloAttributes.cpp
---- stablehlo/stablehlo/integrations/c/StablehloAttributes.cpp
-+++ stablehlo/stablehlo/integrations/c/StablehloAttributes.cpp
-@@ -27,9 +27,9 @@
-     const int64_t *insertedWindowDims, intptr_t nScatteredDimsToOperandDims,
-     const int64_t *scatteredDimsToOperandDims, int64_t indexVectorDim) {
-   return wrap(mlir::stablehlo::ScatterDimensionNumbersAttr::get(
--      unwrap(ctx), llvm::makeArrayRef(updateWindowDims, nUpdateWindowDims),
--      llvm::makeArrayRef(insertedWindowDims, nInsertedWindowDims),
--      llvm::makeArrayRef(scatteredDimsToOperandDims,
-+      unwrap(ctx), llvm::ArrayRef(updateWindowDims, nUpdateWindowDims),
-+      llvm::ArrayRef(insertedWindowDims, nInsertedWindowDims),
-+      llvm::ArrayRef(scatteredDimsToOperandDims,
-                          nScatteredDimsToOperandDims),
-       indexVectorDim));
- }
-@@ -99,9 +99,9 @@
-     intptr_t nStartIndexMap, const int64_t *startIndexMap,
-     int64_t indexVectorDim) {
-   return wrap(mlir::stablehlo::GatherDimensionNumbersAttr::get(
--      unwrap(ctx), llvm::makeArrayRef(offsetDims, nOffsetDims),
--      llvm::makeArrayRef(collapsedSliceDims, nCollapsedSliceDims),
--      llvm::makeArrayRef(startIndexMap, nStartIndexMap), indexVectorDim));
-+      unwrap(ctx), llvm::ArrayRef(offsetDims, nOffsetDims),
-+      llvm::ArrayRef(collapsedSliceDims, nCollapsedSliceDims),
-+      llvm::ArrayRef(startIndexMap, nStartIndexMap), indexVectorDim));
+@@ -100,6 +100,7 @@
+ 
+ gentbl_cc_library(
+     name = "chlo_attrs_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-attrdef-decls"],
+@@ -112,7 +113,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/ChloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":chlo_ops_td_files",
+     ],
+@@ -164,6 +164,7 @@
+ 
+ gentbl_cc_library(
+     name = "chlo_enums_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-enum-decls"],
+@@ -176,7 +177,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/ChloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":chlo_ops_td_files",
+     ],
+@@ -184,6 +184,7 @@
+ 
+ gentbl_cc_library(
+     name = "chlo_ops_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-op-decls"],
+@@ -196,7 +197,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/ChloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":chlo_ops_td_files",
+     ],
+@@ -233,7 +233,10 @@
+     srcs = [
+         "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
+     ],
+-    includes = ["include", "."],
++    includes = [
++        ".",
++        "include",
++    ],
+     deps = [
+         ":chlo_ops_td_files",
+         "@llvm-project//mlir:OpBaseTdFiles",
+@@ -358,9 +361,9 @@
+     deps = [
+         ":reference_axes",
+         ":reference_element",
+-        ":reference_sizes",
+         ":reference_errors",
+         ":reference_scope",
++        ":reference_sizes",
+         ":reference_tensor",
+         ":reference_types",
+         ":stablehlo_ops",
+@@ -473,6 +476,7 @@
+ 
+ gentbl_cc_library(
+     name = "stablehlo_attrs_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-attrdef-decls"],
+@@ -485,7 +489,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/StablehloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":stablehlo_ops_td_files",
+     ],
+@@ -539,6 +542,7 @@
+ 
+ gentbl_cc_library(
+     name = "stablehlo_enums_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-enum-decls"],
+@@ -551,7 +555,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/StablehloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":stablehlo_ops_td_files",
+     ],
+@@ -559,6 +562,7 @@
+ 
+ gentbl_cc_library(
+     name = "stablehlo_ops_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-op-decls"],
+@@ -571,7 +575,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/StablehloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":stablehlo_ops_td_files",
+     ],
+@@ -634,6 +637,7 @@
+ 
+ gentbl_cc_library(
+     name = "stablehlo_pass_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             [
+@@ -644,7 +648,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/transforms/Passes.td",
+-    strip_include_prefix = ".",
+     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
+ )
+ 
+@@ -672,13 +675,13 @@
+         ":vhlo_types",
+         "@llvm-project//llvm:Support",
+         "@llvm-project//mlir:FuncDialect",
++        "@llvm-project//mlir:IR",
+         "@llvm-project//mlir:InferTypeOpInterface",
+-        "@llvm-project//mlir:IR",
+         "@llvm-project//mlir:Pass",
+         "@llvm-project//mlir:Support",
+         "@llvm-project//mlir:TensorDialect",
++        "@llvm-project//mlir:TransformUtils",
+         "@llvm-project//mlir:Transforms",
+-        "@llvm-project//mlir:TransformUtils",
+     ],
+ )
+ 
+@@ -775,6 +778,7 @@
+ 
+ gentbl_cc_library(
+     name = "test_utils_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             [
+@@ -786,7 +790,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/tests/TestUtils.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":test_utils_td_files",
+     ],
+@@ -915,7 +918,10 @@
+     srcs = [
+         "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
+     ],
+-    includes = ["include", "."],
++    includes = [
++        ".",
++        "include",
++    ],
+     deps = [
+         ":vhlo_ops_td_files",
+         "@llvm-project//mlir:OpBaseTdFiles",
+@@ -924,6 +930,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_attr_interfaces_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-attr-interface-decls"],
+@@ -936,7 +943,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloAttrs.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+@@ -944,6 +950,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_attrs_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-attrdef-decls"],
+@@ -956,7 +963,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+@@ -964,6 +970,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_enums_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-enum-decls"],
+@@ -976,7 +983,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloEnums.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+@@ -984,6 +990,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_op_interfaces_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-op-interface-decls"],
+@@ -996,7 +1003,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+@@ -1033,6 +1039,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_ops_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-op-decls"],
+@@ -1045,7 +1052,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+@@ -1094,6 +1100,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_type_interfaces_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-type-interface-decls"],
+@@ -1106,7 +1113,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloTypes.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+@@ -1114,6 +1120,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_types_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-typedef-decls"],
+@@ -1126,7 +1133,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
+--- stablehlo/stablehlo/dialect/ChloOps.td
++++ stablehlo/stablehlo/dialect/ChloOps.td
+@@ -53,7 +53,6 @@
+     and provide conversion patterns to fully materialize into lower level
+     dialects.
+   }];
+-  let useFoldAPI = kEmitFoldAdaptorFolder;
  }
  
- bool stablehloAttributeIsAGatherDimensionNumbers(MlirAttribute attr) {
-@@ -170,10 +170,10 @@
-     const int64_t *rhsContractingDimensions) {
-   return wrap(mlir::stablehlo::DotDimensionNumbersAttr::get(
-       unwrap(ctx),
--      llvm::makeArrayRef(lhsBatchingDimensions, nLhsBatchingDimensions),
--      llvm::makeArrayRef(rhsBatchingDimensions, nRhsBatchingDimensions),
--      llvm::makeArrayRef(lhsContractingDimensions, nLhsContractingDimensions),
--      llvm::makeArrayRef(rhsContractingDimensions, nRhsContractingDimensions)));
-+      llvm::ArrayRef(lhsBatchingDimensions, nLhsBatchingDimensions),
-+      llvm::ArrayRef(rhsBatchingDimensions, nRhsBatchingDimensions),
-+      llvm::ArrayRef(lhsContractingDimensions, nLhsContractingDimensions),
-+      llvm::ArrayRef(rhsContractingDimensions, nRhsContractingDimensions)));
+ class CHLO_Op<string mnemonic, list<Trait> traits> :
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
+--- stablehlo/stablehlo/dialect/StablehloOps.td
++++ stablehlo/stablehlo/dialect/StablehloOps.td
+@@ -37,7 +37,6 @@
+ 
+   let useDefaultAttributePrinterParser = 0;
+   let useDefaultTypePrinterParser = 0;
+-  let useFoldAPI = kEmitFoldAdaptorFolder;
  }
  
- bool stablehloAttributeIsADotDimensionNumbers(MlirAttribute attr) {
-@@ -253,11 +253,11 @@
-     intptr_t nOutputSpatialDimensions, const int64_t *outputSpatialDimensions) {
-   return wrap(mlir::stablehlo::ConvDimensionNumbersAttr::get(
-       unwrap(ctx), inputBatchDimension, inputFeatureDimension,
--      llvm::makeArrayRef(inputSpatialDimensions, nInputSpatialDimensions),
-+      llvm::ArrayRef(inputSpatialDimensions, nInputSpatialDimensions),
-       kernelInputFeatureDimension, kernelOutputFeatureDimension,
--      llvm::makeArrayRef(kernelSpatialDimensions, nKernelSpatialDimensions),
-+      llvm::ArrayRef(kernelSpatialDimensions, nKernelSpatialDimensions),
-       outputBatchDimension, outputFeatureDimension,
--      llvm::makeArrayRef(outputSpatialDimensions, nOutputSpatialDimensions)));
-+      llvm::ArrayRef(outputSpatialDimensions, nOutputSpatialDimensions)));
+ class StableHLO_Op<string mnemonic, list<Trait> traits> :
+diff --ruN a/stablehlo/stablehlo/dialect/VhloDialect.td b/stablehlo/stablehlo/dialect/VhloDialect.td
+--- stablehlo/stablehlo/dialect/VhloDialect.td
++++ stablehlo/stablehlo/dialect/VhloDialect.td
+@@ -38,7 +38,6 @@
+ 
+   let useDefaultAttributePrinterParser = 0;
+   let useDefaultTypePrinterParser = 0;
+-  let useFoldAPI = kEmitFoldAdaptorFolder;
  }
  
- bool stablehloAttributeIsAConvDimensionNumbers(MlirAttribute attr) {
-@@ -360,9 +360,9 @@
-     const int64_t *outputTupleIndices, int64_t operandIndex,
-     intptr_t nOperandTupleIndices, const int64_t *operandTupleIndices) {
-   return wrap(mlir::stablehlo::OutputOperandAliasAttr::get(
--      unwrap(ctx), llvm::makeArrayRef(outputTupleIndices, nOutputTupleIndices),
-+      unwrap(ctx), llvm::ArrayRef(outputTupleIndices, nOutputTupleIndices),
-       operandIndex,
--      llvm::makeArrayRef(operandTupleIndices, nOperandTupleIndices)));
-+      llvm::ArrayRef(operandTupleIndices, nOperandTupleIndices)));
- }
- 
- bool stablehloAttributeIsAOutputOperandAlias(MlirAttribute attr) {
-@@ -586,7 +586,7 @@
- MlirAttribute stablehloTypeExtensionsGet(MlirContext ctx, intptr_t nBounds,
-                                          const int64_t *bounds) {
-   return wrap(mlir::stablehlo::TypeExtensionsAttr::get(
--      unwrap(ctx), llvm::makeArrayRef(bounds, nBounds)));
-+      unwrap(ctx), llvm::ArrayRef(bounds, nBounds)));
- }
- 
- bool stablehloAttributeIsTypeExtensions(MlirAttribute attr) {
+ #endif
 

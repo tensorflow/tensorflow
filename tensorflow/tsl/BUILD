@@ -1,4 +1,3 @@
-# TODO(jakeharmon): Remove this comment
 load("tsl.bzl", "if_google", "if_oss")
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")

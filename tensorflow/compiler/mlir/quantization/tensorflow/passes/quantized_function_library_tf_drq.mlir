@@ -194,5 +194,14 @@ module {
     func.return %out : tensor<*xf32>
   }
 
+  // For weight-only
+  func.func @dequantize_i8(%input : tensor<*xi8>, %scale : tensor<*xf32>, %zp : tensor<*xi32>) -> tensor<*xf32> {
+    // Use identity op to avoid the weight being constant-folded.
+    %identity = "tf.Identity"(%input) : (tensor<*xi8>) -> tensor<*xi8>
+    %input_i32 = "tf.Cast"(%identity) : (tensor<*xi8>) -> tensor<*xi32>
+    %output = "tf.Sub"(%input_i32, %zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+    %cast = "tf.Cast"(%output) : (tensor<*xi32>) -> tensor<*xf32>
+    %mul = "tf.Mul"(%cast, %scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    func.return %mul : tensor<*xf32>
+  }
 }
-

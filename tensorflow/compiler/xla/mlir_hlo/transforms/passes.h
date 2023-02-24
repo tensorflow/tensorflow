@@ -105,10 +105,17 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTileLoopsPass(
 // and scf.if.
 std::unique_ptr<OperationPass<func::FuncOp>> createDetensorizeScfOpsPass();
 
-namespace hlo {
-std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass();
+/// Registers the test pass for erasing transform dialect ops.
+void registerTestHloTransformDialectEraseSchedulePass();
 
-std::unique_ptr<OperationPass<ModuleOp>> createGenericHostToLLVMPass();
+/// Registers the test pass for applying transform dialect ops.
+void registerTestHloTransformDialectInterpreterPass();
+
+namespace hlo {
+
+void createGenericHostToLLVMPipeline(OpPassManager& pm);
+
+std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass();
 
 std::unique_ptr<OperationPass<func::FuncOp>> createUnbufferizePass();
 std::unique_ptr<OperationPass<func::FuncOp>> createAllocToArgPass();

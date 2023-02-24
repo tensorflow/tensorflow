@@ -40,7 +40,7 @@ limitations under the License.
   ToStatus(setter(handle, attr, &value, sizeof(decltype(value))), #setter)
 
 #define GET_ATTR(getter, handle, attr, ValueT)                            \
-  [&]() -> port::StatusOr<ValueT> {                                       \
+  [&]() -> tsl::StatusOr<ValueT> {                                        \
     ValueT value;                                                         \
     TF_RETURN_IF_ERROR(ToStatus(                                          \
         getter(handle, attr, &value, sizeof(ValueT), nullptr), #getter)); \
@@ -58,8 +58,8 @@ tsl::Status SetAttr(cublasLtMatrixLayout_t handle,
 }
 
 template <typename T>
-port::StatusOr<T> GetAttr(cublasLtMatrixLayout_t handle,
-                          cublasLtMatrixLayoutAttribute_t attr) {
+tsl::StatusOr<T> GetAttr(cublasLtMatrixLayout_t handle,
+                         cublasLtMatrixLayoutAttribute_t attr) {
   return GET_ATTR(cublasLtMatrixLayoutGetAttribute, handle, attr, T);
 }
 
@@ -70,8 +70,8 @@ tsl::Status SetAttr(cublasLtMatmulDesc_t handle,
 }
 
 template <typename T>
-port::StatusOr<T> GetAttr(cublasLtMatmulDesc_t handle,
-                          cublasLtMatmulDescAttributes_t attr) {
+tsl::StatusOr<T> GetAttr(cublasLtMatmulDesc_t handle,
+                         cublasLtMatmulDescAttributes_t attr) {
   return GET_ATTR(cublasLtMatmulDescGetAttribute, handle, attr, T);
 }
 
@@ -90,7 +90,7 @@ cublasLtPointerMode_t AsCublasLtPointerMode(BlasLt::PointerMode pointer_mode) {
   }
 }
 
-port::StatusOr<cublasLtEpilogue_t> AsCublasLtEpilogue(
+tsl::StatusOr<cublasLtEpilogue_t> AsCublasLtEpilogue(
     BlasLt::Epilogue epilogue) {
   switch (epilogue) {
     case BlasLt::Epilogue::kDefault:
@@ -115,7 +115,7 @@ port::StatusOr<cublasLtEpilogue_t> AsCublasLtEpilogue(
     case BlasLt::Epilogue::kGELUWithAux:
     case BlasLt::Epilogue::kBiasThenGELU:
     case BlasLt::Epilogue::kBiasThenGELUWithAux:
-      return port::InternalError("GELU epilogues require cublasLt >= 11.4");
+      return tsl::errors::Internal("GELU epilogues require cublasLt >= 11.4");
 #endif
   }
 }
@@ -130,7 +130,7 @@ tsl::Status BlasLt::Init() {
   return tsl::OkStatus();
 }
 
-/*static*/ port::StatusOr<BlasLt::MatrixLayout> BlasLt::MatrixLayout::Create(
+/*static*/ tsl::StatusOr<BlasLt::MatrixLayout> BlasLt::MatrixLayout::Create(
     blas::DataType type, size_t num_rows, size_t num_cols,
     BlasLt::MatrixLayout::Order order, size_t batch_size,
     std::optional<int64_t> leading_dim_stride,
@@ -166,7 +166,7 @@ cudaDataType_t BlasLt::MatrixLayout::type() const {
       GetAttr<uint32_t>(handle_.get(), CUBLASLT_MATRIX_LAYOUT_TYPE).value());
 }
 
-/*static*/ port::StatusOr<BlasLt::MatmulDesc> BlasLt::MatmulDesc::Create(
+/*static*/ tsl::StatusOr<BlasLt::MatmulDesc> BlasLt::MatmulDesc::Create(
     blas::ComputationType compute_type, blas::DataType scale_type,
     blas::Transpose trans_a, blas::Transpose trans_b, BlasLt::Epilogue epilogue,
     BlasLt::PointerMode pointer_mode) {
@@ -203,7 +203,7 @@ cublasLtPointerMode_t BlasLt::MatmulDesc::pointer_mode() const {
           .value());
 }
 
-/*static*/ port::StatusOr<BlasLt::MatmulPreference>
+/*static*/ tsl::StatusOr<BlasLt::MatmulPreference>
 BlasLt::MatmulPreference::Create(size_t max_workspace_size) {
   cublasLtMatmulPreference_t cu_preference;
   SE_CUBLAS_RETURN_IF_ERROR(cublasLtMatmulPreferenceCreate(&cu_preference));
@@ -215,10 +215,9 @@ BlasLt::MatmulPreference::Create(size_t max_workspace_size) {
   return std::move(preference);
 }
 
-port::StatusOr<std::vector<BlasLt::MatmulAlgorithm>>
-BlasLt::GetMatmulAlgorithms(const BlasLt::MatmulPlan& plan,
-                            const BlasLt::MatmulPreference& preference,
-                            size_t max_algorithm_count) {
+tsl::StatusOr<std::vector<BlasLt::MatmulAlgorithm>> BlasLt::GetMatmulAlgorithms(
+    const BlasLt::MatmulPlan& plan, const BlasLt::MatmulPreference& preference,
+    size_t max_algorithm_count) {
   max_algorithm_count = std::min(max_algorithm_count, size_t{INT_MAX});
   std::vector<cublasLtMatmulHeuristicResult_t> results(max_algorithm_count);
   {
@@ -311,7 +310,7 @@ tsl::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
 #else
     if (a_scale != nullptr || b_scale != nullptr || c_scale != nullptr ||
         d_scale != nullptr || d_amax != nullptr) {
-      return port::InternalError(
+      return tsl::errors::Internal(
           "A/B/C/D scales and amax require cublasLt >= 11.8");
     }
 #endif
@@ -341,7 +340,7 @@ tsl::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
                                  CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_BATCH_STRIDE,
                                  output_batch_stride));
 #else
-      return port::InternalError(
+      return tsl::errors::Internal(
           "Auxiliary inputs / outputs require cublasLt >= 11.4");
 #endif
     }

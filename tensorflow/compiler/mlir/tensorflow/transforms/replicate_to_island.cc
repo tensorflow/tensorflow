@@ -30,7 +30,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -167,7 +167,7 @@ LogicalResult ExpandReplicateIntoReplicas(
   terminator.erase();
 
   builder.setInsertionPoint(island_op);
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   for (int i : llvm::seq<int>(0, num_replicas)) {
     // Create new island for replica.
     auto replica = builder.create<tf_executor::IslandOp>(

@@ -24,7 +24,9 @@ import numpy as np
 from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python import tf2
+from tensorflow.python.data.ops import dataset_autograph
 from tensorflow.python.data.ops import debug_mode
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
@@ -50,18 +52,18 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_dataset_ops
-from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import gen_parsing_ops
-from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import base as tracking_base
 from tensorflow.python.trackable import resource as resource_lib
+from tensorflow.python.types import data as data_types
 from tensorflow.python.types import trace
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
@@ -140,6 +142,7 @@ class DatasetV2(
     collections_abc.Iterable,
     tracking_base.Trackable,
     composite_tensor.CompositeTensor,
+    data_types.DatasetV2,
     metaclass=abc.ABCMeta):
   """Represents a potentially large set of elements.
 
@@ -242,18 +245,18 @@ class DatasetV2(
     self._options_attr = options_lib.Options()
     for input_dataset in self._inputs():
       input_options = None
-      if isinstance(input_dataset, DatasetV1):
+      if isinstance(input_dataset, data_types.DatasetV1):
         # If the V1 dataset does not have the `_dataset` attribute, we assume it
         # is a dataset source and hence does not have options. Otherwise, we
         # grab the options of `_dataset` object
         if hasattr(input_dataset, "_dataset"):
-          if not isinstance(input_dataset._dataset, DatasetV2):
+          if not isinstance(input_dataset._dataset, data_types.DatasetV2):
             raise TypeError(
                 f"Each input of dataset {type(self)} should be a subclass of "
                 f"`tf.data.Dataset` but encountered "
                 f"{type(input_dataset._dataset)}.")
           input_options = input_dataset._dataset._options_attr
-      elif isinstance(input_dataset, DatasetV2):
+      elif isinstance(input_dataset, data_types.DatasetV2):
         input_options = input_dataset._options_attr
       else:
         raise TypeError(
@@ -2476,7 +2479,7 @@ name=None))
       A new `Dataset` with the transformation applied as described above.
     """
     dataset = transformation_func(self)
-    if not isinstance(dataset, DatasetV2):
+    if not isinstance(dataset, data_types.DatasetV2):
       raise TypeError(
           f"`transformation_func` must return a `tf.data.Dataset` object. "
           f"Got {type(dataset)}.")
@@ -3561,99 +3564,18 @@ name=None))
         - If `datasets` is empty, or
         - If `weights` is specified and does not match the length of `datasets`.
     """
-    # Loaded lazily due to a circular dependency (dataset_ops -> map_op ->
-    # dataset_ops).
-    # pylint: disable=g-import-not-at-top
-    from tensorflow.python.data.ops import map_op
-    # pylint: enable=g-import-not-at-top
-
-    def _skip_datasets_with_zero_weight(datasets, weights):
-      datasets_and_weights = [(dataset, weight)
-                              for (dataset, weight) in zip(datasets, weights)
-                              if weight > 0]
-      return (zip(*datasets_and_weights) if datasets_and_weights else
-              ([datasets[0].take(0)], [1.]))
-
-    if not datasets:
-      raise ValueError("Invalid `datasets`. `datasets` should not be empty.")
-
-    if not isinstance(weights, DatasetV2):
-      if weights is None:
-        # Select inputs with uniform probability.
-        logits = [[1.0] * len(datasets)]
-
-      else:
-        if isinstance(weights, ops.Tensor):
-          if not weights.shape.is_compatible_with([len(datasets)]):
-            raise ValueError(f"Invalid `weights`. The shape of `weights` "
-                             f"should be compatible with `[len(datasets)]` "
-                             f"but is {weights.shape}.")
-        else:
-          if len(datasets) != len(weights):
-            raise ValueError(f"Invalid `weights`. `weights` should have the "
-                             f"same length as `datasets` but got "
-                             f"`len(weights)={len(weights)}` vs. "
-                             f"`len(datasets)={len(datasets)}`.")
-
-        # Use the given `weights` as the probability of choosing the respective
-        # input.
-        if not isinstance(weights, ops.Tensor):
-          datasets, weights = _skip_datasets_with_zero_weight(datasets, weights)
-        weights = ops.convert_to_tensor(weights, name="weights")
-        if weights.dtype not in (dtypes.float32, dtypes.float64):
-          raise TypeError(f"Invalid `weights`. `weights` type must be either "
-                          f"`tf.float32` or `tf.float64` but is "
-                          f"{weights.dtype}.")
-
-        # The `stateless_multinomial()` op expects log-probabilities, as opposed
-        # to weights.
-        logits = array_ops.expand_dims(math_ops.log(weights, name="logits"), 0)
-
-      # NOTE(mrry): We only specialize when `weights` is not a `Dataset`. When
-      # it is a `Dataset`, it is possible that evaluating it has a side effect
-      # the user depends on.
-      if len(datasets) == 1:
-        return datasets[0]
-
-      def select_dataset_constant_logits(seed):
-        return array_ops.squeeze(
-            gen_stateless_random_ops.stateless_multinomial(
-                logits, 1, seed=seed),
-            axis=[0, 1])
-
-      selector_input = map_op._MapDataset(  # pylint: disable=protected-access
-          Dataset.random(
-              seed=seed,
-              rerandomize_each_iteration=rerandomize_each_iteration).batch(2),
-          select_dataset_constant_logits,
-          use_inter_op_parallelism=False)
-
-    else:
-      # Use each element of the given `weights` dataset as the probability of
-      # choosing the respective input.
-      #
-      # The `stateless_multinomial()` op expects log-probabilities, as opposed
-      # to weights.
-      logits_ds = weights.map(lambda *p: math_ops.log(p, name="logits"))
-
-      def select_dataset_varying_logits(logits, seed):
-        return array_ops.squeeze(
-            gen_stateless_random_ops.stateless_multinomial(
-                logits, 1, seed=seed),
-            axis=[0, 1])
-
-      logits_and_seeds = Dataset.zip(
-          (logits_ds,
-           Dataset.random(
-               seed=seed,
-               rerandomize_each_iteration=rerandomize_each_iteration).batch(2)))
-      selector_input = map_op._MapDataset(  # pylint: disable=protected-access
-          logits_and_seeds,
-          select_dataset_varying_logits,
-          use_inter_op_parallelism=False)
-
-    return _DirectedInterleaveDataset(selector_input, datasets,
-                                      stop_on_empty_dataset)
+    # Loaded lazily due to a circular dependency
+    # (dataset_ops -> sample_from_datasets_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import sample_from_datasets_op
+    return sample_from_datasets_op._sample_from_datasets(  # pylint: disable=protected-access
+        datasets,
+        weights,
+        seed,
+        stop_on_empty_dataset,
+        rerandomize_each_iteration,
+    )
+    # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
   def choose_from_datasets(datasets,
@@ -3699,27 +3621,17 @@ name=None))
       TypeError: If `datasets` or `choice_dataset` has the wrong type.
       ValueError: If `datasets` is empty.
     """
-    if not datasets:
-      raise ValueError("Invalid `datasets`. `datasets` should not be empty.")
-    if not isinstance(choice_dataset, DatasetV2):
-      raise TypeError(f"Invalid `choice_dataset`. `choice_dataset` should be a "
-                      f"`tf.data.Dataset` but is {type(choice_dataset)}.")
-    if not structure.are_compatible(choice_dataset.element_spec,
-                                    tensor_spec.TensorSpec([], dtypes.int64)):
-      raise TypeError(f"Invalid `choice_dataset`. Elements of `choice_dataset` "
-                      f"must be scalar `tf.int64` tensors but are "
-                      f"{choice_dataset.element_spec}.")
-    # Replicate the `choice_dataset` component so that each split makes choices
-    # independently. This avoids the need for prohibitively expensive
-    # cross-split coordination.
-    choice_dataset = _apply_rewrite(choice_dataset, "replicate_on_split")
-    # pylint: disable=protected-access
-    return _DirectedInterleaveDataset(choice_dataset, datasets,
-                                      stop_on_empty_dataset)
+    # Loaded lazily due to a circular dependency
+    # (dataset_ops -> choose_from_datasets_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import choose_from_datasets_op
+    return choose_from_datasets_op._choose_from_datasets(
+        datasets, choice_dataset, stop_on_empty_dataset)
+    # pylint: enable=g-import-not-at-top,protected-access
 
 
 @tf_export(v1=["data.Dataset"])
-class DatasetV1(DatasetV2):
+class DatasetV1(DatasetV2, data_types.DatasetV1):
   """Represents a potentially large set of elements.
 
   A `Dataset` can be used to represent an input pipeline as a
@@ -4654,9 +4566,6 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 
     return DatasetSpec(common_element_spec, common_dataset_shape)
 
-  def _tf_data_normalize(self, t):
-    return t
-
   # TODO(b/220385675): Once _element_spec is guaranteed to be TypeSpec, the
   # following functions do not need to be overloaded: is_subtype_of,
   # most_specific_common_supertype, __hash__ and __eq__
@@ -4720,6 +4629,13 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
     return (isinstance(other, DatasetSpec) and
             self._element_spec == other._element_spec and
             self._dataset_shape == other._dataset_shape)
+
+
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        DatasetSpec, struct_pb2.TypeSpecProto.DATA_DATASET_SPEC
+    )
+)
 
 
 class _NumpyIterator:
@@ -5096,51 +5012,6 @@ def _calculate_acceptance_probs_with_mixing(initial_probs, target_probs):
   return a_i, m
 
 
-class _DirectedInterleaveDataset(DatasetV2):
-  """A substitute for `Dataset.interleave()` on a fixed list of datasets."""
-
-  def __init__(self, selector_input, data_inputs, stop_on_empty_dataset=False):
-    self._selector_input = selector_input
-    self._data_inputs = list(data_inputs)
-    self._stop_on_empty_dataset = stop_on_empty_dataset
-
-    spec = self._data_inputs[0].element_spec
-    for i, data_input in enumerate(self._data_inputs[1:]):
-      def common_supertype(a, b):
-        result = a.most_specific_common_supertype([b])
-        if result is None:
-          raise TypeError(f"No common supertype of {a} and {b}.")
-        return result
-
-      try:
-        spec = nest.map_structure(common_supertype, spec,
-                                  data_input.element_spec)
-      except (TypeError, ValueError) as e:
-        raise TypeError(f"Invalid `datasets`. `datasets` must have compatible "
-                        f"element specs.\n Dataset 0 "
-                        f"element_spec={data_inputs[0].element_spec}.\n"
-                        f"Dataset {i+1} "
-                        f"element_spec={data_input.element_spec}.") from e
-    self._element_spec = spec
-
-    # pylint: disable=protected-access
-    variant_tensor = (
-        ged_ops.directed_interleave_dataset(
-            self._selector_input._variant_tensor,
-            [data_input._variant_tensor for data_input in self._data_inputs],
-            stop_on_empty_dataset=self._stop_on_empty_dataset,
-            **self._flat_structure))
-
-    super(_DirectedInterleaveDataset, self).__init__(variant_tensor)
-
-  def _inputs(self):
-    return [self._selector_input] + self._data_inputs
-
-  @property
-  def element_spec(self):
-    return self._element_spec
-
-
 def _apply_rewrite(dataset, rewrite):
   # pylint: disable=protected-access
   return _VariantDataset(
@@ -5229,3 +5100,6 @@ def _resource_resolver(op, resource_reads, resource_writes):
           resource_writes.add(inp)
 
   return updated
+
+
+dataset_autograph.register_overrides()

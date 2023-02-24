@@ -181,22 +181,6 @@ void ReplaceVarWithConstant(
   }
 }
 
-// Helper that returns the FuncOp that is the SessionInit function which
-// will be called to initialize all resources.
-// Returns nullptr if no function is found.
-func::FuncOp GetSessionInitializerFunc(ModuleOp module) {
-  auto session_init_op = tf_saved_model::GetSessionInitializerOp(module);
-  SymbolTable symbol_table(module);
-  if (session_init_op && !session_init_op.getInitializers().empty()) {
-    func::FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
-        session_init_op.getInitializers()[0]
-            .cast<FlatSymbolRefAttr>()
-            .getValue());
-    return init_func_op;
-  }
-  return nullptr;
-}
-
 // Returns ID for identifying a resource.
 std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef> GetResourceKey(
     Operation* op) {
@@ -220,10 +204,10 @@ std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef> GetResourceKey(
 }
 
 // Remove the initialization of the variables in 'var_handle_ops' from
-// the session init function 'sesion_init_func'
+// the session init function 'session_init_func'
 void RemoveVariablesInitializations(
     const llvm::SmallVector<TF::VarHandleOp, 4>& var_handle_ops,
-    func::FuncOp sesion_init_func) {
+    func::FuncOp session_init_func) {
   // We identify the variables using (device, container, shared_name) of the
   // resource. Capture them here and use them to identify the useless
   // initializations.
@@ -233,7 +217,7 @@ void RemoveVariablesInitializations(
     variables.insert(GetResourceKey(var_handle_op));
 
   llvm::SmallVector<Operation*, 4> work_list;
-  for (auto var_handle_op : sesion_init_func.getOps<TF::VarHandleOp>()) {
+  for (auto var_handle_op : session_init_func.getOps<TF::VarHandleOp>()) {
     if (variables.count(GetResourceKey(var_handle_op)))
       work_list.push_back(var_handle_op);
   }
@@ -378,7 +362,10 @@ LogicalResult FreezeVariables(ModuleOp module, tensorflow::Session* session) {
     return failure();
   }
 
-  func::FuncOp session_init_func = GetSessionInitializerFunc(module);
+  SmallVector<func::FuncOp, 2> session_init_funcs =
+      tf_saved_model::GetInitializerFunctions(module);
+  func::FuncOp session_init_func =
+      session_init_funcs.empty() ? nullptr : session_init_funcs[0];
 
   TF::ResourceAnalyzer analyzer(module, /*skip_session_init=*/true);
   llvm::SmallVector<TF::VarHandleOp, 4> variables;

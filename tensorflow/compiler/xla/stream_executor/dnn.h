@@ -39,10 +39,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace Eigen {
 struct half;
@@ -886,7 +886,7 @@ class OpRunner<void(Args...)> {
   virtual size_t GetWorkspaceSize() const = 0;
 
   // Convert to an AlgorithmDesc for AoT compilation or autotuning.
-  virtual port::StatusOr<AlgorithmDesc> ToAlgorithmDesc() const = 0;
+  virtual tsl::StatusOr<AlgorithmDesc> ToAlgorithmDesc() const = 0;
 
   // Launch the operation, with the signature determined by `Sig`.
   virtual tsl::Status operator()(Stream*, ProfileResult*,
@@ -1095,7 +1095,7 @@ std::string ElementwiseOperationString(ElementwiseOperation op);
 // See PR#16309 and issue #18402 for links discussing the issue.
 class VersionInfo {
  public:
-  VersionInfo(int major = 0, int minor = 0, int patch = 0)
+  explicit VersionInfo(int major = 0, int minor = 0, int patch = 0)
       : major_(major), minor_(minor), patch_(patch) {}
   explicit VersionInfo(DnnVersionInfoProto proto)
       : major_(proto.major()), minor_(proto.minor()), patch_(proto.patch()) {}
@@ -1111,6 +1111,29 @@ class VersionInfo {
   int major_version() const { return major_; }
   int minor_version() const { return minor_; }
   int patch() const { return patch_; }
+
+  std::tuple<int, int, int> as_tuple() const {
+    return std::make_tuple(major_, minor_, patch_);
+  }
+
+  friend bool operator<(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() < b.as_tuple();
+  }
+  friend bool operator>(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() > b.as_tuple();
+  }
+  friend bool operator<=(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() <= b.as_tuple();
+  }
+  friend bool operator>=(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() >= b.as_tuple();
+  }
+  friend bool operator==(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() == b.as_tuple();
+  }
+  friend bool operator!=(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() != b.as_tuple();
+  }
 
  private:
   int major_;
@@ -1142,8 +1165,8 @@ class DnnSupport {
   virtual tsl::Status Init() = 0;
 
   // Gets the version of the backing library, as a VersionInfo object.
-  virtual port::StatusOr<VersionInfo> GetVersion() {
-    return port::UnimplementedError(
+  virtual tsl::StatusOr<VersionInfo> GetVersion() {
+    return tsl::errors::Unimplemented(
         "DnnSupport::GetVersion not implemented on this platform.");
   }
 
@@ -1370,7 +1393,7 @@ class DnnSupport {
       DeviceMemoryBase output_data, ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) {
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         "DnnSupport::DoFusedConvolve not implemented on this platform.");
   }
 
@@ -1392,6 +1415,19 @@ class DnnSupport {
         input_data, filter_descriptor, filter_data, output_descriptor,
         output_data, convolution_descriptor, algorithm_config,
         scratch_allocator, algorithm_desc, scratch_memory);
+  }
+
+  // cuDNN-specific input transformation that allows running int8x32
+  // convolutions faster using Tensor Core IMMA instruction.
+  virtual tsl::Status CudnnReorderConvolutionFilterAndBias(
+      Stream* stream, const FilterDescriptor& filter_descriptor,
+      const DeviceMemory<int8_t>& filter_input,
+      DeviceMemory<int8_t>* filter_output,
+      std::optional<const DeviceMemory<float>> bias_input,
+      std::optional<DeviceMemory<float>> bias_output) {
+    return tsl::errors::Unimplemented(
+        "DnnSupport::CudnnReorderConvolutionFilterAndBias is specific to CUDA "
+        "convolution implementation.");
   }
 
   // Enqueues a single-precision convolution operation onto the stream.
@@ -1456,7 +1492,7 @@ class DnnSupport {
       bool use_fallback, ScratchAllocator* scratch_allocator,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
 
-  virtual port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
+  virtual tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
   ConvolveRunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
       dnn::ConvolutionKind kind, dnn::DataType element_type,
@@ -1487,7 +1523,7 @@ class DnnSupport {
       std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
           out_exec_plans);
 
-  virtual port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+  virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
   FusedConvolveRunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
       dnn::ConvolutionKind kind, dnn::DataType element_type,
@@ -2098,7 +2134,7 @@ class DnnSupport {
   //    for dropout layer. The user has to maintain the memory until the model
   //    is no longer in use.
   //  use_padded_io: a bool to specify whether the input is using padded IO.
-  virtual port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
+  virtual tsl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
   createRnnDescriptor(int num_layers, int hidden_size, int input_size,
                       int cell_size, int batch_size,
                       dnn::RnnInputMode input_mode,
@@ -2107,7 +2143,7 @@ class DnnSupport {
                       const dnn::AlgorithmConfig& algorithm_config,
                       float dropout, uint64_t seed,
                       ScratchAllocator* state_allocator, bool use_padded_io) {
-    return tsl::Status(port::error::UNIMPLEMENTED,
+    return tsl::Status(tsl::error::UNIMPLEMENTED,
                        "createRnnDescriptor is unimplemented");
   }
 
@@ -2120,28 +2156,28 @@ class DnnSupport {
   //  data_size: the size of the state.
   //  seq_lengths: the lengths of sequences in a batch.
   //  data_type: an enum to specify the type for the underlying data.
-  virtual port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  virtual tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size, dnn::DataType data_type) {
-    return tsl::Status(port::error::UNIMPLEMENTED,
+    return tsl::Status(tsl::error::UNIMPLEMENTED,
                        "createRnnSequenceTensorDescriptor is unimplemented");
   }
 
-  virtual port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  virtual tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     const absl::Span<const int>& seq_lengths,
                                     bool time_major, dnn::DataType data_type) {
-    return tsl::Status(port::error::UNIMPLEMENTED,
+    return tsl::Status(tsl::error::UNIMPLEMENTED,
                        "createRnnSequenceTensorDescriptor is unimplemented");
   }
 
   // Create an RNN state descriptor that specifies the input or hidden state.
   // The caller retains the ownership of the returned descriptor.
-  virtual port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+  virtual tsl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
   createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) {
-    return tsl::Status(port::error::UNIMPLEMENTED,
+    return tsl::Status(tsl::error::UNIMPLEMENTED,
                        "createRnnStateTensorDescriptor is unimplemented");
   }
 

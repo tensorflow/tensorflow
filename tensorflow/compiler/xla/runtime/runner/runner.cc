@@ -295,7 +295,7 @@ absl::Status Execute(RunnerFlags flags,
   // Execute and convert results to proto message.
   if (auto executed = executable->Execute(args, converter, execute_opts);
       !executed.ok())
-    return executed;
+    return executed.status();
 
   if (auto inout = WriteInoutResults(args_proto, args, &results_proto);
       !inout.ok())

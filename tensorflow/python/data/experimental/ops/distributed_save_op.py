@@ -47,10 +47,13 @@ def distributed_save(dataset,
     `None`.
 
   Raises:
-    ValueError: If not in eager mode.
+    RuntimeError: If not in eager mode.
+    ValueError: If `dispatcher_address` is invalid.
   """
   if not context.executing_eagerly():
-    return RuntimeError("must be in eager mode")
+    raise RuntimeError(
+        "tf.data `distributed_save` API must be run in the eager mode."
+    )
 
   if not isinstance(dispatcher_address, str):
     raise ValueError("`dispatcher_address` must be a string, but is a "

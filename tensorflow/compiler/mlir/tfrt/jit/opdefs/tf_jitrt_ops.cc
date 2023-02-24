@@ -48,12 +48,12 @@ struct JitRuntimeInlinerInterface : public DialectInlinerInterface {
   }
 
   bool isLegalToInline(Region*, Region*, bool,
-                       BlockAndValueMapping&) const final {
+                       IRMapping&) const final {
     return true;
   }
 
   bool isLegalToInline(Operation*, Region*, bool,
-                       BlockAndValueMapping&) const final {
+                       IRMapping&) const final {
     return true;
   }
 };

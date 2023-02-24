@@ -13,22 +13,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstring>
+#include <optional>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
+#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil
+#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model_wrapper.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
 namespace {
 
+using ::tensorflow::calibrator::CalibratorSingleton;
 using ::tensorflow::quantization::ExportedModel;
+using ::tensorflow::quantization::QuantizationOptions;
+using ::tensorflow::quantization::QuantizePtqDynamicRange;
+using ::tensorflow::quantization::QuantizePtqModelPostCalibration;
+using ::tensorflow::quantization::QuantizePtqModelPreCalibration;
+using ::tensorflow::quantization::QuantizeQatModel;
 
 // Serializes an ExportedModel. Raises python ValueError if serialization fails.
 std::string Serialize(const ExportedModel& exported_model) {
@@ -42,6 +53,21 @@ std::string Serialize(const ExportedModel& exported_model) {
   }
 
   return exported_model_serialized;
+}
+
+// Retrieves collected min / max values of a `CustomAggregator` node from the
+// singleton. `id` is the identifier of the `CustomAggregator`.
+std::pair<float, float> GetCalibratorMinMax(const absl::string_view id) {
+  std::optional<std::pair<float, float>> min_max =
+      CalibratorSingleton::GetMinMax(id);
+  if (min_max == std::nullopt) {
+    throw py::value_error(
+        absl::StrFormat("Calibrated data does not exist. Cannot find min/max "
+                        "value for id: '%s'",
+                        id));
+  }
+
+  return *min_max;
 }
 
 }  // namespace
@@ -68,6 +94,28 @@ struct type_caster<ExportedModel> {
   }
 };
 
+// Python -> cpp conversion for `QuantizationOptions`. Accepts a serialized
+// protobuf string and deserializes into an instance of `QuantizationOptions`.
+template <>
+struct type_caster<QuantizationOptions> {
+ public:
+  PYBIND11_TYPE_CASTER(QuantizationOptions, const_name("QuantizationOptions"));
+
+  bool load(handle src, const bool convert) {
+    auto caster = make_caster<absl::string_view>();
+    // The user should have passed a valid python string.
+    if (!caster.load(src, convert)) {
+      return false;
+    }
+
+    const absl::string_view quantization_opts_serialized =
+        cast_op<absl::string_view>(std::move(caster));
+
+    // NOLINTNEXTLINE: Explicit std::string conversion required for OSS.
+    return value.ParseFromString(std::string(quantization_opts_serialized));
+  }
+};
+
 }  // namespace detail
 }  // namespace pybind11
 
@@ -78,32 +126,30 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
   // Calibrator related functions.
   m.def(
       "clear_calibrator",
-      [] {
-        tensorflow::quantization::ClearCollectedInformationFromCalibrator();
-      },
+      [] { CalibratorSingleton::ClearCollectedInformation(); },
       R"pbdoc(
       Clears the collected metrics from the calibrator.
     )pbdoc");
   m.def(
       "clear_data_from_calibrator",
-      [](const absl::string_view id) {
-        tensorflow::quantization::ClearDataFromCalibrator(id);
-      },
+      [](const absl::string_view id) { CalibratorSingleton::ClearData(id); },
       R"pbdoc(
       Clears the collected data of the given id from calibrator.
     )pbdoc");
   m.def(
-      "get_max_from_calibrator",
+      "get_min_from_calibrator",
       [](const absl::string_view id) -> float {
-        return tensorflow::quantization::GetMaxFromCalibrator(id);
+        const std::pair<float, float> min_max = GetCalibratorMinMax(id);
+        return min_max.first;
       },
       R"pbdoc(
       Return the tuple with the min value of the given id.
     )pbdoc");
   m.def(
-      "get_min_from_calibrator",
+      "get_max_from_calibrator",
       [](const absl::string_view id) -> float {
-        return tensorflow::quantization::GetMinFromCalibrator(id);
+        const std::pair<float, float> min_max = GetCalibratorMinMax(id);
+        return min_max.second;
       },
       R"pbdoc(
       Return the tuple with the min value of the given id.
@@ -115,14 +161,15 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       [](const absl::string_view saved_model_path,
          const std::vector<std::string>& signature_keys,
          const std::unordered_set<std::string>& tags,
-         const absl::string_view quant_opts_serialized)
+         const QuantizationOptions& quant_opts)
           -> absl::StatusOr<ExportedModel> {
-        return tensorflow::quantization::internal::QuantizeQatModel(
-            saved_model_path, signature_keys, tags, quant_opts_serialized);
+        return QuantizeQatModel(saved_model_path, signature_keys, tags,
+                                quant_opts);
       },
       R"pbdoc(
       Returns serialized ExportedModel that contains the quantized model's
-      GraphDef and metadata.
+      GraphDef and metadata. The user should pass a serialized
+      `QuantizationOptions` for the `quant_opts` argument.
 
       Raises `StatusNotOk` exception if when the run was unsuccessful.
     )pbdoc");
@@ -132,14 +179,15 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       [](const absl::string_view saved_model_path,
          const std::vector<std::string>& signature_keys,
          const std::unordered_set<std::string>& tags,
-         const absl::string_view quant_opts_serialized)
+         const QuantizationOptions& quant_opts)
           -> absl::StatusOr<ExportedModel> {
-        return tensorflow::quantization::internal::QuantizePtqDynamicRange(
-            saved_model_path, signature_keys, tags, quant_opts_serialized);
+        return QuantizePtqDynamicRange(saved_model_path, signature_keys, tags,
+                                       quant_opts);
       },
       R"pbdoc(
       Returns serialized ExportedModel that contains the quantized model's
-      GraphDef and metadata.
+      GraphDef and metadata. The user should pass a serialized
+      `QuantizationOptions` for the `quant_opts` argument.
 
       Raises `StatusNotOk` exception if when the run was unsuccessful.
     )pbdoc");
@@ -149,15 +197,18 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       [](const absl::string_view saved_model_path,
          const std::vector<std::string>& signature_keys,
          const std::unordered_set<std::string>& tags,
-         const absl::string_view quant_opts_serialized)
+         const QuantizationOptions& quant_opts,
+         const absl::flat_hash_map<std::string, std::string>& function_aliases)
           -> absl::StatusOr<ExportedModel> {
-        return tensorflow::quantization::internal::
-            QuantizePtqModelPreCalibration(saved_model_path, signature_keys,
-                                           tags, quant_opts_serialized);
+        return QuantizePtqModelPreCalibration(saved_model_path, signature_keys,
+                                              tags, quant_opts,
+                                              function_aliases);
       },
       R"pbdoc(
       Returns serialized ExportedModel that contains the model's GraphDef and
-      metadata. The GraphDef contains extra ops required for calibration.
+      metadata. The GraphDef contains extra ops required for calibration. The
+      user should pass a serialized `QuantizationOptions` for the `quant_opts`
+      argument.
 
       Raises `StatusNotOk` exception if when the run was unsuccessful.
     )pbdoc");
@@ -167,15 +218,17 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       [](const absl::string_view saved_model_path,
          const std::vector<std::string>& signature_keys,
          const std::unordered_set<std::string>& tags,
-         const absl::string_view quant_opts_serialized)
+         const QuantizationOptions& quant_opts,
+         const absl::flat_hash_map<std::string, std::string>& function_aliases)
           -> absl::StatusOr<ExportedModel> {
-        return tensorflow::quantization::internal::
-            QuantizePtqModelPostCalibration(saved_model_path, signature_keys,
-                                            tags, quant_opts_serialized);
+        return QuantizePtqModelPostCalibration(saved_model_path, signature_keys,
+                                               tags, quant_opts,
+                                               function_aliases);
       },
       R"pbdoc(
       Returns serialized ExportedModel that contains the quantized model's
-      GraphDef and metadata.
+      GraphDef and metadata. The user should pass a serialized
+      `QuantizationOptions` for the `quant_opts` argument.
 
       Raises `StatusNotOk` exception if when the run was unsuccessful.
     )pbdoc");

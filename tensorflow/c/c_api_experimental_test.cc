@@ -256,6 +256,26 @@ TEST(CAPI_EXPERIMENTAL, LibraryPluggableDeviceLoadFunctions) {
 #endif  // !defined(PLATFORM_WINDOWS)
 }
 
+TEST(CAPI_EXPERIMENTAL, LibraryNextPluggableDeviceLoadFunctions) {
+  // TODO(penpornk): Enable this test on Windows.
+#if !defined(PLATFORM_WINDOWS)
+#if !defined(TENSORFLOW_NO_SHARED_OBJECTS)
+  // Load the library.
+  TF_Status* status = TF_NewStatus();
+  string lib_path =
+      tensorflow::GetDataDependencyFilepath(tensorflow::io::JoinPath(
+          "tensorflow", "core", "common_runtime", "next_pluggable_device", "c",
+          "test_next_pluggable_device_plugin.so"));
+  TF_Library* lib = TF_LoadPluggableDeviceLibrary(lib_path.c_str(), status);
+  TF_Code code = TF_GetCode(status);
+  string status_msg(TF_Message(status));
+  TF_DeleteStatus(status);
+  ASSERT_EQ(TF_OK, code) << status_msg;
+  TF_DeletePluggableDeviceLibraryHandle(lib);
+#endif  // !defined(TENSORFLOW_NO_SHARED_OBJECTS)
+#endif  // !defined(PLATFORM_WINDOWS)
+}
+
 void DefineFunction(const char* name, TF_Function** func,
                     const char* description = nullptr,
                     bool append_hash = false) {

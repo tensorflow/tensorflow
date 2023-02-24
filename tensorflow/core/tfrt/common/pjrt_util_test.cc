@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/types.h"
@@ -35,7 +34,7 @@ TEST(PjRtUtilTest, SetGetAndDeletePjRtClient) {
       DEVICE_CPU,
       xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1)
           .value()));
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, GetOrCreatePjRtClient(DEVICE_CPU));
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, GetPjRtClient(DEVICE_CPU));
   EXPECT_THAT(pjrt_client, ::testing::NotNull());
   TF_ASSERT_OK(
       DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(DEVICE_CPU));
@@ -62,20 +61,6 @@ TEST(PjRtUtilTest, DeleteNoPjRtStateOk) {
                                         kPjRtStateResourceName);
   TF_ASSERT_OK(
       DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(DEVICE_TPU));
-}
-
-TEST(PjRtStateResourceManagerTest, GetNotExistPjRtClientNotImplemented) {
-  EXPECT_THAT(
-      GetOrCreatePjRtClient(DEVICE_TPU),
-      StatusIs(error::UNIMPLEMENTED,
-               HasSubstr("The PJRT client for TPU is not created explicitly "
-                         "before its first use and creating this PJRT client "
-                         "on the first use is not implemented.")));
-}
-
-TEST(PjRtStateResourceManagerTest, GetNotExistGpuPjRtClient) {
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, GetOrCreatePjRtClient(DEVICE_GPU));
-  EXPECT_THAT(pjrt_client, ::testing::NotNull());
 }
 
 }  // namespace

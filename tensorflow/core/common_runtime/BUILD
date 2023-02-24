@@ -3,6 +3,7 @@ load(
     "if_google",
     "if_libtpu",
     "if_oss",
+    "if_zendnn",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -34,6 +35,10 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
     "if_mkl_ml",
+)
+load(
+    "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
+    "tf_cc_fuzz_test",
 )
 
 default_package_visibility = [
@@ -142,6 +147,7 @@ cc_library(
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/framework:device_attributes_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:status",
     ],
@@ -168,6 +174,7 @@ filegroup(
             "**/*.h",
         ],
         exclude = [
+            "**/*fuzz.*",
             "**/*test.*",
             "**/*testutil*",
             "**/*testlib*",
@@ -243,6 +250,7 @@ filegroup(
         ":core_cpu_base_headers",
         "allocator_retry.h",
         "shared_counter.h",
+        "arg_ret_placement.h",
         "base_collective_executor.h",
         "bfc_allocator.h",
         "hierarchical_tree_broadcaster.h",
@@ -275,7 +283,6 @@ filegroup(
         "lower_if_op.h",
         "lower_case_op.h",
         "lower_functional_ops.h",
-        "control_flow_deps_to_chains.h",
         "lower_while_op.h",
         "memory_types.h",
         "mkl_cpu_allocator.h",
@@ -339,6 +346,18 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "arg_ret_placement",
+    srcs = ["arg_ret_placement.cc"],
+    hdrs = [
+        "arg_ret_placement.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:graph",
+    ],
 )
 
 cc_library(
@@ -647,6 +666,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
     ],
@@ -780,6 +800,7 @@ cc_library(
     ],
     copts = tf_copts(),
     deps = [
+        ":arg_ret_placement",
         ":composite_device",
         ":device",
         ":device_mgr",
@@ -1159,26 +1180,6 @@ cc_library(
 )
 
 cc_library(
-    name = "control_flow_deps_to_chains",
-    srcs = ["control_flow_deps_to_chains.cc"],
-    hdrs = ["control_flow_deps_to_chains.h"],
-    copts = tf_copts(),
-    visibility = default_package_visibility + [
-        "//platforms/performance/autograppler:__subpackages__",
-        "//platforms/performance/tf_sim:__subpackages__",
-    ],
-    deps = [
-        ":optimization_registry",
-        "//tensorflow/core:framework",
-        "//tensorflow/core/framework:attr_value_proto_cc",
-        "//tensorflow/core/framework:node_def_proto_cc",
-        "//tensorflow/core/framework:tensor_proto_cc",
-        "//tensorflow/core/platform:errors",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "int32_fulltype",
     srcs = ["int32_fulltype.cc"],
     hdrs = [
@@ -1232,6 +1233,37 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
+)
+
+cc_library(
+    name = "layout_pass_util",
+    srcs = ["layout_pass_util.cc"],
+    hdrs = ["layout_pass_util.h"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:graph",
+        "//tensorflow/core:portable_gif_internal",
+    ],
+)
+
+cc_library(
+    name = "zen_layout_pass",
+    srcs = ["zen_layout_pass.cc"],
+    copts = tf_copts(),
+    deps = [
+        ":function",
+        ":layout_pass_util",
+        ":optimization_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/graph:zen_graph_util",
+        "@com_google_absl//absl/base",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1841,7 +1873,6 @@ tf_cuda_library(
         ":collective_rma_local",
         ":collective_util",
         ":composite_device",
-        ":control_flow_deps_to_chains",
         ":copy_tensor",
         ":costmodel_manager",
         ":debugger_state_interface",
@@ -1892,7 +1923,7 @@ tf_cuda_library(
         ":step_stats_collector",
         ":threadpool_device",
         ":threadpool_device_factory",
-    ],
+    ] + if_zendnn([":zen_layout_pass"]),
 )
 
 tf_cuda_library(
@@ -3290,6 +3321,7 @@ cc_library(
         ":function_utils",
         ":optimization_registry",
         ":placer",
+        ":replicate_per_replica_nodes",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -3323,9 +3355,35 @@ tf_cc_test(
     ],
     deps = [
         ":core",
+        ":int32_fulltype",
         "//tensorflow/core:framework",
         "//tensorflow/core:ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+    ],
+)
+
+tf_cc_test(
+    name = "arg_ret_placement_test",
+    size = "small",
+    srcs = [
+        "arg_ret_placement_test.cc",
+    ],
+    deps = [
+        ":arg_ret_placement",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "graph_constructor_fuzz",
+    srcs = ["graph_constructor_fuzz.cc"],
+    tags = ["no_oss"],
+    deps = [
+        ":graph_constructor",
+        "//tensorflow/core/ops",
     ],
 )

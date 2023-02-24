@@ -25,21 +25,21 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/const_init.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/fft.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/stacktrace.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/threadpool.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 #include "tensorflow/tsl/util/env_var.h"
 
 namespace {
@@ -51,7 +51,7 @@ namespace {
 
 std::string StackTraceIfVLOG10() {
   if (VLOG_IS_ON(10)) {
-    return absl::StrCat(" ", port::CurrentStackTrace(), "\n");
+    return absl::StrCat(" ", tsl::CurrentStackTrace(), "\n");
   } else {
     return "";
   }
@@ -59,7 +59,7 @@ std::string StackTraceIfVLOG10() {
 
 // Make sure the executor is done with its work; we know (because this isn't
 // publicly visible) that all enqueued work is quick.
-void BlockOnThreadExecutor(port::ThreadPool* executor) {
+void BlockOnThreadExecutor(tsl::thread::ThreadPool* executor) {
   absl::Notification n;
   executor->Schedule([&n]() { n.Notify(); });
   n.WaitForNotification();
@@ -132,7 +132,7 @@ MakeScopedTracer(StreamExecutor* stream_exec, BeginCallT begin_call,
 // TF_PER_DEVICE_MEMORY_LIMIT_MB environment variable is not set.
 static int64_t GetMemoryLimitBytes() {
   int64_t value;
-  SE_CHECK_OK(
+  TF_CHECK_OK(
       tsl::ReadInt64FromEnvVar("TF_PER_DEVICE_MEMORY_LIMIT_MB", 0, &value));
   return value * (1ll << 20);
 }
@@ -144,8 +144,8 @@ StreamExecutor::StreamExecutor(
     : platform_(platform),
       implementation_(std::move(implementation)),
       device_ordinal_(device_ordinal),
-      background_threads_(new port::ThreadPool(
-          port::Env::Default(), "stream_executor", kNumBackgroundThreads)),
+      background_threads_(new tsl::thread::ThreadPool(
+          tsl::Env::Default(), "stream_executor", kNumBackgroundThreads)),
       live_stream_count_(0),
       tracing_enabled_(false),
       mem_alloc_bytes_(0),
@@ -210,7 +210,7 @@ bool StreamExecutor::UnloadModule(ModuleHandle module_handle) {
   return implementation_->UnloadModule(module_handle);
 }
 
-port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 StreamExecutor::CreateOrShareConstant(Stream* stream,
                                       const std::vector<uint8_t>& content) {
   return implementation_->CreateOrShareConstant(stream, std::move(content));
@@ -308,7 +308,7 @@ tsl::Status StreamExecutor::GetConvolveRunners(
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return port::UnimplementedError("DNN library is not found.");
+    return tsl::errors::Unimplemented("DNN library is not found.");
   }
   return dnn_support->GetConvolveRunners(
       use_cudnn_frontend, kind, input_type, output_type, stream,
@@ -331,7 +331,7 @@ tsl::Status StreamExecutor::GetFusedConvolveRunners(
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return port::UnimplementedError("DNN library is not found.");
+    return tsl::errors::Unimplemented("DNN library is not found.");
   }
   return dnn_support->GetFusedConvolveRunners(
       use_cudnn_frontend, kind, input_type, bias_type, output_type,
@@ -349,7 +349,7 @@ tsl::Status StreamExecutor::GetFusedMatmulRunners(
         out_exec_plans) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return port::UnimplementedError("DNN library is not found.");
+    return tsl::errors::Unimplemented("DNN library is not found.");
   }
 
   return dnn_support->GetFusedMatmulRunners(
@@ -395,7 +395,7 @@ bool StreamExecutor::GetBlasGemmAlgorithms(
   return blas_support->GetBlasGemmAlgorithms(stream, out_algorithms);
 }
 
-port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
+tsl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
 StreamExecutor::createRnnDescriptor(
     int num_layers, int hidden_size, int input_size, int cell_size,
     int batch_size, dnn::RnnInputMode input_mode,
@@ -405,7 +405,7 @@ StreamExecutor::createRnnDescriptor(
     bool use_padded_io) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return tsl::Status(port::error::UNKNOWN,
+    return tsl::Status(tsl::error::UNKNOWN,
                        "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnDescriptor(
@@ -414,27 +414,27 @@ StreamExecutor::createRnnDescriptor(
       state_allocator, use_padded_io);
 }
 
-port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
 StreamExecutor::createRnnSequenceTensorDescriptor(int max_seq_length,
                                                   int batch_size, int data_size,
                                                   dnn::DataType data_type) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return tsl::Status(port::error::UNKNOWN,
+    return tsl::Status(tsl::error::UNKNOWN,
                        "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnSequenceTensorDescriptor(
       max_seq_length, batch_size, data_size, data_type);
 }
 
-port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
 StreamExecutor::createRnnSequenceTensorDescriptor(
     int max_seq_length, int batch_size, int data_size,
     const absl::Span<const int>& seq_lengths, bool time_major,
     dnn::DataType data_type) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return tsl::Status(port::error::UNKNOWN,
+    return tsl::Status(tsl::error::UNKNOWN,
                        "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnSequenceTensorDescriptor(
@@ -442,13 +442,13 @@ StreamExecutor::createRnnSequenceTensorDescriptor(
       data_type);
 }
 
-port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+tsl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
 StreamExecutor::createRnnStateTensorDescriptor(int num_layer, int batch_size,
                                                int data_size,
                                                dnn::DataType data_type) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return tsl::Status(port::error::UNKNOWN,
+    return tsl::Status(tsl::error::UNKNOWN,
                        "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnStateTensorDescriptor(num_layer, batch_size,
@@ -535,7 +535,7 @@ DeviceMemoryBase StreamExecutor::Allocate(uint64_t size, int64_t memory_space) {
   return buf;
 }
 
-port::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
+tsl::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
     const std::string& symbol_name, ModuleHandle module_handle) {
   // If failed to get the symbol, opaque/bytes are unchanged. Initialize them to
   // be nullptr/0 for consistency with DeviceMemory semantics.
@@ -546,7 +546,7 @@ port::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
   }
 
   return tsl::Status(
-      port::error::NOT_FOUND,
+      tsl::error::NOT_FOUND,
       absl::StrCat("Check if module containing symbol ", symbol_name,
                    " is loaded (module_handle = ",
                    reinterpret_cast<uintptr_t>(module_handle.id()), ")"));
@@ -691,7 +691,7 @@ tsl::Status StreamExecutor::SynchronousMemcpyD2H(
   result = implementation_->SynchronousMemcpy(host_dst, device_src, size);
   if (!result.ok()) {
     result = tsl::Status(
-        port::error::INTERNAL,
+        tsl::error::INTERNAL,
         absl::StrFormat("failed to synchronously memcpy device-to-host: device "
                         "%p to host %p size %d: %s",
                         device_src.opaque(), host_dst, size,
@@ -715,7 +715,7 @@ tsl::Status StreamExecutor::SynchronousMemcpyH2D(const void* host_src,
   result = implementation_->SynchronousMemcpy(device_dst, host_src, size);
   if (!result.ok()) {
     result = tsl::Status(
-        port::error::INTERNAL,
+        tsl::error::INTERNAL,
         absl::StrFormat("failed to synchronously memcpy host-to-device: host "
                         "%p to device %p size %d: %s",
                         host_src, device_dst->opaque(), size,
@@ -755,13 +755,8 @@ tsl::Status StreamExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
   return implementation_->Memset32(stream, location, pattern, size);
 }
 
-bool StreamExecutor::HostCallback(Stream* stream,
-                                  std::function<void()> callback) {
-  return implementation_->HostCallback(stream, std::move(callback));
-}
-
-bool StreamExecutor::HostCallback(Stream* stream,
-                                  std::function<tsl::Status()> callback) {
+bool StreamExecutor::HostCallback(
+    Stream* stream, absl::AnyInvocable<tsl::Status() &&> callback) {
   return implementation_->HostCallback(stream, std::move(callback));
 }
 
@@ -931,7 +926,7 @@ StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
     : DeviceMemoryAllocator(platform),
       stream_executors_(stream_executors.begin(), stream_executors.end()) {}
 
-port::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
+tsl::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
     int device_ordinal, uint64_t size, bool retry_on_failure,
     int64_t memory_space) {
   TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
@@ -961,8 +956,8 @@ tsl::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
   return ::tsl::OkStatus();
 }
 
-port::StatusOr<StreamExecutor*>
-StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) const {
+tsl::StatusOr<StreamExecutor*> StreamExecutorMemoryAllocator::GetStreamExecutor(
+    int device_ordinal) const {
   if (device_ordinal < 0) {
     return tsl::errors::InvalidArgument(absl::StrFormat(
         "device ordinal value (%d) must be non-negative", device_ordinal));
@@ -981,7 +976,7 @@ bool StreamExecutorMemoryAllocator::AllowsAsynchronousDeallocation() const {
   return false;
 }
 
-port::StatusOr<Stream*> StreamExecutorMemoryAllocator::GetStream(
+tsl::StatusOr<Stream*> StreamExecutorMemoryAllocator::GetStream(
     int device_ordinal) {
   CHECK(!AllowsAsynchronousDeallocation())
       << "The logic below only works for synchronous allocators";

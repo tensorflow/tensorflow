@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "google/protobuf/text_format.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/python/flatbuffer_to_mlir.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "tensorflow/lite/toco/types.pb.h"
 
 namespace toco {
-using mlir::lite::StringSet;
 
 void PopulateConversionLogHelper(const toco::ModelFlags& model_flags,
                                  toco::TocoFlags* toco_flags,
@@ -256,7 +256,8 @@ tflite::TensorType FromTocoDataTypeToTflitToTensorType(int inference_type) {
   }
 }
 
-int ToStringSet(PyObject* py_denylist, StringSet* string_set) {
+int ToStringSet(PyObject* py_denylist,
+                absl::flat_hash_set<std::string>* string_set) {
   using tflite::python_utils::ConvertFromPyString;
   // Ensure op_denylist is non null
   if (!py_denylist) {
@@ -305,8 +306,8 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
     return nullptr;
   }
 
-  StringSet denylisted_ops;
-  StringSet denylisted_nodes;
+  absl::flat_hash_set<std::string> denylisted_ops;
+  absl::flat_hash_set<std::string> denylisted_nodes;
   if (ToStringSet(op_denylist, &denylisted_ops) == -1) {
     PyErr_Format(PyExc_ValueError, "Failed to convert op denylist PyObject");
     return nullptr;

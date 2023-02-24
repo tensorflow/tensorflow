@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -515,6 +516,48 @@ TEST(HloShardingUtilTest, IsSubShardingCompatibleShapeTiledPartialTiled) {
   EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
 }
 
+TEST(HloShardingUtilTest, IsSortOperandShardingMovableRankTwoOneFreeDim) {
+  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {8, 128}), 1);
+  Array<int64_t> tile_assignment({1, 2});
+  tile_assignment.FillIota(0);
+  iota.set_sharding(HloSharding::Tile(tile_assignment));
+  EXPECT_TRUE(IsSortOperandShardingMovable(&iota, 1));
+}
+
+TEST(HloShardingUtilTest, IsSortOperandShardingMovableRankTwoNoFreeDims) {
+  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {8, 128}), 1);
+  Array<int64_t> tile_assignment({2, 2});
+  tile_assignment.FillIota(0);
+  iota.set_sharding(HloSharding::Tile(tile_assignment));
+  EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 1));
+}
+
+TEST(HloShardingUtilTest, IsSortOperandShardingMovableRankOne) {
+  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {1024}), 1);
+  Array<int64_t> tile_assignment({2});
+  tile_assignment.FillIota(0);
+  iota.set_sharding(HloSharding::Tile(tile_assignment));
+  EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 0));
+}
+
+TEST(HloShardingUtilTest, IsSortOperandShardingMovableNoSharding) {
+  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {1024}), 1);
+  EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 0));
+}
+
+TEST(HloShardingUtilTest, IsSortOperandShardingMovableReplicated) {
+  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {8, 128}), 1);
+  iota.set_sharding(HloSharding::Replicate());
+  EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 1));
+}
+
+TEST(HloShardingUtilTest, IsSortOperandShardingMovableSortDimUnsharded) {
+  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {8, 128}), 1);
+  Array<int64_t> tile_assignment({1, 2});
+  tile_assignment.FillIota(0);
+  iota.set_sharding(HloSharding::Tile(tile_assignment));
+  EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 0));
+}
 }  // namespace
 }  // namespace hlo_sharding_util
 }  // namespace xla

@@ -1,49 +1,5 @@
 // RUN: mlir-hlo-opt %s -split-input-file -verify-diagnostics
 
-
-func.func @materialize_rank_mismatch(%tensor: tensor<?x?xf32>) {
-  // expected-error @+1 {{expected result type = 'tensor<4xf32>' to match the inferred type = 'tensor<4x1xf32>'}}
-  %0 = gml_st.materialize %tensor[0, 0][4, 1][1, 1]
-     : tensor<?x?xf32> to tensor<4xf32>
-}
-
-// -----
-
-func.func @materialize_inferred_type_mismatch(%tensor: tensor<?x?xf32>,
-                                              %dim: index) {
-  // expected-error @+1 {{expected result type = 'tensor<4x?xf32>' to match the inferred type = 'tensor<?x4xf32>}}
-  %0 = gml_st.materialize %tensor[0, 0][%dim, 4][1, 1]
-     : tensor<?x?xf32> to tensor<4x?xf32>
-}
-
-// -----
-
-func.func @materialize_scalar_with_dynamic_tile(
-    %tensor: tensor<?x?xf32>, %dim: index) {
-  // expected-error @+1 {{expected tile type -9223372036854775808, 2 to have a single element shape}}
-  %0 = gml_st.materialize %tensor[0, 0][%dim, 2][1, 1]
-     : tensor<?x?xf32> to f32
-}
-
-// -----
-
-func.func @materialize_scalar_with_nonsingle_element_tile(
-    %tensor: tensor<?x?xf32>) {
-  // expected-error @+1 {{expected tile type 1, 2 to have a single element shape}}
-  %0 = gml_st.materialize %tensor[0, 0][1, 2][1, 2]
-     : tensor<?x?xf32> to f32
-}
-
-// -----
-
-func.func @materialize_scalar_element_type_mismatch(%tensor: tensor<?x?xf32>) {
-  // expected-error @+1 {{expected the result type 'i32' to match source element type 'f32'}}
-  %0 = gml_st.materialize %tensor[0, 0][1, 1][1, 1]
-     : tensor<?x?xf32> to i32
-}
-
-// -----
-
 func.func @tile_op_mismatch_sizes_and_static_sizes(%i: index) {
   // expected-error@+1 {{expected 0 dynamic size values}}
   %1 = "gml_st.tile"(%i) { static_offsets = array<i64: 0, 0>, static_sizes = array<i64: 1, 1>, static_strides = array<i64: 1, 1>, operand_segment_sizes = array<i32: 0, 1, 0> } : (index) -> !gml_st.tile<?x?>
@@ -92,43 +48,17 @@ func.func @tile_op_negative_static_offset(%i: index)  -> !gml_st.tile<?x8> {
 
 // -----
 
-func.func @for_loop_wrong_yield_target(
-    %arg: tensor<8xf32>, %output: tensor<f32>) -> tensor<f32> {
-  %c0 = arith.constant 0 : index
-  %c4 = arith.constant 4 : index
-  %c8 = arith.constant 8 : index
-
-  %sum = gml_st.for (%i) = (%c0) to (%c8) step (%c4)
-      outs(%out_ = %output : tensor<f32>) {
-    %arg_sub = gml_st.materialize %arg[%i] [4] [1]
-      : tensor<8xf32> to tensor<4xf32>
-    %out_sub = gml_st.materialize %out_[][][]
-      : tensor<f32> to tensor<f32>
-
-    %result_sub = linalg.dot
-        ins(%arg_sub, %arg_sub : tensor<4xf32>, tensor<4xf32>)
-        outs(%out_sub : tensor<f32>) -> tensor<f32>
-
-    %identity = gml_st.tile[][][] : !gml_st.tile<>
-    // expected-error@+1 {{'gml_st.set_yield' op expected output block argument 0 to match set_yield destination}}
-    gml_st.set_yield %result_sub into %output[%identity]
-      : tensor<f32> into tensor<f32>[!gml_st.tile<>]
-  } : tensor<f32>
-  func.return %sum : tensor<f32>
-}
-
-// -----
-
 func.func @yield_with_accumulator_mismatched_type(
     %arg: tensor<8xf32>, %output: tensor<f32>) -> tensor<f32> {
   %c0 = arith.constant 0 : index
   %c4 = arith.constant 4 : index
   %c8 = arith.constant 8 : index
 
-  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
-    %arg_sub = gml_st.materialize %arg[%i] [4] [1]
+  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4)
+      outs (%out_ = %output: tensor<f32>) {
+    %arg_sub = tensor.extract_slice %arg[%i] [4] [1]
       : tensor<8xf32> to tensor<4xf32>
-    %out_sub = gml_st.materialize %output[][][]
+    %out_sub = tensor.extract_slice %out_[][][]
       : tensor<f32> to tensor<f32>
 
     %result_sub = linalg.dot
@@ -137,7 +67,7 @@ func.func @yield_with_accumulator_mismatched_type(
 
     %identity = gml_st.tile[][][] : !gml_st.tile<>
     // expected-error@+1 {{'gml_st.set_yield' op expected accumulator region to have 2 arguments of type 'tensor<f32>'}}
-    gml_st.set_yield %result_sub into %output[%identity]
+    gml_st.set_yield %result_sub into %out_[%identity]
       acc (%in, %out: memref<f32>) {
         gml_st.yield %in : memref<f32>
       }: tensor<f32> into tensor<f32>[!gml_st.tile<>]
@@ -147,25 +77,40 @@ func.func @yield_with_accumulator_mismatched_type(
 
 // -----
 
-func.func @for_loop_wrong_yield_operands(
-    %arg: tensor<8xf32>, %output: tensor<f32>) -> tensor<f32> {
-  %c0 = arith.constant 0 : index
-  %c4 = arith.constant 4 : index
+func.func @missing_output_tensors(%in: tensor<8x8xf32>) -> tensor<8x8xf32> {
   %c8 = arith.constant 8 : index
-
-  %sum = gml_st.for (%i) = (%c0) to (%c8) step (%c4)
-      outs(%out_ = %output : tensor<f32>) {
-    %arg_sub = gml_st.materialize %arg[%i] [4] [1]
-      : tensor<8xf32> to tensor<4xf32>
-    %out_sub = gml_st.materialize %out_[][][]
-      : tensor<f32> to tensor<f32>
-
-    %result_sub = linalg.dot
-        ins(%arg_sub, %arg_sub : tensor<4xf32>, tensor<4xf32>)
-        outs(%out_sub : tensor<f32>) -> tensor<f32>
-
-    // expected-error@+1 {{'gml_st.set_yield' op expected to have at least 1 destination operand (currently 0)}}
-    gml_st.set_yield
-  } : tensor<f32>
-  func.return %sum : tensor<f32>
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c16 = arith.constant 16 : index
+  %cst = arith.constant 0.000000e+00 : f32
+  %0 = tensor.empty() : tensor<8x8xf32>
+  // expected-error@+1 {{expected the number of output arguments to match the number of results}}
+  %13 = gml_st.parallel (%arg4, %arg5) = (%c0, %c16) to (%c1, %c16)
+        step (%c8, %c8) {
+    %19 = gml_st.tile [%arg4, %arg5] [8, 8] [1, 1] : !gml_st.tile<8x8>
+    %11 = linalg.fill ins(%cst : f32) outs(%0 : tensor<8x8xf32>)
+          -> tensor<8x8xf32>
+    gml_st.set_yield %11 into %0[%19] : tensor<8x8xf32>
+          into tensor<8x8xf32>[!gml_st.tile<8x8>]
+  } : tensor<8x8xf32>
+  return %13 : tensor<8x8xf32>
 }
+
+// -----
+
+func.func @fusion_cluster_not_isolated(%arg0: tensor<?x?xf32>,
+    %arg1: tensor<?x?xf32>, %init: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %map0 = linalg.map { math.exp }
+            ins(%arg0 : tensor<?x?xf32>)
+            outs(%init : tensor<?x?xf32>)
+  // expected-error@+1 {{op using value defined outside the region}}
+  %0 = gml_st.fusion (%a1 = %arg1 : tensor<?x?xf32>,
+                      %in = %init : tensor<?x?xf32>) {
+    %map1 = linalg.map { arith.mulf }
+      ins(%map0, %a1 : tensor<?x?xf32>, tensor<?x?xf32>)
+      outs(%in : tensor<?x?xf32>)
+    gml_st.yield %map1 : tensor<?x?xf32>
+  } : tensor<?x?xf32>
+  func.return %0 : tensor<?x?xf32>
+}
+

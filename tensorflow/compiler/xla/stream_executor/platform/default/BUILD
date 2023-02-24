@@ -25,7 +25,6 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tsl/platform:dso_loader",
         "@com_google_absl//absl/strings",
     ],

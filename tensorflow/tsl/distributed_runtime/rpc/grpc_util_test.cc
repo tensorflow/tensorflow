@@ -71,7 +71,7 @@ TestRequest MakeProto(int size) {
 
 TEST(PayloadSerialization, PayloadsAreTransmitted) {
   Status status = errors::InvalidArgument("invalid arg message");
-  status.SetPayload("a", "\\xFF\\x02\\x03");
+  status.SetPayload("a", absl::Cord("\\xFF\\x02\\x03"));
   Status status_recovered = FromGrpcStatus(ToGrpcStatus(status));
 
   ASSERT_TRUE(status_recovered.GetPayload("a").has_value());

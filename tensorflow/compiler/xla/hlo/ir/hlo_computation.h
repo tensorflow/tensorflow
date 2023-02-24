@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
@@ -239,6 +240,17 @@ class HloComputation {
   // on the computation's existing name.
   void UniquifyName(NameUniquer* name_uniquer);
 
+  // Prints a string representation of the computation.
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  void Print(Printer* printer) const {
+    return Print(printer, HloPrintOptions());
+  }
+  void Print(Printer* printer, const HloPrintOptions& options) const;
+  void Print(Printer* printer, const HloPrintOptions& options,
+             absl::Span<const HloInstruction* const> instruction_order) const;
+
   // Return a string representation of the computation.
   //
   // (We express the default options using an overload rather than a default
@@ -321,6 +333,10 @@ class HloComputation {
   std::vector<HloInstruction*> MakeInstructionPostOrder() const;
   std::vector<HloInstruction*> MakeInstructionPostOrder(
       const ChannelDependencies& channel_dependencies) const;
+
+  // Calls `func` with each instruction in the computation in post-order.
+  void ForEachInstructionPostOrder(
+      absl::FunctionRef<void(HloInstruction*)> func) const;
 
   int64_t instruction_count() const { return instruction_iterators_.size(); }
 
@@ -720,6 +736,11 @@ class HloComputation {
       HloInstruction* root, const ChannelDependencies& channel_dependencies,
       absl::flat_hash_map<HloInstruction*, VisitState>& visited,
       std::vector<HloInstruction*>& post_order) const;
+
+  void ForEachInstructionPostOrderImpl(
+      absl::FunctionRef<void(HloInstruction*)> func, HloInstruction* root,
+      const ChannelDependencies& channel_dependencies,
+      absl::flat_hash_map<HloInstruction*, VisitState>& visited) const;
 
   Status RemoveUnusedParametersImpl(bool allow_non_fusion);
 

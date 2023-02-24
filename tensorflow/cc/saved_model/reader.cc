@@ -99,7 +99,7 @@ Status FindMetaGraphDef(const std::unordered_set<string>& tags,
       *meta_graph_def = std::move(graph_def);
       // Correct the endiness of Tensor content on big-endian system
       if (!port::kLittleEndian) {
-        TF_RETURN_IF_ERROR(ByteSwapTensorContent(meta_graph_def));
+        TF_RETURN_IF_ERROR(ByteSwapTensorContentInMetaGraphDef(meta_graph_def));
       }
       return OkStatus();
     }

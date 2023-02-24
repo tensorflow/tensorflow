@@ -78,22 +78,6 @@ void ConvertEndianShort(char* bytes, int64_t size) {
   }
 }
 
-std::string CompactOneline(const std::string& input) {
-  std::string result;
-  std::vector<std::string> v = absl::StrSplit(input, absl::ByAnyChar("\n "));
-  bool first = true;
-  // Concatenate elements in "v" with spaces separating them, but ignoring
-  // empty entries.
-  for (const auto& s : v) {
-    if (s.empty()) {
-      continue;
-    }
-    absl::StrAppend(&result, (first ? "" : " "), s);
-    first = false;
-  }
-  return result;
-}
-
 bool LiteralProtoHasValues(const LiteralProto& proto) {
   return proto.preds_size() || !proto.s8s().empty() || !proto.u8s().empty() ||
          proto.s32s_size() || proto.s64s_size() || proto.u32s_size() ||
@@ -1365,46 +1349,44 @@ Status MutableLiteralBase::SetFromDouble(absl::Span<const int64_t> multi_index,
 
 namespace {
 
-std::string ShapeToString(bool print_layout, const Shape& shape) {
-  return print_layout ? ShapeUtil::HumanStringWithLayout(shape)
-                      : ShapeUtil::HumanString(shape);
+void PrintShape(bool print_layout, const Shape& shape, Printer* printer) {
+  if (print_layout) {
+    ShapeUtil::PrintHumanStringWithLayout(printer, shape);
+  } else {
+    ShapeUtil::PrintHumanString(printer, shape);
+  }
 }
 
-void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
-                    bool print_shape, bool print_layout,
-                    std::vector<std::string>* pieces);
+void PrintHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
+                 bool print_shape, bool print_layout, bool oneline,
+                 Printer* printer);
 
-void TupleToStringHelper(const LiteralBase& literal,
-                         const ShapeIndex& shape_index, bool print_shape,
-                         bool print_layout, std::vector<std::string>* pieces) {
+void TuplePrintHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
+                      bool print_shape, bool print_layout, bool oneline,
+                      Printer* printer) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
-  pieces->push_back("(\n");
-  std::vector<std::string> tuple_pieces;
-  const auto tuple_element_count = ShapeUtil::TupleElementCount(subshape);
-  tuple_pieces.reserve(tuple_element_count);
+  printer->Append(oneline ? "( " : "(\n");
   for (int i = 0; i < ShapeUtil::TupleElementCount(subshape); ++i) {
     ShapeIndex element_index = shape_index;
     element_index.push_back(i);
-    std::vector<std::string> element_pieces;
-    ToStringHelper(literal, element_index, print_shape, print_layout,
-                   &element_pieces);
-    tuple_pieces.push_back(absl::StrJoin(element_pieces, ""));
+    if (i > 0) printer->Append(oneline ? ", " : ",\n");
+    PrintHelper(literal, element_index, print_shape, print_layout, oneline,
+                printer);
   }
-  pieces->push_back(absl::StrJoin(tuple_pieces, ",\n"));
-  pieces->push_back("\n)");
+  printer->Append(oneline ? " )" : "\n)");
 }
 
-void DenseArrayToStringHelper(const LiteralBase& literal,
-                              const ShapeIndex& shape_index, bool print_shape,
-                              bool print_layout,
-                              std::vector<std::string>* pieces) {
+void DenseArrayPrintHelper(const LiteralBase& literal,
+                           const ShapeIndex& shape_index, bool print_shape,
+                           bool print_layout, bool oneline, Printer* printer) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
   int64_t rank = subshape.rank();
+  const absl::string_view linebreak = oneline ? " " : "\n";
 
   std::function<void(absl::Span<const int64_t> dimensions,
                      std::vector<int64_t>*)>
-      to_string_recursive = [&](absl::Span<const int64_t> dimensions,
-                                std::vector<int64_t>* accum_indices) {
+      print_recursive = [&](absl::Span<const int64_t> dimensions,
+                            std::vector<int64_t>* accum_indices) {
         // dimensions.size() decreases by 1 at each recursive call,
         // and accum_indices->size() increases by 1.
         // Their sum is equal to the rank of the tensor.
@@ -1417,7 +1399,8 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
           }
           // Handle the innermost tensor of a 2D+ tensor.
           if (dimensions.size() == 1 && brace == "{") {
-            return StrCat("  ", brace, dimensions[0] <= 1 ? "" : " ");
+            return StrCat(oneline ? "" : "  ", brace,
+                          dimensions[0] <= 1 ? "" : " ");
           }
           if (dimensions.size() == 1 && brace == "}") {
             return StrCat(dimensions[0] <= 1 ? "" : " ", brace);
@@ -1429,11 +1412,13 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
                 accum_indices_size < rank) {
               int index = accum_indices->size() - 1;
               int value = accum_indices->back();
-              return StrCat(brace, " /*i", index, "=", value, "*/\n");
+              int size = dimensions.front();
+              return StrCat(brace, " /*i", index, "=", value, "*/",
+                            size > 0 ? linebreak : "");
             }
-            return StrCat(brace, "\n");
+            return StrCat(brace, linebreak);
           }
-          return StrCat("\n", brace);
+          return StrCat(linebreak, brace);
         };
 
         if (dimensions.empty()) {
@@ -1444,35 +1429,35 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
           } else {
             elem = literal.GetAsString(*accum_indices, shape_index);
           }
-          pieces->push_back(elem);
+          printer->Append(elem);
         } else {
-          pieces->push_back(brace_to_string("{"));
+          printer->Append(brace_to_string("{"));
           for (int i = 0; i < dimensions[0]; ++i) {
             accum_indices->push_back(i);
-            to_string_recursive(dimensions.subspan(1), accum_indices);
+            print_recursive(dimensions.subspan(1), accum_indices);
             accum_indices->pop_back();
             if (i < dimensions[0] - 1) {
-              pieces->push_back(",");
-              pieces->push_back(dimensions.size() > 1 ? "\n" : " ");
+              printer->Append(",");
+              printer->Append(dimensions.size() > 1 ? linebreak : " ");
             }
           }
-          pieces->push_back(brace_to_string("}"));
+          printer->Append(brace_to_string("}"));
         }
       };
 
   if (print_shape) {
-    pieces->push_back(ShapeToString(print_layout, subshape));
+    PrintShape(print_layout, subshape, printer);
     if (subshape.is_dynamic()) {
-      pieces->push_back("(");
+      printer->Append("(");
       for (int64_t i = 0; i < subshape.dimensions_size(); ++i) {
-        pieces->push_back(StrCat(literal.GetDynamicSize(i, shape_index)));
+        printer->Append(literal.GetDynamicSize(i, shape_index));
         if (i < subshape.dimensions_size() - 1) {
-          pieces->push_back(",");
+          printer->Append(",");
         }
       }
-      pieces->push_back(")");
+      printer->Append(")");
     }
-    pieces->push_back(" ");
+    printer->Append(" ");
   }
   std::vector<int64_t> indices = {};
   std::vector<int64_t> dimensions;
@@ -1480,73 +1465,108 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
   for (int64_t i = 0; i < subshape.rank(); ++i) {
     dimensions.push_back(literal.GetDynamicSize(i, shape_index));
   }
-  to_string_recursive(dimensions, &indices);
+  print_recursive(dimensions, &indices);
 }
 
-void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
-                    bool print_shape, bool print_layout,
-                    std::vector<std::string>* pieces) {
+void PrintHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
+                 bool print_shape, bool print_layout, bool oneline,
+                 Printer* printer) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
   CHECK(LayoutUtil::HasLayout(literal.shape()));
   CHECK(LayoutUtil::HasLayout(subshape));
   if (subshape.IsTuple()) {
-    TupleToStringHelper(literal, shape_index, print_shape, print_layout,
-                        pieces);
+    TuplePrintHelper(literal, shape_index, print_shape, print_layout, oneline,
+                     printer);
   } else if (subshape.IsToken()) {
-    pieces->push_back("token");
+    printer->Append("token");
   } else {
     CHECK(LayoutUtil::IsDenseArray(subshape));
     if (literal.IsKnown(shape_index)) {
-      DenseArrayToStringHelper(literal, shape_index, print_shape, print_layout,
-                               pieces);
+      DenseArrayPrintHelper(literal, shape_index, print_shape, print_layout,
+                            oneline, printer);
     } else {
-      pieces->push_back(ShapeToString(print_layout, subshape));
-      pieces->push_back(" ");
+      PrintShape(print_layout, subshape, printer);
+      printer->Append(" ");
       if (literal.IsDetermined(shape_index)) {
-        pieces->push_back("unknown");
+        printer->Append("unknown");
       } else {
-        pieces->push_back("undetermined");
+        printer->Append("undetermined");
       }
     }
   }
 }
-
 }  // namespace
 
-std::string LiteralBase::ToString() const {
-  std::vector<std::string> pieces;
+void LiteralBase::Print(Printer* printer) const {
   CHECK(LayoutUtil::HasLayout(this->shape()));
-  ToStringHelper(*this, {}, /*print_shape=*/true,
-                 /*print_layout=*/false, &pieces);
-  return absl::StrJoin(pieces, "");
+  PrintHelper(*this, {}, /*print_shape=*/true, /*print_layout=*/false,
+              /*oneline=*/false, printer);
+}
+
+void LiteralBase::PrintOneline(Printer* printer) const {
+  CHECK(LayoutUtil::HasLayout(this->shape()));
+  PrintHelper(*this, {}, /*print_shape=*/true, /*print_layout=*/false,
+              /*oneline=*/true, printer);
+}
+
+void LiteralBase::PrintWithoutShape(Printer* printer) const {
+  CHECK(LayoutUtil::HasLayout(this->shape()));
+  PrintHelper(*this, {}, /*print_shape=*/false, /*print_layout=*/false,
+              /*oneline=*/false, printer);
+}
+
+void LiteralBase::PrintWithoutShapeOneline(Printer* printer) const {
+  CHECK(LayoutUtil::HasLayout(this->shape()));
+  PrintHelper(*this, {}, /*print_shape=*/false, /*print_layout=*/false,
+              /*oneline=*/true, printer);
+}
+
+void LiteralBase::PrintWithLayout(Printer* printer) const {
+  CHECK(LayoutUtil::HasLayout(this->shape()));
+  PrintHelper(*this, {}, /*print_shape=*/true, /*print_layout=*/true,
+              /*oneline=*/false, printer);
+}
+
+void LiteralBase::PrintWithLayoutOneline(Printer* printer) const {
+  CHECK(LayoutUtil::HasLayout(this->shape()));
+  PrintHelper(*this, {}, /*print_shape=*/true, /*print_layout=*/true,
+              /*oneline=*/true, printer);
+}
+
+std::string LiteralBase::ToString() const {
+  StringPrinter printer;
+  Print(&printer);
+  return std::move(printer).ToString();
 }
 
 std::string LiteralBase::ToStringOneline() const {
-  return CompactOneline(ToString());
+  StringPrinter printer;
+  PrintOneline(&printer);
+  return std::move(printer).ToString();
 }
 
 std::string LiteralBase::ToStringWithoutShape() const {
-  std::vector<std::string> pieces;
-  CHECK(LayoutUtil::HasLayout(this->shape()));
-  ToStringHelper(*this, {}, /*print_shape=*/false,
-                 /*print_layout=*/false, &pieces);
-  return absl::StrJoin(pieces, "");
+  StringPrinter printer;
+  PrintWithoutShape(&printer);
+  return std::move(printer).ToString();
 }
 
 std::string LiteralBase::ToStringWithoutShapeOneline() const {
-  return CompactOneline(ToStringWithoutShape());
+  StringPrinter printer;
+  PrintWithoutShapeOneline(&printer);
+  return std::move(printer).ToString();
 }
 
 std::string LiteralBase::ToStringWithLayout() const {
-  std::vector<std::string> pieces;
-  CHECK(LayoutUtil::HasLayout(this->shape()));
-  ToStringHelper(*this, {}, /*print_shape=*/true,
-                 /*print_layout=*/true, &pieces);
-  return absl::StrJoin(pieces, "");
+  StringPrinter printer;
+  PrintWithLayout(&printer);
+  return std::move(printer).ToString();
 }
 
 std::string LiteralBase::ToStringWithLayoutOneline() const {
-  return CompactOneline(ToStringWithLayout());
+  StringPrinter printer;
+  PrintWithLayoutOneline(&printer);
+  return std::move(printer).ToString();
 }
 
 void LiteralBase::EachCellAsString(

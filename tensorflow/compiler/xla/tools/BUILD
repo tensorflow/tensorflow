@@ -17,6 +17,10 @@ load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
+load(
+    "//tensorflow/tsl/platform:build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -112,13 +116,46 @@ xla_cc_binary(
     ],
 )
 
+xla_cc_test(
+    name = "replay_computation_bin_test",
+    srcs = ["replay_computation_bin_test.cc"],
+    data = [
+        "data/add.hlo",
+        ":replay_computation_cpu",
+        ":replay_computation_interpreter",
+    ],
+    deps = [
+        "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:subprocess",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
 xla_cc_binary(
     name = "replay_computation_gpu",
     tags = ["gpu"],
     deps = [
         ":replay_computation_library",
         "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
+        "//tensorflow/compiler/xla/stream_executor:cuda_platform",
+    ],
+)
+
+xla_cc_test(
+    name = "replay_computation_bin_gpu_test",
+    srcs = ["replay_computation_bin_gpu_test.cc"],
+    data = [
+        "data/add.hlo",
+        ":replay_computation_gpu",
+        ":replay_computation_interpreter",
+    ],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:subprocess",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -251,10 +288,10 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:compilation_environments",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -284,14 +321,24 @@ xla_cc_binary(
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
     ]) + if_cuda([
-        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
+        "//tensorflow/compiler/xla/stream_executor:cuda_platform",
     ]),
 )
 
-sh_test(
-    name = "interactive_graphviz_build_only_test",
-    srcs = ["interactive_graphviz_test.sh"],
-    data = [":interactive_graphviz"],
+xla_cc_test(
+    name = "interactive_graphviz_bin_test",
+    srcs = ["interactive_graphviz_bin_test.cc"],
+    data = [
+        "data/add.hlo",
+        ":interactive_graphviz",
+    ],
+    deps = [
+        "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:subprocess",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
@@ -339,8 +386,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_runner_interface",
         "//tensorflow/compiler/xla/stream_executor:platform",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
     ],
 )
 
@@ -412,8 +459,25 @@ xla_cc_binary(
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
     ]) + if_cuda([
-        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
+        "//tensorflow/compiler/xla/stream_executor:cuda_platform",
     ]),
+)
+
+xla_cc_test(
+    name = "run_hlo_module_bin_test",
+    srcs = ["run_hlo_module_bin_test.cc"],
+    data = [
+        "data/add.hlo",
+        "data/must_alias.hlo",
+        "data/must_alias_with_sharding.hlo",
+        ":run_hlo_module",
+    ],
+    deps = [
+        "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:subprocess",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+    ],
 )
 
 cc_library(

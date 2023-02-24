@@ -488,7 +488,7 @@ StatusOr<int64_t> DispatcherState::GetWorkerIndex(
 }
 
 void DispatcherState::Snapshot(const SnapshotUpdate& snapshot) {
-  snapshot_directories_.insert(snapshot.directory());
+  snapshot_paths_.insert(snapshot.path());
 }
 
 }  // namespace data

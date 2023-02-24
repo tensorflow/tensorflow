@@ -30,10 +30,7 @@ class FuncOp;
 template <typename T>
 class OperationPass;
 
-namespace mhlo {
-
-// Prepare module for export to XLA HLO protos/instruction.
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareForExport();
+namespace xla_framework {
 
 // Wrap function with XLA:CPU's C interface.
 std::unique_ptr<OperationPass<ModuleOp>> CreateOutlineWithXLAFrameworkPass();
@@ -41,19 +38,12 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateOutlineWithXLAFrameworkPass();
 // Convert XLAFramework operations to LLVM operations.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeXLAFrameworkToLLVMPass();
 
-// Patterns to lower all XLAFramework operations and types to LLVM versions.
-void PopulateLegalizeXLAFrameworkToLLVMPatterns(llvm::StringRef device_type,
-                                                RewritePatternSet& patterns,
-                                                MLIRContext* ctx,
-                                                bool prefer_tf2xla = false);
-
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_LEGALIZEXLAFRAMEWORKTOLLVM
 #define GEN_PASS_DECL_OUTLINEWITHXLAFRAMEWORK
-#define GEN_PASS_DECL_PREPAREFOREXPORTPASS
 #include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h.inc"
 
-}  // namespace mhlo
+}  // namespace xla_framework
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_FRAMEWORK_TRANSFORMS_PASSES_H_

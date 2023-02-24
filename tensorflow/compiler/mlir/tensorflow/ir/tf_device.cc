@@ -70,13 +70,13 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // Returns if its legal to inline 'src' region into the 'dest' region
   // attached to a TF Device operation.
   bool isLegalToInline(Region* dest, Region* src, bool wouldBeCloned,
-                       BlockAndValueMapping& valueMapping) const final {
+                       IRMapping& valueMapping) const final {
     return true;
   }
 
   // Defines the legality of inlining TF Device operations.
   bool isLegalToInline(Operation*, Region*, bool,
-                       BlockAndValueMapping&) const final {
+                       IRMapping&) const final {
     // For now, enable inlining all operations.
     return true;
   }

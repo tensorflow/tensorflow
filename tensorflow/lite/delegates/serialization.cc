@@ -34,7 +34,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include <farmhash.h>
 

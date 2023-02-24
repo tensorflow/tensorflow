@@ -28,11 +28,11 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -57,7 +57,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/mlir_hlo_builder.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -78,6 +77,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace mlir {
 namespace mhlo {
@@ -232,6 +232,9 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
             TypeID::get<TF::RollOp>(),
             TypeID::get<TF::RoundOp>(),
             TypeID::get<TF::SegmentSumV2Op>(),
+            TypeID::get<TF::SegmentProdV2Op>(),
+            TypeID::get<TF::SegmentMinV2Op>(),
+            TypeID::get<TF::SegmentMaxV2Op>(),
             TypeID::get<TF::SelectV2Op>(),
             TypeID::get<TF::SelfAdjointEigV2Op>(),
             TypeID::get<TF::SeluGradOp>(),
@@ -284,6 +287,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
             TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
             TypeID::get<TF::XlaKeyValueSortOp>(),
             TypeID::get<TF::XlaPadOp>(),
+            TypeID::get<TF::XlaSetBoundOp>(),
             TypeID::get<TF::XlaSetDynamicDimensionSizeOp>(),
             TypeID::get<TF::XlaSvdOp>(),
         };
@@ -856,7 +860,7 @@ class TypePropagator : public ConversionPattern {
     // references so do not update such ops.
     if (!op->getRegions().empty() || HasSymbolRefAttr(op)) return failure();
 
-    BlockAndValueMapping mapper;
+    IRMapping mapper;
     bool has_type_change = false;
     for (auto [original, updated] : llvm::zip(op->getOperands(), operands)) {
       Type original_ty = original.getType();

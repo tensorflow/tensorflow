@@ -39,11 +39,11 @@ namespace stream_executor {
       std::ostringstream oss;                                                 \
       oss << error_string << "\nin " << __FILE__ << "(" << __LINE__ << "): '" \
           << #expr << "'";                                                    \
-      return tsl::Status(port::error::UNKNOWN, oss.str().c_str());            \
+      return tsl::Status(tsl::error::UNKNOWN, oss.str().c_str());             \
     }                                                                         \
   } while (false)
 
-port::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
+tsl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     absl::string_view preferred_cuda_dir, gpu::GpuContext* context,
     std::vector<CubinOrPTXImage> images) {
   {
@@ -108,7 +108,7 @@ port::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
       /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
 
   if (exit_status != 0) {
-    return port::InternalError(
+    return tsl::errors::Internal(
         absl::StrFormat("nvlink exited with non-zero error code %d, output: %s",
                         exit_status, stderr_output));
   }
@@ -129,7 +129,7 @@ port::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
   return cubin_vector;
 }
 
-port::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
+tsl::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
     gpu::GpuContext* context, std::vector<CubinOrPTXImage> images) {
   gpu::ScopedActivateContext activation(context);
 

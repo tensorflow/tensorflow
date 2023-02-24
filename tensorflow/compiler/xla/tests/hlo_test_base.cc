@@ -867,9 +867,15 @@ StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
 StatusOr<std::unique_ptr<HloRunnerInterface>> HloTestBase::GetHloRunnerForTest(
     se::Platform* test_platform) {
   if (ShouldUsePjRt()) {
-    TF_ASSIGN_OR_RETURN(auto client, GetGlobalPjRtClientTestFactory().Get()());
+    PjRtClientTestFactoryRegistry& pjrt_registry =
+        GetGlobalPjRtClientTestFactory();
+    TF_ASSIGN_OR_RETURN(auto client, pjrt_registry.Get()());
+
+    auto device_shape_representation_fn =
+        pjrt_registry.GetDeviceShapeRepresentationFn(client.get());
+
     return std::unique_ptr<HloRunnerInterface>(
-        new HloRunnerPjRt(std::move(client)));
+        new HloRunnerPjRt(std::move(client), device_shape_representation_fn));
   } else {
     return std::unique_ptr<HloRunnerInterface>(new HloRunner(test_platform));
   }
