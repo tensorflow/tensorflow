@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -291,7 +292,9 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
   pm.addPass(createSymbolDCEPass());
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_convert_control_to_data_outputs_pass) {
-    pm.addPass(tf_executor::CreateTFExecutorConvertControlToDataOutputsPass());
+    pm.addPass(tf_executor::CreateTFExecutorConvertControlToDataOutputsPass(
+        tensorflow::GetMlirCommonFlags()
+            ->tf_mlir_enable_coarse_data_token_optimization));
   }
   pm.addPass(CreateVerifySuitableForExportPass());
 }
@@ -322,7 +325,9 @@ void AddGraphExportLoweringPassesV2(OpPassManager &pm) {
   pm.addPass(createSymbolDCEPass());
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_convert_control_to_data_outputs_pass) {
-    pm.addPass(tf_executor::CreateTFExecutorConvertControlToDataOutputsPass());
+    pm.addPass(tf_executor::CreateTFExecutorConvertControlToDataOutputsPass(
+        tensorflow::GetMlirCommonFlags()
+            ->tf_mlir_enable_coarse_data_token_optimization));
   }
   pm.addPass(CreateVerifySuitableForExportPass());
 }
