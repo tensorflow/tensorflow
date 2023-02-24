@@ -618,6 +618,14 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
     """
     return self.shape.ndims
 
+  def _record_tape(self, capture):
+    """Connect this graph tensor with capture for gradients calculation."""
+    tape.record_operation(
+        "captured_value",
+        [self], [capture],
+        backward_function=lambda x: [x],
+        forward_function=lambda x: [x])
+
   def get_shape(self):
     """Returns a `tf.TensorShape` that represents the shape of this tensor.
 
