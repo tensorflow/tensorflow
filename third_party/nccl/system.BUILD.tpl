@@ -12,6 +12,10 @@ cc_library(
     deps = [
         "@local_config_cuda//cuda:cuda_headers",
     ],
+    linkopts = [
+        "-Wl,-rpath='$$ORIGIN/../../nvidia/nccl/lib'",
+        "-Wl,-rpath='$$ORIGIN/../nvidia/nccl/lib'",
+    ],
 )
 
 genrule(

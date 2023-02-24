@@ -29,6 +29,10 @@ cc_library(
         "//tensorflow/tsl/platform:dso_loader",
         "//tensorflow/tsl/platform:env",
     ]),
+    linkopts = if_cuda_is_configured([
+        "-Wl,-rpath,$$ORIGIN/../../nvidia/cublas/lib",
+        "-Wl,-rpath,$$ORIGIN/../nvidia/cublas/lib",
+    ]),
 )
 
 alias(
@@ -91,6 +95,13 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
+    linkopts = select({
+        "//tensorflow:is_cuda_enabled_and_oss": [
+            "-Wl,-rpath,$$ORIGIN/../../nvidia/cuda_runtime/lib",
+            "-Wl,-rpath,$$ORIGIN/../nvidia/cuda_runtime/lib",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 filegroup(
@@ -109,6 +120,10 @@ cc_library(
         "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/tsl/platform:dso_loader",
         "//tensorflow/tsl/platform:env",
+    ]),
+    linkopts = if_cuda_is_configured([
+        "-Wl,-rpath,$$ORIGIN/../../nvidia/cudnn/lib",
+        "-Wl,-rpath,$$ORIGIN/../nvidia/cudnn/lib",
     ]),
 )
 
@@ -151,6 +166,10 @@ cc_library(
         "//tensorflow/tsl/platform:dso_loader",
         "//tensorflow/tsl/platform:env",
     ]),
+    linkopts = if_cuda_is_configured([
+        "-Wl,-rpath,$$ORIGIN/../../nvidia/cufft/lib",
+        "-Wl,-rpath,$$ORIGIN/../nvidia/cufft/lib",
+    ]),
 )
 
 alias(
@@ -174,9 +193,17 @@ cc_library(
         "//tensorflow/tsl/platform:dso_loader",
         "//tensorflow/tsl/platform:env",
     ]),
+    linkopts = if_cuda_is_configured([
+        "-Wl,-rpath,$$ORIGIN/../../nvidia/cuda_cupti/lib",
+        "-Wl,-rpath,$$ORIGIN/../nvidia/cuda_cupti/lib",
+    ]),
 )
 
 cc_library(
+    linkopts =  if_cuda_is_configured([
+        "-Wl,-rpath,$$ORIGIN/../../nvidia/curand/lib",
+        "-Wl,-rpath,$$ORIGIN/../nvidia/curand/lib",
+    ]),
     name = "cusolver_stub",
     srcs = if_cuda_is_configured(["cusolver_stub.cc"]),
     textual_hdrs = glob(["cusolver_dense_*.inc"]),
@@ -185,6 +212,10 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/tsl/platform:dso_loader",
         "//tensorflow/tsl/platform:env",
+    ]),
+    linkopts = if_cuda_is_configured([
+        "-Wl,-rpath,$$ORIGIN/../../nvidia/cusolver/lib",
+        "-Wl,-rpath,$$ORIGIN/../nvidia/cusolver/lib",
     ]),
 )
 
@@ -206,6 +237,10 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/tsl/platform:dso_loader",
         "//tensorflow/tsl/platform:env",
+    ]),
+    linkopts = if_cuda_is_configured([
+        "-Wl,-rpath,$$ORIGIN/../../nvidia/cusparse/lib",
+        "-Wl,-rpath,$$ORIGIN/../nvidia/cusparse/lib",
     ]),
 )
 

@@ -22,6 +22,12 @@ limitations under the License.
 
 #include "tensorflow/tsl/platform/platform.h"
 
+#if defined(PLATFORM_POSIX)
+#include <link.h>
+#include <dlfcn.h>
+#include <libgen.h>
+#endif
+
 #if !defined(PLATFORM_GOOGLE)
 #include "third_party/gpus/cuda/cuda_config.h"
 #endif
@@ -31,11 +37,28 @@ namespace tsl {
 
 std::vector<std::string> CandidateCudaRoots() {
 #if !defined(PLATFORM_GOOGLE)
-  VLOG(3) << "CUDA root = " << TF_CUDA_TOOLKIT_PATH;
-  return {TF_CUDA_TOOLKIT_PATH, std::string("/usr/local/cuda")};
-#else
+  auto roots = std::vector<std::string>{TF_CUDA_TOOLKIT_PATH,
+                                        std::string("/usr/local/cuda")};
+
+#if defined(PLATFORM_POSIX)
+  Dl_info info;
+
+  if (dladdr(&__FUNCTION__, &info)) {
+    auto lib = std::vector<char>{info.dli_fname,
+                                 info.dli_fname + strlen(info.dli_fname)};
+    auto dir = dirname(lib.data());
+
+    for (auto path : {"/../nvidia/cuda_nvcc", "/../../nvidia/cuda_nvcc"})
+      roots.emplace_back(std::string(dir) + path);
+  }
+#endif  // defined(PLATFORM_POSIX)
+
+  for (auto root : roots)
+         VLOG(3) << "CUDA root = " << root;
+  return roots;
+#else  // !defined(PLATFORM_GOOGLE)
   return {std::string("/usr/local/cuda")};
-#endif
+#endif  //!defined(PLATFORM_GOOGLE)
 }
 
 bool PreferPtxasFromPath() { return true; }
