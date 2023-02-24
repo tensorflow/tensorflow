@@ -48,12 +48,10 @@ bool allowedToFuse(Operation* consumerOp, Operation* producerOp) {
     auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(consumerOp);
     if (!dstStyleOp) return false;
 
-    return llvm::any_of(dstStyleOp.getDpsInitOperands(),
-                        [&](OpOperand* operand) {
-                          return operand->get().getDefiningOp() == producerOp;
-                        });
-
-    return false;
+    if (llvm::any_of(dstStyleOp.getDpsInitOperands(), [&](OpOperand* operand) {
+          return operand->get().getDefiningOp() == producerOp;
+        }))
+      return true;
   }
 
   if (isa<linalg::MapOp, thlo::ReverseOp>(consumerOp)) return true;
@@ -63,6 +61,7 @@ bool allowedToFuse(Operation* consumerOp, Operation* producerOp) {
     return isa<linalg::MapOp, linalg::BroadcastOp, thlo::ReverseOp>(producerOp);
   if (isa<linalg::MatmulOp>(consumerOp))
     return isa<linalg::BroadcastOp, thlo::ReverseOp>(producerOp);
+  if (isa<linalg::FillOp>(consumerOp)) return isa<tensor::EmptyOp>(producerOp);
   return false;
 }
 
@@ -85,8 +84,8 @@ LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
   SetVector<Operation*> resultOps;
   SmallVector<Operation*> remainingProducers;
   resultOps.insert(op.getOperation());
-  for (auto* operand : op.getDpsInputOperands())
-    remainingProducers.push_back(operand->get().getDefiningOp());
+  for (auto operand : op.getOperands())
+    remainingProducers.push_back(operand.getDefiningOp());
 
   while (!remainingProducers.empty()) {
     Operation* curOp = remainingProducers.pop_back_val();
@@ -106,8 +105,8 @@ LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
 
     resultOps.insert(curOp);
 
-    for (auto& operand : curOp->getOpOperands())
-      remainingProducers.push_back(operand.get().getDefiningOp());
+    for (auto operand : curOp->getOperands())
+      remainingProducers.push_back(operand.getDefiningOp());
   }
 
   FusionCluster fusionCluster;

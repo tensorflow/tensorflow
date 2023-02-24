@@ -20,6 +20,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/DestinationStyleOpInterface.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
@@ -449,6 +450,7 @@ def GMLST_YieldOp : GMLST_Op<"yield", [Pure, ReturnLike, Terminator,
 }
 
 def GMLST_FusionOp : GMLST_Op<"fusion", [
+      DestinationStyleOpInterface,
       SingleBlockImplicitTerminator<"gml_st::YieldOp">
     ]> {
   let summary = "A cluster of operations to be tiled and fused.";
@@ -463,6 +465,13 @@ def GMLST_FusionOp : GMLST_Op<"fusion", [
   code extraClassDeclaration = [{
     /// Return terminator of the region body.
     YieldOp getTerminator();
+
+    // Implement method necessary for DestinationStyleOpInterface.
+    std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
+      int64_t numOperands = this->getNumOperands();
+      int64_t numResults = this->getNumResults();
+      return {numOperands - numResults, numOperands};
+    }
   }];
 }
 

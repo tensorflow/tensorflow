@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "gml_st/transforms/fusion/fusion.h"
 
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -553,9 +554,62 @@ LogicalResult tilePeeledOpsToScalars(
   return success();
 }
 
+// Finds the source of the operand. It could be a tensor.empty, a region arg or
+// an op outside of the cluster.
+Value getTiedSourceOp(PatternRewriter& rewriter, OpOperand* operand,
+                      const FusionCluster& fusionCluster) {
+  auto* definingOp = operand->get().getDefiningOp();
+  if (!definingOp) return operand->get();
+
+  // A tensor.empty used tied to fusion cluster result should not be fused, so
+  // bufferization can properly handle allocations. If the same tensor.empty is
+  // used in other ops for temporary result, it should be fused. Copied op is
+  // not in the cluster, so it will not be fused.
+  if (auto emptyOp = dyn_cast<tensor::EmptyOp>(definingOp)) {
+    OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.setInsertionPointAfter(emptyOp);
+
+    auto newEmptyOp = cast<tensor::EmptyOp>(rewriter.clone(*emptyOp));
+    operand->set(newEmptyOp);
+    return newEmptyOp;
+  }
+
+  // Source of the operand is outside of the cluster, so pass it as an argument.
+  if (!llvm::is_contained(fusionCluster.operations, definingOp)) {
+    return operand->get();
+  }
+
+  // Source of the operand is another DPS op from the cluster. Look higher in
+  // the chain.
+  if (auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(definingOp)) {
+    OpOperand* tiedOperand =
+        dstStyleOp.getTiedOpOperand(operand->get().dyn_cast<OpResult>());
+    return getTiedSourceOp(rewriter, tiedOperand, fusionCluster);
+  }
+
+  return operand->get();
+}
+
+SmallVector<Value> getRootOpInitOperands(PatternRewriter& rewriter,
+                                         const FusionCluster& fusionCluster) {
+  auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(fusionCluster.root);
+  if (!dstStyleOp) return {};
+
+  SmallVector<Value> initOperands;
+
+  for (auto* operand : dstStyleOp.getDpsInitOperands()) {
+    initOperands.push_back(getTiedSourceOp(rewriter, operand, fusionCluster));
+  }
+
+  return initOperands;
+}
+
 FailureOr<gml_st::FusionOp> wrapFusionCluster(
     PatternRewriter& rewriter, const FusionCluster& fusionCluster) {
   auto loc = fusionCluster.root->getLoc();
+
+  SmallVector<Value> initOperands =
+      getRootOpInitOperands(rewriter, fusionCluster);
 
   // 1. Find operands and results of the cluster op.
   SetVector<Value> clusterOperands;
@@ -564,9 +618,10 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
     auto* definingOp = operand->get().getDefiningOp();
 
     if (fusionCluster.operations.contains(definingOp)) return;
+    if (isa_and_nonnull<arith::ConstantOp>(definingOp)) return;
+    if (llvm::is_contained(initOperands, operand->get())) return;
 
-    if (!isa_and_nonnull<arith::ConstantOp>(definingOp))
-      clusterOperands.insert(operand->get());
+    clusterOperands.insert(operand->get());
   };
 
   for (Operation* op : fusionCluster.operations) {
@@ -581,6 +636,8 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
         clusterResults.push_back(result);
     }
   }
+
+  clusterOperands.insert(initOperands.begin(), initOperands.end());
 
   // 2. Create an empty op.
   OpBuilder::InsertionGuard guard(rewriter);
