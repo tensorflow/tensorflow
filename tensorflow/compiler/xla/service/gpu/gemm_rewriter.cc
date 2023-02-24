@@ -198,6 +198,26 @@ auto OptionalBitcast(HloInstruction **optional_bitcast, Pattern pattern) {
                                   std::move(pattern));
 }
 
+template <typename Pattern>
+auto OptionalReshape(HloInstruction **optional_reshape, Pattern pattern) {
+  return m::AnyOf<HloInstruction>(m::Reshape(optional_reshape, pattern),
+                                  std::move(pattern));
+}
+
+template <typename Pattern>
+auto OptionalCopy(HloInstruction **optional_copy, Pattern pattern) {
+  return m::AnyOf<HloInstruction>(m::Copy(optional_copy, pattern),
+                                  std::move(pattern));
+}
+
+template <typename Pattern>
+auto OptionalReshapeOrBitcast(HloInstruction **optional_op,
+                              Pattern pattern) {
+  return m::AnyOf<HloInstruction>(OptionalReshape(optional_op, pattern),
+                                  OptionalBitcast(optional_op, pattern));
+}
+
+
 // The rewriting proceeds in a bottom-up way:
 //
 // (kDot A B) is rewritten into a (kCustomCall:gemm A B)
@@ -265,29 +285,43 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       instr = gemm_call;
     }
 
-    // Attempt to elide an FP8 GEMM with scaled inputs as described by steps 1
-    // through 3 detailed above and rewrite into a Custom Call.
-    if (Match(
-            instr,
-            m::CustomCall(
-                {kCublasLtMatmulCallTarget},
-                m::AnyOf<HloInstruction>(
-                    OptionalBitcast(
-                        &a_bitcast,
-                        m::MultiplyAnyOrder(&a_binary, m::Convert(m::Op(&a)),
-                                            m::Broadcast(m::Op(&a_scale)))),
-                    OptionalBitcast(&a_bitcast,
-                                    m::Divide(&a_binary, m::Convert(m::Op(&a)),
-                                              m::Broadcast(m::Op(&a_scale))))),
-                m::AnyOf<HloInstruction>(
-                    OptionalBitcast(
-                        &b_bitcast,
-                        m::MultiplyAnyOrder(&b_binary, m::Convert(m::Op(&b)),
-                                            m::Broadcast(m::Op(&b_scale)))),
-                    OptionalBitcast(
-                        &b_bitcast,
-                        m::Divide(&b_binary, m::Convert(m::Op(&b)),
-                                  m::Broadcast(m::Op(&b_scale)))))))) {
+    if (Match(instr,
+              m::CustomCall(
+                  {kCublasLtMatmulCallTarget},
+                  m::AnyOf<HloInstruction>(
+                      OptionalBitcast(
+                          &a_bitcast,
+                          OptionalCopy(&a_copy,
+                                       OptionalReshapeOrBitcast(
+                                           &a_bitcast2,
+                                           m::MultiplyAnyOrder(
+                                               &a_binary, m::Convert(m::Op(&a)),
+                                               m::Broadcast(m::Op(&a_scale)))))),
+                      OptionalBitcast(
+                          &a_bitcast,
+                          OptionalCopy(
+                              &a_copy,
+                              OptionalReshapeOrBitcast(
+                                  &a_bitcast2,
+                                  m::Divide(&a_binary, m::Convert(m::Op(&a)),
+                                            m::Broadcast(m::Op(&a_scale))))))),
+                  m::AnyOf<HloInstruction>(
+                      OptionalBitcast(
+                          &b_bitcast,
+                          OptionalCopy(&b_copy,
+                                       OptionalReshapeOrBitcast(
+                                           &b_bitcast2,
+                                           m::MultiplyAnyOrder(
+                                               &b_binary, m::Convert(m::Op(&b)),
+                                               m::Broadcast(m::Op(&b_scale)))))),
+                      OptionalBitcast(
+                          &b_bitcast,
+                          OptionalCopy(
+                              &b_copy,
+                              OptionalReshapeOrBitcast(
+                                  &b_bitcast2,
+                                  m::Divide(&b_binary, m::Convert(m::Op(&b)),
+                                            m::Broadcast(m::Op(&b_scale)))))))))) {
       TF_ASSIGN_OR_RETURN(
           bool created_call,
           CreateF8CustomCall(
@@ -666,40 +700,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // and B are later exchanged, and B is transposed here instead.
     // TODO(philipphack): Remove once cuBLASLt supports the NN configuration.
     TF_ASSIGN_OR_RETURN(bool is_col_major,
-                        MatrixIsColumnMajor(instr, gemm_backend_config, "d"));
-
-    TF_ASSIGN_OR_RETURN(bool a_is_col_major,
-                        MatrixIsColumnMajor(instr, gemm_backend_config, "a"));
-
-    TF_ASSIGN_OR_RETURN(bool b_is_col_major,
-                        MatrixIsColumnMajor(instr, gemm_backend_config, "b"));
-
-    // Bitcast the operands to realign their logical and physical dimensions.
-    std::vector<int64_t> a_dim_order;
-    a_dim_order.reserve(a_dims.size());
-    absl::Span<const int64_t> a_minor_to_major =
-        a->shape().layout().minor_to_major();
-    for (int i = 0; i < a_dims.size(); ++i) {
-      a_dim_order.emplace_back(
-          absl::c_find(a_minor_to_major,
-                       is_col_major ? i : a_dims.size() - i - 1) -
-          a_minor_to_major.begin());
-    }
-    a = instr->AddInstruction(HloInstruction::CreateTranspose(
-        ShapeUtil::PermuteDimensions(a_dim_order, a->shape()), a, a_dim_order));
-
-    std::vector<int64_t> b_dim_order;
-    b_dim_order.reserve(b_dims.size());
-    absl::Span<const int64_t> b_minor_to_major =
-        b->shape().layout().minor_to_major();
-    for (int i = 0; i < b_dims.size(); ++i) {
-      b_dim_order.emplace_back(
-          absl::c_find(b_minor_to_major,
-                       is_col_major ? i : b_dims.size() - i - 1) -
-          b_minor_to_major.begin());
-    }
-    b = instr->AddInstruction(HloInstruction::CreateTranspose(
-        ShapeUtil::PermuteDimensions(b_dim_order, b->shape()), b, b_dim_order));
+                        OutputIsColumnMajor(instr, gemm_backend_config));
 
     // Identify the dimensional order which describes a transpose of the
     // contracting and non-contracting dimensions of the GEMM.
@@ -734,66 +735,20 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return transp_dims;
     };
 
-    auto plain_transpose = [&](const char a_or_b) {
-      if (a_or_b == 'a') {
-        std::vector<int64_t> new_dim_order =
-            transp_dim_order(a, a_contracting_dims[0], a_batch_dims);
-        a = instr->AddInstruction(HloInstruction::CreateTranspose(
-            ShapeUtil::MakeShapeWithDenseLayout(
-                a->shape().element_type(), transp_dims(a, new_dim_order),
-                a->shape().layout().minor_to_major()),
-            a, new_dim_order));
-      } else if (a_or_b == 'b') {
-        std::vector<int64_t> new_dim_order =
-            transp_dim_order(b, b_contracting_dims[0], b_batch_dims);
-        b = instr->AddInstruction(HloInstruction::CreateTranspose(
-            ShapeUtil::MakeShapeWithDenseLayout(
-                b->shape().element_type(), transp_dims(b, new_dim_order),
-                b->shape().layout().minor_to_major()),
-            b, new_dim_order));
-      }
-    };
-
-    DotDimensionNumbers *dim_nums =
-        gemm_backend_config.mutable_dot_dimension_numbers();
-    // Apply necessary transposes to accommodate canonicalize matmul(lhs and rhs
-    // contracting dims are 1 and 0). Also assuming transpose folding pass later
-    // will remove duplcated transposes.
     if (is_col_major) {
-      if (a_contracting_dims[0] == 1 && b_contracting_dims[0] == 0) {
-        plain_transpose('a');
-        plain_transpose('b');
-        ;
-      } else if (a_contracting_dims[0] == 1 && b_contracting_dims[0] == 1) {
-        plain_transpose('a');
-        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dims.size() + 0);
-
-      } else if (a_contracting_dims[0] == 0 && b_contracting_dims[0] == 1) {
-        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dims.size() + 0);
-        dim_nums->set_lhs_contracting_dimensions(0, a_batch_dims.size() + 1);
-      } else if (a_contracting_dims[0] == 0 && b_contracting_dims[0] == 0) {
-        plain_transpose('b');
-        dim_nums->set_lhs_contracting_dimensions(0, a_batch_dims.size() + 1);
-      }
-      // The last transpose is required by cublas fp8 matmul restriction
-      plain_transpose('a');
+      std::vector<int64_t> new_dim_order =
+          transp_dim_order(a, a_contracting_dims[0], a_batch_dims);
+      a = instr->AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(a->shape().element_type(),
+                               transp_dims(a, new_dim_order)),
+          a, new_dim_order));
     } else {
-      if (a_contracting_dims[0] == 1 && b_contracting_dims[0] == 0) {
-        ;
-      } else if (a_contracting_dims[0] == 1 && b_contracting_dims[0] == 1) {
-        plain_transpose('b');
-        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dims.size() + 0);
-
-      } else if (a_contracting_dims[0] == 0 && b_contracting_dims[0] == 1) {
-        plain_transpose('a');
-        plain_transpose('b');
-        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dims.size() + 0);
-        dim_nums->set_lhs_contracting_dimensions(0, a_batch_dims.size() + 1);
-      } else if (a_contracting_dims[0] == 0 && b_contracting_dims[0] == 0) {
-        plain_transpose('a');
-        dim_nums->set_lhs_contracting_dimensions(0, a_batch_dims.size() + 1);
-      }
-      plain_transpose('b');
+      std::vector<int64_t> new_dim_order =
+          transp_dim_order(b, b_contracting_dims[0], b_batch_dims);
+      b = instr->AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(b->shape().element_type(),
+                               transp_dims(b, new_dim_order)),
+          b, new_dim_order));
     }
 
     std::unique_ptr<HloInstruction> new_custom_call =
