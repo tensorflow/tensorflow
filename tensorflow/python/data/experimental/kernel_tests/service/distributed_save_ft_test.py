@@ -220,12 +220,12 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     n = 5
     cluster, _ = self.setup(num_workers=n, ds_size=10000, num_sources=3)
     cluster.restart_dispatcher()
-    streams = lambda: cluster.snapshot_streams(self._path)
-    while len(streams()) != n or any(
-        stream.state != _DONE for stream in streams()
-    ):
-      time.sleep(0.1)
+    self._wait_for_snapshot(cluster)
     self.assertTrue(os.path.exists(os.path.join(self._path, "DONE")))
+
+  def _wait_for_snapshot(self, cluster):
+    while not os.path.exists(os.path.join(self._path, "DONE")):
+      time.sleep(0.1)
 
 
 if __name__ == "__main__":
