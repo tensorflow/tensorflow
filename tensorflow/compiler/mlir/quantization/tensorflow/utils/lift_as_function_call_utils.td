@@ -48,6 +48,10 @@ class NamedAttr<string attr_name> :
 def IsNotInLiftedFunc :
       Constraint<CPred<"!IsInLiftedFunc($0.getDefiningOp())">>;
 
+// Checks if the given einsum op is supported for XlaDotV2 quantization.
+def IsEinsumSupportedByXlaDotV2 :
+      Constraint<CPred<"IsEinsumSupportedByXlaDotV2($0)">>;
+
 // This attribute can be used in the `AttributeList` for missing attributes. It
 // is necessary to keep other attributes in the same index as the quantized
 // composite function.

@@ -36,6 +36,9 @@ inline constexpr absl::string_view kNullAttributeValue = "N/A";
 // Checks if the op is inside a lifted function.
 bool IsInLiftedFunc(Operation *op);
 
+// Checks if the given einsum op is supported for XlaDotV2 quantization.
+bool IsEinsumSupportedByXlaDotV2(mlir::StringAttr equation_attr);
+
 // Creates a function to wrap the section between arguments and results.
 llvm::SmallVector<Value, 4> LiftAsFunctionCall(
     OpBuilder builder, Location location, StringRef func_name,
