@@ -8300,6 +8300,31 @@ ENTRY %entry {
   }
 }
 
+TEST_F(ShardingPropagationTest, DoNotPassManualShardingToSPMDShardToFullShape) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  p.0 = f32[2,3]{1,0} parameter(0), sharding={replicated}
+  custom-call.2 = f32[2,3]{1,0} custom-call(p.0), custom_call_target="Sharding", sharding={replicated}
+  custom-call.3 = f32[2,3]{1,0} custom-call(custom-call.2), custom_call_target="SPMDFullToShardShape", sharding={manual}
+  custom-call.4 = f32[2,3]{1,0} custom-call(custom-call.3), custom_call_target="Sharding", sharding={manual}
+  ROOT custom-call.5 = f32[16,3]{1,0} custom-call(custom-call.4), custom_call_target="SPMDShardToFullShape", sharding={replicated}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
+                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+          .Run(module.get()));
+  // Sharding op is changed to a copy.
+  EXPECT_TRUE(changed);
+  auto spmd_shard_to_full = module->entry_computation()->root_instruction();
+  CHECK(spmd_shard_to_full->IsCustomCall("SPMDShardToFullShape"));
+  EXPECT_FALSE(spmd_shard_to_full->sharding().IsManual());
+}
+
 TEST_F(ShardingPropagationTest, ReshapeNoMatchSubgroupManual) {
   const char* const hlo_string = R"(
 HloModule module

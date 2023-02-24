@@ -1913,6 +1913,10 @@ bool ShardingPropagation::InferShardingFromOperands(
        instruction->opcode() == HloOpcode::kReduceWindow)) {
     for (const HloInstruction* op : instruction->operands()) {
       if (!op->has_sharding() || !op->sharding().IsManual()) continue;
+      // Do not pass through manual sharding to SPMDShardToFullShape.
+      if (instruction->IsCustomCall("SPMDShardToFullShape")) {
+        return false;
+      }
       // Do not pass through manual sharding to concat or dynamic slice when
       // aggressiveneess is 0.
       if (aggressiveness == 0 &&
