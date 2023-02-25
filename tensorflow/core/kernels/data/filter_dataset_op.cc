@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/filter_dataset_op.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/dataset_utils.h"
@@ -164,9 +168,12 @@ class FilterDatasetOp::Dataset : public DatasetBase {
         if (!matched) {
           // Clear the output tensor list since it didn't match.
           out_tensors->clear();
-          if (stats_aggregator) {
+          {
             mutex_lock l(mu_);
             dropped_elements_++;
+          }
+          if (stats_aggregator) {
+            mutex_lock l(mu_);
             stats_aggregator->AddScalar(
                 stats_utils::DroppedElementsScalarName(dataset()->node_name()),
                 static_cast<float>(dropped_elements_), num_elements());
@@ -179,9 +186,12 @@ class FilterDatasetOp::Dataset : public DatasetBase {
       } while (!matched);
       // TODO(shivaniagrawal): add ratio of dropped_elements and
       // filtered_elements as a histogram.
-      if (stats_aggregator) {
+      {
         mutex_lock l(mu_);
         filtered_elements_++;
+      }
+      if (stats_aggregator) {
+        mutex_lock l(mu_);
         stats_aggregator->AddScalar(
             stats_utils::FilterdElementsScalarName(dataset()->node_name()),
             static_cast<float>(filtered_elements_), num_elements());
@@ -235,8 +245,20 @@ class FilterDatasetOp::Dataset : public DatasetBase {
       return OkStatus();
     }
 
+    data::TraceMeMetadata GetTraceMeMetadata() const override {
+      tf_shared_lock l(mu_);
+      data::TraceMeMetadata result;
+      result.push_back(std::make_pair(
+          "passed",
+          strings::Printf("%lld", static_cast<long long>(filtered_elements_))));
+      result.push_back(std::make_pair(
+          "filtered",
+          strings::Printf("%lld", static_cast<long long>(dropped_elements_))));
+      return result;
+    }
+
    private:
-    mutex mu_;
+    mutable mutex mu_;
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     int64_t filtered_elements_ TF_GUARDED_BY(mu_);
     int64_t dropped_elements_ TF_GUARDED_BY(mu_);
