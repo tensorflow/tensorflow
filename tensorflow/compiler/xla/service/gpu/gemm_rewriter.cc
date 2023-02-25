@@ -680,13 +680,28 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         return false;
     }
 
-    // TODO(philipphack): Consider enabling epilogue fusions and the addition of
-    // a matrix bias for FP8 GEMMs.
-    Literal c_literal = LiteralUtil::Zero(c_type);
-    HloInstruction *c = instr->AddInstruction(
-        HloInstruction::CreateConstant(c_literal.Clone()));
-    HloInstruction *c_bcast = instr->AddInstruction(
-        HloInstruction::CreateBroadcast(instr->shape(), c, {}));
+    // Fuse the possible addition of a matrix bias here to enable the subsequent
+    // fusion of the scaling and conversion of D into the Custom Call.
+    HloInstruction *c = nullptr;
+    if (instr->user_count() == 1 &&
+        instr->users()[0]->opcode() == HloOpcode::kAdd) {
+      HloInstruction *add = instr->users()[0];
+      HloInstruction *bias = add->mutable_operand(!add->operand_index(instr));
+      if (bias->opcode() != HloOpcode::kBroadcast) {
+        c = bias;
+        gemm_backend_config.set_beta(1.0);
+        TF_RETURN_IF_ERROR(ReplaceInstruction(add, instr));
+      }
+    }
+    // If a matrix bias was not fused, set C to a matrix of zeros.
+    if (!c) {
+      Literal c_literal = LiteralUtil::Zero(c_type);
+      HloInstruction *c_const = instr->AddInstruction(
+          HloInstruction::CreateConstant(c_literal.Clone()));
+      c = instr->AddInstruction(HloInstruction::CreateBroadcast(
+          ShapeUtil::MakeShape(c_type, instr->shape().dimensions()), c_const,
+          {}));
+    }
 
     // Each operand must have exactly one contracting and one non-contracting
     // dimension.
@@ -820,8 +835,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
     std::unique_ptr<HloInstruction> new_custom_call =
         HloInstruction::CreateCustomCall(
-            instr->shape(),
-            {a, b, c_bcast, scales_f32[0], scales_f32[1], one, one},
+            instr->shape(), {a, b, c, scales_f32[0], scales_f32[1], one, one},
             kCublasLtMatmulF8CallTarget);
 
     TF_RETURN_IF_ERROR(
@@ -894,13 +908,27 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Change the data type of C to BF16 as required by cuBLASLt for GEMMs with
     // FP8 outputs (see cuBLASLt documentation).
-    Literal c_literal = LiteralUtil::Zero(BF16);
-    HloInstruction *c = instr->AddInstruction(
-        HloInstruction::CreateConstant(c_literal.Clone()));
-    HloInstruction *c_bcast =
-        instr->AddInstruction(HloInstruction::CreateBroadcast(
-            ShapeUtil::ChangeElementType(instr->shape(), BF16), c, {}));
-    TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(2, c_bcast));
+    if (existing_gemm->operand(2)->shape().element_type() != BF16 &&
+        existing_gemm->operand(2)->shape().element_type() != F16) {
+      TF_ASSIGN_OR_RETURN(auto gemm_backend_config,
+                          existing_gemm->backend_config<GemmBackendConfig>());
+      if (gemm_backend_config.beta() == 1.0) {
+        VLOG(1) << "The scaling and conversion of the result of "
+                << existing_gemm->ToShortString()
+                << " is not fused into the FP8 Custom Call because it "
+                   "conflicts with the existing fusion of the addition of a "
+                   "matrix bias with element type other than BF16 or F16.";
+        return OkStatus();
+      } else {
+        Literal c_literal = LiteralUtil::Zero(BF16);
+        HloInstruction *c = instr->AddInstruction(
+            HloInstruction::CreateConstant(c_literal.Clone()));
+        HloInstruction *c_bcast =
+            instr->AddInstruction(HloInstruction::CreateBroadcast(
+                ShapeUtil::ChangeElementType(instr->shape(), BF16), c, {}));
+        TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(2, c_bcast));
+      }
+    }
 
     // If necessary, invert the scaling factor of D and convert to F32.
     if (!mult_scale) {
