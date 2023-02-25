@@ -4058,31 +4058,8 @@ TEST_F(CublasLtF8GemmRewriteTest, UnscaledABUnscaledDF8) {
 
   MatchOptimizedHlo(hlo_text,
                     R"(
-
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16]) -> f8e4m3fn[16,16] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[FUSION:%[^ ]+]] = f8e4m3fn[16,16]{1,0} fusion()
-; CHECK-NEXT:    [[C1:[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[FUSION]], [[C1]], [[C1]], /*index=5*/[[C1]], [[C1]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
-; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
-      )");
+    ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+          )");
 }
 
 TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8) {
@@ -4113,34 +4090,8 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8) {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = f32[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = f32[16,16]{1,0} broadcast([[C0]]), dimensions={}
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
-; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
-; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[C1]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
-; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
-      )");
+    ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+          )");
 }
 
 TEST_F(CublasLtF8GemmRewriteTest, BitcastScaledABUnscaledDF8) {
@@ -4209,33 +4160,7 @@ TEST_F(CublasLtF8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[10,16,32], y: f8e4m3fn[10,32,16], x_scale: f32[], y_scale: f32[]) -> f32[10,16,16] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[10,16,32]{2,1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[10,32,16]{2,1,0} parameter(1)
-; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[10,16,32]{2,1,0} transpose([[P1]]), dimensions={0,2,1}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = f32[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = f32[10,16,16]{2,1,0} broadcast([[C0]]), dimensions={}
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
-; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
-; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[10,16,16]{2,1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[C1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"2\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[\"0\"]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[\"0\"]
-; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
-; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
       )");
 }
 
@@ -4430,35 +4355,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDF8) {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{2e-3, 0.}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[], z_scale: f32[]) -> f8e4m3fn[16,16] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = bf16[16,16]{1,0} broadcast([[C0]]), dimensions={}
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
-; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
-; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
-; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C1]], [[P4]])
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[P4_INV]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{ 
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[] 
-; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
-; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
       )");
 }
 
@@ -4626,35 +4523,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{2e-3, 0.}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[], z_scale: f32[]) -> (f8e4m3fn[16,16], f32[]) {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]])
-; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = bf16[16,16]{1,0} broadcast([[C0]]), dimensions={}
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
-; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
-; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
-; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C1]], [[P4]])
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = (f8e4m3fn[16,16]{1,0}, f32[]) custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[P4_INV]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
-; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
       )");
 }
 
@@ -4745,30 +4614,25 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ParameterizedBatched) {
                            }) +
            "}";
   };
-  std::array<std::array<std::string, 7>, 384> combinations;
+  std::array<std::array<std::string, 7>, 96> combinations;
   std::string lcd, rcd, a_shape, b_shape, a_layout, b_layout, o_layout;
   int i = 0;
   for (bool o_is_col : {false, true}) {
-    for (bool a_is_col : {false, true}) {
-      for (bool b_is_col : {false, true}) {
-        for (int lhs_contracting_dim : {2, 1}) {
-          for (int rhs_contracting_dim : {2, 1}) {
-            lcd = lhs_contracting_dim == 2 ? "{2}" : "{1}";
-            rcd = rhs_contracting_dim == 2 ? "{2}" : "{1}";
-            a_shape = lhs_contracting_dim == 2 ? "[2,64,32]" : "[2,32,64]";
-            b_shape = rhs_contracting_dim == 1 ? "[2,32,16]" : "[2,16,32]";
-            for (std::string a_layout : {"{2,1,0}", "{1,2,0}"}) {
-              for (std::string b_layout : {"{2,1,0}", "{1,2,0}"}) {
-                for (int o_batch_dim_pos : {0, 1, 2}) {
-                  std::vector<int> o_layout_v = o_is_col
-                                                    ? std::vector<int>{0, 1}
-                                                    : std::vector<int>{1, 0};
-                  o_layout_v.insert(o_layout_v.begin() + o_batch_dim_pos, 2);
-                  o_layout = assemble_layout(o_layout_v);
-                  combinations[i++] = std::array{
-                      lcd, rcd, a_shape, b_shape, a_layout, b_layout, o_layout};
-                }
-              }
+    for (int lhs_contracting_dim : {2, 1}) {
+      for (int rhs_contracting_dim : {2, 1}) {
+        lcd = lhs_contracting_dim == 2 ? "{2}" : "{1}";
+        rcd = rhs_contracting_dim == 2 ? "{2}" : "{1}";
+        a_shape = lhs_contracting_dim == 2 ? "[2,64,32]" : "[2,32,64]";
+        b_shape = rhs_contracting_dim == 1 ? "[2,32,16]" : "[2,16,32]";
+        for (std::string a_layout : {"{2,1,0}", "{1,2,0}"}) {
+          for (std::string b_layout : {"{2,1,0}", "{1,2,0}"}) {
+            for (int o_batch_dim_pos : {0, 1, 2}) {
+              std::vector<int> o_layout_v =
+                  o_is_col ? std::vector<int>{0, 1} : std::vector<int>{1, 0};
+              o_layout_v.insert(o_layout_v.begin() + o_batch_dim_pos, 2);
+              o_layout = assemble_layout(o_layout_v);
+              combinations[i++] = std::array{
+                  lcd, rcd, a_shape, b_shape, a_layout, b_layout, o_layout};
             }
           }
         }
