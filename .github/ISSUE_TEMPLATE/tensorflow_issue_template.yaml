@@ -1,5 +1,5 @@
 name: Tensorflow Issue Template
-description: Please report security related issue using [Google Bug Hunters reporting form](https://bughunters.google.com/). 
+description: Please report security related issue using [Google Bug Hunters reporting form](https://bughunters.google.com/).  
              To report any other issue please use this template.
 body:
   - type: dropdown
