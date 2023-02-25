@@ -65,7 +65,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
-#include "tensorflow/core/tfrt/tpu/tpu_resources.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -374,44 +373,23 @@ tensorflow::Status GraphExecutionRunOnFunction(
   return status_group.as_summary_status();
 }
 
-// Creates a ResourceContext and populate it with per model resource from
-// Runtime. If `tpu_target` is set to kTpurt, also call a special
-// `AddTpuResources` function to populate TPU related resources for tpurt.
-//
-// TODO(b/178227859): Remove the need for the special handling for TPU here.
-static void CreateResourceContext(
-    const tfrt_stub::Runtime& runtime, tfrt::ResourceContext& resource_context,
-    tfrt::tpu::TpuModelResource* tpu_model_resource,
-    tensorflow::TfrtDeviceInfraTarget device_target) {
-  runtime.CreateRuntimeResources(&resource_context);
-
-  // TODO(b/178227859): We should make TPU resource init code pluggable, as
-  // opposed to linking it in. We can do this by adding a callback with
-  // `Runtime::AddCreateRuntimeResourceFn`.
-  if (device_target == tensorflow::TfrtDeviceInfraTarget::kTpurt) {
-    AddTpuResources(&resource_context, tpu_model_resource);
-  }
-}
-
 GraphExecutor::GraphExecutor(
     Options options, const FallbackState& fallback_state,
-    tfrt::tpu::TpuModelResource* tpu_model_resource,
     std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
         graph_execution_state,
     std::unique_ptr<mlrt::KernelRegistry> kernel_registry)
     : options_(std::move(options)),
       fallback_state_(fallback_state),
-      tpu_model_resource_(tpu_model_resource),
       graph_execution_state_(std::move(graph_execution_state)),
       req_deadline_tracker_(options_.runtime->core_runtime()->GetHostContext()),
       kernel_registry_(std::move(kernel_registry)) {
-  CreateResourceContext(runtime(), resource_context_, tpu_model_resource_,
-                        options_.compile_options.device_target);
+  // Creates a ResourceContext and populate it with per model resource from
+  // Runtime.
+  options_.runtime->CreateRuntimeResources(&resource_context_);
 }
 
 StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
     Options options, const FallbackState& fallback_state,
-    tfrt::tpu::TpuModelResource* tpu_model_resource,
     tensorflow::GraphDef graph_def,
     std::unique_ptr<mlrt::KernelRegistry> kernel_registry) {
   if (options.runtime == nullptr) {
@@ -429,9 +407,9 @@ StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
       auto graph_execution_state,
       TfrtGraphExecutionState::Create(graph_execution_state_options,
                                       std::move(graph_def), fallback_state));
-  return std::make_unique<GraphExecutor>(
-      std::move(options), fallback_state, tpu_model_resource,
-      std::move(graph_execution_state), std::move(kernel_registry));
+  return std::make_unique<GraphExecutor>(std::move(options), fallback_state,
+                                         std::move(graph_execution_state),
+                                         std::move(kernel_registry));
 }
 
 namespace {
