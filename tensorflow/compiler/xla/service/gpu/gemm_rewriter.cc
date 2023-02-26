@@ -645,14 +645,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // Shift any bitcasts to the unconverted and unscaled operands.
     if (a_bitcast) {
       a = instr->AddInstruction(a_bitcast->CloneWithNewOperands(
-          ShapeUtil::MakeShape(a->shape().element_type(),
-                               a_bitcast->shape().dimensions()),
+          ShapeUtil::MakeShapeWithDenseLayout(
+              a->shape().element_type(), a_bitcast->shape().dimensions(),
+              a_bitcast->shape().layout().minor_to_major()),
           {a}));
     }
     if (b_bitcast) {
       b = instr->AddInstruction(b_bitcast->CloneWithNewOperands(
-          ShapeUtil::MakeShape(b->shape().element_type(),
-                               b_bitcast->shape().dimensions()),
+          ShapeUtil::MakeShapeWithDenseLayout(
+              b->shape().element_type(), b_bitcast->shape().dimensions(),
+              b_bitcast->shape().layout().minor_to_major()),
           {b}));
     }
 
