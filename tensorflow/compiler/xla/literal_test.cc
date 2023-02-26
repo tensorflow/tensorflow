@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/float8.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -2545,6 +2546,32 @@ TEST_F(LiteralUtilTest, PopulateR3FromArray3DDynamicDim2) {
 })";
   EXPECT_EQ(expected, literal.ToString());
 }
+
+void BM_BroadcastVectorToMatrix(::testing::benchmark::State& state) {
+  const int d0 = state.range(0);
+  const int d1 = state.range(1);
+  std::vector<int64_t> v(d0);
+  for (int i = 0; i < d0; i++) {
+    v[i] = i;
+  }
+  Literal literal = LiteralUtil::CreateR1<int64_t>(v);
+  int count = 0;
+  for (auto s : state) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        Literal broadcasted_literal,
+        literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S64, {d0, d1}),
+                          /*dimensions=*/{0}));
+    if (count == 0) {
+      state.SetLabel(literal.shape().ToString() + " to " +
+                     broadcasted_literal.shape().ToString());
+    }
+    count++;
+  }
+}
+BENCHMARK(BM_BroadcastVectorToMatrix)
+    ->ArgPair(16, 16)
+    ->ArgPair(16, 1024)
+    ->ArgPair(1024, 1024);
 
 }  // namespace
 }  // namespace xla

@@ -1635,12 +1635,15 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       // In case the instruction is used as the operands multiple times within
       // this tuple, we will return the most specific sharding and propagate up.
       for (int64_t i = 0; i < user.shape().tuple_shapes_size(); ++i) {
-        HloSharding alternative_sub_sharding =
-            user.sharding().GetSubSharding(user.shape(), {i});
-        if (user.operand(i) == &instruction &&
-            hlo_sharding_util::IsShardingMoreSpecific(alternative_sub_sharding,
-                                                      sub_sharding)) {
-          sub_sharding = alternative_sub_sharding;
+        if (user.operand(i) == &instruction) {
+          // Only evaluate GetSubSharding if this operand is of interest,
+          // as it is relatively expensive.
+          HloSharding alternative_sub_sharding =
+              user.sharding().GetSubSharding(user.shape(), {i});
+          if (hlo_sharding_util::IsShardingMoreSpecific(
+                  alternative_sub_sharding, sub_sharding)) {
+            sub_sharding = alternative_sub_sharding;
+          }
         }
       }
       return sub_sharding;

@@ -3869,14 +3869,14 @@ static StatusOr<bool> GenerateReduceOutputElement(
 
   if (use_fast_add) {
     double computed_result = *init_values[0]->GetAsDouble({});
-    auto reduction_step =
-        [&](absl::Span<const int64_t> input_index) -> StatusOr<bool> {
-      double argument = *input_args[0]->GetAsDouble(input_index);
+    const Literal* input_arg0 = input_args[0];
+    auto reduction_step = [&](absl::Span<const int64_t> input_index) -> bool {
+      double argument = *input_arg0->GetAsDouble(input_index);
       computed_result += argument;
       return true;
     };
-    TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
-        arg_shape, base, arg_dim_counts, arg_dim_steps, reduction_step));
+    ShapeUtil::ForEachIndexNoStatus(arg_shape, base, arg_dim_counts,
+                                    arg_dim_steps, reduction_step);
     TF_RETURN_IF_ERROR(results[0].SetFromDouble(output_index, computed_result));
     return true;
   }
