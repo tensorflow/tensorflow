@@ -7510,8 +7510,8 @@ def TF_LinSpaceOp : TF_Op<"LinSpace", [Pure]> {
 
   let description = [{
 A sequence of `num` evenly-spaced values are generated beginning at `start`.
-If `num > 1`, the values in the sequence increase by `stop - start / num - 1`,
-so that the last one is exactly `stop`.
+If `num > 1`, the values in the sequence increase by
+`(stop - start) / (num - 1)`, so that the last one is exactly `stop`.
 
 For example:
 
