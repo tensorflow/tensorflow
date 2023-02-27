@@ -105,9 +105,12 @@ class _DTensorIterator(iterator_ops.IteratorBase):
   tensors onto devices.
   """
 
-  def __init__(self, datasets: Sequence[Tuple[int, data_types.DatasetV2]],
-               element_spec: tensor_spec.TensorSpec, layouts: Any,
-               num_local_devices_per_replica: int):
+  def __init__(
+      self,
+      iterators: List[Tuple[int, iterator_ops.IteratorBase]],
+      element_spec: tensor_spec.TensorSpec,
+      layouts: Any,
+      num_local_devices_per_replica: int):
     """Initializes a distributed iterator for DTensor datasets.
 
     The DTensorIterator uses 'replica IDs' to identify shards of a dataset. Here
@@ -118,9 +121,9 @@ class _DTensorIterator(iterator_ops.IteratorBase):
     slices of that partition.
 
     Args:
-      datasets: a dictionary mapping each unique local replica ID to the dataset
-        object whose elements will be placed on the devices corresponding to
-        that replica.
+      iterators: a list of tuples of each unique local replica ID to the
+        iterator object whose elements will be placed on the devices
+        corresponding to that replica.
       element_spec: the underlying dataset's element spec.
       layouts: a structure of DTensor layouts to be applied to the dataset
         values. This can be a single layout or (possibly nested) tuples or
@@ -129,9 +132,7 @@ class _DTensorIterator(iterator_ops.IteratorBase):
       num_local_devices_per_replica: the number of local devices for each
         replica.
     """
-    self._iterators = [
-        (replica_id, iter(dataset)) for replica_id, dataset in datasets
-    ]
+    self._iterators = iterators
     self._element_spec = element_spec
     self._layouts = layouts
     self._num_local_devices_per_replica = num_local_devices_per_replica
@@ -206,7 +207,82 @@ class _DTensorIterator(iterator_ops.IteratorBase):
 
   @property
   def _type_spec(self):
-    return iterator_ops.IteratorSpec(self._element_spec)
+    return _DTensorIteratorSpec(
+        self._element_spec,
+        self._layouts,
+        self._num_local_devices_per_replica,
+        len(self._iterators))
+
+
+class _DTensorIteratorSpec(iterator_ops.IteratorSpec):
+  """Type specification for `_DTensorIterator`."""
+
+  __slots__ = [
+      '_element_spec',
+      '_layouts',
+      '_num_local_devices_per_replica',
+      '_num_iterators',
+  ]
+
+  def __init__(
+      self,
+      element_spec: tensor_spec.TensorSpec,
+      layouts: Any,
+      num_local_devices_per_replica: int,
+      num_iterators: int):
+    super().__init__(element_spec)
+    self._layouts = layouts
+    self._num_local_devices_per_replica = num_local_devices_per_replica
+    self._num_iterators = num_iterators
+
+  @property
+  def value_type(self):
+    return _DTensorIterator
+
+  def _serialize(self):
+    return (
+        self._element_spec,
+        nest.map_structure(lambda layout: layout.to_string(), self._layouts),
+        self._num_local_devices_per_replica,
+        self._num_iterators)
+
+  @property
+  def _component_specs(self):
+    return [(
+        tensor_spec.TensorSpec([], dtypes.int32),
+        (tensor_spec.TensorSpec([], dtypes.resource),),
+    )] * self._num_iterators
+
+  def _to_components(self, value):
+    # pylint: disable=protected-access
+    components = []
+    for replica_id, it in value._iterators:
+      components.append((replica_id, (it._iterator_resource,)))
+    return components
+    # pylint: enable=protected-access
+
+  def _from_components(self, components):
+    iterators = []
+    for replica_id, it_component in components:
+      it = iterator_ops.OwnedIterator(
+          components=it_component, element_spec=self._element_spec)
+      iterators.append((replica_id, it))
+
+    return _DTensorIterator(
+        iterators=iterators,
+        element_spec=self._element_spec,
+        layouts=self._layouts,
+        num_local_devices_per_replica=self._num_local_devices_per_replica)
+
+  @classmethod
+  def from_value(cls, value):
+    # pylint: disable=protected-access
+    return cls(
+        value._element_spec,
+        value._layouts,
+        value._num_local_devices_per_replica,
+        len(value._iterators))
+    # pylint: enable=protected-access
 
 
 def _validate_input(flattened_layouts: Sequence[layout_lib.Layout],
@@ -528,8 +604,14 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
       datasets.append((replica_id, dataset))
 
-    return _DTensorIterator(datasets, self._element_spec, self._layouts,
-                            self._num_local_devices_per_replica)
+    iterators = [
+        (replica_id, iter(dataset)) for replica_id, dataset in datasets
+    ]
+    return _DTensorIterator(
+        iterators,
+        self._element_spec,
+        self._layouts,
+        self._num_local_devices_per_replica)
 
   def _repeat_batch(self, dataset, repeats):
     def repeat(*x):
