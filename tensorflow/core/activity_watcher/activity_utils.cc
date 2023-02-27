@@ -18,6 +18,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/strings/str_join.h"
+
 namespace tensorflow {
 namespace activity_watcher {
 
@@ -32,6 +34,17 @@ std::unique_ptr<Activity> ActivityFromContext(
         {"device", context->device()->name()},
         {"op", context->op_kernel().def().op()},
         {"iter_num", absl::StrCat(context->frame_iter().iter_id)},
+        {"inputs", absl::StrJoin(context->op_kernel().def().input(), "; ")},
+        {"original_node_names ", absl::StrJoin(context->op_kernel()
+                                                   .def()
+                                                   .experimental_debug_info()
+                                                   .original_node_names(),
+                                               "; ")},
+        {"original_func_names", absl::StrJoin(context->op_kernel()
+                                                  .def()
+                                                  .experimental_debug_info()
+                                                  .original_func_names(),
+                                              "; ")},
     }));
   }
 

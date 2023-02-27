@@ -54,6 +54,7 @@ from tensorflow.python.keras.utils import object_identity
 from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import ctc_ops as ctc
@@ -1975,14 +1976,14 @@ def dot(x, y):
   """
   if ndim(x) is not None and (ndim(x) > 2 or ndim(y) > 2):
     x_shape = []
-    for i, s in zip(int_shape(x), array_ops.unstack(array_ops.shape(x))):
+    for i, s in zip(int_shape(x), array_ops_stack.unstack(array_ops.shape(x))):
       if i is not None:
         x_shape.append(i)
       else:
         x_shape.append(s)
     x_shape = tuple(x_shape)
     y_shape = []
-    for i, s in zip(int_shape(y), array_ops.unstack(array_ops.shape(y))):
+    for i, s in zip(int_shape(y), array_ops_stack.unstack(array_ops.shape(y))):
       if i is not None:
         y_shape.append(i)
       else:
@@ -2145,7 +2146,7 @@ def batch_dot(x, y, axes=None):
     # squash middle dimensions of x.
     x_shape = shape(x)
     x_mid_dims = x_shape[1:-1]
-    x_squashed_shape = array_ops.stack(
+    x_squashed_shape = array_ops_stack.stack(
         [x_shape[0], -1, x_shape[-1]])
     x = array_ops.reshape(x, x_squashed_shape)
     x_squashed = True
@@ -2156,7 +2157,7 @@ def batch_dot(x, y, axes=None):
     # squash trailing dimensions of y.
     y_shape = shape(y)
     y_trail_dims = y_shape[2:]
-    y_squashed_shape = array_ops.stack(
+    y_squashed_shape = array_ops_stack.stack(
         [y_shape[0], y_shape[1], -1])
     y = array_ops.reshape(y, y_squashed_shape)
     y_squashed = True
@@ -2903,7 +2904,7 @@ def _broadcast_normalize_batch_in_training(x,
       target_shape.append(1)
     else:
       target_shape.append(array_ops.shape(x)[axis])
-  target_shape = array_ops.stack(target_shape)
+  target_shape = array_ops_stack.stack(target_shape)
 
   broadcast_mean = array_ops.reshape(mean, target_shape)
   broadcast_var = array_ops.reshape(var, target_shape)
@@ -3338,7 +3339,7 @@ def repeat(x, n):
   """
   assert ndim(x) == 2
   x = array_ops.expand_dims(x, 1)
-  pattern = array_ops.stack([1, n, 1])
+  pattern = array_ops_stack.stack([1, n, 1])
   return array_ops.tile(x, pattern)
 
 
@@ -3451,7 +3452,7 @@ def batch_flatten(x):
   (2, 60)
 
   """
-  x = array_ops.reshape(x, array_ops.stack([-1, prod(shape(x)[1:])]))
+  x = array_ops.reshape(x, array_ops_stack.stack([-1, prod(shape(x)[1:])]))
   return x
 
 
@@ -3610,7 +3611,7 @@ def stack(x, axis=0):
               [30, 40]]], dtype=int32)>
 
   """
-  return array_ops.stack(x, axis=axis)
+  return array_ops_stack.stack(x, axis=axis)
 
 
 @keras_export('keras.backend.one_hot')
@@ -4283,7 +4284,7 @@ def rnn(step_function,
     # The result of this will be a tuple of lists, each of the item in tuple is
     # list of the tensor with shape (batch, feature)
     def _process_single_input_t(input_t):
-      input_t = array_ops.unstack(input_t)  # unstack for time_step dim
+      input_t = array_ops_stack.unstack(input_t)  # unstack for time_step dim
       if go_backwards:
         input_t.reverse()
       return input_t
@@ -4298,7 +4299,7 @@ def rnn(step_function,
       return nest.pack_sequence_as(inputs, inp)
 
     if mask is not None:
-      mask_list = array_ops.unstack(mask)
+      mask_list = array_ops_stack.unstack(mask)
       if go_backwards:
         mask_list.reverse()
 
@@ -4328,7 +4329,7 @@ def rnn(step_function,
         successive_states.append(states)
       last_output = successive_outputs[-1]
       new_states = successive_states[-1]
-      outputs = array_ops.stack(successive_outputs)
+      outputs = array_ops_stack.stack(successive_outputs)
 
       if zero_output_for_mask:
         last_output = array_ops.where_v2(
@@ -4346,7 +4347,7 @@ def rnn(step_function,
         successive_states.append(states)
       last_output = successive_outputs[-1]
       new_states = successive_states[-1]
-      outputs = array_ops.stack(successive_outputs)
+      outputs = array_ops_stack.stack(successive_outputs)
 
   else:  # Unroll == False
     states = tuple(initial_states)
@@ -5381,7 +5382,7 @@ def conv2d_transpose(x,
     output_shape = (shape(x)[0],) + tuple(output_shape[1:])
 
   if isinstance(output_shape, (tuple, list)):
-    output_shape = array_ops.stack(list(output_shape))
+    output_shape = array_ops_stack.stack(list(output_shape))
 
   padding = _preprocess_padding(padding)
   if tf_data_format == 'NHWC':
@@ -5658,7 +5659,7 @@ def conv3d_transpose(x,
   if data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('Unknown data_format: ' + str(data_format))
   if isinstance(output_shape, (tuple, list)):
-    output_shape = array_ops.stack(output_shape)
+    output_shape = array_ops_stack.stack(output_shape)
 
   x, tf_data_format = _preprocess_conv3d_input(x, data_format)
 
@@ -5667,7 +5668,7 @@ def conv3d_transpose(x,
                     output_shape[4], output_shape[1])
   if output_shape[0] is None:
     output_shape = (array_ops.shape(x)[0],) + tuple(output_shape[1:])
-    output_shape = array_ops.stack(list(output_shape))
+    output_shape = array_ops_stack.stack(list(output_shape))
 
   padding = _preprocess_padding(padding)
   if tf_data_format == 'NDHWC':
@@ -6187,8 +6188,8 @@ def ctc_label_dense_to_sparse(labels, label_lengths):
       A sparse tensor representation of the labels.
   """
   label_shape = array_ops.shape(labels)
-  num_batches_tns = array_ops.stack([label_shape[0]])
-  max_num_labels_tns = array_ops.stack([label_shape[1]])
+  num_batches_tns = array_ops_stack.stack([label_shape[0]])
+  max_num_labels_tns = array_ops_stack.stack([label_shape[1]])
 
   def range_less_than(old_input, current_input):
     return array_ops.expand_dims(

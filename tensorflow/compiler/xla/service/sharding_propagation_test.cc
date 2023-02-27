@@ -1108,6 +1108,63 @@ ENTRY %entry {
   }
 }
 
+TEST_P(ParameterizedMetadataTest,
+       PartiallyManualTupleWithRepeatedOperandsBackWardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%cond {
+  %vars.cond = (s32[], s32[], s32[]) parameter(0)
+  %count.cond = s32[] get-tuple-element(%vars.cond), index=0
+  %limit = s32[] constant(10)
+  ROOT %lt = pred[] compare(%count.cond, %limit), direction=LT
+}
+
+%body {
+  %param = (s32[], s32[], s32[]) parameter(0)
+  %count = s32[] get-tuple-element(%param), index=0
+  %lhs = s32[] get-tuple-element(%param), index=1
+  %rhs = s32[] get-tuple-element(%param), index=2
+  %add = s32[] add(%lhs, %rhs)
+  ROOT %tuple = (s32[], s32[], s32[]) tuple(%count, %lhs, %add)
+}
+
+ENTRY %entry {
+  %zero = s32[] constant(0)
+  %p0 = s32[] parameter(0), sharding={manual metadata={op_name="a"}}
+  %tuple = (s32[], s32[], s32[]) tuple(%zero, %zero, %p0)
+  %while = (s32[], s32[], s32[]) while(%tuple), body=%body, condition=%cond
+  ROOT %copy = (s32[], s32[], s32[]) copy(%while)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* tuple = module->entry_computation()->root_instruction()->operand(0);
+  ASSERT_NE(tuple, nullptr);
+  // Check that the sharding on param1 is not replicated on tuple element[1].
+  EXPECT_THAT(tuple, op::Sharding("{{manual}, {manual}, {manual}}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(tuple->sharding().tuple_elements()[0],
+                ShardingMetadata({CreateMetadata("a")}));
+    EXPECT_THAT(tuple->sharding().tuple_elements()[1],
+                ShardingMetadata({CreateMetadata("a")}));
+    EXPECT_THAT(tuple->sharding().tuple_elements()[2],
+                ShardingMetadata({CreateMetadata("a")}));
+  } else {
+    for (const HloSharding& sub_sharding : tuple->sharding().tuple_elements()) {
+      EXPECT_THAT(sub_sharding, ShardingMetadata({}));
+    }
+  }
+}
+
 TEST_P(ParameterizedMetadataTest, ForwardConvolutionForwardPass) {
   const char* const hlo_string = R"(
 HloModule module
@@ -8241,6 +8298,31 @@ ENTRY %entry {
   for (auto* hlo : module->entry_computation()->instructions()) {
     EXPECT_TRUE(hlo->sharding().IsManual());
   }
+}
+
+TEST_F(ShardingPropagationTest, DoNotPassManualShardingToSPMDShardToFullShape) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  p.0 = f32[2,3]{1,0} parameter(0), sharding={replicated}
+  custom-call.2 = f32[2,3]{1,0} custom-call(p.0), custom_call_target="Sharding", sharding={replicated}
+  custom-call.3 = f32[2,3]{1,0} custom-call(custom-call.2), custom_call_target="SPMDFullToShardShape", sharding={manual}
+  custom-call.4 = f32[2,3]{1,0} custom-call(custom-call.3), custom_call_target="Sharding", sharding={manual}
+  ROOT custom-call.5 = f32[16,3]{1,0} custom-call(custom-call.4), custom_call_target="SPMDShardToFullShape", sharding={replicated}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
+                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+          .Run(module.get()));
+  // Sharding op is changed to a copy.
+  EXPECT_TRUE(changed);
+  auto spmd_shard_to_full = module->entry_computation()->root_instruction();
+  CHECK(spmd_shard_to_full->IsCustomCall("SPMDShardToFullShape"));
+  EXPECT_FALSE(spmd_shard_to_full->sharding().IsManual());
 }
 
 TEST_F(ShardingPropagationTest, ReshapeNoMatchSubgroupManual) {

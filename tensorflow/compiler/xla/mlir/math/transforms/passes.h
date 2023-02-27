@@ -27,7 +27,6 @@ namespace xla {
 
 #define GEN_PASS_DECL_MATHAPPROXIMATIONPASS
 #define GEN_PASS_DECL_MATHOPTIMIZATIONPASS
-#define GEN_PASS_DECL_MATHLEGALIZATIONPASS
 #include "tensorflow/compiler/xla/mlir/math/transforms/passes.h.inc"
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
@@ -35,9 +34,6 @@ CreateMathOptimizationPass(bool enable_avx2 = false);
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateMathApproximationPass(llvm::ArrayRef<std::string> oplist = {});
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateMathLegalizationPass(
-    bool enable_approximations = true);
 
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/xla/mlir/math/transforms/passes.h.inc"

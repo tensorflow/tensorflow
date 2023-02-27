@@ -15,14 +15,8 @@ limitations under the License.
 
 #include "gml_st/transforms/peeling/peeling.h"
 
-#include <functional>
-#include <memory>
-#include <sstream>
-#include <string>
-#include <utility>
-
 #include "gml_st/IR/gml_st_ops.h"
-#include "gml_st/transforms/transforms.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/Utils/AffineCanonicalizationUtils.h"
@@ -119,7 +113,6 @@ void rewriteAffineOpAfterPeeling(RewriterBase &rewriter, Operation *mainLoop,
 
 GmlStPeelingResult peelAllLoops(ParallelOp loop,
                                 mlir::PatternRewriter &rewriter) {
-  setLabel(loop, kPeelingAppliedLabel);
   GmlStPeelingResult peelingResult;
 
   bool hasMainLoop = true;
@@ -157,7 +150,6 @@ GmlStPeelingResult peelAllLoops(ParallelOp loop,
                                              mainIv, remainderIv, ub, step);
 
     // Mark the new loop if one was created.
-    setLabel(remainderLoop.getOperation(), kPeelingAppliedLabel);
     peelingResult.tailLoops.push_back(remainderLoop);
   }
 

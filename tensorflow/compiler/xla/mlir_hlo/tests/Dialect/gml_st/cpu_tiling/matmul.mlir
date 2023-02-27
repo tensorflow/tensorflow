@@ -94,7 +94,7 @@ func.func @matmul(%lhs: tensor<?x?xf32>,
 
 // CHECK-NEXT:      scf.for
 // CHECK:             linalg.matmul {{.*}} -> tensor<4x4xf32>
-// CHECK:             scf.yield {{.*}} : tensor<?x?xf32>
+// CHECK:             scf.yield {{.*}} : tensor<4x4xf32>
 // CHECK:           gml_st.set_yield
 
 // CHECK:         gml_st.parallel

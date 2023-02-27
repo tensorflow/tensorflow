@@ -118,6 +118,12 @@ static Status CreateHloXlaPipeline(
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
+  // Some early sparse rewriting rules.
+  if (options.sparse_bufferization) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::mhlo::createSparseRewritingPass());
+  }
+
   // Transform HLO operations to Linalg.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeSortPass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -129,6 +135,7 @@ static Status CreateHloXlaPipeline(
       mlir::mhlo::createMhloExpandOpsSimplifierPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createHloCanonicalizeScatterPass());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createHloCanonicalizeDotPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createGroupReductionDimensionsPass());
   // TODO(kramerb): Give THLO lowerings priority over linalg when it's ready for
   // concat, reduce and friends.

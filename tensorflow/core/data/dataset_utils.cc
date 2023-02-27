@@ -952,7 +952,7 @@ bool IndependentHostTasks(int64_t task_id) { return (task_id & 0x2) == 0x2; }
 REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization",
-                            RandomJobSamplePercentage<10>, AllTasks);
+                            RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt,
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism",
@@ -965,6 +965,8 @@ REGISTER_DATASET_EXPERIMENT("stage_based_autotune",
                             RandomJobSamplePercentage<0>, IndependentHostTasks);
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune_v2",
                             RandomJobSamplePercentage<10>,
+                            IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<0>,
                             IndependentHostTasks);
 }  // namespace
 }  // namespace data

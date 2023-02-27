@@ -138,10 +138,12 @@ message NNAPISettings {
   // Note that driver introspection is only available in Android Q and later.
   optional string accelerator_name = 1;
 
+  // Deprecated; use the compilation_caching_settings in TFLiteSettings.
+  //
   // NNAPI model compilation caching settings to be passed to
   // tflite::StatefulNnApiDelegate
-  optional string cache_directory = 2;
-  optional string model_token = 3;
+  optional string cache_directory = 2 [deprecated = true];
+  optional string model_token = 3 [deprecated = true];
 
   // NNAPI execution preference to pass. See
   // https://developer.android.com/ndk/reference/group/neural-networks.html
@@ -353,6 +355,37 @@ message StableDelegateLoaderSettings {
   optional string delegate_path = 1;
 }
 
+// Fields related to compilation caching.  In this context compilation caching
+// refers to the concept of caching compilation artifacts that a delegate might
+// produce when translating a model graph into a delegate-internal structure
+// (for example, this could include compiled CPU code, or instructions for a
+// separate accelerator chip such as a GPU, TPU, or DSP). Caching compilation
+// artifacts can speed-up subsequent compilations, and hence the time it takes
+// to apply a delegate.
+//
+// Compilation caching is an optional feature.  Setting these fields for a
+// delegate that does not implement it will have no effect.
+message CompilationCachingSettings {
+  // The cache dir for the TFLite model.
+  // If not set then the delegate should not try to cache the compilation.
+  //
+  // The delegate is responsible for synchronizing access to files in the
+  // 'cache_dir'.  E.g., it is legal to create multiple threads or processes,
+  // each of which has its own delegate instance, and provide the same
+  // 'cache_dir' to those delegate instances.
+  optional string cache_dir = 1;
+  // The unique token string for a TFLite model.  A caller that wants the
+  // delegate to cache the compilation should set this field.  If set then it is
+  // the caller's responsibility to ensure there is no clash of the tokens.
+  // E.g., if an app uses several models (with this delegate) on a given device,
+  // then no two models should have the same model_token.  If no model token is
+  // provided, but the 'cache_dir' is set, then the delegate might still cache
+  // the compilation, e.g. by deriving a unique token internally, but this
+  // behavior can be delegate-specific. NOTE: when using compilation caching, it
+  // is not recommended to use the same delegate instance for multiple models.
+  optional string model_token = 2;
+}
+
 // EdgeTPU device spec.
 //
 message EdgeTpuDeviceSpec {
@@ -484,6 +517,9 @@ message GoogleEdgeTpuSettings {
   // Specifies the execution priority. The priority is global. Requests from
   // different clients are prioritized relative to one another.
   optional Priority priority = 3;
+
+  // Reserved.
+  optional bytes extension_data = 4;
 }
 
 // Coral Dev Board / USB accelerator delegate settings.
@@ -572,6 +608,9 @@ message TFLiteSettings {
 
   // For configuring the Google EdgeTpu Delegate.
   optional GoogleEdgeTpuSettings google_edgetpu_settings = 14;
+
+  // Compilation caching settings.
+  optional CompilationCachingSettings compilation_caching_settings = 15;
 }
 
 // Whether to automatically fallback to TFLite CPU path on delegation errors.

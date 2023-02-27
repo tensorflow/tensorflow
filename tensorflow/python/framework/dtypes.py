@@ -44,6 +44,18 @@ class DTypeMeta(type(_dtypes.DType), abc.ABCMeta):
   pass
 
 
+# Rather than adding `is_weak_type` method to `DType` we add this function to
+# avoid exposing confusing information to the external users. For most users who
+# did not enable TF-NumPy behaviors, the "weak" information is irrelevant.
+def is_weak_type(dt):
+  return isinstance(dt, WeakDType)
+
+
+def as_strong_type(dt):
+  """Returns the corresponding `DType` without weak information."""
+  return _INTERN_TABLE[dt._type_enum]  # pylint: disable=protected-access
+
+
 @tf_export("dtypes.DType", "DType")
 class DType(
     _dtypes.DType,
@@ -236,13 +248,18 @@ class DType(
     if other is None:
       return False
 
-    if type(other) != DType:  # pylint: disable=unidiomatic-typecheck
+    if not isinstance(other, DType):
       try:
         other = as_dtype(other)
       except TypeError:
         return False
 
-    return self._type_enum == other._type_enum  # pylint: disable=protected-access
+    # `is_weak_type` is used along with `_type_enum` so that e.g. `int32_w` and
+    # `int32` are treated differently in e.g. tf.function tracing
+    return (
+        self._type_enum == other._type_enum
+        and is_weak_type(self) == is_weak_type(other)
+    )  # pylint: disable=protected-access
 
   def __ne__(self, other):
     """Returns True iff self != other."""
@@ -256,6 +273,26 @@ class DType(
 
   def __reduce__(self):
     return as_dtype, (self.name,)
+
+
+# Create `WeakDType` class separately so that existing TF users won't get
+# surprised. Also ensures that compatibility tests pass.
+class WeakDType(DType):
+  """Similar to `DType` but marked as `weak`.
+
+  `WeakDType` instances will have lower priority compared to normal `DType`s.
+  """
+
+  def __repr__(self):
+    return super().__repr__() + ", weak_type=True"
+
+  def __str__(self):
+    return super().__str__() + ", weak_type=True"
+
+  @property
+  def name(self):
+    return super().name + "_w"
+
 
 trace_type.register_serializable(DType)
 
@@ -436,6 +473,27 @@ tf_export("dtypes.experimental.float8_e4m3fn",
           "experimental.float8_e4m3fn").export_constant(__name__,
                                                         "float8_e4m3fn")
 
+# "Weak" dtypes. These are not exported because users won't be allowed to
+# directly create them.
+int32_w = WeakDType(types_pb2.DT_INT32)
+doc_typealias.document(obj=int32_w, doc="Signed 32-bit integer, weak dtype.")
+
+int64_w = WeakDType(types_pb2.DT_INT64)
+doc_typealias.document(obj=int64_w, doc="Signed 64-bit integer, weak dtype.")
+
+float32_w = WeakDType(types_pb2.DT_FLOAT)
+doc_typealias.document(
+    obj=float32_w, doc="32-bit (single precision) floating-point, weak dtype."
+)
+
+float64_w = WeakDType(types_pb2.DT_DOUBLE)
+doc_typealias.document(
+    obj=float64_w, doc="64-bit (double precision) floating-point, weak dtype."
+)
+
+complex128_w = WeakDType(types_pb2.DT_COMPLEX128)
+doc_typealias.document(obj=complex128_w, doc="128-bit complex, weak dtype.")
+
 resource_ref = DType(types_pb2.DT_RESOURCE_REF)
 variant_ref = DType(types_pb2.DT_VARIANT_REF)
 float16_ref = DType(types_pb2.DT_HALF_REF)
@@ -517,6 +575,14 @@ _INTERN_TABLE = {
     types_pb2.DT_FLOAT8_E4M3FN_REF: float8_e4m3fn_ref,
     types_pb2.DT_RESOURCE_REF: resource_ref,
     types_pb2.DT_VARIANT_REF: variant_ref,
+}
+
+type_to_weak_type = {
+    int32: int32_w,
+    int64: int64_w,
+    float32: float32_w,
+    float64: float64_w,
+    complex128: complex128_w,
 }
 
 # Standard mappings between types_pb2.DataType values and string names.
@@ -803,6 +869,12 @@ def as_dtype(type_value):
     TypeError: If `type_value` cannot be converted to a `DType`.
   """
   if isinstance(type_value, DType):
+    # Since weak DTypes share the same dtype enums as their counterparts, using
+    # `_INTERN_TABLE` will map them to the normal DTypes. Simpling returning the
+    # DTypes is ok. This is needed because `as_dtype` is used widely during the
+    # construction of e.g. Tensor and TensorSpec.
+    if is_weak_type(type_value):
+      return type_value
     return _INTERN_TABLE[type_value.as_datatype_enum]
 
   if isinstance(type_value, np.dtype):

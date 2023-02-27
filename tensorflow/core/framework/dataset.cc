@@ -927,6 +927,17 @@ string DatasetBaseIterator::BuildTraceMeName() {
   for (const auto& pair : metadata) {
     strings::StrAppend(&result, ",", pair.first, "=", pair.second);
   }
+  if (model_node() != nullptr) {
+    if (model_node()->buffered_elements() > 0) {
+      strings::StrAppend(
+          &result, ",buffered_elements=",
+          static_cast<long long>(model_node()->buffered_elements()));
+      strings::StrAppend(
+          &result, ",buffered_bytes_MB=",
+          static_cast<long long>(
+              static_cast<double>(model_node()->buffered_bytes()) * 1e-6));
+    }
+  }
   strings::StrAppend(&result, "#");
   return result;
 }

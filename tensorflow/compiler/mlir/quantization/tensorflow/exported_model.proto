@@ -3,6 +3,7 @@ syntax = "proto3";
 package tensorflow.quantization;
 
 import "tensorflow/core/framework/graph.proto";
+import "tensorflow/core/protobuf/meta_graph.proto";
 
 option cc_enable_arenas = true;
 
@@ -10,7 +11,7 @@ option cc_enable_arenas = true;
 // metadata required for building a SavedModel. This message is primarily used
 // to "export" the model produced from various quantization passes in c++ to
 // Python layer.
-// Next ID: 8
+// Next ID: 9
 message ExportedModel {
   reserved 4;
   reserved 'variable_shared_names';
@@ -42,4 +43,9 @@ message ExportedModel {
   // exported to the saved model. This field is usually only populated for the
   // TF2 models.
   map<string, string> function_aliases = 6;
+
+  // Holds information about the asset files used for the model. It essentially
+  // associates asset file names with the tensors to which the asset file names
+  // should be fed.
+  repeated AssetFileDef asset_file_defs = 8;
 }

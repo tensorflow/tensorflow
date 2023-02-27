@@ -33,11 +33,10 @@ from tensorflow.python.platform import test
 
 # TODO(mpcallanan): Restructure this and snapshot_ft_test.py to share more.
 
-# Enum value for `SnapshotStreamInfo::DONE`.
-_DONE = 4
 
-
-class DistributedSaveTest(test_base.DatasetTestBase, parameterized.TestCase):
+class DistributedSaveTest(
+    data_service_test_base.TestBase, parameterized.TestCase
+):
 
   def setUp(self):
     super().setUp()
@@ -53,16 +52,13 @@ class DistributedSaveTest(test_base.DatasetTestBase, parameterized.TestCase):
     except FileNotFoundError:
       pass
 
-
-class DistributedSaveTfDataServiceTest(data_service_test_base.TestBase,
-                                       DistributedSaveTest):
-
   @combinations.generate(test_base.eager_only_combinations())
   def testSimple(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10)
-    distributed_save_op.distributed_save(dataset, self._test_dir,
-                                         cluster.dispatcher_address())
+    distributed_save_op.distributed_save(
+        dataset, self._test_dir, cluster.dispatcher_address()
+    )
     self._wait_for_snapshot(cluster)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
@@ -80,8 +76,9 @@ class DistributedSaveTfDataServiceTest(data_service_test_base.TestBase,
     ]
     choice_dataset = dataset_ops.Dataset.range(3).repeat()
     dataset = dataset_ops.Dataset.choose_from_datasets(datasets, choice_dataset)
-    distributed_save_op.distributed_save(dataset, self._test_dir,
-                                         cluster.dispatcher_address())
+    distributed_save_op.distributed_save(
+        dataset, self._test_dir, cluster.dispatcher_address()
+    )
     self._wait_for_snapshot(cluster)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
@@ -91,8 +88,9 @@ class DistributedSaveTfDataServiceTest(data_service_test_base.TestBase,
   def testDistributedLoad(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10)
-    distributed_save_op.distributed_save(dataset, self._test_dir,
-                                         cluster.dispatcher_address())
+    distributed_save_op.distributed_save(
+        dataset, self._test_dir, cluster.dispatcher_address()
+    )
     self._wait_for_snapshot(cluster)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
@@ -120,12 +118,12 @@ class DistributedSaveTfDataServiceTest(data_service_test_base.TestBase,
         errors.InvalidArgumentError,
         "Saving an infinite dataset is not allowed",
     ):
-      distributed_save_op.distributed_save(dataset, self._test_dir,
-                                           cluster.dispatcher_address())
+      distributed_save_op.distributed_save(
+          dataset, self._test_dir, cluster.dispatcher_address()
+      )
 
   def _wait_for_snapshot(self, cluster):
-    streams = lambda: cluster.snapshot_streams(self._test_dir)
-    while len(streams()) != 1 or streams()[0].state != _DONE:
+    while not os.path.exists(os.path.join(self._test_dir, "DONE")):
       time.sleep(0.1)
 
 

@@ -20,11 +20,9 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -68,6 +66,7 @@ class NcclAllReduceThunk : public NcclAllReduceThunkBase {
   static bool IsDegenerate(mlir::lmhlo::AllReduceOp op, int64_t replica_count,
                            int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllReduceOp op);
+  static constexpr bool IsAsync() { return false; }
 
  protected:
   Status RunNcclCollective(const ExecuteParams& params,
@@ -87,6 +86,7 @@ class NcclAllReduceStartThunk : public NcclAllReduceThunkBase {
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::AllReduceStartOp op);
+  static constexpr bool IsAsync() { return true; }
 
   AsyncExecutor& async_executor() { return async_; }
 
@@ -117,6 +117,7 @@ class NcclReduceScatterThunk : public NcclAllReduceThunkBase {
   static bool IsDegenerate(mlir::lmhlo::ReduceScatterOp op,
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::ReduceScatterOp op);
+  static constexpr bool IsAsync() { return false; }
 
  protected:
   Status RunNcclCollective(const ExecuteParams& params,

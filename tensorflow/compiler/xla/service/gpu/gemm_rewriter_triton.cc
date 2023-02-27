@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <array>
 #include <stack>
+#include <string>
 #include <tuple>
 #include <vector>
 
@@ -332,7 +333,7 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
 
     // TODO(b/266857789): also fuse convert(dot()) at output if present:
     // seen on s8xf32->bf16
-    HloComputation::Builder builder(dot->name());
+    HloComputation::Builder builder(absl::StrCat("triton_gemm_", dot->name()));
     // Original instruction -> fused one.
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>
         old_to_new_mapping;
@@ -414,22 +415,23 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
         to_fuse.pop();
       }
     }
-    HloComputation* custom_call_computation =
+    HloComputation* computation =
         dot->GetModule()->AddComputationAndUnifyNamesAndIds(builder.Build(),
                                                             /*is_entry=*/false);
-    HloInstruction* dot_custom_call =
-        dot->parent()->AddInstruction(HloInstruction::CreateCustomCall(
-            dot->shape(), call_operands, custom_call_computation,
-            kTritonCallTarget));
+    HloInstruction* dot_fusion =
+        dot->parent()->AddInstruction(HloInstruction::CreateFusion(
+            dot->shape(), HloInstruction::FusionKind::kCustom, call_operands,
+            computation));
+    dot_fusion->set_raw_backend_config_string(
+        std::string(kTritonGemmBackendConfig));
     if (dot->IsRoot()) {
-      dot->parent()->set_root_instruction(dot_custom_call);
+      dot->parent()->set_root_instruction(dot_fusion);
       TF_RETURN_IF_ERROR(
           dot->parent()->RemoveInstructionAndUnusedOperands(dot));
     } else {
-      TF_RETURN_IF_ERROR(
-          dot->parent()->ReplaceInstruction(dot, dot_custom_call));
+      TF_RETURN_IF_ERROR(dot->parent()->ReplaceInstruction(dot, dot_fusion));
     }
-    VLOG(5) << dot_custom_call->ToString();
+    VLOG(5) << dot_fusion->ToString();
     MarkAsChanged();
     return OkStatus();
   }
@@ -591,10 +593,6 @@ StatusOr<bool> GemmRewriterTriton::Run(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    if (computation->IsCustomCallComputation() &&
-        IsTritonCustomCall(*computation->CustomCallInstruction())) {
-      continue;
-    }
     TF_ASSIGN_OR_RETURN(
         bool result, RunOnComputation(computation, cuda_compute_capability_));
     changed |= result;

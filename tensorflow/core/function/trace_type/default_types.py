@@ -23,6 +23,17 @@ from tensorflow.core.function.trace_type import serialization
 from tensorflow.core.function.trace_type import util
 from tensorflow.python.types import trace
 
+# Register the TraceType of Tensor (aka TensorSpec) to avoid cyclic dependency.
+TENSOR = None
+
+
+def register_tensor_type(tensor_type):
+  global TENSOR
+  if not TENSOR:
+    TENSOR = tensor_type
+  else:
+    raise AssertionError("Tensor type is already registered.")
+
 
 class Literal(trace.TraceType, serialization.Serializable):
   """Represents a Literal type like bool, int or string."""

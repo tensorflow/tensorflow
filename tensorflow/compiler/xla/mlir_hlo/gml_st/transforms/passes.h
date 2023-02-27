@@ -30,11 +30,6 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 
-/// The key to the attribute corresponding to the distribution type of
-/// operations that have been SIMTfied.
-inline constexpr const char kDistributionLabelKey[] =
-    "gml-st-distribution-label";
-
 /// Pass to tile ops using TilingInterface.
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
     StringRef opName = "", StringRef opLabel = "", bool distribute = true,
@@ -46,13 +41,12 @@ std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
 
 /// Pass to match, tile, and fuse softmax implementations.
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass(
-    bool distribute, ArrayRef<int64_t> tileSizes,
-    StringRef distributionLabel = "");
+    ArrayRef<int64_t> tileSizes);
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass();
 
 /// Pass to tile the root operation and to greedily fuse producers into it.
 std::unique_ptr<OperationPass<func::FuncOp>> createGreedyFusionPass(
-    bool distribute, ArrayRef<int64_t> tileSizes, StringRef distributionLabel);
+    ArrayRef<int64_t> tileSizes);
 std::unique_ptr<OperationPass<func::FuncOp>> createGreedyFusionPass();
 
 // Pass to collapse dimensions of bcasts, reductions, and cwise ops.
@@ -97,6 +91,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createOptimizeVectorTransferPass();
 /// Pass to transform a thlo.scatter op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
 
+/// Pass to transform a dot operation for CPU backend.
+std::unique_ptr<OperationPass<func::FuncOp>> createTransformDotForCpuPass(
+    ArrayRef<int64_t> dotTileSizes = std::nullopt);
+
 /// Pass to transform a linalg.matmul op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForCpuPass(
     ArrayRef<int64_t> matmulTileSizes = std::nullopt,
@@ -106,8 +104,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForCpuPass(
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionOfTensorOpsPass();
 
 /// Pass to convert ops on tensors with 1 element to scalar ops.
-std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass(
-    bool skipFillOpScalarization = false);
+std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass();
 
 /// Pass to transform a linalg.map op for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
@@ -130,9 +127,16 @@ createTransformTransposeForCpuPass(ArrayRef<int64_t> tileSizes = std::nullopt);
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformSortForCpuPass();
 
+/// Pass to transform a linalg.generic op for CPU backend.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createTransformGenericForCpuPass();
+
 /// Pass to create fusion clusters.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createFusionPlanningForCpuPass();
+
+/// Pass to outline fusion regions into functions.
+std::unique_ptr<OperationPass<ModuleOp>> createFusionOutliningPass();
 
 /// Pass to inline fusion clusters.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
@@ -150,6 +154,7 @@ struct GmlStCPUTilingOptions
     this->reduction1DTileSize = opts.reduction1DTileSize;
     this->reduction2DTileSizes = opts.reduction2DTileSizes;
     this->vectorSize = opts.vectorSize;
+    this->enableFusionClusters = opts.enableFusionClusters;
   }
 
   Option<int64_t> vectorSize{*this, "vector-size",
@@ -174,6 +179,11 @@ struct GmlStCPUTilingOptions
       *this, "lower-to-mmt4d",
       llvm::cl::desc("Enable the specific code generation (packing) for matmul "
                      "operations."),
+      llvm::cl::init(false)};
+
+  Option<bool> enableFusionClusters{
+      *this, "enable-fusion-clusters",
+      llvm::cl::desc("Enable the pass to create gml_st.fusion clusters."),
       llvm::cl::init(false)};
 };
 

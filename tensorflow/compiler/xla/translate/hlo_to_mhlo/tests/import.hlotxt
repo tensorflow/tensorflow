@@ -585,6 +585,24 @@ add {
   ROOT %dot.6 = f32[1, 1] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
+// CHECK-LABEL:  func private @test_s4_dot(%arg0: tensor<1x4xi4>, %arg1: tensor<4x1xi4>) -> tensor<1x1xi8>
+%test_s4_dot (Arg_0.1: s4[1, 4], Arg_1.2: s4[4, 1]) -> s8[1, 1] {
+  %Arg_0.1 = s4[1, 4] parameter(0)
+  %Arg_1.2 = s4[4, 1] parameter(1)
+
+  // CHECK-NEXT:  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<precision HIGH>, #mhlo<precision HIGHEST>]} : (tensor<1x4xi4>, tensor<4x1xi4>) -> tensor<1x1xi8>
+  ROOT dot.3 = s8[1, 1] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={high,highest}
+}
+
+// CHECK-LABEL:  func private @test_u4_dot(%arg0: tensor<1x4xui4>, %arg1: tensor<4x1xui4>) -> tensor<1x1xui8>
+%test_u4_dot (Arg_0.1: u4[1, 4], Arg_1.2: u4[4, 1]) -> u8[1, 1] {
+  %Arg_0.1 = u4[1, 4] parameter(0)
+  %Arg_1.2 = u4[4, 1] parameter(1)
+
+  // CHECK-NEXT:  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<precision HIGH>, #mhlo<precision HIGHEST>]} : (tensor<1x4xui4>, tensor<4x1xui4>) -> tensor<1x1xui8>
+  ROOT dot.3 = u8[1, 1] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={high,highest}
+}
+
 // CHECK-LABEL:  @test_dot_general
 // CHECK-SAME: [[ARG0:%[a-zA-Z0-9]+]]
 // CHECK-SAME: [[ARG1:%[a-zA-Z0-9]+]]
@@ -1685,6 +1703,12 @@ add {
 // CHECK: tensor<10x10xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], pointerBitWidth = 32, indexBitWidth = 32 }>>) -> tensor<10x10xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], pointerBitWidth = 32, indexBitWidth = 32 }>>
 %sparse {
   ROOT root = f32[10,10]{1,0:D(D,C)} parameter(0)
+}
+
+// CHECK-LABEL : func private @sparse-nu-no
+// CHECK: tensor<3x4x5xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed-nu", "singleton-nu-no", "singleton-no" ], pointerBitWidth = 32, indexBitWidth = 32 }>>) -> tensor<3x4x5xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed-nu", "singleton-nu-no", "singleton-no" ], pointerBitWidth = 32, indexBitWidth = 32 }>>
+%sparse-nu-no {
+  ROOT root = f32[3,4,5]{2,1,0:D(C+,S+~,S~)} parameter(0)
 }
 
 // CHECK-LABEL: func private @add_dependency

@@ -11,6 +11,7 @@ package_group(
         "//tensorflow/compiler/mlir/quantization/...",
         "//tensorflow/compiler/mlir/lite/...",
         "//third_party/cloud_tpu/inference_converter/...",  # TPU Inference Converter V1
+        "//third_party/cloud_tpu/inference_converter_v2/...",  # TPU Inference Converter V2
     ] + internal_visibility_allowlist(),
 )
 

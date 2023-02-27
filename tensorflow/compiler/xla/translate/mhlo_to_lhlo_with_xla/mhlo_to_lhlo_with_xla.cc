@@ -354,6 +354,10 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitAllToAllOp(instr);
     case HloOpcode::kAllGather:
       return EmitAllGatherOp(instr);
+    case HloOpcode::kAllGatherStart:
+      return EmitAllGatherStartOp(instr);
+    case HloOpcode::kAllGatherDone:
+      return EmitAllGatherDoneOp(instr);
     case HloOpcode::kAllReduce:
       return EmitAllReduceOp(instr);
     case HloOpcode::kAllReduceStart:
@@ -602,6 +606,9 @@ tsl::StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
     }
   }
 
+  fusion.setBackendConfigAttr(
+      builder_.getStringAttr(instr->raw_backend_config_string()));
+
   // Fold GTE/Tuple pairs.
   //
   // Since the fused region refers to values in its parent region, we can't
@@ -716,10 +723,6 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
     const HloInstruction* instr) {
   auto* custom_call_instr = xla::Cast<xla::HloCustomCallInstruction>(instr);
 
-  if (xla::gpu::IsSoftmaxCustomCall(*instr)) {
-    return EmitSoftmax(instr);
-  }
-
   if (xla::gpu::IsCustomCallToCusolver(*instr)) {
     return EmitCholesky(custom_call_instr);
   }
@@ -831,42 +834,6 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
   }
 
   return custom_call.getOperation();
-}
-
-tsl::StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitSoftmax(
-    const HloInstruction* instr) {
-  Location loc = getLocation(instr);
-
-  NamedAttribute attr(builder_.getStringAttr("fusion_type"),
-                      builder_.getStringAttr("softmax_fusion"));
-  auto fusion = builder_.create<lmhlo::FusionOp>(
-      loc, llvm::SmallVector<NamedAttribute>{attr});
-  auto after_fusion = builder_.saveInsertionPoint();
-  auto reverter = absl::MakeCleanup(
-      [this, after_fusion] { builder_.restoreInsertionPoint(after_fusion); });
-  builder_ = mlir::OpBuilder(fusion);
-
-  auto region_builder = OpBuilder::atBlockBegin(&fusion.getRegion().front());
-
-  llvm::SmallVector<Value, 8> arguments;
-  for (int i = 0; i < instr->operands().size(); ++i) {
-    const HloInstruction* operand = instr->operand(i);
-    xla::ShapeIndex shape_index;
-    TF_ASSIGN_OR_RETURN(
-        auto arg, RewriteFusionOperand(operand, operand->shape(), &shape_index,
-                                       &region_builder, loc));
-    arguments.push_back(arg);
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      Value result,
-      xla::HloFunctionImporter::ImportInstructions(
-          *instr->to_apply(), arguments, symbol_table_, &region_builder));
-  llvm::SmallVector<Value, 4> output;
-  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &output));
-  region_builder.create<memref::TensorStoreOp>(loc, result, output[0]);
-
-  return fusion;
 }
 
 tsl::StatusOr<lmhlo_gpu::CholeskyOp> LhloDialectEmitter::EmitCholesky(
@@ -1368,6 +1335,43 @@ tsl::StatusOr<lmhlo::AllGatherOp> LhloDialectEmitter::EmitAllGatherOp(
   all_gather_op.setAllGatherDimensionAttr(
       builder_.getI64IntegerAttr(all_gather->all_gather_dimension()));
   return all_gather_op;
+}
+
+tsl::StatusOr<lmhlo_gpu::AllGatherStartOp>
+LhloDialectEmitter::EmitAllGatherStartOp(const HloInstruction* instr) {
+  llvm::SmallVector<Value, 4> operands;
+  // In all-gather-start HLO, all inputs are also outputs of the HLO. In LMHLO
+  // though, we list the inputs and outputs just once. In the HLO result,
+  // the inputs are listed first, followed by outputs, which matches the order
+  // of operands we need for LMHLO AllGatherOp.
+  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands, /*result_subset=*/{}));
+
+  mlir::Location loc = getLocation(instr);
+  mlir::Type token_type = mlir::mhlo::TokenType::get(builder_.getContext());
+  std::array<mlir::Type, 1> result_types = {token_type};
+  auto all_gather_start_op =
+      builder_.create<lmhlo_gpu::AllGatherStartOp>(loc, result_types, operands);
+
+  auto* all_gather = xla::Cast<xla::HloAllGatherInstruction>(instr);
+  TF_RETURN_IF_ERROR(
+      SetupCommonCollectiveOpAttributes(all_gather_start_op, instr, builder_));
+  all_gather_start_op.setUseGlobalDeviceIdsAttr(
+      builder_.getBoolAttr(all_gather->use_global_device_ids()));
+  all_gather_start_op.setAllGatherDimensionAttr(
+      builder_.getI64IntegerAttr(all_gather->all_gather_dimension()));
+
+  auto [_, was_inserted] =
+      ret_tokens_.insert({instr, all_gather_start_op.getToken()});
+  TF_RET_CHECK(was_inserted) << "all-gather-start already lowered";
+  return all_gather_start_op;
+}
+
+tsl::StatusOr<lmhlo_gpu::AllGatherDoneOp>
+LhloDialectEmitter::EmitAllGatherDoneOp(const HloInstruction* instr) {
+  auto token = ret_tokens_.extract(instr->operand(0));
+  TF_RET_CHECK(token) << "didn't find all-gather-start token";
+  return builder_.create<lmhlo_gpu::AllGatherDoneOp>(
+      getLocation(instr), /*resultTypes=*/std::nullopt, token.mapped());
 }
 
 tsl::StatusOr<lmhlo::AllReduceOp> LhloDialectEmitter::EmitAllReduceOp(

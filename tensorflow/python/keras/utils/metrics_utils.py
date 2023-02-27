@@ -31,6 +31,7 @@ from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import to_list
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
@@ -684,7 +685,7 @@ def update_confusion_matrix_variables(variables_to_update,
 
   thresh_tiled = array_ops.tile(
       array_ops.reshape(thresholds, thresh_pretile_shape),
-      array_ops.stack(thresh_tiles))
+      array_ops_stack.stack(thresh_tiles))
 
   # Tile the predictions for every threshold.
   preds_tiled = array_ops.tile(predictions_extra_dim, data_tiles)

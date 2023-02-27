@@ -34,6 +34,7 @@ from tensorflow.dtensor.python import numpy_util
 from tensorflow.dtensor.python.config import is_gpu_present  # pylint: disable=unused-import
 from tensorflow.dtensor.python.config import is_tpu_present  # pylint: disable=unused-import
 from tensorflow.dtensor.python.config import preferred_device_type  # pylint: disable=unused-import
+from tensorflow.dtensor.python.tests import test_backend_util
 from tensorflow.dtensor.python.tests.test_backend_name import DTENSOR_TEST_UTIL_BACKEND
 from tensorflow.dtensor.python.tests.test_backend_name import DTensorTestUtilBackend
 from tensorflow.dtensor.python.tests.test_backend_util import DTensorTestBackendConfigurator
@@ -178,8 +179,8 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
 
   @staticmethod
   def configTestMesh(  # pylint: disable=invalid-name
-      device_type_mesh_map: typing.Dict[typing.Text,
-                                        layout_lib.Mesh]) -> layout_lib.Mesh:
+      device_type_mesh_map: typing.Dict[typing.Text, layout_lib.Mesh]
+  ) -> layout_lib.Mesh:
     """Configs corresponding mesh given test context.
 
     If runs on a CPU mesh, set virtual device on CPU.
@@ -214,6 +215,8 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
       mesh = get_mesh('CPU')
       reset_logical_devices('CPU', np.prod(mesh.shape()))
       accelerator_util.initialize_accelerator_system('CPU')
+
+    test_backend_util.config_test_mesh(mesh)
 
     return mesh
 

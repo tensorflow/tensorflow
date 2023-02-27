@@ -50,6 +50,10 @@ struct StableDelegateLoaderSettings;
 struct StableDelegateLoaderSettingsBuilder;
 struct StableDelegateLoaderSettingsT;
 
+struct CompilationCachingSettings;
+struct CompilationCachingSettingsBuilder;
+struct CompilationCachingSettingsT;
+
 struct EdgeTpuDeviceSpec;
 struct EdgeTpuDeviceSpecBuilder;
 struct EdgeTpuDeviceSpecT;
@@ -61,6 +65,10 @@ struct EdgeTpuInactivePowerConfigT;
 struct EdgeTpuSettings;
 struct EdgeTpuSettingsBuilder;
 struct EdgeTpuSettingsT;
+
+struct GoogleEdgeTpuSettings;
+struct GoogleEdgeTpuSettingsBuilder;
+struct GoogleEdgeTpuSettingsT;
 
 struct CoralSettings;
 struct CoralSettingsBuilder;
@@ -156,12 +164,16 @@ bool operator==(const CoreMLSettingsT &lhs, const CoreMLSettingsT &rhs);
 bool operator!=(const CoreMLSettingsT &lhs, const CoreMLSettingsT &rhs);
 bool operator==(const StableDelegateLoaderSettingsT &lhs, const StableDelegateLoaderSettingsT &rhs);
 bool operator!=(const StableDelegateLoaderSettingsT &lhs, const StableDelegateLoaderSettingsT &rhs);
+bool operator==(const CompilationCachingSettingsT &lhs, const CompilationCachingSettingsT &rhs);
+bool operator!=(const CompilationCachingSettingsT &lhs, const CompilationCachingSettingsT &rhs);
 bool operator==(const EdgeTpuDeviceSpecT &lhs, const EdgeTpuDeviceSpecT &rhs);
 bool operator!=(const EdgeTpuDeviceSpecT &lhs, const EdgeTpuDeviceSpecT &rhs);
 bool operator==(const EdgeTpuInactivePowerConfigT &lhs, const EdgeTpuInactivePowerConfigT &rhs);
 bool operator!=(const EdgeTpuInactivePowerConfigT &lhs, const EdgeTpuInactivePowerConfigT &rhs);
 bool operator==(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs);
 bool operator!=(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs);
+bool operator==(const GoogleEdgeTpuSettingsT &lhs, const GoogleEdgeTpuSettingsT &rhs);
+bool operator!=(const GoogleEdgeTpuSettingsT &lhs, const GoogleEdgeTpuSettingsT &rhs);
 bool operator==(const CoralSettingsT &lhs, const CoralSettingsT &rhs);
 bool operator!=(const CoralSettingsT &lhs, const CoralSettingsT &rhs);
 bool operator==(const CPUSettingsT &lhs, const CPUSettingsT &rhs);
@@ -693,6 +705,46 @@ inline const char *EnumNameQosClass(QosClass e) {
 }
 
 }  // namespace EdgeTpuSettings_
+
+namespace GoogleEdgeTpuSettings_ {
+
+enum Priority : int32_t {
+  Priority_PRIORITY_UNDEFINED = 0,
+  Priority_PRIORITY_LOW = 1,
+  Priority_PRIORITY_MEDIUM = 2,
+  Priority_PRIORITY_HIGH = 3,
+  Priority_MIN = Priority_PRIORITY_UNDEFINED,
+  Priority_MAX = Priority_PRIORITY_HIGH
+};
+
+inline const Priority (&EnumValuesPriority())[4] {
+  static const Priority values[] = {
+    Priority_PRIORITY_UNDEFINED,
+    Priority_PRIORITY_LOW,
+    Priority_PRIORITY_MEDIUM,
+    Priority_PRIORITY_HIGH
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesPriority() {
+  static const char * const names[5] = {
+    "PRIORITY_UNDEFINED",
+    "PRIORITY_LOW",
+    "PRIORITY_MEDIUM",
+    "PRIORITY_HIGH",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNamePriority(Priority e) {
+  if (flatbuffers::IsOutRange(e, Priority_PRIORITY_UNDEFINED, Priority_PRIORITY_HIGH)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesPriority()[index];
+}
+
+}  // namespace GoogleEdgeTpuSettings_
 
 namespace CoralSettings_ {
 
@@ -1611,6 +1663,83 @@ inline flatbuffers::Offset<StableDelegateLoaderSettings> CreateStableDelegateLoa
 
 flatbuffers::Offset<StableDelegateLoaderSettings> CreateStableDelegateLoaderSettings(flatbuffers::FlatBufferBuilder &_fbb, const StableDelegateLoaderSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct CompilationCachingSettingsT : public flatbuffers::NativeTable {
+  typedef CompilationCachingSettings TableType;
+  std::string cache_dir{};
+  std::string model_token{};
+};
+
+struct CompilationCachingSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef CompilationCachingSettingsT NativeTableType;
+  typedef CompilationCachingSettingsBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_CACHE_DIR = 4,
+    VT_MODEL_TOKEN = 6
+  };
+  const flatbuffers::String *cache_dir() const {
+    return GetPointer<const flatbuffers::String *>(VT_CACHE_DIR);
+  }
+  const flatbuffers::String *model_token() const {
+    return GetPointer<const flatbuffers::String *>(VT_MODEL_TOKEN);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_CACHE_DIR) &&
+           verifier.VerifyString(cache_dir()) &&
+           VerifyOffset(verifier, VT_MODEL_TOKEN) &&
+           verifier.VerifyString(model_token()) &&
+           verifier.EndTable();
+  }
+  CompilationCachingSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(CompilationCachingSettingsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<CompilationCachingSettings> Pack(flatbuffers::FlatBufferBuilder &_fbb, const CompilationCachingSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct CompilationCachingSettingsBuilder {
+  typedef CompilationCachingSettings Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_cache_dir(flatbuffers::Offset<flatbuffers::String> cache_dir) {
+    fbb_.AddOffset(CompilationCachingSettings::VT_CACHE_DIR, cache_dir);
+  }
+  void add_model_token(flatbuffers::Offset<flatbuffers::String> model_token) {
+    fbb_.AddOffset(CompilationCachingSettings::VT_MODEL_TOKEN, model_token);
+  }
+  explicit CompilationCachingSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  flatbuffers::Offset<CompilationCachingSettings> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<CompilationCachingSettings>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<CompilationCachingSettings> CreateCompilationCachingSettings(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    flatbuffers::Offset<flatbuffers::String> cache_dir = 0,
+    flatbuffers::Offset<flatbuffers::String> model_token = 0) {
+  CompilationCachingSettingsBuilder builder_(_fbb);
+  builder_.add_model_token(model_token);
+  builder_.add_cache_dir(cache_dir);
+  return builder_.Finish();
+}
+
+inline flatbuffers::Offset<CompilationCachingSettings> CreateCompilationCachingSettingsDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    const char *cache_dir = nullptr,
+    const char *model_token = nullptr) {
+  auto cache_dir__ = cache_dir ? _fbb.CreateString(cache_dir) : 0;
+  auto model_token__ = model_token ? _fbb.CreateString(model_token) : 0;
+  return tflite::CreateCompilationCachingSettings(
+      _fbb,
+      cache_dir__,
+      model_token__);
+}
+
+flatbuffers::Offset<CompilationCachingSettings> CreateCompilationCachingSettings(flatbuffers::FlatBufferBuilder &_fbb, const CompilationCachingSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct EdgeTpuDeviceSpecT : public flatbuffers::NativeTable {
   typedef EdgeTpuDeviceSpec TableType;
   tflite::EdgeTpuDeviceSpec_::PlatformType platform_type = tflite::EdgeTpuDeviceSpec_::PlatformType_MMIO;
@@ -1939,6 +2068,107 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettingsDirect(
 
 flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct GoogleEdgeTpuSettingsT : public flatbuffers::NativeTable {
+  typedef GoogleEdgeTpuSettings TableType;
+  int32_t log_verbosity = -1;
+  bool enable_tracing = false;
+  tflite::GoogleEdgeTpuSettings_::Priority priority = tflite::GoogleEdgeTpuSettings_::Priority_PRIORITY_UNDEFINED;
+  std::vector<uint8_t> extension_data{};
+};
+
+struct GoogleEdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef GoogleEdgeTpuSettingsT NativeTableType;
+  typedef GoogleEdgeTpuSettingsBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_LOG_VERBOSITY = 4,
+    VT_ENABLE_TRACING = 6,
+    VT_PRIORITY = 8,
+    VT_EXTENSION_DATA = 10
+  };
+  int32_t log_verbosity() const {
+    return GetField<int32_t>(VT_LOG_VERBOSITY, -1);
+  }
+  bool enable_tracing() const {
+    return GetField<uint8_t>(VT_ENABLE_TRACING, 0) != 0;
+  }
+  tflite::GoogleEdgeTpuSettings_::Priority priority() const {
+    return static_cast<tflite::GoogleEdgeTpuSettings_::Priority>(GetField<int32_t>(VT_PRIORITY, 0));
+  }
+  const flatbuffers::Vector<uint8_t> *extension_data() const {
+    return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_EXTENSION_DATA);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_LOG_VERBOSITY, 4) &&
+           VerifyField<uint8_t>(verifier, VT_ENABLE_TRACING, 1) &&
+           VerifyField<int32_t>(verifier, VT_PRIORITY, 4) &&
+           VerifyOffset(verifier, VT_EXTENSION_DATA) &&
+           verifier.VerifyVector(extension_data()) &&
+           verifier.EndTable();
+  }
+  GoogleEdgeTpuSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(GoogleEdgeTpuSettingsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<GoogleEdgeTpuSettings> Pack(flatbuffers::FlatBufferBuilder &_fbb, const GoogleEdgeTpuSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct GoogleEdgeTpuSettingsBuilder {
+  typedef GoogleEdgeTpuSettings Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_log_verbosity(int32_t log_verbosity) {
+    fbb_.AddElement<int32_t>(GoogleEdgeTpuSettings::VT_LOG_VERBOSITY, log_verbosity, -1);
+  }
+  void add_enable_tracing(bool enable_tracing) {
+    fbb_.AddElement<uint8_t>(GoogleEdgeTpuSettings::VT_ENABLE_TRACING, static_cast<uint8_t>(enable_tracing), 0);
+  }
+  void add_priority(tflite::GoogleEdgeTpuSettings_::Priority priority) {
+    fbb_.AddElement<int32_t>(GoogleEdgeTpuSettings::VT_PRIORITY, static_cast<int32_t>(priority), 0);
+  }
+  void add_extension_data(flatbuffers::Offset<flatbuffers::Vector<uint8_t>> extension_data) {
+    fbb_.AddOffset(GoogleEdgeTpuSettings::VT_EXTENSION_DATA, extension_data);
+  }
+  explicit GoogleEdgeTpuSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  flatbuffers::Offset<GoogleEdgeTpuSettings> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<GoogleEdgeTpuSettings>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettings(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t log_verbosity = -1,
+    bool enable_tracing = false,
+    tflite::GoogleEdgeTpuSettings_::Priority priority = tflite::GoogleEdgeTpuSettings_::Priority_PRIORITY_UNDEFINED,
+    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> extension_data = 0) {
+  GoogleEdgeTpuSettingsBuilder builder_(_fbb);
+  builder_.add_extension_data(extension_data);
+  builder_.add_priority(priority);
+  builder_.add_log_verbosity(log_verbosity);
+  builder_.add_enable_tracing(enable_tracing);
+  return builder_.Finish();
+}
+
+inline flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettingsDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t log_verbosity = -1,
+    bool enable_tracing = false,
+    tflite::GoogleEdgeTpuSettings_::Priority priority = tflite::GoogleEdgeTpuSettings_::Priority_PRIORITY_UNDEFINED,
+    const std::vector<uint8_t> *extension_data = nullptr) {
+  auto extension_data__ = extension_data ? _fbb.CreateVector<uint8_t>(*extension_data) : 0;
+  return tflite::CreateGoogleEdgeTpuSettings(
+      _fbb,
+      log_verbosity,
+      enable_tracing,
+      priority,
+      extension_data__);
+}
+
+flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettings(flatbuffers::FlatBufferBuilder &_fbb, const GoogleEdgeTpuSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct CoralSettingsT : public flatbuffers::NativeTable {
   typedef CoralSettings TableType;
   std::string device{};
@@ -2107,6 +2337,8 @@ struct TFLiteSettingsT : public flatbuffers::NativeTable {
   std::unique_ptr<tflite::FallbackSettingsT> fallback_settings{};
   bool disable_default_delegates = false;
   std::unique_ptr<tflite::StableDelegateLoaderSettingsT> stable_delegate_loader_settings{};
+  std::unique_ptr<tflite::GoogleEdgeTpuSettingsT> google_edgetpu_settings{};
+  std::unique_ptr<tflite::CompilationCachingSettingsT> compilation_caching_settings{};
   TFLiteSettingsT() = default;
   TFLiteSettingsT(const TFLiteSettingsT &o);
   TFLiteSettingsT(TFLiteSettingsT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -2129,7 +2361,9 @@ struct TFLiteSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_CORAL_SETTINGS = 22,
     VT_FALLBACK_SETTINGS = 24,
     VT_DISABLE_DEFAULT_DELEGATES = 26,
-    VT_STABLE_DELEGATE_LOADER_SETTINGS = 28
+    VT_STABLE_DELEGATE_LOADER_SETTINGS = 28,
+    VT_GOOGLE_EDGETPU_SETTINGS = 30,
+    VT_COMPILATION_CACHING_SETTINGS = 32
   };
   tflite::Delegate delegate() const {
     return static_cast<tflite::Delegate>(GetField<int32_t>(VT_DELEGATE, 0));
@@ -2170,6 +2404,12 @@ struct TFLiteSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::StableDelegateLoaderSettings *stable_delegate_loader_settings() const {
     return GetPointer<const tflite::StableDelegateLoaderSettings *>(VT_STABLE_DELEGATE_LOADER_SETTINGS);
   }
+  const tflite::GoogleEdgeTpuSettings *google_edgetpu_settings() const {
+    return GetPointer<const tflite::GoogleEdgeTpuSettings *>(VT_GOOGLE_EDGETPU_SETTINGS);
+  }
+  const tflite::CompilationCachingSettings *compilation_caching_settings() const {
+    return GetPointer<const tflite::CompilationCachingSettings *>(VT_COMPILATION_CACHING_SETTINGS);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_DELEGATE, 4) &&
@@ -2195,6 +2435,10 @@ struct TFLiteSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<uint8_t>(verifier, VT_DISABLE_DEFAULT_DELEGATES, 1) &&
            VerifyOffset(verifier, VT_STABLE_DELEGATE_LOADER_SETTINGS) &&
            verifier.VerifyTable(stable_delegate_loader_settings()) &&
+           VerifyOffset(verifier, VT_GOOGLE_EDGETPU_SETTINGS) &&
+           verifier.VerifyTable(google_edgetpu_settings()) &&
+           VerifyOffset(verifier, VT_COMPILATION_CACHING_SETTINGS) &&
+           verifier.VerifyTable(compilation_caching_settings()) &&
            verifier.EndTable();
   }
   TFLiteSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2245,6 +2489,12 @@ struct TFLiteSettingsBuilder {
   void add_stable_delegate_loader_settings(flatbuffers::Offset<tflite::StableDelegateLoaderSettings> stable_delegate_loader_settings) {
     fbb_.AddOffset(TFLiteSettings::VT_STABLE_DELEGATE_LOADER_SETTINGS, stable_delegate_loader_settings);
   }
+  void add_google_edgetpu_settings(flatbuffers::Offset<tflite::GoogleEdgeTpuSettings> google_edgetpu_settings) {
+    fbb_.AddOffset(TFLiteSettings::VT_GOOGLE_EDGETPU_SETTINGS, google_edgetpu_settings);
+  }
+  void add_compilation_caching_settings(flatbuffers::Offset<tflite::CompilationCachingSettings> compilation_caching_settings) {
+    fbb_.AddOffset(TFLiteSettings::VT_COMPILATION_CACHING_SETTINGS, compilation_caching_settings);
+  }
   explicit TFLiteSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2270,8 +2520,12 @@ inline flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(
     flatbuffers::Offset<tflite::CoralSettings> coral_settings = 0,
     flatbuffers::Offset<tflite::FallbackSettings> fallback_settings = 0,
     bool disable_default_delegates = false,
-    flatbuffers::Offset<tflite::StableDelegateLoaderSettings> stable_delegate_loader_settings = 0) {
+    flatbuffers::Offset<tflite::StableDelegateLoaderSettings> stable_delegate_loader_settings = 0,
+    flatbuffers::Offset<tflite::GoogleEdgeTpuSettings> google_edgetpu_settings = 0,
+    flatbuffers::Offset<tflite::CompilationCachingSettings> compilation_caching_settings = 0) {
   TFLiteSettingsBuilder builder_(_fbb);
+  builder_.add_compilation_caching_settings(compilation_caching_settings);
+  builder_.add_google_edgetpu_settings(google_edgetpu_settings);
   builder_.add_stable_delegate_loader_settings(stable_delegate_loader_settings);
   builder_.add_fallback_settings(fallback_settings);
   builder_.add_coral_settings(coral_settings);
@@ -4096,6 +4350,47 @@ inline flatbuffers::Offset<StableDelegateLoaderSettings> CreateStableDelegateLoa
 }
 
 
+inline bool operator==(const CompilationCachingSettingsT &lhs, const CompilationCachingSettingsT &rhs) {
+  return
+      (lhs.cache_dir == rhs.cache_dir) &&
+      (lhs.model_token == rhs.model_token);
+}
+
+inline bool operator!=(const CompilationCachingSettingsT &lhs, const CompilationCachingSettingsT &rhs) {
+    return !(lhs == rhs);
+}
+
+
+inline CompilationCachingSettingsT *CompilationCachingSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<CompilationCachingSettingsT>(new CompilationCachingSettingsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void CompilationCachingSettings::UnPackTo(CompilationCachingSettingsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = cache_dir(); if (_e) _o->cache_dir = _e->str(); }
+  { auto _e = model_token(); if (_e) _o->model_token = _e->str(); }
+}
+
+inline flatbuffers::Offset<CompilationCachingSettings> CompilationCachingSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const CompilationCachingSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateCompilationCachingSettings(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<CompilationCachingSettings> CreateCompilationCachingSettings(flatbuffers::FlatBufferBuilder &_fbb, const CompilationCachingSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const CompilationCachingSettingsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _cache_dir = _o->cache_dir.empty() ? 0 : _fbb.CreateString(_o->cache_dir);
+  auto _model_token = _o->model_token.empty() ? 0 : _fbb.CreateString(_o->model_token);
+  return tflite::CreateCompilationCachingSettings(
+      _fbb,
+      _cache_dir,
+      _model_token);
+}
+
+
 inline bool operator==(const EdgeTpuDeviceSpecT &lhs, const EdgeTpuDeviceSpecT &rhs) {
   return
       (lhs.platform_type == rhs.platform_type) &&
@@ -4275,6 +4570,55 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::F
 }
 
 
+inline bool operator==(const GoogleEdgeTpuSettingsT &lhs, const GoogleEdgeTpuSettingsT &rhs) {
+  return
+      (lhs.log_verbosity == rhs.log_verbosity) &&
+      (lhs.enable_tracing == rhs.enable_tracing) &&
+      (lhs.priority == rhs.priority) &&
+      (lhs.extension_data == rhs.extension_data);
+}
+
+inline bool operator!=(const GoogleEdgeTpuSettingsT &lhs, const GoogleEdgeTpuSettingsT &rhs) {
+    return !(lhs == rhs);
+}
+
+
+inline GoogleEdgeTpuSettingsT *GoogleEdgeTpuSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<GoogleEdgeTpuSettingsT>(new GoogleEdgeTpuSettingsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void GoogleEdgeTpuSettings::UnPackTo(GoogleEdgeTpuSettingsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = log_verbosity(); _o->log_verbosity = _e; }
+  { auto _e = enable_tracing(); _o->enable_tracing = _e; }
+  { auto _e = priority(); _o->priority = _e; }
+  { auto _e = extension_data(); if (_e) { _o->extension_data.resize(_e->size()); std::copy(_e->begin(), _e->end(), _o->extension_data.begin()); } }
+}
+
+inline flatbuffers::Offset<GoogleEdgeTpuSettings> GoogleEdgeTpuSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const GoogleEdgeTpuSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateGoogleEdgeTpuSettings(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettings(flatbuffers::FlatBufferBuilder &_fbb, const GoogleEdgeTpuSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const GoogleEdgeTpuSettingsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _log_verbosity = _o->log_verbosity;
+  auto _enable_tracing = _o->enable_tracing;
+  auto _priority = _o->priority;
+  auto _extension_data = _o->extension_data.size() ? _fbb.CreateVector(_o->extension_data) : 0;
+  return tflite::CreateGoogleEdgeTpuSettings(
+      _fbb,
+      _log_verbosity,
+      _enable_tracing,
+      _priority,
+      _extension_data);
+}
+
+
 inline bool operator==(const CoralSettingsT &lhs, const CoralSettingsT &rhs) {
   return
       (lhs.device == rhs.device) &&
@@ -4375,7 +4719,9 @@ inline bool operator==(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs) {
       ((lhs.coral_settings == rhs.coral_settings) || (lhs.coral_settings && rhs.coral_settings && *lhs.coral_settings == *rhs.coral_settings)) &&
       ((lhs.fallback_settings == rhs.fallback_settings) || (lhs.fallback_settings && rhs.fallback_settings && *lhs.fallback_settings == *rhs.fallback_settings)) &&
       (lhs.disable_default_delegates == rhs.disable_default_delegates) &&
-      ((lhs.stable_delegate_loader_settings == rhs.stable_delegate_loader_settings) || (lhs.stable_delegate_loader_settings && rhs.stable_delegate_loader_settings && *lhs.stable_delegate_loader_settings == *rhs.stable_delegate_loader_settings));
+      ((lhs.stable_delegate_loader_settings == rhs.stable_delegate_loader_settings) || (lhs.stable_delegate_loader_settings && rhs.stable_delegate_loader_settings && *lhs.stable_delegate_loader_settings == *rhs.stable_delegate_loader_settings)) &&
+      ((lhs.google_edgetpu_settings == rhs.google_edgetpu_settings) || (lhs.google_edgetpu_settings && rhs.google_edgetpu_settings && *lhs.google_edgetpu_settings == *rhs.google_edgetpu_settings)) &&
+      ((lhs.compilation_caching_settings == rhs.compilation_caching_settings) || (lhs.compilation_caching_settings && rhs.compilation_caching_settings && *lhs.compilation_caching_settings == *rhs.compilation_caching_settings));
 }
 
 inline bool operator!=(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs) {
@@ -4396,7 +4742,9 @@ inline TFLiteSettingsT::TFLiteSettingsT(const TFLiteSettingsT &o)
         coral_settings((o.coral_settings) ? new tflite::CoralSettingsT(*o.coral_settings) : nullptr),
         fallback_settings((o.fallback_settings) ? new tflite::FallbackSettingsT(*o.fallback_settings) : nullptr),
         disable_default_delegates(o.disable_default_delegates),
-        stable_delegate_loader_settings((o.stable_delegate_loader_settings) ? new tflite::StableDelegateLoaderSettingsT(*o.stable_delegate_loader_settings) : nullptr) {
+        stable_delegate_loader_settings((o.stable_delegate_loader_settings) ? new tflite::StableDelegateLoaderSettingsT(*o.stable_delegate_loader_settings) : nullptr),
+        google_edgetpu_settings((o.google_edgetpu_settings) ? new tflite::GoogleEdgeTpuSettingsT(*o.google_edgetpu_settings) : nullptr),
+        compilation_caching_settings((o.compilation_caching_settings) ? new tflite::CompilationCachingSettingsT(*o.compilation_caching_settings) : nullptr) {
 }
 
 inline TFLiteSettingsT &TFLiteSettingsT::operator=(TFLiteSettingsT o) FLATBUFFERS_NOEXCEPT {
@@ -4413,6 +4761,8 @@ inline TFLiteSettingsT &TFLiteSettingsT::operator=(TFLiteSettingsT o) FLATBUFFER
   std::swap(fallback_settings, o.fallback_settings);
   std::swap(disable_default_delegates, o.disable_default_delegates);
   std::swap(stable_delegate_loader_settings, o.stable_delegate_loader_settings);
+  std::swap(google_edgetpu_settings, o.google_edgetpu_settings);
+  std::swap(compilation_caching_settings, o.compilation_caching_settings);
   return *this;
 }
 
@@ -4438,6 +4788,8 @@ inline void TFLiteSettings::UnPackTo(TFLiteSettingsT *_o, const flatbuffers::res
   { auto _e = fallback_settings(); if (_e) { if(_o->fallback_settings) { _e->UnPackTo(_o->fallback_settings.get(), _resolver); } else { _o->fallback_settings = std::unique_ptr<tflite::FallbackSettingsT>(_e->UnPack(_resolver)); } } }
   { auto _e = disable_default_delegates(); _o->disable_default_delegates = _e; }
   { auto _e = stable_delegate_loader_settings(); if (_e) { if(_o->stable_delegate_loader_settings) { _e->UnPackTo(_o->stable_delegate_loader_settings.get(), _resolver); } else { _o->stable_delegate_loader_settings = std::unique_ptr<tflite::StableDelegateLoaderSettingsT>(_e->UnPack(_resolver)); } } }
+  { auto _e = google_edgetpu_settings(); if (_e) { if(_o->google_edgetpu_settings) { _e->UnPackTo(_o->google_edgetpu_settings.get(), _resolver); } else { _o->google_edgetpu_settings = std::unique_ptr<tflite::GoogleEdgeTpuSettingsT>(_e->UnPack(_resolver)); } } }
+  { auto _e = compilation_caching_settings(); if (_e) { if(_o->compilation_caching_settings) { _e->UnPackTo(_o->compilation_caching_settings.get(), _resolver); } else { _o->compilation_caching_settings = std::unique_ptr<tflite::CompilationCachingSettingsT>(_e->UnPack(_resolver)); } } }
 }
 
 inline flatbuffers::Offset<TFLiteSettings> TFLiteSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const TFLiteSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -4461,6 +4813,8 @@ inline flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(flatbuffers::Fla
   auto _fallback_settings = _o->fallback_settings ? CreateFallbackSettings(_fbb, _o->fallback_settings.get(), _rehasher) : 0;
   auto _disable_default_delegates = _o->disable_default_delegates;
   auto _stable_delegate_loader_settings = _o->stable_delegate_loader_settings ? CreateStableDelegateLoaderSettings(_fbb, _o->stable_delegate_loader_settings.get(), _rehasher) : 0;
+  auto _google_edgetpu_settings = _o->google_edgetpu_settings ? CreateGoogleEdgeTpuSettings(_fbb, _o->google_edgetpu_settings.get(), _rehasher) : 0;
+  auto _compilation_caching_settings = _o->compilation_caching_settings ? CreateCompilationCachingSettings(_fbb, _o->compilation_caching_settings.get(), _rehasher) : 0;
   return tflite::CreateTFLiteSettings(
       _fbb,
       _delegate,
@@ -4475,7 +4829,9 @@ inline flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(flatbuffers::Fla
       _coral_settings,
       _fallback_settings,
       _disable_default_delegates,
-      _stable_delegate_loader_settings);
+      _stable_delegate_loader_settings,
+      _google_edgetpu_settings,
+      _compilation_caching_settings);
 }
 
 

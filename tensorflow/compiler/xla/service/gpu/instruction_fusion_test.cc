@@ -710,43 +710,6 @@ TEST_F(InstructionFusionTest, SmallReducedDimensionIsNotLoweredToLoop) {
   EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kInput);
 }
 
-TEST_F(InstructionFusionTest, DontTouchSoftmaxCustomCall) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-    HloModule softmax, entry_computation_layout={(f32[554112,10]{1,0})->f32[554112,10]{1,0}}
-
-    %max_computation (arg_0: f32[], arg_1: f32[]) -> f32[] {
-      %arg_0 = f32[] parameter(0)
-      %arg_1 = f32[] parameter(1)
-      ROOT %maximum = f32[] maximum(f32[] %arg_0, f32[] %arg_1)
-    }
-
-    %add_computation (arg_0.1: f32[], arg_1.1: f32[]) -> f32[] {
-      %arg_0.1 = f32[] parameter(0)
-      %arg_1.1 = f32[] parameter(1)
-      ROOT %maximum.1 = f32[] add(f32[] %arg_0.1, f32[] %arg_1.1)
-    }
-
-    %softmax_computation (parameter_0: f32[554112,10]) -> f32[554112,10] {
-      %parameter_0 = f32[554112,10]{1,0} parameter(0)
-      %constant_neg_inf.1 = f32[] constant(-inf)
-      %reduce.1 = f32[554112]{0} reduce(f32[554112,10]{1,0} %parameter_0, f32[] %constant_neg_inf.1), dimensions={1}, to_apply=%max_computation
-      %broadcast.1 = f32[554112,10]{1,0} broadcast(f32[554112]{0} %reduce.1), dimensions={0}
-      %subtract.1 = f32[554112,10]{1,0} subtract(f32[554112,10]{1,0} %parameter_0, f32[554112,10]{1,0} %broadcast.1)
-      %exponential.1 = f32[554112,10]{1,0} exponential(f32[554112,10]{1,0} %subtract.1)
-      %constant_zero.1 = f32[] constant(0)
-      %second_reduce.1 = f32[554112]{0} reduce(f32[554112,10]{1,0} %exponential.1, f32[] %constant_zero.1), dimensions={1}, to_apply=%add_computation
-      %second_broadcast.1 = f32[554112,10]{1,0} broadcast(f32[554112]{0} %second_reduce.1), dimensions={0}
-      ROOT %divide.1 = f32[554112,10]{1,0} divide(f32[554112,10]{1,0} %exponential.1, f32[554112,10]{1,0} %second_broadcast.1)
-    }
-
-    ENTRY %main (param_0: f32[554112,10]) -> f32[554112,10] {
-      %param_0 = f32[554112,10]{1,0} parameter(0)
-      ROOT %custom-call = f32[554112,10]{1,0} custom-call(f32[554112,10]{1,0} %param_0), custom_call_target="__softmax_fusion", called_computations={%softmax_computation}
-    })")
-                    .value();
-  EXPECT_FALSE(duplicating_instruction_fusion_.Run(module.get()).value());
-}
-
 TEST_F(InstructionFusionTest, IotaIntoVariadicReduction) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule m

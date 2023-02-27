@@ -732,7 +732,7 @@ cc_library(
         ":kernel_api",
         ":macros",
         "//tensorflow/lite/core:cc_api_experimental",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -911,7 +911,7 @@ cc_test(
         ":framework",
         ":string",
         ":string_util",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
@@ -928,7 +928,7 @@ cc_library(
         ":framework",
         ":string_util",
         ":version",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/internal:signature_def",
@@ -1339,7 +1339,7 @@ cc_library_with_tflite(
     ],
     visibility = [":tflite_test_util_visibility"],
     deps = [
-        "//testing/base/public:gunit_for_library_testonly",
+        "@com_google_googletest//:gtest",
     ],
 )
 

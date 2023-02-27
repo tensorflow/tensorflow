@@ -173,6 +173,13 @@ auto* tf_data_service_cross_trainer_cache_size_bytes =
         "/tensorflow/data/service/cross_trainer_cache_size_bytes",
         "tf.data service cross-trainer cache memory usage in bytes.");
 
+auto* tf_data_service_data_transfer_protocol_used =
+    tsl::monitoring::Counter<1>::New(
+        "/tensorflow/data/service/data_transfer_protocol_used",
+        "The number of tf.data service worker clients created that use this "
+        "data transfer protocol.",
+        "data_transfer_protocol");
+
 auto* tf_data_filename_counter = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
     "name", "filename");
@@ -278,6 +285,11 @@ auto* mlir_bridge_first_phase_counter = tsl::monitoring::Counter<4>::New(
     "/tensorflow/core/tf_mlir_bridge_first_phase_count",
     "Tracks processing state in first phase of mlir bridge", "device",
     "version", "fallback", "result");
+
+auto* tf_version_graph_counter = tsl::monitoring::Counter<4>::New(
+    "/tensorflow/core/tf_version_graph_counter",
+    "Marks which tf1 feature (if any) a graph contains.", "device_context",
+    "control_flow", "ref_variable", "tf_version");
 
 tsl::monitoring::Counter<2>* GetGraphOptimizationCounter() {
   static auto* graph_optimization_counter = tsl::monitoring::Counter<2>::New(
@@ -402,6 +414,12 @@ void RecordTFDataServiceClientIterators(
   tf_data_service_client_iterators_counter
       ->GetCell(absl::StrCat(worker_uid), deployment_mode_str,
                 sharding_policy_str, coordinated_read_str)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceDataTransferProtocolUsed(
+    const string& data_transfer_protocol) {
+  tf_data_service_data_transfer_protocol_used->GetCell(data_transfer_protocol)
       ->IncrementBy(1);
 }
 
@@ -595,6 +613,16 @@ void UpdateTfMlirBridgeGraphAnalysisPerOp(
                 num_cores_per_replica, use_tpu, allow_soft_placement,
                 use_spmd_for_xla_partitioning, unsupported_reason,
                 has_unsupported_features ? "Yes" : "No")
+      ->IncrementBy(1);
+}
+
+void RecordTFVersionByGraphFeatures(const std::string& device_context,
+                                    bool hasControlFlowV1,
+                                    bool hasReferenceVariables) {
+  tf_version_graph_counter
+      ->GetCell(device_context, hasControlFlowV1 ? "true" : "false",
+                hasReferenceVariables ? "true" : "false",
+                hasControlFlowV1 || hasReferenceVariables ? "tf1" : "tf2")
       ->IncrementBy(1);
 }
 

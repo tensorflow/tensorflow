@@ -896,6 +896,13 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.int64, tensor.dtype)
 
   @test_util.run_in_graph_and_eager_modes
+  def testConvertToTensorFromValidTensor(self):
+    tensor = constant_op.constant(413, dtype=dtypes.int64)
+    converted = ops.convert_to_tensor(tensor, dtype=dtypes.int64)
+    # If dtype is compatible, the returned tensor should be the same instance.
+    self.assertEqual(tensor, converted)
+
+  @test_util.run_in_graph_and_eager_modes
   def testConvertToTensorFromInvalidTensor(self):
     tensor = constant_op.constant(42.0, dtype=dtypes.float32)
     with self.assertRaises(ValueError):

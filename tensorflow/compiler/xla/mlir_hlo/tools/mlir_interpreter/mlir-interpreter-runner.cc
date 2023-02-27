@@ -104,6 +104,7 @@ int main(int argc, char *argv[]) {
                   mlir::gml_st::GmlStDialect, mlir::thlo::THLODialect>();
 
   mlir::MLIRContext context(registry);
+  context.allowUnregisteredDialects();
   auto parsedInput = parseMlirInput(options.inputFilename, &context);
   if (!parsedInput) {
     llvm::errs() << "Failed to parse module.\n";

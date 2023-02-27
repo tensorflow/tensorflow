@@ -147,6 +147,9 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::Module* module) {
   switch (element_type) {
     case PRED:
+    // Int8 is used as there is no LLVM S4/U4 dtype
+    case S4:
+    case U4:
     case S8:
     case U8:
       return llvm::Type::getInt8Ty(module->getContext());

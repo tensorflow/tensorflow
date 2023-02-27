@@ -280,8 +280,8 @@ struct TensorOrMemref {
     for (const auto& indices : view.indices(true)) {
       // Treat NaNs as equal.
       if constexpr (std::is_floating_point_v<T>) {
-        bool thisnan = std::isnan(at(indices));
-        bool othernan = std::isnan(other.at(indices));
+        bool thisnan = isnan(at(indices));
+        bool othernan = isnan(other.at(indices));
         if (thisnan || othernan) {
           if (thisnan && othernan) continue;
           return false;

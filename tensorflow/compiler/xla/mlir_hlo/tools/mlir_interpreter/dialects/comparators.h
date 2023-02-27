@@ -27,7 +27,7 @@ namespace interpreter {
 
 // Despite the name, this works on integers and complex too.
 template <int64_t v, bool r, bool nan_result>
-struct FloatCompare : CwiseArith {
+struct FloatCompare : CwiseAll {
   template <typename T>
   static bool apply(T a, T b) {
     if (isnan(a) || isnan(b)) return nan_result;

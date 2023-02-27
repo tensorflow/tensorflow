@@ -35,6 +35,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import gen_io_ops
@@ -705,8 +706,8 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     b = constant_op.constant([[10., 20.], [30., 40.]])
     expected_result = op(a, b)
 
-    a = api.copy_to_mesh(a, self.scalar_replicated_layout)
-    b = api.copy_to_mesh(b, self.replicated_layout_2d)
+    a = api.copy_to_mesh(a, Layout.replicated(self.mesh, rank=a.ndim))
+    b = api.copy_to_mesh(b, Layout.replicated(self.mesh, rank=b.ndim))
     dtensor_result = op(a, b)
 
     self.assertDTensorEqual(
@@ -723,8 +724,8 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     a, b = order_broadcastable_operands(op, a, b)
     expected_result = op(a, b)
 
-    a = api.copy_to_mesh(a, self.scalar_replicated_layout)
-    b = api.copy_to_mesh(b, self.replicated_layout_2d)
+    a = api.copy_to_mesh(a, Layout.replicated(self.mesh, rank=a.ndim))
+    b = api.copy_to_mesh(b, Layout.replicated(self.mesh, rank=b.ndim))
     dtensor_result = op(a, b)
 
     self.assertDTensorEqual(
@@ -2720,9 +2721,9 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
 
   def testUnpackWithFullyReplicatedInputs(self):
     t = constant_op.constant([[1., 2., 3., 4.], [5., 6., 7., 8.]])
-    expected_result = array_ops.unstack(t, axis=0)
+    expected_result = array_ops_stack.unstack(t, axis=0)
     t = api.copy_to_mesh(t, self.replicated_layout_2d)
-    dtensor_result = array_ops.unstack(t, axis=0)
+    dtensor_result = array_ops_stack.unstack(t, axis=0)
     self.assertIsInstance(expected_result, list)
     self.assertIsInstance(dtensor_result, list)
     self.assertLen(expected_result, 2)
@@ -2734,9 +2735,9 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
 
   def testUnpackWithShardedInput(self):
     t = constant_op.constant([[1., 2., 3., 4.], [5., 6., 7., 8.]])
-    expected_result = array_ops.unstack(t, axis=1)
+    expected_result = array_ops_stack.unstack(t, axis=1)
     t = api.relayout(t, Layout([layout_lib.UNSHARDED, _MESH_DIM_X], self.mesh))
-    dtensor_result = array_ops.unstack(t, axis=1)
+    dtensor_result = array_ops_stack.unstack(t, axis=1)
     self.assertIsInstance(expected_result, list)
     self.assertIsInstance(dtensor_result, list)
     self.assertLen(expected_result, 4)
@@ -3472,7 +3473,8 @@ class DTensorRelayoutTest(test_util.DTensorBaseTest):
     local_ids = np.ravel(global_ids).tolist()
     mesh_dict = {
         device: Mesh([_MESH_DIM_X, _MESH_DIM_Y], global_ids, local_ids,
-                     test_util.create_device_list((2, 4), device))
+                     test_util.create_device_list((2, 4), device),
+                     use_xla_spmd=test_util.get_use_xla_spmd(device))
         for device in ('CPU', 'GPU', 'TPU')
     }
     self.mesh = self.configTestMesh(mesh_dict)

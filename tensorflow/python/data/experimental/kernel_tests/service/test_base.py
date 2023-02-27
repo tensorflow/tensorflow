@@ -255,54 +255,45 @@ class TestCluster:
 class TestBase(test_base.DatasetTestBase):
   """Base class for tf.data service tests."""
 
+  def setUp(self):
+    self.default_data_transfer_protocol = None
+    self.default_compression = "AUTO"
+
+  def set_default_data_transfer_protocol(self, protocol):
+    self.default_data_transfer_protocol = protocol
+
+  def set_default_compression(self, compression):
+    self.default_compression = compression
+
+  def make_test_cluster(self, *args, **kwargs):
+    if "data_transfer_protocol" not in kwargs:
+      kwargs["data_transfer_protocol"] = self.default_data_transfer_protocol
+    return TestCluster(*args, **kwargs)
+
   def make_distributed_dataset(self,
                                dataset,
                                cluster,
                                processing_mode="parallel_epochs",
-                               job_name=None,
-                               consumer_index=None,
-                               num_consumers=None,
-                               max_outstanding_requests=None,
-                               data_transfer_protocol=None,
-                               compression="AUTO",
-                               cross_trainer_cache=None,
-                               target_workers="AUTO"):
+                               **kwargs):
+    kwargs["task_refresh_interval_hint_ms"] = 20
+    if "data_transfer_protocol" not in kwargs:
+      kwargs["data_transfer_protocol"] = self.default_data_transfer_protocol
+    if "compression" not in kwargs:
+      kwargs["compression"] = self.default_compression
+
     # pylint: disable=protected-access
     return dataset.apply(
         data_service_ops._distribute(
             processing_mode,
             cluster.dispatcher_address(),
-            job_name=job_name,
-            consumer_index=consumer_index,
-            num_consumers=num_consumers,
-            max_outstanding_requests=max_outstanding_requests,
-            task_refresh_interval_hint_ms=20,
-            data_transfer_protocol=data_transfer_protocol,
-            compression=compression,
-            cross_trainer_cache=cross_trainer_cache,
-            target_workers=target_workers))
+            **kwargs))
 
   def make_distributed_range_dataset(self,
                                      num_elements,
                                      cluster,
-                                     processing_mode="parallel_epochs",
-                                     job_name=None,
-                                     max_outstanding_requests=None,
-                                     data_transfer_protocol=None,
-                                     compression="AUTO",
-                                     cross_trainer_cache=None,
-                                     target_workers="AUTO"):
+                                     **kwargs):
     dataset = dataset_ops.Dataset.range(num_elements)
-    return self.make_distributed_dataset(
-        dataset,
-        cluster,
-        processing_mode=processing_mode,
-        job_name=job_name,
-        max_outstanding_requests=max_outstanding_requests,
-        data_transfer_protocol=data_transfer_protocol,
-        compression=compression,
-        cross_trainer_cache=cross_trainer_cache,
-        target_workers=target_workers)
+    return self.make_distributed_dataset(dataset, cluster, **kwargs)
 
   def make_coordinated_read_dataset(
       self,

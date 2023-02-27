@@ -133,14 +133,14 @@ class PmapSharding : public XLACompatibleSharding {
   ShardingSpec sharding_spec_;
 };
 
-class OpShardingSharding : public XLACompatibleSharding {
+class GSPMDSharding : public XLACompatibleSharding {
  public:
-  OpShardingSharding(pybind11::list devices, xla::OpSharding op_sharding)
+  GSPMDSharding(pybind11::list devices, xla::OpSharding op_sharding)
       : XLACompatibleSharding(/*num_devices=*/devices.size()),
         devices_(std::move(devices)),  // Implicitly converts a list to a tuple.
         op_sharding_(std::move(op_sharding)) {}
 
-  OpShardingSharding(pybind11::tuple devices, xla::OpSharding op_sharding)
+  GSPMDSharding(pybind11::tuple devices, xla::OpSharding op_sharding)
       : XLACompatibleSharding(/*num_devices=*/devices.size()),
         devices_(std::move(devices)),
         op_sharding_(std::move(op_sharding)) {}
@@ -156,7 +156,7 @@ class OpShardingSharding : public XLACompatibleSharding {
   }
 
   static pybind11::handle type() {
-    static auto type = pybind11::type::handle_of<OpShardingSharding>();
+    static auto type = pybind11::type::handle_of<GSPMDSharding>();
     return type;
   }
 
@@ -168,7 +168,7 @@ class OpShardingSharding : public XLACompatibleSharding {
     return hlo_sharding.value();
   }
 
-  bool operator==(const OpShardingSharding& other) const {
+  bool operator==(const GSPMDSharding& other) const {
     return AreOpShardingsEqual(*this, other) &&
            this->devices().equal(other.devices());
   }
@@ -191,8 +191,8 @@ class OpShardingSharding : public XLACompatibleSharding {
     }
   }
 
-  static bool AreOpShardingsEqual(const OpShardingSharding& a,
-                                  const OpShardingSharding& b) {
+  static bool AreOpShardingsEqual(const GSPMDSharding& a,
+                                  const GSPMDSharding& b) {
     // If the OpSharding object is the same, return true
     if (&a.op_sharding() == &b.op_sharding()) {
       return true;

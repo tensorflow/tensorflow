@@ -402,6 +402,7 @@ cc_library(
         # Sync fallback kernels need access to the fallback state.
         "//learning/brain/experimental/tfrt/native_lowering/kernels:__subpackages__",
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",
+        "//tensorflow/core/tfrt/saved_model:__subpackages__",
     ],
     deps = [
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",

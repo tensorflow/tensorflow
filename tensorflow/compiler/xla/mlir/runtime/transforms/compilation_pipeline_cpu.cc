@@ -142,7 +142,12 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
   }
   pm.addPass(mlir::createConvertLinalgToLLVMPass());
   pm.addPass(mlir::createConvertSCFToCFPass());
-  pm.addPass(xla::CreateMathLegalizationPass(/*enable_approximations=*/false));
+
+  // Lower math dialect to LLVM/Libm.
+  mlir::ConvertMathToLLVMPassOptions mathOpts;
+  mathOpts.approximateLog1p = false;
+  pm.addPass(mlir::createConvertMathToLLVMPass(mathOpts));
+  pm.addPass(mlir::createConvertMathToLibmPass());
 
   // Convert everything else to LLVM dialect.
   mlir::ConvertVectorToLLVMPassOptions vector_to_llvm_opts;

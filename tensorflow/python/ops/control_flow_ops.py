@@ -1067,9 +1067,6 @@ def _eager_cond_implementation(pred, true_fn, false_fn, strict, name):
         or not isinstance(false_fn, def_function.Function)):
       raise TypeError("When running tf.cond on a parallel device, 'true_fn' "
                       "and 'false_fn' must be decorated with `tf.function`.")
-    @def_function.function
-    def _parallel_device_cond_wrapper():
-      return cond_v2.cond_v2(pred, true_fn, false_fn, name)
     functions_run_eagerly = def_function.functions_run_eagerly()
     if functions_run_eagerly:
       # We need to use tf.function to deal with variable creation inside the
@@ -1081,7 +1078,7 @@ def _eager_cond_implementation(pred, true_fn, false_fn, strict, name):
           "tf.function to work. This primitive will override the disable.")
     def_function.run_functions_eagerly(False)
     try:
-      return _parallel_device_cond_wrapper()
+      return cond_v2.cond_v2(pred, true_fn, false_fn, name)
     finally:
       if functions_run_eagerly is not None:
         def_function.run_functions_eagerly(functions_run_eagerly)

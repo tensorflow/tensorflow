@@ -410,7 +410,7 @@ tf_py_test(
         ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -802,6 +802,7 @@ tf_py_test(
     shard_count = 4,
     deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",

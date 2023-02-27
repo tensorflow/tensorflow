@@ -19,6 +19,7 @@ import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.compiler.tf2xla.python import xla
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -52,7 +53,7 @@ class XlaCallModuleOpTest(xla_test.XLATestCase):
     if self.device in ['CPU', 'XLA_CPU']:
       return 'CPU'
     elif self.device in ['GPU', 'XLA_GPU']:
-      return 'GPU'
+      return 'CUDA'
     elif self.device in ['TPU', 'XLA_TPU']:
       return 'TPU'
     else:
@@ -178,8 +179,7 @@ module @jit_f.0 {
 module @jit_f.0 {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>) {
     %arg0_new = "stablehlo.get_dimension_size"(%arg1) {dimension = 1 : i64} : (tensor<2x?xf32>) -> tensor<i32>
-    %arg1_new = tensor.cast %arg1 : tensor<2x?xf32> to tensor<2x?xf32>
-    %0, %1 = call @dyn_main(%arg0_new, %arg1_new) : (tensor<i32>, tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>)
+    %0, %1 = call @dyn_main(%arg0_new, %arg1) : (tensor<i32>, tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>)
     return %0, %1 : tensor<2x?xf32>, tensor<i32>
   }
   func.func private @dyn_main(%arg0: tensor<i32>, %arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>) {
@@ -301,7 +301,8 @@ module @jit_f.0 {
   }
 }
 """
-    platforms = ['CPU', 'GPU', 'TPU']
+
+    platforms = ['CPU', 'CUDA', 'TPU']
     def f(x):
       return xla.call_module([x],
                              version=3,
@@ -310,7 +311,7 @@ module @jit_f.0 {
                              Sout=[()],
                              platforms=platforms)
 
-    expected_value = x + dict(CPU=2., GPU=3., TPU=4.)[self.testing_platform()]
+    expected_value = x + dict(CPU=2., CUDA=3., TPU=4.)[self.testing_platform()]
     self._assertOpOutputMatchesExpected(f, (x,), (expected_value,))
 
   def test_platforms_with_dim_vars(self):
@@ -381,7 +382,7 @@ module @jit_f.0 {
         self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     #  Same if the version is 2
-    platforms = ['CPU', 'GPU', 'TPU']
+    platforms = ['CPU', 'CUDA', 'TPU']
     version = 2
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
@@ -395,7 +396,7 @@ module @jit_f.0 {
         'The current platform .* is not among the platforms'):
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
-    platforms = ['CPU', 'GPU']
+    platforms = ['CPU', 'CUDA']
     if self.testing_platform() not in platforms:
       with self.assertRaisesRegex(
           errors.NotFoundError,
@@ -406,7 +407,7 @@ module @jit_f.0 {
 
     # The module cannot have i64 %arg_platform_idx
     module = module.replace('i32', 'i64')
-    platforms = ['CPU', 'GPU', 'TPU']
+    platforms = ['CPU', 'CUDA', 'TPU']
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         'Module argument at index 0 should be a 0-dimensional '
@@ -450,6 +451,28 @@ module @jit_fun.1 {
                              dim_args_spec=['0.0'])
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
+
+  def test_build_graph_with_any_platform(self):
+    """We can construct the tf.Graph on all platforms."""
+    x = np.float32(0.)
+
+    module = """
+module @jit_f.0 {
+  func.func public @main(%arg_platform_idx: tensor<i32>, %arg0: tensor<f32>) -> tensor<f32> {
+    return %arg0 : tensor<f32>
+  }
+}
+"""
+    platforms = ['TPU']  # the module is compileable only on TPU
+    def f(x):
+      return xla.call_module([x],
+                             version=3,
+                             module=module,
+                             Tout=[np.float32],
+                             Sout=[()],
+                             platforms=platforms)
+    tf_graph = def_function.function(f).get_concrete_function(x).graph
+    self.assertIn('XlaCallModule', str(tf_graph.as_graph_def()))
 
   def test_dynamic_reshape(self):
     x = np.ones((4, 3), dtype=np.float32)

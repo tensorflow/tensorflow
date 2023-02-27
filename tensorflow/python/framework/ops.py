@@ -20,6 +20,7 @@ import re
 import sys
 import threading
 import types
+from typing import Optional
 from absl import app
 
 import numpy as np
@@ -50,9 +51,11 @@ from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import traceable_stack
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import control_flow_util
@@ -282,6 +285,13 @@ def disable_tensor_equality():
   logging.vlog(1, "Disabling tensor equality")
   _tensor_equality_api_usage_gauge.get_cell().set(False)
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
+
+
+def pretty_print_dtype(dtype):
+  res = dtypes.as_strong_type(dtype).name
+  if dtypes.is_weak_type(dtype):
+    res += ", weak_type=True"
+  return res
 
 
 @tf_export("Tensor", "experimental.numpy.ndarray", v1=["Tensor"])
@@ -608,6 +618,14 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
     """
     return self.shape.ndims
 
+  def _record_tape(self, capture):
+    """Connect this graph tensor with capture for gradients calculation."""
+    tape.record_operation(
+        "captured_value",
+        [self], [capture],
+        backward_function=lambda x: [x],
+        forward_function=lambda x: [x])
+
   def get_shape(self):
     """Returns a `tf.TensorShape` that represents the shape of this tensor.
 
@@ -887,12 +905,15 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
         self.name,
         (", shape=%s" %
          self.get_shape()) if self.get_shape().ndims is not None else "",
-        (", dtype=%s" % self._dtype.name) if self._dtype else "",
+        (", dtype=%s" % pretty_print_dtype(self._dtype)) if self._dtype else "",
         (", device=%s" % self.device) if self.device else "")
 
   def __repr__(self):
-    return "<tf.Tensor '%s' shape=%s dtype=%s>" % (self.name, self.get_shape(),
-                                                   self._dtype.name)
+    return "<tf.Tensor '%s' shape=%s dtype=%s>" % (
+        self.name,
+        self.get_shape(),
+        pretty_print_dtype(self._dtype),
+    )
 
   def __hash__(self):
     g = getattr(self, "graph", None)
@@ -1047,6 +1068,42 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
       signature_context.add_handledata(id(spec), handle_data)
     return spec
 
+  def __tf_tensor__(
+      self, dtype: Optional[dtypes.DType] = None, name: Optional[str] = None
+      ) -> "Tensor":
+    if dtype is not None and not dtype.is_compatible_with(self.dtype):
+      raise ValueError(
+          _add_error_prefix(
+              f"Tensor conversion requested dtype {dtype.name} "
+              f"for Tensor with dtype {self.dtype.name}: {self!r}",
+              name=name))
+    return self
+
+
+def _create_graph_constant(
+    value, dtype, shape, name, verify_shape, allow_broadcast
+):
+  """Create a graph constant and invoke constant callbacks."""
+  g = get_default_graph()
+  tensor_value = attr_value_pb2.AttrValue()
+  tensor_value.tensor.CopyFrom(
+      tensor_util.make_tensor_proto(
+          value, dtype=dtype, shape=shape, verify_shape=verify_shape,
+          allow_broadcast=allow_broadcast))
+  dtype_value = attr_value_pb2.AttrValue(type=tensor_value.tensor.dtype)
+  attrs = {"value": tensor_value, "dtype": dtype_value}
+  const_tensor = g._create_op_internal(  # pylint: disable=protected-access
+      "Const", [], [dtype_value.type], attrs=attrs, name=name).outputs[0]
+
+  if op_callbacks.should_invoke_op_callbacks():
+    # TODO(b/147670703): Once the special-op creation code paths
+    # are unified. Remove this `if` block.
+    callback_outputs = op_callbacks.invoke_op_callbacks(
+        "Const", tuple(), attrs, (const_tensor,), op_name=name, graph=g)
+    if callback_outputs is not None:
+      [const_tensor] = callback_outputs
+  return const_tensor
+
 
 # TODO(agarwal): consider getting rid of this.
 # TODO(mdan): This object should not subclass ops.Tensor.
@@ -1098,11 +1155,16 @@ class _EagerTensorBase(Tensor, core_tf_types.Value):
 
   def __str__(self):
     return "tf.Tensor(%s, shape=%s, dtype=%s)" % (
-        value_text(self, is_repr=False), self.shape, self.dtype.name)
+        value_text(self, is_repr=False),
+        self.shape,
+        pretty_print_dtype(self.dtype),
+    )
 
   def __repr__(self):
     return "<tf.Tensor: shape=%s, dtype=%s, %s>" % (
-        self.shape, self.dtype.name, value_text(self, is_repr=True))
+        self.shape,
+        pretty_print_dtype(self.dtype),
+        value_text(self, is_repr=True))
 
   def __len__(self):
     """Returns the length of the first dimension in the Tensor."""
@@ -1132,6 +1194,11 @@ class _EagerTensorBase(Tensor, core_tf_types.Value):
 
   @property
   def dtype(self):
+    # Weakly typed Tensors get an additional attribute `_weak_dtype` added
+    # during its construction in python. This is because the weak information
+    # only exists in python and do not have dedicated dtype enums.
+    if getattr(self, "_weak_dtype", False):
+      return self._weak_dtype
     # Note: using the intern table directly here as this is
     # performance-sensitive in some models.
     return dtypes._INTERN_TABLE[self._datatype_enum()]  # pylint: disable=protected-access
@@ -1344,6 +1411,35 @@ class _EagerTensorBase(Tensor, core_tf_types.Value):
     raise NotImplementedError(
         "eval is not supported when eager execution is enabled, "
         "is .numpy() what you're looking for?")
+
+  def __tf_tensor__(
+      self, dtype: Optional[dtypes.DType] = None, name: Optional[str] = None
+      ) -> Tensor:
+    if not context.executing_eagerly():
+      graph = get_default_graph()
+      if not graph.building_function:
+        raise RuntimeError(
+            _add_error_prefix(
+                "Attempting to capture an EagerTensor without "
+                "building a function.",
+                name=name))
+      return graph.capture(self, name=name)
+    return super().__tf_tensor__(dtype, name)
+
+  def _capture_as_const(self, name):
+    """Capture the EagerTensor to a graph constant tensor."""
+    with control_dependencies(None):
+      constant_value = tensor_util.constant_value(self)
+      if constant_value is None:
+        # Some eager tensors, e.g. parallel tensors, are not convertible to
+        # a single constant. Return None in this case and the caller graph
+        # would create a placeholder instead.
+        return None
+
+      const_tensor = _create_graph_constant(
+          constant_value, dtype=self.dtype, shape=self.shape, name=name,
+          verify_shape=False, allow_broadcast=True)
+    return const_tensor
 
 
 # This call creates an EagerTensor class, as a subclass of _EagerTensorBase, and
@@ -1576,22 +1672,10 @@ def convert_to_tensor(value,
                       as_ref=False,
                       preferred_dtype=None,
                       dtype_hint=None,
-                      ctx=None,
+                      # TODO(b/268347915): Remove argument.
+                      ctx=None,  # pylint: disable=unused-argument
                       accepted_result_types=(Tensor,)):
   """Implementation of the public convert_to_tensor."""
-  if isinstance(value, EagerTensor):
-    if ctx is None:
-      ctx = context.context()
-    if not ctx.executing_eagerly():
-      graph = get_default_graph()
-      if not graph.building_function:
-        raise RuntimeError(
-            _add_error_prefix(
-                "Attempting to capture an EagerTensor without "
-                "building a function.",
-                name=name))
-      return graph.capture(value, name=name)
-
   # TODO(b/142518781): Fix all call-sites and remove redundant arg
   preferred_dtype = preferred_dtype or dtype_hint
   return tensor_conversion_registry.convert(
@@ -1606,7 +1690,8 @@ def internal_convert_n_to_tensor(values,
                                  name=None,
                                  as_ref=False,
                                  preferred_dtype=None,
-                                 ctx=None):
+                                 # TODO(b/268347915): Remove argument.
+                                 ctx=None):  # pylint: disable=unused-argument
   """Converts `values` to a list of `Tensor` objects.
 
   Args:
@@ -1620,7 +1705,7 @@ def internal_convert_n_to_tensor(values,
       converting to a tensor, so preferred_dtype can be used as a soft
       preference.  If the conversion to `preferred_dtype` is not possible, this
       argument has no effect.
-    ctx: The value of context.context().
+    ctx: Unused. Present for API backwards compatibility.
 
   Returns:
     A list of `Tensor` and/or `IndexedSlices` objects.
@@ -1634,8 +1719,6 @@ def internal_convert_n_to_tensor(values,
   if not isinstance(values, collections_abc.Sequence):
     raise TypeError("values must be a sequence.")
   ret = []
-  if ctx is None:
-    ctx = context.context()
   for i, value in enumerate(values):
     n = None if name is None else "%s_%d" % (name, i)
     ret.append(
@@ -1644,8 +1727,7 @@ def internal_convert_n_to_tensor(values,
             dtype=dtype,
             name=n,
             as_ref=as_ref,
-            preferred_dtype=preferred_dtype,
-            ctx=ctx))
+            preferred_dtype=preferred_dtype))
   return ret
 
 
@@ -1731,7 +1813,8 @@ def internal_convert_to_tensor_or_composite(value,
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value_dtype):
       raise ValueError(f"Tensor conversion dtype mismatch. "
                        f"Requested dtype is {dtypes.as_dtype(dtype).name}, "
-                       f"Tensor has dtype {value.dtype.name}: {value!r}")
+                       f"Tensor has dtype {pretty_print_dtype(value.dtype)}: "
+                       f"{value!r}")
     return value
   else:
     return convert_to_tensor(

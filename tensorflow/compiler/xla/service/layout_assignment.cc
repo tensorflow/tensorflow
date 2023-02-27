@@ -485,7 +485,7 @@ Status LayoutAssignment::SetInstructionLayout(const Shape& shape_with_layout,
   // instruction.
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       shape_with_layout,
-      [this, instruction, mandatory, allow_alias, priority](
+      [this, dfs, instruction, mandatory, allow_alias, priority](
           const Shape& subshape, const ShapeIndex& index) -> Status {
         auto buffers =
             points_to_analysis_->GetPointsToSet(instruction).element(index);
@@ -496,7 +496,7 @@ Status LayoutAssignment::SetInstructionLayout(const Shape& shape_with_layout,
 
         if (subshape.IsArray() && subshape.has_layout()) {
           return SetBufferLayout(subshape.layout(), *buffers[0], mandatory,
-                                 /*dfs=*/true, priority);
+                                 /*dfs=*/dfs, priority);
         } else {
           return OkStatus();
         }
@@ -510,7 +510,8 @@ Status LayoutAssignment::SetInstructionLayout(const Shape& shape_with_layout,
     for (int i = 0; i < instruction->operand_count(); ++i) {
       if (instruction->operand(i)->shape().rank() == shape_with_layout.rank()) {
         TF_RETURN_IF_ERROR(SetArrayOperandLayout(
-            shape_with_layout.layout(), instruction, /*operand_no=*/i));
+            shape_with_layout.layout(), instruction, /*operand_no=*/i,
+            /*mandatory=*/mandatory, /*dfs=*/dfs, priority));
       }
     }
   }
@@ -1441,6 +1442,16 @@ bool LayoutAssignment::OperandLayoutAlwaysPropagateForward(
   }
 }
 
+bool LayoutAssignment::OutputLayoutAlwaysPropagateToOperands(
+    const HloInstruction* user) {
+  switch (user->opcode()) {
+    case HloOpcode::kReshape:
+      return false;
+    default:
+      return !InstructionCanChangeLayoutInstance(user);
+  }
+}
+
 bool LayoutAssignment::OperandLayoutAlwaysPropagateToSiblings(
     const HloInstruction* user) {
   switch (user->opcode()) {
@@ -1866,11 +1877,12 @@ Status LayoutAssignment::PropagateBufferConstraintToOperands(
             ChooseOperandLayoutFromOutputLayout(buffer_constraint.layout(),
                                                 instruction, operand_no);
         if (operand_layout != nullptr) {
-          TF_RETURN_IF_ERROR(SetArrayOperandLayout(
-              *operand_layout, instruction, operand_no, /*mandatory=*/false,
-              /*dfs=*/
-              InstructionShouldPropagateDepthFirst(*instruction),
-              current_priority_));
+        TF_RETURN_IF_ERROR(SetArrayOperandLayout(
+            *operand_layout, instruction, operand_no,
+            /*mandatory=*/OutputLayoutAlwaysPropagateToOperands(instruction),
+            /*dfs=*/
+            InstructionShouldPropagateDepthFirst(*instruction),
+            current_priority_));
         }
     }
   }

@@ -1341,6 +1341,9 @@ def save_and_return_nodes(obj,
   # Save debug info, if requested.
   if options.save_debug_info:
     _export_debug_info(exported_graph, export_dir)
+  # For privacy concerns, please see the note in
+  #  tensorflow/cc/saved_model/metrics.h
+  metrics.SetWritePath(saved_model_path=str(export_dir))
   # Clean reference cycles so repeated export()s don't make work for the garbage
   # collector. Before this point, we need to keep references to captured
   # constants in the saved graph.

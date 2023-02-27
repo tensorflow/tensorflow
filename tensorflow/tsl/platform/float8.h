@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdint>
 #include <ostream>
 
+#include "absl/numeric/bits.h"
 #include "third_party/eigen3/Eigen/Core"
 
 namespace tsl {
@@ -485,45 +486,25 @@ struct ConvertImpl<
     if (Eigen::numext::isinf(from) || Eigen::numext::isnan(from)) {
       // Inf or NaN, fill exponent bits with all ones and preserve digits.
       bits |= ((ToBits{1} << kToExponentBits) - 1) << kToMantissaBits;
+    } else if (from_bits == 0) {
+      // Zeros.
+      bits = 0;
     } else if ((from.rep() & kFromExponentMask) == 0) {
       // Subnormals.
 
       // All float8 subnormals become normalized when casting to a type
-      // with a larger number of exponent bits.  To do the conversion, we
-      // construct an explicit map of all subnormal values to the
-      // corresponding normalized values in the destination type.  We do this
-      // by setting the normalized mantissa bits in the source type, shifting
-      // it up to the destination type, then inserting the exponent bits.
-      if constexpr (kFromMantissaBits == 2) {
-        // e5m2, only 4 options:
-        constexpr ToBits kNormalized[4] = {
-            // Mantissa | Exponent
-            ToBits{0x00},
-            ToBits{0x00} | ToBits{kExponentOffset - 1} << kToMantissaBits,
-            ToBits{0x00} | ToBits{kExponentOffset} << kToMantissaBits,
-            (ToBits{0x02} << kDigitShift) |
-                (ToBits{kExponentOffset} << kToMantissaBits),
-        };
-        bits = kNormalized[from_bits];
-      } else if constexpr (kFromMantissaBits == 3) {
-        // e4m3, only 8 options
-        constexpr ToBits kNormalized[8] = {
-            // Mantissa | Exponent
-            ToBits{0x00},
-            ToBits{0x00} | (ToBits{kExponentOffset - 2} << kToMantissaBits),
-            ToBits{0x00} | (ToBits{kExponentOffset - 1} << kToMantissaBits),
-            (ToBits{0x04} << kDigitShift) |
-                (ToBits{kExponentOffset - 1} << kToMantissaBits),
-            ToBits{0x00} | (ToBits{kExponentOffset} << kToMantissaBits),
-            (ToBits{0x02} << kDigitShift) |
-                (ToBits{kExponentOffset} << kToMantissaBits),
-            (ToBits{0x04} << kDigitShift) |
-                (ToBits{kExponentOffset} << kToMantissaBits),
-            (ToBits{0x06} << kDigitShift) |
-                (ToBits{kExponentOffset} << kToMantissaBits),
-        };
-        bits = kNormalized[from_bits];
-      }
+      // with a larger number of exponent bits.  We do this by setting the
+      // normalized mantissa bits in the source type, shifting it up to the
+      // destination type, then inserting the exponent bits.
+      const int normalization_factor =
+          absl::countl_zero(from_bits) - (kFromBits - kFromMantissaBits) + 1;
+      // Shift the mantissa to account for the number of leading zeros.
+      bits <<= normalization_factor;
+      // Clear the hidden bit.
+      bits &= ~(ToBits{1} << kToMantissaBits);
+      // Insert the exponent bits.
+      bits |= static_cast<ToBits>(kExponentOffset - normalization_factor + 1)
+              << kToMantissaBits;
     } else {
       // Increase exponent by offset difference.
       bits += ToBits{kExponentOffset} << kToMantissaBits;

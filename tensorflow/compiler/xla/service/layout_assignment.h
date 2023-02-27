@@ -413,6 +413,9 @@ class LayoutAssignment : public HloModulePass {
   // Controls when all operands of user must have the same layout.
   virtual bool OperandLayoutAlwaysPropagateToSiblings(
       const HloInstruction* user);
+  // Controls when all operands of user must have the same layout as the output.
+  virtual bool OutputLayoutAlwaysPropagateToOperands(
+      const HloInstruction* user);
 
  protected:
   // These methods, invoked by PropagateConstraints, propagate a layout

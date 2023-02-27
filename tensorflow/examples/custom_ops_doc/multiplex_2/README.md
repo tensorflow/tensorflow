@@ -1,3 +1,4 @@
+<!-- LINT.IfChange -->
 # Create a custom multiplexer op with GPU support
 
 This guide provides an end-to-end example for adding a custom multiplexer op
@@ -408,7 +409,8 @@ the `multiplex_2` op.
 
 Op components                           | Build rule             | Build target         | Source
 --------------------------------------- | ---------------------- | -------------------- | ------
-Kernels (C++)                           | `tf_kernel_library`    | `multiplex_2_kernel` | `multiplex_2_kernel.cu.cc`, `multiplex_2_kernel.cc`, `multiplex_2_op.cc`, `multiplex_2_kernel.h`
-Wrapper (automatically generated)       | `tf_gen_op_wrapper.py` | `gen_multiplex_2_op` | N/A
+Kernels (C++)                           | `tf_custom_op_library` | `multiplex_2_kernel` | `multiplex_2_kernel.cu.cc`, `multiplex_2_kernel.cc`, `multiplex_2_op.cc`, `multiplex_2_kernel.h`
+Wrapper (automatically generated)       | N/A                    | `gen_multiplex_2_op` | N/A
 Wrapper (with public API and docstring) | `py_strict_library`    | `multiplex_2_op`     | `multiplex_2_op.py`
 Tests                                   | `cuda_py_test`         | `multiplex_2_test`   | `multiplex_2_test.py`
+<!-- LINT.ThenChange(multiplex_2.md) -->

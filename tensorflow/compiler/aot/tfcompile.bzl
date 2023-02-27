@@ -27,10 +27,17 @@ def _tfcompile_model_library_rule_impl(ctx):
     metadata_object_file = ctx.actions.declare_file("%s_tfcompile_metadata.o" % ctx.attr.model_name)
     function_object_file = ctx.actions.declare_file("%s_tfcompile_function.o" % ctx.attr.model_name)
     session_module_pb = ctx.actions.declare_file("%s_session_module.pb" % ctx.attr.model_name)
+    out_files = [header_file, metadata_object_file, function_object_file, session_module_pb]
+    compiler_log_file = None
+    if ctx.attr.gen_compiler_log:
+        compiler_log_file = ctx.actions.declare_file("%s_compiler.log" % ctx.attr.model_name)
+        out_files.append(compiler_log_file)
 
     output_dict = {}
     output_dict["header_files"] = [header_file]
     output_dict["object_files"] = [metadata_object_file, function_object_file]
+    if compiler_log_file:
+        output_dict["log_files"] = [compiler_log_file]
 
     output_flags = [
         "--out_header=" + header_file.path,
@@ -71,19 +78,22 @@ def _tfcompile_model_library_rule_impl(ctx):
         "--target_triple=" + ctx.attr.target_triple,
     ] + cpu_flags + output_flags + ctx.attr.extra_flags + dfsan_flags
 
+    post_command = ""
+    if ctx.attr.gen_compiler_log:
+        post_command += " --vmodule=cpu_compiler=5 2> >(tee -a " + compiler_log_file.path + " >&2) "
+
     full_cmd = (
-        ctx.executable.tfcompile_tool.path + " " + " ".join(flags) + " " + ctx.attr.flags
+        ctx.executable.tfcompile_tool.path + " " + " ".join(flags) + " " + ctx.attr.flags + post_command
     )
     ctx.actions.run_shell(
         inputs = ctx.files.srcs,
-        outputs = [header_file, metadata_object_file, function_object_file, session_module_pb],
+        outputs = out_files,
         tools = [ctx.executable.tfcompile_tool] + dfsan_deps,
         env = tfcompile_env,
         command = full_cmd,
         progress_message = "tfcompile for model %s (%s)" % (ctx.attr.model_name, ctx.file.tfcompile_graph.path),
         mnemonic = "TensorflowCompile",
     )
-    out_files = [header_file, metadata_object_file, function_object_file, session_module_pb]
     return [
         DefaultInfo(
             files = depset(out_files),
@@ -114,6 +124,7 @@ _tfcompile_model_library = rule(
         "dfsan": attr.bool(default = False),
         "dfsan_abilists": attr.label_list(default = [], allow_files = True),
         "is_linux": attr.bool(),
+        "gen_compiler_log": attr.bool(),
     },
 )
 
@@ -127,6 +138,7 @@ def tf_library(
         cpp_class = None,
         gen_test = True,
         gen_benchmark = True,
+        gen_compiler_log = False,
         visibility = None,
         testonly = None,
         tfcompile_flags = None,
@@ -176,6 +188,7 @@ def tf_library(
         test and benchmark.
       gen_benchmark: If True, also generate a binary with a simple benchmark.
         Unlike the output of gen_test, this benchmark can be run on android.
+      gen_compiler_log: If True, dumps XLA:CPU debug output to a log file.
       visibility: Bazel build visibility.
       testonly:   Bazel testonly attribute.
       tfcompile_flags: Extra flags to pass to tfcompile to control compilation.
@@ -306,6 +319,7 @@ def tf_library(
         name = tfcompile_gen,
         model_name = name,
         srcs = srcs,
+        gen_compiler_log = gen_compiler_log,
         header_out = header_file,
         tfcompile_tool = tfcompile_tool,
         tfcompile_graph = tfcompile_graph,

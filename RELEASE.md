@@ -16,6 +16,10 @@
 *   `tf.lite`:
 
     *   Add 16-bit and 64-bit float type support for built-in op `cast`.
+    *   The Python TF Lite Interpreter bindings now have an option
+        `experimental_disable_delegate_clustering` to turn-off delegate
+        clustering.
+    *   Add int16x8 support for the built-in op `mirror_pad`
 
 *   `tf.keras`
 

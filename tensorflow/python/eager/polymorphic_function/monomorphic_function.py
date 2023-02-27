@@ -20,7 +20,6 @@ import pprint
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
-from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import pywrap_tf_session
@@ -59,7 +58,6 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
-from tensorflow.python.util import tf_inspect
 
 
 def _is_type_subset(a, b):
@@ -1388,27 +1386,30 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       return  # e.g., SavedBareConcreteFunction doesn't have function_spec yet.
     assert not self._function_spec, "already initialized"
     spec = self._pre_initialized_function_spec
-    args = spec.fullargspec.args
-    # TODO(fmuham): Use annotate_type_constraint here instead.
+    unconstrainted_poly_type = function_type_lib.FunctionType(
+        [
+            function_type_lib.Parameter(p.name, p.kind, p.optional, None)
+            for p in spec.function_type.parameters.values()
+        ]
+    )
     arg_specs, kwarg_specs = self.structured_input_signature
-    vararg_indices = range(len(spec.arg_names), len(arg_specs))
-    fullargspec = tf_inspect.FullArgSpec(
-        args=list(args) + ["arg{}".format(i + 1) for i in vararg_indices],
-        varargs=None,
-        varkw=None,
-        defaults=[function_spec.BOUND_VALUE] * len(arg_specs),
-        kwonlyargs=list(sorted(kwarg_specs)),
-        kwonlydefaults=dict(
-            (k, function_spec.BOUND_VALUE) for k in kwarg_specs),
-        annotations=spec.fullargspec.annotations)
-    self._function_spec = (
-        function_spec.FunctionSpec.from_fullargspec_and_signature(
-            fullargspec,
-            spec.is_method,
-            spec.input_signature,
-            spec.is_pure,
-            name=self._func_graph.name,
-        )
+
+    _, func_type, _ = function_type_lib.canonicalize_to_monomorphic(
+        arg_specs,
+        {
+            function_type_lib.sanitize_arg_name(k): v
+            for k, v in kwarg_specs.items()
+        },
+        self._pre_initialized_function_spec.default_values,
+        {},
+        unconstrainted_poly_type,
+    )
+
+    self._function_spec = function_spec.FunctionSpec(
+        func_type,
+        {d: function_spec.BOUND_VALUE for d in spec.default_values},
+        spec.is_pure,
+        name=self._func_graph.name,
     )
 
   @property
@@ -1566,115 +1567,10 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     """
     args, kwargs, filtered_flat_args = (
         self._function_spec.canonicalize_function_inputs(args, kwargs))
-    self._structured_signature_check_missing_args(args, kwargs)
-    self._structured_signature_check_unexpected_args(args, kwargs)
-    self._structured_signature_check_arg_types(args, kwargs)
     return self._call_flat(
         filtered_flat_args,
         captured_inputs=self.captured_inputs,
         cancellation_manager=cancellation_manager)
-
-  def _structured_signature_check_missing_args(self, args, kwargs):
-    """Raises a TypeError if any args are missing."""
-    arg_specs, kwarg_specs = self.structured_input_signature
-    missing_arguments = []
-    for i, (arg, spec) in enumerate(zip(args, arg_specs)):
-      if arg is function_spec.BOUND_VALUE and _contains_type_spec(spec):
-        missing_arguments.append(self._function_spec.arg_names[i])
-    for (name, arg) in kwargs.items():
-      if arg is function_spec.BOUND_VALUE and _contains_type_spec(
-          kwarg_specs[name]):
-        missing_arguments.append(name)
-    if missing_arguments:
-      raise TypeError(f"{self._structured_signature_summary()} missing "
-                      "required arguments: "
-                      f"{', '.join(sorted(missing_arguments))}.")
-
-  def _structured_signature_check_unexpected_args(self, args, kwargs):
-    """Raises a TypeError if there are any extra args."""
-    arg_specs, kwarg_specs = self.structured_input_signature
-    if len(args) > len(arg_specs):
-      raise TypeError(
-          f"{self._structured_signature_summary()} takes "
-          f"{len(self._function_spec.arg_names)} positional arguments but got "
-          f"{len(args)}.")
-    if len(kwargs) > len(kwarg_specs):
-      extra_args = set(kwargs) - set(kwarg_specs)
-      raise TypeError(f"{self._structured_signature_summary()} got unexpected "
-                      f"keyword arguments: {', '.join(extra_args)}.")
-
-  def _structured_signature_check_arg_types(self, args, kwargs):
-    """Raises a TypeError if any args have the wrong type."""
-    signature_context = trace_type.InternalTracingContext()
-    # Check argument types
-    arg_specs, kwarg_specs = self.structured_input_signature
-    for i, (arg, spec) in enumerate(zip(args, arg_specs)):
-      name = self._function_spec.arg_names[i]
-      self._structured_signature_check_arg_type(arg, spec, name,
-                                                signature_context)
-    kwarg_specs = {
-        function_type_lib.sanitize_arg_name(k): v
-        for k, v in kwarg_specs.items()
-    }
-    for (name, arg) in kwargs.items():
-      self._structured_signature_check_arg_type(arg, kwarg_specs[name], name,
-                                                signature_context)
-
-  def _structured_signature_check_arg_type(self, arg, spec, name,
-                                           signature_context):
-    """Raise TypeError if `arg`'s type doesn't match `spec`."""
-    if arg is function_spec.BOUND_VALUE:
-      return
-
-    # TODO(xjun): Expand this to all CompositeTensors after removing
-    # TraceType.Reference usage from IteratorSpec.
-    if isinstance(arg, resource_variable_ops.BaseResourceVariable):
-      arg_spec = trace_type.from_value(arg, signature_context)
-    else:
-      arg_spec = arg
-
-    # Check the overall nested structure of the argument.
-    try:
-      nest.assert_same_structure(arg_spec, spec, expand_composites=True)
-    except (ValueError, TypeError):
-      try:
-        nest.assert_same_structure(arg_spec, spec, expand_composites=False)
-        expected, got = spec, arg_spec
-      except (ValueError, TypeError):
-        expected, got = _structure_summary(spec), _structure_summary(arg_spec)
-      raise TypeError(f"{self._structured_signature_summary()}: argument "
-                      f"{name} had incorrect type\n"
-                      f"  expected: {expected}\n"
-                      f"       got: {got}")
-
-    # Check the type for each leaf in the nested structure.
-    arg_pieces = nest.flatten(arg, expand_composites=True)
-    spec_pieces = nest.flatten(spec, expand_composites=True)
-    for (arg_piece, spec_piece) in zip(arg_pieces, spec_pieces):
-      # TODO(mdan): Use consistent error messages.
-      if isinstance(spec_piece, tensor_spec.DenseSpec):
-        # TODO(edloper): Consider calling convert_to_tensor on non-tensor
-        # values here.  That would match the behavior of
-        # _call_concrete_function() in function_deserialization.py.  If
-        # we do, then we need to change the nest assert_same_structure and
-        # flatten calls above to use shallow variants.
-        tensor_types = (ops.Tensor, resource_variable_ops.BaseResourceVariable)
-        if not isinstance(arg_piece, tensor_types):
-          raise TypeError(f"{self._structured_signature_summary()} expected a "
-                          f"Tensor in {name}, but got "
-                          f"{type(arg_piece).__name__} value {arg_piece}.")
-      elif arg_piece is not function_spec.BOUND_VALUE:
-        try:
-          arg_matches_spec = bool(arg_piece == spec_piece)
-        except (ValueError, TypeError):
-          logging.vlog(1, "Error matching value with spec", exc_info=True)
-          arg_matches_spec = False
-        if not arg_matches_spec:
-          raise TypeError(
-              f"ConcreteFunction {self._structured_signature_summary()} was "
-              f"constructed with {type(spec_piece).__name__} value "
-              f"{spec_piece} in {name}, but was called with "
-              f"{type(arg_piece).__name__} value {arg_piece}.")
 
   def _call_flat(self, args, captured_inputs, cancellation_manager=None):
     """Executes the wrapped function.

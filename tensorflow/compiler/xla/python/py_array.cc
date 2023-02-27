@@ -194,6 +194,33 @@ PyArray::Storage* Construct(PyArrayObject* self, Args&&... args) {
 
 }  // namespace
 
+PyArray_Storage::PyArray_Storage(pybind11::object aval, bool weak_type,
+                                 pybind11::dtype dtype,
+                                 std::vector<int64_t> shape,
+                                 pybind11::object sharding, bool committed,
+                                 std::shared_ptr<PyClient> py_client,
+                                 std::shared_ptr<Traceback> traceback,
+                                 tsl::RCReference<ifrt::Array> ifrt_array)
+    : fastpath_enabled(true),
+      aval(std::move(aval)),
+      weak_type(weak_type),
+      dtype(std::move(dtype)),
+      shape(std::move(shape)),
+      sharding(std::move(sharding)),
+      committed(committed),
+      py_client(std::move(py_client)),
+      traceback(std::move(traceback)),
+      ifrt_array(std::move(ifrt_array)) {
+  next = this->py_client->arrays_;
+  this->py_client->arrays_ = this;
+  if (next) {
+    next->prev = this;
+  }
+  prev = nullptr;
+}
+
+PyArray_Storage::PyArray_Storage(DisableFastpath) : fastpath_enabled(false) {}
+
 void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
                      absl::Span<const PyArray> py_arrays, bool committed,
                      bool skip_checks) {

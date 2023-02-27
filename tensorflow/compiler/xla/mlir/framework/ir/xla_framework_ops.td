@@ -38,7 +38,6 @@ def XLAFramework_Dialect : Dialect {
   }];
 
   let useDefaultTypePrinterParser = 1;
-  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 def XLAFramework_BufferType : TypeDef<XLAFramework_Dialect, "Buffer"> {

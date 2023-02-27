@@ -24,10 +24,6 @@ from tensorflow.python.util import nest
 
 def _serialize_function_spec(function_spec):
   """Serialize a FunctionSpec object into its proto representation."""
-  if function_spec.is_method and not function_spec.fullargspec.args:
-    raise NotImplementedError(
-        "Cannot serialize a method function without a named "
-        "'self' argument.")
   proto = saved_object_graph_pb2.FunctionSpec()
 
   # Intentionally skip encoding annotations of a function because function
@@ -39,7 +35,7 @@ def _serialize_function_spec(function_spec):
       nested_structure_coder.encode_structure(
           function_spec.fullargspec._replace(annotations={})))
 
-  proto.is_method = function_spec.is_method
+  proto.is_method = False
   proto.input_signature.CopyFrom(
       nested_structure_coder.encode_structure(function_spec.input_signature))
 

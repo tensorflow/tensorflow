@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
 
+#include <vector>
+
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
@@ -23,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
@@ -231,7 +232,7 @@ Status BFloat16NormalizationVisitor::InsertConvertBeforeOperand(
 
 Status BFloat16NormalizationVisitor::ConvertCalledComputations(
     HloInstruction* hlo, absl::Span<HloComputation* const> bf16_called_comps) {
-  std::map<HloComputation*, HloComputation*> cloned_computations;
+  absl::flat_hash_map<HloComputation*, HloComputation*> cloned_computations;
   for (auto& comp : bf16_called_comps) {
     auto cloned = comp->parent()->AddEmbeddedComputation(comp->Clone());
     cloned_computations[comp] = cloned;
