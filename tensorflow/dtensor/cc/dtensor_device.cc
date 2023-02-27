@@ -1457,10 +1457,11 @@ DTensorDevice::DTensorOperationToModule(
                                          *result.graph, flib_def);
 
   // Converts Graph to MLIR Module.
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module_ref,
-                      pass_runner_.ImportGraphToMlir(
-                          device_set, doperation.is_func(), *flib_def,
-                          *result.graph, result.doperation_cache_key));
+  TF_ASSIGN_OR_RETURN(
+      mlir::OwningOpRef<mlir::ModuleOp> mlir_module_ref,
+      pass_runner_.ImportGraphToMlir(
+          device_set, doperation.is_func(), doperation.default_mesh, *flib_def,
+          *result.graph, result.doperation_cache_key));
 
   cached_mlir_module =
       module_manager_.AddCachedExecutable(cache_key, mlir_module_ref.release());
@@ -1995,13 +1996,18 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     dtypes.push_back(TFE_TensorHandleDataType(input));
   }
   TFE_TensorHandle** inputs = inputs_vector.data();
-
-  DTensorOperation dtensor_operation{};
-  dtensor_operation.name = operation_name;
-  {
-    dtensor_operation.function_def =
-        tensorflow::unwrap(context)->FindFunctionDef(operation_name);
+  if (!default_mesh_) {
+    RETURN_STATUS(
+        status, TF_INVALID_ARGUMENT,
+        "No default mesh has been registered to DTensor. Use dtensor.run_on to "
+        "explicit specify a mesh.");
   }
+  DTensorOperation dtensor_operation{
+      /*name*/ operation_name,
+      /*function_def*/
+      tensorflow::unwrap(context)->FindFunctionDef(operation_name),
+      /*default_mesh*/ default_mesh_->mesh_config(),
+  };
 
   // First handle DTensor-specific virtual operations.
   bool is_op_handled = false;
