@@ -22,13 +22,13 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/IR/Module.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/protobuf/autotuning.pb.h"
-#include "triton/ir/builder.h"
-#include "triton/ir/function.h"
 
 namespace xla {
 namespace gpu {
@@ -40,9 +40,9 @@ using tensorflow::AutotuneResult;
 // Use tiling and execution parameters from 'config'.
 // Values in 'config' can be adjusted by this function if the original ones
 // are not executable or inefficient.
-std::optional<LaunchDimensions> MatMul(triton::ir::builder& b,
+std::optional<LaunchDimensions> MatMul(mlir::OpBuilder b,
                                        const HloDotInstruction* dot_instr,
-                                       triton::ir::function* fn,
+                                       mlir::func::FuncOp fn,
                                        AutotuneResult::TritonGemmKey& config,
                                        int shmem_budget);
 
@@ -54,7 +54,7 @@ std::optional<LaunchDimensions> TritonWrapper(
     const se::CudaComputeCapability& cc, const GpuDeviceInfo& device_info,
     AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
     std::function<std::optional<LaunchDimensions>(
-        triton::ir::builder&, const HloDotInstruction*, triton::ir::function*,
+        mlir::OpBuilder, const HloDotInstruction*, mlir::func::FuncOp,
         AutotuneResult::TritonGemmKey&, int)>
         generator);
 
