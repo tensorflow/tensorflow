@@ -4570,7 +4570,7 @@ tf_kernel_library(
     name = "parse_tensor_op",
     prefix = "parse_tensor_op",
     deps = [
-       "//tensorflow/core/util/tensor_bundle:byteswaptensor",
+        "//tensorflow/core/util/tensor_bundle:byteswaptensor",
     ] + PARSING_DEPS,
 )
 
