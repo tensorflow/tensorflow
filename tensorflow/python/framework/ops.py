@@ -287,13 +287,6 @@ def disable_tensor_equality():
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
 
 
-def pretty_print_dtype(dtype):
-  res = dtypes.as_strong_type(dtype).name
-  if dtypes.is_weak_type(dtype):
-    res += ", weak_type=True"
-  return res
-
-
 @tf_export("Tensor", "experimental.numpy.ndarray", v1=["Tensor"])
 class Tensor(internal.NativeObject, core_tf_types.Symbol):
   """A `tf.Tensor` represents a multidimensional array of elements.
@@ -905,15 +898,12 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
         self.name,
         (", shape=%s" %
          self.get_shape()) if self.get_shape().ndims is not None else "",
-        (", dtype=%s" % pretty_print_dtype(self._dtype)) if self._dtype else "",
+        (", dtype=%s" % self._dtype.name) if self._dtype else "",
         (", device=%s" % self.device) if self.device else "")
 
   def __repr__(self):
-    return "<tf.Tensor '%s' shape=%s dtype=%s>" % (
-        self.name,
-        self.get_shape(),
-        pretty_print_dtype(self._dtype),
-    )
+    return "<tf.Tensor '%s' shape=%s dtype=%s>" % (self.name, self.get_shape(),
+                                                   self._dtype.name)
 
   def __hash__(self):
     g = getattr(self, "graph", None)
@@ -1155,16 +1145,11 @@ class _EagerTensorBase(Tensor, core_tf_types.Value):
 
   def __str__(self):
     return "tf.Tensor(%s, shape=%s, dtype=%s)" % (
-        value_text(self, is_repr=False),
-        self.shape,
-        pretty_print_dtype(self.dtype),
-    )
+        value_text(self, is_repr=False), self.shape, self.dtype.name)
 
   def __repr__(self):
     return "<tf.Tensor: shape=%s, dtype=%s, %s>" % (
-        self.shape,
-        pretty_print_dtype(self.dtype),
-        value_text(self, is_repr=True))
+        self.shape, self.dtype.name, value_text(self, is_repr=True))
 
   def __len__(self):
     """Returns the length of the first dimension in the Tensor."""
@@ -1194,11 +1179,6 @@ class _EagerTensorBase(Tensor, core_tf_types.Value):
 
   @property
   def dtype(self):
-    # Weakly typed Tensors get an additional attribute `_weak_dtype` added
-    # during its construction in python. This is because the weak information
-    # only exists in python and do not have dedicated dtype enums.
-    if getattr(self, "_weak_dtype", False):
-      return self._weak_dtype
     # Note: using the intern table directly here as this is
     # performance-sensitive in some models.
     return dtypes._INTERN_TABLE[self._datatype_enum()]  # pylint: disable=protected-access
@@ -1813,8 +1793,7 @@ def internal_convert_to_tensor_or_composite(value,
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value_dtype):
       raise ValueError(f"Tensor conversion dtype mismatch. "
                        f"Requested dtype is {dtypes.as_dtype(dtype).name}, "
-                       f"Tensor has dtype {pretty_print_dtype(value.dtype)}: "
-                       f"{value!r}")
+                       f"Tensor has dtype {value.dtype.name}: {value!r}")
     return value
   else:
     return convert_to_tensor(
