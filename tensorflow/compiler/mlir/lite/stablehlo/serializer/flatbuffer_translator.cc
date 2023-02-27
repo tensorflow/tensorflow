@@ -13,9 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// prototype for stablehlo serialization, WIP
+// WARNING: converting to stablehlo file is experimental feature, and no runtime
+// support is provided
+
 #include "tensorflow/compiler/mlir/lite/stablehlo/serializer/flatbuffer_translator.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <limits>
 #include <map>
@@ -25,6 +30,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -41,10 +47,10 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/stablehlo/serializer/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/lite/version.h"
 
 #define kStablehloOptionalTensor (-1)
 
@@ -69,7 +75,7 @@ namespace odml {
 // TODO(b/267689361) this and the following functions should be automatically
 // generated similar to operator_converters.inc in tflite
 static flatbuffers::Offset<::stablehlo::flatbuf::Operator> CreateAddOperator(
-    mlir::stablehlo::AddOp hlo_op, flatbuffers::FlatBufferBuilder* fbb,
+    mlir::stablehlo::AddOp& hlo_op, flatbuffers::FlatBufferBuilder* fbb,
     uint32_t opcode_index, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results) {
   auto inputs = fbb->CreateVector(operands);
@@ -80,7 +86,7 @@ static flatbuffers::Offset<::stablehlo::flatbuf::Operator> CreateAddOperator(
 }
 
 static flatbuffers::Offset<::stablehlo::flatbuf::Operator>
-CreateReshapeOperator(mlir::stablehlo::ReshapeOp hlo_op,
+CreateReshapeOperator(mlir::stablehlo::ReshapeOp& hlo_op,
                       flatbuffers::FlatBufferBuilder* fbb,
                       uint32_t opcode_index,
                       const std::vector<int32_t>& operands,
@@ -104,7 +110,7 @@ static flatbuffers::Offset<::stablehlo::flatbuf::Operator> CreateDivOperator(
 }
 
 static flatbuffers::Offset<::stablehlo::flatbuf::Operator> CreateMaxOperator(
-    mlir::stablehlo::MaxOp hlo_op, flatbuffers::FlatBufferBuilder* fbb,
+    mlir::stablehlo::MaxOp& hlo_op, flatbuffers::FlatBufferBuilder* fbb,
     uint32_t opcode_index, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results) {
   auto inputs = fbb->CreateVector(operands);
@@ -115,7 +121,7 @@ static flatbuffers::Offset<::stablehlo::flatbuf::Operator> CreateMaxOperator(
 }
 
 static flatbuffers::Offset<::stablehlo::flatbuf::Operator> CreateDotOperator(
-    mlir::stablehlo::DotOp hlo_op, flatbuffers::FlatBufferBuilder* fbb,
+    mlir::stablehlo::DotOp& hlo_op, flatbuffers::FlatBufferBuilder* fbb,
     uint32_t opcode_index, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results) {
   auto inputs = fbb->CreateVector(operands);
@@ -123,6 +129,77 @@ static flatbuffers::Offset<::stablehlo::flatbuf::Operator> CreateDotOperator(
 
   return ::stablehlo::flatbuf::CreateOperator(*fbb, opcode_index, inputs,
                                               outputs);
+}
+
+static flatbuffers::Offset<::stablehlo::flatbuf::Operator>
+CreateConvolutionOperator(mlir::stablehlo::ConvolutionOp& hlo_op,
+                          flatbuffers::FlatBufferBuilder* fbb,
+                          uint32_t opcode_index,
+                          const std::vector<int32_t>& operands,
+                          const std::vector<int32_t>& results) {
+  auto inputs = fbb->CreateVector(operands);
+  auto outputs = fbb->CreateVector(results);
+
+  // converting from mlir struct to std
+  std::vector<int64_t> window_strides_vec =
+      GetOptionalVector<int64_t>(hlo_op.getWindowStrides(), 0, 0);
+  std::vector<int64_t> padding_vec =
+      GetOptionalVector<int64_t>(hlo_op.getPadding(), 0, 0);
+  std::vector<int64_t> lhs_dilation_vec =
+      GetOptionalVector<int64_t>(hlo_op.getLhsDilation(), 0, 0);
+  std::vector<int64_t> rhs_dilation_vec =
+      GetOptionalVector<int64_t>(hlo_op.getRhsDilation(), 0, 0);
+  std::vector<bool> window_reversal_vec =
+      GetOptionalVector<bool>(hlo_op.getWindowReversal(), 0, 0);
+  const int64_t feature_group_count = hlo_op.getFeatureGroupCount();
+  const int64_t batch_group_count = hlo_op.getBatchGroupCount();
+
+  auto conv_dimension_numbers = hlo_op.getDimensionNumbersAttr();
+
+  std::vector<int64_t> input_spatial_dimensions_vec =
+      conv_dimension_numbers.getInputSpatialDimensions().vec();
+  std::vector<int64_t> kernel_spatial_dimensions_vec =
+      conv_dimension_numbers.getKernelSpatialDimensions().vec();
+  std::vector<int64_t> output_spatial_dimensions_vec =
+      conv_dimension_numbers.getOutputSpatialDimensions().vec();
+  const int64_t input_batch_dimension =
+      conv_dimension_numbers.getInputBatchDimension();
+  const int64_t input_feature_dimension =
+      conv_dimension_numbers.getInputFeatureDimension();
+  const int64_t kernel_input_feature_dimension =
+      conv_dimension_numbers.getKernelInputFeatureDimension();
+  const int64_t kernel_output_feature_dimension =
+      conv_dimension_numbers.getKernelOutputFeatureDimension();
+  const int64_t output_batch_dimension =
+      conv_dimension_numbers.getOutputBatchDimension();
+  const int64_t output_feature_dimension =
+      conv_dimension_numbers.getOutputFeatureDimension();
+
+  // serialize all vectors to flatbuffer
+  auto window_strides = fbb->CreateVector(window_strides_vec);
+  auto padding = fbb->CreateVector(padding_vec);
+  auto lhs_dilation = fbb->CreateVector(lhs_dilation_vec);
+  auto rhs_dilation = fbb->CreateVector(rhs_dilation_vec);
+  auto input_spatial_dimensions =
+      fbb->CreateVector(input_spatial_dimensions_vec);
+  auto kernel_spatial_dimensions =
+      fbb->CreateVector(kernel_spatial_dimensions_vec);
+  auto output_spatial_dimensions =
+      fbb->CreateVector(output_spatial_dimensions_vec);
+  auto window_reversal = fbb->CreateVector(window_reversal_vec);
+
+  auto options = ::stablehlo::flatbuf::CreateConvolutionOptions(
+      *fbb, window_strides, padding, lhs_dilation, rhs_dilation,
+      window_reversal, input_batch_dimension, input_feature_dimension,
+      input_spatial_dimensions, kernel_input_feature_dimension,
+      kernel_output_feature_dimension, kernel_spatial_dimensions,
+      output_batch_dimension, output_feature_dimension,
+      output_spatial_dimensions, feature_group_count, batch_group_count);
+
+  return ::stablehlo::flatbuf::CreateOperator(
+      *fbb, opcode_index, inputs, outputs,
+      ::stablehlo::flatbuf::OperatorOptions_ConvolutionOptions,
+      options.Union());
 }
 
 llvm::Optional<flatbuffers::Offset<::stablehlo::flatbuf::Operator>>
@@ -140,6 +217,9 @@ CreateFlatBufferOperator(mlir::Operation* op, uint32_t opcode_index,
     return CreateMaxOperator(hlo_op, fbb, opcode_index, operands, results);
   if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::ReshapeOp>(op))
     return CreateReshapeOperator(hlo_op, fbb, opcode_index, operands, results);
+  if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::ConvolutionOp>(op))
+    return CreateConvolutionOperator(hlo_op, fbb, opcode_index, operands,
+                                     results);
 
   return std::nullopt;
 }
@@ -164,6 +244,8 @@ llvm::Optional<::stablehlo::flatbuf::OperatorCode> GetOpCode(
     return ::stablehlo::flatbuf::OperatorCode_MAXIMUM;
   if (isa<mlir::stablehlo::ReshapeOp>(op))
     return ::stablehlo::flatbuf::OperatorCode_RESHAPE;
+  if (isa<mlir::stablehlo::ConvolutionOp>(op))
+    return ::stablehlo::flatbuf::OperatorCode_CONVOLUTION;
   return std::nullopt;
 }
 
