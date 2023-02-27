@@ -583,6 +583,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:math",
+        "//tensorflow/core/kernels:partitioned_function_ops",
         "//tensorflow/core/lib/monitoring:cell_reader",
     ],
 )
