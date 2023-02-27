@@ -35,6 +35,9 @@ TFE_Context* GetContextForConstantFold() {
   // This is conceptually equal to what we do in python/eager/context.py but
   // with all GPU/TPU devices ignored and CPU only set to 1.
   (*config_proto.mutable_device_count())["CPU"] = 1;
+#if TENSORFLOW_USE_ROCM
+  (*config_proto.mutable_device_count())["GPU"] = 0;
+#endif
   config_proto.add_device_filters("/device:CPU:*");
   // Limit the thread pool size. Without this, TF by default creates as many
   // threads as the number of CPUs (`port::MaxParallelism()`). This can be
