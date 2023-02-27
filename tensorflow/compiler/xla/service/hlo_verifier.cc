@@ -1509,14 +1509,13 @@ Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
 }
 
 Status CheckAsyncOpComputationThreadName(const HloInstruction* async_op) {
-  std::optional<absl::string_view> async_execution_thread =
-      async_op->async_execution_thread();
+  absl::string_view async_execution_thread = async_op->async_execution_thread();
   if (async_execution_thread !=
       async_op->async_wrapped_computation()->execution_thread()) {
     return InternalError(
-        "async-start expects same async thread name as wrapped computation's "
+        "%s expects same async thread name as wrapped computation's "
         "thread name (%s vs %s).",
-        async_execution_thread ? absl::StrCat(*async_execution_thread) : "none",
+        HloOpcodeString(async_op->opcode()), async_execution_thread,
         async_op->async_wrapped_computation()->execution_thread());
   }
   return CheckNestedComputationThreadNameEqual(
