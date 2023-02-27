@@ -13061,6 +13061,64 @@ ENTRY %main.21 {
   XLA_VLOG_LINES(1, module->ToString());
 }
 
+TEST_F(SpmdPartitioningTest, GatherCostModelForUnmatchedSharding) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+region_10.581.clone {
+  Arg_0.53 = bf16[] parameter(0)
+  Arg_1.53 = bf16[] parameter(1)
+  ROOT add.1294 = bf16[] add(Arg_0.53, Arg_1.53)
+}
+
+ENTRY %main.21 {
+  p0 = bf16[8192,128]{1,0} parameter(0), sharding={devices=[2,4,2]0,8,2,10,4,12,6,14,1,9,3,11,5,13,7,15 last_tile_dim_replicate}
+  p1 = s32[16384,1]{1,0} parameter(1), sharding={devices=[8,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+  gather.0 = bf16[16384,128]{1,0} gather(p0, p1), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}, sharding={devices=[8,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  constant.2467 = bf16[] constant(0)
+  reduce.1749 = bf16[16384]{0} reduce(gather.0, constant.2467), dimensions={1}, to_apply=region_10.581.clone, sharding={devices=[8,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+  ROOT copy.1 = bf16[16384]{0} copy(reduce.1749), sharding={devices=[8,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* gather = FindInstruction(module.get(), HloOpcode::kGather);
+  EXPECT_NE(gather, nullptr);
+  EXPECT_THAT(gather, op::Shape("bf16[2048,128]"));
+}
+
+TEST_F(SpmdPartitioningTest, ScatterCostModelForUnmatchedSharding) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+region_335.4575 {
+  Arg_0.4576 = bf16[] parameter(0)
+  Arg_1.4577 = bf16[] parameter(1)
+  ROOT add.4578 = bf16[] add(Arg_0.4576, Arg_1.4577)
+}
+
+ENTRY %main.21 {
+  p0 = bf16[8192,128]{1,0} parameter(0), sharding={devices=[2,4,2]0,8,2,10,4,12,6,14,1,9,3,11,5,13,7,15 last_tile_dim_replicate}
+  p1 = s32[32768,1]{1,0} parameter(1), sharding={devices=[8,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+  p2 = bf16[32768,128]{1,0} parameter(2), sharding={devices=[8,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  scatter.0 = bf16[8192,128]{1,0} scatter(p0, p1, p2), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=region_335.4575, sharding={devices=[2,4,2]0,8,2,10,4,12,6,14,1,9,3,11,5,13,7,15 last_tile_dim_replicate}
+  ROOT convert.427 = f32[8192,128]{1,0} convert(scatter.0), sharding={devices=[2,4,2]0,8,2,10,4,12,6,14,1,9,3,11,5,13,7,15 last_tile_dim_replicate}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* scatter = FindInstruction(module.get(), HloOpcode::kScatter);
+  EXPECT_NE(scatter, nullptr);
+  auto* updates = scatter->operand(2);
+  EXPECT_THAT(updates, op::Shape("bf16[4096,128]"));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
