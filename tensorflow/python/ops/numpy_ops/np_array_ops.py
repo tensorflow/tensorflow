@@ -1011,16 +1011,24 @@ def split(ary, indices_or_sections, axis=0):
   return array_ops.split(ary, indices_or_sections, axis=axis)
 
 
-def _split_on_axis(np_fun_name, axis):
+def _split_on_axis(np_fun_name, axis):  # pylint: disable=missing-function-docstring
 
   @np_utils.np_doc(np_fun_name)
   def f(ary, indices_or_sections):
+    # for 1-D array, hsplit becomes vsplit
+    new_axis = np_utils.cond(
+        math_ops.equal(axis, 1),
+        lambda: np_utils.cond(  # pylint: disable=g-long-lambda
+            math_ops.equal(array_ops.rank(ary), 1), lambda: 0, lambda: axis
+        ),
+        lambda: axis,
+    )
     if isinstance(indices_or_sections, int):
-      ary_shape = ary.shape[axis]
+      ary_shape = ary.shape[new_axis]
       if ary_shape is not None and ary_shape % indices_or_sections:
         raise ValueError(
             'array split does not result in an equal division')
-    return split(ary, indices_or_sections, axis=axis)
+    return split(ary, indices_or_sections, axis=new_axis)
 
   return f
 
