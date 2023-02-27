@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -811,14 +812,79 @@ namespace mhlo {
 namespace {
 
 LogicalResult ExportXlaOp(ComputeReshapeShapeOp, OpLoweringContext) {
-  // This op has no expression in the legacy export format. It can be expanded
-  // to a sequence of operations if needed in the future, but would feed into
-  // ops creating unsupported dynamic shapes.
+  // This op should've been removed during PrepareForExport.
   return failure();
 }
 
 LogicalResult ExportXlaOp(CstrReshapableOp, OpLoweringContext) {
+  // This op should've been removed during PrepareForExport.
+  return failure();
+}
+
+LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
   // This op has no expression in the legacy export format.
+  return failure();
+}
+
+LogicalResult ExportXlaOp(DynamicConvOp op, OpLoweringContext ctx) {
+  // TODO(b/264240901): Implement MHLO export for DynamicConvOp.
+  return failure();
+}
+
+LogicalResult ExportXlaOp(DynamicGatherOp op, OpLoweringContext ctx) {
+  // TODO(b/264240901): Implement MHLO export for DynamicGatherOp.
+  return failure();
+}
+
+LogicalResult ExportXlaOp(DynamicIotaOp op, OpLoweringContext ctx) {
+  // TODO(b/264240901): Implement MHLO export for DynamicIotaOp.
+  return failure();
+}
+
+LogicalResult ExportXlaOp(DynamicPadOp op, OpLoweringContext ctx) {
+  // TODO(b/264240901): Implement MHLO export for DynamicPadOp.
+  return failure();
+}
+
+LogicalResult ExportXlaOp(DynamicReshapeOp op, OpLoweringContext ctx) {
+  auto resultType = op.getResult().getType().dyn_cast<RankedTensorType>();
+  if (!resultType) return op->emitOpError() << "expected ranked result";
+  auto resultBounds = hlo::encodingToBounds(resultType.getEncoding());
+  if (resultBounds.empty())
+    return op->emitOpError() << "expected bounded result";
+  auto shapeType = op.getOutputShape().getType().dyn_cast<RankedTensorType>();
+  if (!shapeType || !shapeType.getElementType().isInteger(32))
+    return op->emitOpError() << "expected output shape to be tensor<Nxi32>";
+
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  xla::XlaOp outputShape;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+  if (failed(GetXlaOp(op.getOutputShape(), value_map, &outputShape, op)))
+    return failure();
+
+  SmallVector<xla::XlaOp> dimSizes;
+  SmallVector<int64_t> newSizeBounds;
+  std::vector<bool> dimsAreDynamic;
+  for (auto i = 0; i < resultType.getRank(); ++i) {
+    auto runtimeSizeX1 = xla::Slice(outputShape, {i}, {i + 1}, {1});
+    dimSizes.push_back(xla::Reshape(runtimeSizeX1, {}));
+
+    auto dimSize = resultType.getDimSize(i);
+    auto dimBound = resultBounds[i];
+    if (!hlo::isStaticDimSize(dimSize) && !hlo::isStaticDimSize(dimBound))
+      return op->emitOpError() << "unbounded dynamism is not supported";
+    newSizeBounds.push_back(hlo::isStaticDimSize(dimSize) ? dimSize : dimBound);
+    dimsAreDynamic.push_back(!hlo::isStaticDimSize(dimSize));
+  }
+  value_map[op] =
+      xla::DynamicReshape(operand, dimSizes, newSizeBounds, dimsAreDynamic);
+  return success();
+}
+
+LogicalResult ExportXlaOp(RealDynamicSliceOp op, OpLoweringContext ctx) {
+  // TODO(b/264240901): Implement MHLO export for RealDynamicSliceOp.
   return failure();
 }
 
@@ -1368,21 +1434,6 @@ LogicalResult ExportXlaOp(DomainOp op, OpLoweringContext ctx) {
   valueMap[op] = xla::internal::XlaBuilderFriend::BuildDomain(
       ctx.builder, operand, *exit, *entry, shape);
   return success();
-}
-
-LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
-  // This op has no expression in the legacy export format.
-  return failure();
-}
-
-LogicalResult ExportXlaOp(DynamicIotaOp op, OpLoweringContext ctx) {
-  // This op has no expression in the legacy export format.
-  return failure();
-}
-
-LogicalResult ExportXlaOp(DynamicReshapeOp op, OpLoweringContext ctx) {
-  // This op has no expression in the legacy export format.
-  return failure();
 }
 
 LogicalResult ExportXlaOp(IfOp op, OpLoweringContext ctx) {
@@ -2102,10 +2153,6 @@ mlir::LogicalResult ExportXlaOp(mlir::mhlo::SineOp op, OpLoweringContext ctx) {
   return mlir::success();
 }
 
-LogicalResult ExportXlaOp(SliceOp op, OpLoweringContext ctx) {
-  return failure();
-}
-
 LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
   xla::XlaComputation comparator;
   if (failed(ctx.converter->LowerRegionAsComputation(&op.getComparator(),
@@ -2291,22 +2338,6 @@ LogicalResult ExportXlaOp(BitcastOp op, OpLoweringContext ctx) {
         bitcast_config.SerializeAsString();
   }
   return success();
-}
-
-LogicalResult ExportXlaOp(RealDynamicSliceOp op, OpLoweringContext ctx) {
-  return failure();
-}
-
-LogicalResult ExportXlaOp(DynamicPadOp op, OpLoweringContext ctx) {
-  return failure();
-}
-
-LogicalResult ExportXlaOp(DynamicGatherOp op, OpLoweringContext ctx) {
-  return failure();
-}
-
-LogicalResult ExportXlaOp(DynamicConvOp op, OpLoweringContext ctx) {
-  return failure();
 }
 
 LogicalResult ExportXlaOp(UniformQuantizeOp op, OpLoweringContext ctx) {
@@ -3075,11 +3106,24 @@ void AddDynamicParameterBindingEntry(xla::DynamicParameterBindingProto* binding,
 
 // Runs the PrepareForExport pass on the ModuleOp.
 xla::Status PrepareForExport(mlir::ModuleOp module) {
-  // Prepare for export to XLA HLO.
+  bool hasShapeOps = false;
+  module.walk([&](Operation* op) {
+    hasShapeOps |= isa<shape::ShapeDialect>(op->getDialect());
+    hasShapeOps |= isa<mhlo::ComputeReshapeShapeOp, mhlo::CstrReshapableOp>(op);
+    return hasShapeOps ? WalkResult::interrupt() : WalkResult::advance();
+  });
   mlir::PassManager pm(module.getContext());
   pm.addNestedPass<mlir::func::FuncOp>(mhlo::createPrepareForExportPass());
+  if (hasShapeOps) {
+    // Experimental support for exporting dynamic MHLO programs to HLO.
+    // Only bounded dynamism is planned to be supported; unbounded dynamism
+    // is out of scope for now.
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mhlo::createSymbolicShapeOptimizationPass());
+    pm.addNestedPass<mlir::func::FuncOp>(mhlo::createShapeLegalizeToHloPass());
+  }
   if (failed(pm.run(module)))
-    return tsl::errors::Internal("Unable to optimize for XLA export");
+    return tsl::errors::Internal("Unable to prepare for XLA export");
   return ::tsl::OkStatus();
 }
 

@@ -17,6 +17,7 @@
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.types import data as data_types
 
 
 def _zip(datasets, name):  # pylint: disable=redefined-builtin
@@ -29,7 +30,7 @@ class _ZipDataset(dataset_ops.DatasetV2):
   def __init__(self, datasets, name=None):
     """See `Dataset.zip()` for details."""
     for ds in nest.flatten(datasets):
-      if not isinstance(ds, dataset_ops.DatasetV2):
+      if not isinstance(ds, data_types.DatasetV2):
         if isinstance(ds, list):
           raise TypeError("Invalid `datasets`. `datasets` is expected to be a "
                           "(nested) structure of `tf.data.Dataset` objects. "

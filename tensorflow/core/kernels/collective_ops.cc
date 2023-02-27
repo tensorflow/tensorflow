@@ -613,7 +613,7 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
           col_params->group.group_size);
     }
     col_params->group.group_key = group_key.unaligned_flat<int32>()(0);
-    // FIXME(b/269333905): TFRT hostruntime doesn't forward node names.
+    // FIXME(b/270426314): TFRT hostruntime doesn't forward node names.
     // A more proper way of checking DTensor provenance is to add a new attr
     // to all V2 ops. Or perhaps use an ordering_token based heuristics
     // (DTensor never emits an ordering_token, but MWMS always do).

@@ -39,11 +39,13 @@ bool IsValidComparison(xla::PrimitiveType type, Comparison::Order order) {
     case C64:
     case C128:
       return true;
+    case S4:
     case S8:
     case S16:
     case S32:
     case S64:
     case PRED:
+    case U4:
     case U8:
     case U16:
     case U32:
@@ -92,11 +94,13 @@ Comparison::Order DefaultOrdering(Comparison::Type type) {
 // Returns the expected ordering for each primitive type.
 Comparison::Order DefaultOrdering(PrimitiveType type) {
   switch (type) {
+    case S4:
     case S8:
     case S16:
     case S32:
     case S64:
     case PRED:
+    case U4:
     case U8:
     case U16:
     case U32:
@@ -246,12 +250,14 @@ StatusOr<Comparison::Type> StringToComparisonType(
 
 Comparison::Type Comparison::DefaultComparisonType(PrimitiveType type) {
   switch (type) {
+    case S4:
     case S8:
     case S16:
     case S32:
     case S64:
       return Type::kSigned;
     case PRED:
+    case U4:
     case U8:
     case U16:
     case U32:
@@ -313,11 +319,13 @@ std::optional<Comparison> Comparison::Inverse() const {
     case F64:
     case C64:
     case C128:
+    case S4:
     case S8:
     case S16:
     case S32:
     case S64:
     case PRED:
+    case U4:
     case U8:
     case U16:
     case U32:

@@ -60,6 +60,9 @@ class GpuPlugin : public DelegatePluginInterface {
   const TFLGpuDelegateOptions& Options() { return options_; }
 #endif
 
+  std::string GetCacheDir() const { return cache_dir_; }
+  std::string GetModelToken() const { return model_token_; }
+
  private:
 #if TFLITE_SUPPORTS_GPU_DELEGATE
   TfLiteGpuDelegateOptionsV2 options_;

@@ -1184,6 +1184,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
     return false;
   }
   VLOG(2) << "successfully enqueued async memcpy h2d of " << size << " bytes"
+          << " from " << host_src << " to " << absl::bit_cast<void*>(gpu_dst)
           << " on stream " << stream;
   return true;
 }
@@ -1238,7 +1239,9 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
 
     return false;
   }
-  VLOG(2) << "successfully enqueued async memcpy d2d of " << size << " bytes";
+  VLOG(2) << "successfully enqueued async memcpy d2d of " << size << " bytes"
+          << " from " << absl::bit_cast<void*>(gpu_src) << " to "
+          << absl::bit_cast<void*>(gpu_dst) << " on stream " << stream;
   return true;
 }
 

@@ -16,18 +16,12 @@ limitations under the License.
 #ifndef MLIR_HLO_GML_ST_TRANSFORMS_PEELING_PEELING_H
 #define MLIR_HLO_GML_ST_TRANSFORMS_PEELING_PEELING_H
 
-#include <functional>
-#include <string>
-
 #include "gml_st/IR/gml_st_ops.h"
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/PatternMatch.h"
 
 namespace mlir {
 namespace gml_st {
-
-constexpr llvm::StringRef kPeelingAppliedLabel = "__peeling_applied_label__";
 
 struct GmlStPeelingResult {
   ParallelOp mainLoop = nullptr;

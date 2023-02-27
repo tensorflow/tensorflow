@@ -224,7 +224,7 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
 
   CoreRuntime* GetCoreRuntime();
   tensorflow::Status BuildFunctionRequestContext(
-      tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
+      tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table, int64_t step_id,
       RCReference<tfrt::RequestContext>* request_context);
   tensorflow::Status BuildOpRequestContext(
       RCReference<tfrt::RequestContext>* request_context);
@@ -560,8 +560,9 @@ class OperationInterface : public tensorflow::ImmediateExecutionOperation {
     return stack_trace_;
   }
 
-  // Currently not supported.
-  void SetStepId(int64_t step_id) override {}
+  void SetStepId(int64_t step_id) override { step_id_ = step_id; }
+
+  int64_t step_id() { return step_id_; }
 
   // For LLVM style RTTI.
   static bool classof(const AbstractOperation* ptr) {
@@ -578,6 +579,7 @@ class OperationInterface : public tensorflow::ImmediateExecutionOperation {
   // attribute like "T" in order to run device placement logic from current TF.
   void MaybeInferInputAttrs();
 
+  int64_t step_id_ = 0;
   // This field holds a primitive op. If the op represents a function, it
   // will be held by function_state_ below, and this field will be empty.
   CoreRuntimeOp* op_;

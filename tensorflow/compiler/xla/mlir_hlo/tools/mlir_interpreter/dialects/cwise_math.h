@@ -123,7 +123,7 @@ struct Wrap : trait {
 using Plus = detail::Wrap<std::plus, CwiseArith>;
 using Divide = detail::Wrap<std::divides, CwiseArith>;
 using Multiply = detail::Wrap<std::multiplies, CwiseArith>;
-using Minus = detail::Wrap<std::minus, CwiseArith>;
+using Minus = detail::Wrap<std::minus, CwiseAll>;
 using BitAnd = detail::Wrap<std::bit_and, CwiseIntegral>;
 using BitOr = detail::Wrap<std::bit_or, CwiseIntegral>;
 using BitXor = detail::Wrap<std::bit_xor, CwiseIntegral>;

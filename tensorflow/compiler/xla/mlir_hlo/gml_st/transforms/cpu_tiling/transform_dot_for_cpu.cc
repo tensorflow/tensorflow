@@ -91,12 +91,11 @@ struct DotTransformPattern : public OpRewritePattern<DotTy> {
       return rewriter.notifyMatchFailure(dotOp,
                                          "has already been transformed.");
     }
-    if (isa<gml_st::ParallelOp, scf::ForOp>(dotOp->getParentOp())) {
+    if (isa<scf::ForOp>(dotOp->getParentOp())) {
       return rewriter.notifyMatchFailure(
           dotOp, "has already been tiled by another pass.");
     }
 
-    // First level tiling: parallel dimensions.
     auto tilingParallelDimsResult =
         tileDot(rewriter, dotOp.getOperation(), parallelDimsTileSizes);
     if (failed(tilingParallelDimsResult)) return failure();
@@ -137,6 +136,10 @@ struct TransformDotForCpuPass
     : public impl::TransformDotForCpuPassBase<TransformDotForCpuPass> {
   TransformDotForCpuPass() = default;
 
+  explicit TransformDotForCpuPass(llvm::ArrayRef<int64_t> dotTileSizes) {
+    tileSizes = dotTileSizes;
+  }
+
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<mlir::gml_st::GmlStDialect, arith::ArithDialect,
                     linalg::LinalgDialect, scf::SCFDialect,
@@ -150,13 +153,31 @@ struct TransformDotForCpuPass
     func::FuncOp f = getOperation();
     MLIRContext *ctx = &getContext();
 
+    if (tileSizes.empty()) {
+      tileSizes = {8, 8, 8};
+    }
+    // Dot operations can have at most 3 dimensions ((upto) 2 parallel + 1
+    // reduction), so the first two tileSizes' elements are for parallel
+    // dimensions tiling, and the last element is for reduction dimension
+    // tiling.
+    // - for linalg.matmul: the whole tileSizes vector will be used.
+    // - for linalg.matvec: only the first and last elements of tileSizes are
+    // used.
+    // - for linalg.vecmat: only the second and last elements of tileSizes are
+    // used.
+    // - for linalg.dot: only the last element of tileSizes is used.
+    assert(tileSizes.size() == 3 &&
+           "Tiling sizes for Dot operations should have 3 elements");
+
     RewritePatternSet patterns(ctx);
     patterns.add<DotTransformPattern<linalg::MatvecOp>>(
-        ctx, llvm::ArrayRef<int64_t>{8, 0}, llvm::ArrayRef<int64_t>{0, 8});
+        ctx, llvm::ArrayRef<int64_t>{tileSizes[0], 0},
+        llvm::ArrayRef<int64_t>{0, tileSizes[2]});
     patterns.add<DotTransformPattern<linalg::VecmatOp>>(
-        ctx, llvm::ArrayRef<int64_t>{8, 0}, llvm::ArrayRef<int64_t>{0, 8});
+        ctx, llvm::ArrayRef<int64_t>{tileSizes[1], 0},
+        llvm::ArrayRef<int64_t>{0, tileSizes[2]});
     patterns.add<DotTransformPattern<linalg::DotOp>>(
-        ctx, llvm::ArrayRef<int64_t>{}, llvm::ArrayRef<int64_t>{8});
+        ctx, llvm::ArrayRef<int64_t>{}, llvm::ArrayRef<int64_t>{tileSizes[2]});
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();
     }
@@ -171,8 +192,8 @@ struct TransformDotForCpuPass
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createTransformDotForCpuPass() {
-  return std::make_unique<mlir::gml_st::TransformDotForCpuPass>();
+createTransformDotForCpuPass(llvm::ArrayRef<int64_t> dotTileSizes) {
+  return std::make_unique<mlir::gml_st::TransformDotForCpuPass>(dotTileSizes);
 }
 
 }  // namespace mlir::gml_st

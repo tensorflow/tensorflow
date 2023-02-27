@@ -195,8 +195,7 @@ class GpuLatencyEstimator : public ApproximateLatencyEstimator {
     // custom call is 1000, the LHS will try to schedule approximately 5 of
     // these in between each start/end pair.
     if (instr->opcode() == HloOpcode::kCustomCall) {
-      if (IsCublasGemm(*instr) || IsCustomCallToDnnConvolution(*instr) ||
-          IsSoftmaxCustomCall(*instr)) {
+      if (IsCublasGemm(*instr) || IsCustomCallToDnnConvolution(*instr)) {
         return ApproximateLatencyEstimator::kMediumCost;
       }
       // consider other custom calls as medium cost for now. Keeping the case

@@ -132,7 +132,9 @@ REQUIRED_PACKAGES = [
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
-    'wrapt >= 1.11.0',
+    # TODO(b/266362323): wrapt==1.15.0rc0 incompatible with TF 2.12.0 RC0 (and
+    # nightly, but works with TF 2.11)
+    'wrapt >= 1.11.0, <1.15',
     'tensorflow-io-gcs-filesystem >= 0.23.1;platform_machine!="arm64" or ' +
     'platform_system!="Darwin"',
     # grpcio does not build correctly on big-endian machines due to lack of

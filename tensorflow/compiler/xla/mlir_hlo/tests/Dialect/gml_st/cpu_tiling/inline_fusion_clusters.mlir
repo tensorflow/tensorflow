@@ -16,9 +16,9 @@ func.func @two_clusters(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
       }
     gml_st.yield %sorted0 : tensor<?x?xf32>
   } : tensor<?x?xf32>
-  %1 = gml_st.fusion (%arg3 = %arg2: tensor<?xf32>, %arg4 = %0: tensor<?x?xf32>) {
-    %reduced = linalg.reduce { arith.addf } ins(%arg4 : tensor<?x?xf32>) outs(%arg3 : tensor<?xf32>) dimensions = [0]
-    %mapped = linalg.map { math.exp } ins(%reduced : tensor<?xf32>) outs(%arg3 : tensor<?xf32>)
+  %1 = gml_st.fusion (%arg3 = %0: tensor<?x?xf32>, %arg4 = %arg2: tensor<?xf32>) {
+    %reduced = linalg.reduce { arith.addf } ins(%arg3 : tensor<?x?xf32>) outs(%arg4 : tensor<?xf32>) dimensions = [0]
+    %mapped = linalg.map { math.exp } ins(%reduced : tensor<?xf32>) outs(%arg4 : tensor<?xf32>)
     gml_st.yield %mapped : tensor<?xf32>
   } : tensor<?xf32>
   return %1 : tensor<?xf32>

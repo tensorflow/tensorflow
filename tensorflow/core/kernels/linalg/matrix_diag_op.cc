@@ -175,8 +175,8 @@ class MatrixDiagOp : public OpKernel {
     // additional parameters in MatrixDiagV2.
     int32_t lower_diag_index = 0;
     int32_t upper_diag_index = 0;
-    int32_t num_rows = -1;
-    int32_t num_cols = -1;
+    int64_t num_rows = -1;
+    int64_t num_cols = -1;
     T padding_value(0);
 
     // MatrixDiagOpV2-specific.
@@ -243,8 +243,10 @@ class MatrixDiagOp : public OpKernel {
                     "match the lower_diag_index and upper_diag_index range."));
 
     const Eigen::Index max_diag_len = diagonal_shape.dim_size(diag_rank - 1);
-    const int32_t min_num_rows = max_diag_len - std::min(upper_diag_index, 0);
-    const int32_t min_num_cols = max_diag_len + std::max(lower_diag_index, 0);
+    const Eigen::Index min_num_rows =
+        max_diag_len - std::min(upper_diag_index, 0);
+    const Eigen::Index min_num_cols =
+        max_diag_len + std::max(lower_diag_index, 0);
     OP_REQUIRES(context, num_rows == -1 || num_rows >= min_num_rows,
                 errors::InvalidArgument("The number of rows is too small."));
     OP_REQUIRES(context, num_cols == -1 || num_cols >= min_num_cols,

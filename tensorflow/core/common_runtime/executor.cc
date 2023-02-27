@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/activity_watcher/activity.h"
@@ -826,6 +827,18 @@ void ExecutorState<PropagatorStateType>::ProcessInline(
                       {"step_id", absl::StrCat(params.step_id)},
                       {"node_id", absl::StrCat(id)},
                       {"device", device->name()},
+                      {"inputs",
+                       absl::StrJoin(item.kernel->def().input(), "; ")},
+                      {"original_node_names",
+                       absl::StrJoin(item.kernel->def()
+                                         .experimental_debug_info()
+                                         .original_node_names(),
+                                     "; ")},
+                      {"original_func_names",
+                       absl::StrJoin(item.kernel->def()
+                                         .experimental_debug_info()
+                                         .original_func_names(),
+                                     "; ")},
                   });
             },
             /*level=*/2);

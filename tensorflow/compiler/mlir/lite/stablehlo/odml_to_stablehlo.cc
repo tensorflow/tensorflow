@@ -130,13 +130,13 @@ opt<bool> skip_resize(
     "skip-resize",
     llvm::cl::desc(
         "Skip converting tf.ResizeBilinear and tf.ResizeNearestNeighbor ops."),
-    llvm::cl::Optional, llvm::cl::init(false));
+    llvm::cl::Optional, llvm::cl::init(true));
 
 // NOLINTNEXTLINE
 opt<bool> smuggle_disallowed_ops(
     "smuggle-disallowed-ops",
     llvm::cl::desc("Smuggle disallowed ops via stablehlo.custom_calls."),
-    llvm::cl::Optional, llvm::cl::init(false));
+    llvm::cl::Optional, llvm::cl::init(true));
 
 // NOLINTNEXTLINE
 opt<bool> freeze_tf_graph(

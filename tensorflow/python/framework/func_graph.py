@@ -26,7 +26,6 @@ from tensorflow.core.function import trace_type
 from tensorflow.core.function.capture import capture_container
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
-from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.eager.polymorphic_function import composite_tensor_utils
 from tensorflow.python.framework import auto_control_deps
@@ -716,10 +715,7 @@ class FuncGraph(ops.Graph):
           self.add_capture(tensor, graph_const)
         else:
           graph_const = capture.internal
-        tape.record_operation(
-            "captured_value", [graph_const], [tensor],
-            backward_function=lambda x: [x],
-            forward_function=lambda x: [x])
+        graph_const._record_tape(tensor)  # pylint: disable=protected-access
         return graph_const
 
       # Large EagerTensors and resources are captured with Placeholder ops
@@ -773,10 +769,7 @@ class FuncGraph(ops.Graph):
       self.add_capture(tensor, placeholder)
     else:
       placeholder = capture.internal
-    tape.record_operation(
-        "captured_value", [placeholder], [tensor],
-        backward_function=lambda x: [x],
-        forward_function=lambda x: [x])
+    placeholder._record_tape(tensor)  # pylint: disable=protected-access
     return placeholder
 
   def _experimental_capture_side_input_by_ref(self, identifier: Hashable,

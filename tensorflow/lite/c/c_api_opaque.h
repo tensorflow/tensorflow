@@ -399,25 +399,40 @@ void TfLiteOpaqueContextReportErrorVa(
 // strings can be stripped out if the binary size needs to be severely
 // optimized.
 #ifndef TF_LITE_STRIP_ERROR_STRINGS
+
+#if !defined(TF_LITE_OPAQUE_KERNEL_LOG)
 #define TF_LITE_OPAQUE_KERNEL_LOG(opaque_context, ...)             \
   do {                                                             \
     TfLiteOpaqueContextReportError((opaque_context), __VA_ARGS__); \
   } while (false)
+#endif
+
+#if !defined(TF_LITE_OPAQUE_MAYBE_KERNEL_LOG)
 #define TF_LITE_OPAQUE_MAYBE_KERNEL_LOG(opaque_context, ...)         \
   do {                                                               \
     if ((opaque_context) != nullptr) {                               \
       TfLiteOpaqueContextReportError((opaque_context), __VA_ARGS__); \
     }                                                                \
   } while (false)
+#endif
+
 #else  // TF_LITE_STRIP_ERROR_STRINGS
 #define ARGS_UNUSED(...) (void)sizeof(#__VA_ARGS__)
+
+#if !defined(TF_LITE_OPAQUE_MAYBE_KERNEL_LOG)
 #define TF_LITE_OPAQUE_KERNEL_LOG(opaque_context, ...) ARGS_UNUSED(__VA_ARGS__)
+#endif
+
+#if !defined(TF_LITE_OPAQUE_MAYBE_KERNEL_LOG)
 #define TF_LITE_OPAQUE_MAYBE_KERNEL_LOG(opaque_context, ...) \
   ARGS_UNUSED(__VA_ARGS__)
+#endif
+
 #endif  // TF_LITE_STRIP_ERROR_STRINGS
 
 // Check whether value is true, and if not return kTfLiteError from
 // the current function (and report the error string msg).
+#if !defined(TF_LITE_OPAQUE_ENSURE_MSG)
 #define TF_LITE_OPAQUE_ENSURE_MSG(opaque_context, value, msg)        \
   do {                                                               \
     if (!(value)) {                                                  \
@@ -425,9 +440,11 @@ void TfLiteOpaqueContextReportErrorVa(
       return kTfLiteError;                                           \
     }                                                                \
   } while (0)
+#endif
 
 // Check whether the value `a` is true, and if not return kTfLiteError from
 // the current function, while also reporting the location of the error.
+#if !defined(TF_LITE_OPAQUE_ENSURE)
 #define TF_LITE_OPAQUE_ENSURE(opaque_context, a)                           \
   do {                                                                     \
     if (!(a)) {                                                            \
@@ -436,12 +453,14 @@ void TfLiteOpaqueContextReportErrorVa(
       return kTfLiteError;                                                 \
     }                                                                      \
   } while (0)
+#endif
 
 // Check whether the value `a == b` is true, and if not return kTfLiteError from
 // the current function, while also reporting the location of the error.
 // `a` and `b` may be evaluated more than once, so no side effects or
 // extremely expensive computations should be done.
 // NOTE: Use TF_LITE_ENSURE_TYPES_EQ if comparing TfLiteTypes.
+#if !defined(TF_LITE_OPAQUE_ENSURE_EQ)
 #define TF_LITE_OPAQUE_ENSURE_EQ(opaque_context, a, b)                         \
   do {                                                                         \
     if ((a) != (b)) {                                                          \
@@ -450,7 +469,9 @@ void TfLiteOpaqueContextReportErrorVa(
       return kTfLiteError;                                                     \
     }                                                                          \
   } while (0)
+#endif
 
+#if !defined(TF_LITE_OPAQUE_ENSURE_TYPES_EQ)
 #define TF_LITE_OPAQUE_ENSURE_TYPES_EQ(opaque_context, a, b)                   \
   do {                                                                         \
     if ((a) != (b)) {                                                          \
@@ -460,7 +481,9 @@ void TfLiteOpaqueContextReportErrorVa(
       return kTfLiteError;                                                     \
     }                                                                          \
   } while (0)
+#endif
 
+#if !defined(TF_LITE_OPAQUE_ENSURE_NEAR)
 #define TF_LITE_OPAQUE_ENSURE_NEAR(opaque_context, a, b, epsilon)            \
   do {                                                                       \
     auto delta = ((a) > (b)) ? ((a) - (b)) : ((b) - (a));                    \
@@ -471,6 +494,7 @@ void TfLiteOpaqueContextReportErrorVa(
       return kTfLiteError;                                                   \
     }                                                                        \
   } while (0)
+#endif
 
 #ifdef __cplusplus
 }  // extern "C"

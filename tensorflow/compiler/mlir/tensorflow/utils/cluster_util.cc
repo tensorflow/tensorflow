@@ -15,38 +15,80 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/cluster_util.h"
 
+#include <algorithm>
 #include <functional>
 #include <string>
 #include <vector>
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 
 namespace mlir::TF {
 
 namespace {
+
+// Exhaust search in the block to get all the ops that have data dependency of
+// the cluster.
+llvm::SetVector<Operation*> GetAllOpsDependOnCluster(
+    const Cluster& c,
+    const llvm::DenseMap<Operation*, Cluster*>& op_to_cluster_map) {
+  llvm::SetVector<Operation*> ops_depend_on_cluster;
+  for (Operation& op : *c.ops.front()->getBlock()) {
+    if (op.isBeforeInBlock(c.ops.front()) || c.ops.contains(&op)) {
+      continue;
+    }
+    // Gets the live in values of the `op`
+    llvm::SetVector<Value> live_ins(op.operand_begin(), op.operand_end());
+    getUsedValuesDefinedAbove(op.getRegions(), live_ins);
+    // Inserts if any of the `live_ins` depends on the ops in the cluster.
+    if (llvm::any_of(live_ins, [&](Value value) {
+          Operation* defining_op = value.getDefiningOp();
+          if (!defining_op) {
+            return false;
+          }
+          return c.ops.contains(defining_op) ||
+                 ops_depend_on_cluster.contains(defining_op);
+        })) {
+      ops_depend_on_cluster.insert(&op);
+    }
+  }
+  // The data dependency of the cluster includes the union of ops' data
+  // dependency. So includes all the ops in the same cluster of the op in
+  // `ops_depend_on_cluster`.
+  llvm::SetVector<Operation*> same_cluster_ops_with_dependency(
+      ops_depend_on_cluster.begin(), ops_depend_on_cluster.end());
+  for (Operation* op : ops_depend_on_cluster) {
+    Cluster* cluster = op_to_cluster_map.lookup(op);
+    if (cluster == nullptr) {
+      continue;
+    }
+    for (Operation* ops_in_same_cluster : cluster->ops) {
+      same_cluster_ops_with_dependency.insert(ops_in_same_cluster);
+    }
+  }
+  return same_cluster_ops_with_dependency;
+}
+
 // An op can be merged into cluster if it satisfies both of the following
 // conditions:
 //
-//  * All of its operands are one of the following:
-//    1) A block argument
-//    2) A value produced by other clusters.
-//    3) Defined before the cluster
-//    4) Defined by an operation in the cluster
-//    5) Defined by a constant
+//  * Merging the op into the cluster doesn't break the acyclic nature of the
+//  *   graph. This means all of its operands don't have data dependency of the
+//  *   cluster.
 //  * Merging the op into the cluster does not reorder control dependencies.
 //
-// TODO(ycao): This is not optimal as it doesn't consider the situation of
-// defining_op's operands all meet the requirements above. In that case, the
-// defining_op can be moved and to_merge op would be legal to absorb.
 bool CanMergeIntoCluster(
     const Cluster& c, Operation* to_merge,
     const TF::SideEffectAnalysis::Info& side_effect_analysis,
-    std::function<std::string(Operation*)> get_target) {
+    std::function<std::string(Operation*)> get_target,
+    const llvm::DenseMap<Operation*, Cluster*>& op_to_cluster_map) {
   // If any of the op's control predecessors appears after the last op in the
   // cluster, merging the op may cause control dependencies to be reordered.
   // Hence, the op cannot be merged to the cluster in such a case.
@@ -64,32 +106,14 @@ bool CanMergeIntoCluster(
     return false;
   }
 
-  return llvm::all_of(to_merge->getOperands(), [&](Value operand) {
-    // Block arguments.
-    if (operand.isa<BlockArgument>()) return true;
-
-    if (matchPattern(operand, m_Constant())) return true;
-
-    Operation* defining_op = operand.getDefiningOp();
-
-    // Operand produced by other islands.
-    if (defining_op->getBlock() != c.ops.front()->getBlock()) return true;
-
-    // Defining op is before the cluster.
-    if (defining_op->isBeforeInBlock(c.ops.front())) return true;
-
-    // Defining op is between first and last operation in cluster. Note that
-    // cluster may contain operations that are non-continuous in their original
-    // block, thus we also need to check defining_op is also assigned to
-    // cluster's target to be sure. This is a faster check than linearly
-    // searching through all ops in cluster.
-    if (defining_op->isBeforeInBlock(c.ops.back()->getNextNode()) &&
-        get_target(defining_op) == c.target)
-      return true;
-
-    // Other cases, operand is generated after or outside the cluster, this
-    // means it is illegal to merge operation.
-    return false;
+  // We can merge the op into the cluster if doing so doesn't break the acyclic
+  // nature of the graph. In this way, we need to check if there is any
+  // dependency from the oprands of the op to the current cluster.
+  llvm::SetVector<Operation*> ops_depend_on_cluster =
+      GetAllOpsDependOnCluster(c, op_to_cluster_map);
+  return llvm::none_of(to_merge->getOperands(), [&](Value value) {
+    Operation* defining_op = value.getDefiningOp();
+    return defining_op && ops_depend_on_cluster.contains(defining_op);
   });
 }
 }  // namespace
@@ -104,6 +128,8 @@ llvm::StringMap<SmallVector<Cluster>> BuildAllClusters(
   // of same target. If that is infeasible (say because of violating
   // def-before-use), create a new cluster with that operation and move on.
   llvm::StringMap<SmallVector<Cluster>> all_clusters;
+  // Map from operation to the cluster that contains the operation.
+  llvm::DenseMap<Operation*, Cluster*> op_to_cluster_map;
 
   llvm::StringMap<Cluster> nearest_clusters;
   for (Operation& op : llvm::make_early_inc_range(block)) {
@@ -116,7 +142,10 @@ llvm::StringMap<SmallVector<Cluster>> BuildAllClusters(
     // with op alone.
     auto it = nearest_clusters.find(target_name);
     if (it == nearest_clusters.end()) {
-      nearest_clusters[target_name] = Cluster{{&op}, target_name};
+      SetVector<Operation*> new_cluster_op_set;
+      new_cluster_op_set.insert(&op);
+      nearest_clusters[target_name] = Cluster{new_cluster_op_set, target_name};
+      op_to_cluster_map[&op] = &nearest_clusters[target_name];
       continue;
     }
 
@@ -124,8 +153,9 @@ llvm::StringMap<SmallVector<Cluster>> BuildAllClusters(
     // If positive, update cluster and move on to next operation.
     Cluster& nearest_cluster = it->second;
     if (CanMergeIntoCluster(nearest_cluster, &op, side_effect_analysis,
-                            get_target)) {
-      nearest_cluster.ops.emplace_back(&op);
+                            get_target, op_to_cluster_map)) {
+      nearest_cluster.ops.insert(&op);
+      op_to_cluster_map[&op] = &nearest_cluster;
       continue;
     }
 
@@ -135,7 +165,10 @@ llvm::StringMap<SmallVector<Cluster>> BuildAllClusters(
     all_clusters[target_name].push_back(nearest_cluster);
 
     // Create a new cluster to hold op alone and update nearest_clusters.
-    nearest_clusters[target_name] = Cluster{{&op}, target_name};
+    SetVector<Operation*> new_cluster_op_set;
+    new_cluster_op_set.insert(&op);
+    nearest_clusters[target_name] = Cluster{new_cluster_op_set, target_name};
+    op_to_cluster_map[&op] = &nearest_clusters[target_name];
   }
 
   // At the end, there might be left-over found clusters that need to be

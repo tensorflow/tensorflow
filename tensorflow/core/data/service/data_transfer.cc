@@ -91,6 +91,14 @@ void DataTransferServer::Register(std::string name, ServerFactoryT factory) {
   }
 }
 
+std::vector<std::string> DataTransferServer::RegisteredNames() {
+  std::vector<std::string> names;
+  for (const auto& [name, unused] : transfer_server_factories()) {
+    names.push_back(name);
+  }
+  return names;
+}
+
 Status DataTransferServer::Build(std::string name, GetElementT get_element,
                                  std::shared_ptr<DataTransferServer>* out) {
   mutex_lock l(*get_lock());

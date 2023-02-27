@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_
 
 #include <memory>
+#include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -329,7 +330,7 @@ namespace tf_executor {
 
 // Creates a pass to chain control outputs of while loop body.
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateTFExecutorConvertControlToDataOutputsPass();
+CreateTFExecutorConvertControlToDataOutputsPass(bool coarse_tpu_tokens = false);
 
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorCheckControlDependenciesPass();

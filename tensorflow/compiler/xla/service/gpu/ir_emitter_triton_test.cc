@@ -54,8 +54,10 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: custom_call_target="__triton",
-)");
+; CHECK: fusion(%p1, %p0)
+; CHECK-SAME: kind=kCustom
+; CHECK-SAME: backend_config="{\"block_m\":\"
+  )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
 }
@@ -73,7 +75,9 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: custom_call_target="__triton",
+; CHECK: fusion(%p1, %p0)
+; CHECK-SAME: kind=kCustom
+; CHECK-SAME: backend_config="{\"block_m\":\"
 ; CHECK-NOT: pad(
 ; CHECK-NOT: slice(
 )");
@@ -94,7 +98,9 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: custom-call(%p1, %p0), custom_call_target="__triton",
+; CHECK: fusion(%p1, %p0)
+; CHECK-SAME: kind=kCustom
+; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
@@ -116,7 +122,9 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: custom-call(%p1, %p0), custom_call_target="__triton",
+; CHECK: fusion(%p1, %p0)
+; CHECK-SAME: kind=kCustom
+; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
@@ -137,7 +145,9 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: custom-call(%transpose.2, %p0), custom_call_target="__triton"
+; CHECK: fusion(%transpose.2, %p0)
+; CHECK-SAME: kind=kCustom
+; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
@@ -158,7 +168,9 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: custom-call(%p1, %transpose), custom_call_target="__triton"
+; CHECK: fusion(%p1, %transpose)
+; CHECK-SAME: kind=kCustom
+; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
@@ -172,13 +184,15 @@ ENTRY e {
   x = f32[5,2,3] parameter(0)
   y = f16[5,3,4] parameter(1)
   cy = f32[5,3,4] convert(y)
-  ROOT dot_a = f32[5,2,4] dot(x, cy),
+  ROOT _ = f32[5,2,4] dot(x, cy),
     lhs_contracting_dims={2}, rhs_contracting_dims={1},
     lhs_batch_dims={0}, rhs_batch_dims={0}
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: custom_call_target="__triton",
+; CHECK: fusion(%y, %x)
+; CHECK-SAME: kind=kCustom
+; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-2}));
@@ -193,13 +207,15 @@ ENTRY e {
   y = f16[5,3,4] parameter(1)
   cy = f32[5,3,4] convert(y)
   x_transposed = f32[5,2,3] transpose(x), dimensions={0, 2, 1}
-  ROOT dot_a = f32[5,2,4] dot(x_transposed, cy),
+  ROOT _ = f32[5,2,4] dot(x_transposed, cy),
     lhs_contracting_dims={2}, rhs_contracting_dims={1},
     lhs_batch_dims={0}, rhs_batch_dims={0}
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: custom_call_target="__triton",
+; CHECK: fusion(%y, %x)
+; CHECK-SAME: kind=kCustom
+; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-2}));
@@ -221,8 +237,9 @@ ENTRY e {
 
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: f32[3,2,2]{2,1,0} bitcast(%Arg_1.2)
-; CHECK: custom-call(%Arg_0.1, %bitcast
-; CHECK-SAME: custom_call_target="__triton"
+; CHECK: fusion(%Arg_0.1, %bitcast
+; CHECK-SAME: kind=kCustom
+; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-4}));
@@ -300,7 +317,9 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: custom_call_target="__triton",
+; CHECK: fusion(%p0, %p1)
+; CHECK-SAME: kind=kCustom
+; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
@@ -343,7 +362,9 @@ ENTRY e {
       primitive_util::LowercasePrimitiveTypeName(params.rhs_ty), params.m,
       params.k, params.n);
   MatchOptimizedHlo(hlo_string, R"(
-; CHECK: custom_call_target="__triton",
+; CHECK: fusion(%p0, %p1)
+; CHECK-SAME: kind=kCustom
+; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{params.aabs, params.arel}));
@@ -392,7 +413,7 @@ INSTANTIATE_TEST_SUITE_P(RewriteTestSuite, ParametrizedRewriteTest,
                          GemmTestParamsParamsToString);
 
 // This group of tests compares GPU results of dots already rewritten
-// into Triton custom calls.
+// into Triton fusions.
 using CompareTest = TritonGemmTest;
 
 TEST_F(CompareTest, DifferentTilings) {
@@ -409,8 +430,7 @@ triton_dot {
 ENTRY e {
   p0 = s8[101,202]{1,0} parameter(0)
   p1 = f32[202,303]{1,0} parameter(1)
-  ROOT custom-call = f32[101,303] custom-call(p0, p1),
-    custom_call_target="__triton", called_computations={triton_dot},
+  ROOT _ = f32[101,303] fusion(p0, p1), kind=kCustom, calls=triton_dot,
     backend_config="{\"block_m\":\"128\",\"block_n\":\"64\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"3\",\"num_warps\":\"8\"}"
 })";
 
@@ -427,8 +447,7 @@ triton_dot {
 ENTRY e {
   p0 = s8[101,202]{1,0} parameter(0)
   p1 = f32[202,303]{1,0} parameter(1)
-  ROOT custom-call = f32[101,303] custom-call(p0, p1),
-    custom_call_target="__triton", called_computations={triton_dot},
+  ROOT _ = f32[101,303] fusion(p0, p1), kind=kCustom, calls=triton_dot,
     backend_config="{\"block_m\":\"32\",\"block_n\":\"128\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}"
 })";
 
@@ -463,8 +482,7 @@ triton_dot {
 ENTRY e {
   p0 = f16[5,7]{1,0} parameter(0)
   p1 = f16[7,33]{1,0} parameter(1)
-  ROOT custom-call = f16[5,33] custom-call(p0, p1),
-    custom_call_target="__triton", called_computations={triton_dot},
+  ROOT _ = f16[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
     backend_config="{\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"1\"}"
 }
 )";
@@ -500,8 +518,7 @@ triton_dot {
 ENTRY e {
   p0 = f32[5,7]{1,0} parameter(0)
   p1 = f32[7,33]{1,0} parameter(1)
-  ROOT custom-call = f32[5,33] custom-call(p0, p1),
-    custom_call_target="__triton", called_computations={triton_dot},
+  ROOT _ = f32[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
     backend_config="{\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"1\"}"
 }
 )";
@@ -524,7 +541,8 @@ ENTRY e {
   arg0 = bf16[512,16]{1,0} parameter(0)
   arg1 = bf16[512,256]{1,0} parameter(1)
   ROOT custom-call = bf16[16,256]{1,0} custom-call(arg0, arg1),
-    custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+    custom_call_target="__cublas$gemm",
+    backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
 }
 )";
 
@@ -541,8 +559,8 @@ triton_dot {
 ENTRY e {
   arg0 = bf16[512,16]{1,0} parameter(0)
   arg1 = bf16[512,256]{1,0} parameter(1)
-  ROOT _ = bf16[16,256]{1,0} custom-call(arg0, arg1),
-    custom_call_target="__triton", called_computations={triton_dot}, backend_config="{\"block_m\":\"128\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}"
+  ROOT _ = bf16[16,256]{1,0} fusion(arg0, arg1), kind=kCustom, calls=triton_dot,
+    backend_config="{\"block_m\":\"128\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}"
 }
 )";
 
@@ -559,7 +577,8 @@ ENTRY e {
   arg0 = f16[128,32]{1,0} parameter(0)
   arg1 = f16[64,32]{1,0} parameter(1)
   ROOT custom-call = f16[128,64]{1,0} custom-call(arg0, arg1),
-    custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+    custom_call_target="__cublas$gemm",
+    backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
 }
 )";
 
@@ -576,8 +595,8 @@ triton_dot {
 ENTRY e {
   arg0 = f16[128,32]{1,0} parameter(0)
   arg1 = f16[64,32]{1,0} parameter(1)
-  ROOT _ = f16[128,64]{1,0} custom-call(arg0, arg1),
-    custom_call_target="__triton", called_computations={triton_dot}, backend_config="{\"block_m\":\"128\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}"
+  ROOT _ = f16[128,64]{1,0} fusion(arg0, arg1), kind=kCustom, calls=triton_dot,
+    backend_config="{\"block_m\":\"128\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}"
 }
 )";
 
@@ -594,7 +613,8 @@ ENTRY e {
   arg0 = f32[64,128]{1,0} parameter(0)
   arg1 = f32[1024,64]{1,0} parameter(1)
   ROOT custom-call = f32[128,1024]{1,0} custom-call(arg0, arg1),
-    custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+    custom_call_target="__cublas$gemm",
+    backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
 }
 )";
 
@@ -611,8 +631,7 @@ triton_dot {
 ENTRY e {
   arg0 = f32[64,128]{1,0} parameter(0)
   arg1 = f32[1024,64]{1,0} parameter(1)
-  ROOT _ = f32[128,1024]{1,0} custom-call(arg0, arg1),
-    custom_call_target="__triton", called_computations={triton_dot},
+  ROOT _ = f32[128,1024]{1,0} fusion(arg0, arg1), kind=kCustom, calls=triton_dot,
     backend_config="{\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}"
 }
 )";
@@ -640,7 +659,8 @@ ENTRY e {
   fusion = bf16[144,256]{1,0} fusion(p0), kind=kInput, calls=fused_computation
   p1 = bf16[256,122]{1,0} parameter(1)
   ROOT custom-call = bf16[144,122]{1,0} custom-call(fusion, p1),
-    custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+    custom_call_target="__cublas$gemm",
+    backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
 }
 )";
 
@@ -657,8 +677,8 @@ triton_dot {
 ENTRY e {
   p0 = s8[144,256]{1,0} parameter(0)
   p1 = bf16[256,122]{1,0} parameter(1)
-  ROOT custom-call = bf16[144,122]{1,0} custom-call(p0, p1),
-    custom_call_target="__triton", called_computations={triton_dot}, backend_config="{\"block_m\":\"64\",\"block_n\":\"64\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"2\"}"
+  ROOT _ = bf16[144,122]{1,0} fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config="{\"block_m\":\"64\",\"block_n\":\"64\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"2\"}"
 }
 )";
 

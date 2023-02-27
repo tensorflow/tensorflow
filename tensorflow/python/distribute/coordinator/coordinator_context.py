@@ -59,14 +59,5 @@ class DispatchContext(object):
   def worker_index(self):
     return self._worker_index
 
-  def maybe_rebuild_remote_values(self, remote_value):
-    e = (
-        cluster_coordinator._maybe_rebuild_remote_values(  # pylint: disable=protected-access
-            self._worker, remote_value))
-    if e:
-      if not isinstance(e, cluster_coordinator.ClosureInputError):
-        e = cluster_coordinator.ClosureInputError(e)
-      raise e
-
   def maybe_get_remote_value(self, ret):
     return cluster_coordinator._maybe_get_remote_value(ret)  # pylint: disable=protected-access

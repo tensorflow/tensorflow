@@ -578,10 +578,12 @@ tf_cc_test(
     deps = [
         ":core",
         ":execute",
+        "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:math",
+        "//tensorflow/core/lib/monitoring:cell_reader",
     ],
 )
 

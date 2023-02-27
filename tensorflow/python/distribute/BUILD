@@ -582,6 +582,7 @@ py_library(
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/types",
     ],
 )
 

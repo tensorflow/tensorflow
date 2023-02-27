@@ -22,6 +22,11 @@ limitations under the License.
 namespace tensorflow {
 namespace tfd {
 
+constexpr char kOpKernelRunnerTableResourceName[] =
+    "OpKernelRunnerTableResourceName";
+
+constexpr char kFallbackResourceArray[] = "FallbackResourceArray";
+
 tfrt::ExecutionContext CreateFallbackTestExecutionContext(
     tfrt::HostContext* host, tfrt::ResourceContext* resource_context,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool) {
@@ -51,9 +56,17 @@ tfrt::ExecutionContext CreateFallbackTestExecutionContext(
   auto request_id = id.fetch_add(1);
   tfrt::RequestContextBuilder request_context_builder(host, resource_context,
                                                       request_id);
+  auto* runner_table =
+      resource_context->GetOrCreateResource<tfrt_stub::OpKernelRunnerTable>(
+          kOpKernelRunnerTableResourceName);
+
+  auto* resource_array =
+      resource_context->GetOrCreateResource<FallbackResourceArray>(
+          kFallbackResourceArray);
   status = SetUpKernelFallbackCompatRequestContext(
       &request_context_builder, eager_context->local_device_mgr(),
-      eager_context->pflr(), user_intra_op_threadpool);
+      eager_context->pflr(), runner_table, resource_array,
+      user_intra_op_threadpool);
   TF_DCHECK_OK(status);
 
   status = SetUpTfJitRtRequestContext(&request_context_builder);

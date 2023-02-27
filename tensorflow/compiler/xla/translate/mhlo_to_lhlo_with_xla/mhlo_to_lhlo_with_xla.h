@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_LHLO_WITH_XLA_MHLO_TO_LHLO_WITH_XLA_H_
 #define TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_LHLO_WITH_XLA_MHLO_TO_LHLO_WITH_XLA_H_
 
+#include <functional>
+#include <memory>
+#include <optional>
+#include <utility>
+
 #include "absl/types/optional.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -64,7 +68,6 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
       const xla::HloInstruction* instr);
 
   tsl::StatusOr<Operation*> EmitCustomCallOp(const xla::HloInstruction* instr);
-  tsl::StatusOr<lmhlo::FusionOp> EmitSoftmax(const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo_gpu::CholeskyOp> EmitCholesky(
       const xla::HloCustomCallInstruction* custom_call);
   tsl::StatusOr<Operation*> EmitGemm(
@@ -90,6 +93,10 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   tsl::StatusOr<lmhlo::AllToAllOp> EmitAllToAllOp(
       const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo::AllGatherOp> EmitAllGatherOp(
+      const xla::HloInstruction* instr);
+  tsl::StatusOr<lmhlo_gpu::AllGatherStartOp> EmitAllGatherStartOp(
+      const xla::HloInstruction* instr);
+  tsl::StatusOr<lmhlo_gpu::AllGatherDoneOp> EmitAllGatherDoneOp(
       const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo::AllReduceOp> EmitAllReduceOp(
       const xla::HloInstruction* instr);

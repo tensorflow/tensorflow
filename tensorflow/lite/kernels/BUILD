@@ -190,6 +190,7 @@ cc_library(
     hdrs = ["test_util.h"],
     deps = [
         ":acceleration_test_util",
+        ":kernel_util",
         ":test_delegate_providers_lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework_stable",
@@ -198,6 +199,7 @@ cc_library(
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:type_to_tflitetype",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
@@ -534,7 +536,8 @@ cc_test(
     srcs = ["test_util_test.cc"],
     deps = [
         ":test_util",
-        "//tensorflow/lite/testing:util",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
     ],
 )

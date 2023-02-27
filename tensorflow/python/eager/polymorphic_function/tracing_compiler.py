@@ -15,6 +15,7 @@
 """Tracing Compiler implementation."""
 
 import collections
+import contextlib
 import threading
 import types as types_lib
 from typing import List
@@ -30,6 +31,7 @@ from tensorflow.python.eager.polymorphic_function import function_context
 from tensorflow.python.eager.polymorphic_function import function_spec
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
 from tensorflow.python.framework import func_graph as func_graph_module
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.util import compat
@@ -360,7 +362,11 @@ class TracingCompiler:
     if concrete_function is not None:
       return concrete_function, filtered_flat_args
 
-    with monitoring.MonitoredTimer(_graph_building_time_counter.get_cell()):
+    # Use a timer for graph building only if not already inside a function. This
+    # avoids double counting graph building time for nested functions.
+    with monitoring.MonitoredTimer(
+        _graph_building_time_counter.get_cell()
+    ) if not ops.inside_function() else contextlib.nullcontext():
       with trace.Trace("tf.function-graph_building"):
         logging.vlog(
             1, "Creating new FuncGraph for Python function %r (key: %r, %r)",
@@ -386,11 +392,7 @@ class TracingCompiler:
           with func_graph.as_default():
             placeholder_bound_args = target_func_type.placeholder_arguments(
                 placeholder_context)
-          if self.function_spec.is_method:
-            # TODO(fmuham): canonicalize_function_inputs removes self arg.
-            args = placeholder_bound_args.args[1:]
-          else:
-            args = placeholder_bound_args.args
+          args = placeholder_bound_args.args
           kwargs = placeholder_bound_args.kwargs
 
           concrete_function = self._create_concrete_function(

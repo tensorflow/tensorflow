@@ -75,7 +75,6 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(
         tuple(spec.fullargspec),
         (['x', 'y', 'z'], None, None, None, [], None, {}))
-    self.assertEqual(spec.is_method, False)
     self.assertEqual(spec.input_signature, input_signature)
     self.assertEqual(spec.default_values, {})
     self.assertEqual(
@@ -140,7 +139,6 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(
         tuple(spec.fullargspec),
         (['x', 'y', 'z'], None, None, (1, 2, 3), [], None, {}))
-    self.assertEqual(spec.is_method, False)
     self.assertEqual(spec.input_signature, input_signature)
     self.assertEqual(spec.default_values, {'x': 1, 'y': 2, 'z': 3})
     self.assertEqual(
@@ -201,7 +199,6 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(
         tuple(spec.fullargspec),
         (['x', 'y', 'z'], None, None, (3,), [], None, {}))
-    self.assertEqual(spec.is_method, False)
     self.assertEqual(spec.input_signature, input_signature)
     self.assertEqual(spec.default_values, {'z': 3})
     self.assertEqual(
@@ -253,7 +250,6 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
         tuple(spec.fullargspec),
         (['my_var_args_0', 'my_var_args_1', 'my_var_args_2'
          ], None, None, None, [], None, {}))
-    self.assertEqual(spec.is_method, False)
     self.assertEqual(spec.input_signature, input_signature)
     self.assertEqual(spec.default_values, {})
     self.assertEqual(
@@ -314,7 +310,6 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
         tuple(spec.fullargspec), (['x', 'y'], None, None, None, ['z'], {
             'z': 3
         }, {}))
-    self.assertEqual(spec.is_method, False)
     self.assertEqual(spec.input_signature, input_signature)
     self.assertEqual(spec.default_values, {'z': 3})
     self.assertEqual(
@@ -372,7 +367,6 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
           (['self', 'x', 'y'], None, None, (1,), [], None, {}),
       )
 
-      self.assertEqual(spec.is_method, False)
       self.assertEqual(spec.default_values, {'y': 1})
 
       self.assertEqual(
@@ -448,9 +442,8 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
         MyClass().foo, input_signature)
     self.assertEqual(
         tuple(spec.fullargspec),
-        (['self', 'x', 'y'], None, None, (1,), [], None, {}),
+        (['x', 'y'], None, None, (1,), [], None, {}),
     )
-    self.assertEqual(spec.is_method, True)
     self.assertEqual(spec.default_values, {'y': 1})
     self.assertEqual(
         spec.function_type,
@@ -504,7 +497,6 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(
         tuple(spec.fullargspec),
         (['self', 'x', 'y'], None, None, (1,), [], None, {}))
-    self.assertEqual(spec.is_method, False)
     self.assertEqual(spec.input_signature, input_signature)
     self.assertEqual(spec.default_values, {'y': 1})
     self.assertEqual(

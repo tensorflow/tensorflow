@@ -501,8 +501,7 @@ class ExecutableManager {
   ExecutableManager() = default;
 
   // Caches the executable with ParallelExecutable.
-  const T* AddCachedExecutable(const DTensorOperation& op,
-                               tensorflow::Fprint128 cache_key, T executable);
+  const T* AddCachedExecutable(tensorflow::Fprint128 cache_key, T executable);
 
   // Returns the cache key and the cached lowered executable for the function.
   // Returns a nullptr for the lowered executable if there is a cache miss.
@@ -709,7 +708,7 @@ const T* ExecutableManager<T>::GetCachedExecutableSimple(
 
 template <typename T>
 const T* ExecutableManager<T>::AddCachedExecutable(
-    const DTensorOperation& op, tensorflow::Fprint128 cache_key, T executable) {
+    tensorflow::Fprint128 cache_key, T executable) {
   return &function_cache_.insert({cache_key, std::move(executable)})
               .first->second;
 }

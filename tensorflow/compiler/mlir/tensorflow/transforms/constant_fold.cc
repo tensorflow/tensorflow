@@ -21,10 +21,10 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/constant_fold_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/eval_util.h"
 #include "tensorflow/core/platform/mutex.h"
 
@@ -140,6 +140,7 @@ LogicalResult ConstantFoldFallbackHook(
   // should instead be per module/set from the Graph being executed in TF (if
   // any) so that the value of variables in the context could be read.
   // Note: Sharing the context is fine as ops are side-effect free.
+<<<<<<< HEAD
   auto initialize = []() -> TFE_Context* {
     std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
         TF_NewStatus(), TF_DeleteStatus);
@@ -206,6 +207,9 @@ LogicalResult ConstantFoldFallbackHook(
     return ctx;
   };
   static TFE_Context* ctx = initialize();
+=======
+  static TFE_Context* ctx = GetContextForConstantFold();
+>>>>>>> google_upstream/master
   if (!ctx) return failure();
 
   // Returns directly if any of the operands is not an elements attributes.

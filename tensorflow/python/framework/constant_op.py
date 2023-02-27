@@ -19,6 +19,7 @@ See the [constants guide](https://tensorflow.org/api_guides/python/constant_op).
 
 # Must be separate from array_ops to avoid a cyclic dependency.
 
+import contextlib
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
@@ -258,19 +259,35 @@ def constant(value, dtype=None, shape=None, name="Const"):
                         allow_broadcast=True)
 
 
+def maybe_convert_tensor_to_weak_type(tensor, weak_type):
+  """Converts the Tensor inplace, to a weakly-typed one if needed.
+
+  Args:
+    tensor: A Tensor instance in either Eager or Graph mode.
+    weak_type: Boolean type, whether `tensor` needs to be converted.
+  """
+  if weak_type and not dtypes.is_weak_type(tensor.dtype):
+    tensor._weak_dtype = dtypes.type_to_weak_type[tensor.dtype]  # pylint: disable=protected-access
+
+
 def _constant_impl(
     value, dtype, shape, name, verify_shape, allow_broadcast):
   """Implementation of constant."""
+  is_weak_type = dtypes.is_weak_type(dtype)
+
   ctx = context.context()
   if ctx.executing_eagerly():
-    if trace.enabled:
-      with trace.Trace("tf.constant"):
-        return _constant_eager_impl(ctx, value, dtype, shape, verify_shape)
-    return _constant_eager_impl(ctx, value, dtype, shape, verify_shape)
+    with contextlib.ExitStack() as stack:
+      if trace.enabled:
+        stack.enter_context(trace.Trace("tf.constant"))
+      res = _constant_eager_impl(ctx, value, dtype, shape, verify_shape)
+      maybe_convert_tensor_to_weak_type(res, is_weak_type)
+      return res
 
   const_tensor = ops._create_graph_constant(  # pylint: disable=protected-access
       value, dtype, shape, name, verify_shape, allow_broadcast
   )
+  maybe_convert_tensor_to_weak_type(const_tensor, is_weak_type)
   return const_tensor
 
 

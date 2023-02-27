@@ -295,16 +295,6 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj,
     return InvalidArgument("Array has been deleted.");
   }
   if (ifrt_array->sharding().devices().front() == to_device) {
-    if (!llvm::isa<ifrt::SingleDeviceSharding>(ifrt_array->sharding())) {
-      // Explode in order to ensure that arrays always are SingleDeviceArrays.
-      auto exploded_arrays = ifrt_array->DisassembleIntoSingleDeviceArrays(
-          ifrt::ArrayCopySemantics::kReuseInput);
-      TF_CHECK_OK(exploded_arrays.status());
-      CHECK_EQ(exploded_arrays->size(), 1);
-      return DevicePutResult(
-          std::move((*exploded_arrays)[0]), py_array.weak_type(),
-          /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(obj));
-    }
     return DevicePutResult(
         tsl::FormRef(ifrt_array), py_array.weak_type(),
         /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(obj));

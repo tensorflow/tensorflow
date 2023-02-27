@@ -83,8 +83,8 @@ class ConvertLmhloToGpuLaunchPass
 // not want to define a separate `HloOpcode`. These operations emitted as device
 // kernels (similar to fusions), and we detect such custom calls by name, and
 // handle them similar to how we handle fusions.
-static std::array<std::string_view, 3> kCustomCallIntrinsics = {
-    "SliceToDynamic", "PadToStatic", "__triton"};
+static std::array<std::string_view, 2> kCustomCallIntrinsics = {
+    "SliceToDynamic", "PadToStatic"};
 
 //===-----------------------------------------------------------------------===/
 

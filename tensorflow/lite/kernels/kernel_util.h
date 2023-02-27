@@ -297,7 +297,7 @@ TfLiteStatus GetOutputShapeFromInput(TfLiteContext* context,
                                      const TfLiteTensor* input,
                                      TfLiteIntArray** output_shape);
 
-const std::string GetShapeDebugString(const TfLiteIntArray* shape);
+std::string GetShapeDebugString(const TfLiteIntArray* shape);
 
 #endif  // !defined(TF_LITE_STATIC_MEMORY)
 

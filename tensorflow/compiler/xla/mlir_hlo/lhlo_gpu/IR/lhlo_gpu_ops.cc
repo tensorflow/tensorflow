@@ -21,6 +21,8 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <optional>
+
 #include "lhlo/utils/lhlo_utils.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -117,6 +119,18 @@ mlir::LogicalResult CollectivePermuteStartOp::verify() {
   CollectivePermuteStartOp op = *this;
   return mlir::hlo::verifyCollectivePermuteSourceTargetPairs(
       op, op.getSourceTargetPairs());
+}
+
+//===----------------------------------------------------------------------===//
+// AllGatherStartOp
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult AllGatherStartOp::verify() {
+  AllGatherStartOp op = *this;
+  return mlir::hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
+                                        /*allGroupsMustHaveSameSize=*/true,
+                                        op.getUseGlobalDeviceIds(),
+                                        /*expectedGroupSize=*/std::nullopt);
 }
 
 }  // namespace lmhlo_gpu

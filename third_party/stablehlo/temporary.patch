@@ -1,155 +1,344 @@
-diff --ruN a/stablehlo/stablehlo/reference/Ops.h b/stablehlo/stablehlo/reference/Ops.h
---- stablehlo/stablehlo/reference/Ops.h
-+++ stablehlo/stablehlo/reference/Ops.h
-@@ -34,8 +34,8 @@
- Tensor evalConstantOp(ElementsAttr value);
- Tensor evalConvertOp(const Tensor &operand, Type resultType);
- Tensor evalCosineOp(const Tensor &operand, Type resultType);
--Tensor evalDynamicSliceOp(const Tensor &operand, ArrayRef<Tensor> start_indices,
--                          ArrayRef<int64_t> slice_sizes, Type resultType);
-+Tensor evalDynamicSliceOp(const Tensor &operand, ArrayRef<Tensor> startIndices,
-+                          ArrayRef<int64_t> sliceSizes, Type resultType);
- Tensor evalDynamicUpdateSliceOp(const Tensor &operand, const Tensor &update,
-                                 ArrayRef<Tensor> startIndices, Type resultType);
- Tensor evalFloorOp(const Tensor &operand, Type resultType);
-diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
---- stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
-+++ stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
-@@ -280,6 +280,18 @@
-   %2 = stablehlo.constant dense<[3, 4]> : tensor<2xi64>
-   %3 = stablehlo.select %0, %1, %2 : tensor<2xi1>, tensor<2xi64>
-   func.return %3 : tensor<2xi64>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @eval_sign
-+func.func @eval_sign() -> tensor<3xi64> {
-+  // CHECK-NOT: stablehlo.sign
-+  // CHECK: [[RESULT:%.*]] = stablehlo.constant dense<[-1, 0, 1]> : tensor<3xi64>
-+  // CHECK: return [[RESULT]]
-+  %0 = stablehlo.constant dense<[-1, 0, 1]> : tensor<3xi64>
-+  %1 = stablehlo.sign %0 : (tensor<3xi64>) -> tensor<3xi64>
-+  func.return %1 : tensor<3xi64>
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -53,6 +53,7 @@
+ 
+ gentbl_cc_library(
+     name = "base_attr_interfaces_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-attr-interface-decls"],
+@@ -65,7 +66,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/Base.td",
+-    strip_include_prefix = ".",
+     deps = [":stablehlo_ops_td_files"],
+ )
+ 
+@@ -100,6 +100,7 @@
+ 
+ gentbl_cc_library(
+     name = "chlo_attrs_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-attrdef-decls"],
+@@ -112,7 +113,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/ChloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":chlo_ops_td_files",
+     ],
+@@ -164,6 +164,7 @@
+ 
+ gentbl_cc_library(
+     name = "chlo_enums_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-enum-decls"],
+@@ -176,7 +177,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/ChloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":chlo_ops_td_files",
+     ],
+@@ -184,6 +184,7 @@
+ 
+ gentbl_cc_library(
+     name = "chlo_ops_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-op-decls"],
+@@ -196,7 +197,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/ChloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":chlo_ops_td_files",
+     ],
+@@ -233,7 +233,10 @@
+     srcs = [
+         "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
+     ],
+-    includes = ["include", "."],
++    includes = [
++        ".",
++        "include",
++    ],
+     deps = [
+         ":chlo_ops_td_files",
+         "@llvm-project//mlir:OpBaseTdFiles",
+@@ -358,9 +361,9 @@
+     deps = [
+         ":reference_axes",
+         ":reference_element",
+-        ":reference_sizes",
+         ":reference_errors",
+         ":reference_scope",
++        ":reference_sizes",
+         ":reference_tensor",
+         ":reference_types",
+         ":stablehlo_ops",
+@@ -473,6 +476,7 @@
+ 
+ gentbl_cc_library(
+     name = "stablehlo_attrs_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-attrdef-decls"],
+@@ -485,7 +489,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/StablehloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":stablehlo_ops_td_files",
+     ],
+@@ -539,6 +542,7 @@
+ 
+ gentbl_cc_library(
+     name = "stablehlo_enums_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-enum-decls"],
+@@ -551,7 +555,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/StablehloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":stablehlo_ops_td_files",
+     ],
+@@ -559,6 +562,7 @@
+ 
+ gentbl_cc_library(
+     name = "stablehlo_ops_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-op-decls"],
+@@ -571,7 +575,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/StablehloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":stablehlo_ops_td_files",
+     ],
+@@ -634,6 +637,7 @@
+ 
+ gentbl_cc_library(
+     name = "stablehlo_pass_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             [
+@@ -644,7 +648,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/transforms/Passes.td",
+-    strip_include_prefix = ".",
+     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
+ )
+ 
+@@ -672,13 +675,13 @@
+         ":vhlo_types",
+         "@llvm-project//llvm:Support",
+         "@llvm-project//mlir:FuncDialect",
++        "@llvm-project//mlir:IR",
+         "@llvm-project//mlir:InferTypeOpInterface",
+-        "@llvm-project//mlir:IR",
+         "@llvm-project//mlir:Pass",
+         "@llvm-project//mlir:Support",
+         "@llvm-project//mlir:TensorDialect",
++        "@llvm-project//mlir:TransformUtils",
+         "@llvm-project//mlir:Transforms",
+-        "@llvm-project//mlir:TransformUtils",
+     ],
+ )
+ 
+@@ -775,6 +778,7 @@
+ 
+ gentbl_cc_library(
+     name = "test_utils_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             [
+@@ -786,7 +790,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/tests/TestUtils.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":test_utils_td_files",
+     ],
+@@ -915,7 +918,10 @@
+     srcs = [
+         "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
+     ],
+-    includes = ["include", "."],
++    includes = [
++        ".",
++        "include",
++    ],
+     deps = [
+         ":vhlo_ops_td_files",
+         "@llvm-project//mlir:OpBaseTdFiles",
+@@ -924,6 +930,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_attr_interfaces_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-attr-interface-decls"],
+@@ -936,7 +943,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloAttrs.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+@@ -944,6 +950,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_attrs_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-attrdef-decls"],
+@@ -956,7 +963,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+@@ -964,6 +970,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_enums_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-enum-decls"],
+@@ -976,7 +983,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloEnums.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+@@ -984,6 +990,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_op_interfaces_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-op-interface-decls"],
+@@ -996,7 +1003,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+@@ -1033,6 +1039,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_ops_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-op-decls"],
+@@ -1045,7 +1052,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+@@ -1094,6 +1100,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_type_interfaces_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-type-interface-decls"],
+@@ -1106,7 +1113,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloTypes.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+@@ -1114,6 +1120,7 @@
+ 
+ gentbl_cc_library(
+     name = "vhlo_types_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-typedef-decls"],
+@@ -1126,7 +1133,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/dialect/VhloOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":vhlo_ops_td_files",
+     ],
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
+--- stablehlo/stablehlo/dialect/ChloOps.td
++++ stablehlo/stablehlo/dialect/ChloOps.td
+@@ -53,7 +53,6 @@
+     and provide conversion patterns to fully materialize into lower level
+     dialects.
+   }];
+-  let useFoldAPI = kEmitFoldAdaptorFolder;
  }
  
- // -----
-diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
---- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
-+++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
-@@ -74,9 +74,36 @@
+ class CHLO_Op<string mnemonic, list<Trait> traits> :
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
+--- stablehlo/stablehlo/dialect/StablehloOps.td
++++ stablehlo/stablehlo/dialect/StablehloOps.td
+@@ -37,7 +37,6 @@
+ 
+   let useDefaultAttributePrinterParser = 0;
+   let useDefaultTypePrinterParser = 0;
+-  let useFoldAPI = kEmitFoldAdaptorFolder;
  }
  
- template <typename OpType, typename FuncType>
-+LogicalResult evalUnary(PatternRewriter& rewriter, OpType op, FuncType fn) {
-+  if (op->getNumOperands() != 1)
-+    llvm::report_fatal_error("expected one operand");
-+
-+  auto resultType = op.getResult().getType().template cast<ShapedType>();
-+  if (!resultType.hasRank() || !resultType.getElementType().isIntOrIndex())
-+    return rewriter.notifyMatchFailure(
-+        op, "expected integer or index result tensor type");
-+
-+  SmallVector<APInt> operand, result;
-+  if (failed(matchInts(op.getOperand(), operand)))
-+    return rewriter.notifyMatchFailure(op, "expected constant operand");
-+  for (const auto& operandEl : operand) {
-+    result.push_back(fn(operandEl));
-+  }
-+
-+  rewriter.replaceOpWithNewOp<ConstantOp>(
-+      op, DenseIntElementsAttr::get(resultType, result));
-+  return success();
-+}
-+
-+template <typename OpType, typename FuncType>
- LogicalResult evalBinary(PatternRewriter& rewriter, OpType op, FuncType fn) {
-   if (op->getNumOperands() != 2)
--    return rewriter.notifyMatchFailure(op, "expected two operands");
-+    llvm::report_fatal_error("expected two operands");
-+
-+  auto resultType = op.getResult().getType().template cast<ShapedType>();
-+  if (!resultType.hasRank() || !resultType.getElementType().isIntOrIndex())
-+    return rewriter.notifyMatchFailure(
-+        op, "expected integer or index result tensor type");
+ class StableHLO_Op<string mnemonic, list<Trait> traits> :
+diff --ruN a/stablehlo/stablehlo/dialect/VhloDialect.td b/stablehlo/stablehlo/dialect/VhloDialect.td
+--- stablehlo/stablehlo/dialect/VhloDialect.td
++++ stablehlo/stablehlo/dialect/VhloDialect.td
+@@ -38,7 +38,6 @@
  
-   SmallVector<APInt> lhs, rhs, result;
-   if (failed(matchInts(op.getLhs(), lhs)) ||
-@@ -87,7 +114,7 @@
-   }
- 
-   rewriter.replaceOpWithNewOp<ConstantOp>(
--      op, DenseIntElementsAttr::get(op.getResult().getType(), result));
-+      op, DenseIntElementsAttr::get(resultType, result));
-   return success();
+   let useDefaultAttributePrinterParser = 0;
+   let useDefaultTypePrinterParser = 0;
+-  let useFoldAPI = kEmitFoldAdaptorFolder;
  }
  
-@@ -191,27 +218,13 @@
-   using OpRewritePattern::OpRewritePattern;
-   LogicalResult matchAndRewrite(ConvertOp op,
-                                 PatternRewriter& rewriter) const override {
--    auto operandType = op.getOperand().getType().dyn_cast<RankedTensorType>();
-+    auto operandType = op.getOperand().getType().cast<ShapedType>();
-     auto isOperandUnsigned = operandType.getElementType().isUnsignedInteger();
--
--    auto resultType = op.getResult().getType().dyn_cast<RankedTensorType>();
--    if (!resultType || !resultType.getElementType().isIntOrIndex())
--      return rewriter.notifyMatchFailure(
--          op, "expected integer or index result element type");
--
--    SmallVector<APInt> operand, result;
--    if (failed(matchInts(op.getOperand(), operand)))
--      return rewriter.notifyMatchFailure(op, "expected constant operand");
--    for (const auto& operandEl : operand) {
--      auto resultBitwidth = resultType.getElementType().getIntOrFloatBitWidth();
--      auto resultEl =
--          APSInt(operandEl, isOperandUnsigned).extOrTrunc(resultBitwidth);
--      result.push_back(resultEl);
--    }
--
--    rewriter.replaceOpWithNewOp<ConstantOp>(
--        op, DenseIntElementsAttr::get(resultType, result));
--    return success();
-+    auto resultType = op.getResult().getType().cast<ShapedType>();
-+    auto resultBitwidth = resultType.getElementType().getIntOrFloatBitWidth();
-+    return evalUnary(rewriter, op, [&](APInt operand) {
-+      return APSInt(operand, isOperandUnsigned).extOrTrunc(resultBitwidth);
-+    });
-   }
- };
- 
-@@ -311,6 +324,25 @@
-     rewriter.replaceOpWithNewOp<ConstantOp>(
-         op, DenseIntElementsAttr::get(op.getResult().getType(), result));
-     return success();
-+  }
-+};
-+
-+struct EvalSignOpPattern : public OpRewritePattern<SignOp> {
-+  using OpRewritePattern::OpRewritePattern;
-+  LogicalResult matchAndRewrite(SignOp op,
-+                                PatternRewriter& rewriter) const override {
-+    auto resultType = op.getResult().getType().cast<ShapedType>();
-+    auto resultBitwidth = resultType.getElementType().getIntOrFloatBitWidth();
-+    return evalUnary(rewriter, op, [&](APInt operand) {
-+      int64_t result;
-+      if (operand.slt(0))
-+        result = -1;
-+      else if (operand.getSExtValue() == 0)
-+        result = 0;
-+      else
-+        result = 1;
-+      return APInt(resultBitwidth, result, /*isSigned=*/true);
-+    });
-   }
- };
- 
-@@ -983,6 +1015,7 @@
-     patterns.add<EvalRemOpPattern>(&getContext());
-     patterns.add<EvalReshapeOpPattern>(&getContext());
-     patterns.add<EvalSelectOpPattern>(&getContext());
-+    patterns.add<EvalSignOpPattern>(&getContext());
-     patterns.add<EvalSliceOpPattern>(&getContext());
-     patterns.add<EvalSubtractOpPattern>(&getContext());
-     patterns.add<RefineBitcastConvertOpPattern>(&getContext());
+ #endif
 

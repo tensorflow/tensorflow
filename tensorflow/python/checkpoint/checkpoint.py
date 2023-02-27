@@ -391,8 +391,12 @@ class _NameBasedRestoreCoordinator:
     Yields:
       SaveableObjects for `trackable`'s attributes.
     """
-    for attribute_name, saveable_factory in (
-        trackable._gather_saveables_for_checkpoint().items()):  # pylint: disable=protected-access
+    for (
+        attribute_name,
+        saveable_factory,
+    ) in saveable_object_util.saveable_objects_from_trackable(
+        trackable, tf1_saver=True,
+    ).items():
       if callable(saveable_factory):
         try:
           # This saveable object factory does not have a default name= argument,
@@ -741,7 +745,10 @@ def streaming_restore(status, session=None):
 
 def _objects_with_attributes(full_list):
   """Filters out objects with no direct variable dependencies for assertions."""
-  return [o for o in full_list if o._gather_saveables_for_checkpoint()]  # pylint: disable=protected-access
+  return [
+      o for o in full_list
+      if saveable_object_util.saveable_objects_from_trackable(o)
+  ]
 
 
 class CheckpointLoadStatus(_LoadStatus):
@@ -840,7 +847,8 @@ class CheckpointLoadStatus(_LoadStatus):
       # restoration checks.
       if (isinstance(trackable_object,
                      data_structures.TrackableDataStructure) and
-          not trackable_object._trackable_children()):  # pylint: disable=protected-access
+          not trackable_object._trackable_children(  # pylint: disable=protected-access
+              save_type=base.SaveType.CHECKPOINT)):
         continue
       self._checkpoint.all_python_objects.add(trackable_object)
     unused_python_objects = (

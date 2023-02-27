@@ -1297,10 +1297,14 @@ LogicalResult DynamicGatherOp::inferReturnTypeComponents(
 
 LogicalResult GetDimensionSizeOp::verify() { return verifyDimAttr(*this); }
 
-LogicalResult GetDimensionSizeOp::inferReturnTypes(
-    MLIRContext* context, Optional<Location> location, ValueRange,
-    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
-  return hlo::inferGetDimensionSizeOp(context, location, inferredReturnTypes);
+LogicalResult GetDimensionSizeOp::inferReturnTypeComponents(
+    MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  GetDimensionSizeOp::Adaptor adaptor(operands, attributes, regions);
+  return hlo::inferGetDimensionSizeOp(location, adaptor.getOperand().getType(),
+                                      adaptor.getDimension(),
+                                      inferredReturnShapes);
 }
 
 /// Fold get_dimension_size when the said shape dimension is a constant.
@@ -4974,21 +4978,21 @@ OpFoldResult AndOp::fold(FoldAdaptor adaptor) {
   auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
 
   if (lhsVal && lhsVal.isSplat()) {
-    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnes()) {
       return getRhs();
     }
 
-    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isZero()) {
       return lhsVal;
     }
   }
 
   if (rhsVal && rhsVal.isSplat()) {
-    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnes()) {
       return getLhs();
     }
 
-    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isZero()) {
       return rhsVal;
     }
   }
@@ -5006,21 +5010,21 @@ OpFoldResult OrOp::fold(FoldAdaptor adaptor) {
   auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
 
   if (lhsVal && lhsVal.isSplat()) {
-    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnes()) {
       return lhsVal;
     }
 
-    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isZero()) {
       return getRhs();
     }
   }
 
   if (rhsVal && rhsVal.isSplat()) {
-    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnes()) {
       return rhsVal;
     }
 
-    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isZero()) {
       return getLhs();
     }
   }
@@ -5043,13 +5047,13 @@ OpFoldResult XorOp::fold(FoldAdaptor adaptor) {
   auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
 
   if (lhsVal && lhsVal.isSplat()) {
-    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isZero()) {
       return getRhs();
     }
   }
 
   if (rhsVal && rhsVal.isSplat()) {
-    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isZero()) {
       return getLhs();
     }
   }
@@ -6111,7 +6115,7 @@ LogicalResult WhileOp::fold(FoldAdaptor /*adaptor*/,
     return failure();  // TODO(mhlo): this is an infinite loop, should we fold?
 
   results.append(getOperands().begin(), getOperands().end());
-  return success();
+  return success(!results.empty());
 }
 
 static LogicalResult whileCanonicalization(WhileOp whileOp,
@@ -6279,7 +6283,6 @@ MhloDialect::MhloDialect(MLIRContext* context)
 #define GET_ATTRDEF_LIST
 #include "mhlo/IR/hlo_ops_attrs.cc.inc"
       >();
-  context->loadDialect<tensor::TensorDialect>();
 }
 
 Type MhloDialect::parseType(DialectAsmParser& parser) const {

@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,19 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_TFRT_TPU_TPU_RESOURCES_H_
-#define TENSORFLOW_CORE_TFRT_TPU_TPU_RESOURCES_H_
 
-// This file contains stub implementations for Google internal TPU APIs.
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_CONSTANT_FOLD_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_CONSTANT_FOLD_UTILS_H_
 
-namespace tfrt {
+#include "tensorflow/c/eager/c_api.h"
 
-namespace tpu {
-class TpuModelResource {
-};
-}  // namespace tpu
+namespace mlir {
+namespace TF {
 
-inline void AddTpuResources(class ResourceContext* resource_context, tpu::TpuModelResource* tpu_model_resource) {}
-}  // namespace tfrt
+TFE_Context* GetContextForConstantFold();
 
-#endif  // TENSORFLOW_CORE_TFRT_TPU_TPU_RESOURCES_H_
+}  // namespace TF
+}  // namespace mlir
+
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_CONSTANT_FOLD_UTILS_H_

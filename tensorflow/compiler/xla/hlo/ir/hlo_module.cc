@@ -271,16 +271,12 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
   }
   if (config_.allow_spmd_sharding_propagation_to_output().size() != 1 ||
       config_.allow_spmd_sharding_propagation_to_output().back()) {
-    struct BoolFormatter {
-      void operator()(std::string* out, bool i) const {
-        out->append(i ? "true" : "false");
-      }
-    };
-    printer->Append(absl::StrCat(
-        ", allow_spmd_sharding_propagation_to_output={",
-        absl::StrJoin(config_.allow_spmd_sharding_propagation_to_output(), ",",
-                      BoolFormatter()),
-        "}"));
+    printer->Append(", allow_spmd_sharding_propagation_to_output={");
+    AppendJoin(printer, config_.allow_spmd_sharding_propagation_to_output(),
+               ",", [](Printer* printer, bool i) {
+                 printer->Append(i ? "true" : "false");
+               });
+    printer->Append("}");
   }
   printer->Append("\n\n");
   const auto& computations = options.canonicalize_computations()

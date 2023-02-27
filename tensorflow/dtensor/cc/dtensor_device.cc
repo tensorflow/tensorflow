@@ -407,7 +407,8 @@ class DTensorDevice {
   // Broadcasts `tensor` to `mesh` using replicated sharding. Returns `nullptr`
   // if it fails.
   // TODO(b/256016071): Unify this and the one in `TensorWithLayoutTf`.
-  std::unique_ptr<TensorWithLayout> Broadcast(TFE_TensorHandle* input,
+  std::unique_ptr<TensorWithLayout> Broadcast(TFE_Context* context,
+                                              TFE_TensorHandle* input,
                                               const Mesh& mesh,
                                               TF_Status* status);
 
@@ -616,7 +617,8 @@ bool DTensorDevice::is_remote_mesh(const Mesh& mesh) const {
 }
 
 std::unique_ptr<TensorWithLayout> DTensorDevice::Broadcast(
-    TFE_TensorHandle* input, const Mesh& mesh, TF_Status* status) {
+    TFE_Context* context, TFE_TensorHandle* input, const Mesh& mesh,
+    TF_Status* status) {
   const char* input_device = TFE_TensorHandleDeviceName(input, status);
   if (TF_GetCode(status) != TF_OK) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
@@ -649,7 +651,14 @@ std::unique_ptr<TensorWithLayout> DTensorDevice::Broadcast(
     TF_SetStatus(status, TF_INTERNAL, "Parallel executor is null.");
     return nullptr;
   }
-  auto tensor_with_layout_pw = parallel_executor_->Broadcast(tensor, mesh);
+  const Layout layout = Layout::ReplicatedOnMesh(mesh, tensor.dims());
+  std::optional<NodeDef> const_value =
+      ExtractSmallTensorValue(context, input, layout, status);
+  if (TF_GetCode(status) != TF_OK) {
+    return nullptr;
+  }
+  auto tensor_with_layout_pw =
+      parallel_executor_->Broadcast(tensor, mesh, const_value);
   if (!tensor_with_layout_pw.ok()) {
     TF_SetStatus(status, TF_INTERNAL,
                  tensor_with_layout_pw.status().ToString().c_str());
@@ -1453,8 +1462,8 @@ DTensorDevice::DTensorOperationToModule(
                           device_set, doperation.is_func(), *flib_def,
                           *result.graph, result.doperation_cache_key));
 
-  cached_mlir_module = module_manager_.AddCachedExecutable(
-      doperation, cache_key, mlir_module_ref.release());
+  cached_mlir_module =
+      module_manager_.AddCachedExecutable(cache_key, mlir_module_ref.release());
   result.module = **cached_mlir_module;
   return result;
 }
@@ -1544,7 +1553,7 @@ void DTensorDevice::ModuleToExecutionFunctions(
   }
 
   *execution_functions = function_manager_.AddCachedExecutable(
-      doperation, lowering_context.doperation_cache_key, std::move(functions));
+      lowering_context.doperation_cache_key, std::move(functions));
 }
 
 void DTensorDevice::ExecuteFunctionAndWait(
@@ -2092,7 +2101,7 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     std::unique_ptr<TensorWithLayout> wrapper;
     if (parallel_executor_) {
       std::unique_ptr<TensorWithLayout> tensor_with_layout =
-          Broadcast(input, mesh, status);
+          Broadcast(context, input, mesh, status);
       if (TF_GetCode(status) != TF_OK) {
         return;
       }

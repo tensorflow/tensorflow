@@ -446,11 +446,6 @@ StatusOr<bool> GpuMultiOutputFusion::Run(
   bool changed = false;
   for (auto* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    // Skip Softmax CustomCall computations.
-    if (computation->IsCustomCallComputation() &&
-        IsSoftmaxCustomCall(*computation->CustomCallInstruction())) {
-      continue;
-    }
     computation_ = computation;
     TF_ASSIGN_OR_RETURN(bool fusion_changed, DoMultiOutputFusion());
     if (fusion_changed) {

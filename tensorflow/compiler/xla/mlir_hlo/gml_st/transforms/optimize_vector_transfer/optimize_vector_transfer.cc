@@ -21,7 +21,6 @@ limitations under the License.
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
-#include "gml_st/utils/vector_utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/Hoisting.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"

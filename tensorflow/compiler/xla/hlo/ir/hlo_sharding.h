@@ -116,8 +116,11 @@ class HloSharding {
 
   OpSharding ToProto() const;
 
-  // Note that this string canonically has outer curly braces, e.g.
-  // "{replicated}".
+  // Prints the string representation of this sharding.Note that this string
+  // canonically has outer curly braces, e.g. "{replicated}".
+  void Print(Printer* printer, bool include_metadata = false) const;
+
+  // Returns the content printed by Print as a string.
   std::string ToString(bool include_metadata = false) const;
 
   // Validate that this sharding can be applied to a tensor with shape `shape`.
@@ -451,10 +454,6 @@ class HloSharding {
   // present for the root. This is a flattened list of all the leaf shardings in
   // a tuple shape, by pre-order walk (ShapeTree iterator order).
   std::vector<HloSharding> tuple_elements_;
-  // This flag is to support partial replication and partial sharding. If it is
-  // true, tile_assignment_ will have an extra dimension in addition to the data
-  // shape rank, and the added last dimension represents the subgroups of
-  // replications, i.e., elements in slice [..., :] will be replicated.
   // This field is used to track the source of this sharding, usually derived
   // from instructions. Multiple metadata may be populated if sharding is
   // combined with other shardings. Metadata are to not be populated when
@@ -472,6 +471,10 @@ class HloSharding {
   bool maximal_;
   bool tuple_;
   bool manual_;
+  // This flag is to support partial replication and partial sharding. If it is
+  // true, tile_assignment_ will have an extra dimension in addition to the data
+  // shape rank, and the added last dimension represents the subgroups of
+  // replications, i.e., elements in slice [..., :] will be replicated.
   bool replicate_on_last_tile_dim_;
 };
 

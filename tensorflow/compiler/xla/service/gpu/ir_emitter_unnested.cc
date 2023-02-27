@@ -1723,13 +1723,14 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
 }
 
 #if GOOGLE_CUDA
-Status IrEmitterUnnested::EmitTritonCustomCall(mlir::Operation* op) {
+Status IrEmitterUnnested::EmitTritonFusion(
+    mlir::Operation* op, tensorflow::AutotuneResult::TritonGemmKey& config) {
   VLOG(3) << MlirToString(op);
-  auto custom_call = mlir::cast<mlir::lmhlo::CustomCallOp>(op);
+  auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
 
   TF_ASSIGN_OR_RETURN(
       const HloComputation* hlo_computation,
-      GetOrCreateSubComputationFromRegion(&custom_call->getRegion(0),
+      GetOrCreateSubComputationFromRegion(&fusion_op->getRegion(0),
                                           /*is_fusion=*/false));
 
   const std::string fingerprint =
@@ -1738,31 +1739,14 @@ Status IrEmitterUnnested::EmitTritonCustomCall(mlir::Operation* op) {
   auto cache_it = triton_cache_.find(fingerprint);
   llvm::Function* impl_fn;
   if (cache_it == triton_cache_.end()) {
-    tensorflow::AutotuneResult::TritonGemmKey autotune_result;
-    if (!tsl::HumanReadableJsonToProto(custom_call.getBackendConfig()
-                                           .value_or(mlir::Attribute())
-                                           .dyn_cast_or_null<mlir::StringAttr>()
-                                           .str(),
-                                       &autotune_result)
-             .ok()) {
-      LOG(WARNING) << "Using fallback triton GEMM config";
-      autotune_result.set_block_m(64);
-      autotune_result.set_block_k(64);
-      autotune_result.set_block_n(64);
-      autotune_result.set_split_k(1);
-      autotune_result.set_num_stages(1);
-      autotune_result.set_num_warps(2);
-    }
-
     const std::string fn_name =
         ir_emitter_context_->name_uniquer()->GetUniqueName(
             llvm_ir::SanitizeFunctionName(
-                custom_call->getName().getStringRef().str()));
-    const std::optional<LaunchDimensions> launch_dimensions =
-        TritonWrapper(fn_name, hlo_computation,
-                      ir_emitter_context_->cuda_compute_capability(),
-                      ir_emitter_context_->gpu_device_info(), autotune_result,
-                      module_, &MatMul);
+                fusion_op->getName().getStringRef().str()));
+    const std::optional<LaunchDimensions> launch_dimensions = TritonWrapper(
+        fn_name, hlo_computation,
+        ir_emitter_context_->cuda_compute_capability(),
+        ir_emitter_context_->gpu_device_info(), config, module_, &MatMul);
     TF_RET_CHECK(launch_dimensions.has_value());
     impl_fn = module_->getFunction(fn_name);
     TF_RET_CHECK(impl_fn);
@@ -1776,7 +1760,7 @@ Status IrEmitterUnnested::EmitTritonCustomCall(mlir::Operation* op) {
   // Call the (cached) impl_fn from the wrapper_fn corresponding to this thunk.
   TF_ASSIGN_OR_RETURN(
       std::vector<llvm_ir::IrArray> ir_arrays,
-      BuildKernelThunk(custom_call, triton_cache_[fingerprint].second));
+      BuildKernelThunk(fusion_op, triton_cache_[fingerprint].second));
   std::vector<llvm::Value*> args;
   args.reserve(ir_arrays.size());
   for (const llvm_ir::IrArray& a : ir_arrays) {
@@ -1966,6 +1950,28 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
   if (HasAnyTiledTransposeRoot(fused_computation)) {
     return EmitUnnestedTranspose(fusion_op, fused_computation);
   }
+
+#if GOOGLE_CUDA
+  if (auto backend_config = fusion_op.getBackendConfig()
+                                .value_or(mlir::Attribute())
+                                .dyn_cast_or_null<mlir::StringAttr>()) {
+    tensorflow::AutotuneResult::TritonGemmKey triton_config;
+    if (backend_config == kTritonGemmBackendConfig) {
+      LOG(WARNING) << "Using fallback triton GEMM config";
+      triton_config.set_block_m(64);
+      triton_config.set_block_k(64);
+      triton_config.set_block_n(64);
+      triton_config.set_split_k(1);
+      triton_config.set_num_stages(1);
+      triton_config.set_num_warps(2);
+      return EmitTritonFusion(fusion_op, triton_config);
+    } else if (tsl::HumanReadableJsonToProto(backend_config.str(),
+                                             &triton_config)
+                   .ok()) {
+      return EmitTritonFusion(fusion_op, triton_config);
+    }
+  }
+#endif  // GOOGLE_CUDA
 
   auto fusion_results = fusion_op.getFusionResults();
   TF_RET_CHECK(!fusion_results.empty());
@@ -2189,7 +2195,7 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
     auto strides = *select_and_scatter_op.getWindowStrides();
     auto paddings = *select_and_scatter_op.getPadding();
 
-    for (auto stride_and_padding :
+    for (const auto& stride_and_padding :
          llvm::enumerate(llvm::zip(strides, paddings))) {
       const int i = stride_and_padding.index();
       int64_t stride = std::get<0>(stride_and_padding.value()).getSExtValue();
@@ -2926,16 +2932,14 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
     auto thunk =
         std::make_unique<NcclThunkType>(GetThunkInfo(op), collective_permute_op,
                                         replica_count, partition_count, buffer);
-    if constexpr (std::is_same_v<NcclThunkType,
-                                 NcclCollectivePermuteStartThunk>) {
+    if constexpr (NcclThunkType::IsAsync()) {
       async_executor = &thunk->async_executor();
     }
     AddThunkToThunkSequence(std::move(thunk));
   }
 
   // Signal that start thunk not created with nullptr.
-  if constexpr (std::is_same_v<NcclThunkType,
-                               NcclCollectivePermuteStartThunk>) {
+  if constexpr (NcclThunkType::IsAsync()) {
     async_executors_.insert({op, async_executor});
   }
   return OkStatus();
@@ -2962,7 +2966,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   // Stash relevant information in NcclCollectiveThunk::Buffer even if we may
   // not generate an NcclCollectiveThunk.
   std::vector<NcclCollectiveThunk::Buffer> buffers;
-  buffers.reserve(op.getOperands().size());
+  buffers.reserve(op.getInputs().size());
   for (auto it : llvm::zip(op.getInputs(), op.getOutputs())) {
     mlir::Value operand = std::get<0>(it);
     mlir::Value result = std::get<1>(it);
@@ -2982,7 +2986,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
         std::make_unique<NcclThunkType>(GetThunkInfo(op), op,
                                         /*buffers=*/std::move(buffers));
 
-    if constexpr (std::is_same_v<NcclThunkType, NcclAllReduceStartThunk>) {
+    if constexpr (NcclThunkType::IsAsync()) {
       async_executors_.insert({untyped_op, &thunk->async_executor()});
     }
 
@@ -2991,7 +2995,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   }
 
   // Signal that start thunk not created with nullptr.
-  if constexpr (std::is_same_v<NcclThunkType, NcclAllReduceStartThunk>) {
+  if constexpr (NcclThunkType::IsAsync()) {
     async_executors_.insert({untyped_op, nullptr});
   }
 
@@ -3633,7 +3637,8 @@ void IrEmitterUnnested::EmitTile(
   auto constant = [&](int64_t val) {
     return llvm::ConstantInt::get(index_ty, val);
   };
-  llvm::Value* num_threads_y = constant(tiling_scheme.GetNumThreadsFor(kDimY));
+  llvm::Value* num_threads_y = constant(
+      tiling_scheme.GetNumThreadsFor(tiling_scheme.GetTilingDimension(0)));
 
   KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
 
@@ -4253,22 +4258,14 @@ IrEmitterUnnested::EmitTilingKernel(
 
   int64_t non_tiling_dimension =
       tiling_scheme.GetTilingDimension(0) == 1 ? kDimZ : kDimY;
-  const IrArray::Index block_coords = [&] {
-    IrArray::Index starting_block(
-        thread_id_info.block_id,
-        ShapeUtil::MakeShapeWithDenseLayout(
-            PRED /*arbitrary*/, dims_in_blocks,
-            // This layout determines the iteration order. We want the
-            // non-tiling dimension to be the slowest varying dimension.
-            {2, 1 - non_tiling_dimension, non_tiling_dimension}),
-        &b_);
-    std::vector<llvm::Value*> multidim = starting_block.multidim();
-    multidim[non_tiling_dimension] = b_.CreateMul(
-        multidim[non_tiling_dimension],
-        constant(tiling_scheme.GetBlockTileSizeFor(non_tiling_dimension)),
-        "block_origin." + std::to_string(non_tiling_dimension));
-    return IrArray::Index(multidim, dims_in_blocks, index_ty);
-  }();
+  const IrArray::Index block_coords(
+      thread_id_info.block_id,
+      ShapeUtil::MakeShapeWithDenseLayout(
+          PRED /*arbitrary*/, dims_in_blocks,
+          // This layout determines the iteration order. We want the
+          // non-tiling dimension to be the slowest varying dimension.
+          {2, 1 - non_tiling_dimension, non_tiling_dimension}),
+      &b_);
 
   ValueVector2 tile_dimensions;
   // Coordinate access is shifted: 0 corresponds to the first non-tiling
@@ -4293,9 +4290,6 @@ IrEmitterUnnested::EmitTilingKernel(
     std::vector<llvm::Value*> elem_multi_index = block_coords.multidim();
     llvm::Type* index_ty = block_coords.GetType();
     for (int i = 0; i < kDimTot; ++i) {
-      if (i == non_tiling_dimension) {
-        continue;
-      }
       elem_multi_index[i] =
           b_.CreateMul(block_coords[i],
                        llvm::ConstantInt::get(
@@ -4638,7 +4632,7 @@ static int GetPrimitiveBitwidth(mlir::Value i) {
 static int CalculateVirtualThreadScalingFactorForReduction(
     const ReductionDimensions& reduction_dimensions,
     const se::CudaComputeCapability& cc) {
-  int dimx = reduction_dimensions.dimensions[kDimX];
+  int64_t dimx = reduction_dimensions.dimensions[kDimX];
   if (reduction_dimensions.is_row_reduction && dimx <= 128) {
     int rows_per_warp = RowReductionGetRowsPerWarp(dimx);
     if (cc.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
@@ -5483,11 +5477,6 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
       return EmitTriangularSolveCustomCall(op);
     }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if GOOGLE_CUDA
-    if (!call_target.compare(kTritonCallTarget)) {
-      return EmitTritonCustomCall(op);
-    }
-#endif  // GOOGLE_CUDA
 
     return EmitCustomCallThunk(op);
   }
@@ -5580,6 +5569,16 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
 
   if (mlir::isa<mlir::lmhlo::AllGatherOp>(op)) {
     return EmitNcclThunk<NcclAllGatherThunk, mlir::lmhlo::AllGatherOp>(op);
+  }
+
+  if (mlir::isa<mlir::lmhlo_gpu::AllGatherStartOp>(op)) {
+    return EmitNcclThunk<NcclAllGatherStartThunk,
+                         mlir::lmhlo_gpu::AllGatherStartOp>(op);
+  }
+
+  if (mlir::isa<mlir::lmhlo_gpu::AllGatherDoneOp>(op)) {
+    return EmitNcclAsyncDone<NcclAllGatherDoneThunk,
+                             mlir::lmhlo_gpu::AllGatherDoneOp>(op);
   }
 
   if (mlir::isa<mlir::lmhlo::AllReduceOp>(op)) {

@@ -48,5 +48,6 @@ cc_library(
     deps = [
         ":activity_watcher",
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/strings",
     ],
 )
