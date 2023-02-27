@@ -3994,7 +3994,7 @@ LogicalResult ConvertTFLImagOp::matchAndRewrite(
   // For non-complex inputs return all zero's.
   if (!input_ety.isa<ComplexType>()) {
     CreateReplaceOpAndInfer<tosa::ConstOp>(
-        rewriter, op, input_ty, DenseElementsAttr::get(input_ty, {0}));
+        rewriter, op, input_ty, DenseElementsAttr::get(input_ty, {0.0f}));
     return success();
   }
 
