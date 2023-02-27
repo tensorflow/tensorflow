@@ -38,6 +38,14 @@
         model and exports it if the user-defined comparison function determines
         that it is an improvement.
 
+*   `tf.function`:
+    * ConcreteFunction (`tf.types.experimental.ConcreteFunction`) as generated
+      through `get_concrete_function` now performs holistic input validation
+      similar to calling `tf.function` directly. This can cause breakages where
+      existing calls pass Tensors with the wrong shape or omit certain
+      non-Tensor arguments (including default values).
+
+
 ## Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
