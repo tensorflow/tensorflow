@@ -15,6 +15,7 @@ tensorflow/core/platform/distribute:.bzl
 tensorflow/core/tfrt/mla/mla_test_utils.h:
 tensorflow/core/tfrt/mla/mla_utils.h:
 tensorflow/core/tfrt/saved_model/saved_model_mira_impl.h:
+tensorflow/core/tfrt/tpu/tpu_resources.h:
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h:
 tensorflow/dtensor/build_defs:.bzl
 tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal:.cc
