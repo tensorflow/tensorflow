@@ -266,6 +266,7 @@ def GroupReductionDimensionsPass
            /*default=*/"true", "When simplifying reductions, prefer to use "
            "column reductions over row reductions.">,
   ];
+  let dependentDialects = ["tensor::TensorDialect"];
 }
 
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "func::FuncOp"> {

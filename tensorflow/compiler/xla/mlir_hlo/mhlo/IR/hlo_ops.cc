@@ -6283,7 +6283,6 @@ MhloDialect::MhloDialect(MLIRContext* context)
 #define GET_ATTRDEF_LIST
 #include "mhlo/IR/hlo_ops_attrs.cc.inc"
       >();
-  context->loadDialect<tensor::TensorDialect>();
 }
 
 Type MhloDialect::parseType(DialectAsmParser& parser) const {
