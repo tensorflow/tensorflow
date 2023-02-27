@@ -25,6 +25,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 
 
 class XlaCallModuleOpTest(xla_test.XLATestCase):
@@ -53,7 +54,10 @@ class XlaCallModuleOpTest(xla_test.XLATestCase):
     if self.device in ['CPU', 'XLA_CPU']:
       return 'CPU'
     elif self.device in ['GPU', 'XLA_GPU']:
-      return 'CUDA'
+      if test.is_built_with_rocm():
+        return 'ROCM'
+      else:
+        return 'CUDA'
     elif self.device in ['TPU', 'XLA_TPU']:
       return 'TPU'
     else:
@@ -302,7 +306,7 @@ module @jit_f.0 {
 }
 """
 
-    platforms = ['CPU', 'CUDA', 'TPU']
+    platforms = ['CPU', 'CUDA', 'ROCM', 'TPU']
     def f(x):
       return xla.call_module([x],
                              version=3,
@@ -311,7 +315,7 @@ module @jit_f.0 {
                              Sout=[()],
                              platforms=platforms)
 
-    expected_value = x + dict(CPU=2., CUDA=3., TPU=4.)[self.testing_platform()]
+    expected_value = x + dict(CPU=2., CUDA=3., ROCM=4., TPU=4.)[self.testing_platform()]
     self._assertOpOutputMatchesExpected(f, (x,), (expected_value,))
 
   def test_platforms_with_dim_vars(self):
@@ -382,7 +386,7 @@ module @jit_f.0 {
         self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     #  Same if the version is 2
-    platforms = ['CPU', 'CUDA', 'TPU']
+    platforms = ['CPU', 'CUDA', 'ROCM', 'TPU']
     version = 2
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
@@ -396,7 +400,7 @@ module @jit_f.0 {
         'The current platform .* is not among the platforms'):
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
-    platforms = ['CPU', 'CUDA']
+    platforms = ['CPU', 'CUDA', 'ROCM']
     if self.testing_platform() not in platforms:
       with self.assertRaisesRegex(
           errors.NotFoundError,
@@ -407,7 +411,7 @@ module @jit_f.0 {
 
     # The module cannot have i64 %arg_platform_idx
     module = module.replace('i32', 'i64')
-    platforms = ['CPU', 'CUDA', 'TPU']
+    platforms = ['CPU', 'CUDA', 'ROCM', 'TPU']
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         'Module argument at index 0 should be a 0-dimensional '
