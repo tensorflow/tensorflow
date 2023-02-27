@@ -18,6 +18,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_TRAITS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_TRAITS_H_
 
+#include <optional>
+
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -155,9 +157,19 @@ class SameOperandsAndResultTypeResolveRef
       return emitOptionalError(
           location,
           "Expected non-empty operands for [CompatibleOperandsAndResultType]");
-    auto result_ty = operands[0].getType().cast<ShapedType>();
-    for (auto ty : operands.getTypes()) {
-      result_ty = detail::MergeType(ty.cast<ShapedType>(), result_ty);
+
+    auto result_ty = operands[0].getType().dyn_cast_or_null<ShapedType>();
+    if (!result_ty) {
+      return emitOptionalError(location, "Expected shape type for operand 0");
+    }
+    for (auto [index, ty] :
+         llvm::drop_begin(llvm::enumerate(operands.getTypes()), 1)) {
+      auto shape_type = ty.dyn_cast_or_null<ShapedType>();
+      if (!shape_type) {
+        return emitOptionalError(location, "Expected shape type for operand ",
+                                 index);
+      }
+      result_ty = detail::MergeType(shape_type, result_ty);
     }
     inferredReturnShapes.push_back(result_ty);
     return success();
