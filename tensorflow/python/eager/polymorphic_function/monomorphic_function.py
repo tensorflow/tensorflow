@@ -1314,7 +1314,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     self._num_positional_args = None
 
     self._func_graph = func_graph
-    self._captured_inputs = self._func_graph.external_captures + self._func_graph.deferred_external_captures
+    self._captured_inputs = self._func_graph._function_captures.flat  # pylint: disable=protected-access
 
     # spec defines the structured signature.
     self._set_function_spec(spec)
@@ -1781,7 +1781,8 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
 
     @tf.function
     def fn():
-      deferred_tensor = ops.get_default_graph().capture_call_time_value(
+      graph = ops.get_default_graph()
+      deferred_tensor = graph.function_captures.capture_call_time_value(
           lambda: value,
           tf.TensorSpec(shape=(1,), dtype=tf.float32))
       if bool_captured_tensor:
