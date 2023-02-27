@@ -75,14 +75,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createSimplifyDeadCopyPass();
 
 /// Pass to rewrite vector.contract.
-std::unique_ptr<OperationPass<func::FuncOp>> createRewriteVectorContractPass();
-
-/// Pass to rewrite vector.transpose.
-std::unique_ptr<OperationPass<func::FuncOp>> createRewriteVectorTransposePass();
-
-/// Pass to rewrite vector.multi_reduction.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createRewriteVectorMultiReductionPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorsPass();
 
 /// Pass to optimize vector.transpose, vector.transfer_read and
 /// vector.transfer_write.

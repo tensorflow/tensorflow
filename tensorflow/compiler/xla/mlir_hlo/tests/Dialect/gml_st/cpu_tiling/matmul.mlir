@@ -14,8 +14,7 @@ func.func @matmul_static(%lhs: tensor<128x16xf32>, %rhs: tensor<16x64xf32>,
 // CHECK:           vector.transfer_read
 // CHECK-NEXT:      scf.for
 // CHECK-COUNT-2:     vector.transfer_read
-// CHECK:             vector.transpose
-// CHECK-COUNT-4:     vector.outerproduct
+// CHECK:             vector.contract
 // CHECK:             scf.yield {{.*}} : vector<4x4xf32>
 // CHECK:           vector.transfer_write
 // CHECK:           gml_st.set_yield
@@ -31,8 +30,8 @@ func.func @matmul_static(%lhs: tensor<128x16xf32>, %rhs: tensor<16x64xf32>,
 
 // PACKED:         tensor.empty() : tensor<8x16x8x1xf32>
 // PACKED-COUNT-2:   scf.for
-// PACKED:             vector.broadcast
-// PACKED:             vector.transpose
+// PACKED:           vector.transfer_read
+// PACKED:           vector.transfer_write
 // PACKED:            scf.yield %{{.*}} : tensor<8x16x8x1xf32>
 // PACKED:           scf.yield %{{.*}} : tensor<8x16x8x1xf32>
 
@@ -44,15 +43,10 @@ func.func @matmul_static(%lhs: tensor<128x16xf32>, %rhs: tensor<16x64xf32>,
 // PACKED:         scf.yield
 
 // PACKED-COUNT-2: scf.for
-// PACKED:           vector.broadcast
 // PACKED:           scf.for
 // PACKED:             vector.transfer_read
 // PACKED:             vector.transfer_read
-// PACKED:             vector.transpose
-// PACKED:             vector.transpose
-// PACKED:             vector.outerproduct
-// PACKED:             vector.broadcast
-// PACKED:             vector.broadcast
+// PACKED:             vector.contract
 // PACKED:             scf.yield
 // PACKED:           scf.yield
 // PACKED:          scf.yield
@@ -87,8 +81,7 @@ func.func @matmul(%lhs: tensor<?x?xf32>,
 // CHECK:         gml_st.parallel
 // CHECK:           scf.for
 // CHECK-COUNT-2:     vector.transfer_read
-// CHECK:             vector.transpose
-// CHECK-COUNT-4:     vector.outerproduct
+// CHECK:             vector.contract
 // CHECK-NEXT:        scf.yield %{{.*}} : vector<4x4xf32>
 // CHECK:           vector.transfer_write
 
@@ -124,8 +117,7 @@ func.func @matmul_narrow_static(%lhs: tensor<2x16xf32>, %rhs: tensor<16x64xf32>,
 // CHECK:         gml_st.parallel
 // CHECK:           scf.for
 // CHECK-COUNT-2:     vector.transfer_read
-// CHECK:             vector.transpose
-// CHECK-COUNT-4:     vector.outerproduct
+// CHECK:             vector.contract
 // CHECK:             scf.yield {{.*}} : vector<2x4xf32>
 // CHECK:           vector.transfer_write
 // CHECK:           gml_st.set_yield
@@ -141,7 +133,6 @@ func.func @matmul_narrow_static(%lhs: tensor<2x16xf32>, %rhs: tensor<16x64xf32>,
 
 // PACKED:       tensor.empty() : tensor<8x16x8x1xf32>
 // PACKED-COUNT: scf.for
-// PACKED:           vector.broadcast
 // PACKED:           vector.transpose
 // PACKED:           scf.yield %{{.*}} : tensor<8x16x8x1xf32>
 // PACKED:         scf.yield %{{.*}} : tensor<8x16x8x1xf32>
@@ -152,13 +143,8 @@ func.func @matmul_narrow_static(%lhs: tensor<2x16xf32>, %rhs: tensor<16x64xf32>,
 // PACKED:         vector.transfer_write
 // PACKED:         scf.yield %{{.*}} : tensor<1x8x2x8xf32>
 // PACKED:       scf.for
-// PACKED:         vector.broadcast
 // PACKED:         scf.for
-// PACKED:           vector.transpose
-// PACKED:           vector.transpose
-// PACKED:           vector.outerproduct
-// PACKED:           vector.broadcast
-// PACKED:           vector.broadcast
+// PACKED:           vector.contract
 // PACKED:           scf.yield %{{.*}} : vector<1x1x2x8xf32>
 // PACKED:         scf.yield
 
@@ -180,10 +166,7 @@ func.func @matmul_small_static_peeling(%lhs: tensor<2x4xf32>, %arg1: tensor<4x6x
 
 // CHECK-NOT:     gml_st.parallel
 // CHECK-NOT:     scf.for
-// CHECK:         vector.transpose
-// CHECK-COUNT-4: vector.outerproduct
-// CHECK:         vector.transpose
-// CHECK-COUNT-4: vector.outerproduct
+// CHECK:         vector.contract
 
 // -----
 
@@ -197,10 +180,9 @@ func.func @matvec_static(%lhs: tensor<1x16xf32>, %arg1: tensor<16x64xf32>,
 
 // CHECK:         gml_st.parallel
 // CHECK:           vector.transfer_read
-// CHECK-NEXT:      vector.broadcast
 // CHECK-NEXT:      scf.for
 // CHECK-COUNT-2:     vector.transfer_read
-// CHECK-COUNT-4:     vector.outerproduct
+// CHECK:             vector.contract
 // CHECK:             scf.yield {{.*}} : vector<1x4xf32>
 // CHECK:           vector.transfer_write
 // CHECK:           gml_st.set_yield

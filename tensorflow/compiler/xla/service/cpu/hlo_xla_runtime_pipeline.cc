@@ -263,13 +263,12 @@ static Status CreateHloXlaPipeline(
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
-  pm.addNestedPass<FuncOp>(mlir::gml_st::createRewriteVectorTransposePass());
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createLowerVectorsPass());
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createOptimizeVectorTransferPass());
   mlir::VectorTransferToSCFOptions vec_to_scf_options;
   vec_to_scf_options.unroll = true;
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::createConvertVectorToSCFPass(vec_to_scf_options));
-  pm.addNestedPass<FuncOp>(
-      mlir::gml_st::createRewriteVectorMultiReductionPass());
   pm.addNestedPass<FuncOp>(xla::cpu::createLegalizeI1VectorTransferOpsPass());
   pm.addNestedPass<FuncOp>(
       xla::cpu::createConvertXlaCpuMemRefElementCastToLLVMPass());

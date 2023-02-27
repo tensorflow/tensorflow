@@ -112,24 +112,9 @@ def SimplifyDeadCopyPass :
                            "::mlir::memref::MemRefDialect"];
 }
 
-def RewriteVectorContractPass :
-    Pass<"rewrite-vector-contract", "mlir::func::FuncOp"> {
-  let summary = "Pass to rewrite vector.contract.";
-  let constructor = "::mlir::gml_st::createRewriteVectorContractPass()";
-  let dependentDialects = ["::mlir::vector::VectorDialect"];
-}
-
-
-def RewriteVectorMultiReductionPass :
-    Pass<"rewrite-vector-multi-reduction", "mlir::func::FuncOp"> {
-  let summary = "Pass to rewrite vector.multi_reduction.";
-  let constructor = "::mlir::gml_st::createRewriteVectorMultiReductionPass()";
-  let dependentDialects = ["::mlir::vector::VectorDialect"];
-}
-
-def RewriteVectorTransposePass : Pass<"rewrite-vector-transpose", "mlir::func::FuncOp"> {
-  let summary = "Pass to rewrite vector.transpose.";
-  let constructor = "::mlir::gml_st::createRewriteVectorTransposePass()";
+def LowerVectorsPass : Pass<"lower-vectors", "mlir::func::FuncOp"> {
+  let summary = "Pass to lower vector operations progressively.";
+  let constructor = "::mlir::gml_st::createLowerVectorsPass()";
   let dependentDialects = [
     "::mlir::LLVM::LLVMDialect",
     "::mlir::vector::VectorDialect",
