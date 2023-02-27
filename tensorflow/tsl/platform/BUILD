@@ -1025,6 +1025,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//third_party/eigen3",
+        "@com_google_absl//absl/numeric:bits",
     ],
 )
 
