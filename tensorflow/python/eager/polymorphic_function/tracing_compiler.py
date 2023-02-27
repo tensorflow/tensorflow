@@ -110,8 +110,11 @@ class TracingCompiler:
     """
     self._python_function = python_function
     pure_function = attributes and attributes_lib.IMPLEMENTS in attributes
-    self._function_spec = function_spec.FunctionSpec.from_function_and_signature(
-        python_function, input_signature, is_pure=pure_function)
+    self._function_spec = (
+        function_spec.FunctionSpec.from_function_and_signature(
+            python_function, input_signature, is_pure=pure_function
+        )
+    )
     self._name = name
     self._autograph = autograph
     self._autograph_options = autograph_options

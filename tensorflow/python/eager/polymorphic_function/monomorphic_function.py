@@ -2231,18 +2231,5 @@ class _Marker(object):
     return str(self._s)
 
 
-def _structure_summary(structure):
-  """Displays a summary of the nesting structure of the given value."""
-
-  def type_name(x):
-    if isinstance(x, type_spec.TypeSpec):
-      return x.value_type.__name__
-    else:
-      return type(x).__name__
-
-  markers = [_Marker(type_name(v)) for v in nest.flatten(structure)]
-  return str(nest.pack_sequence_as(structure, markers))
-
-
 def _contains_type_spec(value):
   return any(isinstance(x, type_spec.TypeSpec) for x in nest.flatten(value))
