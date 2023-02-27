@@ -3444,27 +3444,37 @@ LogicalResult ConvertTFLReverseV2Op::matchAndRewrite(
 
   RankedTensorType input_type =
       tfl_reverse_op.getInput().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_reverse_op.getResult().getType().dyn_cast<RankedTensorType>();
-  if (!input_type || !output_type) return failure();
+  if (!input_type) {
+    return rewriter.notifyMatchFailure(op, "input_type is unranked");
+  }
 
   ElementsAttr axis_elems;
-  if (!matchPattern(tfl_reverse_op.getAxis(), m_Constant(&axis_elems)))
-    return failure();
+  if (!matchPattern(tfl_reverse_op.getAxis(), m_Constant(&axis_elems))) {
+    return rewriter.notifyMatchFailure(op, "axis values not constant");
+  }
 
   auto input_rank = input_type.getShape().size();
+  llvm::SmallVector<int64_t> axis_vals;
+  for (auto axis : axis_elems.getValues<APInt>()) {
+    int64_t axis_val = axis.getSExtValue();
+    if (axis_val < 0) axis_val += input_rank;
+    if (axis_val < 0 || axis_val >= input_rank) {
+      return rewriter.notifyMatchFailure(
+          op, "axis values not within range of input shape");
+    }
+    axis_vals.push_back(axis_val);
+  }
+
   Value val = tfl_reverse_op.getInput();
   if (axis_elems.getNumElements() == 0) {
     auto identity_op = CreateOpAndInfer<tosa::IdentityOp>(
-        rewriter, op->getLoc(), output_type, val);
+        rewriter, op->getLoc(), input_type, val);
     val = identity_op.getResult();
   } else {
-    for (int i = 0; i < axis_elems.getNumElements(); i++) {
-      int64_t axis_val = axis_elems.getValues<APInt>()[i].getSExtValue();
-      if (axis_val < 0) axis_val += input_rank;
+    for (auto axis_val : axis_vals) {
       auto axis_attr = rewriter.getI64IntegerAttr(axis_val);
       auto reverse_op = CreateOpAndInfer<tosa::ReverseOp>(
-          rewriter, op->getLoc(), output_type, val, axis_attr);
+          rewriter, op->getLoc(), input_type, val, axis_attr);
 
       val = reverse_op.getResult();
     }

@@ -158,13 +158,19 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   ArrayRef<int64_t> input0_tensor_shape = input_type.getShape();
   int input_tensor_rank = input0_tensor_shape.size();
 
+  if (axis < 0 || axis >= input_tensor_rank) {
+    (void)rewriter.notifyMatchFailure(
+        op, llvm::formatv("reduce axis {} is not in valid range "
+                          "[-rank(input), rank(input))",
+                          axis));
+    return std::nullopt;
+  }
+
   for (int i = 1; i < inputs.size(); i++) {
     input_type = inputs[0].getType().dyn_cast<RankedTensorType>();
     if (!input_type) {
       (void)rewriter.notifyMatchFailure(
-          op, llvm::formatv("reduce axis {} is not in valid range "
-                            "[-rank(input), rank(input))",
-                            i));
+          op, llvm::formatv("input {} is not ranked)", i));
       return std::nullopt;
     }
     ArrayRef<int64_t> next_tensor_shape = input_type.getShape();
@@ -325,7 +331,7 @@ llvm::Optional<SmallVector<Value>> convertUnpackOp(PatternRewriter& rewriter,
 
   // Negative axis allowed as long as it's within [-input_rank, input_rank).
   if (axis < 0) axis += input_rank;
-  if ((axis < 0) || (axis > input_rank)) {
+  if ((axis < 0) || (axis >= input_rank)) {
     (void)rewriter.notifyMatchFailure(op, "axis out of valid range");
     return std::nullopt;
   }
@@ -2735,6 +2741,12 @@ llvm::Optional<Value> convertReduceOpCommon(
   for (auto axis : axes_elems.getValues<IntegerAttr>()) {
     auto axis_val = axis.getInt();
     if (axis_val < 0) axis_val += input_rank;
+    if (axis_val < 0 || axis_val >= input_rank) {
+      (void)rewriter.notifyMatchFailure(
+          op, "axis values not within range of input shape");
+
+      return std::nullopt;
+    }
     axes.push_back(axis_val);
   }
 
@@ -2756,7 +2768,6 @@ llvm::Optional<Value> convertReduceOpCommon(
     }
 
     for (auto axis_val : axes) {
-      if (axis_val < 0) axis_val += input_rank;
       auto axis_attr = rewriter.getI64IntegerAttr(axis_val);
 
       shape_vec[axis_val] = 1;
@@ -2959,6 +2970,12 @@ llvm::Optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
   for (int i = 0; i < axes_elems.getNumElements(); i++) {
     int64_t axis_val = axes_elems.getValues<IntegerAttr>()[i].getInt();
     if (axis_val < 0) axis_val += input_rank;
+    if (axis_val < 0 || axis_val >= input_rank) {
+      (void)rewriter.notifyMatchFailure(
+          op, "axis values not within range of input shape");
+
+      return std::nullopt;
+    }
     num_elems_on_reduced_axis *= input_type.getShape()[axis_val];
   }
   double div_scale = 1.0 / static_cast<double>(num_elems_on_reduced_axis);
@@ -3790,8 +3807,14 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   //
   //  [Batch, LeftChannels, Non-Batch-Indices, RightChannels]
 
-  int params_rank = params_type.getShape().size();
-  int indices_rank = indices_type.getShape().size();
+  int params_rank = params_type.getRank();
+  int indices_rank = indices_type.getRank();
+
+  if (axis < 0 || axis >= params_rank) {
+    (void)rewriter.notifyMatchFailure(
+        op, llvm::formatv("axis {} must be within range of params rank", axis));
+    return std::nullopt;
+  }
 
   if (!(batch_dims <= indices_rank)) {
     (void)rewriter.notifyMatchFailure(

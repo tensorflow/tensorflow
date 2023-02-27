@@ -420,6 +420,17 @@ func.func @test_logical_not(%arg0: tensor<1x21x3xi1>) -> tensor<*xi1> {
   func.return %0 : tensor<*xi1>
 }
 
+// -----
+
+// CHECK: @test_reduce_sum_axis_out_of_bounds
+func.func @test_reduce_sum_axis_out_of_bounds(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
+  %cst = arith.constant dense<1094795585> : tensor<1xi32>
+  %0 = "tfl.sum"(%arg0, %cst)  {keep_dims = false}  : (tensor<13x21x3xf32>, tensor<1xi32>) -> tensor<21x3xf32>
+  func.return %0 : tensor<21x3xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_reduce_all_axis_1_keep_true
 // CHECK-SAME: %[[VAL_0:.+]]: tensor<1x4x8x19xi1>
 // CHECK: %[[VAL_1:.*]] = "tosa.reduce_all"(%[[VAL_0]]) {axis = 1 : i64} : (tensor<1x4x8x19xi1>) -> tensor<1x1x8x19xi1>
@@ -549,6 +560,16 @@ func.func @test_reduce_mean(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
   %cst = arith.constant dense<0> : tensor<1xi32>
   %0 = "tfl.mean"(%arg0, %cst)  {keep_dims = false}  : (tensor<13x21x3xf32>, tensor<1xi32>) -> tensor<21x3xf32>
   func.return %0 : tensor<21x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_reduce_mean_out_of_bounds
+// CHECK: "tfl.mean"
+func.func @test_reduce_mean_out_of_bounds(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
+  %cst = arith.constant dense<123> : tensor<1xi32>
+  %0 = "tfl.mean"(%arg0, %cst)  {keep_dims = false}  : (tensor<13x21x3xf32>, tensor<1xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -2370,6 +2391,27 @@ func.func @mirrorpad_symmetric(%arg0: tensor<15x23x2xf32>) -> tensor<16x24x3xf32
   %0 = "tfl.pseudo_const"() {value = dense<[[1, 0], [1, 0], [1, 0]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
   %1 = "tfl.mirror_pad"(%arg0, %0) {mode = #tfl<mirror_pad_attr SYMMETRIC>} : (tensor<15x23x2xf32>, tensor<3x2xi32>) -> tensor<16x24x3xf32>
   return %1 : tensor<16x24x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @test_reverse_works
+func.func @test_reverse_works(%arg0: tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32> {
+  // CHECK: %[[VAL0:.+]] = "tosa.reverse"(%arg0) {axis = 1 : i64}
+  // CHECK: %[[VAL1:.+]] = "tosa.reverse"(%[[VAL0]]) {axis = 2 : i64}
+  %0 = "tfl.pseudo_const"() {value = dense<[1, -2]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tfl.reverse_v2"(%arg0, %0): (tensor<1x2x3x4xf32>, tensor<2xi32>) -> tensor<1x2x3x4xf32>
+  func.return %1 : tensor<1x2x3x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @test_reverse_fail
+func.func @test_reverse_fail(%arg0: tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32> {
+  // CHECK: "tfl.reverse_v2"
+  %0 = "tfl.pseudo_const"() {value = dense<[1, 1111]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tfl.reverse_v2"(%arg0, %0): (tensor<1x2x3x4xf32>, tensor<2xi32>) -> tensor<1x2x3x4xf32>
+  func.return %1 : tensor<1x2x3x4xf32>
 }
 
 // -----
