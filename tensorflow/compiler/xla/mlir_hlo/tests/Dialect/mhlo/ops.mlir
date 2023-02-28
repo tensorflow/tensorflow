@@ -970,72 +970,19 @@ func.func @broadcast_in_dim_unranked_operand(%arg0 : tensor<*xf32>) -> tensor<2x
 
 // -----
 
-// CHECK-LABEL: if
-func.func @if(%pred : tensor<i1>, %branch_operand : tensor<2xf32>) {
+// CHECK-LABEL: func @if
+func.func @if(%pred : tensor<i1>, %branch_operand : tensor<2xf32>) -> tensor<2xf32> {
   %0 = "mhlo.if"(%pred) ({
       "mhlo.return"(%branch_operand) : (tensor<2xf32>) -> ()
     }, {
       "mhlo.return"(%branch_operand) : (tensor<2xf32>) -> ()
     }) : (tensor<i1>) -> tensor<2xf32>
-  func.return
+  func.return %0 : tensor<2xf32>
 }
 
 // -----
 
-// CHECK-LABEL: if_dynamic_op_result
-func.func @if_dynamic_op_result(%pred : tensor<i1>, %branch_operand: tensor<2xf32>) {
-  %0 = "mhlo.if"(%pred) ({
-      "mhlo.return"(%branch_operand) : (tensor<2xf32>) -> ()
-    }, {
-      "mhlo.return"(%branch_operand) : (tensor<2xf32>) -> ()
-    }) : (tensor<i1>) -> tensor<?xf32>
-  func.return
-}
-
-// -----
-
-// CHECK-LABEL: if_dynamic_branch_result
-func.func @if_dynamic_branch_result(%pred : tensor<i1>, %true_branch_eperand: tensor<2xf32>, %false_branch_eperand : tensor<?xf32>) {
-  %0 = "mhlo.if"(%pred) ({
-      "mhlo.return"(%true_branch_eperand) : (tensor<2xf32>) -> ()
-    }, {
-      "mhlo.return"(%false_branch_eperand) : (tensor<?xf32>) -> ()
-    }) : (tensor<i1>) -> tensor<2xf32>
-  func.return
-}
-
-// -----
-
-// CHECK-LABEL: if_unranked
-func.func @if_unranked(%pred : tensor<i1>, %true_branch_eperand: tensor<2xf32>, %false_branch_eperand : tensor<*xf32>) {
-  %0 = "mhlo.if"(%pred) ({
-      "mhlo.return"(%true_branch_eperand) : (tensor<2xf32>) -> ()
-    }, {
-      "mhlo.return"(%false_branch_eperand) : (tensor<*xf32>) -> ()
-    }) : (tensor<i1>) -> tensor<*xf32>
-  func.return
-}
-
-// -----
-
-// CHECK-LABEL: @if_nested_different_return_types(
-func.func @if_nested_different_return_types(%pred : tensor<i1>, %branch_operand : tensor<f32>) {
-  %0 = "mhlo.if"(%pred) ({
-      "mhlo.return"(%branch_operand) : (tensor<f32>) -> ()
-  }, {
-      %2 = "mhlo.if"(%pred) ({
-          "mhlo.return"(%pred) : (tensor<i1>) -> ()
-      }, {
-          "mhlo.return"(%pred) : (tensor<i1>) -> ()
-      }) : (tensor<i1>) -> tensor<i1>
-      "mhlo.return"(%branch_operand) : (tensor<f32>) -> ()
-  }) : (tensor<i1>) -> tensor<f32>
-  func.return
-}
-
-// -----
-
-func.func @if_unexpected_arguments_in_region_of_true_branch(%pred : tensor<i1>, %branch_operand : tensor<f32>) {
+func.func @if_c1(%pred : tensor<i1>, %branch_operand : tensor<f32>) -> tensor<f32> {
   // @expected-error@+1 {{branch 0 must have 0 arguments, but found 1}}
   %0 = "mhlo.if"(%pred) ({
       ^bb0(%arg0: tensor<f32>):
@@ -1043,12 +990,12 @@ func.func @if_unexpected_arguments_in_region_of_true_branch(%pred : tensor<i1>, 
     }, {
       "mhlo.return"(%branch_operand) : (tensor<f32>) -> ()
     }) : (tensor<i1>) -> tensor<f32>
-  func.return
+  func.return %0 : tensor<f32>
 }
 
 // -----
 
-func.func @if_unexpected_arguments_in_region_of_false_branch(%pred : tensor<i1>, %branch_operand : tensor<f32>) {
+func.func @if_c1(%pred : tensor<i1>, %branch_operand : tensor<f32>) -> tensor<f32> {
   // @expected-error@+1 {{branch 1 must have 0 arguments, but found 1}}
   %0 = "mhlo.if"(%pred) ({
       "mhlo.return"(%branch_operand) : (tensor<f32>) -> ()
@@ -1056,42 +1003,79 @@ func.func @if_unexpected_arguments_in_region_of_false_branch(%pred : tensor<i1>,
       ^bb0(%arg0: tensor<f32>):
         "mhlo.return"(%branch_operand) : (tensor<f32>) -> ()
     }) : (tensor<i1>) -> tensor<f32>
-  func.return
+  func.return %0 : tensor<f32>
 }
 
 // -----
 
-func.func @if_mismatch_types_in_branches(%pred : tensor<i1>, %true_branch_operand : tensor<3xf32>, %false_branch_operand : tensor<f32>) {
-  // @expected-error@+1 {{branch 0 and branch 1 have mismatched return types: 'tensor<3xf32>' vs 'tensor<f32>'}}
-  %0 = "mhlo.if"(%pred) ({
-      "mhlo.return"(%true_branch_operand) : (tensor<3xf32>) -> ()
-    }, {
-      "mhlo.return"(%false_branch_operand) : (tensor<f32>) -> ()
-    }) : (tensor<i1>) -> tensor<f32>
-  func.return
-}
-
-// -----
-
-func.func @if_mismatch_num_types_in_branches(%pred : tensor<i1>, %branch_operand : tensor<f32>) {
+func.func @if_c2(%pred : tensor<i1>, %branch_operand : tensor<f32>) -> tensor<f32> {
   // @expected-error@+1 {{branch 0 and branch 1 have mismatched return types: 'tensor<f32>', 'tensor<f32>' vs 'tensor<f32>'}}
   %0 = "mhlo.if"(%pred) ({
       "mhlo.return"(%branch_operand, %branch_operand) : (tensor<f32>, tensor<f32>) -> ()
     }, {
       "mhlo.return"(%branch_operand) : (tensor<f32>) -> ()
     }) : (tensor<i1>) -> tensor<f32>
-  func.return
+  func.return %0 : tensor<f32>
 }
+
 // -----
 
-func.func @if_mismatch_return_type(%pred : tensor<i1>, %branch_operand : tensor<f32>) {
+func.func @if_c3(%pred : tensor<i1>, %branch_operand : tensor<f32>) -> tensor<i32> {
   // @expected-error@+1 {{inferred type(s) 'tensor<f32>' are incompatible with return type(s) of operation 'tensor<i32>'}}
   %0 = "mhlo.if"(%pred) ({
       "mhlo.return"(%branch_operand) : (tensor<f32>) -> ()
     }, {
       "mhlo.return"(%branch_operand) : (tensor<f32>) -> ()
     }) : (tensor<i1>) -> tensor<i32>
-  func.return
+  func.return %0 : tensor<i32>
+}
+
+// -----
+
+// CHECK-LABEL: if_dynamic_branch_result
+func.func @if_dynamic_branch_result(%pred : tensor<i1>, %true_branch_operand: tensor<2xf32>, %false_branch_operand : tensor<?xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.if"(%pred) ({
+      "mhlo.return"(%true_branch_operand) : (tensor<2xf32>) -> ()
+    }, {
+      "mhlo.return"(%false_branch_operand) : (tensor<?xf32>) -> ()
+    }) : (tensor<i1>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: if_dynamic_op_result
+func.func @if_dynamic_op_result(%pred : tensor<i1>, %branch_operand: tensor<2xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.if"(%pred) ({
+      "mhlo.return"(%branch_operand) : (tensor<2xf32>) -> ()
+    }, {
+      "mhlo.return"(%branch_operand) : (tensor<2xf32>) -> ()
+    }) : (tensor<i1>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// -----
+
+func.func @if_i1(%pred : tensor<1xi1>, %branch_operand : tensor<f32>) -> tensor<f32> {
+  // @expected-error@+1 {{operand should be rank 0 tensor but got rank 1}}
+  %0 = "mhlo.if"(%pred) ({
+      "mhlo.return"(%branch_operand) : (tensor<f32>) -> ()
+    }, {
+      "mhlo.return"(%branch_operand) : (tensor<f32>) -> ()
+    }) : (tensor<1xi1>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: if_unranked
+func.func @if_unranked(%pred : tensor<i1>, %true_branch_operand: tensor<2xf32>, %false_branch_operand : tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "mhlo.if"(%pred) ({
+      "mhlo.return"(%true_branch_operand) : (tensor<2xf32>) -> ()
+    }, {
+      "mhlo.return"(%false_branch_operand) : (tensor<*xf32>) -> ()
+    }) : (tensor<i1>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
