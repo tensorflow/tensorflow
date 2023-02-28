@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "gml_st/transforms/passes.h"
+#include "mlir/Conversion/VectorToSCF/VectorToSCF.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
 #include "mlir/Dialect/X86Vector/Transforms.h"
@@ -32,7 +35,9 @@ namespace {
 #define GEN_PASS_DEF_LOWERVECTORSPASS
 #include "gml_st/transforms/passes.h.inc"
 
-LogicalResult rewriteVectorContract(MLIRContext* ctx, Operation* funcOp) {
+using func::FuncOp;
+
+LogicalResult rewriteVectorContract(MLIRContext* ctx, FuncOp funcOp) {
   // Reduce vector.contract dimensions to fit one of the lowering patterns to
   // vector.outerproduct.
   {
@@ -70,7 +75,7 @@ LogicalResult rewriteVectorContract(MLIRContext* ctx, Operation* funcOp) {
 }
 
 // Rewrite `vector.transpose` into vector.shuffle ops.
-LogicalResult rewriteVectorTranspose(MLIRContext* ctx, Operation* funcOp) {
+LogicalResult rewriteVectorTranspose(MLIRContext* ctx, FuncOp funcOp) {
   // Options for controlling specialized AVX2 lowerings. These lowerings may
   // either use intrin or inline_asm depending on needs. So they won't work for
   // SSE.
@@ -94,7 +99,7 @@ LogicalResult rewriteVectorTranspose(MLIRContext* ctx, Operation* funcOp) {
 
 // Rewrite N-D reductions as the sequence of vector operations without
 // horizontal reduction, i.e. `vector.reduction`.
-LogicalResult rewriteVectorReductionsND(MLIRContext* ctx, Operation* funcOp) {
+LogicalResult rewriteVectorReductionsND(MLIRContext* ctx, FuncOp funcOp) {
   ConversionTarget target(*ctx);
   target.addLegalDialect<arith::ArithDialect, vector::VectorDialect>();
   target.addDynamicallyLegalOp<vector::MultiDimReductionOp>(
@@ -116,6 +121,116 @@ LogicalResult rewriteVectorReductions1D(MLIRContext* ctx, Operation* op) {
   return applyPatternsAndFoldGreedily(op, std::move(patterns));
 }
 
+// Return the uses of op if they all are either StoreOp, TransferWriteOp, or
+// SubviewOp with only StoreOp/TransferWriteOp users.
+std::optional<llvm::SmallVector<Operation*>> getUsesIfAllStores(Operation* op) {
+  llvm::SmallVector<Operation*> opUses;
+  for (OpOperand& use : op->getUses()) {
+    Operation* useOp = use.getOwner();
+    if (isa<vector::TransferWriteOp, memref::StoreOp>(useOp)) {
+      opUses.push_back(useOp);
+      continue;
+    }
+    if (isa<memref::SubViewOp>(useOp)) {
+      if (auto subviewUses = getUsesIfAllStores(useOp)) {
+        opUses.insert(opUses.end(), subviewUses->begin(), subviewUses->end());
+        opUses.push_back(useOp);
+        continue;
+      }
+    }
+    return std::nullopt;
+  }
+  return opUses;
+}
+
+// Track temporary allocations that are never read from. If this is the case
+// it means both the allocations and associated stores can be removed.
+void eraseDeadAllocAndStores(func::FuncOp func) {
+  SmallVector<Operation*> opToErase;
+  func.walk([&](memref::AllocOp op) {
+    if (auto uses = getUsesIfAllStores(op)) {
+      // Insert the uses first,
+      opToErase.insert(opToErase.end(), uses->begin(), uses->end());
+      // then the op itself, since we will be erasing from opToErase's start.
+      opToErase.push_back(op.getOperation());
+    }
+  });
+  for (Operation* op : opToErase) {
+    op->erase();
+  }
+}
+
+// Pattern to canonialize tranpose where only one dimension is not unit
+// dimension. In this case the transpose is a no-op and should be simplified
+// before getting to the conversion to llvm/spirv.
+class TransposeUnitDimToShapeCast
+    : public OpRewritePattern<vector::TransposeOp> {
+ public:
+  using OpRewritePattern<vector::TransposeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::TransposeOp op,
+                                PatternRewriter& rewriter) const override {
+    unsigned numNonUnitSrcDim =
+        llvm::count_if(op.getSourceVectorType().getShape(),
+                       [](int64_t dim) { return dim != 1; });
+    if (numNonUnitSrcDim != 1) return failure();
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(
+        op, op.getResultVectorType(), op.getVector());
+    return success();
+  }
+};
+
+// Run optimization transformations on vector transfer operations.
+LogicalResult optimizeVectorTransfers(MLIRContext* ctx, FuncOp funcOp) {
+  // Generate vector.shape_cast for dropping leading one dimensions in vector
+  // ops. This increases the chance that we can forward more transfer writes
+  // to transfer reads.
+  {
+    RewritePatternSet patterns(ctx);
+    mlir::vector::populateCastAwayVectorLeadingOneDimPatterns(patterns);
+    vector::ExtractOp::getCanonicalizationPatterns(patterns, ctx);
+    patterns.add<TransposeUnitDimToShapeCast>(ctx);
+    mlir::vector::populateVectorTransferCollapseInnerMostContiguousDimsPatterns(
+        patterns);
+    if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns)))) {
+      return failure();
+    }
+  }
+
+  // Move bitcast inwards from loop region boundaries to increase chances to
+  // cancel them.
+  {
+    RewritePatternSet patterns(ctx);
+    vector::populateBubbleVectorBitCastOpPatterns(patterns);
+    if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns)))) {
+      return failure();
+    }
+  }
+
+  // Third stage of patterns to flatten transfer ops.
+  {
+    RewritePatternSet patterns(ctx);
+    mlir::vector::populateVectorTransferDropUnitDimsPatterns(patterns);
+    mlir::vector::populateFlattenVectorTransferPatterns(patterns);
+    if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns)))) {
+      return failure();
+    }
+  }
+  // Delete potential dead alloc and associated ops after store to load
+  // forwarding.
+  eraseDeadAllocAndStores(funcOp);
+  return success();
+}
+
+LogicalResult lowerVectorOpsToSCF(MLIRContext* ctx, FuncOp funcOp) {
+  RewritePatternSet patterns(ctx);
+  auto vectorTransferToSCFOptions =
+      VectorTransferToSCFOptions().enableFullUnroll(true).setTargetRank(1);
+
+  populateVectorToSCFConversionPatterns(patterns, vectorTransferToSCFOptions);
+  return applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
+}
+
 struct LowerVectorsPass : public impl::LowerVectorsPassBase<LowerVectorsPass> {
   LowerVectorsPass() = default;
 
@@ -127,6 +242,8 @@ struct LowerVectorsPass : public impl::LowerVectorsPassBase<LowerVectorsPass> {
     if (failed(rewriteVectorTranspose(ctx, funcOp))) signalPassFailure();
     if (failed(rewriteVectorReductionsND(ctx, funcOp))) signalPassFailure();
     if (failed(rewriteVectorReductions1D(ctx, funcOp))) signalPassFailure();
+    if (failed(optimizeVectorTransfers(ctx, funcOp))) signalPassFailure();
+    if (failed(lowerVectorOpsToSCF(ctx, funcOp))) signalPassFailure();
   }
 };
 }  // namespace

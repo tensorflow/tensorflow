@@ -50,7 +50,6 @@ add_mlir_library(GmlStPasses
   tiling/tiling.cc
   tiling_softmax/tiling_softmax.cc
   vectorization/lower_vectors.cc
-  vectorization/optimize_vector_transfer.cc
   vectorization/vectorization.cc
   vectorization/vectorize_copy.cc
   vectorization/vectorize_for_cpu.cc
@@ -63,11 +62,10 @@ add_mlir_library(GmlStPasses
   Core
 
   LINK_LIBS PUBLIC
-  MLIRDestinationStyleOpInterface
-  MhloDialect
-  MLIRDialectUtils
   MLIRAffineDialect
   MLIRArithDialect
+  MLIRDestinationStyleOpInterface
+  MLIRDialectUtils
   MLIRFuncDialect
   MLIRIR
   MLIRLinalgDialect
@@ -77,6 +75,9 @@ add_mlir_library(GmlStPasses
   MLIRSCFUtils
   MLIRSupport
   MLIRVectorDialect
+  MLIRVectorToSCF
+  MLIRX86VectorTransforms
+  MhloDialect
 )
 
 add_mlir_library(GmlStTransforms

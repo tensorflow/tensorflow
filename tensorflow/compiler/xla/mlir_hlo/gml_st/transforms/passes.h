@@ -77,10 +77,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createSimplifyDeadCopyPass();
 /// Pass to rewrite vector.contract.
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorsPass();
 
-/// Pass to optimize vector.transpose, vector.transfer_read and
-/// vector.transfer_write.
-std::unique_ptr<OperationPass<func::FuncOp>> createOptimizeVectorTransferPass();
-
 /// Pass to transform a thlo.scatter op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
 
