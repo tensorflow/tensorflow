@@ -2189,7 +2189,10 @@ cuda_py_test(
     srcs = ["test_util_test.py"],
     main = "test_util_test.py",
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         ":combinations",
         ":errors",
@@ -2206,6 +2209,7 @@ cuda_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/util/protobuf:compare_test_proto_py",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

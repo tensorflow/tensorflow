@@ -59,7 +59,9 @@ Alternatively:
 """
 
 import difflib
+import math
 
+from ..compat import collections_abc
 import six
 
 from google.protobuf import descriptor
@@ -67,11 +69,97 @@ from google.protobuf import descriptor_pool
 from google.protobuf import message
 from google.protobuf import text_format
 
-from ..compat import collections_abc
+
+def isClose(x, y, relative_tolerance):  # pylint: disable=invalid-name
+  """Returns True if x is close to y given the relative tolerance.
+
+  Args:
+    x: float value to be compared
+    y: float value to be compared
+    relative_tolerance: float, relative tolerance.  Returns false if x or y is
+      'inf' or 'nan'
+  """
+  return abs(x - y) <= relative_tolerance * max(abs(x), abs(y))
 
 
-def assertProtoEqual(self, a, b, check_initialized=True,  # pylint: disable=invalid-name
-                     normalize_numbers=False, msg=None):
+def checkFloatEqAndReplace(self, expected, actual, relative_tolerance):  # pylint: disable=invalid-name
+  """Recursively replaces the floats in actual with those in expected iff they are approximately equal.
+
+  This is done because string equality will consider values such as 5.0999999999
+  and 5.1 as not being equal, despite being extremely close.
+
+  Args:
+    self: googletest.TestCase
+    expected: expected values
+    actual: actual values
+    relative_tolerance: float, relative tolerance.
+  """
+
+  for expected_fields, actual_fields in zip(
+      expected.ListFields(), actual.ListFields()
+  ):
+    is_repeated = True
+    expected_desc, expected_values = expected_fields
+    actual_values = actual_fields[1]
+    if expected_desc.label != descriptor.FieldDescriptor.LABEL_REPEATED:
+      is_repeated = False
+      expected_values = [expected_values]
+      actual_values = [actual_values]
+
+    if (
+        expected_desc.type == descriptor.FieldDescriptor.TYPE_FLOAT
+        or expected_desc.type == descriptor.FieldDescriptor.TYPE_DOUBLE
+    ):
+      for i, (x, y) in enumerate(zip(expected_values, actual_values)):
+        # Replace the actual value with the expected value if the test passes,
+        # otherwise leave it and let it fail in the next test so that the error
+        # message is nicely formatted
+        if isClose(x, y, relative_tolerance):
+          if is_repeated:
+            getattr(actual, actual_fields[0].name)[i] = x
+          else:
+            setattr(actual, actual_fields[0].name, x)
+
+    if (
+        expected_desc.type == descriptor.FieldDescriptor.TYPE_MESSAGE
+        or expected_desc.type == descriptor.FieldDescriptor.TYPE_GROUP
+    ):
+      if (
+          expected_desc.type == descriptor.FieldDescriptor.TYPE_MESSAGE
+          and expected_desc.message_type.has_options
+          and expected_desc.message_type.GetOptions().map_entry
+      ):
+        # This is a map, only recurse if it has type message type.
+        if (
+            expected_desc.message_type.fields_by_number[2].type
+            == descriptor.FieldDescriptor.TYPE_MESSAGE
+        ):
+          for e_v, a_v in zip(
+              six.itervalues(expected_values), six.itervalues(actual_values)
+          ):
+            checkFloatEqAndReplace(
+                self,
+                expected=e_v,
+                actual=a_v,
+                relative_tolerance=relative_tolerance,
+            )
+      else:
+        for v, a in zip(expected_values, actual_values):
+          # recursive step
+          checkFloatEqAndReplace(
+              self, expected=v, actual=a, relative_tolerance=relative_tolerance
+          )
+
+
+def assertProtoEqual(
+    self,
+    a,
+    b,
+    check_initialized=True,
+    normalize_numbers=False,
+    msg=None,
+    relative_tolerance=None,
+):  # pylint: disable=invalid-name(
   """Fails with a useful error if a and b aren't equal.
 
   Comparison of repeated fields matches the semantics of
@@ -86,10 +174,13 @@ def assertProtoEqual(self, a, b, check_initialized=True,  # pylint: disable=inva
     normalize_numbers: boolean, whether to normalize types and precision of
       numbers before comparison.
     msg: if specified, is used as the error message on failure.
+    relative_tolerance: float, relative tolerance. If this is not provided, then
+      all floats are compared using string comparison otherwise, floating point
+      comparisons are done using the relative tolerance provided.
   """
   pool = descriptor_pool.Default()
   if isinstance(a, six.string_types):
-    a = text_format.Merge(a, b.__class__(), descriptor_pool=pool)
+    a = text_format.Parse(a, b.__class__(), descriptor_pool=pool)
 
   for pb in a, b:
     if check_initialized:
@@ -98,6 +189,15 @@ def assertProtoEqual(self, a, b, check_initialized=True,  # pylint: disable=inva
         self.fail('Initialization errors: %s\n%s' % (errors, pb))
     if normalize_numbers:
       NormalizeNumberFields(pb)
+
+  if FindNans(a):
+    self.fail('Actual contains NaNs')
+  if FindNans(b):
+    self.fail('Expected contains NaNs')
+  if relative_tolerance is not None:
+    checkFloatEqAndReplace(
+        self, expected=b, actual=a, relative_tolerance=relative_tolerance
+    )
 
   a_str = text_format.MessageToString(a, descriptor_pool=pool)
   b_str = text_format.MessageToString(b, descriptor_pool=pool)
@@ -113,6 +213,54 @@ def assertProtoEqual(self, a, b, check_initialized=True,  # pylint: disable=inva
         difflib.unified_diff(a_str.splitlines(True), b_str.splitlines(True)))
     if diff:
       self.fail('%s :\n%s' % (msg, diff))
+
+
+def FindNans(pb):
+  """Checks  number fields of type flaot and double for NaN.
+
+  Recurses into nested objects.
+
+  Args:
+    pb: proto2 message.
+
+  Returns:
+    True if pb contains NaN.
+  """
+  result = False
+  for desc, values in pb.ListFields():
+    if desc.label != descriptor.FieldDescriptor.LABEL_REPEATED:
+      values = [values]
+
+    if (
+        desc.type == descriptor.FieldDescriptor.TYPE_FLOAT
+        or desc.type == descriptor.FieldDescriptor.TYPE_DOUBLE
+    ):
+      for x in values:
+        if math.isnan(x):
+          return True
+
+    if (
+        desc.type == descriptor.FieldDescriptor.TYPE_MESSAGE
+        or desc.type == descriptor.FieldDescriptor.TYPE_GROUP
+    ):
+      if (
+          desc.type == descriptor.FieldDescriptor.TYPE_MESSAGE
+          and desc.message_type.has_options
+          and desc.message_type.GetOptions().map_entry
+      ):
+        # This is a map, only recurse if the values have a message type.
+        if (
+            desc.message_type.fields_by_number[2].type
+            == descriptor.FieldDescriptor.TYPE_MESSAGE
+        ):
+          for v in six.itervalues(values):
+            result |= FindNans(v)
+      else:
+        for v in values:
+          # recursive step
+          result |= FindNans(v)
+
+  return result
 
 
 def NormalizeNumberFields(pb):
