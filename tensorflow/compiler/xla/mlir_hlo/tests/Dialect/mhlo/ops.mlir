@@ -2374,80 +2374,80 @@ func.func @dynamic_slice_slice_size_too_large(%arg0: tensor<3x4xi32>, %arg1: ten
 // -----
 
 // CHECK-LABEL: @dynamic_update_slice
-func.func @dynamic_update_slice(%input: tensor<3x4xi64>, %update: tensor<1x4xi64>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<3x4xi64> {
-  %0 = "mhlo.dynamic_update_slice"(%input, %update, %start1, %start2) : (tensor<3x4xi64>, tensor<1x4xi64>, tensor<i64>, tensor<i64>) -> tensor<3x4xi64>
+func.func @dynamic_update_slice(%operand: tensor<3x4xi64>, %update: tensor<1x4xi64>, %start_indices0: tensor<i64>, %start_indices1: tensor<i64>) -> tensor<3x4xi64> {
+  %0 = "mhlo.dynamic_update_slice"(%operand, %update, %start_indices0, %start_indices1) : (tensor<3x4xi64>, tensor<1x4xi64>, tensor<i64>, tensor<i64>) -> tensor<3x4xi64>
+  func.return %0 : tensor<3x4xi64>
+}
+
+// -----
+
+func.func @dynamic_update_slice_c1(%operand: tensor<3x4xi64>, %update: tensor<1x4xi64>, %start_indices0: tensor<i64>, %start_indices1: tensor<i64>) -> tensor<3x5xi64> {
+  // expected-error@+1 {{op inferred type(s) 'tensor<3x4xi64>' are incompatible with return type(s) of operation 'tensor<3x5xi64>'}}
+  %0 = "mhlo.dynamic_update_slice"(%operand, %update, %start_indices0, %start_indices1) : (tensor<3x4xi64>, tensor<1x4xi64>, tensor<i64>, tensor<i64>) -> tensor<3x5xi64>
+  func.return %0 : tensor<3x5xi64>
+}
+
+// -----
+
+func.func @dynamic_update_slice_c3(%operand: tensor<3x4xi64>, %update: tensor<2xi64>, %start_indices0: tensor<i64>, %start_indices1: tensor<i64>) -> tensor<3x4xi64> {
+  // expected-error@+1 {{update rank does not match operand rank: 1 vs 2.}}
+  %0 = "mhlo.dynamic_update_slice"(%operand, %update, %start_indices0, %start_indices1) : (tensor<3x4xi64>, tensor<2xi64>, tensor<i64>, tensor<i64>) -> tensor<3x4xi64>
+  func.return %0 : tensor<3x4xi64>
+}
+
+// -----
+
+func.func @dynamic_update_slice_c4(%operand: tensor<3x4xi64>, %update: tensor<1x2xi64>, %start_indices0: tensor<i64>) -> tensor<3x4xi64> {
+  // expected-error@+1 {{expects number of start_indices to match operand rank: 1 vs 2.}}
+  %0 = "mhlo.dynamic_update_slice"(%operand, %update, %start_indices0) : (tensor<3x4xi64>, tensor<1x2xi64>, tensor<i64>) -> tensor<3x4xi64>
+  func.return %0 : tensor<3x4xi64>
+}
+
+// -----
+
+func.func @dynamic_update_slice_c5(%operand: tensor<11x3x4xi32>, %update: tensor<1x3x4xi32>, %start_indices0: tensor<i32>, %start_indices1: tensor<i64>, %start_indices2: tensor<i64>) -> tensor<11x3x4xi32> {
+  // expected-error@+1 {{start indices must have same element type}}
+  %0 = "mhlo.dynamic_update_slice"(%operand, %update, %start_indices0, %start_indices1, %start_indices2) : (tensor<11x3x4xi32>, tensor<1x3x4xi32>, tensor<i32>, tensor<i64>, tensor<i64>) -> tensor<11x3x4xi32>
+  func.return %0 : tensor<11x3x4xi32>
+}
+
+// -----
+
+func.func @dynamic_update_slice_c6(%operand: tensor<3x4xi64>, %update: tensor<1x5xi64>, %start_indices0: tensor<i64>, %start_indices1: tensor<i64>) -> tensor<3x4xi64> {
+  // expected-error@+1 {{expects size at dimension 1 of update to be in range [0, 4]. Got: 5.}}
+  %0 = "mhlo.dynamic_update_slice"(%operand, %update, %start_indices0, %start_indices1) : (tensor<3x4xi64>, tensor<1x5xi64>, tensor<i64>, tensor<i64>) -> tensor<3x4xi64>
   func.return %0 : tensor<3x4xi64>
 }
 
 // -----
 
 // CHECK-LABEL: @dynamic_update_slice_dynamic_dim
-func.func @dynamic_update_slice_dynamic_dim(%input: tensor<?x4xi64>, %update: tensor<1x4xi64>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<3x4xi64> {
-  %0 = "mhlo.dynamic_update_slice"(%input, %update, %start1, %start2) : (tensor<?x4xi64>, tensor<1x4xi64>, tensor<i64>, tensor<i64>) -> tensor<3x4xi64>
+func.func @dynamic_update_slice_dynamic_dim(%operand: tensor<?x4xi64>, %update: tensor<1x4xi64>, %start_indices0: tensor<i64>, %start_indices1: tensor<i64>) -> tensor<3x4xi64> {
+  %0 = "mhlo.dynamic_update_slice"(%operand, %update, %start_indices0, %start_indices1) : (tensor<?x4xi64>, tensor<1x4xi64>, tensor<i64>, tensor<i64>) -> tensor<3x4xi64>
   func.return %0 : tensor<3x4xi64>
 }
 
 // -----
 
-func.func @dynamic_update_slice_invalid_start(%input: tensor<3x4xi64>, %update: tensor<1x2xi64>, %start: tensor<2xi64>) -> tensor<3x4xi64> {
-  // expected-error@+1 {{operand #2 must be 0D tensor of 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer values, but got 'tensor<2xi64>'}}
-  %0 = "mhlo.dynamic_update_slice"(%input, %update, %start) : (tensor<3x4xi64>, tensor<1x2xi64>, tensor<2xi64>) -> tensor<3x4xi64>
-  func.return %0 : tensor<3x4xi64>
-}
-
-// -----
-
-func.func @dynamic_update_slice_invalid_update(%input: tensor<3x4xi64>, %update: tensor<2xi64>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<3x4xi64> {
-  // expected-error@+1 {{update rank does not match operand rank: 1 vs 2.}}
-  %0 = "mhlo.dynamic_update_slice"(%input, %update, %start1, %start2) : (tensor<3x4xi64>, tensor<2xi64>, tensor<i64>, tensor<i64>) -> tensor<3x4xi64>
-  func.return %0 : tensor<3x4xi64>
-}
-
-// -----
-
-func.func @dynamic_update_slice_invalid_start_size(%input: tensor<3x4xi64>, %update: tensor<1x2xi64>, %start: tensor<i64>) -> tensor<3x4xi64> {
-  // expected-error@+1 {{expects number of start_indices to match operand rank: 1 vs 2.}}
-  %0 = "mhlo.dynamic_update_slice"(%input, %update, %start) : (tensor<3x4xi64>, tensor<1x2xi64>, tensor<i64>) -> tensor<3x4xi64>
-  func.return %0 : tensor<3x4xi64>
-}
-
-// -----
-
-func.func @dynamic_update_slice_mismatched_start(%input: tensor<11x3x4xi32>, %update: tensor<1x3x4xi32>, %start1: tensor<i32>, %start2: tensor<i64>, %start3: tensor<i64>) -> tensor<11x3x4xi32> {
-  // expected-error@+1 {{start indices must have same element type}}
-  %0 = "mhlo.dynamic_update_slice"(%input, %update, %start1, %start2, %start3) : (tensor<11x3x4xi32>, tensor<1x3x4xi32>, tensor<i32>, tensor<i64>, tensor<i64>) -> tensor<11x3x4xi32>
-  func.return %0 : tensor<11x3x4xi32>
-}
-
-// -----
-
-func.func @dynamic_update_slice_invalid_update_size(%input: tensor<3x4xi64>, %update: tensor<1x5xi64>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<3x4xi64> {
-  // expected-error@+1 {{expects size at dimension 1 of update to be in range [0, 4]. Got: 5.}}
-  %0 = "mhlo.dynamic_update_slice"(%input, %update, %start1, %start2) : (tensor<3x4xi64>, tensor<1x5xi64>, tensor<i64>, tensor<i64>) -> tensor<3x4xi64>
-  func.return %0 : tensor<3x4xi64>
-}
-
-// -----
-
-// CHECK-LABEL: func @dynamic_update_slice_dynamic_rank_input
-func.func @dynamic_update_slice_dynamic_rank_input(%input: tensor<*xi64>, %update: tensor<1x4xi64>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<*xi64> {
-  %0 = "mhlo.dynamic_update_slice"(%input, %update, %start1, %start2) : (tensor<*xi64>, tensor<1x4xi64>, tensor<i64>, tensor<i64>) -> tensor<*xi64>
+// CHECK-LABEL: func @dynamic_update_slice_dynamic_rank_operand
+func.func @dynamic_update_slice_dynamic_rank_operand(%operand: tensor<*xi64>, %update: tensor<1x4xi64>, %start_indices0: tensor<i64>, %start_indices1: tensor<i64>) -> tensor<*xi64> {
+  %0 = "mhlo.dynamic_update_slice"(%operand, %update, %start_indices0, %start_indices1) : (tensor<*xi64>, tensor<1x4xi64>, tensor<i64>, tensor<i64>) -> tensor<*xi64>
   func.return %0 : tensor<*xi64>
 }
 
 // -----
 
 // CHECK-LABEL: func @dynamic_update_slice_dynamic_rank_update
-func.func @dynamic_update_slice_dynamic_rank_update(%input: tensor<3x4xi64>, %update: tensor<*xi64>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<3x4xi64> {
-  %0 = "mhlo.dynamic_update_slice"(%input, %update, %start1, %start2) : (tensor<3x4xi64>, tensor<*xi64>, tensor<i64>, tensor<i64>) -> tensor<3x4xi64>
+func.func @dynamic_update_slice_dynamic_rank_update(%operand: tensor<3x4xi64>, %update: tensor<*xi64>, %start_indices0: tensor<i64>, %start_indices1: tensor<i64>) -> tensor<3x4xi64> {
+  %0 = "mhlo.dynamic_update_slice"(%operand, %update, %start_indices0, %start_indices1) : (tensor<3x4xi64>, tensor<*xi64>, tensor<i64>, tensor<i64>) -> tensor<3x4xi64>
   func.return %0 : tensor<3x4xi64>
 }
 
 // -----
 
 // CHECK-LABEL: func @dynamic_update_slice_dynamic_sizes
-func.func @dynamic_update_slice_dynamic_sizes(%input: tensor<?x4xi64>, %update: tensor<1x?xi64>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<?x4xi64> {
-  %0 = "mhlo.dynamic_update_slice"(%input, %update, %start1, %start2) : (tensor<?x4xi64>, tensor<1x?xi64>, tensor<i64>, tensor<i64>) -> tensor<?x4xi64>
+func.func @dynamic_update_slice_dynamic_sizes(%operand: tensor<?x4xi64>, %update: tensor<1x?xi64>, %start_indices0: tensor<i64>, %start_indices1: tensor<i64>) -> tensor<?x4xi64> {
+  %0 = "mhlo.dynamic_update_slice"(%operand, %update, %start_indices0, %start_indices1) : (tensor<?x4xi64>, tensor<1x?xi64>, tensor<i64>, tensor<i64>) -> tensor<?x4xi64>
   func.return %0 : tensor<?x4xi64>
 }
 
