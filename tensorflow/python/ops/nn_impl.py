@@ -21,7 +21,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import candidate_sampling_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -1815,7 +1814,7 @@ def _sum_rows(x):
   # we use _sum_rows(x) in the nce_loss() computation since the loss
   # is mostly used for training.
   cols = array_ops.shape(x)[1]
-  ones_shape = array_ops_stack.stack([cols, 1])
+  ones_shape = array_ops.stack([cols, 1])
   ones = array_ops.ones(ones_shape, x.dtype)
   return array_ops.reshape(math_ops.matmul(x, ones), [-1])
 
@@ -1924,12 +1923,11 @@ def _compute_sampled_logits(weights,
 
     # true_w shape is [batch_size * num_true, dim]
     true_w = array_ops.slice(all_w, [0, 0],
-                             array_ops_stack.stack(
+                             array_ops.stack(
                                  [array_ops.shape(labels_flat)[0], -1]))
 
     sampled_w = array_ops.slice(
-        all_w,
-        array_ops_stack.stack([array_ops.shape(labels_flat)[0], 0]), [-1, -1])
+        all_w, array_ops.stack([array_ops.shape(labels_flat)[0], 0]), [-1, -1])
     # inputs has shape [batch_size, dim]
     # sampled_w has shape [num_sampled, dim]
     # Apply X*W', which yields [batch_size, num_sampled]

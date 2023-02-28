@@ -20,7 +20,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_random_index_shuffle_ops
 from tensorflow.python.ops import gen_stateless_random_ops
@@ -178,7 +177,7 @@ def _philox_scramble_seed(seed):
       [4], key=key, counter=counter, dtype=dtypes.uint32,
       alg=Algorithm.PHILOX.value)
   key = array_ops.reshape(uint32s_to_uint64(mix[:2]), [1])
-  counter = array_ops_stack.stack([0, uint32s_to_uint64(mix[2:])], axis=0)
+  counter = array_ops.stack([0, uint32s_to_uint64(mix[2:])], axis=0)
   return key, counter
 
 
@@ -263,7 +262,7 @@ def fold_in(seed, data, alg="auto_select"):
   data = ops.convert_to_tensor(data)
   seed1 = stateless_random_uniform(shape=[], seed=seed, dtype=data.dtype,
                                    minval=None, maxval=None, alg=alg)
-  return array_ops_stack.stack([seed1, data])
+  return array_ops.stack([seed1, data])
 
 
 @tf_export("random.experimental.index_shuffle")

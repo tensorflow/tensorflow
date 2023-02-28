@@ -43,7 +43,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import image_ops
@@ -73,11 +72,11 @@ class RGBToHSVTest(test_util.TensorFlowTestCase):
         batch0 = constant_op.constant(inp)
         batch1 = image_ops.rgb_to_hsv(batch0)
         batch2 = image_ops.hsv_to_rgb(batch1)
-        split0 = array_ops_stack.unstack(batch0)
+        split0 = array_ops.unstack(batch0)
         split1 = list(map(image_ops.rgb_to_hsv, split0))
         split2 = list(map(image_ops.hsv_to_rgb, split1))
-        join1 = array_ops_stack.stack(split1)
-        join2 = array_ops_stack.stack(split2)
+        join1 = array_ops.stack(split1)
+        join2 = array_ops.stack(split2)
         batch1, batch2, join1, join2 = self.evaluate(
             [batch1, batch2, join1, join2])
 
@@ -129,11 +128,11 @@ class RGBToYIQTest(test_util.TensorFlowTestCase):
         batch0 = constant_op.constant(inp)
         batch1 = image_ops.rgb_to_yiq(batch0)
         batch2 = image_ops.yiq_to_rgb(batch1)
-        split0 = array_ops_stack.unstack(batch0)
+        split0 = array_ops.unstack(batch0)
         split1 = list(map(image_ops.rgb_to_yiq, split0))
         split2 = list(map(image_ops.yiq_to_rgb, split1))
-        join1 = array_ops_stack.stack(split1)
-        join2 = array_ops_stack.stack(split2)
+        join1 = array_ops.stack(split1)
+        join2 = array_ops.stack(split2)
         batch1, batch2, join1, join2 = self.evaluate(
             [batch1, batch2, join1, join2])
 
@@ -161,11 +160,11 @@ class RGBToYUVTest(test_util.TensorFlowTestCase):
         batch0 = constant_op.constant(inp)
         batch1 = image_ops.rgb_to_yuv(batch0)
         batch2 = image_ops.yuv_to_rgb(batch1)
-        split0 = array_ops_stack.unstack(batch0)
+        split0 = array_ops.unstack(batch0)
         split1 = list(map(image_ops.rgb_to_yuv, split0))
         split2 = list(map(image_ops.yuv_to_rgb, split1))
-        join1 = array_ops_stack.stack(split1)
-        join2 = array_ops_stack.stack(split2)
+        join1 = array_ops.stack(split1)
+        join2 = array_ops.stack(split2)
         batch1, batch2, join1, join2 = self.evaluate(
             [batch1, batch2, join1, join2])
 

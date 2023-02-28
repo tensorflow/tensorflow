@@ -17,7 +17,6 @@
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -185,8 +184,8 @@ def confusion_matrix(labels,
       predictions.get_shape().assert_is_compatible_with(weights.get_shape())
       weights = math_ops.cast(weights, dtype)
 
-    shape = array_ops_stack.stack([num_classes, num_classes])
-    indices = array_ops_stack.stack([labels, predictions], axis=1)
+    shape = array_ops.stack([num_classes, num_classes])
+    indices = array_ops.stack([labels, predictions], axis=1)
     values = (array_ops.ones_like(predictions, dtype)
               if weights is None else weights)
     return array_ops.scatter_nd(

@@ -17,7 +17,6 @@
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import math_ops
 
@@ -364,13 +363,13 @@ def _RGBToHSVGrad(op, grad):
   dh_db = dh_db / 360
 
   # Gradients wrt to inputs
-  dv_drgb = array_ops_stack.stack(
+  dv_drgb = array_ops.stack(
       [grad[..., 2] * dv_dr, grad[..., 2] * dv_dg, grad[..., 2] * dv_db],
       axis=-1)
-  ds_drgb = array_ops_stack.stack(
+  ds_drgb = array_ops.stack(
       [grad[..., 1] * ds_dr, grad[..., 1] * ds_dg, grad[..., 1] * ds_db],
       axis=-1)
-  dh_drgb = array_ops_stack.stack(
+  dh_drgb = array_ops.stack(
       [grad[..., 0] * dh_dr, grad[..., 0] * dh_dg, grad[..., 0] * dh_db],
       axis=-1)
 

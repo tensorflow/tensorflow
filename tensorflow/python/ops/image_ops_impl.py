@@ -27,7 +27,6 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
@@ -113,7 +112,7 @@ def _ImageDimensions(image, rank):
     return image.get_shape().as_list()
   else:
     static_shape = image.get_shape().with_rank(rank).as_list()
-    dynamic_shape = array_ops_stack.unstack(array_ops.shape(image), rank)
+    dynamic_shape = array_ops.unstack(array_ops.shape(image), rank)
     return [
         s if s is not None else d for s, d in zip(static_shape, dynamic_shape)
     ]
@@ -973,11 +972,11 @@ def central_crop(image, central_fraction):
     bbox_w_size = img_w - bbox_w_start * 2
 
     if rank == 3:
-      bbox_begin = array_ops_stack.stack([bbox_h_start, bbox_w_start, 0])
-      bbox_size = array_ops_stack.stack([bbox_h_size, bbox_w_size, -1])
+      bbox_begin = array_ops.stack([bbox_h_start, bbox_w_start, 0])
+      bbox_size = array_ops.stack([bbox_h_size, bbox_w_size, -1])
     else:
-      bbox_begin = array_ops_stack.stack([0, bbox_h_start, bbox_w_start, 0])
-      bbox_size = array_ops_stack.stack([-1, bbox_h_size, bbox_w_size, -1])
+      bbox_begin = array_ops.stack([0, bbox_h_start, bbox_w_start, 0])
+      bbox_size = array_ops.stack([-1, bbox_h_size, bbox_w_size, -1])
 
     image = array_ops.slice(image, bbox_begin, bbox_size)
 
@@ -1137,7 +1136,7 @@ def pad_to_bounding_box_internal(image, offset_height, offset_width,
 
     # Do not pad on the depth dimensions.
     paddings = array_ops.reshape(
-        array_ops_stack.stack([
+        array_ops.stack([
             0, 0, offset_height, after_padding_height, offset_width,
             after_padding_width, 0, 0
         ]), [4, 2])
@@ -1240,13 +1239,9 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     image = control_flow_ops.with_dependencies(assert_ops, image)
 
     cropped = array_ops.slice(
-        image,
-        array_ops_stack.stack([0, offset_height, offset_width, 0]),
-        array_ops_stack.stack([
-            array_ops.shape(image)[0],
-            target_height,
-            target_width,
-            array_ops.shape(image)[3]]))
+        image, array_ops.stack([0, offset_height, offset_width, 0]),
+        array_ops.stack([array_ops.shape(image)[0], target_height, target_width,
+                         array_ops.shape(image)[3]]))
 
     cropped_shape = [
         None if _is_tensor(i) else i
@@ -4577,7 +4572,7 @@ def ssim_multiscale(img1,
     # Remove the cs score for the last scale. In the MS-SSIM calculation,
     # we use the l(p) at the highest scale. l(p) * cs(p) is ssim(p).
     mcs.pop()  # Remove the cs score for the last scale.
-    mcs_and_ssim = array_ops_stack.stack(
+    mcs_and_ssim = array_ops.stack(
         mcs + [nn_ops.relu(ssim_per_channel)], axis=-1)
     # Take weighted geometric mean across the scale axis.
     ms_ssim = math_ops.reduce_prod(
@@ -4643,17 +4638,17 @@ def image_gradients(image):
     raise ValueError('image_gradients expects a 4D tensor '
                      '[batch_size, h, w, d], not {}.'.format(image.get_shape()))
   image_shape = array_ops.shape(image)
-  batch_size, height, width, depth = array_ops_stack.unstack(image_shape)
+  batch_size, height, width, depth = array_ops.unstack(image_shape)
   dy = image[:, 1:, :, :] - image[:, :-1, :, :]
   dx = image[:, :, 1:, :] - image[:, :, :-1, :]
 
   # Return tensors with same size as original image by concatenating
   # zeros. Place the gradient [I(x+1,y) - I(x,y)] on the base pixel (x, y).
-  shape = array_ops_stack.stack([batch_size, 1, width, depth])
+  shape = array_ops.stack([batch_size, 1, width, depth])
   dy = array_ops.concat([dy, array_ops.zeros(shape, image.dtype)], 1)
   dy = array_ops.reshape(dy, image_shape)
 
-  shape = array_ops_stack.stack([batch_size, height, 1, depth])
+  shape = array_ops.stack([batch_size, height, 1, depth])
   dx = array_ops.concat([dx, array_ops.zeros(shape, image.dtype)], 2)
   dx = array_ops.reshape(dx, image_shape)
 

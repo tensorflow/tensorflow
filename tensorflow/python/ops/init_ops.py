@@ -37,7 +37,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops_impl
 from tensorflow.python.ops import math_ops
@@ -1154,8 +1153,8 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
       A k1 * k2 tensor.
     """
 
-    return array_ops_stack.stack([
-        array_ops_stack.stack([x[i, j] for j in range(k2)]) for i in range(k1)])
+    return array_ops.stack([array_ops.stack([x[i, j] for j in range(k2)])
+                            for i in range(k1)])
 
   def _block_orth(self, p1, p2):
     """Construct a 2 x 2 kernel.
@@ -1300,7 +1299,7 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
       A tensor with the same dimension.
     """
 
-    return array_ops_stack.stack([x[i] for i in range(k)])
+    return array_ops.stack([x[i] for i in range(k)])
 
   def _block_orth(self, projection_matrix):
     """Construct a kernel.
@@ -1436,8 +1435,8 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
       A k1 * k2 * k3 tensor.
     """
 
-    return array_ops_stack.stack([array_ops_stack.stack(
-        [array_ops_stack.stack([x[i, j, k] for k in range(k3)])
+    return array_ops.stack([array_ops.stack(
+        [array_ops.stack([x[i, j, k] for k in range(k3)])
          for j in range(k2)]) for i in range(k1)])
 
   def _block_orth(self, p1, p2, p3):

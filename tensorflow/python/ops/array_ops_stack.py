@@ -17,10 +17,8 @@
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.util import dispatch
 
 
-@dispatch.add_dispatch_support
 def stack(values, axis=0, name="stack"):
   """Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor.
 
@@ -83,7 +81,6 @@ def stack(values, axis=0, name="stack"):
   return gen_array_ops.pack(values, axis=axis, name=name)
 
 
-@dispatch.add_dispatch_support
 def unstack(value, num=None, axis=0, name="unstack"):
   """Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
 

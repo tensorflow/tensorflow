@@ -27,7 +27,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
@@ -217,7 +216,7 @@ class QueueBase:
         functools.reduce(_shape_common, s) for s in zip(*queue_shapes)
     ]
 
-    queue_refs = array_ops_stack.stack([x.queue_ref for x in queues])
+    queue_refs = array_ops.stack([x.queue_ref for x in queues])
     selected_queue = array_ops.gather(queue_refs, index)
     return QueueBase(
         dtypes=dtypes,

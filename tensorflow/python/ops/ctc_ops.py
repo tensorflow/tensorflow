@@ -28,7 +28,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_ctc_ops
@@ -524,11 +523,10 @@ def _ctc_state_trans(label_seq):
     start_to_label = [[1, 0]]
 
     # Blank to label transitions.
-    blank_to_label = array_ops_stack.stack(
-        [label_states[1:], blank_states[:-1]], 1)
+    blank_to_label = array_ops.stack([label_states[1:], blank_states[:-1]], 1)
 
     # Label to blank transitions.
-    label_to_blank = array_ops_stack.stack([blank_states, label_states], 1)
+    label_to_blank = array_ops.stack([blank_states, label_states], 1)
 
     # Scatter transitions that don't depend on sequence.
     indices = array_ops.concat([start_to_label, blank_to_label, label_to_blank],
@@ -541,8 +539,8 @@ def _ctc_state_trans(label_seq):
     # Label to label transitions. Disallow transitions between repeated labels
     # with no blank state in between.
     batch_idx = array_ops.zeros_like(label_states[2:])
-    indices = array_ops_stack.stack(
-        [batch_idx, label_states[2:], label_states[1:-1]], 1)
+    indices = array_ops.stack([batch_idx, label_states[2:], label_states[1:-1]],
+                              1)
     indices = array_ops.tile(
         array_ops.expand_dims(indices, 0), [batch_size, 1, 1])
     batch_idx = array_ops.expand_dims(math_ops.range(batch_size), 1) * [1, 0, 0]

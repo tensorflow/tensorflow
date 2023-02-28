@@ -35,7 +35,6 @@ from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
@@ -857,8 +856,8 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
         numpy_list.append(np_val)
         dense_list.append(c)
         sparse_list.append(c_sparse)
-      packed_dense = array_ops_stack.stack(dense_list)
-      packed_sparse = array_ops_stack.stack(sparse_list)
+      packed_dense = array_ops.stack(dense_list)
+      packed_sparse = array_ops.stack(sparse_list)
       self.assertAllClose(packed_dense, self.evaluate(packed_sparse))
 
   @test_util.run_v1_only("b/120545219")

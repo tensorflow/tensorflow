@@ -30,7 +30,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_sparse_ops
@@ -267,7 +266,7 @@ def sparse_eye(num_rows,
     diag_range = math_ops.range(diag_size, dtype=dtypes.int64)
 
     return sparse_tensor.SparseTensor(
-        indices=array_ops_stack.stack([diag_range, diag_range], axis=1),
+        indices=array_ops.stack([diag_range, diag_range], axis=1),
         values=array_ops.ones(diag_size, dtype=dtype),
         dense_shape=[num_rows, num_columns])
 
