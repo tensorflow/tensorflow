@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/transforms/hlo_constant_splitter.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
@@ -1052,7 +1053,8 @@ static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
 static StatusOr<OwnedGpuRuntimeProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, const HloModuleConfig& module_config,
-    std::unique_ptr<ThunkSequence> thunk_sequence) {
+    std::unique_ptr<ThunkSequence> thunk_sequence,
+    const HloModule* hlo_module_for_dump = nullptr) {
   // Forward collective (NCCL) attributes for use by the lowering pipeline.
   mlir::OpBuilder builder(mlir_module.getContext());
   mlir::IntegerAttr replica_count_attr =
@@ -1071,9 +1073,16 @@ static StatusOr<OwnedGpuRuntimeProgram> LowerToJitRt(
 
   // TODO(b/232033540): Pass MLIR module directly to Gpu runtime executable
   // without forcing serialization.
+  std::string module_str = llvm_ir::DumpToString(mlir_module);
+
+  if (hlo_module_for_dump != nullptr) {
+    DumpToFileInDirOrStdout(*hlo_module_for_dump, "gpu_rt_host", "mlir",
+                            module_str);
+  }
+
   return std::make_unique<GpuRuntimeProgram>(
-      entry_function_name.str(), llvm_ir::DumpToString(mlir_module),
-      buffer_sizes.vec(), module_config.debug_options());
+      entry_function_name.str(), std::move(module_str), buffer_sizes.vec(),
+      module_config.debug_options());
 }
 
 using OutputInfoMap =
@@ -1280,7 +1289,8 @@ static Status CompileModuleToLlvmIrImpl(
     TF_ASSIGN_OR_RETURN(
         results->executable,
         LowerToJitRt(*mlir_module, entry_function.getName(), buffer_sizes,
-                     hlo_module->config(), ir_emitter->ConsumeThunkSequence()));
+                     hlo_module->config(), ir_emitter->ConsumeThunkSequence(),
+                     /*hlo_module_for_dump=*/hlo_module));
     return OkStatus();
   }
 
