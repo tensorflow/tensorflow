@@ -270,6 +270,8 @@ tsl::Status FindAndLoadTpuLibrary() {
     // Try to acquire exclusive access.
     TF_RETURN_IF_ERROR(TryAcquireTpuLock());
     TF_RETURN_IF_ERROR(InitializeTpuLibrary(library));
+  } else {
+    LOG(INFO) << "Failed to open libtpu: " << dlerror();
   }
 
   InitializeCreateGcsFileSystemFnPtr();

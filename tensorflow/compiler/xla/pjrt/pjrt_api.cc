@@ -75,7 +75,8 @@ xla::Status LoadPjrtPlugin(absl::string_view device_type,
 #else
   void* library = dlopen(library_path.data(), RTLD_NOW);
   if (library == nullptr) {
-    return tsl::errors::Internal("Failed to open ", library_path);
+    return tsl::errors::Internal("Failed to open ", library_path, ": ",
+                                 dlerror());
   }
   PjrtApiInitFn init_fn;
   *reinterpret_cast<void**>(&init_fn) = dlsym(library, "GetPjrtApi");
