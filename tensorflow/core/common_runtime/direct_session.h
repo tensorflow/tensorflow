@@ -176,6 +176,8 @@ class DirectSession : public Session {
     CallableOptions callable_options;
 
     int64_t collective_graph_key = BuildGraphOptions::kNoCollectiveGraphKey;
+
+    std::vector<std::vector<PerPartitionExecutorsAndLib>> stream_items;
   };
 
   // A FunctionInfo object is created for every unique set of feeds/fetches.
@@ -192,6 +194,7 @@ class DirectSession : public Session {
   struct FunctionInfo {
     std::unique_ptr<FunctionLibraryDefinition> flib_def;
     std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr;
+    std::vector<std::unique_ptr<ProcessFunctionLibraryRuntime>> stream_proc_flr;
   };
 
   // For each live Run() call, the session maintains a RunState.

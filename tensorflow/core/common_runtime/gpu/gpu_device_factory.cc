@@ -61,6 +61,30 @@ class GPUDevice : public BaseGPUDevice {
   bool force_gpu_compatible_ = false;
 };
 
+//------------------------------------------------------------------------------
+// A StreamDevice that manages multi-stream in GPU.
+// -----------------------------------------------------------------------------
+class StreamDevice : public GPUDevice {
+ public:
+  StreamDevice(const SessionOptions& options, const string& name,
+               Bytes memory_limit, const DeviceLocality& locality,
+               tsl::TfDeviceId tf_device_id, const string& physical_device_desc,
+               Allocator* gpu_allocator, Allocator* cpu_allocator)
+      : GPUDevice(options, name, memory_limit, locality, tf_device_id,
+                  physical_device_desc, gpu_allocator, cpu_allocator) {}
+
+  void SetRealDevice(Device* device) override { real_device_ = device; }
+
+  Device* GetRealDevice() override { return real_device_; }
+
+  ResourceMgr* resource_manager() override {
+    return real_device_->resource_manager();
+  }
+
+ private:
+  Device* real_device_;
+};
+
 class GPUDeviceFactory : public BaseGPUDeviceFactory {
  private:
   std::unique_ptr<BaseGPUDevice> CreateGPUDevice(
@@ -75,6 +99,24 @@ class GPUDeviceFactory : public BaseGPUDeviceFactory {
 };
 
 REGISTER_LOCAL_DEVICE_FACTORY("GPU", GPUDeviceFactory, 210);
+
+class StreamDeviceFactory : public BaseGPUDeviceFactory {
+ public:
+  StreamDeviceFactory() { is_multi_stream_ = true; }
+
+ private:
+  std::unique_ptr<BaseGPUDevice> CreateGPUDevice(
+      const SessionOptions& options, const string& name, Bytes memory_limit,
+      const DeviceLocality& locality, tsl::TfDeviceId tf_device_id,
+      const string& physical_device_desc, Allocator* gpu_allocator,
+      Allocator* cpu_allocator) override {
+    return absl::make_unique<StreamDevice>(
+        options, name, memory_limit, locality, tf_device_id,
+        physical_device_desc, gpu_allocator, cpu_allocator);
+  }
+};
+
+REGISTER_LOCAL_DEVICE_FACTORY("STREAM_GPU", StreamDeviceFactory);
 
 //------------------------------------------------------------------------------
 // A CPUDevice that optimizes for interaction with GPUs in the

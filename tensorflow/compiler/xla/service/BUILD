@@ -1044,6 +1044,7 @@ cc_library(
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/util:env_var",
         "@com_google_absl//absl/strings",
     ],
 )

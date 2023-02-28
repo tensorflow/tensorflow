@@ -28,6 +28,12 @@ namespace tensorflow {
 
 DeviceMgr::~DeviceMgr() {}
 
+mutex StaticDeviceMgr::mgrs_mu_;
+std::unordered_map<const Device*,
+                   std::unique_ptr<StaticDeviceMgr::StreamGroupMgr>>
+    StaticDeviceMgr::stream_group_mgrs_;
+int32 StaticDeviceMgr::max_stream_num_;
+
 StaticDeviceMgr::StaticDeviceMgr(std::vector<std::unique_ptr<Device>> devices)
     : devices_(std::move(devices)),
       name_backing_store_(128),
@@ -50,6 +56,7 @@ StaticDeviceMgr::StaticDeviceMgr(std::vector<std::unique_ptr<Device>> devices)
       cpu_device_ = d.get();
     }
   }
+  InitStreamDevice();
 }
 
 StaticDeviceMgr::StaticDeviceMgr(std::unique_ptr<Device> device)
@@ -155,5 +162,181 @@ int StaticDeviceMgr::NumDeviceType(const string& type) const {
 int StaticDeviceMgr::NumDevices() const { return devices_.size(); }
 
 Device* StaticDeviceMgr::HostCPU() const { return cpu_device_; }
+
+void StaticDeviceMgr::InitStreamDevice() {
+  // get how many stream device for a gpu and cpu
+  std::unordered_map<int, int32> gpu_id2num;
+  for (auto& d : devices_) {
+    if (d->parsed_name().type.find("STREAM_GPU") != string::npos) {
+      int idx = std::stoi(d->parsed_name().type.substr(11));
+      if (gpu_id2num.find(idx) == gpu_id2num.end()) {
+        gpu_id2num[idx] = 1;
+      } else {
+        ++gpu_id2num[idx];
+      }
+    }
+  }
+
+  mutex_lock l(mgrs_mu_);
+  // Deal with GPU
+  Device* gpu;
+  // create stream group mgrs
+  for (auto& item : gpu_id2num) {
+    TF_CHECK_OK(
+        LookupDevice(strings::StrCat("/device:GPU:", item.first), &gpu));
+    stream_device_map_[gpu] = std::vector<Device*>(item.second);
+    max_stream_num_ =
+        max_stream_num_ > item.second ? max_stream_num_ : item.second;
+    if (stream_group_mgrs_.find(gpu) == stream_group_mgrs_.end()) {
+      stream_group_mgrs_[gpu] = absl::make_unique<StreamGroupMgr>(item.second);
+    }
+  }
+  // create stream_device_map_
+  for (auto& d : devices_) {
+    if (d->parsed_name().type.find("STREAM_GPU") != string::npos) {
+      int idx = std::stoi(d->parsed_name().type.substr(11));
+      TF_CHECK_OK(LookupDevice(strings::StrCat("/device:GPU:", idx), &gpu));
+      stream_device_map_[gpu][d->parsed_name().id] = d.get();
+      d->SetRealDevice(gpu);
+    }
+  }
+}
+
+int32 StaticDeviceMgr::GetMaxStreamNum() const {
+  tf_shared_lock l(mgrs_mu_);
+  return max_stream_num_;
+}
+
+int32 StaticDeviceMgr::GetStreamNum(const Device* device) const {
+  tf_shared_lock l(mgrs_mu_);
+  if (stream_device_map_.find(device) == stream_device_map_.end()) {
+    return 0;
+  }
+  return stream_device_map_.at(device).size();
+}
+
+Device* StaticDeviceMgr::LookupStream(const Device* device,
+                                      const int32 stream_id) const {
+  tf_shared_lock l(mgrs_mu_);
+  if (stream_id < 0 ||
+      stream_device_map_.find(device) == stream_device_map_.end() ||
+      stream_device_map_.at(device).size() <= stream_id) {
+    return const_cast<Device*>(device);
+  }
+  return stream_device_map_.at(device).at(stream_id);
+}
+
+int32 StaticDeviceMgr::RequireStreamGroup(const Device* device) const {
+  if (device->parsed_name().type != "GPU" &&
+      device->parsed_name().type != "gpu") {
+    return -1;
+  }
+  tf_shared_lock l(mgrs_mu_);
+  return stream_group_mgrs_.find(device) == stream_group_mgrs_.end()
+             ? -1
+             : stream_group_mgrs_[device]->RequireStreamGroup();
+}
+
+void StaticDeviceMgr::ReleaseStreamGroup(const Device* device,
+                                         const int32 stream_id) const {
+  if (device->parsed_name().type == "GPU" ||
+      device->parsed_name().type == "gpu") {
+    tf_shared_lock l(mgrs_mu_);
+    if (stream_group_mgrs_.find(device) != stream_group_mgrs_.end()) {
+      DCHECK_NE(stream_id, -1);
+      stream_group_mgrs_[device]->ReleaseStreamGroup(stream_id);
+    }
+  }
+}
+
+StaticDeviceMgr::StreamGroupMgr::StreamGroupMgr(const int32 total_num)
+    : total_num_(total_num) {
+  stream_group_heap_.resize(total_num);
+  for (int32 i = 0; i < total_num; ++i) {
+    stream_group_heap_[i] = absl::make_unique<StreamGroupNode>(i);
+    id2heap_map_.insert(std::make_pair(i, i));
+  }
+}
+
+void StaticDeviceMgr::StreamGroupMgr::swap(const int32 idx1, const int32 idx2) {
+  id2heap_map_[stream_group_heap_[idx1]->id_] = idx2;
+  id2heap_map_[stream_group_heap_[idx2]->id_] = idx1;
+  std::swap(stream_group_heap_[idx1], stream_group_heap_[idx2]);
+}
+
+void StaticDeviceMgr::StreamGroupMgr::reset_accumulators() {
+  VLOG(2) << "One of the Stream Group Node reaches access limit"
+          << ", reset...";
+  for (auto& node : stream_group_heap_) {
+    node->accumulator_ = 0;
+  }
+}
+
+int32 StaticDeviceMgr::StreamGroupMgr::RequireStreamGroup() {
+  mutex_lock l(mu_);
+  int32 ret(stream_group_heap_[0]->id_);
+  ++stream_group_heap_[0]->workload_;
+  if (++stream_group_heap_[0]->accumulator_ == 0xffffffffffffffff) {
+    reset_accumulators();
+  }
+  int32 ptr(0);
+  while (true) {
+    if (2 * ptr + 2 >= total_num_) {
+      if (2 * ptr + 2 == total_num_ &&
+          stream_group_heap_[ptr]->workload_ >
+              stream_group_heap_[2 * ptr + 1]->workload_) {
+        swap(ptr, 2 * ptr + 1);
+      }
+      break;
+    }
+    if (stream_group_heap_[2 * ptr + 1]->workload_ <
+        stream_group_heap_[2 * ptr + 2]->workload_) {
+      if (stream_group_heap_[ptr]->workload_ >
+          stream_group_heap_[2 * ptr + 1]->workload_) {
+        swap(ptr, 2 * ptr + 1);
+        ptr = 2 * ptr + 1;
+      } else
+        break;
+    } else if (stream_group_heap_[2 * ptr + 1]->workload_ >
+               stream_group_heap_[2 * ptr + 2]->workload_) {
+      if (stream_group_heap_[ptr]->workload_ >
+          stream_group_heap_[2 * ptr + 2]->workload_) {
+        swap(ptr, 2 * ptr + 2);
+        ptr = 2 * ptr + 2;
+      } else
+        break;
+    } else {
+      if (stream_group_heap_[ptr]->workload_ >
+          stream_group_heap_[2 * ptr + 1]->workload_) {
+        if (stream_group_heap_[2 * ptr + 1]->accumulator_ <
+            stream_group_heap_[2 * ptr + 2]->accumulator_) {
+          swap(ptr, 2 * ptr + 1);
+          ptr = 2 * ptr + 1;
+        } else {
+          swap(ptr, 2 * ptr + 2);
+          ptr = 2 * ptr + 2;
+        }
+      } else
+        break;
+    }
+  }
+  return ret;
+}
+
+void StaticDeviceMgr::StreamGroupMgr::ReleaseStreamGroup(
+    const int32 stream_id) {
+  mutex_lock l(mu_);
+  int32 ptr(id2heap_map_[stream_id]);
+  --stream_group_heap_[ptr]->workload_;
+  while (ptr != 0) {
+    int32 parent = (ptr + 1) / 2 - 1;
+    if (stream_group_heap_[ptr]->workload_ <
+        stream_group_heap_[parent]->workload_) {
+      swap(ptr, parent);
+      ptr = parent;
+    } else
+      break;
+  }
+}
 
 }  // namespace tensorflow

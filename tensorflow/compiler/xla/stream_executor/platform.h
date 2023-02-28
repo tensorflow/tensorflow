@@ -91,6 +91,9 @@ struct StreamExecutorConfig {
 
   // The DeviceOptions for the returned StreamExecutor.
   DeviceOptions device_options;
+
+  // The stream group id of the given stream executor for the given device.
+  int32 stream_id = 0;
 };
 
 // Abstract base class for a platform registered with the MultiPlatformManager.
@@ -156,12 +159,20 @@ class Platform {
   // Ownership of the executor is NOT transferred to the caller --
   // the Platform owns the executors in a singleton-like fashion.
   virtual tsl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) = 0;
+  virtual tsl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal,
+                                                           int32 stream_id) {
+    return ExecutorForDevice(ordinal);
+  }
 
   // Returns a device or error, as above, with the specified plugins.
   //
   // Ownership of the executor is NOT transferred to the caller.
   virtual tsl::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(
       int ordinal, const PluginConfig& plugin_config) = 0;
+  virtual tsl::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(
+      int ordinal, const PluginConfig& plugin_config, int32 stream_id) {
+    return ExecutorForDeviceWithPluginConfig(ordinal, plugin_config);
+  }
 
   // Returns a device constructed with the options specified in "config".
   // Ownership of the executor is NOT transferred to the caller.

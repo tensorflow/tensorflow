@@ -284,7 +284,7 @@ static tsl::Status InternalInit() {
 
 /* static */ tsl::Status GpuDriver::GetDevice(int device_ordinal,
                                               CUdevice* device) {
-  RETURN_IF_CUDA_RES_ERROR(cuDeviceGet(device, device_ordinal),
+  RETURN_IF_CUDA_RES_ERROR(cuDeviceGet(device, device_ordinal & (0xffff)),
                            "Failed call to cuDeviceGet");
   return ::tsl::OkStatus();
 }
@@ -1507,7 +1507,8 @@ static tsl::StatusOr<T> GetSimpleAttribute(CUdevice device,
 
 /* static */ bool GpuDriver::GetDeviceProperties(CUdevprop* device_properties,
                                                  int device_ordinal) {
-  CUresult res = cuDeviceGetProperties(device_properties, device_ordinal);
+  CUresult res =
+      cuDeviceGetProperties(device_properties, device_ordinal & (0xffff));
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to query device properties: " << ToString(res);
     return false;

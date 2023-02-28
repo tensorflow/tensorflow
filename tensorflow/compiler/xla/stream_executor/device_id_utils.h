@@ -42,6 +42,12 @@ class DeviceIdUtil {
       Platform* device_manager, tsl::PlatformDeviceId platform_device_id) {
     return device_manager->ExecutorForDevice(platform_device_id.value());
   }
+  static tsl::StatusOr<StreamExecutor*> ExecutorForPlatformDeviceId(
+      Platform* device_manager, tsl::PlatformDeviceId platform_device_id,
+      int32 stream_id) {
+    return device_manager->ExecutorForDevice(platform_device_id.value(),
+                                             stream_id);
+  }
   static tsl::StatusOr<StreamExecutor*> ExecutorForTfDeviceId(
       const tsl::DeviceType& type, Platform* device_manager,
       tsl::TfDeviceId tf_device_id) {
@@ -49,6 +55,15 @@ class DeviceIdUtil {
     TF_RETURN_IF_ERROR(tsl::DeviceIdManager::TfToPlatformDeviceId(
         type, tf_device_id, &platform_device_id));
     return ExecutorForPlatformDeviceId(device_manager, platform_device_id);
+  }
+  static tsl::StatusOr<StreamExecutor*> ExecutorForTfDeviceId(
+      const tsl::DeviceType& type, Platform* device_manager,
+      tsl::TfDeviceId tf_device_id, int32 stream_id) {
+    tsl::PlatformDeviceId platform_device_id;
+    TF_RETURN_IF_ERROR(tsl::DeviceIdManager::TfToPlatformDeviceId(
+        type, tf_device_id, &platform_device_id));
+    return ExecutorForPlatformDeviceId(device_manager, platform_device_id,
+                                       stream_id);
   }
 
   // Verify that the platform_device_id associated with a TfDeviceId is

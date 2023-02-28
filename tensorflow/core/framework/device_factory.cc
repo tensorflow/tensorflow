@@ -245,6 +245,20 @@ Status DeviceFactory::AddDevices(
     }
   }
 
+  // Then Stream Devices
+  auto stream_gpu_factory = GetFactory("STREAM_GPU");
+  if (!stream_gpu_factory) {
+    return errors::NotFound(
+        "STREAM_GPU Factory not registered. Did you link in "
+        "threadpool_device?");
+  }
+  size_t init_size = devices->size();
+  TF_RETURN_IF_ERROR(
+      stream_gpu_factory->CreateDevices(options, name_prefix, devices));
+  if (devices->size() == init_size) {
+    LOG(INFO) << "No STREAM_GPU devices are available in this process";
+  }
+
   auto cpu_factory = GetFactory("CPU");
   // Then the rest (including GPU).
   mutex_lock l(*get_device_factory_lock());
@@ -254,7 +268,7 @@ Status DeviceFactory::AddDevices(
       continue;  // Skip if the device type is not found from the device filter.
     }
     auto factory = p.second.factory.get();
-    if (factory != cpu_factory) {
+    if (factory != cpu_factory && factory != stream_gpu_factory) {
       TF_RETURN_IF_ERROR(factory->CreateDevices(options, name_prefix, devices));
     }
   }

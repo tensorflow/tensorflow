@@ -74,6 +74,30 @@ class DeviceMgr {
   // nullptr.
   virtual Device* HostCPU() const = 0;
 
+  virtual int32 RequireStreamGroup(const Device* device) const {
+    LOG(FATAL) << "DeviceMgr does not implement RequireStreamGroup()";
+  }
+
+  virtual void ReleaseStreamGroup(const Device* device,
+                                  const int32 stream_id) const {
+    LOG(FATAL) << "DeviceMgr does not implement ReleaseStreamGroup()";
+  }
+
+  virtual int32 GetMaxStreamNum() const {
+    LOG(FATAL) << "DeviceMgr does not implement GetMaxStreamNum()";
+  }
+
+  virtual int32 GetStreamNum(const Device* device) const {
+    LOG(FATAL) << "DeviceMgr does not implement GetStreamNum()";
+  }
+
+  // Assigns *device with pointer to Device of the given name.
+  // Accepts either a full device name, or just the replica-local suffix.
+  virtual Device* LookupStream(const Device* device,
+                               const int32 stream_id) const {
+    LOG(FATAL) << "DeviceMgr does not implement LookupStream()";
+  }
+
   TF_DISALLOW_COPY_AND_ASSIGN(DeviceMgr);
 };
 
@@ -100,10 +124,57 @@ class StaticDeviceMgr : public DeviceMgr {
   int NumDevices() const override;
   Device* HostCPU() const override;
 
+  int32 RequireStreamGroup(const Device* device) const override;
+
+  void ReleaseStreamGroup(const Device* device,
+                          const int32 stream_id) const override;
+
+  int32 GetMaxStreamNum() const override;
+
+  int32 GetStreamNum(const Device* device) const override;
+
+  // Assigns *device with pointer to Device of the given name.
+  // Accepts either a full device name, or just the replica-local suffix.
+  Device* LookupStream(const Device* device,
+                       const int32 stream_id) const override;
+
  private:
   const std::vector<std::unique_ptr<Device>> devices_;
 
   StringPiece CopyToBackingStore(StringPiece s);
+
+  void InitStreamDevice();
+  class StreamGroupMgr {
+   public:
+    StreamGroupMgr(const int32 total_num);
+    virtual ~StreamGroupMgr(){};
+
+    int32 RequireStreamGroup();
+    void ReleaseStreamGroup(const int32 stream_id);
+
+   private:
+    void swap(const int32, const int32);
+    void reset_accumulators();
+    struct StreamGroupNode {
+      int32 id_;
+      int32 workload_;
+      uint64 accumulator_;
+      StreamGroupNode(const int32 id, const int32 workload = 0,
+                      const uint32 accumulator = 0)
+          : id_(id), workload_(workload), accumulator_(accumulator) {}
+    };
+    int32 total_num_;
+    mutable mutex mu_;
+    std::vector<std::unique_ptr<StreamGroupNode>> stream_group_heap_
+        TF_GUARDED_BY(mu_);
+    std::unordered_map<int32, int32> id2heap_map_ TF_GUARDED_BY(mu_);
+  };
+  static mutex mgrs_mu_;
+  static std::unordered_map<const Device*, std::unique_ptr<StreamGroupMgr>>
+      stream_group_mgrs_ TF_GUARDED_BY(mgrs_mu_);
+  static int32 max_stream_num_ TF_GUARDED_BY(mgrs_mu_);
+  std::unordered_map<const Device*, std::vector<Device*>> stream_device_map_
+      TF_GUARDED_BY(mgrs_mu_);
 
   absl::flat_hash_set<int64_t> device_incarnation_set_;
   std::unordered_map<StringPiece, Device*, StringPieceHasher> device_map_;

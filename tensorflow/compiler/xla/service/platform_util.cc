@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/threadpool.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace xla {
 
@@ -179,28 +180,60 @@ PlatformUtil::GetStreamExecutors(
     device_count =
         GetDebugOptionsFromFlags().xla_force_host_platform_device_count();
   }
-  std::vector<se::StreamExecutor*> stream_executors(device_count, nullptr);
+  std::vector<std::vector<se::StreamExecutor*>> stream_executors(device_count);
+  std::vector<int64_t> gpu_stream_group_count;
+  if (platform->Name() == "CUDA") {
+    TF_CHECK_OK(tsl::ReadInt64sFromEnvVar("TF_GPU_STREAM_GROUP_COUNT",
+                                          /*default_val=*/1,
+                                          &gpu_stream_group_count));
+  } else {
+    gpu_stream_group_count.push_back(1);
+  }
+  if (allowed_devices) {
+    int count = 0;
+    for (const auto& i : *allowed_devices) {
+      if (count >= device_count) {
+        break;
+      }
+      stream_executors[count].resize(gpu_stream_group_count.size() > 1
+                                         ? gpu_stream_group_count[i]
+                                         : gpu_stream_group_count[0]);
+      count++;
+    }
+  } else {
+    for (int i = 0; i < device_count; ++i) {
+      stream_executors[i].resize(gpu_stream_group_count.size() > 1
+                                     ? gpu_stream_group_count[i]
+                                     : gpu_stream_group_count[0]);
+    }
+  }
   VLOG(1) << "Initializing devices";
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(),
                                         "device_initialization", device_count);
-    auto create_fn = [](se::Platform* platform,
-                        std::vector<se::StreamExecutor*>& stream_executors,
-                        int device_ordinal, int count) {
-      VLOG(1) << "Started device init " << device_ordinal;
-      auto executor_status = platform->ExecutorForDevice(device_ordinal);
-      if (executor_status.ok()) {
-        se::StreamExecutor* executor = executor_status.value();
-        if (IsDeviceSupported(executor)) {
-          stream_executors[count] = executor;
-        }
-      } else {
-        LOG(WARNING) << "unable to create StreamExecutor for "
-                     << platform->Name() << ":" << device_ordinal << ": "
-                     << executor_status.status().error_message();
-      }
-      VLOG(1) << "Finished device init " << device_ordinal;
-    };
+    auto create_fn =
+        [](se::Platform* platform,
+           std::vector<std::vector<se::StreamExecutor*>>& stream_executors,
+           int device_ordinal, int count) {
+          VLOG(1) << "Started device init " << device_ordinal;
+          for (int stream_id = 0; stream_id < stream_executors[count].size();
+               ++stream_id) {
+            auto executor_status =
+                platform->ExecutorForDevice(device_ordinal, stream_id);
+            if (executor_status.ok()) {
+              se::StreamExecutor* executor = executor_status.value();
+              if (IsDeviceSupported(executor)) {
+                stream_executors[count][stream_id] = executor;
+              }
+            } else {
+              LOG(WARNING) << "unable to create StreamExecutor for "
+                           << platform->Name() << ":" << device_ordinal << ": "
+                           << "Stream ID :" << stream_id << ": "
+                           << executor_status.status().error_message();
+            }
+          }
+          VLOG(1) << "Finished device init " << device_ordinal;
+        };
     // Once a stream executor is instantiated it will cause allocations on
     // the device, for example for GPUs cuda context, cudnn handles etc. will
     // be constructed. By constructing stream executors only on the
@@ -231,9 +264,11 @@ PlatformUtil::GetStreamExecutors(
   VLOG(1) << "Device initialization complete";
 
   std::vector<se::StreamExecutor*> out;
-  for (se::StreamExecutor* executor : stream_executors) {
-    if (executor != nullptr) {
-      out.push_back(executor);
+  for (int i = 0; i < device_count; ++i) {
+    for (se::StreamExecutor* executor : stream_executors[i]) {
+      if (executor != nullptr) {
+        out.push_back(executor);
+      }
     }
   }
   if (out.empty()) {

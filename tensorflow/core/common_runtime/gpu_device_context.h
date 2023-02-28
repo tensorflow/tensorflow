@@ -59,7 +59,7 @@ class GPUDeviceContext : public DeviceContext {
   se::Stream* device_to_device_stream(int index) const {
     return device_to_device_stream_[index % device_to_device_stream_.size()];
   }
-  int stream_id() const { return stream_id_; }
+  int stream_id() const override { return stream_id_; }
   Allocator* host_memory_allocator() const override {
     return host_memory_allocator_;
   }

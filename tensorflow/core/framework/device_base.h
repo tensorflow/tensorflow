@@ -123,6 +123,8 @@ class DeviceContext : public core::RefCounted {
 
   // Returns the pinned host memory allocator for the device.
   virtual Allocator* host_memory_allocator() const { return nullptr; }
+
+  virtual int stream_id() const { return 0; }
 };
 
 class DeviceBase {

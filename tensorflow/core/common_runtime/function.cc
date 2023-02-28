@@ -733,7 +733,7 @@ bool FunctionLibraryRuntimeImpl::IsLocalTarget(
             << "find device " << options.target << " in device manager";
     return false;
   }
-  if (target_device != device_) {
+  if (target_device != device_ && target_device != device_->GetRealDevice()) {
     VLOG(1) << "Not instantiating function in FLR because target device "
             << options.target
             << " is different from FLR's device: " << device_->DebugString();
