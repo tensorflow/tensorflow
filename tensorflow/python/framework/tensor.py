@@ -285,7 +285,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     return result
 
   def _to_tensors(self, value):
-    assert isinstance(value, ops.Tensor), value
+    assert isinstance(value, ops.Tensor)
     return [value]
 
   def _cast(self, value, casting_context):

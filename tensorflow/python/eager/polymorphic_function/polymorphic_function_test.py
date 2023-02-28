@@ -4894,6 +4894,44 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       lazy_capture()
 
+  def testMaybeCreateCapturePlaceholderWithValidCapture(self):
+
+    @polymorphic_function.function
+    def f():
+      func = lambda: x
+      # TODO(b/263520817): Remove access to private attribute.
+      return ops.get_default_graph(
+          )._function_captures._create_capture_placeholder(func)
+
+    x = {
+        'tensor': constant_op.constant(0),
+        'list': [constant_op.constant(1), 2],
+        'dict': {
+            'float': constant_op.constant(0.5)
+        }
+    }
+
+    out = f()
+    # tf.function output should have same structure/values with the side input
+    self.assertEqual(x['tensor'].numpy(), out['tensor'].numpy())
+    self.assertEqual(x['list'][0].numpy(), out['list'][0].numpy())
+    self.assertEqual(x['list'][1], out['list'][1].numpy())
+    self.assertEqual(x['dict']['float'].numpy(), out['dict']['float'].numpy())
+
+  def testMaybeCreateCapturePlaceholderWithInvalidCapture(self):
+
+    @polymorphic_function.function
+    def f():
+      func = lambda: x
+      # TODO(b/263520817): Remove access to private attribute.
+      return ops.get_default_graph(
+          )._function_captures._create_capture_placeholder(func)
+
+    # Set is not supported
+    x = set([1, 2])
+    with self.assertRaises(NotImplementedError):
+      f()
+
   @parameterized.parameters(
       (1, int, 2, int, 2),
       (1, constant_op.constant, 2, constant_op.constant, 1))

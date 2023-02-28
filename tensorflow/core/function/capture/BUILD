@@ -1,5 +1,4 @@
 load("//tensorflow:strict.default.bzl", "py_strict_test")
-load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -51,14 +50,16 @@ py_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "capture_container",
     srcs = [
         "capture_container.py",
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/core/function/trace_type",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/types",
         "//tensorflow/python/util",
     ],
@@ -70,10 +71,15 @@ py_strict_test(
     python_version = "PY3",
     deps = [
         ":capture_container",
+        "//tensorflow/python:bitwise_ops",
         "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/eager/polymorphic_function:composite_tensor_utils",
         "//tensorflow/python/framework:combinations",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:func_graph",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

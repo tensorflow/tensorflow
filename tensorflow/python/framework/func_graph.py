@@ -14,6 +14,7 @@
 # ==============================================================================
 """FuncGraph and related functionality."""
 
+import collections as py_collections
 import traceback
 from typing import Any, Callable, Hashable
 import weakref
@@ -219,6 +220,10 @@ class FuncGraph(ops.Graph):
     # preserve the output names in the signature of a serialized+deserialized
     # function. Private at the moment mostly because it's often out of date.
     self._output_names = None
+    # Maps arbitrary key -> (closure, nest of placeholders), where at function
+    # call time the value of closure() will be used to feed the nest of
+    # placeholders.
+    self._deferred_captures = py_collections.OrderedDict()
     # Inherit capture-by-value from outer graph.
     if capture_by_value is not None:
       self.capture_by_value = capture_by_value
@@ -285,37 +290,119 @@ class FuncGraph(ops.Graph):
                               key=None,
                               default_value=None,
                               placeholder=None):
-    placeholder_ctx = trace_type.InternalPlaceholderContext(weakref.proxy(self))
-    trace_ctx = trace_type.InternalTracingContext(True)
-    spec = trace_type.from_value(spec, trace_ctx)
-    def wrapped_closure():
-      # One major case requiring returning a `default_value` is when passing a
-      # concrete function to `save`, i.e.
-      # serving_fn = serve_fn.get_concrete_function(...)
-      # model.save(save_dir, signatures={"serving_default": serving_fn})
-      # `serving_fn` has deferred captures added through
-      # `capture_call_time_value`. It can't be saved correctly since
-      # `wrapped_closure` will end up executing under a default Graph instead
-      # of FuncGraph. The user of `capture_call_time_value` also cannot
-      # conditionally avoid this call since presence of `save_context` when
-      # executing `wrapped_closure` is not known at tracing time of
-      # `serving_fn`.
-      if save_context.in_save_context() and default_value is not None:
-        return default_value
+    """Returns a placeholder which at call time has the value closure().
 
-      if not context.executing_eagerly():
-        graph = ops.get_default_graph()
+    The `tf.function` supports the notion of captures, that is, it allows Python
+    functions to have closure variables, which bind over some value outside the
+    function. However, this name binding is "early binding" performed before the
+    program is run, i.e.,
+    ```
+    @tf.function
+    def f():
+      return x
 
-        with graph.as_default():
-          ret_nest = graph.capture_call_time_value(  # pylint: disable=protected-access
-              closure, spec, key=key)
-      else:
-        ret_nest = closure()
+    x = tf.constant(1)
+    f()  # returns 1
 
-      return spec._cast(ret_nest, trace_type.InternalCastContext())  # pylint: disable=protected-access
-    wrapped_closure.output_spec = spec
-    return self._function_captures.capture_call_time_value(
-        placeholder_ctx, wrapped_closure, spec, key, placeholder)
+    x = tf.constant(2)
+    f()  # still returns 1!
+    ```
+    while in Python, name binding is performed as the program is running.
+    ```
+    def f():
+      return x
+
+    x = 1
+    f()  # returns 1
+
+    x = 2
+    f()  # returns 2
+    ```
+    `capture_call_time_value` allows tf.function to mimic late binding as a
+    Python function does, by passing in a `closure` callable argument to be
+    executed when the tf.function is invoked eagerly.  E.g.
+    ```
+    @tf.function
+    def f():
+      return ops.get_default_graph.capture_call_time_value(lambda: x)
+
+    x = tf.constant(1)
+    f()  # returns 1
+
+    x = tf.constant(2)
+    f()  # returns 2
+    ```
+    Note that a `capture_call_time_value` function itself does not work well in
+    the saving process (since the tf.function in which it's called is not
+    invoked eagerly) unless passed a `default_value` argument. At saving time,
+    the `default_value` argument is returned instead.
+
+    Args:
+      closure: function which takes no arguments, to be evaluated at function
+        call time, returning a nest of tensors compatible with `spec`.
+      spec: nest of TypeSpec for the value to capture.
+      key: optional. If not None, multiple calls to lazy_capture with the same
+        key in the same graph will return the same placeholder, and the first
+        closure will be used at function call time.
+      default_value: optional value to return in environments that cannot safely
+        evaluate closure.
+      placeholder: optional. If not None, the graph will take the passed-in
+        `placeholder` as the internal capture instead of creating a new one.
+        This is useful when loading from a SavedModel.
+
+    Returns:
+      Nest of placeholders which, at function call time, will be fed with the
+      result of calling closure().
+
+    Raises:
+      ValueError: at function call time, if the return value of closure() is
+       not compatible with `spec`.
+    """
+    if key is None:
+      key = object()
+    if key not in self._deferred_captures:
+      trace_ctx = trace_type.InternalTracingContext(True)
+      spec = trace_type.from_value(spec, trace_ctx)
+
+      if placeholder is None:
+        placeholder_ctx = trace_type.InternalPlaceholderContext(self)
+        placeholder = spec.placeholder_value(placeholder_ctx)
+
+      def wrapped_closure():
+
+        # One major case requiring returning a `default_value` is when passing a
+        # concrete function to `save`, i.e.
+        # serving_fn = serve_fn.get_concrete_function(...)
+        # model.save(save_dir, signatures={"serving_default": serving_fn})
+        # `serving_fn` has deferred captures added through
+        # `capture_call_time_value`. It can't be saved correctly since
+        # `wrapped_closure` will end up executing under a default Graph instead
+        # of FuncGraph. The user of `capture_call_time_value` also cannot
+        # conditionally avoid this call since presence of `save_context` when
+        # executing `wrapped_closure` is not known at tracing time of
+        # `serving_fn`.
+        if save_context.in_save_context() and default_value is not None:
+          return default_value
+        # TODO(wxinyi): raise an error if in save context but no default value.
+
+        if not context.executing_eagerly():
+          graph = ops.get_default_graph()
+          assert isinstance(
+              graph,
+              FuncGraph), "This API should only be used in TF2 enviroment."
+
+          with graph.as_default():
+            ret_nest = graph.capture_call_time_value(
+                closure, spec, key=key, default_value=default_value)
+        else:
+          ret_nest = closure()
+
+        ret_nest = spec._cast(ret_nest, trace_type.InternalCastContext)  # pylint: disable=protected-access
+        return spec._to_tensors(ret_nest)  # pylint: disable=protected-access
+
+      wrapped_closure.output_spec = spec
+      self._deferred_captures[key] = (wrapped_closure, placeholder)
+    return self._deferred_captures[key][1]
 
   def control_dependencies(self, control_inputs):
     """Handles control dependencies.
@@ -745,10 +832,9 @@ class FuncGraph(ops.Graph):
         are replaced with placehoders, and non-tensors remain the same.
 
     """
-    if context.executing_eagerly():
-      return func()
+
     placeholder = self._function_captures.capture_by_ref(
-        self, func, identifier)
+        func, identifier)
     return placeholder
 
   @property
@@ -818,7 +904,6 @@ class FuncGraph(ops.Graph):
         default_value=default_value,
         placeholder=placeholder)
 
-  # TODO(panzf): remove these properties after capturing logics are moved out.
   @property
   def external_captures(self):
     """External tensors captured by this function."""
@@ -834,19 +919,12 @@ class FuncGraph(ops.Graph):
   @property
   def deferred_external_captures(self):
     """Ordered nest of tensors whose placeholders will be fed at call time."""
-    return [
-        c.lambda_fn for c in self._function_captures.by_ref_captures.values()
-    ]
+    return [c[0] for c in self._deferred_captures.values()]
 
   @property
   def deferred_internal_captures(self):
     """List of nest of placeholders which at call time will be fed."""
-    captures = []
-    for c in self._function_captures.by_ref_captures.values():
-      capture_trace_type = c.tracetype
-      flat = capture_trace_type._to_tensors(c.internal)  # pylint: disable=protected-access
-      captures.extend(flat)
-    return captures
+    return [c[1] for c in self._deferred_captures.values()]
 
   @property
   def variable_captures(self):
@@ -877,6 +955,8 @@ class FuncGraph(ops.Graph):
   def saving_errors(self):
     """Returns set of errors preventing this FuncGraph from being saved."""
     return self._saving_errors
+
+  # TODO(b/263520817): Add function_captures property.
 
   def _add_scope_exit_callback(self, fn):
     """Add a function to call when this graph exits the default scope."""
@@ -1291,8 +1371,8 @@ def dismantle_func_graph(func_graph):
     func_graph: A `FuncGraph` object to destroy. `func_graph` is unusable after
       this function.
   """
-  func_graph._function_captures._by_ref.clear()  # pylint: disable=protected-access
-  func_graph._function_captures._by_val.clear()  # pylint: disable=protected-access
+  func_graph._function_captures.by_val_captures.clear()  # pylint: disable=protected-access
+  func_graph._deferred_captures.clear()  # pylint: disable=protected-access
   ops.dismantle_graph(func_graph)
 
 
