@@ -96,6 +96,15 @@ func.func @rewrite_dot(%arg0: tensor<5x5xf64, #CSR>,
   return %1 : tensor<5x5xf64, #CSR>
 }
 
+// CHECK-LABEL:  func.func @rewrite_elt_convert(
+// CHECK-SAME:     %[[ARG0:.*0]]: tensor<5x5xf64, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<5x5xf32, #sparse_tensor.encoding<{{{.*}}}>> {
+// CHECK:          %[[VAL:.*]] = sparse_tensor.convert %[[ARG0]]
+// CHECK:          return %[[VAL]] : tensor<5x5xf32, #sparse_tensor.encoding<{{{.*}}}>>
+func.func @rewrite_elt_convert(%arg0: tensor<5x5xf64, #CSR>) -> tensor<5x5xf32, #CSR> {
+  %0 = "mhlo.convert"(%arg0) : (tensor<5x5xf64, #CSR>) -> tensor<5x5xf32, #CSR>
+  return %0 : tensor<5x5xf32, #CSR>
+}
+
 // CHECK-LABEL:  func.func @concatenate_sparse(
 // CHECK-SAME:     %[[ARG0:.*0]]: tensor<100x100xf64, #sparse_tensor.encoding<{{{.*}}}>>,
 // CHECK-SAME:     %[[ARG1:.*1]]: tensor<100x100xf64, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<200x100xf64, #sparse_tensor.encoding<{{{.*}}}>> {
