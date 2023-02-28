@@ -24,7 +24,7 @@ jobs:
           close-issue-message: >
             This issue was closed because it has been inactive for 30 days since being marked as stale.
             Please reopen if you'd like to work on this further.
-          days-before-pr-stale: 30
+          days-before-pr-stale: 14
           days-before-pr-close: 30
           stale-pr-message: "This PR is stale because it has been open for 30 days with no activity."
           repo-token: ${{ secrets.GITHUB_TOKEN }}
