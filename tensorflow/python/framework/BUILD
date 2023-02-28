@@ -1291,6 +1291,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":tensor_util",
+        "//tensorflow/python:control_flow_case",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:pywrap_tf_session",
     ],

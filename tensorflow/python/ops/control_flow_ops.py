@@ -18,8 +18,6 @@ See the [autograph](https://www.tensorflow.org/guide/autograph) guide.
 """
 # pylint: disable=g-bad-name
 import abc
-import collections
-import functools
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import control_flow_pb2
@@ -35,6 +33,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
@@ -73,6 +72,11 @@ def_function = LazyLoader(
     "def_function", globals(),
     "tensorflow.python.eager.def_function")
 
+# TODO(b/269483538): needed for references while refactors are in progress
+case = control_flow_case.case
+_case_helper = control_flow_case._case_helper  # pylint: disable=protected-access
+case_v2 = control_flow_case.case_v2
+_case_verify_and_canonicalize_args = control_flow_case._case_verify_and_canonicalize_args  # pylint: disable=protected-access
 
 # We override the 'tuple' for a control flow op, so we keep python's
 # existing 'tuple' for later use in this module.
@@ -3221,130 +3225,14 @@ def _case_create_default_action(predicates, actions):
   return default_action, other_predicates, other_actions
 
 
-def _case_verify_and_canonicalize_args(pred_fn_pairs, exclusive, name,
-                                       allow_python_preds):
+def _indexed_case_verify_and_canonicalize_args(
+    branch_fns, default, branch_index
+):
   """Verifies input arguments for the case function.
 
   Args:
-    pred_fn_pairs: Dict or list of pairs of a boolean scalar tensor, and a
-      callable which returns a list of tensors.
-    exclusive: True iff at most one predicate is allowed to evaluate to `True`.
-    name: A name for the case operation.
-    allow_python_preds: if true, pred_fn_pairs may contain Python bools in
-      addition to boolean Tensors
-
-  Raises:
-    TypeError: If `pred_fn_pairs` is not a list/dictionary.
-    TypeError: If `pred_fn_pairs` is a list but does not contain 2-tuples.
-    TypeError: If `fns[i]` is not callable for any i, or `default` is not
-               callable.
-
-  Returns:
-    a tuple <list of scalar bool tensors, list of callables>.
-  """
-  if not isinstance(pred_fn_pairs, (list, _basetuple, dict)):
-    raise TypeError("'pred_fn_pairs' must be a list, tuple, or dict. "
-                    f"Received: {type(pred_fn_pairs)}")
-
-  if isinstance(pred_fn_pairs, collections.OrderedDict):
-    pred_fn_pairs = pred_fn_pairs.items()
-  elif isinstance(pred_fn_pairs, dict):
-    if context.executing_eagerly():
-      # No name to sort on in eager mode. Use dictionary traversal order,
-      # which is nondeterministic in versions of Python < 3.6
-      if not exclusive:
-        raise ValueError("Unordered dictionaries are not supported for the "
-                         "'pred_fn_pairs' argument when `exclusive=False` and "
-                         "eager mode is enabled.")
-      pred_fn_pairs = list(pred_fn_pairs.items())
-    else:
-      pred_fn_pairs = sorted(
-          pred_fn_pairs.items(), key=lambda item: item[0].name)
-      if not exclusive:
-        logging.warn(
-            "%s: An unordered dictionary of predicate/fn pairs was "
-            "provided, but exclusive=False. The order of conditional "
-            "tests is deterministic but not guaranteed.", name)
-  for pred_fn_pair in pred_fn_pairs:
-    if not isinstance(pred_fn_pair, _basetuple) or len(pred_fn_pair) != 2:
-      raise TypeError("Each entry in 'pred_fn_pairs' must be a 2-tuple. "
-                      f"Received {pred_fn_pair}.")
-    pred, fn = pred_fn_pair
-
-    if isinstance(pred, ops.Tensor):
-      if pred.dtype != dtypes.bool:
-        raise TypeError("pred must be Tensor of type bool: %s" % pred.name)
-    elif not allow_python_preds:
-      raise TypeError("pred must be a Tensor, got: %s" % pred)
-    elif not isinstance(pred, bool):
-      raise TypeError("pred must be a Tensor or bool, got: %s" % pred)
-
-    if not callable(fn):
-      raise TypeError("fn for pred %s must be callable." % pred.name)
-
-  predicates, actions = zip(*pred_fn_pairs)
-  return predicates, actions
-
-
-def _case_helper(cond_fn,
-                 pred_fn_pairs,
-                 default,
-                 exclusive,
-                 name,
-                 allow_python_preds=False,
-                 **cond_kwargs):
-  """Implementation of case that allows for different cond functions.
-
-  Args:
-    cond_fn: method that has signature and semantics of `cond` above.
-    pred_fn_pairs: Dict or list of pairs of a boolean scalar tensor, and a
-      callable which returns a list of tensors.
-    default: Optional callable that returns a list of tensors.
-    exclusive: True iff at most one predicate is allowed to evaluate to `True`.
-    name: A name for this operation (optional).
-    allow_python_preds: if true, pred_fn_pairs may contain Python bools in
-      addition to boolean Tensors
-    **cond_kwargs: keyword arguments that will be passed to `cond_fn`.
-
-  Returns:
-    The tensors returned by the first pair whose predicate evaluated to True, or
-    those returned by `default` if none does.
-
-  Raises:
-    TypeError: If `pred_fn_pairs` is not a list/dictionary.
-    TypeError: If `pred_fn_pairs` is a list but does not contain 2-tuples.
-    TypeError: If `fns[i]` is not callable for any i, or `default` is not
-               callable.
-  """
-  predicates, actions = _case_verify_and_canonicalize_args(
-      pred_fn_pairs, exclusive, name, allow_python_preds)
-  with ops.name_scope(name, "case", [predicates]):
-    if default is None:
-      default, predicates, actions = _case_create_default_action(
-          predicates, actions)
-    fn = default
-    # To eval conditions in direct order we create nested conditions in reverse:
-    #   cond_fn(c[0], true_fn=.., false_fn=cond_fn(c[1], ...))
-    for predicate, action in reversed(list(zip(predicates, actions))):
-      fn = functools.partial(
-          cond_fn, predicate, true_fn=action, false_fn=fn, **cond_kwargs)
-    if exclusive:
-      with ops.control_dependencies([
-          _assert_at_most_n_true(
-              predicates, n=1, msg="Input error: exclusive=True")
-      ]):
-        return fn()
-    else:
-      return fn()
-
-
-def _indexed_case_verify_and_canonicalize_args(branch_fns, default,
-                                               branch_index):
-  """Verifies input arguments for the case function.
-
-  Args:
-    branch_fns: Dict or list of pairs of an `int` and a callable which
-      returns a list of tensors.
+    branch_fns: Dict or list of pairs of an `int` and a callable which returns a
+      list of tensors.
     default: Optional callable that returns a list of tensors.
     branch_index: Optional int `Tensor`, which selects for the corresponding
       pred_fn_pair.
@@ -3442,226 +3330,11 @@ def _indexed_case_helper(branch_fns,
         lower_using_switch_merge=lower_using_switch_merge)
 
 
-@tf_export("case", v1=[])
-@dispatch.add_dispatch_support
-def case_v2(pred_fn_pairs,
-            default=None,
-            exclusive=False,
-            strict=False,
-            name="case"):
-  """Create a case operation.
-
-  See also `tf.switch_case`.
-
-  The `pred_fn_pairs` parameter is a list of pairs of size N.
-  Each pair contains a boolean scalar tensor and a python callable that
-  creates the tensors to be returned if the boolean evaluates to True.
-  `default` is a callable generating a list of tensors. All the callables
-  in `pred_fn_pairs` as well as `default` (if provided) should return the same
-  number and types of tensors.
-
-  If `exclusive==True`, all predicates are evaluated, and an exception is
-  thrown if more than one of the predicates evaluates to `True`.
-  If `exclusive==False`, execution stops at the first predicate which
-  evaluates to True, and the tensors generated by the corresponding function
-  are returned immediately. If none of the predicates evaluate to True, this
-  operation returns the tensors generated by `default`.
-
-  `tf.case` supports nested structures as implemented in
-  `tf.nest`. All of the callables must return the same (possibly nested) value
-  structure of lists, tuples, and/or named tuples. Singleton lists and tuples
-  form the only exceptions to this: when returned by a callable, they are
-  implicitly unpacked to single values. This behavior is disabled by passing
-  `strict=True`.
-
-  @compatibility(v2)
-  `pred_fn_pairs` could be a dictionary in v1. However, tf.Tensor and
-  tf.Variable are no longer hashable in v2, so cannot be used as a key for a
-  dictionary.  Please use a list or a tuple instead.
-  @end_compatibility
-
-
-  **Example 1:**
-
-  Pseudocode:
-
-  ```
-  if (x < y) return 17;
-  else return 23;
-  ```
-
-  Expressions:
-
-  ```python
-  f1 = lambda: tf.constant(17)
-  f2 = lambda: tf.constant(23)
-  r = tf.case([(tf.less(x, y), f1)], default=f2)
-  ```
-
-  **Example 2:**
-
-  Pseudocode:
-
-  ```
-  if (x < y && x > z) raise OpError("Only one predicate may evaluate to True");
-  if (x < y) return 17;
-  else if (x > z) return 23;
-  else return -1;
-  ```
-
-  Expressions:
-
-  ```python
-  def f1(): return tf.constant(17)
-  def f2(): return tf.constant(23)
-  def f3(): return tf.constant(-1)
-  r = tf.case([(tf.less(x, y), f1), (tf.greater(x, z), f2)],
-           default=f3, exclusive=True)
-  ```
-
-  Args:
-    pred_fn_pairs: List of pairs of a boolean scalar tensor and a callable which
-      returns a list of tensors.
-    default: Optional callable that returns a list of tensors.
-    exclusive: True iff at most one predicate is allowed to evaluate to `True`.
-    strict: A boolean that enables/disables 'strict' mode; see above.
-    name: A name for this operation (optional).
-
-  Returns:
-    The tensors returned by the first pair whose predicate evaluated to True, or
-    those returned by `default` if none does.
-
-  Raises:
-    TypeError: If `pred_fn_pairs` is not a list/tuple.
-    TypeError: If `pred_fn_pairs` is a list but does not contain 2-tuples.
-    TypeError: If `fns[i]` is not callable for any i, or `default` is not
-               callable.
-  """
-  return _case_helper(
-      cond,
-      pred_fn_pairs,
-      default,
-      exclusive,
-      name,
-      allow_python_preds=False,
-      strict=strict)
-
-
-@tf_export(v1=["case"])
-@dispatch.add_dispatch_support
-def case(pred_fn_pairs,
-         default=None,
-         exclusive=False,
-         strict=False,
-         name="case"):
-  """Create a case operation.
-
-  See also `tf.switch_case`.
-
-  The `pred_fn_pairs` parameter is a dict or list of pairs of size N.
-  Each pair contains a boolean scalar tensor and a python callable that
-  creates the tensors to be returned if the boolean evaluates to True.
-  `default` is a callable generating a list of tensors. All the callables
-  in `pred_fn_pairs` as well as `default` (if provided) should return the same
-  number and types of tensors.
-
-  If `exclusive==True`, all predicates are evaluated, and an exception is
-  thrown if more than one of the predicates evaluates to `True`.
-  If `exclusive==False`, execution stops at the first predicate which
-  evaluates to True, and the tensors generated by the corresponding function
-  are returned immediately. If none of the predicates evaluate to True, this
-  operation returns the tensors generated by `default`.
-
-  `tf.case` supports nested structures as implemented in
-  `tf.nest`. All of the callables must return the same (possibly nested) value
-  structure of lists, tuples, and/or named tuples. Singleton lists and tuples
-  form the only exceptions to this: when returned by a callable, they are
-  implicitly unpacked to single values. This behavior is disabled by passing
-  `strict=True`.
-
-  If an unordered dictionary is used for `pred_fn_pairs`, the order of the
-  conditional tests is not guaranteed. However, the order is guaranteed to be
-  deterministic, so that variables created in conditional branches are created
-  in fixed order across runs.
-
-  @compatibility(eager)
-  Unordered dictionaries are not supported in eager mode when `exclusive=False`.
-  Use a list of tuples instead.
-  @end_compatibility
-
-
-  **Example 1:**
-
-  Pseudocode:
-
-  ```
-  if (x < y) return 17;
-  else return 23;
-  ```
-
-  Expressions:
-
-  ```python
-  f1 = lambda: tf.constant(17)
-  f2 = lambda: tf.constant(23)
-  r = tf.case([(tf.less(x, y), f1)], default=f2)
-  ```
-
-  **Example 2:**
-
-  Pseudocode:
-
-  ```
-  if (x < y && x > z) raise OpError("Only one predicate may evaluate to True");
-  if (x < y) return 17;
-  else if (x > z) return 23;
-  else return -1;
-  ```
-
-  Expressions:
-
-  ```python
-  def f1(): return tf.constant(17)
-  def f2(): return tf.constant(23)
-  def f3(): return tf.constant(-1)
-  r = tf.case({tf.less(x, y): f1, tf.greater(x, z): f2},
-           default=f3, exclusive=True)
-  ```
-
-  Args:
-    pred_fn_pairs: Dict or list of pairs of a boolean scalar tensor and a
-      callable which returns a list of tensors.
-    default: Optional callable that returns a list of tensors.
-    exclusive: True iff at most one predicate is allowed to evaluate to `True`.
-    strict: A boolean that enables/disables 'strict' mode; see above.
-    name: A name for this operation (optional).
-
-  Returns:
-    The tensors returned by the first pair whose predicate evaluated to True, or
-    those returned by `default` if none does.
-
-  Raises:
-    TypeError: If `pred_fn_pairs` is not a list/dictionary.
-    TypeError: If `pred_fn_pairs` is a list but does not contain 2-tuples.
-    TypeError: If `fns[i]` is not callable for any i, or `default` is not
-               callable.
-  """
-  return _case_helper(
-      cond,
-      pred_fn_pairs,
-      default,
-      exclusive,
-      name,
-      allow_python_preds=False,
-      strict=strict)
-
-
 @tf_export("switch_case")
-def switch_case(branch_index,
-                branch_fns,
-                default=None,
-                name="switch_case"):
-  """Create a switch/case operation, i.e. an integer-indexed conditional.
+def switch_case(branch_index, branch_fns, default=None, name="switch_case"):
+  """Create a switch/case operation, i.e.
+
+  an integer-indexed conditional.
 
   See also `tf.case`.
 

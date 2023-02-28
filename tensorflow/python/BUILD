@@ -1323,6 +1323,7 @@ py_library(
     deps = [
         ":array_ops",
         ":array_ops_gen",
+        ":control_flow_case",
         ":control_flow_ops_gen",
         ":control_flow_util",
         ":functional_ops_gen",
@@ -1340,6 +1341,20 @@ py_library(
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_should_use",
+    ],
+)
+
+py_library(
+    name = "control_flow_case",
+    srcs = ["ops/control_flow_case.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":array_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/util",
     ],
 )
 
@@ -1778,6 +1793,7 @@ py_library(
         ":array_ops",
         ":check_ops",
         ":clip_ops",
+        ":control_flow_case",
         ":control_flow_ops",
         ":gradients",
         ":image_ops_gen",
@@ -2544,6 +2560,7 @@ py_library(
         ":check_ops",
         ":clip_ops",
         ":confusion_matrix",
+        ":control_flow_case",
         ":control_flow_ops",
         ":critical_section_ops",
         ":cudnn_rnn_grad",
@@ -2812,6 +2829,7 @@ cuda_py_test(
     deps = [
         ":array_ops",
         ":cond_v2",
+        ":control_flow_case",
         ":control_flow_ops",
         ":control_flow_v2_toggles",
         ":embedding_ops",
