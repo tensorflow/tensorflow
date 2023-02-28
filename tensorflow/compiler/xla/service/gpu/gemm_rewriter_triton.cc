@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
@@ -337,6 +338,7 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
     // Original instruction -> fused one.
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>
         old_to_new_mapping;
+    absl::flat_hash_set<const HloInstruction*> visited;
     std::vector<HloInstruction*> call_operands;
     // Traverse and fuse dot() inputs bottom-up starting from direct operands.
     // If an input is not fusible stop there and make it a parameter of the new
@@ -349,7 +351,7 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
       bool top_is_ready_to_fuse = true;
       HloInstruction* hlo = to_fuse.top();
       for (HloInstruction* operand : hlo->mutable_operands()) {
-        if (!old_to_new_mapping.contains(operand)) {
+        if (visited.insert(operand).second) {
           DimensionOrder operand_dim_order = [&] {
             // Direct dot inputs are described by default dimension orders.
             if (operand == dot->operand(0)) {
