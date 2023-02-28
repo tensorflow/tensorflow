@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -61,20 +62,13 @@ class XlaBuilderTest : public ::testing::Test {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 
-  // Retuns the MLIR op string representation of the given XlaOp.
+  // Returns the MLIR op string representation of the given XlaOp.
   std::string GetMlirOpString(XlaOp xla_op) {
-    std::string str;
-    llvm::raw_string_ostream ostream{str};
-    xla_builder_.GetValue(xla_op).print(ostream);
-    ostream.flush();
-    return str;
+    return llvm_ir::DumpToString(xla_builder_.GetValue(xla_op));
   }
 
   std::string GetMlirOpString(mlir::Operation* op) {
-    std::string func_op_mlir_str;
-    llvm::raw_string_ostream ostream{func_op_mlir_str};
-    op->print(ostream);
-    return func_op_mlir_str;
+    return llvm_ir::DumpToString(op);
   }
 
   Status ValidateCustomOpCallee(XlaOp op) {

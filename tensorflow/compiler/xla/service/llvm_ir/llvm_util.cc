@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -52,6 +53,17 @@ namespace llvm_ir {
 
 namespace {
 
+// This works for most llvm / mlir types. This also accepts a const `entity` for
+// types which have a const print() method.
+template <typename T>
+std::string DumpToStringTempl(T& entity) {
+  std::string buffer_string;
+  llvm::raw_string_ostream ostream(buffer_string);
+  entity.print(ostream);
+  ostream.flush();
+  return buffer_string;
+}
+
 // Note, this function is only useful in an insertion context; in a global
 // (e.g. constants) context it will CHECK fail.
 llvm::Module* ModuleFromIRBuilder(llvm::IRBuilder<>* b) {
@@ -73,13 +85,38 @@ std::unique_ptr<llvm::Module> DropConstantInitializers(
   return cloned_module;
 }
 
-std::string DumpModuleToString(const llvm::Module& module) {
+std::string DumpToString(const llvm::Module* module) {
+  // DumpToStringTempl doesn't work for llvm::Module.
+  CHECK_NE(module, nullptr);
+
   std::string buffer_string;
   llvm::raw_string_ostream ostream(buffer_string);
-  module.print(ostream, nullptr);
+  module->print(ostream, /*AAW=*/nullptr);
   ostream.flush();
   return buffer_string;
 }
+
+std::string DumpToString(const llvm::Type* type) {
+  CHECK_NE(type, nullptr);
+
+  return DumpToStringTempl(*type);
+}
+
+std::string DumpToString(const llvm::Value* value) {
+  CHECK_NE(value, nullptr);
+
+  return DumpToStringTempl(*value);
+}
+
+std::string DumpToString(mlir::Operation* operation) {
+  CHECK_NE(operation, nullptr);
+
+  return DumpToStringTempl(*operation);
+}
+
+std::string DumpToString(mlir::Type type) { return DumpToStringTempl(type); }
+
+std::string DumpToString(mlir::Value value) { return DumpToStringTempl(value); }
 
 llvm::CallInst* EmitCallToIntrinsic(
     llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
@@ -127,9 +164,9 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
       llvm::cast<llvm::PointerType>(array_type);
   CHECK(array_type_as_pointer->isOpaqueOrPointeeTypeMatches(element_type));
   VLOG(2) << "EmitBufferIndexingGEP with type="
-          << llvm_ir::DumpToString(*array_type)
-          << " array=" << llvm_ir::DumpToString(*array)
-          << " index=" << llvm_ir::DumpToString(*index);
+          << llvm_ir::DumpToString(array_type)
+          << " array=" << llvm_ir::DumpToString(array)
+          << " index=" << llvm_ir::DumpToString(index);
 
   return b->CreateInBoundsGEP(
       element_type, array,
@@ -600,7 +637,7 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
       absl::StrCat("ir-", optimized ? "with" : "no", "-opt",
                    filename_suffix.empty() ? "" : ".", filename_suffix);
   DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(suffix, ".ll"),
-                          DumpModuleToString(llvm_module));
+                          DumpToString(&llvm_module));
 
   // For some models the embedded constants can be huge, so also dump the module
   // with the constants stripped to get IR that is easier to manipulate.  Skip
@@ -608,7 +645,7 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   // when writing to the terminal.
   if (!DumpingToStdout(debug_opts)) {
     DumpToFileInDir(hlo_module, "", absl::StrCat(suffix, "-noconst.ll"),
-                    DumpModuleToString(*DropConstantInitializers(llvm_module)));
+                    DumpToString(DropConstantInitializers(llvm_module).get()));
   }
 }
 

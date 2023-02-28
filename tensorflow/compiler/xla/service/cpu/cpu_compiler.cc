@@ -1320,7 +1320,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
 
   std::string ir_module_string;
   if (embed_ir_in_executable) {
-    ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
+    ir_module_string = llvm_ir::DumpToString(llvm_module.get());
   }
 
   TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
@@ -1357,9 +1357,8 @@ StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
     const XlaFrameworkMapping& xla_framework_mapping) {
   runtime::JitExecutable::Options opts =
       GetXlaRuntimeJitExecutableOptions(hlo_module);
-  std::string serialized_mlir;
-  llvm::raw_string_ostream os(serialized_mlir);
-  mlir_module.print(os);
+  std::string serialized_mlir = llvm_ir::DumpToString(mlir_module);
+
   absl::StatusOr<runtime::JitExecutable> jit_executable =
       runtime::JitExecutable::Instantiate(serialized_mlir, entry_point, opts);
   if (!jit_executable.ok()) {

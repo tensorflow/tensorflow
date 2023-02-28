@@ -1068,16 +1068,12 @@ static StatusOr<OwnedGpuRuntimeProgram> LowerToJitRt(
   TF_RETURN_IF_ERROR(LowerToXlaGpuRuntime(
       mlir_module, {entry_function_name.data(), entry_function_name.size()},
       buffer_sizes, thunk_sequence.get(), module_config.debug_options()));
-  // Serialize module to pass it to GpuExecutable for compilation.
-  std::string serialized_module;
-  llvm::raw_string_ostream os(serialized_module);
-  mlir_module.print(os);
 
   // TODO(b/232033540): Pass MLIR module directly to Gpu runtime executable
   // without forcing serialization.
-  return std::make_unique<GpuRuntimeProgram>(entry_function_name.str(),
-                                             os.str(), buffer_sizes.vec(),
-                                             module_config.debug_options());
+  return std::make_unique<GpuRuntimeProgram>(
+      entry_function_name.str(), llvm_ir::DumpToString(mlir_module),
+      buffer_sizes.vec(), module_config.debug_options());
 }
 
 using OutputInfoMap =
@@ -1483,18 +1479,12 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
         [&compile_results, compile_single_module, i, &llvm_modules, &counter] {
           llvm::Module* original_module = llvm_modules[i].get();
           llvm::LLVMContext context;
-          std::string buffer;
-          llvm::raw_string_ostream error(buffer);
 
           std::unique_ptr<llvm::Module> new_llvm_module;
           // Switch to a new context by dumping and re-parsing LLVM IR. Each
           // thread has its own context to avoid race conditions.
           {
-            std::string ir;
-            {
-              llvm::raw_string_ostream os(ir);
-              original_module->print(os, nullptr);
-            }
+            std::string ir = llvm_ir::DumpToString(original_module);
             llvm::SMDiagnostic err;
             new_llvm_module = llvm::parseAssemblyString(ir, err, context);
             if (!new_llvm_module) {
@@ -1587,7 +1577,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       module->config().debug_options().xla_embed_ir_in_executable();
   if (embed_ir_in_executable) {
     ir_module_string_before_opt =
-        llvm_ir::DumpModuleToString(*compile_module_results.llvm_module);
+        llvm_ir::DumpToString(compile_module_results.llvm_module.get());
   }
 
   llvm_ir::DumpIrIfEnabled(*module, *compile_module_results.llvm_module,

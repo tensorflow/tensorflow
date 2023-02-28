@@ -262,7 +262,7 @@ bool MayPreventVectorization(mlir::Operation* op) {
 
     CHECK(instr.getDialect() ==
           instr.getContext()->getLoadedDialect<mlir::mhlo::MhloDialect>())
-        << MlirToString(op);
+        << llvm_ir::DumpToString(op);
     switch (*MhloToHloOpcode(&instr)) {
       case HloOpcode::kReduceWindow:
       case HloOpcode::kSort:
@@ -1279,7 +1279,7 @@ std::pair<bool, int> RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
       }
     }
     VLOG(2) << "Row vectorization not enabled due to this op: "
-            << MlirToString(&op);
+            << llvm_ir::DumpToString(&op);
     return std::make_pair(false, 0);
   }
   // Trigger only when there is a row broadcasting.
@@ -1725,7 +1725,7 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
 #if GOOGLE_CUDA
 Status IrEmitterUnnested::EmitTritonFusion(
     mlir::Operation* op, tensorflow::AutotuneResult::TritonGemmKey& config) {
-  VLOG(3) << MlirToString(op);
+  VLOG(3) << llvm_ir::DumpToString(op);
   auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
 
   TF_ASSIGN_OR_RETURN(
@@ -1829,7 +1829,7 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
           continue;
         }
       }
-      VLOG(2) << "few_waves not enabled due to: " << MlirToString(&op);
+      VLOG(2) << "few_waves not enabled due to: " << llvm_ir::DumpToString(&op);
       return false;
     }
     return true;
@@ -3715,7 +3715,7 @@ ReductionCodegenState IrEmitterUnnested::GenerateReductionCodegenState(
     absl::Span<const HloReduceInstruction* const> reduce_instr_index_group,
     FusedIrEmitter& fused_emitter) {
   ReductionCodegenState reduction_codegen_state(reduction_info);
-  VLOG(10) << "Emit prologue for reduction: " << MlirToString(fusion);
+  VLOG(10) << "Emit prologue for reduction: " << llvm_ir::DumpToString(fusion);
 
   for (const HloReduceInstruction* reduce_hlo : reduce_instr_index_group) {
     int num_partial_results = reduction_codegen_state.GetNumPartialResults();
@@ -5117,7 +5117,7 @@ Status IrEmitterUnnested::EmitUnnestedReduction(
       GroupDisjointReductions(fused_computation);
 
   VLOG(2) << StrCat("Generate in ", instr_index_groups.size(), " groups for ",
-                    MlirToString(fusion));
+                    llvm_ir::DumpToString(fusion));
 
   // hlo_roots has same ordering as fusion_roots.
   auto hlo_roots = GetFusionRoots(fused_computation);
@@ -5643,7 +5643,7 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
                            "implemented as thunks");
   }
 
-  return InternalError("Unrecognized op: %s", MlirToString(op));
+  return InternalError("Unrecognized op: %s", llvm_ir::DumpToString(op));
 }
 
 Status IrEmitterUnnested::EmitLmhloRegion(mlir::Region* region) {

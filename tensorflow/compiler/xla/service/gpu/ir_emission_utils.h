@@ -123,24 +123,6 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
 // block 0 of the kernel.
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
 
-inline std::string MlirToString(mlir::Operation* op) {
-  std::string s;
-  {
-    llvm::raw_string_ostream os(s);
-    op->print(os);
-  }
-  return s;
-}
-
-inline std::string MlirToString(const mlir::Location& loc) {
-  std::string s;
-  {
-    llvm::raw_string_ostream os(s);
-    loc.print(os);
-  }
-  return s;
-}
-
 int PartitionLmhloOperandsAndOutputs(mlir::Operation* op);
 llvm::SmallVector<mlir::Value> GetHloOperands(mlir::Operation* op);
 llvm::SmallVector<mlir::Value> GetHloOutputs(mlir::Operation* op);

@@ -11,6 +11,7 @@ cc_library(
     deps = [
         ":compiler_trace_proto_cc",
         ":compiler_trace_proto_cc_impl",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",
