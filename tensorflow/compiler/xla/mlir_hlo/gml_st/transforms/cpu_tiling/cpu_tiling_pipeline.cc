@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "gml_st/transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Func/Transforms/Passes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
@@ -38,6 +39,12 @@ void addCPUTilingPipeline(OpPassManager& pm,
 
   if (options.enableFusionClusters) {
     pm.addNestedPass<FuncOp>(createFusionPlanningForCpuPass());
+  }
+
+  // Outline and deduplicate fusion clusters.
+  if (options.enableFusionClusterOutlining) {
+    pm.addPass(createFusionOutliningPass());
+    pm.addPass(func::createDuplicateFunctionEliminationPass());
   }
 
   pm.addNestedPass<FuncOp>(createTransformScatterForCpuPass());

@@ -178,6 +178,12 @@ struct GmlStCPUTilingOptions
       *this, "enable-fusion-clusters",
       llvm::cl::desc("Enable the pass to create gml_st.fusion clusters."),
       llvm::cl::init(false)};
+
+  Option<bool> enableFusionClusterOutlining{
+      *this, "enable-fusion-cluster-outlining",
+      llvm::cl::desc(
+          "Enable passes to outline and deduplicate gml_st.fusion clusters."),
+      llvm::cl::init(false)};
 };
 
 // Returns default "optimized" tiling parameters.
