@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -195,6 +196,8 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitCublasLtMatmulThunk(mlir::Operation* op);
   Status EmitCublasLtMatmulThunkF8(mlir::Operation* op);
   Status EmitConvolutionReorderThunk(mlir::Operation* op);
+  Status EmitTritonFusion(mlir::Operation* op,
+                          tensorflow::AutotuneResult::TritonGemmKey& config);
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCholeskyThunk(mlir::Operation* op);
@@ -203,7 +206,6 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitFftThunk(mlir::Operation* op);
   Status EmitFusion(mlir::Operation* op);
   Status EmitLaunchFunc(mlir::Operation* op);
-  Status EmitTritonCustomCall(mlir::Operation* op);
   Status EmitLoopFusion(mlir::Operation* op);
   Status EmitReduce(mlir::Operation* op);
   Status EmitSelectAndScatter(mlir::Operation* op);

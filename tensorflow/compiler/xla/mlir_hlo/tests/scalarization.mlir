@@ -303,14 +303,13 @@ func.func @gather(%indices: tensor<1x2xindex>,
 //   CHECK-DAG:   %[[CLAMPED_INDEX0_:.*]] = arith.maxsi %[[CLAMPED_INDEX0]], %[[C0]]
 //   CHECK-DAG:   %[[CLAMPED_INDEX1:.*]] = arith.minsi %[[INDEX1]], %[[C5]]
 //   CHECK-DAG:   %[[CLAMPED_INDEX1_:.*]] = arith.maxsi %[[CLAMPED_INDEX1]], %[[C0]]
-//       CHECK:    gml_st.for (%[[J:.*]]) = (%[[C0]]) to (%[[C3]])
-//   CHECK-DAG:      %[[OFFSET_J:.*]] = arith.addi %[[J]], %[[CLAMPED_INDEX0_]]
-//       CHECK:      %[[INIT_TILE:.*]] = gml_st.tile [%[[C0]], %[[J]]]
+//       CHECK:    scf.for %[[J:.*]] = %[[C0]] to %[[C3]]
+//       CHECK:      %[[OFFSET_J:.*]] = arith.addi %[[J]], %[[CLAMPED_INDEX0_]]
 
-//       CHECK:      %[[SLICE:.*]] = tensor.extract_slice %[[OPERAND]]
-//       CHECK-SAME:   [%[[OFFSET_J]], %[[CLAMPED_INDEX1_]], 0]
-//       CHECK-NEXT: %[[VAL:.*]] = tensor.extract %[[SLICE]]
-//       CHECK:      gml_st.set_yield %[[VAL]] into {{.*}}[%[[INIT_TILE]]]
+//       CHECK:      %[[VAL:.*]] = tensor.extract %[[OPERAND]]
+//       CHECK-SAME:   [%[[OFFSET_J]], %[[CLAMPED_INDEX1_]], %[[C0]]]
+//       CHECK-NEXT: %[[UPDATED:.*]] = tensor.insert %[[VAL]]
+//       CHECK:      scf.yield %[[UPDATED]]
 
 // -----
 
@@ -592,19 +591,19 @@ func.func @scalarize_for_op(%initValue: f32, %input: tensor<10xf32>) -> f32 {
   %c1 = arith.constant 1 : index
   %c10 = arith.constant 10 : index
 
-  %initTensor = tensor.from_elements %initValue : tensor<1xf32>
+  %initTensor = tensor.from_elements %initValue : tensor<1x1xf32>
 
   %sum = scf.for %i = %c0 to %c10 step %c1
-      iter_args(%acc = %initTensor) -> (tensor<1xf32>) {
+      iter_args(%acc = %initTensor) -> (tensor<1x1xf32>) {
     %input_elem = tensor.extract %input[%i] : tensor<10xf32>
 
-    %acc_elem = tensor.extract %acc[%c0] : tensor<1xf32>
+    %acc_elem = tensor.extract %acc[%c0, %c0] : tensor<1x1xf32>
     %add = arith.addf %acc_elem, %input_elem : f32
-    %from_elements = tensor.from_elements %add : tensor<1xf32>
+    %from_elements = tensor.from_elements %add : tensor<1x1xf32>
 
-    scf.yield %from_elements : tensor<1xf32>
+    scf.yield %from_elements : tensor<1x1xf32>
   }
-  %sum_elem = tensor.extract %sum[%c0] : tensor<1xf32>
+  %sum_elem = tensor.extract %sum[%c0, %c0] : tensor<1x1xf32>
   func.return %sum_elem : f32
 }
 // CHECK-LABEL: @scalarize_for_op

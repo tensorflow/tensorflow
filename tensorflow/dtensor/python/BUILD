@@ -302,6 +302,7 @@ pytype_strict_library(
         "//tensorflow/python/data/experimental/ops:data_service_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
     ],

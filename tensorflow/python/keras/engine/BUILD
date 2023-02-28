@@ -84,6 +84,7 @@ py_library(
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/trackable:data_structures",
+        "//tensorflow/python/types",
         "//tensorflow/tools/docs:doc_controls",
     ],
 )
@@ -182,6 +183,7 @@ py_library(
         "//tensorflow/python/keras/utils:dataset_creator",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/types",
     ],
 )
 

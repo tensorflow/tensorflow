@@ -22,6 +22,7 @@ import android.content.res.AssetFileDescriptor;
 import android.util.Log;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import tflite.proto.benchmark.DelegatePerformance.LatencyCriteria;
@@ -157,8 +158,7 @@ public final class BenchmarkLatencyImpl {
       String modelFilename, List<TfLiteSettingsListEntry> tfliteSettingsList, String[] args) {
     String modelName = DelegatePerformanceBenchmark.getModelName(modelFilename);
     LatencyCriteria latencyCriteria = tryLoadLatencyCriteria(modelName);
-    ModelBenchmarkReport<LatencyResults> report =
-        LatencyBenchmarkReport.create(modelName, latencyCriteria);
+    List<RawDelegateMetricsEntry> rawDelegateMetricsEntries = new ArrayList<>();
     try (AssetFileDescriptor modelFileDescriptor =
         context.getAssets().openFd(LATENCY_FOLDER_NAME + "/" + modelFilename)) {
       for (TfLiteSettingsListEntry tfliteSettingsListEntry : tfliteSettingsList) {
@@ -177,12 +177,13 @@ public final class BenchmarkLatencyImpl {
                 modelFileDescriptor.getParcelFileDescriptor().getFd(),
                 modelFileDescriptor.getStartOffset(),
                 modelFileDescriptor.getLength());
-        report.addResults(results, tfliteSettingsListEntry);
+        rawDelegateMetricsEntries.add(
+            LatencyBenchmarkReport.parseResults(results, tfliteSettingsListEntry));
       }
     } catch (IOException e) {
       Log.e(TAG, "Failed to open asset file " + LATENCY_FOLDER_NAME + "/" + modelFilename);
     }
-    return report;
+    return LatencyBenchmarkReport.create(modelName, rawDelegateMetricsEntries, latencyCriteria);
   }
 
   /**

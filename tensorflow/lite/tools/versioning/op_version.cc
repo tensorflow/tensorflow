@@ -743,6 +743,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_CONCATENATION:
     case BuiltinOperator_SOFTMAX:
     case BuiltinOperator_MEAN:
+    case BuiltinOperator_MIRROR_PAD:
     case BuiltinOperator_REDUCE_MAX:
     case BuiltinOperator_REDUCE_MIN:
     case BuiltinOperator_RELU6:
@@ -877,7 +878,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_RSQRT:
     case BuiltinOperator_SQUARED_DIFFERENCE:
     case BuiltinOperator_DEPTH_TO_SPACE:
-    case BuiltinOperator_MIRROR_PAD:
       if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }

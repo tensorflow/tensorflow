@@ -62,6 +62,8 @@ class Thunk {
     kMemset32BitValue,
     kMemzero,
     kNcclAllGather,
+    kNcclAllGatherStart,
+    kNcclAllGatherDone,
     kNcclAllReduce,
     kNcclAllReduceStart,
     kNcclAllReduceDone,

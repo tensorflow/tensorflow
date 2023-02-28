@@ -101,7 +101,7 @@ func.func @col_reduce_map_fuse_map(%arg0: tensor<?x?xf32>,
 // CHECK:         arith.addf %{{.*}} : f32
 // CHECK:         scf.yield %{{.*}} : f32
 // CHECK:     scf.yield %{{.*}} : tensor<4xf32>
-// CHECK:   scf.yield %{{.*}} : tensor<?xf32>
+// CHECK:   scf.yield %{{.*}} : tensor<4xf32>
 // CHECK:   gml_st.set_yield
 
 // CHECK: gml_st.parallel

@@ -23,8 +23,8 @@ bazel run -c opt --config=cuda --dynamic_mode=off \
   --hlo_file=my-hlo.txt
 ```
 
-Tip: If the input generation takes too long, we can use
---hlo_argument_mode=use_zeros_as_input.
+Tip: If the input generation takes too long or uses too much host memory,
+consider using --hlo_argument_mode=uninitialized.
 
 ### Troubleshooting
 - Errors such as `Check failed: result.replicas >= 1 (0 vs. 1)`:

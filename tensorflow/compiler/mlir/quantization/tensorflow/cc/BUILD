@@ -123,3 +123,24 @@ tf_cc_test(
         "@llvm-project//mlir:Support",
     ],
 )
+
+cc_library(
+    name = "status_macro",
+    hdrs = ["status_macro.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/tsl/platform:macros",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+tf_cc_test(
+    name = "status_macro_test",
+    srcs = ["status_macro_test.cc"],
+    deps = [
+        ":status_macro",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status",
+    ],
+)

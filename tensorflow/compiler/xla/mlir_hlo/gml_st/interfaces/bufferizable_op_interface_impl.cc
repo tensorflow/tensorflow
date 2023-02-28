@@ -42,21 +42,6 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-// Returns a scalar or a memref type result of `gml_st.materialize` op after
-// bufferization.
-FailureOr<Value> materializeExtraction(OpBuilder &b, Value memref,
-                                       MaterializeOp materializeOp) {
-  Location loc = materializeOp.getLoc();
-  if (!materializeOp.getType().isa<ShapedType>()) {
-    auto indices = getValueOrCreateConstantIndexOp(
-        b, loc, materializeOp.getMixedOffsets());
-    return b.create<memref::LoadOp>(loc, memref, indices).getResult();
-  }
-  Value subview = b.create<memref::SubViewOp>(
-      loc, memref, materializeOp.getMixedOffsets(),
-      materializeOp.getMixedSizes(), materializeOp.getMixedStrides());
-  return subview;
-}
 
 LogicalResult materializeInsertion(OpBuilder &b, Value update, Value set,
                                    Value memref,
@@ -93,48 +78,6 @@ LogicalResult materializeInsertion(OpBuilder &b, Value update, Value set,
                                   tile.getMixedSizes(), tile.getMixedStrides());
   return options.createMemCpy(b, loc, update, memref);
 }
-
-struct MaterializeOpInterface
-    : public BufferizableOpInterface::ExternalModel<MaterializeOpInterface,
-                                                    MaterializeOp> {
-  bool bufferizesToMemoryRead(Operation * /*op*/, OpOperand &opOperand,
-                              const AnalysisState & /*state*/) const {
-    return opOperand.getOperandNumber() == 0;
-  }
-
-  bool bufferizesToMemoryWrite(Operation * /*op*/, OpOperand & /*opOperand*/,
-                               const AnalysisState & /*state*/) const {
-    return false;
-  }
-
-  AliasingOpResultList getAliasingOpResults(
-      Operation *op, OpOperand &opOperand,
-      const AnalysisState & /*state*/) const {
-    auto result = op->getOpResult(0);
-    if (result.getType().isa<RankedTensorType>() &&
-        opOperand.getOperandNumber() == 0)
-      return {{result, BufferRelation::Unknown}};
-    return {};
-  }
-
-  LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationOptions &options) const {
-    auto materializeOp = cast<MaterializeOp>(op);
-
-    FailureOr<Value> bufferOr =
-        getBuffer(rewriter, materializeOp->getOpOperand(0).get(), options);
-    if (failed(bufferOr)) return failure();
-
-    rewriter.setInsertionPoint(materializeOp);
-    FailureOr<Value> resultOr =
-        materializeExtraction(rewriter, *bufferOr, materializeOp);
-
-    if (failed(resultOr)) return failure();
-
-    bufferization::replaceOpWithBufferizedValues(rewriter, op, *resultOr);
-    return success();
-  }
-};
 
 struct ParallelOpInterface
     : public BufferizableOpInterface::ExternalModel<ParallelOpInterface,
@@ -233,98 +176,6 @@ struct ParallelOpInterface
 
   bool isRepetitiveRegion(Operation * /*op*/, unsigned /*index*/) const {
     return true;
-  }
-};
-
-struct ForOpInterface
-    : public BufferizableOpInterface::ExternalModel<ForOpInterface, ForOp> {
-  bool bufferizesToMemoryRead(Operation *op, OpOperand &opOperand,
-                              const AnalysisState &state) const {
-    auto forOp = cast<gml_st::ForOp>(op);
-    return state.isValueRead(forOp.getRegionOutputArgForOpOperand(opOperand));
-  }
-
-  bool bufferizesToMemoryWrite(Operation * /*op*/, OpOperand & /*opOperand*/,
-                               const AnalysisState & /*state*/) const {
-    return true;
-  }
-
-  AliasingOpResultList getAliasingOpResults(
-      Operation *op, OpOperand &opOperand,
-      const AnalysisState & /*state*/) const {
-    auto forOp = cast<gml_st::ForOp>(op);
-    return {
-        {forOp.getResultForOpOperand(opOperand), BufferRelation::Equivalent}};
-  }
-
-  bool isWritable(Operation * /*op*/, Value /*value*/,
-                  const AnalysisState & /*state*/) const {
-    // Interestingly, ForOp's bbArg can **always** be viewed
-    // inplace from the perspective of ops nested under:
-    //   1. Either the matching iter operand is not bufferized inplace and an
-    //      alloc + optional copy makes the bbArg itself inplaceable.
-    //   2. Or the matching iter operand is bufferized inplace and bbArg just
-    //      bufferizes to that too.
-    return true;
-  }
-
-  LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationOptions &options) const {
-    auto forOp = cast<ForOp>(op);
-    Location loc = forOp.getLoc();
-
-    // Get the bufferized output arguments.
-    SmallVector<Value> bufferizedOutputs;
-    bufferizedOutputs.reserve(forOp.getNumOutputs());
-    for (Value output : forOp.getOutputs()) {
-      FailureOr<Value> maybeBuffer = getBuffer(rewriter, output, options);
-      if (failed(maybeBuffer)) return failure();
-      bufferizedOutputs.push_back(*maybeBuffer);
-    }
-
-    // Create new ForOp.
-    auto newForOp = rewriter.create<ForOp>(
-        loc, TypeRange{}, forOp.getLowerBound(), forOp.getUpperBound(),
-        forOp.getStep(), ValueRange{}, nullptr);
-    Block *loopBody = newForOp.getBody();
-
-    // Add conversions to tensor so that we can reuse the old loop body.
-    rewriter.setInsertionPointToStart(loopBody);
-    SmallVector<Value> outputsToTensors;
-    for (auto buf : bufferizedOutputs) {
-      Value tensor = rewriter.create<bufferization::ToTensorOp>(loc, buf);
-      outputsToTensors.push_back(tensor);
-    }
-    SmallVector<Value> blockArgs = newForOp.getInductionVars();
-    blockArgs.append(outputsToTensors);
-
-    // Move old body into new for loop.
-    rewriter.mergeBlocks(forOp.getBody(), loopBody, blockArgs);
-
-    // Replace results and delete old op.
-    bufferization::replaceOpWithBufferizedValues(rewriter, op,
-                                                 bufferizedOutputs);
-    return success();
-  }
-
-  FailureOr<BaseMemRefType> getBufferType(
-      Operation *op, Value value, const BufferizationOptions &options,
-      const DenseMap<Value, BaseMemRefType> &fixedTypes) const {
-    auto forOp = cast<ForOp>(op);
-
-    if (auto bbArg = value.dyn_cast<BlockArgument>()) {
-      // A tensor block argument has the same bufferized type as the
-      // corresponding output operand.
-      return bufferization::getBufferType(
-          forOp.getOpOperandForRegionOutputArg(bbArg).get(), options,
-          fixedTypes);
-    }
-
-    // The bufferized result type is the same as the bufferized type of the
-    // corresponding output operand.
-    return bufferization::getBufferType(
-        forOp.getOutputs()[value.cast<OpResult>().getResultNumber()], options,
-        fixedTypes);
   }
 };
 
@@ -481,9 +332,6 @@ struct SetYieldOpInterface
   bool isNotConflicting(Operation *op, OpOperand *uRead,
                         OpOperand *uConflictingWrite,
                         const AnalysisState &state) const {
-    if (llvm::isa<ForOp>(op->getParentOp())) {
-      return true;
-    }
     Operation *readingOp = uRead->getOwner();
     Operation *conflictingWritingOp = uConflictingWrite->getOwner();
 
@@ -533,8 +381,6 @@ void mlir::gml_st::registerBufferizableOpInterfaceExternalModels(
     DialectRegistry &registry) {
   registry.addExtension(
       +[](MLIRContext *ctx, gml_st::GmlStDialect * /*dialect*/) {
-        ForOp::attachInterface<ForOpInterface>(*ctx);
-        MaterializeOp::attachInterface<MaterializeOpInterface>(*ctx);
         ParallelOp::attachInterface<ParallelOpInterface>(*ctx);
         SetYieldOp::attachInterface<SetYieldOpInterface>(*ctx);
       });

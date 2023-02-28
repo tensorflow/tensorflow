@@ -19,21 +19,10 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * An interface to handle metric computations and exporting results. It is used in {@link
- * ModelBenchmarkReport}.
+ * An interface to handle metric computations and exporting results for a benchmark run on a single
+ * model. It is used in {@link ModelBenchmarkReport}.
  */
 public interface ModelBenchmarkReportInterface {
-  /**
-   * Converts the list of {@link RawDelegateMetricsEntry}, the raw performance results collected
-   * from the native layer, into a list of {@link DelegateMetricsEntry}.
-   *
-   * <p>The computation compares the test target delegate with every reference delegate by computing
-   * the regression of the raw performance results. The list of {@link DelegateMetricsEntry} stores
-   * the calculated results for all pairs. {@link ModelBenchmarkReport} stores both the raw
-   * performance results and the processed performance results.
-   */
-  void computeModelReport();
-
   /** Returns the model name. */
   String modelName();
 

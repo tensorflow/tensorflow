@@ -74,7 +74,6 @@ class LegalizeTF : public impl::LegalizeTFBase<LegalizeTF> {
   explicit LegalizeTF(bool allow_partial_conversion, bool legalize_chlo,
                       llvm::Optional<StringRef> tf2xla_fallback_device_type,
                       bool prefer_tf2xla) {
-    allow_partial_conversion_ = allow_partial_conversion;
     legalize_chlo_ = legalize_chlo;
     prefer_tf2xla_ = prefer_tf2xla;
     use_tf2xla_fallback_ = tf2xla_fallback_device_type.has_value();
@@ -739,25 +738,9 @@ RewritePatternSet PatternsIncludeOps(
 }
 
 mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
-                                  bool legalize_chlo,
-                                  bool allow_partial_conversion) {
+                                  bool legalize_chlo) {
   ConversionTarget target =
       GetDefaultLegalConversionTargets(*op->getContext(), legalize_chlo);
-
-  if (!allow_partial_conversion) {
-    // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.
-    target.addLegalOp<ModuleOp, ::mlir::func::FuncOp, ::mlir::func::ReturnOp>();
-    DenseSet<Operation *> nonlegalized_ops;
-    LogicalResult result = applyPartialConversion(
-        op, target, std::move(patterns), &nonlegalized_ops);
-    // In order to enforce that the conversion result is fully converted,
-    // fail if there are any nonlegalized ops in the set.
-    if (failed(result) || !nonlegalized_ops.empty()) {
-      EmitLegalizationErrors(op, nonlegalized_ops);
-      return failure();
-    }
-    return result;
-  }
 
   return applyPartialConversion(op, target, std::move(patterns));
 }
@@ -766,8 +749,7 @@ mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
 /// patterns from TF2XLA fallback for provided device type (see
 /// legalize_tf_with_tf2xla.cc for details). By default, TF2XLA fallback is not
 /// used.
-LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
-                         bool legalize_chlo,
+LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
                          llvm::Optional<StringRef> tf2xla_fallback_device_type,
                          bool prefer_tf2xla) {
   MLIRContext *context = op->getContext();
@@ -826,7 +808,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
   // canonicalization pattern to pattern list to enable multi-hop lowering.
   chlo::ConstantLikeOp::getCanonicalizationPatterns(patterns, context);
 
-  return ApplyPatterns(op, patterns, legalize_chlo, allow_partial_conversion);
+  return ApplyPatterns(op, patterns, legalize_chlo);
 }
 
 // Performs the lowering to XLA dialect.
@@ -835,9 +817,8 @@ void LegalizeTF::runOnOperation() {
   if (use_tf2xla_fallback_) {
     tf2xla_fallback_device_type = device_type_;
   }
-  if (failed(legalizeTF(getOperation(), allow_partial_conversion_,
-                        legalize_chlo_, tf2xla_fallback_device_type,
-                        prefer_tf2xla_))) {
+  if (failed(legalizeTF(getOperation(), legalize_chlo_,
+                        tf2xla_fallback_device_type, prefer_tf2xla_))) {
     signalPassFailure();
   }
 }
@@ -858,8 +839,7 @@ void LegalizeTFModulePass::runOnOperation() {
                                        /*is_module_pass=*/true);
 
   if (failed(ApplyPatterns(op, patterns,
-                           /*legalize_chlo=*/false,
-                           /*allow_partial_conversion=*/true))) {
+                           /*legalize_chlo=*/false))) {
     signalPassFailure();
   }
 }

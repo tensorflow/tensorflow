@@ -444,4 +444,27 @@ def DTensorRemoveDTensorLayoutPass : Pass<"dtensor-remove-dtensorlayout", "mlir:
   ];
 }
 
+def DTensorReplaceRelayoutWithIdentityPass : Pass<"dtensor-replace-relayout-with-identity", "mlir::func::FuncOp"> {
+  let summary = "Replace `tf.Relayout` op with `tf.Identity` op.";
+
+  let description = [{
+    This pass replaces `tf.Relayout` op with `tf.Identity` op.
+    It replaces all usages with the inputs. For example, the following code
+
+    ```mlir
+      %1 = tf.Relayout(%0)
+      %2 = tf.SomeOp(%1)
+    ```
+
+    will be replaced by
+
+    ```mlir
+      %1 = tf.Identity(%0)
+      %2 = tf.SomeOp(%1)
+    ```
+  }];
+
+  let constructor = "CreateDTensorReplaceRelayoutWithIdentityPass()";
+}
+
 #endif // TF_DTENSOR_PASSES

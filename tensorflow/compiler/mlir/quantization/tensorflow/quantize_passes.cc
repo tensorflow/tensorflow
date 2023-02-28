@@ -129,10 +129,10 @@ void AddQuantizePtqPreCalibrationPasses(
         mlir::TF::CreateUnrollBatchMatMulPassPass());
   }
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  // TODO(b/268429872) Introduce a new experimental flag for the TpuModelToCpu
-  // conversion pass.
-  pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
+  if (quantization_options.experimental_enable_tpu_model_support()) {
+    pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
+  }
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
       quantization_options.op_set(),
       quantization_options.enable_two_input_tensors()));

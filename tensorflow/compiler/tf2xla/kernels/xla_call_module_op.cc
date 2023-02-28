@@ -476,7 +476,14 @@ class XlaCallModuleOp : public XlaOpKernel {
         if (current_device_type == DEVICE_CPU_XLA_JIT) {
           current_platform = "CPU";
         } else if (current_device_type == DEVICE_GPU_XLA_JIT) {
-          current_platform = "GPU";
+#if GOOGLE_CUDA
+          current_platform = "CUDA";
+#elif TENSORFLOW_USE_ROCM
+          current_platform = "ROCM";
+#else
+          OP_REQUIRES(ctx, false,
+                      errors::Unimplemented("CUDA or ROCM build required"));
+#endif
         } else if (current_device_type == DEVICE_TPU_XLA_JIT) {
           current_platform = "TPU";
         } else {
@@ -484,6 +491,7 @@ class XlaCallModuleOp : public XlaOpKernel {
                       errors::Unimplemented("Unexpected device type ",
                                             current_device_type));
         }
+        VLOG(3) << "Initialized XlaCallModuleOp on " << current_platform;
         auto found_platform =
             std::find(platforms.begin(), platforms.end(), current_platform);
         OP_REQUIRES(ctx, found_platform != platforms.end(),

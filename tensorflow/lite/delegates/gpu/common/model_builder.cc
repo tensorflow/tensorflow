@@ -645,6 +645,41 @@ class Conv2DOperationParser : public TFLiteOperationParser {
     } else {
       // weights are constants
       const int src_group_size = attr.weights.shape.i;
+      if (attr.weights.shape.i == 1) {
+        // when weights shape input channels = 1 =>
+        // groups count = src_shape channels =>
+        // CONVOLUTION_2D equivalent to DEPTHWISE_CONVOLUTION
+        DepthwiseConvolution2DAttributes dw_attr;
+        dw_attr.weights.id = attr.weights.id;
+        dw_attr.weights.shape =
+            OHWI(attr.weights.shape.i, attr.weights.shape.h,
+                 attr.weights.shape.w, attr.weights.shape.o);
+        dw_attr.weights.data.resize(dw_attr.weights.shape.DimensionsProduct());
+        for (int o = 0; o < dw_attr.weights.shape.o; ++o) {
+          for (int h = 0; h < dw_attr.weights.shape.h; ++h) {
+            for (int w = 0; w < dw_attr.weights.shape.w; ++w) {
+              for (int i = 0; i < dw_attr.weights.shape.i; ++i) {
+                dw_attr.weights
+                    .data[dw_attr.weights.shape.LinearIndex({o, h, w, i})] =
+                    attr.weights
+                        .data[attr.weights.shape.LinearIndex({i, h, w, o})];
+              }
+            }
+          }
+        }
+        dw_attr.bias = attr.bias;
+        dw_attr.strides = attr.strides;
+        dw_attr.dilations = attr.dilations;
+        dw_attr.padding = attr.padding;
+        Node* node = graph->NewNode();
+        node->operation.type = ToString(OperationType::DEPTHWISE_CONVOLUTION);
+        node->operation.attributes = std::move(dw_attr);
+        RETURN_IF_ERROR(reader->AddInput(node, 0));
+        RETURN_IF_ERROR(reader->AddOutputs(node));
+        RETURN_IF_ERROR(
+            MaybeFuseActivation(tf_options->activation, graph, node));
+        return absl::OkStatus();
+      }
       const int dst_group_size = attr.weights.shape.o / attr.groups;
       const bool supported_grouped_conv =
           src_group_size % 4 == 0 && dst_group_size % 4 == 0;

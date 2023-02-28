@@ -307,7 +307,7 @@ cc_library(
         "@llvm-project//mlir:ROCDLToLLVMIRTranslation",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:NVVMToLLVMIRTranslation",
-        "//tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla:mhlo_to_lhlo_with_xla",
+        "//tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
@@ -355,6 +355,7 @@ cc_library(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:human_readable_json",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/protobuf:autotuning_proto_cc",
         "//tensorflow/tsl/protobuf:dnn_proto_cc",
     ] + if_gpu_is_configured([
         ":triangular_solve_thunk",
@@ -466,6 +467,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/protobuf:autotuning_proto_cc",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -714,6 +716,7 @@ cc_library(
         "while_thunk.h",
     ],
     deps = [
+        ":non_atomically_upgradeable_rw_lock",
         ":backend_configs_cc",
         ":buffer_allocations",
         ":cusolver_context",

@@ -445,6 +445,25 @@ FailureOr<Value> ConcatenateOp::generateResultTileValue(
       .front();
 }
 
+LogicalResult ConcatenateOp::reifyResultShapes(
+    OpBuilder &b, ReifiedRankedShapedTypeDims &reifiedReturnShapes) {
+  Location loc = getLoc();
+  Value init = getInit();
+
+  // Assume unique result.
+  if (getNumResults() != 1) return failure();
+  SmallVector<Value> &shape = reifiedReturnShapes.emplace_back();
+
+  // Derive shape from init operand.
+  int64_t rank = init.getType().cast<RankedTensorType>().getRank();
+  shape.reserve(rank);
+  for (int64_t i = 0; i < rank; ++i) {
+    shape.push_back(b.create<tensor::DimOp>(loc, init, i));
+  }
+
+  return success();
+}
+
 ParseResult ConcatenateOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseDstStyleOp(
       parser, result, [&](OpAsmParser &parser, NamedAttrList &attributes) {

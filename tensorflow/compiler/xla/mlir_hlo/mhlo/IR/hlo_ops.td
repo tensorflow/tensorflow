@@ -170,9 +170,9 @@ class MHLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
 
 // Abs supports complex to real, so element type is not guaranteed to match.
 def MHLO_AbsOp: MHLO_UnaryElementwiseOp<"abs",
-    [Pure,
-     DeclareOpInterfaceMethods<InferTypeOpInterface>],
-     TensorOf<[MHLO_SInt, MHLO_Float, MHLO_Complex]>> {
+    [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>],
+     TensorOf<[HLO_SInt, HLO_Float, HLO_Complex]>,
+     TensorOf<[HLO_SInt, HLO_Float]>> {
   let summary = "Absolute value operator";
   let description = [{
     Returns `abs(operand)` element-wise.
@@ -2383,8 +2383,8 @@ def MHLO_GatherOp: MHLO_Op<"gather", [InferTensorTypeWithReify, Pure]> {
   let hasCanonicalizer = 1;
 }
 
-def MHLO_GetDimensionSizeOp: MHLO_Op<"get_dimension_size", [Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def MHLO_GetDimensionSizeOp: MHLO_Op<"get_dimension_size",
+      [Pure, InferTensorType]> {
   let summary = "GetDimensionSize operator";
   let description = [{
     Returns the size of the given dimension of the operand.

@@ -220,3 +220,14 @@ func.func @cholesky(%arg : memref<10x10xf32>, %out: memref<10x10xf32>) {
       : (memref<10x10xf32>, memref<10x10xf32>, memref<32xi8>, memref<32xi32>) -> ()
   func.return
 }
+
+// CHECK-LABEL: func @ag_start
+func.func @ag_start(%arg : memref<10x10xf32>, %out: memref<20x10xf32>) {
+  %0 = "lmhlo_gpu.all_gather_start"(%arg, %out)
+    {
+      replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      all_gather_dimension = 0
+    }
+    : (memref<10x10xf32>, memref<20x10xf32>) -> (!mhlo.token)
+  func.return
+}

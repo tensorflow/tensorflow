@@ -60,7 +60,8 @@ def LegalizeCollectiveOpsPass :
   }];
 
   let dependentDialects = [
-    "mlir::mhlo::MhloDialect", "mlir::xla_cpu::XlaCpuDialect"
+    "mlir::mhlo::MhloDialect", "mlir::tensor::TensorDialect",
+    "mlir::xla_cpu::XlaCpuDialect"
   ];
 
   let constructor = "createLegalizeCollectiveOpsPass()";

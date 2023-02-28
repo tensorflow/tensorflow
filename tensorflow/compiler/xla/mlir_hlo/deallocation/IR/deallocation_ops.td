@@ -27,7 +27,6 @@ def DeallocationDialect : Dialect {
     Ops for modelling owned/unowned memrefs using null pointers.
   }];
   let cppNamespace = "::mlir::deallocation";
-  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 class DeallocationOp<string mnemonic, list<Trait> traits = []>

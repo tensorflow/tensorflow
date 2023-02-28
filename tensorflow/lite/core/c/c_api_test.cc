@@ -878,6 +878,8 @@ TEST(CApiSimple, OpaqueContextGetNodeAndRegistration) {
           EXPECT_NE(registration_external, nullptr);
           EXPECT_EQ(kTfLiteBuiltinAdd, TfLiteRegistrationExternalGetBuiltInCode(
                                            registration_external));
+          EXPECT_EQ(
+              1, TfLiteRegistrationExternalGetVersion(registration_external));
           EXPECT_EQ(2, TfLiteOpaqueNodeNumberOfInputs(node));
           EXPECT_EQ(1, TfLiteOpaqueNodeNumberOfOutputs(node));
         }
@@ -897,6 +899,10 @@ TEST(CApiSimple, OpaqueContextGetNodeAndRegistration) {
   TfLiteInterpreterOptionsDelete(options);
   TfLiteInterpreterDelete(interpreter);
   TfLiteOpaqueDelegateDelete(opaque_delegate);
+}
+
+TEST(CApiSimple, TfLiteRegistrationExternalGetVersionNullptr) {
+  EXPECT_EQ(TfLiteRegistrationExternalGetVersion(nullptr), -1);
 }
 
 TEST(CApiSimple, TfLiteOpaqueContextResizeTensor) {
@@ -1263,7 +1269,8 @@ TEST(CApiSimple, OpaqueApiAccessors) {
     // are accessible via the opaque API function.
     //
     TfLiteRegistrationExternal* reg = TfLiteRegistrationExternalCreate(
-        kTfLiteBuiltinDelegate, "my delegate", 1);
+        kTfLiteBuiltinDelegate, "my delegate", 123);
+    EXPECT_EQ(123, TfLiteRegistrationExternalGetVersion(reg));
     TfLiteRegistrationExternalSetInit(
         reg,
         [](TfLiteOpaqueContext* opaque_context, const char* buffer,

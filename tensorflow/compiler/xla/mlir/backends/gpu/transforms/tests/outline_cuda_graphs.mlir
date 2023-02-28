@@ -288,3 +288,86 @@ func.func private @external()
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn1
 // CHECK-NEXT: return
+
+// -----
+// Check that lmhlo_gpu.gemm is moved into the graph capture function.
+
+module attributes {gpu.container_module} {
+
+  gpu.module @gpu_module attributes {binary = "kernel binary"} {
+    gpu.func @fn0(%arg0: memref<16xi8>) kernel { gpu.return }
+  }
+
+  // CHECK: @func(%[[ARG0:.*]]: memref<16xi8> {lmhlo.params = 0 : index}
+  // CHECK-SAME: %[[ARG1:.*]]: memref<16xi8> {lmhlo.params = 1 : index}
+  // CHECK-SAME: %[[ARG2:.*]]: memref<16xi8>
+  func.func @func(%raw_arg0: memref<16xi8> {lmhlo.params = 0 : index},
+                   %raw_arg1: memref<16xi8> {lmhlo.params = 1 : index},
+                   %raw_arg2: memref<16xi8> {lmhlo.output_index = dense<[0]> : tensor<1xindex>}) attributes {
+                       result_xla_shape = "(f32[4]) "
+                   } {
+    %c0 = arith.constant 0 : index
+    %arg0 = memref.view %raw_arg0[%c0][] : memref<16xi8> to memref<2x2xf32>
+    %c1 = arith.constant 0 : index
+    %arg1 = memref.view %raw_arg1[%c1][] : memref<16xi8> to memref<2x2xf32>
+    %c2 = arith.constant 0 : index
+    %arg2 = memref.view %raw_arg2[%c2][] : memref<16xi8> to memref<2x2xf32>
+
+    // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]], %[[ARG1]], %[[ARG2]])
+    // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
+    "lmhlo_gpu.gemm"(%arg0, %arg1, %arg2) {alpha_imag = 0.000000e+00 : f64, alpha_real = 1.000000e+00 : f64, beta = 0.000000e+00 : f64, batch_size = 1 : i64, lhs_stride = 4 : i64, rhs_stride = 4 : i64, dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>} : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
+    gpu.launch_func  @gpu_module::@fn0 blocks in (%c1, %c1, %c1)
+      threads in (%c1, %c1, %c1) args(%raw_arg0 : memref<16xi8>)
+    "lmhlo.terminator"() : () -> ()
+  }
+
+  func.func private @external()
+}
+
+// CHECK: func @xla.gpu.cuda.graph.capture
+// CHECK-NEXT: arith.constant 0
+// CHECK-NEXT: memref.view
+// CHECK-NEXT: arith.constant 0
+// CHECK-NEXT: memref.view
+// CHECK-NEXT: arith.constant 0
+// CHECK-NEXT: memref.view
+// CHECK-NEXT: "lmhlo_gpu.gemm"
+// CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
+// CHECK-NEXT: return
+
+// -----
+// Check that lmhlo_gpu.gemm with runtime autotuning is not captured by a CUDA
+// graph.
+
+module attributes {gpu.container_module} {
+
+  gpu.module @gpu_module attributes {binary = "kernel binary"} {
+    gpu.func @fn0(%arg0: memref<16xi8>) kernel { gpu.return }
+  }
+
+  // CHECK: @func(%[[ARG0:.*]]: memref<16xi8> {lmhlo.params = 0 : index}
+  // CHECK-SAME: %[[ARG1:.*]]: memref<16xi8> {lmhlo.params = 1 : index}
+  // CHECK-SAME: %[[ARG2:.*]]: memref<16xi8>
+  func.func @func(%raw_arg0: memref<16xi8> {lmhlo.params = 0 : index},
+                   %raw_arg1: memref<16xi8> {lmhlo.params = 1 : index},
+                   %raw_arg2: memref<16xi8> {lmhlo.output_index = dense<[0]> : tensor<1xindex>}) attributes {
+                       result_xla_shape = "(f32[4]) "
+                   } {
+    %c0 = arith.constant 0 : index
+    %arg0 = memref.view %raw_arg0[%c0][] : memref<16xi8> to memref<2x2xf32>
+    %c1 = arith.constant 0 : index
+    %arg1 = memref.view %raw_arg1[%c1][] : memref<16xi8> to memref<2x2xf32>
+    %c2 = arith.constant 0 : index
+    %arg2 = memref.view %raw_arg2[%c2][] : memref<16xi8> to memref<2x2xf32>
+
+
+    // CHECK-NOT: call @xla.gpu.cuda.graph.launch
+    // CHECK: "lmhlo_gpu.gemm"
+    "lmhlo_gpu.gemm"(%arg0, %arg1, %arg2) {algorithm = -5, alpha_imag = 0.000000e+00 : f64, alpha_real = 1.000000e+00 : f64, beta = 0.000000e+00 : f64, batch_size = 1 : i64, lhs_stride = 4 : i64, rhs_stride = 4 : i64, dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>} : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
+    gpu.launch_func  @gpu_module::@fn0 blocks in (%c1, %c1, %c1)
+      threads in (%c1, %c1, %c1) args(%raw_arg0 : memref<16xi8>)
+    "lmhlo.terminator"() : () -> ()
+  }
+
+  func.func private @external()
+}

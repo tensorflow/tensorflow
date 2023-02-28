@@ -248,21 +248,6 @@ Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
     return OkStatus();
   }
 
-  if (IsSoftmaxCustomCall(*custom_call)) {
-    TF_ASSIGN_OR_RETURN(current_properties_,
-                        ProcessSubcomputation(custom_call->to_apply()));
-    current_properties_[kBytesAccessedKey] = GetShapeSize(custom_call->shape());
-    current_properties_.set_output_bytes_accessed(
-        GetShapeSize(custom_call->shape()));
-
-    for (int64_t i = 0; i < custom_call->operand_count(); ++i) {
-      int64_t operand_size = GetShapeSize(custom_call->operand(i)->shape());
-      current_properties_[kBytesAccessedKey] += operand_size;
-      current_properties_.set_operand_bytes_accessed(i, operand_size);
-    }
-    return OkStatus();
-  }
-
   return HloCostAnalysis::HandleCustomCall(custom_call);
 }
 

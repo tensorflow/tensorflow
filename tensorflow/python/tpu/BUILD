@@ -427,6 +427,7 @@ pytype_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/types",
     ],
 )
 

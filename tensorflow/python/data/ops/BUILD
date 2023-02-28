@@ -174,6 +174,9 @@ py_library(
 py_library(
     name = "choose_from_datasets_op",
     srcs = ["choose_from_datasets_op.py"],
+    deps = [
+        "//tensorflow/python/types",
+    ],
 )
 
 py_library(
@@ -239,6 +242,9 @@ py_library(
 py_library(
     name = "sample_from_datasets_op",
     srcs = ["sample_from_datasets_op.py"],
+    deps = [
+        "//tensorflow/python/types",
+    ],
 )
 
 py_library(
@@ -371,6 +377,9 @@ py_library(
 py_library(
     name = "zip_op",
     srcs = ["zip_op.py"],
+    deps = [
+        "//tensorflow/python/types",
+    ],
 )
 
 py_library(
@@ -444,6 +453,7 @@ py_library(
         "//tensorflow/python/compat",
         "//tensorflow/python/data/util:convert",
         "//tensorflow/python/framework:type_spec",
+        "//tensorflow/python/types",
         "//tensorflow/python/util:tf_export",
     ],
 )

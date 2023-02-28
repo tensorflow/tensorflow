@@ -1,3 +1,4 @@
+<!-- LINT.IfChange -->
 # Create a custom multiplexer op
 
 This page provides an end-to-end example for adding a custom multiplexer op to
@@ -395,8 +396,8 @@ the `multiplex_1` op.
 
 Op components                           | Build rule             | Build target         | Source
 --------------------------------------- | ---------------------- | -------------------- | ------
-Kernels (C++)                           | `tf_kernel_library`    | `multiplex_1_kernel` | `multiplex_1_kernel.cc`, `multiplex_1_op.cc`
-Wrapper (automatically generated)       | `tf_gen_op_wrapper.py` | `gen_multiplex_1_op` | N/A
+Kernels (C++)                           | `tf_custom_op_library` | `multiplex_1_kernel` | `multiplex_1_kernel.cc`, `multiplex_1_op.cc`
+Wrapper (automatically generated)       | N/A                    | `gen_multiplex_1_op` | N/A
 Wrapper (with public API and docstring) | `py_strict_library`    | `multiplex_1_op`     | `multiplex_1_op.py`
 Tests                                   | `tf_py_test`           | `multiplex_1_test`   | `multiplex_1_test.py`
-
+<!-- LINT.ThenChange(multiplex_1.md) -->

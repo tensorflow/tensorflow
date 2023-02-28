@@ -3473,7 +3473,8 @@ class DTensorRelayoutTest(test_util.DTensorBaseTest):
     local_ids = np.ravel(global_ids).tolist()
     mesh_dict = {
         device: Mesh([_MESH_DIM_X, _MESH_DIM_Y], global_ids, local_ids,
-                     test_util.create_device_list((2, 4), device))
+                     test_util.create_device_list((2, 4), device),
+                     use_xla_spmd=test_util.get_use_xla_spmd(device))
         for device in ('CPU', 'GPU', 'TPU')
     }
     self.mesh = self.configTestMesh(mesh_dict)

@@ -454,7 +454,7 @@ class XlaBuilder {
                            int64_t target_dim_num);
 
   // Adds a new input/output alias. Since the input/output shape information are
-  // not available until the computation is built, and eventual error in the
+  // not available until the computation is built, any eventual error in the
   // arguments of this API will be detected only at computation Build() time.
   //
   // Note: Except when 'must-alias' is true, alias is assumed to be 'may-alias'

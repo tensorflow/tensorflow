@@ -319,6 +319,14 @@ TfLiteBuiltinOperator TfLiteRegistrationExternalGetBuiltInCode(
   return static_cast<TfLiteBuiltinOperator>(registration->builtin_code);
 }
 
+int TfLiteRegistrationExternalGetVersion(
+    const TfLiteRegistrationExternal* registration) {
+  if (!registration) {
+    return -1;
+  }
+  return registration->version;
+}
+
 const char* TfLiteRegistrationExternalGetCustomName(
     const TfLiteRegistrationExternal* registration) {
   return registration->custom_name;

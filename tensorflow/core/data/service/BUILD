@@ -668,6 +668,7 @@ cc_library(
         ":grpc_util",
         ":grpc_worker_impl",
         ":worker_client",
+        "//tensorflow/core/data:utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",

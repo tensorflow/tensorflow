@@ -258,6 +258,7 @@ cc_test(
         "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate_mock_test",
+        "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin_impl",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",

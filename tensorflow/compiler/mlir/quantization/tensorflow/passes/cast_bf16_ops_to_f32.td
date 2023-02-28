@@ -55,6 +55,27 @@ def CastBFloat16ConvToFloat32 : Pat<
    (IsBF16ElementType $filter)],
   (addBenefit 1)>;
 
+// Casts BF16 BiasAdd ops to F32 to optimize quantizable ops followed by
+// BiasAdd ops. This cast will cover Conv + BiasAdd, MatMul + BiasAdd,
+// etc.
+def CastBFloat16BiasAddToFloat32 : Pat<
+  (TF_BiasAddOp:$res
+    $input, $bias, IsDataFormatNHWC:$bias_data_format),
+  (TF_CastOp
+    (TF_BiasAddOp
+      (TF_CastOp
+        $input, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $input))),
+      (TF_CastOp
+        $bias, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $bias))),
+      IsDataFormatNHWC:$bias_data_format,
+      (returnType (CloneTypeWithF32ElementType $res))),
+    /*truncate=*/ConstBoolAttrFalse),
+  [(IsBF16ElementType $input),
+   (IsBF16ElementType $bias)],
+  (addBenefit 1)>;
+
 def CastBFloat16AvgPoolToFloat32 : Pat<
   (TF_AvgPoolOp:$res
     $input, $ksize, $strides, $padding,
@@ -69,4 +90,42 @@ def CastBFloat16AvgPoolToFloat32 : Pat<
       (returnType (CloneTypeWithF32ElementType $res))),
     /*truncate=*/ConstBoolAttrFalse),
   [(IsBF16ElementType $input)],
+  (addBenefit 1)>;
+
+def CastBFloat16MatMulToFloat32 : Pat<
+  (TF_MatMulOp:$res
+    $input, $filter, $transpose_a, $transpose_b),
+  (TF_CastOp
+    (TF_MatMulOp
+      (TF_CastOp
+        $input, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $input))),
+      (TF_CastOp
+        $filter, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $filter))),
+      $transpose_a, $transpose_b,
+      (returnType (CloneTypeWithF32ElementType $res))),
+    /*truncate=*/ConstBoolAttrFalse),
+  [(IsBF16ElementType $input),
+   (IsBF16ElementType $filter)],
+  (addBenefit 1)>;
+
+def CastBFloat16DepthwiseConvToFloat32 : Pat<
+  (TF_DepthwiseConv2dNativeOp:$res
+    $input, $filter, $strides, $padding,
+    $explicit_paddings, IsDataFormatNHWC:$data_format, $dilations),
+  (TF_CastOp
+    (TF_DepthwiseConv2dNativeOp
+      (TF_CastOp
+        $input, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $input))),
+      (TF_CastOp
+        $filter, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $filter))),
+      $strides, $padding, $explicit_paddings,
+      IsDataFormatNHWC:$data_format, $dilations,
+      (returnType (CloneTypeWithF32ElementType $res))),
+    /*truncate=*/ConstBoolAttrFalse),
+  [(IsBF16ElementType $input),
+   (IsBF16ElementType $filter)],
   (addBenefit 1)>;

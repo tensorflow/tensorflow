@@ -80,6 +80,8 @@ Status SetName(HloModule *module, HloInstruction *gemm) {
 // types not compatible with Epilogue Fusion.
 bool SupportsEpilogueFusion(PrimitiveType type) {
   switch (type) {
+    case F8E4M3FN:
+    case F8E5M2:
     case F16:
     case BF16:
     case F32:
@@ -87,6 +89,50 @@ bool SupportsEpilogueFusion(PrimitiveType type) {
       return true;
     default:
       return false;
+  }
+}
+
+bool IsF8Type(const HloInstruction *instr) {
+  if (instr->shape().element_type() == F8E4M3FN ||
+      instr->shape().element_type() == F8E5M2) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+bool IsF8TypeRecursiveImpl(const HloInstruction *instr,
+                           absl::flat_hash_set<int> &visited_instrs) {
+  // Avoid visiting the same instruction more than once.
+  if (!visited_instrs.emplace(instr->unique_id()).second) {
+    return false;
+  }
+  if (IsF8Type(instr)) {
+    return true;
+  } else {
+    if (instr->operand_count() == 1 || instr->opcode() == HloOpcode::kDivide ||
+        instr->opcode() == HloOpcode::kPad) {
+      return IsF8TypeRecursiveImpl(instr->operand(0), visited_instrs);
+    } else if (instr->opcode() == HloOpcode::kMultiply) {
+      return IsF8TypeRecursiveImpl(instr->operand(0), visited_instrs) ||
+             IsF8TypeRecursiveImpl(instr->operand(1), visited_instrs);
+    } else {
+      return false;
+    }
+  }
+}
+
+bool IsF8TypeRecursive(const HloInstruction *instr) {
+  absl::flat_hash_set<int> visited_instrs;
+  return IsF8TypeRecursiveImpl(instr, visited_instrs);
+}
+
+void VlogF8PatternMiss(const HloInstruction *instr) {
+  if (Match(instr, m::CustomCall({kCublasLtMatmulCallTarget},
+                                 m::Op().WithPredicate(IsF8TypeRecursive),
+                                 m::Op().WithPredicate(IsF8TypeRecursive)))) {
+    VLOG(1) << "Possible intended FP8 GEMM " << instr->ToShortString()
+            << " not rewritten into FP8 Custom Call.";
   }
 }
 
@@ -153,6 +199,16 @@ auto GemmOrCublasLtMatmul(HloInstruction **instr) {
   return m::CustomCall(instr, {kGemmCallTarget, kCublasLtMatmulCallTarget});
 }
 
+auto CublasLtMatmulMaybeF8(HloInstruction **instr) {
+  return m::CustomCall(
+      instr, {kCublasLtMatmulCallTarget, kCublasLtMatmulF8CallTarget});
+}
+
+auto GemmOrCublasLtMatmulMaybeF8(HloInstruction **instr) {
+  return m::CustomCall(instr, {kGemmCallTarget, kCublasLtMatmulCallTarget,
+                               kCublasLtMatmulF8CallTarget});
+}
+
 auto BcastConstScalar(HloInstruction **instr, double value) {
   return m::Broadcast(instr, m::ConstantScalar(value));
 }
@@ -181,9 +237,19 @@ auto OptionalSlice(HloInstruction **optional_slice, Pattern pattern) {
 }
 
 template <typename Pattern>
-auto OptionalBitcast(HloInstruction **optional_bitcast, Pattern pattern) {
-  return m::AnyOf<HloInstruction>(m::Bitcast(optional_bitcast, pattern),
-                                  std::move(pattern));
+auto OptionalBitcastPreservingElementType(HloInstruction **optional_bitcast,
+                                          Pattern pattern) {
+  return m::AnyOf<HloInstruction>(
+      m::Bitcast(optional_bitcast, pattern)
+          .WithPredicate([](const HloInstruction *instr) {
+            return ShapeUtil::SameElementType(instr->shape(),
+                                              instr->operand(0)->shape());
+          }),
+      std::move(pattern));
+}
+
+auto ConvertFromF8(HloInstruction **instr) {
+  return m::Convert(m::Op(instr).WithPredicate(IsF8Type));
 }
 
 // The rewriting proceeds in a bottom-up way:
@@ -260,21 +326,21 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             m::CustomCall(
                 {kCublasLtMatmulCallTarget},
                 m::AnyOf<HloInstruction>(
-                    OptionalBitcast(
+                    OptionalBitcastPreservingElementType(
                         &a_bitcast,
-                        m::MultiplyAnyOrder(&a_binary, m::Convert(m::Op(&a)),
+                        m::MultiplyAnyOrder(&a_binary, ConvertFromF8(&a),
                                             m::Broadcast(m::Op(&a_scale)))),
-                    OptionalBitcast(&a_bitcast,
-                                    m::Divide(&a_binary, m::Convert(m::Op(&a)),
+                    OptionalBitcastPreservingElementType(
+                        &a_bitcast, m::Divide(&a_binary, ConvertFromF8(&a),
                                               m::Broadcast(m::Op(&a_scale))))),
                 m::AnyOf<HloInstruction>(
-                    OptionalBitcast(
+                    OptionalBitcastPreservingElementType(
                         &b_bitcast,
-                        m::MultiplyAnyOrder(&b_binary, m::Convert(m::Op(&b)),
+                        m::MultiplyAnyOrder(&b_binary, ConvertFromF8(&b),
                                             m::Broadcast(m::Op(&b_scale)))),
-                    OptionalBitcast(
+                    OptionalBitcastPreservingElementType(
                         &b_bitcast,
-                        m::Divide(&b_binary, m::Convert(m::Op(&b)),
+                        m::Divide(&b_binary, ConvertFromF8(&b),
                                   m::Broadcast(m::Op(&b_scale)))))))) {
       TF_ASSIGN_OR_RETURN(
           bool created_call,
@@ -289,17 +355,24 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Attempt to rewrite an FP8 GEMM directly operating on the unscaled but
     // possibly type converted FP8 operands into a Custom Call.
-    if (Match(instr,
-              m::AnyOf<HloInstruction>(
-                  m::CustomCall({kCublasLtMatmulCallTarget},
-                                m::Convert(m::Op(&a)), m::Convert(m::Op(&b))),
-                  m::CustomCall({kCublasLtMatmulCallTarget}, m::Op(&a),
-                                m::Op(&b))))) {
+    if (Match(instr, m::AnyOf<HloInstruction>(
+                         m::CustomCall({kCublasLtMatmulCallTarget},
+                                       ConvertFromF8(&a), ConvertFromF8(&b)),
+                         m::CustomCall({kCublasLtMatmulCallTarget},
+                                       m::Op(&a).WithPredicate(IsF8Type),
+                                       m::Op(&b).WithPredicate(IsF8Type))))) {
       TF_ASSIGN_OR_RETURN(bool created_call, CreateF8CustomCall(instr, a, b));
       if (created_call) {
         return OkStatus();
       }
     }
+
+    // Warn when a GEMM (indirectly) operating on FP8 operands and possibly
+    // intended to be rewritten into an FP8 Custom Call is not pattern matched.
+    if (VLOG_IS_ON(1)) {
+      VlogF8PatternMiss(instr);
+    }
+
     return OkStatus();
   }
 
@@ -307,7 +380,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     HloInstruction *alpha, *existing_gemm;
     if (Match(instr,
               m::MultiplyAnyOrder(
-                  GemmOrCublasLtMatmul(&existing_gemm).WithOneUser(),
+                  GemmOrCublasLtMatmulMaybeF8(&existing_gemm).WithOneUser(),
                   m::Broadcast(m::ConstantScalar(&alpha)).WithOneUser()))) {
       TF_ASSIGN_OR_RETURN(auto config,
                           existing_gemm->backend_config<GemmBackendConfig>());
@@ -456,11 +529,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (Match(instr,
               m::MaximumAnyOrder(
                   m::AnyOf<HloInstruction>(
-                      m::Slice(&optional_slice_or_bitcast,
-                               CublasLtMatmul(&existing_gemm).WithOneUser()),
-                      m::Bitcast(&optional_slice_or_bitcast,
-                                 CublasLtMatmul(&existing_gemm).WithOneUser()),
-                      CublasLtMatmul(&existing_gemm))
+                      m::Slice(
+                          &optional_slice_or_bitcast,
+                          CublasLtMatmulMaybeF8(&existing_gemm).WithOneUser()),
+                      m::Bitcast(
+                          &optional_slice_or_bitcast,
+                          CublasLtMatmulMaybeF8(&existing_gemm).WithOneUser()),
+                      CublasLtMatmulMaybeF8(&existing_gemm))
                       .WithOneUser(),
                   m::Broadcast(&zeros, m::ConstantScalar(0))))) {
       TF_RETURN_IF_ERROR(FuseReluActivation(instr, zeros, existing_gemm,
@@ -507,22 +582,23 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // FP8 GEMM kernels are only available on Hopper and newer architectures.
     if (!cuda_compute_capability_.IsAtLeast(
             se::CudaComputeCapability::HOPPER)) {
+      VLOG(1) << "FP8 Custom Calls require Hopper or newer architecture.";
       return false;
     }
-
 #if CUDA_VERSION < 11080
     // FP8 GEMM kernels are only available with CUDA 11.8 and above
+    VLOG(1) << "FP8 Custom Calls require CUDA 11.8 or newer.";
     return false;
 #endif
 
     // cuBLASLt FP8 GEMM kernels require one of the two operands to be in
     // F8E4M3FN format.
-    if (!((a->shape().element_type() == F8E4M3FN &&
-           b->shape().element_type() == F8E4M3FN) ||
-          (a->shape().element_type() == F8E4M3FN &&
-           b->shape().element_type() == F8E5M2) ||
-          (a->shape().element_type() == F8E5M2 &&
-           b->shape().element_type() == F8E4M3FN))) {
+    if (a->shape().element_type() == F8E5M2 &&
+        b->shape().element_type() == F8E5M2) {
+      VLOG(1)
+          << "Failed to rewrite " << instr->ToShortString()
+          << " into FP8 Custom Call. The element type of one of the operands "
+             "must be F8E4M3FN.";
       return false;
     }
 
@@ -540,11 +616,17 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         gemm_backend_config.dot_dimension_numbers().rhs_batch_dimensions();
     for (int i = 0; i < a_dims.size(); ++i) {
       if (a_dims[i] % 16 && !absl::c_linear_search(a_batch_dims, i)) {
+        VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+                << " into FP8 Custom Call. The non-batch dimensions of A must "
+                   "be multiples of 16.";
         return false;
       }
     }
     for (int i = 0; i < b_dims.size(); ++i) {
       if (b_dims[i] % 16 && !absl::c_linear_search(b_batch_dims, i)) {
+        VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+                << " into FP8 Custom Call. The non-batch dimensions of B must "
+                   "be multiples of 16.";
         return false;
       }
     }
@@ -560,6 +642,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     for (int i = 0; i < scales.size(); ++i) {
       if (scales[i]) {
         if (!ShapeUtil::IsScalar(scales[i]->shape())) {
+          VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+                  << " into FP8 Custom Call. The scaling factors must be "
+                     "scalars.";
           return false;
         }
         if (!mult_scale[i]) {
@@ -588,6 +673,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         c_type = F32;
         break;
       default:
+        VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+                << " into FP8 Custom Call. Output element type must be "
+                   "F8E4M3FN, F8E5M2, BF16, F16 or F32. Actual element type is "
+                << PrimitiveType_Name(instr->shape().element_type());
         return false;
     }
 
@@ -608,51 +697,38 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         gemm_backend_config.dot_dimension_numbers()
             .rhs_contracting_dimensions();
     if (a_contracting_dims.size() != 1 || b_contracting_dims.size() != 1) {
+      VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+              << " into FP8 Custom Call. A and B must have one contracting "
+                 "dimension.";
       return false;
     }
     if ((a_bitcast ? a_bitcast : a)->shape().dimensions_size() -
-                gemm_backend_config.dot_dimension_numbers()
-                    .lhs_batch_dimensions()
-                    .size() !=
+                a_batch_dims.size() !=
             2 ||
         (b_bitcast ? b_bitcast : b)->shape().dimensions_size() -
-                gemm_backend_config.dot_dimension_numbers()
-                    .rhs_batch_dimensions()
-                    .size() !=
+                b_batch_dims.size() !=
             2) {
-      return false;
-    }
-
-    // Verify that bitcasts preserve the element types.
-    if (a_bitcast && !ShapeUtil::SameElementType(
-                         a_bitcast->shape(), a_bitcast->operand(0)->shape())) {
-      return false;
-    }
-    if (b_bitcast && !ShapeUtil::SameElementType(
-                         b_bitcast->shape(), b_bitcast->operand(0)->shape())) {
+      VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+              << "into FP8 Custom Call. A and B must have one non-contracting "
+                 "dimension.";
       return false;
     }
 
     // Shift any bitcasts to the unconverted and unscaled operands.
     if (a_bitcast) {
       a = instr->AddInstruction(a_bitcast->CloneWithNewOperands(
-          ShapeUtil::MakeShape(a->shape().element_type(),
-                               a_bitcast->shape().dimensions()),
+          ShapeUtil::MakeShapeWithDenseLayout(
+              a->shape().element_type(), a_bitcast->shape().dimensions(),
+              a_bitcast->shape().layout().minor_to_major()),
           {a}));
     }
     if (b_bitcast) {
       b = instr->AddInstruction(b_bitcast->CloneWithNewOperands(
-          ShapeUtil::MakeShape(b->shape().element_type(),
-                               b_bitcast->shape().dimensions()),
+          ShapeUtil::MakeShapeWithDenseLayout(
+              b->shape().element_type(), b_bitcast->shape().dimensions(),
+              b_bitcast->shape().layout().minor_to_major()),
           {b}));
     }
-
-    // cuBLASLt FP8 GEMM kernels currently require the first operand, i.e. A, to
-    // be transposed. If the result of the GEMM is not in column major order, A
-    // and B are later exchanged, and B is transposed here instead.
-    // TODO(philipphack): Remove once cuBLASLt supports the NN configuration.
-    TF_ASSIGN_OR_RETURN(bool is_col_major,
-                        OutputIsColumnMajor(instr, gemm_backend_config));
 
     // Identify the dimensional order which describes a transpose of the
     // contracting and non-contracting dimensions of the GEMM.
@@ -686,23 +762,62 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
       return transp_dims;
     };
+    // Plain transpose on a or b. Plain transposes a matrix by permuting its
+    // dimension without changing storage order.
+    auto plain_transpose =
+        [&](HloInstruction **x,
+            const absl::Span<const int64_t> &contracting_dims,
+            const absl::Span<const int64_t> &batch_dims) {
+          std::vector<int64_t> new_dim_order =
+              transp_dim_order(*x, contracting_dims[0], batch_dims);
+          *x = instr->AddInstruction(HloInstruction::CreateTranspose(
+              ShapeUtil::MakeShapeWithDenseLayout(
+                  (*x)->shape().element_type(), transp_dims(*x, new_dim_order),
+                  (*x)->shape().layout().minor_to_major()),
+              *x, new_dim_order));
+        };
 
-    if (is_col_major) {
-      std::vector<int64_t> new_dim_order =
-          transp_dim_order(a, a_contracting_dims[0], a_batch_dims);
-      a = instr->AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::MakeShape(a->shape().element_type(),
-                               transp_dims(a, new_dim_order)),
-          a, new_dim_order));
-    } else {
-      std::vector<int64_t> new_dim_order =
-          transp_dim_order(b, b_contracting_dims[0], b_batch_dims);
-      b = instr->AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::MakeShape(b->shape().element_type(),
-                               transp_dims(b, new_dim_order)),
-          b, new_dim_order));
+    // cuBLASLt FP8 GEMM kernels currently require the first operand, i.e. A, to
+    // be transposed. If the result of the GEMM is not in column major order, A
+    // and B are later exchanged, and B is transposed here instead.
+    // TODO(philipphack): Remove once cuBLASLt supports the NN configuration.
+    TF_ASSIGN_OR_RETURN(bool a_is_col_major,
+                        MatrixIsColumnMajor(instr, gemm_backend_config, "a"));
+    TF_ASSIGN_OR_RETURN(bool b_is_col_major,
+                        MatrixIsColumnMajor(instr, gemm_backend_config, "b"));
+
+    // Apply necessary transposes to accommodate canonicalize matmul(lhs and rhs
+    // contracting dims are 1 and 0). Also assuming transpose folding pass later
+    // will remove duplcated transposes. The last transpose is required by
+    // cublas fp8 matmul restriction.
+    DotDimensionNumbers *dim_nums =
+        gemm_backend_config.mutable_dot_dimension_numbers();
+    int a_batch_dim_offset = a_batch_dims.size();
+    int b_batch_dim_offset = b_batch_dims.size();
+
+    if (a_is_col_major) {
+      // Swap contracting dimensions and convert a to row major
+      CHECK(a_contracting_dims[0] == a_batch_dim_offset ||
+            a_contracting_dims[0] == a_batch_dim_offset + 1);
+      if (a_contracting_dims[0] == a_batch_dim_offset) {
+        dim_nums->set_lhs_contracting_dimensions(0, a_batch_dim_offset + 1);
+      } else {
+        dim_nums->set_lhs_contracting_dimensions(0, a_batch_dim_offset);
+      }
+      plain_transpose(&a, a_contracting_dims, a_batch_dims);
     }
 
+    if (!b_is_col_major) {
+      // Swap contracting dimensions and convert b to col major
+      CHECK(b_contracting_dims[0] == b_batch_dim_offset ||
+            b_contracting_dims[0] == b_batch_dim_offset + 1);
+      if (b_contracting_dims[0] == b_batch_dim_offset) {
+        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dim_offset + 1);
+      } else {
+        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dim_offset);
+      }
+      plain_transpose(&b, b_contracting_dims, b_batch_dims);
+    }
     std::unique_ptr<HloInstruction> new_custom_call =
         HloInstruction::CreateCustomCall(
             instr->shape(),
@@ -714,7 +829,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(SetName(instr->GetModule(), new_custom_call.get()));
     TF_RETURN_IF_ERROR(
         ReplaceWithNewInstruction(instr, std::move(new_custom_call)));
-
     return true;
   }
 
@@ -1203,9 +1317,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                         output_dtype));
   }
 
-  StatusOr<bool> OutputIsColumnMajor(
-      const HloInstruction *instr,
-      const GemmBackendConfig &gemm_backend_config) const {
+  StatusOr<bool> MatrixIsColumnMajor(
+      const HloInstruction *instr, const GemmBackendConfig &gemm_backend_config,
+      const std::string matrix_name = "output") const {
     const HloInstruction *lhs = instr->operand(0);
     const HloInstruction *rhs = instr->operand(1);
 
@@ -1222,7 +1336,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             gemm_backend_config.alpha_imag(), gemm_backend_config.beta(),
             /*algorithm*/ std::nullopt, se::blas::kDefaultComputePrecision));
 
-    return gemm_config.output_layout.order == MatrixLayout::Order::kColumnMajor;
+    if (matrix_name == "lhs" || matrix_name == "a") {
+      return gemm_config.lhs_layout.order == MatrixLayout::Order::kColumnMajor;
+    } else if (matrix_name == "rhs" || matrix_name == "b") {
+      return gemm_config.rhs_layout.order == MatrixLayout::Order::kColumnMajor;
+    } else if (matrix_name == "output" || matrix_name == "d") {
+      return gemm_config.output_layout.order ==
+             MatrixLayout::Order::kColumnMajor;
+    } else {
+      return InternalError("Invalid matrix name.");
+    }
   }
 
   StatusOr<bool> GemmIsSupportedByCublasLt(
@@ -1278,7 +1401,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         gemm_backend_config.dot_dimension_numbers();
 
     TF_ASSIGN_OR_RETURN(bool output_is_column_major,
-                        OutputIsColumnMajor(instr, gemm_backend_config));
+                        MatrixIsColumnMajor(instr, gemm_backend_config));
     if (!output_is_column_major) {
       // cublasLt's matmul output is column major by default. This gemm requires
       // the output to be in row major. Later we will swap lhs & rhs (and
@@ -1325,10 +1448,6 @@ StatusOr<bool> GemmRewriter::Run(
   bool changed = false;
   for (HloComputation *computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    if (computation->IsCustomCallComputation() &&
-        IsTritonCustomCall(*computation->CustomCallInstruction())) {
-      continue;
-    }
     TF_ASSIGN_OR_RETURN(
         bool result, RunOnComputation(computation, cuda_compute_capability_));
     changed |= result;

@@ -173,6 +173,9 @@ SavedModel::Options DefaultTpuModelOptions(
     tensorflow::tfrt_stub::Runtime* runtime,
     tensorflow::TfrtDeviceInfraTarget device_target) {
   SavedModel::Options options(runtime);
+  options.graph_execution_options.enable_mlrt =
+      absl::GetFlag(FLAGS_enable_mlrt);
+
   auto& compile_options = options.graph_execution_options.compile_options;
   compile_options.variable_device =
       "/job:localhost/replica:0/task:0/device:CPU:0";

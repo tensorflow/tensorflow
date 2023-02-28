@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -34,6 +35,8 @@ namespace data {
 /* static */ constexpr const char* const RepeatDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const RepeatDatasetOp::kOutputShapes;
 
+namespace {
+
 constexpr char kForeverRepeat[] = "ForeverRepeat";
 constexpr char kEmptyRepeat[] = "EmptyRepeat";
 constexpr char kFiniteRepeat[] = "FiniteRepeat";
@@ -42,9 +45,32 @@ constexpr char kInputImplEmpty[] = "input_impl_empty";
 constexpr char kUninitialized[] = "uninitialized";
 constexpr int64_t kKnownRatio = 1;
 
-namespace {
 std::string nested_prefix(const std::string& prefix, int64_t epoch) {
   return strings::StrCat(prefix, "[", epoch, "]");
+}
+
+// Returns whether `dataset` has an input dataset of the given type. This check
+// includes transitive inputs. Returns true if any upstream dataset is a data
+// service dataset. Returns false if no upstream dataset is a data service
+// dataset, or it's unknown because `dataset` doesn't implement `InputDatasets`.
+// TODO(b/269673112): Rewrite the dataset to add an `IsDynamic` attribute to
+// signal if the repeated dataset is dynamic or not.
+bool HasDataServiceInput(const DatasetBase* dataset) {
+  DCHECK(dataset != nullptr);
+  if (absl::StartsWith(dataset->type_string(), "DataServiceDataset")) {
+    return true;
+  }
+  std::vector<const DatasetBase*> inputs;
+  Status s = dataset->InputDatasets(&inputs);
+  if (!s.ok()) {
+    return false;
+  }
+  for (const DatasetBase* input : inputs) {
+    if (HasDataServiceInput(input)) {
+      return true;
+    }
+  }
+  return false;
 }
 }  // namespace
 
@@ -261,6 +287,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
    public:
     explicit ForeverIterator(const Params& params)
         : DatasetIterator<Dataset>(params),
+          has_data_service_input_(HasDataServiceInput(dataset())),
           input_impl_(nullptr),
           i_(0),
           first_call_(true) {}
@@ -287,10 +314,13 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         DCHECK(!*end_of_sequence || out_tensors->empty());
         if (first_call_ && *end_of_sequence && ctx->split_providers().empty()) {
           // If the first call to GetNext() fails because the end of sequence
-          // has been reached, we return EOF. Otherwise, this iterator could
-          // loop infinitely and never produce a value.
-          input_impl_.reset();
-          return OkStatus();
+          // has been reached, we return EOF unless it repeats a tf.data service
+          // dataset, where the repeated elements are non-deterministic.
+          // Otherwise, this iterator could loop infinitely.
+          if (!has_data_service_input_) {
+            input_impl_.reset();
+            return OkStatus();
+          }
         }
         first_call_ = false;
         if (!*end_of_sequence) {
@@ -345,6 +375,8 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
+    const bool has_data_service_input_;
+
     mutex mu_;
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     int64_t i_ TF_GUARDED_BY(mu_);

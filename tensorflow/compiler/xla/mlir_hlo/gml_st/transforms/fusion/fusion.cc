@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "gml_st/transforms/fusion/fusion.h"
 
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -23,6 +24,7 @@ limitations under the License.
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/transforms.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -481,7 +483,6 @@ LogicalResult fuseFillOpsIntoParallelOp(PatternRewriter& rewriter,
 
 gml_st::TilingOptions getGmlStTilingOptions(ArrayRef<int64_t> tileSizes) {
   gml_st::TilingOptions opts;
-  opts.distribute = true;
   opts.setTileSizeComputationFn(tileSizes);
   return opts;
 }
@@ -490,8 +491,6 @@ FailureOr<ParallelOp> tileUsingGmlStParallelAndFuseGreedily(
     PatternRewriter& rewriter, Operation* op,
     const mlir::gml_st::TilingOptions& opts, StringRef label,
     llvm::function_ref<bool(Operation*)> fuseFilterFn) {
-  assert(opts.distribute == true &&
-         "gml_st.for should not be used for CPU pipeline");
   auto tilingResult = tileUsingGmlSt(opts, rewriter, cast<TilingInterface>(op));
   if (failed(tilingResult)) return failure();
 
@@ -505,7 +504,7 @@ FailureOr<ParallelOp> tileUsingGmlStParallelAndFuseGreedily(
                  fuseFilterFn);
   }
   setLabel(tilingResult->tiledOps.front(), label);
-  return cast<ParallelOp>(tilingResult->loop);
+  return tilingResult->loop;
 }
 
 scf::SCFTilingOptions getSCFTilingOptions(ArrayRef<int64_t> tileSizes) {
@@ -555,19 +554,80 @@ LogicalResult tilePeeledOpsToScalars(
   return success();
 }
 
+// Finds the source of the operand. It could be a tensor.empty, a region arg or
+// an op outside of the cluster.
+Value getTiedSourceOp(PatternRewriter& rewriter, OpOperand* operand,
+                      const FusionCluster& fusionCluster) {
+  auto* definingOp = operand->get().getDefiningOp();
+  if (!definingOp) return operand->get();
+
+  // A tensor.empty used tied to fusion cluster result should not be fused, so
+  // bufferization can properly handle allocations. If the same tensor.empty is
+  // used in other ops for temporary result, it should be fused. Copied op is
+  // not in the cluster, so it will not be fused.
+  if (auto emptyOp = dyn_cast<tensor::EmptyOp>(definingOp)) {
+    OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.setInsertionPointAfter(emptyOp);
+
+    auto newEmptyOp = cast<tensor::EmptyOp>(rewriter.clone(*emptyOp));
+    operand->set(newEmptyOp);
+    return newEmptyOp;
+  }
+
+  // Source of the operand is outside of the cluster, so pass it as an argument.
+  if (!llvm::is_contained(fusionCluster.operations, definingOp)) {
+    return operand->get();
+  }
+
+  // Source of the operand is another DPS op from the cluster. Look higher in
+  // the chain.
+  if (auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(definingOp)) {
+    OpOperand* tiedOperand =
+        dstStyleOp.getTiedOpOperand(operand->get().dyn_cast<OpResult>());
+    return getTiedSourceOp(rewriter, tiedOperand, fusionCluster);
+  }
+
+  return operand->get();
+}
+
+SmallVector<Value> getRootOpInitOperands(PatternRewriter& rewriter,
+                                         const FusionCluster& fusionCluster) {
+  auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(fusionCluster.root);
+  if (!dstStyleOp) return {};
+
+  SmallVector<Value> initOperands;
+
+  for (auto* operand : dstStyleOp.getDpsInitOperands()) {
+    initOperands.push_back(getTiedSourceOp(rewriter, operand, fusionCluster));
+  }
+
+  return initOperands;
+}
+
 FailureOr<gml_st::FusionOp> wrapFusionCluster(
     PatternRewriter& rewriter, const FusionCluster& fusionCluster) {
   auto loc = fusionCluster.root->getLoc();
 
+  SmallVector<Value> initOperands =
+      getRootOpInitOperands(rewriter, fusionCluster);
+
   // 1. Find operands and results of the cluster op.
   SetVector<Value> clusterOperands;
   SmallVector<Value> clusterResults;
-  for (Operation* op : fusionCluster.operations) {
-    for (Value operand : op->getOperands()) {
-      if (fusionCluster.operations.contains(operand.getDefiningOp())) continue;
+  auto visitOpOperand = [&](OpOperand* operand) {
+    auto* definingOp = operand->get().getDefiningOp();
 
-      clusterOperands.insert(operand);
-    }
+    if (fusionCluster.operations.contains(definingOp)) return;
+    if (isa_and_nonnull<arith::ConstantOp>(definingOp)) return;
+    if (llvm::is_contained(initOperands, operand->get())) return;
+
+    clusterOperands.insert(operand->get());
+  };
+
+  for (Operation* op : fusionCluster.operations) {
+    for (OpOperand& operand : op->getOpOperands()) visitOpOperand(&operand);
+
+    visitUsedValuesDefinedAbove(op->getRegions(), visitOpOperand);
 
     for (Value result : op->getResults()) {
       if (llvm::any_of(result.getUsers(), [&](Operation* user) {
@@ -577,9 +637,7 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
     }
   }
 
-  // We assume that a cluster has only one result for simplity for now. This
-  // restriction should be relaxed.
-  if (clusterResults.size() != 1) return failure();
+  clusterOperands.insert(initOperands.begin(), initOperands.end());
 
   // 2. Create an empty op.
   OpBuilder::InsertionGuard guard(rewriter);
@@ -600,23 +658,19 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
   IRMapping mapper;
   mapper.map(clusterOperands, block->getArguments());
 
-  auto yieldOp = rewriter.create<gml_st::YieldOp>(loc, clusterResults[0]);
-
-  // 4. Move ops into the cluster region.
+  // 4. Copy ops into the cluster region in topoligical order to avoid swapping
+  // depending ops.
   SmallVector<Operation*> clusterOps(fusionCluster.operations.begin(),
                                      fusionCluster.operations.end());
 
-  // Move ops in reverse topoligical order to avoid swapping depending ops.
   mlir::computeTopologicalSorting(clusterOps);
-  for (Operation* op : llvm::reverse(clusterOps)) {
-    op->moveBefore(block, block->begin());
-
-    for (OpOperand& opOperand : op->getOpOperands()) {
-      if (mapper.contains(opOperand.get())) {
-        opOperand.set(mapper.lookup(opOperand.get()));
-      }
-    }
+  for (Operation* op : clusterOps) {
+    rewriter.clone(*op, mapper);
   }
+
+  SmallVector<Value> yieldOpOperands = llvm::to_vector(llvm::map_range(
+      clusterResults, [&](Value v) { return mapper.lookupOrDefault(v); }));
+  auto yieldOp = rewriter.create<gml_st::YieldOp>(loc, yieldOpOperands);
 
   // 5. Replace all uses of ops in the cluster with results of the new fusion
   // cluster op.
@@ -630,13 +684,22 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
 
 LogicalResult inlineFusionCluster(FusionOp fusionOp,
                                   PatternRewriter& rewriter) {
-  InlinerInterface interface(rewriter.getContext());
-  if (failed(inlineRegion(interface, &fusionOp.getRegion(), fusionOp,
-                          fusionOp.getOperands(), fusionOp.getResults(),
-                          fusionOp.getLoc(),
-                          /*shouldCloneInlinedRegion=*/false)))
-    return failure();
-  rewriter.eraseOp(fusionOp);
+  OpBuilder::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPointAfter(fusionOp);
+
+  IRMapping mapper;
+  mapper.map(fusionOp.getRegion().getArguments(), fusionOp.getOperands());
+
+  for (auto& op : fusionOp.getBody()->without_terminator()) {
+    rewriter.clone(op, mapper);
+  }
+
+  SmallVector<Value> yieldOpOperands = llvm::to_vector(
+      llvm::map_range(fusionOp.getTerminator().getOperands(),
+                      [&](Value v) { return mapper.lookupOrDefault(v); }));
+
+  rewriter.replaceOp(fusionOp, yieldOpOperands);
+
   return success();
 }
 

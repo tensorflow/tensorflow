@@ -7,6 +7,7 @@ package(
     default_visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
+        "//tensorflow_estimator:__subpackages__",
         "//third_party/py/tensorflow_federated:__subpackages__",
         "//third_party/tflite_micro:__subpackages__",
     ],

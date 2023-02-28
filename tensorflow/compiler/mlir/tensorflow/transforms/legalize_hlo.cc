@@ -39,10 +39,10 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -3379,6 +3379,25 @@ Value ConvertPadOp(PatternRewriter& rewriter, Operation* old_op) {
                                   padding_op, pad_op.getPaddingValue());
 }
 
+class ConvertPopulationCountOp
+    : public OpConversionPattern<mhlo::PopulationCountOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::PopulationCountOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    auto output_type = op.getType().clone(
+        rewriter.getIntegerType(/*width=*/8, /*isSigned=*/false));
+    auto pop_cnt = rewriter.create<TF::PopulationCountOp>(
+        op.getLoc(), output_type, op.getOperand());
+    auto cast_or_pop_cnt =
+        rewriter.createOrFold<TF::CastOp>(op.getLoc(), op.getType(), pop_cnt);
+    rewriter.replaceOp(op, {cast_or_pop_cnt});
+    return success();
+  }
+};
+
 // Returns true if broadcast_dimensions obey Tensorflow convention, as in new
 // dimensions are added as prefix.
 bool IsTFStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
@@ -3446,13 +3465,13 @@ void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
       ConvertAvgPoolOp, Convert2DConvOp, Convert1DConvOp,
       ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
       ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertIfOp,
-      ConvertMaxPoolOp, ConvertScatterAddOp, ConvertScatterMaxOp,
-      ConvertScatterMinOp, ConvertScatterSubOp, ConvertScatterUpdateOp,
-      ConvertSliceOp, ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
-      ConvertReduceOpToTfMax, ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
-      ConvertReduceOpToTfAny, ConvertReduceOpToTfSum, ConvertSortToTfTopk,
-      ConvertIotaOpToTfRange, ConvertWhileOp, ConvertLoweredCumSumOp,
-      ConvertLoweredCumProdOp>(context);
+      ConvertMaxPoolOp, ConvertPopulationCountOp, ConvertScatterAddOp,
+      ConvertScatterMaxOp, ConvertScatterMinOp, ConvertScatterSubOp,
+      ConvertScatterUpdateOp, ConvertSliceOp, ConvertReduceOpToTfArgmax,
+      ConvertReduceOpToTfArgmin, ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
+      ConvertReduceOpToTfAll, ConvertReduceOpToTfAny, ConvertReduceOpToTfSum,
+      ConvertSortToTfTopk, ConvertIotaOpToTfRange, ConvertWhileOp,
+      ConvertLoweredCumSumOp, ConvertLoweredCumProdOp>(context);
   populateWithGenerated(*patterns);
 }
 

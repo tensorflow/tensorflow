@@ -37,6 +37,9 @@ namespace {
 #define GEN_PASS_DEF_INLINEFUSIONCLUSTERSPASS
 #include "gml_st/transforms/passes.h.inc"
 
+static constexpr llvm::StringRef kFusionPlanningLabel =
+    "__fusion_planning_label__";
+
 // Returns true is consumer and producer should be fused and tiled together.
 bool allowedToFuse(Operation* consumerOp, Operation* producerOp) {
   if (isa<thlo::ScatterOp, thlo::SortOp>(producerOp)) return false;
@@ -45,12 +48,10 @@ bool allowedToFuse(Operation* consumerOp, Operation* producerOp) {
     auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(consumerOp);
     if (!dstStyleOp) return false;
 
-    return llvm::any_of(dstStyleOp.getDpsInitOperands(),
-                        [&](OpOperand* operand) {
-                          return operand->get().getDefiningOp() == producerOp;
-                        });
-
-    return false;
+    if (llvm::any_of(dstStyleOp.getDpsInitOperands(), [&](OpOperand* operand) {
+          return operand->get().getDefiningOp() == producerOp;
+        }))
+      return true;
   }
 
   if (isa<linalg::MapOp, thlo::ReverseOp>(consumerOp)) return true;
@@ -60,6 +61,7 @@ bool allowedToFuse(Operation* consumerOp, Operation* producerOp) {
     return isa<linalg::MapOp, linalg::BroadcastOp, thlo::ReverseOp>(producerOp);
   if (isa<linalg::MatmulOp>(consumerOp))
     return isa<linalg::BroadcastOp, thlo::ReverseOp>(producerOp);
+  if (isa<linalg::FillOp>(consumerOp)) return isa<tensor::EmptyOp>(producerOp);
   return false;
 }
 
@@ -68,6 +70,9 @@ template <typename OpTy>
 LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
   // The op is already in a fusion cluster.
   if (isa<gml_st::FusionOp>(op.getOperation()->getParentOp())) return failure();
+
+  // The op was already processed.
+  if (hasLabel(op, kFusionPlanningLabel)) return failure();
 
   for (auto& use : op->getUses()) {
     auto* useOp = use.getOwner();
@@ -79,8 +84,8 @@ LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
   SetVector<Operation*> resultOps;
   SmallVector<Operation*> remainingProducers;
   resultOps.insert(op.getOperation());
-  for (auto* operand : op.getDpsInputOperands())
-    remainingProducers.push_back(operand->get().getDefiningOp());
+  for (auto operand : op.getOperands())
+    remainingProducers.push_back(operand.getDefiningOp());
 
   while (!remainingProducers.empty()) {
     Operation* curOp = remainingProducers.pop_back_val();
@@ -100,14 +105,17 @@ LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
 
     resultOps.insert(curOp);
 
-    for (auto& operand : curOp->getOpOperands())
-      remainingProducers.push_back(operand.get().getDefiningOp());
+    for (auto operand : curOp->getOperands())
+      remainingProducers.push_back(operand.getDefiningOp());
   }
 
   FusionCluster fusionCluster;
   fusionCluster.root = op;
   fusionCluster.operations = resultOps;
   if (failed(wrapFusionCluster(rewriter, fusionCluster))) return failure();
+
+  // Mark all ops as processed.
+  for (auto* op : resultOps) setLabel(op, kFusionPlanningLabel);
 
   return success();
 }

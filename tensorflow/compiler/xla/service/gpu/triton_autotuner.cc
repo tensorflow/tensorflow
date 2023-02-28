@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/time/time.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
@@ -160,8 +161,8 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
         stream_(stream),
         num_extra_threads_(num_extra_threads) {}
 
-  Status HandleCustomCall(HloInstruction* hlo) override {
-    if (hlo->custom_call_target() != kTritonCallTarget) {
+  Status HandleFusion(HloInstruction* hlo) override {
+    if (hlo->raw_backend_config_string() != kTritonGemmBackendConfig) {
       return OkStatus();
     }
 

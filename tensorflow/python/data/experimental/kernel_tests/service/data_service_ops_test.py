@@ -403,6 +403,32 @@ class DataServiceOpsTest(
     results += self.getIteratorOutput(get_next_2)
     self.assertCountEqual(num_repetitions * list(range(num_elements)), results)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testSharedJobNameRepeatEmptyJob(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    num_elements = 10
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds1 = ds.apply(
+        data_service_ops.distribute(
+            data_service_ops.ShardingPolicy.OFF,
+            cluster.dispatcher_address(),
+            job_name="shared_job"))
+    ds1 = ds1.repeat()
+    ds2 = ds.apply(
+        data_service_ops.distribute(
+            data_service_ops.ShardingPolicy.OFF,
+            cluster.dispatcher_address(),
+            job_name="shared_job"))
+    ds2 = ds2.repeat()
+
+    get_next_1 = self.getNext(ds1)
+    for i in list(range(num_elements)) * 3:
+      self.assertEqual(self.evaluate(get_next_1()), i)
+    # Verifies ds2 is non-empty.
+    get_next_2 = self.getNext(ds2)
+    for i in list(range(num_elements)) * 3:
+      _ = self.evaluate(get_next_2())
+
   @combinations.generate(test_base.eager_only_combinations())
   def testSharedJobNameMultipleEpochs(self):
     cluster = self.make_test_cluster(num_workers=1)

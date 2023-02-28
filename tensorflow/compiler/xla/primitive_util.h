@@ -67,6 +67,11 @@ inline PrimitiveType NativeToPrimitiveType<bool>() {
 
 // Unsigned integer
 template <>
+inline PrimitiveType NativeToPrimitiveType<u4>() {
+  return U4;
+}
+
+template <>
 inline PrimitiveType NativeToPrimitiveType<uint8_t>() {
   return U8;
 }
@@ -87,6 +92,11 @@ inline PrimitiveType NativeToPrimitiveType<uint64_t>() {
 }
 
 // Signed integer
+template <>
+inline PrimitiveType NativeToPrimitiveType<s4>() {
+  return S4;
+}
+
 template <>
 inline PrimitiveType NativeToPrimitiveType<int8_t>() {
   return S8;
@@ -171,6 +181,10 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE inline int BitWidth(PrimitiveType type) {
     case PRED:
       return 1;
 
+    case S4:
+    case U4:
+      return 4;
+
     case S8:
     case U8:
     case F8E5M2:
@@ -212,6 +226,10 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE inline int BitWidth(PrimitiveType type) {
 ABSL_ATTRIBUTE_ALWAYS_INLINE inline int ByteWidth(PrimitiveType type) {
   switch (type) {
     case PRED:
+      return 1;
+
+    case S4:
+    case U4:
       return 1;
 
     case S8:
@@ -382,6 +400,11 @@ struct PrimitiveTypeToNative<PRED> {
 
 // Unsigned integer
 template <>
+struct PrimitiveTypeToNative<U4> {
+  using type = u4;
+};
+
+template <>
 struct PrimitiveTypeToNative<U8> {
   using type = uint8_t;
 };
@@ -402,6 +425,11 @@ struct PrimitiveTypeToNative<U64> {
 };
 
 // Signed integer
+template <>
+struct PrimitiveTypeToNative<S4> {
+  using type = s4;
+};
+
 template <>
 struct PrimitiveTypeToNative<S8> {
   using type = int8_t;
@@ -490,6 +518,7 @@ bool IsCanonicalRepresentation(PrimitiveType type) {
     case C64:
     case C128:
       return NativeToPrimitiveType<T>() == type;
+    case S4:
     case S8:
     case S16:
     case S32:
@@ -497,6 +526,7 @@ bool IsCanonicalRepresentation(PrimitiveType type) {
       return std::is_integral<T>::value && std::is_signed<T>::value &&
              ByteWidth(type) <= sizeof(T);
     case PRED:
+    case U4:
     case U8:
     case U16:
     case U32:

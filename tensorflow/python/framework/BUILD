@@ -1139,7 +1139,6 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:graph_only_ops",
-        "//tensorflow/python/eager:tape",
         "//tensorflow/python/platform",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/util",
@@ -1430,6 +1429,7 @@ pytype_library(
     deps = [
         ":composite_tensor",
         ":dtypes",
+        ":tensor_conversion_registry",
         ":tensor_shape",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",

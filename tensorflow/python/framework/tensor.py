@@ -404,6 +404,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
       return TensorSpec(self.shape, self.dtype)
 
 trace_type.register_serializable(TensorSpec)
+trace_type.register_tensor_type(TensorSpec)
 
 
 class _TensorSpecCodec:

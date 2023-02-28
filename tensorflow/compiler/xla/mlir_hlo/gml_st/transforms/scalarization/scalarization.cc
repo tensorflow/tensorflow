@@ -20,7 +20,6 @@ limitations under the License.
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -45,27 +44,8 @@ using tensor::ExtractOp;
 using tensor::FromElementsOp;
 using tensor::InsertOp;
 
-Value materializePoint(OpBuilder &b, Location loc, Value valueToTile,
-                       ArrayRef<OpFoldResult> offsets) {
-  auto tensorType = valueToTile.getType().cast<RankedTensorType>();
-  int64_t rank = tensorType.getRank();
-
-  IntegerAttr oneAttr = b.getIndexAttr(1);
-  SmallVector<OpFoldResult> sizes(rank, oneAttr);
-  SmallVector<OpFoldResult> strides(rank, oneAttr);
-
-  Value slice = b.create<tensor::ExtractSliceOp>(loc, valueToTile, offsets,
-                                                 sizes, strides);
-  Value zero = b.create<arith::ConstantIndexOp>(loc, 0);
-  return b.create<tensor::ExtractOp>(loc, slice,
-                                     SmallVector<Value>(rank, zero));
-}
-
 struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
-  explicit ScalarizeLinalgOp(MLIRContext *context, bool skipFillOpScalarization,
-                             PatternBenefit benefit = 1)
-      : OpInterfaceRewritePattern<LinalgOp>(context, benefit),
-        skipFillOpScalarization(skipFillOpScalarization) {}
+  using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
 
   static LogicalResult inlinePayload(PatternRewriter &rewriter, Location loc,
                                      LinalgOp linalgOp, ValueRange argValues) {
@@ -97,10 +77,6 @@ struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
 
   LogicalResult matchAndRewrite(LinalgOp linalgOp,
                                 PatternRewriter &rewriter) const override {
-    if (skipFillOpScalarization && isa<linalg::FillOp>(&linalgOp)) {
-      return failure();
-    }
-
     // Fail if not every argument is a scalar or a single-element tensor.
     if (!hasSingleElementOperandsAndResults(linalgOp)) return failure();
 
@@ -130,9 +106,6 @@ struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
     // Inline the op payload and rewrite the operation.
     return inlinePayload(rewriter, loc, linalgOp, indexedValues);
   }
-
- private:
-  bool skipFillOpScalarization;
 };
 
 // Returns `startIndices`[0, :] for `startIndices` of shape 1xn. Returns None if
@@ -341,9 +314,9 @@ struct ScalarizeGatherOp : public OpRewritePattern<thlo::GatherOp> {
 
     SmallVector<Value> lbs(initRank, zero);
     SmallVector<Value> steps(initRank, one);
-    rewriter.replaceOpWithNewOp<gml_st::ForOp>(
-        gatherOp, TypeRange(ValueRange{init}), lbs, initDimSizeValues, steps,
-        init,
+
+    scf::LoopNest loopNest = scf::buildLoopNest(
+        rewriter, loc, lbs, initDimSizeValues, steps, ValueRange{init},
         [&](OpBuilder &nestedBuilder, Location bodyLoc, ValueRange ivs,
             ValueRange loopInits) {
           // Compute the index in the operand.
@@ -357,13 +330,15 @@ struct ScalarizeGatherOp : public OpRewritePattern<thlo::GatherOp> {
 
           // Materialize the value and yield it.
           SmallVector<OpFoldResult> ones(initRank, oneAttr);
-          Value tile = nestedBuilder.create<gml_st::TileOp>(
-              bodyLoc, SmallVector<OpFoldResult>(ivs), ones, ones);
-          Value val = materializePoint(nestedBuilder, bodyLoc, operand,
-                                       getAsOpFoldResult(readIndices));
-          nestedBuilder.create<gml_st::SetYieldOp>(bodyLoc, val,
-                                                   loopInits.front(), tile);
+          Value val = nestedBuilder.create<tensor::ExtractOp>(bodyLoc, operand,
+                                                              readIndices);
+          Value updatedInit = nestedBuilder.create<tensor::InsertOp>(
+              bodyLoc, val, loopInits.front(), ivs);
+
+          return scf::ValueVector({updatedInit});
         });
+
+    rewriter.replaceOp(gatherOp, loopNest.results);
     return success();
   }
 };
@@ -614,9 +589,10 @@ struct ScalarizeForOp : public OpRewritePattern<scf::ForOp> {
 
     // Move old body into new for loop.
     rewriter.setInsertionPointToStart(newLoopBody);
-    SmallVector<Value> blockArgs{newForOp.getInductionVar(),
-                                 rewriter.create<tensor::FromElementsOp>(
-                                     loc, newForOp.getRegionIterArg(0))};
+    SmallVector<Value> blockArgs{
+        newForOp.getInductionVar(),
+        rewriter.create<tensor::FromElementsOp>(loc, iterArgTensorTy,
+                                                newForOp.getRegionIterArg(0))};
     rewriter.mergeBlocks(forOp.getBody(), newLoopBody, blockArgs);
 
     // Replace terminator that yields a tensor with the one that yields the
@@ -699,16 +675,11 @@ struct ScalarizationPass
     : public impl::ScalarizationPassBase<ScalarizationPass> {
   ScalarizationPass() = default;
 
-  explicit ScalarizationPass(bool skipFillScalarization) {
-    skipFillOpScalarization = skipFillScalarization;
-  }
-
   void runOnOperation() override {
     auto func = getOperation();
     auto *context = &getContext();
 
     RewritePatternSet patterns(context);
-    patterns.add<ScalarizeLinalgOp>(context, skipFillOpScalarization);
     // clang-format off
     patterns.add<
         ScalarizeConcatenateOp,
@@ -716,22 +687,22 @@ struct ScalarizationPass
         ScalarizeForOp,
         ScalarizeGatherOp,
         ScalarizeIfOp,
+        ScalarizeLinalgOp,
         ScalarizeReverseOp,
         ScalarizeScatterOp
     >(context);
     // clang-format on
     populateTensorInsertExtractFoldingPatterns(&patterns);
     FromElementsOp::getCanonicalizationPatterns(patterns, context);
-    gml_st::ForOp::getCanonicalizationPatterns(patterns, context);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
       signalPassFailure();
   }
 };
+
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass(
-    bool skipFillOpScalarization) {
-  return std::make_unique<ScalarizationPass>(skipFillOpScalarization);
+std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass() {
+  return std::make_unique<ScalarizationPass>();
 }
 
 }  // namespace gml_st

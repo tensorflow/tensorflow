@@ -19,6 +19,7 @@ import android.content.Context;
 import android.content.res.AssetFileDescriptor;
 import android.util.Log;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import tflite.BenchmarkEvent;
@@ -30,8 +31,15 @@ import tflite.BenchmarkEvent;
  * Please check the test example in
  * tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/README.md.
  *
- * <p>Generates a Pass/Fail result. The test is a Pass if the test target acceleration configuration
- * passes the embedded metric thresholds in all models.
+ * <p>Generates a PASS/PASS_WITH_WARNING/FAIL result.
+ *
+ * <ul>
+ *   <li>PASS: The test target delegate passed the embedded metric thresholds in all models.
+ *   <li>PASS_WITH_WARNING: Both the test target delegate and the reference delegates breached the
+ *       embedded metric thresholds.
+ *   <li>FAIL: The test target delegate failed at least 1 embedded metric threshold in the models,
+ *       and at least 1 reference delegate passed the embedded metric thresholds in all models.
+ * </ul>
  *
  * <p>Generates below list of files to describe the benchmark results under
  * delegate_performance_result/accuracy folder in the app files directory.
@@ -42,7 +50,7 @@ import tflite.BenchmarkEvent;
  *   <li>2. delegate_performance_result/accuracy/report.json: detailed performance results. The file
  *       contains the metric-level, delegate-level and model-level results and the raw metric
  *       outputs from the native layer in JSON.
- *   <li>2. delegate_performance_result/accuracy/report.html: the performance of each acceleration
+ *   <li>3. delegate_performance_result/accuracy/report.html: the performance of each acceleration
  *       configuration and relative performance differences as percentages in HTML.
  * </ul>
  */
@@ -123,8 +131,7 @@ public class BenchmarkAccuracyImpl {
       }
       try (AssetFileDescriptor modelFileDescriptor =
           context.getAssets().openFd(ACCURACY_FOLDER_NAME + "/" + asset)) {
-        ModelBenchmarkReport<BenchmarkEvent> modelReport =
-            AccuracyBenchmarkReport.create(modelName);
+        List<RawDelegateMetricsEntry> rawDelegateMetricsEntries = new ArrayList<>();
         for (TfLiteSettingsListEntry tfliteSettingsListEntry : tfliteSettingsList) {
           BenchmarkEvent benchmarkEvent =
               DelegatePerformanceBenchmark.runAccuracyBenchmark(
@@ -134,9 +141,11 @@ public class BenchmarkAccuracyImpl {
                   modelFileDescriptor.getLength(),
                   modelResultPath);
 
-          modelReport.addResults(benchmarkEvent, tfliteSettingsListEntry);
+          rawDelegateMetricsEntries.add(
+              AccuracyBenchmarkReport.parseResults(benchmarkEvent, tfliteSettingsListEntry));
         }
-        report.addModelBenchmarkReport(modelReport);
+        report.addModelBenchmarkReport(
+            AccuracyBenchmarkReport.create(modelName, rawDelegateMetricsEntries));
       } catch (IOException e) {
         Log.e(TAG, "Failed to open assets file " + asset, e);
         return;

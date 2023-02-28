@@ -229,7 +229,7 @@ class TraceType(metaclass=abc.ABCMeta):
         self.placeholder_value().
     """
     assert value == self.placeholder_value(
-        PlaceholderContext()), f"Cannt cast {value!r} to type {self!r}."
+        PlaceholderContext()), f"Can not cast {value!r} to type {self!r}"
     return value
 
   @abc.abstractmethod

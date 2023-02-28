@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/runtime/module_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/collectives.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
@@ -104,6 +105,7 @@ class GpuRuntimeExecutable {
                  const std::string& asm_text,
                  const std::vector<uint8_t>& binary,
                  const BufferAllocations& buffer_allocations,
+                 NonAtomicallyUpgradeableRWLock& gpu_lock,
                  const BufferAllocation* temp_alloc = nullptr);
 
   // Returns object file behind the runtime executable. This object file can

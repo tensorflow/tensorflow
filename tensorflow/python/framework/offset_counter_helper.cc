@@ -40,17 +40,17 @@ tsl::Status FindOpRegistationFromFile(absl::string_view filename,
   uint32_t offsets = 0;
   while (std::getline(f, line)) {
     if (RE2::PartialMatch(line, *reg_pattern, &reg_keyword, &op_name)) {
-      // Set the [start, end] to the beginning char of REGISTER_OP
-      // See phase 1 in go/pywald-tf-ops-xref for more details.
-      uint32_t offset_start = offsets + (line.data() - reg_keyword.data());
-      uint32_t offset_end = offset_start;
+      // Set the [start, end] to the op name in REGISTER_OP calls
+      // See phase 2 in go/pywald-tf-ops-xref for more details.
+      uint32_t offset_start = offsets + (op_name.data() - line.data() - 1);
+      uint32_t offset_end = offset_start + op_name.size() + 2;  // Add quotes
       auto op_reg_offset = op_reg_offsets.add_offsets();
       op_reg_offset->set_name(std::string{op_name});
       op_reg_offset->set_filepath(std::string{filename});
       op_reg_offset->set_start(offset_start);
       op_reg_offset->set_end(offset_end);
     }
-    offsets += line.size() + 1;
+    offsets += line.size() + 1;  // `line` doesn't contain line break
   }
   f.close();
   return tsl::OkStatus();

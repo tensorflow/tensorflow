@@ -48,18 +48,6 @@ TfLiteTelemetryInterpreterSettingsGetSubgraphInfo(
   return settings->subgraph_infos.data();
 }
 
-size_t TfLiteTelemetrySubgraphInfoGetNumOpTypes(
-    TfLiteTelemetrySubgraphInfo* subgraph_info) {
-  if (subgraph_info == nullptr) return 0;
-  return subgraph_info->op_types.size();
-}
-
-const int32_t* TfLiteTelemetrySubgraphInfoGetOpTypes(
-    TfLiteTelemetrySubgraphInfo* subgraph_info) {
-  if (subgraph_info == nullptr) return nullptr;
-  return subgraph_info->op_types.data();
-}
-
 size_t TfLiteTelemetrySubgraphInfoGetNumQuantizations(
     TfLiteTelemetrySubgraphInfo* subgraph_info) {
   if (subgraph_info == nullptr) return 0;
@@ -70,18 +58,6 @@ const TfLiteQuantization* TfLiteTelemetrySubgraphInfoGetQuantizations(
     TfLiteTelemetrySubgraphInfo* subgraph_info) {
   if (subgraph_info == nullptr) return nullptr;
   return subgraph_info->quantizations.data();
-}
-
-size_t TfLiteTelemetrySubgraphInfoGetNumCustomOpNames(
-    TfLiteTelemetrySubgraphInfo* subgraph_info) {
-  if (subgraph_info == nullptr) return 0;
-  return subgraph_info->custom_op_names.size();
-}
-
-const char** TfLiteTelemetrySubgraphInfoGetCustomOpNames(
-    TfLiteTelemetrySubgraphInfo* subgraph_info) {
-  if (subgraph_info == nullptr) return nullptr;
-  return subgraph_info->custom_op_names.data();
 }
 
 size_t TfLiteTelemetryGpuDelegateSettingsGetNumNodesDelegated(

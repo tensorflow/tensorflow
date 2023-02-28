@@ -48,14 +48,17 @@ add_mlir_library(MLIRBufferTransforms
   LINK_LIBS PUBLIC
   ChloOps
   GmlStDialect
-  MhloDialect
   MLIRGPUOps
   MLIRHLOAnalysis
   MLIRIR
+  MLIRLinalgToLLVM
+  MLIRMathTransforms
   MLIRPass
+  MLIRReconcileUnrealizedCasts
   MLIRShapeDialect
-  MLIRTransforms
   MLIRTransformDialectTransforms
+  MLIRTransforms
+  MhloDialect
   THLODialect
   ThloBufferizableOpInterface
 )

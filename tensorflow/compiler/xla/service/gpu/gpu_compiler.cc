@@ -187,7 +187,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/threadpool.h"
@@ -1624,7 +1623,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           compile_module_results.executable)) {
     const ThunkSequence& thunk_sequence =
         *std::get<OwnedThunkSequence>(compile_module_results.executable);
-    DumpToFileInDirOrStdout(*module, "", "thunk_sequence",
+    DumpToFileInDirOrStdout(*module, "", "thunk_sequence.txt",
                             thunk_sequence.ToString());
   }
 

@@ -64,6 +64,7 @@ add_mlir_library(MhloPasses
   optimize_mhlo/optimize_mhlo_pass.cc
   rank_specialization/rank_specialization.cc
   restrict_max_rank/restrict_max_rank.cc
+  shape_legalize_to_hlo/shape_legalize_to_hlo.cc
   shape_reification/shape_reification_pass.cc
   shape_simplification/shape_simplification.cc
   sink_constants_to_control_flow/sink_constants_to_control_flow.cc

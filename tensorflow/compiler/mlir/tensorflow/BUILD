@@ -1964,6 +1964,24 @@ cc_library(
 )
 
 cc_library(
+    name = "constant_fold_utils",
+    srcs = [
+        "transforms/constant_fold_utils.cc",
+    ],
+    hdrs = [
+        "transforms/constant_fold_utils.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ],
+)
+
+cc_library(
     name = "tf_dialect_passes",
     srcs = [
         "transforms/constant_fold.cc",
@@ -1974,6 +1992,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":constant_fold_utils",
         ":convert_tensor",
         ":eval_util",
         ":tensorflow",
@@ -2300,6 +2319,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 

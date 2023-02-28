@@ -1,8 +1,9 @@
 // RUN: mlir-hlo-opt %s --gml-st-cpu-tiling-pipeline | FileCheck %s
 
 func.func @sort(%input1: tensor<64x8x4xf32>, %input2: tensor<64x8x4xf32>,
-                %init1: tensor<64x8x4xf32>, %init2: tensor<64x8x4xf32>) {
-  thlo.sort
+                %init1: tensor<64x8x4xf32>, %init2: tensor<64x8x4xf32>)
+                -> (tensor<64x8x4xf32>, tensor<64x8x4xf32>) {
+  %res0, %res1 = thlo.sort
     ins(%input1: tensor<64x8x4xf32>, %input2: tensor<64x8x4xf32>)
     outs(%init1: tensor<64x8x4xf32>, %init2: tensor<64x8x4xf32>)
     dimension = 1
@@ -11,7 +12,7 @@ func.func @sort(%input1: tensor<64x8x4xf32>, %input2: tensor<64x8x4xf32>,
       %gt = arith.cmpf ogt, %e11, %e12: f32
       thlo.yield %gt : i1
     }
-  func.return
+  func.return %res0, %res1: tensor<64x8x4xf32>, tensor<64x8x4xf32>
 }
 // CHECK-LABEL: func.func @sort(
 

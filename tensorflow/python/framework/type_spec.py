@@ -25,10 +25,12 @@ from tensorflow.core.function import trace_type
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import tf_logging as logging
 # TODO(b/238903802): Remove dependency on nested_structure_coder.
 from tensorflow.python.saved_model import nested_structure_coder
+from tensorflow.python.types import core as core_types
 from tensorflow.python.types import internal
 from tensorflow.python.types import trace
 from tensorflow.python.util import _pywrap_utils
@@ -36,13 +38,8 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
-
-# Use LazyLoader to avoid circular dependencies.
-ops = LazyLoader("ops", globals(),
-                 "tensorflow.python.framework.ops")
 
 
 @tf_export("TypeSpec", v1=["TypeSpec", "data.experimental.Structure"])
@@ -246,7 +243,7 @@ class TypeSpec(
     value_spec = type_spec_from_value(value)
     assert value_spec.is_subtype_of(self)
     return [arg for arg in nest.flatten(value, expand_composites=True)
-            if isinstance(arg, ops.Tensor)]
+            if isinstance(arg, core_types.Symbol)]
 
   def _cast(self, value, casting_context):
     if casting_context.allow_specs and isinstance(value, TypeSpec):
@@ -404,7 +401,7 @@ class TypeSpec(
 
   # === Tensor list encoding for values ===
 
-  def _to_tensor_list(self, value) -> List["ops.Tensor"]:
+  def _to_tensor_list(self, value) -> List["core_types.Symbol"]:
     """Encodes `value` as a flat list of `tf.Tensor`.
 
     By default, this just flattens `self._to_components(value)` using
@@ -424,7 +421,7 @@ class TypeSpec(
     """
     return nest.flatten(self._to_components(value), expand_composites=True)
 
-  def _from_tensor_list(self, tensor_list: List["ops.Tensor"]) -> Any:
+  def _from_tensor_list(self, tensor_list: List["core_types.Symbol"]) -> Any:
     """Reconstructs a value from a flat list of `tf.Tensor`.
 
     Args:
@@ -441,8 +438,8 @@ class TypeSpec(
     self.__check_tensor_list(tensor_list)
     return self._from_compatible_tensor_list(tensor_list)
 
-  def _from_compatible_tensor_list(self,
-                                   tensor_list: List["ops.Tensor"]) -> Any:
+  def _from_compatible_tensor_list(
+      self, tensor_list: List["core_types.Symbol"]) -> Any:
     """Reconstructs a value from a compatible flat list of `tf.Tensor`.
 
     Args:
@@ -823,16 +820,18 @@ class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
 # _flat_tensor_specs in this class and any derived classes.
 
   def _to_tensor_list(
-      self, value: composite_tensor.CompositeTensor) -> List["ops.Tensor"]:
-    """Encodes `value` as a flat list of `ops.Tensor`."""
+      self, value: composite_tensor.CompositeTensor
+      ) -> List["core_types.Symbol"]:
+    """Encodes `value` as a flat list of `core.Symbol`."""
     component_tensor_lists = nest.map_structure(batchable_to_tensor_list,
                                                 self._component_specs,
                                                 self._to_components(value))
     return nest.flatten(component_tensor_lists)
 
   def _to_batched_tensor_list(
-      self, value: composite_tensor.CompositeTensor) -> List["ops.Tensor"]:
-    """Encodes `value` as a flat list of `ops.Tensor` each with rank>0."""
+      self, value: composite_tensor.CompositeTensor
+      ) -> List["core_types.Symbol"]:
+    """Encodes `value` as a flat list of `core.Symbol` each with rank>0."""
     get_spec_tensor_list = lambda spec, v: (  # pylint: disable=g-long-lambda
         batchable_to_tensor_list(spec, v, minimum_rank=1)
         if isinstance(spec, BatchableTypeSpec) else spec._to_tensor_list(v))  # pylint: disable=protected-access
@@ -847,8 +846,9 @@ class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
 
   def _from_compatible_tensor_list(
       self,
-      tensor_list: List["ops.Tensor"]) -> composite_tensor.CompositeTensor:
-    """Reconstructs a value from a compatible flat list of `ops.Tensor`."""
+      tensor_list: List["core_types.Symbol"]
+      ) -> composite_tensor.CompositeTensor:
+    """Reconstructs a value from a compatible flat list of `core.Symbol`."""
     flat_specs = nest.map_structure(
         functools.partial(get_batchable_flat_tensor_specs, context_spec=self),
         self._component_specs)
@@ -948,7 +948,7 @@ def type_spec_from_value(value) -> TypeSpec:
 
   # Fallback: try converting value to a tensor.
   try:
-    tensor = ops.convert_to_tensor(value)
+    tensor = tensor_conversion_registry.convert(value)
     spec = _type_spec_from_value(tensor)
     if spec is not None:
       return spec
@@ -962,7 +962,7 @@ def type_spec_from_value(value) -> TypeSpec:
 
 def _type_spec_from_value(value) -> TypeSpec:
   """Returns a `TypeSpec` that represents the given `value`."""
-  if isinstance(value, ops.Tensor):
+  if isinstance(value, core_types.Symbol):
     # Note: we do not include Tensor names when constructing TypeSpecs.
     return trace_type.from_value(value)
 

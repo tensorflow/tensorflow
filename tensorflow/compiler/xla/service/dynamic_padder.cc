@@ -229,8 +229,9 @@ StatusOr<bool> ReplaceSetBound(HloInstruction* instr) {
   return true;
 }
 
-bool ShouldSkipPadOnOperand(const HloInstruction* inst, int64_t operand_num,
-                            int64_t dimension) {
+bool ShouldSkipPadOnOperand(
+    const HloInstruction* inst, int64_t operand_num, int64_t dimension,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   switch (inst->opcode()) {
     case HloOpcode::kConvolution: {
       if (operand_num == 0) {
@@ -269,6 +270,15 @@ bool ShouldSkipPadOnOperand(const HloInstruction* inst, int64_t operand_num,
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kReduceWindow:
       return inst->window().dimensions(dimension).size() == 1;
+    case HloOpcode::kAsyncStart:
+      if (!HloInstruction::IsThreadIncluded(inst->async_execution_thread(),
+                                            execution_threads)) {
+        // Async-start not included in specificed execution thread set will use
+        // metadata-prefix version of dynamic shapes (result of
+        // slice-to-dynamic) so there is no need to do pad on operand.
+        return true;
+      }
+      return false;
     default:
       return false;
   }
@@ -2194,9 +2204,9 @@ StatusOr<bool> DynamicPadder::Run(
       InsertPadToStaticAfterModuleInputs(module, execution_threads));
   TF_ASSIGN_OR_RETURN(
       DynamicDimensionInference dynamic_dimension_inference,
-      DynamicDimensionInference::Run(module, options_.custom_call_handler,
-                                     options_.shape_check_mode,
-                                     options_.assertion_generator));
+      DynamicDimensionInference::Run(
+          module, options_.custom_call_handler, options_.shape_check_mode,
+          options_.assertion_generator, execution_threads));
 
   std::vector<HloComputation*> computations =
       module->MakeComputationPostOrder(execution_threads);
@@ -2307,7 +2317,8 @@ StatusOr<bool> DynamicPadder::Run(
           VLOG(2) << "Has dynamic dimension of operand" << operand_num << " @"
                   << input_dim;
 
-          if (ShouldSkipPadOnOperand(inst, operand_num, input_dim)) {
+          if (ShouldSkipPadOnOperand(inst, operand_num, input_dim,
+                                     execution_threads)) {
             continue;
           }
 

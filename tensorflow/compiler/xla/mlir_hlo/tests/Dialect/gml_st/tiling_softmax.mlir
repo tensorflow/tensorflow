@@ -1,6 +1,5 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN:     --gml-tiling-softmax="tile-sizes=8,16 distribute=true distribution-label=test" \
-// RUN:     --canonicalize --cse | \
+// RUN: --gml-tiling-softmax="tile-sizes=8,16" --canonicalize --cse | \
 // RUN: FileCheck %s
 
 // CHECK-LABEL: @partial_softmax

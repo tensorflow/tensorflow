@@ -1107,7 +1107,6 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant, int number_of_bits) {
         return true;
       };
       property.version = 2;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_REDUCE_PROD:
       property.inputs = {{0, tensor_property_default}};

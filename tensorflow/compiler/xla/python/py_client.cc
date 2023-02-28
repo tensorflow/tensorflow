@@ -270,8 +270,8 @@ PyClient::GetDefaultDeviceAssignment1D(int num_replicas) {
 
 StatusOr<py::object> PyClient::BufferFromPyval(
     pybind11::handle argument, PjRtDevice* device, bool force_copy,
-    ifrt::Client::HostBufferSemantics host_buffer_semantics,
-    bool use_jax_array) {
+    ifrt::Client::HostBufferSemantics host_buffer_semantics
+) {
   if (device == nullptr) {
     TF_RET_CHECK(!ifrt_client_->addressable_devices().empty());
     device = ifrt_client_->addressable_devices().front();
@@ -319,14 +319,8 @@ StatusOr<py::object> PyClient::BufferFromPyval(
 
   if (put.ifrt_array) {
     auto traceback = Traceback::Get();
-    if (use_jax_array) {
-      return PyArray::MakeFromSingleDevice(shared_from_this(), traceback,
-                                           std::move(put.ifrt_array),
-                                           put.weak_type, false);
-    } else {
-      return PyBuffer::Make(shared_from_this(), std::move(put.ifrt_array),
-                            std::move(traceback));
-    }
+    return PyBuffer::Make(shared_from_this(), std::move(put.ifrt_array),
+                          std::move(traceback));
   } else {
     return py::reinterpret_borrow<py::object>(put.owning_pybuffer);
   }
@@ -505,15 +499,6 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
     for (const auto& buffer : arr->pjrt_buffers()) {
       TF_RETURN_IF_ERROR(
           add_buffer_to_profile(buffer.get(), array->traceback.get()));
-    }
-  }
-
-  for (auto* sharded_buffer = sharded_buffers_; sharded_buffer;
-       sharded_buffer = sharded_buffer->next_) {
-    for (int i = 0; i < sharded_buffer->num_devices(); ++i) {
-      auto* buffer = sharded_buffer->pjrt_buffer(i);
-      TF_RETURN_IF_ERROR(
-          add_buffer_to_profile(buffer, sharded_buffer->traceback().get()));
     }
   }
 

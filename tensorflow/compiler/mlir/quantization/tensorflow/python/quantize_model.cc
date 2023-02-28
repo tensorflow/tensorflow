@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
@@ -36,7 +37,9 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/save_variables.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/status_macro.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/debugging/mlir_dump.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
@@ -54,6 +57,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -142,7 +146,8 @@ std::string GetNodeName(const absl::flat_hash_set<Node *> &control_ret_nodes,
     const absl::string_view restore_node_name,
     const absl::string_view save_node_name,
     const absl::string_view checkpoint_dir,
-    const absl::flat_hash_map<std::string, std::string> &function_aliases) {
+    const absl::flat_hash_map<std::string, std::string> &function_aliases,
+    const std::vector<AssetFileDef> &asset_file_defs) {
   ExportedModel exported_model{};
   *exported_model.mutable_graph_def() = graph_def;
   exported_model.set_init_node_name(std::string(init_node_name));
@@ -152,14 +157,29 @@ std::string GetNodeName(const absl::flat_hash_set<Node *> &control_ret_nodes,
   exported_model.mutable_function_aliases()->insert(function_aliases.begin(),
                                                     function_aliases.end());
 
+  for (const auto &asset_file_def : asset_file_defs) {
+    *exported_model.mutable_asset_file_defs()->Add() = asset_file_def;
+  }
+
   return exported_model;
 }
 
-// Converts MLIR ModuleOp to ExportedModel. Returns InternalError status
+// Converts MLIR ModuleOp to `ExportedModel`. Returns InternalError status
 // when the conversion fails.
+//
+// * `checkpoint_dir` is the directory where checkpoints where variable values
+// are stored. This value will be fed to the "file_prefix" tensor to restore the
+// variables.
+// * `function_aliases` maps the actual function name to the function alias.
+// This associates the quantized functions to the original functions' aliases.
+// If there were no function aliases in the input model, this should be empty.
+// * `asset_file_defs` include information about the assets, if any, that are
+// used directly to initialize resources (like hash tables). If no assets are
+// used in the model, this should be empty.
 absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
     const mlir::ModuleOp module_op, const absl::string_view checkpoint_dir,
-    const absl::flat_hash_map<std::string, std::string> &function_aliases) {
+    const absl::flat_hash_map<std::string, std::string> &function_aliases,
+    const std::vector<AssetFileDef> &asset_file_defs) {
   const GraphExportConfig config{};
   FunctionLibraryDefinition flib_def{OpRegistry::Global(),
                                      FunctionDefLibrary()};
@@ -184,7 +204,7 @@ absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
 
   return CreateExportedModel(std::move(graph_def), init_node_name,
                              restore_node_name, save_node_name, checkpoint_dir,
-                             function_aliases);
+                             function_aliases, asset_file_defs);
 }
 
 // Runs MLIR passes with `module_op`. The passes are added by calling
@@ -239,16 +259,13 @@ absl::StatusOr<std::string> GetLocalTempFilename() {
 absl::Status UnfreezeConstantsAndSaveVariables(
     const absl::string_view checkpoint_dir, mlir::MLIRContext &ctx,
     mlir::ModuleOp module_op) {
-  if (const absl::Status pass_run_status = RunPasses(
-          /*name=*/kTfQuantConstantUnfreezingStepName,
-          /*add_passes_func=*/
-          [](mlir::PassManager &pm) {
-            pm.addPass(mlir::quant::CreateUnfreezeConstantsPass());
-          },
-          ctx, module_op);
-      !pass_run_status.ok()) {
-    return pass_run_status;
-  }
+  TF_QUANT_RETURN_IF_ERROR(RunPasses(
+      /*name=*/kTfQuantConstantUnfreezingStepName,
+      /*add_passes_func=*/
+      [](mlir::PassManager &pm) {
+        pm.addPass(mlir::quant::CreateUnfreezeConstantsPass());
+      },
+      ctx, module_op));
 
   if (const tsl::Status create_dir_status =
           Env::Default()->CreateDir(std::string(checkpoint_dir));
@@ -258,11 +275,8 @@ absl::Status UnfreezeConstantsAndSaveVariables(
     return tsl::ToAbslStatus(create_dir_status);
   }
 
-  const auto variable_save_status =
-      SaveVariablesToCheckpoint(checkpoint_dir, module_op);
-  if (!variable_save_status.ok()) {
-    return variable_save_status.status();
-  }
+  TF_ASSIGN_OR_RETURN(const auto _,
+                      SaveVariablesToCheckpoint(checkpoint_dir, module_op));
 
   return RunPasses(
       /*name=*/kTfQuantInsertRestoreOpStepName,
@@ -279,27 +293,37 @@ absl::Status UnfreezeConstantsAndSaveVariables(
 }
 
 // Sets up and runs the passes for exporting `module_op`. The behavior of the
-// exporting passes is controlled by `export_opts`.
-absl::Status RunExportPasses(const ExportOptions &export_opts,
-                             mlir::MLIRContext &ctx, mlir::ModuleOp module_op) {
+// exporting passes is controlled by `export_opts`. Returns `AssetFileDef`s that
+// associate the input arguments of @main and the asset file names. Asset file
+// names will be used to feed the corresponding tensors during initialization
+// upon model loading.
+absl::StatusOr<llvm::SmallVector<AssetFileDef>> RunExportPasses(
+    const ExportOptions &export_opts, mlir::MLIRContext &ctx,
+    mlir::ModuleOp module_op) {
   if (export_opts.unfreeze_constants) {
-    if (const absl::Status unfreeze_constants_status =
-            UnfreezeConstantsAndSaveVariables(export_opts.checkpoint_dir, ctx,
-                                              module_op);
-        !unfreeze_constants_status.ok()) {
-      return unfreeze_constants_status;
-    }
-
+    TF_QUANT_RETURN_IF_ERROR(UnfreezeConstantsAndSaveVariables(
+        export_opts.checkpoint_dir, ctx, module_op));
     LOG(INFO) << "Unfrozen constants and saved variables to checkpoint file: "
               << export_opts.checkpoint_dir;
   }
 
-  return RunPasses(
-      /*name=*/export_opts.debug_name,
-      /*add_passes_func=*/
-      [dup_constants = export_opts.duplicate_shape_determining_constants](
-          mlir::PassManager &pm) { AddExportPasses(dup_constants, pm); },
-      ctx, module_op);
+  if (const absl::Status pass_run_status = RunPasses(
+          /*name=*/export_opts.debug_name,
+          /*add_passes_func=*/
+          [dup_constants = export_opts.duplicate_shape_determining_constants](
+              mlir::PassManager &pm) { AddExportPasses(dup_constants, pm); },
+          ctx, module_op);
+      !pass_run_status.ok()) {
+    return pass_run_status;
+  }
+
+  mlir::FailureOr<llvm::SmallVector<AssetFileDef>> asset_file_defs =
+      mlir::quant::ConvertAssetArgs(module_op);
+  if (failed(asset_file_defs)) {
+    return absl::InternalError("Failed to convert asset args.");
+  }
+
+  return *asset_file_defs;
 }
 
 // Creates MLIRContext where the dialects required for quantization are
@@ -341,22 +365,16 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  if (const absl::Status preprocess_status = PreprocessAndFreezeGraph(
-          module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr);
-      !preprocess_status.ok()) {
-    return preprocess_status;
-  }
+  TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+      module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr));
 
-  if (const absl::Status qat_status =
-          RunPasses(/*name=*/kTfQuantQatStepName,
-                    /*add_passes_func=*/
-                    [&quantization_options](mlir::PassManager &pm) {
-                      AddQuantizeQatPasses(pm, quantization_options);
-                    },
-                    context, *module_ref);
-      !qat_status.ok()) {
-    return qat_status;
-  }
+  TF_QUANT_RETURN_IF_ERROR(
+      RunPasses(/*name=*/kTfQuantQatStepName,
+                /*add_passes_func=*/
+                [&quantization_options](mlir::PassManager &pm) {
+                  AddQuantizeQatPasses(pm, quantization_options);
+                },
+                context, *module_ref));
 
   const bool unfreeze_constants =
       !quantization_options.freeze_all_variables().enabled();
@@ -368,14 +386,13 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
       checkpoint_dir,
       /*debug_name=*/absl::StrCat(kTfQuantQatStepName, kExportStepSuffix)};
 
-  if (const absl::Status export_status =
-          RunExportPasses(export_opts, context, *module_ref);
-      !export_status.ok()) {
-    return export_status;
-  }
+  TF_ASSIGN_OR_RETURN(const llvm::SmallVector<AssetFileDef> asset_file_defs,
+                      RunExportPasses(export_opts, context, *module_ref));
 
-  return ConvertMlirModuleToExportedModel(*module_ref, checkpoint_dir,
-                                          /*function_aliases=*/{});
+  return ConvertMlirModuleToExportedModel(
+      *module_ref, checkpoint_dir,
+      /*function_aliases=*/{},
+      {asset_file_defs.begin(), asset_file_defs.end()});
 }
 
 // Returns the updated function aliases. `module_op` may have different function
@@ -448,25 +465,19 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     return aliased_function_names.insert(aliases.first);
   });
 
-  if (const absl::Status preprocess_status = PreprocessAndFreezeGraph(
-          /*mlir_dump_file_prefix=*/kTfQuantPtqPreCalibrationStepName,
-          /*is_inliner_run=*/true,
-          /*noinline_functions=*/aliased_function_names, module_ref.get(),
-          &context, bundle ? bundle->GetSession() : nullptr);
-      !preprocess_status.ok()) {
-    return preprocess_status;
-  }
+  TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+      /*mlir_dump_file_prefix=*/kTfQuantPtqPreCalibrationStepName,
+      /*is_inliner_run=*/true,
+      /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
+      bundle ? bundle->GetSession() : nullptr));
 
-  if (const absl::Status pre_calib_pass_status = RunPasses(
-          /*name=*/kTfQuantPtqPreCalibrationStepName,
-          /*add_passes_func=*/
-          [&quantization_options](mlir::PassManager &pm) {
-            AddQuantizePtqPreCalibrationPasses(pm, quantization_options);
-          },
-          context, *module_ref);
-      !pre_calib_pass_status.ok()) {
-    return pre_calib_pass_status;
-  }
+  TF_QUANT_RETURN_IF_ERROR(RunPasses(
+      /*name=*/kTfQuantPtqPreCalibrationStepName,
+      /*add_passes_func=*/
+      [&quantization_options](mlir::PassManager &pm) {
+        AddQuantizePtqPreCalibrationPasses(pm, quantization_options);
+      },
+      context, *module_ref));
 
   const bool unfreeze_constants =
       !quantization_options.freeze_all_variables().enabled();
@@ -480,14 +491,12 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
       /*debug_name=*/
       absl::StrCat(kTfQuantPtqPreCalibrationStepName, kExportStepSuffix)};
 
-  if (const absl::Status export_status =
-          RunExportPasses(export_opts, context, *module_ref);
-      !export_status.ok()) {
-    return export_status;
-  }
+  TF_ASSIGN_OR_RETURN(const llvm::SmallVector<AssetFileDef> asset_file_defs,
+                      RunExportPasses(export_opts, context, *module_ref));
 
-  return ConvertMlirModuleToExportedModel(*module_ref, checkpoint_dir,
-                                          updated_function_aliases);
+  return ConvertMlirModuleToExportedModel(
+      *module_ref, checkpoint_dir, updated_function_aliases,
+      {asset_file_defs.begin(), asset_file_defs.end()});
 }
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
@@ -531,25 +540,19 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   // Freezing is required again since variables might have been produced during
   // the pre-calibration step. `is_inliner_run = false` to prevent the functions
   // lifted for quantization from being inlined.
-  if (const absl::Status preprocess_status = PreprocessAndFreezeGraph(
-          /*mlir_dump_file_prefix=*/kTfQuantPtqPostCalibrationStepName,
-          /*is_inliner_run=*/false,
-          /*noinline_functions=*/aliased_function_names, module_ref.get(),
-          &context, bundle ? bundle->GetSession() : nullptr);
-      !preprocess_status.ok()) {
-    return preprocess_status;
-  }
+  TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+      /*mlir_dump_file_prefix=*/kTfQuantPtqPostCalibrationStepName,
+      /*is_inliner_run=*/false,
+      /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
+      bundle ? bundle->GetSession() : nullptr));
 
-  if (const absl::Status pre_calib_pass_status = RunPasses(
-          /*name=*/kTfQuantPtqPostCalibrationStepName,
-          /*add_passes_func=*/
-          [&quantization_options](mlir::PassManager &pm) {
-            AddQuantizePtqPostCalibrationPasses(pm, quantization_options);
-          },
-          context, *module_ref);
-      !pre_calib_pass_status.ok()) {
-    return pre_calib_pass_status;
-  }
+  TF_QUANT_RETURN_IF_ERROR(RunPasses(
+      /*name=*/kTfQuantPtqPostCalibrationStepName,
+      /*add_passes_func=*/
+      [&quantization_options](mlir::PassManager &pm) {
+        AddQuantizePtqPostCalibrationPasses(pm, quantization_options);
+      },
+      context, *module_ref));
 
   const bool unfreeze_constants =
       !quantization_options.freeze_all_variables().enabled();
@@ -561,14 +564,12 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
       /*debug_name=*/
       absl::StrCat(kTfQuantPtqPostCalibrationStepName, kExportStepSuffix)};
 
-  if (const absl::Status export_status =
-          RunExportPasses(export_opts, context, *module_ref);
-      !export_status.ok()) {
-    return export_status;
-  }
+  TF_ASSIGN_OR_RETURN(const llvm::SmallVector<AssetFileDef> asset_file_defs,
+                      RunExportPasses(export_opts, context, *module_ref));
 
-  return ConvertMlirModuleToExportedModel(*module_ref, checkpoint_dir,
-                                          updated_function_aliases);
+  return ConvertMlirModuleToExportedModel(
+      *module_ref, checkpoint_dir, updated_function_aliases,
+      {asset_file_defs.begin(), asset_file_defs.end()});
 }
 
 absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
@@ -598,22 +599,16 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  if (const absl::Status preprocess_status = PreprocessAndFreezeGraph(
-          module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr);
-      !preprocess_status.ok()) {
-    return preprocess_status;
-  }
+  TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+      module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr));
 
-  if (const absl::Status ptq_dynamic_range_status = RunPasses(
-          /*name=*/kTfQuantPtqDynamicRangeStepName,
-          /*add_passes_func=*/
-          [&quantization_options](mlir::PassManager &pm) {
-            AddQuantizePtqDynamicRangePasses(pm, quantization_options);
-          },
-          context, *module_ref);
-      !ptq_dynamic_range_status.ok()) {
-    return ptq_dynamic_range_status;
-  }
+  TF_QUANT_RETURN_IF_ERROR(RunPasses(
+      /*name=*/kTfQuantPtqDynamicRangeStepName,
+      /*add_passes_func=*/
+      [&quantization_options](mlir::PassManager &pm) {
+        AddQuantizePtqDynamicRangePasses(pm, quantization_options);
+      },
+      context, *module_ref));
 
   const bool unfreeze_constants =
       !quantization_options.freeze_all_variables().enabled();
@@ -624,14 +619,13 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
       checkpoint_dir,
       /*debug_name=*/
       absl::StrCat(kTfQuantPtqDynamicRangeStepName, kExportStepSuffix)};
-  if (const absl::Status export_status =
-          RunExportPasses(export_opts, context, *module_ref);
-      !export_status.ok()) {
-    return export_status;
-  }
+  TF_ASSIGN_OR_RETURN(const llvm::SmallVector<AssetFileDef> asset_file_defs,
+                      RunExportPasses(export_opts, context, *module_ref));
 
-  return ConvertMlirModuleToExportedModel(*module_ref, checkpoint_dir,
-                                          /*function_aliases=*/{});
+  return ConvertMlirModuleToExportedModel(
+      *module_ref, checkpoint_dir,
+      /*function_aliases=*/{},
+      {asset_file_defs.begin(), asset_file_defs.end()});
 }
 
 }  // namespace quantization
