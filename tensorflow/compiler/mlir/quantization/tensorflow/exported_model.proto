@@ -11,7 +11,7 @@ option cc_enable_arenas = true;
 // metadata required for building a SavedModel. This message is primarily used
 // to "export" the model produced from various quantization passes in c++ to
 // Python layer.
-// Next ID: 9
+// Next ID: 10
 message ExportedModel {
   reserved 4;
   reserved 'variable_shared_names';
@@ -48,4 +48,8 @@ message ExportedModel {
   // associates asset file names with the tensors to which the asset file names
   // should be fed.
   repeated AssetFileDef asset_file_defs = 8;
+
+  // Name of the tensor that contains a string tensor for the "file_prefix"
+  // tensor. See the comments in `checkpoint_dir` for details.
+  string file_prefix_tensor_name = 9;
 }

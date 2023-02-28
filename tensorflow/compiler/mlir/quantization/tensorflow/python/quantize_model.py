@@ -555,6 +555,7 @@ def _run_static_range_qat(
       save_op_name=exported_model.save_node_name,
       restore_op_name=exported_model.restore_node_name,
       checkpoint_dir=exported_model.checkpoint_dir,
+      file_prefix_tensor_name=exported_model.file_prefix_tensor_name,
       function_aliases=exported_model.function_aliases,
       asset_file_defs=exported_model.asset_file_defs,
   )
@@ -694,6 +695,7 @@ def _run_static_range_ptq(
       exported_model.restore_node_name,
       exported_model.save_node_name,
       exported_model.checkpoint_dir,
+      exported_model.file_prefix_tensor_name,
       exported_model.function_aliases,
       asset_file_defs=exported_model.asset_file_defs,
   )
@@ -722,6 +724,7 @@ def _run_static_range_ptq(
       exported_model.restore_node_name,
       exported_model.save_node_name,
       exported_model.checkpoint_dir,
+      exported_model.file_prefix_tensor_name,
       asset_file_defs=exported_model.asset_file_defs,
   )
 
@@ -751,6 +754,7 @@ def _run_static_range_ptq(
       save_op_name=exported_model.save_node_name,
       restore_op_name=exported_model.restore_node_name,
       checkpoint_dir=exported_model.checkpoint_dir,
+      file_prefix_tensor_name=exported_model.file_prefix_tensor_name,
       function_aliases=exported_model.function_aliases,
       asset_file_defs=exported_model.asset_file_defs,
   )

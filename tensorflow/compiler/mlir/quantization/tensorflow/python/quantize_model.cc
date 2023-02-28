@@ -55,7 +55,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/tsl/platform/env.h"
@@ -66,7 +68,9 @@ namespace tensorflow {
 namespace quantization {
 namespace {
 
+using ::mlir::quant::kTfFilePrefix;
 using ::mlir::quant::kTfQuantSaveOpName;
+using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 
@@ -141,11 +145,13 @@ std::string GetNodeName(const absl::flat_hash_set<Node *> &control_ret_nodes,
   return "";
 }
 
+// Factory function for `ExportedModel`.
 [[nodiscard]] ExportedModel CreateExportedModel(
     GraphDef &&graph_def, const absl::string_view init_node_name,
     const absl::string_view restore_node_name,
     const absl::string_view save_node_name,
     const absl::string_view checkpoint_dir,
+    const absl::string_view file_prefix_tensor_name,
     const absl::flat_hash_map<std::string, std::string> &function_aliases,
     const std::vector<AssetFileDef> &asset_file_defs) {
   ExportedModel exported_model{};
@@ -154,6 +160,9 @@ std::string GetNodeName(const absl::flat_hash_set<Node *> &control_ret_nodes,
   exported_model.set_restore_node_name(std::string(restore_node_name));
   exported_model.set_save_node_name(std::string(save_node_name));
   exported_model.set_checkpoint_dir(std::string(checkpoint_dir));
+  exported_model.set_file_prefix_tensor_name(
+      std::string(file_prefix_tensor_name));
+
   exported_model.mutable_function_aliases()->insert(function_aliases.begin(),
                                                     function_aliases.end());
 
@@ -162,6 +171,35 @@ std::string GetNodeName(const absl::flat_hash_set<Node *> &control_ret_nodes,
   }
 
   return exported_model;
+}
+
+// Returns the file prefix tensor name. An empty string is returned if no such a
+// tensor is found (when there are no variables to restore, it is expected that
+// the file prefix tensor does not exist). The file prefix tensor is found among
+// the "_Arg" nodes, as it is translated from the MLIR @main function's
+// argument. It also must have the attribute `tf_saved_model.index_path =
+// ["__tf_file_prefix"]`.
+//
+// See `MergeSaveFunctionOpsToMainPass` for details how the file prefix tensor
+// ends up at the MLIR @main function's argument.
+std::string FindFilePrefixTensorName(const GraphDef &graph_def) {
+  for (const NodeDef &node_def : graph_def.node()) {
+    if (node_def.op() == FunctionLibraryDefinition::kArgOp) {
+      // Matches the `tf_saved_model.index_path = ["__tf_file_prefix"]`.
+      const auto index_path_attr_itr =
+          node_def.attr().find(kTfSavedModelIndexPathAttr.str());
+      if (index_path_attr_itr != node_def.attr().end()) {
+        const auto &index_paths = index_path_attr_itr->second.list().s();
+        if (const auto file_prefix_itr =
+                absl::c_find(index_paths, kTfFilePrefix.str());
+            file_prefix_itr != index_paths.end()) {
+          // ":0" appended to inidicate that it is a tensor, not an Operation.
+          return absl::StrCat(node_def.name(), ":0");
+        }
+      }
+    }
+  }
+  return "";
 }
 
 // Converts MLIR ModuleOp to `ExportedModel`. Returns InternalError status
@@ -201,10 +239,13 @@ absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
       GetNodeName(control_ret_nodes, kTfSavedModelInitializerRestoreType);
   const std::string save_node_name =
       GetNodeName(control_ret_nodes, kTfQuantSaveOpName);
+  const std::string file_prefix_tensor_name =
+      FindFilePrefixTensorName(graph_def);
 
   return CreateExportedModel(std::move(graph_def), init_node_name,
                              restore_node_name, save_node_name, checkpoint_dir,
-                             function_aliases, asset_file_defs);
+                             file_prefix_tensor_name, function_aliases,
+                             asset_file_defs);
 }
 
 // Runs MLIR passes with `module_op`. The passes are added by calling
