@@ -33,13 +33,13 @@ else
 fi
 
 # Use devtoolset env
-export PATH=/opt/rh/devtoolset-10/root/usr/bin:${ROCM_PATH}/llvm/bin:${ROCM_PATH}/hip/bin:${ROCM_PATH}/bin:${ROCM_PATH}/llvm/bin:${PATH:+:${PATH}}
-export MANPATH=/opt/rh/devtoolset-10/root/usr/share/man:${MANPATH}
-export INFOPATH=/opt/rh/devtoolset-10/root/usr/share/info${INFOPATH:+:${INFOPATH}}
-export PCP_DIR=/opt/rh/devtoolset-10/root
-export PERL5LIB=/opt/rh/devtoolset-10/root//usr/lib64/perl5/vendor_perl:/opt/rh/devtoolset-10/root/usr/lib/perl5:/opt/rh/devtoolset-10/root//usr/share/perl5/
-export LD_LIBRARY_PATH=${ROCM_PATH}/lib:/usr/local/lib:/opt/rh/devtoolset-10/root$rpmlibdir$rpmlibdir32${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
-export LDFLAGS="-Wl,-rpath=/opt/rh/devtoolset-10/root/usr/lib64 -Wl,-rpath=/opt/rh/devtoolset-10/root/usr/lib"
+export PATH=/opt/rh/devtoolset-9/root/usr/bin:${ROCM_PATH}/llvm/bin:${ROCM_PATH}/hip/bin:${ROCM_PATH}/bin:${ROCM_PATH}/llvm/bin:${PATH:+:${PATH}}
+export MANPATH=/opt/rh/devtoolset-9/root/usr/share/man:${MANPATH}
+export INFOPATH=/opt/rh/devtoolset-9/root/usr/share/info${INFOPATH:+:${INFOPATH}}
+export PCP_DIR=/opt/rh/devtoolset-9/root
+export PERL5LIB=/opt/rh/devtoolset-9/root//usr/lib64/perl5/vendor_perl:/opt/rh/devtoolset-9/root/usr/lib/perl5:/opt/rh/devtoolset-9/root//usr/share/perl5/
+export LD_LIBRARY_PATH=${ROCM_PATH}/lib:/usr/local/lib:/opt/rh/devtoolset-9/root$rpmlibdir$rpmlibdir32${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+export LDFLAGS="-Wl,-rpath=/opt/rh/devtoolset-9/root/usr/lib64 -Wl,-rpath=/opt/rh/devtoolset-9/root/usr/lib"
 GPU_DEVICE_TARGETS=${GPU_DEVICE_TARGETS:-"gfx900 gfx906 gfx908 gfx90a gfx1030"}
 
 echo $ROCM_VERSION
@@ -48,7 +48,7 @@ echo $ROCM_PATH
 echo $GPU_DEVICE_TARGETS
 
 # install rocm
-/setup.packages.rocm.cs7.sh /devel.packages.rocm.cs7.txt
+/setup.packages.sh /devel.packages.rocm.txt
 
 # Ensure the ROCm target list is set up
 printf '%s\n' ${GPU_DEVICE_TARGETS} | tee -a "$ROCM_PATH/bin/target.lst"
