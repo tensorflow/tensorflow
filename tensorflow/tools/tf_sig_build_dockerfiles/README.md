@@ -42,9 +42,15 @@ workflow deploys the containers to Docker Hub.
 To rebuild the containers locally after making changes, use this command from
 this directory:
 
+For CUDA
 ```bash
 DOCKER_BUILDKIT=1 docker build \
   --build-arg PYTHON_VERSION=python3.9 --target=devel -t my-tf-devel .
+```
+For ROCM
+```
+DOCKER_BUILDKIT=1 docker build -f Dockerfile.rocm \
+  --build-arg ROCM_VERSION=5.4.0 --build-arg PYTHON_VERSION=python3.9 -t my-tf-devel .
 ```
 
 It will take a long time to build devtoolset and install CUDA packages. After
@@ -98,17 +104,34 @@ Now let's build `tf-nightly`.
    Hub](https://hub.docker.com/r/tensorflow/build/tags). The options for the
    `master` branch are:
 
+For CUDA
+
     - `tensorflow/build:latest-python3.11`
     - `tensorflow/build:latest-python3.10`
     - `tensorflow/build:latest-python3.9`
     - `tensorflow/build:latest-python3.8`
 
+For ROCM
+
+    - `rocm/tensorflow-build:latest-python3.11`
+    - `rocm/tensorflow-build:latest-python3.10`
+    - `rocm/tensorflow-build:latest-python3.9`
+    - `rocm/tensorflow-build:latest-python3.8`
+
     For this example we'll use `tensorflow/build:latest-python3.9`.
 
 3. Pull the container you decided to use.
 
+For CUDA
+
     ```bash
     docker pull tensorflow/build:latest-python3.9
+    ```
+
+For ROCM
+
+    ```bash
+    docker pull rocm/tensorflow-build:latest-python3.9
     ```
 
 4. Start a backgrounded Docker container with the three folders mounted.
@@ -129,6 +152,7 @@ Now let's build `tf-nightly`.
 
     And `-v` is for mounting directories into the container.
 
+    For CUDA
     ```bash
     docker run --name tf -w /tf/tensorflow -it -d \
       -v "/tmp/packages:/tf/pkg" \
@@ -136,6 +160,18 @@ Now let's build `tf-nightly`.
       -v "/tmp/bazelcache:/tf/cache" \
       tensorflow/build:latest-python3.9 \
       bash
+    ```
+
+    For ROCM
+    ```
+    docker run --name tf -w /tf/tensorflow -it -d --network=host \
+    --device=/dev/kfd --device=/dev/dri \
+    --ipc=host --shm-size 16G --group-add video --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
+    -v "/tmp/packages:/tf/pkg" \
+    -v "/tmp/tensorflow:/tf/tensorflow" \
+    -v "/tmp/bazelcache:/tf/cache" \
+    rocm/tensorflow-build:latest-python3.9 \
+    bash
     ```
 
     Note: if you wish to use your own Google Cloud Platform credentials for
@@ -201,7 +237,7 @@ Now you can continue on to any of:
 
     ```
     docker exec tf bazel --bazelrc=/usertools/gpu.bazelrc \
-    build --config=sigbuild_remote_cache \
+    build --config=sigbuild_remote_cache --config=cuda \
     tensorflow/tools/pip_package:build_pip_package
     ```
 
@@ -244,12 +280,13 @@ Now you can continue on to any of:
 
     Make sure you have a directory mounted to the container in `/tf/cache`!
 
-    Build the sources with Bazel:
+    For CUDA:
+    Build the sources with Bazel and the cuda config:
 
     ```
     docker exec tf \
     bazel --bazelrc=/usertools/gpu.bazelrc \
-    build --config=sigbuild_local_cache \
+    build --config=sigbuild_local_cache --config=cuda \
     tensorflow/tools/pip_package:build_pip_package
     ```
 
@@ -262,13 +299,52 @@ Now you can continue on to any of:
       --nightly_flag
     ```
 
+    For ROCM:
+
+    Build the sources with Bazel and the rocm config:
+
+    ```
+    docker exec tf \
+    bazel --bazelrc=/usertools/gpu.bazelrc \
+    build --config=sigbuild_local_cache --config=rocm \
+    tensorflow/tools/pip_package:build_pip_package --verbose_failures
+
+    ```
+
+    And then construct the nightly pip package:
+
+    ```
+    docker exec tf \
+	./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
+	/tf/pkg \
+	--rocm \
+	--nightly_flag
+    ```
+
+    Note: if you are creating a release (non-nightly) pip package:
+    ```
+    docker exec tf \
+	./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
+	/tf/pkg \
+	--rocm \
+	--project_name tensorflow_rocm
+    ```
+
     </details>
 
 3. Run the helper script that checks for manylinux compliance, renames the
    wheels, and then checks the size of the packages.
 
+    For CUDA
+
     ```
     docker exec tf /usertools/rename_and_verify_wheels.sh
+    ```
+
+    For ROCM
+
+    ```
+    docker exec tf /usertools/rename_and_verify_ROCM_wheels.sh
     ```
 
 4. Take a look at the new wheel packages you built! They may be owned by `root`

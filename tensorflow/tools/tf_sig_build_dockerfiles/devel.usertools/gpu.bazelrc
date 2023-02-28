@@ -37,29 +37,38 @@ build --copt=-mavx --host_copt=-mavx
 build --profile=/tf/pkg/profile.json.gz
 
 # CUDA: Set up compilation CUDA version and paths
-build --@local_config_cuda//:enable_cuda
-build --repo_env TF_NEED_CUDA=1
-build --action_env=TF_CUDA_VERSION="11"
-build --action_env=TF_CUDNN_VERSION="8"
-build --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-11.8"
-build --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
-build --action_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
-build --crosstool_top="@sigbuild-r2.12_config_cuda//crosstool:toolchain"
+build:cuda --@local_config_cuda//:enable_cuda
+build:cuda --repo_env TF_NEED_CUDA=1
+build:cuda --action_env=TF_CUDA_VERSION="11"
+build:cuda --action_env=TF_CUDNN_VERSION="8"
+build:cuda --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-11.8"
+build:cuda --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
+build:cuda --action_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
+build:cuda --crosstool_top="@sigbuild-r2.12_config_cuda//crosstool:toolchain"
 
 # CUDA: Enable TensorRT optimizations
 # https://developer.nvidia.com/tensorrt
-build --repo_env TF_NEED_TENSORRT=1
+build:cuda --repo_env TF_NEED_TENSORRT=1
 
 # CUDA: Select supported compute capabilities (supported graphics cards).
 # This is the same as the official TensorFlow builds.
 # See https://developer.nvidia.com/cuda-gpus#compute
 # TODO(angerson, perfinion): What does sm_ vs compute_ mean?
 # TODO(angerson, perfinion): How can users select a good value for this?
-build --repo_env=TF_CUDA_COMPUTE_CAPABILITIES="sm_35,sm_50,sm_60,sm_70,sm_75,compute_80"
+build:cuda --repo_env=TF_CUDA_COMPUTE_CAPABILITIES="sm_35,sm_50,sm_60,sm_70,sm_75,compute_80"
+
+# ROCM: Set up compilation ROCM version and paths
+build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
+build:rocm --define=using_rocm_hipcc=true
+build:rocm --define=tensorflow_mkldnn_contraction_kernel=0
+build:rocm --repo_env TF_NEED_ROCM=1
+# Disable unused-result on rocm builds.
+build:rocm --copt="-Wno-error=unused-result"
 
 # Test-related settings below this point.
 test --build_tests_only --keep_going --test_output=errors --verbose_failures=true
-test --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
+test:cuda --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
+test:rocm --test_env=HSA_TOOLS_LIB=libroctracer64.so
 # Local test jobs has to be 4 because parallel_gpu_execute is fragile, I think
 test --test_timeout=300,450,1200,3600 --local_test_jobs=4 --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute
 # Give only the list of failed tests at the end of the log

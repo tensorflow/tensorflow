@@ -1,0 +1,18 @@
+# rocm packagaes
+libdrm-amdgpu
+rocm-dev
+miopen-hip
+miopen-hip-dev
+miopengemm
+rocblas
+rocblas-dev
+rocsolver-dev
+rocrand-dev
+rocfft-dev
+hipfft-dev
+hipblas-dev
+rocprim-dev
+hipcub-dev
+rccl-dev
+hipsparse-dev
+hipsolver-dev

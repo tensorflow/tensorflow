@@ -16,7 +16,7 @@ COPY builder.devtoolset/glibc2.17-inline.patch /glibc2.17-inline.patch
 RUN /build_devtoolset.sh devtoolset-9 /dt9
 
 ################################################################################
-FROM nvidia/cuda:11.8.0-base-ubuntu20.04 as devel
+FROM ubuntu:20.04 as devel
 ################################################################################
 COPY --from=builder /dt9 /dt9
 
@@ -24,13 +24,13 @@ COPY --from=builder /dt9 /dt9
 # CUDA must be cleaned up in the same command to prevent Docker layer bloating
 COPY setup.sources.sh /setup.sources.sh
 COPY setup.packages.sh /setup.packages.sh
-COPY setup.cuda.sh /setup.cuda.sh
-COPY devel.packages.txt /devel.packages.cuda.txt
+COPY setup.rocm.sh /setup.rocm.sh
 COPY devel.packages.txt /devel.packages.txt
-RUN /setup.sources.sh CUDA && \
-    /setup.packages.sh /devel.packages.cuda.txt && \
+COPY devel.packages.rocm.txt /devel.packages.rocm.txt
+RUN /setup.sources.sh ROCM && \
+    /setup.packages.sh /devel.packages.rocm.txt && \
     /setup.packages.sh /devel.packages.txt && \
-    /setup.cuda.sh
+    /setup.rocm.sh
 
 # Install various tools.
 # - bats: bash unit testing framework
