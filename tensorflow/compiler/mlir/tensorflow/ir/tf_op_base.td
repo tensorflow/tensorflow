@@ -672,8 +672,10 @@ class WithBroadcastableBinOpBuilder {
     [{
   auto resultType =
       OpTrait::util::getBroadcastedType(x.getType(), y.getType());
-  if (!resultType)
+  if (!resultType) {
     mlir::emitError($_state.location, "non-broadcastable operands");
+    resultType = $_builder.getNoneType();
+  }
   return build($_builder, $_state, resultType, x, y);
 }]>];
 }
