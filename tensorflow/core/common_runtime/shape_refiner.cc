@@ -15,13 +15,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 
 #include <deque>
-#include <limits>
 #include <memory>
-#include <optional>
-#include <utility>
+#include <unordered_set>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/eval_const_tensor.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -34,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -184,7 +180,7 @@ Status ShapeRefiner::InferShapesForFunction(const FunctionDef* function_def,
     graph = new_graph;
   }
 
-  absl::flat_hash_set<const Node*> function_nodes;
+  std::unordered_set<const Node*> function_nodes;
   Status inference_status = OkStatus();
   {
     auto node_shape_inference_lambda = [this, &outer_context, &function_nodes,
@@ -415,56 +411,14 @@ Status ShapeRefiner::UpdateNode(const Node* node, bool relax, bool* refined) {
 Status ShapeRefiner::EvaluateConstantTensorForEdge(
     const Node* node, int dst_idx, bool* evaluated, Tensor* result,
     InferenceContext* outer_context) {
+  *evaluated = false;
   const Edge* input_edge;
   TF_RETURN_IF_ERROR(node->input_edge(dst_idx, &input_edge));
-  const Node& src = *input_edge->src();
-  const int src_output = input_edge->src_output();
-
-  auto lookup = [&](const Node& node, int index) -> std::optional<Tensor> {
-    // If the node is an argument, try to request it from the outer scope.
-    if (node.IsArg() && outer_context != nullptr) {
-      int index;
-      if (GetNodeAttr(node.def(), "index", &index).ok() && 0 <= index &&
-          index < outer_context->num_inputs()) {
-        const auto* tensor = outer_context->input_tensor(index);
-        outer_context->request_input_tensor(index);
-        if (tensor != nullptr) {
-          return *tensor;
-        }
-      }
-    }
-
-    // Look up in the cache.
-    auto it = const_tensor_map_.find({node.name(), index});
-    if (it != const_tensor_map_.end()) {
-      return it->second;
-    }
-    return std::optional<Tensor>();
-  };
-
-  std::optional<EvaluateConstantTensorRunner> runner;
-  if (!disable_constant_propagation_) {
-    runner = EvaluateConstantTensorRunner{
-        ops_registry_,
-        graph_def_version_,
-        &graph_runner_,
-    };
-  }
-
-  TF_ASSIGN_OR_RETURN(auto tensor, EvaluateConstantTensor(
-                                       src, src_output, *this, lookup, runner));
-
-  *evaluated = tensor.has_value();
-  if (tensor.has_value()) {
-    // Add small tensors to the cache.
-    if (tensor->TotalBytes() <= kMaxTensorSize) {
-      const_tensor_map_.emplace(std::make_pair(src.name(), src_output),
-                                *tensor);
-    }
-    *result = *std::move(tensor);
-  }
-
-  return OkStatus();
+  OutputTensor tensor(input_edge->src(), input_edge->src_output());
+  return EvaluateConstantTensor(
+      tensor, *this, *ops_registry_, graph_def_version_, evaluated, result,
+      &graph_runner_, &const_tensor_map_, kMaxTensorSize,
+      disable_constant_propagation_, outer_context);
 }
 
 Status ShapeRefiner::EvaluateConstantIntScalarEdge(

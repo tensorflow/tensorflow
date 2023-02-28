@@ -15,48 +15,55 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EVAL_CONST_TENSOR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EVAL_CONST_TENSOR_H_
 
-#include <cstdint>
-#include <optional>
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/core/status.h"
 
-#include "absl/functional/function_ref.h"
-#include "tensorflow/core/platform/statusor.h"
+// TODO(skyewm): can this be combined with ConstantFold?
 
 namespace tensorflow {
 
 class GraphRunner;
-class Node;
 class OpRegistryInterface;
 class ShapeRefiner;
 class Tensor;
 
-// Configuration of the graph runner for constant folding.
-struct EvaluateConstantTensorRunner {
-  // Op registry for temporary graphs. By default, the global registry will
-  // be used.
-  const OpRegistryInterface* op_registry = nullptr;
-  // Version of the graph API to use.
-  int32_t graph_def_version = 0;
-  // Graph runner for constant folding. By default, a temporary graph runner
-  // will be created.
-  GraphRunner* graph_runner = nullptr;
-};
-
-// Attempts to evaluate an output of the given node. This will only be possible
-// if it doesn't depend on any graph inputs (this function is safe to call
-// if this isn't the case though).
+// Attempts to evaluate `tensor`. This will only be possible if `tensor` doesn't
+// depend on any graph inputs (this function is safe to call if this isn't the
+// case though).
 //
-// When the evaluation is successful, the function returns a tensor, otherwise
-// it returns std::nullopt.
-StatusOr<std::optional<Tensor>> EvaluateConstantTensor(
-    // The tensor to be evaluated.
-    const Node& node, int node_output,
-    // Used to fetch inference contexts for nodes in the graph.
-    const ShapeRefiner& refiner,
-    // Used to both lookup cached results and request function arguments.
-    absl::FunctionRef<std::optional<Tensor>(const Node&, int)> lookup,
-    // Configuration of the graph runner. If not set, no attempt to fold a
-    // constant subgraph will be made.
-    std::optional<EvaluateConstantTensorRunner> runner);
+// If the evaluation is successful, `evaluated` will be set to true and
+// `tensor`s value returned in `result`. Otherwise `evaluated` will be set to
+// false. An error status is returned if something is wrong with the graph or
+// input. Note that `evaluated` may set to false if OkStatus() is returned.
+//
+// Params:
+//   tensor - the tensor to be evaluated.
+//   refiner - used to fetch the InferenceContexts for nodes in the graph.
+//   ops - the OpRegistryInterface for the graph.
+//   graph_def_version - the producer version of the graph.
+//   evaluated - output param indicating whether evaluation was successful.
+//   result - output param containing the result if evaluated is true.
+//   graph_runner - optional. If not set, a GraphRunner will be created for
+//     evaluating tensor. This can be set to avoid creating a new GraphRunner
+//     for every call.
+//   cached_values - optional. This can be used to cache evaluated results
+//     across calls, to avoid evaluating the same parts of the graph multiple
+//     times.
+//   max_cached_value_size - optional. If `cached_values` is set, the maximum
+//     result size to cache.
+//   disable_constant_propagation - if true, only Const node values will be
+//     returned.
+//   outer_context - optional. The InferenceContext for the call node if inside
+//     a nested function. This is useful for doing constant propagation across
+//     Arg nodes.
+Status EvaluateConstantTensor(
+    OutputTensor tensor, const ShapeRefiner& refiner,
+    const OpRegistryInterface& ops, int32_t graph_def_version, bool* evaluated,
+    Tensor* result, GraphRunner* graph_runner = nullptr,
+    std::unordered_map<string, Tensor>* cached_values = nullptr,
+    int64_t max_cached_value_size = 1024,
+    bool disable_constant_propagation = false,
+    shape_inference::InferenceContext* outer_context = nullptr);
 
 }  // namespace tensorflow
 

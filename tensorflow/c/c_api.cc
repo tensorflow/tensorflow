@@ -16,12 +16,8 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 
 #include <algorithm>
-#include <cstring>
 #include <limits>
 #include <memory>
-#include <optional>
-#include <unordered_set>
-#include <utility>
 #include <vector>
 
 #include "absl/strings/match.h"
@@ -2430,21 +2426,20 @@ void TF_SessionPRun(TF_Session* session, const char* handle,
 
 unsigned char TF_TryEvaluateConstant(TF_Graph* graph, TF_Output output,
                                      TF_Tensor** result, TF_Status* status) {
+  *result = nullptr;
   mutex_lock l(graph->mu);
-  auto status_or = EvaluateConstantTensor(
-      output.oper->node, output.index, graph->refiner,
-      [](const Node&, int) { return std::optional<Tensor>(); },
-      tensorflow::EvaluateConstantTensorRunner{
-          graph->graph.op_registry(),
-          graph->graph.versions().producer(),
-      });
-  if (!status_or.ok() || !status_or->has_value()) {
-    *result = nullptr;
-    status->status = std::move(status_or).status();
-    return false;
+  OutputTensor tensor(&output.oper->node, output.index);
+  bool evaluated;
+  Tensor result_tensor;
+  status->status = EvaluateConstantTensor(
+      tensor, graph->refiner, *graph->graph.op_registry(),
+      graph->graph.versions().producer(), &evaluated, &result_tensor);
+  if (evaluated) {
+    DCHECK(status->status.ok());
+    *result = TF_TensorFromTensor(result_tensor, &status->status);
+    if (!status->status.ok()) evaluated = false;
   }
-  *result = TF_TensorFromTensor(**status_or, &status->status);
-  return status->status.ok();
+  return evaluated;
 }
 
 TF_ApiDefMap* TF_NewApiDefMap(TF_Buffer* op_list_buffer, TF_Status* status) {
