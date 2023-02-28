@@ -359,7 +359,7 @@ android_library(
     name = "tensorflowlite_gpu_api",
     srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
     exports_manifest = 1,
-    manifest = "AndroidManifest.xml",
+    manifest = "AndroidManifestGpu.xml",
     proguard_specs = ["proguard.flags"],
     deps = [":tensorflowlite_api"],
 )
