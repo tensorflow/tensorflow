@@ -13,7 +13,7 @@ jobs:
       - name: Awaiting resposnse issues
         uses: actions/stale@v5
         with:
-          days-before-issue-stale: 30
+          days-before-issue-stale: 7
           days-before-issue-close: 30
           stale-issue-label: "stale"
           only-issue-labels: 
