@@ -206,3 +206,10 @@ def make_replica_groups(
 
 def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...):
   ...
+
+def array_result_handler(
+               aval: Any,
+               sharding: Any,
+               committed: bool,
+               _skip_checks: bool = ...) -> Callable:
+  ...

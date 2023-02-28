@@ -417,6 +417,25 @@ PYBIND11_MODULE(xla_extension, m) {
                              })
       .def("__str__", &CompiledMemoryStats::DebugString);
 
+  py::class_<PyExecuteResults>(m, "ExecuteResults")
+      .def("__len__", [](PyExecuteResults& results) { return results.Size(); })
+      .def("disassemble_into_single_device_arrays",
+           [](PyExecuteResults& results) {
+             return results.DisassembleIntoSingleDeviceArrays();
+           })
+      .def("disassemble_prefix_into_single_device_arrays",
+           [](PyExecuteResults& results, size_t n) {
+             return results.DisassemblePrefixIntoSingleDeviceArrays(n);
+           })
+      .def("consume_with_handlers",
+           [](PyExecuteResults& results,
+              std::vector<std::variant<const PyArrayResultHandler*, py::object>>
+                  out_handlers) {
+             return results.ConsumeWithHandlers(std::move(out_handlers));
+           })
+      .def("consume_token",
+           [](PyExecuteResults& results) { return results.ConsumeToken(); });
+
   py::class_<PyLoadedExecutable, std::shared_ptr<PyLoadedExecutable>>
       loaded_executable(m, "LoadedExecutable");
   loaded_executable.def_property_readonly("client", &PyLoadedExecutable::client)
@@ -453,6 +472,9 @@ PYBIND11_MODULE(xla_extension, m) {
                const std::vector<std::variant<PyBuffer::object, PyArray>>>>(
                &PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens),
            py::arg("arguments"))
+      // TODO(parkers): Switch execute_sharded_on_local_devices* to this.
+      .def("execute_sharded", &PyLoadedExecutable::ExecuteSharded,
+           py::arg("arguments"), py::arg("with_tokens") = false)
       .def("hlo_modules", &PyLoadedExecutable::HloModules)
       .def("get_output_shardings", &PyLoadedExecutable::GetOutputShardings)
       .def("get_parameter_shardings",

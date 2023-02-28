@@ -69,6 +69,42 @@ class PyShardedToken {
   std::vector<PjRtFuture<Status>> futures_;
 };
 
+class PyExecuteResults {
+ public:
+  PyExecuteResults(const std::shared_ptr<PyClient>& client,
+                   std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays,
+                   int num_computations, PyShardedToken token);
+
+  std::vector<std::vector<PyBuffer::object>>
+  DisassembleIntoSingleDeviceArrays();
+
+  std::vector<std::vector<PyBuffer::object>>
+  DisassemblePrefixIntoSingleDeviceArrays(size_t n);
+
+  std::vector<pybind11::object> ConsumeWithHandlers(
+      std::vector<std::variant<const PyArrayResultHandler*, pybind11::object>>
+          out_handlers);
+
+  std::vector<tsl::RCReference<ifrt::Array>> Consume();
+
+  PyShardedToken ConsumeToken();
+
+  size_t Size() const {
+    CheckNotDisassembled();
+    return ifrt_arrays_.size();
+  }
+
+  void CheckNotDisassembled() const;
+
+ private:
+  bool is_exploded_ = false;
+  bool token_consumed_ = false;
+  std::shared_ptr<PyClient> client_;
+  std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays_;
+  int num_computations_;
+  PyShardedToken token_;
+};
+
 // Python wrapper around PjRtExecutable. We use a wrapper class:
 // a) to keep the PyClient alive via a std::shared_ptr<>
 // b) to add Python-specific functionality.
@@ -130,6 +166,11 @@ class PyLoadedExecutable
   ExecuteShardedOnLocalDevicesWithTokens(
       absl::Span<const std::vector<std::variant<PyBuffer::object, PyArray>>>
           args);
+
+  StatusOr<PyExecuteResults> ExecuteSharded(
+      absl::Span<const std::vector<std::variant<PyBuffer::object, PyArray>>>
+          args,
+      bool with_tokens);
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
 

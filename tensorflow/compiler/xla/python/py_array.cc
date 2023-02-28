@@ -265,6 +265,37 @@ void PyArray::PyInit(py::object self, DisableFastpath) {
             PyArray_Storage::DisableFastpath());
 }
 
+PyArrayResultHandler::PyArrayResultHandler(py::object aval, py::object sharding,
+                                           bool committed, bool skip_checks)
+    : aval_(std::move(aval)),
+      sharding_(std::move(sharding)),
+      committed_(committed),
+      skip_checks_(skip_checks) {
+  weak_type_ = pybind11::cast<bool>(aval_.attr("weak_type"));
+  dtype_ = aval_.attr("dtype");
+  shape_ = pybind11::cast<std::vector<int64_t>>(aval_.attr("shape"));
+}
+
+PyArray PyArrayResultHandler::Call(
+    absl::Span<const PyBuffer::object> py_buffers) const {
+  return Call(py_buffers.at(0).buf()->client(),
+              CreateIfRtArrayFromPyBuffers(dtype_, shape_, py_buffers));
+}
+
+PyArray PyArrayResultHandler::Call(absl::Span<const PyArray> py_arrays) const {
+  return Call(py_arrays.at(0).py_client(),
+              CreateIfRtArrayFromSingleDeviceShardedPyArrays(dtype_, shape_,
+                                                             py_arrays));
+}
+
+PyArray PyArrayResultHandler::Call(
+    std::shared_ptr<PyClient> py_client,
+    tsl::RCReference<ifrt::Array> ifrt_array) const {
+  return PyArray(aval_, weak_type_, dtype_, shape_, sharding_,
+                 std::move(py_client), Traceback::Get(), std::move(ifrt_array),
+                 committed_, skip_checks_);
+}
+
 PyArray::PyArray(py::object aval, bool weak_type, py::dtype dtype,
                  std::vector<int64_t> shape, py::object sharding,
                  std::shared_ptr<PyClient> py_client,
@@ -532,6 +563,26 @@ Status PyArray::RegisterTypes(py::module& m) {
       py::cpp_function(&PyArray::IsDeleted, py::is_method(type));
   type.attr("traceback") = jax::property_readonly(&PyArray::traceback);
   type.attr("__module__") = m.attr("__name__");
+
+  m.attr("array_result_handler") = py::cpp_function(
+      [](py::object aval, py::object sharding, bool committed,
+         bool skip_checks) -> std::unique_ptr<PyArrayResultHandler> {
+        return std::make_unique<PyArrayResultHandler>(
+            std::move(aval), std::move(sharding), committed, skip_checks);
+      },
+      py::arg("aval"), py::arg("sharding"), py::arg("committed"),
+      py::arg("_skip_checks") = false);
+
+  py::class_<PyArrayResultHandler>(m, "ResultHandler")
+      .def("__call__",
+           [](const PyArrayResultHandler& self,
+              absl::Span<const PyBuffer::object> py_arrays) {
+             return self.Call(py_arrays);
+           })
+      .def("__call__", [](const PyArrayResultHandler& self,
+                          absl::Span<const PyArray> py_arrays) {
+        return self.Call(py_arrays);
+      });
 
   return OkStatus();
 }
