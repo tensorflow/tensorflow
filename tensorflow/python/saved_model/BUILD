@@ -71,11 +71,13 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":constants",
+        ":fingerprinting_utils",
         ":path_helpers",
         ":pywrap_saved_model",
         ":signature_def_utils",
         ":utils",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/config:flags_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
@@ -175,6 +177,7 @@ tf_py_test(
     deps = [
         ":builder",
         ":constants",
+        ":fingerprinting",
         ":loader",
         ":main_op",
         ":signature_def_utils",
@@ -344,6 +347,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":builder",
+        ":fingerprinting_utils",
         ":function_serialization",
         ":path_helpers",
         ":pywrap_saved_model",
@@ -781,6 +785,19 @@ py_strict_library(
     deps = [
         ":pywrap_saved_model",
         "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "fingerprinting_utils",
+    srcs = ["fingerprinting_utils.py"],
+    deps = [
+        ":pywrap_saved_model",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/config:flags_py",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/util",
+        "@absl_py//absl/logging",
     ],
 )
 
