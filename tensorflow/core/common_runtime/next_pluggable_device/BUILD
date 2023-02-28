@@ -75,6 +75,7 @@ cc_library(
     deps = [
         ":next_pluggable_device",
         ":next_pluggable_device_api",
+        ":pjrt_compile_on_demand_op",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
