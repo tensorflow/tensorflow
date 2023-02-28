@@ -53,15 +53,16 @@ namespace llvm_ir {
 
 namespace {
 
-// This works for most llvm / mlir types. This also accepts a const `entity` for
-// types which have a const print() method.
+// This works for most llvm / mlir types. This also accepts a const pointer to
+// objects which have a const print() method.
 template <typename T>
-std::string DumpToStringTempl(T& entity) {
-  std::string buffer_string;
-  llvm::raw_string_ostream ostream(buffer_string);
-  entity.print(ostream);
-  ostream.flush();
-  return buffer_string;
+std::string DumpToStringTempl(T* entity) {
+  CHECK_NE(entity, nullptr);
+
+  std::string s;
+  llvm::raw_string_ostream ostream(s);
+  ostream << *entity;
+  return s;
 }
 
 // Note, this function is only useful in an insertion context; in a global
@@ -86,37 +87,26 @@ std::unique_ptr<llvm::Module> DropConstantInitializers(
 }
 
 std::string DumpToString(const llvm::Module* module) {
-  // DumpToStringTempl doesn't work for llvm::Module.
-  CHECK_NE(module, nullptr);
-
-  std::string buffer_string;
-  llvm::raw_string_ostream ostream(buffer_string);
-  module->print(ostream, /*AAW=*/nullptr);
-  ostream.flush();
-  return buffer_string;
+  return DumpToStringTempl(module);
 }
 
 std::string DumpToString(const llvm::Type* type) {
-  CHECK_NE(type, nullptr);
-
-  return DumpToStringTempl(*type);
+  return DumpToStringTempl(type);
 }
 
 std::string DumpToString(const llvm::Value* value) {
-  CHECK_NE(value, nullptr);
-
-  return DumpToStringTempl(*value);
+  return DumpToStringTempl(value);
 }
 
 std::string DumpToString(mlir::Operation* operation) {
-  CHECK_NE(operation, nullptr);
-
-  return DumpToStringTempl(*operation);
+  return DumpToStringTempl(operation);
 }
 
-std::string DumpToString(mlir::Type type) { return DumpToStringTempl(type); }
+std::string DumpToString(mlir::Type type) { return DumpToStringTempl(&type); }
 
-std::string DumpToString(mlir::Value value) { return DumpToStringTempl(value); }
+std::string DumpToString(mlir::Value value) {
+  return DumpToStringTempl(&value);
+}
 
 llvm::CallInst* EmitCallToIntrinsic(
     llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,

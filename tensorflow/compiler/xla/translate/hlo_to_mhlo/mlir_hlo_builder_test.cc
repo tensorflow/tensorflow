@@ -250,8 +250,8 @@ TEST_F(XlaBuilderTest, CustomCallWithComputation) {
   EXPECT_EQ(
       GetMlirOpString(actual_func_op),
       R"(func.func private @test_comparator.4(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<i1> {
-  %1 = mhlo.compare  GT, %arg0, %arg1 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-  return %1 : tensor<i1>
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  return %0 : tensor<i1>
 })");
 }
 

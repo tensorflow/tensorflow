@@ -48,9 +48,8 @@ class TargetOptions;
 namespace xla {
 namespace llvm_ir {
 
-// We have different DumpToString functions for each type for findability and
-// some of them have different implementations. We use pointers / values based
-// on the usual semantics of the parameter type.
+// We have different DumpToString functions for each type for findability. We
+// use pointers / values based on the usual semantics of the parameter type.
 
 std::string DumpToString(const llvm::Module* module);
 std::string DumpToString(const llvm::Type* type);
@@ -62,7 +61,7 @@ std::string DumpToString(const llvm::Value* value);
 // For findability:
 //   std::string DumpToString(mlir::Op<...>& op);
 //   std::string DumpToString(mlir::ModuleOp& module_op);
-//   std::string DumpToString(mlir::lmhlo::FusionOp& module_op);
+//   std::string DumpToString(mlir::lmhlo::FusionOp& fusion_op);
 //
 // The `operation` parameter is not const, because the used print() method is
 // not const.
