@@ -20,6 +20,7 @@ limitations under the License.
 //   https://arxiv.org/abs/2209.05433
 
 #include <cstdint>
+#include <limits>
 #include <ostream>
 
 #include "absl/numeric/bits.h"
@@ -366,6 +367,25 @@ struct numeric_limits_float8<float8_e5m2> : public numeric_limits_float8_base {
   }
 };
 
+}  // namespace float8_internal
+}  // namespace tsl
+
+namespace std {
+// Standard-library overrides.  Note that these are picked up by Eigen as well.
+template <>
+struct numeric_limits<tsl::float8_internal::float8_e4m3fn>
+    : public tsl::float8_internal::numeric_limits_float8<
+          tsl::float8_internal::float8_e4m3fn> {};
+
+template <>
+struct numeric_limits<tsl::float8_internal::float8_e5m2>
+    : public tsl::float8_internal::numeric_limits_float8<
+          tsl::float8_internal::float8_e5m2> {};
+}  // namespace std
+
+namespace tsl {
+namespace float8_internal {
+
 // Free-functions for use with ADL and in Eigen.
 constexpr inline float8_e4m3fn abs(const float8_e4m3fn& a) {
   return float8_e4m3fn::FromRep(a.rep() & 0x7F);
@@ -452,69 +472,47 @@ template <typename Scalar>
 struct ConvertImpl<Scalar, Scalar, /*kSaturate=*/true, /*kTruncate=*/true,
                    /*EnableIf=*/void> : public IdentityConversion<Scalar> {};
 
-// Convert float8 to larger types.
-template <typename From, typename To, bool kSaturate, bool kTruncate>
-struct ConvertImpl<
-    From, To, kSaturate, kTruncate,
-    std::enable_if_t<std::is_base_of_v<float8_base<From>, From> &&
-                     (sizeof(From) < sizeof(To))>> {
-  using FromBits = typename GetUnsignedInteger<sizeof(From)>::type;
-  static constexpr int kFromBits = sizeof(From) * CHAR_BIT;
-  static constexpr int kFromMantissaBits = Eigen::NumTraits<From>::digits() - 1;
-  static constexpr int kFromExponentBits = kFromBits - kFromMantissaBits - 1;
-  static constexpr int kFromExponentBias = (1 << (kFromExponentBits - 1)) - 1;
-  static constexpr FromBits kFromExponentMask =
-      ((static_cast<FromBits>(1) << kFromExponentBits) - 1)
-      << kFromMantissaBits;
-
-  using ToBits = typename GetUnsignedInteger<sizeof(To)>::type;
-  static constexpr int kToBits = sizeof(To) * CHAR_BIT;
-  static constexpr int kToMantissaBits = Eigen::NumTraits<To>::digits() - 1;
-  static constexpr int kToExponentBits = kToBits - kToMantissaBits - 1;
-  static constexpr int kToExponentBias = (1 << (kToExponentBits - 1)) - 1;
-
-  static constexpr int kExponentOffset = kToExponentBias - kFromExponentBias;
-  static constexpr int kDigitShift = kToMantissaBits - kFromMantissaBits;
-
-  static EIGEN_DEVICE_FUNC inline To run(const From& from) {
-    // Shift bits to destination type, without sign bit.
-    const FromBits from_bits = from.rep() & 0x7F;
-    ToBits bits = ToBits{from_bits} << kDigitShift;
-
-    // Adjust the exponent.
-    // Special cases.
-    if (Eigen::numext::isinf(from) || Eigen::numext::isnan(from)) {
-      // Inf or NaN, fill exponent bits with all ones and preserve digits.
-      bits |= ((ToBits{1} << kToExponentBits) - 1) << kToMantissaBits;
-    } else if (from_bits == 0) {
-      // Zeros.
-      bits = 0;
-    } else if ((from.rep() & kFromExponentMask) == 0) {
-      // Subnormals.
-
-      // All float8 subnormals become normalized when casting to a type
-      // with a larger number of exponent bits.  We do this by setting the
-      // normalized mantissa bits in the source type, shifting it up to the
-      // destination type, then inserting the exponent bits.
-      const int normalization_factor =
-          absl::countl_zero(from_bits) - (kFromBits - kFromMantissaBits) + 1;
-      // Shift the mantissa to account for the number of leading zeros.
-      bits <<= normalization_factor;
-      // Clear the hidden bit.
-      bits &= ~(ToBits{1} << kToMantissaBits);
-      // Insert the exponent bits.
-      bits |= static_cast<ToBits>(kExponentOffset - normalization_factor + 1)
-              << kToMantissaBits;
-    } else {
-      // Increase exponent by offset difference.
-      bits += ToBits{kExponentOffset} << kToMantissaBits;
-    }
-
-    // Insert sign bit.
-    bits |= static_cast<ToBits>(from.rep() & 0x80) << (kToBits - kFromBits);
-    return Eigen::numext::bit_cast<To>(bits);
-  }
+template <typename Float>
+struct Traits {
+  using BitsType = typename GetUnsignedInteger<sizeof(Float)>::type;
+  static constexpr int kBits = sizeof(Float) * CHAR_BIT;
+  static constexpr int kMantissaBits = Eigen::NumTraits<Float>::digits() - 1;
+  static constexpr int kExponentBits = kBits - kMantissaBits - 1;
+  static constexpr int kExponentBias = (1 << (kExponentBits - 1)) - 1;
+  static constexpr BitsType kExponentMask = ((BitsType{1} << kExponentBits) - 1)
+                                            << kMantissaBits;
+  static constexpr BitsType kMantissaMask = (BitsType{1} << kMantissaBits) - 1;
+  static constexpr BitsType kSignMask = BitsType{1} << (kBits - 1);
+  static constexpr BitsType kAbsMask = ~kSignMask;
 };
+
+// Shift bits in the appropriate directions and add the exponent offset
+// to convert between bit representations.  The input `in` must be a
+// positive normalized value.
+template <typename From, typename To,
+          typename FromBits = typename Traits<From>::BitsType,
+          typename ToBits = typename Traits<To>::BitsType>
+constexpr FromBits ToFromBits(ToBits in) {
+  using FromTraits = Traits<From>;
+  constexpr int kFromMantissaBits = FromTraits::kMantissaBits;
+  constexpr int kFromExponentBias = FromTraits::kExponentBias;
+
+  using ToTraits = Traits<To>;
+  constexpr int kToMantissaBits = ToTraits::kMantissaBits;
+  constexpr int kToExponentBias = ToTraits::kExponentBias;
+
+  constexpr int kExponentOffset = kFromExponentBias - kToExponentBias;
+  constexpr int kDigitShift = kFromMantissaBits - kToMantissaBits;
+
+  FromBits out = static_cast<FromBits>(in);
+  if constexpr (kDigitShift > 0) {
+    out <<= kDigitShift;
+  } else if constexpr (kDigitShift < 0) {
+    out >>= -kDigitShift;
+  }
+  out += static_cast<FromBits>(kExponentOffset) << kFromMantissaBits;
+  return out;
+}
 
 template <typename Bits>
 constexpr inline Bits RoundBitsToNearestEven(Bits bits, int roundoff) {
@@ -526,204 +524,157 @@ constexpr inline Bits RoundBitsToNearestEven(Bits bits, int roundoff) {
   // - L is 1, R is 1, OR
   // - L is 0, R is 1, any T is one.
   // We do this by adding L to a bit pattern consisting of all T = 1.
-  Bits bias = roundoff == 0 ? 0
-                            : ((bits >> roundoff) & 1) +
-                                  (static_cast<Bits>(1) << (roundoff - 1)) - 1;
+  Bits bias = roundoff == 0
+                  ? 0
+                  : ((bits >> roundoff) & 1) + (Bits{1} << (roundoff - 1)) - 1;
   return bits + bias;
 }
 
-// Convert larger types to float8.
 template <typename From, typename To, bool kSaturate, bool kTruncate>
 struct ConvertImpl<From, To, kSaturate, kTruncate,
-                   std::enable_if_t<std::is_base_of_v<float8_base<To>, To> &&
-                                    (sizeof(To) < sizeof(From))>> {
+                   std::enable_if_t<!std::is_same_v<From, To>>> {
+  using FromTraits = Traits<From>;
   using FromBits = typename GetUnsignedInteger<sizeof(From)>::type;
-  static constexpr int kFromBits = sizeof(From) * CHAR_BIT;
-  static constexpr int kFromMantissaBits = Eigen::NumTraits<From>::digits() - 1;
-  static constexpr int kFromExponentBits = kFromBits - kFromMantissaBits - 1;
-  static constexpr int kFromExponentBias = (1 << (kFromExponentBits - 1)) - 1;
-  static constexpr FromBits kFromExponentMask =
-      ((static_cast<FromBits>(1) << kFromExponentBits) - 1)
-      << kFromMantissaBits;
+  static constexpr int kFromBits = FromTraits::kBits;
+  static constexpr int kFromMantissaBits = FromTraits::kMantissaBits;
+  static constexpr int kFromExponentBits = FromTraits::kExponentBits;
+  static constexpr int kFromExponentBias = FromTraits::kExponentBias;
+  static constexpr FromBits kFromExponentMask = FromTraits::kExponentMask;
 
+  using ToTraits = Traits<To>;
   using ToBits = typename GetUnsignedInteger<sizeof(To)>::type;
-  static constexpr int kToBits = sizeof(To) * CHAR_BIT;
-  static constexpr int kToMantissaBits = Eigen::NumTraits<To>::digits() - 1;
-  static constexpr int kToExponentBits = kToBits - kToMantissaBits - 1;
-  static constexpr int kToExponentBias = (1 << (kToExponentBits - 1)) - 1;
+  static constexpr int kToBits = ToTraits::kBits;
+  static constexpr int kToMantissaBits = ToTraits::kMantissaBits;
+  static constexpr int kToExponentBits = ToTraits::kExponentBits;
+  static constexpr int kToExponentBias = ToTraits::kExponentBias;
+  static constexpr ToBits kToExponentMask = ToTraits::kExponentMask;
 
-  static constexpr int kExponentOffset = kFromExponentBias - kToExponentBias;
-  static constexpr int kDigitShift = kFromMantissaBits - kToMantissaBits;
-
-  static_assert(kFromExponentBits > kToExponentBits,
-                "This implementation assumes down-casting to types with fewer "
-                "exponent bits.");
-  static_assert(kDigitShift > 0,
-                "This implementations assumes down-casting to types with fewer "
-                "mantissa bits.");
-
-  // Shift bits in the appropriate directions and add the exponent offset
-  // to convert between bit representations.  The input `in` must be a
-  // positive normalized value.
-  static constexpr inline FromBits ToFromBits(ToBits in) {
-    FromBits out = static_cast<FromBits>(in) << kDigitShift;
-    out += static_cast<FromBits>(kExponentOffset) << kFromMantissaBits;
-    return out;
-  }
-
-  static constexpr inline FromBits SetFromBit(int idx) {
-    return static_cast<FromBits>(1) << idx;
-  }
+  static constexpr int kExponentOffset = kToExponentBias - kFromExponentBias;
+  static constexpr int kDigitShift = kToMantissaBits - kFromMantissaBits;
+  static constexpr int kSignShift = kToBits - kFromBits;
 
   static EIGEN_DEVICE_FUNC inline To run(const From& from) {
+    // Shift bits to destination type, without sign bit.
     FromBits from_bits = Eigen::numext::bit_cast<FromBits>(from);
-    const FromBits from_sign = from_bits & SetFromBit(kFromBits - 1);
-    const ToBits sign = from_sign >> (kFromBits - kToBits);
+    const FromBits from_sign = from_bits & FromTraits::kSignMask;
+    ToBits sign;
+    if constexpr (kSignShift >= 0) {
+      sign = ToBits{from_sign} << kSignShift;
+    } else if constexpr (kSignShift < 0) {
+      sign = static_cast<ToBits>(from_sign >> -kSignShift);
+    }
     from_bits ^= from_sign;  // Zeros sign bit to obtain absolute value.
 
     // Special values, preserving sign.
     if (Eigen::numext::isinf(from)) {
       return sign != 0 ? -Eigen::NumTraits<To>::infinity()
                        : Eigen::NumTraits<To>::infinity();
-    } else if (Eigen::numext::isnan(from)) {
-      return Eigen::numext::bit_cast<To>(
-          static_cast<uint8_t>(Eigen::NumTraits<To>::quiet_NaN().rep() | sign));
+    }
+    if (Eigen::numext::isnan(from)) {
+      return sign != 0 ? -Eigen::NumTraits<To>::quiet_NaN()
+                       : Eigen::NumTraits<To>::quiet_NaN();
+    }
+    if (from_bits == 0) {
+      return Eigen::numext::bit_cast<To>(sign);
     }
 
     // Adjust mantissa.
     FromBits rounded_from_bits = from_bits;
-    if constexpr (!kTruncate) {
-      rounded_from_bits = RoundBitsToNearestEven(from_bits, kDigitShift);
+    if constexpr (kDigitShift < 0) {
+      if constexpr (!kTruncate) {
+        rounded_from_bits = RoundBitsToNearestEven(from_bits, -kDigitShift);
+      }
+      // Zero-out tail bits.
+      rounded_from_bits &= ~((FromBits{1} << (-kDigitShift)) - 1);
     }
-    // Zero-out tail bits.
-    rounded_from_bits &= ~(SetFromBit(kDigitShift) - 1);
 
-    // Check for overflows.
     if constexpr (kExponentOffset > 0) {
+      if ((from.rep() & kFromExponentMask) == 0) {
+        // Subnormals.
+        ToBits bits = from_bits;
+
+        // All subnormals become normalized when casting to a type with a larger
+        // number of exponent bits.  We do this by setting the normalized
+        // mantissa bits in the source type, shifting it up to the destination
+        // type, then inserting the exponent bits.
+        const int normalization_factor =
+            absl::countl_zero(from_bits) - (kFromBits - kFromMantissaBits) + 1;
+        // Shift the mantissa to account for the number of leading zeros.
+        bits <<= normalization_factor + kDigitShift;
+        // Clear the hidden bit.
+        bits &= ~(ToBits{1} << kToMantissaBits);
+        // Insert the exponent bits.
+        bits |= static_cast<ToBits>(kExponentOffset - normalization_factor + 1)
+                << kToMantissaBits;
+        return Eigen::numext::bit_cast<To>(static_cast<ToBits>(bits | sign));
+      }
+    } else if constexpr (kExponentOffset < 0) {
+      // Check for overflows.
+
       // Shift up exponent and mantissa, add offset to adjust exponent to
       // source type.
       constexpr ToBits kToHighest = Eigen::NumTraits<To>::highest().rep();
-      constexpr FromBits kHighest = ToFromBits(kToHighest);
+      constexpr FromBits kHighest = ToFromBits<From, To>(kToHighest);
 
       if (rounded_from_bits > kHighest) {
         ToBits bits =
             kSaturate ? kToHighest : Eigen::NumTraits<To>::infinity().rep();
         return Eigen::numext::bit_cast<To>(static_cast<ToBits>(bits | sign));
       }
-    }
 
-    // Subnormals and zero.
-    constexpr FromBits kLowestNormal =
-        ToFromBits(std::numeric_limits<To>::min().rep());
-    if (rounded_from_bits < kLowestNormal) {
-      // Round and shift mantissa down.
-      constexpr FromBits kMantissaMask = SetFromBit(kFromMantissaBits) - 1;
-      int exponent = ((from_bits >> kFromMantissaBits) - kFromExponentBias);
-      int exponent_shift = kDigitShift - exponent - kToExponentBias + 1;
+      // Subnormals and zero.
+      constexpr FromBits kLowestNormal =
+          ToFromBits<From, To>(std::numeric_limits<To>::min().rep());
+      if (rounded_from_bits < kLowestNormal) {
+        // Round and shift mantissa down.
+        int exponent = ((from_bits >> kFromMantissaBits) - kFromExponentBias);
+        int exponent_shift = -kDigitShift - exponent - kToExponentBias + 1;
 
-      // Insert the implicit leading 1 bit on the mantissa.  This assumes
-      // the input is normalized.  If it is not, then the mantissa bits -
-      // including the implicit one - will be shifted to zero.
-      // NOTE: we need to round again from the original from_bits, otherwise
-      // the lower precision bits may already be lost.  There is an edge-case
-      // where rounding to a normalized value would normally round down,
-      // but for a subnormal, we need to round up.
-      rounded_from_bits =
-          (SetFromBit(kFromMantissaBits) | (from_bits & kMantissaMask));
-      ToBits bits = 0;
-      // To avoid UB, limit rounding and shifting to the full mantissa plus
-      // leading 1.
-      if (exponent_shift <= kFromMantissaBits + 1) {
-        if constexpr (!kTruncate) {
-          rounded_from_bits =
-              RoundBitsToNearestEven(rounded_from_bits, exponent_shift);
+        // Insert the implicit leading 1 bit on the mantissa.  This assumes
+        // the input is normalized.  If it is not, then the mantissa bits -
+        // including the implicit one - will be shifted to zero.
+        // NOTE: we need to round again from the original from_bits, otherwise
+        // the lower precision bits may already be lost.  There is an edge-case
+        // where rounding to a normalized value would normally round down,
+        // but for a subnormal, we need to round up.
+        rounded_from_bits = ((from_bits & FromTraits::kMantissaMask) |
+                             (FromBits{1} << kFromMantissaBits));
+        ToBits bits = 0;
+        // To avoid UB, limit rounding and shifting to the full mantissa plus
+        // leading 1.
+        if (exponent_shift <= kFromMantissaBits + 1) {
+          if constexpr (!kTruncate) {
+            rounded_from_bits =
+                RoundBitsToNearestEven(rounded_from_bits, exponent_shift);
+          }
+          bits = (rounded_from_bits >> exponent_shift);
         }
-        bits = (rounded_from_bits >> exponent_shift);
+        // Insert sign and return.
+        return Eigen::numext::bit_cast<To>(static_cast<ToBits>(bits | sign));
       }
-      // Insert sign and return.
-      return Eigen::numext::bit_cast<To>(static_cast<ToBits>(bits | sign));
     }
 
-    // Adjust exponent.
-    rounded_from_bits += static_cast<FromBits>(-kExponentOffset)
-                         << kFromMantissaBits;
+    // Shift bits.
+    ToBits bits;
+    if constexpr (kDigitShift < 0) {
+      bits = static_cast<ToBits>(rounded_from_bits >> -kDigitShift);
+    } else if constexpr (kDigitShift >= 0) {
+      bits = ToBits{rounded_from_bits} << kDigitShift;
+    }
+    // Increase exponent by offset difference.
+    bits += static_cast<ToBits>(kExponentOffset) << kToMantissaBits;
 
-    // Shift bits and insert sign.
-    ToBits bits =
-        static_cast<ToBits>((rounded_from_bits >> kDigitShift) | sign);
+    // Insert sign bit.
+    bits |= sign;
     return Eigen::numext::bit_cast<To>(bits);
   }
 };
 
-template <bool kSaturate, bool kTruncate>
-struct ConvertImpl<float8_e5m2, float8_e4m3fn, kSaturate, kTruncate> {
-  static EIGEN_DEVICE_FUNC inline float8_e4m3fn run(const float8_e5m2& from) {
-    uint8_t from_bits = from.rep();
-    uint8_t sign = from_bits & 0x80;
-    from_bits ^= sign;
-
-    // Special values (NaN/Inf).
-    if (from_bits > 0x7C) {
-      return float8_e4m3fn::FromRep(sign | 0x7F);
-    }
-
-    // Subnormals or overflow.
-    if (from_bits < 0x24) {
-      // Subnormal output.
-      int negative_exponent = 15 - (from_bits >> 2);
-      int exponent_shift = negative_exponent - 7;
-      uint8_t bits = ((from_bits & 0x03) | 0x04);
-      if constexpr (!kTruncate) {
-        bits = RoundBitsToNearestEven(bits, exponent_shift);
-      }
-      bits >>= exponent_shift;
-      return float8_e4m3fn::FromRep(sign | bits);
-    } else if (from_bits > 0x5F) {
-      uint8_t bits = kSaturate ? 0x7E : 0x7F;
-      return float8_e4m3fn::FromRep(sign | bits);
-    }
-
-    // Subtract exponent offset and shift.
-    uint8_t bits = (from_bits - 0x20) << 1;
-    return float8_e4m3fn::FromRep(sign | bits);
-  }
-};
-
-template <bool kTruncate>
-struct ConvertImpl<float8_e4m3fn, float8_e5m2, kTruncate, false> {
-  static EIGEN_DEVICE_FUNC inline float8_e5m2 run(const float8_e4m3fn& from) {
-    uint8_t from_bits = from.rep();
-    uint8_t sign = from_bits & 0x80;
-    from_bits ^= sign;
-
-    // Special values (NaN).
-    if (from_bits == 0x7F) {
-      return float8_e5m2::FromRep(sign | from_bits);
-    }
-
-    // Subnormals.
-    if (from_bits < 0x08) {
-      // Complete map between types, all are normal in e5m3.
-      static constexpr uint8_t kNormalized[8] = {0x00, 0x18, 0x1C, 0x1E,
-                                                 0x20, 0x21, 0x22, 0x23};
-      uint8_t bits = kNormalized[from_bits];
-      return float8_e5m2::FromRep(sign | bits);
-    }
-
-    // Round, truncate to destination type, and add exponent offset.
-    if (!kTruncate) {
-      from_bits = RoundBitsToNearestEven(from_bits, 1);
-    }
-    from_bits = (from_bits >> 1) + 0x20;
-    return float8_e5m2::FromRep(sign | from_bits);
-  }
-};
-
 // Saturation has no impact when casting e4m3 to e5m2.
-template <bool kSaturate, bool kTruncate>
-struct ConvertImpl<float8_e4m3fn, float8_e5m2, kSaturate, kTruncate> {
+template <bool kTruncate>
+struct ConvertImpl<float8_e4m3fn, float8_e5m2, true, kTruncate> {
   static EIGEN_DEVICE_FUNC inline float8_e5m2 run(const float8_e4m3fn& from) {
-    return ConvertImpl<float8_e4m3fn, float8_e5m2, kTruncate, false>::run(from);
+    return ConvertImpl<float8_e4m3fn, float8_e5m2, false, kTruncate>::run(from);
   }
 };
 
@@ -748,15 +699,17 @@ struct ConvertImpl<Eigen::half, float8_e5m2, kTruncate, false> {
 };
 
 // Saturation has no impact when casting Eigen::half to e5m2.
-template <bool kSaturate, bool kTruncate>
-struct ConvertImpl<Eigen::half, float8_e5m2, kSaturate, kTruncate> {
+template <bool kTruncate>
+struct ConvertImpl<Eigen::half, float8_e5m2, /*kSaturate=*/true, kTruncate> {
   static EIGEN_DEVICE_FUNC inline float8_e5m2 run(const Eigen::half& from) {
-    return ConvertImpl<Eigen::half, float8_e5m2, kTruncate, false>::run(from);
+    return ConvertImpl<Eigen::half, float8_e5m2, /*kSaturate=*/false,
+                       kTruncate>::run(from);
   }
 };
 
 template <>
-struct ConvertImpl<float8_e5m2, Eigen::half, false, false> {
+struct ConvertImpl<float8_e5m2, Eigen::half, /*kSaturate=*/false,
+                   /*kTruncate=*/false> {
   static EIGEN_DEVICE_FUNC inline Eigen::half run(const float8_e5m2& from) {
     return Eigen::numext::bit_cast<Eigen::half>(
         static_cast<uint16_t>(static_cast<uint16_t>(from.rep()) << 8));
@@ -767,7 +720,8 @@ struct ConvertImpl<float8_e5m2, Eigen::half, false, false> {
 template <bool kSaturate, bool kTruncate>
 struct ConvertImpl<float8_e5m2, Eigen::half, kSaturate, kTruncate> {
   static EIGEN_DEVICE_FUNC inline Eigen::half run(const float8_e5m2& from) {
-    return ConvertImpl<float8_e5m2, Eigen::half, false, false>::run(from);
+    return ConvertImpl<float8_e5m2, Eigen::half, /*kSaturate=*/false,
+                       /*kTruncate=*/false>::run(from);
   }
 };
 
@@ -790,18 +744,6 @@ using float8_e4m3fn = float8_internal::float8_e4m3fn;
 using float8_e5m2 = float8_internal::float8_e5m2;
 
 }  // namespace tsl
-
-// Standard-library overrides.  Note that these are picked up by Eigen as well.
-namespace std {
-template <>
-struct numeric_limits<tsl::float8_e4m3fn>
-    : public tsl::float8_internal::numeric_limits_float8<tsl::float8_e4m3fn> {};
-
-template <>
-struct numeric_limits<tsl::float8_e5m2>
-    : public tsl::float8_internal::numeric_limits_float8<tsl::float8_e5m2> {};
-
-}  // namespace std
 
 // Eigen-specific overrides.
 namespace Eigen {
