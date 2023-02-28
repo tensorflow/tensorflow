@@ -1138,7 +1138,6 @@ py_library(
         "//tensorflow/python/autograph",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
-        "//tensorflow/python/eager:graph_only_ops",
         "//tensorflow/python/platform",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/util",
