@@ -132,6 +132,19 @@ static flatbuffers::Offset<::stablehlo::flatbuf::Operator> CreateDotOperator(
 }
 
 static flatbuffers::Offset<::stablehlo::flatbuf::Operator>
+CreateLogisticOperator(mlir::stablehlo::LogisticOp& hlo_op,
+                       flatbuffers::FlatBufferBuilder* fbb,
+                       uint32_t opcode_index,
+                       const std::vector<int32_t>& operands,
+                       const std::vector<int32_t>& results) {
+  auto inputs = fbb->CreateVector(operands);
+  auto outputs = fbb->CreateVector(results);
+
+  return ::stablehlo::flatbuf::CreateOperator(*fbb, opcode_index, inputs,
+                                              outputs);
+}
+
+static flatbuffers::Offset<::stablehlo::flatbuf::Operator>
 CreateConvolutionOperator(mlir::stablehlo::ConvolutionOp& hlo_op,
                           flatbuffers::FlatBufferBuilder* fbb,
                           uint32_t opcode_index,
@@ -211,6 +224,8 @@ CreateFlatBufferOperator(mlir::Operation* op, uint32_t opcode_index,
     return CreateAddOperator(hlo_op, fbb, opcode_index, operands, results);
   if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::DotOp>(op))
     return CreateDotOperator(hlo_op, fbb, opcode_index, operands, results);
+  if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::LogisticOp>(op))
+    return CreateLogisticOperator(hlo_op, fbb, opcode_index, operands, results);
   if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::DivOp>(op))
     return CreateDivOperator(hlo_op, fbb, opcode_index, operands, results);
   if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::MaxOp>(op))
@@ -240,6 +255,8 @@ std::optional<::stablehlo::flatbuf::OperatorCode> GetOpCode(
     return ::stablehlo::flatbuf::OperatorCode_DOT;
   if (isa<mlir::stablehlo::DivOp>(op))
     return ::stablehlo::flatbuf::OperatorCode_DIVIDE;
+  if (isa<mlir::stablehlo::LogisticOp>(op))
+    return ::stablehlo::flatbuf::OperatorCode_LOGISTIC;
   if (isa<mlir::stablehlo::MaxOp>(op))
     return ::stablehlo::flatbuf::OperatorCode_MAXIMUM;
   if (isa<mlir::stablehlo::ReshapeOp>(op))
