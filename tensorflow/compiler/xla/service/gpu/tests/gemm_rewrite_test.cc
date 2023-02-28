@@ -4062,9 +4062,10 @@ TEST_F(CublasLtF8GemmRewriteTest, UnscaledABUnscaledDF8) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[FUSION:%[^ ]+]] = f8e4m3fn[16,16]{1,0} fusion()
+; CHECK-NEXT:    [[C0:[^ ]+]] = bf16[] constant(0)
+; CHECK-NEXT:    [[C0_BCAST:[^ ]+]] = bf16[16,16]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[C1:[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[FUSION]], [[C1]], [[C1]], /*index=5*/[[C1]], [[C1]]),
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[C1]], [[C1]], /*index=5*/[[C1]], [[C1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -4072,7 +4073,7 @@ TEST_F(CublasLtF8GemmRewriteTest, UnscaledABUnscaledDF8) {
 ; CHECK-DAG:         \"beta\":0
 ; CHECK-DAG:         \"dot_dimension_numbers\":{
 ; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
 ; CHECK-DAG:           \"lhs_batch_dimensions\":[]
 ; CHECK-DAG:           \"rhs_batch_dimensions\":[]
 ; CHECK-DAG:         }
@@ -4129,7 +4130,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8) {
 ; CHECK-DAG:         \"beta\":0
 ; CHECK-DAG:         \"dot_dimension_numbers\":{
 ; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
 ; CHECK-DAG:           \"lhs_batch_dimensions\":[]
 ; CHECK-DAG:           \"rhs_batch_dimensions\":[]
 ; CHECK-DAG:         }
@@ -4224,7 +4225,7 @@ TEST_F(CublasLtF8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
 ; CHECK-DAG:         \"beta\":0
 ; CHECK-DAG:         \"dot_dimension_numbers\":{
 ; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"2\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"2\"]
 ; CHECK-DAG:           \"lhs_batch_dimensions\":[\"0\"]
 ; CHECK-DAG:           \"rhs_batch_dimensions\":[\"0\"]
 ; CHECK-DAG:         }
@@ -4285,7 +4286,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABAlphaDF8) {
 ; CHECK-DAG:         \"beta\":0
 ; CHECK-DAG:         \"dot_dimension_numbers\":{
 ; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
 ; CHECK-DAG:           \"lhs_batch_dimensions\":[]
 ; CHECK-DAG:           \"rhs_batch_dimensions\":[]
 ; CHECK-DAG:         }
@@ -4346,7 +4347,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
 ; CHECK-DAG:         \"beta\":0
 ; CHECK-DAG:         \"dot_dimension_numbers\":{
 ; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
 ; CHECK-DAG:           \"lhs_batch_dimensions\":[]
 ; CHECK-DAG:           \"rhs_batch_dimensions\":[]
 ; CHECK-DAG:         }
@@ -4437,7 +4438,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
 ; CHECK-DAG:         \"beta\":1
 ; CHECK-DAG:         \"dot_dimension_numbers\":{
 ; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
 ; CHECK-DAG:           \"lhs_batch_dimensions\":[]
 ; CHECK-DAG:           \"rhs_batch_dimensions\":[]
 ; CHECK-DAG:         }
@@ -4503,11 +4504,11 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDF8) {
 ; CHECK-DAG:         \"alpha_real\":1
 ; CHECK-DAG:         \"alpha_imag\":0
 ; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{ 
+; CHECK-DAG:         \"dot_dimension_numbers\":{
 ; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
 ; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[] 
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         \"precision_config\":{
 ; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
@@ -4617,11 +4618,11 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
 ; CHECK-DAG:         \"alpha_real\":1
 ; CHECK-DAG:         \"alpha_imag\":0
 ; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{ 
+; CHECK-DAG:         \"dot_dimension_numbers\":{
 ; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
 ; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[] 
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         \"precision_config\":{
 ; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
@@ -4688,7 +4689,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
 ; CHECK-DAG:         \"beta\":1
 ; CHECK-DAG:         \"dot_dimension_numbers\":{ 
 ; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
 ; CHECK-DAG:           \"lhs_batch_dimensions\":[]
 ; CHECK-DAG:           \"rhs_batch_dimensions\":[] 
 ; CHECK-DAG:         }
@@ -4766,7 +4767,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
 ; CHECK-DAG:         \"beta\":0
 ; CHECK-DAG:         \"dot_dimension_numbers\":{
 ; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
 ; CHECK-DAG:           \"lhs_batch_dimensions\":[]
 ; CHECK-DAG:           \"rhs_batch_dimensions\":[]
 ; CHECK-DAG:         }

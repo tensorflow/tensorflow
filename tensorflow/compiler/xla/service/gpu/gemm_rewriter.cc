@@ -699,8 +699,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       HloInstruction *c_const = instr->AddInstruction(
           HloInstruction::CreateConstant(c_literal.Clone()));
       c = instr->AddInstruction(HloInstruction::CreateBroadcast(
-          ShapeUtil::MakeShape(c_type, instr->shape().dimensions()), c_const,
-          {}));
+          ShapeUtil::ChangeElementType(instr->shape(), c_type), c_const, {}));
     }
 
     // Each operand must have exactly one contracting and one non-contracting
