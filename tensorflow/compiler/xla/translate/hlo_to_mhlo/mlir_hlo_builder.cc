@@ -91,7 +91,7 @@ void AddFrontendAttributesToOperation(
 }
 
 static std::string GetMlirOpName(HloOpcode opcode) {
-  std::string op_name = HloOpcodeString(opcode);
+  std::string op_name(HloOpcodeString(opcode));
   absl::c_replace(op_name, '-', '_');
   return mlir::mhlo::MhloDialect::getDialectNamespace().str() + "." + op_name;
 }

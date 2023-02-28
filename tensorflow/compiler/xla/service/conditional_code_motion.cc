@@ -553,7 +553,7 @@ StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
     return nullptr;
   };
 
-  // Captures tuple indices refering to converts to be rematerialized/hoisted.
+  // Captures tuple indices referring to converts to be rematerialized/hoisted.
   absl::flat_hash_set<int64_t> special_convert = FindSpecialConverts(
       old_root, branch_count, conditional, is_layout_sensitive);
 
@@ -1357,8 +1357,8 @@ class GroupConnectedBoundaries {
         (search_config_ < 0)
             ? FlipMutation(&curconfig[static_cast<uint32_t>(user->opcode())],
                            -10,
-                           HloOpcodeString(op->opcode()) + "->" +
-                               HloOpcodeString(user->opcode()))
+                           absl::StrCat(HloOpcodeString(op->opcode()), "->",
+                                        HloOpcodeString(user->opcode())))
             : curconfig[static_cast<uint32_t>(user->opcode())];
     VLOG(2) << "ConditionalCodeMotion: Add reuses carried by instr: "
             << op->ToString() << "=>" << user->ToString() << " : " << config
@@ -1434,10 +1434,11 @@ class GroupConnectedBoundaries {
     VLOG(2) << "config size = " << curconfig.size() << "\n";
     VLOG(2) << "search_config = " << search_config_ << "\n";
     CHECK(col < curconfig.size());
-    uint32_t config = (search_config_ > 0)
-                          ? FlipMutation(&curconfig[col], 1,
-                                         "Move-" + HloOpcodeString(opcode))
-                          : curconfig[col];
+    uint32_t config =
+        (search_config_ > 0)
+            ? FlipMutation(&curconfig[col], 1,
+                           absl::StrCat("Move-", HloOpcodeString(opcode)))
+            : curconfig[col];
     VLOG(2) << "Checking instruction is worth moving: " << config << "\n";
     VLOG(2) << "after checking search_config = " << search_config_ << "\n";
     return (config != 0);

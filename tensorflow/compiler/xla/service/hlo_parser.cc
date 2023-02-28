@@ -1628,7 +1628,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         }
         LOG(FATAL) << "Expect opcode to be CollectivePermute or "
                       "CollectivePermuteStart, but got "
-                   << HloOpcodeString(opcode);
+                   << opcode;
       }
       if (operands.size() != 4) {
         TokenError(
@@ -1650,7 +1650,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       LOG(FATAL) << "Expect opcode to be CollectivePermute or "
                     "CollectivePermuteStart, but got "
-                 << HloOpcodeString(opcode);
+                 << opcode;
     }
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
