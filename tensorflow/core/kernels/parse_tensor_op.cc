@@ -59,7 +59,7 @@ class ParseTensorOp : public OpKernel {
                                 DataTypeString(output.dtype()), ") and dtype (",
                                 DataTypeString(out_type_), ")"));
     
-    if (!port::kLittleEndian)
+    if (!port::kLittleEndian && IsByteSwappable(output.dtype()))
       OP_REQUIRES_OK(ctx, ByteSwapTensor(&output));
 
     ctx->set_output(0, output);
@@ -82,7 +82,7 @@ class SerializeTensorOp : public OpKernel {
     if (tensor.dtype() == DT_STRING) {
       tensor.AsProtoField(&proto);
     } else {
-      if (!port::kLittleEndian) {
+      if (!port::kLittleEndian && IsByteSwappable(tensor.dtype())) {
         Tensor ts_ = tensor::DeepCopy(tensor);
         OP_REQUIRES_OK(context, ByteSwapTensor(&ts_));
         ts_.AsProtoTensorContent(&proto);
