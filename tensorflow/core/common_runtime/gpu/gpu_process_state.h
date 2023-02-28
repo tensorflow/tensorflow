@@ -114,7 +114,7 @@ class GPUProcessState {
   // e.g. to set the memory limit on this allocator.  After that if you pass in
   // a different set of options, they will be ignored.
   virtual Allocator* GetGpuHostAllocator(const GPUOptions& options,
-                                         int numa_node);
+                                         int numa_node, int32 stream_id = 0);
 
   // Registers a Visitor to be invoked on new chunks of memory allocated by the
   // SubAllocator of every GPU proximate to the specified bus.  The AllocVisitor
@@ -132,12 +132,14 @@ class GPUProcessState {
   // Registers a Visitor to be invoked on new chunks of memory allocated by
   // the SubAllocator of the GpuHostAllocator for the given numa_node.
   virtual void AddGpuHostAllocVisitor(int numa_node,
-                                      const SubAllocator::Visitor& visitor);
+                                      const SubAllocator::Visitor& visitor,
+                                      int32 stream_id = 0);
 
   // Registers a Visitor to be invoked on each chunk handed back for freeing to
   // the SubAllocator of the GpuHostAllocator for the given numa_node.
   virtual void AddGpuHostFreeVisitor(int numa_node,
-                                     const SubAllocator::Visitor& visitor);
+                                     const SubAllocator::Visitor& visitor,
+                                     int32 stream_id = 0);
 
   // Returns bus_id for the given GPU id.
   virtual int BusIdForGPU(tsl::TfDeviceId tf_device_id);
@@ -178,11 +180,12 @@ class GPUProcessState {
   std::vector<std::vector<std::vector<SubAllocator::Visitor>>> gpu_visitors_
       TF_GUARDED_BY(mu_);
 
-  std::vector<AllocatorParts> gpu_host_allocators_ TF_GUARDED_BY(mu_);
-  std::vector<std::vector<SubAllocator::Visitor>> gpu_host_alloc_visitors_
+  std::vector<std::vector<AllocatorParts>> gpu_host_allocators_
       TF_GUARDED_BY(mu_);
-  std::vector<std::vector<SubAllocator::Visitor>> gpu_host_free_visitors_
-      TF_GUARDED_BY(mu_);
+  std::vector<std::vector<std::vector<SubAllocator::Visitor>>>
+      gpu_host_alloc_visitors_ TF_GUARDED_BY(mu_);
+  std::vector<std::vector<std::vector<SubAllocator::Visitor>>>
+      gpu_host_free_visitors_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

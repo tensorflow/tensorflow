@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/platform/numa.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
@@ -40,6 +41,9 @@ class GPUDevice : public BaseGPUDevice {
       force_gpu_compatible_ =
           options.config.gpu_options().force_gpu_compatible();
     }
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_PER_STREAM_HOST_ALLOCATOR",
+                                   /*default_val=*/false,
+                                   &use_per_stream_host_allocator_));
   }
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {
@@ -47,7 +51,11 @@ class GPUDevice : public BaseGPUDevice {
     if (attr.on_host()) {
       if (attr.gpu_compatible() || force_gpu_compatible_) {
         GPUProcessState* ps = GPUProcessState::singleton();
-        return ps->GetGpuHostAllocator(gpu_options_, 0);
+        if (use_per_stream_host_allocator_) {
+          return ps->GetGpuHostAllocator(gpu_options_, 0, stream_id_);
+        } else {
+          return ps->GetGpuHostAllocator(gpu_options_, 0);
+        }
       } else {
         return cpu_allocator_;
       }
@@ -59,6 +67,7 @@ class GPUDevice : public BaseGPUDevice {
  private:
   GPUOptions gpu_options_;
   bool force_gpu_compatible_ = false;
+  bool use_per_stream_host_allocator_ = false;
 };
 
 //------------------------------------------------------------------------------
@@ -140,7 +149,7 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
   Allocator* GetAllocator(AllocatorAttributes attr) override {
     GPUProcessState* ps = GPUProcessState::singleton();
     if (attr.gpu_compatible() || force_gpu_compatible_) {
-      return ps->GetGpuHostAllocator(gpu_options_, numa_node_);
+      return ps->GetGpuHostAllocator(gpu_options_, numa_node_, stream_id_);
     } else {
       // Call the parent's implementation.
       return ThreadPoolDevice::GetAllocator(attr);
@@ -151,6 +160,31 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
   bool force_gpu_compatible_ = false;
   int numa_node_;
   GPUOptions gpu_options_;
+};
+
+//------------------------------------------------------------------------------
+// A CPUDevice that optimizes for interaction with multi-stream GPUs in the
+// process.
+// -----------------------------------------------------------------------------
+class StreamCompatibleCPUDevice : public GPUCompatibleCPUDevice {
+ public:
+  StreamCompatibleCPUDevice(const SessionOptions& options, const string& name,
+                            Bytes memory_limit, const DeviceLocality& locality,
+                            Allocator* allocator)
+      : GPUCompatibleCPUDevice(options, name, memory_limit, locality,
+                               allocator) {}
+  ~StreamCompatibleCPUDevice() override {}
+
+  void SetRealDevice(Device* device) override { real_device_ = device; }
+
+  Device* GetRealDevice() override { return real_device_; }
+
+  ResourceMgr* resource_manager() override {
+    return real_device_->resource_manager();
+  }
+
+ private:
+  Device* real_device_;
 };
 
 // The associated factory.
@@ -172,20 +206,55 @@ class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
     int num_numa_nodes = options.config.experimental().use_numa_affinity()
                              ? port::NUMANumNodes()
                              : 1;
+    bool use_per_stream_host_allocator;
+    int64 max_stream_group_count(1);
+    if (is_multi_stream_) {
+      TF_CHECK_OK(ReadBoolFromEnvVar("TF_PER_STREAM_HOST_ALLOCATOR",
+                                     /*default_val=*/false,
+                                     &use_per_stream_host_allocator));
+      if (!use_per_stream_host_allocator) {
+        return OkStatus();
+      }
+      std::vector<int64> gpu_stream_group_count;
+      TF_CHECK_OK(ReadInt64sFromEnvVar("TF_GPU_STREAM_GROUP_COUNT",
+                                       /*default_val=*/1,
+                                       &gpu_stream_group_count));
+      max_stream_group_count = gpu_stream_group_count[0];
+      for (auto cnt : gpu_stream_group_count) {
+        if (cnt > max_stream_group_count) {
+          max_stream_group_count = cnt;
+        }
+      }
+    }
     for (int i = 0; i < n; i++) {
       string name = strings::StrCat(name_prefix, "/device:CPU:", i);
       int numa_node = i % num_numa_nodes;
       DeviceLocality locality;
       locality.set_numa_node(numa_node);
-      devices->push_back(absl::make_unique<GPUCompatibleCPUDevice>(
-          options, name, Bytes(256 << 20), DeviceLocality(),
-          ProcessState::singleton()->GetCPUAllocator(numa_node)));
+      for (int j = 0; j < max_stream_group_count; ++j) {
+        if (is_multi_stream_) {
+          name = strings::StrCat(name_prefix, "/device:STREAM_CPU_", i, ":", j);
+          devices->push_back(absl::make_unique<StreamCompatibleCPUDevice>(
+              options, name, Bytes(256 << 20), DeviceLocality(),
+              ProcessState::singleton()->GetCPUAllocator(numa_node)));
+          devices->back()->SetStreamId(j);
+        } else {
+          devices->push_back(absl::make_unique<GPUCompatibleCPUDevice>(
+              options, name, Bytes(256 << 20), DeviceLocality(),
+              ProcessState::singleton()->GetCPUAllocator(numa_node)));
+        }
+      }
     }
-
     return OkStatus();
   }
 };
 REGISTER_LOCAL_DEVICE_FACTORY("CPU", GPUCompatibleCPUDeviceFactory, 70);
+
+class StreamCompatibleCPUDeviceFactory : public GPUCompatibleCPUDeviceFactory {
+ public:
+  StreamCompatibleCPUDeviceFactory() { is_multi_stream_ = true; }
+};
+REGISTER_LOCAL_DEVICE_FACTORY("STREAM_CPU", StreamCompatibleCPUDeviceFactory);
 
 }  // namespace tensorflow
 

@@ -247,6 +247,7 @@ Status DeviceFactory::AddDevices(
 
   // Then Stream Devices
   auto stream_gpu_factory = GetFactory("STREAM_GPU");
+  auto stream_cpu_factory = GetFactory("STREAM_CPU");
   if (!stream_gpu_factory) {
     return errors::NotFound(
         "STREAM_GPU Factory not registered. Did you link in "
@@ -257,6 +258,13 @@ Status DeviceFactory::AddDevices(
       stream_gpu_factory->CreateDevices(options, name_prefix, devices));
   if (devices->size() == init_size) {
     LOG(INFO) << "No STREAM_GPU devices are available in this process";
+  } else {
+    init_size = devices->size();
+    TF_RETURN_IF_ERROR(
+        stream_cpu_factory->CreateDevices(options, name_prefix, devices));
+    if (devices->size() == init_size) {
+      LOG(INFO) << "No STREAM_CPU devices are available in this process";
+    }
   }
 
   auto cpu_factory = GetFactory("CPU");
@@ -268,7 +276,8 @@ Status DeviceFactory::AddDevices(
       continue;  // Skip if the device type is not found from the device filter.
     }
     auto factory = p.second.factory.get();
-    if (factory != cpu_factory && factory != stream_gpu_factory) {
+    if (factory != cpu_factory && factory != stream_gpu_factory &&
+        factory != stream_cpu_factory) {
       TF_RETURN_IF_ERROR(factory->CreateDevices(options, name_prefix, devices));
     }
   }

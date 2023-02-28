@@ -331,7 +331,8 @@ SharedCounter* GPUProcessState::GPUAllocatorCounter(
 }
 
 Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
-                                                int numa_node) {
+                                                int numa_node,
+                                                int32 stream_id) {
   CHECK(process_state_);
   if (!HasGPUDevice() ||
       !process_state_->ProcessState::FLAGS_brain_mem_reg_gpu_dma) {
@@ -349,11 +350,13 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
 
     if (process_state_->ProcessState::FLAGS_brain_gpu_record_mem_types &&
         !gpu_host_allocators_.empty() &&
-        gpu_host_allocators_[0].recording_allocator != nullptr) {
-      return gpu_host_allocators_[0].recording_allocator.get();
+        static_cast<int>(gpu_host_allocators_[0].size()) > stream_id &&
+        gpu_host_allocators_[0][stream_id].recording_allocator != nullptr) {
+      return gpu_host_allocators_[0][stream_id].recording_allocator.get();
     }
-    if (static_cast<int>(gpu_host_allocators_.size()) > numa_node) {
-      return gpu_host_allocators_[0].allocator.get();
+    if (static_cast<int>(gpu_host_allocators_.size()) > numa_node &&
+        static_cast<int>(gpu_host_allocators_[0].size()) > stream_id) {
+      return gpu_host_allocators_[0][stream_id].allocator.get();
     }
   }
 
@@ -394,33 +397,56 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
   }
 
   while (static_cast<int>(gpu_host_allocators_.size()) <= numa_node) {
-    while (gpu_host_alloc_visitors_.size() <= numa_node) {
-      gpu_host_alloc_visitors_.push_back({});
+    gpu_host_allocators_.push_back({});
+  }
+  while (gpu_host_alloc_visitors_.size() <= numa_node) {
+    gpu_host_alloc_visitors_.push_back({});
+  }
+  for (int n = 0; n <= numa_node; ++n) {
+    while (gpu_host_alloc_visitors_[n].size() <= stream_id) {
+      gpu_host_alloc_visitors_[n].push_back({});
     }
-    while (gpu_host_free_visitors_.size() <= numa_node) {
-      gpu_host_free_visitors_.push_back({});
+  }
+  while (gpu_host_free_visitors_.size() <= numa_node) {
+    gpu_host_free_visitors_.push_back({});
+  }
+  for (int n = 0; n <= numa_node; ++n) {
+    while (gpu_host_free_visitors_[n].size() <= stream_id) {
+      gpu_host_free_visitors_[n].push_back({});
     }
+  }
+  int numa_idx = 0;
+  while (numa_idx < numa_node ||
+         static_cast<int>(gpu_host_allocators_[numa_node].size()) <=
+             stream_id ||
+         gpu_host_allocators_[numa_node][stream_id].allocator == nullptr) {
     SubAllocator* sub_allocator = new DeviceHostAllocator(
-        se, numa_node, gpu_host_alloc_visitors_[numa_node],
-        gpu_host_free_visitors_[numa_node]);
+        se, numa_node, gpu_host_alloc_visitors_[numa_node][stream_id],
+        gpu_host_free_visitors_[numa_node][stream_id]);
 
     tsl::BFCAllocator::Options allocator_opts;
     allocator_opts.allow_growth =
         !options.experimental().gpu_host_mem_disallow_growth();
-    tsl::Allocator* allocator =
-        new tsl::BFCAllocator(absl::WrapUnique(sub_allocator), mem_limit_bytes,
-                              /*name=*/"gpu_host_bfc", allocator_opts);
+    tsl::Allocator* allocator = new tsl::BFCAllocator(
+        absl::WrapUnique(sub_allocator), mem_limit_bytes,
+        /*name=*/strings::StrCat("gpu_host_", stream_id, "_bfc"),
+        allocator_opts);
 
     if (LogMemory::IsEnabled() && !allocator->TracksAllocationSizes()) {
       // Wrap the allocator to track allocation ids for better logging
       // at the cost of performance.
       allocator = new TrackingAllocator(allocator, true);
     }
-    gpu_host_allocators_.push_back({std::unique_ptr<Allocator>(allocator),
-                                    std::unique_ptr<SharedCounter>(nullptr),
-                                    nullptr, sub_allocator,
-                                    std::unique_ptr<Allocator>(nullptr)});
-    AllocatorParts& allocator_parts = gpu_host_allocators_.back();
+    while (static_cast<int>(gpu_host_allocators_[numa_idx].size()) <=
+           stream_id) {
+      gpu_host_allocators_[numa_idx].push_back({});
+    }
+    AllocatorParts& allocator_parts = gpu_host_allocators_[numa_idx][stream_id];
+    if (allocator_parts.allocator == nullptr) {
+      allocator_parts = {std::unique_ptr<Allocator>(allocator),
+                         std::unique_ptr<SharedCounter>(nullptr), nullptr,
+                         sub_allocator, std::unique_ptr<Allocator>(nullptr)};
+    }
     if (process_state_->ProcessState::FLAGS_brain_gpu_record_mem_types) {
       ProcessState::MemDesc md;
       md.loc = ProcessState::MemDesc::CPU;
@@ -432,11 +458,12 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
                                            allocator_parts.allocator.get(), md,
                                            &mu_));
     }
+    ++numa_idx;
   }
   if (process_state_->ProcessState::FLAGS_brain_gpu_record_mem_types) {
-    return gpu_host_allocators_[0].recording_allocator.get();
+    return gpu_host_allocators_[0][stream_id].recording_allocator.get();
   } else {
-    return gpu_host_allocators_[0].allocator.get();
+    return gpu_host_allocators_[0][stream_id].allocator.get();
   }
 }
 
@@ -461,7 +488,7 @@ void GPUProcessState::AddGPUAllocVisitor(int bus_id,
 }
 
 void GPUProcessState::AddGpuHostAllocVisitor(
-    int numa_node, const SubAllocator::Visitor& visitor) {
+    int numa_node, const SubAllocator::Visitor& visitor, int32 stream_id) {
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   mutex_lock lock(mu_);
@@ -469,14 +496,20 @@ void GPUProcessState::AddGpuHostAllocVisitor(
       << "AddGpuHostAllocVisitor must be called before "
          "first call to GetGpuHostAllocator.";
   while (numa_node >= static_cast<int64_t>(gpu_host_alloc_visitors_.size())) {
-    gpu_host_alloc_visitors_.push_back(std::vector<SubAllocator::Visitor>());
+    gpu_host_alloc_visitors_.push_back(
+        std::vector<std::vector<SubAllocator::Visitor>>());
   }
-  gpu_host_alloc_visitors_[numa_node].push_back(visitor);
+  while (stream_id >=
+         static_cast<int64_t>(gpu_host_alloc_visitors_[numa_node].size())) {
+    gpu_host_alloc_visitors_[numa_node].push_back(
+        std::vector<SubAllocator::Visitor>());
+  }
+  gpu_host_alloc_visitors_[numa_node][stream_id].push_back(visitor);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 void GPUProcessState::AddGpuHostFreeVisitor(
-    int numa_node, const SubAllocator::Visitor& visitor) {
+    int numa_node, const SubAllocator::Visitor& visitor, int32 stream_id) {
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   mutex_lock lock(mu_);
@@ -484,9 +517,15 @@ void GPUProcessState::AddGpuHostFreeVisitor(
       << "AddGpuHostFreeVisitor must be called before "
          "first call to GetGpuHostAllocator.";
   while (numa_node >= static_cast<int64_t>(gpu_host_free_visitors_.size())) {
-    gpu_host_free_visitors_.push_back(std::vector<SubAllocator::Visitor>());
+    gpu_host_free_visitors_.push_back(
+        std::vector<std::vector<SubAllocator::Visitor>>());
   }
-  gpu_host_free_visitors_[numa_node].push_back(visitor);
+  while (stream_id >=
+         static_cast<int64_t>(gpu_host_free_visitors_[numa_node].size())) {
+    gpu_host_free_visitors_[numa_node].push_back(
+        std::vector<SubAllocator::Visitor>());
+  }
+  gpu_host_free_visitors_[numa_node][stream_id].push_back(visitor);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 

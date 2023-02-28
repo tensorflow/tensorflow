@@ -578,8 +578,11 @@ Status DirectSession::RunInternal(
   // Decide the best stream group for each GPU device (Get device2stream map)
   std::unordered_map<Device*, int32> stream_group_map;
   int max_stream_group_idx(-1);
+  std::unordered_set<Device*> cpu_devices;
   for (const auto& item : executors_and_keys->items) {
-    if (stream_group_map.find(item.device) == stream_group_map.end()) {
+    if (item.device->parsed_name().type == "CPU") {
+      cpu_devices.insert(item.device);
+    } else if (stream_group_map.find(item.device) == stream_group_map.end()) {
       int stream_group_idx = device_mgr_->RequireStreamGroup(item.device);
       if (stream_group_idx > max_stream_group_idx) {
         max_stream_group_idx = stream_group_idx;
@@ -587,6 +590,11 @@ Status DirectSession::RunInternal(
       stream_group_map.insert(std::make_pair(
           item.device, stream_group_idx));  // CPU device will return 0
     }
+  }
+  // Fill the CPU Devices in. Multiple GPU Devies may cause error here,
+  // because there is only one group of GPU host allocators.
+  for (auto* cpu : cpu_devices) {
+    stream_group_map[cpu] = max_stream_group_idx;
   }
 
   thread::ThreadPool* pool;

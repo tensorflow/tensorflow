@@ -166,6 +166,7 @@ Device* StaticDeviceMgr::HostCPU() const { return cpu_device_; }
 void StaticDeviceMgr::InitStreamDevice() {
   // get how many stream device for a gpu and cpu
   std::unordered_map<int, int32> gpu_id2num;
+  std::unordered_map<int, int32> cpu_id2num;
   for (auto& d : devices_) {
     if (d->parsed_name().type.find("STREAM_GPU") != string::npos) {
       int idx = std::stoi(d->parsed_name().type.substr(11));
@@ -173,6 +174,13 @@ void StaticDeviceMgr::InitStreamDevice() {
         gpu_id2num[idx] = 1;
       } else {
         ++gpu_id2num[idx];
+      }
+    } else if (d->parsed_name().type.find("STREAM_CPU") != string::npos) {
+      int idx = std::stoi(d->parsed_name().type.substr(11));
+      if (cpu_id2num.find(idx) == cpu_id2num.end()) {
+        cpu_id2num[idx] = 1;
+      } else {
+        ++cpu_id2num[idx];
       }
     }
   }
@@ -198,6 +206,24 @@ void StaticDeviceMgr::InitStreamDevice() {
       TF_CHECK_OK(LookupDevice(strings::StrCat("/device:GPU:", idx), &gpu));
       stream_device_map_[gpu][d->parsed_name().id] = d.get();
       d->SetRealDevice(gpu);
+    }
+  }
+
+  // Deal with CPU
+  Device* cpu;
+  // don't create stream group mgrs for CPU
+  for (auto& item : cpu_id2num) {
+    TF_CHECK_OK(
+        LookupDevice(strings::StrCat("/device:CPU:", item.first), &cpu));
+    stream_device_map_[cpu] = std::vector<Device*>(item.second);
+  }
+  // create stream_device_map_
+  for (auto& d : devices_) {
+    if (d->parsed_name().type.find("STREAM_CPU") != string::npos) {
+      int idx = std::stoi(d->parsed_name().type.substr(11));
+      TF_CHECK_OK(LookupDevice(strings::StrCat("/device:CPU:", idx), &cpu));
+      stream_device_map_[cpu][d->parsed_name().id] = d.get();
+      d->SetRealDevice(cpu);
     }
   }
 }
