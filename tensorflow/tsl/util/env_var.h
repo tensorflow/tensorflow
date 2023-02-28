@@ -35,6 +35,11 @@ Status ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val,
 // If the string cannot be parsed into int64, an error status is returned.
 Status ReadInt64FromEnvVar(StringPiece env_var_name, int64_t default_val,
                            int64_t* value);
+
+// Returns a comma separated int64 into "value" from the environmental variable
+// "env_var_name". If it is unset, the default value is used.
+Status ReadInt64sFromEnvVar(StringPiece env_var_name, int64 default_val,
+                            std::vector<int64>* value);
 // Returns a float into "value" from the environmental variable "env_var_name".
 // If it is unset, the default value is used.
 // If the string cannot be parsed into float, an error status is returned.

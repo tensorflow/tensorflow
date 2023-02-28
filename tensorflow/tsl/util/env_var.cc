@@ -60,6 +60,26 @@ Status ReadInt64FromEnvVar(StringPiece env_var_name, int64_t default_val,
       tf_env_var_val, ". Use the default value: ", default_val));
 }
 
+Status ReadInt64sFromEnvVar(StringPiece env_var_name, int64 default_val,
+                            std::vector<int64_t>* value) {
+  string str_val;
+  TF_RETURN_IF_ERROR(ReadStringFromEnvVar(
+      env_var_name, std::to_string(default_val), &str_val));
+  std::vector<string> str_value = str_util::Split(str_val, ',');
+  for (auto& v : str_value) {
+    int64_t val;
+    if (!strings::safe_strto64(v, &val)) {
+      value->clear();
+      value->push_back(default_val);
+      return errors::InvalidArgument(strings::StrCat(
+          "Failed to parse the env-var ${", env_var_name,
+          "} into sequenced int64. Use the default value: ", default_val));
+    }
+    value->push_back(val);
+  }
+  return OkStatus();
+}
+
 Status ReadFloatFromEnvVar(StringPiece env_var_name, float default_val,
                            float* value) {
   *value = default_val;
