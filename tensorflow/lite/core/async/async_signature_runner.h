@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
 #include "tensorflow/lite/core/async/async_subgraph.h"
-#include "tensorflow/lite/core/async/common.h"
+#include "tensorflow/lite/core/async/c/types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/internal/signature_def.h"

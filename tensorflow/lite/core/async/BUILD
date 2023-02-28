@@ -19,19 +19,13 @@ cc_library(
 )
 
 cc_library(
-    name = "common",
-    hdrs = ["common.h"],
-    compatible_with = get_compatible_with_portable(),
-)
-
-cc_library(
     name = "task_internal",
     srcs = ["task_internal.cc"],
     hdrs = ["task_internal.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":async_kernel_internal",
-        ":common",
+        "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/core/async/interop/c:types",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
@@ -43,8 +37,8 @@ cc_test(
     srcs = ["task_internal_test.cc"],
     deps = [
         ":async_kernel_internal",
-        ":common",
         ":task_internal",
+        "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/core/async/interop/c:types",
         "@com_google_googletest//:gtest_main",
     ],
@@ -57,10 +51,10 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":async_kernel_internal",
-        ":common",
         ":task_internal",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/core/async/interop/c:types",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
@@ -74,10 +68,10 @@ cc_test(
         ":async_kernel_internal",
         ":async_subgraph",
         ":backend_async_kernel_interface",
-        ":common",
         ":task_internal",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/core/async/interop:attribute_map_internal",
         "//tensorflow/lite/core/async/interop/c:types",
         "//tensorflow/lite/core/async/testing:mock_async_kernel",
@@ -94,7 +88,7 @@ cc_library(
     hdrs = ["backend_async_kernel_interface.h"],
     deps = [
         ":async_kernel_internal",
-        ":common",
+        "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
     ],
@@ -108,9 +102,9 @@ cc_library(
     deps = [
         ":async_kernel_internal",
         ":async_subgraph",
-        ":common",
         ":task_internal",
         "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/internal:signature_def",
@@ -124,7 +118,6 @@ cc_test(
         ":async_kernel_internal",
         ":async_signature_runner",
         ":backend_async_kernel_interface",
-        ":common",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:interpreter_test_util",
         "//tensorflow/lite/core:framework_stable",

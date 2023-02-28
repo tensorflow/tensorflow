@@ -22,7 +22,7 @@ limitations under the License.
 // TODO(b/191883048): This interface should only depend on C API instead of
 // internal definitions.
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
-#include "tensorflow/lite/core/async/common.h"
+#include "tensorflow/lite/core/async/c/types.h"
 
 namespace tflite {
 namespace delegates {

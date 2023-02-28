@@ -29,7 +29,7 @@ extern "C" {
 // --------------------------------------------------------------------------
 /// TfLiteExecutionTask API.
 ///
-/// TfLiteExecutionTask stores the information for a specific
+/// The opaque TfLiteExecutionTask stores the information for a specific
 /// execution. It includes the mapping from tensors to the buffer handles as
 /// well as the synchronization objects.
 /// WARNING: This file contains experimental APIs and subject to change.

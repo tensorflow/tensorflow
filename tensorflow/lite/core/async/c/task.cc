@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/core/async/c/task.h"
 
+#include "tensorflow/lite/core/async/c/types.h"
+#include "tensorflow/lite/core/async/task_internal.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/core/async/common.h"
-#include "tensorflow/lite/core/async/task_internal.h"
 
 extern "C" {
 
