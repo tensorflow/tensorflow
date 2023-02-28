@@ -126,6 +126,8 @@ tensorflow/lite/schema/conversion_metadata_generated.h:
 tensorflow/lite/schema/schema_generated.h:
 tensorflow/lite/special_rules.bzl:
 tensorflow/lite/test_util.h:
+tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/AndroidManifest.xml:
+tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/build_defs.bzl:
 tensorflow/lite/tools/verifier.h:
 tensorflow/lite/tools/verifier_internal.h:
 tensorflow/python/autograph/core/config:.py
