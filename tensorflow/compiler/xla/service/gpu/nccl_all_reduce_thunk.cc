@@ -143,14 +143,16 @@ bool CanImplement(OpT op, Thunk::Kind reduction_op) {
                         [reduction_op](mlir::Value operand) {
                           return IsValidOperand(operand, reduction_op);
                         }) &&
-         NcclAllReduceThunkBase::MatchAllReduceComputation(op.getComputation())
+         NcclAllReduceReduceScatterThunkBase::MatchAllReduceComputation(
+             op.getComputation())
              .has_value();
 }
 
 template <typename OpT>
 NcclAllReduceConfig GetNcclAllReduceConfig(OpT op) {
   std::optional<ReductionKind> reduction_kind =
-      NcclAllReduceThunkBase::MatchAllReduceComputation(op.getComputation());
+      NcclAllReduceReduceScatterThunkBase::MatchAllReduceComputation(
+          op.getComputation());
   CHECK(reduction_kind.has_value());
 
   NcclAllReduceConfig config;
@@ -173,7 +175,8 @@ CollectiveOpGroupMode GetGroupMode(OpT op) {
 
 }  // namespace impl
 
-std::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
+std::optional<ReductionKind>
+NcclAllReduceReduceScatterThunkBase::MatchAllReduceComputation(
     mlir::Region& computation) {
   mlir::Block& block = computation.front();
   StatusOr<mlir::Operation*> reduction_op = FindReductionOp(block);
@@ -216,10 +219,9 @@ std::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
   }
 }
 
-NcclAllReduceThunkBase::NcclAllReduceThunkBase(Thunk::Kind kind,
-                                               ThunkInfo thunk_info,
-                                               NcclAllReduceConfig config,
-                                               std::vector<Buffer> buffers)
+NcclAllReduceReduceScatterThunkBase::NcclAllReduceReduceScatterThunkBase(
+    Thunk::Kind kind, ThunkInfo thunk_info, NcclAllReduceConfig config,
+    std::vector<Buffer> buffers)
     : NcclCollectiveThunk(kind, thunk_info),
       config_(std::move(config)),
       buffers_(std::move(buffers)) {
@@ -303,9 +305,9 @@ NcclAllReduceDoneThunk::NcclAllReduceDoneThunk(
 NcclReduceScatterThunk::NcclReduceScatterThunk(
     ThunkInfo thunk_info, mlir::lmhlo::ReduceScatterOp op,
     std::vector<NcclAllReduceThunk::Buffer> buffers)
-    : NcclAllReduceThunkBase(Thunk::kNcclReduceScatter, thunk_info,
-                             impl::GetNcclAllReduceConfig(op),
-                             std::move(buffers)) {}
+    : NcclAllReduceReduceScatterThunkBase(Thunk::kNcclReduceScatter, thunk_info,
+                                          impl::GetNcclAllReduceConfig(op),
+                                          std::move(buffers)) {}
 
 /*static*/ bool NcclReduceScatterThunk::CanImplement(
     mlir::lmhlo::ReduceScatterOp op) {

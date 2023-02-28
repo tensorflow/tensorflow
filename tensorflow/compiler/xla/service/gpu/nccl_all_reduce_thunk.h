@@ -36,23 +36,30 @@ struct NcclAllReduceConfig {
 
 // Thunk that performs a NCCL-based All-Reduce or Reduce-Scatter among CUDA
 // GPU-based replicas.
-class NcclAllReduceThunkBase : public NcclCollectiveThunk {
+class NcclAllReduceReduceScatterThunkBase : public NcclCollectiveThunk {
  public:
   static std::optional<ReductionKind> MatchAllReduceComputation(
       mlir::Region& computation);
 
-  NcclAllReduceThunkBase(Kind kind, ThunkInfo thunk_info,
-                         NcclAllReduceConfig config,
-                         std::vector<Buffer> buffers);
+  NcclAllReduceReduceScatterThunkBase(Kind kind, ThunkInfo thunk_info,
+                                      NcclAllReduceConfig config,
+                                      std::vector<Buffer> buffers);
 
  protected:
-  Status RunAllReduce(const ExecuteParams& params, se::Stream& stream,
-                      ncclComm_t comm);
-
   const NcclCollectiveConfig& config() const override { return config_.config; }
 
   const NcclAllReduceConfig config_;
   const std::vector<Buffer> buffers_;
+};
+
+class NcclAllReduceThunkBase : public NcclAllReduceReduceScatterThunkBase {
+ public:
+  using NcclAllReduceReduceScatterThunkBase::
+      NcclAllReduceReduceScatterThunkBase;
+
+ protected:
+  Status RunAllReduce(const ExecuteParams& params, se::Stream& stream,
+                      ncclComm_t comm);
 };
 
 class NcclAllReduceThunk : public NcclAllReduceThunkBase {
@@ -104,7 +111,7 @@ class NcclAllReduceDoneThunk : public NcclCollectiveDoneThunk {
                          NcclCollectiveThunk::AsyncExecutor& async);
 };
 
-class NcclReduceScatterThunk : public NcclAllReduceThunkBase {
+class NcclReduceScatterThunk : public NcclAllReduceReduceScatterThunkBase {
  public:
   NcclReduceScatterThunk(ThunkInfo thunk_info, mlir::lmhlo::ReduceScatterOp op,
                          std::vector<Buffer> buffers);
