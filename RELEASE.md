@@ -5,6 +5,13 @@
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
+*  `tf.keras`
+
+    *  Remove the Keras scikit-learn API wrappers (`KerasClassifier` and
+       `KerasRegressor`), which had been deprecated in August 2021.
+       We recommend using [SciKeras](https://github.com/adriangb/scikeras)
+       instead.
+
 ## Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
