@@ -64,6 +64,7 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/loader_util.h"
@@ -1983,12 +1984,16 @@ mlir::Operation* ImporterBase::CreateOperation(
         bool resource = false;
         std::function<bool(mlir::Type)> record_resource;
         record_resource = [&](mlir::Type type) {
-          if (resource) return true;
-          if (type.isa<mlir::TF::ResourceType>()) {
-            resource = true;
-            return true;
-          }
-          type.walk([&](mlir::Type t) { record_resource(t); });
+          type.walk([&](mlir::Type t) {
+            if (resource) return mlir::WalkResult::interrupt();
+            if (type.isa<mlir::TF::ResourceType>()) {
+              resource = true;
+              return mlir::WalkResult::interrupt();
+            }
+
+            return mlir::WalkResult::advance();
+          });
+
           return resource;
         };
 
