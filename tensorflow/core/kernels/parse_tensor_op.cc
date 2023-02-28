@@ -60,7 +60,7 @@ class ParseTensorOp : public OpKernel {
                                 DataTypeString(out_type_), ")"));
     
     if (!port::kLittleEndian)
-      auto byteswap_status = ByteSwapTensor(&output);
+      OP_REQUIRES_OK(ctx, ByteSwapTensor(&output));
 
     ctx->set_output(0, output);
   }
@@ -84,7 +84,7 @@ class SerializeTensorOp : public OpKernel {
     } else {
       if (!port::kLittleEndian) {
         Tensor ts_ = tensor::DeepCopy(tensor);
-        auto byteswap_status = ByteSwapTensor(&ts_);
+        OP_REQUIRES_OK(context, ByteSwapTensor(&ts_));
         ts_.AsProtoTensorContent(&proto);
       } else
         tensor.AsProtoTensorContent(&proto);
