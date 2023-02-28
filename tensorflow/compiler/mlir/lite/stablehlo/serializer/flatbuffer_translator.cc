@@ -202,7 +202,7 @@ CreateConvolutionOperator(mlir::stablehlo::ConvolutionOp& hlo_op,
       options.Union());
 }
 
-llvm::Optional<flatbuffers::Offset<::stablehlo::flatbuf::Operator>>
+std::optional<flatbuffers::Offset<::stablehlo::flatbuf::Operator>>
 CreateFlatBufferOperator(mlir::Operation* op, uint32_t opcode_index,
                          const std::vector<int32_t>& operands,
                          const std::vector<int32_t>& results,
@@ -232,7 +232,7 @@ static StatusOr<::stablehlo::flatbuf::DataType> GetDataType(
   return ::stablehlo::flatbuf::DataType_FLOAT32;
 }
 
-llvm::Optional<::stablehlo::flatbuf::OperatorCode> GetOpCode(
+std::optional<::stablehlo::flatbuf::OperatorCode> GetOpCode(
     mlir::Operation* op) {
   if (isa<mlir::stablehlo::AddOp>(op))
     return ::stablehlo::flatbuf::OperatorCode_ADD;

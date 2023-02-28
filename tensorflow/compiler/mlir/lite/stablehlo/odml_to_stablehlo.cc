@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Path.h"
@@ -309,7 +308,7 @@ tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
                                     elide_large_elements_attrs));
   }
 
-  llvm::Optional<tensorflow::Session*> session = std::nullopt;
+  std::optional<tensorflow::Session*> session = std::nullopt;
   if (bundle) session = bundle->GetSession();  // NOMUTANTS--it should pass.
 
   if (freeze_tf_graph) {
