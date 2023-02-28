@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s --split-input-file --gml-st-cpu-tiling-pipeline | FileCheck %s
+// RUN: mlir-hlo-opt %s --split-input-file --gml-st-cpu-tiling-pipeline --canonicalize | FileCheck %s
 
 func.func @matvec(%lhs: tensor<33x17xf32>, %rhs: tensor<17xf32>,
                   %output: tensor<33xf32>) -> tensor<33xf32> {

@@ -36,14 +36,14 @@ func.func @row_reduce_map_fuse_map(%arg0: tensor<?x?xf32>,
 // CHECK:     arith.addf %{{.*}} : vector<4x4xf32>
 // CHECK:     vector.multi_reduction <add>
 // CHECK:       : vector<4x4xf32> to vector<4xf32>
-// CHECK:     scf.yield %{{.*}} : vector<4xf32>
+// CHECK:     scf.yield %{{.*}} : {{.*}}, vector<4xf32>
 // CHECK:   scf.for
 // CHECK:     scf.for
 // CHECK:       arith.addf %{{.*}} : vector<4x1xf32>
 // CHECK:       vector.multi_reduction <add>
 // CHECK:         : vector<4x1xf32> to vector<4xf32>
-// CHECK:       scf.yield %{{.*}} : vector<4xf32>
-// CHECK:     scf.yield %{{.*}} : vector<4xf32>
+// CHECK:       scf.yield %{{.*}} : {{.*}}, vector<4xf32>
+// CHECK:     scf.yield %{{.*}} : {{.*}}, vector<4xf32>
 // CHECK:   math.absf %{{.*}} : vector<4xf32>
 // CHECK:   gml_st.set_yield
 
@@ -93,7 +93,7 @@ func.func @col_reduce_map_fuse_map(%arg0: tensor<?x?xf32>,
 // CHECK:     arith.addf %{{.*}} : vector<4x4xf32>
 // CHECK:     vector.multi_reduction <add>
 // CHECK:       : vector<4x4xf32> to vector<4xf32>
-// CHECK:     scf.yield %{{.*}} : vector<4xf32>
+// CHECK:     scf.yield %{{.*}} : {{.*}}, vector<4xf32>
 // CHECK:   scf.for
 // CHECK:     scf.for
 // CHECK:       scf.for

@@ -33,15 +33,15 @@ func.func @vectorize_tiled_matmul(%lhs: tensor<8x16xf32>,
 // CHECK-LABEL: func @vectorize_tiled_matmul
 
 // CHECK:         %[[OUT_READ:.*]] = vector.transfer_read %[[OUT:.*]]
-// CHECK:         %[[FOR:.*]] = scf.for {{.*}} iter_args(%[[ARG:.*]] =
+// CHECK:         %[[FOR:.*]]:2 = scf.for {{.*}} iter_args(%[[ARG0:.*]] = %{{.*}}, %[[ARG1:.*]] =
 // CHECK:           %[[LHS:.*]] = vector.transfer_read
 // CHECK-SAME:        : tensor<8x16xf32>, vector<8x2xf32>
 // CHECK:           %[[RHS:.*]] = vector.transfer_read
 // CHECK-SAME:        : tensor<16x4xf32>, vector<2x4xf32>
 // CHECK:           %[[CONTRACT:.*]] = vector.contract
-// CHECK-SAME:        %[[LHS]], %[[RHS]], %[[ARG]]
-// CHECK:           scf.yield %[[CONTRACT]]
-// CHECK:         vector.transfer_write %[[FOR]]
+// CHECK-SAME:        %[[LHS]], %[[RHS]], %[[ARG1]]
+// CHECK:           scf.yield %[[ARG0]], %[[CONTRACT]]
+// CHECK:         vector.transfer_write %[[FOR]]#1,  %[[FOR]]#0
 
 // -----
 
@@ -82,14 +82,14 @@ func.func @vectorize_static_matmul(%lhs: tensor<128x16xf32>,
 // CHECK-LABEL: func @vectorize_static_matmul
 
 // CHECK:         %[[OUT_READ:.*]] = vector.transfer_read {{.*}} : tensor<8x4xf32>, vector<8x4xf32>
-// CHECK:         %[[FOR:.*]] = scf.for {{.*}} iter_args(%[[ARG:.*]] = %[[OUT_READ]]
+// CHECK:         %[[FOR:.*]]:2 = scf.for {{.*}} iter_args(%[[ARG0:.*]] = %{{.*}}, %[[ARG1:.*]] = %[[OUT_READ]]
 // CHECK-NOT:       linalg.matmul
 // CHECK:           %[[LHS:.*]] = vector.transfer_read {{.*}} : tensor<128x16xf32>, vector<8x2xf32>
 // CHECK:           %[[RHS:.*]] = vector.transfer_read {{.*}} : tensor<16x64xf32>, vector<2x4xf32>
 // CHECK-NOT:       vector.transfer_read
-// CHECK:           %[[CONTRACT:.*]] = vector.contract {{{.*}}} %[[LHS]], %[[RHS]], %[[ARG]]
-// CHECK:           scf.yield %[[CONTRACT]]
-// CHECK:         vector.transfer_write %[[FOR]]
+// CHECK:           %[[CONTRACT:.*]] = vector.contract {{{.*}}} %[[LHS]], %[[RHS]], %[[ARG1]]
+// CHECK:           scf.yield %[[ARG0]], %[[CONTRACT]]
+// CHECK:         vector.transfer_write  %[[FOR]]#1,  %[[FOR]]#0
 
 // -----
 
