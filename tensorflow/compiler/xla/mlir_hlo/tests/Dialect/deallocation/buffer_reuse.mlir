@@ -159,9 +159,13 @@ func.func @simplify_loop_dealloc() {
 }
 
 // CHECK-LABEL: @simplify_loop_dealloc
-// CHECK: alloca
-// CHECK: alloca
-// CHECK: alloca
+// CHECK: memref.alloca
+// CHECK: memref.alloca
+// CHECK: memref.alloca
+// CHECK-NOT: memref.alloc
+// CHECK-NOT: memref.dealloc
+
+// -----
 
 func.func @hoist_always_reallocated() {
   %a = memref.alloc() : memref<f32>
@@ -189,7 +193,6 @@ func.func @hoist_always_reallocated() {
 // CHECK-NEXT: memref.alloca
 // CHECK-NEXT: scf.while
 // CHECK-NOT: memref.alloc
-// CHECK-NOT: memref.alloca
 
 // -----
 
@@ -216,4 +219,30 @@ func.func @hoist_passthrough() {
 // CHECK-NEXT: memref.alloca
 // CHECK-NEXT: scf.while
 // CHECK-NOT: memref.alloc
-// CHECK-NOT: memref.alloca
+
+// -----
+
+func.func @allocs_in_different_scopes_with_no_overlap() {
+  %alloc0 = memref.alloc() : memref<4xi32>
+  "test.use"(%alloc0) : (memref<4xi32>) -> ()
+  memref.dealloc %alloc0 : memref<4xi32>
+  scf.while() : () -> () {
+    %cond = "test.make_condition"() : () -> i1
+    scf.condition(%cond)
+  } do {
+    %alloc1 = memref.alloc() : memref<4xi32>
+    "test.use"(%alloc1) : (memref<4xi32>) -> ()
+    memref.dealloc %alloc1 : memref<4xi32>
+    scf.yield
+  }
+  %alloc2 = memref.alloc() : memref<4xi32>
+  "test.use"(%alloc2) : (memref<4xi32>) -> ()
+  memref.dealloc %alloc2 : memref<4xi32>
+  return
+}
+
+// CHECK-LABEL: @allocs_in_different_scopes_with_no_overlap
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: test.use
+// CHECK-NEXT: while
+// CHECK-NOT: memref.alloc

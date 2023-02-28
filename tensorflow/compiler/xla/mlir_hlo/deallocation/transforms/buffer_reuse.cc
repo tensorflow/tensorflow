@@ -236,6 +236,30 @@ bool hoistAllocs(scf::WhileOp op) {
   return !beforeAllocs.empty() || !afterAllocs.empty();
 }
 
+// Hoists allocs from while and for loops.
+bool hoistAllocs(Block& block) {
+  auto* op = &block.front();
+  bool result = false;
+  while (op) {
+    for (auto& region : op->getRegions()) {
+      if (!region.empty()) {
+        assert(region.hasOneBlock());
+        result |= hoistAllocs(region.front());
+      }
+    }
+
+    if (auto whileOp = llvm::dyn_cast<scf::WhileOp>(op)) {
+      result |= hoistAllocs(whileOp);
+    }
+
+    if (auto forOp = llvm::dyn_cast<scf::ForOp>(op)) {
+      result |= !hoistAllocs(forOp, forOp.getLoopBody(), {}).empty();
+    }
+    op = op->getNextNode();
+  }
+  return result;
+}
+
 template <typename T>
 T findOp(Operation* start, std::function<bool(T)> predicate) {
   while (start) {
@@ -338,8 +362,37 @@ RegionBranchOpInterface doubleBuffer(RegionBranchOpInterface op) {
   return newOp;
 }
 
-bool reuseAndHoistBuffers(Block& block) {
-  // Look for dealloc(T) followed by alloc(T).
+bool doubleBuffer(Block& block) {
+  auto* op = &block.front();
+  bool result = false;
+  while (op) {
+    for (auto& region : op->getRegions()) {
+      if (!region.empty()) {
+        assert(region.hasOneBlock());
+        result |= doubleBuffer(region.front());
+      }
+    }
+
+    if (auto whileOp = llvm::dyn_cast<scf::WhileOp>(op)) {
+      if (auto db = doubleBuffer(whileOp); db != op) {
+        op = db;
+        result = true;
+      }
+    }
+
+    if (auto forOp = llvm::dyn_cast<scf::ForOp>(op)) {
+      if (auto db = doubleBuffer(forOp); db != op) {
+        op = db;
+        result = true;
+      }
+    }
+
+    op = op->getNextNode();
+  }
+  return result;
+}
+
+bool reuseBuffers(Block& block) {
   auto* op = &block.front();
   bool result = false;
   while (op) {
@@ -387,23 +440,7 @@ bool reuseAndHoistBuffers(Block& block) {
     for (auto& region : op->getRegions()) {
       if (!region.empty()) {
         assert(region.hasOneBlock());
-        result |= reuseAndHoistBuffers(region.front());
-      }
-    }
-
-    if (auto whileOp = llvm::dyn_cast<scf::WhileOp>(op)) {
-      result |= hoistAllocs(whileOp);
-      if (auto db = doubleBuffer(whileOp); db != op) {
-        op = db;
-        result = true;
-      }
-    }
-
-    if (auto forOp = llvm::dyn_cast<scf::ForOp>(op)) {
-      result |= !hoistAllocs(forOp, forOp.getLoopBody(), {}).empty();
-      if (auto db = doubleBuffer(forOp); db != op) {
-        op = db;
-        result = true;
+        result |= reuseBuffers(region.front());
       }
     }
 
@@ -513,8 +550,7 @@ bool simplifyLoopDeallocs(Block& block) {
   return result;
 }
 
-bool promoteBuffers(Block& block) {
-  bool result = false;
+void promoteBuffers(Block& block) {
   for (auto& op : llvm::make_early_inc_range(block)) {
     if (auto alloc = llvm::dyn_cast<memref::AllocOp>(op)) {
       // TODO(jreiffers): Add size heuristic.
@@ -526,11 +562,9 @@ bool promoteBuffers(Block& block) {
 
       if (dealloc != op.getUsers().end()) {
         promoteToStack(llvm::cast<memref::DeallocOp>(*dealloc));
-        result = true;
       }
     }
   }
-  return result;
 }
 
 #define GEN_PASS_DEF_BUFFERREUSEPASS
@@ -545,10 +579,12 @@ struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
     do {
       // Eliminate dead code.
       (void)applyPatternsAndFoldGreedily(getOperation(), {});
-      result = reuseAndHoistBuffers(block);
+      result = hoistAllocs(block);
+      result |= reuseBuffers(block);
+      result |= doubleBuffer(block);
       result |= simplifyLoopDeallocs(block);
-      result |= promoteBuffers(block);
     } while (result);
+    promoteBuffers(block);
   }
 };
 
