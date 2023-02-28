@@ -144,11 +144,6 @@ def TransformDotForCpuPass :
   let summary = "Transform dot ops for running on CPU";
 
   let constructor = "createTransformDotForCpuPass()";
-
-  let options = [
-    ListOption<"tileSizes", "tile-sizes", "int64_t",
-               "Tile sizes for a `linalg.matmul`">,
-  ];
 }
 
 def TransformMatmulForCpuPass :
@@ -160,8 +155,6 @@ def TransformMatmulForCpuPass :
   let options = [
     Option<"lowerToMmt4D", "lower-to-mmt4d", "bool", "false",
            "If true, lower linalg.matmul into linalg.mmt4d">,
-    ListOption<"tileSizes", "tile-sizes", "int64_t",
-               "Tile sizes for a `linalg.matmul`">,
   ];
 }
 

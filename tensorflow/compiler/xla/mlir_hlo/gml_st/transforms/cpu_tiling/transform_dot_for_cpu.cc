@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -22,26 +23,19 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
-#include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
-#include "gml_st/transforms/tiling/tiling.h"
+#include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/transforms.h"
-#include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Arith/Utils/Utils.h"
-#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
-#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/IR/TensorInferTypeOpInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/TensorTilingInterfaceImpl.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/Pass.h"  // IWYU pragma: keep
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir::gml_st {
@@ -71,19 +65,51 @@ FailureOr<scf::SCFTilingResult> tileDot(PatternRewriter &rewriter,
   return tilingResult;
 }
 
+MatmulSizes getMatmulSizes(linalg::VecmatOp op) {
+  // [1, k] x [k, n]
+  ShapedType ty = op->getOperand(1).getType().cast<ShapedType>();
+  MatmulSizes sizes;
+  sizes.m = 1;
+  sizes.k = ty.getDimSize(0);
+  sizes.n = ty.getDimSize(1);
+  return sizes;
+}
+
+MatmulSizes getMatmulSizes(linalg::MatvecOp op) {
+  // [m, k] x [k, 1]
+  ShapedType ty = op->getOperand(0).getType().cast<ShapedType>();
+  MatmulSizes sizes;
+  sizes.m = ty.getDimSize(0);
+  sizes.k = ty.getDimSize(1);
+  sizes.n = 1;
+  return sizes;
+}
+
+MatmulSizes getMatmulSizes(linalg::DotOp op) {
+  // [1, k] x [k, 1]
+  ShapedType ty = op->getOperand(0).getType().cast<ShapedType>();
+  MatmulSizes sizes;
+  sizes.m = 1;
+  sizes.k = ty.getDimSize(0);
+  sizes.n = 1;
+  return sizes;
+}
+
 /// Pattern to tile dot operations (linalg.matvec, linalg.vecmat, linalg.dot)
 /// and peel the generated loops.
 template <typename DotTy>
 struct DotTransformPattern : public OpRewritePattern<DotTy> {
   using OpRewritePattern<DotTy>::OpRewritePattern;
 
-  explicit DotTransformPattern(MLIRContext *context,
-                               llvm::ArrayRef<int64_t> parallelDimsTileSizes,
-                               llvm::ArrayRef<int64_t> reductionDimTileSizes,
-                               PatternBenefit benefit = 1)
+  explicit DotTransformPattern(
+      MLIRContext *context, MatmulTileSizeComputationFn tileSizeFn,
+      std::function<SmallVector<int64_t>(MatmulSizes)> parallelDimTileSizeFn,
+      std::function<SmallVector<int64_t>(MatmulSizes)> reductionDimTileSizeFn,
+      PatternBenefit benefit = 1)
       : OpRewritePattern<DotTy>(context, benefit),
-        parallelDimsTileSizes(parallelDimsTileSizes),
-        reductionDimTileSizes(reductionDimTileSizes) {}
+        tileSizeFn(std::move(tileSizeFn)),
+        parallelDimTileSizeFn(std::move(parallelDimTileSizeFn)),
+        reductionDimTileSizeFn(std::move(reductionDimTileSizeFn)) {}
 
   LogicalResult matchAndRewrite(DotTy dotOp,
                                 PatternRewriter &rewriter) const override {
@@ -96,8 +122,9 @@ struct DotTransformPattern : public OpRewritePattern<DotTy> {
           dotOp, "has already been tiled by another pass.");
     }
 
-    auto tilingParallelDimsResult =
-        tileDot(rewriter, dotOp.getOperation(), parallelDimsTileSizes);
+    auto tileSizes = tileSizeFn(getMatmulSizes(dotOp));
+    auto tilingParallelDimsResult = tileDot(rewriter, dotOp.getOperation(),
+                                            parallelDimTileSizeFn(tileSizes));
     if (failed(tilingParallelDimsResult)) return failure();
 
     if (!tilingParallelDimsResult->loops.empty()) {
@@ -105,8 +132,8 @@ struct DotTransformPattern : public OpRewritePattern<DotTy> {
     }
 
     // Second level tiling: reduction dimension.
-    auto tilingReductionDimResult =
-        tileDot(rewriter, dotOp.getOperation(), reductionDimTileSizes);
+    auto tilingReductionDimResult = tileDot(rewriter, dotOp.getOperation(),
+                                            reductionDimTileSizeFn(tileSizes));
     if (failed(tilingReductionDimResult)) return failure();
 
     if (!tilingReductionDimResult->loops.empty()) {
@@ -128,17 +155,17 @@ struct DotTransformPattern : public OpRewritePattern<DotTy> {
   }
 
  private:
-  llvm::SmallVector<int64_t> parallelDimsTileSizes;
-  llvm::SmallVector<int64_t> reductionDimTileSizes;
+  MatmulTileSizeComputationFn tileSizeFn;
+  std::function<SmallVector<int64_t>(MatmulSizes)> parallelDimTileSizeFn;
+  std::function<SmallVector<int64_t>(MatmulSizes)> reductionDimTileSizeFn;
 };
 
 struct TransformDotForCpuPass
     : public impl::TransformDotForCpuPassBase<TransformDotForCpuPass> {
   TransformDotForCpuPass() = default;
 
-  explicit TransformDotForCpuPass(llvm::ArrayRef<int64_t> dotTileSizes) {
-    tileSizes = dotTileSizes;
-  }
+  explicit TransformDotForCpuPass(MatmulTileSizeComputationFn tileSizeFn)
+      : tileSizeFn(std::move(tileSizeFn)) {}
 
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<mlir::gml_st::GmlStDialect, arith::ArithDialect,
@@ -153,9 +180,6 @@ struct TransformDotForCpuPass
     func::FuncOp f = getOperation();
     MLIRContext *ctx = &getContext();
 
-    if (tileSizes.empty()) {
-      tileSizes = {8, 8, 8};
-    }
     // Dot operations can have at most 3 dimensions ((upto) 2 parallel + 1
     // reduction), so the first two tileSizes' elements are for parallel
     // dimensions tiling, and the last element is for reduction dimension
@@ -166,18 +190,29 @@ struct TransformDotForCpuPass
     // - for linalg.vecmat: only the second and last elements of tileSizes are
     // used.
     // - for linalg.dot: only the last element of tileSizes is used.
-    assert(tileSizes.size() == 3 &&
-           "Tiling sizes for Dot operations should have 3 elements");
 
     RewritePatternSet patterns(ctx);
     patterns.add<DotTransformPattern<linalg::MatvecOp>>(
-        ctx, llvm::ArrayRef<int64_t>{tileSizes[0], 0},
-        llvm::ArrayRef<int64_t>{0, tileSizes[2]});
+        ctx, tileSizeFn,
+        [&](MatmulSizes sizes) -> SmallVector<int64_t> {
+          return {sizes.m, 0};
+        },
+        [&](MatmulSizes sizes) -> SmallVector<int64_t> {
+          return {0, sizes.k};
+        });
     patterns.add<DotTransformPattern<linalg::VecmatOp>>(
-        ctx, llvm::ArrayRef<int64_t>{tileSizes[1], 0},
-        llvm::ArrayRef<int64_t>{0, tileSizes[2]});
+        ctx, tileSizeFn,
+        [&](MatmulSizes sizes) -> SmallVector<int64_t> {
+          return {sizes.n, 0};
+        },
+        [&](MatmulSizes sizes) -> SmallVector<int64_t> {
+          return {0, sizes.k};
+        });
     patterns.add<DotTransformPattern<linalg::DotOp>>(
-        ctx, llvm::ArrayRef<int64_t>{}, llvm::ArrayRef<int64_t>{tileSizes[2]});
+        ctx, tileSizeFn,
+        [&](MatmulSizes) -> SmallVector<int64_t> { return {}; },
+        [&](MatmulSizes sizes) -> SmallVector<int64_t> { return {sizes.k}; });
+
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();
     }
@@ -188,12 +223,15 @@ struct TransformDotForCpuPass
         removeLabel(op, kDotTransformedLabel);
     });
   }
+
+  MatmulTileSizeComputationFn tileSizeFn;
 };
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createTransformDotForCpuPass(llvm::ArrayRef<int64_t> dotTileSizes) {
-  return std::make_unique<mlir::gml_st::TransformDotForCpuPass>(dotTileSizes);
+createTransformDotForCpuPass(MatmulTileSizeComputationFn tileSizeFn) {
+  return std::make_unique<mlir::gml_st::TransformDotForCpuPass>(
+      std::move(tileSizeFn));
 }
 
 }  // namespace mlir::gml_st

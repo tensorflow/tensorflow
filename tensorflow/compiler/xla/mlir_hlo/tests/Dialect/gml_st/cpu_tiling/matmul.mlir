@@ -1,11 +1,13 @@
-// RUN: mlir-hlo-opt %s --split-input-file --gml-st-cpu-tiling-pipeline | FileCheck %s
-// RUN: mlir-hlo-opt %s --gml-st-cpu-tiling-pipeline="lower-to-mmt4d=true" | FileCheck %s --check-prefixes=PACKED
+// RUN: mlir-hlo-opt %s --split-input-file \
+// RUN:    --gml-st-cpu-tiling-pipeline=matmul-tile-sizes=4,5,6 | FileCheck %s
+// RUN: mlir-hlo-opt %s --gml-st-cpu-tiling-pipeline="lower-to-mmt4d=true" | \
+// RUN:    FileCheck %s --check-prefixes=PACKED
 
 func.func @matmul_static(%lhs: tensor<128x16xf32>, %rhs: tensor<16x64xf32>,
                          %output: tensor<128x64xf32>) -> tensor<128x64xf32> {
-  %2 = linalg.matmul ins(%lhs, %rhs : tensor<128x16xf32>, tensor<16x64xf32>)
+  %0 = linalg.matmul ins(%lhs, %rhs : tensor<128x16xf32>, tensor<16x64xf32>)
                      outs(%output : tensor<128x64xf32>) -> tensor<128x64xf32>
-  return %2 : tensor<128x64xf32>
+  return %0 : tensor<128x64xf32>
 }
 
 // CHECK-LABEL: @matmul_static
@@ -14,8 +16,8 @@ func.func @matmul_static(%lhs: tensor<128x16xf32>, %rhs: tensor<16x64xf32>,
 // CHECK:           vector.transfer_read
 // CHECK-NEXT:      scf.for
 // CHECK-COUNT-2:     vector.transfer_read
-// CHECK:             vector.contract
-// CHECK:             scf.yield {{.*}} : {{.*}}, vector<4x4xf32>
+// CHECK:             vector.contract {{.*}} vector<4x6xf32>, vector<6x5xf32>
+// CHECK:             scf.yield {{.*}} : {{.*}}, vector<4x5xf32>
 // CHECK:           vector.transfer_write
 // CHECK:           gml_st.set_yield
 
@@ -58,8 +60,6 @@ func.func @matmul_static(%lhs: tensor<128x16xf32>, %rhs: tensor<16x64xf32>,
 // PACKED:           scf.yield %{{.*}} : tensor<128x64xf32>
 // PACKED:          scf.yield %{{.*}} : tensor<128x64xf32>
 
-
-
 // -----
 
 func.func @matmul(%lhs: tensor<?x?xf32>,
@@ -82,12 +82,12 @@ func.func @matmul(%lhs: tensor<?x?xf32>,
 // CHECK:           scf.for
 // CHECK-COUNT-2:     vector.transfer_read
 // CHECK:             vector.contract
-// CHECK-NEXT:        scf.yield %{{.*}} : {{.*}}, vector<4x4xf32>
+// CHECK-NEXT:        scf.yield %{{.*}} : {{.*}}, vector<4x5xf32>
 // CHECK:           vector.transfer_write
 
 // CHECK-NEXT:      scf.for
-// CHECK:             linalg.matmul {{.*}} -> tensor<4x4xf32>
-// CHECK:             scf.yield {{.*}} : tensor<4x4xf32>
+// CHECK:             linalg.matmul {{.*}} -> tensor<4x5xf32>
+// CHECK:             scf.yield {{.*}} : tensor<4x5xf32>
 // CHECK:           gml_st.set_yield
 
 // CHECK:         gml_st.parallel
@@ -108,9 +108,9 @@ func.func @matmul(%lhs: tensor<?x?xf32>,
 
 func.func @matmul_narrow_static(%lhs: tensor<2x16xf32>, %rhs: tensor<16x64xf32>,
                          %output: tensor<2x64xf32>) -> tensor<2x64xf32> {
-  %2 = linalg.matmul ins(%lhs, %rhs : tensor<2x16xf32>, tensor<16x64xf32>)
+  %0 = linalg.matmul ins(%lhs, %rhs : tensor<2x16xf32>, tensor<16x64xf32>)
                      outs(%output : tensor<2x64xf32>) -> tensor<2x64xf32>
-  return %2 : tensor<2x64xf32>
+  return %0 : tensor<2x64xf32>
 }
 // CHECK-LABEL: @matmul_narrow_static
 
@@ -118,7 +118,7 @@ func.func @matmul_narrow_static(%lhs: tensor<2x16xf32>, %rhs: tensor<16x64xf32>,
 // CHECK:           scf.for
 // CHECK-COUNT-2:     vector.transfer_read
 // CHECK:             vector.contract
-// CHECK:             scf.yield {{.*}} : {{.*}}, vector<2x4xf32>
+// CHECK:             scf.yield {{.*}} : {{.*}}, vector<2x5xf32>
 // CHECK:           vector.transfer_write
 // CHECK:           gml_st.set_yield
 
@@ -158,9 +158,9 @@ func.func @matmul_narrow_static(%lhs: tensor<2x16xf32>, %rhs: tensor<16x64xf32>,
 
 func.func @matmul_small_static_peeling(%lhs: tensor<2x4xf32>, %arg1: tensor<4x6xf32>,
                          %output: tensor<2x6xf32>) -> tensor<2x6xf32> {
-  %2 = linalg.matmul ins(%lhs, %arg1 : tensor<2x4xf32>, tensor<4x6xf32>)
+  %0 = linalg.matmul ins(%lhs, %arg1 : tensor<2x4xf32>, tensor<4x6xf32>)
                      outs(%output : tensor<2x6xf32>) -> tensor<2x6xf32>
-  return %2 : tensor<2x6xf32>
+  return %0 : tensor<2x6xf32>
 }
 // CHECK-LABEL: @matmul_small_static_peeling
 
@@ -172,9 +172,9 @@ func.func @matmul_small_static_peeling(%lhs: tensor<2x4xf32>, %arg1: tensor<4x6x
 
 func.func @matvec_static(%lhs: tensor<1x16xf32>, %arg1: tensor<16x64xf32>,
                          %output: tensor<1x64xf32>) -> tensor<1x64xf32> {
-  %2 = linalg.matmul ins(%lhs, %arg1 : tensor<1x16xf32>, tensor<16x64xf32>)
+  %0 = linalg.matmul ins(%lhs, %arg1 : tensor<1x16xf32>, tensor<16x64xf32>)
                      outs(%output : tensor<1x64xf32>) -> tensor<1x64xf32>
-  return %2 : tensor<1x64xf32>
+  return %0 : tensor<1x64xf32>
 }
 // CHECK-LABEL: @matvec_static
 
@@ -183,6 +183,6 @@ func.func @matvec_static(%lhs: tensor<1x16xf32>, %arg1: tensor<16x64xf32>,
 // CHECK-NEXT:      scf.for
 // CHECK-COUNT-2:     vector.transfer_read
 // CHECK:             vector.contract
-// CHECK:             scf.yield {{.*}} : {{.*}}, vector<1x4xf32>
+// CHECK:             scf.yield {{.*}} : {{.*}}, vector<1x5xf32>
 // CHECK:           vector.transfer_write
 // CHECK:           gml_st.set_yield

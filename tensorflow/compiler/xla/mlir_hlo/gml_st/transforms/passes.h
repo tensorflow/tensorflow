@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef MLIR_HLO_GML_ST_TRANSFORMS_PASSES_H
 #define MLIR_HLO_GML_ST_TRANSFORMS_PASSES_H
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // IWYU pragma: keep
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 
 #define GEN_PASS_DECL
@@ -29,6 +31,15 @@ limitations under the License.
 
 namespace mlir {
 namespace gml_st {
+
+struct MatmulSizes {
+  // [m, k] x [k, n]
+  int64_t m;
+  int64_t n;
+  int64_t k;
+};
+
+using MatmulTileSizeComputationFn = std::function<MatmulSizes(MatmulSizes)>;
 
 /// Pass to tile ops using TilingInterface.
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
@@ -82,11 +93,11 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
 
 /// Pass to transform a dot operation for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformDotForCpuPass(
-    ArrayRef<int64_t> dotTileSizes = std::nullopt);
+    MatmulTileSizeComputationFn tileSizeFn = nullptr);
 
 /// Pass to transform a linalg.matmul op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForCpuPass(
-    ArrayRef<int64_t> matmulTileSizes = std::nullopt,
+    MatmulTileSizeComputationFn tileSizeFn = nullptr,
     bool lowerToMmt4DOp = false);
 
 /// Pass to fuse linalg on tensor operations.
@@ -125,7 +136,7 @@ std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createFusionPlanningForCpuPass();
 
 /// Pass to outline fusion regions into functions.
-std::unique_ptr<OperationPass<ModuleOp>> createFusionOutliningPass();
+std::unique_ptr<OperationPass<mlir::ModuleOp>> createFusionOutliningPass();
 
 /// Pass to inline fusion clusters.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>

@@ -1186,6 +1186,7 @@ cc_library(
         ":userange_analysis",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:Pass",
     ],
