@@ -45,6 +45,15 @@ enum class CudnnConvKind {
                        // (optionally) side_input) => output
 };
 
+enum class CudnnfMHAKind {
+  kBmmBmm,
+  kScaleBiasMaskSoftmax,
+  kScaleBiasMaskSoftmaxDropout,
+  kScaleMaskSoftmax,
+  kScaleMaskSoftmaxDropout,
+  kSoftmaxDropout,
+};
+
 StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
 
 // Converts a CudnnConvKind value to a string.
@@ -125,6 +134,32 @@ bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
 // Returns true if `hlo` will be implemented as a call to cuDNN convolution
 // reordering helper (required for int8x32 convolutions).
 bool IsCudnnConvolutionReorder(const HloInstruction& hlo);
+
+// The fused_mha_rewriter phase where each of the MHA signatures are pattern
+// matched and rewritten into a custom-call with specific custom-call target.
+// The custom-call target specifies the MHA signature. For example,  BMM1 - Bias
+// - Scale - Mask - Softmax - BMM2 pattern can have the target as
+// cudnn$fmhaBiasScaleMaskSoftmax.
+// The fMHA signatures currently supported by cudnn are:
+// 1. BMM1 - BMM2
+// 2. BMM1 - Scale - Bias - Mask - Softmax - BMM2
+// 3. BMM1 - Scale - Bias - Mask - Softmax - Dropout - BMM2
+// 4. BMM1 - Scale - Mask - Softmax - BMM2
+// 5. BMM1 - Scale - Mask - Softmax - Dropout - BMM2
+// 6. BMM1 - Softmax - Dropout - BMM2
+
+extern const absl::string_view kCudnnfMHABmmBmmCallTarget;
+extern const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxCallTarget;
+extern const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget;
+extern const absl::string_view kCudnnfMHAScaleMaskSoftmaxCallTarget;
+extern const absl::string_view kCudnnfMHAScaleMaskSoftmaxDropoutCallTarget;
+extern const absl::string_view kCudnnfMHASoftmaxDropoutCallTarget;
+
+bool IsCustomCallTofMHA(const HloInstruction& hlo);
+
+StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(const HloCustomCallInstruction* instr);
+
+std::string CudnnfMHAKindToString(CudnnfMHAKind kind);
 
 }  // namespace gpu
 }  // namespace xla

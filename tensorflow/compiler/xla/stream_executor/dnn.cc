@@ -191,6 +191,51 @@ DnnSupport::FusedConvolveRunnerFromDesc(
       "FusedConvolveRunnerFromDesc not implemented.");
 }
 
+tsl::StatusOr<std::unique_ptr<const dnn::FusedMHASimpleRunner>>
+DnnSupport::FusedMHASimpleRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::FusedMHAKind kind,
+    const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+    const dnn::TensorDescriptor& output_descriptor,
+    std::optional<double> dropout_rate) {
+  return tsl::errors::Unimplemented(
+      "FusedMHASimpleRunnerFromDesc not implemented.");
+}
+
+tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskRunner>>
+DnnSupport::FusedMHAScaleMaskSoftmaxRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::FusedMHAKind kind,
+    const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+    const dnn::TensorDescriptor& output_descriptor,
+    const dnn::TensorDescriptor& mask_descriptor, double scale,
+    std::optional<double> dropout_rate) {
+  return tsl::errors::Unimplemented(
+      "FusedMHAScaleMaskSoftmaxRunnerFromDesc not implemented.");
+}
+
+tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABiasMaskRunner>>
+DnnSupport::FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::FusedMHAKind kind,
+    const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+    const dnn::TensorDescriptor& output_descriptor,
+    const dnn::TensorDescriptor& mask_descriptor,
+    const dnn::TensorDescriptor& bias_descriptor, double scale,
+    std::optional<double> dropout_rate) {
+  return tsl::errors::Unimplemented(
+      "FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc not implemented.");
+}
+
 bool DnnSupport::GetMIOpenConvolveAlgorithms(
     dnn::ConvolutionKind /*kind*/, dnn::DataType /*element_type*/,
     Stream* /*stream*/, const dnn::BatchDescriptor& /*input_descriptor*/,
@@ -481,6 +526,169 @@ std::string AlgorithmConfig::ToString() const {
   }
   return absl::StrCat(algo, ", ", algo_no_scratch);
 }
+
+// -- TensorDescriptor
+
+int TensorDescriptor::ndims() const {
+  CHECK_EQ(dimensions_.size(), minor_to_major_.size());
+  return dimensions_.size();
+}
+
+tsl::StatusOr<std::vector<int64_t>>
+TensorDescriptor::GetPhysicalDimensionsMajorToMinor() const {
+  std::vector<int64_t> logical_to_physical(minor_to_major_.size());
+  for (int64_t physical = 0; physical < logical_to_physical.size();
+       ++physical) {
+    int64_t logical = minor_to_major_.at(minor_to_major_.size() - 1 - physical);
+    logical_to_physical[logical] = physical;
+  }
+  if (dimensions_.size() != minor_to_major_.size())
+    return tsl::errors::Internal(
+        "Dimensions size should match the layout size.");
+
+  std::vector<int64_t> physical_dims(dimensions_.size());
+  for (int64_t i = 0; i < physical_dims.size(); ++i) {
+    physical_dims[logical_to_physical[i]] = dimensions_[i];
+  }
+  return physical_dims;
+}
+
+std::vector<int64_t> TensorDescriptor::GetPhysicalStridesMajorToMinor() const {
+  std::vector<int64_t> phys_dims = GetPhysicalDimensionsMajorToMinor().value();
+  std::vector<int64_t> phys_strides(ndims());
+  phys_strides[ndims() - 1] = 1;
+  for (int i = ndims() - 2; i >= 0; i--) {
+    phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
+  }
+  return phys_strides;
+}
+
+std::vector<int64_t> TensorDescriptor::GetLogicalStrides() const {
+  std::vector<int64_t> physical_strides = GetPhysicalStridesMajorToMinor();
+  std::reverse(physical_strides.begin(), physical_strides.end());
+  std::vector<int64_t> logical_strides(physical_strides.size());
+  for (int i = 0; i < ndims(); i++) {
+    logical_strides[minor_to_major_[i]] = physical_strides[i];
+  }
+  return logical_strides;
+}
+
+/*static*/ TensorDescriptor TensorDescriptor::For(
+    DataType type, absl::Span<const int64_t> dimensions,
+    absl::Span<const int64_t> minor_to_major) {
+  std::vector<int64_t> dims(dimensions.size());
+  std::vector<int64_t> minor_to_major_vec(minor_to_major.size());
+  CHECK_EQ(dimensions.size(), minor_to_major.size());
+  for (int i = 0; i < dimensions.size(); i++) {
+    dims[i] = dimensions[i];
+    minor_to_major_vec[i] = minor_to_major[i];
+  }
+  return TensorDescriptor(type, dims, minor_to_major_vec);
+}
+
+const std::string TensorDescriptor::ToString() const {
+  return absl::StrFormat("{dimensions: %s minor_to_major: %s}",
+                         absl::StrJoin(dimensions(), ","),
+                         absl::StrJoin(minor_to_major(), ","));
+};
+
+// -- MatmulTensorDescriptor
+
+tsl::StatusOr<std::vector<int64_t>>
+MatmulTensorDescriptor::GetNonContractingDims() const {
+  std::vector<int64_t> non_contracting_dims;
+  for (int64_t dim = 0; dim < tensor_.dimensions().size(); ++dim) {
+    bool is_batch = absl::c_count(batch_dimension_numbers_, dim) != 0;
+    bool is_contracting = absl::c_count(contracting_dim_, dim) != 0;
+    if (is_batch && is_contracting)
+      return tsl::errors::Internal(
+          "A dimension cannot be both a batch dimension and a contracting "
+          "dimension.");
+    if (!(is_batch || is_contracting)) non_contracting_dims.push_back(dim);
+  }
+
+  if (batch_dimension_numbers_.size() + contracting_dim_.size() +
+          non_contracting_dims.size() !=
+      tensor_.dimensions().size())
+    return tsl::errors::Internal(
+        "Batch_dimension_numbers, contracting_dim and non_contracting_dims "
+        "should sum up to the total number of dimensions.");
+  return non_contracting_dims;
+}
+
+tsl::StatusOr<std::vector<int64_t>> MatmulTensorDescriptor::MakeCudnnCompatible(
+    const std::vector<int64_t>& vec, bool is_lhs) const {
+  std::vector<int64_t> cudnn_compatible(vec.size());
+  int batch_dim_size = batch_dimension_numbers_.size();
+  CHECK_LT(batch_dim_size, vec.size());
+  for (int i = 0; i < batch_dim_size; i++) {
+    cudnn_compatible[i] = vec.at(batch_dimension_numbers_.at(i));
+  }
+  std::vector<int64_t> non_contracting_dims = GetNonContractingDims().value();
+  if (batch_dimension_numbers_.size() + contracting_dim_.size() +
+          non_contracting_dims.size() !=
+      vec.size())
+    return tsl::errors::Internal(
+        "Batch_dimension_numbers, contracting_dim and non_contracting_dims "
+        "should sum up to the total number of dimensions.");
+  if (is_lhs) /* lhs -> {b0, b1,....bk, m, k} */ {
+    for (int i = 0; i < non_contracting_dims.size(); i++) {
+      cudnn_compatible[batch_dim_size + i] = vec.at(non_contracting_dims.at(i));
+    }
+    for (int i = 0; i < contracting_dim_.size(); i++) {
+      cudnn_compatible[batch_dim_size + non_contracting_dims.size() + i] =
+          vec.at(contracting_dim_.at(i));
+    }
+  } else /* rhs -> {b0, b1, ... bk, k, n} */ {
+    for (int i = 0; i < contracting_dim_.size(); i++) {
+      cudnn_compatible[batch_dim_size + i] = vec.at(contracting_dim_.at(i));
+    }
+    for (int i = 0; i < non_contracting_dims.size(); i++) {
+      cudnn_compatible[batch_dim_size + contracting_dim_.size() + i] =
+          vec.at(non_contracting_dims.at(i));
+    }
+  }
+  return cudnn_compatible;
+}
+
+std::vector<int64_t> MatmulTensorDescriptor::GetCudnnCompatibleDimensions(
+    bool is_lhs) const {
+  std::vector<int64_t> cudnn_compatible_dims =
+      MakeCudnnCompatible(tensor_.dimensions(), is_lhs).value();
+  return cudnn_compatible_dims;
+}
+
+std::vector<int64_t> MatmulTensorDescriptor::GetCudnnCompatibleStrides(
+    bool is_lhs) const {
+  std::vector<int64_t> cudnn_compatible_strides =
+      MakeCudnnCompatible(tensor_.GetLogicalStrides(), is_lhs).value();
+  return cudnn_compatible_strides;
+}
+
+/*static*/ MatmulTensorDescriptor MatmulTensorDescriptor::For(
+    DataType type, absl::Span<const int64_t> dimensions,
+    absl::Span<const int64_t> minor_to_major,
+    absl::Span<const int64_t> batch_dims,
+    absl::Span<const int64_t> contracting_dims) {
+  std::vector<int64_t> batch_dims_vec(batch_dims.size());
+  std::vector<int64_t> contracting_dims_vec(contracting_dims.size());
+  for (int i = 0; i < batch_dims.size(); i++) {
+    batch_dims_vec[i] = batch_dims[i];
+  }
+  for (int i = 0; i < contracting_dims.size(); i++) {
+    contracting_dims_vec[i] = contracting_dims[i];
+  }
+  return MatmulTensorDescriptor(
+      TensorDescriptor::For(type, dimensions, minor_to_major), batch_dims_vec,
+      contracting_dims_vec);
+}
+
+const std::string MatmulTensorDescriptor::ToString() const {
+  return absl::StrFormat(
+      "{%s, batch_dimension_numbers: %s contracting_dim: %s}",
+      tensor_.ToString(), absl::StrJoin(batch_dimension_numbers_, ","),
+      absl::StrJoin(contracting_dim_, ","));
+};
 
 // -- BatchDescriptor
 

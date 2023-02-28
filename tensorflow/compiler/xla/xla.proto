@@ -386,6 +386,8 @@ message DebugOptions {
   // Whether to use the cuDNN frontend API for convolutions when possible.
   bool xla_gpu_enable_cudnn_frontend = 160;
 
+  bool xla_gpu_enable_cudnn_fmha = 192;
+
   // Disable dumping metadata in HLO dumps.
   bool xla_dump_disable_metadata = 153;
 

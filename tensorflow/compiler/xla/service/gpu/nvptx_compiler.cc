@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_fused_mha_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_simplify_padding.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
@@ -200,6 +201,12 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, device_allocator, gpu_target_config,
       autotune_results));
+
+  HloPassPipeline mha_fusion_pipeline(
+      "nvptx cudnn multi-headed attention fusion");
+  // Rewrite Multi-Headed Attention modules to Fused MHA custom-calls.
+  mha_fusion_pipeline.AddPass<CudnnFusedMHARewriter>(cuda_compute_capability);
+  TF_RETURN_IF_ERROR(mha_fusion_pipeline.Run(hlo_module).status());
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
 

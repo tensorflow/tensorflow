@@ -53,6 +53,7 @@ limitations under the License.
 #include "third_party/gpus/cudnn/cudnn.h"
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 #include "absl/strings/string_view.h"
 // clang-format on
@@ -4046,7 +4047,192 @@ GetCudnnFusedMatmulGraph(dnn::DataType input_type, dnn::DataType bias_type,
   return std::make_unique<cudnn_frontend::OperationGraph>(std::move(op_graph));
 }
 
+tsl::StatusOr<std::unique_ptr<cudnn_frontend::OperationGraph>>
+GetCudnnFusedMHASimpleOperationGraph(
+    dnn::FusedMHAKind kind,
+    const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+    const dnn::TensorDescriptor& output_descriptor,
+    std::optional<double> dropout_rate, CudnnHandle& cudnn) {
+  if (kind = dnn::FusedMHAKind::WITH_DROPOUT) {
+    return tsl::errors::Internal(
+        "BMM-Softmax-Dropout-BMM pattern unimplemented.");
+  }
+  if (VLOG_IS_ON(4)) {
+    VLOG(4) << "\n bmm1_lhs(q): " << bmm1_lhs_descriptor.ToString()
+            << "\n bmm1_rhs(k): " << bmm1_rhs_descriptor.ToString()
+            << "\n bmm2_lhs(s): " << intermediate_bmm2_lhs_descriptor.ToString()
+            << "\n bmm2_rhs(v): " << bmm2_rhs_descriptor.ToString()
+            << "\n out(o): " << output_descriptor.ToString();
+  }
+  // cnn_infer needs to be preloaded for fMHA as well. Reusing the function
+  // created for convolution for fMHA.
+  PreloadCudnnSubLibsHelper(dnn::ConvolutionKind::FORWARD);
+
+  // Batched Matmul: bmm1_lhs: tensor_q, bmm1_rhs:tensor_k; output: tensor_s
+  // (virtual)
+  // Batched Matmul: bmm2_lhs: tensor_s, bmm2_rhs:tensor_v; output: tensor_o
+  std::vector<int64_t> bmm1_lhs_dims =
+      bmm1_lhs_descriptor.GetCudnnCompatibleDimensions(true);
+  std::vector<int64_t> bmm1_lhs_strides =
+      bmm1_lhs_descriptor.GetCudnnCompatibleStrides(true);
+
+  VLOG(2) << "\n cuDNN compatible bmm1_lhs_dims: "
+          << absl::StrJoin(bmm1_lhs_dims, ",")
+          << "\n cuDNN compatible bmm1_lhs_strides: "
+          << absl::StrJoin(bmm1_lhs_strides, ",");
+
+  TF_ASSIGN_OR_RETURN(auto tensor_q,
+                      CreateCudnnTensor(bmm1_lhs_dims, bmm1_lhs_strides, 'q',
+                                        bmm1_lhs_descriptor.type(), 1, -1));
+
+  std::vector<int64_t> bmm1_rhs_dims =
+      bmm1_rhs_descriptor.GetCudnnCompatibleDimensions(false);
+  std::vector<int64_t> bmm1_rhs_strides =
+      bmm1_rhs_descriptor.GetCudnnCompatibleStrides(false);
+
+  VLOG(2) << "\n cuDNN compatible bmm1_rhs_dims: "
+          << absl::StrJoin(bmm1_rhs_dims, ",")
+          << "\n cuDNN compatible bmm1_rhs_strides: "
+          << absl::StrJoin(bmm1_rhs_strides, ",");
+
+  TF_ASSIGN_OR_RETURN(auto tensor_k,
+                      CreateCudnnTensor(bmm1_rhs_dims, bmm1_rhs_strides, 'k',
+                                        bmm1_rhs_descriptor.type(), 1, -1));
+
+  std::vector<int64_t> intermediate_bmm2_lhs_dims =
+      intermediate_bmm2_lhs_descriptor.GetCudnnCompatibleDimensions(true);
+  std::vector<int64_t> intermediate_bmm2_lhs_strides =
+      intermediate_bmm2_lhs_descriptor.GetCudnnCompatibleStrides(true);
+
+  VLOG(2) << "\n cuDNN compatible intermediate_bmm2_lhs_dims: "
+          << absl::StrJoin(intermediate_bmm2_lhs_dims, ",")
+          << "\n cuDNN compatible intermediate_bmm2_lhs_strides: "
+          << absl::StrJoin(intermediate_bmm2_lhs_strides, ",");
+
+  TF_ASSIGN_OR_RETURN(auto tensor_s,
+                      CreateCudnnTensor(intermediate_bmm2_lhs_dims,
+                                        intermediate_bmm2_lhs_strides, 's',
+                                        intermediate_bmm2_lhs_descriptor.type(),
+                                        1, -1, /*is_virtual=*/true));
+
+  auto bmm1_desc = cudnn_frontend::MatMulDescBuilder()
+                       .setComputeType(CUDNN_DATA_FLOAT)
+                       .build();
+  RETURN_MSG_IF_CUDNN_ERROR(bmm1_desc);
+  auto bmm1_op = cudnn_frontend::OperationBuilder(
+                     CUDNN_BACKEND_OPERATION_MATMUL_DESCRIPTOR)
+                     .setaMatDesc(tensor_q)
+                     .setbMatDesc(tensor_k)
+                     .setcMatDesc(tensor_s)
+                     .setmatmulDesc(bmm1_desc)
+                     .build();
+  RETURN_MSG_IF_CUDNN_ERROR(bmm1_op);
+  std::vector<int64_t> bmm2_rhs_dims =
+      bmm2_rhs_descriptor.GetCudnnCompatibleDimensions(false);
+  std::vector<int64_t> bmm2_rhs_strides =
+      bmm2_rhs_descriptor.GetCudnnCompatibleStrides(false);
+
+  VLOG(2) << "\n cuDNN compatible bmm2_rhs_dims: "
+          << absl::StrJoin(bmm2_rhs_dims, ",")
+          << "\n cuDNN compatible bmm2_rhs_strides: "
+          << absl::StrJoin(bmm2_rhs_strides, ",");
+
+  TF_ASSIGN_OR_RETURN(auto tensor_v,
+                      CreateCudnnTensor(bmm2_rhs_dims, bmm2_rhs_strides, 'v',
+                                        bmm2_rhs_descriptor.type(), 1, -1));
+
+  std::vector<int64_t> output_dims = output_descriptor.dimensions();
+  std::vector<int64_t> output_strides = output_descriptor.GetLogicalStrides();
+
+  VLOG(2) << "\n Out Dims: " << absl::StrJoin(output_dims, ",")
+          << "\n Out Strides: " << absl::StrJoin(output_strides, ",");
+
+  TF_ASSIGN_OR_RETURN(auto tensor_o,
+                      CreateCudnnTensor(output_dims, output_strides, 'o',
+                                        output_descriptor.type(), 1, -1));
+  auto bmm2_desc = cudnn_frontend::MatMulDescBuilder()
+                       .setComputeType(CUDNN_DATA_FLOAT)
+                       .build();
+  RETURN_MSG_IF_CUDNN_ERROR(bmm2_desc);
+  auto bmm2_op = cudnn_frontend::OperationBuilder(
+                     CUDNN_BACKEND_OPERATION_MATMUL_DESCRIPTOR)
+                     .setaMatDesc(tensor_s)
+                     .setbMatDesc(tensor_v)
+                     .setcMatDesc(tensor_o)
+                     .setmatmulDesc(bmm2_desc)
+                     .build();
+  RETURN_MSG_IF_CUDNN_ERROR(bmm2_op);
+  // Create an Operation Graph. In this case it is gemm-gemm
+  std::array<cudnn_frontend::Operation const*, 2> ops = {&bmm1_op, &bmm2_op};
+  auto op_graph = cudnn_frontend::OperationGraphBuilder()
+                      .setHandle(cudnn.handle())
+                      .setOperationGraph(ops.size(), ops.data())
+                      .build();
+  RETURN_MSG_IF_CUDNN_ERROR(op_graph);
+
+  VLOG(4) << "\nTensor_q: " << tensor_q.describe()
+          << "\nTensor_k: " << tensor_k.describe()
+          << "\nTensor_s: " << tensor_s.describe()
+          << "\nTensor_v: " << tensor_v.describe()
+          << "\nTensor_o: " << tensor_o.describe()
+          << "\nBMM1: " << bmm1_desc.describe()
+          << "\nBMM1_op: " << bmm1_op.describe()
+          << "\nBMM2: " << bmm2_desc.describe()
+          << "\nBMM2_op: " << bmm2_op.describe()
+          << "\nOpGraph: " << op_graph.describe();
+  return std::unique_ptr<cudnn_frontend::OperationGraph>(
+      new cudnn_frontend::OperationGraph(std::move(op_graph)));
+}
+
 }  // namespace
+
+// // This method uses cudnn_frontend::cudnnException which is currently not
+// // recommended for use by Google. Hence commenting out this function until
+// this
+// // gets resolved.
+// static tsl::StatusOr<cudnn_frontend::ExecutionPlan>
+// GetExecPlanFromHeuristics( cudnn_frontend::OperationGraph&& opGraph, const
+// CudnnHandle& cudnn) {
+// #if (CUDNN_VERSION >= 8700)
+//   {
+//     auto heuristics = cudnn_frontend::EngineHeuristicsBuilder()
+//                           .setOperationGraph(opGraph)
+//                           .setHeurMode(CUDNN_HEUR_MODE_INSTANT)
+//                           .build();
+//     if (VLOG_IS_ON(4)) {
+//       VLOG(4) << "Heuristic has " << heuristics.getEngineConfigCount()
+//               << " configurations ";
+//     }
+//     if (heuristics.getEngineConfigCount() == 0) {
+//       return tsl::errors::Internal(
+//           "No engine configurations found for this opGraph and heuristics.");
+//     }
+//     auto& engine_config =
+//         heuristics.getEngineConfig(heuristics.getEngineConfigCount());
+
+//     // Try engine configs returned by the heuristics and pick up the first
+//     one
+//     // that works.
+//     for (auto& ecfg : engine_config) {
+//       try {
+//         auto plan = cudnn_frontend::ExecutionPlanBuilder()
+//                         .setHandle(cudnn.handle())
+//                         .setEngineConfig(ecfg, opGraph.getTag())
+//                         .build();
+//         return plan;
+//       } catch (cudnn_frontend::cudnnException& e) {
+//         continue;
+//       }
+//     }
+//     return tsl::errors::Internal("No Plan found.");
+//   }
+// #else
+//   return tsl::errors::Unimplemented("Supported only for cuDNN >= 8.7.0");
+// #endif
+// }
 
 static tsl::StatusOr<cudnn_frontend::ExecutionPlan> RebuildExecutionPlan(
     const CudnnHandle& cudnn, const dnn::AlgorithmDesc& desc,
@@ -5479,6 +5665,80 @@ bool CudnnSupport::GetConvolveAlgorithms(
   }
 
   return true;
+}
+
+tsl::StatusOr<std::unique_ptr<const dnn::FusedMHASimpleRunner>>
+CudnnSupport::FusedMHASimpleRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::FusedMHAKind kind,
+    const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+    const dnn::TensorDescriptor& output_descriptor,
+    std::optional<double> dropout_rate) {
+#if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
+  auto cudnn = cudnn_->GetHandle(parent_, stream);
+  TF_ASSIGN_OR_RETURN(auto op_graph,
+                      GetCudnnFusedMHASimpleOperationGraph(
+                          kind, bmm1_lhs_descriptor, bmm1_rhs_descriptor,
+                          bmm2_rhs_descriptor, intermediate_bmm2_lhs_descriptor,
+                          output_descriptor, dropout_rate, cudnn));
+  // The function  GetExecPlanFromHeuristics uses cudnn_frontend::cudnnException
+  // which is currently not
+  // recommended for use by Google. Hence commenting out the call to this
+  // function until this gets resolved.
+  // TF_ASSIGN_OR_RETURN(auto execution_plan,
+  //                       GetExecPlanFromHeuristics(std::move(*op_graph),
+  //                       cudnn));
+
+  TF_ASSIGN_OR_RETURN(auto execution_plan,
+                      RebuildExecutionPlan(cudnn, algorithm_desc, *op_graph));
+  TF_ASSIGN_OR_RETURN(
+      auto runner,
+      CudnnExecutionPlanRunner<dnn::FusedMHASimpleSignature>::Create(
+          parent_, cudnn_.get(), std::move(execution_plan),
+          {'q', 'k', 'v', 'o'}, false));
+  return {
+      std::make_unique<CudnnExecutionPlanRunner<dnn::FusedMHASimpleSignature>>(
+          std::move(runner))};
+#else
+  return tsl::errors::Unimplemented(
+      "Cudnn execution plans are only supported with Cudnn >= 8.1.");
+#endif
+}
+
+tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskRunner>>
+CudnnSupport::FusedMHAScaleMaskSoftmaxRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::FusedMHAKind kind,
+    const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+    const dnn::TensorDescriptor& output_descriptor,
+    const dnn::TensorDescriptor& mask_descriptor, double scale,
+    std::optional<double> dropout_rate) {
+  return tsl::errors::Unimplemented(
+      "FusedMHAScaleMaskSoftmaxRunnerFromDesc not yet implemented. To be "
+      "implemented");
+}
+
+tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABiasMaskRunner>>
+CudnnSupport::FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::FusedMHAKind kind,
+    const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+    const dnn::TensorDescriptor& output_descriptor,
+    const dnn::TensorDescriptor& mask_descriptor,
+    const dnn::TensorDescriptor& bias_descriptor, double scale,
+    std::optional<double> dropout_rate) {
+  return tsl::errors::Unimplemented(
+      "FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc not yet implemented. To be "
+      "implemented");
 }
 
 bool CudnnSupport::GetRnnAlgorithms(

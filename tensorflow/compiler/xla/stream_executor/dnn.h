@@ -152,6 +152,75 @@ enum class RnnDirectionMode {
 // DepthToSpace comment for more information.
 enum class DepthToSpaceLayout { DepthHeightWidth };
 
+class TensorDescriptor {
+ public:
+  TensorDescriptor() {}
+  tsl::StatusOr<std::vector<int64_t>> GetPhysicalDimensionsMajorToMinor() const;
+  std::vector<int64_t> GetPhysicalStridesMajorToMinor() const;
+  std::vector<int64_t> GetLogicalStrides() const;
+
+  static TensorDescriptor For(DataType type,
+                              absl::Span<const int64_t> dimensions,
+                              absl::Span<const int64_t> minor_to_major);
+  int ndims() const;
+  std::vector<int64_t> dimensions() const { return dimensions_; }
+  std::vector<int64_t> minor_to_major() const { return minor_to_major_; }
+  DataType type() const { return d_type_; }
+  const std::string ToString() const;
+
+ protected:
+  TensorDescriptor(DataType type, std::vector<int64_t> dimensions,
+                   std::vector<int64_t> minor_to_major)
+      : d_type_(type),
+        dimensions_(dimensions),
+        minor_to_major_(minor_to_major) {}
+
+ private:
+  DataType d_type_;
+  std::vector<int64_t> dimensions_;
+  std::vector<int64_t> minor_to_major_;
+};
+
+class MatmulTensorDescriptor {
+ public:
+  MatmulTensorDescriptor() {}
+  tsl::StatusOr<std::vector<int64_t>> GetNonContractingDims() const;
+  std::vector<int64_t> GetCudnnCompatibleDimensions(
+      bool is_lhs
+      /*if not lhs, then rhs*/) const;
+  std::vector<int64_t> GetCudnnCompatibleStrides(
+      bool is_lhs
+      /*if not lhs, then rhs*/) const;
+  tsl::StatusOr<std::vector<int64_t>> MakeCudnnCompatible(
+      const std::vector<int64_t>&, bool is_lhs) const;
+
+  static MatmulTensorDescriptor For(DataType type,
+                                    absl::Span<const int64_t> dimensions,
+                                    absl::Span<const int64_t> minor_to_major,
+                                    absl::Span<const int64_t> batch_dims,
+                                    absl::Span<const int64_t> contracting_dims);
+  std::vector<int64_t> dimensions() const { return tensor_.dimensions(); }
+  std::vector<int64_t> minor_to_major() const {
+    return tensor_.minor_to_major();
+  }
+  DataType type() const { return tensor_.type(); }
+
+  const std::string ToString() const;
+
+ protected:
+  MatmulTensorDescriptor(TensorDescriptor tensor,
+                         std::vector<int64_t> batch_dims,
+                         std::vector<int64_t> contracting_dims)
+      : tensor_(tensor),
+        batch_dimension_numbers_(batch_dims),
+        contracting_dim_(contracting_dims) {}
+
+ private:
+  TensorDescriptor tensor_;
+  std::vector<int64_t> batch_dimension_numbers_;
+  std::vector<int64_t> contracting_dim_;
+};
+
 // Specifies the descriptor for a RNN model.
 //
 // An example use case:
@@ -912,6 +981,27 @@ using FusedMatmulSignature = void(DeviceMemoryBase /* a_data */,
                                   DeviceMemoryBase /* c_data */);
 using FusedMatmulRunner = OpRunner<FusedMatmulSignature>;
 
+using FusedMHASimpleSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
+                                     DeviceMemoryBase /* BMM1_inputB_data */,
+                                     DeviceMemoryBase /* BMM2_inputA_data */,
+                                     DeviceMemoryBase /* output_data */);
+using FusedMHASimpleRunner = OpRunner<FusedMHASimpleSignature>;
+
+using FusedMHAMaskSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
+                                   DeviceMemoryBase /* BMM1_inputB_data */,
+                                   DeviceMemoryBase /* mask_data */,
+                                   DeviceMemoryBase /* BMM2_inputA_data */,
+                                   DeviceMemoryBase /* output_data */);
+using FusedMHAMaskRunner = OpRunner<FusedMHAMaskSignature>;
+
+using FusedMHABiasMaskSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
+                                       DeviceMemoryBase /* BMM1_inputB_data */,
+                                       DeviceMemoryBase /* mask_data */,
+                                       DeviceMemoryBase /* bias_data */,
+                                       DeviceMemoryBase /* BMM2_inputA_data */,
+                                       DeviceMemoryBase /* output_data */);
+using FusedMHABiasMaskRunner = OpRunner<FusedMHABiasMaskSignature>;
+
 // Describes the configuration for the algorithms that will used.
 //
 // Arguments:
@@ -1535,6 +1625,42 @@ class DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::ActivationMode activation_mode);
+
+  virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedMHASimpleRunner>>
+  FusedMHASimpleRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+      const dnn::TensorDescriptor& output_descriptor,
+      std::optional<double> dropout_rate);
+
+  virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskRunner>>
+  FusedMHAScaleMaskSoftmaxRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+      const dnn::TensorDescriptor& output_descriptor,
+      const dnn::TensorDescriptor& mask_descriptor, double scale,
+      std::optional<double> dropout_rate);
+
+  virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABiasMaskRunner>>
+  FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+      const dnn::TensorDescriptor& output_descriptor,
+      const dnn::TensorDescriptor& mask_descriptor,
+      const dnn::TensorDescriptor& bias_descriptor, double scale,
+      std::optional<double> dropout_rate);
 
   virtual bool GetMIOpenConvolveAlgorithms(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,

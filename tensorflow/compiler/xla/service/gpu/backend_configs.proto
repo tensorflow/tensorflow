@@ -88,3 +88,22 @@ message BitcastBackendConfig {
   LayoutProto source_layout = 1;
   LayoutProto result_layout = 2;
 }
+
+// Backend config for a fused Multi-Headed Attention (fMHA) that runs through
+// cudnn.
+message CudnnfMHABackendConfig {
+  // Opaque algorithm number and tuning knobs chosen for this fMHA.
+  stream_executor.dnn.AlgorithmProto algorithm = 8;
+
+  // The scaling factor multiplied with the BMM1 result. fmha_scale is 0 if the
+  // MHA pattern has no scaling.
+  double fmha_scale = 10;
+
+  // Dropout factor in MHA
+  double dropout_rate = 13;
+
+  xla.DotDimensionNumbers bmm1_dot_dimension_numbers = 11;
+  xla.DotDimensionNumbers bmm2_dot_dimension_numbers = 12;
+
+  xla.ShapeProto intermediate_tensor_shape = 14;
+}

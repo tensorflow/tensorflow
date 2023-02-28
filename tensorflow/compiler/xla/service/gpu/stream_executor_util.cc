@@ -489,6 +489,21 @@ StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
   return InternalError("Unexpected convolution kind");
 }
 
+StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
+    CudnnfMHAKind kind) {
+  switch (kind) {
+    case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
+    case CudnnfMHAKind::kScaleMaskSoftmaxDropout:
+    case CudnnfMHAKind::kSoftmaxDropout:
+      return se::dnn::FusedMHAKind::WITH_DROPOUT;
+    case CudnnfMHAKind::kBmmBmm:
+    case CudnnfMHAKind::kScaleBiasMaskSoftmax:
+    case CudnnfMHAKind::kScaleMaskSoftmax:
+      return se::dnn::FusedMHAKind::WITHOUT_DROPOUT;
+  }
+  return InternalError("Unexpected fMHA kind");
+}
+
 StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
     PrimitiveType type) {
   switch (type) {

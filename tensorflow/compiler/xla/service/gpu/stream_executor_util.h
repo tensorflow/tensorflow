@@ -101,6 +101,10 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
 
 StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
     CudnnConvKind kind);
+
+StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
+    CudnnfMHAKind kind);
+
 StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(PrimitiveType type);
 
 // Returns result with the smallest time which has not failed.
