@@ -21,6 +21,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import clip_ops
 # Imports gradient definitions.
 from tensorflow.python.ops import data_flow_grad  # pylint: disable=unused-import
@@ -184,7 +185,7 @@ def _embedding_lookup_and_transform(params,
               with _colocate_with(params[p]):
                 dim_0_sizes.append(array_ops.shape(params[p])[0])
           num_total_ids = math_ops.reduce_sum(
-              math_ops.cast(array_ops.stack(dim_0_sizes), flat_ids.dtype))
+              math_ops.cast(array_ops_stack.stack(dim_0_sizes), flat_ids.dtype))
         ids_per_partition = num_total_ids // np
         extras = num_total_ids % np
 
@@ -932,7 +933,7 @@ def safe_embedding_lookup_sparse(embedding_weights,
       # for use in Select.
       is_row_empty = array_ops.tile(
           array_ops.reshape(is_row_empty, [-1, 1]),
-          array_ops.stack([1, array_ops.shape(result)[1]]))
+          array_ops_stack.stack([1, array_ops.shape(result)[1]]))
 
       result = array_ops.where(
           is_row_empty, array_ops.zeros_like(result), result, name=scope)
