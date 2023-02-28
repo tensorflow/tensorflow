@@ -737,7 +737,7 @@ class QuantizeFunctionPattern
         FunctionType::get(getContext(), TypeRange{ValueRange{args}},
                           new_quantized_func.getResultTypes()));
     for (auto [partitioned_call_arg, new_quantized_func_arg] :
-         llvm::zip_first(args, new_quantized_func.getArguments())) {
+         llvm::zip_equal(args, new_quantized_func.getArguments())) {
       new_quantized_func_arg.setType(partitioned_call_arg.getType());
     }
 
