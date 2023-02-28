@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -92,6 +93,18 @@ void VerifyGraphsMatch(const GraphDef& original_graph,
     for (int j = 0; j < original.input_size(); ++j) {
       EXPECT_EQ(original.input(j), optimized.input(j)) << line;
     }
+  }
+}
+
+void VerifyTensorContent(const TensorProto& proto,
+                         const string& expected_content) {
+  if (port::kLittleEndian) {
+    EXPECT_EQ(proto.tensor_content(), expected_content);
+  } else {
+    TensorProto protoCopy;
+    protoCopy.CopyFrom(proto);
+    TF_EXPECT_OK(ByteSwapTensorProto(&protoCopy));
+    EXPECT_EQ(protoCopy.tensor_content(), expected_content);
   }
 }
 }  // namespace
@@ -716,8 +729,8 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsSimple) {
   ASSERT_NE(new_const, nullptr);
   ASSERT_EQ(new_const->input_size(), 1);
   EXPECT_EQ(new_const->input(0), "^x");
-  EXPECT_EQ(new_const->attr().at("value").tensor().tensor_content(),
-            string("\0\0\0@", 4));
+  VerifyTensorContent(new_const->attr().at("value").tensor(),
+                      string("\0\0\0@", 4));
 
   const NodeDef* new_mul = node_map.GetNode(optimized_mul_name);
   ASSERT_NE(new_mul, nullptr);
@@ -763,8 +776,8 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsSimpleWithControlDep) {
   ASSERT_NE(new_const, nullptr);
   ASSERT_EQ(new_const->input_size(), 1);
   EXPECT_EQ(new_const->input(0), "^x");
-  EXPECT_EQ(new_const->attr().at("value").tensor().tensor_content(),
-            string("\0\0\0@", 4));
+  VerifyTensorContent(new_const->attr().at("value").tensor(),
+                      string("\0\0\0@", 4));
 
   const NodeDef* new_mul = node_map.GetNode(optimized_mul_name);
   ASSERT_NE(new_mul, nullptr);
