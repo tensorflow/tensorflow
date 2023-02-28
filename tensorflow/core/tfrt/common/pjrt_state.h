@@ -18,6 +18,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/types.h"
@@ -43,6 +44,9 @@ class PjRtState : public ResourceBase {
   explicit PjRtState() {}
   absl::Mutex mu_;
   PjRtClientsMap clients_ ABSL_GUARDED_BY(mu_);
+  // Store the PJRT clients that are no longer used to guarantee that PJRT
+  // clients outlive PJRT buffers.
+  std::vector<std::unique_ptr<xla::PjRtClient>> unused_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow
