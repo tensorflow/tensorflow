@@ -102,8 +102,9 @@ void OpSegment::RemoveHold(const string& session_handle) {
 
 bool OpSegment::ShouldOwnKernel(FunctionLibraryRuntime* lib,
                                 const string& node_op) {
-  // OpSegment should not own kernel if the node is stateless, or a function.
-  return lib->IsStateful(node_op) &&
+  // OpSegment should not own kernel if the node is stateless, or a function, or
+  // it's not a Const Op.
+  return (lib->IsStateful(node_op) || node_op == "Const") &&
          lib->GetFunctionLibraryDefinition()->Find(node_op) == nullptr &&
          node_op != "PartitionedCall" && node_op != "StatefulPartitionedCall";
 }

@@ -1496,12 +1496,13 @@ Status DirectSession::CreateExecutors(
       }
       item->flib = lib;
 
+      int const_stream_idx(0);
       LocalExecutorParams params;
       params.device = device_mgr_->LookupStream(device, executor_index);
       params.session_metadata = session_metadata;
       params.function_library = lib;
       params.create_kernel =
-          [this, lib, opseg](
+          [this, lib, opseg, &const_stream_idx, stream_num, &stream_libs](
               const std::shared_ptr<const NodeProperties>& props,
               OpKernel** kernel) {
             // NOTE(mrry): We must not share function kernels (implemented
@@ -1511,8 +1512,15 @@ Status DirectSession::CreateExecutors(
             if (!OpSegment::ShouldOwnKernel(lib, props->node_def.op())) {
               return lib->CreateKernel(props, kernel);
             }
-            auto create_fn = [lib, &props](OpKernel** kernel) {
-              return lib->CreateKernel(props, kernel);
+            auto create_fn = [lib, &props, &const_stream_idx, stream_num,
+                              &stream_libs](OpKernel** kernel) {
+              if (props->node_def.op() == "Const") {
+                const_stream_idx = (++const_stream_idx) % stream_num;
+                return stream_libs[const_stream_idx]->CreateKernel(props,
+                                                                   kernel);
+              } else {
+                return lib->CreateKernel(props, kernel);
+              }
             };
             // Kernels created for subgraph nodes need to be cached.  On
             // cache miss, create_fn() is invoked to create a kernel based
