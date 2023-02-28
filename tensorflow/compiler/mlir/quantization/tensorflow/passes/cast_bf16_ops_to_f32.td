@@ -147,3 +147,18 @@ def CastBFloat16DepthwiseConvToFloat32 : Pat<
   [(IsBF16ElementType $input),
    (IsBF16ElementType $filter)],
   (addBenefit 1)>;
+
+def CastBFloat16GatherToFloat32 : Pat<
+  (TF_GatherV2Op:$res
+    $params, $indices, $axis, $batch_dims),
+  (TF_CastOp
+    (TF_GatherV2Op
+      (TF_CastOp
+        $params, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $params))),
+      $indices, $axis, $batch_dims,
+      (returnType (CloneTypeWithF32ElementType $res))),
+    /*truncate=*/ConstBoolAttrFalse),
+  [(IsBF16ElementType $params),
+    (IsConstTensor $params)],
+  (addBenefit 1)>;
