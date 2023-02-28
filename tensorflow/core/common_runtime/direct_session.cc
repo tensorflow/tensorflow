@@ -577,9 +577,13 @@ Status DirectSession::RunInternal(
 
   // Decide the best stream group for each GPU device (Get device2stream map)
   std::unordered_map<Device*, int32> stream_group_map;
+  int max_stream_group_idx(-1);
   for (const auto& item : executors_and_keys->items) {
     if (stream_group_map.find(item.device) == stream_group_map.end()) {
       int stream_group_idx = device_mgr_->RequireStreamGroup(item.device);
+      if (stream_group_idx > max_stream_group_idx) {
+        max_stream_group_idx = stream_group_idx;
+      }
       stream_group_map.insert(std::make_pair(
           item.device, stream_group_idx));  // CPU device will return 0
     }
@@ -605,6 +609,8 @@ Status DirectSession::RunInternal(
     threadpool_wrapper = std::make_unique<thread::ThreadPool>(
         threadpool_options.inter_op_threadpool);
     pool = threadpool_wrapper.get();
+  } else if (max_stream_group_idx >= 0) {
+    pool = thread_pools_[max_stream_group_idx % thread_pools_.size()].first;
   } else {
     if (run_options.inter_op_thread_pool() < -1 ||
         run_options.inter_op_thread_pool() >=
@@ -1400,7 +1406,8 @@ Status DirectSession::CreateExecutors(
         absl::make_unique<ProcessFunctionLibraryRuntime>(
             device_mgr_.get(), options_.env, &options_.config,
             graph_def_version, func_info->flib_def.get(), optimizer_opts,
-            thread_pools_[0].first, nullptr, session_metadata,
+            thread_pools_[executor_index % thread_pools_.size()].first, nullptr,
+            session_metadata,
             Rendezvous::Factory{
                 [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
                   *r = new IntraProcessRendezvous(device_mgr);
