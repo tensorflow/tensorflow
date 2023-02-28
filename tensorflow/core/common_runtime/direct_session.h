@@ -206,6 +206,7 @@ class DirectSession : public Session {
     std::unique_ptr<StepStatsCollector> collector;
     TensorStore tensor_store;
     ScopedStepContainer step_container;
+    TensorHolder tensor_holder;
 
     RunState(int64_t step_id, const std::vector<Device*>* devices);
   };

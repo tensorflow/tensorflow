@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/tracking_allocator.h"
@@ -560,6 +561,17 @@ struct GraphCollector {
   }
 };
 
+class TensorHolder {
+ public:
+  ~TensorHolder();
+  void AddTensor(const Tensor& tensor);
+
+ private:
+  // The tensors that will be released at cancellation.
+  mutex lock_;
+  std::vector<std::unique_ptr<TensorReference>> tensors_ GUARDED_BY(lock_);
+};
+
 class OpKernelContext {
  public:
   // The first element of a WrappedAllocator is a "base" Allocator and
@@ -693,6 +705,8 @@ class OpKernelContext {
 
     // For access to distributed coordination service.
     tsl::CoordinationServiceAgent* coordination_service_agent = nullptr;
+
+    TensorHolder* tensor_holder = nullptr;
   };
 
   // params must outlive the OpKernelContext.
@@ -716,6 +730,8 @@ class OpKernelContext {
   const absl::optional<ManagedStackTrace>& stack_trace() const {
     return params_->stack_trace;
   }
+
+  TensorHolder* tensor_holder() const { return params_->tensor_holder; }
 
   // Input/output signature.
 

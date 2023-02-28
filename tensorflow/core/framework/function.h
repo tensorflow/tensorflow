@@ -908,6 +908,8 @@ class FunctionLibraryRuntime {
     // If not null, use this thread pool for intra op scheduling.
     thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr;
 
+    TensorHolder* tensor_holder = nullptr;
+
     // Returns a human readable representation of this.
     std::string DebugString() const;
   };

@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/util.h"
 
 // IMPLEMENTATION NOTE:
@@ -282,15 +283,26 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
     return;
   }
 
-  auto send_device_to_host_stream =
-      static_cast<const GPUDeviceContext*>(device_context)
-          ->device_to_host_stream();
-  if (send_device_to_host_stream == nullptr) {
-    done(errors::Internal("No send gpu copy-out-stream is available."));
-    return;
+  static const auto gpu_stream_merge = [] {
+    bool gpu_stream_merge;
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_GPU_STREAM_MERGE",
+                                   /*default_val=*/false, &gpu_stream_merge));
+    return gpu_stream_merge;
+  }();
+  se::Stream* send_device_to_host_stream = nullptr;
+  if (gpu_stream_merge) {
+    send_device_to_host_stream = send_stream;
+  } else {
+    send_device_to_host_stream =
+        static_cast<const GPUDeviceContext*>(device_context)
+            ->device_to_host_stream();
+    if (send_device_to_host_stream == nullptr) {
+      done(errors::Internal("No send gpu copy-out-stream is available."));
+      return;
+    }
+    // Wait for the sender's main stream to make sure the data are available.
+    send_device_to_host_stream->ThenWaitFor(send_stream);
   }
-  // Wait for the sender's main stream to make sure the data are available.
-  send_device_to_host_stream->ThenWaitFor(send_stream);
 
   const int64_t total_bytes = gpu_tensor->TotalBytes();
   if (total_bytes > 0) {
@@ -316,7 +328,8 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
 void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
                                  const DeviceContext* device_context,
                                  Device* gpu_device, Tensor* gpu_tensor,
-                                 StatusCallback done, bool sync_dst_compute) {
+                                 StatusCallback done, bool sync_dst_compute,
+                                 bool sync_dst_recv) {
   VLOG(1) << "CopyCPUTensorToGPU";
   const DeviceBase::AcceleratorDeviceInfo* dev_info = nullptr;
   se::Stream* recv_stream = nullptr;
@@ -327,16 +340,27 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
     return;
   }
 
-  auto recv_host_to_device_stream =
-      static_cast<const GPUDeviceContext*>(device_context)
-          ->host_to_device_stream();
-  if (recv_host_to_device_stream == nullptr) {
-    done(errors::Internal("No send gpu copy-out-stream is available."));
-    return;
-  }
-  // Wait for the recv-stream to make sure the buffer is truly available.
-  if (sync_dst_compute) {
-    recv_host_to_device_stream->ThenWaitFor(recv_stream);
+  static const auto gpu_stream_merge = [] {
+    bool gpu_stream_merge;
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_GPU_STREAM_MERGE",
+                                   /*default_val=*/false, &gpu_stream_merge));
+    return gpu_stream_merge;
+  }();
+  se::Stream* recv_host_to_device_stream = nullptr;
+  if (gpu_stream_merge) {
+    recv_host_to_device_stream = recv_stream;
+  } else {
+    recv_host_to_device_stream =
+        static_cast<const GPUDeviceContext*>(device_context)
+            ->host_to_device_stream();
+    if (recv_host_to_device_stream == nullptr) {
+      done(errors::Internal("No send gpu copy-out-stream is available."));
+      return;
+    }
+    // Wait for the recv-stream to make sure the buffer is truly available.
+    if (sync_dst_compute) {
+      recv_host_to_device_stream->ThenWaitFor(recv_stream);
+    }
   }
 
   const int64_t total_bytes = cpu_tensor->TotalBytes();
@@ -378,20 +402,25 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
     }
   }
 
-  dev_info->event_mgr->ThenExecute(
-      recv_host_to_device_stream,
-      [recv_host_to_device_stream, done, input_ref, do_staging, staging_buffer,
-       host_memory_allocator]() {
-        if (do_staging) {
-          host_memory_allocator->DeallocateRaw(staging_buffer);
-        } else {
-          input_ref.Unref();
-        }
-        if (!recv_host_to_device_stream->ok()) {
-          LOG(FATAL) << "CPU->GPU Memcpy failed";
-        }
-        done(OkStatus());
-      });
+  if (gpu_stream_merge && !sync_dst_recv && !do_staging) {
+    input_ref.Unref();
+    done(OkStatus());
+  } else {
+    dev_info->event_mgr->ThenExecute(
+        recv_host_to_device_stream,
+        [recv_host_to_device_stream, done, input_ref, do_staging,
+         staging_buffer, host_memory_allocator]() {
+          if (do_staging) {
+            host_memory_allocator->DeallocateRaw(staging_buffer);
+          } else {
+            input_ref.Unref();
+          }
+          if (!recv_host_to_device_stream->ok()) {
+            LOG(FATAL) << "CPU->GPU Memcpy failed";
+          }
+          done(OkStatus());
+        });
+  }
 }
 
 Status GPUUtil::Sync(Device* gpu_device) {

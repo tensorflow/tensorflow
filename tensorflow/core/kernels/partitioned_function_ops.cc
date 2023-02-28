@@ -255,6 +255,7 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
   if (shared_rendezvous_) {
     run_opts.rendezvous = ctx->rendezvous();
   }
+  run_opts.tensor_holder = ctx->tensor_holder();
 
   std::vector<Tensor>* rets = new std::vector<Tensor>;
   const string& func_name = func_->name();
