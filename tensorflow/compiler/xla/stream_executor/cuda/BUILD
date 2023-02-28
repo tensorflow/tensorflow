@@ -114,6 +114,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:static_threadlocal",
+        "//tensorflow/tsl/util:env_var",
     ] + tf_additional_cuda_driver_deps()) + select({
         # include dynamic loading implementation only when if_cuda_is_configured and build dynamically
         "//tensorflow/tsl:is_cuda_enabled_and_oss": ["cudart_stub"],

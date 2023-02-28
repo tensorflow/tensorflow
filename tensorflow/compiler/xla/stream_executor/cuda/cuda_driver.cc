@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/stacktrace.h"
 #include "tensorflow/tsl/platform/static_threadlocal.h"
 #include "tensorflow/tsl/platform/threadpool.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
 bool FLAGS_gpuexec_cuda_sync_around_driver_calls = false;
@@ -74,6 +75,7 @@ namespace gpu {
 
 /* static */ absl::Mutex CreatedContexts::mu_{absl::kConstInit};
 /* static */ int64_t CreatedContexts::next_id_ = 1;  // 0 means "no context"
+static std::unordered_map<CUcontext, CUdevice> primary_ctx_used_;
 
 namespace {
 
@@ -357,31 +359,33 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
 
   former_context = cuda::CurrentContextOrDie();
   res = cuDevicePrimaryCtxRetain(&new_context, device);
-  if (former_context != nullptr) {
-    CUdevice former_device;
-    if (cuCtxGetDevice(&former_device) == CUDA_SUCCESS) {
-      if (former_device == device) {
-        if (former_context == new_context) {
-          VLOG(2) << "The primary context " << former_context << " for device "
-                  << device
-                  << " exists before initializing the StreamExecutor.";
-        } else {
-          LOG(WARNING) << "A non-primary context " << former_context
-                       << " for device " << device
-                       << " exists before initializing the StreamExecutor. The "
-                       << "primary context is now " << new_context << ". We "
-                       << "haven't verified StreamExecutor works with that.";
-        }
-      }
-    } else {
-      LOG(ERROR) << "Failed to get the device of the current context "
-                 << former_context;
-    }
+  std::vector<int64_t> gpu_context_count;
+  TF_CHECK_OK(tsl::ReadInt64sFromEnvVar("TF_GPU_CONTEXT_COUNT",
+                                        /*default_val=*/1, &gpu_context_count));
+  int stream_idx = device_ordinal >> 16;
+  int device_idx = device_ordinal & (0xffff);
+  int64_t context_count = gpu_context_count.size() > 1
+                              ? gpu_context_count[device_idx]
+                              : gpu_context_count[0];
+  int context_idx = stream_idx % context_count;
+  if (CreatedContexts::OrdinalHas(device_idx, context_idx)) {
+    new_context = CreatedContexts::OrdinalGet(device_idx, context_idx);
+    VLOG(1) << "Device " << device << " stream " << stream_idx
+            << " use created context " << new_context;
+  } else if (primary_ctx_used_.find(new_context) == primary_ctx_used_.end()) {
+    // don't create, use primary context
+    VLOG(1) << "No context for device " << device << " stream " << stream_idx
+            << ", use cuDevicePrimaryCtxRetain context " << new_context;
+    primary_ctx_used_.insert(std::make_pair(new_context, device));
+  } else {
+    CHECK_EQ(CUDA_SUCCESS, cuCtxCreate(&new_context, flags, device));
+    VLOG(1) << "No context for device " << device << " stream " << stream_idx
+            << ", cuCtxCreate context " << new_context;
   }
   CHECK_EQ(CUDA_SUCCESS, cuCtxSetCurrent(former_context));
 
   if (res == CUDA_SUCCESS) {
-    *context = CreatedContexts::Add(new_context, device_ordinal);
+    *context = CreatedContexts::Add(new_context, device_idx, context_idx);
     CHECK(*context != nullptr)
         << "success in this call must entail non-null result";
     VLOG(2) << "created or reused context " << new_context
@@ -413,7 +417,19 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   cuCtxGetDevice(&device);
   cuCtxSetCurrent(former_context);
 
-  res = cuDevicePrimaryCtxRelease(device);
+  bool is_primary_ctx(false);
+  for (auto iter = primary_ctx_used_.begin(); iter != primary_ctx_used_.end();
+       ++iter) {
+    if (iter->second == device) {
+      res = cuDevicePrimaryCtxRelease(device);
+      primary_ctx_used_.erase(iter);
+      is_primary_ctx = true;
+      break;
+    }
+  }
+  if (!is_primary_ctx) {
+    res = cuCtxDestroy(context->context());
+  }
 
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to release CUDA context; leaking: " << ToString(res);

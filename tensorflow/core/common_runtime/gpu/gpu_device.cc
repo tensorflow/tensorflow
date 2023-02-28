@@ -1090,6 +1090,18 @@ int64_t MinSystemMemory(int64_t available_memory, int cc_major) {
   return min_system_memory;
 }
 
+int64 ContextMinSystemMemory(int64 available_memory, int cc_major,
+                             tsl::PlatformDeviceId platform_device_id) {
+  std::vector<int64> gpu_context_count;
+  TF_CHECK_OK(tensorflow::ReadInt64sFromEnvVar("TF_GPU_CONTEXT_COUNT",
+                                               /*default_val=*/1,
+                                               &gpu_context_count));
+  int64 context_count = gpu_context_count.size() > 1
+                            ? gpu_context_count[platform_device_id.value()]
+                            : gpu_context_count[0];
+  return context_count * MinSystemMemory(available_memory, cc_major);
+}
+
 // Get the memory limit for the virtual device being created on GPU with
 // 'platform_device_id', when that virtual device is the only virtual device
 // being created on that GPU.
@@ -1122,7 +1134,7 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
   if (per_process_gpu_memory_fraction == 0) {
     allocated_memory = available_memory;
     const int64_t min_system_memory =
-        MinSystemMemory(available_memory, cc.major);
+        ContextMinSystemMemory(available_memory, cc.major, platform_device_id);
     if (min_system_memory < allocated_memory) {
       allocated_memory -= min_system_memory;
     }

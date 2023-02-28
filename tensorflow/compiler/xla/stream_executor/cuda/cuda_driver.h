@@ -75,8 +75,22 @@ class CreatedContexts {
     return Live()->find(context) != Live()->end();
   }
 
+  // Returns whether device ordinal is a member of the live ordinal set.
+  static bool OrdinalHas(int ordinal, int context_idx) {
+    absl::ReaderMutexLock lock(&mu_);
+    return ((LiveOrdinal()->find(ordinal) != LiveOrdinal()->end()) &&
+            ((*LiveOrdinal())[ordinal].size() > context_idx) &&
+            ((*LiveOrdinal())[ordinal][context_idx] != nullptr));
+  }
+
+  static CUcontext OrdinalGet(int ordinal, int context_idx) {
+    absl::ReaderMutexLock lock(&mu_);
+    return (*LiveOrdinal())[ordinal][context_idx];
+  }
+
   // Adds context to the live set, or returns it if it's already present.
-  static GpuContext* Add(CUcontext context, int device_ordinal) {
+  static GpuContext* Add(CUcontext context, int device_ordinal,
+                         int context_idx) {
     CHECK(context != nullptr);
     absl::MutexLock lock(&mu_);
 
@@ -85,7 +99,11 @@ class CreatedContexts {
     if (insert_result.second) {
       // context was not present in the map.  Add it.
       it->second = std::make_unique<GpuContext>(context, next_id_++);
-      (*LiveOrdinal())[device_ordinal].push_back(context);
+      auto& ctx_vec = (*LiveOrdinal())[device_ordinal];
+      if (ctx_vec.size() <= context_idx) {
+        ctx_vec.resize(context_idx + 1);
+      }
+      ctx_vec[context_idx] = context;
     }
     return it->second.get();
   }
@@ -111,19 +129,27 @@ class CreatedContexts {
 
   // Return the context associated to that ptr.
   static CUcontext GetAnyContext(void* ptr) {
-    absl::ReaderMutexLock lock(&mu_);
-    int device_ordinal;
-    CUresult result = cuPointerGetAttribute(static_cast<void*>(&device_ordinal),
-                                            CU_POINTER_ATTRIBUTE_DEVICE_ORDINAL,
-                                            reinterpret_cast<CUdeviceptr>(ptr));
+    static const auto use_cuda_malloc_async = [] {
+      const char* allocator_env = std::getenv("TF_GPU_ALLOCATOR");
+      auto result = allocator_env != nullptr &&
+                std::strcmp(allocator_env, "cuda_malloc_async") == 0;
+#if CUDA_VERSION >= 11020
+      return result;
+#else
+      return false;
+#endif
+    }();
+    if (use_cuda_malloc_async) { return nullptr; }
+    CUcontext context;
+    CUresult result =
+        cuPointerGetAttribute(&context, CU_POINTER_ATTRIBUTE_CONTEXT,
+                              reinterpret_cast<CUdeviceptr>(ptr));
     if (result != CUDA_SUCCESS) {
-      LOG(FATAL) << "Not able to get the device_ordinal for ptr: " << ptr
+      LOG(FATAL) << "Not able to get the CUDA context for ptr: " << ptr
                  << ". Error: " << ToString(result);
     }
-    CHECK_EQ(LiveOrdinal()->count(device_ordinal), 1);
-    CHECK(!LiveOrdinal()->at(device_ordinal).empty())
-        << "Need at least one context.";
-    return LiveOrdinal()->at(device_ordinal)[0];
+    CHECK(Has(context));
+    return context;
   }
 
  private:
