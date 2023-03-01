@@ -75,24 +75,28 @@ LogicalResult rewriteVectorContract(MLIRContext* ctx, FuncOp funcOp) {
 }
 
 // Rewrite `vector.transpose` into vector.shuffle ops.
-LogicalResult rewriteVectorTranspose(MLIRContext* ctx, FuncOp funcOp) {
-  // Options for controlling specialized AVX2 lowerings. These lowerings may
-  // either use intrin or inline_asm depending on needs. So they won't work for
-  // SSE.
-  auto avxLoweringOptions =
-      x86vector::avx2::LoweringOptions().setTransposeOptions(
-          x86vector::avx2::TransposeLoweringOptions()
-              .lower4x8xf32()
-              .lower8x8xf32());
-
+LogicalResult rewriteVectorTranspose(MLIRContext* ctx, Operation* funcOp,
+                                     bool enableAVX2) {
   RewritePatternSet patterns(ctx);
   vector::VectorTransformsOptions vectorTransformOptions;
   vectorTransformOptions = vectorTransformOptions.setVectorTransposeLowering(
       vector::VectorTransposeLowering::EltWise);
   vector::populateVectorTransposeLoweringPatterns(patterns,
                                                   vectorTransformOptions);
-  x86vector::avx2::populateSpecializedTransposeLoweringPatterns(
-      patterns, avxLoweringOptions, /*benefit=*/10);
+
+  if (enableAVX2) {
+    // Options for controlling specialized AVX2 lowerings. These lowerings may
+    // either use intrin or inline_asm depending on needs. So they won't work
+    // for SSE.
+    auto avxLoweringOptions =
+        x86vector::avx2::LoweringOptions().setTransposeOptions(
+            x86vector::avx2::TransposeLoweringOptions()
+                .lower4x8xf32()
+                .lower8x8xf32());
+
+    x86vector::avx2::populateSpecializedTransposeLoweringPatterns(
+        patterns, avxLoweringOptions, /*benefit=*/10);
+  }
 
   return applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
 }
@@ -232,14 +236,15 @@ LogicalResult lowerVectorOpsToSCF(MLIRContext* ctx, FuncOp funcOp) {
 }
 
 struct LowerVectorsPass : public impl::LowerVectorsPassBase<LowerVectorsPass> {
-  LowerVectorsPass() = default;
+  using Base::Base;
 
   void runOnOperation() override {
     func::FuncOp funcOp = getOperation();
     MLIRContext* ctx = &getContext();
 
     if (failed(rewriteVectorContract(ctx, funcOp))) signalPassFailure();
-    if (failed(rewriteVectorTranspose(ctx, funcOp))) signalPassFailure();
+    if (failed(rewriteVectorTranspose(ctx, funcOp, enableAVX2)))
+      signalPassFailure();
     if (failed(rewriteVectorReductionsND(ctx, funcOp))) signalPassFailure();
     if (failed(rewriteVectorReductions1D(ctx, funcOp))) signalPassFailure();
     if (failed(optimizeVectorTransfers(ctx, funcOp))) signalPassFailure();
@@ -248,8 +253,11 @@ struct LowerVectorsPass : public impl::LowerVectorsPassBase<LowerVectorsPass> {
 };
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorsPass() {
-  return std::make_unique<LowerVectorsPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorsPass(
+    bool enableAVX2) {
+  LowerVectorsPassOptions opts;
+  opts.enableAVX2 = enableAVX2;
+  return std::make_unique<LowerVectorsPass>(opts);
 }
 
 }  // namespace gml_st

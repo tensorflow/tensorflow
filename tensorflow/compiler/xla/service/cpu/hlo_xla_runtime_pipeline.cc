@@ -262,7 +262,8 @@ static Status CreateHloXlaPipeline(
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
-  pm.addNestedPass<FuncOp>(mlir::gml_st::createLowerVectorsPass());
+  pm.addNestedPass<FuncOp>(
+      mlir::gml_st::createLowerVectorsPass(options.enable_avx2));
   pm.addNestedPass<FuncOp>(xla::cpu::createLegalizeI1VectorTransferOpsPass());
   pm.addNestedPass<FuncOp>(
       xla::cpu::createConvertXlaCpuMemRefElementCastToLLVMPass());

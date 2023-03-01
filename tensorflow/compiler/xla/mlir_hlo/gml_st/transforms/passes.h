@@ -85,8 +85,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass();
 /// Pass to eliminate dead `memref.copy`.
 std::unique_ptr<OperationPass<func::FuncOp>> createSimplifyDeadCopyPass();
 
-/// Pass to rewrite vector.contract.
-std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorsPass();
+/// Pass to gradually lower vector ops to SCF.
+std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorsPass(
+    bool enableAVX2 = true);
 
 /// Pass to transform a thlo.scatter op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();

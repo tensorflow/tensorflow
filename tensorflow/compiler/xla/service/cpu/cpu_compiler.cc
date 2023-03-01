@@ -1053,6 +1053,8 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
   options.outline_with_xla_framework = true;
   options.experimental_deallocation =
       GetDebugOptionsFromFlags().xla_cpu_enable_experimental_deallocation();
+  // TODO(b/271126383): The flag should depend on the lowering target.
+  options.enable_avx2 = true;
   TF_RETURN_IF_ERROR(CreateHloXlaRuntimePipeline(xla_pm, options));
 
   runtime::CpuPipelineOptions cpu_pipeline_opts;

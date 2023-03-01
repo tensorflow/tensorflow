@@ -119,6 +119,10 @@ def LowerVectorsPass : Pass<"lower-vectors", "mlir::func::FuncOp"> {
     "::mlir::LLVM::LLVMDialect",
     "::mlir::vector::VectorDialect",
   ];
+  let options = [
+    Option<"enableAVX2", "enable-avx2", "bool", /*default=*/"true",
+           "Enable specialized lowerings for AVX2.">,
+  ];
 }
 
 def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
