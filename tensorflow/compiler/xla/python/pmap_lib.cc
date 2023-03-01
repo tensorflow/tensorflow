@@ -185,6 +185,72 @@ xla::StatusOr<ShardArgResult> ShardArg(
     }
   }
 
+  static auto ndarray_type = py::module::import("numpy").attr("ndarray").ptr();
+  auto ndarray = py::array::ensure(arg);
+  if (ndarray && py::type::of(arg) == ndarray_type &&
+      xla::DtypeToPrimitiveType(ndarray.dtype()).status().ok()) {
+    tsl::profiler::TraceMe traceme("ndarray pmap ShardArg");
+    py::list indices = input_spec.indices;
+    py::list py_devices_list = py::cast<py::list>(py_devices);
+    auto n_devices = py_devices_list.size();
+    if (indices.size() != n_devices) {
+      return xla::InvalidArgument("indices vs devices mismatch: %d vs %d",
+                                  indices.size(), n_devices);
+    }
+
+    std::vector<tsl::RCReference<xla::ifrt::Array>> per_device_arrays;
+    per_device_arrays.reserve(n_devices);
+    xla::ifrt::DeviceList::Devices devices;
+    devices.reserve(n_devices);
+    // TODO(hyeontaek): The created array will never be disassembled. We should
+    // omit collecting shapes and make the OpaqueSharding non-disassemblable?
+    std::vector<xla::ifrt::Shape> shapes;
+    shapes.reserve(n_devices);
+
+    py::list owning_pylist(n_devices);
+    ShardArgResult result;
+    result.owning_sda = owning_pylist;
+    const bool jax_enable_x64 = GetEnableX64();
+
+    xla::DevicePutOptions options;
+    options.squash_64bit_types = !jax_enable_x64;
+    options.allow_zero_copy = true;
+    for (size_t i = 0; i < n_devices; ++i) {
+      auto to_device =
+          py::cast<xla::ClientAndPtr<xla::PjRtDevice>>(py_devices_list[i]);
+
+      TF_ASSIGN_OR_RETURN(
+          xla::DevicePutResult on_device,
+          DevicePut(arg[indices[i]], to_device.client->ifrt_client(),
+                    to_device.contents, options));
+
+      per_device_arrays.push_back(std::move(on_device.ifrt_array));
+      devices.push_back(per_device_arrays.back()->sharding().devices().front());
+      shapes.push_back(per_device_arrays.back()->shape());
+      if (on_device.owning_pybuffer) {
+        owning_pylist.append(on_device.owning_pybuffer);
+      }
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        result.ifrt_array,
+        per_device_arrays.front()
+            ->client()
+            ->AssembleArrayFromSingleDeviceArrays(
+                // TODO(hyeontaek): The logical shape here is inaccurate. We
+                // may want to avoid creating a new Array or specialize Array
+                // to disallow access to the logical shape.
+                per_device_arrays.front()->shape(),
+                xla::ifrt::OpaqueSharding::Create(
+                    xla::ifrt::DeviceList(std::move(devices)),
+                    xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
+                        std::move(shapes))),
+                absl::MakeSpan(per_device_arrays),
+                xla::ifrt::ArrayCopySemantics::kReuseInput));
+    return result;
+  }
+  tsl::profiler::TraceMe traceme("pmap_lib_shard_arg_python_fallback");
+
   // This fallback is better than nothing, but ideally we should be able to
   // convert the argument in C++. At least, we can call the C++ DevicePut from
   // Python.
@@ -521,6 +587,8 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
 xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
                                              PyObject* const* args,
                                              size_t nargs, PyObject* kwnames) {
+  xla::GlobalPyRefManager()->MaybeCollectGarbage();
+
   // Calls the cache_miss_ function. This just calls the Python function; it may
   // return nullptr value if a Python exception is thrown.
   auto cache_miss = [&]() -> py::tuple {
