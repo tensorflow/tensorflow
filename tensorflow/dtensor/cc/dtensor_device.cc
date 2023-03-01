@@ -2154,6 +2154,12 @@ TFE_TensorHandle* CopyFromDTensorDevice(TFE_Context* context,
                                         TFE_TensorHandle* tensor,
                                         const char* target_device_name,
                                         TF_Status* status, void* device_info) {
+  if (!absl::StrContains(std::string(target_device_name), "CPU")) {
+    TF_SetStatus(
+        status, TF_UNIMPLEMENTED,
+        "Trying to copy a tensor to a non-CPU device is not supported.");
+    return nullptr;
+  }
   TensorWithLayout* typed_input = reinterpret_cast<TensorWithLayout*>(
       TFE_TensorHandleDevicePointer(tensor, status));
   if (!tensorflow::dtensor::Layout(typed_input->layout()).IsFullyReplicated()) {
