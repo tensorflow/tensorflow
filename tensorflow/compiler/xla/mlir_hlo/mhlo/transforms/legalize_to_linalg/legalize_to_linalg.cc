@@ -1994,15 +1994,18 @@ class MapOpToMapConverter : public OpConversionPattern<mhlo::MapOp> {
 
     Location loc = op.getLoc();
     Value operand0 = adaptor.getOperands()[0];
-    Value operand1 = coerceTensorShape(
-        rewriter, loc, cast<TypedValue<ShapedType>>(adaptor.getOperands()[1]),
-        operand0.getType());
+    SmallVector<Value> coercedOperands = {operand0};
+    for (Value operand : llvm::drop_begin(adaptor.getOperands(), 1)) {
+      coercedOperands.push_back(coerceTensorShape(
+          rewriter, loc, cast<TypedValue<ShapedType>>(operand),
+          operand0.getType()));
+    }
     Value output = rewriter.create<tensor::EmptyOp>(
         loc, tensor::getMixedSizes(rewriter, loc, operand0),
         resultType.getElementType());
 
     auto linalgOp = rewriter.create<linalg::MapOp>(
-        loc, ValueRange{operand0, operand1}, output,
+        loc, coercedOperands, output,
         /*bodyBuild=*/nullptr, linalg::getPrunedAttributeList(op));
 
     // Convert the signature of the body. We scalarize the operands and add a

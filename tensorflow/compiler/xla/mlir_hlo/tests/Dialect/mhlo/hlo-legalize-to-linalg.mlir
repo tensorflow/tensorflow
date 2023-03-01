@@ -3023,6 +3023,24 @@ func.func @map_mixed(%arg0: tensor<?xf32>,
 
 // -----
 
+func.func @map_one_arg(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.map"(%arg0) ({
+  ^bb0(%arg2: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg2 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>}
+  : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: @map_one_arg
+// CHECK: linalg.generic
+
+// CHECK-PRIMITIVE-LABEL: @map_one_arg
+// CHECK-PRIMITIVE: linalg.map
+
+// -----
+
 func.func @reduce_add(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi32> {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%arg3: tensor<i32>, %arg4 : tensor<i32>):
