@@ -296,9 +296,10 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
   mlir::MLIRContext context;
   tensorflow::MLIRImportOptions import_options;
   import_options.upgrade_legacy = upgrade_legacy;
+  import_options.lift_variables = lift_variables;
   auto module_or =
       ConvertSavedModelV1ToMlir(bundle, absl::Span<std::string>(exported_names),
-                                &context, import_options, lift_variables);
+                                &context, import_options);
   if (!module_or.status().ok()) {
     Set_TF_Status_from_Status(status, module_or.status());
     return "// error";

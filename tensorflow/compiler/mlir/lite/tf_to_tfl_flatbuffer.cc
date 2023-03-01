@@ -410,9 +410,10 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     MLIRImportOptions options;
     options.upgrade_legacy = specs.upgrade_legacy;
     options.unconditionally_use_set_output_shapes = true;
+    options.lift_variables = enable_variable_lifting;
     auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
         input_filename, tags, exported_names, context, options,
-        enable_variable_lifting, saved_model_bundle);
+        saved_model_bundle);
 
     if (!module_or.status().ok()) return module_or.status();
     return std::move(module_or).value();

@@ -115,7 +115,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    MLIRImportOptions options, bool lift_variables = true,
+    MLIRImportOptions options,
     std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle =
         nullptr);
 
