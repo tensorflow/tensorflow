@@ -330,7 +330,6 @@ cc_library(
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/experimental/next_pluggable_device:c_api_hdrs",
         "//tensorflow/core:framework",
-        "//tensorflow/core/platform:status",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
     ],
