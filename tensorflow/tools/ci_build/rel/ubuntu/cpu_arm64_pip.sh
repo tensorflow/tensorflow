@@ -20,9 +20,9 @@ set -x
 source tensorflow/tools/ci_build/release/common.sh
 
 sudo mkdir /tmpfs
-sudo chown ${CI_BUILD_USER}:${CI_BUILD_USER} /tmpfs
+sudo chown ${CI_BUILD_USER}:${CI_BUILD_GROUP} /tmpfs
 sudo mkdir /tensorflow
-sudo chown ${CI_BUILD_USER}:${CI_BUILD_USER} /tensorflow
+sudo chown ${CI_BUILD_USER}:${CI_BUILD_GROUP} /tensorflow
 
 # Update bazel
 install_bazelisk
@@ -58,7 +58,7 @@ sudo ${TF_PYTHON_VERSION} -m pip install --upgrade pip wheel
 sudo ${TF_PYTHON_VERSION} -m pip install --upgrade setuptools
 sudo ${TF_PYTHON_VERSION} -m pip install -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
 sudo touch /custom_sponge_config.csv
-sudo chown ${CI_BUILD_USER}:${CI_BUILD_USER} /custom_sponge_config.csv
+sudo chown ${CI_BUILD_USER}:${CI_BUILD_GROUP} /custom_sponge_config.csv
 
 # Get the default test targets for bazel
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
