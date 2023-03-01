@@ -700,12 +700,10 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   // rewriter function into the CFG and they interact badly.
 
   // Convert all async types to opaque pointers.
-  llvm_converter.addConversion([](Type type) -> Optional<Type> {
+  llvm_converter.addConversion([&](Type type) -> Optional<Type> {
     if (type.isa<async::TokenType, async::GroupType, async::ValueType>())
-      // TODO(yijiagu): We should change the asyncRuntime function type with
-      // opaque pointer
-      return LLVM::LLVMPointerType::get(IntegerType::get(type.getContext(), 8));
-
+      return llvm_converter.getPointerType(
+          IntegerType::get(type.getContext(), 8));
     return std::nullopt;
   });
 
