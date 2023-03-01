@@ -3946,13 +3946,33 @@ static StatusOr<bool> GenerateReduceOutputElement(
   if (use_fast_add) {
     double computed_result = *init_values[0]->GetAsDouble({});
     const Literal* input_arg0 = input_args[0];
+    const Shape& shape = input_arg0->shape();
+    absl::Span<const int64_t> minor_to_major = LayoutUtil::MinorToMajor(shape);
+
+    static constexpr int kChunkSize = 512;
+    int64_t linear_indices[kChunkSize];
+    int n_linear_indices = 0;
+
     auto reduction_step = [&](absl::Span<const int64_t> input_index) -> bool {
-      double argument = *input_arg0->GetAsDouble(input_index);
-      computed_result += argument;
+      linear_indices[n_linear_indices++] =
+          IndexUtil::MultidimensionalIndexToLinearIndex(shape, minor_to_major,
+                                                        input_index);
+      if (n_linear_indices == kChunkSize) {
+        // Periodically compute partial sum to avoid linear_indices getting
+        // large
+        computed_result += *input_arg0->GetSumAsDouble(
+            absl::MakeConstSpan(&linear_indices[0], n_linear_indices));
+        n_linear_indices = 0;
+      }
       return true;
     };
     ShapeUtil::ForEachIndexNoStatus(arg_shape, base, arg_dim_counts,
                                     arg_dim_steps, reduction_step);
+    if (n_linear_indices > 0) {
+      // Add in sum over any final indices collected
+      computed_result += *input_arg0->GetSumAsDouble(
+          absl::MakeConstSpan(&linear_indices[0], n_linear_indices));
+    }
     TF_RETURN_IF_ERROR(results[0].SetFromDouble(output_index, computed_result));
     return true;
   }
