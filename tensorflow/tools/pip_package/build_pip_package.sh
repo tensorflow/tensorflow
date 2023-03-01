@@ -152,55 +152,35 @@ function prepare_src() {
     fi
   else
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
+    cp -L \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
+      "${TMPDIR}"
+    cp -LR \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
+      "${TMPDIR}"
+    # Prevents pip package bloat. See b/228948031#comment17.
+    rm -f ${TMPDIR}/tensorflow/python/lib_pywrap_tensorflow_internal.*
     if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
       # Old-style runfiles structure (--legacy_external_runfiles).
-      cp -L \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
-        "${TMPDIR}"
-      cp -LR \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
-        "${TMPDIR}"
-      # Prevents pip package bloat. See b/228948031#comment17.
-      rm -f ${TMPDIR}/tensorflow/python/lib_pywrap_tensorflow_internal.*
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
         "${EXTERNAL_INCLUDES}"
-      copy_xla_aot_runtime_sources \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow \
-        "${XLA_AOT_RUNTIME_SOURCES}"
-      # Copy MKL libs over so they can be loaded at runtime
-      so_lib_dir=$(ls $RUNFILES | grep solib) || true
-      if [ -n "${so_lib_dir}" ]; then
-        mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
-        if [ -n "${mkl_so_dir}" ]; then
-          mkdir "${TMPDIR}/${so_lib_dir}"
-          cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
-        fi
-      fi
     else
       # New-style runfiles structure (--nolegacy_external_runfiles).
-      cp -L \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
-        "${TMPDIR}"
-      cp -LR \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
-        "${TMPDIR}"
-      # Prevents pip package bloat. See b/228948031#comment17.
-      rm -f ${TMPDIR}/tensorflow/python/lib_pywrap_tensorflow_internal.*
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
         "${EXTERNAL_INCLUDES}"
-      copy_xla_aot_runtime_sources \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow \
-        "${XLA_AOT_RUNTIME_SOURCES}"
-      # Copy MKL libs over so they can be loaded at runtime
-      so_lib_dir=$(ls $RUNFILES | grep solib) || true
-      if [ -n "${so_lib_dir}" ]; then
-        mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
-        if [ -n "${mkl_so_dir}" ]; then
-          mkdir "${TMPDIR}/${so_lib_dir}"
-          cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
-        fi
+    fi
+    copy_xla_aot_runtime_sources \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow \
+      "${XLA_AOT_RUNTIME_SOURCES}"
+    # Copy MKL libs over so they can be loaded at runtime
+    so_lib_dir=$(ls $RUNFILES | grep solib) || true
+    if [ -n "${so_lib_dir}" ]; then
+      mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
+      if [ -n "${mkl_so_dir}" ]; then
+        mkdir "${TMPDIR}/${so_lib_dir}"
+        cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
       fi
     fi
   fi
