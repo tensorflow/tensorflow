@@ -827,17 +827,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<GemmRewriter>(
         std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version));
 
-#if GOOGLE_CUDA
-    // TODO(b/266210099): Make autotuning work with AOT.
-    if (stream_exec) {
-      pipeline.AddPass<TritonAutotuner>(
-          stream_exec, device_allocator,
-          debug_options.xla_gpu_force_compilation_parallelism()
-              ? debug_options.xla_gpu_force_compilation_parallelism()
-              : tsl::port::MaxParallelism());
-    }
-#endif  // GOOGLE_CUDA
-
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();
 
@@ -874,32 +863,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<SimplifyFPConversions>();
   }
 
-  // Choose the fastest algorithm for each conv.
-  //
-  // We pick the algorithm before fusion so we can generate better HLO. After
-  // GpuConvRewriter, our convolutions are CustomCalls which return a
-  // tuple (conv_result, scratch_memory), and the each conv uses 0 bytes of
-  // scratch:
-  //
-  //   customcall = (f32[...], f32[0])
-  //   return gte(customcall, 0)
-  //
-  // The algorithm picker then chooses the best algorithm, and potentially
-  // increases the scratch space.  It replaces customcall with new_tuple,
-  // giving us the following:
-  //
-  //   new_customcall = (f32[...], f32[N])
-  //   new_tuple = tuple(gte(new_customcall, 0), constant f32[0])
-  //   return gte(new_tuple, 0)
-  //
-  // The new tuple and gte instructions then be simplified away, because
-  // nobody is expected to use the scratch value.
-  //
-  // However, if we were to run GpuConvAlgorithmPicker after fusion
-  // the gte(customcall, 0) would probably already be into a fusion node.  We
-  // can't simplify across HloComputation boundaries, so in this case we
-  // wouldn't be able to simplify away the new_tuple bits.
-  auto config =
+  AutotuningConfig config =
       stream_exec
           ? AutotuningConfig{DeviceConfig{stream_exec, device_allocator}}
           : DevicelessConfig{gpu_target_config.device_description_str};
@@ -907,17 +871,21 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     GpuConvAlgorithmPicker::ClearAutotuneResults();
     TF_RETURN_IF_ERROR(
         GpuConvAlgorithmPicker::LoadAutotuneResults(*autotune_results));
-
 #if GOOGLE_CUDA
     GemmAlgorithmPicker::ClearAutotuneResults();
     TF_RETURN_IF_ERROR(
         GemmAlgorithmPicker::LoadAutotuneResults(*autotune_results));
+    TritonAutotuner::ClearAutotuneResults();
+    TF_RETURN_IF_ERROR(TritonAutotuner::LoadAutotuneResults(*autotune_results));
 #endif  // GOOGLE_CUDA
   }
   pipeline.AddPass<GpuConvAlgorithmPicker>(config);
-
 #if GOOGLE_CUDA
   pipeline.AddPass<GemmAlgorithmPicker>(config);
+  pipeline.AddPass<TritonAutotuner>(
+      config, debug_options.xla_gpu_force_compilation_parallelism()
+                  ? debug_options.xla_gpu_force_compilation_parallelism()
+                  : tsl::port::MaxParallelism());
 #endif  // GOOGLE_CUDA
 
   // Clean up new_tuple described above.

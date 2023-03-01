@@ -40,11 +40,14 @@ using tensorflow::AutotuneResult;
 // Use tiling and execution parameters from 'config'.
 // Values in 'config' can be adjusted by this function if the original ones
 // are not executable or inefficient.
-std::optional<LaunchDimensions> MatMul(mlir::OpBuilder b,
-                                       const HloDotInstruction* dot_instr,
-                                       mlir::func::FuncOp fn,
-                                       AutotuneResult::TritonGemmKey& config,
-                                       int shmem_budget);
+std::optional<LaunchDimensions> MatMul(
+    mlir::OpBuilder b, const HloDotInstruction* dot_instr,
+    mlir::func::FuncOp fn, const AutotuneResult::TritonGemmKey& config,
+    int shmem_budget);
+
+using LaunchDimensionsGenerator = std::function<std::optional<LaunchDimensions>(
+    mlir::OpBuilder, const HloDotInstruction*, mlir::func::FuncOp,
+    const AutotuneResult::TritonGemmKey&, int)>;
 
 // Generate Triton IR by running the provided generator, compile it into LLVM IR
 // and return either launch dimensions or std::nullopt if generation failed.
@@ -52,11 +55,8 @@ std::optional<LaunchDimensions> MatMul(mlir::OpBuilder b,
 std::optional<LaunchDimensions> TritonWrapper(
     absl::string_view fn_name, const HloComputation* hlo_computation,
     const se::CudaComputeCapability& cc, const GpuDeviceInfo& device_info,
-    AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
-    std::function<std::optional<LaunchDimensions>(
-        mlir::OpBuilder, const HloDotInstruction*, mlir::func::FuncOp,
-        AutotuneResult::TritonGemmKey&, int)>
-        generator);
+    const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
+    LaunchDimensionsGenerator generator);
 
 }  // namespace gpu
 }  // namespace xla

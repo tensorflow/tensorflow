@@ -325,8 +325,8 @@ struct GeneralizeKernelSignaturePass
 // TODO(b/270937368): Split this up into smaller functions.
 std::optional<LaunchDimensions> MatMul(
     mlir::OpBuilder builder, const HloDotInstruction* dot_instr,
-    mlir::func::FuncOp fn, tensorflow::AutotuneResult::TritonGemmKey& config,
-    int shmem_budget) {
+    mlir::func::FuncOp fn,
+    const tensorflow::AutotuneResult::TritonGemmKey& config, int shmem_budget) {
   // We'll be creating a lot of instructions from a single dot, use an
   // implicit loc builder so we don't have to pass around the location all the
   // time.
@@ -660,11 +660,8 @@ std::optional<LaunchDimensions> MatMul(
 std::optional<LaunchDimensions> TritonWrapper(
     absl::string_view fn_name, const HloComputation* hlo_computation,
     const se::CudaComputeCapability& cc, const GpuDeviceInfo& device_info,
-    AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
-    std::function<std::optional<LaunchDimensions>(
-        mlir::OpBuilder, const HloDotInstruction*, mlir::func::FuncOp,
-        AutotuneResult::TritonGemmKey&, int)>
-        generator) {
+    const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
+    LaunchDimensionsGenerator generator) {
   // TODO(b/264317991): Pass in a context instead if this becomes to slow.
   mlir::MLIRContext mlir_context;
   mlir_context.loadDialect<mt::TritonDialect>();

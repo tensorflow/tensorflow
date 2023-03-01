@@ -445,8 +445,10 @@ cc_library(
         ":stream_executor_util",
         ":target_constants",
         ":target_util",
+        ":gpu_serializable_autotuner",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/time",
+        "//tensorflow/compiler/xla:autotune_results_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
@@ -994,8 +996,14 @@ cc_library(
     hdrs = ["gemm_rewriter_triton.h"],
     deps = [
         ":ir_emission_utils",
+        ":launch_dimensions",
+        ":stream_executor_util",
+        ":target_util",
+        "//tensorflow/compiler/xla:autotune_results_proto_cc",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
@@ -1004,6 +1012,9 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@llvm-project//llvm:Linker",
+        "@llvm-project//llvm:ir_headers",
     ],
 )
 
@@ -1092,9 +1103,11 @@ cc_library(
     srcs = [],
     hdrs = ["gpu_serializable_autotuner.h"],
     deps = [
+        "//tensorflow/compiler/xla:autotune_results_proto_cc",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/tsl/protobuf:autotuning_proto_cc",
     ],
 )
 

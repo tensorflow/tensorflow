@@ -41,6 +41,7 @@ class TritonAutotunerTest : public HloTestBase {
     debug_options.set_xla_gpu_enable_triton_gemm(true);
     return debug_options;
   }
+
   void CheckTritonAutotuning(absl::string_view hlo,
                              absl::string_view expected) {
     HloPassPipeline pipeline("gemm_rewrite");
@@ -48,9 +49,10 @@ class TritonAutotunerTest : public HloTestBase {
                                              .default_stream_executor()
                                              ->GetDeviceDescription()
                                              .cuda_compute_capability());
-    pipeline.AddPass<TritonAutotuner>(backend().default_stream_executor(),
-                                      backend().memory_allocator(),
-                                      tsl::port::MaxParallelism());
+    pipeline.AddPass<TritonAutotuner>(
+        DeviceConfig{backend().default_stream_executor(),
+                     backend().memory_allocator()},
+        tsl::port::MaxParallelism());
 
     RunAndFilecheckHloRewrite(
         hlo, std::move(pipeline), expected, [](const HloModule* m) {
