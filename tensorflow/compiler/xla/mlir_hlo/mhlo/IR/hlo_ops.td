@@ -2402,7 +2402,6 @@ def MHLO_GetDimensionSizeOp: MHLO_Op<"get_dimension_size",
   let results = (outs I32Tensor);
 
   let hasFolder = 1;
-  let hasVerifier = 1;
 }
 
 def MHLO_MapOp: MHLO_ShapedInterfaceOp<"map",
@@ -2584,7 +2583,7 @@ def MHLO_SelectAndScatterOp: MHLO_Op<"select_and_scatter",
 }
 
 def MHLO_SetDimensionSizeOp: MHLO_Op<"set_dimension_size", [Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+      InferTensorType]> {
   let summary = "SetDimensionSize operator";
   let description = [{
     Sets the dynamic size of operand's given dimension. Pass through the operand
@@ -2601,7 +2600,6 @@ def MHLO_SetDimensionSizeOp: MHLO_Op<"set_dimension_size", [Pure,
   let results = (outs MHLO_Tensor);
 
   let hasFolder = 1;
-  let hasVerifier = 1;
 }
 
 def MHLO_SortOp : MHLO_Op<"sort",
