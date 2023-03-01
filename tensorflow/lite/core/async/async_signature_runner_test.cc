@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
 #include "tensorflow/lite/core/async/backend_async_kernel_interface.h"
 #include "tensorflow/lite/core/async/c/task.h"
@@ -82,7 +83,8 @@ TEST_F(AsyncSignatureRunnerTest, InputsTest) {
   EXPECT_EQ(1, signature_runner_->input_size());
   auto* input_name = signature_runner_->input_names()[0];
   EXPECT_STREQ("input", input_name);
-  EXPECT_STREQ("x", signature_runner_->input_tensor(input_name)->name);
+  EXPECT_STREQ(
+      "x", TfLiteOpaqueTensorName(signature_runner_->input_tensor(input_name)));
 }
 
 TEST_F(AsyncSignatureRunnerTest, OutputsTest) {
@@ -90,7 +92,8 @@ TEST_F(AsyncSignatureRunnerTest, OutputsTest) {
   EXPECT_EQ(1, signature_runner_->output_size());
   auto* output_name = signature_runner_->output_names()[0];
   EXPECT_STREQ("output", output_name);
-  EXPECT_STREQ("a", signature_runner_->output_tensor(output_name)->name);
+  EXPECT_STREQ("a", TfLiteOpaqueTensorName(
+                        signature_runner_->output_tensor(output_name)));
 }
 
 TEST_F(AsyncSignatureRunnerTest, InputNameTest) {

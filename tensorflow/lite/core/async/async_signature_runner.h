@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
 #include "tensorflow/lite/core/async/async_subgraph.h"
 #include "tensorflow/lite/core/async/c/types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/internal/signature_def.h"
@@ -165,14 +166,14 @@ class AsyncSignatureRunner {
   /// Note: The returned `TfLiteTensor` should only be used to retrieve
   /// tensor metadata (dimension, data type, etc.). Tensor data should only be
   /// accessed via hardware buffer directly.
-  const TfLiteTensor* input_tensor(const char* input_name) const;
+  const TfLiteOpaqueTensor* input_tensor(const char* input_name) const;
 
   /// Returns the output tensor information identified by 'output_name' in the
   /// given signature. Returns nullptr if the given name is not valid.
   /// Note: The returned `TfLiteTensor` should only be used to retrieve
   /// tensor metadata (dimension, data type, etc.). Tensor data should only be
   /// accessed via hardware buffer directly.
-  const TfLiteTensor* output_tensor(const char* output_name) const;
+  const TfLiteOpaqueTensor* output_tensor(const char* output_name) const;
 
  private:
   friend class AsyncSignatureRunnerTest;

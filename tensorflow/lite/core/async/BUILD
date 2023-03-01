@@ -120,6 +120,7 @@ cc_test(
         ":backend_async_kernel_interface",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:interpreter_test_util",
+        "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/async/c:task",
         "//tensorflow/lite/core/async/c:types",

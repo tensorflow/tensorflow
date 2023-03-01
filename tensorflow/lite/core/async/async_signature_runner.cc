@@ -141,19 +141,19 @@ TfLiteStatus AsyncSignatureRunner::Wait(TfLiteExecutionTask* task) {
 TfLiteStatus AsyncSignatureRunner::Finish(TfLiteExecutionTask* task) {
   return async_subgraph_->Finish(task);
 }
-const TfLiteTensor* AsyncSignatureRunner::input_tensor(
+const TfLiteOpaqueTensor* AsyncSignatureRunner::input_tensor(
     const char* input_name) const {
   if (auto idx = GetTensorIndex(kTfLiteIoTypeInput, input_name); idx >= 0) {
-    return subgraph_->tensor(idx);
+    return reinterpret_cast<const TfLiteOpaqueTensor*>(subgraph_->tensor(idx));
   }
   subgraph_->ReportError("Input name %s was not found", input_name);
   return nullptr;
 }
 
-const TfLiteTensor* AsyncSignatureRunner::output_tensor(
+const TfLiteOpaqueTensor* AsyncSignatureRunner::output_tensor(
     const char* output_name) const {
   if (auto idx = GetTensorIndex(kTfLiteIoTypeOutput, output_name); idx >= 0) {
-    return subgraph_->tensor(idx);
+    return reinterpret_cast<const TfLiteOpaqueTensor*>(subgraph_->tensor(idx));
   }
   subgraph_->ReportError("Output name %s was not found", output_name);
   return nullptr;
