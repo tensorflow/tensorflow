@@ -550,6 +550,10 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
         return absl::UnimplementedError(
             "FullyConnected doesn't support more than 2 runtime inputs.");
       }
+      if (op_sig.inputs[0].is_const) {
+        return absl::UnimplementedError(
+            "FullyConnected doesn't support constant input.");
+      }
       if (tf_options->keep_num_dims == true) {
         const auto& input = op_sig.inputs.at(0);
         const auto& output = op_sig.outputs.at(0);
