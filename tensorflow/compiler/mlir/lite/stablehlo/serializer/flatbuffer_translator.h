@@ -152,6 +152,9 @@ class Translator {
   absl::flat_hash_map<std::string, int> subgraph_index_map_;
   absl::flat_hash_set<OpType> enabled_op_types_;
 
+  // maps between reduce_window op and their corresponding subgraphs
+  std::map<mlir::stablehlo::ReduceWindowOp, int> reduce_window_subgraph_map_;
+
   // Points to stablehlo dialects & mhlo dialects, respectively. nullptr if the
   // dialect is not registered.
   Dialect* stablehlo_dialect_;

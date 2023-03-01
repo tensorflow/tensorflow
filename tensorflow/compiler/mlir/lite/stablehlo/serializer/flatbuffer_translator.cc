@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/lite/stablehlo/schema/schema_generated.h"
 
 #define kStablehloOptionalTensor (-1)
 
@@ -215,11 +216,64 @@ CreateConvolutionOperator(mlir::stablehlo::ConvolutionOp& hlo_op,
       options.Union());
 }
 
-std::optional<flatbuffers::Offset<::stablehlo::flatbuf::Operator>>
+static flatbuffers::Offset<::stablehlo::flatbuf::Operator>
+CreateReduceWindowOperator(mlir::stablehlo::ReduceWindowOp& hlo_op,
+                           flatbuffers::FlatBufferBuilder* fbb,
+                           uint32_t opcode_index,
+                           const std::vector<int32_t>& operands,
+                           const std::vector<int32_t>& results,
+                           const int subgraph_idx) {
+  auto inputs = fbb->CreateVector(operands);
+  auto outputs = fbb->CreateVector(results);
+
+  // TODO(zichuanwei@): instead of create these vectors let's just create
+  // Flatbuffers vector directly
+  std::vector<int64_t> window_dimension_vec(
+      GetOptionalVector<int64_t>(hlo_op.getWindowDimensions(), 0, 0));
+  std::vector<int64_t> window_strides_vec(
+      GetOptionalVector<int64_t>(hlo_op.getWindowStrides(), 0, 0));
+  std::vector<int64_t> base_dilations_vec(
+      GetOptionalVector<int64_t>(hlo_op.getBaseDilations(), 0, 0));
+  std::vector<int64_t> window_dilations_vec(
+      GetOptionalVector<int64_t>(hlo_op.getWindowDilations(), 0, 0));
+  std::vector<int64_t> padding_vec(
+      GetOptionalVector<int64_t>(hlo_op.getPadding(), 0, 0));
+
+  auto window_dimension = fbb->CreateVector(window_dimension_vec);
+  auto window_strides = fbb->CreateVector(window_strides_vec);
+  auto base_dilations = fbb->CreateVector(base_dilations_vec);
+  auto window_dilations = fbb->CreateVector(window_dilations_vec);
+  auto padding = fbb->CreateVector(padding_vec);
+
+  auto options = ::stablehlo::flatbuf::CreateReduceWindowOptions(
+      *fbb, window_dimension, window_strides, base_dilations, window_dilations,
+      padding, subgraph_idx);
+
+  return ::stablehlo::flatbuf::CreateOperator(
+      *fbb, opcode_index, inputs, outputs,
+      ::stablehlo::flatbuf::OperatorOptions_ReduceWindowOptions,
+      options.Union());
+}
+
+static flatbuffers::Offset<::stablehlo::flatbuf::Operator>
+CreateBroadcastInDimOperator(mlir::stablehlo::BroadcastInDimOp& hlo_op,
+                             flatbuffers::FlatBufferBuilder* fbb,
+                             uint32_t opcode_index,
+                             const std::vector<int32_t>& operands,
+                             const std::vector<int32_t>& results) {
+  auto inputs = fbb->CreateVector(operands);
+  auto outputs = fbb->CreateVector(results);
+
+  return ::stablehlo::flatbuf::CreateOperator(*fbb, opcode_index, inputs,
+                                              outputs);
+}
+
+llvm::Optional<flatbuffers::Offset<::stablehlo::flatbuf::Operator>>
 CreateFlatBufferOperator(mlir::Operation* op, uint32_t opcode_index,
                          const std::vector<int32_t>& operands,
                          const std::vector<int32_t>& results,
-                         flatbuffers::FlatBufferBuilder* fbb) {
+                         flatbuffers::FlatBufferBuilder* fbb,
+                         int subgraph_idx = 0) {
   if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::AddOp>(op))
     return CreateAddOperator(hlo_op, fbb, opcode_index, operands, results);
   if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::DotOp>(op))
@@ -235,7 +289,12 @@ CreateFlatBufferOperator(mlir::Operation* op, uint32_t opcode_index,
   if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::ConvolutionOp>(op))
     return CreateConvolutionOperator(hlo_op, fbb, opcode_index, operands,
                                      results);
-
+  if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::ReduceWindowOp>(op))
+    return CreateReduceWindowOperator(hlo_op, fbb, opcode_index, operands,
+                                      results, subgraph_idx);
+  if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::BroadcastInDimOp>(op))
+    return CreateBroadcastInDimOperator(hlo_op, fbb, opcode_index, operands,
+                                        results);
   return std::nullopt;
 }
 
@@ -247,7 +306,7 @@ static StatusOr<::stablehlo::flatbuf::DataType> GetDataType(
   return ::stablehlo::flatbuf::DataType_FLOAT32;
 }
 
-std::optional<::stablehlo::flatbuf::OperatorCode> GetOpCode(
+llvm::Optional<::stablehlo::flatbuf::OperatorCode> GetOpCode(
     mlir::Operation* op) {
   if (isa<mlir::stablehlo::AddOp>(op))
     return ::stablehlo::flatbuf::OperatorCode_ADD;
@@ -263,6 +322,10 @@ std::optional<::stablehlo::flatbuf::OperatorCode> GetOpCode(
     return ::stablehlo::flatbuf::OperatorCode_RESHAPE;
   if (isa<mlir::stablehlo::ConvolutionOp>(op))
     return ::stablehlo::flatbuf::OperatorCode_CONVOLUTION;
+  if (isa<mlir::stablehlo::BroadcastInDimOp>(op))
+    return ::stablehlo::flatbuf::OperatorCode_BROADCAST_IN_DIM;
+  if (isa<mlir::stablehlo::ReduceWindowOp>(op))
+    return ::stablehlo::flatbuf::OperatorCode_REDUCE_WINDOW;
   return std::nullopt;
 }
 
@@ -310,6 +373,29 @@ Optional<std::string> Translator::TranslateInternal() {
     }
   }
 
+  // Walk over the module collection ops with functions and while ops.
+  module_.walk([&](FuncOp fn) {
+    if (main_fn == fn) return WalkResult::advance();
+    auto attrs = fn->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+    if (attrs && !attrs.empty()) {
+      entry_functions.push_back(fn);
+    } else {
+      non_entry_functions.push_back(fn);
+    }
+    return WalkResult::advance();
+  });
+
+  // collect all reduce window ops, this is only a temporary hack
+  // in the future, we should have a function to walk over all ops that have
+  // regions contained, the logic in stablehlo is a bit different from tfl
+  // dialect in that all subgraphs in tflite a enclosed in func op where
+  // stablehlo op maintain their own regions
+  std::vector<mlir::stablehlo::ReduceWindowOp> reduce_window;
+  module_.walk([&](mlir::stablehlo::ReduceWindowOp op) {
+    reduce_window.push_back(op);
+    return WalkResult::advance();
+  });
+
   // Assign the subgraph index. Among the given functions, it will put entry
   // functions at the beginning of the list of the subgrahs.
   for (auto fn : entry_functions) {
@@ -319,6 +405,13 @@ Optional<std::string> Translator::TranslateInternal() {
   for (auto fn : non_entry_functions) {
     subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
     named_regions.emplace_back(fn.getName().str(), &fn.getBody());
+  }
+
+  // add regions of reduce_window ops into subgraph map. the name will be
+  // stablehlo.reduce_window as mlir::region is not assicoate with a name
+  for (auto op : reduce_window) {
+    reduce_window_subgraph_map_[op] = subgraph_idx++;
+    named_regions.emplace_back(op.getOperationName().str(), &op.getBody());
   }
 
   // Build subgraph for each of the named regions.
@@ -535,7 +628,7 @@ Translator::BuildSubGraph(const std::string& name, Region* region, int index) {
         return std::nullopt;
     }
 
-    // Skip constant ops as they don't represent a TFLite operator.
+    // Skip constant ops as they don't represent flatbuffer operator.
     if (IsConst(&inst)) continue;
 
     // Fetch operand and result tensor indices.
@@ -643,9 +736,16 @@ Translator::BuildOperator(Operation* inst, std::vector<int32_t> operands,
 
     auto opcode_index =
         GetOpcodeIndex(inst->getName().getStringRef().str(), op_code.value());
-
-    auto offset = CreateFlatBufferOperator(inst, opcode_index, operands,
-                                           results, &builder_);
+    llvm::Optional<flatbuffers::Offset<::stablehlo::flatbuf::Operator>> offset;
+    if (op_code == ::stablehlo::flatbuf::OperatorCode_REDUCE_WINDOW) {
+      offset = CreateFlatBufferOperator(
+          inst, opcode_index, operands, results, &builder_,
+          reduce_window_subgraph_map_
+              [llvm::dyn_cast<mlir::stablehlo::ReduceWindowOp>(inst)]);
+    } else {
+      offset = CreateFlatBufferOperator(inst, opcode_index, operands, results,
+                                        &builder_);
+    }
     if (!offset) {
       inst->emitOpError("is not a supported stablehlo op");
     }
