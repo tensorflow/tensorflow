@@ -101,24 +101,6 @@ GPURuntimeCache::GPUModule GPURuntimeCache::LookupOrLoadModule(void *data) {
   return module;
 }
 
-GPURuntimeCache::GPUFunction GPURuntimeCache::LookupOrGetFunction(
-    GPUModule module, const char *kernel_name) {
-  tensorflow::mutex_lock lock(mu_);
-  GPUFunction &function =
-      gpu_function_by_module_and_name_[{module, kernel_name}];
-
-  if (!function) {
-#if GOOGLE_CUDA
-    GPU_REPORT_IF_ERROR(cuModuleGetFunction(&function, module, kernel_name));
-#endif
-#if TENSORFLOW_USE_ROCM
-    GPU_REPORT_IF_ERROR(hipModuleGetFunction(&function, module, kernel_name));
-#endif
-  }
-
-  return function;
-}
-
 // Implements a C wrapper around the TensorFlow runtime and CUDA (or ROCm)
 // library that allows launching a kernel on the current device and stream from
 // a binary blob for the module and function name.
@@ -153,10 +135,11 @@ extern "C" void _mlir_ciface_tf_launch_kernel(void *ctx, void *module_blob,
       op_kernel_ctx->op_device_context()->stream();
   void *stream = se_stream->implementation()->GpuStreamHack();
   GPURuntimeCache::GPUModule module = cache->LookupOrLoadModule(module_blob);
-  GPURuntimeCache::GPUFunction function =
-      cache->LookupOrGetFunction(module, kernel_name);
 
 #if GOOGLE_CUDA
+  CUfunction function;
+  GPU_REPORT_IF_ERROR_WITH_CTX(
+      cuModuleGetFunction(&function, module, kernel_name), op_kernel_ctx);
   GPU_REPORT_IF_ERROR_WITH_CTX(
       cuLaunchKernel(function, gridX, gridY, gridZ, blockX, blockY, blockZ,
                      /*sharedMemBytes=*/0, reinterpret_cast<CUstream>(stream),
@@ -164,6 +147,9 @@ extern "C" void _mlir_ciface_tf_launch_kernel(void *ctx, void *module_blob,
       op_kernel_ctx);
 #endif
 #if TENSORFLOW_USE_ROCM
+  hipFunction_t function;
+  GPU_REPORT_IF_ERROR_WITH_CTX(
+      hipModuleGetFunction(&function, module, kernel_name), op_kernel_ctx);
   GPU_REPORT_IF_ERROR_WITH_CTX(
       hipModuleLaunchKernel(
           function, gridX, gridY, gridZ, blockX, blockY, blockZ,
