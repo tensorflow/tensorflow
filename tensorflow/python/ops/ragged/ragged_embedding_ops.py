@@ -363,17 +363,16 @@ def _prune_invalid_ids_ragged(ids, weights):
                                                   is_id_valid)
   ids = ragged_tensor.RaggedTensor.from_value_rowids(pruned_values,
                                                      pruned_value_rowids,
-                                                     nrows=nrows)
+                                                     nrows=nrows,
+                                                     validate=False)
   if weights is not None:
     pruned_weights_values = array_ops.boolean_mask_v2(weights.values,
                                                       is_id_valid)
-    pruned_weights_value_rowids = array_ops.boolean_mask_v2(
-                                                        weights.value_rowids(),
-                                                        is_id_valid)
     weights = ragged_tensor.RaggedTensor.from_value_rowids(
                                                     pruned_weights_values,
-                                                    pruned_weights_value_rowids,
-                                                    nrows=nrows)
+                                                    pruned_value_rowids,
+                                                    nrows=nrows,
+                                                    validate=False)
 
   return ids, weights
 
@@ -393,16 +392,15 @@ def _prune_invalid_weights_ragged(ids, weights):
                                                     is_weights_valid)
     ids = ragged_tensor.RaggedTensor.from_value_rowids(pruned_values,
                                                        pruned_value_rowids,
-                                                       nrows=nrows)
+                                                       nrows=nrows,
+                                                       validate=False)
 
     pruned_weights_values = array_ops.boolean_mask_v2(weights.values,
                                                       is_weights_valid)
-    pruned_weights_value_rowids = array_ops.boolean_mask_v2(
-                                                weights.value_rowids(),
-                                                is_weights_valid)
     weights = ragged_tensor.RaggedTensor.from_value_rowids(
                                                   pruned_weights_values,
-                                                  pruned_weights_value_rowids,
-                                                  nrows=nrows)
+                                                  pruned_value_rowids,
+                                                  nrows=nrows,
+                                                  validate=False)
 
   return ids, weights
