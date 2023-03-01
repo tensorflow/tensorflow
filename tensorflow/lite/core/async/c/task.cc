@@ -22,45 +22,41 @@ limitations under the License.
 extern "C" {
 
 TfLiteStatus TfLiteExecutionTaskSetBuffer(TfLiteExecutionTask* task,
-                                          int32_t io_type,
+                                          TfLiteIoType io_type,
                                           const char* tensor_signature_name,
                                           TfLiteBufferHandle handle) {
   if (task == nullptr || task->task == nullptr ||
       tensor_signature_name == nullptr)
     return kTfLiteError;
-  return task->task->SetBufferHandle(static_cast<TfLiteIoType>(io_type),
-                                     tensor_signature_name, handle);
+  return task->task->SetBufferHandle(io_type, tensor_signature_name, handle);
 }
 
 TfLiteStatus TfLiteExecutionTaskSetSync(TfLiteExecutionTask* task,
-                                        int32_t io_type,
+                                        TfLiteIoType io_type,
                                         const char* tensor_signature_name,
                                         TfLiteSynchronization* sync) {
   if (task == nullptr || task->task == nullptr ||
       tensor_signature_name == nullptr)
     return kTfLiteError;
-  return task->task->SetSynchronization(static_cast<TfLiteIoType>(io_type),
-                                        tensor_signature_name, sync);
+  return task->task->SetSynchronization(io_type, tensor_signature_name, sync);
 }
 
 TfLiteBufferHandle TfLiteExecutionTaskGetBufferByName(
-    const TfLiteExecutionTask* task, int32_t io_type,
+    const TfLiteExecutionTask* task, TfLiteIoType io_type,
     const char* tensor_signature_name) {
   if (task == nullptr || task->task == nullptr ||
       tensor_signature_name == nullptr)
     return kTfLiteNullBufferHandle;
-  return task->task->GetBufferHandle(static_cast<TfLiteIoType>(io_type),
-                                     tensor_signature_name);
+  return task->task->GetBufferHandle(io_type, tensor_signature_name);
 }
 
 TfLiteSynchronization* TfLiteExecutionTaskGetSyncByName(
-    const TfLiteExecutionTask* task, int32_t io_type,
+    const TfLiteExecutionTask* task, TfLiteIoType io_type,
     const char* tensor_signature_name) {
   if (task == nullptr || task->task == nullptr ||
       tensor_signature_name == nullptr)
     return nullptr;
-  return task->task->GetSynchronization(static_cast<TfLiteIoType>(io_type),
-                                        tensor_signature_name);
+  return task->task->GetSynchronization(io_type, tensor_signature_name);
 }
 
 TfLiteBufferHandle TfLiteExecutionTaskGetBufferByIndex(
@@ -81,8 +77,9 @@ void* TfLiteExecutionTaskGetDelegateExecutionData(
   return task->task->GetDelegateExecutionData(kernel);
 }
 
-void TfLiteExecutionTaskSetDelegateExecutionData(
-    const TfLiteExecutionTask* task, TfLiteAsyncKernel* kernel, void* data) {
+void TfLiteExecutionTaskSetDelegateExecutionData(TfLiteExecutionTask* task,
+                                                 TfLiteAsyncKernel* kernel,
+                                                 void* data) {
   if (task == nullptr || task->task == nullptr) return;
   task->task->SetDelegateExecutionData(kernel, data);
 }
@@ -92,7 +89,7 @@ TfLiteStatus TfLiteExecutionTaskGetStatus(const TfLiteExecutionTask* task) {
   return task->task->Status();
 }
 
-void TfLiteExecutionTaskSetStatus(const TfLiteExecutionTask* task,
+void TfLiteExecutionTaskSetStatus(TfLiteExecutionTask* task,
                                   TfLiteStatus status) {
   if (task == nullptr || task->task == nullptr) return;
   task->task->SetStatus(status);
