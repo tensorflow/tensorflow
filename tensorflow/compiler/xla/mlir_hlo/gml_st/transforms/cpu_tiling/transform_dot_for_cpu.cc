@@ -25,6 +25,7 @@ limitations under the License.
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/peeling/peeling.h"
+#include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -46,9 +47,9 @@ namespace {
 
 constexpr llvm::StringRef kDotTransformedLabel = "__dot_transformed_label__";
 
-FailureOr<scf::SCFTilingResult> tileDot(PatternRewriter &rewriter,
-                                        Operation *op,
-                                        ArrayRef<int64_t> tileSizes) {
+FailureOr<scf::SCFTilingResult> tileReductionDim(PatternRewriter &rewriter,
+                                                 Operation *op,
+                                                 ArrayRef<int64_t> tileSizes) {
   scf::SCFTilingOptions opts;
   opts.setTileSizes(tileSizes);
 
@@ -62,6 +63,22 @@ FailureOr<scf::SCFTilingResult> tileDot(PatternRewriter &rewriter,
   }
 
   setLabel(op, kDotTransformedLabel);
+  return tilingResult;
+}
+
+FailureOr<TilingResult> tileParallelDims(PatternRewriter &rewriter,
+                                         Operation *op,
+                                         ArrayRef<int64_t> tileSizes) {
+  TilingOptions opts;
+  opts.setTileSizeComputationFn(tileSizes);
+  auto tilingResult = tileUsingGmlSt(opts, rewriter, cast<TilingInterface>(op));
+  if (failed(tilingResult)) return failure();
+
+  // Update the results if tiling occurred.
+  if (tilingResult->loop != nullptr) {
+    rewriter.replaceOp(op, tilingResult->loop->getResults());
+  }
+
   return tilingResult;
 }
 
@@ -117,23 +134,24 @@ struct DotTransformPattern : public OpRewritePattern<DotTy> {
       return rewriter.notifyMatchFailure(dotOp,
                                          "has already been transformed.");
     }
-    if (isa<scf::ForOp>(dotOp->getParentOp())) {
+    if (isa<gml_st::ParallelOp, scf::ForOp>(dotOp->getParentOp())) {
       return rewriter.notifyMatchFailure(
           dotOp, "has already been tiled by another pass.");
     }
 
     auto tileSizes = tileSizeFn(getMatmulSizes(dotOp));
-    auto tilingParallelDimsResult = tileDot(rewriter, dotOp.getOperation(),
-                                            parallelDimTileSizeFn(tileSizes));
+    auto tilingParallelDimsResult = tileParallelDims(
+        rewriter, dotOp.getOperation(), parallelDimTileSizeFn(tileSizes));
     if (failed(tilingParallelDimsResult)) return failure();
 
-    if (!tilingParallelDimsResult->loops.empty()) {
+    gml_st::ParallelOp parallelLoop = tilingParallelDimsResult->loop;
+    if (parallelLoop != nullptr) {
       dotOp = cast<DotTy>(tilingParallelDimsResult->tiledOps.back());
     }
 
     // Second level tiling: reduction dimension.
-    auto tilingReductionDimResult = tileDot(rewriter, dotOp.getOperation(),
-                                            reductionDimTileSizeFn(tileSizes));
+    auto tilingReductionDimResult = tileReductionDim(
+        rewriter, dotOp.getOperation(), reductionDimTileSizeFn(tileSizes));
     if (failed(tilingReductionDimResult)) return failure();
 
     if (!tilingReductionDimResult->loops.empty()) {
@@ -141,8 +159,8 @@ struct DotTransformPattern : public OpRewritePattern<DotTy> {
     }
 
     // Peel parallel loops.
-    for (auto &loop : tilingParallelDimsResult->loops) {
-      (void)peelSCFForOp(rewriter, loop);
+    if (parallelLoop != nullptr) {
+      (void)peelAllLoops(parallelLoop, rewriter);
     }
 
     // Peel reduction loop inside the main parallel loop, label the main loop as
