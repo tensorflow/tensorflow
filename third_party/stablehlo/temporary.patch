@@ -1,1 +1,60 @@
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
+--- stablehlo/stablehlo/dialect/ChloOps.cpp
++++ stablehlo/stablehlo/dialect/ChloOps.cpp
+@@ -66,6 +66,7 @@
+ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DigammaOp)
+ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfOp)
+ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfcOp)
++INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfInvOp)
+ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LgammaOp)
+ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NextAfterOp)
+ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(PolygammaOp)
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
+--- stablehlo/stablehlo/dialect/ChloOps.td
++++ stablehlo/stablehlo/dialect/ChloOps.td
+@@ -673,6 +673,15 @@
+   }];
+ }
+ 
++def CHLO_ErfInvOp : CHLO_UnaryElementwiseOp<"erf_inv",
++    [HLO_CompatibleOperandsAndResultType], HLO_FpTensor, HLO_FpTensor> {
++  let summary = "Inverse Erf";
++  let description = [{
++    Returns `ErfInv(operand)` element-wise.
++  }];
++}
++
++
+ def CHLO_ErfcOp : CHLO_UnaryElementwiseOp<"erfc",
+     [HLO_CompatibleOperandsAndResultType], HLO_FpTensor, HLO_FpTensor> {
+   let summary = "Erfc operator";
+diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
+--- stablehlo/stablehlo/tests/ops_chlo.mlir
++++ stablehlo/stablehlo/tests/ops_chlo.mlir
+@@ -133,3 +133,10 @@
+   %0:2 = chlo.top_k(%arg0, k=8) : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
+   return
+ }
++
++// -----
++
++func.func @erf_inv(%arg0 : tensor<16x16xf32>) {
++  %0 = chlo.erf_inv %arg0 : tensor<16x16xf32> -> tensor<16x16xf32>
++  return
++}
+diff --ruN a/stablehlo/stablehlo/tests/ops_chlo_roundtrip.mlir b/stablehlo/stablehlo/tests/ops_chlo_roundtrip.mlir
+--- stablehlo/stablehlo/tests/ops_chlo_roundtrip.mlir
++++ stablehlo/stablehlo/tests/ops_chlo_roundtrip.mlir
+@@ -432,3 +432,11 @@
+   }) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+   func.return %0 : tensor<*xf32>
+ }
++
++// CHECK-LABEL:  func @chlo_erf_inv
++// CHECK-SAME:   %[[A0:.*0]]: tensor<16x16xf32>)
++// CHECK:          chlo.erf_inv %[[A0]] : tensor<16x16xf32> -> tensor<16x16xf32>
++func.func @chlo_erf_inv(%arg0 : tensor<16x16xf32>) {
++  %0 = "chlo.erf_inv"(%arg0) : (tensor<16x16xf32>) -> tensor<16x16xf32>
++  return
++}
 
