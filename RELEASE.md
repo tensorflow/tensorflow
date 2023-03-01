@@ -47,6 +47,10 @@
         `SidecarEvaluator` evaluator. The evaluator regularly evaluates the
         model and exports it if the user-defined comparison function determines
         that it is an improvement.
+    *   Added warmup capabilities to `tf.keras.optimizers.schedules.CosineDecay`
+        learning rate scheduler. You can now specify an initial and target
+        learning rate, and our scheduler will perform a linear interpolation
+        between the two after which it will begin a decay phase.
 
 *   `tf.function`:
     * ConcreteFunction (`tf.types.experimental.ConcreteFunction`) as generated
