@@ -14,6 +14,7 @@ py_library(
     deps = [
         ":coordinator_context",
         ":metric_utils",
+        ":remote_value",
         ":utils",
         ":values",
         ":watchdog",
@@ -42,6 +43,13 @@ py_library(
         "coordinator_context.py",
     ],
     srcs_version = "PY3",
+    deps = [":remote_value"],
+)
+
+py_library(
+    name = "remote_value",
+    srcs = ["remote_value.py"],
+    srcs_version = "PY3",
     deps = [],
 )
 
@@ -50,6 +58,7 @@ py_library(
     srcs = ["values.py"],
     srcs_version = "PY3",
     deps = [
+        ":remote_value",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
@@ -78,7 +87,7 @@ distribute_py_test(
     ],
     deps = [
         ":cluster_coordinator",
-        ":values",
+        ":remote_value",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",

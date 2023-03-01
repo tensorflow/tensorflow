@@ -36,7 +36,7 @@ from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
 from tensorflow.python.distribute.coordinator import coordinator_context
-from tensorflow.python.distribute.coordinator import values as values_lib
+from tensorflow.python.distribute.coordinator import remote_value
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -358,7 +358,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
 
     # Closure2 was an inflight closure when it got cancelled.
     self.assertEqual(closure2.output_remote_value._status,
-                     values_lib.RemoteValueStatus.READY)
+                     remote_value.RemoteValueStatus.READY)
     with self.assertRaisesRegex(ValueError, 'Fake cancellation error.'):
       closure2.output_remote_value.fetch()
 
@@ -1570,8 +1570,8 @@ class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(result, dataset_vals[0])
 
     # Test that the build() output type specs match the input Dataset spec.
-    for remote_value in per_worker_dataset._values:
-      self.assertEqual(remote_value._type_spec, dataset._type_spec)
+    for value in per_worker_dataset._values:
+      self.assertEqual(value._type_spec, dataset._type_spec)
 
 
 if __name__ == '__main__':

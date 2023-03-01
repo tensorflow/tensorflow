@@ -18,19 +18,12 @@ import contextlib
 import threading
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.distribute.coordinator import remote_value
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.util import compat
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-# There is a circular dependency between this and the `cluster_coordinator`
-# module. So we load it lazily to work around this.
-cluster_coordinator = LazyLoader(
-    "cluster_coordinator", globals(),
-    "tensorflow.python.distribute.coordinator.cluster_coordinator"
-)
 
 _dispatch_context = threading.local()
 
@@ -66,7 +59,23 @@ class DispatchContext(object):
     return self._worker_index
 
   def maybe_get_remote_value(self, ret):
-    return cluster_coordinator._maybe_get_remote_value(ret)  # pylint: disable=protected-access
+    return maybe_get_remote_value(ret)
+
+
+def maybe_get_remote_value(val):
+  """Gets the value of `val` if it is a `RemoteValue`."""
+  if isinstance(val, remote_value.RemoteValue):
+    error = val._get_error()  # pylint: disable=protected-access
+    if error:
+      raise AssertionError(
+          "RemoteValue doesn't have a value because it has error %r:%s" %
+          (error, error))
+    elif val._status is not remote_value.RemoteValueStatus.READY:  # pylint: disable=protected-access
+      raise AssertionError("The input RemoteValue has not been executed.")
+    else:
+      return val._get_values()  # pylint: disable=protected-access
+  else:
+    return val
 
 
 @tf_export("distribute.experimental.coordinator.get_current_worker_index",
