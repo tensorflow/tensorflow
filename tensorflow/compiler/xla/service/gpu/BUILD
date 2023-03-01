@@ -461,7 +461,7 @@ cc_library(
 
 xla_test(
     name = "triton_autotuner_test",
-    srcs = ["triton_autotuner_test.cc"],
+    srcs = if_cuda_is_configured(["triton_autotuner_test.cc"]),
     backend_tags = {"gpu": [
         "requires-gpu-sm70",
     ]},
