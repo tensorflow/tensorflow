@@ -72,6 +72,10 @@ namespace xla {
 
 namespace {
 
+template <PrimitiveType kType>
+using NativeTypeOf =
+    typename primitive_util::PrimitiveTypeToNative<kType>::type;
+
 template <typename OperandT>
 StatusOr<Literal> Compare(const Shape& shape, ComparisonDirection direction,
                           LiteralSlice lhs_literal, LiteralSlice rhs_literal) {
@@ -1114,6 +1118,78 @@ Status HloEvaluator::EvaluateParameterFromCallerArgument(
       caller_operand_literal, /*dest_shape_index=*/shape_index,
       /*src_shape_index=*/shape_index));
   return OkStatus();
+}
+
+/*static*/ void HloEvaluator::IterateThroughWindow(
+    const Shape& window_shape, const Window& window, const Shape& base_shape,
+    const absl::Span<const int64_t> window_count_index,
+    const std::function<void(absl::Span<const int64_t>)>& f) {
+  const int64_t rank = base_shape.rank();
+  DimensionVector window_index(rank);
+  std::fill(window_index.begin(), window_index.end(), 0);
+  do {
+    DimensionVector base_index(rank);
+    bool out_of_bound = false;
+    for (int64_t i = 0; i < rank; ++i) {
+      // Padding is applied to the dilated base. Say that padding is 3 and
+      // dilation is 2 for some dimension. After applying base dilation and
+      // padding, the dimension looks like:
+      // P P P E D D E D D ... E D D E P P P
+      // where E are the elements and D are the holes. So, the elements are
+      // located in indices: padding + k*base_dilation for k = {0, 1, 2, ...}.
+      // We are accessing elements in the transformed base at indices:
+      // window_count_index * stride + window_index * window_dilation.
+      // Solving for k gives us
+      // (win_count_i * stride + win_i * win_dilation - pad) / base_dilation
+      // When this is a natural number, we index an original element.
+      // Otherwise, we index a 0 (pad or hole), and we don't need to apply
+      // the callback f.
+      base_index[i] = window_count_index[i] * window.dimensions(i).stride() +
+                      window_index[i] * window.dimensions(i).window_dilation() -
+                      window.dimensions(i).padding_low();
+      if (base_index[i] % window.dimensions(i).base_dilation() != 0) {
+        out_of_bound = true;
+        break;
+      }
+      base_index[i] /= window.dimensions(i).base_dilation();
+      if (base_index[i] < 0 || base_index[i] >= base_shape.dimensions(i)) {
+        out_of_bound = true;
+        break;
+      }
+    }
+    if (!out_of_bound) {
+      f(base_index);
+    }
+  } while (IndexUtil::BumpIndices(window_shape, absl::MakeSpan(window_index)));
+}
+
+std::vector<int64_t> HloEvaluator::GetS64Indices(
+    absl::Span<HloInstruction* const> start_indices) {
+  auto get_first_s64 = [&](const Literal& index) -> int64_t {
+    switch (index.shape().element_type()) {
+      case S16:
+        return index.GetFirstElement<NativeTypeOf<S16>>();
+      case S32:
+        return index.GetFirstElement<NativeTypeOf<S32>>();
+      case S64:
+        return index.GetFirstElement<NativeTypeOf<S64>>();
+      case U16:
+        return index.GetFirstElement<NativeTypeOf<U16>>();
+      case U32:
+        return index.GetFirstElement<NativeTypeOf<U32>>();
+      case U64:
+        return index.GetFirstElement<NativeTypeOf<U64>>();
+      default:
+        LOG(FATAL) << "GetS64Indices: unhandled primitive type for "
+                   << PrimitiveType_Name(index.shape().element_type());
+    }
+  };
+  std::vector<int64_t> start;
+  start.reserve(start_indices.size());
+  for (HloInstruction* index : start_indices) {
+    start.push_back(get_first_s64(GetEvaluatedLiteralFor(index)));
+  }
+  return start;
 }
 
 Status HloEvaluator::EvaluateInternal(
