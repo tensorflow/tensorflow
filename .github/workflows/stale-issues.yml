@@ -19,7 +19,7 @@ jobs:
           only-issue-labels: 
            - stat:awaiting response
           stale-issue-message: > 
-            This issue is stale because it has been open for 30 days with no activity.
+            This issue is stale because it has been open for 7 days with no activity.
             It will be closed if no further activity occurs. Thank you.
           close-issue-message: >
             This issue was closed because it has been inactive for 7 days since being marked as stale.
