@@ -195,6 +195,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+        "//tensorflow/tsl/platform:hash",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla/stream_executor/cuda:stream_executor_cuda",
