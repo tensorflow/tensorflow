@@ -52,6 +52,9 @@ tensorflow/go/tsl/profiler/protobuf/BUILD:
 tensorflow/go/tsl/protobuf/BUILD:
 tensorflow/java/README.md:
 tensorflow/java/src/main/native/BUILD:
+tensorflow/lite/async/c/BUILD:
+tensorflow/lite/async/c/task.h:
+tensorflow/lite/async/c/types.h:
 tensorflow/lite/async/interop/c/BUILD:
 tensorflow/lite/async/interop/c/attribute_map.h:
 tensorflow/lite/async/interop/c/types.h:
