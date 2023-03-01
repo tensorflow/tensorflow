@@ -10,7 +10,7 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - name: Awaiting resposnse issues
+      - name: Awaiting response issues
         uses: actions/stale@v5
         with:
           days-before-issue-stale: 7
