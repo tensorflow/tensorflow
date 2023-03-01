@@ -926,12 +926,13 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
       py::return_value_policy::reference);
   m.def(
       "TFE_GetConfigKeyValue",
-      [](py::handle& ctx, const char* config_key, TF_Buffer& config_value) {
+      [](py::handle& ctx, const char* config_key, int64_t timeout_in_ms,
+         TF_Buffer& config_value) {
         tensorflow::Safe_TF_StatusPtr status =
             tensorflow::make_safe(TF_NewStatus());
         Py_BEGIN_ALLOW_THREADS;
         TFE_GetConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
-                              &config_value, status.get());
+                              timeout_in_ms, &config_value, status.get());
         Py_END_ALLOW_THREADS;
         tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
       },

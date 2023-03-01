@@ -780,10 +780,13 @@ class Context:
     ensure_initialized()
     pywrap_tfe.TFE_InsertConfigKeyValue(self._context_handle, key, value)
 
-  def get_config_key_value(self, key):
+  # If `timeout_in_ms=0`, this will block until the key-value is set or the
+  # worker shuts down.
+  def get_config_key_value(self, key, timeout_in_ms=0):
     ensure_initialized()
     with c_api_util.tf_buffer() as buffer_:
-      pywrap_tfe.TFE_GetConfigKeyValue(self._context_handle, key, buffer_)
+      pywrap_tfe.TFE_GetConfigKeyValue(self._context_handle, key,
+                                       timeout_in_ms, buffer_)
       value = pywrap_tf_session.TF_GetBuffer(buffer_).decode("utf-8")
     return value
 
