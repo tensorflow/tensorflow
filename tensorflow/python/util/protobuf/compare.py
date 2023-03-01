@@ -190,10 +190,6 @@ def assertProtoEqual(
     if normalize_numbers:
       NormalizeNumberFields(pb)
 
-  if FindNans(a):
-    self.fail('Actual contains NaNs')
-  if FindNans(b):
-    self.fail('Expected contains NaNs')
   if relative_tolerance is not None:
     checkFloatEqAndReplace(
         self, expected=b, actual=a, relative_tolerance=relative_tolerance

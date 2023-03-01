@@ -223,17 +223,6 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     pb2 = compare_test_pb2.Floats(float_=float("inf"))
     self.assertProtoEquals(pb1, pb2, relative_tolerance=1e-5)
 
-  def test_float_relative_tolerance_nan(self):
-    pb1 = compare_test_pb2.Floats(float_=float("nan"))
-    pb2 = compare_test_pb2.Floats(float_=float("nan"))
-    self.assertRaises(
-        AssertionError,
-        self.assertProtoEquals,
-        pb1,
-        pb2,
-        relative_tolerance=1e-7,
-    )
-
   def test_float_relative_tolerance_denormal(self):
     pb1 = compare_test_pb2.Floats(float_=math.ulp(0.0))
     pb2 = compare_test_pb2.Floats(float_=math.ulp(0.0))
