@@ -2473,4 +2473,48 @@ func.func private @result_body(%arg0: tensor<1x4x4x4xf32>) -> tensor<1x4x4x4xf32
   func.return %1 : tensor<1x4x4x4xf32>
 }
 
+// -----
 
+// CHECK-LABEL: test_real
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<1x8x9x2xf32>
+// CHECK: %[[VAL_1:.*]] = "tosa.slice"(%[[VAL_0]]) {size = array<i64: 1, 8, 9, 1>, start = array<i64: 0, 0, 0, 0>} : (tensor<1x8x9x2xf32>) -> tensor<1x8x9x1xf32>
+// CHECK: %[[VAL_2:.*]] = "tosa.reshape"(%[[VAL_1]]) {new_shape = array<i64: 1, 8, 9>} : (tensor<1x8x9x1xf32>) -> tensor<1x8x9xf32>
+// CHECK: return %[[VAL_2]] : tensor<1x8x9xf32>
+func.func @test_real(%arg0: tensor<1x8x9xcomplex<f32>>) -> (tensor<1x8x9xf32>) {
+  %0 = "tfl.real"(%arg0) {} : (tensor<1x8x9xcomplex<f32>>) -> tensor<1x8x9xf32>
+  return %0 : tensor<1x8x9xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_real_non_complex
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<1x8x9xf32>
+// CHECK: %[[VAL_1:.*]] = "tosa.identity"(%[[VAL_0]]) : (tensor<1x8x9xf32>) -> tensor<1x8x9xf32>
+// CHECK: return %[[VAL_1]]
+func.func @test_real_non_complex(%arg0: tensor<1x8x9xf32>) -> (tensor<1x8x9xf32>) {
+  %0 = "tfl.real"(%arg0) {} : (tensor<1x8x9xf32>) -> tensor<1x8x9xf32>
+  return %0 : tensor<1x8x9xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_imag
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<1x8x9x2xf32>
+// CHECK: %[[VAL_1:.*]] = "tosa.slice"(%[[VAL_0]]) {size = array<i64: 1, 8, 9, 1>, start = array<i64: 0, 0, 0, 1>} : (tensor<1x8x9x2xf32>) -> tensor<1x8x9x1xf32>
+// CHECK: %[[VAL_2:.*]] = "tosa.reshape"(%[[VAL_1]]) {new_shape = array<i64: 1, 8, 9>} : (tensor<1x8x9x1xf32>) -> tensor<1x8x9xf32>
+// CHECK: return %[[VAL_2]] : tensor<1x8x9xf32>
+func.func @test_imag(%arg0: tensor<1x8x9xcomplex<f32>>) -> (tensor<1x8x9xf32>) {
+  %0 = "tfl.imag"(%arg0) {} : (tensor<1x8x9xcomplex<f32>>) -> tensor<1x8x9xf32>
+  return %0 : tensor<1x8x9xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_imag_non_complex
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<1x8x9xf32>
+// CHECK-DAG: %[[VAL_1:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<1x8x9xf32>} : () -> tensor<1x8x9xf32>
+// CHECK: return %[[VAL_1]] : tensor<1x8x9xf32>
+func.func @test_imag_non_complex(%arg0: tensor<1x8x9xf32>) -> (tensor<1x8x9xf32>) {
+  %0 = "tfl.imag"(%arg0) {} : (tensor<1x8x9xf32>) -> tensor<1x8x9xf32>
+  return %0 : tensor<1x8x9xf32>
+}

@@ -184,6 +184,8 @@ DECL_CONVERT_OP(ArgMax);
 DECL_CONVERT_OP(ArgMin);
 DECL_CONVERT_OP(FakeQuant);
 DECL_CONVERT_OP(While);
+DECL_CONVERT_OP(Real);
+DECL_CONVERT_OP(Imag);
 
 #undef DECL_CONVERT_OP
 
@@ -3938,6 +3940,118 @@ LogicalResult ConvertTFLWhileOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFLRealOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_real_op = cast<TFL::RealOp>(op);
+  Value input = tfl_real_op.getInput();
+
+  auto input_ty = dyn_cast<RankedTensorType>(input.getType());
+  auto output_ty = dyn_cast<ShapedType>(tfl_real_op.getResult().getType());
+
+  if (!input_ty || !output_ty) {
+    return rewriter.notifyMatchFailure(op, "ranked input/output required");
+  }
+
+  Type input_ety = input_ty.getElementType();
+
+  // For non-complex inputs, return the original tensor.
+  if (!input_ety.isa<ComplexType>()) {
+    CreateReplaceOpAndInfer<tosa::IdentityOp>(rewriter, op, input_ty, input);
+    return success();
+  }
+
+  if (!input_ety.cast<ComplexType>().getElementType().isF32()) {
+    return rewriter.notifyMatchFailure(
+        op, "complex input must be of type complex64");
+  }
+
+  // Complex64 inputs of shape [x, ..., y] are lowered to TOSA
+  // as a tensor of datatype float32 and shape [x, ..., y, 2].
+  // This is because TOSA does not have support for complex
+  // types. An unrealized conversion is inserted to handle
+  // this discrepancy.
+  llvm::SmallVector<int64_t> cast_size = to_vector(input_ty.getShape());
+  cast_size.push_back(2);
+  auto casted_ty = RankedTensorType::get(cast_size, rewriter.getF32Type());
+  Value casted = rewriter
+                     .create<mlir::UnrealizedConversionCastOp>(op->getLoc(),
+                                                               casted_ty, input)
+                     .getResult(0);
+
+  // Slice the input to get the "real" values.
+  const int64_t rank = input_ty.getRank();
+  llvm::SmallVector<int64_t> start(rank + 1, 0);
+  llvm::SmallVector<int64_t> size = to_vector(input_ty.getShape());
+  size.push_back(1);
+  auto slice_ty = RankedTensorType::get(size, rewriter.getF32Type());
+  auto slice_op =
+      CreateOpAndInfer<tosa::SliceOp>(rewriter, op->getLoc(), slice_ty, casted,
+                                      rewriter.getDenseI64ArrayAttr(start),
+                                      rewriter.getDenseI64ArrayAttr(size));
+  CreateReplaceOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op, output_ty, slice_op,
+      rewriter.getDenseI64ArrayAttr(output_ty.getShape()));
+
+  return success();
+}
+
+LogicalResult ConvertTFLImagOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_imag_op = cast<TFL::ImagOp>(op);
+  Value input = tfl_imag_op.getInput();
+
+  auto input_ty = dyn_cast<RankedTensorType>(input.getType());
+  auto output_ty = dyn_cast<ShapedType>(tfl_imag_op.getResult().getType());
+
+  if (!input_ty || !output_ty) {
+    return rewriter.notifyMatchFailure(op, "ranked input/output required");
+  }
+
+  Type input_ety = input_ty.getElementType();
+
+  // For non-complex inputs return all zero's.
+  if (!input_ety.isa<ComplexType>()) {
+    CreateReplaceOpAndInfer<tosa::ConstOp>(
+        rewriter, op, input_ty, DenseElementsAttr::get(input_ty, {0.0f}));
+    return success();
+  }
+
+  if (!input_ety.cast<ComplexType>().getElementType().isF32()) {
+    return rewriter.notifyMatchFailure(
+        op, "complex input must be of type complex64");
+  }
+
+  // Complex64 inputs of shape [x, ..., y] are lowered to TOSA
+  // as a tensor of datatype float32 and shape [x, ..., y, 2].
+  // This is because TOSA does not have support for complex
+  // types. An unrealized conversion is inserted to handle
+  // this discrepancy.
+  llvm::SmallVector<int64_t> cast_size = to_vector(input_ty.getShape());
+  cast_size.push_back(2);
+  auto casted_ty = RankedTensorType::get(cast_size, rewriter.getF32Type());
+  Value casted = rewriter
+                     .create<mlir::UnrealizedConversionCastOp>(op->getLoc(),
+                                                               casted_ty, input)
+                     .getResult(0);
+
+  // Slice the input to the "imag" values.
+  llvm::SmallVector<int64_t> start(input_ty.getRank(), 0);
+  start.push_back(1);
+  llvm::SmallVector<int64_t> size = to_vector(input_ty.getShape());
+  size.push_back(1);
+
+  auto slice_ty = RankedTensorType::get(size, rewriter.getF32Type());
+  auto slice_op =
+      CreateOpAndInfer<tosa::SliceOp>(rewriter, op->getLoc(), slice_ty, casted,
+                                      rewriter.getDenseI64ArrayAttr(start),
+                                      rewriter.getDenseI64ArrayAttr(size));
+  CreateReplaceOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op, output_ty, slice_op,
+      rewriter.getDenseI64ArrayAttr(output_ty.getShape()));
+
+  return success();
+}
+
 LogicalResult LegalizeTFL::initialize(MLIRContext* context) {
   RewritePatternSet patterns(context);
   mlir::tosa::populateLegalizeTFLPatterns(context, patterns);
@@ -4071,6 +4185,8 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLArgMin);
   DEF_PATTERN_INSERT(TFLFakeQuant);
   DEF_PATTERN_INSERT(TFLWhile);
+  DEF_PATTERN_INSERT(TFLReal);
+  DEF_PATTERN_INSERT(TFLImag);
 }
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTFL pass.
