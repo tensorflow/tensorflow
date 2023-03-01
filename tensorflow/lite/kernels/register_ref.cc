@@ -323,7 +323,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_DEPTH_TO_SPACE, Register_DEPTH_TO_SPACE_REF());
   AddBuiltin(BuiltinOperator_GATHER, Register_GATHER(),
              /* min_version = */ 1,
-             /* max_version = */ 4);
+             /* max_version = */ 6);
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE_REF(),
              /* min_version = */ 1,
              /* max_version = */ 5);

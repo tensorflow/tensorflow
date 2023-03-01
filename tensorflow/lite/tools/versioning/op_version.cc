@@ -216,6 +216,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_GATHER: {
+      if (op_sig.inputs.at(1).type == kTfLiteInt16) {
+        return 6;
+      }
       auto gather_params =
           reinterpret_cast<TfLiteGatherParams*>(op_sig.builtin_data);
       if (gather_params && gather_params->batch_dims != 0) {
