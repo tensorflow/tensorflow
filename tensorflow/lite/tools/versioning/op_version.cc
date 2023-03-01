@@ -688,6 +688,18 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_EQUAL:
+      if (!op_sig.inputs.empty()) {
+        if (op_sig.inputs.at(0).type == kTfLiteInt16) {
+          return 4;
+        }
+        if (op_sig.inputs.at(0).type == kTfLiteString) {
+          return 3;
+        }
+        if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+          return 2;
+        }
+      }
+      return 1;
     case BuiltinOperator_NOT_EQUAL:
       if (!op_sig.inputs.empty()) {
         if (op_sig.inputs.at(0).type == kTfLiteString) {
@@ -866,14 +878,22 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     }
+    case BuiltinOperator_LESS:
+    case BuiltinOperator_GREATER_EQUAL: {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
+        return 3;
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 2;
+      }
+      return 1;
+    }
     case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_SPLIT_V:
     case BuiltinOperator_SUM:
     case BuiltinOperator_LOG_SOFTMAX:
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_GREATER:
-    case BuiltinOperator_GREATER_EQUAL:
-    case BuiltinOperator_LESS:
     case BuiltinOperator_LESS_EQUAL:
     case BuiltinOperator_RSQRT:
     case BuiltinOperator_SQUARED_DIFFERENCE:
