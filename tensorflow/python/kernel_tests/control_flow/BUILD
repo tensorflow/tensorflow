@@ -38,7 +38,6 @@ cuda_py_test(
     shard_count = 16,
     tags = [
         "no_windows",  # TODO(b/184424727): Re-enable this.
-        "notsan",  # TODO(b/132205147): Re-enable this.
     ],
     deps = [
         "//tensorflow/core:protos_all_py",

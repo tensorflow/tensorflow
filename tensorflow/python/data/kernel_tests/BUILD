@@ -307,9 +307,6 @@ tf_py_test(
     srcs = ["flat_map_test.py"],
     grpc_enabled = True,
     shard_count = 8,
-    tags = [
-        "noasan",  # TODO(b/235095716): Test timing out.
-    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -515,7 +512,6 @@ tf_py_test(
     tags = [
         "no_oss",  # Test flaky due to port collisions.
         "no_windows",
-        "nomsan",  # b/180655981
     ],
     deps = [
         ":test_base",
@@ -652,7 +648,6 @@ cuda_py_test(
     shard_count = 12,
     tags = [
         "no_cuda_asan",  # TODO(b/183963686)
-        "notsan",  # TODO(b/144706539)
     ],
     xla_tags = [
         "no_cuda_asan",  # TODO(b/183963686)

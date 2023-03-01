@@ -85,9 +85,6 @@ cuda_py_test(
     tags = [
         "no_pip",
         "no_windows",  # TODO(b/141617449): needs investigation
-        "noasan",
-        "nomsan",
-        "notsan",
         "optonly",
         "oss_serial",
     ],

@@ -164,7 +164,6 @@ cuda_py_test(
     srcs = ["array_test.py"],
     tags = [
         "nogpu",  # b/217374776
-        "notsan",  # TODO(b/170999669): Data race
     ],
     deps = [
         ":control_flow_ops",

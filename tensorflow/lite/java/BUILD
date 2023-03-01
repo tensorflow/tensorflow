@@ -743,7 +743,6 @@ java_test(
         "no_cuda_on_cpu_tap",  # CUDA + flex is not officially supported.
         "no_gpu",  # GPU + flex is not officially supported.
         "no_oss",  # Currently requires --config=monolithic, b/118895218.
-        "notsan",  # TODO(b/185859069) Re-enable after fixing race condition.
     ],
     test_class = "org.tensorflow.lite.InterpreterFlexTest",
     visibility = ["//visibility:private"],

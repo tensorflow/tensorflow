@@ -1852,10 +1852,7 @@ xla_test(
     srcs = ["prng_test.cc"],
     shard_count = 6,
     # TODO(b/148276347) The test fails on macOS.
-    tags = [
-        "noasan",  # Flakily times out on asan.
-        "nomac",
-    ],
+    tags = ["nomac"],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:literal",
@@ -2822,9 +2819,6 @@ xla_test(
     shard_count = 3,
     tags = [
         "enable_for_xla_interpreter",
-        "noasan",  # sometimes times out, http://b/78650012
-        "nomsan",  # sometimes times out, http://b/78650012
-        "notsan",  # sometimes times out, http://b/78650012
         "optonly",
     ],
     deps = [

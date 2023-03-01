@@ -1528,12 +1528,7 @@ tsl_cc_test(
     name = "setround_test",
     size = "small",
     srcs = ["setround_test.cc"],
-    tags = [
-        "noasan",
-        "noclang",
-        "nomsan",
-        "notsan",
-    ],
+    tags = ["noclang"],
     deps = [
         ":setround",
         ":test",

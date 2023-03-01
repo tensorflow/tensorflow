@@ -14,8 +14,6 @@ tf_py_test(
     shard_count = 20,
     tags = [
         "no_mac",  # TODO(b/129706424): Re-enable this test on Mac.
-        "nomsan",  # TODO(b/161902335): Re-enable.
-        "notsan",  # TODO(b/161829717): Re-enable.
     ],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -111,9 +109,6 @@ cuda_py_test(
     size = "small",
     srcs = ["list_ops_test.py"],
     grpc_enabled = True,
-    tags = [
-        "noasan",  # TODO(b/155406705): flaky
-    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",

@@ -749,10 +749,6 @@ tf_cuda_cc_test(
     tags = [
         "no_oss",  # TODO(b/200848572)
         "no_windows",
-        # TODO(b/136478427): sanitizers report issues due to unclean exit.
-        "noasan",  # leaks gRPC server instances
-        "nomsan",  # b/229991646: use of destructed memory due to unclean exit.
-        "notsan",  # b/259602430: race on destructed mutex due to unclean exit.
     ],
     deps = [
         ":c_api",

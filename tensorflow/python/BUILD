@@ -3270,8 +3270,6 @@ cuda_py_test(
     tags = [
         "no_rocm",
         "no_windows_gpu",
-        "noasan",  # b/159332048
-        "nomsan",  # b/148630708
     ],
     deps = [
         ":array_ops",

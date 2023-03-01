@@ -62,7 +62,6 @@ cuda_py_test(
     tags = [
         "no_oss",  # b/205574093, and because tf.distributions is deprecated
         "nomac",  # b/191763315
-        "notsan",  # b/173653918
     ],
     xla_tags = [
         "no_cuda_asan",  # times out
@@ -223,9 +222,6 @@ cuda_py_test(
         # errors.
         "no_mac",
         "no_oss",
-        # disable to avoid false positives from scipy.
-        "nomsan",
-        "noasan",  #b/168810473
     ],
     deps = [
         "//tensorflow/python:client_testlib",

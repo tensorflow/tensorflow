@@ -1695,7 +1695,6 @@ tf_cuda_cc_test(
     srcs = ["conv_ops_benchmark_test.cc"],
     tags = [
         "nomac",  # b/132448918
-        "nomsan",  # b/141643254
     ],
     deps = [
         ":bias_op",
@@ -1724,7 +1723,6 @@ tf_cuda_cc_test(
     name = "conv_grad_filter_ops_benchmark_test",
     size = "medium",
     srcs = ["conv_grad_filter_ops_benchmark_test.cc"],
-    tags = ["nomsan"],  # b/141643254
     deps = [
         ":conv_ops",
         ":host_constant_op",
@@ -1748,7 +1746,6 @@ tf_cuda_cc_test(
     name = "conv_grad_input_ops_benchmark_test",
     size = "medium",
     srcs = ["conv_grad_input_ops_benchmark_test.cc"],
-    tags = ["nomsan"],  # b/141643254
     deps = [
         ":conv_ops",
         ":host_constant_op",
@@ -1838,9 +1835,6 @@ tf_cuda_cc_test(
     name = "fused_batch_norm_op_test",
     size = "small",
     srcs = ["fused_batch_norm_op_test.cc"],
-    tags = [
-        "nomsan",  # TODO(b/181135145), use-of-uninitialized-value in initializedLoggingWithEnvVariables
-    ],
     deps = [
         ":fused_batch_norm_op",
         ":ops_testutil",
@@ -1861,10 +1855,7 @@ tf_cuda_cc_test(
     name = "fused_batch_norm_ex_op_test",
     size = "small",
     srcs = ["fused_batch_norm_ex_op_test.cc"],
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "nomsan",  # b/141643254
-    ],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":cwise_op",
         ":fused_batch_norm_op",
@@ -1893,7 +1884,6 @@ tf_cc_test(
     name = "in_topk_op_test",
     size = "small",
     srcs = ["in_topk_op_test.cc"],
-    tags = ["nomsan"],  # b/141643254
     deps = [
         ":in_topk_op",
         ":ops_testutil",
@@ -2105,7 +2095,6 @@ tf_cc_test(
     name = "one_hot_op_test",
     size = "small",
     srcs = ["one_hot_op_test.cc"],
-    tags = ["nomsan"],  # b/141643254
     deps = [
         ":one_hot_op",
         ":ops_testutil",
@@ -2877,7 +2866,6 @@ tf_cc_tests(
     srcs = [
         "tensor_map_test.cc",
     ],
-    tags = ["nomsan"],  # b/163222155
     deps = [
         ":tensor_map",
         "//tensorflow/core:framework",
@@ -5300,7 +5288,6 @@ tf_cuda_cc_test(
     name = "scatter_nd_op_test",
     size = "small",
     srcs = ["scatter_nd_op_test.cc"],
-    tags = ["noasan"],  # http://b/32635055
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -7255,7 +7242,6 @@ tf_cc_test(
     name = "quantized_conv_ops_test",
     size = "small",
     srcs = ["quantized_conv_ops_test.cc"],
-    tags = ["nomsan"],  # http://b/32242946
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -7295,7 +7281,6 @@ tf_cc_test(
     name = "quantized_matmul_op_test",
     size = "small",
     srcs = ["quantized_matmul_op_test.cc"],
-    tags = ["nomsan"],  # http://b/32242946
     deps = [
         ":ops_testutil",
         ":ops_util",
