@@ -30,7 +30,7 @@ Thunk::ExecuteParams::ExecuteParams(
     : buffer_allocations(&buffer_allocations),
       stream(stream),
       async_comms_stream(async_comms_stream),
-      nccl_params(run_options, stream) {}
+      nccl_params(run_options, stream->parent()) {}
 
 /*static*/ absl::string_view Thunk::KindToString(Thunk::Kind kind) {
 #define CASE(x)  \

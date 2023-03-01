@@ -166,7 +166,7 @@ static absl::Status CollectivePermuteImplCommon(
     absl::Span<const int64_t> replica_group_values,
     absl::Span<const int64_t> source_peers,
     absl::Span<const int64_t> target_peers) {
-  NcclExecuteParams params(*run_options, run_options->stream());
+  NcclExecuteParams params(*run_options, stream->parent());
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
@@ -315,7 +315,7 @@ static absl::Status AllGatherImplCommon(
     CustomCall::RemainingArgs args, int32_t uid, int64_t group_mode,
     int64_t op_id, absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values) {
-  NcclExecuteParams params(*run_options, stream);
+  NcclExecuteParams params(*run_options, stream->parent());
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
@@ -425,7 +425,7 @@ static absl::Status AllReduceImplCommon(
     CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
     int64_t reduction_kind, absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values) {
-  NcclExecuteParams params(*run_options, run_options->stream());
+  NcclExecuteParams params(*run_options, stream->parent());
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
@@ -542,7 +542,7 @@ static absl::Status AllToAllImpl(
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllToAll";
   se::Stream* stream = run_options->stream();
-  NcclExecuteParams params(*run_options, stream);
+  NcclExecuteParams params(*run_options, stream->parent());
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
@@ -587,7 +587,7 @@ static absl::Status ReduceScatterImpl(
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running ReduceScatter";
   se::Stream* stream = run_options->stream();
-  NcclExecuteParams params(*run_options, stream);
+  NcclExecuteParams params(*run_options, stream->parent());
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
@@ -628,7 +628,7 @@ static absl::Status ReplicaIdImpl(
     const ServiceExecutableRunOptions* run_options, FlatMemrefView result) {
   VLOG(3) << "Running ReplicaId";
   se::Stream* stream = run_options->stream();
-  NcclExecuteParams params(*run_options, stream);
+  NcclExecuteParams params(*run_options, stream->parent());
 
   StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
   if (!global_device_id.ok()) return ToAbslStatus(global_device_id.status());
@@ -638,8 +638,8 @@ static absl::Status ReplicaIdImpl(
   if (!logical_id.ok()) return ToAbslStatus(logical_id.status());
 
   se::DeviceMemoryBase result_data = GetDeviceAddress(result);
-  params.stream->ThenMemset32(&result_data, logical_id.value().replica_id,
-                              /*size=*/4);
+  stream->ThenMemset32(&result_data, logical_id.value().replica_id,
+                       /*size=*/4);
 
   return absl::OkStatus();
 }
@@ -658,7 +658,7 @@ static absl::Status PartitionIdImpl(
     const ServiceExecutableRunOptions* run_options, FlatMemrefView result) {
   VLOG(3) << "Running PartitionId";
   se::Stream* stream = run_options->stream();
-  NcclExecuteParams params(*run_options, stream);
+  NcclExecuteParams params(*run_options, stream->parent());
 
   StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
   if (!global_device_id.ok()) return ToAbslStatus(global_device_id.status());
@@ -668,8 +668,8 @@ static absl::Status PartitionIdImpl(
   if (!logical_id.ok()) return ToAbslStatus(logical_id.status());
 
   se::DeviceMemoryBase result_data = GetDeviceAddress(result);
-  params.stream->ThenMemset32(&result_data, logical_id.value().computation_id,
-                              /*size=*/4);
+  stream->ThenMemset32(&result_data, logical_id.value().computation_id,
+                       /*size=*/4);
 
   return absl::OkStatus();
 }
