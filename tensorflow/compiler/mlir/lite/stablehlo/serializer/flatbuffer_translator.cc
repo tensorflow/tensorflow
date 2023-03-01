@@ -110,6 +110,19 @@ static flatbuffers::Offset<::stablehlo::flatbuf::Operator> CreateDivOperator(
                                               outputs);
 }
 
+static flatbuffers::Offset<::stablehlo::flatbuf::Operator>
+CreateSubtractOperator(mlir::stablehlo::SubtractOp& hlo_op,
+                       flatbuffers::FlatBufferBuilder* fbb,
+                       uint32_t opcode_index,
+                       const std::vector<int32_t>& operands,
+                       const std::vector<int32_t>& results) {
+  auto inputs = fbb->CreateVector(operands);
+  auto outputs = fbb->CreateVector(results);
+
+  return ::stablehlo::flatbuf::CreateOperator(*fbb, opcode_index, inputs,
+                                              outputs);
+}
+
 static flatbuffers::Offset<::stablehlo::flatbuf::Operator> CreateMaxOperator(
     mlir::stablehlo::MaxOp& hlo_op, flatbuffers::FlatBufferBuilder* fbb,
     uint32_t opcode_index, const std::vector<int32_t>& operands,
@@ -282,6 +295,8 @@ CreateFlatBufferOperator(mlir::Operation* op, uint32_t opcode_index,
     return CreateLogisticOperator(hlo_op, fbb, opcode_index, operands, results);
   if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::DivOp>(op))
     return CreateDivOperator(hlo_op, fbb, opcode_index, operands, results);
+  if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::SubtractOp>(op))
+    return CreateSubtractOperator(hlo_op, fbb, opcode_index, operands, results);
   if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::MaxOp>(op))
     return CreateMaxOperator(hlo_op, fbb, opcode_index, operands, results);
   if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::ReshapeOp>(op))
@@ -312,6 +327,8 @@ llvm::Optional<::stablehlo::flatbuf::OperatorCode> GetOpCode(
     return ::stablehlo::flatbuf::OperatorCode_ADD;
   if (isa<mlir::stablehlo::DotOp>(op))
     return ::stablehlo::flatbuf::OperatorCode_DOT;
+  if (isa<mlir::stablehlo::SubtractOp>(op))
+    return ::stablehlo::flatbuf::OperatorCode_SUBTRACT;
   if (isa<mlir::stablehlo::DivOp>(op))
     return ::stablehlo::flatbuf::OperatorCode_DIVIDE;
   if (isa<mlir::stablehlo::LogisticOp>(op))
