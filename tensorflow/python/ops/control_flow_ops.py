@@ -25,7 +25,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -33,13 +32,12 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_functional_ops
-from tensorflow.python.ops import gen_logging_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 # go/tf-wildcard-import
@@ -51,7 +49,6 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_should_use
 from tensorflow.python.util import variable_utils
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
@@ -76,112 +73,19 @@ def_function = LazyLoader(
 case = control_flow_case.case
 _case_helper = control_flow_case._case_helper  # pylint: disable=protected-access
 case_v2 = control_flow_case.case_v2
+_case_create_default_action = control_flow_case._case_create_default_action  # pylint: disable=protected-access
 _case_verify_and_canonicalize_args = control_flow_case._case_verify_and_canonicalize_args  # pylint: disable=protected-access
+_assert_at_most_n_true = control_flow_case._assert_at_most_n_true  # pylint: disable=protected-access
+Assert = control_flow_assert.Assert
+_summarize_eager = control_flow_assert._summarize_eager  # pylint: disable=protected-access
+
 
 # We override the 'tuple' for a control flow op, so we keep python's
 # existing 'tuple' for later use in this module.
 _basetuple = tuple
 
 
-def _summarize_eager(tensor, summarize=None):
-  """Returns a summarized string representation of eager `tensor`.
-
-  Args:
-    tensor: EagerTensor to summarize
-    summarize: Include these many first elements of `array`
-  """
-  # Emulate the behavior of Tensor::SummarizeValue()
-  if summarize is None:
-    summarize = 3
-  elif summarize < 0:
-    summarize = array_ops.size(tensor)
-
-  # reshape((-1,)) is the fastest way to get a flat array view
-  if tensor._rank():  # pylint: disable=protected-access
-    flat = tensor.numpy().reshape((-1,))
-    lst = [str(x) for x in flat[:summarize]]
-    if len(lst) < flat.size:
-      lst.append("...")
-  else:
-    # tensor.numpy() returns a scalar for zero dimensional arrays
-    if gen_math_ops.not_equal(summarize, 0):
-      lst = [str(tensor.numpy())]
-    else:
-      lst = []
-
-  return ", ".join(lst)
-
-
 # pylint: disable=protected-access
-
-
-# Assert and Print are special symbols in python, so we must
-# use an upper-case version of them.
-@tf_export("debugging.Assert", "Assert")
-@dispatch.add_dispatch_support
-@tf_should_use.should_use_result
-def Assert(condition, data, summarize=None, name=None):
-  """Asserts that the given condition is true.
-
-  If `condition` evaluates to false, print the list of tensors in `data`.
-  `summarize` determines how many entries of the tensors to print.
-
-  Args:
-    condition: The condition to evaluate.
-    data: The tensors to print out when condition is false.
-    summarize: Print this many entries of each tensor.
-    name: A name for this operation (optional).
-
-  Returns:
-    assert_op: An `Operation` that, when executed, raises a
-    `tf.errors.InvalidArgumentError` if `condition` is not true.
-    @compatibility(eager)
-    returns None
-    @end_compatibility
-
-  Raises:
-    @compatibility(TF1)
-    When in TF V1 mode (that is, outside `tf.function`) Assert needs a control
-    dependency on the output to ensure the assertion executes:
-
-  ```python
-  # Ensure maximum element of x is smaller or equal to 1
-  assert_op = tf.Assert(tf.less_equal(tf.reduce_max(x), 1.), [x])
-  with tf.control_dependencies([assert_op]):
-    ... code using x ...
-  ```
-
-    @end_compatibility
-  """
-  if context.executing_eagerly():
-    if not condition:
-      xs = ops.convert_n_to_tensor(data)
-      data_str = [_summarize_eager(x, summarize) for x in xs]
-      raise errors.InvalidArgumentError(
-          node_def=None,
-          op=None,
-          message="Expected '%s' to be true. Summarized data: %s" %
-          (condition, "\n".join(data_str)))
-    return
-
-  with ops.name_scope(name, "Assert", [condition, data]) as name:
-    xs = ops.convert_n_to_tensor(data)
-    if all(x.dtype in {dtypes.string, dtypes.int32} for x in xs):
-      # As a simple heuristic, we assume that string and int32 are
-      # on host to avoid the need to use cond. If it is not case,
-      # we will pay the price copying the tensor to host memory.
-      return gen_logging_ops._assert(condition, data, summarize, name="Assert")
-    else:
-      condition = ops.convert_to_tensor(condition, name="Condition")
-
-      def true_assert():
-        return gen_logging_ops._assert(
-            condition, data, summarize, name="Assert")
-
-      guarded_assert = cond(condition, no_op, true_assert, name="AssertGuard")
-      if context.executing_eagerly():
-        return
-      return guarded_assert.op
 
 
 def _Identity(tensor, name=None):
@@ -3169,60 +3073,6 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
       else:
         tpl.append(None)
     return tpl
-
-
-def _assert_at_most_n_true(predicates, n, msg):
-  """Returns an Assert op that checks that at most n predicates are True.
-
-  Args:
-    predicates: list of bool scalar tensors.
-    n: maximum number of true predicates allowed.
-    msg: Error message.
-  """
-  preds_c = array_ops.stack(predicates, name="preds_c")
-  num_true_conditions = math_ops.reduce_sum(
-      math_ops.cast(preds_c, dtypes.int32), name="num_true_conds")
-  condition = math_ops.less_equal(num_true_conditions,
-                                  constant_op.constant(n, name="n_true_conds"))
-  preds_names = ", ".join(getattr(p, "name", "?") for p in predicates)
-  error_msg = [
-      "%s: more than %d conditions (%s) evaluated as True:" %
-      (msg, n, preds_names), preds_c
-  ]
-  return Assert(condition, data=error_msg, summarize=len(predicates))
-
-
-def _case_create_default_action(predicates, actions):
-  """Creates default action for a list of actions and their predicates.
-
-  It uses the input actions to select an arbitrary as default and makes sure
-  that corresponding predicates have valid values.
-
-  Args:
-    predicates: a list of bool scalar tensors
-    actions: a list of callable objects which return tensors.
-
-  Returns:
-    a callable
-  """
-  k = len(predicates) - 1  # could pick any
-  predicate, action = predicates[k], actions[k]
-  other_predicates, other_actions = predicates[:k], actions[:k]
-
-  def default_action():
-    others_msg = ("Implementation error: "
-                  "selected default action #%d was called, but some of other "
-                  "predicates are True: " % k)
-    default_msg = ("Input error: "
-                   "None of conditions evaluated as True:",
-                   array_ops.stack(predicates, name="preds_c"))
-    with ops.control_dependencies([
-        _assert_at_most_n_true(other_predicates, n=0, msg=others_msg),
-        Assert(predicate, data=default_msg)
-    ]):
-      return action()
-
-  return default_action, other_predicates, other_actions
 
 
 def _indexed_case_verify_and_canonicalize_args(

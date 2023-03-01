@@ -17,9 +17,12 @@
 import collections
 import functools
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.lazy_loader import LazyLoader
@@ -246,6 +249,28 @@ def case(pred_fn_pairs,
       strict=strict)
 
 
+def _assert_at_most_n_true(predicates, n, msg):
+  """Returns an Assert op that checks that at most n predicates are True.
+
+  Args:
+    predicates: list of bool scalar tensors.
+    n: maximum number of true predicates allowed.
+    msg: Error message.
+  """
+  preds_c = array_ops.stack(predicates, name="preds_c")
+  num_true_conditions = math_ops.reduce_sum(
+      math_ops.cast(preds_c, dtypes.int32), name="num_true_conds")
+  condition = math_ops.less_equal(num_true_conditions,
+                                  constant_op.constant(n, name="n_true_conds"))
+  preds_names = ", ".join(getattr(p, "name", "?") for p in predicates)
+  error_msg = [
+      "%s: more than %d conditions (%s) evaluated as True:" %
+      (msg, n, preds_names), preds_c
+  ]
+  return control_flow_assert.Assert(
+      condition, data=error_msg, summarize=len(predicates))
+
+
 def _case_create_default_action(predicates, actions):
   """Creates default action for a list of actions and their predicates.
 
@@ -271,9 +296,9 @@ def _case_create_default_action(predicates, actions):
                    "None of conditions evaluated as True:",
                    array_ops.stack(predicates, name="preds_c"))
     with ops.control_dependencies([
-        control_flow_ops._assert_at_most_n_true(  # pylint: disable=protected-access
+        _assert_at_most_n_true(  # pylint: disable=protected-access
             other_predicates, n=0, msg=others_msg),
-        control_flow_ops.Assert(predicate, data=default_msg)
+        control_flow_assert.Assert(predicate, data=default_msg)
     ]):
       return action()
 
@@ -324,7 +349,7 @@ def _case_helper(cond_fn,
           cond_fn, predicate, true_fn=action, false_fn=fn, **cond_kwargs)
     if exclusive:
       with ops.control_dependencies([
-          control_flow_ops._assert_at_most_n_true(  # pylint: disable=protected-access
+          _assert_at_most_n_true(  # pylint: disable=protected-access
               predicates, n=1, msg="Input error: exclusive=True")
       ]):
         return fn()

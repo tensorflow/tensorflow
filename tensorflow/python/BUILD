@@ -1300,6 +1300,25 @@ cuda_py_test(
 )
 
 py_library(
+    name = "control_flow_assert",
+    srcs = ["ops/control_flow_assert.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":array_ops",
+        ":control_flow_ops_gen",
+        ":logging_ops_gen",
+        ":math_ops_gen",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_should_use",
+    ],
+)
+
+py_library(
     name = "control_flow_grad",
     srcs =
         ["ops/control_flow_grad.py"],
@@ -1323,24 +1342,27 @@ py_library(
     deps = [
         ":array_ops",
         ":array_ops_gen",
+        ":control_flow_assert",
         ":control_flow_case",
         ":control_flow_ops_gen",
         ":control_flow_util",
         ":functional_ops_gen",
-        ":logging_ops_gen",
         ":math_ops",
         ":platform",
         ":tensor_array_ops",
-        ":tf2",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/util",
-        "//tensorflow/python/util:tf_should_use",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -1350,11 +1372,15 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":control_flow_assert",
+        ":math_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform",
         "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
