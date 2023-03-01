@@ -48,14 +48,14 @@ void TfLiteAttributeMapCopy(const TfLiteAttributeMap* src,
 #define DEFINE_ATTR_MAP_ACCESSOR(type, type_name)                              \
   bool TfLiteAttributeMapGet##type_name##Attr(const TfLiteAttributeMap* attrs, \
                                               uint32_t key, type* val) {       \
-    return attrs ? attrs->impl.GetAttr(                                        \
-                       static_cast<TfLiteBufferAttributeKey>(key), val)        \
+    return attrs ? attrs->impl.GetAttr(static_cast<TfLiteBufferAttrKey>(key),  \
+                                       val)                                    \
                  : false;                                                      \
   }                                                                            \
   void TfLiteAttributeMapSet##type_name##Attr(TfLiteAttributeMap* attrs,       \
                                               uint32_t key, type val) {        \
     if (attrs) {                                                               \
-      attrs->impl.SetAttr(static_cast<TfLiteBufferAttributeKey>(key), val);    \
+      attrs->impl.SetAttr(static_cast<TfLiteBufferAttrKey>(key), val);         \
     }                                                                          \
   }                                                                            \
   bool TfLiteAttributeMapGetCustom##type_name##Attr(                           \

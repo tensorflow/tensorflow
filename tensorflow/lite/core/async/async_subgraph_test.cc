@@ -120,7 +120,7 @@ TEST_F(AsyncSubgraphTest, BasicTest) {
   EXPECT_CALL(*kernel_, Finish(_, _));
 
   auto* buffer = TfLiteBackendBufferCreate();
-  auto* attrs = new TfLiteAttributeMap(kTfLiteBufferAttrMap);
+  auto* attrs = new TfLiteAttributeMap(kTfLiteAttrMapTypeBuffer);
   TfLiteBufferHandle handle = 1;
   TfLiteBufferHandle another_handle = 1;
   auto* task = new TfLiteExecutionTask;

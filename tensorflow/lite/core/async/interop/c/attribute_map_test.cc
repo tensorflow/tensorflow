@@ -24,13 +24,13 @@ namespace {
 
 TEST(AttributeMapTest, AttributeMapCreateTypeCheckTest) {
   {
-    auto* attr = TfLiteAttributeMapCreate(kTfLiteBufferAttrMap);
+    auto* attr = TfLiteAttributeMapCreate(kTfLiteAttrMapTypeBuffer);
     EXPECT_TRUE(TfLiteAttributeMapIsBufferAttributeMap(attr));
     EXPECT_FALSE(TfLiteAttributeMapIsSyncAttributeMap(attr));
     TfLiteAttributeMapDelete(attr);
   }
   {
-    auto* attr = TfLiteAttributeMapCreate(kTfLiteSyncAttrMap);
+    auto* attr = TfLiteAttributeMapCreate(kTfLiteAttrMapTypeSync);
     EXPECT_FALSE(TfLiteAttributeMapIsBufferAttributeMap(attr));
     EXPECT_TRUE(TfLiteAttributeMapIsSyncAttributeMap(attr));
     TfLiteAttributeMapDelete(attr);
@@ -38,7 +38,7 @@ TEST(AttributeMapTest, AttributeMapCreateTypeCheckTest) {
 }
 
 TEST(AttributeMapTest, AttributeMapAccessor) {
-  auto* attr = TfLiteAttributeMapCreate(kTfLiteBufferAttrMap);
+  auto* attr = TfLiteAttributeMapCreate(kTfLiteAttrMapTypeBuffer);
   {
     TfLiteAttributeMapSetSizeTAttr(attr, 1, 42);
     size_t result = 0;
@@ -66,7 +66,7 @@ TEST(AttributeMapTest, AttributeMapAccessor) {
 }
 
 TEST(AttributeMapTest, AttributeMapCustomAccessor) {
-  auto* attr = TfLiteAttributeMapCreate(kTfLiteBufferAttrMap);
+  auto* attr = TfLiteAttributeMapCreate(kTfLiteAttrMapTypeBuffer);
   {
     TfLiteAttributeMapSetCustomSizeTAttr(attr, "foo", 42);
     size_t result = 0;
