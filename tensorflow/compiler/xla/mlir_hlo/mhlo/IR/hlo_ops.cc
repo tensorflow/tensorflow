@@ -256,7 +256,7 @@ DenseElementsAttr reshape(DenseElementsAttr attr, ShapedType newType) {
 
 // Convert a 1D dense int64 attribute to a list of values.
 SmallVector<int64_t> convertDenseIntAttr(
-    llvm::Optional<mlir::DenseIntElementsAttr> optionalAttr) {
+    std::optional<mlir::DenseIntElementsAttr> optionalAttr) {
   if (!optionalAttr.has_value()) return SmallVector<int64_t>{};
 
   mlir::DenseIntElementsAttr attr = *optionalAttr;
@@ -266,7 +266,7 @@ SmallVector<int64_t> convertDenseIntAttr(
 
 // Convert a 1D or Nx2 dense int64 attribute to a list of tuples.
 FailureOr<SmallVector<std::pair<int64_t, int64_t>>> convertNx2Attribute(
-    llvm::Optional<mlir::DenseIntElementsAttr> optionalAttr, Location loc) {
+    std::optional<mlir::DenseIntElementsAttr> optionalAttr, Location loc) {
   if (!optionalAttr.has_value())
     return SmallVector<std::pair<int64_t, int64_t>>{};
   mlir::DenseIntElementsAttr attr = *optionalAttr;
@@ -7062,7 +7062,7 @@ LogicalResult verifyDynamicParameterBinding(DynamicParameterBindingAttr bind,
 // arguments.
 static void buildSortComparisonBody(llvm::ArrayRef<Type> elementTypes,
                                     ComparisonDirection direction,
-                                    llvm::Optional<StringRef> compareType,
+                                    std::optional<StringRef> compareType,
                                     Region* body, OpBuilder* builder) {
   OpBuilder::InsertionGuard insertionPointGurad(*builder);
 
@@ -7097,7 +7097,7 @@ SortOp createSortOp(PatternRewriter* rewriter, const Location& loc,
 
   // Use TOTALORDER comparison type instead of the default comparison if the
   // element type is of type float.
-  llvm::Optional<StringRef> compareType = std::nullopt;
+  std::optional<StringRef> compareType = std::nullopt;
   for (auto const& elementType : elementTypes)
     if (elementType.isa<FloatType>()) {
       compareType.emplace("TOTALORDER");

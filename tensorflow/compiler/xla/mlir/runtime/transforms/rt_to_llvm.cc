@@ -147,16 +147,16 @@ class RuntimeTypeConverter : public TypeConverter {
     addConversion(ConvertOpaqueType);
   }
 
-  static llvm::Optional<Type> ConvertExecutionContextType(
+  static std::optional<Type> ConvertExecutionContextType(
       ExecutionContextType type) {
     return LLVM::LLVMPointerType::get(type.getContext());
   }
 
-  static llvm::Optional<Type> ConvertStatusType(StatusType type) {
+  static std::optional<Type> ConvertStatusType(StatusType type) {
     return IntegerType::get(type.getContext(), 1);
   }
 
-  static llvm::Optional<Type> ConvertOpaqueType(OpaqueType type) {
+  static std::optional<Type> ConvertOpaqueType(OpaqueType type) {
     return LLVM::LLVMPointerType::get(type.getContext());
   }
 };
