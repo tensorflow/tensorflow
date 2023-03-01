@@ -1391,12 +1391,6 @@ func.func @clamp(%arg0: tensor<1xi32>) -> tensor<1xi32> {
 
 // -----
 
-// CHECK-LABEL: func @clamp_scalar
-func.func @clamp_scalar(%arg0: tensor<1xi32>, %arg1: tensor<i32>) -> tensor<1xi32> {
-  %0 = "mhlo.clamp"(%arg1, %arg0, %arg1) : (tensor<i32>, tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
-  func.return %0: tensor<1xi32>
-}
-
 // CHECK-LABEL: func @clamp_compatible_dynamic
 func.func @clamp_compatible_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<i32>, %arg2: tensor<3xi32>) -> tensor<?xi32> {
   %0 = "mhlo.clamp"(%arg1, %arg0, %arg2) : (tensor<i32>, tensor<?xi32>, tensor<3xi32>) -> tensor<?xi32>
@@ -1411,15 +1405,7 @@ func.func @clamp_compatible_dynamic_match_static(%arg0: tensor<?xi32>, %arg1: te
 
 // -----
 
-func.func @clamp_invalid_clamp_element_type(%arg0: tensor<1xi32>, %arg1: tensor<1xf32>) -> tensor<1xi32> {
-  // expected-error@+1 {{'mhlo.clamp' op requires the same element type for all operands and results}}
-  %0 = "mhlo.clamp"(%arg1, %arg0, %arg0) : (tensor<1xf32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
-  func.return %0: tensor<1xi32>
-}
-
-// -----
-
-func.func @clamp_invalid_clamp_min_shape(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>) -> tensor<1xi32> {
+func.func @clamp_c1(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>) -> tensor<1xi32> {
   // expected-error@+1 {{min shape [2] is not scalar and is not compatible to operand shape [1]}}
   %0 = "mhlo.clamp"(%arg1, %arg0, %arg0) : (tensor<2xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
   func.return %0: tensor<1xi32>
@@ -1427,7 +1413,7 @@ func.func @clamp_invalid_clamp_min_shape(%arg0: tensor<1xi32>, %arg1: tensor<2xi
 
 // -----
 
-func.func @clamp_invalid_clamp_max_shape(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>) -> tensor<1xi32> {
+func.func @clamp_c2(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>) -> tensor<1xi32> {
   // expected-error@+1 {{max shape [2] is not scalar and is not compatible to operand shape [1]}}
   %0 = "mhlo.clamp"(%arg0, %arg0, %arg1) : (tensor<1xi32>, tensor<1xi32>, tensor<2xi32>) -> tensor<1xi32>
   func.return %0: tensor<1xi32>
@@ -1435,10 +1421,18 @@ func.func @clamp_invalid_clamp_max_shape(%arg0: tensor<1xi32>, %arg1: tensor<2xi
 
 // -----
 
-func.func @clamp(%arg0: tensor<1xi32>) -> tensor<1x2xi32> {
+func.func @clamp_c4(%arg0: tensor<1xi32>) -> tensor<1x2xi32> {
   // // expected-error@+1{{inferred type(s) 'tensor<1xi32>' are incompatible with return type(s) of operation 'tensor<1x2xi32>'}}
   %0 = "mhlo.clamp"(%arg0, %arg0, %arg0) : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2xi32>
   func.return %0: tensor<1x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @clamp_scalar
+func.func @clamp_scalar(%arg0: tensor<1xi32>, %arg1: tensor<i32>) -> tensor<1xi32> {
+  %0 = "mhlo.clamp"(%arg1, %arg0, %arg1) : (tensor<i32>, tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+  func.return %0: tensor<1xi32>
 }
 
 // -----
