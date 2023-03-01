@@ -39,6 +39,7 @@ cc_library(
         ":location_importer",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:permutation_util",
+        "//tensorflow/compiler/xla:printer",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
