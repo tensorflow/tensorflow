@@ -62,6 +62,13 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
+*   `tf.distribute`
+
+    *   Opened an experimental API,
+        `tf.distribute.experimental.coordinator.get_current_worker_index`, for
+        retrieving the worker index from within a worker, when using parameter
+        server training with a custom training loop.
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:

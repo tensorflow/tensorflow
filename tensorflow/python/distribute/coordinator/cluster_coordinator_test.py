@@ -35,6 +35,7 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
+from tensorflow.python.distribute.coordinator import coordinator_context
 from tensorflow.python.distribute.coordinator import values as values_lib
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import def_function
@@ -495,8 +496,64 @@ def make_coordinator(num_workers, num_ps):
   return coordinator_lib.ClusterCoordinator(strategy)
 
 
-class ClusterCoordinatorTest(TestCaseWithErrorReportingThread,
-                             parameterized.TestCase):
+class CoordinatorContextTest(test.TestCase, parameterized.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    super(CoordinatorContextTest, cls).setUpClass()
+    cls.coordinator = make_coordinator(num_workers=5, num_ps=2)
+    cls.strategy = cls.coordinator.strategy
+
+  def testWorkerIndexDatasetFn(self):
+    def dataset_fn(context):
+      del context
+      dataset = dataset_ops.DatasetV2.range(10)
+      worker_index = coordinator_context.get_current_worker_index()
+      dataset = dataset.shard(
+          num_shards=self.strategy._extended._num_workers,
+          index=worker_index,
+      )
+      return dataset
+
+    @def_function.function
+    def per_worker_dataset_fn():
+      return self.strategy.distribute_datasets_from_function(dataset_fn)
+
+    @def_function.function
+    def train_fn(iterator):
+      total = constant_op.constant(0, dtype=dtypes.int64)
+      for batch in iterator:
+        total += math_ops.reduce_sum(batch)
+      return total
+
+    per_worker_dataset = self.coordinator.create_per_worker_dataset(
+        per_worker_dataset_fn)
+    with self.strategy.scope():
+      iterator = iter(per_worker_dataset)
+      ret_vals = []
+      # Use private APIs to schedule in tagged queues to ensure each worker
+      # executes only one closure.
+      for ix in range(5):
+        closure = coordinator_lib.Closure(
+            train_fn,
+            self.coordinator._cluster.closure_queue._cancellation_mgr,
+            args=(iterator,))
+        ret = closure.build_output_remote_value()
+        # The queue doesn't keep track of tagged closures as inflight by
+        # default, so hack around this for the test.
+        self.coordinator._cluster.closure_queue._inflight_closure_count += 1
+        self.coordinator._cluster.closure_queue.put(closure, tag=ix)
+        ret_vals.append(ret)
+    self.coordinator.join()
+
+    fetched_vals = [rv.fetch() for rv in ret_vals]
+    expected_results = [5, 7, 9, 11, 13]
+    self.assertAllClose(sorted(fetched_vals), expected_results)
+
+
+class ClusterCoordinatorTest(
+    TestCaseWithErrorReportingThread, parameterized.TestCase
+):
 
   @classmethod
   def setUpClass(cls):
