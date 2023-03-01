@@ -941,6 +941,28 @@ std::unordered_map<std::string, Node*> Graph::BuildNodeNameIndex() const {
   return result;
 }
 
+void Graph::SetNodeType(StringPiece name, const FullTypeDef& ft) {
+  for (Node* n : op_nodes()) {
+    if (n->name() == name) {
+      NodeDef& node_def = n->props_->node_def;
+      n->MaybeCopyOnWrite();
+      *(node_def.mutable_experimental_type()) = ft;
+      break;
+    }
+  }
+}
+
+void Graph::NodeType(StringPiece name, const FullTypeDef** result) {
+  *result = nullptr;
+  for (Node* n : op_nodes()) {
+    if (n->name() == name) {
+      NodeDef& node_def = n->props_->node_def;
+      *result = &node_def.experimental_type();
+      break;
+    }
+  }
+}
+
 std::string Edge::DebugString() const {
   return strings::Printf("[id=%d %s:%d -> %s:%d]", id_, src_->name().c_str(),
                          src_output_, dst_->name().c_str(), dst_input_);
