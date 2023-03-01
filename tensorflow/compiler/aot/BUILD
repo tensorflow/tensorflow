@@ -48,10 +48,7 @@ cc_library(
     deps = [
         ":aot_only_var_handle_op",
         ":embedded_protocol_buffers",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
+        ":llvm_targets",  # fixdeps: keep
         "//tensorflow/compiler/tf2xla",
         "//tensorflow/compiler/tf2xla:mlir_tf2xla",
         "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
@@ -73,20 +70,17 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
-        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
+        "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
-        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-        "//tensorflow/core/platform:regexp",
-    ] + if_llvm_system_z_available([
-        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
-    ]) + if_llvm_aarch64_available([
-        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
-    ]),
+    ],
 )
 
 tf_cc_test(
@@ -121,13 +115,17 @@ cc_library(
     name = "llvm_targets",
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [
+        "@llvm-project//llvm:ARMAsmParser",  # fixdeps: keep
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:PowerPCAsmParser",  # fixdeps: keep
         "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
-        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:X86AsmParser",  # fixdeps: keep
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ] + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZAsmParser",  # fixdeps: keep
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
     ]) + if_llvm_aarch64_available([
+        "@llvm-project//llvm:AArch64AsmParser",  # fixdeps: keep
         "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
     ]),
 )
