@@ -111,7 +111,7 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
        output_primitive_type == F32 || output_primitive_type == F64 ||
        output_primitive_type == C64 || output_primitive_type == C128) ||
       (output_primitive_type == S32 && lhs_shape.element_type() == S8 &&
-       lhs_shape.element_type() == S8);
+       rhs_shape.element_type() == S8);
   bool shapes_are_valid =
       type_is_allowed &&
       IsRank2(lhs_shape, dim_numbers.lhs_batch_dimensions_size()) &&
