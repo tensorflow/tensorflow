@@ -92,6 +92,47 @@ class GpuConvAlgorithmPicker : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
+  // Debug information about the instruction we are autotuning.
+  struct AutotuneInstructionInfo {
+    std::string instr_str;
+    std::string module_str;
+
+    explicit AutotuneInstructionInfo(const HloCustomCallInstruction* instr)
+        : instr_str(instr->ToString()),
+          module_str(instr->GetModule()->ToString()) {}
+
+    explicit AutotuneInstructionInfo(std::string_view instr_str,
+                                     std::string_view module_str)
+        : instr_str(instr_str), module_str(module_str) {}
+  };
+
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+  // Execution environment for autotuning. Runtime autotuning requires runtime
+  // information such as input/output buffers in order to run. It can be
+  // constructed from the autotuned instruction by FromInstruction.
+  struct AutotuneRuntimeArguments {
+    const Shape result_shape;
+    const HloModuleConfig hlo_module_config;
+    std::vector<se::DeviceMemoryBase> operand_buffers;
+    se::DeviceMemoryBase result_buffer;
+    se::RedzoneAllocator* input_output_allocator;
+    const GpuConvConfig gpu_conv_config;
+    std::optional<std::string> canonical_hlo;
+
+    static StatusOr<AutotuneRuntimeArguments> FromInstruction(
+        const HloCustomCallInstruction* instr,
+        se::DeviceMemoryAllocator* allocator, se::StreamExecutor* stream,
+        se::RedzoneAllocator* input_output_allocator);
+  };
+
+  // Pick the best algorithm for CUDA platform.
+  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheCuda(
+      const HloCustomCallInstruction* instr,
+      se::DeviceMemoryAllocator* allocator, se::Stream* stream,
+      std::optional<AutotuneInstructionInfo> instruction_info,
+      const AutotuneRuntimeArguments& runtime_arguments);
+#endif
+
  private:
   StatusOr<bool> RunOnComputation(HloComputation* computation);
   StatusOr<bool> RunOnInstruction(HloInstruction* instr);
@@ -106,34 +147,6 @@ class GpuConvAlgorithmPicker : public HloModulePass {
     stream_executor::DeviceMemoryBase buffer;
   };
 
-  // Debug information about the instruction we are autotuning.
-  struct AutotuneInstructionInfo {
-    std::string instr_str;
-    std::string module_str;
-
-    explicit AutotuneInstructionInfo(const HloCustomCallInstruction* instr)
-        : instr_str(instr->ToString()),
-          module_str(instr->GetModule()->ToString()) {}
-  };
-
-  // Execution environment for autotuning. Runtime autotuning requires runtime
-  // information such as input/output buffers in order to run. It can be
-  // constructed from the autotuned instruction by FromInstruction.
-  struct AutotuneRuntimeArguments {
-    const Shape result_shape;
-    const HloModuleConfig hlo_module_config;
-    std::vector<se::DeviceMemoryBase> operand_buffers;
-    se::DeviceMemoryBase result_buffer;
-    se::RedzoneAllocator* input_output_allocator;
-    const GpuConvConfig gpu_conv_config;
-    std::string canonical_hlo;
-
-    static StatusOr<AutotuneRuntimeArguments> FromInstruction(
-        const HloCustomCallInstruction* instr,
-        se::DeviceMemoryAllocator* allocator, se::StreamExecutor* stream,
-        se::RedzoneAllocator* input_output_allocator);
-  };
-
   StatusOr<tensorflow::AutotuneResult> AutotuneOneConvRunner(
       se::DeviceMemoryAllocator* allocator, se::Stream* stream,
       MaybeFusedConvRunner* const runner,
@@ -142,12 +155,6 @@ class GpuConvAlgorithmPicker : public HloModulePass {
       std::optional<AutotuneInstructionInfo> instruction_info,
       const AutotuneRuntimeArguments& runtime_arguments);
 
-  // Pick the best algorithm for CUDA platform.
-  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheCuda(
-      const HloCustomCallInstruction* instr,
-      se::DeviceMemoryAllocator* allocator, se::Stream* stream,
-      std::optional<AutotuneInstructionInfo> instruction_info,
-      const AutotuneRuntimeArguments& runtime_arguments);
 #endif
 
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheRocm(

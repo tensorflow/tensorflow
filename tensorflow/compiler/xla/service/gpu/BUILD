@@ -1225,7 +1225,6 @@ cc_library(
         ":gpu_asm_opts_util",
         ":gpu_autotuning_proto_cc",
         ":gpu_conv_runner",
-        ":gpu_executable",
         ":hlo_algorithm_denylist",
         ":ir_emission_utils",
         ":gpu_serializable_autotuner",
