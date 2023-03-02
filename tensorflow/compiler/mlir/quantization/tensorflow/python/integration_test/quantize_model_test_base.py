@@ -1175,6 +1175,138 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     )
     return model
 
+  # Prepares sample einsum input data shapes.
+  # This function returns:
+  # 1. Shape for input 1
+  # 2. Shape for input 2
+  # 3. Shape for bias
+  # 4. Signature for input 1 (Could contain None dimension)
+  # 5. Signature for input 2 (Could contain None dimension)
+  def _prepare_sample_einsum_datashapes(
+      self,
+      equation: str,
+      generate_unknown_shape_signature: bool = False,
+      use_bias: bool = False,
+  ) -> Tuple[
+      List[Optional[int]],
+      List[Optional[int]],
+      Optional[List[Optional[int]]],
+      List[Optional[int]],
+      List[Optional[int]],
+  ]:
+    # 1. Parse equation.
+    comma_pos = equation.find(',')
+    arrow_pos = equation.find('->')
+    x_labels = equation[0:comma_pos]
+    y_labels = equation[comma_pos + 1 : arrow_pos]
+    out_labels = equation[arrow_pos + 1 :]
+
+    # 2. Create sample shapes.
+    label_to_size = {'a': 2, 'b': 3, 'c': 4, 'd': 5, 'e': 6}
+    x_shape = [label_to_size.get(x_label) for x_label in x_labels]
+    y_shape = [label_to_size.get(y_label) for y_label in y_labels]
+    bias_shape = None
+    if use_bias:
+      bias_shape = [label_to_size.get(out_label) for out_label in out_labels]
+      bias_shape = bias_shape[-1:]
+    contracting_dims = set()
+
+    x_signature = list(x_shape)
+    y_signature = list(y_shape)
+    if generate_unknown_shape_signature:
+      for c in x_labels:
+        if c in y_labels:
+          contracting_dims.add(c)
+      x_signature = [
+          None if c not in contracting_dims else x_shape[cidx]
+          for cidx, c in enumerate(x_labels)
+      ]
+      y_signature = [
+          None if c not in contracting_dims else y_shape[cidx]
+          for cidx, c in enumerate(y_labels)
+      ]
+    return x_shape, y_shape, bias_shape, x_signature, y_signature
+
+  def _create_einsum_model_with_fake_quant(
+      self,
+      equation: str,
+      y_shape: Sequence[int],
+      x_signature: Sequence[Optional[int]],
+      y_signature: Sequence[Optional[int]],
+      bias_shape: Optional[Sequence[int]] = None,
+      activation_fn: Optional[ops.Operation] = None,
+  ) -> module.Module:
+    class EinsumModel(module.Module):
+      """Einsum class with fakequants."""
+
+      def __init__(self):
+        self._bias = None
+        if bias_shape is not None:
+          self._bias = array_ops.constant(
+              np.random.uniform(size=bias_shape), dtype=dtypes.float32
+          )
+
+        self._kernel = np.random.uniform(size=y_shape).astype('f4')
+        self._min = (-0.8, -0.8, -0.9)
+        self._max = (0.9, 0.9, 1.0)
+
+      @def_function.function(
+          input_signature=[
+              tensor_spec.TensorSpec(
+                  name='x', shape=x_signature, dtype=dtypes.float32
+              )
+          ]
+      )
+      def einsum_with_kernel(self, x: core.Tensor) -> Mapping[str, core.Tensor]:
+        return self._einsum(x, self._kernel)
+
+      @def_function.function(
+          input_signature=[
+              tensor_spec.TensorSpec(
+                  name='x', shape=x_signature, dtype=dtypes.float32
+              ),
+              tensor_spec.TensorSpec(
+                  name='y', shape=y_signature, dtype=dtypes.float32
+              ),
+          ]
+      )
+      def einsum_without_kernel(
+          self, x: core.Tensor, y: core.Tensor
+      ) -> Mapping[str, core.Tensor]:
+        return self._einsum(x, y)
+
+      def _einsum(self, x, y):
+        x = array_ops.fake_quant_with_min_max_vars(
+            x,
+            min=ops.convert_to_tensor(self._min[0]),
+            max=ops.convert_to_tensor(self._max[0]),
+            num_bits=8,
+            narrow_range=False,
+        )
+        y = array_ops.fake_quant_with_min_max_vars(
+            y,
+            min=ops.convert_to_tensor(self._min[1]),
+            max=ops.convert_to_tensor(self._max[1]),
+            num_bits=8,
+            narrow_range=False,
+        )
+
+        out = tensorflow.einsum(equation, x, y)
+        if self._bias is not None:
+          out = nn_ops.bias_add(out, self._bias)
+        if activation_fn is not None:
+          out = activation_fn(out)
+        out = array_ops.fake_quant_with_min_max_vars(
+            out,
+            min=ops.convert_to_tensor(self._min[2]),
+            max=ops.convert_to_tensor(self._max[2]),
+            num_bits=8,
+            narrow_range=False,
+        )
+        return {'output': out}
+
+    return EinsumModel()
+
   def _create_and_save_tf1_conv_model(
       self,
       saved_model_path: str,

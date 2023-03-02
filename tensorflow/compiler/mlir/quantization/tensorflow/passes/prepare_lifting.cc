@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <iterator>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -44,6 +45,10 @@ class PrepareLiftingPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareLiftingPass)
 
+  PrepareLiftingPass() = default;
+
+  explicit PrepareLiftingPass(const OpSet op_set) : op_set_(op_set) {}
+
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
     // the textual format (on the commandline for example).
@@ -61,6 +66,9 @@ class PrepareLiftingPass
   }
 
   void runOnOperation() override;
+
+ private:
+  OpSet op_set_;
 };
 
 // Check if given indices in `val1` has same number of elements as given
@@ -262,7 +270,15 @@ void PrepareLiftingPass::runOnOperation() {
   // with a constant operand to a preceding affine operation.
   RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
-  patterns.add<TF::ConvertTFEinsumOp, RemoveIdentity>(ctx);
+  patterns.add<RemoveIdentity>(ctx);
+  if (op_set_ != OpSet::XLA) {
+    // Convert Einsum into BatchMatMul for non-XLA opsets.
+    // For the uniform opset, it is requested to maintain the BatchMatmul logic.
+    // For the TF opset, since we need to test the effect we remain it as a
+    // future work.
+    patterns.add<TF::ConvertTFEinsumOp>(ctx);
+  }
+
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     func.emitError() << "quant-internal-prepare-lifting failed.";
     signalPassFailure();
@@ -271,8 +287,9 @@ void PrepareLiftingPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass() {
-  return std::make_unique<PrepareLiftingPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass(
+    const OpSet target_opset) {
+  return std::make_unique<PrepareLiftingPass>(target_opset);
 }
 
 static PassRegistration<PrepareLiftingPass> pass;

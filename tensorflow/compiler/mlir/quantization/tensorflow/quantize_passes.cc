@@ -54,7 +54,9 @@ void AddQuantizeQatPasses(mlir::PassManager &pm,
         mlir::TF::CreateUnrollBatchMatMulPassPass());
   }
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
+
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
       quantization_options.op_set(),
       quantization_options.enable_two_input_tensors()));
@@ -91,7 +93,8 @@ void AddQuantizePtqDynamicRangePasses(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateUnrollBatchMatMulPassPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsDRQPass(
       quantization_options.quantization_method().experimental_method(),
       quantization_options.min_num_elements_for_weights()));
@@ -129,7 +132,8 @@ void AddQuantizePtqPreCalibrationPasses(
         mlir::TF::CreateUnrollBatchMatMulPassPass());
   }
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
   if (quantization_options.experimental_enable_tpu_model_support()) {
     pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
   }

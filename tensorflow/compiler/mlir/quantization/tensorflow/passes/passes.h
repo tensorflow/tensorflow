@@ -45,7 +45,8 @@ CreateLiftQuantizableSpotsAsFunctionsPass(OpSet target_opset,
 
 // Apply graph optimizations such as fusing and constant folding to prepare
 // lifting.
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass(
+    OpSet target_opset);
 
 // Lifts the dynamic range quantizable spots as composite functions.
 std::unique_ptr<OperationPass<ModuleOp>>

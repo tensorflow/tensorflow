@@ -311,7 +311,31 @@ module {
     func.return %5 : tensor<*xi32>
   }
 
-  for main_op in ["Conv2D", "DepthwiseConv2D", "MatMul", "Conv3D", "BatchMatMul"] {
+   // Einsum with int32 accumulation.
+  func.func private @internal_einsum_fn(
+                         %input : tensor<*xi8>, %weight : tensor<*xi8>,
+                         %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
+                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>) -> tensor<*xi32> {
+    // For Einsum, the input could also be constant, since we do the argument swapping.
+    %identity_input = "tf.Identity"(%input) : (tensor<*xi8>) -> tensor<*xi8>
+    %0 = "tf.Cast"(%identity_input) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    %1 = "tf.Sub"(%0, %input_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    // Use identity op to avoid the weight being constant-folded.
+    %identity = "tf.Identity"(%weight) : (tensor<*xi8>) -> tensor<*xi8>
+    %2 = "tf.Cast"(%identity) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    %3 = "tf.Sub"(%2, %weight_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    %4 = "tf.Einsum"(%1, %3) {
+      // Equation placeholder to prevent error during op creation.
+      equation = "",
+      attr_map = "equation:0"
+    } : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    func.return %4 : tensor<*xi32>
+  }
+
+  for main_op in ["Conv2D", "DepthwiseConv2D", "MatMul", "Conv3D", "BatchMatMul", "Einsum"] {
     parameters[
       {"quantized_ops": ["${main_op}", "BiasAdd"], "act_func": "internal_requantize_no_activation_fn", "output_type": "i8"},
       {"quantized_ops": ["${main_op}", "BiasAdd", "Relu"], "act_func": "internal_requantize_and_relu_fn", "output_type": "i8"},

@@ -193,9 +193,11 @@ class CheckQuantizableOps
       }
 
       if (!is_weight_constant) {
-        if (!enable_two_input_tensors || !function_name.contains("matmul")) {
+        if (!enable_two_input_tensors || (!function_name.contains("matmul") &&
+                                          !function_name.contains("einsum"))) {
           return absl::InternalError(
-              "Non-constant weights are not supported at the moment.");
+              "Non-constant weights are not supported at the moment,"
+              " except matmul and einsum.");
         }
       }
     }
