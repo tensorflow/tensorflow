@@ -3172,6 +3172,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "sparse_util",
+    srcs = ["sparse_util.cc"],
+    hdrs = ["sparse_util.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+    ],
+)
+
 xla_cc_test(
     name = "space_to_batch_converter_test",
     size = "small",
@@ -3342,6 +3352,7 @@ cc_library(
     hdrs = ["dot_decomposer.h"],
     deps = [
         ":hlo_pass",
+        ":sparse_util",
         "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
