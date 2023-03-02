@@ -126,10 +126,16 @@ const HloInstruction* GetRealHeroForMultiOutputFusion(
   }
   auto fused_expression_root = instr.fused_expression_root();
   if (!instr.IsMultiOutputFusion()) {
+    if (IsReductionFromOrToContiguousDimensions(*fused_expression_root) ||
+        FindAnyTiledTranspose(*fused_expression_root)) {
+      return &FindNonTrivialHero(*fused_expression_root);
+    }
     return fused_expression_root;
   }
   // If possible, we want to pick a reduction-from-or-to-contiguous-dims
-  // operand of the fusion root, because it has the most constraints.
+  // operand of the fusion root or a tiled transpose, because they have the most
+  // constraints. Note that we cannot have both kinds at the same time, so once
+  // we find any, we can immediately return it.
   for (const auto* inst : fused_expression_root->operands()) {
     if (IsReductionFromOrToContiguousDimensions(*inst) ||
         FindAnyTiledTranspose(*inst)) {
