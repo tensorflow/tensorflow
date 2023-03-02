@@ -6,7 +6,8 @@ ENV TF_PYTHON_VERSION=python${py_major_minor_version}
 ENV PYTHON_BIN_PATH=/usr/bin/${TF_PYTHON_VERSION}
 
 RUN ln -s ${PYTHON_BIN_PATH} /usr/local/bin/python && \
-    ln -s ${PYTHON_BIN_PATH} /usr/local/bin/python3
+    ln -s ${PYTHON_BIN_PATH} /usr/local/bin/python3 && \
+    ln -s ${PYTHON_BIN_PATH} /usr/bin/python
 
 RUN ${PYTHON_BIN_PATH} -m pip install packaging
 
