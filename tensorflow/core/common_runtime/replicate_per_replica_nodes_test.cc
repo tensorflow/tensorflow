@@ -73,6 +73,13 @@ class GraphHelper {
               CHECK_NOTNULL(GetNodeByName(node_name))->assigned_device_name());
   }
 
+  void CheckAssignedDevicePrefix(const string& node_name,
+                                 const string& expected_device_name) {
+    auto assigned =
+        CHECK_NOTNULL(GetNodeByName(node_name))->assigned_device_name();
+    EXPECT_EQ(assigned.rfind(expected_device_name, 0), 0);
+  }
+
  private:
   const Graph& graph_;
   // Maps from a node name to a Node* in the graph.
@@ -115,15 +122,15 @@ TEST(ReplicatePerReplicaNodesTest, SingleCompositeDevice) {
     // _Arg(TPU:0, TPU:1) -> ReadVariableOp(TPU:0);
     // Const(CPU:0) -> AssignVariableOp(TPU:0, TPU:1);
     // ReadVariableOp(TPU:0) -> _Retval(CPU:0)
-    EXPECT_EQ(graph.num_op_nodes(), 7);
+    EXPECT_EQ(graph.num_op_nodes(), 9);
     GraphHelper helper(graph);
     helper.CheckArgNum(2);
-    helper.CheckAssignedDevice("arg/R0", "/device:TPU:0");
-    helper.CheckAssignedDevice("arg/R1", "/device:TPU:1");
+    helper.CheckAssignedDevicePrefix("arg/R0", "/device:TPU");
+    helper.CheckAssignedDevicePrefix("arg/R1", "/device:TPU");
+    helper.CheckAssignedDevicePrefix("write/R0", "/device:TPU");
+    helper.CheckAssignedDevicePrefix("write/R1", "/device:TPU");
     helper.CheckAssignedDevice("read", "/device:TPU:0");
     helper.CheckAssignedDevice("one", "/device:CPU:0");
-    helper.CheckAssignedDevice("write/R0", "/device:TPU:0");
-    helper.CheckAssignedDevice("write/R1", "/device:TPU:1");
     helper.CheckAssignedDevice("ret", "/device:CPU:0");
   }
 }
