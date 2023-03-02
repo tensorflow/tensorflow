@@ -162,7 +162,7 @@ class AsyncSubgraph {
   Subgraph* subgraph_ = nullptr;
 
   // Next buffer handle to assign in Register* calls.
-  std::atomic<TfLiteBufferHandle> next_buffer_handle_ = 0;
+  std::atomic<TfLiteBufferHandle> next_buffer_handle_ = {0};
 
   // Supported buffer and sync types.
   std::map<TfLiteIoType, std::vector<const char*>> supported_buffer_types_;
