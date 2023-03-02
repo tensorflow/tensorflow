@@ -47,7 +47,6 @@ from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
-from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -59,6 +58,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import traceable_stack
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace as profiler_trace
 from tensorflow.python.types import core as core_tf_types
@@ -1054,7 +1054,7 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
     # TODO(b/263894631): Store handle data in the TensorSpec itself. Once
     # implemented, the following section under the if condition can be removed.
     if self.dtype == dtypes.resource or self.dtype == dtypes.variant:
-      handle_data = get_handle_data(self)
+      handle_data = handle_data_util.get_handle_data(self)
       signature_context.add_handledata(id(spec), handle_data)
     return spec
 
@@ -7254,26 +7254,12 @@ def _get_enclosing_context(graph):
     return _get_enclosing_context(graph.outer_graph)
 
 
-def get_resource_handle_data(graph_op):
-  assert type(graph_op) == Tensor  # pylint: disable=unidiomatic-typecheck
-
-  with graph_op.graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
-    handle_data = pywrap_tf_session.GetHandleShapeAndType(
-        c_graph, graph_op._as_tf_output())  # pylint: disable=protected-access
-
-  return cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData.FromString(
-      compat.as_bytes(handle_data))
-
-
-def get_handle_data(source_t):
-  """Obtains HandleData from a tensor."""
-  if isinstance(source_t, EagerTensor):
-    return source_t._handle_data  # pylint: disable=protected-access
-  return get_resource_handle_data(source_t)
+# Forward from `handle_data_util` for backwards compatibility.
+get_resource_handle_data = handle_data_util.get_resource_handle_data
 
 
 def _copy_handle_data_to_arg_def(tensor, arg_def):
-  handle_data = get_resource_handle_data(tensor)
+  handle_data = handle_data_util.get_resource_handle_data(tensor)
   if handle_data.shape_and_type:
     shape_and_type = handle_data.shape_and_type[0]
     proto = arg_def.handle_data.add()

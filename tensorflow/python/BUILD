@@ -1645,7 +1645,7 @@ py_library(
         ":protos_all_py",
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
     ],
 )

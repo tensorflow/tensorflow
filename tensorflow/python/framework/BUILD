@@ -1033,6 +1033,7 @@ py_library(
         ":versions",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:control_flow_util",
+        "//tensorflow/python:handle_data_util",
         "//tensorflow/python:platform",
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:context",
