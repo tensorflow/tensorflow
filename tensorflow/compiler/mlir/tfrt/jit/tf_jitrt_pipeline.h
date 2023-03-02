@@ -31,9 +31,8 @@ struct TfJitRtPipelineOptions
 
   ListOption<int64_t> matmul_tile_sizes{
       *this, "matmul-tile-sizes",
-      llvm::cl::desc("Tile sizes for `linalg.matmul`. Leave empty to determine "
-                     "sizes automatically."),
-      llvm::cl::list_init<int64_t>({}), llvm::cl::ZeroOrMore};
+      llvm::cl::desc("Tile sizes for `linalg.matmul`."),
+      llvm::cl::list_init<int64_t>({4, 4, 4}), llvm::cl::ZeroOrMore};
 
   Option<bool> lower_to_mmt4d{
       *this, "lower-to-mmt4d",

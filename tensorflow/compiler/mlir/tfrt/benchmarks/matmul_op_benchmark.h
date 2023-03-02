@@ -31,10 +31,12 @@ namespace tensorflow {
 // used only to build benchmarks for different functions in this folder, so
 // it is ok to put convenience using-declarations here.
 
-std::string GetMatmulIR(std::array<int64_t, 2> lhs_shape,
-                        std::array<int64_t, 2> rhs_shape,
-                        std::array<int64_t, 2> out_shape,
-                        llvm::StringRef element_type);
+std::string GetMatmulIR(llvm::ArrayRef<int32_t> lhs_shape,
+                        llvm::ArrayRef<bool> lhs_dynamic_dims,
+                        llvm::ArrayRef<int32_t> rhs_shape,
+                        llvm::ArrayRef<bool> rhs_dynamic_dims,
+                        llvm::ArrayRef<int32_t> output_shape,
+                        llvm::ArrayRef<bool> output_dynamic_dims);
 
 using ::tfrt::AsyncValue;
 using ::tfrt::AsyncValuePtr;
@@ -53,9 +55,11 @@ using ::xla::runtime::MemrefDesc;
 // Run benchmark by compiling MLIR function using TFRT JitRt API.
 // -------------------------------------------------------------------------- //
 
-template <typename T, bool dynamic>
+template <typename T>
 void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
-                            std::string output_name, llvm::StringRef type_name,
+                            // output_name is actually used on debug mode.
+                            // NOLINTNEXTLINE
+                            std::string output_name, llvm::StringRef mlir_input,
                             llvm::StringRef function_name) {
   // MatMul: [m, k] x [k, n]
   ssize_t m = state.range(0);
@@ -66,12 +70,10 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
 
   TfJitRtPipelineOptions tf_jitrt_opts;
   tf_jitrt_opts.vectorize = tensorflow::GetJitRtFlags().vectorize;
-  tf_jitrt_opts.lower_to_mmt4d = state.range(3);
+  tf_jitrt_opts.lower_to_mmt4d = state.range(6);
+  tf_jitrt_opts.matmul_tile_sizes = {state.range(3), state.range(4),
+                                     state.range(5)};
 
-  auto mlir_input =
-      dynamic ? GetMatmulIR({kDynSize, kDynSize}, {kDynSize, kDynSize},
-                            {kDynSize, kDynSize}, type_name)
-              : GetMatmulIR({m, k}, {k, n}, {m, n}, type_name);
   JitExecutable& jit_executable =
       CreateJitExecutable(*host, mlir_input, function_name,
                           /*lower_from_tensorflow=*/true, tf_jitrt_opts);
@@ -126,8 +128,6 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
   llvm::raw_fd_ostream dump_stream(dump_path + object_filename, ec);
   CHECK(!ec) << "Failed to dump object file: " << ec.message();
   dump_stream.write(obj->getBufferStart(), obj->getBufferSize());
-#else
-  (void)output_name;
 #endif
 
   // Wait for the compilation completion.
@@ -199,16 +199,41 @@ void RunMatMulEigenBenchmark(::testing::benchmark::State& state) {
 // Macros to dispatch to different MatMul shapes.
 // -------------------------------------------------------------------------- //
 
-#define BM_TFMlir(NAME, DYNAMIC, FN, TYPE)                          \
-  static void NAME(::testing::benchmark::State& state) {            \
-    RunMatMulMlirBenchmark<TYPE, DYNAMIC>(state, #NAME, #TYPE, FN); \
-  }                                                                 \
-  BENCHMARK(NAME)
+#define INTS(...) __VA_ARGS__
+#define BOOLS(...) __VA_ARGS__
 
-#define BM_Eigen(NAME, TYPE)                             \
-  static void NAME(::testing::benchmark::State& state) { \
-    RunMatMulEigenBenchmark<TYPE>(state);                \
-  }                                                      \
-  BENCHMARK(NAME)
+#define BM_TFMlir(NAME, LHS_SHAPE, LHS_DYN_DIMS, RHS_SHAPE, RHS_DYN_DIMS,     \
+                  OUT_SHAPE, OUT_DYN_DIMS, FN, TYPE)                          \
+  static void BM_mlir_##NAME(::testing::benchmark::State& state) {            \
+    RunMatMulMlirBenchmark<TYPE>(                                             \
+        state, #NAME,                                                         \
+        GetMatmulIR({LHS_SHAPE}, {LHS_DYN_DIMS}, {RHS_SHAPE}, {RHS_DYN_DIMS}, \
+                    {OUT_SHAPE}, {OUT_DYN_DIMS}, #TYPE),                      \
+        FN);                                                                  \
+  }                                                                           \
+  BENCHMARK(BM_mlir_##NAME)
+
+#define BM_TFMlir_DYNAMIC_ALL(M, N, K, T_M, T_N, T_K, PACK, FN, TYPE)          \
+  BM_TFMlir(MatmulDynamicAll_##M##_##K##_##N##_##T_M##_##T_N##_##T_K##_##PACK, \
+            INTS(M, K), BOOLS(kDynamicDim, kDynamicDim), INTS(K, N),           \
+            BOOLS(kDynamicDim, kDynamicDim), INTS(M, N),                       \
+            BOOLS(kDynamicDim, kDynamicDim), FN, TYPE)                         \
+      ->Args({M, K, N, T_M, T_N, T_K, PACK})
+
+#define BM_TFMlir_STATIC_ALL(M, N, K, T_M, T_N, T_K, PACK, FN, TYPE)          \
+  BM_TFMlir(MatmulStaticAll_##M##_##K##_##N##_##T_M##_##T_N##_##T_K##_##PACK, \
+            INTS(M, K), BOOLS(kStaticDim, kStaticDim), INTS(K, N),            \
+            BOOLS(kStaticDim, kStaticDim), INTS(M, N),                        \
+            BOOLS(kStaticDim, kStaticDim), FN, TYPE)                          \
+      ->Args({M, K, N, T_M, T_N, T_K, PACK})
+
+#define BM_Eigen(NAME, TYPE)                                                 \
+  static void BM_eigen_##NAME##_##TYPE(::testing::benchmark::State& state) { \
+    RunMatMulEigenBenchmark<TYPE>(state);                                    \
+  }                                                                          \
+  BENCHMARK(BM_eigen_##NAME##_##TYPE)
+
+#define BM_Eigen_WRAPPER(M, N, K, TYPE) \
+  BM_Eigen(Matmul_##M##_##K##_##N, TYPE)->Args({M, K, N})
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_OP_BENCHMARK_H_
