@@ -23,6 +23,7 @@ limitations under the License.
       defined(PLATFORM_GOOGLE_IOS) || defined(GOOGLE_LOGGING) ||      \
       defined(__EMSCRIPTEN__) || defined(PLATFORM_CHROMIUMOS))
 
+#undef PCHECK
 #define PCHECK(invocation) CHECK(invocation)
 
 #endif
