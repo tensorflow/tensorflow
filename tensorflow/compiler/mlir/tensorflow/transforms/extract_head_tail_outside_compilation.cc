@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -42,9 +43,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
+#include "tensorflow/tsl/util/device_name_utils.h"
 
 namespace mlir {
-namespace TFTPU {
+namespace TFDevice {
 
 // This pass extracts a CPU computation cluster with `_xla_outside_compilation`
 // annotation from the head or tail of a TPU cluster.
@@ -419,16 +421,16 @@ void RemoveClusterAliasedOutputs(OpBuilder* builder,
   cluster.erase();
 }
 
-#define GEN_PASS_DEF_TPUEXTRACTHEADTAILOUTSIDECOMPILATIONPASS
+#define GEN_PASS_DEF_EXTRACTHEADTAILOUTSIDECOMPILATIONPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
-struct TPUExtractHeadTailOutsideCompilationPass
-    : public impl::TPUExtractHeadTailOutsideCompilationPassBase<
-          TPUExtractHeadTailOutsideCompilationPass> {
+struct ExtractHeadTailOutsideCompilationPass
+    : public impl::ExtractHeadTailOutsideCompilationPassBase<
+          ExtractHeadTailOutsideCompilationPass> {
   void runOnOperation() override;
 };
 
-void TPUExtractHeadTailOutsideCompilationPass::runOnOperation() {
+void ExtractHeadTailOutsideCompilationPass::runOnOperation() {
   auto& side_effect_analysis = getAnalysis<TF::SideEffectAnalysis>();
   // Get runtime devices information from the closest parent module.
   auto module = getOperation();
@@ -458,9 +460,9 @@ void TPUExtractHeadTailOutsideCompilationPass::runOnOperation() {
 }  // anonymous namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateTPUExtractHeadTailOutsideCompilationPass() {
-  return std::make_unique<TPUExtractHeadTailOutsideCompilationPass>();
+CreateExtractHeadTailOutsideCompilationPass() {
+  return std::make_unique<ExtractHeadTailOutsideCompilationPass>();
 }
 
-}  // namespace TFTPU
+}  // namespace TFDevice
 }  // namespace mlir

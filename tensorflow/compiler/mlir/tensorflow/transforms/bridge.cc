@@ -179,7 +179,7 @@ void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
   }
 
   pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
-  pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
+  pm.addPass(TFDevice::CreateExtractHeadTailOutsideCompilationPass());
   pm.addPass(CreateTPUExtractOutsideCompilationPass());
 
   pm.addNestedPass<func::FuncOp>(TFDevice::CreateClusterConstantSinkingPass());
@@ -402,6 +402,7 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_generic_outside_compilation) {
     pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
+    pm.addPass(TFDevice::CreateExtractHeadTailOutsideCompilationPass());
   }
   // Outline clusters into cluster functions.
   pm.addPass(TFDevice::CreateClusterOutliningPass());

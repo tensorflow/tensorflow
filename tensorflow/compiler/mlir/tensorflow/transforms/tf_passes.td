@@ -1946,12 +1946,12 @@ def TPUCleanupClusterAttributesPass : Pass<"tf-tpu-cleanup-cluster-attributes", 
   let constructor = "TFTPU::CreateTPUClusterCleanupAttributesPass()";
 }
 
-def TPUExtractHeadTailOutsideCompilationPass : Pass<"tf-tpu-extract-head-tail-outside-compilation", "ModuleOp"> {
-  let summary = "Extracts TPU head or tail outside compilation to separate host launches before/after device cluster.";
+def ExtractHeadTailOutsideCompilationPass : Pass<"tf-extract-head-tail-outside-compilation", "ModuleOp"> {
+  let summary = "Extracts head or tail outside compilation to separate host launches before/after device cluster.";
 
   let description = [{
     This pass extracts a CPU computation cluster with `_xla_outside_compilation`
-    annotation from the head or tail of a TPU cluster.
+    annotation from the head or tail of a Device cluster.
 
     For example:
 
@@ -1985,7 +1985,7 @@ def TPUExtractHeadTailOutsideCompilationPass : Pass<"tf-tpu-extract-head-tail-ou
     ```
   }];
 
-  let constructor = "TFTPU::CreateTPUExtractHeadTailOutsideCompilationPass()";
+  let constructor = "TFDevice::CreateExtractHeadTailOutsideCompilationPass()";
 }
 
 def TPUSpaceToDepthPass : Pass<"tf-tpu-space-to-depth-pass", "ModuleOp"> {

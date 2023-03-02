@@ -246,9 +246,12 @@ std::string GetDeviceAliasForLogicalCore(int core_index);
 // `num_cores_per_replica_attribute`. Otherwise returns false.
 bool HasModelParallelism(mlir::tf_device::ClusterOp cluster);
 
-// Parses TPU compilation and execution devices from a TPU cluster and returns
-// the host device for the head and tail computations. If the TPU computation is
-// replicated, kTPUReplicatedHost is returned instead.
+// Returns true if the devices list contain any TPU devices
+bool hasTPUDevice(const mlir::TF::RuntimeDevices& devices);
+
+// Parses XLA compilation and execution devices from a tf_device.cluster and
+// returns the host device for the head and tail computations. For TPU device,
+// if the computation is replicated, kTPUReplicatedHost is returned instead.
 mlir::LogicalResult GetHostDeviceOutsideComputation(
     mlir::TF::RuntimeDevices devices, mlir::tf_device::ClusterOp cluster,
     std::string* host_device);

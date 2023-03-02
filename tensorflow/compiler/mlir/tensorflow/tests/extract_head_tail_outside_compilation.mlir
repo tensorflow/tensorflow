@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-tpu-extract-head-tail-outside-compilation | FileCheck %s
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-extract-head-tail-outside-compilation | FileCheck %s
 
 // Tests extraction of a outside compiled ops at head of TPU computation.
 
@@ -598,6 +598,30 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.SendTPUEmbeddingGradients"(%0) {N = 1 : i64, NN = 0 : i64, config = "test_config_send_embedding", operand_segment_sizes = array<i32: 1, 0>} : (tensor<512x256xf32>) -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
+    func.return
+  }
+}
+
+// -----
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0"]} {
+  // CHECK-LABEL: func @head_single_outside_compiled_op_in_generic_pipeline
+  func.func @head_single_outside_compiled_op_in_generic_pipeline(%arg0: tensor<i32>) {
+    // CHECK:      "tf_device.launch"
+    // CHECK-NEXT:   "tf.A"
+    // CHECK-NOT:    _xla_outside_compilation
+    // CHECK-NEXT:   tf_device.return
+    // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:CPU:0"
+    //
+    // CHECK:      "tf_device.cluster"
+    // CHECK-NEXT:   "tf.B"
+    // CHECK-NEXT:   "tf.C"
+    // CHECK-NEXT:   tf_device.return
+    "tf_device.cluster"() ({
+      "tf.A"(%arg0) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> ()
+      "tf.B"() : () -> ()
+      "tf.C"() : () -> ()
+      tf_device.return
+    }) : () -> ()
     func.return
   }
 }
