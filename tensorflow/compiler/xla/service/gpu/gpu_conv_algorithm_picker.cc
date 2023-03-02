@@ -393,9 +393,12 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
     if (it != autotune_cache.end()) {
       return it->second;
     }
-    return InternalError(
-        "Failed to load autotune result when running GpuConvAlgorithmPicker in "
-        "deviceless mode");
+
+    // Return an autotune result with algo id -1, which means that we autotune
+    // at runtime.
+    AutotuneResult result;
+    result.mutable_algorithm()->set_algo_id(-1);
+    return result;
   }
 
   se::StreamExecutor* stream_exec = std::get<DeviceConfig>(config_).stream_exec;
