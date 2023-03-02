@@ -3389,7 +3389,7 @@ pywrap_tensorflow_macro(
         "//tensorflow:windows": [],
     }),
     exports_filter = [
-        "@pybind11//:pybind11",
+        "@pybind11",
         "@local_config_python//:python_headers",
     ] + if_windows([
         "//:__subpackages__",

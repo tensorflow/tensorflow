@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <Python.h>
 
-#include "pybind11/cast.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"

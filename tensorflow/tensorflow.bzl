@@ -2350,7 +2350,7 @@ def pywrap_tensorflow_macro_opensource(
     )
 
     # We need pybind11 to export the shared object PyInit symbol only in OSS.
-    extra_deps = ["@pybind11"]
+    extra_deps = [clean_dep("@pybind11")]
 
     if not version_script:
         version_script = select({
@@ -2913,7 +2913,7 @@ def pybind_library(
         deps = [],
         **kwargs):
     # Mark common dependencies as required for build_cleaner.
-    tags = tags + ["req_dep=@pybind11", "req_dep=@local_config_python//:python_headers"]
+    tags = tags + ["req_dep=" + clean_dep("//third_party/pybind11"), "req_dep=@local_config_python//:python_headers"]
 
     native.cc_library(
         name = name,
@@ -2923,7 +2923,7 @@ def pybind_library(
             "-parse_headers",
         ],
         tags = tags,
-        deps = deps + ["@pybind11", "@local_config_python//:python_headers"],
+        deps = deps + [clean_dep("//third_party/pybind11"), "@local_config_python//:python_headers"],
         **kwargs
     )
 
