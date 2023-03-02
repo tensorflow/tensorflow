@@ -286,6 +286,7 @@ py_library(
 alias(
     name = "util",
     actual = "//tensorflow/python/util:util",
+    deprecation = "This target has been split. Depend on the sub-targets in //third_party/tensorflow/python/util instead.",
     visibility = visibility + [
         "//tensorflow:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",
