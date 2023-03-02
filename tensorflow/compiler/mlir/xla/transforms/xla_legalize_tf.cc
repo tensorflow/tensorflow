@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
@@ -72,7 +71,7 @@ namespace {
 class LegalizeTF : public impl::LegalizeTFBase<LegalizeTF> {
  public:
   explicit LegalizeTF(bool allow_partial_conversion, bool legalize_chlo,
-                      llvm::Optional<StringRef> tf2xla_fallback_device_type,
+                      std::optional<StringRef> tf2xla_fallback_device_type,
                       bool prefer_tf2xla) {
     legalize_chlo_ = legalize_chlo;
     prefer_tf2xla_ = prefer_tf2xla;
@@ -750,7 +749,7 @@ mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
 /// legalize_tf_with_tf2xla.cc for details). By default, TF2XLA fallback is not
 /// used.
 LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
-                         llvm::Optional<StringRef> tf2xla_fallback_device_type,
+                         std::optional<StringRef> tf2xla_fallback_device_type,
                          bool prefer_tf2xla) {
   MLIRContext *context = op->getContext();
   RewritePatternSet legalize_lower_patterns(context);
@@ -813,7 +812,7 @@ LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
 
 // Performs the lowering to XLA dialect.
 void LegalizeTF::runOnOperation() {
-  llvm::Optional<StringRef> tf2xla_fallback_device_type = std::nullopt;
+  std::optional<StringRef> tf2xla_fallback_device_type = std::nullopt;
   if (use_tf2xla_fallback_) {
     tf2xla_fallback_device_type = device_type_;
   }
@@ -857,7 +856,7 @@ void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
 
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass(
     bool allow_partial_conversion, bool legalize_chlo,
-    llvm::Optional<StringRef> tf2xla_fallback_device_type, bool prefer_tf2xla) {
+    std::optional<StringRef> tf2xla_fallback_device_type, bool prefer_tf2xla) {
   return std::make_unique<LegalizeTF>(allow_partial_conversion, legalize_chlo,
                                       tf2xla_fallback_device_type,
                                       prefer_tf2xla);

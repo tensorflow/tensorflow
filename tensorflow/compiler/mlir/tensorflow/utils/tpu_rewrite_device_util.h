@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_TPU_REWRITE_DEVICE_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_TPU_REWRITE_DEVICE_UTIL_H_
 
+#include <optional>
 #include <string>
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -75,7 +75,7 @@ struct TPUDeviceAssignment {
 
   std::string compilation_device;
   TPUDevicesAndHosts tpu_devices;
-  llvm::Optional<xla::DeviceAssignmentProto> xla_device_assignment;
+  std::optional<xla::DeviceAssignmentProto> xla_device_assignment;
 };
 
 // Extracts device coordinates from a device assignment attribute on an op.

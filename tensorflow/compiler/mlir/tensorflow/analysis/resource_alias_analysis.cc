@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -74,7 +73,7 @@ class BacktrackAnalysisInfo {
   // can backtracked to. Such results will be called "function passthrough". If
   // the result cannot be backtracked to a region argument, returns
   // std::nullopt.
-  llvm::Optional<int> GetArg(int result_index) const {
+  std::optional<int> GetArg(int result_index) const {
     if (auto arg = GetValue(result_index).dyn_cast<BlockArgument>())
       if (arg.getParentBlock() == &region_->front()) return arg.getArgNumber();
     return std::nullopt;
@@ -547,13 +546,13 @@ void ResourceAliasAnalysisInfo::AnalyzeFunctionalCaseOrIfOp(
   // If a result is a passthrough of all branches' inputs, merge the resource
   // IDs of corresponding operands for all the inputs.
   for (auto result : filter_resources(case_or_if_op.getResults())) {
-    llvm::SmallVector<llvm::Optional<int>, 2> passthrough_args;
+    llvm::SmallVector<std::optional<int>, 2> passthrough_args;
     passthrough_args.reserve(functions.size());
     for (const auto* info : infos)
       passthrough_args.emplace_back(info->GetArg(result.getResultNumber()));
 
     const bool all_passthrough_args_known = llvm::all_of(
-        passthrough_args, [](const llvm::Optional<int>& passthrough_arg) {
+        passthrough_args, [](const std::optional<int>& passthrough_arg) {
           return passthrough_arg.has_value();
         });
     if (all_passthrough_args_known) {

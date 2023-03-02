@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
 #include <cstdint>
+#include <optional>
 #include <tuple>
 
 #include "llvm/Support/FormatVariadic.h"
@@ -103,7 +104,7 @@ TEST_P(ParameterizedMetadataTest, BadMetadata) {
       &devices));
   std::string compilation_device;
   llvm::SmallVector<llvm::SmallVector<std::string, 8>, 8> execution_devices;
-  llvm::Optional<xla::DeviceAssignmentProto> xla_device_assignment;
+  std::optional<xla::DeviceAssignmentProto> xla_device_assignment;
 
   auto status_or = GetTPUCompilationAndExecutionDevices(
       devices, std::get<0>(GetParam()), std::get<1>(GetParam()),

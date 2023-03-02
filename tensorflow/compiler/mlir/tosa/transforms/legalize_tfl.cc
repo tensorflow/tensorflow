@@ -23,6 +23,7 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <unordered_set>
 
@@ -733,7 +734,7 @@ static LogicalResult matchAndRewriteAddSub(Operation* op,
   auto fused_activation_fn = tfl_add_op.getFusedActivationFunctionAttr();
 
   if (fused_activation_fn) {
-    llvm::Optional<Value> fused_activation_val =
+    std::optional<Value> fused_activation_val =
         convertFusedActivation(rewriter, op, output, fused_activation_fn);
 
     if (!fused_activation_val) return failure();
@@ -762,7 +763,7 @@ LogicalResult ConvertTFLMulOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_mul_op = cast<TFL::MulOp>(op);
 
-  llvm::Optional<Value> result =
+  std::optional<Value> result =
       convertMultiplyOp(rewriter, op, tfl_mul_op.getResult(),
                         tfl_mul_op.getLhs(), tfl_mul_op.getRhs());
 
@@ -771,7 +772,7 @@ LogicalResult ConvertTFLMulOp::matchAndRewrite(
   auto fused_activation_fn = tfl_mul_op.getFusedActivationFunctionAttr();
 
   if (fused_activation_fn) {
-    llvm::Optional<Value> fused_activation_val = convertFusedActivation(
+    std::optional<Value> fused_activation_val = convertFusedActivation(
         rewriter, op, result.value(), fused_activation_fn);
 
     if (!fused_activation_val) return failure();
@@ -788,7 +789,7 @@ LogicalResult ConvertTFLSquareOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_square_op = cast<TFL::SquareOp>(op);
 
-  llvm::Optional<Value> result =
+  std::optional<Value> result =
       convertMultiplyOp(rewriter, op, tfl_square_op.getResult(),
                         tfl_square_op.getX(), tfl_square_op.getX());
 
@@ -802,7 +803,7 @@ LogicalResult ConvertTFLSquaredDifferenceOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_squared_op = cast<TFL::SquaredDifferenceOp>(op);
 
-  llvm::Optional<Value> result = convertSquaredDifferenceOp(
+  std::optional<Value> result = convertSquaredDifferenceOp(
       rewriter, op, tfl_squared_op.getResult(), tfl_squared_op.getLhs(),
       tfl_squared_op.getRhs());
 
@@ -822,7 +823,7 @@ LogicalResult ConvertTFLRoundOp::matchAndRewrite(
   }
 
   if (input_type.getElementType().isa<FloatType>()) {
-    llvm::Optional<Value> result = convertRoundOp(
+    std::optional<Value> result = convertRoundOp(
         rewriter, op, tfl_round_op.getResult(), tfl_round_op.getX());
 
     if (!result) return failure();
@@ -867,7 +868,7 @@ LogicalResult ConvertTFLDivOp::matchAndRewrite(
   }
 
   if (fused_activation_fn) {
-    llvm::Optional<Value> fused_activation_val =
+    std::optional<Value> fused_activation_val =
         convertFusedActivation(rewriter, op, div_op, fused_activation_fn);
 
     if (!fused_activation_val) return failure();
@@ -994,7 +995,7 @@ LogicalResult ConvertTFLFloorDivOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_floordiv_op = cast<TFL::FloorDivOp>(op);
 
-  llvm::Optional<Value> result =
+  std::optional<Value> result =
       convertFloorDivOp(rewriter, op, tfl_floordiv_op.getResult(),
                         tfl_floordiv_op.getLhs(), tfl_floordiv_op.getRhs());
 
@@ -1009,7 +1010,7 @@ LogicalResult ConvertTFLFloorModOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_floormod_op = cast<TFL::FloorModOp>(op);
 
-  llvm::Optional<Value> result =
+  std::optional<Value> result =
       convertFloorModOp(rewriter, op, tfl_floormod_op.getResult(),
                         tfl_floormod_op.getLhs(), tfl_floormod_op.getRhs());
 
@@ -1257,7 +1258,7 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
   auto fused_activation_fn = tfl_conv2d_op.getFusedActivationFunctionAttr();
 
   if (fused_activation_fn) {
-    llvm::Optional<Value> fused_activation_val = convertFusedActivation(
+    std::optional<Value> fused_activation_val = convertFusedActivation(
         rewriter, op, conv2d_output, fused_activation_fn);
 
     if (!fused_activation_val) return failure();
@@ -1321,7 +1322,7 @@ LogicalResult ConvertTFLConv3DOp::matchAndRewrite(
                                      tfl_conv3d_op.getDilationWFactor()});
   Type bias_ety =
       unquantized_bias.getType().cast<ShapedType>().getElementType();
-  llvm::Optional<Value> a1_conv3d_op = convertConv3DCommon(
+  std::optional<Value> a1_conv3d_op = convertConv3DCommon(
       rewriter, op, output_type.clone(bias_ety), tfl_conv3d_op.getInput(),
       tfl_conv3d_op.getFilter(), unquantized_bias, strides, dilations,
       tfl_conv3d_op.getPadding().str(), StringRef("NDHWC"));
@@ -1336,7 +1337,7 @@ LogicalResult ConvertTFLConv3DOp::matchAndRewrite(
 
   if (auto fused_activation_fn =
           tfl_conv3d_op.getFusedActivationFunctionAttr()) {
-    llvm::Optional<Value> fused_activation_val = convertFusedActivation(
+    std::optional<Value> fused_activation_val = convertFusedActivation(
         rewriter, op, conv3d_output, fused_activation_fn);
 
     if (!fused_activation_val) return failure();
@@ -1431,7 +1432,7 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
     return failure();
   }
 
-  llvm::Optional<Value> zero_bias;
+  std::optional<Value> zero_bias;
   if (input_is_qtype) {
     uint32_t input_bits = input_type.getElementType()
                               .dyn_cast<mlir::quant::QuantizedType>()
@@ -1472,7 +1473,7 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
   auto fused_activation_fn = tfl_conv_op.getFusedActivationFunctionAttr();
 
   if (fused_activation_fn) {
-    llvm::Optional<Value> fused_activation_val = convertFusedActivation(
+    std::optional<Value> fused_activation_val = convertFusedActivation(
         rewriter, op, conv2d_output, fused_activation_fn);
 
     if (!fused_activation_val) return failure();
@@ -1571,7 +1572,7 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
   a2_reshape_dims.push_back(a1_transpose_dims[2] / depth_multiplier.getInt());
   a2_reshape_dims.push_back(depth_multiplier.getInt());
 
-  llvm::Optional<Value> a1_filter_transpose_perms = getConstTensor<int32_t>(
+  std::optional<Value> a1_filter_transpose_perms = getConstTensor<int32_t>(
       rewriter, op, /*vec=*/{1, 2, 3, 0}, /*shape=*/{4});
 
   if (!a1_filter_transpose_perms) return failure();
@@ -1612,7 +1613,7 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
   auto fused_activation_fn = tfl_conv2d_op.getFusedActivationFunctionAttr();
 
   if (fused_activation_fn) {
-    llvm::Optional<Value> fused_activation_val = convertFusedActivation(
+    std::optional<Value> fused_activation_val = convertFusedActivation(
         rewriter, op, conv2d_output, fused_activation_fn);
 
     if (!fused_activation_val) return failure();
@@ -1863,7 +1864,7 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
   auto fused_activation_fn = tfl_fc_op.getFusedActivationFunctionAttr();
 
   if (fused_activation_fn) {
-    llvm::Optional<Value> fused_activation_val =
+    std::optional<Value> fused_activation_val =
         convertFusedActivation(rewriter, op, fc_output, fused_activation_fn);
 
     if (!fused_activation_val) return failure();
@@ -1894,7 +1895,7 @@ LogicalResult ConvertTFLConcatenationOp::matchAndRewrite(
   }
   int32_t axis = axis_attr.getInt();
 
-  llvm::Optional<Value> result =
+  std::optional<Value> result =
       convertConcatV2Op(rewriter, op, result_type, values, axis);
 
   if (!result) return failure();
@@ -2012,7 +2013,7 @@ LogicalResult ConvertTFLExpandDimsOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_expanddims_op = cast<TFL::ExpandDimsOp>(op);
 
-  llvm::Optional<Value> result = convertExpandDimsOp(
+  std::optional<Value> result = convertExpandDimsOp(
       rewriter, op, tfl_expanddims_op.getResult(), tfl_expanddims_op.getInput(),
       tfl_expanddims_op.getDim());
 
@@ -2034,7 +2035,7 @@ LogicalResult ConvertTFLSqueezeOp::matchAndRewrite(
     squeeze_dims.emplace_back(squeeze_dim.dyn_cast<IntegerAttr>().getInt());
   }
 
-  llvm::Optional<Value> result =
+  std::optional<Value> result =
       convertSqueezeOp(rewriter, op, tfl_squeeze_op.getResult(),
                        tfl_squeeze_op.getInput(), squeeze_dims);
 
@@ -2127,7 +2128,7 @@ LogicalResult ConvertTFLReduceAnyOp::matchAndRewrite(
   if (!matchPattern(tfl_any_op.getReductionIndices(), m_Constant(&axes_elems)))
     return failure();
 
-  llvm::Optional<Value> result = convertReduceAnyOp(
+  std::optional<Value> result = convertReduceAnyOp(
       rewriter, op, output_type, tfl_any_op.getInput(), axes_elems);
 
   if (!result) return failure();
@@ -2149,7 +2150,7 @@ LogicalResult ConvertTFLReduceMaxOp::matchAndRewrite(
   if (!matchPattern(tfl_max_op.getAxes(), m_Constant(&axes_elems)))
     return failure();
 
-  llvm::Optional<Value> result = convertReduceMaxOp(
+  std::optional<Value> result = convertReduceMaxOp(
       rewriter, op, output_type, tfl_max_op.getInput(), axes_elems);
 
   if (!result) return failure();
@@ -2171,7 +2172,7 @@ LogicalResult ConvertTFLReduceMinOp::matchAndRewrite(
   if (!matchPattern(tfl_min_op.getAxes(), m_Constant(&axes_elems)))
     return failure();
 
-  llvm::Optional<Value> result = convertReduceMinOp(
+  std::optional<Value> result = convertReduceMinOp(
       rewriter, op, output_type, tfl_min_op.getInput(), axes_elems);
 
   if (!result) return failure();
@@ -2193,7 +2194,7 @@ LogicalResult ConvertTFLReduceProdOp::matchAndRewrite(
   if (!matchPattern(tfl_prod_op.getAxes(), m_Constant(&axes_elems)))
     return failure();
 
-  llvm::Optional<Value> result = convertReduceProdOp(
+  std::optional<Value> result = convertReduceProdOp(
       rewriter, op, output_type, tfl_prod_op.getInput(), axes_elems);
 
   if (!result) return failure();
@@ -2215,7 +2216,7 @@ LogicalResult ConvertTFLMeanOp::matchAndRewrite(
   if (!matchPattern(tfl_mean_op.getAxis(), m_Constant(&axes_elems)))
     return failure();
 
-  llvm::Optional<Value> result = convertReduceMeanOp(
+  std::optional<Value> result = convertReduceMeanOp(
       rewriter, op, output_type, tfl_mean_op.getInput(), axes_elems);
 
   if (!result) return failure();
@@ -2237,7 +2238,7 @@ LogicalResult ConvertTFLSumOp::matchAndRewrite(
   if (!matchPattern(tfl_sum_op.getAxes(), m_Constant(&axes_elems)))
     return failure();
 
-  llvm::Optional<Value> result = convertReduceSumOp(
+  std::optional<Value> result = convertReduceSumOp(
       rewriter, op, output_type, tfl_sum_op.getInput(), axes_elems);
 
   if (!result) return failure();
@@ -2251,7 +2252,7 @@ LogicalResult ConvertTFLEluOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_elu_op = cast<TFL::EluOp>(op);
 
-  llvm::Optional<Value> result =
+  std::optional<Value> result =
       convertEluOp(rewriter, op, tfl_elu_op.getResult(), tfl_elu_op.getX());
 
   if (!result) return failure();
@@ -2265,7 +2266,7 @@ LogicalResult ConvertTFLSoftmaxOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_softmax_op = cast<TFL::SoftmaxOp>(op);
 
-  llvm::Optional<Value> result = convertSoftmaxOp(
+  std::optional<Value> result = convertSoftmaxOp(
       rewriter, op, tfl_softmax_op.getResult(), tfl_softmax_op.getInput(),
       tfl_softmax_op.getBetaAttr().getValueAsDouble());
 
@@ -2319,7 +2320,7 @@ LogicalResult ConvertTFLL2NormalizationOp::matchAndRewrite(
     auto fused_activation_fn = tfl_l2norm_op.getFusedActivationFunctionAttr();
 
     if (fused_activation_fn) {
-      llvm::Optional<Value> fused_activation_val =
+      std::optional<Value> fused_activation_val =
           convertFusedActivation(rewriter, op, result, fused_activation_fn);
       if (!fused_activation_val) return failure();
       result = fused_activation_val.value();
@@ -2336,7 +2337,7 @@ LogicalResult ConvertTFLLogSoftmaxOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_logsoftmax_op = cast<TFL::LogSoftmaxOp>(op);
 
-  llvm::Optional<Value> result =
+  std::optional<Value> result =
       convertLogSoftmaxOp(rewriter, op, tfl_logsoftmax_op.getResult(),
                           tfl_logsoftmax_op.getInput());
 
@@ -2431,7 +2432,7 @@ LogicalResult ConvertTFLPackOp::matchAndRewrite(
   }
   int32_t axis_i32 = axis_attr.getInt();
 
-  llvm::Optional<Value> result =
+  std::optional<Value> result =
       convertPackOp(rewriter, op, tfl_pack_op.getResult(), inputs, axis_i32);
 
   if (!result) return failure();
@@ -2453,7 +2454,7 @@ LogicalResult ConvertTFLUnpackOp::matchAndRewrite(
   }
   int32_t axis_i32 = axis_attr.getInt();
 
-  llvm::Optional<SmallVector<Value>> results =
+  std::optional<SmallVector<Value>> results =
       convertUnpackOp(rewriter, op, tfl_unpack_op.getInput(), axis_i32);
 
   if (!results) return failure();
@@ -2487,7 +2488,7 @@ LogicalResult ConvertTFLSplitOp::matchAndRewrite(
   // an integer attribute in TFLite MLIR.
   int32_t axis = axisAttrElems.getValues<APInt>()[0].getSExtValue();
 
-  llvm::Optional<SmallVector<Value>> results =
+  std::optional<SmallVector<Value>> results =
       convertSplitOp(rewriter, op, tfl_split_op.getResult(0),
                      tfl_split_op.getValue(), num_split, axis);
 
@@ -2525,7 +2526,7 @@ LogicalResult ConvertTFLSplitVOp::matchAndRewrite(
   // an integer attribute in TFLite MLIR.
   int32_t axis = axisAttrElems.getValues<APInt>()[0].getSExtValue();
 
-  llvm::Optional<SmallVector<Value>> results =
+  std::optional<SmallVector<Value>> results =
       convertSplitVOp(rewriter, op, tfl_splitv_op.getResult(0),
                       tfl_splitv_op.getValue(), size_split, axis);
 
@@ -2576,7 +2577,7 @@ LogicalResult ConvertTFLMirrorPadOp::matchAndRewrite(
           op, "mode isn't one of REFLECT or SYMMETRIC");
   }
 
-  llvm::Optional<Value> result = convertMirrorPadCommon(
+  std::optional<Value> result = convertMirrorPadCommon(
       rewriter, op, output_type, tfl_mirrorpad_op.getInput(),
       tfl_mirrorpad_op.getPad(), mode);
 
@@ -2608,7 +2609,7 @@ LogicalResult ConvertTFLResizeBilinearOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  llvm::Optional<Value> result = convertResizeOp(
+  std::optional<Value> result = convertResizeOp(
       rewriter, op, output_type, tfl_resize_op.getInput(),
       StringRef("BILINEAR"), tfl_resize_op.getAlignCornersAttr().getValue(),
       tfl_resize_op.getHalfPixelCentersAttr().getValue());
@@ -2629,7 +2630,7 @@ LogicalResult ConvertTFLResizeNearestNeighborOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  llvm::Optional<Value> result =
+  std::optional<Value> result =
       convertResizeOp(rewriter, op, output_type, tfl_resize_op.getInput(),
                       StringRef("NEAREST_NEIGHBOR"),
                       tfl_resize_op.getAlignCornersAttr().getValue(),
@@ -2646,7 +2647,7 @@ LogicalResult ConvertTFLSelectOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_sel_op = cast<TFL::SelectOp>(op);
 
-  llvm::Optional<Value> result = convertSelectOp(
+  std::optional<Value> result = convertSelectOp(
       rewriter, op, tfl_sel_op.getResult(), tfl_sel_op.getCondition(),
       tfl_sel_op.getX(), tfl_sel_op.getY());
   if (!result) return failure();
@@ -2660,7 +2661,7 @@ LogicalResult ConvertTFLSelectV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_sel_op = cast<TFL::SelectV2Op>(op);
 
-  llvm::Optional<Value> result = convertSelectOp(
+  std::optional<Value> result = convertSelectOp(
       rewriter, op, tfl_sel_op.getResult(), tfl_sel_op.getCondition(),
       tfl_sel_op.getX(), tfl_sel_op.getY());
   if (!result) return failure();
@@ -2673,7 +2674,7 @@ LogicalResult ConvertTFLSelectV2Op::matchAndRewrite(
 LogicalResult ConvertTFLSpaceToBatchNdOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_s2b_op = cast<TFL::SpaceToBatchNdOp>(op);
-  llvm::Optional<Value> result = convertSpaceToBatchNDOp(
+  std::optional<Value> result = convertSpaceToBatchNDOp(
       rewriter, op, tfl_s2b_op.getResult(), tfl_s2b_op.getInput(),
       tfl_s2b_op.getBlockShape(), tfl_s2b_op.getPaddings());
 
@@ -2688,7 +2689,7 @@ LogicalResult ConvertTFLBatchToSpaceNdOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_b2s_op = cast<TFL::BatchToSpaceNdOp>(op);
 
-  llvm::Optional<Value> result = convertBatchToSpaceNDOp(
+  std::optional<Value> result = convertBatchToSpaceNDOp(
       rewriter, op, tfl_b2s_op.getResult(), tfl_b2s_op.getInput(),
       tfl_b2s_op.getBlockShape(), tfl_b2s_op.getIndices());
 
@@ -2704,7 +2705,7 @@ LogicalResult ConvertTFLSpaceToDepthOp::matchAndRewrite(
   auto tfl_s2d_op = cast<TFL::SpaceToDepthOp>(op);
 
   auto block_size_attr = tfl_s2d_op.getBlockSizeAttr();
-  llvm::Optional<Value> result = convertSpaceToDepthOp(
+  std::optional<Value> result = convertSpaceToDepthOp(
       rewriter, op, tfl_s2d_op.getResult(), tfl_s2d_op.getInput(),
       block_size_attr, rewriter.getStringAttr("NHWC"));
 
@@ -2720,7 +2721,7 @@ LogicalResult ConvertTFLDepthToSpaceOp::matchAndRewrite(
   auto tfl_d2s_op = cast<TFL::DepthToSpaceOp>(op);
 
   auto block_size_attr = tfl_d2s_op.getBlockSizeAttr();
-  llvm::Optional<Value> result = convertDepthToSpaceOp(
+  std::optional<Value> result = convertDepthToSpaceOp(
       rewriter, op, tfl_d2s_op.getResult(), tfl_d2s_op.getInput(),
       block_size_attr, rewriter.getStringAttr("NHWC"));
 
@@ -2802,7 +2803,7 @@ LogicalResult ConvertTFLStridedSliceOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_ss_op = cast<TFL::StridedSliceOp>(op);
 
-  llvm::Optional<Value> result = convertStridedSliceOp(
+  std::optional<Value> result = convertStridedSliceOp(
       rewriter, op, tfl_ss_op.getResult(), tfl_ss_op.getInput(),
       tfl_ss_op.getBegin(), tfl_ss_op.getEnd(), tfl_ss_op.getStrides(),
       tfl_ss_op.getBeginMaskAttr().getInt(),
@@ -2821,7 +2822,7 @@ LogicalResult ConvertTFLZerosLikeOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_zeroslike_op = cast<TFL::ZerosLikeOp>(op);
 
-  llvm::Optional<Value> result = convertZerosLikeOp(
+  std::optional<Value> result = convertZerosLikeOp(
       rewriter, op, tfl_zeroslike_op.getResult(), tfl_zeroslike_op.getInput());
 
   if (!result) return failure();
@@ -2916,7 +2917,7 @@ LogicalResult ConvertTFLSinOp::matchAndRewrite(
   ShapedType output_type =
       tfl_sin_op.getResult().getType().dyn_cast<ShapedType>();
 
-  llvm::Optional<Value> result = convertSinOp(rewriter, op, input, output_type);
+  std::optional<Value> result = convertSinOp(rewriter, op, input, output_type);
   if (!result) return failure();
 
   rewriter.replaceOp(op, {result.value()});
@@ -3526,7 +3527,7 @@ LogicalResult ConvertTFLQuantizeOp::matchAndRewrite(
     int64_t num_bits = element_type.getStorageTypeIntegralWidth();
     zp = element_type.isSigned() ? zp : zp - (1 << (num_bits - 1));
 
-    llvm::Optional<Value> result = convertQuantizeOp(
+    std::optional<Value> result = convertQuantizeOp(
         rewriter, op, output_type, tfl_quantize_op.getInput(), scale, zp);
 
     if (!result) return failure();
@@ -3563,7 +3564,7 @@ LogicalResult ConvertTFLDequantizeOp::matchAndRewrite(
     int64_t num_bits = eq_ty.getStorageTypeIntegralWidth();
     zp = eq_ty.isSigned() ? zp : zp - (1 << (num_bits - 1));
 
-    llvm::Optional<Value> result = convertDequantizeOp(
+    std::optional<Value> result = convertDequantizeOp(
         rewriter, op, output_type, tfl_dequantize_op.getInput(), scale, zp, 0);
 
     if (!result) return failure();
@@ -3585,7 +3586,7 @@ LogicalResult ConvertTFLDequantizeOp::matchAndRewrite(
       scales.push_back(scale);
     }
 
-    llvm::Optional<Value> result = convertDequantizeOp(
+    std::optional<Value> result = convertDequantizeOp(
         rewriter, op, output_type, tfl_dequantize_op.getInput(), scales, zps,
         eq_ty.getQuantizedDimension());
 
@@ -3690,7 +3691,7 @@ LogicalResult ConvertTFLGatherOp::matchAndRewrite(
     batch_dims = static_cast<int32_t>(batch_attr.getInt());
   }
 
-  llvm::Optional<Value> result = convertGatherOp(
+  std::optional<Value> result = convertGatherOp(
       rewriter, op, tfl_gather_op.getResult(), tfl_gather_op.getParams(),
       tfl_gather_op.getIndices(), batch_dims, axis);
 
@@ -3705,7 +3706,7 @@ LogicalResult ConvertTFLGatherNdOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_gathernd_op = cast<TFL::GatherNdOp>(op);
 
-  llvm::Optional<Value> result = convertGatherNdOp(
+  std::optional<Value> result = convertGatherNdOp(
       rewriter, op, tfl_gathernd_op.getResult(), tfl_gathernd_op.getParams(),
       tfl_gathernd_op.getIndices());
 
@@ -3809,7 +3810,7 @@ LogicalResult ConvertTFLOneHotOp::matchAndRewrite(
   IntegerAttr axisAttr = tfl_one_hot_op.getAxisAttr();
   int32_t axis = axisAttr.getInt();
 
-  llvm::Optional<Value> result = convertOneHotOp(
+  std::optional<Value> result = convertOneHotOp(
       rewriter, op, tfl_one_hot_op.getResult(), tfl_one_hot_op.getIndices(),
       tfl_one_hot_op.getOnValue(), tfl_one_hot_op.getOffValue(), depth, axis);
 
@@ -3894,7 +3895,7 @@ LogicalResult ConvertTFLFakeQuantOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  llvm::Optional<Value> result =
+  std::optional<Value> result =
       convertFakeQuantOp(rewriter, op, output_type, fakequant_op.getInput(),
                          fakequant_op.getMinAttr().getValueAsDouble(),
                          fakequant_op.getMaxAttr().getValueAsDouble(),

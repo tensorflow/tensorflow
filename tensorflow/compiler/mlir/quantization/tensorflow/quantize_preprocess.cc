@@ -15,13 +15,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -69,7 +69,7 @@ absl::Status PreprocessAndFreezeGraph(
     const absl::string_view mlir_dump_file_prefix, const bool is_inliner_run,
     const absl::flat_hash_set<std::string>& noinline_functions,
     mlir::ModuleOp module_op, mlir::MLIRContext* context,
-    llvm::Optional<Session*> session) {
+    std::optional<Session*> session) {
   mlir::PassManager pm_before_freezing_variables(context);
   mlir::StatusScopedDiagnosticHandler statusHandler(module_op.getContext(),
                                                     /*propagate=*/true);

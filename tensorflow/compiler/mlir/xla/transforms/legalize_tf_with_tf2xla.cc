@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project

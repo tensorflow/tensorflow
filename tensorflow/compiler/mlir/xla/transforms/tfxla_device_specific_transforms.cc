@@ -11,6 +11,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -33,8 +34,7 @@ class TFXLADeviceSpecificTransforms
     : public impl::TFXLADeviceSpecificTransformsBase<
           TFXLADeviceSpecificTransforms> {
  public:
-  explicit TFXLADeviceSpecificTransforms(
-      llvm::Optional<StringRef> device_type) {
+  explicit TFXLADeviceSpecificTransforms(std::optional<StringRef> device_type) {
     if (device_type.has_value()) {
       device_type_ = device_type.value().str();
     }
@@ -84,7 +84,7 @@ void TFXLADeviceSpecificTransforms::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateTFXLADeviceSpecificTransformsPass(llvm::Optional<StringRef> device_type) {
+CreateTFXLADeviceSpecificTransformsPass(std::optional<StringRef> device_type) {
   return std::make_unique<TFXLADeviceSpecificTransforms>(device_type);
 }
 

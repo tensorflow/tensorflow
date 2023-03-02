@@ -19,10 +19,10 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -433,7 +433,7 @@ LogicalResult VerifyCompatibleTypes(Type a, Type b) {
 
 void BuildReplicateOp(
     Builder* builder, OperationState* state, int n,
-    llvm::Optional<DictionaryAttr> devices,
+    std::optional<DictionaryAttr> devices,
     llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
     ValueRange packed_inputs, TypeRange replica_output_types) {
   DCHECK_GE(n, 2);
@@ -570,7 +570,7 @@ void ReplicateOp::build(
         devices,
     llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
     ValueRange packed_inputs, TypeRange replica_output_types) {
-  llvm::Optional<DictionaryAttr> devices_attr;
+  std::optional<DictionaryAttr> devices_attr;
   if (!devices.empty()) {
     llvm::SmallVector<mlir::NamedAttribute, 1> device_list;
     device_list.reserve(devices.size());
@@ -589,7 +589,7 @@ void ReplicateOp::build(
 
 void ReplicateOp::build(
     OpBuilder& builder, OperationState& state, int n,
-    llvm::Optional<DictionaryAttr> devices,
+    std::optional<DictionaryAttr> devices,
     llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
     ValueRange packed_inputs, TypeRange replica_output_types) {
   BuildReplicateOp(&builder, &state, n, devices, replicated_inputs,

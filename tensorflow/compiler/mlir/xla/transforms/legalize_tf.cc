@@ -24,7 +24,6 @@ limitations under the License.
 #include <optional>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
@@ -155,8 +154,8 @@ static IntegerAttr GetHLOAxisFromTFAxis(Attribute attr, int64_t rank,
 // corresponding to the tensorflow axis. In particular, the tensorflow axis can
 // be negative, in which case, the corresponding HLO axis is
 // (axis + rank-of-the-tensor).
-static llvm::Optional<int64_t> GetIntegerHLOAxisFromTFAxis(Value value,
-                                                           int64_t rank) {
+static std::optional<int64_t> GetIntegerHLOAxisFromTFAxis(Value value,
+                                                          int64_t rank) {
   DenseIntElementsAttr attrs;
   if (!matchPattern(value, m_Constant(&attrs)) ||
       attrs.getType().getRank() != 0) {
@@ -3401,7 +3400,7 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
     // dynamic sizes and we need to update it if so.
     SmallVector<int64_t, 4> split_sizes;
     int64_t total_dim_size = 0;  // Total dimension size assigned to splits
-    llvm::Optional<int> dynamic_dim_index;
+    std::optional<int> dynamic_dim_index;
     split_sizes.reserve(
         split_sizes_attr.getType().cast<ShapedType>().getNumElements());
     for (auto &dim : llvm::enumerate(split_sizes_attr)) {
@@ -4243,7 +4242,7 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
     RankedTensorType index_type = tensorflow::GetTypeFromTFTensorShape(
         input_type.getShape(), index_element_type);
 
-    llvm::Optional<int64_t> optional_axis =
+    std::optional<int64_t> optional_axis =
         GetIntegerHLOAxisFromTFAxis(op.getDimension(), input_type.getRank());
     if (!optional_axis.has_value())
       return rewriter.notifyMatchFailure(op, "required axis");
@@ -6569,7 +6568,7 @@ class ConvertXlaSortOp : public OpRewritePattern<TF::XlaSortOp> {
   }
 };
 
-inline llvm::Optional<xla::RandomAlgorithm> TensorFlowRngAlgToXla(
+inline std::optional<xla::RandomAlgorithm> TensorFlowRngAlgToXla(
     tensorflow::Algorithm alg) {
   if (alg == tensorflow::RNG_ALG_PHILOX) {
     return xla::RandomAlgorithm::RNG_PHILOX;
