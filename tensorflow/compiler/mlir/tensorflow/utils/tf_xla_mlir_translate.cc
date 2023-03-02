@@ -385,7 +385,10 @@ static void RegisterGraphInputDialects(mlir::DialectRegistry& registry) {
 static mlir::OwningOpRef<mlir::ModuleOp>
 SerializedMlirStringAttrToMlirModuleTranslate(llvm::StringRef input,
                                               mlir::MLIRContext* context) {
-  mlir::Attribute attr = mlir::parseAttribute(input, context);
+  // When the parser doesn't read all the input chars, it issues an error unless
+  // an output parameter is provided for returning the number of chars read.
+  size_t numRead;
+  mlir::Attribute attr = mlir::parseAttribute(input, context, {}, &numRead);
   if (!attr || !attr.isa<mlir::StringAttr>()) {
     LOG(ERROR) << "Input is not parsable as a MLIR StringAttr.";
     return nullptr;

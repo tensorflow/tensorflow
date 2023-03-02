@@ -626,8 +626,8 @@ struct FoldTensorFromElementsIntoInsertSlice
     if (!fromElementsOp || !hasSingleElement(fromElementsOp.getType())) {
       return failure();
     }
-    SmallVector<Value> indices = getAsValues(rewriter, insertSliceOp.getLoc(),
-                                             insertSliceOp.getMixedOffsets());
+    SmallVector<Value> indices = getValueOrCreateConstantIndexOp(
+        rewriter, insertSliceOp.getLoc(), insertSliceOp.getMixedOffsets());
     rewriter.replaceOpWithNewOp<tensor::InsertOp>(
         insertSliceOp, fromElementsOp.getElements().front(),
         insertSliceOp.getDest(), indices);
