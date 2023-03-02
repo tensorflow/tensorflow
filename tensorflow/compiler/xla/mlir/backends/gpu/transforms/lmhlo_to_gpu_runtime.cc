@@ -899,14 +899,13 @@ DEFINE_COLLECTIVE_OP_LOWERING(ReduceScatterStartOp);
 
 #undef DEFINE_COLLECTIVE_OP_LOWERING
 
-template <typename OpT>
+template <typename OpT, typename Derived>
 class AsyncDoneOpLowering : public OpRewritePattern<OpT> {
  public:
-  AsyncDoneOpLowering(MLIRContext* ctx, const char* custom_call_target,
-                      CollectiveUidGenerator& uid,
+  AsyncDoneOpLowering(MLIRContext* ctx, CollectiveUidGenerator& uid,
                       CustomCallDeclarations& custom_calls)
       : OpRewritePattern<OpT>(ctx),
-        custom_call_target_(custom_call_target),
+        custom_call_target_(Derived::kCustomCallTarget),
         uid_(uid),
         custom_calls_(custom_calls) {}
 
@@ -939,44 +938,32 @@ class AsyncDoneOpLowering : public OpRewritePattern<OpT> {
   CustomCallDeclarations& custom_calls_;
 };
 
-class AllGatherDoneOpLowering : public AsyncDoneOpLowering<AllGatherDoneOp> {
+struct AllGatherDoneOpLowering
+    : public AsyncDoneOpLowering<AllGatherDoneOp, AllGatherDoneOpLowering> {
   static constexpr const char kCustomCallTarget[] = "xla.gpu.all_gather_done";
-
- public:
-  AllGatherDoneOpLowering(MLIRContext* ctx, CollectiveUidGenerator& uid,
-                          CustomCallDeclarations& custom_calls)
-      : AsyncDoneOpLowering(ctx, kCustomCallTarget, uid, custom_calls) {}
+  using AsyncDoneOpLowering::AsyncDoneOpLowering;
 };
 
-class AllReduceDoneOpLowering : public AsyncDoneOpLowering<AllReduceDoneOp> {
+struct AllReduceDoneOpLowering
+    : public AsyncDoneOpLowering<AllReduceDoneOp, AllReduceDoneOpLowering> {
   static constexpr const char kCustomCallTarget[] = "xla.gpu.all_reduce_done";
-
- public:
-  AllReduceDoneOpLowering(MLIRContext* ctx, CollectiveUidGenerator& uid,
-                          CustomCallDeclarations& custom_calls)
-      : AsyncDoneOpLowering(ctx, kCustomCallTarget, uid, custom_calls) {}
+  using AsyncDoneOpLowering::AsyncDoneOpLowering;
 };
 
-class CollectivePermuteDoneOpLowering
-    : public AsyncDoneOpLowering<CollectivePermuteDoneOp> {
+struct CollectivePermuteDoneOpLowering
+    : public AsyncDoneOpLowering<CollectivePermuteDoneOp,
+                                 CollectivePermuteDoneOpLowering> {
   static constexpr const char kCustomCallTarget[] =
       "xla.gpu.collective_permute_done";
-
- public:
-  CollectivePermuteDoneOpLowering(MLIRContext* ctx, CollectiveUidGenerator& uid,
-                                  CustomCallDeclarations& custom_calls)
-      : AsyncDoneOpLowering(ctx, kCustomCallTarget, uid, custom_calls) {}
+  using AsyncDoneOpLowering::AsyncDoneOpLowering;
 };
 
-class ReduceScatterDoneOpLowering
-    : public AsyncDoneOpLowering<ReduceScatterDoneOp> {
+struct ReduceScatterDoneOpLowering
+    : public AsyncDoneOpLowering<ReduceScatterDoneOp,
+                                 ReduceScatterDoneOpLowering> {
   static constexpr const char kCustomCallTarget[] =
       "xla.gpu.reduce_scatter_done";
-
- public:
-  ReduceScatterDoneOpLowering(MLIRContext* ctx, CollectiveUidGenerator& uid,
-                              CustomCallDeclarations& custom_calls)
-      : AsyncDoneOpLowering(ctx, kCustomCallTarget, uid, custom_calls) {}
+  using AsyncDoneOpLowering::AsyncDoneOpLowering;
 };
 
 template <typename CollectiveIdOp>
