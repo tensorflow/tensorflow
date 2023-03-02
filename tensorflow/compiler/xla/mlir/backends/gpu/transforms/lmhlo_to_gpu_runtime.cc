@@ -1123,22 +1123,29 @@ struct RecvDoneOpLowering : public SendRecvDoneOpLowering<lmhlo::RecvDoneOp> {
 
 //===----------------------------------------------------------------------===//
 
-template <typename StartOpT, typename DoneOpT>
-static absl::AnyInvocable<WalkResult(StartOpT)> GetAsyncUidGenerator(
-    CollectiveUidGenerator& collective_uid) {
-  return [&collective_uid](StartOpT start) -> WalkResult {
-    Value token = start.getToken();
+template <typename PairT, typename... Remaining>
+static WalkResult AssignAsyncUid(Operation* op,
+                                 CollectiveUidGenerator& collective_uid) {
+  auto start = dyn_cast<typename PairT::first_type>(op);
+  if (!start) {
+    if constexpr (sizeof...(Remaining) != 0) {
+      return AssignAsyncUid<Remaining...>(op, collective_uid);
+    } else {
+      return WalkResult::advance();
+    }
+  }
 
-    // We expect the token to be consumed just once.
-    if (!token.hasOneUse()) return start.emitOpError("token has multiple uses");
+  Value token = start.getToken();
 
-    // Token must be consumed by the corresponding done operation.
-    auto done = dyn_cast<DoneOpT>(*token.getUsers().begin());
-    if (!done) return start.emitOpError("illegal token user");
+  // We expect the token to be consumed just once.
+  if (!token.hasOneUse()) return start.emitOpError("token has multiple uses");
 
-    collective_uid.AssignUid(start, done);
-    return WalkResult::advance();
-  };
+  // Token must be consumed by the corresponding done operation.
+  auto done = dyn_cast<typename PairT::second_type>(*token.getUsers().begin());
+  if (!done) return start.emitOpError("illegal token user");
+
+  collective_uid.AssignUid(start, done);
+  return WalkResult::advance();
 }
 
 void ConvertLmhloToGpuRuntimePass::runOnOperation() {
@@ -1161,22 +1168,14 @@ void ConvertLmhloToGpuRuntimePass::runOnOperation() {
   // Assign shared unique id to each unique pair of async start-done operations,
   // all other collective operations will get assigned uid.
   CollectiveUidGenerator collective_uid;
-  auto walked = module.walk(
-      GetAsyncUidGenerator<AllGatherStartOp, AllGatherDoneOp>(collective_uid));
-  if (walked.wasInterrupted()) return signalPassFailure();
-
-  walked = module.walk(
-      GetAsyncUidGenerator<AllReduceStartOp, AllReduceDoneOp>(collective_uid));
-  if (walked.wasInterrupted()) return signalPassFailure();
-
-  walked = module.walk(
-      GetAsyncUidGenerator<CollectivePermuteStartOp, CollectivePermuteDoneOp>(
-          collective_uid));
-  if (walked.wasInterrupted()) return signalPassFailure();
-
-  walked = module.walk(
-      GetAsyncUidGenerator<ReduceScatterStartOp, ReduceScatterDoneOp>(
-          collective_uid));
+  auto walked = module.walk([&collective_uid](Operation* op) {
+    return AssignAsyncUid<
+        std::pair<AllGatherStartOp, AllGatherDoneOp>,
+        std::pair<AllReduceStartOp, AllReduceDoneOp>,
+        std::pair<CollectivePermuteStartOp, CollectivePermuteDoneOp>,
+        std::pair<ReduceScatterStartOp, ReduceScatterDoneOp>>(op,
+                                                              collective_uid);
+  });
   if (walked.wasInterrupted()) return signalPassFailure();
 
   // Convert lmhlo collective operations to XLA gpu runtime custom calls.
