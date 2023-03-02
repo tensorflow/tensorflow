@@ -1,3 +1,96 @@
+diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
+--- stablehlo/stablehlo/dialect/Base.cpp
++++ stablehlo/stablehlo/dialect/Base.cpp
+@@ -15,6 +15,8 @@
+ ==============================================================================*/
+ 
+ #include "stablehlo/dialect/Base.h"
++
++#include <optional>
+ 
+ #include "llvm/ADT/TypeSwitch.h"
+ #include "mlir/Dialect/Quant/QuantTypes.h"
+@@ -228,7 +230,7 @@
+ //  c5:  ?              ?, B            ?, B
+ //  c6:  ?, B           ?, C            ?, min(B, C)
+ FailureOr<std::pair<int64_t, int64_t>> inferMostSpecificDimAndBound(
+-    Optional<Location> location, int64_t dim, int64_t leftSize,
++    std::optional<Location> location, int64_t dim, int64_t leftSize,
+     int64_t rightSize, int64_t leftBound, int64_t rightBound) {
+   bool isLeftStaticDim = !isDynamicDimSize(leftSize);
+   bool isRightStaticDim = !isDynamicDimSize(rightSize);
+@@ -268,7 +270,7 @@
+ //  c4:  ?              ?, B            ?
+ //  c5:  ?, B           ?, C            ?, max(B, C)
+ FailureOr<std::pair<int64_t, int64_t>> inferLeastSpecificDimAndBound(
+-    Optional<Location> location, int64_t dim, int64_t leftSize,
++    std::optional<Location> location, int64_t dim, int64_t leftSize,
+     int64_t rightSize, int64_t leftBound, int64_t rightBound) {
+   bool isLeftStaticDim = !isDynamicDimSize(leftSize);
+   bool isRightStaticDim = !isDynamicDimSize(rightSize);
+@@ -295,9 +297,9 @@
+ }
+ 
+ FailureOr<TensorType> inferTypeWithCustomFn(
+-    Optional<Location> location, SmallVector<RankedTensorType> rankedTypes,
++    std::optional<Location> location, SmallVector<RankedTensorType> rankedTypes,
+     std::function<FailureOr<std::pair<int64_t, int64_t>>(
+-        Optional<Location>, int64_t, int64_t, int64_t, int64_t, int64_t)>
++        std::optional<Location>, int64_t, int64_t, int64_t, int64_t, int64_t)>
+         inferDimAndBoundFn) {
+   auto rank = rankedTypes[0].getRank();
+   SmallVector<int64_t> inferredSizes = to_vector(rankedTypes[0].getShape());
+@@ -331,7 +333,7 @@
+           anyInputHaveBounds ? inferredBounds : ArrayRef<int64_t>({})));
+ }
+ 
+-FailureOr<Type> inferLeastSpecificType(Optional<Location> location,
++FailureOr<Type> inferLeastSpecificType(std::optional<Location> location,
+                                        TypeRange inputTypes) {
+   SmallVector<RankedTensorType> rankedTypes;
+   for (auto inputType : inputTypes)
+@@ -343,7 +345,7 @@
+                                inferLeastSpecificDimAndBound);
+ }
+ 
+-FailureOr<Type> inferMostSpecificType(Optional<Location> location,
++FailureOr<Type> inferMostSpecificType(std::optional<Location> location,
+                                       TypeRange inputTypes) {
+   SmallVector<RankedTensorType> rankedTypes;
+   for (auto inputType : inputTypes)
+diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
+--- stablehlo/stablehlo/dialect/Base.h
++++ stablehlo/stablehlo/dialect/Base.h
+@@ -75,25 +75,25 @@
+                                                          int64_t rightBound);
+ 
+ FailureOr<std::pair<int64_t, int64_t>> inferMostSpecificDimAndBound(
+-    Optional<Location> location, int64_t dim, int64_t leftSize,
++    std::optional<Location> location, int64_t dim, int64_t leftSize,
+     int64_t rightSize, int64_t leftBound, int64_t rightBound);
+ 
+ FailureOr<std::pair<int64_t, int64_t>> inferLeastSpecificDimAndBound(
+-    Optional<Location> location, int64_t dim, int64_t leftSize,
++    std::optional<Location> location, int64_t dim, int64_t leftSize,
+     int64_t rightSize, int64_t leftBound, int64_t rightBound);
+ 
+ // Infer single least specific return type from inputTypes with support for
+ // bounds. (Size, bound) of each dimension of the return type will be merged
+ // from corresponding dimensions of every inputType by extracting the least
+ // specific one. Return unranked tensor if any input is unranked.
+-FailureOr<Type> inferLeastSpecificType(Optional<Location> location,
++FailureOr<Type> inferLeastSpecificType(std::optional<Location> location,
+                                        TypeRange inputTypes);
+ 
+ // Infer single most specific return type from inputTypes with support for
+ // bounds. (Size, bound) of each dimension of the return type will be merged
+ // from corresponding dimensions of every inputType by extracting the most
+ // specific one. Return unranked tensor if all inputs are unranked.
+-FailureOr<Type> inferMostSpecificType(Optional<Location> location,
++FailureOr<Type> inferMostSpecificType(std::optional<Location> location,
+                                       TypeRange inputTypes);
+ 
+ LogicalResult inferMostSpecificTypeComponents(
 diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
 --- stablehlo/stablehlo/dialect/ChloOps.cpp
 +++ stablehlo/stablehlo/dialect/ChloOps.cpp
@@ -28,6 +121,117 @@ diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialec
  def CHLO_ErfcOp : CHLO_UnaryElementwiseOp<"erfc",
      [HLO_CompatibleOperandsAndResultType], HLO_FpTensor, HLO_FpTensor> {
    let summary = "Erfc operator";
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -25,6 +25,7 @@
+ #include <cstdint>
+ #include <functional>
+ #include <numeric>
++#include <optional>
+ #include <set>
+ #include <unordered_map>
+ #include <utility>
+@@ -217,7 +218,7 @@
+   return success();
+ }
+ 
+-LogicalResult verifyBatchNorm(Optional<Location> location,
++LogicalResult verifyBatchNorm(std::optional<Location> location,
+                               ValueRange multiDimOperands,
+                               ValueRange singleDimOperands,
+                               int64_t featureIndex) {
+@@ -261,7 +262,7 @@
+ }
+ 
+ LogicalResult inferBatchNormOp(
+-    Optional<Location> location, ValueRange multiDimOperands,
++    std::optional<Location> location, ValueRange multiDimOperands,
+     ValueRange singleDimOperands, int64_t featureIndex,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes,
+     bool is_inference) {
+@@ -1236,8 +1237,8 @@
+ //  P1. Verify 0 <= offset_dims[i] < output_shape_rank, for every i.
+ //      (output_shape_rank = size(offset_dims) + rank(start_indices) -1)
+ static LogicalResult inferGatherReturnTypeComponents(
+-    Optional<Location> location, ShapeAdaptor operandShape, Value startIndices,
+-    llvm::function_ref<int64_t(int64_t)> getSliceDim,
++    std::optional<Location> location, ShapeAdaptor operandShape,
++    Value startIndices, llvm::function_ref<int64_t(int64_t)> getSliceDim,
+     ArrayRef<int64_t> offsetDims, ArrayRef<int64_t> collapsedSliceDims,
+     ArrayRef<int64_t> startIndexMap, int64_t indexVectorDim,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+@@ -1301,8 +1302,8 @@
+ }
+ 
+ // Used by IfOp and CaseOp
+-LogicalResult inferConditionalOp(Optional<Location> location, Value operand,
+-                                 RegionRange branches,
++LogicalResult inferConditionalOp(std::optional<Location> location,
++                                 Value operand, RegionRange branches,
+                                  SmallVectorImpl<Type>& inferredReturnTypes) {
+   // case_i1, if_i1
+   auto operandRankedTy = operand.getType().dyn_cast<RankedTensorType>();
+@@ -1461,7 +1462,7 @@
+ }
+ 
+ LogicalResult inferBatchNormGradOp(
+-    Optional<Location> location, Value operand, Value scale, Value mean,
++    std::optional<Location> location, Value operand, Value scale, Value mean,
+     Value variance, Value gradOutput, int64_t featureIndex,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+   return inferBatchNormOp(location, {operand, gradOutput},
+@@ -1470,7 +1471,7 @@
+ }
+ 
+ LogicalResult inferBatchNormInferenceOp(
+-    Optional<Location> location, Value operand, Value scale, Value offset,
++    std::optional<Location> location, Value operand, Value scale, Value offset,
+     Value mean, Value variance, int64_t featureIndex,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+   return inferBatchNormOp(location, {operand}, {scale, offset, mean, variance},
+@@ -1479,7 +1480,7 @@
+ }
+ 
+ LogicalResult inferBatchNormTrainingOp(
+-    Optional<Location> location, Value operand, Value scale, Value offset,
++    std::optional<Location> location, Value operand, Value scale, Value offset,
+     int64_t featureIndex,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+   return inferBatchNormOp(location, {operand}, {scale, offset}, featureIndex,
+@@ -1510,7 +1511,7 @@
+   return success();
+ }
+ 
+-LogicalResult inferCaseOp(Optional<Location> location, Value index,
++LogicalResult inferCaseOp(std::optional<Location> location, Value index,
+                           RegionRange branches,
+                           SmallVectorImpl<Type>& inferredReturnTypes) {
+   return inferConditionalOp(location, index, branches, inferredReturnTypes);
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
+--- stablehlo/stablehlo/dialect/TypeInference.h
++++ stablehlo/stablehlo/dialect/TypeInference.h
+@@ -115,17 +115,17 @@
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes);
+ 
+ LogicalResult inferBatchNormGradOp(
+-    Optional<Location> location, Value operand, Value scale, Value mean,
++    std::optional<Location> location, Value operand, Value scale, Value mean,
+     Value variance, Value gradOutput, int64_t featureIndex,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes);
+ 
+ LogicalResult inferBatchNormInferenceOp(
+-    Optional<Location> location, Value operand, Value scale, Value offset,
++    std::optional<Location> location, Value operand, Value scale, Value offset,
+     Value mean, Value variance, int64_t featureIndex,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes);
+ 
+ LogicalResult inferBatchNormTrainingOp(
+-    Optional<Location> location, Value operand, Value scale, Value offset,
++    std::optional<Location> location, Value operand, Value scale, Value offset,
+     int64_t featureIndex,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes);
+ 
 diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
 --- stablehlo/stablehlo/tests/ops_chlo.mlir
 +++ stablehlo/stablehlo/tests/ops_chlo.mlir
