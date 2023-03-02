@@ -2407,7 +2407,8 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
+    // Although we support up to v4, we do not support boolean inputs
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 4));
     return CheckGpuDelegateCompatibility(context, tflite_node, registration);
   }
 

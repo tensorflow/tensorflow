@@ -2776,7 +2776,7 @@ TEST(SplitVOperationParserTest, TestIsSupported) {
 TEST(StridedSliceOperationParserTest, TestIsSupported) {
   // Invalid op_version
   auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinStridedSlice,
-                                                     /*op_version=*/3,
+                                                     /*op_version=*/5,
                                                      /*num_inputs=*/4);
   auto parser = NewOperationParser(context->registration());
   EXPECT_FALSE(
@@ -2785,7 +2785,7 @@ TEST(StridedSliceOperationParserTest, TestIsSupported) {
           .ok());
   // Invalid num_inputs
   context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinStridedSlice,
-                                                /*op_version=*/2,
+                                                /*op_version=*/4,
                                                 /*num_inputs=*/3);
   EXPECT_FALSE(
       parser
@@ -2793,7 +2793,7 @@ TEST(StridedSliceOperationParserTest, TestIsSupported) {
           .ok());
   // Invalid input dimenstion 2d
   context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinStridedSlice,
-                                                /*op_version=*/2,
+                                                /*op_version=*/4,
                                                 /*num_inputs=*/4);
   context->tensor(1)->dims->size = 2;
   EXPECT_FALSE(
@@ -2802,7 +2802,7 @@ TEST(StridedSliceOperationParserTest, TestIsSupported) {
           .ok());
   // Valid
   context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinStridedSlice,
-                                                /*op_version=*/2,
+                                                /*op_version=*/4,
                                                 /*num_inputs=*/5);
   EXPECT_TRUE(
       parser
