@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/bfloat16_support.h"
+#include "tensorflow/compiler/xla/service/float_support.h"
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -21,8 +21,8 @@ limitations under the License.
 
 namespace xla {
 
-bool BFloat16Support::SupportsBF16Operand(const HloInstruction& hlo,
-                                          int64_t operand_index) const {
+bool FloatSupport::SupportsLowPrecisionOperand(const HloInstruction& hlo,
+                                               int64_t operand_index) const {
   switch (hlo.opcode()) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
@@ -35,14 +35,14 @@ bool BFloat16Support::SupportsBF16Operand(const HloInstruction& hlo,
       return true;
     case HloOpcode::kConvert:
       CHECK_EQ(operand_index, 0);
-      return hlo.operand(0)->shape().element_type() == BF16;
+      return hlo.operand(0)->shape().element_type() == low_precision_type_;
     default:
       break;
   }
   return false;
 }
 
-bool BFloat16Support::SupportsBF16Output(const HloInstruction& hlo) const {
+bool FloatSupport::SupportsLowPrecisionOutput(const HloInstruction& hlo) const {
   switch (hlo.opcode()) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
@@ -54,14 +54,14 @@ bool BFloat16Support::SupportsBF16Output(const HloInstruction& hlo) const {
     case HloOpcode::kOptimizationBarrier:
       return true;
     case HloOpcode::kConvert:
-      return hlo.shape().element_type() == BF16;
+      return hlo.shape().element_type() == low_precision_type_;
     default:
       break;
   }
   return false;
 }
 
-bool BFloat16Support::SupportsMixedPrecisions(const HloInstruction& hlo) const {
+bool FloatSupport::SupportsMixedPrecisions(const HloInstruction& hlo) const {
   switch (hlo.opcode()) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
@@ -79,7 +79,7 @@ bool BFloat16Support::SupportsMixedPrecisions(const HloInstruction& hlo) const {
 }
 
 /* static */
-bool BFloat16Support::EffectiveOperandPrecisionIsOutputPrecision(
+bool FloatSupport::EffectiveOperandPrecisionIsOutputPrecision(
     const HloInstruction& hlo, int64_t operand_index) {
   switch (hlo.opcode()) {
     case HloOpcode::kAbs:
@@ -136,7 +136,7 @@ bool BFloat16Support::EffectiveOperandPrecisionIsOutputPrecision(
   return false;
 }
 
-bool BFloat16Support::EffectiveOperandPrecisionIsBF16(
+bool FloatSupport::EffectiveOperandPrecisionIsLowPrecision(
     const HloInstruction& hlo, int64_t operand_index) const {
   return false;
 }

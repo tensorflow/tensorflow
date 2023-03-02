@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
+#include "tensorflow/compiler/xla/service/float_normalization.h"
 
 #include <vector>
 
@@ -33,22 +33,22 @@ namespace xla {
 
 namespace {
 
-class BFloat16NormalizationVisitor : public DfsHloVisitorWithDefault {
+class FloatNormalizationVisitor : public DfsHloVisitorWithDefault {
  public:
-  explicit BFloat16NormalizationVisitor(
-      const BFloat16Support* bfloat16_support,
-      BFloat16Normalization* bfloat16_normalization)
+  explicit FloatNormalizationVisitor(const FloatSupport* float_support,
+                                     FloatNormalization* float_normalization)
       : computation_(nullptr),
-        bfloat16_support_(bfloat16_support),
-        bfloat16_normalization_(bfloat16_normalization) {}
+        float_support_(float_support),
+        float_normalization_(float_normalization) {}
 
   bool changed() const { return changed_; }
   Status DefaultAction(HloInstruction* hlo) override;
   Status Preprocess(HloInstruction* hlo) override;
 
  private:
-  // Checks if the HLO uses BF16 in an unsupported way, and if so, inserts
-  // conversions between F32 and BF16 to make it supported.
+  // Checks if the HLO uses low-precision in an unsupported way, and if so,
+  // inserts conversions between the low- and high-precision types to make it
+  // supported.
   Status HandleInstruction(HloInstruction* hlo);
 
   // Handle instructions with tuple outputs by examining each output
@@ -81,14 +81,22 @@ class BFloat16NormalizationVisitor : public DfsHloVisitorWithDefault {
                                     PrimitiveType from, PrimitiveType to,
                                     HloComputation* computation);
 
-  // Inserts conversion HLOs to replace the called computations' BF16
-  // operands/outputs to F32.
+  // Inserts conversion HLOs to replace the called computations' low-precision
+  // operands/outputs to high-precision.
   Status ConvertCalledComputations(
-      HloInstruction* hlo, absl::Span<HloComputation* const> bf16_called_comps);
+      HloInstruction* hlo,
+      absl::Span<HloComputation* const> low_precision_called_comps);
+
+  PrimitiveType LowPrecisionType() const {
+    return float_support_->LowPrecisionType();
+  }
+  PrimitiveType HighPrecisionType() const {
+    return float_support_->HighPrecisionType();
+  }
 
   HloComputation* computation_;
-  const BFloat16Support* bfloat16_support_;
-  BFloat16Normalization* bfloat16_normalization_;
+  const FloatSupport* float_support_;
+  FloatNormalization* float_normalization_;
   bool changed_ = false;
 };
 
@@ -114,17 +122,17 @@ int64_t ShapeLeafCount(const Shape& shape) {
   return count;
 }
 
-StatusOr<HloInstruction*> BFloat16NormalizationVisitor::ConvertType(
+StatusOr<HloInstruction*> FloatNormalizationVisitor::ConvertType(
     HloInstruction* hlo, PrimitiveType from, PrimitiveType to,
     HloComputation* computation) {
   if (CountSubshapesWithMatchingType(hlo->shape(), from) == 0) {
     return hlo;
   }
   // If `hlo` is a convert from `to` to `from`, then we can return its operand,
-  // if it is a BF16->F32 convert which doesn't do rounding.
+  // if it is a low-precision->high-precision convert which doesn't do rounding.
   if (hlo->opcode() == HloOpcode::kConvert &&
-      hlo->operand(0)->shape().element_type() == to && to == BF16 &&
-      from == F32) {
+      hlo->operand(0)->shape().element_type() == to &&
+      to == LowPrecisionType() && from == HighPrecisionType()) {
     return hlo->mutable_operand(0);
   }
   TF_ASSIGN_OR_RETURN(
@@ -139,14 +147,14 @@ StatusOr<HloInstruction*> BFloat16NormalizationVisitor::ConvertType(
             }
             auto new_subshape =
                 ShapeUtil::ChangeElementType(original_subshape, to);
-            bfloat16_normalization_->UpdateLayout(&new_subshape);
+            float_normalization_->UpdateLayout(&new_subshape);
             return computation->AddInstruction(
                 HloInstruction::CreateConvert(new_subshape, leaf));
           }));
   return new_hlo;
 }
 
-Status BFloat16NormalizationVisitor::InsertConvertAfterOutput(
+Status FloatNormalizationVisitor::InsertConvertAfterOutput(
     HloInstruction* hlo, PrimitiveType from, PrimitiveType to,
     HloComputation* computation) {
   bool is_root = computation->root_instruction() == hlo;
@@ -167,7 +175,7 @@ Status BFloat16NormalizationVisitor::InsertConvertAfterOutput(
   return OkStatus();
 }
 
-Status BFloat16NormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
+Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
     HloInstruction* hlo, PrimitiveType from, PrimitiveType to,
     HloComputation* computation) {
   auto original_shape = hlo->shape();
@@ -180,7 +188,7 @@ Status BFloat16NormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
           subshape->set_element_type(to);
         }
       });
-  bfloat16_normalization_->UpdateLayout(hlo->mutable_shape());
+  float_normalization_->UpdateLayout(hlo->mutable_shape());
   bool is_root = computation->root_instruction() == hlo;
   std::vector<HloInstruction*> materialized_users = hlo->users();
   TF_ASSIGN_OR_RETURN(
@@ -199,10 +207,11 @@ Status BFloat16NormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
           }));
 
   for (auto* user : materialized_users) {
-    // If the user is a BF16 -> F32 convert, we can replace it with `hlo`, which
-    // has its input changed to F32.
+    // If the user is a low-precision -> high-precision convert, we can replace
+    // it with `hlo`, which has its input changed to high-precision.
     if (user->opcode() == HloOpcode::kConvert &&
-        user->shape().element_type() == to && to == F32 && from == BF16) {
+        user->shape().element_type() == to && to == HighPrecisionType() &&
+        from == LowPrecisionType()) {
       TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(hlo));
     } else {
       TF_RETURN_IF_ERROR(hlo->ReplaceUseWithDifferentShape(user, new_hlo));
@@ -215,7 +224,7 @@ Status BFloat16NormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
   return OkStatus();
 }
 
-Status BFloat16NormalizationVisitor::InsertConvertBeforeOperand(
+Status FloatNormalizationVisitor::InsertConvertBeforeOperand(
     HloInstruction* hlo, int64_t operand_idx, PrimitiveType from,
     PrimitiveType to, HloComputation* computation) {
   auto operand = hlo->mutable_operand(operand_idx);
@@ -230,10 +239,11 @@ Status BFloat16NormalizationVisitor::InsertConvertBeforeOperand(
   return OkStatus();
 }
 
-Status BFloat16NormalizationVisitor::ConvertCalledComputations(
-    HloInstruction* hlo, absl::Span<HloComputation* const> bf16_called_comps) {
+Status FloatNormalizationVisitor::ConvertCalledComputations(
+    HloInstruction* hlo,
+    absl::Span<HloComputation* const> low_precision_called_comps) {
   absl::flat_hash_map<HloComputation*, HloComputation*> cloned_computations;
-  for (auto& comp : bf16_called_comps) {
+  for (auto& comp : low_precision_called_comps) {
     auto cloned = comp->parent()->AddEmbeddedComputation(comp->Clone());
     cloned_computations[comp] = cloned;
     changed_ = true;
@@ -247,100 +257,103 @@ Status BFloat16NormalizationVisitor::ConvertCalledComputations(
   });
   for (auto& comp_pair : cloned_computations) {
     auto comp = comp_pair.second;
-    TF_RETURN_IF_ERROR(
-        InsertConvertAfterOutput(comp->root_instruction(), BF16, F32, comp));
+    TF_RETURN_IF_ERROR(InsertConvertAfterOutput(comp->root_instruction(),
+                                                LowPrecisionType(),
+                                                HighPrecisionType(), comp));
     for (auto* param : comp->parameter_instructions()) {
-      // This changes the parameter to F32 then inserts a convert after it.
-      TF_RETURN_IF_ERROR(
-          ChangeOutputTypeThenInsertConvertBack(param, BF16, F32, comp));
+      // This changes the parameter to high-precision then inserts a convert
+      // after it.
+      TF_RETURN_IF_ERROR(ChangeOutputTypeThenInsertConvertBack(
+          param, LowPrecisionType(), HighPrecisionType(), comp));
     }
   }
   return OkStatus();
 }
 
-Status BFloat16NormalizationVisitor::HandleMultipleOutputs(
-    HloInstruction* hlo) {
+Status FloatNormalizationVisitor::HandleMultipleOutputs(HloInstruction* hlo) {
   std::vector<PrimitiveType> operand_types(hlo->operand_count());
   std::vector<PrimitiveType> output_types(hlo->operand_count());
-  int64_t f32_count = 0;
-  int64_t bf16_count = 0;
-  bool has_unsupported_bf16_operand = false;
-  bool has_unsupported_bf16_output = false;
+  int64_t high_prec_count = 0;
+  int64_t low_prec_count = 0;
+  bool has_unsupported_low_prec_operand = false;
+  bool has_unsupported_low_prec_output = false;
   for (int64_t i = 0; i < hlo->operand_count(); ++i) {
     CHECK(hlo->operand(i)->shape().IsArray());
     CHECK(ShapeUtil::GetSubshape(hlo->shape(), {i}).IsArray());
     operand_types[i] = hlo->operand(i)->shape().element_type();
     output_types[i] = ShapeUtil::GetSubshape(hlo->shape(), {i}).element_type();
-    if (operand_types[i] == F32) {
-      f32_count += 1;
-    } else if (operand_types[i] == BF16) {
-      bf16_count += 1;
-      if (!bfloat16_support_->SupportsBF16Operand(*hlo, i)) {
-        has_unsupported_bf16_operand = true;
+    if (operand_types[i] == HighPrecisionType()) {
+      high_prec_count += 1;
+    } else if (operand_types[i] == LowPrecisionType()) {
+      low_prec_count += 1;
+      if (!float_support_->SupportsLowPrecisionOperand(*hlo, i)) {
+        has_unsupported_low_prec_operand = true;
       }
     }
-    if (output_types[i] == F32) {
-      f32_count += 1;
-    } else if (output_types[i] == BF16) {
-      bf16_count += 1;
-      if (!bfloat16_support_->SupportsBF16Output(*hlo)) {
-        has_unsupported_bf16_output = true;
+    if (output_types[i] == HighPrecisionType()) {
+      high_prec_count += 1;
+    } else if (output_types[i] == LowPrecisionType()) {
+      low_prec_count += 1;
+      if (!float_support_->SupportsLowPrecisionOutput(*hlo)) {
+        has_unsupported_low_prec_output = true;
       }
     }
   }
 
-  if (bf16_count == 0) {
+  if (low_prec_count == 0) {
     return OkStatus();
   }
 
   auto should_convert_operand = [&](int64_t i) {
-    if (operand_types[i] != BF16) {
+    if (operand_types[i] != LowPrecisionType()) {
       return false;
     }
-    if (!bfloat16_support_->SupportsBF16Operand(*hlo, i)) {
+    if (!float_support_->SupportsLowPrecisionOperand(*hlo, i)) {
       return true;
     }
-    if (bfloat16_support_->SupportsMixedPrecisions(*hlo)) {
+    if (float_support_->SupportsMixedPrecisions(*hlo)) {
       return false;
     }
-    return has_unsupported_bf16_operand || has_unsupported_bf16_output ||
-           f32_count > 0;
+    return has_unsupported_low_prec_operand ||
+           has_unsupported_low_prec_output || high_prec_count > 0;
   };
 
   for (int64_t i = 0; i < hlo->operand_count(); ++i) {
     if (should_convert_operand(i)) {
-      TF_RETURN_IF_ERROR(
-          InsertConvertBeforeOperand(hlo, i, BF16, F32, computation_));
-      f32_count += 1;
-      bf16_count -= 1;
+      TF_RETURN_IF_ERROR(InsertConvertBeforeOperand(
+          hlo, i, LowPrecisionType(), HighPrecisionType(), computation_));
+      high_prec_count += 1;
+      low_prec_count -= 1;
     }
   }
 
-  if (!has_unsupported_bf16_output &&
-      (bfloat16_support_->SupportsMixedPrecisions(*hlo) || f32_count == 0 ||
-       bf16_count == 0)) {
+  if (!has_unsupported_low_prec_output &&
+      (float_support_->SupportsMixedPrecisions(*hlo) || high_prec_count == 0 ||
+       low_prec_count == 0)) {
     return OkStatus();
   }
 
-  std::vector<HloComputation*> bf16_called_comps;
+  std::vector<HloComputation*> low_precision_called_comps;
   for (auto* comp : hlo->called_computations()) {
-    bool comp_has_bf16 = false;
-    if (comp->root_instruction()->shape().element_type() == F32) {
-      f32_count += 1;
-    } else if (comp->root_instruction()->shape().element_type() == BF16) {
-      bf16_count += 1;
-      comp_has_bf16 = true;
+    bool comp_has_low_precision = false;
+    if (comp->root_instruction()->shape().element_type() ==
+        HighPrecisionType()) {
+      high_prec_count += 1;
+    } else if (comp->root_instruction()->shape().element_type() ==
+               LowPrecisionType()) {
+      low_prec_count += 1;
+      comp_has_low_precision = true;
     }
     for (auto* param : comp->parameter_instructions()) {
-      if (param->shape().element_type() == F32) {
-        f32_count += 1;
-      } else if (param->shape().element_type() == BF16) {
-        bf16_count += 1;
-        comp_has_bf16 = true;
+      if (param->shape().element_type() == HighPrecisionType()) {
+        high_prec_count += 1;
+      } else if (param->shape().element_type() == LowPrecisionType()) {
+        low_prec_count += 1;
+        comp_has_low_precision = true;
       }
     }
-    if (comp_has_bf16) {
-      bf16_called_comps.push_back(comp);
+    if (comp_has_low_precision) {
+      low_precision_called_comps.push_back(comp);
     }
   }
 
@@ -349,17 +362,17 @@ Status BFloat16NormalizationVisitor::HandleMultipleOutputs(
   auto original_shape = hlo->shape();
   for (int64_t i = 0; i < hlo->operand_count(); ++i) {
     auto subshape = ShapeUtil::GetMutableSubshape(hlo->mutable_shape(), {i});
-    if (output_types[i] != BF16) {
+    if (output_types[i] != LowPrecisionType()) {
       output_elements[i] = computation_->AddInstruction(
           HloInstruction::CreateGetTupleElement(*subshape, hlo, i));
       continue;
     }
-    subshape->set_element_type(F32);
-    bfloat16_normalization_->UpdateLayout(subshape);
+    subshape->set_element_type(HighPrecisionType());
+    float_normalization_->UpdateLayout(subshape);
     auto gte = computation_->AddInstruction(
         HloInstruction::CreateGetTupleElement(*subshape, hlo, i));
-    auto shape = ShapeUtil::ChangeElementType(*subshape, BF16);
-    bfloat16_normalization_->UpdateLayout(&shape);
+    auto shape = ShapeUtil::ChangeElementType(*subshape, LowPrecisionType());
+    float_normalization_->UpdateLayout(&shape);
     output_elements[i] =
         computation_->AddInstruction(HloInstruction::CreateConvert(shape, gte));
   }
@@ -377,116 +390,121 @@ Status BFloat16NormalizationVisitor::HandleMultipleOutputs(
     computation_->set_root_instruction(tuple);
   }
   *tuple->mutable_shape() = original_shape;
-  return ConvertCalledComputations(hlo, bf16_called_comps);
+  return ConvertCalledComputations(hlo, low_precision_called_comps);
 }
 
-Status BFloat16NormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
-  int f32_count = 0;
-  int bf16_count = 0;
+Status FloatNormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
+  int high_prec_count = 0;
+  int low_prec_count = 0;
 
   for (int64_t i = 0; i < hlo->operand_count(); ++i) {
-    f32_count += CountSubshapesWithMatchingType(hlo->operand(i)->shape(), F32);
-    bf16_count +=
-        CountSubshapesWithMatchingType(hlo->operand(i)->shape(), BF16);
+    high_prec_count += CountSubshapesWithMatchingType(hlo->operand(i)->shape(),
+                                                      HighPrecisionType());
+    low_prec_count += CountSubshapesWithMatchingType(hlo->operand(i)->shape(),
+                                                     LowPrecisionType());
   }
 
-  f32_count += CountSubshapesWithMatchingType(hlo->shape(), F32);
-  bf16_count += CountSubshapesWithMatchingType(hlo->shape(), BF16);
+  high_prec_count +=
+      CountSubshapesWithMatchingType(hlo->shape(), HighPrecisionType());
+  low_prec_count +=
+      CountSubshapesWithMatchingType(hlo->shape(), LowPrecisionType());
 
-  std::vector<HloComputation*> bf16_called_comps;
+  std::vector<HloComputation*> low_precision_called_comps;
   for (auto* comp : hlo->called_computations()) {
-    bool comp_has_bf16 = false;
-    f32_count +=
-        CountSubshapesWithMatchingType(comp->root_instruction()->shape(), F32);
-    int64_t bf16_count_comp_root =
-        CountSubshapesWithMatchingType(comp->root_instruction()->shape(), BF16);
-    if (bf16_count_comp_root > 0) {
-      bf16_count += bf16_count_comp_root;
-      comp_has_bf16 = true;
+    bool comp_has_low_precision = false;
+    high_prec_count += CountSubshapesWithMatchingType(
+        comp->root_instruction()->shape(), HighPrecisionType());
+    int64_t low_prec_count_comp_root = CountSubshapesWithMatchingType(
+        comp->root_instruction()->shape(), LowPrecisionType());
+    if (low_prec_count_comp_root > 0) {
+      low_prec_count += low_prec_count_comp_root;
+      comp_has_low_precision = true;
     }
     for (auto* param : comp->parameter_instructions()) {
-      f32_count += CountSubshapesWithMatchingType(param->shape(), F32);
-      int64_t bf16_count_comp_param =
-          CountSubshapesWithMatchingType(param->shape(), BF16);
-      if (bf16_count_comp_param > 0) {
-        bf16_count += bf16_count_comp_param;
-        comp_has_bf16 = true;
+      high_prec_count +=
+          CountSubshapesWithMatchingType(param->shape(), HighPrecisionType());
+      int64_t low_prec_count_comp_param =
+          CountSubshapesWithMatchingType(param->shape(), LowPrecisionType());
+      if (low_prec_count_comp_param > 0) {
+        low_prec_count += low_prec_count_comp_param;
+        comp_has_low_precision = true;
       }
     }
-    if (comp_has_bf16) {
-      bf16_called_comps.push_back(comp);
+    if (comp_has_low_precision) {
+      low_precision_called_comps.push_back(comp);
     }
   }
 
-  // Resolve unsupported BF16 operands.
+  // Resolve unsupported low-precision operands.
   for (int i = 0; i < hlo->operand_count(); ++i) {
-    int64_t bf16_count_in_operand =
-        CountSubshapesWithMatchingType(hlo->operand(i)->shape(), BF16);
-    if (bf16_count_in_operand > 0 &&
-        !bfloat16_support_->SupportsBF16Operand(*hlo, i)) {
-      TF_RETURN_IF_ERROR(
-          InsertConvertBeforeOperand(hlo, i, BF16, F32, computation_));
-      bf16_count -= bf16_count_in_operand;
-      f32_count += bf16_count_in_operand;
+    int64_t low_prec_count_in_operand = CountSubshapesWithMatchingType(
+        hlo->operand(i)->shape(), LowPrecisionType());
+    if (low_prec_count_in_operand > 0 &&
+        !float_support_->SupportsLowPrecisionOperand(*hlo, i)) {
+      TF_RETURN_IF_ERROR(InsertConvertBeforeOperand(
+          hlo, i, LowPrecisionType(), HighPrecisionType(), computation_));
+      low_prec_count -= low_prec_count_in_operand;
+      high_prec_count += low_prec_count_in_operand;
     }
   }
 
-  // Resolve unsupported BF16 output.
-  if (!bfloat16_support_->SupportsBF16Output(*hlo)) {
-    int64_t bf16_count_in_hlo =
-        CountSubshapesWithMatchingType(hlo->shape(), BF16);
-    if (bf16_count_in_hlo > 0) {
-      TF_RETURN_IF_ERROR(
-          ChangeOutputTypeThenInsertConvertBack(hlo, BF16, F32, computation_));
-      bf16_count -= bf16_count_in_hlo;
-      f32_count += bf16_count_in_hlo;
+  // Resolve unsupported low-precision output.
+  if (!float_support_->SupportsLowPrecisionOutput(*hlo)) {
+    int64_t low_prec_count_in_hlo =
+        CountSubshapesWithMatchingType(hlo->shape(), LowPrecisionType());
+    if (low_prec_count_in_hlo > 0) {
+      TF_RETURN_IF_ERROR(ChangeOutputTypeThenInsertConvertBack(
+          hlo, LowPrecisionType(), HighPrecisionType(), computation_));
+      low_prec_count -= low_prec_count_in_hlo;
+      high_prec_count += low_prec_count_in_hlo;
     }
   }
 
-  // Resolve unsupported mixed precision after resolving unsupported BF16
-  // operands and output, because the numbers of BF16 operands/output and F32
-  // operands/output may have changed.
-  if (bfloat16_support_->SupportsMixedPrecisions(*hlo) || bf16_count == 0 ||
-      f32_count == 0) {
+  // Resolve unsupported mixed precision after resolving unsupported
+  // low-precision operands and output, because the numbers of low-precision
+  // operands/output and high-precision operands/output may have changed.
+  if (float_support_->SupportsMixedPrecisions(*hlo) || low_prec_count == 0 ||
+      high_prec_count == 0) {
     return OkStatus();
   }
-  // See if we can change everything to BF16.
+  // See if we can change everything to low-precision.
   if (hlo->called_computations().empty() &&
-      CountSubshapesWithMatchingType(hlo->shape(), BF16) ==
+      CountSubshapesWithMatchingType(hlo->shape(), LowPrecisionType()) ==
           ShapeLeafCount(hlo->shape())) {
-    bool can_use_bf16 = true;
+    bool can_use_low_prec = true;
     for (int i = 0; i < hlo->operand_count(); ++i) {
-      if (CountSubshapesWithMatchingType(hlo->operand(i)->shape(), BF16) ==
+      if (CountSubshapesWithMatchingType(hlo->operand(i)->shape(),
+                                         LowPrecisionType()) ==
           ShapeLeafCount(hlo->operand(i)->shape())) {
         continue;
       }
-      if ((bfloat16_support_->EffectiveOperandPrecisionIsBF16(*hlo, i) ||
-           bfloat16_support_->EffectiveOperandPrecisionIsOutputPrecision(*hlo,
-                                                                         i)) &&
-          bfloat16_support_->SupportsBF16Operand(*hlo, i)) {
+      if ((float_support_->EffectiveOperandPrecisionIsLowPrecision(*hlo, i) ||
+           float_support_->EffectiveOperandPrecisionIsOutputPrecision(*hlo,
+                                                                      i)) &&
+          float_support_->SupportsLowPrecisionOperand(*hlo, i)) {
         continue;
       }
-      can_use_bf16 = false;
+      can_use_low_prec = false;
       break;
     }
-    if (can_use_bf16) {
+    if (can_use_low_prec) {
       for (int i = 0; i < hlo->operand_count(); ++i) {
-        TF_RETURN_IF_ERROR(
-            InsertConvertBeforeOperand(hlo, i, F32, BF16, computation_));
+        TF_RETURN_IF_ERROR(InsertConvertBeforeOperand(
+            hlo, i, HighPrecisionType(), LowPrecisionType(), computation_));
       }
       return OkStatus();
     }
   }
-  TF_RETURN_IF_ERROR(
-      ChangeOutputTypeThenInsertConvertBack(hlo, BF16, F32, computation_));
+  TF_RETURN_IF_ERROR(ChangeOutputTypeThenInsertConvertBack(
+      hlo, LowPrecisionType(), HighPrecisionType(), computation_));
   for (int i = 0; i < hlo->operand_count(); ++i) {
-    TF_RETURN_IF_ERROR(
-        InsertConvertBeforeOperand(hlo, i, BF16, F32, computation_));
+    TF_RETURN_IF_ERROR(InsertConvertBeforeOperand(
+        hlo, i, LowPrecisionType(), HighPrecisionType(), computation_));
   }
-  return ConvertCalledComputations(hlo, bf16_called_comps);
+  return ConvertCalledComputations(hlo, low_precision_called_comps);
 }
 
-Status BFloat16NormalizationVisitor::DefaultAction(HloInstruction* hlo) {
+Status FloatNormalizationVisitor::DefaultAction(HloInstruction* hlo) {
   // Do not change instructions related to entry and exit of a computation,
   // tuples, fusion, convert, side-effecting instructions, control flow, and
   // bitcast-convert.
@@ -515,24 +533,28 @@ Status BFloat16NormalizationVisitor::DefaultAction(HloInstruction* hlo) {
   return HandleInstruction(hlo);
 }
 
-Status BFloat16NormalizationVisitor::Preprocess(HloInstruction* hlo) {
+Status FloatNormalizationVisitor::Preprocess(HloInstruction* hlo) {
   computation_ = hlo->parent();
   return OkStatus();
 }
 
 }  // namespace
 
-StatusOr<bool> BFloat16Normalization::Run(
+StatusOr<bool> FloatNormalization::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(
-      2, "BFloat16Normalization::Run(), before:\n" + module->ToString());
-  BFloat16NormalizationVisitor visitor(bfloat16_support_, this);
+  XLA_VLOG_LINES(2, "FloatNormalization::Run() for " +
+                        primitive_util::LowercasePrimitiveTypeName(
+                            float_support_->LowPrecisionType()) +
+                        ", before:\n" + module->ToString());
+  FloatNormalizationVisitor visitor(float_support_, this);
   for (auto* comp : module->MakeComputationPostOrder(execution_threads)) {
     TF_RETURN_IF_ERROR(comp->Accept(&visitor));
   }
-  XLA_VLOG_LINES(2,
-                 "BFloat16Normalization::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "FloatNormalization::Run() for " +
+                        primitive_util::LowercasePrimitiveTypeName(
+                            float_support_->LowPrecisionType()) +
+                        ", after:\n" + module->ToString());
   if (visitor.changed()) {
     TupleSimplifier tuple_simplifier;
     TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());

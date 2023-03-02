@@ -88,7 +88,7 @@ bool IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op) {
 }
 
 // Generally, the reduction op should be the only operation in the block, except
-// the terminator. However, if the type is bf16, the `BFloat16Normalization`
+// the terminator. However, if the type is bf16, the `FloatNormalization`
 // pass will have converted the op to float32 and added type conversions.
 // TODO(cjfj): Can we prevent the bf16 conversion for this computation?
 StatusOr<mlir::Operation*> FindReductionOp(mlir::Block& block) {

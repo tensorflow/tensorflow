@@ -242,10 +242,11 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "bfloat16_support",
-    srcs = ["bfloat16_support.cc"],
-    hdrs = ["bfloat16_support.h"],
+    name = "float_support",
+    srcs = ["float_support.cc"],
+    hdrs = ["float_support.h"],
     deps = [
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
     ],
 )
@@ -279,7 +280,7 @@ cc_library(
     srcs = ["bfloat16_conversion_folding.cc"],
     hdrs = ["bfloat16_conversion_folding.h"],
     deps = [
-        ":bfloat16_support",
+        ":float_support",
         ":hlo_dataflow_analysis",
         ":hlo_pass",
         "//tensorflow/compiler/xla:status_macros",
@@ -295,7 +296,7 @@ xla_cc_test(
     srcs = ["bfloat16_conversion_folding_test.cc"],
     deps = [
         ":bfloat16_conversion_folding",
-        ":bfloat16_support",
+        ":float_support",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
@@ -310,11 +311,11 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "bfloat16_normalization",
-    srcs = ["bfloat16_normalization.cc"],
-    hdrs = ["bfloat16_normalization.h"],
+    name = "float_normalization",
+    srcs = ["float_normalization.cc"],
+    hdrs = ["float_normalization.h"],
     deps = [
-        ":bfloat16_support",
+        ":float_support",
         ":hlo_dce",
         ":hlo_pass",
         ":tuple_simplifier",
@@ -329,11 +330,11 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "bfloat16_normalization_test",
-    srcs = ["bfloat16_normalization_test.cc"],
+    name = "float_normalization_test",
+    srcs = ["float_normalization_test.cc"],
     deps = [
-        ":bfloat16_normalization",
-        ":bfloat16_support",
+        ":float_normalization",
+        ":float_support",
         ":hlo_creation_utils",
         ":hlo_verifier",
         "//tensorflow/compiler/xla:shape_util",
@@ -354,7 +355,7 @@ cc_library(
     srcs = ["bfloat16_propagation.cc"],
     hdrs = ["bfloat16_propagation.h"],
     deps = [
-        ":bfloat16_support",
+        ":float_support",
         ":hlo_dataflow_analysis",
         ":hlo_dce",
         ":hlo_pass",
@@ -377,7 +378,7 @@ xla_cc_test(
     srcs = ["bfloat16_propagation_test.cc"],
     deps = [
         ":bfloat16_propagation",
-        ":bfloat16_support",
+        ":float_support",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
@@ -5982,8 +5983,8 @@ cc_library(
     srcs = ["despecializer.cc"],
     hdrs = ["despecializer.h"],
     deps = [
-        ":bfloat16_normalization",
         ":defuser",
+        ":float_normalization",
         ":hlo_memory_scheduler",
         ":hlo_pass",
         ":hlo_pass_pipeline",
