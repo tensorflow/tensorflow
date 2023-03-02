@@ -932,7 +932,7 @@ def _create_symlink(src, dest, visibility = None):
         outs = [src],
         srcs = [dest],
         output_to_bindir = 1,
-        cmd = "ln -sf $$(basename $<) $@",
+        cmd = "ln -sf $$(realpath --relative-to=$(RULEDIR) $<) $@",
         visibility = visibility,
     )
 
@@ -2449,13 +2449,24 @@ def pywrap_tensorflow_macro_opensource(
         cmd = "touch $@",
     )
 
+    # TODO(b/271333181): This should be done more generally on Windows for every dll dependency
+    # (there is only one currently) that is not in the same directory, otherwise Python will fail to
+    # link the pyd (which is just a dll) because of missing dependencies.
+    _create_symlink("bfloat16.so", "//tensorflow/tsl/python/lib/core:bfloat16.so")
+
     native.py_library(
         name = name,
         srcs = [":" + name + ".py"],
         srcs_version = "PY3",
         data = select({
-            clean_dep("//tensorflow:windows"): [":" + cc_library_pyd_name],
-            "//conditions:default": [":" + cc_shared_library_name],
+            clean_dep("//tensorflow:windows"): [
+                ":" + cc_library_pyd_name,
+                ":bfloat16.so",
+                "//tensorflow/tsl/python/lib/core:bfloat16.so",
+            ],
+            "//conditions:default": [
+                ":" + cc_shared_library_name,
+            ],
         }),
     )
 

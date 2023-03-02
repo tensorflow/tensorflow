@@ -3377,7 +3377,7 @@ py_library(
 pywrap_tensorflow_macro(
     name = "pywrap_tensorflow_internal",
     srcs = ["pywrap_tensorflow_internal.cc"],
-    dynamic_deps = select({
+    dynamic_deps = ["//tensorflow/tsl/python/lib/core:bfloat16.so"] + select({
         "//tensorflow:macos": [
             "//tensorflow:libtensorflow_cc.%s.dylib" % VERSION,
             "//tensorflow:libtensorflow_framework.%s.dylib" % VERSION,

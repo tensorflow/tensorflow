@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/synchronization/notification.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/pjrt/lru_cache.h"
 
 namespace jax {
