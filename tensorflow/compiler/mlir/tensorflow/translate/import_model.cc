@@ -4194,15 +4194,11 @@ Status SavedModelSignatureDefImporter::LiftVariables(
       mlir::tf_executor::CreateTFExecutorGraphPruningPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateExecutorDialectToFunctionalConversionPass());
-
-  if (lift_varhandle_ops_to_args) {
-    pm.addPass(
-        mlir::tf_saved_model::CreateRemoveVariablesInSessionInitializerPass());
-  }
+  pm.addPass(
+      mlir::tf_saved_model::CreateRemoveVariablesInSessionInitializerPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::
           CreateConvertReadonlyReferenceVariablesToResourceVariablesPass());
-
   if (mlir::failed(pm.run(module)))
     return diag_handler.Combine(
         errors::Internal("Failed to prepare to lift variables."));
