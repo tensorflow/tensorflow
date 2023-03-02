@@ -264,7 +264,7 @@ tsl::Status FindAndLoadTpuLibrary() {
   const char* libtpu_path =
       env_value && strlen(env_value) > 0 ? env_value : "libtpu.so";
   LOG(INFO) << "Libtpu path is: " << libtpu_path;
-  void* library = dlopen(libtpu_path, RTLD_NOW);
+  void* library = dlopen(libtpu_path, RTLD_LAZY);
   if (library) {
     // We can open the shared library which means we are in a TPU environment.
     // Try to acquire exclusive access.
