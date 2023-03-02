@@ -71,6 +71,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/tpu:tpu_defs",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:variant",
         "@llvm-project//llvm:Support",
