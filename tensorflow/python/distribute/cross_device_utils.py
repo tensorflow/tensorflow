@@ -501,7 +501,7 @@ class CollectiveReplicaLauncher(object):
   ) -> indexed_slices.IndexedSlices:
     """All-reduce an IndexedSlices.
 
-    This method must be called inside a tf.function.
+    This method can be called outside  tf.function.
 
     Args:
       input_slices: an IndexedSlices.
@@ -510,13 +510,7 @@ class CollectiveReplicaLauncher(object):
 
     Returns:
       The reduced IndexedSlices.
-
-    Raises:
-      RuntimeError: if called in eager mode.
     """
-    if context.executing_eagerly():
-      raise RuntimeError(
-          'all_reduce_indexed_slices is not supported in eager mode.')
 
     # Current CollectiveAllGather implementations require input IndexedSlices to
     # have consistent length across the board, we handle the reduction of
