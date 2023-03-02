@@ -104,8 +104,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_latency_hiding_schedule(false);
   opts.set_xla_gpu_enable_latency_hiding_scheduler(false);
 
-  opts.set_xla_cpu_enable_mlir_tiling_and_fusion(false);
-  opts.set_xla_cpu_enable_experimental_deallocation(false);
+  opts.set_xla_cpu_enable_mlir_tiling_and_fusion(true);
+  opts.set_xla_cpu_enable_experimental_deallocation(true);
 
   opts.set_xla_partitioning_algorithm(
       DebugOptions::PARTITIONING_ALGORITHM_NOOP);
