@@ -77,7 +77,6 @@ export TF_PIP_TESTS="test_pip_virtualenv_clean test_pip_virtualenv_oss_serial"
 export TF_TEST_FILTER_TAGS="-no_oss,-v1only,-benchmark-test,-no_aarch64"
 export TF_PIP_TEST_ROOT="pip_test"
 export TF_AUDITWHEEL_TARGET_PLAT="manylinux2014"
-export TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES="tensorflow-io"
 
 if [ ${IS_NIGHTLY} == 1 ]; then
   ./tensorflow/tools/ci_build/update_version.py --nightly
