@@ -817,13 +817,15 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     });
     pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
 
+    const stream_executor::CudaComputeCapability& compute_capability =
+        std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
+
     // Rewrite GEMMs into custom calls.
-    if (debug_options.xla_gpu_enable_triton_gemm()) {
-      pipeline.AddPass<GemmRewriterTriton>(
-          std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version));
+    if (debug_options.xla_gpu_enable_triton_gemm() &&
+        compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+      pipeline.AddPass<GemmRewriterTriton>(compute_capability);
     }
-    pipeline.AddPass<GemmRewriter>(
-        std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version));
+    pipeline.AddPass<GemmRewriter>(compute_capability);
 
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();
@@ -838,8 +840,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<ReductionLayoutNormalizer>();
     pipeline.AddPass<ReductionDimensionGrouper>();
     pipeline.AddPass<HloPassFix<ReductionSplitter>>();
-    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(
-        std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version));
+    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(compute_capability);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
