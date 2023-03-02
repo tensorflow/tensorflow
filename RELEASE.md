@@ -12,6 +12,14 @@
        We recommend using [SciKeras](https://github.com/adriangb/scikeras)
        instead.
 
+*   The default Keras model saving format is now the Keras v3 format:
+    calling `model.save("xyz.keras")` will no longer create a H5 file,
+    it will create a native Keras model file.
+    This will only be breaking for you if you were manually inspecting or
+    modifying H5 files saved by Keras under a `.keras` extension.
+    If this breaks you, simply add `save_format="h5"` to your `.save()` call
+    to revert back to the prior behavior.
+
 ## Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
