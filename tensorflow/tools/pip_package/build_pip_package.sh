@@ -195,6 +195,8 @@ function prepare_src() {
       install_name_tool -change "@loader_path/../../../../../_solib_darwin_x86_64//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so" "@loader_path/libbfloat16.so.so" ${TMPDIR}/tensorflow/tsl/python/lib/core/_pywrap_bfloat16.so
       install_name_tool -change "@loader_path/../../_solib_darwin_x86_64//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so" "@loader_path/../tsl/python/lib/core/libbfloat16.so.so" ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
     else
+      chmod +rw ${TMPDIR}/tensorflow/tsl/python/lib/core/_pywrap_bfloat16.so
+      chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
       patchelf --replace-needed libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so libbfloat16.so.so ${TMPDIR}/tensorflow/tsl/python/lib/core/_pywrap_bfloat16.so
       patchelf --replace-needed libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so libbfloat16.so.so ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
       patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/tsl/python/lib/core/_pywrap_bfloat16.so):\$ORIGIN ${TMPDIR}/tensorflow/tsl/python/lib/core/_pywrap_bfloat16.so
