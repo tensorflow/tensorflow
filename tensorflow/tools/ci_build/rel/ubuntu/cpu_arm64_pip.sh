@@ -23,6 +23,9 @@ sudo mkdir /tmpfs
 sudo chown ${CI_BUILD_USER}:${CI_BUILD_GROUP} /tmpfs
 sudo mkdir /tensorflow
 sudo chown ${CI_BUILD_USER}:${CI_BUILD_GROUP} /tensorflow
+sudo chown -R ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/local/lib/python*
+sudo chown ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/local/bin
+sudo chown -R ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/lib/python3/dist-packages
 
 # Update bazel
 install_bazelisk
@@ -54,9 +57,10 @@ export TF_NEED_TENSORRT=0
 export OS_TYPE="UBUNTU"
 export CONTAINER_TYPE="CPU"
 
-sudo ${TF_PYTHON_VERSION} -m pip install --upgrade pip wheel
-sudo ${TF_PYTHON_VERSION} -m pip install --upgrade setuptools
-sudo ${TF_PYTHON_VERSION} -m pip install -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
+# Install needed Python packages
+${TF_PYTHON_VERSION} -m pip install --upgrade pip wheel
+${TF_PYTHON_VERSION} -m pip install --upgrade setuptools
+${TF_PYTHON_VERSION} -m pip install -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
 sudo touch /custom_sponge_config.csv
 sudo chown ${CI_BUILD_USER}:${CI_BUILD_GROUP} /custom_sponge_config.csv
 
@@ -74,7 +78,7 @@ export TF_TEST_FLAGS="${TF_BUILD_FLAGS} \
     --test_output=errors --verbose_failures=true --test_keep_going"
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} ${ARM_SKIP_TESTS}"
 export TF_PIP_TESTS="test_pip_virtualenv_clean test_pip_virtualenv_oss_serial"
-export TF_TEST_FILTER_TAGS="-no_oss,-v1only,-benchmark-test,-no_aarch64"
+export TF_TEST_FILTER_TAGS="-no_oss,-v1only,-benchmark-test,-no_aarch64,-no_oss_py38,-no_oss_py39,-no_oss_py310"
 export TF_PIP_TEST_ROOT="pip_test"
 export TF_AUDITWHEEL_TARGET_PLAT="manylinux2014"
 export TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES="tensorflow-io"
