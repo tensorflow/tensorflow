@@ -19,6 +19,11 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
+sudo mkdir /tmpfs
+sudo chown ${CI_BUILD_USER}:${CI_BUILD_USER} /tmpfs
+sudo mkdir /tensorflow
+sudo chown ${CI_BUILD_USER}:${CI_BUILD_USER} /tensorflow
+
 # Update bazel
 install_bazelisk
 
@@ -49,6 +54,12 @@ export TF_NEED_TENSORRT=0
 export OS_TYPE="UBUNTU"
 export CONTAINER_TYPE="CPU"
 
+sudo ${TF_PYTHON_VERSION} -m pip install --upgrade pip wheel
+sudo ${TF_PYTHON_VERSION} -m pip install --upgrade setuptools
+sudo ${TF_PYTHON_VERSION} -m pip install -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
+sudo touch /custom_sponge_config.csv
+sudo chown ${CI_BUILD_USER}:${CI_BUILD_USER} /custom_sponge_config.csv
+
 # Get the default test targets for bazel
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
@@ -56,8 +67,7 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 source tensorflow/tools/ci_build/build_scripts/ARM_SKIP_TESTS.sh
 
 # Export optional variables for running pip_new.sh
-export TF_BUILD_FLAGS="--config=mkl_aarch64_threadpool --copt=-mtune=generic --copt=-march=armv8-a \
-    --copt=-O3 --copt=-flax-vector-conversions"
+export TF_BUILD_FLAGS="--config=ambe --config=mkl_aarch64_threadpool --copt=-flax-vector-conversions"
 export TF_TEST_FLAGS="${TF_BUILD_FLAGS} \
     --test_env=TF_ENABLE_ONEDNN_OPTS=1 --test_env=TF2_BEHAVIOR=1 --define=no_tensorflow_py_deps=true \
     --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium \
@@ -72,6 +82,10 @@ export TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES="tensorflow-io"
 if [ ${IS_NIGHTLY} == 1 ]; then
   ./tensorflow/tools/ci_build/update_version.py --nightly
 fi
+
+sudo sed -i '/^build --profile/d' /usertools/aarch64.bazelrc
+sudo sed -i '\@^build.*=\"/usr/local/bin/python3\"$@d' /usertools/aarch64.bazelrc
+sed -i '$ aimport /usertools/aarch64.bazelrc' .bazelrc
 
 source tensorflow/tools/ci_build/builds/pip_new.sh
 
