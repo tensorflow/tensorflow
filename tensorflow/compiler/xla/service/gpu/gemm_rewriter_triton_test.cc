@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/platform/test.h"
 
@@ -25,9 +26,35 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using TritonDotAnalysisTest = HloTestBase;
 using ::testing::ElementsAre;
 using ::testing::FieldsAre;
+
+using GemmRewriterTritonTest = HloTestBase;
+
+TEST_F(GemmRewriterTritonTest, TransposeSubdimensionGroup) {
+  // This HLO is artificial because unnecessary reshapes get optimized
+  // out during compilation. It tests the ability of GemmRewriterTriton
+  // to handle transposes of groups of subdimensions.
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[32,3] parameter(0)
+  t1 = f32[3,32] transpose(p0), dimensions={1,0}
+  r1 = f32[3,8,4] reshape(t1)
+  r0 = f32[3,32] reshape(r1)
+  p1 = f16[32,7] parameter(1)
+  c1 = f32[32,7] convert(p1)
+  ROOT d = f32[3,7] dot(r0, c1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})")
+                    .value();
+  EXPECT_TRUE(GemmRewriterTriton({se::CudaComputeCapability::AMPERE, 0})
+                  .Run(module.get())
+                  .value());
+}
+
+using TritonDotAnalysisTest = HloTestBase;
 
 TEST_F(TritonDotAnalysisTest, NopBitcasts) {
   const std::string hlo_text = R"(
