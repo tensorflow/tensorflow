@@ -211,3 +211,16 @@ cc_library(
         "@com_google_fuzztest//fuzztest",
     ],
 )
+
+tf_cc_fuzz_test(
+    name = "end_to_end_fuzz",
+    srcs = ["end_to_end_fuzz.cc"],
+    deps = [
+        "//tensorflow/cc/saved_model:constants",
+        "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/cc/saved_model:tag_constants",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+    ],
+)
