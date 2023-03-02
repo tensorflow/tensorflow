@@ -479,6 +479,8 @@ using mlir::lmhlo_gpu::AllReduceDoneOp;
 using mlir::lmhlo_gpu::AllReduceStartOp;
 using mlir::lmhlo_gpu::CollectivePermuteDoneOp;
 using mlir::lmhlo_gpu::CollectivePermuteStartOp;
+using mlir::lmhlo_gpu::ReduceScatterDoneOp;
+using mlir::lmhlo_gpu::ReduceScatterStartOp;
 
 // We assign unique id to all collective operations in the module, so that we
 // can efficiently access per-op state at run time. Exception to this rule are
@@ -510,8 +512,8 @@ class CollectiveUidGenerator {
   FailureOr<int32_t> AssignedUid(Operation* op) {
     // Async operations must be assigned uid ahead of time.
     if (isa<AllGatherStartOp, AllGatherDoneOp, AllReduceStartOp,
-            AllReduceDoneOp, CollectivePermuteStartOp, CollectivePermuteDoneOp>(
-            op)) {
+            AllReduceDoneOp, CollectivePermuteStartOp, CollectivePermuteDoneOp,
+            ReduceScatterStartOp, ReduceScatterDoneOp>(op)) {
       auto it = uids_.find(op);
       if (it == uids_.end()) return failure();
       return it->second;
@@ -544,6 +546,9 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
   }
   static StringRef Target(AllGatherStartOp) {
     return "xla.gpu.all_gather_start";
+  }
+  static StringRef Target(ReduceScatterStartOp) {
+    return "xla.gpu.reduce_scatter_start";
   }
 
   template <typename ReduceOrGatherOp>
@@ -655,11 +660,21 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     return NcclCollectivePermuteStartThunk::CanImplement(op);
   }
 
+  static bool CanImplement(ReduceScatterStartOp op) {
+    return NcclReduceScatterStartThunk::CanImplement(op);
+  }
+
   template <typename ReduceOp>
-  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b, ReduceOp op,
-                                        func::CallOp call) {
+  static typename std::enable_if_t<
+      std::is_same_v<ReduceOp, AllReduceOp> ||
+          std::is_same_v<ReduceOp, AllReduceStartOp> ||
+          std::is_same_v<ReduceOp, ReduceScatterOp> ||
+          std::is_same_v<ReduceOp, ReduceScatterStartOp>,
+      LogicalResult>
+  SetSpecificAttrs(ImplicitLocOpBuilder& b, ReduceOp op, func::CallOp call) {
     std::optional<xla::ReductionKind> reduction_kind =
-        NcclAllReduceThunkBase::MatchAllReduceComputation(op.getComputation());
+        NcclAllReduceReduceScatterThunkBase::MatchAllReduceComputation(
+            op.getComputation());
     if (!reduction_kind.has_value())
       return op.emitOpError()
              << "Failed to determine reduction computation for AllReduce";
@@ -770,6 +785,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
       eraseDoneOp<AllReduceStartOp, AllReduceDoneOp>(rewriter, op);
       eraseDoneOp<CollectivePermuteStartOp, CollectivePermuteDoneOp>(rewriter,
                                                                      op);
+      eraseDoneOp<ReduceScatterStartOp, ReduceScatterDoneOp>(rewriter, op);
 
       // Erase the original collective operation.
       rewriter.eraseOp(op);
@@ -846,7 +862,8 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     // code elimination pass that will remove unused fake tokens.
     if constexpr (std::is_same_v<CollectiveOp, AllGatherStartOp> ||
                   std::is_same_v<CollectiveOp, AllReduceStartOp> ||
-                  std::is_same_v<CollectiveOp, CollectivePermuteStartOp>) {
+                  std::is_same_v<CollectiveOp, CollectivePermuteStartOp> ||
+                  std::is_same_v<CollectiveOp, ReduceScatterStartOp>) {
       Value token = op.getToken();
       Value c0 = b.create<arith::ConstantOp>(b.getI8IntegerAttr(0));
       auto fake = b.create<UnrealizedConversionCastOp>(token.getType(), c0);
@@ -878,6 +895,7 @@ DEFINE_COLLECTIVE_OP_LOWERING(ReduceScatterOp);
 DEFINE_COLLECTIVE_OP_LOWERING(AllToAllOp);
 DEFINE_COLLECTIVE_OP_LOWERING(CollectivePermuteOp);
 DEFINE_COLLECTIVE_OP_LOWERING(CollectivePermuteStartOp);
+DEFINE_COLLECTIVE_OP_LOWERING(ReduceScatterStartOp);
 
 #undef DEFINE_COLLECTIVE_OP_LOWERING
 
@@ -947,6 +965,17 @@ class CollectivePermuteDoneOpLowering
  public:
   CollectivePermuteDoneOpLowering(MLIRContext* ctx, CollectiveUidGenerator& uid,
                                   CustomCallDeclarations& custom_calls)
+      : AsyncDoneOpLowering(ctx, kCustomCallTarget, uid, custom_calls) {}
+};
+
+class ReduceScatterDoneOpLowering
+    : public AsyncDoneOpLowering<ReduceScatterDoneOp> {
+  static constexpr const char kCustomCallTarget[] =
+      "xla.gpu.reduce_scatter_done";
+
+ public:
+  ReduceScatterDoneOpLowering(MLIRContext* ctx, CollectiveUidGenerator& uid,
+                              CustomCallDeclarations& custom_calls)
       : AsyncDoneOpLowering(ctx, kCustomCallTarget, uid, custom_calls) {}
 };
 
@@ -1145,14 +1174,20 @@ void ConvertLmhloToGpuRuntimePass::runOnOperation() {
           collective_uid));
   if (walked.wasInterrupted()) return signalPassFailure();
 
+  walked = module.walk(
+      GetAsyncUidGenerator<ReduceScatterStartOp, ReduceScatterDoneOp>(
+          collective_uid));
+  if (walked.wasInterrupted()) return signalPassFailure();
+
   // Convert lmhlo collective operations to XLA gpu runtime custom calls.
   patterns.insert<PartitionIdOpLowering, ReplicaIdOpLowering>(ctx,
                                                               custom_calls);
-  patterns.insert<AllGatherOpLowering, AllGatherStartOpLowering,
-                  AllReduceOpLowering, AllReduceStartOpLowering,
-                  AllToAllOpLowering, CollectivePermuteOpLowering,
-                  CollectivePermuteStartOpLowering, ReduceScatterOpLowering>(
-      ctx, collective_uid, custom_calls);
+  patterns
+      .insert<AllGatherOpLowering, AllGatherStartOpLowering,
+              AllReduceOpLowering, AllReduceStartOpLowering, AllToAllOpLowering,
+              CollectivePermuteOpLowering, CollectivePermuteStartOpLowering,
+              ReduceScatterOpLowering, ReduceScatterStartOpLowering>(
+          ctx, collective_uid, custom_calls);
 
   // Convert lmhlo point-to-point communication operations to XLA gpu runtime.
   patterns.insert<SendOpLowering, SendDoneOpLowering, RecvOpLowering,
@@ -1168,9 +1203,10 @@ void ConvertLmhloToGpuRuntimePass::runOnOperation() {
   // This should be a part of lmhlo operation canonicalization.
   {
     RewritePatternSet patterns(ctx);
-    patterns.insert<AllGatherDoneOpLowering, AllReduceDoneOpLowering,
-                    CollectivePermuteDoneOpLowering>(ctx, collective_uid,
-                                                     custom_calls);
+    patterns
+        .insert<AllGatherDoneOpLowering, AllReduceDoneOpLowering,
+                CollectivePermuteDoneOpLowering, ReduceScatterDoneOpLowering>(
+            ctx, collective_uid, custom_calls);
     if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
       return signalPassFailure();
   }

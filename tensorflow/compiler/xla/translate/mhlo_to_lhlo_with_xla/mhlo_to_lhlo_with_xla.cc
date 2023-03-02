@@ -364,6 +364,10 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitAllReduceStartOp(instr);
     case HloOpcode::kAllReduceDone:
       return EmitAllReduceDoneOp(instr);
+    case HloOpcode::kAsyncStart:
+      return EmitAsyncStartOp(instr);
+    case HloOpcode::kAsyncDone:
+      return EmitAsyncDoneOp(instr);
     case HloOpcode::kReduceScatter:
       return EmitReduceScatterOp(instr);
     case HloOpcode::kBitcast:
@@ -1424,6 +1428,58 @@ LhloDialectEmitter::EmitAllReduceDoneOp(const HloInstruction* instr) {
   TF_RET_CHECK(token) << "didn't find all-reduce-start token";
   return builder_.create<lmhlo_gpu::AllReduceDoneOp>(
       getLocation(instr), /*resultTypes=*/std::nullopt, token.mapped());
+}
+
+tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitAsyncStartOp(
+    const xla::HloInstruction* instr) {
+  const xla::HloAsyncInstruction* async =
+      xla::Cast<xla::HloAsyncInstruction>(instr);
+  const xla::HloInstruction* wrapped = async->async_wrapped_instruction();
+
+  TF_RET_CHECK(wrapped->opcode() == xla::HloOpcode::kReduceScatter);
+  // All the input of async-done are also listed as outputs, so we just create
+  // operands for the outputs.
+  llvm::SmallVector<Value, 4> operands;
+  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands, /*result_subset=*/{}));
+
+  mlir::Location loc = getLocation(instr);
+  mlir::Type token_type = mlir::mhlo::TokenType::get(builder_.getContext());
+  std::array<mlir::Type, 1> result_types = {token_type};
+  auto reduce_scatter_start_op =
+      builder_.create<lmhlo_gpu::ReduceScatterStartOp>(loc, result_types,
+                                                       operands);
+
+  auto* reduce_scatter = xla::Cast<xla::HloReduceScatterInstruction>(wrapped);
+  TF_RETURN_IF_ERROR(SetupCommonCollectiveOpAttributes(
+      reduce_scatter_start_op, reduce_scatter, builder_));
+  reduce_scatter_start_op.setUseGlobalDeviceIdsAttr(
+      builder_.getBoolAttr(reduce_scatter->use_global_device_ids()));
+  reduce_scatter_start_op.setScatterDimensionAttr(
+      builder_.getI64IntegerAttr(reduce_scatter->scatter_dimension()));
+  TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
+      *reduce_scatter->to_apply(), symbol_table_,
+      &reduce_scatter_start_op.getComputation(), &builder_));
+
+  auto [_, was_inserted] =
+      ret_tokens_.insert({instr, reduce_scatter_start_op.getToken()});
+  TF_RET_CHECK(was_inserted) << "reduce-scatter-start already lowered";
+  return reduce_scatter_start_op.getOperation();
+}
+
+tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitAsyncDoneOp(
+    const xla::HloInstruction* instr) {
+  const xla::HloAsyncInstruction* async =
+      xla::Cast<xla::HloAsyncInstruction>(instr);
+  const xla::HloInstruction* wrapped = async->async_wrapped_instruction();
+
+  TF_RET_CHECK(wrapped->opcode() == xla::HloOpcode::kReduceScatter);
+
+  auto token = ret_tokens_.extract(instr->operand(0));
+  TF_RET_CHECK(token) << "didn't find reduce-scatter-start token";
+  return builder_
+      .create<lmhlo_gpu::ReduceScatterDoneOp>(
+          getLocation(instr), /*resultTypes=*/std::nullopt, token.mapped())
+      .getOperation();
 }
 
 tsl::StatusOr<lmhlo::ReduceScatterOp> LhloDialectEmitter::EmitReduceScatterOp(

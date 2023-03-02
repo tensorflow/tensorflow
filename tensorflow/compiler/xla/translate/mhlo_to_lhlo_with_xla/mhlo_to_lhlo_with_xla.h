@@ -104,6 +104,10 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
       const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo_gpu::AllReduceDoneOp> EmitAllReduceDoneOp(
       const xla::HloInstruction* instr);
+  tsl::StatusOr<mlir::Operation*> EmitAsyncStartOp(
+      const xla::HloInstruction* instr);
+  tsl::StatusOr<mlir::Operation*> EmitAsyncDoneOp(
+      const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo::ReduceScatterOp> EmitReduceScatterOp(
       const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo::CollectivePermuteOp> EmitCollectivePermuteOp(

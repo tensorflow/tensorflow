@@ -5600,6 +5600,16 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
         op);
   }
 
+  if (mlir::isa<mlir::lmhlo_gpu::ReduceScatterStartOp>(op)) {
+    return EmitNcclThunk<NcclReduceScatterStartThunk,
+                         mlir::lmhlo_gpu::ReduceScatterStartOp>(op);
+  }
+
+  if (mlir::isa<mlir::lmhlo_gpu::ReduceScatterDoneOp>(op)) {
+    return EmitNcclAsyncDone<NcclReduceScatterDoneThunk,
+                             mlir::lmhlo_gpu::ReduceScatterDoneOp>(op);
+  }
+
   if (mlir::isa<mlir::lmhlo::AllToAllOp>(op)) {
     return EmitNcclThunk<NcclAllToAllThunk, mlir::lmhlo::AllToAllOp>(op);
   }

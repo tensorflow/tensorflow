@@ -133,6 +133,25 @@ mlir::LogicalResult AllGatherStartOp::verify() {
                                         /*expectedGroupSize=*/std::nullopt);
 }
 
+//===----------------------------------------------------------------------===//
+// ReduceScatterStartOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ReduceScatterStartOp::verify() {
+  ReduceScatterStartOp op = *this;
+  if (failed(hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
+                                      /*allGroupsMustHaveSameSize=*/true,
+                                      op.getUseGlobalDeviceIds(),
+                                      /*expectedGroupSize=*/std::nullopt)))
+    return failure();
+  if (failed(mlir::hlo::verifyReduceScatter(
+          op, /*operandTypes=*/op.getInputs().getTypes(),
+          /*resultTypes=*/op.getOutputs().getTypes(),
+          /*scatterDimension=*/op.getScatterDimension())))
+    return failure();
+  return success();
+}
+
 }  // namespace lmhlo_gpu
 }  // namespace mlir
 

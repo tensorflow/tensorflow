@@ -1613,5 +1613,50 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllGather)) {
   }
 }
 
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncReduceScatter)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  add {
+    lhs = u32[] parameter(0)
+    rhs = u32[] parameter(1)
+    ROOT add = u32[] add(lhs, rhs)
+  }
+
+  // XLA HLO does not have reduce-scatter-start/reduce-scatter-done op, but
+  // uses the generic async-start/async-done ops.
+  reduce_scatter {
+    p0 = u32[8] parameter(0)
+    ROOT result = u32[4] reduce-scatter(p0), replica_groups={},
+                      dimensions={0}, to_apply=add
+  }
+
+  ENTRY main {
+    c0 = u32[8] constant({1, 2, 3, 4, 5, 6, 7, 8})
+    c1 = u32[8] constant({10, 11, 12, 13, 14, 15, 16, 17})
+    zero = u32[] constant(0)
+    id = u32[] replica-id()
+    p = pred[] compare(id, zero), direction=EQ
+    pb = pred[8] broadcast(p), dimensions={}
+    // data = c0 for replica 0 and c1 for replica 1
+    data = u32[8] select(pb, c0, c1)
+    rs-start = ((u32[8]{0}), u32[4]{0}) async-start(u32[8]{0} %data), calls=reduce_scatter
+    ROOT %ars = u32[4]{0} async-done(((u32[8]{0}), u32[4]{0}) %rs-start), calls=reduce_scatter
+  }
+  )";
+
+  const int64_t kNumReplicas = 2;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/false));
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 13, 15, 17}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({19, 21, 23, 25}, results[1]);
+}
+
 }  // namespace
 }  // namespace xla

@@ -71,6 +71,8 @@ class Thunk {
     kNcclCollectivePermuteStart,
     kNcclCollectivePermuteDone,
     kNcclReduceScatter,
+    kNcclReduceScatterStart,
+    kNcclReduceScatterDone,
     kNcclAllToAll,
     kOutfeed,
     kReplicaId,
