@@ -28,14 +28,14 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/ValueRange.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"   // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"      // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"           // from @llvm-project
+#include "mlir/IR/Matchers.h"               // from @llvm-project
+#include "mlir/IR/PatternMatch.h"           // from @llvm-project
+#include "mlir/IR/ValueRange.h"             // from @llvm-project
+#include "mlir/Support/LLVM.h"              // from @llvm-project
+#include "mlir/Support/LogicalResult.h"     // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
@@ -553,8 +553,10 @@ static LogicalResult prepareMatchAndRewriteComparison(
         op, "input_x and input_y scale/zp must be the same");
   }
 
-  x = buildRescaleToInt32(rewriter, op, x, 1.0f, input_x_qtype.getZeroPoint());
-  y = buildRescaleToInt32(rewriter, op, y, 1.0f, input_y_qtype.getZeroPoint());
+  x = removeZeroPointAndCastToInt32(rewriter, op, x,
+                                    input_x_qtype.getZeroPoint());
+  y = removeZeroPointAndCastToInt32(rewriter, op, y,
+                                    input_y_qtype.getZeroPoint());
 
   newOperands.push_back(x);
   newOperands.push_back(y);
@@ -703,24 +705,91 @@ static LogicalResult matchAndRewriteAddSub(Operation* op,
                               ? SHIFT_16_BIT
                               : SHIFT_8_BIT;
 
-    double lhs_rescale_scale =
-        static_cast<double>(1 << input_shift) * in_lhs_scale / max_scale_2x;
-    double rhs_rescale_scale =
-        static_cast<double>(1 << input_shift) * in_rhs_scale / max_scale_2x;
+    double lhs_rescale_scale = in_lhs_scale / max_scale_2x;
+    double rhs_rescale_scale = in_rhs_scale / max_scale_2x;
     double output_rescale_scale =
         max_scale_2x / (output_scale * static_cast<double>(1 << input_shift));
 
-    Value op1_rescale_lhs =
-        buildRescaleToInt32(rewriter, op, tfl_add_op.getLhs(),
-                            lhs_rescale_scale, input_lhs_qtype.getZeroPoint());
-    Value op2_rescale_rhs =
-        buildRescaleToInt32(rewriter, op, tfl_add_op.getRhs(),
-                            rhs_rescale_scale, input_rhs_qtype.getZeroPoint());
+#if TFLITE_SINGLE_ROUNDING
+    Value op1_rescale_lhs = buildRescaleToInt32(
+        rewriter, op, tfl_add_op.getLhs(),
+        lhs_rescale_scale * static_cast<double>(1 << input_shift),
+        input_lhs_qtype.getZeroPoint());
+    Value op2_rescale_rhs = buildRescaleToInt32(
+        rewriter, op, tfl_add_op.getRhs(),
+        rhs_rescale_scale * static_cast<double>(1 << input_shift),
+        input_rhs_qtype.getZeroPoint());
+#else  // TFLITE_DOUBLE_ROUNDING
+    Value op1_rescale_lhs;
+    Value op2_rescale_rhs;
+
+    // Left side
+    // Handle only 16-bit none_exact_half_rescale_scale as a special case here:
+    // 1. The double rescale implementation will break the TOSA reference model
+    //    because for 16-bit values, the minimum shift must be 16 which
+    //    leaves a left shift of 15 impossible. Using a Cast + Shift instead.
+    // 2. In other cases, we are scaling by lhs_rescale_scale*(1<<input_shift)
+    if (lhs_rescale_scale == 0.5) {
+      op1_rescale_lhs =
+          buildRescaleToInt32(rewriter, op, tfl_add_op.getLhs(),
+                              lhs_rescale_scale * (1 << input_shift),
+                              input_lhs_qtype.getZeroPoint());
+    } else {
+      Value op1_none_half_scale_intermediate;
+      if (output_qtype.getStorageTypeIntegralWidth() == 16) {
+        auto tfl_add_lhs_casted = CreateOpAndInfer<tosa::CastOp>(
+            rewriter, op->getLoc(), rescale_type, tfl_add_op.getLhs());
+        op1_none_half_scale_intermediate =
+            CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
+                rewriter, op->getLoc(), rescale_type,
+                tfl_add_lhs_casted.getResult(),
+                getTosaConstTensorSingleI32(rewriter, op, input_shift));
+      } else {
+        op1_none_half_scale_intermediate = buildRescaleToInt32(
+            rewriter, op, tfl_add_op.getLhs(), (1 << input_shift),
+            input_lhs_qtype.getZeroPoint());
+      }
+      op1_rescale_lhs = buildRescaleToInt32(
+          rewriter, op, op1_none_half_scale_intermediate, lhs_rescale_scale, 0);
+    }
+
+    // Right side
+    // Handle only 16-bit none_exact_half_rescale_scale as a special case here:
+    // 1. The double rescale implementation will break the TOSA reference model
+    //    because for 16-bit values, the minimum shift must be 16 which
+    //    leaves a left shift of 15 impossible. Using a Cast + Shift instead.
+    // 2. In other cases, we are scaling by rhs_rescale_scale*(1<<input_shift)
+    if (rhs_rescale_scale == 0.5) {
+      op2_rescale_rhs =
+          buildRescaleToInt32(rewriter, op, tfl_add_op.getRhs(),
+                              rhs_rescale_scale * (1 << input_shift),
+                              input_rhs_qtype.getZeroPoint());
+    } else {
+      Value op2_none_half_scale_intermediate;
+      if (output_qtype.getStorageTypeIntegralWidth() == 16) {
+        auto tfl_add_rhs_casted = CreateOpAndInfer<tosa::CastOp>(
+            rewriter, op->getLoc(), rescale_type, tfl_add_op.getRhs());
+        op2_none_half_scale_intermediate =
+            CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
+                rewriter, op->getLoc(), rescale_type,
+                tfl_add_rhs_casted.getResult(),
+                getTosaConstTensorSingleI32(rewriter, op, input_shift));
+      } else {
+        op2_none_half_scale_intermediate = buildRescaleToInt32(
+            rewriter, op, tfl_add_op.getRhs(), (1 << input_shift),
+            input_rhs_qtype.getZeroPoint());
+      }
+      op2_rescale_rhs = buildRescaleToInt32(
+          rewriter, op, op2_none_half_scale_intermediate, rhs_rescale_scale, 0);
+    }
+
+#endif  // TFLITE_DOUBLE_ROUNDING
     auto op3_add_op1_op2 = CreateOpAndInfer<TosaOp>(
         rewriter, op->getLoc(), rescale_type, op1_rescale_lhs, op2_rescale_rhs);
     Value op4_rescale_op3 = buildRescaleFromInt32(
         rewriter, op, output_type, op3_add_op1_op2.getResult(),
         output_rescale_scale, output_qtype.getZeroPoint());
+
     output = op4_rescale_op3;
   } else {
     auto op1_add_in =
@@ -914,11 +983,13 @@ LogicalResult ConvertTFLMaximumOp::matchAndRewrite(
     ShapedType rescale_type = output_type.clone(rewriter.getI32Type());
 
     Value op1_rescale_lhs =
-        buildRescaleToInt32(rewriter, op, tfl_max_op.getLhs(), 1.0f, 0);
+        removeZeroPointAndCastToInt32(rewriter, op, tfl_max_op.getLhs(), 0);
     Value op2_rescale_rhs =
-        buildRescaleToInt32(rewriter, op, tfl_max_op.getRhs(), 1.0f, 0);
+        removeZeroPointAndCastToInt32(rewriter, op, tfl_max_op.getRhs(), 0);
+
     auto op3_max_op1_op2 = CreateOpAndInfer<tosa::MaximumOp>(
         rewriter, op->getLoc(), rescale_type, op1_rescale_lhs, op2_rescale_rhs);
+
     Value op4_rescale_op3 = buildRescaleFromInt32(
         rewriter, op, output_type, op3_max_op1_op2.getResult(), 1.0f, 0);
 
@@ -968,11 +1039,13 @@ LogicalResult ConvertTFLMinimumOp::matchAndRewrite(
     ShapedType rescale_type = output_type.clone(rewriter.getI32Type());
 
     Value op1_rescale_lhs =
-        buildRescaleToInt32(rewriter, op, tfl_min_op.getLhs(), 1.0f, 0);
+        removeZeroPointAndCastToInt32(rewriter, op, tfl_min_op.getLhs(), 0);
     Value op2_rescale_rhs =
-        buildRescaleToInt32(rewriter, op, tfl_min_op.getRhs(), 1.0f, 0);
+        removeZeroPointAndCastToInt32(rewriter, op, tfl_min_op.getRhs(), 0);
+
     auto op3_min_op1_op2 = CreateOpAndInfer<tosa::MinimumOp>(
         rewriter, op->getLoc(), rescale_type, op1_rescale_lhs, op2_rescale_rhs);
+
     Value op4_rescale_op3 = buildRescaleFromInt32(
         rewriter, op, output_type, op3_min_op1_op2.getResult(), 1.0f, 0);
 
@@ -3283,8 +3356,8 @@ static LogicalResult LegalizeQuantizedLeakyAndPrelu(Operation* op,
   //   cond_result = greater_equal(rescaled_in, 0)
   //   output = select(cond_result, rescaled_identity_in, rescaled_slope_in)
 
-  Value op_rescale_in =
-      buildRescaleToInt32(rewriter, op, input, 1.0, input_qtype.getZeroPoint());
+  Value op_rescale_in = removeZeroPointAndCastToInt32(
+      rewriter, op, input, input_qtype.getZeroPoint());
 
   Value const_zero = getTosaConstTensorSingleI32(rewriter, op, 0);
   Value op_ge = CreateOpAndInfer<tosa::GreaterEqualOp>(
@@ -3304,8 +3377,9 @@ static LogicalResult LegalizeQuantizedLeakyAndPrelu(Operation* op,
     UniformQuantizedType alpha_qtype =
         alpha_type.getElementType().cast<UniformQuantizedType>();
 
-    Value op_rescale_alpha = buildRescaleToInt32(rewriter, op, alpha, 1.0,
-                                                 alpha_qtype.getZeroPoint());
+    Value op_rescale_alpha = removeZeroPointAndCastToInt32(
+        rewriter, op, alpha, alpha_qtype.getZeroPoint());
+
     Value op_mul =
         CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), rescale_type,
                                       op_rescale_in, op_rescale_alpha, 0);

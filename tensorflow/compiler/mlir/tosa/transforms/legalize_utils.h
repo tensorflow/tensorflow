@@ -22,15 +22,15 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/Tosa/Utils/ShapeUtils.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"          // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"         // from @llvm-project
+#include "mlir/Dialect/Tosa/Utils/ShapeUtils.h"    // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"             // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"                  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"                  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"                     // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -55,6 +55,10 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    ShapedType output_type, Value input_val, double scale,
                    int64_t input_zp, int64_t output_zp, bool double_round,
                    bool scale32);
+
+// Removes the zero point and cast to int32, no need to handle roundings modes
+Value removeZeroPointAndCastToInt32(PatternRewriter& rewriter, Operation* op,
+                                    Value input_val, int64_t input_zp);
 
 // Creates TOSA rescale op with int32 output
 Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
