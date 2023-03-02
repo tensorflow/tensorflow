@@ -15,8 +15,8 @@
 """Tests for python.util.protobuf.compare."""
 
 import copy
-import math
 import re
+import sys
 import textwrap
 
 import six
@@ -227,8 +227,9 @@ class ProtoEqTest(googletest.TestCase):
     # Special floats: Nans, inf and denormalized numbers
     self.assertFalse(compare.isClose(float('nan'), float('nan'), 1e-10))
     self.assertFalse(compare.isClose(float('inf'), float('inf'), 1e-10))
-    self.assertTrue(compare.isClose(math.ulp(0.0), math.ulp(0.0), 1e-10))
-    self.assertFalse(compare.isClose(math.ulp(0.0), 1, 1e-10))
+    x = sys.float_info.min * sys.float_info.epsilon
+    self.assertTrue(compare.isClose(x, x, 1e-10))
+    self.assertFalse(compare.isClose(x, 1, 1e-10))
 
 
 class NormalizeNumbersTest(googletest.TestCase):

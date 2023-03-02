@@ -16,8 +16,8 @@
 
 import collections
 import copy
-import math
 import random
+import sys
 import threading
 import time
 import unittest
@@ -224,8 +224,12 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertProtoEquals(pb1, pb2, relative_tolerance=1e-5)
 
   def test_float_relative_tolerance_denormal(self):
-    pb1 = compare_test_pb2.Floats(float_=math.ulp(0.0))
-    pb2 = compare_test_pb2.Floats(float_=math.ulp(0.0))
+    pb1 = compare_test_pb2.Floats(
+        float_=sys.float_info.min * sys.float_info.epsilon
+    )
+    pb2 = compare_test_pb2.Floats(
+        float_=sys.float_info.min * sys.float_info.epsilon
+    )
     self.assertProtoEquals(pb1, pb2, relative_tolerance=1e-5)
 
   def test_repeated_float_relative_tolerance(self):
