@@ -3426,6 +3426,7 @@ struct ModelFileT : public flatbuffers::NativeTable {
   int64_t offset = 0;
   int64_t length = 0;
   std::unique_ptr<tflite::ModelIdGroupT> model_id_group{};
+  int64_t buffer_handle = 0;
   ModelFileT() = default;
   ModelFileT(const ModelFileT &o);
   ModelFileT(ModelFileT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -3440,7 +3441,8 @@ struct ModelFile FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_FD = 6,
     VT_OFFSET = 8,
     VT_LENGTH = 10,
-    VT_MODEL_ID_GROUP = 12
+    VT_MODEL_ID_GROUP = 12,
+    VT_BUFFER_HANDLE = 14
   };
   const flatbuffers::String *filename() const {
     return GetPointer<const flatbuffers::String *>(VT_FILENAME);
@@ -3457,6 +3459,9 @@ struct ModelFile FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::ModelIdGroup *model_id_group() const {
     return GetPointer<const tflite::ModelIdGroup *>(VT_MODEL_ID_GROUP);
   }
+  int64_t buffer_handle() const {
+    return GetField<int64_t>(VT_BUFFER_HANDLE, 0);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_FILENAME) &&
@@ -3466,6 +3471,7 @@ struct ModelFile FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<int64_t>(verifier, VT_LENGTH, 8) &&
            VerifyOffset(verifier, VT_MODEL_ID_GROUP) &&
            verifier.VerifyTable(model_id_group()) &&
+           VerifyField<int64_t>(verifier, VT_BUFFER_HANDLE, 8) &&
            verifier.EndTable();
   }
   ModelFileT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -3492,6 +3498,9 @@ struct ModelFileBuilder {
   void add_model_id_group(flatbuffers::Offset<tflite::ModelIdGroup> model_id_group) {
     fbb_.AddOffset(ModelFile::VT_MODEL_ID_GROUP, model_id_group);
   }
+  void add_buffer_handle(int64_t buffer_handle) {
+    fbb_.AddElement<int64_t>(ModelFile::VT_BUFFER_HANDLE, buffer_handle, 0);
+  }
   explicit ModelFileBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -3509,8 +3518,10 @@ inline flatbuffers::Offset<ModelFile> CreateModelFile(
     int64_t fd = 0,
     int64_t offset = 0,
     int64_t length = 0,
-    flatbuffers::Offset<tflite::ModelIdGroup> model_id_group = 0) {
+    flatbuffers::Offset<tflite::ModelIdGroup> model_id_group = 0,
+    int64_t buffer_handle = 0) {
   ModelFileBuilder builder_(_fbb);
+  builder_.add_buffer_handle(buffer_handle);
   builder_.add_length(length);
   builder_.add_offset(offset);
   builder_.add_fd(fd);
@@ -3525,7 +3536,8 @@ inline flatbuffers::Offset<ModelFile> CreateModelFileDirect(
     int64_t fd = 0,
     int64_t offset = 0,
     int64_t length = 0,
-    flatbuffers::Offset<tflite::ModelIdGroup> model_id_group = 0) {
+    flatbuffers::Offset<tflite::ModelIdGroup> model_id_group = 0,
+    int64_t buffer_handle = 0) {
   auto filename__ = filename ? _fbb.CreateString(filename) : 0;
   return tflite::CreateModelFile(
       _fbb,
@@ -3533,7 +3545,8 @@ inline flatbuffers::Offset<ModelFile> CreateModelFileDirect(
       fd,
       offset,
       length,
-      model_id_group);
+      model_id_group,
+      buffer_handle);
 }
 
 flatbuffers::Offset<ModelFile> CreateModelFile(flatbuffers::FlatBufferBuilder &_fbb, const ModelFileT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -5393,7 +5406,8 @@ inline bool operator==(const ModelFileT &lhs, const ModelFileT &rhs) {
       (lhs.fd == rhs.fd) &&
       (lhs.offset == rhs.offset) &&
       (lhs.length == rhs.length) &&
-      ((lhs.model_id_group == rhs.model_id_group) || (lhs.model_id_group && rhs.model_id_group && *lhs.model_id_group == *rhs.model_id_group));
+      ((lhs.model_id_group == rhs.model_id_group) || (lhs.model_id_group && rhs.model_id_group && *lhs.model_id_group == *rhs.model_id_group)) &&
+      (lhs.buffer_handle == rhs.buffer_handle);
 }
 
 inline bool operator!=(const ModelFileT &lhs, const ModelFileT &rhs) {
@@ -5406,7 +5420,8 @@ inline ModelFileT::ModelFileT(const ModelFileT &o)
         fd(o.fd),
         offset(o.offset),
         length(o.length),
-        model_id_group((o.model_id_group) ? new tflite::ModelIdGroupT(*o.model_id_group) : nullptr) {
+        model_id_group((o.model_id_group) ? new tflite::ModelIdGroupT(*o.model_id_group) : nullptr),
+        buffer_handle(o.buffer_handle) {
 }
 
 inline ModelFileT &ModelFileT::operator=(ModelFileT o) FLATBUFFERS_NOEXCEPT {
@@ -5415,6 +5430,7 @@ inline ModelFileT &ModelFileT::operator=(ModelFileT o) FLATBUFFERS_NOEXCEPT {
   std::swap(offset, o.offset);
   std::swap(length, o.length);
   std::swap(model_id_group, o.model_id_group);
+  std::swap(buffer_handle, o.buffer_handle);
   return *this;
 }
 
@@ -5432,6 +5448,7 @@ inline void ModelFile::UnPackTo(ModelFileT *_o, const flatbuffers::resolver_func
   { auto _e = offset(); _o->offset = _e; }
   { auto _e = length(); _o->length = _e; }
   { auto _e = model_id_group(); if (_e) { if(_o->model_id_group) { _e->UnPackTo(_o->model_id_group.get(), _resolver); } else { _o->model_id_group = std::unique_ptr<tflite::ModelIdGroupT>(_e->UnPack(_resolver)); } } }
+  { auto _e = buffer_handle(); _o->buffer_handle = _e; }
 }
 
 inline flatbuffers::Offset<ModelFile> ModelFile::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ModelFileT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -5447,13 +5464,15 @@ inline flatbuffers::Offset<ModelFile> CreateModelFile(flatbuffers::FlatBufferBui
   auto _offset = _o->offset;
   auto _length = _o->length;
   auto _model_id_group = _o->model_id_group ? CreateModelIdGroup(_fbb, _o->model_id_group.get(), _rehasher) : 0;
+  auto _buffer_handle = _o->buffer_handle;
   return tflite::CreateModelFile(
       _fbb,
       _filename,
       _fd,
       _offset,
       _length,
-      _model_id_group);
+      _model_id_group,
+      _buffer_handle);
 }
 
 

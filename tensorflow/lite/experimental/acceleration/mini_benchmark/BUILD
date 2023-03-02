@@ -448,6 +448,7 @@ cc_library(
         "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -465,6 +466,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@flatbuffers",
         "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
+        "//tensorflow/lite:allocation",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
@@ -629,6 +631,7 @@ cc_library(
         "@flatbuffers//:runtime_cc",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
+        "//tensorflow/lite:allocation",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:stderr_reporter",
     ] + select({
@@ -796,10 +799,9 @@ cc_binary(
     deps = [
         ":constants",
         ":status_codes",
-        "//tensorflow/lite/schema:schema_fbs_with_mutable",
+        "//tensorflow/lite:allocation",
         "//tensorflow/lite/tools:model_loader",
         "@com_google_absl//absl/strings",
-        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -809,10 +811,9 @@ cc_library(
     deps = [
         ":constants",
         ":status_codes",
-        "//tensorflow/lite/schema:schema_fbs_with_mutable",
+        "//tensorflow/lite:allocation",
         "//tensorflow/lite/tools:model_loader",
         "@com_google_absl//absl/strings",
-        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -843,6 +844,8 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
+        "//tensorflow/lite:allocation",
+        "//tensorflow/lite:stderr_reporter",
     ] + select({
         clean_dep("//tensorflow:android"): [
             ":embedded_runner_executable",
