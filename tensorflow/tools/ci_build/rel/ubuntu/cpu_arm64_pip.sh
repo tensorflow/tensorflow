@@ -23,6 +23,9 @@ sudo mkdir /tmpfs
 sudo chown ${CI_BUILD_USER}:${CI_BUILD_GROUP} /tmpfs
 sudo mkdir /tensorflow
 sudo chown ${CI_BUILD_USER}:${CI_BUILD_GROUP} /tensorflow
+sudo chown -R ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/local/lib/python*
+sudo chown ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/local/bin
+sudo chown -R ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/lib/python3/dist-packages
 
 # Update bazel
 install_bazelisk
@@ -54,9 +57,9 @@ export TF_NEED_TENSORRT=0
 export OS_TYPE="UBUNTU"
 export CONTAINER_TYPE="CPU"
 
-sudo ${TF_PYTHON_VERSION} -m pip install --upgrade pip wheel
-sudo ${TF_PYTHON_VERSION} -m pip install --upgrade setuptools
-sudo ${TF_PYTHON_VERSION} -m pip install -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
+${TF_PYTHON_VERSION} -m pip install --upgrade pip wheel
+${TF_PYTHON_VERSION} -m pip install --upgrade setuptools
+${TF_PYTHON_VERSION} -m pip install -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
 sudo touch /custom_sponge_config.csv
 sudo chown ${CI_BUILD_USER}:${CI_BUILD_GROUP} /custom_sponge_config.csv
 
