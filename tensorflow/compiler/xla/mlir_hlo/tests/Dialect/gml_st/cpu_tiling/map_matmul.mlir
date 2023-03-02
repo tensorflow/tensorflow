@@ -1,4 +1,5 @@
-// RUN: mlir-hlo-opt %s --split-input-file --gml-st-cpu-tiling-pipeline | FileCheck %s
+// RUN: mlir-hlo-opt %s --split-input-file \
+// RUN:   --gml-st-cpu-tiling-pipeline=matmul-tile-sizes=4,4,4 | FileCheck %s
 
 func.func @map_matmul(%arg0: tensor<?x?xf32>,
     %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>) -> tensor<?x?xf32> {
