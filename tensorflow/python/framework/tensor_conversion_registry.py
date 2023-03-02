@@ -204,8 +204,9 @@ def convert(value,
   if preferred_dtype is not None:
     preferred_dtype = dtypes.as_dtype(preferred_dtype)
 
-  if isinstance(value, core.TensorProtocol):
-    return value.__tf_tensor__(dtype, name)
+  overload = getattr(value, "__tf_tensor__", None)
+  if overload is not None:
+    return overload(dtype, name)  #  pylint: disable=not-callable
 
   for base_type, conversion_func in get(type(value)):
     # If dtype is None but preferred_dtype is not None, we try to
