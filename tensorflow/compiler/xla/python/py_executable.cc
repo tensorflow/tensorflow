@@ -468,15 +468,17 @@ PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens(
 }
 
 StatusOr<PyExecuteResults> PyLoadedExecutable::ExecuteSharded(
-    absl::Span<const std::vector<std::variant<PyBuffer::object, PyArray>>> args,
+    std::vector<std::vector<std::variant<PyBuffer::object, PyArray>>> args,
     bool with_tokens) {
   std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
   if (with_tokens) {
     returned_futures.emplace();
   }
+  absl::Span<const std::vector<std::variant<PyBuffer::object, PyArray>>>
+      span_args = args;
   return ExecuteShardedOnLocalDevicesInternal(
-      options_, client_, ifrt_loaded_executable_.get(), host_callbacks_, args,
-      returned_futures);
+      options_, client_, ifrt_loaded_executable_.get(), host_callbacks_,
+      span_args, returned_futures);
 }
 
 StatusOr<std::vector<std::shared_ptr<HloModule>>>

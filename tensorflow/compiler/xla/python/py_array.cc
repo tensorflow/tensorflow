@@ -25,8 +25,10 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
+#include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
+#include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -462,6 +464,53 @@ PyArray::Storage::~PyArray_Storage() {
   }
 }
 
+StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(
+    ifrt::DeviceList devices, pybind11::object dst_sharding) {
+  auto* ifrt_array_ptr = ifrt_array();
+  if (ifrt_array_ptr->sharding().devices().devices() == devices.devices()) {
+    return *this;
+  }
+  tsl::RCReference<ifrt::Array> out_array;
+  {
+    auto transfer_guard_formatter = [this, &dst_sharding] {
+      return absl::StrCat(
+          "aval=", py::cast<std::string>(py::repr(aval())),
+          ", sharding=", py::cast<std::string>(py::repr(sharding())),
+          ", dst_sharding=", py::cast<std::string>(py::repr(dst_sharding)));
+    };
+    TF_RETURN_IF_ERROR(
+        jax::ApplyTransferGuardToDeviceToDevice(transfer_guard_formatter));
+    GlobalPyRefManager()->CollectGarbage();
+    py::gil_scoped_release gil_release;
+
+    if (llvm::isa<ifrt::SingleDeviceSharding>(ifrt_array_ptr->sharding())) {
+      TF_ASSIGN_OR_RETURN(out_array,
+                          ifrt_array_ptr->Reshard(
+                              ifrt::SingleDeviceSharding::Create(devices[0]),
+                              ifrt::ArrayCopySemantics::kReuseInput));
+    } else if (llvm::isa<ifrt::OpaqueSharding>(ifrt_array_ptr->sharding())) {
+      auto opaque_sharding = ifrt::OpaqueSharding::Create(
+          std::move(devices),
+          llvm::dyn_cast<ifrt::OpaqueSharding>(&ifrt_array_ptr->sharding())
+              ->disassemble_func());
+      TF_ASSIGN_OR_RETURN(
+          out_array,
+          ifrt_array_ptr->Reshard(opaque_sharding,
+                                  ifrt::ArrayCopySemantics::kReuseInput));
+    } else {
+      return InvalidArgument(
+          "resharding only supported for ifrt::SingleDeviceSharding and "
+          "ifrt::OpaqueSharding");
+    }
+  }
+  auto traceback = Traceback::Get();
+  absl::Span<const int64_t> shape_span = shape();
+  return PyArray(aval(), weak_type(), dtype(),
+                 std::vector<int64_t>(shape_span.begin(), shape_span.end()),
+                 dst_sharding, py_client(), std::move(traceback),
+                 std::move(out_array), committed(), true);
+}
+
 std::vector<py::object> PyClient::LiveArrays() {
   std::vector<py::object> result;
   for (PyArray::Storage* array = arrays_; array; array = array->next) {
@@ -564,6 +613,17 @@ Status PyArray::RegisterTypes(py::module& m) {
   type.attr("traceback") = jax::property_readonly(&PyArray::traceback);
   type.attr("__module__") = m.attr("__name__");
 
+  m.attr("copy_array_to_devices_with_sharding") = py::cpp_function(
+      [](PyArray self, std::vector<ClientAndPtr<PjRtDevice>> dst_devices,
+         py::object sharding) {
+        ifrt::DeviceList::Devices devices;
+        devices.reserve(dst_devices.size());
+        for (auto& d : dst_devices) {
+          devices.push_back(d.get());
+        }
+        return self.CopyToDeviceWithSharding(ifrt::DeviceList(devices),
+                                             std::move(sharding));
+      });
   m.attr("array_result_handler") = py::cpp_function(
       [](py::object aval, py::object sharding, bool committed,
          bool skip_checks) -> std::unique_ptr<PyArrayResultHandler> {

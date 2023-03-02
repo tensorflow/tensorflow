@@ -207,6 +207,8 @@ def make_replica_groups(
 def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...):
   ...
 
+def copy_array_to_devices_with_sharding(self: ArrayImpl, devices: List[Device], sharding: Any) -> ArrayImpl: ...
+
 def array_result_handler(
                aval: Any,
                sharding: Any,

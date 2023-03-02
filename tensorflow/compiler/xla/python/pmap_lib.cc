@@ -254,8 +254,8 @@ xla::StatusOr<ShardArgResult> ShardArg(
   // This fallback is better than nothing, but ideally we should be able to
   // convert the argument in C++. At least, we can call the C++ DevicePut from
   // Python.
-  auto per_device_pybuffers =
-      py::cast<py::list>(python_fallback(arg, py_devices, input_spec.indices));
+  auto per_device_pybuffers = py::cast<py::list>(python_fallback(
+      arg, py_devices, input_spec.indices, input_spec.array_sharding));
   ShardArgResult result;
   result.owning_sda = py::reinterpret_borrow<py::object>(per_device_pybuffers);
   if (!per_device_pybuffers.empty()) {

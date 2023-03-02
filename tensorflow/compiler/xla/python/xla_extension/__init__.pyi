@@ -495,6 +495,9 @@ class ArrayImpl:
   _npy_value: Any
   traceback: Traceback
 
+
+def copy_array_to_devices_with_sharding(self: ArrayImpl, devices: List[Device], sharding: Any) -> ArrayImpl: ...
+
 def array_result_handler(
                aval: Any,
                sharding: Any,

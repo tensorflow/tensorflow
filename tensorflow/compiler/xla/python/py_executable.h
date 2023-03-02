@@ -168,8 +168,7 @@ class PyLoadedExecutable
           args);
 
   StatusOr<PyExecuteResults> ExecuteSharded(
-      absl::Span<const std::vector<std::variant<PyBuffer::object, PyArray>>>
-          args,
+      std::vector<std::vector<std::variant<PyBuffer::object, PyArray>>> args,
       bool with_tokens);
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
