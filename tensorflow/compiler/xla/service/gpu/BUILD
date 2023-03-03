@@ -570,6 +570,27 @@ bool_flag(
 )
 
 cc_library(
+    name = "non_atomically_upgradeable_rw_lock",
+    srcs = [],
+    hdrs = [
+        "non_atomically_upgradeable_rw_lock.h",
+    ],
+    deps = [
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "non_atomically_upgradeable_rw_lock_test",
+    srcs = ["non_atomically_upgradeable_rw_lock_test.cc"],
+    deps = [
+        ":non_atomically_upgradeable_rw_lock",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "gpu_executable",
     srcs = [
         "conditional_thunk.cc",
