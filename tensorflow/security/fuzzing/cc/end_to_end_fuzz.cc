@@ -21,13 +21,18 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/security/fuzzing/cc/core/framework/datatype_domains.h"
+#include "tensorflow/security/fuzzing/cc/core/framework/tensor_domains.h"
+#include "tensorflow/security/fuzzing/cc/core/framework/tensor_shape_domains.h"
 
 namespace tensorflow::fuzzing {
 namespace {
 
 // Fuzzer that loads an arbitrary model and performs inference using a fixed
 // input.
-void FuzzEndToEnd(const SavedModel& model) {
+void FuzzEndToEnd(
+    const SavedModel& model,
+    const std::vector<std::pair<std::string, tensorflow::Tensor>>& input_dict) {
   SavedModelBundle bundle;
   const SessionOptions session_options;
   const RunOptions run_options;
@@ -41,30 +46,24 @@ void FuzzEndToEnd(const SavedModel& model) {
     return;
   }
 
-  // Create a simple inference using the model.
-  tensorflow::Tensor input_1(tensorflow::DT_FLOAT,
-                             tensorflow::TensorShape({1, 100}));
-  tensorflow::Tensor input_2(tensorflow::DT_FLOAT,
-                             tensorflow::TensorShape({1, 100}));
-
-  auto input_mat_1 = input_1.matrix<float>();
-  auto input_mat_2 = input_2.matrix<float>();
-  for (unsigned i = 0; i < 100; ++i) {
-    input_mat_1(0, i) = 1.0;
-    input_mat_2(0, i) = 2.0;
-  }
-
-  const std::vector<std::pair<std::string, tensorflow::Tensor>> tensor_dict(
-      {{"fuzz_arg0:0", input_1}, {"fuzz_arg1:0", input_2}});
-
   // Create output placeholder tensors for results
   std::vector<tensorflow::Tensor> outputs;
   std::vector<std::string> output_names = {"fuzz_out:0", "fuzz_out:1"};
   tensorflow::Status status_run =
-      bundle.session->Run(tensor_dict, output_names, {}, &outputs);
+      bundle.session->Run(input_dict, output_names, {}, &outputs);
 }
 
-FUZZ_TEST(End2EndFuzz, FuzzEndToEnd);
+FUZZ_TEST(End2EndFuzz, FuzzEndToEnd)
+    .WithDomains(
+        fuzztest::Arbitrary<SavedModel>(),
+        fuzztest::VectorOf(fuzztest::PairOf(fuzztest::Arbitrary<std::string>(),
+                                            fuzzing::AnyValidTensor(
+                                                fuzzing::AnyValidTensorShape(
+                                                    /*max_rank=*/3,
+                                                    /*dim_lower_bound=*/0,
+                                                    /*dim_upper_bound=*/20),
+                                                fuzzing::AnyValidDataType())))
+            .WithMaxSize(6));
 
 }  // namespace
 }  // namespace tensorflow::fuzzing
