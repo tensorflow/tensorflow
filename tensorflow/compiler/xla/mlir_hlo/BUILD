@@ -1492,6 +1492,7 @@ cc_library(
         "gml_st/transforms/fusion/fusion.h",
         "gml_st/transforms/passes.h",
         "gml_st/transforms/peeling/peeling.h",
+        "gml_st/transforms/scalarization/scalarization.h",
         "gml_st/transforms/tiling/tiling.h",
         "gml_st/transforms/vectorization/vectorization.h",
         "gml_st/utils/linalg_utils.h",
