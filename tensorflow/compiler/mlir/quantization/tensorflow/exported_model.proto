@@ -4,6 +4,7 @@ package tensorflow.quantization;
 
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/protobuf/meta_graph.proto";
+import "tensorflow/core/protobuf/saver.proto";
 
 option cc_enable_arenas = true;
 
@@ -11,25 +12,19 @@ option cc_enable_arenas = true;
 // metadata required for building a SavedModel. This message is primarily used
 // to "export" the model produced from various quantization passes in c++ to
 // Python layer.
-// Next ID: 10
+// Next ID: 11
 message ExportedModel {
-  reserved 4;
+  reserved 3, 4, 7, 9;
   reserved 'variable_shared_names';
+  reserved 'restore_node_name';
+  reserved 'save_node_name';
+  reserved 'file_prefix_tensor_name';
 
   GraphDef graph_def = 1;
 
   // Name of the initialization node (TF Operation) used for initializing
   // resources like hash tables upon loading.
   string init_node_name = 2;
-
-  // Name of the restore node. When fetched it runs the `RestoreV2` op that
-  // restores variables from the checkpoint file specified by `checkpoint_dir`.
-  string restore_node_name = 3;
-
-  // Name of the save node. When fetched it runs the `SaveV2` op that saves
-  // variables to the checkpoint file specified by `checkpoint_dir`. The op
-  // should output the file prefix (equal to the checkpoint_dir) string tensor.
-  string save_node_name = 7;
 
   // Path to the directory where checkpoint files are saved. This directoy is
   // not expected to be persistent (usually a temporary directory). When
@@ -49,7 +44,9 @@ message ExportedModel {
   // should be fed.
   repeated AssetFileDef asset_file_defs = 8;
 
-  // Name of the tensor that contains a string tensor for the "file_prefix"
-  // tensor. See the comments in `checkpoint_dir` for details.
-  string file_prefix_tensor_name = 9;
+  // SaverDef including the information required for saving and restoring
+  // variables. This field is not set if there are no variables in the exported
+  // graph. If set, the fields `version`, `filename_tensor_name`,
+  // `restore_op_name` and `save_tensor_name` are populated.
+  SaverDef saver_def = 10;
 }

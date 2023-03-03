@@ -267,10 +267,8 @@ def save_model_v1(
     signature_def_map: _SignatureDefMap,
     tags: Collection[str],
     init_op_name: Optional[str] = None,
-    restore_op_name: Optional[str] = None,
-    save_op_name: Optional[str] = None,
+    saver_def: Optional[saver_pb2.SaverDef] = None,
     checkpoint_dir: Optional[str] = None,
-    file_prefix_tensor_name: Optional[str] = None,
     function_aliases: Optional[Mapping[str, str]] = None,
     asset_file_defs: Sequence[meta_graph_pb2.AssetFileDef] = (),
 ) -> None:
@@ -285,13 +283,10 @@ def save_model_v1(
     signature_def_map: Mapping of signature def key -> SignatureDef.
     tags: Tags for the meta graph def.
     init_op_name: Name of the node for initialization.
-    restore_op_name: Name of the node for restoration.
-    save_op_name: Name of the node for saving variables.
+    saver_def: `saver_pb2.SaverDef` to create a `saver.Saver` from. The created
+      saver will be used to save and load variables. This may be `None` if no
+      variables exist in the graph.
     checkpoint_dir: Path to checkpoint file where variable values are saved.
-    file_prefix_tensor_name: Name of the string tensor for the file prefix,
-      which points to the checkpoint dir. String value for the checkpoint
-      directory will be fed to this tensor during model loading to restore
-      variables.
     function_aliases: Function name -> function alias mapping.
     asset_file_defs: `AssetFileDef`s that associates the asset files and the
       name of the tensors to which the asset file names should be fed. The
@@ -323,21 +318,9 @@ def save_model_v1(
           asset_any_proto,
       )
 
-    # `restore_op_name` and `save_op_name` are non-empty & non-None when
-    # variables should be restored / saved.
     model_saver = None
-    if restore_op_name and save_op_name and file_prefix_tensor_name:
-      # TODO(b/268594921): Create SaverDef from the c++ side and pass it along
-      # to the python side.
-      saver_def = saver_pb2.SaverDef(
-          filename_tensor_name=file_prefix_tensor_name,
-          restore_op_name=restore_op_name,
-          # :0 attached to indicate the first result tensor, which should be
-          # the file prefix string tensor.
-          save_tensor_name=f'{save_op_name}:0',
-          version=saver_pb2.SaverDef.V2,
-      )
-
+    # If `saver_def` is not None, it means there are variables in the graph.
+    if saver_def:
       model_saver = saver.Saver(saver_def=saver_def)
       logging.info('Saver created with SaverDef: %s', saver_def)
 
