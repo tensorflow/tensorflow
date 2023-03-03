@@ -21,6 +21,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import math_ops
@@ -141,7 +142,7 @@ def _tf_ag_dataset_len(s):
   # In case there are more UNKNOWN cases for dataset, we could
   # use dataset.reduce() to find out the length (in an expensive way).
   with ops.control_dependencies([
-      control_flow_ops.Assert(
+      control_flow_assert.Assert(
           math_ops.logical_and(
               math_ops.not_equal(l, dataset_ops.INFINITE),
               math_ops.not_equal(l, dataset_ops.UNKNOWN)), [msg])

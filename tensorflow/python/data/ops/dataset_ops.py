@@ -50,6 +50,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_io_ops
@@ -1286,7 +1287,7 @@ class DatasetV2(
           "No files matched pattern: ",
           string_ops.reduce_join(file_pattern, separator=", "), name="message")
 
-      assert_not_empty = control_flow_ops.Assert(
+      assert_not_empty = control_flow_assert.Assert(
           condition, [message], summarize=1, name="assert_not_empty")
       with ops.control_dependencies([assert_not_empty]):
         matching_files = array_ops.identity(matching_files)
