@@ -537,17 +537,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 
 // -----
 
-// Tests that warning is emitted when an initializer function does not have the
+// Tests that an error is emitted when an initializer function does not have the
 // tf_saved_model.initializer_type attribute.
 
-// CHECK-LABEL: module attributes
+// expected-error @below {{Validation on initializer functions failed.}}
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1228 : i32}, tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() {initializers = [@NoOp]} : () -> ()
-// Check that the initializers attribute is untouched.
-// CHECK: "tf_saved_model.session_initializer"()
-// CHECK-SAME: initializers = []
 
-  // expected-warning @+1 {{Initializer func op does not have tf_saved_model.initializer_type attribute. Func op: NoOp}}
+  // expected-error @below {{Initializer func op does not have tf_saved_model.initializer_type attribute. Func op: NoOp}}
   func.func @NoOp()
     attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"]} {
     tf_executor.graph {
@@ -563,10 +560,4 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     }
     return
   }
-// CHECK: func.func @main()
-// CHECK-NEXT: tf_executor.graph
-// CHECK: %[[OUT:.*]], %[[CTL:.*]] = tf_executor.island wraps "tf.Const"() {{{.*value = dense<1> : tensor<1xi64>.*}}}
-// CHECK: %[[CTL_0:.*]] = tf_executor.island(%[[CTL]]) wraps "tf.NoOp"() : () -> ()
-// CHECK: tf_executor.fetch %[[CTL_0]] : !tf_executor.control
-// CHECK: return
 }

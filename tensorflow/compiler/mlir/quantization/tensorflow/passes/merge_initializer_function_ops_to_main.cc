@@ -25,7 +25,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
@@ -35,7 +34,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/tensorflow/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -49,12 +47,11 @@ namespace {
 using ::mlir::tf_executor::FetchOp;
 using ::mlir::tf_executor::GraphOp;
 using ::mlir::tf_executor::IslandOp;
+using ::mlir::tf_saved_model::GetInitializerFunctions;
 using ::mlir::tf_saved_model::GetSessionInitializerOp;
-using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
 using ::mlir::tf_saved_model::SessionInitializerOp;
 using ::tensorflow::kImportModelDefaultGraphFuncName;
-using ::tensorflow::quantization::kInitOpNamePrefix;
 
 // This pass moves all ops from initializer functions to the main function. A
 // new `tf.NoOp` that has control dependency to the initializer function for
@@ -134,25 +131,16 @@ std::string GetTypeName(const Type type) {
 }
 
 // Retrieves the value of `tf_saved_model.initializer_type` attribute from the
-// initializer function. Returns "unknown_initializer_type" iff the attribute is
-// not set.
+// initializer function. Assumes that there exists such an attribute.
 std::string GetInitializerType(func::FuncOp init_func_op) {
-  const auto initializer_type_attr =
-      init_func_op->getAttrOfType<StringAttr>(kTfSavedModelInitializerTypeAttr);
-
-  if (!initializer_type_attr) {
-    init_func_op->emitWarning()
-        << "Initializer func op does not have tf_saved_model.initializer_type "
-           "attribute. Func op: "
-        << init_func_op.getSymName();
-    return "unknown_initializer_type";
-  }
-
-  return initializer_type_attr.str();
+  return init_func_op
+      ->getAttrOfType<StringAttr>(kTfSavedModelInitializerTypeAttr)
+      .str();
 }
 
 // An initializer function should satisfy the follwing conditions:
 // * Its GraphOp should only have control outputs.
+// * "tf_saved_model.initializer_type" attribute must exist.
 LogicalResult ValidateInitFunc(func::FuncOp init_func_op) {
   GraphOp graph_op = GetGraphOpFromFuncOp(init_func_op);
   if (!graph_op) return success();  // Consider empty FuncOp valid.
@@ -169,6 +157,15 @@ LogicalResult ValidateInitFunc(func::FuncOp init_func_op) {
     }
   }
 
+  if (const auto init_type_attr = init_func_op->getAttrOfType<StringAttr>(
+          kTfSavedModelInitializerTypeAttr);
+      !init_type_attr) {
+    return init_func_op->emitError() << "Initializer func op does not have "
+                                        "tf_saved_model.initializer_type "
+                                        "attribute. Func op: "
+                                     << init_func_op.getSymName();
+  }
+
   return success();
 }
 
@@ -176,23 +173,15 @@ LogicalResult ValidateInitFunc(func::FuncOp init_func_op) {
 // initializers. The initializer functions are validated for whether it can be
 // moved to the main function. Returns failure() iff validation fails.
 FailureOr<absl::flat_hash_map<std::string, func::FuncOp>> GetInitFuncOps(
-    SessionInitializerOp session_init_op, SymbolTable symbol_table) {
-  const auto initializer_symbol_refs =
-      session_init_op.getInitializersAttr()
-          .getAsValueRange<FlatSymbolRefAttr>();
-
+    ModuleOp module_op) {
   absl::flat_hash_map<std::string, func::FuncOp> init_func_ops;
 
-  for (auto initializer_symbol_ref : initializer_symbol_refs) {
-    auto init_func_op =
-        symbol_table.lookup<func::FuncOp>(initializer_symbol_ref);
-
+  for (func::FuncOp init_func_op : GetInitializerFunctions(module_op)) {
     if (failed(ValidateInitFunc(init_func_op))) {
       return failure();
     }
 
-    const std::string initializer_type = GetInitializerType(init_func_op);
-    init_func_ops[initializer_type] = init_func_op;
+    init_func_ops[GetInitializerType(init_func_op)] = init_func_op;
   }
 
   return init_func_ops;
@@ -379,7 +368,7 @@ void MergeInitializerFunctionOpsToMainPass::runOnOperation() {
   // initializer_type -> init_func_op mapping.
   SymbolTable symbol_table{module_op};
   FailureOr<absl::flat_hash_map<std::string, func::FuncOp>> init_func_ops =
-      GetInitFuncOps(session_init_op, symbol_table);
+      GetInitFuncOps(module_op);
   if (failed(init_func_ops)) {
     module_op->emitError("Validation on initializer functions failed.");
     return signalPassFailure();
