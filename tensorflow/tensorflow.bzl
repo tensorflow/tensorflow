@@ -2507,6 +2507,11 @@ def py_test(deps = [], data = [], kernels = [], exec_properties = None, **kwargs
         **kwargs
     )
 
+register_extension_info(
+    extension = py_test,
+    label_regex_for_dep = "{extension_name}",
+)
+
 # Similar to py_test above, this macro is used to exclude dependencies for some py_binary
 # targets in order to reduce the size of //tensorflow/tools/pip_package:simple_console_windows.
 # See https://github.com/tensorflow/tensorflow/issues/22390
@@ -2630,6 +2635,11 @@ def tf_py_test(
             deps = depset(deps + xla_test_true_list),
             **kwargs
         )
+
+register_extension_info(
+    extension = tf_py_test,
+    label_regex_for_dep = "{extension_name}(_tfrt)?",
+)
 
 def gpu_py_test(
         name,
