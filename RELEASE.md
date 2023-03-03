@@ -27,7 +27,7 @@
         * If you use masked losses with Keras the loss values may be different in TensorFlow `2.12` compared to previous versions.
         * In cases where the mask was previously ignored, you will now get an error if you pass a mask with an incompatible shape.
 
-*   For using TensorFlow GPU on Windows, you will need to install TensorFlow in Windows Subsystem for Linux (WSL2).  Support for the native Windows GPU package was dropped in 2.11.
+*   Starting TensorFlow 2.11, for using TensorFlow GPU on Windows, you will need to install TensorFlow in Windows Subsystem for Linux (WSL2).
 
 ## Major Features and Improvements
 
