@@ -3921,7 +3921,6 @@ tf_kernel_library(
         "conv_grad_input_ops.h",
         "conv_grad_ops.h",
         "conv_ops_fused_impl.h",
-        "conv_ops_impl.h",
         "deep_conv2d.h",
         "fill_functor.h",
         "gemm_functors.h",
@@ -3952,6 +3951,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/lib:scoped_annotation",
+        "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/util:image_resizer_state",
         "//tensorflow/core/util/proto:proto_utils",
     ] + if_cuda([
