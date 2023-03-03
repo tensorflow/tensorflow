@@ -134,9 +134,8 @@ class BatchResourceBase : public ResourceBase {
         batcher_(std::move(batcher)),
         batcher_queue_options_(batcher_queue_options),
         allowed_batch_sizes_(std::move(allowed_batch_sizes)),
-        disable_padding_(batcher_queue_options.disable_padding) {
-    allowed_batch_sizes_str_ = absl::StrJoin(allowed_batch_sizes_, ",");
-  }
+        allowed_batch_sizes_str_(absl::StrJoin(allowed_batch_sizes_, ",")),
+        disable_padding_(batcher_queue_options.disable_padding) {}
 
   BatchResourceBase(bool has_process_batch_function,
                     std::shared_ptr<AdaptiveBatcherT> batcher,
@@ -146,6 +145,7 @@ class BatchResourceBase : public ResourceBase {
         adaptive_batcher_(std::move(batcher)),
         adaptive_batcher_queue_options_(batcher_queue_options),
         allowed_batch_sizes_(std::move(allowed_batch_sizes)),
+        allowed_batch_sizes_str_(absl::StrJoin(allowed_batch_sizes_, ",")),
         disable_padding_(batcher_queue_options.disable_padding) {}
 
   static BatcherT::QueueOptions GetBatcherQueueOptions(
