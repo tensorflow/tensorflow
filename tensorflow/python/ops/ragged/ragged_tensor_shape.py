@@ -20,6 +20,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
@@ -386,7 +387,7 @@ class RaggedTensorDynamicShape:
       lengths = array_ops.where(
           math_ops.equal(axis_dim_size, 1), lengths, axis_dim_size)
       repeats = array_ops.where(math_ops.equal(axis_dim_size, 1), lengths, 1)
-      splits = array_ops.stack([0, self.num_slices_in_dimension(axis)])
+      splits = array_ops_stack.stack([0, self.num_slices_in_dimension(axis)])
     else:
       splits = math_ops.range(
           array_ops.size(lengths, out_type=self.dim_size_dtype) + 1)
@@ -577,7 +578,7 @@ def _broadcast_to_ragged_shape(rt_input, dst_shape, broadcast_inner_dimensions):
         multiples[axis] = array_ops.where(
             math_ops.equal(src_size, 1), dst_size, 1)
   if not all(isinstance(v, int) and v == 1 for v in multiples):
-    multiples = array_ops.stack(multiples, axis=0)
+    multiples = array_ops_stack.stack(multiples, axis=0)
     rt_input = ragged_array_ops.tile(rt_input, multiples)
 
   if broadcast_inner_dimensions:

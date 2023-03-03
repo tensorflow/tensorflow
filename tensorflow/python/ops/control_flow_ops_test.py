@@ -39,6 +39,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
@@ -1158,7 +1159,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     with ops.Graph().as_default() as g:
       nbranches = 7
-      matrices = array_ops.unstack(  # Ensure all are ready before while.
+      matrices = array_ops_stack.unstack(  # Ensure all are ready before while.
           array_ops.matrix_diag(
               random_ops.random_uniform([nbranches, 8, 512]) + 1e-3))
 

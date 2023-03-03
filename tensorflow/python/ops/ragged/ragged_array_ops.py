@@ -23,6 +23,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -634,8 +635,8 @@ def stack_dynamic_partitions(data, partitions, num_partitions, name=None):
       # If partitions is a scalar, then just create a RaggedTensor containing
       # that single the complete `data` value in the specified row.
       return ragged_tensor.RaggedTensor.from_value_rowids(
-          values=array_ops.stack([data]),
-          value_rowids=array_ops.stack([partitions]),
+          values=array_ops_stack.stack([data]),
+          value_rowids=array_ops_stack.stack([partitions]),
           nrows=num_partitions,
           validate=False)
 

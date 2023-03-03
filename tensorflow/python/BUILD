@@ -1862,6 +1862,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":array_ops_stack",
         ":linalg_ops_gen",
         ":linalg_ops_impl",
         ":math_ops",
@@ -1879,6 +1880,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":array_ops_stack",
         ":linalg_ops_gen",
         ":linalg_ops_impl",
         ":math_ops",
@@ -2308,6 +2310,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":array_ops_stack",
         ":math_ops",
         ":random_index_shuffle_ops_gen",
         ":shape_util",

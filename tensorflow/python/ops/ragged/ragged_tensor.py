@@ -35,6 +35,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_ragged_conversion_ops
@@ -1375,7 +1376,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
             math_ops.cast(d, out_type) for d in ragged_dimensions
         ]
       bbox = array_ops.concat(
-          [array_ops.stack(ragged_dimensions), inner_dimensions], axis=0)
+          [array_ops_stack.stack(ragged_dimensions), inner_dimensions], axis=0)
       return bbox if axis is None else array_ops.gather(bbox, axis)
 
   #=============================================================================
@@ -1833,7 +1834,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       if (isinstance(shape, (list, tuple)) and
           any(isinstance(v, ops.Tensor) for v in shape) and
           all(isinstance(v, (int, ops.Tensor)) for v in shape)):
-        shape = array_ops.stack(shape)
+        shape = array_ops_stack.stack(shape)
 
       shape_tensor = _shape_as_tensor(shape, row_partition_tensors[0].dtype)
       tensor = gen_ragged_conversion_ops.ragged_tensor_to_tensor(
