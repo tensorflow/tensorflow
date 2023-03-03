@@ -37,6 +37,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -87,7 +88,7 @@ def _unused_handle():
       "Try saving a tf.function with input_signature instead, and file a bug if"
       " there are still issues.")
 
-  assert_op = control_flow_ops.Assert(
+  assert_op = control_flow_assert.Assert(
       array_ops.placeholder_with_default(False, shape=()), [error_message])
   if (not context.executing_eagerly()
      ) and ops.get_default_graph().building_function:
