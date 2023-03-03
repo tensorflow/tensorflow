@@ -22,6 +22,7 @@ limitations under the License.
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
+#include "mlir/Dialect/Affine/ViewLikeInterfaceUtils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -42,6 +43,7 @@ namespace {
 
 using linalg::LinalgOp;
 using tensor::ExtractOp;
+using tensor::ExtractSliceOp;
 using tensor::FromElementsOp;
 using tensor::InsertOp;
 
@@ -428,8 +430,7 @@ LogicalResult scalarizeConcatenateOp(thlo::ConcatenateOp concatenateOp,
   }
 
   auto materializeAndInsert = [&](OpBuilder &b, Location l, Value input) {
-    Value slice =
-        b.create<tensor::ExtractSliceOp>(l, input, offsets, sizes, strides);
+    Value slice = b.create<ExtractSliceOp>(l, input, offsets, sizes, strides);
     return b.create<tensor::InsertSliceOp>(l, slice, initTensor, offsets, sizes,
                                            strides);
   };
@@ -554,6 +555,29 @@ LogicalResult scalarizeReverseOp(thlo::ReverseOp reverseOp,
   return scalarizeOp(reverseOp, rewriter, input, output);
 }
 
+FailureOr<ExtractSliceOp> insertComposedSlice(OpBuilder &b, Location loc,
+                                              RankedTensorType type,
+                                              Value tensor,
+                                              ArrayRef<OpFoldResult> offsets,
+                                              ArrayRef<OpFoldResult> sizes,
+                                              ArrayRef<OpFoldResult> strides) {
+  auto extractSliceOp = tensor.getDefiningOp<ExtractSliceOp>();
+  if (!extractSliceOp)
+    return b.create<ExtractSliceOp>(loc, type, tensor, offsets, sizes, strides);
+
+  SmallVector<OpFoldResult> combinedOffsets, combinedSizes, combinedStrides;
+  if (failed(mergeOffsetsSizesAndStrides(
+          b, loc, offsets, sizes, strides, extractSliceOp.getDroppedDims(),
+          extractSliceOp.getMixedOffsets(), extractSliceOp.getMixedSizes(),
+          extractSliceOp.getMixedStrides(), combinedOffsets, combinedSizes,
+          combinedStrides)))
+    return failure();
+
+  return b.create<ExtractSliceOp>(loc, type, extractSliceOp.getSource(),
+                                  combinedOffsets, combinedSizes,
+                                  combinedStrides);
+}
+
 LogicalResult scalarizeScatterOp(thlo::ScatterOp scatterOp,
                                  PatternRewriter &rewriter) {
   Location loc = scatterOp.getLoc();
@@ -609,12 +633,14 @@ LogicalResult scalarizeScatterOp(thlo::ScatterOp scatterOp,
           // Create rank-reducing `tensor.extract_slice` to avoid insertion of
           // `tensor.collapse_shape` to get rid of the outer size-1 dimension.
           RankedTensorType resultType =
-              tensor::ExtractSliceOp::inferCanonicalRankReducedResultType(
+              ExtractSliceOp::inferCanonicalRankReducedResultType(
                   /*resultRank=*/updatesRank - 1,
                   updatesType.cast<RankedTensorType>(), offsets,
                   updatesDimSizes, strides);
-          Value extracted = thenBuilder.create<tensor::ExtractSliceOp>(
-              thenLoc, resultType, updates, offsets, updatesDimSizes, strides);
+          FailureOr<ExtractSliceOp> extractedOr =
+              insertComposedSlice(thenBuilder, thenLoc, resultType, updates,
+                                  offsets, updatesDimSizes, strides);
+          Value extracted = extractedOr->getResult();
 
           // Insert resized `updates` into `init`.
           Value inserted = thenBuilder.create<tensor::InsertSliceOp>(
@@ -625,13 +651,17 @@ LogicalResult scalarizeScatterOp(thlo::ScatterOp scatterOp,
         }
 
         // Extract a slice form `init`.
-        Value extracted = thenBuilder.create<tensor::ExtractSliceOp>(
+        Value extracted = thenBuilder.create<ExtractSliceOp>(
             thenLoc, init, collapsedOffsets, collapsedSizes, collapsedStrides);
 
         // Reduce `updates` into that slice.
+        Value updatesToReduce = updates;
+        if (auto updatesSlice = updates.getDefiningOp<ExtractSliceOp>()) {
+          updatesToReduce = thenBuilder.clone(*updatesSlice)->getResult(0);
+        }
         auto reduced = thenBuilder.create<linalg::ReduceOp>(
-            thenLoc, extracted.getType().cast<RankedTensorType>(), updates,
-            extracted, ArrayRef<int64_t>({0}));
+            thenLoc, extracted.getType().cast<RankedTensorType>(),
+            updatesToReduce, extracted, ArrayRef<int64_t>({0}));
         reduced.getRegion().takeBody(scatterOp.getBodyRegion());
 
         Operation *yield = reduced.getBlock()->getTerminator();

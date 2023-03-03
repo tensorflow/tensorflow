@@ -14,7 +14,7 @@ func.func @scatter_small_vector_dim(%indices: tensor<?x2xindex>,
 
 // CHECK-LABEL: @scatter_small_vector_dim
 // CHECK:       scf.for
-// CHECK-COUNT-3: tensor.extract_slice
+// CHECK-COUNT-2: tensor.extract_slice
 // CHECK:         scf.if
 // CHECK:           tensor.extract_slice
 // CHECK:           linalg.reduce
