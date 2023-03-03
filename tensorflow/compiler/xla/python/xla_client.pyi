@@ -217,3 +217,9 @@ def array_result_handler(
                committed: bool,
                _skip_checks: bool = ...) -> Callable:
   ...
+
+
+def register_custom_call_target(
+    name: str, fn: Callable, platform: str = ...
+) -> None:
+  ...

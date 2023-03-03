@@ -21,7 +21,7 @@ import gzip
 import inspect
 import logging
 import os
-from typing import List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, List, Mapping, Optional, Sequence, Tuple, Union
 
 from . import xla_extension as _xla
 import numpy as np
@@ -467,7 +467,9 @@ PmapSharding = _xla.PmapSharding
 GSPMDSharding = _xla.GSPMDSharding
 
 
-def register_custom_call_target(name, fn, platform='cpu'):
+def register_custom_call_target(
+    name: str, fn: Any, platform: str = 'cpu'
+) -> None:
   """Registers a custom call target.
 
   Args:
