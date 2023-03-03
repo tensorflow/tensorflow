@@ -156,6 +156,17 @@ static flatbuffers::Offset<::stablehlo::flatbuf::Operator> CreateDotOperator(
                                               outputs);
 }
 
+static flatbuffers::Offset<::stablehlo::flatbuf::Operator> CreateClampOperator(
+    mlir::stablehlo::ClampOp& hlo_op, flatbuffers::FlatBufferBuilder* fbb,
+    uint32_t opcode_index, const std::vector<int32_t>& operands,
+    const std::vector<int32_t>& results) {
+  auto inputs = fbb->CreateVector(operands);
+  auto outputs = fbb->CreateVector(results);
+
+  return ::stablehlo::flatbuf::CreateOperator(*fbb, opcode_index, inputs,
+                                              outputs);
+}
+
 static flatbuffers::Offset<::stablehlo::flatbuf::Operator>
 CreateLogisticOperator(mlir::stablehlo::LogisticOp& hlo_op,
                        flatbuffers::FlatBufferBuilder* fbb,
@@ -167,6 +178,24 @@ CreateLogisticOperator(mlir::stablehlo::LogisticOp& hlo_op,
 
   return ::stablehlo::flatbuf::CreateOperator(*fbb, opcode_index, inputs,
                                               outputs);
+}
+
+static flatbuffers::Offset<::stablehlo::flatbuf::Operator>
+CreateConcatenateOperator(mlir::stablehlo::ConcatenateOp& hlo_op,
+                          flatbuffers::FlatBufferBuilder* fbb,
+                          uint32_t opcode_index,
+                          const std::vector<int32_t>& operands,
+                          const std::vector<int32_t>& results) {
+  auto inputs = fbb->CreateVector(operands);
+  auto outputs = fbb->CreateVector(results);
+
+  auto options = ::stablehlo::flatbuf::CreateConcatenateOptions(
+      *fbb, hlo_op.getDimension());
+
+  return ::stablehlo::flatbuf::CreateOperator(
+      *fbb, opcode_index, inputs, outputs,
+      ::stablehlo::flatbuf::OperatorOptions_ConcatenateOptions,
+      options.Union());
 }
 
 static flatbuffers::Offset<::stablehlo::flatbuf::Operator>
@@ -288,8 +317,18 @@ CreateBroadcastInDimOperator(mlir::stablehlo::BroadcastInDimOp& hlo_op,
   auto inputs = fbb->CreateVector(operands);
   auto outputs = fbb->CreateVector(results);
 
-  return ::stablehlo::flatbuf::CreateOperator(*fbb, opcode_index, inputs,
-                                              outputs);
+  std::vector<int64_t> broadcast_dimension_vec =
+      GetOptionalVector<int64_t>(hlo_op.getBroadcastDimensions(), 0, 0);
+
+  auto broadcast_dimension = fbb->CreateVector(broadcast_dimension_vec);
+
+  auto options = ::stablehlo::flatbuf::CreateBroadcastInDimOptions(
+      *fbb, broadcast_dimension);
+
+  return ::stablehlo::flatbuf::CreateOperator(
+      *fbb, opcode_index, inputs, outputs,
+      ::stablehlo::flatbuf::OperatorOptions_BroadcastInDimOptions,
+      options.Union());
 }
 
 static flatbuffers::Offset<::stablehlo::flatbuf::Operator>
@@ -351,6 +390,11 @@ CreateFlatBufferOperator(mlir::Operation* op, uint32_t opcode_index,
   if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::CustomCallOp>(op))
     return CreateResizeBilinearOperator(hlo_op, fbb, opcode_index, operands,
                                         results);
+  if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::ClampOp>(op))
+    return CreateClampOperator(hlo_op, fbb, opcode_index, operands, results);
+  if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::ConcatenateOp>(op))
+    return CreateConcatenateOperator(hlo_op, fbb, opcode_index, operands,
+                                     results);
   return std::nullopt;
 }
 
@@ -386,11 +430,17 @@ llvm::Optional<::stablehlo::flatbuf::OperatorCode> GetOpCode(
     return ::stablehlo::flatbuf::OperatorCode_BROADCAST_IN_DIM;
   if (isa<mlir::stablehlo::ReduceWindowOp>(op))
     return ::stablehlo::flatbuf::OperatorCode_REDUCE_WINDOW;
+  if (isa<mlir::stablehlo::ClampOp>(op))
+    return ::stablehlo::flatbuf::OperatorCode_CLAMP;
+  if (isa<mlir::stablehlo::ConcatenateOp>(op))
+    return ::stablehlo::flatbuf::OperatorCode_CONCATENATE;
 
   // For now we assume the incoming custom op is a resize_bilinear, it is
   // expected any other custom op will cause the program to error out
   if (isa<mlir::stablehlo::CustomCallOp>(op))
     return ::stablehlo::flatbuf::OperatorCode_RESIZE_BILINEAR;
+
+  op->emitError(Twine("unsupported op type"));
   return std::nullopt;
 }
 
