@@ -391,6 +391,8 @@ class TensorHandleInterface
     return ptr->getKind() == kTfrt;
   }
 
+  tensorflow::FullTypeDef FullType() const override { return full_type_; }
+
  private:
   llvm::Optional<const TensorMetadata*> Metadata() const;
 
@@ -407,6 +409,8 @@ class TensorHandleInterface
 
   // Value of tfrt::TensorHandle.
   Value value_;
+
+  tensorflow::FullTypeDef full_type_;
 };
 
 template <typename T>

@@ -208,6 +208,7 @@ TEST_F(PackedTensorHandleTest, PackedHandle) {
     TF_ASSERT_OK(packed_handle->ExtractPackedHandle(i, &h));
     EXPECT_EQ(h->device(), ListDevices().at(i));
     EXPECT_EQ(h->Type(), expected_handle_types.at(i));
+    EXPECT_EQ(h->FullType().type_id(), TFT_UNSET);
   }
   EXPECT_FALSE(IsReady(packed_handle));
 
