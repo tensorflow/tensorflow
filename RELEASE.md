@@ -1,3 +1,11 @@
+# Release 2.11.1
+
+**Note**: TensorFlow 2.10 was the last TensorFlow release that supported GPU on native-Windows. Starting with TensorFlow 2.11, you will need to install TensorFlow in WSL2, or install tensorflow-cpu (developed by Intel, see 2.11.0 release notes) and, optionally, try the TensorFlow-DirectML-Plugin.
+
+This release also introduces several vulnerability fixes:
+
+* TODO (in another PR)
+
 # Release 2.11.0
 
 ## Breaking Changes
@@ -17,8 +25,6 @@
     The old Keras optimizer will never be deleted, but will not see any new feature additions. New optimizers (for example, `tf.keras.optimizers.Adafactor`) will only be implemented based on the new `tf.keras.optimizers.Optimizer` base class.
 
 *   `tensorflow/python/keras` code is a legacy copy of Keras since the TensorFlow v2.7 release, and will be deleted in the v2.12 release. Please remove any import of `tensorflow.python.keras` and use the public API with `from tensorflow import keras` or `import tensorflow as tf; tf.keras`.
-
-*   TensorFlow 2.10 was the last TensorFlow release that supported GPU on native-Windows. Starting with TensorFlow 2.11, you will need to install TensorFlow in WSL2, or install tensorflow-cpu and, optionally, try the TensorFlow-DirectML-Plugin.
 
 ## Major Features and Improvements
 
