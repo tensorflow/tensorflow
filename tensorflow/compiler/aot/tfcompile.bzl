@@ -17,6 +17,8 @@ tf_library(
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
+    "if_google",
+    "if_oss",
     "tf_cc_test",
     "tf_copts",
 )
@@ -346,18 +348,21 @@ def _tf_library(
         test_name = name + "_test"
         test_file = test_name + ".cc"
 
-        # Rule to rewrite test.cc to produce the test_file.
+        template_file = "//tensorflow/compiler/aot:test"
+        template_file += if_oss("", "_google") + ".cc"
+
+        # Rule to rewrite the template_file to produce the test_file.
         native.genrule(
             name = ("gen_" + test_name),
             testonly = 1,
             srcs = [
-                "//tensorflow/compiler/aot:test.cc",
+                template_file,
                 header_file,
             ],
             outs = [test_file],
             cmd = (
                 "sed " + sed_replace +
-                " $(location //tensorflow/compiler/aot:test.cc) " +
+                " $(location " + template_file + ") " +
                 "> $(OUTS)"
             ),
             tags = tags,
@@ -376,9 +381,14 @@ def _tf_library(
                 "//tensorflow/compiler/aot:tf_library_test_main",
                 "//tensorflow/compiler/xla:executable_run_options",
                 "//third_party/eigen3",
+            ] + if_oss([
                 "//tensorflow/core:lib",
                 "//tensorflow/core:test",
-            ],
+            ]) + if_google([
+                "@com_google_googletest//:gtest",
+                "//tensorflow/core/platform:byte_order",
+                "//tensorflow/core/platform:platform_port",
+            ]),
             tags = tags,
             extra_copts = copts,
         )
