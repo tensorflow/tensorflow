@@ -2321,7 +2321,7 @@ class DevicePlacementTest(test.TestCase, parameterized.TestCase):
     self.assertIn(compat.as_bytes('CPU:0'), outputs[3])
 
 
-if __name__ == '__main__':
+def setUpModule():
   ops.enable_eager_execution()
   cpus = config.list_physical_devices('CPU')
   # Set 4 virtual CPUs
@@ -2331,4 +2331,7 @@ if __name__ == '__main__':
       context.LogicalDeviceConfiguration(),
       context.LogicalDeviceConfiguration()
   ])
+
+
+if __name__ == '__main__':
   test.main()
