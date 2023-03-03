@@ -21,7 +21,7 @@ import gzip
 import inspect
 import logging
 import os
-from typing import List, Mapping, Optional, Sequence, Tuple, TypeAlias, Union
+from typing import List, Mapping, Optional, Sequence, Tuple, Union
 
 from . import xla_extension as _xla
 import numpy as np
@@ -55,7 +55,7 @@ xla_platform_names = {
 
 logger = logging.getLogger(__name__)
 
-_NameValueMapping: TypeAlias = Mapping[str, Union[str, int, List[int], float]]
+_NameValueMapping = Mapping[str, Union[str, int, List[int], float]]
 
 
 def make_interpreter_client():
