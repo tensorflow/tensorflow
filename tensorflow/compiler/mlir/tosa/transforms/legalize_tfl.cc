@@ -2106,7 +2106,7 @@ LogicalResult ConvertTFLReduceAllOp::matchAndRewrite(
   if (!matchPattern(tfl_all_op.getReductionIndices(), m_Constant(&axes_elems)))
     return rewriter.notifyMatchFailure(op, "fail to get reduction indices");
 
-  llvm::Optional<Value> result = convertReduceAllOp(
+  std::optional<Value> result = convertReduceAllOp(
       rewriter, op, output_type, tfl_all_op.getInput(), axes_elems);
 
   if (!result) return failure();

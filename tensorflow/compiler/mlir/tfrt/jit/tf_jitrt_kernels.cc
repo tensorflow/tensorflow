@@ -73,7 +73,6 @@ using ::std::any_cast;
 
 using ::llvm::cast;
 using ::llvm::Expected;
-using ::llvm::Optional;
 
 using ::tfrt::Argument;
 using ::tfrt::ArrayRef;
@@ -289,7 +288,7 @@ static const std::string GetSessionName(RequestContext* req_ctx) {
 
 static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     const CompilationUnitAttribute& kernel, const ExecutionContext& exec_ctx,
-    const Optional<TfJitRtPipelineOpts>& opts = std::nullopt) {
+    const std::optional<TfJitRtPipelineOpts>& opts = std::nullopt) {
   // Request context must be initialized with the tf_jitrt state.
   auto* state = exec_ctx.request_ctx()->GetDataIfExists<TfJitRtRequestState>();
   if (LLVM_UNLIKELY(!state))
@@ -821,7 +820,7 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
                         RemainingResults results, const StringAttribute& device,
                         const CompilationUnitAttribute& kernel,
                         const ExecutionContext& exec_ctx, bool debug,
-                        const Optional<TfJitRtPipelineOpts>& opts) {
+                        const std::optional<TfJitRtPipelineOpts>& opts) {
   VLOG(2) << "kernel_name: " << kernel.root_symbol().str()
           << ", operands: " << OperandsToString(operands);
 
@@ -882,7 +881,7 @@ static void ExecuteImplAndMaybeLogQueryOfDeath(
     RepeatedArguments<FallbackTensor> operands, RemainingResults results,
     const StringAttribute& device, const CompilationUnitAttribute& kernel,
     const ExecutionContext& exec_ctx, bool debug = false,
-    const Optional<TfJitRtPipelineOpts>& opts = std::nullopt) {
+    const std::optional<TfJitRtPipelineOpts>& opts = std::nullopt) {
   if (LLVM_LIKELY(!GetJitRtFlags().log_query_of_death)) {
     return ExecuteImpl(operands, results, device, kernel, exec_ctx, debug,
                        opts);

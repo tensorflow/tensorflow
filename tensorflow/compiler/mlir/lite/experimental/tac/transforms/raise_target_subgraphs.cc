@@ -136,7 +136,8 @@ void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(
   };
 
   auto op_has_device = [&](Operation& op, InferenceDeviceType& device) -> bool {
-    Optional<InferenceDeviceType> op_device = GetInferenceDeviceTypeForOp(&op);
+    std::optional<InferenceDeviceType> op_device =
+        GetInferenceDeviceTypeForOp(&op);
     if (!op_device.has_value()) return false;
     device = op_device.value();
     return true;

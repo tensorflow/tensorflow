@@ -2538,7 +2538,7 @@ OpFoldResult EnsureShapeOp::fold(FoldAdaptor) {
   ShapedType type = getInput().getType().dyn_cast<ShapedType>();
   if (!type || !type.hasRank()) return {};
   // If shape attribute equals input operand's type's shape, fold it to input.
-  Optional<llvm::ArrayRef<int64_t>> shape_constraint = getShape();
+  std::optional<llvm::ArrayRef<int64_t>> shape_constraint = getShape();
   if (type.getShape() == shape_constraint) return getInput();
 
   // If input operand's type's shape always satisfies the shape attribute, fold

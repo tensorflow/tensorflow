@@ -57,7 +57,6 @@ limitations under the License.
 #define kStablehloOptionalTensor (-1)
 
 using llvm::isa;
-using llvm::Optional;
 using llvm::StringRef;
 using llvm::Twine;
 using mlir::ElementsAttr;
@@ -356,7 +355,7 @@ CreateResizeBilinearOperator(mlir::stablehlo::CustomCallOp& hlo_op,
       options.Union());
 }
 
-llvm::Optional<flatbuffers::Offset<::stablehlo::flatbuf::Operator>>
+std::optional<flatbuffers::Offset<::stablehlo::flatbuf::Operator>>
 CreateFlatBufferOperator(mlir::Operation* op, uint32_t opcode_index,
                          const std::vector<int32_t>& operands,
                          const std::vector<int32_t>& results,
@@ -406,7 +405,7 @@ static StatusOr<::stablehlo::flatbuf::DataType> GetDataType(
   return ::stablehlo::flatbuf::DataType_FLOAT32;
 }
 
-llvm::Optional<::stablehlo::flatbuf::OperatorCode> GetOpCode(
+std::optional<::stablehlo::flatbuf::OperatorCode> GetOpCode(
     mlir::Operation* op) {
   if (isa<mlir::stablehlo::AddOp>(op))
     return ::stablehlo::flatbuf::OperatorCode_ADD;
@@ -449,7 +448,7 @@ static bool IsConst(Operation* op) {
              mlir::stablehlo::ConstantOp>(op);
 }
 
-Optional<std::string> Translator::Translate(
+std::optional<std::string> Translator::Translate(
     ModuleOp module, const toco::TocoFlags& toco_flags,
     const std::unordered_set<std::string>& tags,
     OpOrArgNameMapper* op_or_arg_name_mapper,
@@ -463,7 +462,7 @@ Optional<std::string> Translator::Translate(
   return translator.TranslateInternal();
 }
 
-Optional<std::string> Translator::TranslateInternal() {
+std::optional<std::string> Translator::TranslateInternal() {
   // A list of named regions in the module with main function being the first in
   // the list. The main function is required as the first subgraph in the model
   // is entry point for the model.
@@ -569,8 +568,9 @@ Optional<std::string> Translator::TranslateInternal() {
                      builder_.GetSize());
 }
 
-Optional<BufferOffset<::stablehlo::flatbuf::Tensor>> Translator::BuildTensor(
-    Value value, const std::string& name, unsigned buffer_idx) {
+std::optional<BufferOffset<::stablehlo::flatbuf::Tensor>>
+Translator::BuildTensor(Value value, const std::string& name,
+                        unsigned buffer_idx) {
   auto type = value.getType().cast<TensorType>();
 
   auto check_shape =
@@ -671,7 +671,7 @@ std::string Translator::UniqueName(mlir::Value val) {
   return std::string(name_mapper_.GetUniqueName(val));
 }
 
-Optional<BufferOffset<::stablehlo::flatbuf::SubGraph>>
+std::optional<BufferOffset<::stablehlo::flatbuf::SubGraph>>
 Translator::BuildSubGraph(const std::string& name, Region* region, int index) {
   bool has_input_attr = false;
   if (auto fn = dyn_cast<FuncOp>(region->getParentOp())) {
@@ -791,8 +791,8 @@ Translator::BuildSubGraph(const std::string& name, Region* region, int index) {
       /*name=*/builder_.CreateString(name));
 }
 
-Optional<BufferOffset<::stablehlo::flatbuf::Buffer>> Translator::BuildBuffer(
-    mlir::Value value) {
+std::optional<BufferOffset<::stablehlo::flatbuf::Buffer>>
+Translator::BuildBuffer(mlir::Value value) {
   auto inst = value.getDefiningOp();
   ElementsAttr attr;
 
@@ -834,7 +834,7 @@ uint32_t Translator::GetOpcodeIndex(
   return it.first->second;
 }
 
-Optional<BufferOffset<::stablehlo::flatbuf::Operator>>
+std::optional<BufferOffset<::stablehlo::flatbuf::Operator>>
 Translator::BuildOperator(Operation* inst, std::vector<int32_t> operands,
                           const std::vector<int32_t>& results) {
   const auto* dialect = inst->getDialect();
@@ -851,7 +851,7 @@ Translator::BuildOperator(Operation* inst, std::vector<int32_t> operands,
 
     auto opcode_index =
         GetOpcodeIndex(inst->getName().getStringRef().str(), op_code.value());
-    llvm::Optional<flatbuffers::Offset<::stablehlo::flatbuf::Operator>> offset;
+    std::optional<flatbuffers::Offset<::stablehlo::flatbuf::Operator>> offset;
     if (op_code == ::stablehlo::flatbuf::OperatorCode_REDUCE_WINDOW) {
       offset = CreateFlatBufferOperator(
           inst, opcode_index, operands, results, &builder_,

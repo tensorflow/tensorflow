@@ -76,8 +76,8 @@ class PerFunctionResult {
       : alias_analysis_(alias_analysis) {}
 
   // Returns the recorded device assignment for a resource, if any.
-  Optional<StringRef> DeviceForResource(Value resource) const {
-    Optional<StringRef> result;
+  std::optional<StringRef> DeviceForResource(Value resource) const {
+    std::optional<StringRef> result;
     if (alias_analysis_.IsUnknownResource(resource)) return std::nullopt;
     for (int64_t id : alias_analysis_.GetResourceUniqueIds(resource)) {
       auto it = resource_id_to_device_.find(id);

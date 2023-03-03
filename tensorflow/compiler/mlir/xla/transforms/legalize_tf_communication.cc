@@ -381,7 +381,7 @@ Value RewriteRecvFromHostOp(OpBuilder& builder, int64_t& channel_id,
 // operand and `!mhlo.token` result. If `new_symbol` is set, the new call will
 // be updated to call the `new_symbol` instead.
 Value RewriteCallOp(OpBuilder& builder, func::CallOp call,
-                    const Optional<StringRef>& new_symbol, Value token) {
+                    const std::optional<StringRef>& new_symbol, Value token) {
   builder.setInsertionPoint(call);
   auto new_operands = llvm::to_vector(call.getArgOperands());
   new_operands.push_back(token);
@@ -402,7 +402,7 @@ Value RewriteCallOp(OpBuilder& builder, func::CallOp call,
 // index. `token` will be current token from the last communication op/control
 // flow op transitive communication ops.
 struct OpVisitorState {
-  Optional<unsigned> region_idx;
+  std::optional<unsigned> region_idx;
   Value token;
   Operation* op;
 };
@@ -667,7 +667,7 @@ void ReplaceBlockArgumentsWithImplicitOperands(mlir::Operation* op,
 // `region_idx` is rewritten to take in and return an additional token. Returns
 // true if the op or its region was rewritten.
 bool ProcessRegionIfOp(OpBuilder& builder, IfOp region_if,
-                       Optional<unsigned> region_idx,
+                       std::optional<unsigned> region_idx,
                        SmallVectorImpl<OpVisitorState>& ops_to_visit,
                        const llvm::SmallPtrSetImpl<Block*>& control_flow_blocks,
                        Value token) {
@@ -749,7 +749,8 @@ void RewriteRegionWhileOp(OpBuilder& builder, WhileOp region_while,
 // `region_idx` is rewritten to take in and return an additional token. Returns
 // true if the op or its region was rewritten.
 bool ProcessRegionWhileOp(
-    OpBuilder& builder, WhileOp region_while, Optional<unsigned> region_idx,
+    OpBuilder& builder, WhileOp region_while,
+    std::optional<unsigned> region_idx,
     SmallVectorImpl<OpVisitorState>& ops_to_visit,
     const llvm::SmallPtrSetImpl<Block*>& control_flow_blocks, Value token) {
   builder.setInsertionPoint(region_while);
@@ -847,8 +848,8 @@ LogicalResult RewriteFunction(
       auto it = funcs.find(call.getCallee());
       if (it != funcs.end()) {
         func::FuncOp clone = it->getSecond().clone;
-        Optional<StringRef> symbol_name =
-            clone ? Optional<StringRef>(clone.getName()) : std::nullopt;
+        std::optional<StringRef> symbol_name =
+            clone ? std::optional<StringRef>(clone.getName()) : std::nullopt;
         // If the function being called is to be cloned, update the call to also
         // point to the cloned function.
         token = RewriteCallOp(builder, call, symbol_name, token);

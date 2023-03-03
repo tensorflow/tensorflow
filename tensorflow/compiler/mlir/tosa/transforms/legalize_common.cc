@@ -3302,7 +3302,7 @@ std::optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
   if (!input_type.getElementType().isa<mlir::quant::QuantizedType>())
     return std::nullopt;
 
-  Optional<Value> zp_val;
+  std::optional<Value> zp_val;
   if (zeropoint.size() == 1) {
     zp_val = getTosaConstTensorSingleF32(rewriter, op,
                                          static_cast<float>(zeropoint[0]));
@@ -3313,7 +3313,7 @@ std::optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
     zp_val = getConstTensor(rewriter, op, zeropoint, shape);
   }
 
-  Optional<Value> scale_val;
+  std::optional<Value> scale_val;
   if (scale.size() == 1) {
     scale_val =
         getTosaConstTensorSingleF32(rewriter, op, static_cast<float>(scale[0]));

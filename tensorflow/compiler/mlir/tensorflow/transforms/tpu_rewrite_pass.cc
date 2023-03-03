@@ -116,7 +116,8 @@ LogicalResult EncapsulateFuncAndSerialize(func::FuncOp entry_func,
     // Find any SymbolRefAttr in func that maps to a FuncOp. We need to clone
     // all found FuncOps to new_module to make sure new_module is
     // self-contained.
-    Optional<SymbolTable::UseRange> uses = SymbolTable::getSymbolUses(func);
+    std::optional<SymbolTable::UseRange> uses =
+        SymbolTable::getSymbolUses(func);
     assert(uses && "expected to be able to collect symbol uses");
     for (SymbolTable::SymbolUse use : *uses) {
       func::FuncOp referenced_func = entry_module_table.lookup<func::FuncOp>(

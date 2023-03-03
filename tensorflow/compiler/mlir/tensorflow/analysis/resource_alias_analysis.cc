@@ -139,13 +139,13 @@ class BacktrackAnalysis {
 
   // Returns the backtrack analysis for the given region if it exists.
   // If the region has not yet been analyzed, returns std::nullopt.
-  Optional<const InfoT*> GetAnalysisIfExists(Region& region) const {
+  std::optional<const InfoT*> GetAnalysisIfExists(Region& region) const {
     auto it = info_map_.find(&region);
     if (it == info_map_.end()) return std::nullopt;
     return &it->second;
   }
 
-  Optional<const InfoT*> GetAnalysisIfExists(func::FuncOp func) const {
+  std::optional<const InfoT*> GetAnalysisIfExists(func::FuncOp func) const {
     return GetAnalysisIfExists(func.getBody());
   }
 
@@ -207,9 +207,10 @@ Value BacktrackAnalysis::BacktrackValue(Value value) {
       if (!func) break;
       // Check if the function being called has been analyzed. if not,
       // we cannot backtrack the value further.
-      Optional<const InfoT*> callee_info = GetAnalysisIfExists(func);
+      std::optional<const InfoT*> callee_info = GetAnalysisIfExists(func);
       if (!callee_info) break;
-      Optional<int> passthrough_arg = callee_info.value()->GetArg(res_index);
+      std::optional<int> passthrough_arg =
+          callee_info.value()->GetArg(res_index);
       if (!passthrough_arg) break;
       value = call.getArgOperands()[passthrough_arg.value()];
     } else if (isa<tf_device::LaunchOp, tf_device::ClusterOp>(op)) {
@@ -496,7 +497,7 @@ void ResourceAliasAnalysisInfo::AnalyzeWhileLoop(
   // Seed the resource IDs for the results using either the resource ID of the
   // passthrough arg, or unknown. We need to perform further analysis if we
   // find a passthrough arg which is not the same as corresponding the result #.
-  llvm::SmallVector<Optional<int>, 4> passthrough_args(
+  llvm::SmallVector<std::optional<int>, 4> passthrough_args(
       while_op->getNumResults());
   bool need_analysis = false;
   for (auto result : filter_resources(while_op->getResults())) {
