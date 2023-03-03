@@ -144,6 +144,7 @@ cuda_py_test(
         "no_windows",
         "no_gpu",  # TODO(b/155761551): Flaky on GPU on TAP
         "no_tfrt",  # Note: Legacy XLA test, which depends on EncapsulateXlaComputationsPass.
+        "notsan",  # TODO(b/271486347): Fails TSAN on TAP
     ],
     xla_enabled = True,
     deps = [
