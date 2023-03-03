@@ -1027,7 +1027,7 @@ def broadcast_to(array, shape):  # pylint: disable=redefined-outer-name
 
 @np_utils.np_doc('stack')
 def stack(arrays, axis=0):  # pylint: disable=missing-function-docstring
-  if -(tf.rank(arrays)) <= axis < tf.rank(arrays):
+  if -(array_ops.rank(arrays)) <= axis < array_ops.rank(arrays):
     if isinstance(arrays, (np_arrays.ndarray, ops.Tensor)):
       arrays = asarray(arrays)
       if axis == 0:
