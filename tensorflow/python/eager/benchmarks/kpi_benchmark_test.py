@@ -18,17 +18,17 @@ This is a suite of full end-to-end integration benchmakr for low-level eager
 execution APIs. Also tracks them as KPI Traceme.
 
 To run CPU benchmarks:
-  bazel run -c opt kpi_benchmarks_test -- --benchmarks=.
+  bazel run -c opt kpi_benchmarks_test -- --benchmark_filter=.
 
 To run GPU benchmarks:
   bazel run --config=cuda -c opt --copt="-mavx" kpi_benchmarks_test -- \
-    --benchmarks=.
+    --benchmark_filter=.
 
 To run a subset of benchmarks using --benchmarks flag.
 --benchmarks: the list of benchmarks to run. The specified value is interpreted
 as a regular expression and any benchmark whose name contains a partial match
 to the regular expression is executed.
-e.g. --benchmarks=".*matmul*." will run all matmul related benchmarks.
+e.g. --benchmark_filter=".*matmul*." will run all matmul related benchmarks.
 
 """
 import gc
