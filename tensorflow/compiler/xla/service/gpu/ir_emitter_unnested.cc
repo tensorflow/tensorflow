@@ -4362,17 +4362,21 @@ Status IrEmitterUnnested::EmitTransposeTile(
 
   const Shape& out_shape = first_transpose->shape();
   const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
+  Vector3 first_tiled_transpose_permutation =
+      FindAnyTiledTranspose(*first_transpose)->second;
 
   // We need the following invariant:
   // For every tuple element:
   //  -> EITHER it's a kCopy: S{L} -> S{L'}
   //  -> OR it's an elementwise op of shape S{L}
   for (HloInstruction* root : hlo_roots) {
-    if (FindAnyTiledTranspose(*root)) {
+    auto tiled_transpose = FindAnyTiledTranspose(*root);
+    if (tiled_transpose) {
       const HloInstruction& hero = FindNonTrivialHero(*root);
       CHECK(ShapeUtil::EqualIgnoringElementType(transpose_in_shape,
                                                 hero.operand(0)->shape()));
       CHECK(ShapeUtil::EqualIgnoringElementType(out_shape, hero.shape()));
+      CHECK(tiled_transpose->second == first_tiled_transpose_permutation);
     } else {
       CHECK(ShapeUtil::IsReshapeOrTransposeBitcast(
           root->shape(), transpose_in_shape,
