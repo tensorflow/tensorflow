@@ -287,4 +287,20 @@ def LHLOGPU_ReduceScatterDoneOp: LHLOGPU_Op<"reduce_scatter_done"> {
   let arguments = (ins MHLO_Token:$token);
 }
 
+def LHLOGPU_AllToAllStartOp :
+  LHLOGPU_AsyncCollectiveCommunicationOp<"all_to_all_start", [SameOperandsElementType]> {
+  let summary = "All2AllStart operator";
+  let description = [{
+     Send data from all cores to all cores.
+  }];
+  let arguments = !con(
+    arguments_base,
+    (ins OptionalAttr<I64Attr>:$split_dimension));
+}
+
+def LHLOGPU_AllToAllDoneOp: LHLOGPU_Op<"all_to_all_done"> {
+  let summary = "All2AllDone operator";
+  let arguments = (ins MHLO_Token:$token);
+}
+
 #endif // LHLO_GPU_OPS

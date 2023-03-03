@@ -5618,6 +5618,16 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
     return EmitNcclThunk<NcclAllToAllThunk, mlir::lmhlo::AllToAllOp>(op);
   }
 
+  if (mlir::isa<mlir::lmhlo_gpu::AllToAllStartOp>(op)) {
+    return EmitNcclThunk<NcclAllToAllStartThunk,
+                         mlir::lmhlo_gpu::AllToAllStartOp>(op);
+  }
+
+  if (mlir::isa<mlir::lmhlo_gpu::AllToAllDoneOp>(op)) {
+    return EmitNcclAsyncDone<NcclAllToAllDoneThunk,
+                             mlir::lmhlo_gpu::AllToAllDoneOp>(op);
+  }
+
   if (mlir::isa<mlir::lmhlo::InfeedOp>(op)) {
     return EmitInfeed(op);
   }

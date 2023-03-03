@@ -74,6 +74,8 @@ class Thunk {
     kNcclReduceScatterStart,
     kNcclReduceScatterDone,
     kNcclAllToAll,
+    kNcclAllToAllStart,
+    kNcclAllToAllDone,
     kOutfeed,
     kReplicaId,
     kPartitionId,

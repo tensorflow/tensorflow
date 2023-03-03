@@ -1658,5 +1658,38 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncReduceScatter)) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({19, 21, 23, 25}, results[1]);
 }
 
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllToAll)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  all_to_all {
+    p0 = u32[2] parameter(0)
+    ROOT result = u32[2] all-to-all(p0), dimensions={0}
+  }
+
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[2] broadcast(id), dimensions={}
+    a0 = u32[2] constant({10, 15})
+    a1 = u32[2] add(id2, a0)
+    a2a-start = ((u32[2]), u32[2]) async-start(u32[2] %a1), calls=all_to_all
+    ROOT a2s = u32[2] async-done(a2a-start), calls=all_to_all
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/false));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 11}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({15, 16}, results[1]);
+}
+
 }  // namespace
 }  // namespace xla

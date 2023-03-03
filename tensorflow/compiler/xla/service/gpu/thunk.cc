@@ -57,6 +57,8 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kNcclReduceScatterStart);
     CASE(kNcclReduceScatterDone);
     CASE(kNcclAllToAll);
+    CASE(kNcclAllToAllStart);
+    CASE(kNcclAllToAllDone);
     CASE(kFft);
     CASE(kFor);
     CASE(kGemm);
