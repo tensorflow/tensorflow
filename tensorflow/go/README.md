@@ -10,7 +10,7 @@ Construct and execute TensorFlow graphs in Go.
 
 # WARNING:
 
-Currently Tensorflow team not officially maintaning the Documentation for installing the Go bindings for TensorFlow.
+The TensorFlow team is not currently maintaning the Documentation for installing the Go bindings for TensorFlow.
 
 The instructions has been maintained by the third party contributor: @wamuir
 
