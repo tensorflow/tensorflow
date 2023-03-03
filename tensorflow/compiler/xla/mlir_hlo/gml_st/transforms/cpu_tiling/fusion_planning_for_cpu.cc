@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iterator>
 #include <memory>
 #include <utility>
 
@@ -120,23 +121,62 @@ LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
   return success();
 }
 
+// Duplicate linalg.fill op with rank-0 tensors results that have multiple
+// users. If linalg.fill is used inside and outside of a fusion cluster, it will
+// not be fused and can break some other passes that expect linalg.reduce inits
+// to be linalg.fill.
+LogicalResult copyConstantLikeFillOp(linalg::FillOp fillOp,
+                                     PatternRewriter& rewriter) {
+  // Only modify ops that fill rank-0 tensors.
+  if (fillOp.getRank(fillOp.getDpsInitOperand(0)) != 0) return failure();
+
+  // Nothing to do, because the op has 0 or 1 users.
+  if (std::distance(fillOp->user_begin(), fillOp->user_end()) <= 1)
+    return failure();
+
+  for (auto& use : fillOp->getUses()) {
+    Operation* ownerOp = use.getOwner();
+
+    auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(ownerOp);
+    if (!dstStyleOp || !dstStyleOp.isDpsInit(&use)) continue;
+
+    auto newFillOp = cast<linalg::FillOp>(rewriter.clone(*fillOp));
+    use.set(newFillOp.getResult(0));
+    return success();
+  }
+  return failure();
+}
+
 struct FusionPlanningForCpuPass
     : public impl::FusionPlanningForCpuPassBase<FusionPlanningForCpuPass> {
   void runOnOperation() override {
     func::FuncOp f = getOperation();
     MLIRContext* context = &getContext();
 
-    RewritePatternSet patterns(context);
-    patterns.add(fusionPattern<linalg::MapOp>);
-    patterns.add(fusionPattern<linalg::MatmulOp>);
-    patterns.add(fusionPattern<linalg::ReduceOp>);
-    patterns.add(fusionPattern<linalg::TransposeOp>);
-    patterns.add(fusionPattern<thlo::ReverseOp>);
-    patterns.add(fusionPattern<thlo::ScatterOp>);
-    patterns.add(fusionPattern<thlo::SortOp>);
+    // Cleanup passes to prepare ops for better clustering.
+    {
+      RewritePatternSet patterns(context);
+      patterns.add(copyConstantLikeFillOp);
 
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
-      return signalPassFailure();
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+        return signalPassFailure();
+      }
+    }
+
+    // Move ops to gml_st.fusion clusters.
+    {
+      RewritePatternSet patterns(context);
+      patterns.add(fusionPattern<linalg::MapOp>);
+      patterns.add(fusionPattern<linalg::MatmulOp>);
+      patterns.add(fusionPattern<linalg::ReduceOp>);
+      patterns.add(fusionPattern<linalg::TransposeOp>);
+      patterns.add(fusionPattern<thlo::ReverseOp>);
+      patterns.add(fusionPattern<thlo::ScatterOp>);
+      patterns.add(fusionPattern<thlo::SortOp>);
+
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+        return signalPassFailure();
+      }
     }
   }
 };
