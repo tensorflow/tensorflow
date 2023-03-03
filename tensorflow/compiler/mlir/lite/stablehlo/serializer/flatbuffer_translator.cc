@@ -124,6 +124,16 @@ CreateSubtractOperator(mlir::stablehlo::SubtractOp& hlo_op,
                                               outputs);
 }
 
+static flatbuffers::Offset<::stablehlo::flatbuf::Operator> CreateMulOperator(
+    mlir::stablehlo::MulOp hlo_op, flatbuffers::FlatBufferBuilder* fbb,
+    uint32_t opcode_index, const std::vector<int32_t>& operands,
+    const std::vector<int32_t>& results) {
+  auto inputs = fbb->CreateVector(operands);
+  auto outputs = fbb->CreateVector(results);
+
+  return ::stablehlo::flatbuf::CreateOperator(*fbb, opcode_index, inputs,
+                                              outputs);
+}
 static flatbuffers::Offset<::stablehlo::flatbuf::Operator> CreateMaxOperator(
     mlir::stablehlo::MaxOp& hlo_op, flatbuffers::FlatBufferBuilder* fbb,
     uint32_t opcode_index, const std::vector<int32_t>& operands,
@@ -323,6 +333,8 @@ CreateFlatBufferOperator(mlir::Operation* op, uint32_t opcode_index,
     return CreateDivOperator(hlo_op, fbb, opcode_index, operands, results);
   if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::SubtractOp>(op))
     return CreateSubtractOperator(hlo_op, fbb, opcode_index, operands, results);
+  if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::MulOp>(op))
+    return CreateMulOperator(hlo_op, fbb, opcode_index, operands, results);
   if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::MaxOp>(op))
     return CreateMaxOperator(hlo_op, fbb, opcode_index, operands, results);
   if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::ReshapeOp>(op))
@@ -362,6 +374,8 @@ llvm::Optional<::stablehlo::flatbuf::OperatorCode> GetOpCode(
     return ::stablehlo::flatbuf::OperatorCode_DIVIDE;
   if (isa<mlir::stablehlo::LogisticOp>(op))
     return ::stablehlo::flatbuf::OperatorCode_LOGISTIC;
+  if (isa<mlir::stablehlo::MulOp>(op))
+    return ::stablehlo::flatbuf::OperatorCode_MULTIPLY;
   if (isa<mlir::stablehlo::MaxOp>(op))
     return ::stablehlo::flatbuf::OperatorCode_MAXIMUM;
   if (isa<mlir::stablehlo::ReshapeOp>(op))
