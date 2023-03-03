@@ -2661,7 +2661,6 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         }
       }
     }
-    TF_RETURN_IF_ERROR(VerifyF8Usage(instruction));
     TF_RETURN_IF_ERROR(VerifyS4U4Usage(instruction));
 
     return OkStatus();
@@ -2685,37 +2684,6 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           << " sharding among instructions: \n"
           << common_sharding_inst->ToString() << "\n"
           << check_inst->ToString();
-    }
-    return OkStatus();
-  }
-
-  static Status VerifyF8Usage(HloInstruction* instruction) {
-    bool has_fp8_operand =
-        absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
-          return ShapeUtil::HasPrimitiveType(operand->shape(), F8E5M2) ||
-                 ShapeUtil::HasPrimitiveType(operand->shape(), F8E4M3FN);
-        });
-    // TODO(b/259609697): Support FP8 operands in all instructions that support
-    // inputs of other floating-point dtypes. Currently the CPU and GPU backends
-    // only support FP8 operands in the convert, tuple, get-tuple-element and
-    // transpose instructions and FP8 Custom Calls.
-    if (has_fp8_operand && instruction->opcode() != HloOpcode::kConvert &&
-        instruction->opcode() != HloOpcode::kBitcast &&
-        instruction->opcode() != HloOpcode::kTuple &&
-        instruction->opcode() != HloOpcode::kGetTupleElement &&
-        instruction->opcode() != HloOpcode::kTranspose &&
-        instruction->opcode() != HloOpcode::kConvolution &&
-        instruction->opcode() != HloOpcode::kDot &&
-        instruction->opcode() != HloOpcode::kFusion &&
-        instruction->opcode() != HloOpcode::kReshape &&
-        instruction->opcode() != HloOpcode::kCopy &&
-        instruction->opcode() != HloOpcode::kCustomCall) {
-      return InvalidArgument(
-          "FP8 is currently only supported in convert, bitcast, tuple, "
-          "get-tuple-element, transpose, convolution, dot, fusion, reshape and "
-          "copy instructions as well as Custom Calls, but got instruction with "
-          "FP8 input: %s",
-          instruction->ToString());
     }
     return OkStatus();
   }

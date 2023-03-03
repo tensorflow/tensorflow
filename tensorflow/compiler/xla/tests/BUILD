@@ -1384,6 +1384,19 @@ xla_test(
 )
 
 xla_test(
+    name = "float8_test",
+    srcs = ["float8_test.cc"],
+    deps = [
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/platform:float8",
+    ],
+)
+
+xla_test(
     name = "half_test",
     srcs = ["half_test.cc"],
     backends = [

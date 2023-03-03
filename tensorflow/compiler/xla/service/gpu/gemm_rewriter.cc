@@ -136,6 +136,18 @@ void VlogF8PatternMiss(const HloInstruction *instr) {
   }
 }
 
+bool IsSupportedMatrixMultiplication(
+    const HloInstruction &dot, se::CudaComputeCapability compute_capability) {
+  if (!IsMatrixMultiplication(dot)) {
+    return false;
+  }
+  if (IsF8Type(dot.operand(0)) || IsF8Type(dot.operand(1))) {
+    // cuBLAS only supports F8 matmuls on Hopper and above.
+    return compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER);
+  }
+  return true;
+}
+
 // If the bias is a sequence of ops that depend only on broadcasts of
 // constants, materialize the bias if it's small.
 //
@@ -292,7 +304,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   Status HandleDot(HloInstruction *instr) override {
     HloInstruction *a, *b, *a_scale, *b_scale, *a_binary, *b_binary,
         *a_bitcast = nullptr, *b_bitcast = nullptr;
-    if (IsMatrixMultiplication(*instr)) {
+    if (IsSupportedMatrixMultiplication(*instr, cuda_compute_capability_)) {
       CHECK(!instr->IsRank2Transpose());
       HloInstruction *lhs = instr->mutable_operand(0);
       HloInstruction *rhs = instr->mutable_operand(1);

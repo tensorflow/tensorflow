@@ -612,11 +612,15 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   const std::pair<PrimitiveType, PrimitiveType> ar_promoted_types[] = {
       {BF16, F32}};
   pipeline.AddPass<AllReducePromotion>(ar_promoted_types);
-  // Convert BF16 operations to F32 operations so that the CPU backend can
-  // support BF16 operations without directly implementing a BF16 lowering for
-  // most ops.
+  // Convert BF16 and F8 operations to F32 and F16 respectively so that the CPU
+  // backend can support BF16/F8 operations without directly implementing a
+  // BF16/F8 lowering for most ops.
   FloatSupport bf16_support(BF16);
   pipeline.AddPass<FloatNormalization>(&bf16_support);
+  FloatSupport f8e5m2_support(F8E5M2);
+  pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
+  FloatSupport f8e4m3fn_support(F8E4M3FN);
+  pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
   // After canonicalization, there may be more batch dots that can be
   // simplified.
   pipeline.AddPass<BatchDotSimplification>();

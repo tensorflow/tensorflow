@@ -3060,6 +3060,7 @@ test_suite(
         "//tensorflow/compiler/xla/tests:dynamic_ops_test_gpu",
         "//tensorflow/compiler/xla/tests:execution_profile_test_gpu",
         "//tensorflow/compiler/xla/tests:execution_profile_test_with_xla_hlo_profile_gpu",
+        "//tensorflow/compiler/xla/tests:float8_test_gpu",
         "//tensorflow/compiler/xla/tests:floor_ceil_test_gpu",
         "//tensorflow/compiler/xla/tests:fmax_fmin_test_gpu",
         "//tensorflow/compiler/xla/tests:gather_operation_test_gpu",

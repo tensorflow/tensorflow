@@ -4188,6 +4188,29 @@ class CublasLtF8GemmRewriteTest : public CublasLtGemmRewriteTest {
   }
 };
 
+TEST_F(CublasLtF8GemmRewriteTest, DoNotRewriteToF8OnPreHopper) {
+  if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP() << "Test requires a pre-Hopper GPU.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY PreHopperTest {
+      x = f8e4m3fn[16,32] parameter(0)
+      y = f8e4m3fn[32,16] parameter(1)
+      ROOT out = f8e4m3fn[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+          }
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-LABEL: ENTRY %PreHopperTest (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16]) -> f8e4m3fn[16,16] {
+; CHECK:    {{.*}} = {{.*}}[16,16]{1,0} dot({{.*}}, {{.*}}), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+          )");
+}
+
 TEST_F(CublasLtF8GemmRewriteTest, UnscaledABUnscaledDF8) {
   if (!GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::HOPPER)) {

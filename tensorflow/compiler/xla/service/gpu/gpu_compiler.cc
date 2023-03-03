@@ -230,6 +230,9 @@ class GpuFloatSupport : public FloatSupport {
       case HloOpcode::kAllToAll:
       case HloOpcode::kCollectivePermute:
       case HloOpcode::kReduceScatter:
+      // Handled by Triton GEMM.
+      case HloOpcode::kDot:
+        return LowPrecisionType() == BF16;
       // Data movement only ops.
       case HloOpcode::kBroadcast:
       case HloOpcode::kConcatenate:
@@ -246,7 +249,6 @@ class GpuFloatSupport : public FloatSupport {
       case HloOpcode::kSlice:
       case HloOpcode::kTranspose:
       // Other special ops.
-      case HloOpcode::kDot:  // Handled by Triton GEMM.
       case HloOpcode::kBitcast:
         return true;
       default:
@@ -860,6 +862,10 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   GpuFloatSupport bf16_support(BF16);
   pipeline.AddPass<FloatNormalization>(&bf16_support);
+  GpuFloatSupport f8e5m2_support(F8E5M2);
+  pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
+  GpuFloatSupport f8e4m3fn_support(F8E4M3FN);
+  pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
 
   // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
   if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
