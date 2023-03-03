@@ -1722,6 +1722,7 @@ tf_py_test(
         ":error_interpolation",
         ":traceable_stack",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_assert",
     ],
 )
 
@@ -1773,6 +1774,7 @@ cuda_py_test(
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:gradients",
@@ -2202,6 +2204,7 @@ cuda_py_test(
         ":test_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:platform_test",

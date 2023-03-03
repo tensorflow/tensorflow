@@ -46,6 +46,7 @@ cuda_py_test(
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:cond_v2",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_case",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",

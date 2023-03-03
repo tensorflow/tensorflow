@@ -27,7 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import math_ops
@@ -281,7 +281,7 @@ def diag(v, k=0):  # pylint: disable=missing-docstring
 
   # TODO(nareshmodi): Consider a np_utils.Assert version that will fail during
   # tracing time if the shape is known.
-  control_flow_ops.Assert(
+  control_flow_assert.Assert(
       np_utils.logical_or(math_ops.equal(v_rank, 1), math_ops.equal(v_rank, 2)),
       [v_rank])
 
@@ -1318,7 +1318,7 @@ def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,in
     if N < 0:
       raise ValueError('N must be nonnegative')
   else:
-    control_flow_ops.Assert(N >= 0, [N])
+    control_flow_assert.Assert(N >= 0, [N])
 
   rank = array_ops.rank(x)
   rank_temp = np_utils.get_static_value(rank)
@@ -1327,7 +1327,7 @@ def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,in
     if rank != 1:
       raise ValueError('x must be a one-dimensional array')
   else:
-    control_flow_ops.Assert(math_ops.equal(rank, 1), [rank])
+    control_flow_assert.Assert(math_ops.equal(rank, 1), [rank])
 
   if increasing:
     start = 0
@@ -1357,7 +1357,7 @@ def ix_(*args):  # pylint: disable=missing-docstring
         raise ValueError('Arguments must be 1-d, got arg {} of rank {}'.format(
             i, a_rank))
     else:
-      control_flow_ops.Assert(math_ops.equal(a_rank, 1), [a_rank])
+      control_flow_assert.Assert(math_ops.equal(a_rank, 1), [a_rank])
 
     new_shape = [1] * n
     new_shape[i] = -1

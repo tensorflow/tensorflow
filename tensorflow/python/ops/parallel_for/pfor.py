@@ -38,6 +38,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
@@ -4911,8 +4912,9 @@ class WhileV2:
             # should not get executed. Hence we simply return `new_inputs` to
             # make sure the graph construction code completes.
             with ops.control_dependencies([
-                control_flow_ops.Assert(
-                    False, ["pfor ERROR: this branch should never execute"])]):
+                control_flow_assert.Assert(
+                    False, ["pfor ERROR: this branch should never execute"])
+            ]):
               return [array_ops.identity(x) for x in new_inputs]
           else:
             return [out.t for out in outputs]

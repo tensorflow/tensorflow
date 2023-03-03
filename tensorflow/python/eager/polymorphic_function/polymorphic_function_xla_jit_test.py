@@ -28,6 +28,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
@@ -1035,7 +1036,7 @@ class FunctionTest(xla_test.XLATestCase):
 
       @polymorphic_function.function(jit_compile=True)
       def f(x):
-        control_flow_ops.Assert(x == 1, ['Wrong value'])
+        control_flow_assert.Assert(x == 1, ['Wrong value'])
 
       f(constant_op.constant(1))
 

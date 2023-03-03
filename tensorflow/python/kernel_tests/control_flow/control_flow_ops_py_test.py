@@ -46,6 +46,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import data_flow_ops
@@ -83,7 +85,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.util import nest
-from tensorflow.python.ops import control_flow_case
 
 
 def check_consumers(graph):
@@ -1044,7 +1045,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         return control_flow_ops.no_op()
 
       def fn2():
-        return control_flow_ops.Assert(False, ["Wrong branch!!!"])
+        return control_flow_assert.Assert(False, ["Wrong branch!!!"])
 
       r = control_flow_ops.cond(pred, fn1, fn2)
       self.evaluate(r)
@@ -1060,7 +1061,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
       def fn2():
         with ops.device("/cpu:0"):
-          return control_flow_ops.Assert(False, ["Wrong branch!!!"])
+          return control_flow_assert.Assert(False, ["Wrong branch!!!"])
 
       r = control_flow_ops.cond(pred, fn1, fn2)
       self.evaluate(r)
@@ -4937,7 +4938,8 @@ class AssertTest(test.TestCase):
         value = constant_op.constant(1.0)
       with ops.device("/cpu:0"):
         true = constant_op.constant(True)
-        guarded_assert = control_flow_ops.Assert(true, [value], name="guarded")
+        guarded_assert = control_flow_assert.Assert(
+            true, [value], name="guarded")
         unguarded_assert = gen_logging_ops._assert(
             true, [value], name="unguarded")
       opts = config_pb2.RunOptions(trace_level=config_pb2.RunOptions.FULL_TRACE)

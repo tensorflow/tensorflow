@@ -76,6 +76,7 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
+from tensorflow.python.ops import control_flow_assert
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -981,7 +982,7 @@ class LoggingTest(PForTestCase):
   def test_assert(self):
 
     def loop_fn(i):
-      return control_flow_ops.Assert(i < 10, [i, [10], [i + 1]])
+      return control_flow_assert.Assert(i < 10, [i, [10], [i + 1]])
 
     # TODO(agarwal): make this work with for_loop.
     with session.Session() as sess:

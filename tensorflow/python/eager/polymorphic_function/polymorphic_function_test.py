@@ -62,6 +62,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import cond_v2
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -3773,7 +3774,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     @polymorphic_function.function
     def fail(i):
-      control_flow_ops.Assert(math_ops.equal(i, 0), ['ick'])
+      control_flow_assert.Assert(math_ops.equal(i, 0), ['ick'])
 
     fail(constant_op.constant(0))  # OK
     with self.assertRaises(errors.InvalidArgumentError):

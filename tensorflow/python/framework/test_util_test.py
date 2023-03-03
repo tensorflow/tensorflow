@@ -44,7 +44,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -509,7 +509,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         # seems sensible
         x = constant_op.constant(True)
         y = [15]
-        control_flow_ops.Assert(x, y).run()
+        control_flow_assert.Assert(x, y).run()
 
   @test_util.run_in_graph_and_eager_modes
   def testAssertAllCloseAccordingToType(self):
