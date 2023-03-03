@@ -454,17 +454,17 @@ void PjRtCApiDevice::InitAttributes() {
     const auto& attribute = args.attributes[i];
     std::string attribute_name(attribute.name, attribute.name_size);
     switch (attribute.type) {
-      case PJRT_NamedValue::PJRT_NamedValue_kString: {
+      case PJRT_NamedValue_Type::PJRT_NamedValue_kString: {
         std::string string_value(attribute.string_value, attribute.value_size);
         attributes_[attribute_name] = PjRtDeviceAttribute(string_value);
         break;
       }
-      case PJRT_NamedValue::PJRT_NamedValue_kInt64: {
+      case PJRT_NamedValue_Type::PJRT_NamedValue_kInt64: {
         attributes_[attribute_name] =
             PjRtDeviceAttribute(attribute.int64_value);
         break;
       }
-      case PJRT_NamedValue::PJRT_NamedValue_kInt64List: {
+      case PJRT_NamedValue_Type::PJRT_NamedValue_kInt64List: {
         const int64_t* array_ptr(attribute.int64_array_value);
         std::vector<int64_t> int64_array(array_ptr,
                                          array_ptr + attribute.value_size);
@@ -1097,43 +1097,8 @@ PjRtCApiLoadedExecutable::GetCostAnalysis() const {
                          c_api);
 
   // Copy returned properties to output map
-  absl::flat_hash_map<std::string, PjRtValueType> output_map;
-  for (auto i = 0; i < args.num_properties; ++i) {
-    switch (args.properties[i].type) {
-      case PJRT_NamedValue::PJRT_NamedValue_kFloat:
-        output_map[args.properties[i].name] = args.properties[i].float_value;
-        break;
-      case PJRT_NamedValue::PJRT_NamedValue_kInt64:
-        output_map[args.properties[i].name] = args.properties[i].int64_value;
-        break;
-      case PJRT_NamedValue::PJRT_NamedValue_kInt64List: {
-        PjRtValueType& output_value = output_map[args.properties[i].name];
-        std::vector<int64_t>& output_int64_list =
-            std::get<std::vector<int64_t>>(output_value);
-        output_int64_list.reserve(args.properties[i].value_size);
-        for (auto j = 0; j < args.properties[i].value_size; ++j) {
-          output_int64_list.push_back(args.properties[i].int64_array_value[j]);
-        }
-        break;
-      }
-      case PJRT_NamedValue::PJRT_NamedValue_kString:
-        output_map[args.properties[i].name] = args.properties[i].string_value;
-        break;
-      // C API client currently does not support forward compatibility (such
-      // as if the underlying PJRT library is a newer version that returns
-      // types not supported by this client). Failing here to prevent
-      // undefined behavior.
-      default:
-        LOG(FATAL)
-            << "PJRT_LoadedExecutable_GetCostAnalysis() returned attribute '"
-            << args.properties[i].name << "' with unsupported type '"
-            << args.properties[i].type
-            << "' to PjRtCApiLoadedExecutable::GetCostAnalysis()";
-        break;
-    }
-  }
-
-  return output_map;
+  return pjrt::ConvertFromPjRtNamedValueList(args.properties,
+                                             args.num_properties);
 }
 
 // ---------------------------------- Buffers ----------------------------------
@@ -1453,7 +1418,8 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
 // -------------------------------- API access ---------------------------------
 
 StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
-    absl::string_view device_type) {
+    absl::string_view device_type,
+    const absl::flat_hash_map<std::string, PjRtValueType>& create_options) {
 #if !defined(PLATFORM_GOOGLE) || defined(LIBTPU_STATIC)
   if (absl::AsciiStrToLower(device_type) == "tpu") {
     // TODO(b/261484192): handle device specific initialization.
@@ -1468,6 +1434,10 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
   PJRT_Client_Create_Args init_args;
   init_args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
   init_args.priv = nullptr;
+  TF_ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_options,
+                      pjrt::ConvertToPjRtNamedValueList(create_options));
+  init_args.create_options = c_options.data();
+  init_args.num_options = c_options.size();
   RETURN_STATUS_IF_ERROR(c_api->PJRT_Client_Create(&init_args), c_api);
   PJRT_Client* c_client = init_args.client;
 

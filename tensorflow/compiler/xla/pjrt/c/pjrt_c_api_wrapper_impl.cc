@@ -104,7 +104,8 @@ static xla::Status PopulateExecutableCostAnalysisIfNeeded(
       const xla::PjRtValueType& property_value = property.second;
       CHECK(std::holds_alternative<float>(property_value))
           << property_value.index();
-      cost_analysis_property.type = PJRT_NamedValue::PJRT_NamedValue_kFloat;
+      cost_analysis_property.type =
+          PJRT_NamedValue_Type::PJRT_NamedValue_kFloat;
       cost_analysis_property.float_value = std::get<float>(property_value);
       cost_analysis_property.value_size = 1;
 
@@ -1274,16 +1275,16 @@ static void PopulatePjrtDeviceAttributes(PJRT_Device* c_device) {
     cur_attribute.name = name.c_str();
     cur_attribute.name_size = name.size();
     if (const std::string* string_val = std::get_if<std::string>(&value)) {
-      cur_attribute.type = PJRT_NamedValue::PJRT_NamedValue_kString;
+      cur_attribute.type = PJRT_NamedValue_Type::PJRT_NamedValue_kString;
       cur_attribute.string_value = string_val->c_str();
       cur_attribute.value_size = string_val->size();
     } else if (const std::vector<int64_t>* vector_val =
                    std::get_if<std::vector<int64_t>>(&value)) {
-      cur_attribute.type = PJRT_NamedValue::PJRT_NamedValue_kInt64List;
+      cur_attribute.type = PJRT_NamedValue_Type::PJRT_NamedValue_kInt64List;
       cur_attribute.int64_array_value = vector_val->data();
       cur_attribute.value_size = vector_val->size();
     } else if (const int64_t* int_value = std::get_if<int64_t>(&value)) {
-      cur_attribute.type = PJRT_NamedValue::PJRT_NamedValue_kInt64;
+      cur_attribute.type = PJRT_NamedValue_Type::PJRT_NamedValue_kInt64;
       cur_attribute.int64_value = *int_value;
       cur_attribute.value_size = 1;
     } else {

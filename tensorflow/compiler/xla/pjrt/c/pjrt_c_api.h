@@ -181,18 +181,20 @@ typedef PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args);
 
 // ------------------------ Other Common Data Types ----------------------------
 
+typedef enum {
+  PJRT_NamedValue_kString = 0,
+  PJRT_NamedValue_kInt64,
+  PJRT_NamedValue_kInt64List,
+  PJRT_NamedValue_kFloat,
+} PJRT_NamedValue_Type;
+
 // Named value for key-value pairs.
 struct PJRT_NamedValue {
   size_t struct_size;
   void* priv;
   const char* name;
   size_t name_size;
-  enum {
-    PJRT_NamedValue_kString = 0,
-    PJRT_NamedValue_kInt64,
-    PJRT_NamedValue_kInt64List,
-    PJRT_NamedValue_kFloat
-  } type;
+  PJRT_NamedValue_Type type;
   union {
     const char* string_value;
     int64_t int64_value;
@@ -216,6 +218,9 @@ typedef struct PJRT_Buffer PJRT_Buffer;
 struct PJRT_Client_Create_Args {
   size_t struct_size;
   void* priv;
+  // Extra platform-specific options to create a client.
+  PJRT_NamedValue* create_options;
+  size_t num_options;
   PJRT_Client* client;  // out
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_Create_Args, client);

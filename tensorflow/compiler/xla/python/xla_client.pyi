@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, TypeAlias, Union
 
 import numpy
 
@@ -58,6 +58,8 @@ float8_e4m3fn: numpy.dtype
 float8_e5m2: numpy.dtype
 XLA_ELEMENT_TYPE_TO_DTYPE: Dict[PrimitiveType, numpy.dtype]
 
+_NameValueMapping: TypeAlias = Mapping[str, Union[str, int, List[int], float]]
+
 
 def dtype_to_etype(dtype: numpy.dtype) -> PrimitiveType:
   ...
@@ -91,7 +93,7 @@ def make_interpreter_client() -> Client:
   ...
 
 
-def make_tfrt_tpu_c_api_client() -> Client:
+def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None) -> Client:
   ...
 
 
@@ -99,7 +101,7 @@ def make_tpu_client() -> Client:
   ...
 
 
-def make_c_api_client(plugin_name: str) -> Client:
+def make_c_api_client(plugin_name: str, options: Optional[_NameValueMapping] = None) -> Client:
   ...
 
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:

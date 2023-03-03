@@ -565,7 +565,8 @@ class PjRtCApiDeviceTopology : public PjRtDeviceTopology {
 };
 
 StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
-    absl::string_view device_type);
+    absl::string_view device_type,
+    const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {});
 
 StatusOr<std::unique_ptr<PjRtDeviceTopology>> GetCApiTopology(
     absl::string_view device_type);
