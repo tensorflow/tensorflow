@@ -1,6 +1,6 @@
 # Release 2.11.1
 
-**Note**: TensorFlow 2.10 was the last TensorFlow release that supported GPU on native-Windows. Starting with TensorFlow 2.11, you will need to install TensorFlow in WSL2, or install tensorflow-cpu (developed by Intel, see 2.11.0 release notes) and, optionally, try the TensorFlow-DirectML-Plugin.
+**Note**: TensorFlow 2.10 was the last TensorFlow release that supported GPU on native-Windows. Starting with TensorFlow 2.11, you will need to install TensorFlow in WSL2, or install tensorflow-cpu and, optionally, try the TensorFlow-DirectML-Plugin.
 
 This release also introduces several vulnerability fixes:
 
