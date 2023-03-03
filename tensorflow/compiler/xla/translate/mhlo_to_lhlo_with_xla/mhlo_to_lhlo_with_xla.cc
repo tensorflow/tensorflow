@@ -1370,12 +1370,19 @@ LhloDialectEmitter::EmitAllGatherStartOp(const HloInstruction* instr) {
   return all_gather_start_op;
 }
 
+template <typename OpT>
+tsl::StatusOr<OpT> LhloDialectEmitter::EmitDoneOp(
+    const xla::HloInstruction* instr) {
+  auto token = ret_tokens_.extract(instr->operand(0));
+  TF_RET_CHECK(token) << "didn't find " << OpT::getOperationName().str()
+                      << " token";
+  return builder_.create<OpT>(getLocation(instr), /*resultTypes=*/std::nullopt,
+                              token.mapped());
+}
+
 tsl::StatusOr<lmhlo_gpu::AllGatherDoneOp>
 LhloDialectEmitter::EmitAllGatherDoneOp(const HloInstruction* instr) {
-  auto token = ret_tokens_.extract(instr->operand(0));
-  TF_RET_CHECK(token) << "didn't find all-gather-start token";
-  return builder_.create<lmhlo_gpu::AllGatherDoneOp>(
-      getLocation(instr), /*resultTypes=*/std::nullopt, token.mapped());
+  return EmitDoneOp<lmhlo_gpu::AllGatherDoneOp>(instr);
 }
 
 tsl::StatusOr<lmhlo::AllReduceOp> LhloDialectEmitter::EmitAllReduceOp(
@@ -1424,10 +1431,7 @@ LhloDialectEmitter::EmitAllReduceStartOp(const HloInstruction* instr) {
 
 tsl::StatusOr<lmhlo_gpu::AllReduceDoneOp>
 LhloDialectEmitter::EmitAllReduceDoneOp(const HloInstruction* instr) {
-  auto token = ret_tokens_.extract(instr->operand(0));
-  TF_RET_CHECK(token) << "didn't find all-reduce-start token";
-  return builder_.create<lmhlo_gpu::AllReduceDoneOp>(
-      getLocation(instr), /*resultTypes=*/std::nullopt, token.mapped());
+  return EmitDoneOp<lmhlo_gpu::AllReduceDoneOp>(instr);
 }
 
 tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitAsyncStartOp(
@@ -1474,12 +1478,7 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitAsyncDoneOp(
 
   TF_RET_CHECK(wrapped->opcode() == xla::HloOpcode::kReduceScatter);
 
-  auto token = ret_tokens_.extract(instr->operand(0));
-  TF_RET_CHECK(token) << "didn't find reduce-scatter-start token";
-  return builder_
-      .create<lmhlo_gpu::ReduceScatterDoneOp>(
-          getLocation(instr), /*resultTypes=*/std::nullopt, token.mapped())
-      .getOperation();
+  return EmitDoneOp<lmhlo_gpu::ReduceScatterDoneOp>(instr);
 }
 
 tsl::StatusOr<lmhlo::ReduceScatterOp> LhloDialectEmitter::EmitReduceScatterOp(
@@ -1544,10 +1543,7 @@ LhloDialectEmitter::EmitCollectivePermuteStartOp(const HloInstruction* instr) {
 
 tsl::StatusOr<lmhlo_gpu::CollectivePermuteDoneOp>
 LhloDialectEmitter::EmitCollectivePermuteDoneOp(const HloInstruction* instr) {
-  auto token = ret_tokens_.extract(instr->operand(0));
-  TF_RET_CHECK(token) << "didn't find collective-permute-start token";
-  return builder_.create<lmhlo_gpu::CollectivePermuteDoneOp>(
-      getLocation(instr), /*resultTypes=*/std::nullopt, token.mapped());
+  return EmitDoneOp<lmhlo_gpu::CollectivePermuteDoneOp>(instr);
 }
 
 tsl::StatusOr<lmhlo::InfeedOp> LhloDialectEmitter::EmitInfeedOp(
@@ -1757,12 +1753,7 @@ tsl::StatusOr<lmhlo::SendOp> LhloDialectEmitter::EmitSendOp(
 
 tsl::StatusOr<lmhlo::SendDoneOp> LhloDialectEmitter::EmitSendDoneOp(
     const xla::HloInstruction* instr) {
-  auto token = ret_tokens_.extract(instr->operand(0));
-  TF_RET_CHECK(token) << "didn't find send-done token";
-
-  auto send_done_op = builder_.create<lmhlo::SendDoneOp>(
-      getLocation(instr), /*resultTypes=*/std::nullopt, token.mapped());
-
+  TF_ASSIGN_OR_RETURN(auto send_done_op, EmitDoneOp<lmhlo::SendDoneOp>(instr));
   // Copy send-done attributes.
   auto* send_done = xla::Cast<xla::HloSendDoneInstruction>(instr);
   CopyChannelAttrs(builder_, send_done, send_done_op,
@@ -1792,12 +1783,7 @@ tsl::StatusOr<lmhlo::RecvOp> LhloDialectEmitter::EmitRecvOp(
 
 tsl::StatusOr<lmhlo::RecvDoneOp> LhloDialectEmitter::EmitRecvDoneOp(
     const xla::HloInstruction* instr) {
-  auto token = ret_tokens_.extract(instr->operand(0));
-  TF_RET_CHECK(token) << "didn't find recv-done token";
-
-  auto recv_done_op = builder_.create<lmhlo::RecvDoneOp>(
-      getLocation(instr), /*resultTypes=*/std::nullopt, token.mapped());
-
+  TF_ASSIGN_OR_RETURN(auto recv_done_op, EmitDoneOp<lmhlo::RecvDoneOp>(instr));
   // Copy recv-done attributes.
   auto* recv_done = xla::Cast<xla::HloRecvDoneInstruction>(instr);
   CopyChannelAttrs(builder_, recv_done, recv_done_op,

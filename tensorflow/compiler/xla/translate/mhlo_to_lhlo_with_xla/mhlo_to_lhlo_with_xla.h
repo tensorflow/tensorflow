@@ -90,6 +90,9 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   tsl::StatusOr<lmhlo::OutfeedOp> EmitOutfeedOp(
       const xla::HloInstruction* instr);
 
+  template <typename OpT>
+  tsl::StatusOr<OpT> EmitDoneOp(const xla::HloInstruction* instr);
+
   tsl::StatusOr<lmhlo::AllToAllOp> EmitAllToAllOp(
       const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo::AllGatherOp> EmitAllGatherOp(
