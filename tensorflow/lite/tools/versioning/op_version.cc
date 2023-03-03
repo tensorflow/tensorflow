@@ -465,7 +465,18 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_FLOOR_DIV:
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 ||
+          op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 3;
+      }
       if (op_sig.inputs.at(0).type == kTfLiteFloat32) {
+        return 2;
+      }
+      return 1;
+
+    case BuiltinOperator_FLOOR_MOD:
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 ||
+          op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;

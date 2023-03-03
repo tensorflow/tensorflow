@@ -1817,9 +1817,10 @@ def TFL_FloorDivOp : TFL_Op<"floor_div", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32]>:$lhs, TFL_TensorOf<[F32, I32]>:$rhs);
+    ins TFL_TensorOf<[F32, I8, I16, I32]>:$lhs,
+    TFL_TensorOf<[F32, I8, I16, I32]>:$rhs);
 
-  let results = (outs TFL_TensorOf<[F32, I32]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I8, I16, I32]>:$output);
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 
@@ -1849,10 +1850,10 @@ def TFL_FloorModOp : TFL_Op<"floor_mod", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[I32, I64, F32]>:$lhs,
-    TFL_TensorOf<[I32, I64, F32]>:$rhs);
+    ins TFL_TensorOf<[I8, I16, I32, I64, F32]>:$lhs,
+    TFL_TensorOf<[I8, I16, I32, I64, F32]>:$rhs);
 
-  let results = (outs TFL_TensorOf<[I32, I64, F32]>:$output);
+  let results = (outs TFL_TensorOf<[I8, I16, I32, I64, F32]>:$output);
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 }

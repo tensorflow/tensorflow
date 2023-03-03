@@ -35,8 +35,9 @@
         `experimental_disable_delegate_clustering` to turn-off delegate
         clustering.
     *   Add int16x8 support for the built-in op `mirror_pad`
-    *   Add 16-bit int type support for built-in op `less`, `greater_than`
-        and `equal`.
+    *   Add 16-bit int type support for built-in op `less`, `greater_than`,
+        `equal`
+    *   Add 8-bit and 16-bit support for `floor_div` and `floor_mod`.
     *   Add int16 indices support for built-in op `gather`.
 
 *   `tf.keras`
