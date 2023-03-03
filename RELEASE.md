@@ -27,6 +27,8 @@
         * If you use masked losses with Keras the loss values may be different in TensorFlow `2.12` compared to previous versions.
         * In cases where the mask was previously ignored, you will now get an error if you pass a mask with an incompatible shape.
 
+*   TensorFlow 2.10 was the last TensorFlow release that supported GPU on native-Windows. Starting with TensorFlow 2.11, you will need to install TensorFlow in WSL2, or install tensorflow-cpu and, optionally, try the TensorFlow-DirectML-Plugin.
+
 ## Major Features and Improvements
 
 *   `tf.lite`:
