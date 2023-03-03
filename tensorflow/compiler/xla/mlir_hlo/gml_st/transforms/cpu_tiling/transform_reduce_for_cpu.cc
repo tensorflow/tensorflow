@@ -115,9 +115,15 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     if (failed(validateOp(reduceOp, rewriter, /*expectedRank=*/1)))
       return failure();
 
-    Location loc = reduceOp.getLoc();
+    // 0-d tensor with the neutral elements.
+    auto fillOp = reduceOp.getInits().front().getDefiningOp<linalg::FillOp>();
+    if (!fillOp)
+      return rewriter.notifyMatchFailure(reduceOp,
+                                         "init not defined by fill op");
+    auto neutralValue = fillOp.value();
 
     // Constants.
+    Location loc = reduceOp.getLoc();
     Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     Value tileSizeValue =
         rewriter.create<arith::ConstantIndexOp>(loc, tileSize);
@@ -133,16 +139,9 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     Value remainderSize =
         getRemainderSize(rewriter, loc, tileableBound, inputSize);
 
-    // 0-d tensor with the neutral elements.
-    auto fillOp = reduceOp.getInits().front().getDefiningOp<linalg::FillOp>();
-    if (!fillOp) return failure();
-    auto neutralValue = fillOp.value();
-
-    // fillOp.getValue();
-    Type elementType = neutralValue.getType();
-
     // Create tensor<VECTOR_SIZExELEM_TYPE> with neutral elements for tile loop
     // init.
+    Type elementType = neutralValue.getType();
     Value emptyVector = rewriter.create<tensor::EmptyOp>(
         loc, llvm::ArrayRef({vectorSize}), elementType);
     Value filledVector =
