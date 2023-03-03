@@ -403,6 +403,8 @@ def _convert_inputs_to_dtensor(inputs, mesh):
     return inputs.get_dtensor()
   elif isinstance(inputs, values_lib.DistributedValues):
     return _convert_per_replica_to_dtensor(inputs, mesh)
+  elif isinstance(inputs, input_util._DTensorIterator):   # pylint: disable=protected-access
+    return inputs
   else:
     # For the rest of the types, we will convert it to dtensor.
     # Any of the inputs will be replicate to all the devices.

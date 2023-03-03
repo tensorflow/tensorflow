@@ -598,7 +598,26 @@ class StrategyDatasetTest(test_util.DTensorBaseTest):
         layout.Layout.batch_sharded(self.mesh, batch_dim='batch', rank=1),
         distributed_values['b'])
 
-  # TODO(scottzhu): Add test for unpacking the dataset in tf.function
+  def test_distribute_dataset_in_tf_function(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    local_batch_size = 4
+    global_batch_size = 8
+    dataset = self.dataset.batch(global_batch_size).prefetch(2)
+
+    distributed_dataset = strategy.experimental_distribute_dataset(dataset)
+
+    @def_function.function
+    def step_fn(iterator):
+      images, labels = next(iterator)
+      del labels
+      return images
+
+    result = strategy.run(step_fn, args=(iter(distributed_dataset),))
+    self.assertIsInstance(result, dtensor_util.DTensorDistributedValue)
+    self.assertLen(result.values, self.mesh.num_local_devices())
+    self.assertEqual(result.values[0].shape, [local_batch_size, 8, 8, 3])
+    self.assertEqual(result.values[1].shape, [local_batch_size, 8, 8, 3])
+
 
 if __name__ == '__main__':
   test.main()
