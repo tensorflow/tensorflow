@@ -14,32 +14,63 @@ py_library(
 )
 
 py_library(
+    name = "atomic_function",
+    srcs = ["atomic_function.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow/python/eager:__pkg__"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:functional_ops",
+        "//tensorflow/python:handle_data_util",
+        "//tensorflow/python/client:pywrap_tf_session",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:execute",
+        "//tensorflow/python/eager:tape",
+        "//tensorflow/python/framework:c_api_util",
+        "//tensorflow/python/framework:error_interpolation",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util",
+    ],
+)
+
+py_library(
     name = "monomorphic_function",
     srcs = ["monomorphic_function.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow/python/eager:__pkg__"],
     deps = [
+        ":atomic_function",
         ":attributes",
-        ":function_context",
         ":function_spec",
         ":saved_model_exported_concrete",
-        "//tensorflow/core/function/polymorphism:function_cache",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/polymorphism:function_type",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:default_gradient",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:func_graph",
-        "//tensorflow/python:functional_ops",
-        "//tensorflow/python:gradients_impl",
-        "//tensorflow/python:graph_to_function_def",
         "//tensorflow/python:handle_data_util",
-        "//tensorflow/python:pywrap_tf_session",
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
+        "//tensorflow/python/eager:backprop_util",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:core",
-        "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:forwardprop_util",
         "//tensorflow/python/eager:graph_only_ops",
         "//tensorflow/python/eager:tape",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:indexed_slices",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:type_spec",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/profiler:trace",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/types",
+        "//tensorflow/python/util",
     ],
 )
 
@@ -50,8 +81,10 @@ py_library(
     visibility = ["//tensorflow/python/eager:__pkg__"],
     deps = [
         ":attributes",
+        ":function_context",
         ":monomorphic_function",
         "//tensorflow/core/function/capture:capture_container",
+        "//tensorflow/core/function/polymorphism:function_cache",
     ],
 )
 
@@ -221,7 +254,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow/python/eager:__pkg__"],
     deps = [
-        ":monomorphic_function",
+        ":atomic_function",
         ":tracing_compiler",
     ],
 )
