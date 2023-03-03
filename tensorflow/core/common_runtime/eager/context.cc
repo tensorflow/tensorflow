@@ -1142,9 +1142,12 @@ void EagerContext::AddKernelToCache(Fprint128 cache_key,
   kernel_cache_[cache_key] = std::move(new_ref);
   auto* registered_function =
       gtl::FindPtrOrNull(registered_functions_, kernel->name());
+
   // The kernel name can be either a primitive op or a function.
   if (registered_function != nullptr) {
     registered_function->cached_kernel_keys->emplace_back(cache_key);
+    VLOG(5) << "Cached key size of kernel " << kernel->name()
+            << " is: " << registered_function->cached_kernel_keys->size();
   }
 }
 
