@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_DTENSOR_MLIR_CREATE_DTENSOR_MLIR_PASSES_H_
 
 #include <memory>
+#include <optional>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -139,8 +140,8 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorInferShapesForRestoreV2Op();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateDTensorSetHloShardingPass(llvm::Optional<bool> check_layout_use_xla_spmd =
-                                    llvm::Optional<bool>(false));
+CreateDTensorSetHloShardingPass(
+    std::optional<bool> check_layout_use_xla_spmd = std::optional<bool>(false));
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorReplaceAuxiliaryDTensorLayoutOpPass();
