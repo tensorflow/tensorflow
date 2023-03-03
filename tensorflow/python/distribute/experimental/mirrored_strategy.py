@@ -182,6 +182,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     # strategy.extended.colocate_vars_with(variable)
     kwargs.pop('colocate_with', None)
 
+    # Ignore expected_shape, which is from the v1 Variable. Keras was somehow
+    # using the v1 Variable, but didn't specify that value particularly.
+    kwargs.pop('expected_shape', None)
+
     # Make sure to call DVariable initializer under the scope so that it will
     # have the proper replicated layout. The initial_value is multi-typed,
     # eg it can be a tensor, or a python/numpy type, or a callable that
