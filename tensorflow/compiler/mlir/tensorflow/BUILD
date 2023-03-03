@@ -1463,6 +1463,7 @@ cc_library(
         "transforms/lift_variables_test_pass.cc",
         "transforms/lower_tf_test_pass.cc",
         "transforms/mark_initialized_variables_test_pass.cc",
+        "transforms/resource_analyzer_test_pass.cc",
         "transforms/test_cluster_ops_by_policy.cc",
         "transforms/test_passes.h.inc",
         "transforms/test_side_effect_analysis.cc",
@@ -1478,6 +1479,7 @@ cc_library(
         ":lift_variables_lib",
         ":lower_tf_lib",
         ":mark_initialized_variables_lib",
+        ":resource_value_typed_analyzer",
         ":tensorflow",
         ":tensorflow_analysis",
         ":tensorflow_passes",
@@ -2605,6 +2607,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
 )
