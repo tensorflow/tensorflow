@@ -44,7 +44,7 @@ namespace mhlo {
 namespace {
 
 #define GEN_PASS_DEF_INFEEDOPSXLAADJUSTLAYOUT
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_tf_passes.h.inc"
 
 class InfeedsOpsXlaAdjustLayout
     : public impl::InfeedOpsXlaAdjustLayoutBase<InfeedsOpsXlaAdjustLayout> {

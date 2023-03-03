@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_targets.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

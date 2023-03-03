@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_LEGALIZE_TARGETS_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_LEGALIZE_TARGETS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_XLA_LEGALIZE_TARGETS_H_
+#define TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_XLA_LEGALIZE_TARGETS_H_
 
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
@@ -31,4 +31,4 @@ mlir::ConversionTarget GetDefaultLegalConversionTargets(
 }  // namespace mhlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_LEGALIZE_TARGETS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_XLA_LEGALIZE_TARGETS_H_

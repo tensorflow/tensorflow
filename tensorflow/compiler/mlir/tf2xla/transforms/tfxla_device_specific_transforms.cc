@@ -19,7 +19,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/tf2xla/kernels/rng_converter_utils.h"
 
 namespace mlir {
@@ -28,7 +28,7 @@ namespace mhlo {
 namespace {
 
 #define GEN_PASS_DEF_TFXLADEVICESPECIFICTRANSFORMS
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_tf_passes.h.inc"
 
 class TFXLADeviceSpecificTransforms
     : public impl::TFXLADeviceSpecificTransformsBase<

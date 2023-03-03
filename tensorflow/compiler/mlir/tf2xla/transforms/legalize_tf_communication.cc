@@ -57,7 +57,7 @@ constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
 constexpr int64_t kShardingTpuCore = 0;
 
 #define GEN_PASS_DEF_LEGALIZETFCOMMUNICATIONPASS
-#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes.h.inc"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/tf_xla_passes.h.inc"
 
 // A pass that legalizes TF/XLA communication ops, propagate their respective
 // tokens (for ordering), and rewrite their respective functions and control

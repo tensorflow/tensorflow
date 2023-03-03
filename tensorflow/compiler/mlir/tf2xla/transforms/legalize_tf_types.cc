@@ -147,7 +147,7 @@ class TfTypePattern : public ConversionPattern {
 };
 
 #define GEN_PASS_DEF_LEGALIZETFTYPESPASS
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_tf_passes.h.inc"
 
 struct LegalizeTfTypesPass
     : public impl::LegalizeTfTypesPassBase<LegalizeTfTypesPass> {

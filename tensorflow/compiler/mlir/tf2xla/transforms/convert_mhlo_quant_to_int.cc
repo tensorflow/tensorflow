@@ -43,8 +43,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/utils.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -54,7 +54,7 @@ namespace mhlo {
 namespace {
 
 #define GEN_PASS_DEF_CONVERTMHLOQUANTTOINT
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_tf_passes.h.inc"
 
 FailureOr<TensorType> GetSameShapeTensorType(Operation *op,
                                              TensorType tensor_type,

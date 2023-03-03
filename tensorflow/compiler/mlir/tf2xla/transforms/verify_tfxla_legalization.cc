@@ -26,8 +26,8 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_targets.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
 
 namespace mlir {
 namespace mhlo {
@@ -35,7 +35,7 @@ namespace mhlo {
 namespace {
 
 #define GEN_PASS_DEF_VERIFYTFXLALEGALIZATION
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_tf_passes.h.inc"
 
 class VerifyTFXLALegalization
     : public impl::VerifyTFXLALegalizationBase<VerifyTFXLALegalization> {

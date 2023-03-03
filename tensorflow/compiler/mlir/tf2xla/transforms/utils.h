@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_UTILS_H_
 
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -57,4 +57,4 @@ DenseIntElementsAttr GetI64ElementsAttr(llvm::ArrayRef<int64_t> values,
 }  // namespace mhlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_UTILS_H_

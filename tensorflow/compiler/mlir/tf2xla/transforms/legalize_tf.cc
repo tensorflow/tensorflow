@@ -50,8 +50,8 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/utils.h"
 #include "tensorflow/compiler/xla/client/lib/conv_grad_size_util.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
@@ -6786,7 +6786,7 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
 };
 }  // end namespace
 
-#include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/generated_legalize_tf.inc"
 // LINT.IfChange
 void PopulateLegalizeTfPatterns(MLIRContext *context,
                                 RewritePatternSet *patterns) {

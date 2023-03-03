@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_PASSES_H_
+#define TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_PASSES_H_
 
 #include <memory>
 #include <optional>
@@ -146,13 +146,13 @@ CreateInfeedsOpsXlaAdjustLayoutPass();
 #define GEN_PASS_DECL_LEGALIZETFTYPESPASS
 #define GEN_PASS_DECL_TFXLADEVICESPECIFICTRANSFORMS
 #define GEN_PASS_DECL_VERIFYTFXLALEGALIZATION
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_tf_passes.h.inc"
 
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_LEGALIZETFCOMMUNICATIONPASS
 #define GEN_PASS_DECL_LEGALIZETFWITHTF2XLA
-#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes.h.inc"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/tf_xla_passes.h.inc"
 }  // namespace mhlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_PASSES_H_
