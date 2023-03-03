@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
 #include <utility>
 
 #include "absl/strings/str_format.h"
@@ -117,6 +118,17 @@ thread::ThreadPool* GetOrCreateBatchThreadsPool() {
 
 class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
  public:
+  struct FallbackBatchTask : BatchTask {
+    explicit FallbackBatchTask(const tfrt::ExecutionContext& tfrt_exec_ctx)
+        : tfrt_exec_ctx(tfrt_exec_ctx) {}
+    tfrt::ExecutionContext tfrt_exec_ctx;
+
+   protected:
+    std::unique_ptr<BatchTask> CreateDerivedTask() override {
+      return std::make_unique<FallbackBatchTask>(this->tfrt_exec_ctx);
+    }
+  };
+
   static Status Create(int32_t num_batch_threads, int32_t max_batch_size,
                        int32_t batch_timeout_micros,
                        int32_t max_enqueued_batches,
@@ -184,17 +196,6 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
   const tfrt::Function* bef_func() const { return bef_func_.get(); }
 
  private:
-  struct FallbackBatchTask : BatchTask {
-    explicit FallbackBatchTask(const tfrt::ExecutionContext& tfrt_exec_ctx)
-        : tfrt_exec_ctx(tfrt_exec_ctx) {}
-    tfrt::ExecutionContext tfrt_exec_ctx;
-
-   protected:
-    std::unique_ptr<BatchTask> CreateDerivedTask() override {
-      return std::make_unique<FallbackBatchTask>(this->tfrt_exec_ctx);
-    }
-  };
-
   FallbackBatchResource(
       const tfrt::ExecutionContext& exec_ctx,
       const KernelFallbackCompatRequestState& fallback_request_state,
@@ -235,14 +236,6 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
       const BatchTask& last_task, absl::Span<const Tensor> inputs,
       std::vector<Tensor>* combined_outputs,
       std::function<void(const Status&)> done) const override;
-
-  Status CreateBatchTask(OpKernelContext* c,
-                         std::unique_ptr<BatchTask>* output) const override {
-    const tfrt::ExecutionContext* exec_ctx = nullptr;
-    TF_RETURN_IF_ERROR(GetTfrtExecutionContext(c, &exec_ctx));
-    *output = std::make_unique<FallbackBatchTask>(*exec_ctx);
-    return OkStatus();
-  }
 
   HostContext* const host_ctx_;
   tfrt::ResourceContext* const resource_context_;
@@ -441,7 +434,16 @@ void BatchFunctionFallbackKernel::ComputeAsync(OpKernelContext* c,
           "Expected:",
           bef_func_.get()->name(), " Received:", br->bef_func()->name())),
       done);
-  Status status = br->RegisterInput(random::New64(), c, batcher_queue_, done);
+  Status status = br->RegisterInput(
+      random::New64(), c, batcher_queue_,
+      [c]()
+          -> StatusOr<std::unique_ptr<serving::BatchResourceBase::BatchTask>> {
+        const tfrt::ExecutionContext* exec_ctx = nullptr;
+        TF_RETURN_IF_ERROR(GetTfrtExecutionContext(c, &exec_ctx));
+        return {std::make_unique<FallbackBatchResource::FallbackBatchTask>(
+            *exec_ctx)};
+      },
+      done);
   br->Unref();
   OP_REQUIRES_OK_ASYNC(c, status, done);
   // Assume br calls done, so nothing to do here.
