@@ -558,6 +558,7 @@ LogicalResult scalarizeScatterOp(thlo::ScatterOp scatterOp,
                                  PatternRewriter &rewriter) {
   Location loc = scatterOp.getLoc();
   ImplicitLocOpBuilder b(loc, rewriter);
+  b.setInsertionPoint(scatterOp);
 
   auto scatterIndices = extractStartIndices(b, scatterOp.getIndices());
   if (!scatterIndices) return failure();
