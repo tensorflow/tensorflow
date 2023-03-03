@@ -18,7 +18,7 @@
 
 *   `tensorflow/python/keras` code is a legacy copy of Keras since the TensorFlow v2.7 release, and will be deleted in the v2.12 release. Please remove any import of `tensorflow.python.keras` and use the public API with `from tensorflow import keras` or `import tensorflow as tf; tf.keras`.
 
-*   For using TensorFlow GPU on Windows, you will need to install TensorFlow in Windows Subsystem for Linux (WSL2) (comment added during the TensorFlow 2.11.1 release).
+*   Starting TensorFlow 2.11, for using TensorFlow GPU on Windows, you will need to install TensorFlow in Windows Subsystem for Linux (WSL2) (comment added during the TensorFlow 2.11.1 release).
 
 ## Major Features and Improvements
 
