@@ -115,8 +115,10 @@ class CheckQuantizableOps
     }
 
     absl::Status check_status;
-    // Skip quantization for read-only ops as only weight-only is supported.
-    if (function_name.contains("gather")) {
+    // TODO(b/270906404): Support weight-only gather for uniform quantized opset
+    // in PTQ mode
+    if (op_set_ == OpSet::UNIFORM_QUANTIZED &&
+        function_name.contains("gather")) {
       check_status.Update(absl::InternalError("Weight-only op is skipped."));
     }
 

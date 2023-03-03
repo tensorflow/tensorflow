@@ -97,6 +97,7 @@ void AddQuantizePtqDynamicRangePasses(
       mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsDRQPass(
       quantization_options.quantization_method().experimental_method(),
+      quantization_options.op_set(),
       quantization_options.min_num_elements_for_weights()));
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
       quantization_options.quantization_method().experimental_method(),
@@ -105,7 +106,8 @@ void AddQuantizePtqDynamicRangePasses(
       quantization_options.quantization_method().experimental_method(),
       quantization_options.op_set(),
       quantization_options.enable_per_channel_quantization(),
-      quantization_options.min_num_elements_for_weights()));
+      quantization_options.min_num_elements_for_weights(),
+      quantization_options.enable_legacy_weight_only()));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 

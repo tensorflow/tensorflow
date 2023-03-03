@@ -359,13 +359,14 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     return in_placeholder, output_tensor
 
   def _create_simple_tf1_gather_model(
-      self, use_variable_for_filter=False
+      self, input_type: dtypes.DType, use_variable_for_filter=False
   ) -> Tuple[core.Tensor, core.Tensor]:
     """Creates a basic gather model.
 
     This is intended to be used for TF1 (graph mode) tests.
 
     Args:
+      input_type: type of the input index tensor for gather operation.
       use_variable_for_filter: Setting this to `True` makes the filter for the
         gather operation a `tf.Variable`.
 
@@ -373,7 +374,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       in_placeholder: Input tensor placeholder.
       output_tensor: The resulting tensor of the gather operation.
     """
-    in_placeholder = array_ops.placeholder(dtypes.int64, shape=(6))
+    in_placeholder = array_ops.placeholder(input_type, shape=(6))
 
     filters = np.random.randn(128, 32).astype(np.float32)
     if use_variable_for_filter:
@@ -792,7 +793,12 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     )
     v1_builder.save()
 
-  def _create_simple_gather_and_conv_model(self, filter_shape: Sequence[int]):
+  def _create_simple_gather_and_conv_model(
+      self,
+      input_type: dtypes.DType,
+      filter_shape: Sequence[int],
+      is_qat_model: bool = False,
+  ) -> module.Module:
     class SimpleGatherAndConvModel(module.Module):
       """A simple model with a single gather and a conv2d."""
 
@@ -804,7 +810,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       @def_function.function(
           input_signature=[
               tensor_spec.TensorSpec(
-                  shape=[1], dtype=dtypes.int64, name='input_tensor'
+                  shape=[1], dtype=input_type, name='input_tensor'
               )
           ]
       )
@@ -822,6 +828,13 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         ).astype('f4')
 
         out = array_ops.gather_v2(self.embedding_w, input_tensor)
+        if is_qat_model:
+          out = array_ops.fake_quant_with_min_max_args(
+              out, min=-0.1, max=0.2, num_bits=8, narrow_range=False
+          )
+          conv_filters = array_ops.fake_quant_with_min_max_args(
+              conv_filters, min=-0.1, max=0.2, num_bits=8, narrow_range=True
+          )
         out = nn_ops.conv2d(
             out,
             conv_filters,
@@ -830,6 +843,10 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
             padding='SAME',
             data_format='NHWC',
         )
+        if is_qat_model:
+          out = array_ops.fake_quant_with_min_max_args(
+              out, min=-0.1, max=0.2, num_bits=8, narrow_range=False
+          )
         return {'output': out}
 
     return SimpleGatherAndConvModel()
@@ -841,6 +858,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       tags: Collection[str],
       input_key: str,
       output_key: str,
+      input_type: dtypes.DType,
       use_variable=False,
   ) -> core.Tensor:
     """Creates and saves a simple gather model.
@@ -854,6 +872,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       tags: Set of tags associated with the model.
       input_key: The key to the input tensor.
       output_key: The key to the output tensor.
+      input_type: type of the input index tensor for gather operation.
       use_variable: Setting this to `True` makes the filter for the gather
         operation a `tf.Variable`.
 
@@ -862,7 +881,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     """
     with ops.Graph().as_default(), session.Session() as sess:
       in_placeholder, output_tensor = self._create_simple_tf1_gather_model(
-          use_variable_for_filter=use_variable
+          input_type=input_type, use_variable_for_filter=use_variable
       )
 
       if use_variable:
@@ -879,7 +898,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
 
       return in_placeholder
 
-  def _create_gather_model(self, use_variable):
+  def _create_gather_model(self, input_type, use_variable):
     class GatherModel(autotrackable.AutoTrackable):
       """A simple model with a single gather."""
 
@@ -899,7 +918,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       @def_function.function(
           input_signature=[
               tensor_spec.TensorSpec(
-                  shape=[6], dtype=dtypes.int64, name='input_tensor'
+                  shape=[6], dtype=input_type, name='input_tensor'
               )
           ]
       )

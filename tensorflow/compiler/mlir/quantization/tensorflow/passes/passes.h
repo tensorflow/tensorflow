@@ -53,7 +53,7 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateLiftQuantizableSpotsAsFunctionsDRQPass(
     tensorflow::quantization::QuantizationMethod::ExperimentalMethod
         quantization_method,
-    int min_num_elements_for_weights);
+    OpSet op_set, int min_num_elements_for_weights);
 
 // Replaces tf.CustomAggregator ops with quant.Stats ops for finalizing the
 // calibration procedure.
@@ -81,7 +81,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
     tensorflow::quantization::QuantizationMethod::ExperimentalMethod
         quantization_method,
     OpSet target_opset, bool enable_per_channel_quantization,
-    int min_num_elements_for_weights);
+    int min_num_elements_for_weight, bool enable_legacy_weight_only = false);
 
 // Converts dequantize-(quantizable) call-quantize pattern to a single call op
 // that has quantized input and output types. It is expected for this pass to

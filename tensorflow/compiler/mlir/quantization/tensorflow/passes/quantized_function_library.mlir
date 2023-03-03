@@ -416,4 +416,25 @@ module {
     %mul = "tf.Mul"(%cast, %scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     func.return %mul : tensor<*xf32>
   }
+
+  //===----------------------------------------------------------------------===//
+  // Weight-only functions.
+  //===----------------------------------------------------------------------===//
+
+  // Note that input i64 type is also supported by this.
+  parameters[
+    {"quantized_ops": ["Gather"], "output_type": "i8"}
+  ]
+  func.func @GenerateQuantizedFunctionName(${quantized_ops})(
+                         %weight : tensor<*xi8>, %input : tensor<*xi32>, %axis : tensor<i32>,
+                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>,
+                         %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*x${output_type}>
+      attributes {tf_quant.quantized_ops = ${quantized_ops}}
+  {
+    %accum_out = "tf.GatherV2"(%weight, %input, %axis) {
+      batch_dims = 0 : i64, attr_map = "batch_dims:0"} : (tensor<*xi8>, tensor<*xi32>, tensor<i32>) -> tensor<*xi8>
+
+    func.return %accum_out : tensor<*x${output_type}>
+  }
+
 }
