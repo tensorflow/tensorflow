@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <array>
 #include <iterator>
 #include <memory>
 #include <string>
@@ -49,9 +50,26 @@ using ::mlir::tf_executor::GraphOp;
 using ::mlir::tf_executor::IslandOp;
 using ::mlir::tf_saved_model::GetInitializerFunctions;
 using ::mlir::tf_saved_model::GetSessionInitializerOp;
+using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
+using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
 using ::mlir::tf_saved_model::SessionInitializerOp;
 using ::tensorflow::kImportModelDefaultGraphFuncName;
+
+// Array of initializer functions' types. The corresponding initializer
+// functions should be merged in this order. This is because:
+//   1) Variable restoration usually happens before initialization of other
+//   resources when a SavedModel is loaded. This ordering follows this semantic.
+//   2) The `tf_saved_model` dialect requires that the arguments with
+//   `tf_saved_model.index_path` attributes should precede those with
+//   `tf_saved_model.bound_input` attributes. The init function of type
+//   `kTfSavedModelInitializerRestoreType` usually has an argument with
+//   `tf_saved_model.index_path`, whereas the init function of type
+//   `kTfSavedModelInitializerInitType` may have arguments with
+//   `tf_saved_model.bound_input`. This ordering avoids breaking the argument
+//   ordering constraint.
+constexpr std::array<StringRef, 2> kInitializerTypesByMergeOrder = {
+    kTfSavedModelInitializerRestoreType, kTfSavedModelInitializerInitType};
 
 // This pass moves all ops from initializer functions to the main function. A
 // new `tf.NoOp` that has control dependency to the initializer function for
@@ -378,9 +396,14 @@ void MergeInitializerFunctionOpsToMainPass::runOnOperation() {
   }
 
   // Find the initializer functions and clone their ops to @main.
-  for (auto& [init_type, init_op_func] : *init_func_ops) {
+  for (const StringRef init_type : kInitializerTypesByMergeOrder) {
+    const auto it = init_func_ops->find(init_type);
+    if (it == init_func_ops->end()) continue;
+
+    func::FuncOp init_func_op = it->second;
+
     const SmallVector<Value> init_op_fetches =
-        CopyOpsToMainFunction(init_op_func, main_func_op);
+        CopyOpsToMainFunction(init_func_op, main_func_op);
     if (init_op_fetches.empty()) {
       VLOG(1) << "No fetch values exist from initializer functions.";
       return;
@@ -388,7 +411,7 @@ void MergeInitializerFunctionOpsToMainPass::runOnOperation() {
 
     // Creates a NoOp that has control dependency to the initializer function
     // for non-variables.
-    const Location init_op_loc = CreateInitOpLoc(ctx, init_op_func);
+    const Location init_op_loc = CreateInitOpLoc(ctx, init_func_op);
     IslandOp noop_wrapper_island_op = CreateNoOpWithControlDependencies(
         init_op_loc, main_graph_op,
         /*control_dependencies=*/init_op_fetches);
@@ -397,7 +420,7 @@ void MergeInitializerFunctionOpsToMainPass::runOnOperation() {
         main_graph_op,
         /*fetch_operand=*/noop_wrapper_island_op.getControl());
 
-    symbol_table.erase(init_op_func);
+    symbol_table.erase(init_func_op);
   }
 
   // Empties the "initializers" attribute from the `SessionInitializerOp` since
