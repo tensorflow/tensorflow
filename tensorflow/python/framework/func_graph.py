@@ -846,8 +846,7 @@ class FuncGraph(ops.Graph):
   @property
   def captures(self):
     """Order list of tuples containing external and internal captures."""
-    by_val_captures = self._function_captures.by_val_captures.values()
-    return [(c.external, c.internal) for c in by_val_captures]
+    return self._function_captures.by_val_capture_tuples
 
   def add_capture(self, tensor, placeholder):
     """Capture a specific tensor and utilize the provided placeholder.

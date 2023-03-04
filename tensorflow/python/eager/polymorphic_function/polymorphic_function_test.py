@@ -136,6 +136,33 @@ class _HasDecoratedMethod(object):
     return x * 3.
 
 
+class FunctionBenchmark(test.Benchmark):
+  """Benchmark the tf.function implementation."""
+
+  def benchmark_repeat_captures_property_access(self):
+    n_iters = 1000000
+    n_captures = 100
+    vs = []
+    for _ in range(n_captures):
+      vs.append(variables.Variable(1.0))
+
+    def f():
+      result = 0
+      for idx in range(n_captures):
+        result += vs[idx]
+      return result
+
+    pf = polymorphic_function.function(f)
+    g = pf.get_concrete_function().graph
+
+    start_time = time.time()
+    for _ in range(n_iters):
+      temp = g.captures  # pylint: disable=unused-variable
+    duration = time.time() - start_time
+
+    self.report_benchmark(iters=n_iters, wall_time=duration / float(n_iters))
+
+
 # TODO(mdan): Organize these tests.
 class FunctionTest(test.TestCase, parameterized.TestCase):
 
