@@ -82,6 +82,13 @@
         retrieving the worker index from within a worker, when using parameter
         server training with a custom training loop.
 
+*   `tf.experimental.dtensor`:
+
+    *   Deprecated `dtensor.run_on` in favor of `dtensor.default_mesh` to
+        correctly indicate that the context does not override the mesh that the
+        ops and functions will run on, it only sets a fallback default mesh.
+
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:

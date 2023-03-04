@@ -23,6 +23,7 @@ from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 _dtensor_singleton = None
@@ -73,6 +74,7 @@ def call_with_layout(fn: Callable[...,
 
 
 @tf_export("experimental.dtensor.run_on", v1=[])
+@deprecation.deprecated(None, "Use `dtensor.default_mesh` scope instead.")
 @contextlib.contextmanager
 def run_on(mesh: layout_lib.Mesh):
   """Runs enclosed functions in the DTensor device scope.
@@ -88,6 +90,28 @@ def run_on(mesh: layout_lib.Mesh):
 
   Yields:
     A context in which all ops and tf.functions will run on the DTensor device.
+  """
+  with default_mesh(mesh):
+    yield
+
+
+@tf_export("experimental.dtensor.default_mesh", v1=[])
+@contextlib.contextmanager
+def default_mesh(mesh: layout_lib.Mesh):
+  """Sets the default DTensor device mesh to use for enclosed functions.
+
+  This function returns a scope. All the ops and tf.functions in this scope will
+  default to this DTensor mesh if a mesh cannot be inferred from any of the
+  inputs
+  This is useful for wrapping any tf.function that doesn't take a DTensor as
+  input but would like to produce DTensor as result. The scope will also make
+  sure all small constants are replicated as DTensors.
+
+  Args:
+    mesh: A Mesh instance to extract a default mesh from.
+
+  Yields:
+    A context in which all ops and tf.functions will run on the given mesh.
   """
   if not isinstance(mesh, layout_lib.Mesh):
     raise ValueError(f"Expect `mesh` to be `Mesh`, got {type(mesh)}")
