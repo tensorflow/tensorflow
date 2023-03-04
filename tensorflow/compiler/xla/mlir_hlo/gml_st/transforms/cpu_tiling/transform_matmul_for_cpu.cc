@@ -106,7 +106,7 @@ SmallVector<OpFoldResult> getDims(OpBuilder &builder, Location loc,
       [&](int64_t dim) { return getDim(builder, loc, shapedTypeValue, dim); }));
 }
 
-Optional<Value> getPaddingValue(Value &source) {
+std::optional<Value> getPaddingValue(Value &source) {
   auto padOp = source.getDefiningOp<tensor::PadOp>();
   if (!padOp || padOp.getNofold() || !padOp.hasZeroLowPad())
     return std::nullopt;
@@ -127,7 +127,7 @@ Value pack(Location loc, PatternRewriter &rewriter, Value source,
       getAsOpFoldResult(rewriter.getI64ArrayAttr(innerTileSizes));
   auto empty = tensor::PackOp::createDestinationTensor(
       rewriter, loc, source, innerTileSizesOfr, innerDimsPos, outerDimsPerm);
-  Optional<Value> paddingValue = getPaddingValue(source);
+  std::optional<Value> paddingValue = getPaddingValue(source);
   return rewriter.create<tensor::PackOp>(loc, source, empty, innerDimsPos,
                                          innerTileSizesOfr, paddingValue,
                                          outerDimsPerm);

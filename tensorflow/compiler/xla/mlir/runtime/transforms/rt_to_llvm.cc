@@ -700,7 +700,7 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   // rewriter function into the CFG and they interact badly.
 
   // Convert all async types to opaque pointers.
-  llvm_converter.addConversion([&](Type type) -> Optional<Type> {
+  llvm_converter.addConversion([&](Type type) -> std::optional<Type> {
     if (type.isa<async::TokenType, async::GroupType, async::ValueType>())
       return llvm_converter.getPointerType(
           IntegerType::get(type.getContext(), 8));
@@ -712,7 +712,7 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   auto add_unrealized_cast = [](OpBuilder &builder, Type type,
                                 ValueRange inputs, Location loc) {
     auto cast = builder.create<UnrealizedConversionCastOp>(loc, type, inputs);
-    return Optional<Value>(cast.getResult(0));
+    return std::optional<Value>(cast.getResult(0));
   };
   converter.addSourceMaterialization(add_unrealized_cast);
 

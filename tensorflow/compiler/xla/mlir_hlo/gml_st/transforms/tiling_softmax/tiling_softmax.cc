@@ -59,8 +59,8 @@ LogicalResult tilePartialSoftmax(
   //   i)  by a reduction and subsequent bcast in one dimension, or
   //   ii) by using the source value as is.
   Value commonSource;
-  Optional<int64_t> commonReductionDim;
-  SmallVector<Optional<SimpleBcastReduction>> simpleBcastReductions;
+  std::optional<int64_t> commonReductionDim;
+  SmallVector<std::optional<SimpleBcastReduction>> simpleBcastReductions;
   auto mapOp = llvm::dyn_cast_or_null<linalg::MapOp>(op.getOperation());
   if (!mapOp || mapOp.getNumDpsInits() != 1)
     return rewriter.notifyMatchFailure(op, "no mapOp");

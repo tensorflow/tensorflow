@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
 #include <string>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -72,7 +73,7 @@ bool hasPrivateFeaturesNotInStablehlo(HloOpTy hloOp) {
   return false;
 }
 
-bool hasPackedNibble(Optional<ArrayAttr> precisionConfigAttr) {
+bool hasPackedNibble(std::optional<ArrayAttr> precisionConfigAttr) {
   if (!precisionConfigAttr) return false;
   return llvm::any_of(*precisionConfigAttr, [&](Attribute attr) {
     auto precisionAttr = attr.cast<mhlo::PrecisionAttr>();

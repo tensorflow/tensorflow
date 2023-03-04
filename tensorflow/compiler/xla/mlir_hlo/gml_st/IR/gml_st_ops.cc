@@ -365,7 +365,7 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<ParallelOp> {
     newLowerBounds.reserve(op.getLowerBound().size());
     newUpperBounds.reserve(op.getUpperBound().size());
     newSteps.reserve(op.getStep().size());
-    auto getConstant = [](Value v) -> Optional<int64_t> {
+    auto getConstant = [](Value v) -> std::optional<int64_t> {
       auto constant =
           dyn_cast_or_null<arith::ConstantIndexOp>(v.getDefiningOp());
       if (constant) return constant.value();
