@@ -188,10 +188,13 @@ tf_cc_test(
     srcs = ["snapshot_manager_test.cc"],
     deps = [
         ":snapshot_manager",
+        "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/data/service:common_proto_cc",
         "//tensorflow/core/data/service:dispatcher_proto_cc",
         "//tensorflow/core/data/service:test_util",
+        "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:statusor",
     ],
