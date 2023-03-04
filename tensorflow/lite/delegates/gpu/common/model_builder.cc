@@ -1709,6 +1709,12 @@ class PadOperationParser : public TFLiteOperationParser {
     Tensor<HW, DataType::INT32> paddings;
     RETURN_IF_ERROR(reader->ReadTensor(1, &paddings));
 
+    if (registration->builtin_code == kTfLiteBuiltinPadv2 &&
+        tflite_node->inputs->size == 3) {
+      const TfLiteTensor* const_tensor = reader->GetInputTensor(2);
+      attr.constant_values = GetTensorData<float>(const_tensor)[0];
+    }
+
     if (paddings.shape.h == 4 && paddings.shape.w == 2) {
       // 4x2 tensor with paddings.
       attr.prepended = BHWC(paddings.data[0], paddings.data[2],
@@ -3112,6 +3118,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
     case kTfLiteBuiltinPack:
       return std::make_unique<PackOperationParser>();
     case kTfLiteBuiltinPad:
+      return std::make_unique<PadOperationParser>(/*mirror_pad=*/false);
+    case kTfLiteBuiltinPadv2:
       return std::make_unique<PadOperationParser>(/*mirror_pad=*/false);
     case kTfLiteBuiltinPow:
       return std::make_unique<ElementwiseOperationParser>(OperationType::POW);

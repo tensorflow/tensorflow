@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
@@ -61,7 +62,9 @@ std::string GetPaddingCode(const OperationDef& op_def,
        "Z >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
-  c += "  args.src_tensor::type result = args.src_tensor::zero_value;\n";
+  c += "  args.src_tensor::type result = (" +
+       ToCLDataType(op_def.src_tensors[0].GetDataType(), /*vec_size*/ 4) +
+       ")(" + std::to_string(attr.constant_values) + ");\n";
   c += "  int s_x = X - args.prepended_x;\n";
   c += "  int s_y = Y - args.prepended_y;\n";
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
@@ -107,7 +110,8 @@ std::string GetPaddingCode(const OperationDef& op_def,
     if (attr.prepended.c == 0 && attr.appended.c == 0) {
       // optimized case
       c += "    result = args.src_tensor.Read(s_x, s_y, Z);\n";
-    } else if (attr.prepended.c % 4 == 0) {
+    } else if (attr.prepended.c % 4 == 0 &&
+               attr.prepended.b == attr.appended.b) {
       c += "    int s_z = Z - args.prepended_z / 4;\n";
       c += "    if (s_z >= 0 && s_z < args.src_tensor.Slices()) {\n";
       c += "      result = args.src_tensor.Read(s_x, s_y, s_z);\n";
