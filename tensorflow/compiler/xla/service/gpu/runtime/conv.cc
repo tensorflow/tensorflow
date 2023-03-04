@@ -335,7 +335,7 @@ StatusOr<AutotuneResult> DoRuntimeAutotuning(
   HloModuleConfig hlo_module_config;
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* stream_exec = stream->parent();
-  se::DeviceMemoryAllocator* allocator = stream->parent()->GetAllocator();
+  se::DeviceMemoryAllocator* allocator = run_options->allocator();
   se::RedzoneAllocator input_output_allocator(
       stream, allocator, PtxOptsFromDebugOptions(*debug_options),
       /*memory_limit=*/std::numeric_limits<int64_t>::max(),
@@ -445,10 +445,9 @@ static absl::Status ConvImpl(
 
   if (scratch_buffer_size > scratch_buffer.size()) {
     // Need to reallocate scratch buffer.
-    auto stream_exec = run_options->stream()->parent();
-    auto allocator = stream_exec->GetAllocator();
+    se::DeviceMemoryAllocator* allocator = run_options->allocator();
     StatusOr<se::OwningDeviceMemory> allocated_buffer =
-        allocator->Allocate(stream_exec->device_ordinal(), scratch_buffer_size);
+        allocator->Allocate(run_options->device_ordinal(), scratch_buffer_size);
     if (!allocated_buffer.ok()) return ToAbslStatus(allocated_buffer.status());
     se::DeviceMemoryBase new_scratch_buffer(allocated_buffer->ptr(),
                                             scratch_buffer_size);
