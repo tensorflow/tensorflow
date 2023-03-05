@@ -52,10 +52,14 @@ NextPluggableDevice::NextPluggableDevice(const SessionOptions& session_options,
                                                      options.device_ordinal)),
       device_ordinal_(options.device_ordinal),
       compilation_device_type_(options.compilation_device_name) {
-  allocator_ = std::make_unique<NextPluggableDeviceAllocator>(device_ordinal_);
   if (absl::GetFlag(FLAGS_next_pluggable_device_use_pjrt)) {
+    pjrt_allocator_ = std::make_unique<AsyncValueAllocator>();
+    allocator_ = pjrt_allocator_.get();
     device_context_ = core::RefCountPtr<DeviceContext>(new PjRtDeviceContext());
   } else {
+    tfnpd_allocator_ =
+        std::make_unique<NextPluggableDeviceAllocator>(device_ordinal_);
+    allocator_ = tfnpd_allocator_.get();
     device_context_ = core::RefCountPtr<DeviceContext>(
         new NextPluggableDeviceContext(device_ordinal_));
   }
@@ -75,7 +79,7 @@ Allocator* NextPluggableDevice::GetAllocator(AllocatorAttributes attr) {
   if (attr.on_host()) {
     return cpu_allocator();
   }
-  return allocator_.get();
+  return allocator_;
 }
 
 void NextPluggableDevice::Compute(OpKernel* op_kernel,
@@ -97,7 +101,7 @@ void NextPluggableDevice::ComputeAsync(AsyncOpKernel* op_kernel,
 Status NextPluggableDevice::Sync() { return OkStatus(); }
 
 // TODO(chuanhao): implement NextPluggableDevice::Sync().
-void NextPluggableDevice::Sync(const DoneCallback& done) {}
+void NextPluggableDevice::Sync(const DoneCallback& done) { done(Sync()); }
 
 Status NextPluggableDevice::TryGetDeviceContext(DeviceContext** out_context) {
   *out_context = device_context_.get();
