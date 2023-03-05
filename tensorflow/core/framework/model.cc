@@ -52,6 +52,10 @@ constexpr double kOutlierSigmas = 2.0;
 // faster than 84% of the gap times.
 constexpr double kTargetTimeSigmas = 1.0;
 
+constexpr char kFlatMap[] = "FlatMap";
+constexpr char kInterleave[] = "Interleave";
+constexpr char kParallelInterleave[] = "ParallelInterleave";
+
 // A class to prune outliers given a set of points. To use it, instantiate an
 // object and call the `GetCleanPoints()` method.
 class TargetTimeCalculator {
@@ -2900,7 +2904,21 @@ void ModelTiming::ComputePipelineRatios(const Node::NodeVector& bfs_nodes) {
     if (node->output() != nullptr || timing_nodes_.contains(node->output())) {
       const auto& output_timing = timing_nodes_[node->output()];
       parent_pipeline_ratio = output_timing.pipeline_ratio;
-      if (node->num_elements() > 0 && node->output()->num_elements() > 0) {
+      auto should_estimate_first_input_ratio = [node]() {
+        // Elements of the first input of some transformations like `Interleave`
+        // are used to produce "derived" inputs whose elements are then produced
+        // as the output of the transformation. For this reason, the ratio of
+        // such inputs is not known statically and is instead estimated as the
+        // ratio of `num_elements` it produces and `num_elements` its output
+        // produces.
+        return (absl::StartsWith(node->output()->name(), kFlatMap) ||
+                absl::StartsWith(node->output()->name(), kInterleave) ||
+                absl::StartsWith(node->output()->name(),
+                                 kParallelInterleave)) &&
+               node.get() == node->output()->inputs().begin()->get() &&
+               node->num_elements() > 0 && node->output()->num_elements() > 0;
+      };
+      if (should_estimate_first_input_ratio()) {
         parent_ratio = static_cast<double>(node->num_elements()) /
                        static_cast<double>(node->output()->num_elements() +
                                            node->output()->buffered_elements());
@@ -2918,31 +2936,35 @@ void ModelTiming::ComputePipelineRatios(const Node::NodeVector& bfs_nodes) {
 
 void ModelTiming::ComputeNonAsyncInterleaveManyTotalTime(const Node& node) {
   DCHECK(timing_nodes_.contains(&node));
-  auto& node_timing = timing_nodes_[&node];
-  double input_total_time_nsec = 0.0;
-  for (auto input : node.inputs()) {
-    if (input->IsAsync()) {
-      continue;
+  auto inputs = node.inputs();
+  auto input = inputs.begin();
+  double first_input_total_time = 0.0;
+  // The total time of a node is scaled by its ratio to account for how many
+  // elements it needs to produce for its output node to produce an element. If
+  // this is an interleave node or a flat map node, then the ratio is not known
+  // statically and is instead estimated using empirical data.
+  if (absl::StartsWith(node.name(), kFlatMap) ||
+      absl::StartsWith(node.name(), kInterleave)) {
+    first_input_total_time = ComputeInterleaveManyFirstInputTotalTime(node);
+    if (input != inputs.end()) {
+      ++input;
     }
-    if (!input->autotune() || input->num_elements() <= 0) {
-      continue;
-    }
-    DCHECK(timing_nodes_.contains(input.get()))
-        << "Input " << input->long_name() << " of node " << node.long_name()
-        << " has no timing node.";
-    // We use the dynamic ratio of `num_elements` of input over that of output
-    // rather than the static `Ratio()` computed based on the type of the node
-    // (e.g. batch size of a `Batch`) because the static value can be inaccurate
-    // for nodes like an interleave node where the ratio of the first input is
-    // different from the ratio of the interleaved inputs. Moreover, this
-    // dynamic quantity should closely match the static one for nodes other than
-    // interleave nodes and is more generic since its value is specific to an
-    // input to output pair rather than a single numnber for the output node.
-    input_total_time_nsec +=
-        timing_nodes_[input.get()].total_time_nsec *
-        static_cast<double>(input->num_elements()) /
-        static_cast<double>(node.num_elements() + node.buffered_elements());
   }
+  double input_total_time_nsec = first_input_total_time;
+  for (; input != inputs.end(); ++input) {
+    if ((*input)->IsAsync()) {
+      continue;
+    }
+    if (!(*input)->autotune() || (*input)->num_elements() <= 0) {
+      continue;
+    }
+    DCHECK(timing_nodes_.contains((*input).get()))
+        << "Input " << (*input)->long_name() << " of node " << node.long_name()
+        << " has no timing node.";
+    input_total_time_nsec +=
+        timing_nodes_[(*input).get()].total_time_nsec * node.Ratio();
+  }
+  auto& node_timing = timing_nodes_[&node];
   node_timing.total_time_nsec =
       node_timing.self_time_nsec + input_total_time_nsec;
 }
@@ -2952,7 +2974,7 @@ void ModelTiming::ComputeAsyncInterleaveManyTotalTime(const Node& node) {
   auto& node_timing = timing_nodes_[&node];
   node_timing.total_time_nsec =
       node_timing.self_time_nsec +
-      ComputeAsyncInterleaveManyFirstInputTotalTime(node) +
+      ComputeInterleaveManyFirstInputTotalTime(node) +
       ComputeAsyncInterleaveManyInterleavedInputsTotalTime(node);
 }
 
@@ -3033,10 +3055,9 @@ double ModelTiming::ComputeAsyncInterleaveManyInterleavedInputsTotalTime(
   return input_total_time_nsec;
 }
 
-double ModelTiming::ComputeAsyncInterleaveManyFirstInputTotalTime(
-    const Node& node) {
+double ModelTiming::ComputeInterleaveManyFirstInputTotalTime(const Node& node) {
   DCHECK(timing_nodes_.contains(&node));
-  // `ParallelInterleave` is often used to interleave processing of datasets
+  // An interleave node is often used to interleave processing of datasets
   // generated from the first input, e.g. reading from IO where the first input
   // has the list of all filenames. The contribution of the first input total
   // time is proportional to the number of elements it produces over the number
@@ -3067,17 +3088,11 @@ void ModelTiming::ComputeNodeTotalTime(const Node& node) {
   if (!node.autotune() || node.num_elements() <= 0) {
     return;
   }
-#if !defined(IS_MOBILE_PLATFORM)
-  // This block of code is defined only for non-mobile platform because mobile
-  // platform lacks RTTI, i.e. the use of `dynamic_cast`.
-  if (dynamic_cast<const AsyncInterleaveMany*>(&node) != nullptr) {
+  if (absl::StartsWith(node.name(), kParallelInterleave)) {
     ComputeAsyncInterleaveManyTotalTime(node);
-  } else {
-    ComputeNonAsyncInterleaveManyTotalTime(node);
+    return;
   }
-#else   // !IS_MOBILE_PLATFORM
   ComputeNonAsyncInterleaveManyTotalTime(node);
-#endif  // !IS_MOBILE_PLATFORM
 }
 
 std::vector<std::shared_ptr<Node>> ModelTiming::GetStageRoots() const {
