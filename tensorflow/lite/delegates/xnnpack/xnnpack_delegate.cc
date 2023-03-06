@@ -2816,33 +2816,6 @@ class Subgraph {
     if (axis < 0) axis += NumDimensions(&output_tensor);
     int sum_axis = 0;
 
-    if (output_tensor.type == kTfLiteUInt8) {
-      const int32_t zero_point =
-          tensors[node->outputs->data[0]].params.zero_point;
-      const float scale = tensors[node->outputs->data[0]].params.scale;
-      for (int i = 0; i < num_inputs; i++) {
-        if (tensors[node->inputs->data[i]].params.zero_point != zero_point) {
-          TF_LITE_MAYBE_KERNEL_LOG(
-              logging_context,
-              "Mismatching quantization zero point across the %dth input "
-              "(%" PRId32 ") and the output (%" PRId32
-              ") for CONCATENATE operator #%d",
-              i, tensors[node->inputs->data[i]].params.zero_point, zero_point,
-              node_index);
-          return kTfLiteError;
-        }
-        if (tensors[node->inputs->data[i]].params.scale != scale) {
-          TF_LITE_MAYBE_KERNEL_LOG(
-              logging_context,
-              "Mismatching quantization scale across the %dth input (%f) "
-              "and the output (%f) for CONCATENATE operator #%d",
-              i, tensors[node->inputs->data[i]].params.scale, scale,
-              node_index);
-          return kTfLiteError;
-        }
-      }
-    }
-
     for (int i = 0; i < num_inputs; i++) {
       const TfLiteTensor& input_tensor = tensors[node->inputs->data[i]];
       TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
