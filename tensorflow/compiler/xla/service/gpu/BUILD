@@ -2017,6 +2017,7 @@ cc_library(
         "//tensorflow/tsl/platform:blocking_counter",
         "//tensorflow/tsl/platform:casts",
         "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:status",
