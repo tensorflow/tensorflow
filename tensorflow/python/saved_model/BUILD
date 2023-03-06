@@ -506,9 +506,8 @@ cuda_py_test(
         ":load",
         ":save",
         "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python:cond_v2",  # b/118513001
+        "//tensorflow/python:while_loop",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:lib",
         "//tensorflow/python:tensor_spec",
