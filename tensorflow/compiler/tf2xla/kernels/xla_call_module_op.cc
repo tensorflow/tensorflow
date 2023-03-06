@@ -271,11 +271,12 @@ Status RefineDynamicShapes(XlaOpKernelContext *ctx,
   int non_dimension_arguments = ctx->num_inputs();
   if (non_dimension_arguments != main_body.getNumArguments()) {
     return errors::InvalidArgument(
-        "Incorrect number of arguments for XlaCallModule: ",
-        non_dimension_arguments, ". The module has ",
+        "Incorrect number of arguments passed to XlaCallModule: ",
+        non_dimension_arguments, ". The module takes ",
         main_body.getNumArguments() + nr_platform_args + nr_dim_args,
-        " of which ", nr_platform_args, " platform index arguments and ",
-        nr_dim_args, " dimension arguments. It must be called with ",
+        " arguments of which ", nr_platform_args,
+        " platform index arguments and ", nr_dim_args,
+        " dimension arguments. It must be called with ",
         main_body.getNumArguments(), " arguments.");
   }
 
@@ -351,8 +352,7 @@ Status LoadAndPreprocessModule(int version,
                                mlir::MLIRContext *context, string module_str,
                                std::vector<string> dim_args_spec,
                                std::vector<string> platforms,
-                               int platform_index, bool *has_dynamic_shapes,
-                               int *nr_outputs) {
+                               int platform_index, int *nr_outputs) {
   // Load a superset of dialects; we should check at serialization time that
   // we only include allowable dialects.
   context->loadDialect<mlir::func::FuncDialect>();
@@ -380,24 +380,7 @@ Status LoadAndPreprocessModule(int version,
   if (!main) {
     return errors::InvalidArgument("Cannot find 'main' in module");
   }
-  *has_dynamic_shapes = false;
-  for (const mlir::Type arg_type : main.getArgumentTypes()) {
-    mlir::RankedTensorType arg_ranked_type =
-        arg_type.dyn_cast<mlir::RankedTensorType>();
-    if (!arg_ranked_type) {
-      return errors::InvalidArgument("Module main has unranked arguments");
-    }
-    for (const int64_t arg_dim_size : arg_ranked_type.getShape()) {
-      if (arg_dim_size < 0) {
-        *has_dynamic_shapes = true;
-      }
-    }
-  }
 
-  if (*has_dynamic_shapes && dim_args_spec.empty()) {
-    return errors::InvalidArgument(
-        "Module main has dynamic shapes but no dim_args_spec was given");
-  }
   if (!dim_args_spec.empty() || platform_index >= 0) {
     TF_RETURN_IF_ERROR(
         AddMainWrapper(version, **module, platform_index, dim_args_spec));
@@ -509,15 +492,13 @@ class XlaCallModuleOp : public XlaOpKernel {
     OP_REQUIRES_OK(
         ctx, LoadAndPreprocessModule(version_, &module_, &context_, module_str,
                                      dim_args_spec_, platforms, platform_index_,
-                                     &has_dynamic_shapes_, &nr_outputs_));
+                                     &nr_outputs_));
   }
 
   void Compile(XlaOpKernelContext *ctx) override {
-    if (has_dynamic_shapes_) {
-      OP_REQUIRES_OK(ctx, RefineDynamicShapes(ctx, &module_,
-                                              (platform_index_ >= 0 ? 1 : 0),
-                                              dim_args_spec_.size()));
-    }
+    OP_REQUIRES_OK(
+        ctx, RefineDynamicShapes(ctx, &module_, (platform_index_ >= 0 ? 1 : 0),
+                                 dim_args_spec_.size()));
     OP_REQUIRES_OK(ctx, ValidateModule(*module_));
 
     std::vector<xla::XlaOp> inputs(ctx->num_inputs());
@@ -564,7 +545,6 @@ class XlaCallModuleOp : public XlaOpKernel {
   int version_;
   int nr_outputs_;
   std::vector<string> dim_args_spec_;
-  bool has_dynamic_shapes_;
   int platform_index_;  // Index in platforms of the current platform, or -1
                         // if module does not take a platform index arg.
   mlir::MLIRContext context_{mlir::MLIRContext::Threading::DISABLED};

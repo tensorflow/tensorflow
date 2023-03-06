@@ -240,18 +240,11 @@ module @jit_f.0 {
       self._assertOpOutputMatchesExpected(f, (x, y),
                                           (np.sin(x + y), x.shape[1]))
 
-    dim_args_spec = []  # No dim_args_spec
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        'Module main has dynamic shapes but no dim_args_spec was given'):
-      self._assertOpOutputMatchesExpected(f, (x, y),
-                                          (np.sin(x + y), x.shape[1]))
-
     dim_args_spec = ['1.0']  # Too few dim_args_spec
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        'Incorrect number of arguments for XlaCallModule: 2. '
-        'The module has 4 of which 0 platform index arguments '
+        'Incorrect number of arguments passed to XlaCallModule: 2. '
+        'The module takes 4 arguments of which 0 platform index arguments '
         'and 1 dimension arguments.'):
       self._assertOpOutputMatchesExpected(f, (x, y),
                                           (np.sin(x + y), x.shape[1]))
@@ -370,7 +363,9 @@ module @jit_f.0 {
     # With empty platforms, there should be no platform_index argument
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        'Call applied function arity must match number of arguments'):
+        'Incorrect number of arguments passed to XlaCallModule: 1. '
+        'The module takes 2 arguments of which 0 platform index arguments '
+        'and 0 dimension arguments.'):
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     # Same with a single platform
@@ -378,7 +373,9 @@ module @jit_f.0 {
     if self.testing_platform() == 'CPU':
       with self.assertRaisesRegex(
           errors.InvalidArgumentError,
-          'Call applied function arity must match number of arguments'):
+          'Incorrect number of arguments passed to XlaCallModule: 1. '
+          'The module takes 2 arguments of which 0 platform index arguments '
+          'and 0 dimension arguments.'):
         self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     #  Same if the version is 2
@@ -386,7 +383,9 @@ module @jit_f.0 {
     version = 2
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        'Call applied function arity must match number of arguments'):
+        'Incorrect number of arguments passed to XlaCallModule: 1. '
+        'The module takes 2 arguments of which 0 platform index arguments '
+        'and 0 dimension arguments.'):
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     version = 3
