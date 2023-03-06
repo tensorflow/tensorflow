@@ -707,7 +707,7 @@ std::optional<LaunchDimensions> TritonWrapper(
   b.create<mlir::func::ReturnOp>(loc);
   CHECK(mlir::succeeded(mlir::verify(triton_module)));
 
-  VLOG(4) << triton_module;
+  VLOG(4) << llvm_ir::DumpToString(triton_module);
 
   // Compile Triton kernel to LLVM.
   mlir::PassManager pm(&mlir_context);
