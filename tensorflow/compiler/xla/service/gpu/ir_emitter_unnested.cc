@@ -4360,10 +4360,8 @@ Status IrEmitterUnnested::EmitTransposeTile(
         return FindAnyTiledTranspose(FindNonTrivialHero(*instr));
       }));
 
-  const Shape& out_shape = first_transpose->shape();
   const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
-  Vector3 first_tiled_transpose_permutation =
-      FindAnyTiledTranspose(*first_transpose)->second;
+  auto first_tiled_transpose = FindAnyTiledTranspose(*first_transpose);
 
   // We need the following invariant:
   // For every tuple element:
@@ -4372,11 +4370,7 @@ Status IrEmitterUnnested::EmitTransposeTile(
   for (HloInstruction* root : hlo_roots) {
     auto tiled_transpose = FindAnyTiledTranspose(*root);
     if (tiled_transpose) {
-      const HloInstruction& hero = FindNonTrivialHero(*root);
-      CHECK(ShapeUtil::EqualIgnoringElementType(transpose_in_shape,
-                                                hero.operand(0)->shape()));
-      CHECK(ShapeUtil::EqualIgnoringElementType(out_shape, hero.shape()));
-      CHECK(tiled_transpose->second == first_tiled_transpose_permutation);
+      CHECK(*tiled_transpose == *first_tiled_transpose);
     } else {
       CHECK(ShapeUtil::IsReshapeOrTransposeBitcast(
           root->shape(), transpose_in_shape,
@@ -4435,7 +4429,13 @@ Status IrEmitterUnnested::EmitTransposeTile(
               const HloInstruction& hero = FindNonTrivialHero(*root);
               llvm_ir::ElementGenerator input_gen =
                   *fused_emitter.GetGenerator(*hero.operand(0));
-              llvm::Value* value = *input_gen(input_index);
+              IrArray::Index used_index = input_index;
+              if (!ShapeUtil::EqualIgnoringElementType(
+                      hero.operand(0)->shape(), transpose_in_shape)) {
+                used_index = used_index.SourceIndexOfBitcast(
+                    transpose_in_shape, hero.operand(0)->shape(), &b_);
+              }
+              llvm::Value* value = *input_gen(used_index);
               llvm::Value* addr = thread_id_info.GEPIntoSharedMemory(
                   &b_, tiles[&hero], {y_loc, x_loc});
 
