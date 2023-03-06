@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/c/delegate_plugin.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
@@ -145,8 +146,12 @@ class ValidatorRunnerImpl {
   std::string data_directory_path_;
   int timeout_ms_ = 0;
   std::unique_ptr<CustomValidationEmbedder> custom_validation_embedder_;
-  std::unique_ptr<flatbuffers::FlatBufferBuilder> model_with_custom_input_ =
-      nullptr;
+  // Owns the model data if model is created with custom_validation_embedder_.
+  // Otherwise this is empty.
+  flatbuffers::FlatBufferBuilder model_with_custom_input_;
+  // If not null, this allocation points the already-loaded model that need to
+  // be copied to the detached thread.
+  std::unique_ptr<Allocation> model_allocation_ = nullptr;
   ErrorReporter* error_reporter_;
   FlatbufferStorage<BenchmarkEvent> storage_;
   NnapiHelper nnapi_helper_;

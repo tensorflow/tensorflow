@@ -85,6 +85,7 @@ cc_library(
 alias(
     name = "framework",
     actual = "framework_experimental",
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
 )
 

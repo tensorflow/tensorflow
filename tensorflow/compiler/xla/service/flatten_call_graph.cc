@@ -70,8 +70,7 @@ void ReplaceCalledComputation(HloInstruction* instruction,
       break;
     }
     default:
-      LOG(FATAL) << "unexpected opcode: "
-                 << HloOpcodeString(instruction->opcode());
+      LOG(FATAL) << "unexpected opcode: " << instruction->opcode();
   }
 }
 

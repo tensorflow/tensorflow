@@ -38,7 +38,6 @@ cuda_py_test(
     shard_count = 16,
     tags = [
         "no_windows",  # TODO(b/184424727): Re-enable this.
-        "notsan",  # TODO(b/132205147): Re-enable this.
     ],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -47,6 +46,7 @@ cuda_py_test(
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:cond_v2",
+        "//tensorflow/python:control_flow_case",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:data_flow_ops_gen",

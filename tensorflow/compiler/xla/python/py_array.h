@@ -21,7 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/Support/Casting.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
@@ -191,6 +191,9 @@ class PyArray : public pybind11::object {
 
   bool IsDeleted() const;
 
+  StatusOr<PyArray> CopyToDeviceWithSharding(ifrt::DeviceList devices,
+                                             pybind11::object dst_sharding);
+
  private:
   void CheckAndRearrange();
 
@@ -202,6 +205,28 @@ class PyArray : public pybind11::object {
   static Status SetUpType();
 
   inline static PyObject* type_ = nullptr;
+};
+
+class PyArrayResultHandler {
+ public:
+  PyArrayResultHandler(pybind11::object aval, pybind11::object sharding,
+                       bool committed, bool skip_checks);
+
+  PyArray Call(absl::Span<const PyBuffer::object> py_buffers) const;
+  PyArray Call(absl::Span<const PyArray> py_arrays) const;
+
+  PyArray Call(std::shared_ptr<PyClient> py_client,
+               tsl::RCReference<ifrt::Array> ifrt_array) const;
+
+ private:
+  pybind11::object aval_;
+  pybind11::object sharding_;
+  bool weak_type_;
+  bool committed_;
+  bool skip_checks_;
+
+  pybind11::object dtype_;
+  std::vector<int64_t> shape_;
 };
 
 }  // namespace xla

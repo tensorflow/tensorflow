@@ -1604,7 +1604,7 @@ HloCallableInstruction::HloCallableInstruction(
   for (auto operand : operands) {
     AppendOperand(operand);
   }
-  SetAndSanitizeName(std::string(prefix) + HloOpcodeString(opcode));
+  SetAndSanitizeName(absl::StrCat(prefix, HloOpcodeString(opcode)));
   AppendComputation(called_computation);
 }
 

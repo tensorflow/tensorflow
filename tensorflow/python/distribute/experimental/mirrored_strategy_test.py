@@ -215,6 +215,19 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertAllClose(result_2.values[0], constant_op.constant([7.0]))
     self.assertAllClose(result_2.values[1], constant_op.constant([7.0]))
 
+  def test_run_with_nullary_ops(self):
+
+    @def_function.function
+    def replica_fn():
+      return constant_op.constant([3.0])
+
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    result = strategy.run(replica_fn)
+
+    self.assertIsInstance(result, dtensor_util.DTensorDistributedValue)
+    self.assertAllClose(result.values[0], constant_op.constant([3.0]))
+    self.assertAllClose(result.values[1], constant_op.constant([3.0]))
+
   def test_get_replica_context(self):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
 

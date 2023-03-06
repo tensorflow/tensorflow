@@ -808,12 +808,16 @@ message MiniBenchmarkEvent {
 }
 
 // How to access the model for mini-benchmark.
-// Since mini-benchmark runs in a separate process, it can not access an
-// in-memory model. It can read the model either from a file or from a file
-// descriptor. The file descriptor typically comes from the Android asset
-// manager.
+// Mini-benchmark can read the model from a file path, a file
+// descriptor, or in-memory model. The file descriptor typically comes from the
+// Android asset manager. Since mini-benchmark runs in a separate process, it
+// can not access the in-memory model directly. Instead, it will copy the
+// in-memory model to the validation process.
 //
-// Users should set either filename, or all of fd, offset and length.
+// Users should set one of  the following:
+// 1) filename, or
+// 2) all of fd, offset (optional, default to 0) and length, or
+// 3) both buffer_handle and length.
 message ModelFile {
   // Filename for reading model from.
   optional string filename = 1;
@@ -821,9 +825,16 @@ message ModelFile {
   optional int64 fd = 2;
   // Offset for model in file descriptor.
   optional int64 offset = 3;
-  // Length of model in file descriptor.
+  // Length of model.
   optional int64 length = 4;
   optional ModelIdGroup model_id_group = 5;
+  // In-memory buffer handle to the model. This handle will be cast to a pointer
+  // of type const uint8_t* to load the model. The caller needs to ensure the
+  // buffer handle out-lives the mini-benchmark main process.
+  // NOTE: When using buffer_handle, this proto should not serialized and copied
+  // across process boundaries (e.g. via a file), since it may contain handles
+  // that refer to addresses in the current process's address space.
+  optional int64 buffer_handle = 6;
 }
 
 message ModelIdGroup {
@@ -863,6 +874,9 @@ message MinibenchmarkSettings {
   repeated TFLiteSettings settings_to_test = 1;
   // How to access the model. This would typically be set dynamically, as it
   // depends on the application folder and/or runtime state.
+  // NOTE: When using buffer_handle, this proto should not serialized and copied
+  // across process boundaries (e.g. via a file), since it may contain handles
+  // that refer to addresses in the current process's address space.
   optional ModelFile model_file = 2;
   // Where to store state. This would typically be set dynamically, as it
   // depends on the application folder.

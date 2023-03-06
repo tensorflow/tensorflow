@@ -163,7 +163,7 @@ SCFForPeelingResult peelSCFForOp(RewriterBase &rewriter, scf::ForOp loop) {
   // Peeling fails, if the step divides the upper bound. In that case,
   // we still want to return {loop, nullptr}.
   scf::ForOp tailLoop;
-  return succeeded(scf::peelAndCanonicalizeForLoop(rewriter, loop, tailLoop))
+  return succeeded(scf::peelForLoopAndSimplifyBounds(rewriter, loop, tailLoop))
              ? SCFForPeelingResult{loop, tailLoop}
              : SCFForPeelingResult{loop, nullptr};
 }

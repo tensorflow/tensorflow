@@ -10,8 +10,6 @@ package_group(
     packages = [
         "//tensorflow/compiler/mlir/quantization/...",
         "//tensorflow/compiler/mlir/lite/...",
-        "//third_party/cloud_tpu/inference_converter/...",  # TPU Inference Converter V1
-        "//third_party/cloud_tpu/inference_converter_v2/...",  # TPU Inference Converter V2
     ] + internal_visibility_allowlist(),
 )
 
@@ -417,8 +415,8 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tf2xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/utils:name_utils",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/core:framework",

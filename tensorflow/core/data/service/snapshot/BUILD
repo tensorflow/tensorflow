@@ -182,6 +182,21 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "snapshot_manager_test",
+    size = "small",
+    srcs = ["snapshot_manager_test.cc"],
+    deps = [
+        ":snapshot_manager",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data/service:dispatcher_proto_cc",
+        "//tensorflow/core/data/service:test_util",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:statusor",
+    ],
+)
+
 cc_library(
     name = "snapshot_reader",
     srcs = ["snapshot_reader.cc"],

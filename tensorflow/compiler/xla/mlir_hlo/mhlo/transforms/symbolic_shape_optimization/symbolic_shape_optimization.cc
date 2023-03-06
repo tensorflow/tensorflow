@@ -790,9 +790,9 @@ struct CstrBroadcastableOpLowering
 
 // Returns a shape tensor if the shapes can be broadcasted to a known shape.
 // Will either return one of the shapes or a generated mix of the shapes.
-llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis &analysis,
-                                        ValueRange shapes, Location loc,
-                                        OpBuilder *builder) {
+std::optional<Value> simplifyBroadcast(ShapeComponentAnalysis &analysis,
+                                       ValueRange shapes, Location loc,
+                                       OpBuilder *builder) {
   // First find the input shape with the largest rank.
   SmallVector<ArrayRef<ShapeComponentAnalysis::SymbolicExpr>> shapesFound;
   size_t maxRank = 0;

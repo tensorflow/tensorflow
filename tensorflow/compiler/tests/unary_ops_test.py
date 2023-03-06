@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for XLA JIT compiler."""
 
+import platform
 import unittest
 
 import numpy as np
@@ -873,6 +874,10 @@ class UnaryOpsTest(xla_test.XLATestCase):
         self._testCast(src_type, dst_type)
 
   def testCastFp8(self):
+    if platform.system() == "Darwin":
+      # TODO(b/271327511): Fix issue where casts to FP8 very rarely result in
+      # NaN on Mac
+      self.skipTest("Casts to FP8 sometimes result in NaN on Mac")
     fp8_types = {dtypes.float8_e5m2, dtypes.float8_e4m3fn}
     # TODO(b/259609697): Test casting to bool. Casting from float8 to bool is
     # currently not supported since the cast is lowered to an Ne (not-equal) op,

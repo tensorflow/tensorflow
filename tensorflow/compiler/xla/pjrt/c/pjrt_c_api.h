@@ -181,18 +181,20 @@ typedef PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args);
 
 // ------------------------ Other Common Data Types ----------------------------
 
+typedef enum {
+  PJRT_NamedValue_kString = 0,
+  PJRT_NamedValue_kInt64,
+  PJRT_NamedValue_kInt64List,
+  PJRT_NamedValue_kFloat,
+} PJRT_NamedValue_Type;
+
 // Named value for key-value pairs.
 struct PJRT_NamedValue {
   size_t struct_size;
   void* priv;
   const char* name;
   size_t name_size;
-  enum {
-    PJRT_NamedValue_kString = 0,
-    PJRT_NamedValue_kInt64,
-    PJRT_NamedValue_kInt64List,
-    PJRT_NamedValue_kFloat
-  } type;
+  PJRT_NamedValue_Type type;
   union {
     const char* string_value;
     int64_t int64_value;
@@ -216,6 +218,9 @@ typedef struct PJRT_Buffer PJRT_Buffer;
 struct PJRT_Client_Create_Args {
   size_t struct_size;
   void* priv;
+  // Extra platform-specific options to create a client.
+  PJRT_NamedValue* create_options;
+  size_t num_options;
   PJRT_Client* client;  // out
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_Create_Args, client);
@@ -751,9 +756,56 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_LoadedExecutable_IsDeleted_Args, is_deleted);
 typedef PJRT_Error* PJRT_LoadedExecutable_IsDeleted(
     PJRT_LoadedExecutable_IsDeleted_Args* args);
 
+// TODO(b/263390038) implement C API to access PJRT_Chunk data and to destroy.
+typedef struct PJRT_Chunk PJRT_Chunk;
+// TODO(b/263390934) implement C API that calls `AddChunk` and other
+// `xla::CopyToDeviceStream`.
+typedef struct PJRT_CopyToDeviceStream PJRT_CopyToDeviceStream;
+
+struct PJRT_TransferMetadata;
+
+// Returns bool because the caller can't create PJRT_Error, which should be
+// returned by C API only. False indicates an error.
+// TODO(b/267255088) need to bubble up the callback error message to the caller.
+typedef bool (*PJRT_SendCallback)(PJRT_TransferMetadata* metadata,
+                                  PJRT_Chunk* chunk, size_t total_size_in_bytes,
+                                  bool done, void* user_arg);
+typedef void (*PJRT_RecvCallback)(PJRT_TransferMetadata* metadata,
+                                  PJRT_CopyToDeviceStream* stream,
+                                  void* user_arg);
+
+struct PJRT_SendCallbackInfo {
+  // Used to associate this callback with the correct send op.
+  int64_t channel_id;
+  // Will be passed to `send_callback` as `user_arg` argument.
+  void* user_arg;
+  PJRT_SendCallback send_callback;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_SendCallbackInfo, send_callback);
+
+struct PJRT_RecvCallbackInfo {
+  // Used to associate this callback with the correct recv op.
+  int64_t channel_id;
+  // Will be passed to `recv_callback` as `user_arg` argument.
+  void* user_arg;
+  PJRT_RecvCallback recv_callback;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_RecvCallbackInfo, recv_callback);
+
 struct PJRT_ExecuteOptions {
   size_t struct_size;
   void* priv;
+  // Callbacks for when send/recv ops are executed. The outer lists correspond
+  // to each device returned by `PJRT_Executable_AddressableDevices` for
+  // `executable` (i.e. they will have length `num_devices`). Each inner list
+  // contains callback info for each send/recv op in `executable`; the order
+  // doesn't matter as the channel IDs are used instead. The callbacks can be
+  // stateful and the user code is responsible for managing state. The callback
+  // functions must outlive the execution (but not the info structs or lists).
+  PJRT_SendCallbackInfo** send_callbacks;
+  PJRT_RecvCallbackInfo** recv_callbacks;
+  size_t num_send_ops = 0;
+  size_t num_recv_ops = 0;
   // If non-zero, identifies this execution as part of a potentially
   // multi-device launch. This can be used to detect scheduling errors, e.g. if
   // multi-host programs are launched in different orders on different hosts,
@@ -795,8 +847,7 @@ struct PJRT_LoadedExecutable_Execute_Args {
   // or executables.
   PJRT_Device* execute_device;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_LoadedExecutable_Execute_Args,
-                          device_complete_events);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_LoadedExecutable_Execute_Args, execute_device);
 
 // Executes on devices addressable by the client.
 typedef PJRT_Error* PJRT_LoadedExecutable_Execute(

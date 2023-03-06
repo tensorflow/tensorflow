@@ -28,10 +28,10 @@ import numpy as np
 
 # pylint: disable=unused-import,g-bad-import-order
 from tensorflow.python.framework import dtypes
-from tensorflow.python.lib.core import _pywrap_bfloat16
 from tensorflow.python.lib.core import _pywrap_float8
 from tensorflow.python.lib.core import _pywrap_custom_casts
 from tensorflow.python.platform import test
+from tensorflow.tsl.python.lib.core import _pywrap_bfloat16
 
 bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
 float8_e4m3b11 = _pywrap_bfloat16.TF_float8_e4m3b11_type()

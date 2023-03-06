@@ -147,7 +147,7 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
     // Serialize the HloSnapshot deterministically so that all the outputs of a
     // tf_library genrule are deterministic.
     const size_t size = module->ByteSizeLong();
-    auto serialized = absl::make_unique<char[]>(size);
+    auto serialized = std::make_unique<char[]>(size);
     TF_RET_CHECK(
         SerializeToBufferDeterministic(*module, serialized.get(), size));
     TF_RETURN_IF_ERROR(
@@ -185,25 +185,30 @@ static void InitializeTargets() {
   LLVMInitializeAArch64Target();
   LLVMInitializeAArch64TargetInfo();
   LLVMInitializeAArch64TargetMC();
+  LLVMInitializeAArch64AsmParser();
   LLVMInitializeAArch64AsmPrinter();
 #endif
 #if TF_LLVM_S390X_AVAILABLE
   LLVMInitializeSystemZTarget();
   LLVMInitializeSystemZTargetInfo();
   LLVMInitializeSystemZTargetMC();
+  LLVMInitializeSystemZAsmParser();
   LLVMInitializeSystemZAsmPrinter();
 #endif
   LLVMInitializeARMTarget();
   LLVMInitializeARMTargetInfo();
   LLVMInitializeARMTargetMC();
+  LLVMInitializeARMAsmParser();
   LLVMInitializeARMAsmPrinter();
   LLVMInitializePowerPCTarget();
   LLVMInitializePowerPCTargetInfo();
   LLVMInitializePowerPCTargetMC();
+  LLVMInitializePowerPCAsmParser();
   LLVMInitializePowerPCAsmPrinter();
   LLVMInitializeX86Target();
   LLVMInitializeX86TargetInfo();
   LLVMInitializeX86TargetMC();
+  LLVMInitializeX86AsmParser();
   LLVMInitializeX86AsmPrinter();
 }
 

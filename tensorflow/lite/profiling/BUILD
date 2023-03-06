@@ -239,6 +239,31 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "subgraph_tensor_profiler",
+    srcs = ["subgraph_tensor_profiler.cc"],
+    hdrs = ["subgraph_tensor_profiler.h"],
+    copts = common_copts,
+    deps = [
+        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/tsl/platform:path",
+    ],
+)
+
+cc_test(
+    name = "subgraph_tensor_profiler_test",
+    srcs = ["subgraph_tensor_profiler_test.cc"],
+    deps = [
+        ":subgraph_tensor_profiler",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:subgraph_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "profile_summarizer_test",
     srcs = ["profile_summarizer_test.cc"],

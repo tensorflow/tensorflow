@@ -21,7 +21,7 @@ import gzip
 import inspect
 import logging
 import os
-from typing import List, Sequence, Tuple, Union
+from typing import List, Mapping, Optional, Sequence, Tuple, Union
 
 from . import xla_extension as _xla
 import numpy as np
@@ -43,10 +43,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 130
+_version = 133
 
 # Version number for MLIR:Python components.
-mlir_api_version = 43
+mlir_api_version = 45
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -54,6 +54,8 @@ xla_platform_names = {
 }
 
 logger = logging.getLogger(__name__)
+
+_NameValueMapping = Mapping[str, Union[str, int, List[int], float]]
 
 
 def make_interpreter_client():
@@ -97,15 +99,20 @@ def make_gpu_client(distributed_client=None, node_id=0, platform_name=None,
       allowed_devices=allowed_devices)
 
 
-def make_tfrt_tpu_c_api_client():
-  return _xla.get_c_api_client('tpu')
+def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):
+  if options is None:
+    options = {}
+  return _xla.get_c_api_client('tpu', options)
 
 
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
   _xla.load_pjrt_plugin(plugin_name, library_path)
 
 
-def make_c_api_client(plugin_name: str):
+def make_c_api_client(
+    plugin_name: str,
+    options: Optional[_NameValueMapping] = None,
+):
   """Creates a PJRT C API client for a PJRT plugin.
 
   It is required that load_pjrt_plugin_dynamically is called once with the same
@@ -113,11 +120,14 @@ def make_c_api_client(plugin_name: str):
 
   Args:
      plugin_name: the name of the PJRT plugin.
+     options: extra platform-specific options.
 
   Returns:
      A PJRT C API client for plugin_name.
   """
-  return _xla.get_c_api_client(plugin_name)
+  if options is None:
+    options = {}
+  return _xla.get_c_api_client(plugin_name, options)
 
 
 def _use_pjrt_c_api() -> bool:
@@ -734,3 +744,5 @@ XlaRuntimeError = _xla.XlaRuntimeError
 atexit.register(_xla.collect_garbage)
 
 weakref_lru_cache = _xla.weakref_lru_cache
+array_result_handler = _xla.array_result_handler
+copy_array_to_devices_with_sharding = _xla.copy_array_to_devices_with_sharding

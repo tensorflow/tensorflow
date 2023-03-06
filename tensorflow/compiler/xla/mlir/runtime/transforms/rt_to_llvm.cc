@@ -147,16 +147,16 @@ class RuntimeTypeConverter : public TypeConverter {
     addConversion(ConvertOpaqueType);
   }
 
-  static llvm::Optional<Type> ConvertExecutionContextType(
+  static std::optional<Type> ConvertExecutionContextType(
       ExecutionContextType type) {
     return LLVM::LLVMPointerType::get(type.getContext());
   }
 
-  static llvm::Optional<Type> ConvertStatusType(StatusType type) {
+  static std::optional<Type> ConvertStatusType(StatusType type) {
     return IntegerType::get(type.getContext(), 1);
   }
 
-  static llvm::Optional<Type> ConvertOpaqueType(OpaqueType type) {
+  static std::optional<Type> ConvertOpaqueType(OpaqueType type) {
     return LLVM::LLVMPointerType::get(type.getContext());
   }
 };
@@ -700,12 +700,10 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   // rewriter function into the CFG and they interact badly.
 
   // Convert all async types to opaque pointers.
-  llvm_converter.addConversion([](Type type) -> Optional<Type> {
+  llvm_converter.addConversion([&](Type type) -> Optional<Type> {
     if (type.isa<async::TokenType, async::GroupType, async::ValueType>())
-      // TODO(yijiagu): We should change the asyncRuntime function type with
-      // opaque pointer
-      return LLVM::LLVMPointerType::get(IntegerType::get(type.getContext(), 8));
-
+      return llvm_converter.getPointerType(
+          IntegerType::get(type.getContext(), 8));
     return std::nullopt;
   });
 

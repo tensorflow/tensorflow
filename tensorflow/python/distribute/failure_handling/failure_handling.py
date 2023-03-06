@@ -890,14 +890,14 @@ class PreemptionCheckpointHandler(object):
   def _save_checkpoint_if_preempted(self, *args, **kwargs):
     """Saves a checkpoint if a preemption signal has been made available.
 
-    This is an alternative API for `PreemptionCheckpointManager.run` and
-    `PreemptionCheckpointManager.watch_preemption_scope`. This method works for
+    This is an alternative API for `PreemptionCheckpointHandler.run` and
+    `PreemptionCheckpointHandler.watch_preemption_scope`. This method works for
     both `tf.distribute.MultiWorkerMirroredStrategy` and
     `tf.distribute.TPUStrategy`. However, **for TPUStrategy, this method will
     add a synchronization point between workers and the coordinator** and thus
     may have performance implication. If this is a concern, use the combination
-    of `PreemptionCheckpointManager.watch_preemption_scope` and
-    `PreemptionCheckpointManager.run` instead.
+    of `PreemptionCheckpointHandler.watch_preemption_scope` and
+    `PreemptionCheckpointHandler.run` instead.
 
     ```python
     strategy = tf.distribute.TPUStrategy(tpu_cluster_resolver)

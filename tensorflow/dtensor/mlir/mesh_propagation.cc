@@ -485,6 +485,15 @@ struct DTensorMeshPropagation
               PropagateMesh(producers, main_func, &builder, &mesh_changed)))
         return signalPassFailure();
     }
+
+    auto default_mesh =
+        module->getAttrOfType<mlir::StringAttr>(kCustomDefaultMeshAttr);
+
+    if (default_mesh) {
+      if (mlir::failed(PropagateDefaultMeshToUnAssignedClusters(
+              producers, main_func, default_mesh, &builder, &mesh_changed)))
+        return signalPassFailure();
+    }
   }
 
   // Propagates and sets `_mesh` attributes to all clusters inside `function` if
@@ -514,18 +523,15 @@ struct DTensorMeshPropagation
   mlir::LogicalResult PropagateDefaultMeshToUnAssignedClusters(
       const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>&
           producers,
-      mlir::func::FuncOp, mlir::OpBuilder* builder, bool* mesh_changed);
+      mlir::func::FuncOp, mlir::StringAttr mesh, mlir::OpBuilder* builder,
+      bool* mesh_changed);
 };
 
 mlir::LogicalResult
 DTensorMeshPropagation::PropagateDefaultMeshToUnAssignedClusters(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
-    mlir::func::FuncOp function, mlir::OpBuilder* builder, bool* mesh_changed) {
-  absl::optional<mlir::StringAttr> mesh;
-  if (mlir::failed(
-          InferFunctionDefaultMesh(producers, function, builder, &mesh)))
-    return mlir::failure();
-
+    mlir::func::FuncOp function, mlir::StringAttr mesh,
+    mlir::OpBuilder* builder, bool* mesh_changed) {
   llvm::SmallVector<mlir::tf_device::ClusterOp, 4> clusters_without_mesh;
   auto walk_result = function.walk([&](mlir::tf_device::ClusterOp cluster) {
     if (llvm::isa<mlir::TF::CopyToMeshGradOp>(&cluster.GetBody().front()))
@@ -547,12 +553,10 @@ DTensorMeshPropagation::PropagateDefaultMeshToUnAssignedClusters(
 
   if (walk_result.wasInterrupted()) return mlir::failure();
 
-  if (!mesh.has_value()) return mlir::success();
-
   // Set function default mesh to cluster with unspecified mesh.
   for (auto cluster_without_mesh : clusters_without_mesh) {
     *mesh_changed = true;
-    cluster_without_mesh->setAttr(kMeshAttr, mesh.value());
+    cluster_without_mesh->setAttr(kMeshAttr, mesh);
   }
 
   return mlir::success();
@@ -741,10 +745,16 @@ mlir::LogicalResult DTensorMeshPropagation::PropagateMesh(
       return mlir::failure();
   }
 
-  if (mlir::failed(PropagateDefaultMeshToUnAssignedClusters(
-          producers, function, builder, mesh_changed)))
+  std::optional<mlir::StringAttr> mesh;
+  if (mlir::failed(
+          InferFunctionDefaultMesh(producers, function, builder, &mesh)))
     return mlir::failure();
 
+  if (mesh.has_value()) {
+    if (mlir::failed(PropagateDefaultMeshToUnAssignedClusters(
+            producers, function, mesh.value(), builder, mesh_changed)))
+      return mlir::failure();
+  }
   for (auto cluster : llvm::reverse(cluster_ops)) {
     if (mlir::failed(RewriteCopyToMeshGradOp(producers, cluster, builder,
                                              mesh_changed))) {

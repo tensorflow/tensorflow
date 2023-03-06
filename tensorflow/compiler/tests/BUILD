@@ -407,9 +407,6 @@ tf_xla_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "noasan",
-        "nomsan",
-        "notsan",
     ],
     deps = [
         ":xla_test",
@@ -487,9 +484,6 @@ tf_xla_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "noasan",
-        "nomsan",
-        "notsan",
     ],
     deps = [
         ":xla_test",
@@ -556,9 +550,13 @@ tf_xla_py_test(
     shard_count = 5,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+<<<<<<< HEAD
         "noasan",
         "nomsan",
         "notsan",
+=======
+        "no_rocm",
+>>>>>>> google_upstream/master
         "optonly",  # Times out frequently in fastbuild mode.
     ],
     deps = [
@@ -1275,9 +1273,6 @@ tf_xla_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "noasan",
-        "nomsan",
-        "notsan",
         "optonly",
     ],
     deps = [
@@ -1450,8 +1445,6 @@ tf_xla_py_test(
     shard_count = 4,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "noasan",
-        "notsan",
     ],
     deps = [
         ":xla_test",

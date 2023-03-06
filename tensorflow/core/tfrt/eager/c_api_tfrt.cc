@@ -560,7 +560,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
   return new TensorInterface(std::move(host_tensor_ref));
 }
 
-llvm::Optional<const TensorMetadata*> TensorHandleInterface::Metadata() const {
+std::optional<const TensorMetadata*> TensorHandleInterface::Metadata() const {
   auto& th = value_.get<TensorHandle>();
   if (!th.IsMetadataAvailable()) {
     context_.GetHostContext()->Await(th.GetAsyncMetadata().CopyRCRef());

@@ -110,7 +110,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   CpuBackendContext* cpu_backend_context =
       CpuBackendContext::GetFromContext(context);
   pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
-  threadpool = nullptr;
   std::array<size_t, kTransposeMaxDimensions> xnn_input_shape;
   std::array<size_t, kTransposeMaxDimensions> xnn_perm;
   TfLiteIntArray* input_shape = op_context.input->dims;
@@ -142,7 +141,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         status = xnn_run_transpose_nd_x32(
             GetTensorData<int32_t>(op_context.input),
             GetTensorData<int32_t>(op_context.output), size,
-            xnn_input_shape.data(), xnn_perm.data(), /*flags=*/0, threadpool);
+            xnn_input_shape.data(), xnn_perm.data(),
+            /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
         if (status != xnn_status_success) {
           TF_LITE_KERNEL_LOG(context, "Failed to run xnnpack transpose");
         }
@@ -166,7 +166,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         status = xnn_run_transpose_nd_x8(
             GetTensorData<int8_t>(op_context.input),
             GetTensorData<int8_t>(op_context.output), size,
-            xnn_input_shape.data(), xnn_perm.data(), /*flags=*/0, threadpool);
+            xnn_input_shape.data(), xnn_perm.data(),
+            /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
         if (status != xnn_status_success) {
           TF_LITE_KERNEL_LOG(context, "Failed to run xnnpack transpose");
         }
@@ -183,7 +184,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         status = xnn_run_transpose_nd_x16(
             GetTensorData<int16_t>(op_context.input),
             GetTensorData<int16_t>(op_context.output), size,
-            xnn_input_shape.data(), xnn_perm.data(), /*flags=*/0, threadpool);
+            xnn_input_shape.data(), xnn_perm.data(),
+            /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
         if (status != xnn_status_success) {
           TF_LITE_KERNEL_LOG(context, "Failed to run xnnpack transpose");
         }

@@ -35,13 +35,11 @@ py_library(
         ":convolutional",
         ":convolutional_recurrent",
         ":core",
-        ":cudnn_recurrent",
         ":dense_attention",
         ":embeddings",
         ":merge",
         ":pooling",
         ":recurrent",
-        ":recurrent_v2",
         ":rnn_cell_wrapper_v2",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/utils:tf_utils",
@@ -148,26 +146,6 @@ py_library(
 )
 
 py_library(
-    name = "cudnn_recurrent",
-    srcs = ["cudnn_recurrent.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":recurrent",
-        ":recurrent_v2",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:cudnn_rnn_ops_gen",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:constraints",
-        "//tensorflow/python/keras:regularizers",
-        "//tensorflow/python/keras/engine:input_spec",
-        "//tensorflow/python/keras/initializers",
-    ],
-)
-
-py_library(
     name = "dense_attention",
     srcs = ["dense_attention.py"],
     srcs_version = "PY3",
@@ -265,33 +243,6 @@ py_library(
         "//tensorflow/python/trackable:data_structures",
         "//tensorflow/tools/docs:doc_controls",
         "//third_party/py/numpy",
-    ],
-)
-
-py_library(
-    name = "recurrent_v2",
-    srcs = ["recurrent_v2.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":recurrent",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:cudnn_rnn_ops_gen",
-        "//tensorflow/python:device",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:function",
-        "//tensorflow/python/keras:activations",
-        "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras/engine:input_spec",
     ],
 )
 

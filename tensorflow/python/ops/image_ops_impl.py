@@ -28,6 +28,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import math_ops
@@ -739,7 +740,7 @@ def _rot90_3D(image, k, name_scope):
   cases = [(math_ops.equal(k, 1), _rot90), (math_ops.equal(k, 2), _rot180),
            (math_ops.equal(k, 3), _rot270)]
 
-  result = control_flow_ops.case(
+  result = control_flow_case.case(
       cases, default=lambda: image, exclusive=True, name=name_scope)
   result.set_shape([None, None, image.get_shape()[2]])
   return result
@@ -770,7 +771,7 @@ def _rot90_4D(images, k, name_scope):
   cases = [(math_ops.equal(k, 1), _rot90), (math_ops.equal(k, 2), _rot180),
            (math_ops.equal(k, 3), _rot270)]
 
-  result = control_flow_ops.case(
+  result = control_flow_case.case(
       cases, default=lambda: images, exclusive=True, name=name_scope)
   shape = result.get_shape()
   result.set_shape([shape[0], None, None, shape[3]])

@@ -31,9 +31,9 @@ limitations under the License.
 #include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/comparison_util.h"
@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -297,6 +298,11 @@ static mlir::Attribute GetLayoutAttribute(mlir::Builder& b,
   return b.getIndexTensorAttr(layout);
 }
 
+mlir::Attribute GetShardingAttribute(mlir::Builder& b,
+                                     const xla::HloSharding& sharding) {
+  return b.getStringAttr(sharding.ToString(/*include_metadata=*/true));
+}
+
 void HloFunctionImporter::FlattenTupleType(
     Type type, llvm::SmallVectorImpl<Type>& flattened_types) {
   auto tuple_type = type.dyn_cast<mlir::TupleType>();
@@ -395,8 +401,7 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
     if (parameter->has_sharding()) {
       function.setArgAttr(
           entry.index(), kShardingAttr,
-          builder_->getStringAttr(
-              parameter->sharding().ToProto().SerializeAsString()));
+          GetShardingAttribute(*builder_, parameter->sharding()));
     }
     if (parameter->parameter_replicated_at_leaf_buffers().has_value()) {
       bool nontrival = false;
@@ -418,10 +423,8 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
       return Internal("Expected only a single result but got %d",
                       function.getNumResults());
     }
-    function.setResultAttr(
-        0, kShardingAttr,
-        builder_->getStringAttr(
-            result->sharding().ToProto().SerializeAsString()));
+    function.setResultAttr(0, kShardingAttr,
+                           GetShardingAttribute(*builder_, result->sharding()));
   }
   if (computation.execution_thread() != "main") {
     function->setAttr("execution_thread",
@@ -646,8 +649,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
   if (instruction->has_sharding()) {
     attributes.push_back(builder_->getNamedAttr(
         kShardingAttr,
-        builder_->getStringAttr(
-            instruction->sharding().ToProto().SerializeAsString())));
+        GetShardingAttribute(*builder_, instruction->sharding())));
   }
 
   llvm::SmallVector<NamedAttribute, 4> frontend_attributes;

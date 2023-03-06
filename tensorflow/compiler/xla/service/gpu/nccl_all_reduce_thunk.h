@@ -36,23 +36,34 @@ struct NcclAllReduceConfig {
 
 // Thunk that performs a NCCL-based All-Reduce or Reduce-Scatter among CUDA
 // GPU-based replicas.
-class NcclAllReduceThunkBase : public NcclCollectiveThunk {
+class NcclAllReduceReduceScatterThunkBase : public NcclCollectiveThunk {
  public:
   static std::optional<ReductionKind> MatchAllReduceComputation(
       mlir::Region& computation);
 
-  NcclAllReduceThunkBase(Kind kind, ThunkInfo thunk_info,
-                         NcclAllReduceConfig config,
-                         std::vector<Buffer> buffers);
+  NcclAllReduceReduceScatterThunkBase(Kind kind, ThunkInfo thunk_info,
+                                      NcclAllReduceConfig config,
+                                      std::vector<Buffer> buffers);
 
  protected:
-  Status RunAllReduce(const ExecuteParams& params, se::Stream& stream,
-                      ncclComm_t comm);
-
   const NcclCollectiveConfig& config() const override { return config_.config; }
 
   const NcclAllReduceConfig config_;
   const std::vector<Buffer> buffers_;
+};
+
+// -----------------------------------------------------------------------------
+// AllReduce thunks
+// -----------------------------------------------------------------------------
+
+class NcclAllReduceThunkBase : public NcclAllReduceReduceScatterThunkBase {
+ public:
+  using NcclAllReduceReduceScatterThunkBase::
+      NcclAllReduceReduceScatterThunkBase;
+
+ protected:
+  Status RunAllReduce(const ExecuteParams& params, se::Stream& stream,
+                      ncclComm_t comm);
 };
 
 class NcclAllReduceThunk : public NcclAllReduceThunkBase {
@@ -101,10 +112,25 @@ class NcclAllReduceStartThunk : public NcclAllReduceThunkBase {
 class NcclAllReduceDoneThunk : public NcclCollectiveDoneThunk {
  public:
   NcclAllReduceDoneThunk(ThunkInfo thunk_info,
-                         NcclCollectiveThunk::AsyncExecutor& async);
+                         NcclCollectiveThunk::AsyncExecutor& async)
+      : NcclCollectiveDoneThunk(Thunk::kNcclAllReduceDone, thunk_info, async) {}
 };
 
-class NcclReduceScatterThunk : public NcclAllReduceThunkBase {
+// -----------------------------------------------------------------------------
+// ReduceScatter thunks
+// -----------------------------------------------------------------------------
+
+class NcclReduceScatterThunkBase : public NcclAllReduceReduceScatterThunkBase {
+ public:
+  using NcclAllReduceReduceScatterThunkBase::
+      NcclAllReduceReduceScatterThunkBase;
+
+ protected:
+  Status RunReduceScatter(const ExecuteParams& params, se::Stream& stream,
+                          ncclComm_t comm);
+};
+
+class NcclReduceScatterThunk : public NcclReduceScatterThunkBase {
  public:
   NcclReduceScatterThunk(ThunkInfo thunk_info, mlir::lmhlo::ReduceScatterOp op,
                          std::vector<Buffer> buffers);
@@ -123,6 +149,42 @@ class NcclReduceScatterThunk : public NcclAllReduceThunkBase {
   Status RunNcclCollective(const ExecuteParams& params,
                            ncclComm_t comm) override;
 };
+
+class NcclReduceScatterStartThunk : public NcclReduceScatterThunkBase {
+ public:
+  NcclReduceScatterStartThunk(ThunkInfo thunk_info,
+                              mlir::lmhlo_gpu::ReduceScatterStartOp op,
+                              std::vector<Buffer> buffers);
+
+  static const char* GetName() { return "ReduceScatterStart"; }
+
+  // Returns whether the given instruction can be lowered to a nccl
+  // reduce-scatter call.
+  static bool CanImplement(mlir::lmhlo_gpu::ReduceScatterStartOp op);
+  static bool IsDegenerate(mlir::lmhlo_gpu::ReduceScatterStartOp op,
+                           int64_t replica_count, int64_t partition_count);
+  static CollectiveOpGroupMode GetGroupMode(
+      mlir::lmhlo_gpu::ReduceScatterStartOp op);
+  static constexpr bool IsAsync() { return true; }
+  AsyncExecutor& async_executor() { return async_; }
+
+ protected:
+  Status RunNcclCollective(const ExecuteParams& params,
+                           ncclComm_t comm) override;
+
+ private:
+  AsyncExecutor async_;
+};
+
+class NcclReduceScatterDoneThunk : public NcclCollectiveDoneThunk {
+ public:
+  NcclReduceScatterDoneThunk(ThunkInfo thunk_info,
+                             NcclCollectiveThunk::AsyncExecutor& async)
+      : NcclCollectiveDoneThunk(Thunk::kNcclReduceScatterDone, thunk_info,
+                                async) {}
+};
+
+// -----------------------------------------------------------------------------
 
 Status RunAllReduce(ReductionKind reduction_kind,
                     std::vector<DeviceBufferPair>& buffers, se::Stream& stream,

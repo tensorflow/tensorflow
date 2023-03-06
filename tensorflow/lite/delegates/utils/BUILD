@@ -97,7 +97,6 @@ cc_library(
     hdrs = ["async_type_helpers.h"],
     deps = [
         ":ret_macros",
-        "//tensorflow/lite/core/async/interop:attribute_keys",
         "//tensorflow/lite/core/async/interop/c:attribute_map",
         "//tensorflow/lite/core/async/interop/c:constants",
         "//tensorflow/lite/core/async/interop/c:types",

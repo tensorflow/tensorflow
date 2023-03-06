@@ -66,11 +66,11 @@ LogicalResult getDynamicDims(PatternRewriter& rewriter, Operation* op,
   return success();
 }
 
-llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
-                                                  Operation* op,
-                                                  Value input_value,
-                                                  ShapedType output_type,
-                                                  llvm::ArrayRef<Value> dims) {
+std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
+                                                 Operation* op,
+                                                 Value input_value,
+                                                 ShapedType output_type,
+                                                 llvm::ArrayRef<Value> dims) {
   auto e_ty = input_value.getType().cast<ShapedType>().getElementType();
   llvm::SmallVector<int64_t> static_dims;
 
@@ -580,8 +580,8 @@ bool getTransposeConv2dPaddingValues(
 // T: storage C type.
 // Default template creates a constant tensor in T.
 template <typename T>
-llvm::Optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
-                                     ArrayRef<T> vec, ArrayRef<int64_t> shape) {
+std::optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
+                                    ArrayRef<T> vec, ArrayRef<int64_t> shape) {
   int64_t num_total_elements = 1;
   for (int64_t a : shape) {
     num_total_elements *= a;
@@ -603,9 +603,9 @@ llvm::Optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
 
 // Template specialization for APInt
 template <>
-llvm::Optional<Value> getConstTensor<APInt>(PatternRewriter& rewriter,
-                                            Operation* op, ArrayRef<APInt> vec,
-                                            ArrayRef<int64_t> shape) {
+std::optional<Value> getConstTensor<APInt>(PatternRewriter& rewriter,
+                                           Operation* op, ArrayRef<APInt> vec,
+                                           ArrayRef<int64_t> shape) {
   int64_t num_total_elements = 1;
   for (int64_t a : shape) {
     num_total_elements *= a;
@@ -627,9 +627,9 @@ llvm::Optional<Value> getConstTensor<APInt>(PatternRewriter& rewriter,
 
 // Template specialization for float
 template <>
-llvm::Optional<Value> getConstTensor<float>(PatternRewriter& rewriter,
-                                            Operation* op, ArrayRef<float> vec,
-                                            ArrayRef<int64_t> shape) {
+std::optional<Value> getConstTensor<float>(PatternRewriter& rewriter,
+                                           Operation* op, ArrayRef<float> vec,
+                                           ArrayRef<int64_t> shape) {
   int64_t num_total_elements = 1;
   for (int64_t a : shape) {
     num_total_elements *= a;
@@ -650,10 +650,10 @@ llvm::Optional<Value> getConstTensor<float>(PatternRewriter& rewriter,
 }
 
 // Template instantiation
-template llvm::Optional<Value> getConstTensor<int32_t>(PatternRewriter&,
-                                                       Operation*,
-                                                       ArrayRef<int32_t> vec,
-                                                       ArrayRef<int64_t> shape);
+template std::optional<Value> getConstTensor<int32_t>(PatternRewriter&,
+                                                      Operation*,
+                                                      ArrayRef<int32_t> vec,
+                                                      ArrayRef<int64_t> shape);
 
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type) {

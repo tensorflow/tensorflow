@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Utilities to create TensorProtos."""
+import typing
+from typing import Protocol
 import numpy as np
 
 from tensorflow.core.framework import tensor_pb2
@@ -1095,6 +1097,16 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
   return ret
 
 
+@typing.runtime_checkable
+class IsTensorLike(Protocol):
+
+  def is_tensor_like(self):  # pylint: disable=invalid-name
+    pass
+
+
+tf_type_classes = (internal.NativeObject, core.Tensor, IsTensorLike)
+
+
 # TODO(mdan): Deprecate in favor of more static-friendly types.
 @tf_export("is_tensor")
 def is_tf_type(x):  # pylint: disable=invalid-name
@@ -1124,9 +1136,7 @@ def is_tf_type(x):  # pylint: disable=invalid-name
   Returns:
     `True` if `x` is a TensorFlow-native type.
   """
-  return (isinstance(x, internal.NativeObject) or
-          isinstance(x, core.Tensor) or
-          getattr(x, "is_tensor_like", False))
+  return isinstance(x, tf_type_classes)
 
 
 # Deprecated alias for tensor_util.is_tf_type.

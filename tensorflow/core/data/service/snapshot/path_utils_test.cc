@@ -95,6 +95,11 @@ TEST(PathUtilsTest, SnapshotDoneFilePath) {
               MatchesRegex("/path/to/snapshot.DONE"));
 }
 
+TEST(PathUtilsTest, SnapshotErrorFilePath) {
+  EXPECT_THAT(SnapshotErrorFilePath("/path/to/snapshot"),
+              MatchesRegex("/path/to/snapshot.ERROR"));
+}
+
 TEST(PathUtilsTest, SnapshotMetadataFilePath) {
   EXPECT_THAT(SnapshotMetadataFilePath("/path/to/snapshot"),
               MatchesRegex("/path/to/snapshot.snapshot.metadata"));

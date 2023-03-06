@@ -2201,6 +2201,30 @@ TEST_F(LiteralUtilTest, DynamicBroadcast) {
   EXPECT_EQ(broadcasted_literal.GetDynamicSize(1), 1);
 }
 
+TEST_F(LiteralUtilTest, GetAsDouble) {
+  auto m = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  EXPECT_EQ(*m.GetAsDouble({0, 0}), 1.0);
+  EXPECT_EQ(*m.GetAsDouble({1, 0}), 3.0);
+}
+
+TEST_F(LiteralUtilTest, GetSumAsDouble) {
+  auto m = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  EXPECT_EQ(*m.GetSumAsDouble({0, 3}), 1.0 + 4.0);
+  EXPECT_EQ(*m.GetSumAsDouble({0, 1, 2, 3}), 1.0 + 2.0 + 3.0 + 4.0);
+  auto md = LiteralUtil::CreateR2<double>({{1.0, 2.0}, {3.0, 4.0}});
+  EXPECT_EQ(*md.GetSumAsDouble({0, 3}), 1.0 + 4.0);
+  EXPECT_EQ(*md.GetSumAsDouble({0, 1, 2, 3}), 1.0 + 2.0 + 3.0 + 4.0);
+
+  // Test fetching every other value for a range of number of indices
+  std::vector<float> vals(1024, 1.0);
+  auto v = LiteralUtil::CreateR1<float>(vals);
+  std::vector<int64_t> indices;
+  for (int i = 0; i < 1024; i += 2) {
+    indices.push_back(i);
+    EXPECT_EQ(*v.GetSumAsDouble(indices), (i + 2) / 2.0);
+  }
+}
+
 TEST_F(LiteralUtilTest, GetAsComplex128) {
   complex128 value = {1, 0};
   Literal c1 = LiteralUtil::CreateR0<complex128>(value);

@@ -91,7 +91,7 @@ static std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl() {
 llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
     llvm::Module& module) {
   VLOG(2) << "IR before optimizations";
-  XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
+  XLA_VLOG_LINES(2, llvm_ir::DumpToString(&module));
 
   if (pre_optimization_hook_) {
     pre_optimization_hook_(module);

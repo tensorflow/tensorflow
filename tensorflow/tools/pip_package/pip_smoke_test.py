@@ -86,7 +86,6 @@ DEPENDENCY_DENYLIST = [
     "//tensorflow/python:extra_py_tests_deps",
     "//tensorflow/python:mixed_precision",
     "//tensorflow/python:tf_optimizer",
-    "//tensorflow/python:compare_test_proto_py",
     "//tensorflow/python/framework:test_ops_2",
     "//tensorflow/python/framework:test_file_system.so",
     "//tensorflow/python/debug:grpc_tensorflow_server.par",

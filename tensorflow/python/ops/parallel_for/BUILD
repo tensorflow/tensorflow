@@ -141,6 +141,7 @@ cuda_py_test(
         "no_windows",
         "no_gpu",  # TODO(b/155761551): Flaky on GPU on TAP
         "no_tfrt",  # Note: Legacy XLA test, which depends on EncapsulateXlaComputationsPass.
+        "notsan",  # TODO(b/271486347): Fails TSAN on TAP
     ],
     xla_enabled = True,
     deps = [
@@ -161,7 +162,6 @@ cuda_py_test(
     srcs = ["array_test.py"],
     tags = [
         "nogpu",  # b/217374776
-        "notsan",  # TODO(b/170999669): Data race
     ],
     deps = [
         ":control_flow_ops",

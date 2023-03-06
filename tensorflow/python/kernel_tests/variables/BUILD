@@ -11,7 +11,6 @@ cuda_py_test(
     name = "dense_update_ops_no_tsan_test",
     size = "small",
     srcs = ["dense_update_ops_no_tsan_test.py"],
-    tags = ["notsan"],
     # TODO (b/140294007): the test fails with XLA.
     xla_enable_strict_auto_jit = False,
     deps = [

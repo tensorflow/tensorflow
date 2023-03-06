@@ -12,6 +12,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/dtensor/proto:layout_proto_cc",
+        "//tensorflow/tsl/platform:status_matchers",
         "@llvm-project//mlir:IR",
     ],
 )

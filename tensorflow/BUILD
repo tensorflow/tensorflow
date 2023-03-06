@@ -1306,6 +1306,7 @@ tf_cc_shared_library(
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/c/experimental/gradients",
         "//tensorflow/c/experimental/gradients/tape",
+        "//tensorflow/c/experimental/next_pluggable_device:c_api",
         "//tensorflow/c/experimental/ops",
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:c_api_internal",

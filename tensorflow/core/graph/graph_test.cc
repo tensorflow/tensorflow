@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/graph/benchmark_testlib.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -672,6 +673,21 @@ TEST_F(GraphTest, Clear) {
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
   graph.Clear();
   EXPECT_EQ(graph.num_nodes(), 2);
+}
+
+TEST_F(GraphTest, NodeFullType) {
+  FromNodeDef("A", "OneOutput", 0);
+  FullTypeDef node_t;
+  node_t.set_type_id(TFT_PRODUCT);
+  FullTypeDef* output_t = node_t.add_args();
+  output_t->set_type_id(TFT_TENSOR);
+  output_t->add_args()->set_type_id(TFT_FLOAT);
+  graph_.SetNodeType("A", node_t);
+
+  const FullTypeDef* ft;
+  graph_.NodeType("A", &ft);
+  EXPECT_NE(ft, nullptr);
+  EXPECT_EQ(ft->type_id(), TFT_PRODUCT);
 }
 
 void BM_InEdgeIteration(::testing::benchmark::State& state) {

@@ -888,11 +888,11 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
 
   VLOG(2) << "HandleDot: ";
   VLOG(2) << "  lhs operand: "
-          << llvm_ir::DumpToString(*lhs_array.GetBasePointer());
+          << llvm_ir::DumpToString(lhs_array.GetBasePointer());
   VLOG(2) << "  rhs operand: "
-          << llvm_ir::DumpToString(*rhs_array.GetBasePointer());
+          << llvm_ir::DumpToString(rhs_array.GetBasePointer());
   VLOG(2) << "  target: "
-          << llvm_ir::DumpToString(*target_array.GetBasePointer());
+          << llvm_ir::DumpToString(target_array.GetBasePointer());
 
   // Dot operation is complicated so we delegate to a helper class.
   return EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
@@ -2973,9 +2973,9 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
   VLOG(2) << "FinishVisit root: " << root->ToString();
   if (root->opcode() == HloOpcode::kOutfeed) {
     VLOG(2) << "  outfeed with value: "
-            << llvm_ir::DumpToString(*GetEmittedValueFor(root->operand(0)));
+            << llvm_ir::DumpToString(GetEmittedValueFor(root->operand(0)));
   } else {
-    VLOG(2) << "  value: " << llvm_ir::DumpToString(*GetEmittedValueFor(root));
+    VLOG(2) << "  value: " << llvm_ir::DumpToString(GetEmittedValueFor(root));
   }
 
   auto record_complete_computation = [&](llvm::Value* prof_counter) {

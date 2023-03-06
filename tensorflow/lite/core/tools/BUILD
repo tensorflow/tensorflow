@@ -1,6 +1,7 @@
 load("//tensorflow/lite:special_rules.bzl", "verifier_internal_visibility_allowlist")
 load("//tensorflow/lite:build_def.bzl", "tflite_self_contained_libs_test_suite")
 load("//tensorflow/lite/core:special_rules.bzl", "verifier_visibility_allowlist")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -12,6 +13,7 @@ cc_library(
     name = "verifier",
     srcs = ["verifier.cc"],
     hdrs = ["verifier.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ] + verifier_visibility_allowlist(),
@@ -61,6 +63,7 @@ cc_library(
     name = "verifier_internal",
     srcs = ["verifier_internal.cc"],
     hdrs = ["verifier_internal.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = verifier_internal_visibility_allowlist() + [
         "//tensorflow/lite/tools:__subpackages__",
         "//tensorflow/lite/core/shims:__subpackages__",

@@ -97,7 +97,6 @@ tf_py_test(
     tags = [
         "no_pip",  # TODO(b/266520226)
         "noasan",  # TODO(b/226154233): Flaky test
-        "nomsan",  # TODO(b/226154233): Flaky test
     ],
     deps = [
         ":failure_handling_lib",

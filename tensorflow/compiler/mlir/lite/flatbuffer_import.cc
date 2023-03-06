@@ -20,6 +20,7 @@ limitations under the License.
 #include <climits>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -33,8 +34,6 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -1176,7 +1175,7 @@ void SetSignature(
 // source vertices.
 struct ControlNodeDesc {
   std::set<int> incoming;
-  llvm::Optional<mlir::Value> outgoing;
+  std::optional<mlir::Value> outgoing;
 };
 
 using ControlNodes = llvm::DenseMap<int, ControlNodeDesc>;

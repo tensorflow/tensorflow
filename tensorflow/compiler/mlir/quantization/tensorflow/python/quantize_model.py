@@ -28,6 +28,7 @@ from tensorflow.compiler.mlir.quantization.tensorflow.python import representati
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import wrap_function
@@ -552,8 +553,7 @@ def _run_static_range_qat(
       signature_def_map,
       tags,
       init_op_name=exported_model.init_node_name,
-      save_op_name=exported_model.save_node_name,
-      restore_op_name=exported_model.restore_node_name,
+      saver_def=_get_saver_def_or_none(exported_model),
       checkpoint_dir=exported_model.checkpoint_dir,
       function_aliases=exported_model.function_aliases,
       asset_file_defs=exported_model.asset_file_defs,
@@ -626,6 +626,22 @@ def _copy_assets(src_path: str, dst_path: str) -> None:
       )
 
 
+def _get_saver_def_or_none(
+    exported_model: exported_model_pb2.ExportedModel,
+) -> Optional[saver_pb2.SaverDef]:
+  """Returns the SaverDef from ExportedModel, None otherwise.
+
+  Args:
+    exported_model: ExportedModel to take the SaverDef from.
+
+  Returns:
+    SaverDef instance if the field `saver_def` is set. None otherwise.
+  """
+  if exported_model.HasField('saver_def'):
+    return exported_model.saver_def
+  return None
+
+
 def _run_static_range_ptq(
     src_saved_model_path: str,
     dst_saved_model_path: str,
@@ -691,8 +707,7 @@ def _run_static_range_ptq(
       signature_def_map,
       tags,
       exported_model.init_node_name,
-      exported_model.restore_node_name,
-      exported_model.save_node_name,
+      _get_saver_def_or_none(exported_model),
       exported_model.checkpoint_dir,
       exported_model.function_aliases,
       asset_file_defs=exported_model.asset_file_defs,
@@ -719,8 +734,7 @@ def _run_static_range_ptq(
       signature_def_map,
       tags,
       exported_model.init_node_name,
-      exported_model.restore_node_name,
-      exported_model.save_node_name,
+      _get_saver_def_or_none(exported_model),
       exported_model.checkpoint_dir,
       asset_file_defs=exported_model.asset_file_defs,
   )
@@ -748,8 +762,7 @@ def _run_static_range_ptq(
       signature_def_map,
       tags,
       init_op_name=exported_model.init_node_name,
-      save_op_name=exported_model.save_node_name,
-      restore_op_name=exported_model.restore_node_name,
+      saver_def=_get_saver_def_or_none(exported_model),
       checkpoint_dir=exported_model.checkpoint_dir,
       function_aliases=exported_model.function_aliases,
       asset_file_defs=exported_model.asset_file_defs,

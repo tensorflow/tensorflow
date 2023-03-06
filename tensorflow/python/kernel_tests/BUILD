@@ -51,10 +51,7 @@ tf_py_test(
     size = "medium",
     srcs = ["collective_ops_multi_worker_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_rocm",
-        "notsan",  # TODO(b/171435192)
-    ],
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:collective_ops",
         "//tensorflow/python:constant_op",
@@ -113,9 +110,6 @@ cuda_py_test(
     name = "critical_section_test",
     size = "medium",
     srcs = ["critical_section_test.py"],
-    tags = [
-        "notsan",  # TODO(b/180454366): Re-enable.
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

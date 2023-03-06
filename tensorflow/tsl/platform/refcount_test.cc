@@ -190,6 +190,34 @@ TEST(WeakPtr, NotifyCalled) {
   EXPECT_EQ(num_calls2, 1);
 }
 
+TEST(WeakPtr, CopyTargetCalled) {
+  auto obj = new ObjType();
+  int num_calls1 = 0;
+  int num_calls2 = 0;
+
+  auto notify_fn1 = [&num_calls1]() { num_calls1++; };
+  auto notify_fn2 = [&num_calls2]() { num_calls2++; };
+
+  WeakPtr<ObjType> weakptr1(obj, notify_fn1);
+  WeakPtr<ObjType> weakptr2(obj, notify_fn2);
+  WeakPtr<ObjType> weakptr3(weakptr1);
+
+  weakptr2 = weakptr1;
+
+  ASSERT_TRUE(obj->RefCountIsOne());
+  EXPECT_EQ(obj->WeakRefCount(), 3);
+  EXPECT_NE(weakptr2.GetNewRef(), nullptr);
+  EXPECT_NE(weakptr3.GetNewRef(), nullptr);
+
+  EXPECT_EQ(num_calls1, 0);
+  EXPECT_EQ(num_calls2, 0);
+  obj->Unref();
+  EXPECT_EQ(weakptr2.GetNewRef(), nullptr);
+  EXPECT_EQ(weakptr3.GetNewRef(), nullptr);
+  EXPECT_EQ(num_calls1, 3);
+  EXPECT_EQ(num_calls2, 0);
+}
+
 TEST(WeakPtr, MoveTargetNotCalled) {
   auto obj = new ObjType();
   int num_calls1 = 0;

@@ -215,6 +215,11 @@ class LiteralBase {
   std::optional<complex128> GetAsComplex128(
       absl::Span<const int64_t> multi_index) const;
 
+  // Convert each element whose *linear* index is listed in "linear_indices"
+  // to a double and return the sum of all of these elements.
+  std::optional<double> GetSumAsDouble(
+      absl::Span<const int64_t> linear_indices) const;
+
   // Invokes the "per cell" callback for each element in the provided
   // literal with the element's indices and a string representation of
   // the element's value.

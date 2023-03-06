@@ -573,6 +573,36 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_DifferentLayouts) {
   EXPECT_FALSE(ShapesCompatibleForMultiOutputFusion(*reduce, *exp));
 }
 
+TEST_F(
+    GpuFusibleTest,
+    ShapesCompatibleForMultiOutputFusion_SiblingTransposeFusionsNotCompatible) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_021_transpose {
+      param_0 = f32[20,20,20]{2,1,0} parameter(0)
+      transpose = f32[20,20,20]{2,1,0} transpose(param_0), dimensions={0,2,1}
+      ROOT bitcast = f32[8000]{0} bitcast(transpose)
+    }
+
+    fused_220_transpose {
+      param_0 = f32[20,20,20]{2,1,0} parameter(0)
+      transpose = f32[20,20,20]{2,1,0} transpose(param_0), dimensions={2,1,0}
+      ROOT bitcast = f32[8000]{0} bitcast(transpose)
+    }
+
+    ENTRY reduce {
+      p0 = f32[20,20,20]{2,1,0} parameter(0)
+      fusion = f32[8000]{0} fusion(p0), kind=kInput, calls=fused_021_transpose
+      fusion.1 = f32[8000]{0} fusion(p0), kind=kInput, calls=fused_220_transpose
+      ROOT root = (f32[8000]{0}, f32[8000]{0}) tuple(fusion, fusion.1)
+    })"))
+                    .value();
+  const HloInstruction* fusion_1 =
+      module->entry_computation()->root_instruction()->operand(0);
+  const HloInstruction* fusion_2 =
+      module->entry_computation()->root_instruction()->operand(1);
+  EXPECT_FALSE(ShapesCompatibleForMultiOutputFusion(*fusion_1, *fusion_2));
+}
+
 TEST_F(GpuFusibleTest,
        ShapesCompatibleForMultiOutputFusion_MultiOutputReduceFusion) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(

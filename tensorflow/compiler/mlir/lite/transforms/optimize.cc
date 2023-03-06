@@ -29,7 +29,6 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -1540,7 +1539,7 @@ struct OptimizeTopK : public OpRewritePattern<TFL::TopKV2Op> {
 
   // It computes the last dim k of slice size of value.user.
   // If value has no use then return 0.
-  llvm::Optional<int32_t> ComputeSliceK(Value value) const {
+  std::optional<int32_t> ComputeSliceK(Value value) const {
     if (value.use_empty()) return 0;
     auto slice_op =
         llvm::dyn_cast_or_null<TFL::SliceOp>(value.getUses().begin().getUser());

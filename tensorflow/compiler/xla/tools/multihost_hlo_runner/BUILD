@@ -15,6 +15,7 @@ xla_cc_binary(
     testonly = True,
     srcs = ["hlo_runner_main.cc"],
     tags = [
+        "gpu",
         "noasan",  # Exceeds linker limit.
         "nomac",
     ],

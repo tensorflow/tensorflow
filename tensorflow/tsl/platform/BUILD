@@ -159,6 +159,7 @@ cc_library(
         ":str_util",
         ":strcat",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
     ],
@@ -1025,6 +1026,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//third_party/eigen3",
+        "@com_google_absl//absl/numeric:bits",
     ],
 )
 
@@ -1527,12 +1529,7 @@ tsl_cc_test(
     name = "setround_test",
     size = "small",
     srcs = ["setround_test.cc"],
-    tags = [
-        "noasan",
-        "noclang",
-        "nomsan",
-        "notsan",
-    ],
+    tags = ["noclang"],
     deps = [
         ":setround",
         ":test",

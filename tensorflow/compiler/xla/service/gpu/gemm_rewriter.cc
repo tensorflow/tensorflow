@@ -680,13 +680,27 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         return false;
     }
 
-    // TODO(philipphack): Consider enabling epilogue fusions and the addition of
-    // a matrix bias for FP8 GEMMs.
-    Literal c_literal = LiteralUtil::Zero(c_type);
-    HloInstruction *c = instr->AddInstruction(
-        HloInstruction::CreateConstant(c_literal.Clone()));
-    HloInstruction *c_bcast = instr->AddInstruction(
-        HloInstruction::CreateBroadcast(instr->shape(), c, {}));
+    // Fuse the possible addition of a matrix bias here to enable the subsequent
+    // fusion of the scaling and conversion of D into the Custom Call.
+    HloInstruction *c = nullptr;
+    if (instr->user_count() == 1 &&
+        instr->users()[0]->opcode() == HloOpcode::kAdd) {
+      HloInstruction *add = instr->users()[0];
+      HloInstruction *bias = add->mutable_operand(!add->operand_index(instr));
+      if (bias->opcode() != HloOpcode::kBroadcast) {
+        c = bias;
+        gemm_backend_config.set_beta(1.0);
+        TF_RETURN_IF_ERROR(ReplaceInstruction(add, instr));
+      }
+    }
+    // If a matrix bias was not fused, set C to a matrix of zeros.
+    if (!c) {
+      Literal c_literal = LiteralUtil::Zero(c_type);
+      HloInstruction *c_const = instr->AddInstruction(
+          HloInstruction::CreateConstant(c_literal.Clone()));
+      c = instr->AddInstruction(HloInstruction::CreateBroadcast(
+          ShapeUtil::ChangeElementType(instr->shape(), c_type), c_const, {}));
+    }
 
     // Each operand must have exactly one contracting and one non-contracting
     // dimension.
@@ -820,8 +834,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
     std::unique_ptr<HloInstruction> new_custom_call =
         HloInstruction::CreateCustomCall(
-            instr->shape(),
-            {a, b, c_bcast, scales_f32[0], scales_f32[1], one, one},
+            instr->shape(), {a, b, c, scales_f32[0], scales_f32[1], one, one},
             kCublasLtMatmulF8CallTarget);
 
     TF_RETURN_IF_ERROR(
@@ -894,13 +907,27 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Change the data type of C to BF16 as required by cuBLASLt for GEMMs with
     // FP8 outputs (see cuBLASLt documentation).
-    Literal c_literal = LiteralUtil::Zero(BF16);
-    HloInstruction *c = instr->AddInstruction(
-        HloInstruction::CreateConstant(c_literal.Clone()));
-    HloInstruction *c_bcast =
-        instr->AddInstruction(HloInstruction::CreateBroadcast(
-            ShapeUtil::ChangeElementType(instr->shape(), BF16), c, {}));
-    TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(2, c_bcast));
+    if (existing_gemm->operand(2)->shape().element_type() != BF16 &&
+        existing_gemm->operand(2)->shape().element_type() != F16) {
+      TF_ASSIGN_OR_RETURN(auto gemm_backend_config,
+                          existing_gemm->backend_config<GemmBackendConfig>());
+      if (gemm_backend_config.beta() == 1.0) {
+        VLOG(1) << "The scaling and conversion of the result of "
+                << existing_gemm->ToShortString()
+                << " is not fused into the FP8 Custom Call because it "
+                   "conflicts with the existing fusion of the addition of a "
+                   "matrix bias with element type other than BF16 or F16.";
+        return OkStatus();
+      } else {
+        Literal c_literal = LiteralUtil::Zero(BF16);
+        HloInstruction *c = instr->AddInstruction(
+            HloInstruction::CreateConstant(c_literal.Clone()));
+        HloInstruction *c_bcast =
+            instr->AddInstruction(HloInstruction::CreateBroadcast(
+                ShapeUtil::ChangeElementType(instr->shape(), BF16), c, {}));
+        TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(2, c_bcast));
+      }
+    }
 
     // If necessary, invert the scaling factor of D and convert to F32.
     if (!mult_scale) {
@@ -966,10 +993,36 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return OkStatus();
     }
 
-    // BLAS GeMM overwrites bias matrix, so fusion is only possible if the GeMM
-    // is the only user. cublasLt matmul can operate out-of-place.
-    bool have_other_bias_users = bias->user_count() > 1;
-    bool can_fuse_bias = !have_other_bias_users || IsCublasLtMatmul(*gemm);
+    // Cublas gemm overwrites the bias matrix, so fusion is only possible if the
+    // gemm is the only user. CublasLt gemm can operate out-of-place.
+    bool can_overwrite_bias = [bias]() {
+      if (bias->user_count() > 1) {
+        // There is another user of the data, do not overwrite it.
+        return false;
+      }
+
+      if (bias->opcode() != HloOpcode::kParameter) {
+        // Not a parameter; can overwrite.
+        return true;
+      }
+
+      // The bias is a parameter of the computation; check if it is aliased.
+      if (!bias->parent()->IsEntryComputation()) {
+        // Only the HloModule has input/output aliasing, since this is not the
+        // entry computation, there are no guarantees about aliasing; do not
+        // overwrite.
+        return false;
+      }
+      const auto &in_out_alias_config =
+          bias->GetModule()->input_output_alias_config();
+      // If the parameter is aliased, we can overwrite it.
+      // TODO(victorstone): The assumption when calling ParameterHasAlias is
+      // that bias is not a tuple. This is why we pass {} as the argument for
+      // param_index.
+      return in_out_alias_config.ParameterHasAlias(bias->parameter_number(),
+                                                   /*param_index=*/{});
+    }();
+    bool want_to_fuse_bias = IsCublasLtMatmul(*gemm) || can_overwrite_bias;
 
     auto config = gemm->backend_config<GemmBackendConfig>().value();
 
@@ -979,8 +1032,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         ((config.epilogue() == GemmBackendConfig::DEFAULT) ||
          (config.epilogue() == GemmBackendConfig::BIAS));
 
-    if ((config.beta() != 0) || !can_fuse_bias || (gemm->user_count() != 1) ||
-        !supported_epilogue) {
+    if ((config.beta() != 0) || !want_to_fuse_bias ||
+        (gemm->user_count() != 1) || !supported_epilogue) {
       return OkStatus();
     }
 
@@ -1011,8 +1064,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // true if those uses all come before this operation.  But copy-insertion
     // runs before scheduling, so it can't know and has to conservatively insert
     // copies.)
-    if (IsLegacyCublasMatmul(*fused_op) ||
-        (bias->opcode() != HloOpcode::kParameter && !have_other_bias_users)) {
+    if (IsLegacyCublasMatmul(*fused_op) || can_overwrite_bias) {
       xla::Cast<HloCustomCallInstruction>(fused_op.get())
           ->set_output_to_operand_aliasing({{{}, {2, {}}}});
     }

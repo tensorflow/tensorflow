@@ -421,8 +421,8 @@ xla_test(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/service:bfloat16_normalization",
         "//tensorflow/compiler/xla/service:despecializer",
+        "//tensorflow/compiler/xla/service:float_normalization",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -440,8 +440,8 @@ xla_test(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/service:bfloat16_normalization",
         "//tensorflow/compiler/xla/service:despecializer",
+        "//tensorflow/compiler/xla/service:float_normalization",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -467,8 +467,8 @@ xla_test(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/service:bfloat16_normalization",
         "//tensorflow/compiler/xla/service:despecializer",
+        "//tensorflow/compiler/xla/service:float_normalization",
         "@com_google_absl//absl/algorithm:container",
     ],
 )
@@ -812,8 +812,8 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/service:bfloat16_normalization",
         "//tensorflow/compiler/xla/service:despecializer",
+        "//tensorflow/compiler/xla/service:float_normalization",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -1853,10 +1853,7 @@ xla_test(
     srcs = ["prng_test.cc"],
     shard_count = 6,
     # TODO(b/148276347) The test fails on macOS.
-    tags = [
-        "noasan",  # Flakily times out on asan.
-        "nomac",
-    ],
+    tags = ["nomac"],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:literal",
@@ -2826,9 +2823,6 @@ xla_test(
     shard_count = 3,
     tags = [
         "enable_for_xla_interpreter",
-        "noasan",  # sometimes times out, http://b/78650012
-        "nomsan",  # sometimes times out, http://b/78650012
-        "notsan",  # sometimes times out, http://b/78650012
         "optonly",
     ],
     deps = [

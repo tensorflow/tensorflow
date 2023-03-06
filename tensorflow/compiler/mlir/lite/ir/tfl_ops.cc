@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -28,7 +29,6 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -2667,7 +2667,8 @@ LogicalResult UnidirectionalSequenceLSTMOp::inferReturnTypes(
   }
 
   // Default to non-time_major.
-  Optional<mlir::NamedAttribute> time_major_attr = attr.getNamed("time_major");
+  std::optional<mlir::NamedAttribute> time_major_attr =
+      attr.getNamed("time_major");
   bool time_majored =
       time_major_attr ? time_major_attr->getValue().cast<BoolAttr>().getValue()
                       : false;

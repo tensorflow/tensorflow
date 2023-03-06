@@ -800,7 +800,7 @@ static bool AllowEngineNativeSegmentExecution() {
   bool value;
   Status status =
       ReadBoolFromEnvVar("TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION",
-                         /*default_value=*/true, &value);
+                         /*default_val=*/true, &value);
   if (!status.ok()) {
     LOG(ERROR) << status;
   }

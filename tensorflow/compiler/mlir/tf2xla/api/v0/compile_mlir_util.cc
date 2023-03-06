@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -56,8 +57,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_targets.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -361,8 +362,20 @@ void AddLegalizationPasses(mlir::OpPassManager& pm, bool legalize_chlo,
 // inlining are equal, explicitly create the Inliner with canonicalization so
 // that the canonicalizer is dumped as part of pipeline passes.
 // See https://github.com/llvm/llvm-project/issues/60960.
+ABSL_CONST_INIT absl::Mutex pass_registration_lock(absl::kConstInit);
 std::unique_ptr<mlir::Pass> CreateInlinerWithCanonicalization() {
-  mlir::registerCanonicalizerPass();
+  // This is really wonky. Pass Registration isn't thread safe in LLVM, so we
+  // need a mutex to guard pass registration. Pass registration also needs
+  // to happen once per thread, so make this thread local.
+  // TODO(b/268509024): Delete this whole function once the upstream LLVM issue
+  // is resolved.
+  static thread_local bool pass_registered = false;
+  if (!pass_registered) {
+    absl::MutexLock lock(&pass_registration_lock);
+    mlir::registerCanonicalizerPass();
+    pass_registered = true;
+  }
+
   auto inliner = mlir::createInlinerPass(/*opPipelines=*/{},
                                          /*defaultPipelineBuilder=*/{});
   if (inliner->initializeOptions("default-pipeline=canonicalize").failed()) {

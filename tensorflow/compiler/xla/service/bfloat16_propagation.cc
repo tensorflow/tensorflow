@@ -32,9 +32,10 @@ limitations under the License.
 
 namespace xla {
 
-BFloat16Propagation::BFloat16Propagation(
-    const BFloat16Support* bfloat16_support)
-    : bfloat16_support_(bfloat16_support) {}
+BFloat16Propagation::BFloat16Propagation(const FloatSupport* bfloat16_support)
+    : bfloat16_support_(bfloat16_support) {
+  DCHECK_EQ(bfloat16_support->LowPrecisionType(), BF16);
+}
 
 void BFloat16Propagation::DetermineFusionComputationPrecision(
     HloInstruction* fusion) {
@@ -299,7 +300,7 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
         }
         continue;
       }
-      if (bfloat16_support_->EffectiveOperandPrecisionIsBF16(
+      if (bfloat16_support_->EffectiveOperandPrecisionIsLowPrecision(
               *use.instruction, use.operand_number)) {
         continue;
       }
@@ -423,7 +424,7 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
     return;
   }
 
-  if (!bfloat16_support_->SupportsBF16Output(*hlo)) {
+  if (!bfloat16_support_->SupportsLowPrecisionOutput(*hlo)) {
     return;
   }
 

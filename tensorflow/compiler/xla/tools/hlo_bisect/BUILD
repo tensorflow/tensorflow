@@ -5,6 +5,7 @@ load(
     "xla_cc_binary",
     "xla_cc_test",
 )
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 package(
     default_visibility = ["//tensorflow/compiler/xla:internal"],
@@ -24,7 +25,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/util:command_line_flags",
-    ],
+    ] + if_cuda(["//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin"]),
 )
 
 cc_library(

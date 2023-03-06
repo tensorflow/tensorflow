@@ -448,6 +448,11 @@ CreateAnnotateParameterReplicationPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateMarkOpsForOutsideCompilationPass();
 
+// Creates a pass that extracts outside compilation (Host ops inside Device
+// cluster) at head/tail of Device cluster to run before/after XLA computation.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateExtractHeadTailOutsideCompilationPass();
+
 // Creates a pass that merges control flow with similar predicates.
 std::unique_ptr<OperationPass<ModuleOp>> CreateMergeControlFlowPass();
 
@@ -555,11 +560,6 @@ CreateTPUVariableRuntimeReformattingPass();
 // attribute value in a tf_device.launch op with host device assignment.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateOutsideCompiledToHostLaunchPass();
-
-// Creates a pass that extracts outside compilation (CPU ops inside TPU cluster)
-// at head/tail of TPU cluster to run before/after TPU computation.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateTPUExtractHeadTailOutsideCompilationPass();
 
 // Creates a pass that expands outside compilation cluster at the head/tail of
 // TPU computation by adding outside compilation attribute to identity/cast ops

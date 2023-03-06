@@ -20,12 +20,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_options.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 
@@ -43,17 +43,9 @@ BlockingValidatorRunner::BlockingValidatorRunner(
     const ValidatorRunnerOptions& options)
     : per_test_timeout_ms_(options.per_test_timeout_ms),
       storage_path_(options.storage_path) {
-  std::string model_path;
-  if (!options.model_path.empty()) {
-    model_path = options.model_path;
-  } else if (options.model_fd >= 0) {
-    model_path = absl::StrCat("fd:", options.model_fd, ":",
-                              options.model_offset, ":", options.model_size);
-  }
-
   validator_runner_impl_ = std::make_unique<ValidatorRunnerImpl>(
-      model_path, options.storage_path, options.data_directory_path,
-      options.per_test_timeout_ms,
+      CreateModelLoaderPath(options), options.storage_path,
+      options.data_directory_path, options.per_test_timeout_ms,
       options.custom_input_data.empty()
           ? nullptr
           : std::make_unique<CustomValidationEmbedder>(

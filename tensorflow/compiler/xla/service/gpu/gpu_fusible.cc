@@ -126,10 +126,16 @@ const HloInstruction* GetRealHeroForMultiOutputFusion(
   }
   auto fused_expression_root = instr.fused_expression_root();
   if (!instr.IsMultiOutputFusion()) {
+    if (IsReductionFromOrToContiguousDimensions(*fused_expression_root) ||
+        FindAnyTiledTranspose(*fused_expression_root)) {
+      return &FindNonTrivialHero(*fused_expression_root);
+    }
     return fused_expression_root;
   }
   // If possible, we want to pick a reduction-from-or-to-contiguous-dims
-  // operand of the fusion root, because it has the most constraints.
+  // operand of the fusion root or a tiled transpose, because they have the most
+  // constraints. Note that we cannot have both kinds at the same time, so once
+  // we find any, we can immediately return it.
   for (const auto* inst : fused_expression_root->operands()) {
     if (IsReductionFromOrToContiguousDimensions(*inst) ||
         FindAnyTiledTranspose(*inst)) {
@@ -181,12 +187,14 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
   const HloInstruction* hero1 = GetRealHeroForMultiOutputFusion(instr1);
   const HloInstruction* hero2 = GetRealHeroForMultiOutputFusion(instr2);
 
-  bool hero1_is_unnested_reduce =
+  auto hero1_is_unnested_reduce =
       IsReductionFromOrToContiguousDimensions(*hero1);
-  bool hero1_is_unnested_transpose = FindAnyTiledTranspose(*hero1).has_value();
+  auto tiled_transpose_hero1 = FindAnyTiledTranspose(*hero1);
+  bool hero1_is_unnested_transpose = tiled_transpose_hero1.has_value();
   bool hero2_is_unnested_reduce =
       IsReductionFromOrToContiguousDimensions(*hero2);
-  bool hero2_is_unnested_transpose = FindAnyTiledTranspose(*hero2).has_value();
+  auto tiled_transpose_hero2 = FindAnyTiledTranspose(*hero2);
+  bool hero2_is_unnested_transpose = tiled_transpose_hero2.has_value();
 
   if (hero1_is_unnested_reduce && hero2_is_unnested_reduce &&
       !IsFusedReductionOutputConsistent(hero2, hero1)) {
@@ -194,8 +202,7 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
   } else if (hero1_is_unnested_transpose && hero2_is_unnested_transpose &&
              (!ShapeUtil::EqualIgnoringElementType(hero1->shape(),
                                                    hero2->shape()) ||
-              !ShapeUtil::EqualIgnoringElementType(
-                  hero1->operand(0)->shape(), hero2->operand(0)->shape()))) {
+              tiled_transpose_hero1->second != tiled_transpose_hero2->second)) {
     return "tiled transposes with different shapes";
   } else if ((hero1_is_unnested_transpose && hero2_is_unnested_reduce) ||
              (hero1_is_unnested_reduce && hero2_is_unnested_transpose)) {

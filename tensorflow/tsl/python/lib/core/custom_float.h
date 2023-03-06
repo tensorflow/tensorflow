@@ -1153,7 +1153,7 @@ struct Power {
 };
 template <typename T>
 struct Abs {
-  T operator()(T a) { return T(std::abs(static_cast<float>(a))); }
+  T operator()(T a) { return Eigen::numext::abs(a); }
 };
 template <typename T>
 struct Cbrt {
@@ -1163,8 +1163,42 @@ template <typename T>
 struct Ceil {
   T operator()(T a) { return T(std::ceil(static_cast<float>(a))); }
 };
+
+// Helper struct for getting a bit representation provided a byte size.
+template <int kNumBytes>
+struct GetUnsignedInteger;
+
+template <>
+struct GetUnsignedInteger<1> {
+  using type = uint8_t;
+};
+
+template <>
+struct GetUnsignedInteger<2> {
+  using type = uint16_t;
+};
+
 template <typename T>
-struct CopySign;
+using BitsType = typename GetUnsignedInteger<sizeof(T)>::type;
+
+template <typename T>
+std::pair<BitsType<T>, BitsType<T>> SignAndMagnitude(T x) {
+  const BitsType<T> x_abs_bits =
+      Eigen::numext::bit_cast<BitsType<T>>(Eigen::numext::abs(x));
+  const BitsType<T> x_bits = Eigen::numext::bit_cast<BitsType<T>>(x);
+  const BitsType<T> x_sign = x_bits ^ x_abs_bits;
+  return {x_sign, x_abs_bits};
+}
+
+template <typename T>
+struct CopySign {
+  T operator()(T a, T b) {
+    auto [a_sign, a_abs_bits] = SignAndMagnitude(a);
+    auto [b_sign, b_abs_bits] = SignAndMagnitude(b);
+    BitsType<T> rep = a_abs_bits | b_sign;
+    return Eigen::numext::bit_cast<T>(rep);
+  }
+};
 
 template <typename T>
 struct Exp {
@@ -1192,18 +1226,16 @@ struct Frexp {
 };
 template <typename T>
 struct Heaviside {
-  T operator()(T bx, T h0) {
-    float x = static_cast<float>(bx);
+  T operator()(T x, T h0) {
     if (Eigen::numext::isnan(x)) {
-      return bx;
+      return x;
     }
-    if (x < 0) {
-      return T(0.0f);
+    auto [sign_x, abs_x] = SignAndMagnitude(x);
+    // x == 0
+    if (abs_x == 0) {
+      return h0;
     }
-    if (x > 0) {
-      return T(1.0f);
-    }
-    return h0;  // x == 0
+    return sign_x ? T(0.0f) : T(1.0f);
   }
 };
 template <typename T>
@@ -1212,15 +1244,15 @@ struct Conjugate {
 };
 template <typename T>
 struct IsFinite {
-  bool operator()(T a) { return std::isfinite(static_cast<float>(a)); }
+  bool operator()(T a) { return Eigen::numext::isfinite(a); }
 };
 template <typename T>
 struct IsInf {
-  bool operator()(T a) { return std::isinf(static_cast<float>(a)); }
+  bool operator()(T a) { return Eigen::numext::isinf(a); }
 };
 template <typename T>
 struct IsNan {
-  bool operator()(T a) { return Eigen::numext::isnan(static_cast<float>(a)); }
+  bool operator()(T a) { return Eigen::numext::isnan(a); }
 };
 template <typename T>
 struct Ldexp {
@@ -1300,19 +1332,22 @@ struct Rint {
 template <typename T>
 struct Sign {
   T operator()(T a) {
-    float f(a);
-    if (f < 0) {
-      return T(-1);
+    if (Eigen::numext::isnan(a)) {
+      return a;
     }
-    if (f > 0) {
-      return T(1);
+    auto [sign_a, abs_a] = SignAndMagnitude(a);
+    if (abs_a == 0) {
+      return a;
     }
-    return a;
+    return sign_a ? T(-1) : T(1);
   }
 };
 template <typename T>
 struct SignBit {
-  bool operator()(T a) { return std::signbit(static_cast<float>(a)); }
+  bool operator()(T a) {
+    auto [sign_a, abs_a] = SignAndMagnitude(a);
+    return sign_a;
+  }
 };
 template <typename T>
 struct Sqrt {
@@ -1483,15 +1518,59 @@ struct LogicalXor {
 };
 
 template <typename T>
-struct NextAfter;
+struct NextAfter {
+  T operator()(T from, T to) {
+    BitsType<T> from_rep = Eigen::numext::bit_cast<BitsType<T>>(from);
+    BitsType<T> to_rep = Eigen::numext::bit_cast<BitsType<T>>(to);
+    if (Eigen::numext::isnan(from) || Eigen::numext::isnan(to)) {
+      return std::numeric_limits<T>::quiet_NaN();
+    }
+    if (from_rep == to_rep) {
+      return to;
+    }
+    auto [from_sign, from_abs] = SignAndMagnitude(from);
+    auto [to_sign, to_abs] = SignAndMagnitude(to);
+    if (from_abs == 0) {
+      if (to_abs == 0) {
+        return to;
+      } else {
+        // Smallest subnormal signed like `to`.
+        return Eigen::numext::bit_cast<T>(
+            static_cast<BitsType<T>>(0x01 | to_sign));
+      }
+    }
+    BitsType<T> magnitude_adjustment =
+        (from_abs > to_abs || from_sign != to_sign)
+            ? static_cast<BitsType<T>>(-1)
+            : static_cast<BitsType<T>>(1);
+    BitsType<T> out_int = from_rep + magnitude_adjustment;
+    T out = Eigen::numext::bit_cast<T>(out_int);
+    // Some non-IEEE compatible formats may have a representation for NaN
+    // instead of -0, ensure we return a zero in such cases.
+    if constexpr (!std::numeric_limits<T>::is_iec559) {
+      if (Eigen::numext::isnan(out)) {
+        return Eigen::numext::bit_cast<T>(BitsType<T>{0});
+      }
+    }
+    return out;
+  }
+};
 
 template <typename T>
 struct Spacing {
   T operator()(T x) {
+    CopySign<T> copysign;
+    if constexpr (!std::numeric_limits<T>::has_infinity) {
+      if (Eigen::numext::abs(x) == std::numeric_limits<T>::max()) {
+        return copysign(std::numeric_limits<T>::quiet_NaN(), x);
+      }
+    }
     // Compute the distance between the input and the next number with greater
     // magnitude. The result should have the sign of the input.
-    T away(std::copysign(std::numeric_limits<float>::infinity(),
-                         static_cast<float>(x)));
+    T away = std::numeric_limits<T>::has_infinity
+                 ? std::numeric_limits<T>::infinity()
+                 : std::numeric_limits<T>::max();
+    away = copysign(away, x);
     return NextAfter<T>()(x, away) - x;
   }
 };

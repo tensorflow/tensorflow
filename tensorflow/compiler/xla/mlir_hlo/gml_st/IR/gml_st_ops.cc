@@ -448,7 +448,7 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<ParallelOp> {
             }
             results.push_back(rewriter.create<tensor::InsertOp>(
                 op.getLoc(), srcVal, mapping.lookupOrDefault(dst),
-                getAsValues(rewriter, op.getLoc(), ofrs)));
+                getValueOrCreateConstantIndexOp(rewriter, op.getLoc(), ofrs)));
           }
         } else if (dst.getType().template isa<VectorType>()) {
           results.push_back(rewriter.create<vector::InsertStridedSliceOp>(
