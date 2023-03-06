@@ -224,7 +224,12 @@ cc_library(
 
 cc_library(
     name = "delegate",
-    srcs = ["delegate.cc"],
+    srcs = [
+        # copybara:comment_begin(oss-only)
+        "android_version.cc",
+        # copybara:comment_end
+        "delegate.cc",
+    ],
     hdrs = ["delegate.h"],
     linkopts = gpu_delegate_linkopts(),
     deps = select({
