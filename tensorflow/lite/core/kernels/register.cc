@@ -377,12 +377,14 @@ BuiltinOpResolver::BuiltinOpResolver() {
   });
 }
 
-BuiltinOpResolverWithXNNPACK::BuiltinOpResolverWithXNNPACK() {
+BuiltinOpResolverWithXNNPACK::BuiltinOpResolverWithXNNPACK(
+    bool enable_xnnpack_unsigned_quantized) {
   delegate_creators_.clear();
-  delegate_creators_.push_back([](TfLiteContext* context) {
-    return tflite::MaybeCreateXNNPACKDelegate(
-        context, /*enable_xnnpack_unsigned_quantized=*/true);
-  });
+  delegate_creators_.push_back(
+      [enable_xnnpack_unsigned_quantized](TfLiteContext* context) {
+        return tflite::MaybeCreateXNNPACKDelegate(
+            context, enable_xnnpack_unsigned_quantized);
+      });
 }
 
 }  // namespace builtin
