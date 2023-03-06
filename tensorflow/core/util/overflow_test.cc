@@ -27,7 +27,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-bool HasOverflow(int64_t x, int64_t y) {
+bool HasMultiplyOverflow(int64_t x, int64_t y) {
 #ifdef PLATFORM_WINDOWS
   // `long double` on MSVC is 64 bits not 80 bits - use a windows specific API
   // for this test.
@@ -36,6 +36,14 @@ bool HasOverflow(int64_t x, int64_t y) {
   long double dxy = static_cast<long double>(x) * static_cast<long double>(y);
   return dxy > std::numeric_limits<int64_t>::max();
 #endif
+}
+bool HasAddOverflow(int64_t x, int64_t y) {
+  int64_t carry_from_lower_bits = ((x & 0xffffffff) + (y & 0xffffffff)) >> 32;
+  if ((x >> 32) + (y >> 32) + carry_from_lower_bits >=
+      (static_cast<int64_t>(1) << 32)) {
+    return true;
+  }
+  return false;
 }
 
 TEST(OverflowTest, Nonnegative) {
@@ -62,11 +70,17 @@ TEST(OverflowTest, Nonnegative) {
   // Check all pairs
   for (int64_t x : interesting) {
     for (int64_t y : interesting) {
-      int64_t xy = MultiplyWithoutOverflow(x, y);
-      if (HasOverflow(x, y)) {
-        EXPECT_LT(xy, 0) << x << " " << y;
+      int64_t xmy = MultiplyWithoutOverflow(x, y);
+      if (HasMultiplyOverflow(x, y)) {
+        EXPECT_LT(xmy, 0) << x << " " << y;
       } else {
-        EXPECT_EQ(x * y, xy) << x << " " << y;
+        EXPECT_EQ(x * y, xmy) << x << " " << y;
+      }
+      int64_t xpy = AddWithoutOverflow(x, y);
+      if (HasAddOverflow(x, y)) {
+        EXPECT_LT(xpy, 0) << x << " " << y;
+      } else {
+        EXPECT_EQ(x + y, xpy) << x << " " << y;
       }
     }
   }
@@ -78,6 +92,9 @@ TEST(OverflowTest, Negative) {
     EXPECT_LT(MultiplyWithoutOverflow(n, 0), 0) << n;
     EXPECT_LT(MultiplyWithoutOverflow(0, n), 0) << n;
     EXPECT_LT(MultiplyWithoutOverflow(n, n), 0) << n;
+    EXPECT_LT(AddWithoutOverflow(n, 0), 0) << n;
+    EXPECT_LT(AddWithoutOverflow(0, n), 0) << n;
+    EXPECT_LT(AddWithoutOverflow(n, n), 0) << n;
   }
 }
 
