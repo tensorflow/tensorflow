@@ -312,6 +312,7 @@ tf_cc_test(
         "//tensorflow/core/data/service:common_proto_cc",
         "//tensorflow/core/data/service:task_runner",
         "//tensorflow/core/data/service:test_util",
+        "//tensorflow/tsl/lib/monitoring:cell_reader",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:path",

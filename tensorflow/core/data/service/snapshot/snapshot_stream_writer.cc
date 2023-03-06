@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/utils.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -148,6 +149,7 @@ Status SnapshotStreamWriter::CommitChunk() {
   TF_RETURN_IF_ERROR(
       params_.env->RenameFile(GetChunkFilePath(), GetCommittedChunkFilePath()));
   ++chunk_index_;
+  metrics::RecordTFDataServiceSnapshotBytesCommitted(chunk_size_bytes_);
   chunk_size_bytes_ = 0;
   return OkStatus();
 }
