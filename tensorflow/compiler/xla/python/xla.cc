@@ -101,6 +101,34 @@ bool IsOptimizedBuild() {
 #endif  // NDEBUG
 }
 
+// Is*san reports whether the build is under that particular sanitizer.
+bool IsAsan() {
+#if defined(ADDRESS_SANITIZER)
+  return true;
+#else  // defined(ADDRESS_SANITIZER)
+  return false;
+#endif
+}
+
+bool IsMsan() {
+#if defined(MEMORY_SANITIZER)
+  return true;
+#else  // defined(MEMORY_SANITIZER)
+  return false;
+#endif
+}
+
+bool IsTsan() {
+#if defined(THREAD_SANITIZER)
+  return true;
+#else  // defined(THREAD_SANITIZER)
+  return false;
+#endif
+}
+
+// IsSanitized reports whether the build is under any sanitizer.
+bool IsSanitized() { return IsAsan() || IsMsan() || IsTsan(); }
+
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
@@ -772,6 +800,11 @@ PYBIND11_MODULE(xla_extension, m) {
       },
       py::arg("topology"), py::arg("computation"),
       py::arg("compile_options") = CompileOptions());
+
+  m.def("is_asan", IsAsan);
+  m.def("is_msan", IsMsan);
+  m.def("is_tsan", IsTsan);
+  m.def("is_sanitized", IsSanitized);
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla
