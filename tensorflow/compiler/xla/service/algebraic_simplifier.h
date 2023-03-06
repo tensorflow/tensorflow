@@ -186,6 +186,15 @@ class AlgebraicSimplifierOptions {
 
   bool enable_sink_broadcast() const { return enable_sink_broadcast_; }
 
+  void set_enable_normalize_broadcast_operand(
+      bool enable_normalize_broadcast_operand) {
+    enable_normalize_broadcast_operand_ = enable_normalize_broadcast_operand;
+  }
+
+  bool enable_normalize_broadcast_operand() const {
+    return enable_normalize_broadcast_operand_;
+  }
+
   // If true, min(x, NaN) = NaN.  If false, min(x, NaN) = x.
   //
   // TODO(b/209827141): Remove this and make minmax_propagate_nan uncondtionally
@@ -220,6 +229,7 @@ class AlgebraicSimplifierOptions {
   bool enable_reduce_of_reshape_{true};
   bool enable_negative_padding_replacement_{true};
   bool enable_sink_broadcast_{true};
+  bool enable_normalize_broadcast_operand_{true};
   int64_t very_small_gather_size_{4};
   bool minmax_propagate_nan_{true};
   Metadata metadata_;

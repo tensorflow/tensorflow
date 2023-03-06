@@ -3665,7 +3665,8 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   if (options_.is_layout_sensitive()) {
     return OkStatus();
   }
-  if (ShapeUtil::HasDegenerateDimensions(operand->shape())) {
+  if (options_.enable_normalize_broadcast_operand() &&
+      ShapeUtil::HasDegenerateDimensions(operand->shape())) {
     auto new_operand =
         operand->parent()->AddInstruction(HloInstruction::CreateReshape(
             ShapeUtil::DropDegenerateDimensions(operand->shape()), operand));
