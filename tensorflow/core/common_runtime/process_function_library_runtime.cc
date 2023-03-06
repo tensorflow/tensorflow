@@ -580,11 +580,12 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       PreprocessAndPartitionGraph(*optimized_graph_info, options, *dev_set,
                                   lib_def_, composite_devices, env_));
   const uint64 optimization_end_time_usecs = Env::Default()->NowMicros();
-  metrics::UpdateFunctionGraphOptimizationTime(optimization_end_time_usecs -
-                                               optimization_start_time_usecs);
-  VLOG(1) << "Finished graph optimizations for MultiDevice function \""
-          << function_name << "\" with target device \"" << options.target
-          << "\"";
+  const uint64 graph_optimization_duration =
+      optimization_end_time_usecs - optimization_start_time_usecs;
+  metrics::UpdateFunctionGraphOptimizationTime(graph_optimization_duration);
+  LOG(INFO) << "Finished graph optimizations for MultiDevice function \""
+            << function_name << "\" with target device \"" << options.target
+            << "\". Took " << graph_optimization_duration / 1000000 << " secs.";
 
   const FunctionLibraryDefinition* lib_def =
       options.lib_def == nullptr ? lib_def_ : options.lib_def;
