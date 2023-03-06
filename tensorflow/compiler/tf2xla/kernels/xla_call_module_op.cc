@@ -239,16 +239,6 @@ Status AddMainWrapper(int version, mlir::ModuleOp module, int platform_index,
   op_builder.create<mlir::func::ReturnOp>(loc, call_op.getResults());
   VLOG(3) << "XlaCallModule module with wrapper: " << debugString(module);
 
-  mlir::PassManager pm(module.getContext());
-  // Inliner will merge main and _wrapped_main, making subsequent passes
-  // like constant propagation and shape refinement work better.
-  pm.addPass(mlir::createInlinerPass());
-  if (!mlir::succeeded(pm.run(module))) {
-    return errors::InvalidArgument("Module inlining failed");
-  }
-  VLOG(3) << "XlaCallModule module with inlined wrapper: "
-          << debugString(module);
-
   return OkStatus();
 }
 
@@ -298,10 +288,20 @@ Status RefineDynamicShapes(XlaOpKernelContext *ctx,
             << debugString(type);
     static_array_input_types[i] = type;
   }
+
   // Refine 'main' argument types to use static input types instead.
   // This will only change the argument types and will not propagate the
   // additional type information further. For that, we'll need to run
   // shape refinement as explained below.
+  // Before refining the argument types it is useful to run the inliner to
+  // remove calls that may be called with the input arguments.
+  mlir::PassManager pm_inline((*module)->getContext());
+  pm_inline.addPass(mlir::createInlinerPass());
+  if (!mlir::succeeded(pm_inline.run(**module))) {
+    return errors::InvalidArgument("Module inlining failed");
+  }
+  VLOG(3) << "XlaCallModule module after inlining: " << debugString(module);
+
   auto static_array_output_types = llvm::to_vector(main.getResultTypes());
   for (auto i = 0; i < main_body.getNumArguments(); ++i) {
     auto arg = main_body.getArgument(i);
