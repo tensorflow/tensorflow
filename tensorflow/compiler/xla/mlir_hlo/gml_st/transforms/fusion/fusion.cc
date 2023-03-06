@@ -26,6 +26,7 @@ limitations under the License.
 #include "gml_st/transforms/transforms.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -255,7 +256,7 @@ void reifyDimOp(PatternRewriter& rewriter, tensor::DimOp dimOp) {
   std::optional<int64_t> dimIndex = dimOp.getConstantIndex();
   if (!dimIndex) return;
 
-  SmallVector<SmallVector<Value>> reifiedResultShapes;
+  ReifiedRankedShapedTypeDims reifiedResultShapes;
   if (failed(
           rankedShapeTypeOp.reifyResultShapes(rewriter, reifiedResultShapes))) {
     return;
@@ -269,7 +270,9 @@ void reifyDimOp(PatternRewriter& rewriter, tensor::DimOp dimOp) {
       static_cast<size_t>(sourceType.getRank()))
     return;
 
-  rewriter.replaceOp(dimOp, reifiedResultShapes[resultNumber][*dimIndex]);
+  rewriter.replaceOp(dimOp, getValueOrCreateConstantIndexOp(
+                                rewriter, dimOp.getLoc(),
+                                reifiedResultShapes[resultNumber][*dimIndex]));
 }
 
 void reifyDimOpsUsers(PatternRewriter& rewriter, Operation* op) {
