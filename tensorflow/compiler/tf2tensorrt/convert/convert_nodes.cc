@@ -5927,6 +5927,10 @@ Status ConvertGraphDefToEngine(
               "Variable resource type conversion requires a valid ctx");
         }
 
+        if (ctx->input(slot_number).NumElements() == 0) {
+          return errors::InvalidArgument("Resource input ", node_name,
+                                         " is empty.");
+        }
         TF_RETURN_IF_ERROR(converter->AddInputResource(
             node_name, ctx->input(slot_number).flat<ResourceHandle>()(0)));
       } else {
