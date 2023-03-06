@@ -16,6 +16,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -29,8 +30,8 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -68,6 +69,10 @@ using mlir::lmhlo::WhileOp;
 
 using xla::runtime::AppendCustomCallAttrs;
 using xla::runtime::CustomCallDeclarations;
+
+// helper template to check T is any of the types listed in Ts.
+template <typename T, typename... Ts>
+inline constexpr bool is_any = std::disjunction_v<std::is_same<T, Ts>...>;
 
 class ConvertLmhloToGpuRuntimePass
     : public impl::ConvertLmhloToGpuRuntimePassBase<
@@ -676,10 +681,8 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
 
   template <typename OpT>
   static
-      typename std::enable_if_t<std::is_same_v<OpT, AllReduceOp> ||
-                                    std::is_same_v<OpT, AllReduceStartOp> ||
-                                    std::is_same_v<OpT, ReduceScatterOp> ||
-                                    std::is_same_v<OpT, ReduceScatterStartOp>,
+      typename std::enable_if_t<is_any<OpT, AllReduceOp, AllReduceStartOp,
+                                       ReduceScatterOp, ReduceScatterStartOp>,
                                 LogicalResult>
       SetSpecificAttrs(ImplicitLocOpBuilder& b, OpT op, func::CallOp call) {
     std::optional<xla::ReductionKind> reduction_kind =
@@ -697,16 +700,14 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
   }
 
   template <typename OpT>
-  static typename std::enable_if_t<std::is_same_v<OpT, AllGatherOp> ||
-                                       std::is_same_v<OpT, AllGatherStartOp>,
+  static typename std::enable_if_t<is_any<OpT, AllGatherOp, AllGatherStartOp>,
                                    LogicalResult>
   SetSpecificAttrs(ImplicitLocOpBuilder& b, OpT op, func::CallOp call) {
     return success();
   }
 
   template <typename OpT>
-  static typename std::enable_if_t<std::is_same_v<OpT, AllToAllOp> ||
-                                       std::is_same_v<OpT, AllToAllStartOp>,
+  static typename std::enable_if_t<is_any<OpT, AllToAllOp, AllToAllStartOp>,
                                    LogicalResult>
   SetSpecificAttrs(ImplicitLocOpBuilder& b, OpT op, func::CallOp call) {
     call->setAttr(b.getStringAttr("has_split_dimension"),
@@ -716,9 +717,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
 
   template <typename OpT>
   static typename std::enable_if_t<
-      std::is_same_v<OpT, CollectivePermuteOp> ||
-          std::is_same_v<OpT, CollectivePermuteStartOp>,
-      LogicalResult>
+      is_any<OpT, CollectivePermuteOp, CollectivePermuteStartOp>, LogicalResult>
   SetSpecificAttrs(ImplicitLocOpBuilder& b, OpT op, func::CallOp call) {
     auto source_target_pairs_or =
         ConvertNx2Attribute(op.getSourceTargetPairs());
@@ -862,11 +861,9 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     // have a token argument. We rely on the `unrealized_conversion_cast`
     // operation to create a fake token from the `i8` constant, and on the dead
     // code elimination pass that will remove unused fake tokens.
-    if constexpr (std::is_same_v<CollectiveOp, AllGatherStartOp> ||
-                  std::is_same_v<CollectiveOp, AllReduceStartOp> ||
-                  std::is_same_v<CollectiveOp, AllToAllStartOp> ||
-                  std::is_same_v<CollectiveOp, CollectivePermuteStartOp> ||
-                  std::is_same_v<CollectiveOp, ReduceScatterStartOp>) {
+    if constexpr (is_any<CollectiveOp, AllGatherStartOp, AllReduceStartOp,
+                         AllToAllStartOp, CollectivePermuteStartOp,
+                         ReduceScatterStartOp>) {
       Value token = op.getToken();
       Value c0 = b.create<arith::ConstantOp>(b.getI8IntegerAttr(0));
       auto fake = b.create<UnrealizedConversionCastOp>(token.getType(), c0);
