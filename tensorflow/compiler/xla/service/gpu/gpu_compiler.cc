@@ -831,20 +831,15 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     });
     pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
 
-<<<<<<< HEAD
 #if GOOGLE_CUDA
-    // Rewrite GEMMs into custom calls.
-    if (debug_options.xla_gpu_enable_triton_gemm()) {
-      pipeline.AddPass<GemmRewriterTriton>(
-          std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version));
-    }
-    pipeline.AddPass<GemmRewriter>(
-        std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version));
-=======
     const stream_executor::CudaComputeCapability& compute_capability =
         std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
->>>>>>> google_upstream/master
+#elif TENSORFLOW_USE_ROCM
+    const stream_executor::RocmComputeCapability& compute_capability =
+        std::get<se::RocmComputeCapability>(gpu_target_config.gpu_version);
+#endif
 
+#if GOOGLE_CUDA
     // Rewrite GEMMs into custom calls.
     if (debug_options.xla_gpu_enable_triton_gemm() &&
         compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
@@ -865,17 +860,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<ReductionLayoutNormalizer>();
     pipeline.AddPass<ReductionDimensionGrouper>();
     pipeline.AddPass<HloPassFix<ReductionSplitter>>();
-<<<<<<< HEAD
-    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(
-#if GOOGLE_CUDA
-        std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version)
-#elif TENSORFLOW_USE_ROCM
-        std::get<se::RocmComputeCapability>(gpu_target_config.gpu_version)        
-#endif        
-    );
-=======
     pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(compute_capability);
->>>>>>> google_upstream/master
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 

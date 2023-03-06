@@ -1160,14 +1160,9 @@ distribute_py_test(
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",
-<<<<<<< HEAD
-        "no_cuda_asan",  # times out
         "no_gpu",  # TODO(b/213596871): times out
-        "notsan",  # b/177098062
         "no_rocm", # broken in 4.1
-=======
         "no_cuda_asan",  # TODO(b/214574707): times out
->>>>>>> google_upstream/master
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -2122,15 +2117,10 @@ distribute_py_test(
     disable_mlir_bridge = False,
     python_version = "PY3",
     shard_count = 2,
-<<<<<<< HEAD
     tags = [
         "multi_and_single_gpu",
-        "notsan",  # TODO(b/160006974)
         "no_rocm" # flaky/timeout with 4.1
     ],
-=======
-    tags = ["multi_and_single_gpu"],
->>>>>>> google_upstream/master
     xla_enable_strict_auto_jit = True,
     deps = [
         ":collective_all_reduce_strategy",

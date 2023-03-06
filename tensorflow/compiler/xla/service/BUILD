@@ -7038,15 +7038,11 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/service/gpu:executable_proto_cc",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
-<<<<<<< HEAD
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/service/gpu:executable_proto_cc",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler_impl",
-    ]),
-=======
     ]) + if_cuda(["//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin"]),
->>>>>>> google_upstream/master
 )
 
 # A simple test of xla_aot_compile which generates an output file from an mhlo file.

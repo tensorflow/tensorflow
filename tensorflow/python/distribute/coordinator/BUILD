@@ -118,11 +118,7 @@ tf_py_test(
         "no_oss",  # TODO(b/219580021)
         "noasan",  # Multi-process runner does not work with test sanitizers
         "nomac",  # TODO(b/177065434)
-<<<<<<< HEAD
-        "notsan",  # Multi-process runner does not work with test sanitizers
         "no_rocm", # Added SR 01/12/2021
-=======
->>>>>>> google_upstream/master
     ],
     deps = [
         ":cluster_coordinator",
