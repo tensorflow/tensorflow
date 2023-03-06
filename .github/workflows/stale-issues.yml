@@ -20,6 +20,8 @@ on:
 
 jobs:
   close-issues:
+    # Don't do this in forks
+    if: github.repository == 'tensorflow/tensorflow'
     runs-on: ubuntu-latest
     permissions:
       issues: write
