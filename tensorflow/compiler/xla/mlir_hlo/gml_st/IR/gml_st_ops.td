@@ -455,7 +455,9 @@ def GMLST_FusionOp : GMLST_Op<"fusion", [
     ]> {
   let summary = "A cluster of operations to be tiled and fused.";
 
-  let arguments = (ins Variadic<AnyType>:$inputs);
+  let arguments = (ins Variadic<AnyType>:$inputs,
+                       OptionalAttr<I64ArrayAttr>:$parallel_tile_sizes,
+                       OptionalAttr<I64ArrayAttr>:$reduction_tile_sizes);
   let results = (outs Variadic<AnyRankedTensor>:$results);
   let regions = (region SizedRegion<1>:$region);
 

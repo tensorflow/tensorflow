@@ -134,7 +134,7 @@ createTransformGenericForCpuPass();
 
 /// Pass to create fusion clusters.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createFusionPlanningForCpuPass();
+createFusionPlanningForCpuPass(int64_t vectorSize = 8);
 
 /// Pass to outline fusion regions into functions.
 std::unique_ptr<OperationPass<mlir::ModuleOp>> createFusionOutliningPass();

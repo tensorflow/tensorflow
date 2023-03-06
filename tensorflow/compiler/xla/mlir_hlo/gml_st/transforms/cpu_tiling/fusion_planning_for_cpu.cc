@@ -21,12 +21,15 @@ limitations under the License.
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/DestinationStyleOpInterface.h"
+#include "mlir/Interfaces/TilingInterface.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "thlo/IR/thlo_ops.h"
@@ -147,8 +150,51 @@ LogicalResult copyConstantLikeFillOp(linalg::FillOp fillOp,
   return failure();
 }
 
+// Add attributes with tile sizes for parallel and reduction dimensions.
+// Attribute is empty if there is nothing to tile across respective dimensions.
+struct ComputeTileSizesPattern : public OpRewritePattern<gml_st::FusionOp> {
+  ComputeTileSizesPattern(MLIRContext* context, int64_t vectorSize,
+                          PatternBenefit benefit = 1)
+      : OpRewritePattern<gml_st::FusionOp>(context, benefit),
+        vectorSize(vectorSize) {}
+
+  LogicalResult matchAndRewrite(gml_st::FusionOp fusionOp,
+                                PatternRewriter& rewriter) const override {
+    if (fusionOp.getParallelTileSizes().has_value()) return failure();
+
+    if (!llvm::all_of(fusionOp.getRegion().getOps(), [](Operation& op) {
+          return isa<gml_st::YieldOp, linalg::BroadcastOp, linalg::FillOp,
+                     linalg::MapOp, tensor::EmptyOp, thlo::ReverseOp>(op);
+        }))
+      return failure();
+
+    auto rootOp = dyn_cast_or_null<TilingInterface>(
+        fusionOp.getTerminator().getOperand(0).getDefiningOp());
+    if (!rootOp) return failure();
+
+    const int64_t numLoops = rootOp.getLoopIteratorTypes().size();
+
+    fusionOp.setParallelTileSizesAttr(
+        rewriter.getI64ArrayAttr(getParallelTileSizes(numLoops)));
+    fusionOp.setReductionTileSizesAttr(rewriter.getI64ArrayAttr({}));
+
+    return success();
+  };
+
+ private:
+  SmallVector<int64_t> getParallelTileSizes(int64_t numLoops) const {
+    SmallVector<int64_t> result(numLoops, 1);
+    if (!result.empty()) result.back() = vectorSize;
+    return result;
+  }
+
+  int64_t vectorSize;
+};
+
 struct FusionPlanningForCpuPass
     : public impl::FusionPlanningForCpuPassBase<FusionPlanningForCpuPass> {
+  explicit FusionPlanningForCpuPass(int64_t vs = 8) { vectorSize = vs; }
+
   void runOnOperation() override {
     func::FuncOp f = getOperation();
     MLIRContext* context = &getContext();
@@ -178,6 +224,16 @@ struct FusionPlanningForCpuPass
         return signalPassFailure();
       }
     }
+
+    // Add attributes with tile sizes.
+    {
+      RewritePatternSet patterns(context);
+      patterns.add<ComputeTileSizesPattern>(context, vectorSize);
+
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+        return signalPassFailure();
+      }
+    }
   }
 };
 
@@ -199,8 +255,8 @@ struct InlineFusionClustersPass
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createFusionPlanningForCpuPass() {
-  return std::make_unique<mlir::gml_st::FusionPlanningForCpuPass>();
+createFusionPlanningForCpuPass(int64_t vectorSize) {
+  return std::make_unique<mlir::gml_st::FusionPlanningForCpuPass>(vectorSize);
 }
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>

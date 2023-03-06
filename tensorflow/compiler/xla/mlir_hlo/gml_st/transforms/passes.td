@@ -243,6 +243,11 @@ def FusionPlanningForCpuPass :
     "::mlir::linalg::LinalgDialect",
     "::mlir::tensor::TensorDialect"
   ];
+
+  let options = [
+    Option<"vectorSize", "vector-size", "int64_t", "8",
+           "Tile size for the innermost dimension of `linalg.map`">,
+  ];
 }
 
 def FusionOutliningPass : Pass<"gml-fusion-outlining", "mlir::ModuleOp"> {
