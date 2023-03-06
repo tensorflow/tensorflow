@@ -20,8 +20,8 @@ func.func @fuse_broadcast_map(%arg0: tensor<16xf32>, %arg1: tensor<16x32xf32>)
 }
 
 // CHECK:      %[[INIT:.*]] = tensor.empty()
-// CHECK:      %[[RESULT:.*]] = gml_st.parallel
-// CHECK-SAME:    outs (%[[INIT_:.*]] = %[[INIT]]:
+// CHECK:      %[[RESULT:.*]] = scf.forall
+// CHECK-SAME:    shared_outs(%[[INIT_:.*]] = %[[INIT]])
 // CHECK-DAG:  %[[INIT_SLICE:.*]] = tensor.extract_slice %[[INIT]]
 // CHECK-DAG:  %[[ARG0_SLICE:.*]] = tensor.extract_slice %[[ARG0]]
 // CHECK:      %[[BCAST:.*]] = linalg.broadcast
@@ -32,7 +32,7 @@ func.func @fuse_broadcast_map(%arg0: tensor<16xf32>, %arg1: tensor<16x32xf32>)
 // CHECK:      %[[MAPPED:.*]] = linalg.map
 // CHECK-SAME:   ins(%[[BCAST]], %[[ARG1_SLICE]]
 // CHECK-SAME:   outs(%[[INIT_SLICE_]]
-// CHECK:      gml_st.set_yield %[[MAPPED]]
+// CHECK:      tensor.parallel_insert_slice %[[MAPPED]]
 // CHECK:      return %[[RESULT]]
 
 // -----
@@ -56,31 +56,31 @@ func.func @do_not_fuse_map_reduce(%arg0: tensor<16x32xf32>, %arg1: tensor<16xf32
 
 // CHECK:      %[[INIT:.*]] = tensor.empty()
 // CHECK:      %[[REDUCE:.*]] = linalg.reduce
-// CHECK:      %[[RESULT:.*]] = gml_st.parallel
-// CHECK-SAME:    outs (%[[INIT_:.*]] = %[[INIT]]:
+// CHECK:      %[[RESULT:.*]] = scf.forall
+// CHECK-SAME:    shared_outs(%[[INIT_:.*]] = %[[INIT]])
 // CHECK-DAG:  %[[REDUCE_SLICE:.*]] = tensor.extract_slice %[[REDUCE]]
 // CHECK-DAG:  %[[ARG1_SLICE:.*]] = tensor.extract_slice %[[ARG1]]
 // CHECK-DAG:  %[[INIT_SLICE:.*]] = tensor.extract_slice %[[INIT_]]
 // CHECK:      %[[MAPPED:.*]] = linalg.map
 // CHECK-SAME:   ins(%[[REDUCE_SLICE]], %[[ARG1_SLICE]]
 // CHECK-SAME:   outs(%[[INIT_SLICE]]
-// CHECK:      gml_st.set_yield %[[MAPPED]]
+// CHECK:      tensor.parallel_insert_slice %[[MAPPED]]
 // CHECK:      return %[[RESULT]]
 
 // -----
 
-// Only basic checks that all maps and fills were fused into gml_st.parallel.
+// Only basic checks that all maps and fills were fused into scf.forall.
 // This test verified that ops are fused in correct order. If something is
 // broken, the test will take exponential time and/or memory to finish.
 // CHECK-LABEL:    func @fuse_fibonacci
 // CHECK-NOT:      linalg.fill
 // CHECK-NOT:      linalg.map
-// CHECK:          gml_st.parallel
+// CHECK:          scf.forall
 // CHECK-COUNT-2:    linalg.fill
 // CHECK-COUNT-38:   linalg.map
 // CHECK-NOT:        linalg.fill
 // CHECK-NOT:        linalg.map
-// CHECK:            gml_st.set_yield
+// CHECK:            tensor.parallel_insert_slice
 // CHECK:          return
 func.func @fuse_fibonacci(%init : tensor<?xi64>) -> tensor<?xi64> {
   %c0 = arith.constant 0 : i64

@@ -756,7 +756,6 @@ cc_library(
     strip_include_prefix = ".",
     deps = [
         ":chlo_legalize_to_hlo",
-        ":gml_st_bufferizable_op_interface",
         ":hlo_legalize_to_stablehlo",
         ":legalize_to_linalg_utils",
         ":legalize_to_standard_inc_gen",
@@ -1221,7 +1220,6 @@ cc_library(
     strip_include_prefix = ".",
     deps = [
         ":gml_st",
-        ":gml_st_bufferizable_op_interface",
         ":gml_st_passes",
         ":lhlo",
         ":mhlo_passes",
@@ -1374,7 +1372,6 @@ cc_library(
     hdrs = ["gml_st/transforms/test_passes.h"],
     strip_include_prefix = ".",
     deps = [
-        ":gml_st_bufferizable_op_interface",
         ":gml_st_passes",
         ":gml_st_test_passes_inc_gen",
         ":gml_st_transforms",
@@ -1475,8 +1472,10 @@ cc_library(
         "gml_st/transforms/cpu_tiling/transform_transpose_for_cpu.cc",
         "gml_st/transforms/fusion/fusion.cc",
         "gml_st/transforms/gml_st_to_scf/gml_st_to_scf.cc",
+        "gml_st/transforms/passes.cc",
         "gml_st/transforms/passes.h.inc",
         "gml_st/transforms/peeling/peeling.cc",
+        "gml_st/transforms/rewrite_from_elements_op/rewrite_from_elements_op.cc",
         "gml_st/transforms/scalarization/scalarization.cc",
         "gml_st/transforms/tiling/tile_by_one.cc",
         "gml_st/transforms/tiling/tiling.cc",
@@ -1668,11 +1667,8 @@ td_library(
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
         "@llvm-project//mlir:DestinationStyleOpInterfaceTdFiles",
         "@llvm-project//mlir:DialectUtilsTdFiles",
-        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
-        "@llvm-project//mlir:LoopLikeInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
-        "@llvm-project//mlir:ViewLikeInterfaceTdFiles",
     ],
 )
 
@@ -1696,22 +1692,6 @@ gentbl_cc_library(
         (
             ["-gen-dialect-defs"],
             "gml_st/IR/gml_st_dialect.cc.inc",
-        ),
-        (
-            ["-gen-typedef-decls"],
-            "gml_st/IR/gml_st_types.h.inc",
-        ),
-        (
-            ["-gen-typedef-defs"],
-            "gml_st/IR/gml_st_types.cc.inc",
-        ),
-        (
-            ["-gen-attrdef-decls"],
-            "gml_st/IR/gml_st_attrs.h.inc",
-        ),
-        (
-            ["-gen-attrdef-defs"],
-            "gml_st/IR/gml_st_attrs.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
@@ -1741,23 +1721,6 @@ cc_library(
         "@llvm-project//mlir:TensorUtils",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
-        "@llvm-project//mlir:ViewLikeInterface",
-    ],
-)
-
-cc_library(
-    name = "gml_st_bufferizable_op_interface",
-    srcs = ["gml_st/interfaces/bufferizable_op_interface_impl.cc"],
-    hdrs = ["gml_st/interfaces/bufferizable_op_interface_impl.h"],
-    strip_include_prefix = ".",
-    deps = [
-        ":gml_st",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:ArithUtils",
-        "@llvm-project//mlir:BufferizationDialect",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:ViewLikeInterface",
     ],
 )

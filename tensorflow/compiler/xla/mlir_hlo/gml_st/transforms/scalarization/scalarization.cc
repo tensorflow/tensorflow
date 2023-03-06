@@ -69,37 +69,6 @@ struct FoldTensorFromElementsIntoInsertSlice
   }
 };
 
-// Fold `gml_st.set_yield(tensor.from_elements(x) -> tensor<1x1xf32>)` into
-//      `gml_st.set_yield(x)` for single-element tensors.
-struct FoldTensorFromElementsIntoSetYield
-    : public OpRewritePattern<gml_st::SetYieldOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(gml_st::SetYieldOp yieldOp,
-                                PatternRewriter &rewriter) const override {
-    bool isFoldingPossible = false;
-    SmallVector<Value> newSrcs;
-    for (auto [src, set] : llvm::zip(yieldOp.getSrcs(), yieldOp.getSets())) {
-      auto fromElementsOp = src.getDefiningOp<FromElementsOp>();
-      if (!fromElementsOp) continue;
-
-      if (hasSingleElement(fromElementsOp.getType())) {
-        newSrcs.push_back(fromElementsOp.getElements().front());
-        isFoldingPossible = true;
-        continue;
-      }
-      newSrcs.push_back(src);
-    }
-
-    if (!isFoldingPossible) return failure();
-
-    // Update in-place to make sure that the accumulator regions don't get lost.
-    rewriter.updateRootInPlace(
-        yieldOp, [&]() { yieldOp.getSrcsMutable().assign(newSrcs); });
-    return success();
-  }
-};
-
 LogicalResult inlinePayload(PatternRewriter &rewriter, Location loc,
                             LinalgOp linalgOp, ValueRange argValues) {
   // Clone everything but terminator.
@@ -380,11 +349,10 @@ struct ScalarizationPass
     : public impl::ScalarizationPassBase<ScalarizationPass> {
   void runOnOperation() override {
     auto func = getOperation();
-    auto *context = &getContext();
+    auto *ctx = &getContext();
 
-    RewritePatternSet patterns(context);
-    patterns.add<ScalarizeLinalgOp, FoldTensorFromElementsIntoInsertSlice,
-                 FoldTensorFromElementsIntoSetYield>(context);
+    RewritePatternSet patterns(ctx);
+    patterns.add<ScalarizeLinalgOp, FoldTensorFromElementsIntoInsertSlice>(ctx);
     patterns.add(hoistTensorExtractFromForOp);
     patterns.add(hoistTensorExtractFromIfOp);
     patterns.add(scalarizeConcatenateOp);
@@ -393,7 +361,7 @@ struct ScalarizationPass
     patterns.add(scalarizeReverseOp);
     patterns.add(scalarizeScatterOp);
 
-    FromElementsOp::getCanonicalizationPatterns(patterns, context);
+    FromElementsOp::getCanonicalizationPatterns(patterns, ctx);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
       signalPassFailure();
   }

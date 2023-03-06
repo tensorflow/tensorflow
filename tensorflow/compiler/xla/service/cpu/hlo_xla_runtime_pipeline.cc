@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir_hlo/deallocation/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/gml_st/interfaces/bufferizable_op_interface_impl.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/interfaces/bufferizable_op_interface_impl.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -79,6 +78,8 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions() {
 void AddSparsificationPasses(mlir::OpPassManager& pm) {
   pm.addNestedPass<FuncOp>(createSparseCustomCallToPackUnpackOpPass());
   pm.addNestedPass<FuncOp>(mlir::createLinalgGeneralizationPass());
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createRewriteFromElementsOpPass());
+  pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
   pm.addNestedPass<FuncOp>(
       mlir::bufferization::createEmptyTensorToAllocTensorPass());
   pm.addPass(mlir::createPreSparsificationRewritePass());
@@ -187,6 +188,8 @@ static Status CreateHloXlaPipeline(
   }
   pm.addNestedPass<mlir::func::FuncOp>(std::move(detensorize));
   pm.addNestedPass<mlir::func::FuncOp>(mlir::gml_st::createScalarizationPass());
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createRewriteFromElementsOpPass());
+  pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createEmptyTensorToAllocTensorPass());
 
@@ -287,7 +290,6 @@ void RegisterHloXlaRuntimePipelineDialects(mlir::DialectRegistry& dialects) {
   mlir::arith::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
       dialects);
-  mlir::gml_st::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::linalg::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::linalg::registerTilingInterfaceExternalModels(dialects);
   mlir::mhlo::registerBufferizableOpInterfaceExternalModels(dialects);

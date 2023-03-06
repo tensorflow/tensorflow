@@ -250,6 +250,12 @@ def FusionPlanningForCpuPass :
   ];
 }
 
+def RewriteFromElementsOpPass
+    : Pass<"gml-st-rewrite-from-elements-ops", "mlir::func::FuncOp"> {
+  let summary = "Pass to rewrite tensor.from_elements into tensor.insert.";
+  let constructor = "createRewriteFromElementsOpPass()";
+}
+
 def FusionOutliningPass : Pass<"gml-fusion-outlining", "mlir::ModuleOp"> {
   let summary = "Pass to outline fusion regions into functions.";
   let constructor = "createFusionOutliningPass()";

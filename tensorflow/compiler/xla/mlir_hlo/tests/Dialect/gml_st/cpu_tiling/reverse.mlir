@@ -12,9 +12,9 @@ func.func @reverse_static_perfect_tiles(
 
 // CHECK-LABEL: @reverse_static_perfect_tiles
 
-// CHECK: gml_st.parallel
+// CHECK: scf.forall
 // CHECK:   vector.shuffle
-// CHECK:   gml_st.set_yield
+// CHECK:   tensor.parallel_insert_slice
 
 // -----
 
@@ -29,12 +29,12 @@ func.func @reverse_dynamic(
 
 // CHECK-LABEL: @reverse_dynamic
 
-// CHECK: gml_st.parallel
+// CHECK: scf.forall
 // CHECK:   vector.shuffle
-// CHECK:   gml_st.set_yield
+// CHECK:   tensor.parallel_insert_slice
 
-// CHECK: gml_st.parallel
-// CHECK:   gml_st.parallel
+// CHECK: scf.forall
+// CHECK:   scf.forall
 // CHECK:     tensor.extract_slice
-// CHECK:     gml_st.set_yield
-// CHECK:   gml_st.set_yield
+// CHECK:     tensor.parallel_insert_slice
+// CHECK:   tensor.parallel_insert_slice

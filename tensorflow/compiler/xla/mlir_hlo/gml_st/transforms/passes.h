@@ -143,8 +143,15 @@ std::unique_ptr<OperationPass<mlir::ModuleOp>> createFusionOutliningPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createInlineFusionClustersPass();
 
+/// Pass to rewrite tensor.from_elements into tensor.insert.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createRewriteFromElementsOpPass();
+
 /// Pass to add debug info to be propagated into LLVM backend.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAddDebugInfoPass();
+
+/// Populate pattern to remove single/zero iteration scf.forall dimensions.
+void populateCollapseForallOpDimensionsPattern(RewritePatternSet &patterns);
 
 struct GmlStCPUTilingOptions
     : public mlir::PassPipelineOptions<GmlStCPUTilingOptions> {

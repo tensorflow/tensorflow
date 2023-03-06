@@ -93,6 +93,7 @@ struct TransformScatterForCpuPass
 
     RewritePatternSet patterns(ctx);
     patterns.add<TileScatterPattern>(ctx);
+    populateCollapseForallOpDimensionsPattern(patterns);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();

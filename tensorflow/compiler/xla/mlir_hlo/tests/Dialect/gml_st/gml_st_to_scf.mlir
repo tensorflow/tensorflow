@@ -7,9 +7,8 @@ func.func @for(%A: memref<192x192xf32>) {
    %c192 = arith.constant 192 : index
    %cst = arith.constant 0.000000e+00 : f32
 
-  gml_st.parallel (%i, %j) = (%c0, %c0) to (%c192, %c192) step (%c24, %c16) {
+  scf.forall (%i, %j) = (%c0, %c0) to (%c192, %c192) step (%c24, %c16) {
     linalg.fill ins(%cst : f32) outs(%A : memref<192x192xf32>)
-    gml_st.set_yield
   }
   func.return
 }

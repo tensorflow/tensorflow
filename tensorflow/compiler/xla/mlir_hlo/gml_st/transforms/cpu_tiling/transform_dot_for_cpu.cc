@@ -134,7 +134,7 @@ struct DotTransformPattern : public OpRewritePattern<DotTy> {
       return rewriter.notifyMatchFailure(dotOp,
                                          "has already been transformed.");
     }
-    if (isa<gml_st::ParallelOp, scf::ForOp>(dotOp->getParentOp())) {
+    if (isa<scf::ForallOp, scf::ForOp>(dotOp->getParentOp())) {
       return rewriter.notifyMatchFailure(
           dotOp, "has already been tiled by another pass.");
     }
@@ -144,8 +144,8 @@ struct DotTransformPattern : public OpRewritePattern<DotTy> {
         rewriter, dotOp.getOperation(), parallelDimTileSizeFn(tileSizes));
     if (failed(tilingParallelDimsResult)) return failure();
 
-    gml_st::ParallelOp parallelLoop = tilingParallelDimsResult->loop;
-    if (parallelLoop != nullptr) {
+    scf::ForallOp forallOp = tilingParallelDimsResult->loop;
+    if (forallOp != nullptr) {
       dotOp = cast<DotTy>(tilingParallelDimsResult->tiledOps.back());
     }
 
@@ -157,10 +157,9 @@ struct DotTransformPattern : public OpRewritePattern<DotTy> {
     if (!tilingReductionDimResult->loops.empty()) {
       dotOp = cast<DotTy>(tilingReductionDimResult->tiledOps.back());
     }
-
     // Peel parallel loops.
-    if (parallelLoop != nullptr) {
-      (void)peelAllLoops(parallelLoop, rewriter);
+    if (forallOp != nullptr) {
+      (void)peelAllLoops(forallOp, rewriter);
     }
 
     // Peel reduction loop inside the main parallel loop, label the main loop as
@@ -231,6 +230,7 @@ struct TransformDotForCpuPass
         [&](MatmulSizes) -> SmallVector<int64_t> { return {}; },
         [&](MatmulSizes sizes) -> SmallVector<int64_t> { return {sizes.k}; });
 
+    populateCollapseForallOpDimensionsPattern(patterns);
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();
     }

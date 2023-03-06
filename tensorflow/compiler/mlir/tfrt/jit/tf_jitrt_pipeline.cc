@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
+#include "tensorflow/compiler/xla/mlir_hlo/_virtual_includes/gml_st_passes/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/transforms/passes.h"
@@ -65,6 +66,8 @@ struct AddTensorflowProducerVersion
 };
 
 void AddBufferizationPasses(OpPassManager& pm) {
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createRewriteFromElementsOpPass());
+  pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
   // Rewrite tensor.empty ops to bufferization.alloc_tensor ops.
   pm.addNestedPass<FuncOp>(
       mlir::bufferization::createEmptyTensorToAllocTensorPass());

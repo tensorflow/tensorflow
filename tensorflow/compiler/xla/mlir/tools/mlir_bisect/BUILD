@@ -11,7 +11,6 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/mlir/tools/mlir_bisect/rewrites",
         "//tensorflow/compiler/xla/mlir/tools/mlir_replay/public:execution_trace_utils",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
-        "//tensorflow/compiler/xla/mlir_hlo:gml_st_bufferizable_op_interface",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_passes",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_test_passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",

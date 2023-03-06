@@ -37,6 +37,7 @@ struct ComposeExtractInsertSlicePass
     RewritePatternSet patterns(ctx);
     tensor::populateMergeConsecutiveInsertExtractSlicePatterns(patterns);
 
+    populateCollapseForallOpDimensionsPattern(patterns);
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       return signalPassFailure();

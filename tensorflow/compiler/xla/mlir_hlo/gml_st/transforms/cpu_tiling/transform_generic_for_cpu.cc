@@ -67,7 +67,7 @@ struct GenericTransformPattern : public OpRewritePattern<linalg::GenericOp> {
                                          "has already been transformed.");
     }
 
-    if (isa<gml_st::ParallelOp, scf::ForOp>(genericOp->getParentOp())) {
+    if (isa<scf::ForallOp, scf::ForOp>(genericOp->getParentOp())) {
       return rewriter.notifyMatchFailure(
           genericOp, "has already been tiled by another pass.");
     }
@@ -103,7 +103,7 @@ struct GenericTransformPattern : public OpRewritePattern<linalg::GenericOp> {
       return cluster.operations.contains(op);
     });
 
-    (void)fuseFillOpsIntoParallelOp(rewriter, tilingParallelDimsResult->loop);
+    (void)fuseFillOpsIntoForallOp(rewriter, tilingParallelDimsResult->loop);
 
     // Second level of tiling: reduction dimensions.
     for (auto tiledGenericOp :
@@ -181,6 +181,7 @@ struct TransformGenericForCpuPass
 
     RewritePatternSet patterns(ctx);
     patterns.add<GenericTransformPattern>(ctx);
+    populateCollapseForallOpDimensionsPattern(patterns);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();

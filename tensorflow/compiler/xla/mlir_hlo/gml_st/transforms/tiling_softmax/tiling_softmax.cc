@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -252,8 +253,8 @@ struct TilingSoftmaxPass
   explicit TilingSoftmaxPass(ArrayRef<int64_t> ts) { this->tileSizes = ts; }
 
   void getDependentDialects(DialectRegistry &registry) const final {
-    registry
-        .insert<GmlStDialect, linalg::LinalgDialect, tensor::TensorDialect>();
+    registry.insert<GmlStDialect, linalg::LinalgDialect, tensor::TensorDialect,
+                    scf::SCFDialect>();
     linalg::registerTilingInterfaceExternalModels(registry);
   }
 

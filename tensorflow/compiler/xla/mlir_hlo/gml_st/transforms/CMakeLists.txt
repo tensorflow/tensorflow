@@ -44,7 +44,9 @@ add_mlir_library(GmlStPasses
   cpu_tiling/transform_transpose_for_cpu.cc
   fusion/fusion.cc
   gml_st_to_scf/gml_st_to_scf.cc
+  passes.cc
   peeling/peeling.cc
+  rewrite_from_elements_op/rewrite_from_elements_op.cc
   scalarization/scalarization.cc
   tiling/tile_by_one.cc
   tiling/tiling.cc
@@ -103,7 +105,6 @@ add_mlir_library(GmlStTestPasses
   Core
 
   LINK_LIBS PUBLIC
-  GmlStBufferizableOpInterface
   GmlStDialect
   GmlStTransforms
   MLIRPass

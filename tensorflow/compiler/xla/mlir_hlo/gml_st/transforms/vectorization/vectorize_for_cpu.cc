@@ -354,7 +354,7 @@ struct VectorizeForCPUPass
     };
     auto isInsidePerfectlyTiledLoop = [&](Operation *op) {
       Operation *parent = op->getParentOp();
-      return (isa<ParallelOp, scf::ForOp>(parent)) &&
+      return (isa<scf::ForallOp, scf::ForOp>(parent)) &&
              hasLabel(parent, kPerfectlyTiledLoopLabel);
     };
     auto isInsidePerfectlyTiledLoopOrSmall = [&](Operation *op) {

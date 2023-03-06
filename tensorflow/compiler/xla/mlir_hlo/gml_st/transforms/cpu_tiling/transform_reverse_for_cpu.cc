@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -78,11 +79,10 @@ struct ReverseTransformPattern : public OpRewritePattern<thlo::ReverseOp> {
     if (hasLabel(reverseOp, kReverseTransformedLabel))
       return rewriter.notifyMatchFailure(reverseOp,
                                          "has already been transformed.");
-    if (isa<gml_st::ParallelOp, scf::ForOp>(reverseOp->getParentOp())) {
+    if (isa<scf::ForallOp, scf::ForOp>(reverseOp->getParentOp())) {
       return rewriter.notifyMatchFailure(
           reverseOp, "has already been tiled by another pass.");
     }
-
     // Parallel dimension tiling. Tiling will be of the form
     // 1x1x..x1xVectorSize.
     int64_t rank = reverseOp.getInput().getType().getRank();
@@ -95,7 +95,7 @@ struct ReverseTransformPattern : public OpRewritePattern<thlo::ReverseOp> {
     // If last dim is to be reversed.
     if (llvm::is_contained(reverseOp.getReverseDimensions(), rank - 1)) {
       // If we have a remaining loop, we tile this to sizes of 1.
-      for (ParallelOp remParLoop : peelingResult.tailLoops) {
+      for (scf::ForallOp remParLoop : peelingResult.tailLoops) {
         remParLoop->walk([&](Operation *childOp) {
           if (isa<thlo::ReverseOp>(childOp)) {
             auto innerReverseOp = dyn_cast<thlo::ReverseOp>(*childOp);
@@ -125,7 +125,7 @@ struct TransformReverseForCpuPass
 
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<mlir::gml_st::GmlStDialect, arith::ArithDialect,
-                    tensor::TensorDialect>();
+                    tensor::TensorDialect, scf::SCFDialect>();
     linalg::registerTilingInterfaceExternalModels(registry);
   }
 
@@ -135,6 +135,7 @@ struct TransformReverseForCpuPass
 
     RewritePatternSet patterns(ctx);
     patterns.add<ReverseTransformPattern>(ctx, vectorSize);
+    populateCollapseForallOpDimensionsPattern(patterns);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();

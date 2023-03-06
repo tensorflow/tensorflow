@@ -521,7 +521,7 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     if (hasLabel(matmulOp, kMatmulTransformedLabel))
       return rewriter.notifyMatchFailure(matmulOp,
                                          "has already been transformed.");
-    if (isa<gml_st::ParallelOp, scf::ForOp>(matmulOp->getParentOp()))
+    if (isa<scf::ForallOp, scf::ForOp>(matmulOp->getParentOp()))
       return rewriter.notifyMatchFailure(
           matmulOp, "has already been tiled by another pass.");
 
@@ -554,7 +554,7 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
       // Fuse ops into the loop.
       fuseGreedily(rewriter, *tilingRoot->getBlock(),
                    [&](Operation *op) { return fusionCluster.contains(op); });
-      (void)fuseFillOpsIntoParallelOp(rewriter, tilingParallelDimsResult->loop);
+      (void)fuseFillOpsIntoForallOp(rewriter, tilingParallelDimsResult->loop);
     }
 
     // Second level tiling: reduction dimension for matmuls.

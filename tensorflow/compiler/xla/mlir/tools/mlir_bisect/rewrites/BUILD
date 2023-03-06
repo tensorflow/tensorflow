@@ -5,7 +5,6 @@ cc_library(
     srcs = [
         "func.cc",
         "general.cc",
-        "gml_st.cc",
         "scf.cc",
     ],
     visibility = ["//visibility:public"],

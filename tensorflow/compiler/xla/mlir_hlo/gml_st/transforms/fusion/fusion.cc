@@ -154,12 +154,11 @@ class FusionPattern : public OpRewritePattern<tensor::ExtractSliceOp> {
     // `src` of `extract_slice` is the bbArg of `gml_st.parallel` and that the
     // corresponding operand of `gml_st.parallel` is defined by `linalg.fill`.
     if (auto bbArg = dyn_cast<BlockArgument>(extractSliceOp.getSource())) {
-      if (auto parallelOp =
-              dyn_cast_or_null<ParallelOp>(bbArg.getOwner()->getParentOp())) {
-        Value loopOperand =
-            parallelOp.getOpOperandForRegionOutputArg(bbArg).get();
+      if (auto parallelOp = dyn_cast_or_null<scf::ForallOp>(
+              bbArg.getOwner()->getParentOp())) {
+        Value loopOperand = parallelOp.getTiedOpOperand(bbArg)->get();
         if (loopOperand.getDefiningOp<linalg::FillOp>())
-          return fuseFillOpsIntoParallelOp(rewriter, parallelOp);
+          return fuseFillOpsIntoForallOp(rewriter, parallelOp);
       }
     }
     return fuse(rewriter, extractSliceOp);
@@ -185,7 +184,8 @@ struct FusionPass : public impl::FusionPassBase<FusionPass> {
     auto filterFn = [&](tensor::ExtractSliceOp op) {
       Operation* producerOp = op.getSource().getDefiningOp();
       if (auto bbArg = dyn_cast<BlockArgument>(op.getSource())) {
-        if (isa<ParallelOp>(bbArg.getOwner()->getParentOp())) return success();
+        if (isa<scf::ForallOp>(bbArg.getOwner()->getParentOp()))
+          return success();
       }
       if (!producerOp || (!producerLabel.empty() &&
                           !hasMatchingLabel(producerOp, producerLabel))) {
@@ -442,21 +442,20 @@ FusionCluster findMapFusionCluster(Operation* op) {
   return {resultOps, rootOp};
 }
 
-LogicalResult fuseFillOpsIntoParallelOp(PatternRewriter& rewriter,
-                                        ParallelOp parallelOp) {
+LogicalResult fuseFillOpsIntoForallOp(PatternRewriter& rewriter,
+                                      scf::ForallOp parallelOp) {
   OpBuilder::InsertionGuard g(rewriter);
   rewriter.setInsertionPointToStart(parallelOp.getBody());
   bool fillOpsWereFused = false;
   for (OpOperand& output :
-       parallelOp->getOpOperands().take_back(parallelOp.getNumOutputs())) {
+       parallelOp->getOpOperands().take_back(parallelOp.getNumResults())) {
     auto fillOp = output.get().getDefiningOp<linalg::FillOp>();
     if (!fillOp) continue;
 
     fillOpsWereFused = true;
 
     // Clone `linalg.fill` op inside the loop, update the uses of bbArg.
-    BlockArgument regionOutputArg =
-        parallelOp.getRegionOutputArgForOpOperand(output);
+    BlockArgument regionOutputArg = parallelOp.getTiedBlockArgument(&output);
     auto clonedFill = cast<linalg::FillOp>(
         mlir::clone(rewriter, fillOp, fillOp.getResultTypes(),
                     {fillOp.value(), regionOutputArg}));
@@ -469,8 +468,9 @@ LogicalResult fuseFillOpsIntoParallelOp(PatternRewriter& rewriter,
           Operation* owner = operand.getOwner();
           if (auto sliceOp = dyn_cast_or_null<tensor::ExtractSliceOp>(owner))
             sliceOps.push_back(sliceOp);
-          return owner != clonedFill && !isa<SetYieldOp>(owner) &&
-                 owner->getParentOfType<ParallelOp>() == parallelOp;
+          return owner != clonedFill &&
+                 !isa<tensor::ParallelInsertSliceOp>(owner) &&
+                 owner->getParentOfType<scf::ForallOp>() == parallelOp;
         });
 
     // Use standard fusion logic to swap extract_slice(fill) ->
@@ -487,7 +487,7 @@ gml_st::TilingOptions getGmlStTilingOptions(ArrayRef<int64_t> tileSizes) {
   return opts;
 }
 
-FailureOr<ParallelOp> tileUsingGmlStParallelAndFuseGreedily(
+FailureOr<scf::ForallOp> tileUsingGmlStParallelAndFuseGreedily(
     PatternRewriter& rewriter, Operation* op,
     const mlir::gml_st::TilingOptions& opts, StringRef label,
     llvm::function_ref<bool(Operation*)> fuseFilterFn) {
@@ -535,11 +535,13 @@ FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
 LogicalResult tilePeeledOpsToScalars(
     PatternRewriter& rewriter, const GmlStPeelingResult& peelingResult,
     StringRef label, llvm::function_ref<bool(Operation*)> fuseFilterFn) {
-  for (ParallelOp peeledLoop : peelingResult.tailLoops) {
-    auto* terminatorOp = peeledLoop->getRegion(0).front().getTerminator();
-    if (!terminatorOp) return failure();
+  for (scf::ForallOp peeledLoop : peelingResult.tailLoops) {
+    SmallVector<Value> yieldedTensors =
+        getYieldedValues(peeledLoop.getTerminator());
 
-    auto* definingOp = terminatorOp->getOperand(0).getDefiningOp();
+    assert(yieldedTensors.size() == 1 &&
+           "expected to have a single result in scf.forall loop");
+    auto* definingOp = yieldedTensors.front().getDefiningOp();
     if (!definingOp) return failure();
 
     mlir::gml_st::TilingOptions opts;
