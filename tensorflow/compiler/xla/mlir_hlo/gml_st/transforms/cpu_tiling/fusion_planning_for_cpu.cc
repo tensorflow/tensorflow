@@ -44,6 +44,12 @@ namespace {
 static constexpr llvm::StringRef kFusionPlanningLabel =
     "__fusion_planning_label__";
 
+// Returns true if the op is linalg.reduce or one of the variations of matmul.
+bool isReducingOp(Operation* op) {
+  return isa<linalg::ReduceOp, linalg::MatmulOp, linalg::MatvecOp,
+             linalg::VecmatOp, linalg::DotOp>(op);
+}
+
 // Returns true is consumer and producer should be fused and tiled together.
 bool allowedToFuse(Operation* consumerOp, Operation* producerOp) {
   if (isa<thlo::ScatterOp, thlo::SortOp>(producerOp)) return false;
@@ -87,6 +93,7 @@ LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
 
   SetVector<Operation*> resultOps;
   SmallVector<Operation*> remainingProducers;
+  bool hasReducingOp = isReducingOp(op);
   resultOps.insert(op.getOperation());
   for (auto operand : op.getOperands())
     remainingProducers.push_back(operand.getDefiningOp());
@@ -106,6 +113,12 @@ LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
           return true;
         }))
       continue;
+
+    // Only one reducing op should be added to the cluster.
+    if (isReducingOp(curOp)) {
+      if (hasReducingOp) continue;
+      hasReducingOp = true;
+    }
 
     resultOps.insert(curOp);
 

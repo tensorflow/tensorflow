@@ -337,3 +337,28 @@ func.func @multiple_users_linalg_fill(%arg0: tensor<2xf64>)
 // CHECK:         linalg.reduce
 // CHECK-SAME:      outs(%[[FILL1]]
 // CHECK:         return %[[FILL0]], %[[RESULT]]
+
+// -----
+
+func.func @map_for_matmuls(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
+                           %arg2: tensor<?x?xf32>, %init: tensor<?x?xf32>)
+                           -> tensor<?x?xf32> {
+  %matmul0 = linalg.matmul
+               ins(%arg0, %arg1 : tensor<?x?xf32>, tensor<?x?xf32>)
+               outs(%init : tensor<?x?xf32>) -> tensor<?x?xf32>
+  %matmul1 = linalg.matmul
+               ins(%arg0, %arg2 : tensor<?x?xf32>, tensor<?x?xf32>)
+               outs(%init : tensor<?x?xf32>) -> tensor<?x?xf32>
+
+  %res = linalg.map { arith.addf }
+           ins(%matmul0, %matmul1 : tensor<?x?xf32>, tensor<?x?xf32>)
+           outs(%init : tensor<?x?xf32>)
+  func.return %res : tensor<?x?xf32>
+}
+
+// CHECK-LABEL: func @map_for_matmuls
+// CHECK:         gml_st.fusion
+// CHECK:           linalg.matmul
+// CHECK:         gml_st.fusion
+// CHECK:           linalg.matmul
+// CHECK:           linalg.map
