@@ -200,9 +200,9 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
       !IsFusedReductionOutputConsistent(hero2, hero1)) {
     return "tiled reductions with different shapes";
   } else if (hero1_is_unnested_transpose && hero2_is_unnested_transpose &&
-             // After normalization to rank 3, the transposes should have the
-             // same shape and permute the same dimensions.
-             *tiled_transpose_hero1 != *tiled_transpose_hero2) {
+             (!ShapeUtil::EqualIgnoringElementType(hero1->shape(),
+                                                   hero2->shape()) ||
+              tiled_transpose_hero1->second != tiled_transpose_hero2->second)) {
     return "tiled transposes with different shapes";
   } else if ((hero1_is_unnested_transpose && hero2_is_unnested_reduce) ||
              (hero1_is_unnested_reduce && hero2_is_unnested_transpose)) {
