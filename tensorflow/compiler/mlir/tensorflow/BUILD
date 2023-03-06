@@ -1187,6 +1187,7 @@ gentbl_cc_library(
 cc_library(
     name = "tensorflow_passes",
     srcs = [
+        "transforms/add_functions_for_exported_names.cc",
         "transforms/annotate_parameter_replication.cc",
         "transforms/batchmatmul_to_einsum.cc",
         "transforms/bridge.cc",
