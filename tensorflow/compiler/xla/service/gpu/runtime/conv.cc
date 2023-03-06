@@ -37,10 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
-#endif
-
 namespace xla {
 
 using tensorflow::AutotuneResult;
@@ -322,39 +318,6 @@ static GpuConvDescriptor GetConvDescriptor(
   return descriptor;
 }
 
-#if GOOGLE_CUDA
-// Do runtime autotuning and set the picked algorithm to ConvRunner.
-StatusOr<AutotuneResult> DoRuntimeAutotuning(
-    ConvRunner* conv, se::DeviceMemoryBase& scratch_buffer,
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options,
-    const std::vector<se::DeviceMemoryBase> buffers,
-    const se::DeviceMemoryBase result_buffer) {
-  GpuConvConfig conv_config = conv->config;
-  Shape output_shape = conv_config.output_shape;
-  HloModuleConfig hlo_module_config;
-  se::Stream* stream = run_options->stream();
-  se::StreamExecutor* stream_exec = stream->parent();
-  se::DeviceMemoryAllocator* allocator = run_options->allocator();
-  se::RedzoneAllocator input_output_allocator(
-      stream, allocator, PtxOptsFromDebugOptions(*debug_options),
-      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
-      se::RedzoneAllocator::kDefaultRedzoneSize);
-
-  DeviceConfig device_config = {stream_exec, allocator};
-  GpuConvAlgorithmPicker conv_algorithm_picker(device_config);
-
-  GpuConvAlgorithmPicker::AutotuneRuntimeArguments autotune_runtime_arguments =
-      {output_shape,  hlo_module_config,       buffers,
-       result_buffer, &input_output_allocator, conv_config,
-       std::nullopt};
-
-  return conv_algorithm_picker.PickBestAlgorithmNoCacheCuda(
-      /* instr */ nullptr, allocator, stream,
-      /* instruction_info */ std::nullopt, autotune_runtime_arguments);
-}
-#endif
-
 template <CudnnConvKind kind>
 static absl::Status ConvImpl(
     const ServiceExecutableRunOptions* run_options,
@@ -422,11 +385,17 @@ static absl::Status ConvImpl(
   int64_t scratch_buffer_size = scratch_buffer.size();
 
   // Do runtime conv autotuning.
-#if GOOGLE_CUDA
   if (runtime_autotuning) {
+    auto stream_exec = run_options->stream()->parent();
+    auto allocator = run_options->allocator();
+    DeviceConfig device_config = {stream_exec, allocator};
+    GpuConvAlgorithmPicker conv_algorithm_picker(device_config);
+
+    GpuConvConfig gpu_conv_config = conv.value()->config;
     auto autotune_result =
-        DoRuntimeAutotuning(conv.value(), scratch_buffer, run_options,
-                            debug_options, buffers, result_buffer);
+        conv_algorithm_picker.PickBestAlgorithmWithAllocatedBuffer(
+            gpu_conv_config, run_options, debug_options, buffers,
+            result_buffer);
     if (!autotune_result.ok()) return ToAbslStatus(autotune_result.status());
 
     // Set algorithm in the convolution runner state.
@@ -438,7 +407,6 @@ static absl::Status ConvImpl(
     // Set scratch buffer size according to the selected algorithm.
     scratch_buffer_size = best_algo.scratch_bytes();
   }
-#endif
 
   RunConvOptions opts;
   opts.runner_cache = &(*conv)->runner;
