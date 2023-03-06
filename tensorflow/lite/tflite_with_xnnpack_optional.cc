@@ -34,9 +34,6 @@ TfLiteDelegatePtr MaybeCreateXNNPACKDelegate(
   auto opts = TfLiteXNNPackDelegateOptionsDefault();
   if (enable_xnnpack_unsigned_quantized) {
     opts.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QU8;
-  } else {
-    // Flip the TFLITE_XNNPACK_DELEGATE_FLAG_QU8 bit to zero.
-    opts.flags &= ~(1UL << (TFLITE_XNNPACK_DELEGATE_FLAG_QU8 - 1));
   }
   return TfLiteDelegatePtr(
       TfLiteXNNPackDelegateCreateWithThreadpool(&opts, context),
