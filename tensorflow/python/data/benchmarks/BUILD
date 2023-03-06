@@ -96,6 +96,7 @@ tf_py_test(
     srcs = ["map_benchmark.py"],
     deps = [
         ":benchmark_base",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:map_op",
     ],
