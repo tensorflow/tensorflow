@@ -68,7 +68,7 @@ cc_shared_library(
 )
 
 tsl_pybind_extension(
-    name = "_pywrap_bfloat16",
+    name = "pywrap_bfloat16",
     srcs = ["bfloat16_wrapper.cc"],
     dynamic_deps = [":bfloat16.so"],
     static_deps = [
