@@ -146,7 +146,7 @@ void elideRedundantOwnershipArgs(RegionBranchOpInterface op) {
         if ((pred.predecessorOp == op && isFor) ||
             (pred.predecessorRegionIndex == 0 && !isFor)) {
           resultIndices[ownershipArgIndices[i] - pred.successorValueIndex] =
-              memrefArgIndices[i];
+              memrefArgIndices[i] - pred.successorValueIndex;
         }
         pred.predecessorOp->eraseOperands(pred.predecessorOperandIndex +
                                           ownershipArgIndices[i] -
@@ -551,17 +551,26 @@ bool simplifyLoopDeallocs(Block& block) {
 }
 
 void promoteBuffers(Block& block) {
-  for (auto& op : llvm::make_early_inc_range(block)) {
-    if (auto alloc = llvm::dyn_cast<memref::AllocOp>(op)) {
+  for (auto* op = &block.front(); op;) {
+    auto alloc = llvm::dyn_cast<memref::AllocOp>(op);
+    op = op->getNextNode();
+
+    if (alloc) {
       // TODO(jreiffers): Add size heuristic.
       if (!alloc.getMemref().getType().hasStaticShape()) continue;
 
-      auto dealloc = llvm::find_if(op.getUsers(), [&](Operation* user) {
+      auto dealloc = llvm::find_if(alloc->getUsers(), [&](Operation* user) {
         return user->getBlock() == &block && llvm::isa<memref::DeallocOp>(user);
       });
 
-      if (dealloc != op.getUsers().end()) {
-        promoteToStack(llvm::cast<memref::DeallocOp>(*dealloc));
+      if (dealloc != alloc->getUsers().end()) {
+        if (op == *dealloc) {
+          op = op->getNextNode();
+          dealloc->erase();
+          alloc->erase();
+        } else {
+          promoteToStack(llvm::cast<memref::DeallocOp>(*dealloc));
+        }
       }
     }
   }

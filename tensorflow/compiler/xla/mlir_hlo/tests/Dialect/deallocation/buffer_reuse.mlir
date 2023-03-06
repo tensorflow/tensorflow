@@ -246,3 +246,50 @@ func.func @allocs_in_different_scopes_with_no_overlap() {
 // CHECK-NEXT: test.use
 // CHECK-NEXT: while
 // CHECK-NOT: memref.alloc
+
+func.func @allocs_in_different_scopes_with_no_overlap_2() {
+  %alloc0 = memref.alloc() : memref<4xi32>
+  %first0 = "first_op"(%alloc0) : (memref<4xi32>) -> (i32)
+  memref.dealloc %alloc0 : memref<4xi32>
+  scf.while() : () -> () {
+    %cond = "test.make_condition"() : () -> i1
+    scf.condition(%cond)
+  } do {
+    %alloc1 = memref.alloc() : memref<4xi32>
+    %first1 = "first_op"(%alloc1) : (memref<4xi32>) -> (i32)
+    memref.dealloc %alloc1 : memref<4xi32>
+    %alloc2 = memref.alloc() : memref<4xi32>
+    %first2 = "first_op"(%alloc2) : (memref<4xi32>) -> (i32)
+    memref.dealloc %alloc2 : memref<4xi32>
+    scf.yield
+  }
+  %alloc3 = memref.alloc() : memref<4xi32>
+  %first3 = "first_op"(%alloc3) : (memref<4xi32>) -> (i32)
+  memref.dealloc %alloc3 : memref<4xi32>
+  return
+}
+
+// CHECK-LABEL: allocs_in_different_scopes_with_no_overlap_2
+// TODO(jreiffers): Eliminate the second alloca.
+// CHECK: memref.alloca
+// CHECK: memref.alloca
+// CHECK-NOT: memref.alloc
+// CHECK-NOT: memref.dealloc
+
+func.func @elide_for_ownership() {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %alloc_0 = memref.alloc() : memref<1xi64>
+  %cast_0 = memref.cast %alloc_0 : memref<1xi64> to memref<*xi64>
+  %0:2 = scf.for %arg4 = %c0 to %c1 step %c1 iter_args(%arg0 = %alloc_0, %arg1 = %cast_0) -> (memref<1xi64>, memref<*xi64>) {
+    memref.dealloc %arg1 : memref<*xi64>
+    %alloc_1 = memref.alloc() : memref<1xi64>
+    %cast_1 = memref.cast %alloc_1 : memref<1xi64> to memref<*xi64>
+    scf.yield %alloc_1, %cast_1 : memref<1xi64>, memref<*xi64>
+  }
+  memref.dealloc %0#1 : memref<*xi64>
+  return
+}
+
+// CHECK-LABEL: @elide_for_ownership
+// CHECK-NEXT: return
