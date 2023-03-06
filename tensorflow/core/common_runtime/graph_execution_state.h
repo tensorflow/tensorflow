@@ -127,6 +127,10 @@ class GraphExecutionState {
   // NOTE(mrry): This method respects the placement of stateful nodes in
   // in *this, but currently does not transfer any other placement
   // or cost model information to the new graph.
+  //
+  // Note that using this interface requires setting the value of
+  // config.experimental().disable_optimize_for_static_graph() in the state
+  // options to `true`, otherwise it will return an error.
   Status Extend(const GraphDef& extension_def,
                 std::unique_ptr<GraphExecutionState>* out) const;
 
