@@ -17,10 +17,6 @@ load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
-load(
-    "//tensorflow/tsl/platform:build_config_root.bzl",
-    "tf_cuda_tests_tags",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -72,98 +68,6 @@ xla_cc_binary(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "replay_computation_library",
-    srcs = ["replay_computation.cc"],
-    deps = [
-        "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla:execution_options_util",
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/client",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/client:global_data",
-        "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/client/lib:testing",
-        "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/tests:test_utils",
-        "//tensorflow/tsl/lib/io:record_reader",
-        "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:platform_port",
-        "//tensorflow/tsl/platform:tstring",
-        "//tensorflow/tsl/util:command_line_flags",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/types:span",
-    ],
-    alwayslink = True,
-)
-
-xla_cc_binary(
-    name = "replay_computation_cpu",
-    deps = [
-        ":replay_computation_library",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
-    ],
-)
-
-xla_cc_test(
-    name = "replay_computation_bin_test",
-    srcs = ["replay_computation_bin_test.cc"],
-    data = [
-        "data/add.hlo",
-        ":replay_computation_cpu",
-        ":replay_computation_interpreter",
-    ],
-    deps = [
-        "//tensorflow/tsl/platform:path",
-        "//tensorflow/tsl/platform:subprocess",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
-xla_cc_binary(
-    name = "replay_computation_gpu",
-    tags = ["gpu"],
-    deps = [
-        ":replay_computation_library",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/compiler/xla/stream_executor:cuda_platform",
-    ],
-)
-
-xla_cc_test(
-    name = "replay_computation_bin_gpu_test",
-    srcs = ["replay_computation_bin_gpu_test.cc"],
-    data = [
-        "data/add.hlo",
-        ":replay_computation_gpu",
-        ":replay_computation_interpreter",
-    ],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        "//tensorflow/tsl/platform:path",
-        "//tensorflow/tsl/platform:subprocess",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
-xla_cc_binary(
-    name = "replay_computation_interpreter",
-    deps = [
-        ":replay_computation_library",
-        "//tensorflow/compiler/xla/service:interpreter_plugin",
     ],
 )
 
