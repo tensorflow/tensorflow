@@ -30,8 +30,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.ragged import ragged_functional_ops
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
@@ -324,11 +322,6 @@ def embedding_lookup(
   Raises:
     ValueError: If `params` is empty.
   """
-  if isinstance(ids, ragged_tensor.RaggedTensor):
-    return embedding_lookup_ragged(params, ids,
-                                   partition_strategy=partition_strategy,
-                                   max_norm=max_norm,
-                                   name=name)
 
   return _embedding_lookup_and_transform(
       params=params,
@@ -407,21 +400,26 @@ def embedding_lookup_v2(params, ids, max_norm=None, name=None):
 
 @tf_export(v1=["nn.embedding_lookup_sparse"])
 @dispatch.add_dispatch_support
-def embedding_lookup_sparse(params,
-                            sp_ids,
-                            sp_weights,
-                            partition_strategy="mod",
-                            name=None,
-                            combiner=None,
-                            max_norm=None):
+def embedding_lookup_sparse(
+    params,
+    sp_ids,
+    sp_weights,
+    partition_strategy="mod",
+    name=None,
+    combiner=None,
+    max_norm=None,
+    allow_fast_lookup=False,
+):
   """Looks up embeddings for the given ids and weights from a list of tensors.
 
   This op assumes that there is at least one id for each row in the dense tensor
   represented by sp_ids (i.e. there are no rows with empty features), and that
   all the indices of sp_ids are in canonical row-major order.
 
-  `sp_ids` and `sp_weights` (if not None) are `SparseTensor`s with rank of 2.
-  Embeddings are always aggregated along the last dimension.
+  `sp_ids` and `sp_weights` (if not None) are `SparseTensor`s or `RaggedTensor`s
+  with rank of 2. For `SpareTensor`s with left-aligned non-zero entries which
+  can be described as `RaggedTensor`s, use of `RaggedTensor`s can yield higher
+  performance.
 
   It also assumes that all id values lie in the range [0, p0), where p0
   is the sum of the size of params along dimension 0.
@@ -433,10 +431,10 @@ def embedding_lookup_sparse(params,
       `PartitionedVariable`, created by partitioning along dimension 0. Each
       element must be appropriately sized for the given `partition_strategy`.
     sp_ids: N x M `SparseTensor` of int64 ids where N is typically batch size
-      and M is arbitrary.
-    sp_weights: either a `SparseTensor` of float / double weights, or `None` to
-      indicate all weights should be taken to be 1. If specified, `sp_weights`
-      must have exactly the same shape and indices as `sp_ids`.
+      and M is arbitrary or a `RaggedTensor` with rank 2.
+    sparse_weights: `SparseTensor` or `RaggedTensor` of same type and shape as
+      `sparse_ids`, containing float / double weights corresponding to
+      `sparse_ids`, or `None` if all weights are assumed to be 1.0.
     partition_strategy: A string specifying the partitioning strategy, relevant
       if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
       is `"mod"`. See `tf.nn.embedding_lookup` for more details.
@@ -448,6 +446,10 @@ def embedding_lookup_sparse(params,
       of the squares of the weights. Defaults to `mean`.
     max_norm: If not `None`, each embedding is clipped if its l2-norm is larger
       than this value, before combining.
+    allow_fast_lookup: An optional boolean specifying whether to allow
+      simplified embedding lookups when `params` is a single tensor and
+      `max_norm` is `None`. Setting this flag to `True` during training can
+      cause the use of dense gradients with increased memory footprint.
 
   Returns:
     A dense tensor representing the combined embeddings for the
@@ -485,8 +487,8 @@ def embedding_lookup_sparse(params,
       ```
 
   Raises:
-    TypeError: If `sp_ids` is not a `SparseTensor`, or if `sp_weights` is
-      neither `None` nor `SparseTensor`.
+    TypeError: If `sp_ids` is not a `SparseTensor` or `RaggedTensor`, or if
+    `sp_weights` is neither `None` nor of the same type as `sp_ids`.
     ValueError: If `combiner` is not one of {"mean", "sqrtn", "sum"}.
   """
   if combiner is None:
@@ -516,97 +518,45 @@ def embedding_lookup_sparse(params,
 
   with ops.name_scope(name, "embedding_lookup_sparse",
                       params + [sp_ids]) as name:
+
     segment_ids = sp_ids.indices[:, 0]
-
     ids = sp_ids.values
-    ids, idx = array_ops.unique(ids)
 
-    embeddings = embedding_lookup(
-        params, ids, partition_strategy=partition_strategy, max_norm=max_norm)
-    if not ignore_weights:
-      if segment_ids.dtype != dtypes.int32:
-        segment_ids = math_ops.cast(segment_ids, dtypes.int32)
-
-      weights = sp_weights.values
-      embeddings = array_ops.gather(embeddings, idx)
-
-      original_dtype = embeddings.dtype
-      if embeddings.dtype in (dtypes.float16, dtypes.bfloat16):
-        # Cast low-precision embeddings to float32 during the computation to
-        # avoid numerical issues.
-        embeddings = math_ops.cast(embeddings, dtypes.float32)
-      if weights.dtype != embeddings.dtype:
-        weights = math_ops.cast(weights, embeddings.dtype)
-
-      # Reshape weights to allow broadcast
-      ones_shape = array_ops.expand_dims(array_ops.rank(embeddings) - 1, 0)
-      ones = array_ops.ones(ones_shape, dtype=dtypes.int32)
-      bcast_weights_shape = array_ops.concat([array_ops.shape(weights), ones],
-                                             0)
-
-      orig_weights_shape = weights.get_shape()
-      weights = array_ops.reshape(weights, bcast_weights_shape)
-
-      # Set the weight shape, since after reshaping to bcast_weights_shape,
-      # the shape becomes None.
-      if embeddings.get_shape().ndims is not None:
-        weights.set_shape(
-            orig_weights_shape.concatenate(
-                [1 for _ in range(embeddings.get_shape().ndims - 1)]))
-
-      embeddings *= weights
-
-      if combiner == "sum":
-        embeddings = math_ops.segment_sum(embeddings, segment_ids, name=name)
-      elif combiner == "mean":
-        embeddings = math_ops.segment_sum(embeddings, segment_ids)
-        weight_sum = math_ops.segment_sum(weights, segment_ids)
-        embeddings = math_ops.div_no_nan(embeddings, weight_sum, name=name)
-      elif combiner == "sqrtn":
-        embeddings = math_ops.segment_sum(embeddings, segment_ids)
-        weights_squared = math_ops.pow(weights, 2)
-        weight_sum = math_ops.segment_sum(weights_squared, segment_ids)
-        weight_sum_sqrt = math_ops.sqrt(weight_sum)
-        embeddings = math_ops.div_no_nan(embeddings, weight_sum_sqrt, name=name)
-      else:
-        assert False, "Unrecognized combiner"
-      if embeddings.dtype != original_dtype:
-        embeddings = math_ops.cast(embeddings, original_dtype)
-    else:
-      if segment_ids.dtype not in (dtypes.int32, dtypes.int64):
-        segment_ids = math_ops.cast(segment_ids, dtypes.int32)
-      assert idx is not None
-      if combiner == "sum":
-        embeddings = math_ops.sparse_segment_sum(
-            embeddings, idx, segment_ids, name=name)
-      elif combiner == "mean":
-        embeddings = math_ops.sparse_segment_mean(
-            embeddings, idx, segment_ids, name=name)
-      elif combiner == "sqrtn":
-        embeddings = math_ops.sparse_segment_sqrt_n(
-            embeddings, idx, segment_ids, name=name)
-      else:
-        assert False, "Unrecognized combiner"
-
-    return embeddings
+    return embedding_lookup_sparse_impl(
+        params,
+        segment_ids,
+        sp_weights,
+        ids,
+        combiner,
+        ignore_weights,
+        max_norm,
+        allow_fast_lookup,
+        partition_strategy,
+        name,
+    )
 
 
 @tf_export("nn.embedding_lookup_sparse", v1=[])
 @dispatch.add_dispatch_support
-def embedding_lookup_sparse_v2(params,
-                               sp_ids,
-                               sp_weights,
-                               combiner=None,
-                               max_norm=None,
-                               name=None):
+def embedding_lookup_sparse_v2(
+    params,
+    sp_ids,
+    sp_weights,
+    combiner=None,
+    max_norm=None,
+    name=None,
+    allow_fast_lookup=False,
+):
   """Looks up embeddings for the given ids and weights from a list of tensors.
 
   This op assumes that there is at least one id for each row in the dense tensor
   represented by sp_ids (i.e. there are no rows with empty features), and that
   all the indices of sp_ids are in canonical row-major order.
 
-  `sp_ids` and `sp_weights` (if not None) are `SparseTensor`s with rank of 2.
-  Embeddings are always aggregated along the last dimension.
+  `sp_ids` and `sp_weights` (if not None) are `SparseTensor`s or `RaggedTensor`s
+  with rank of 2. For `SpareTensor`s with left-aligned non-zero entries which
+  can be described as `RaggedTensor`s, use of `RaggedTensor`s can yield higher
+  performance.
 
   It also assumes that all id values lie in the range [0, p0), where p0
   is the sum of the size of params along dimension 0.
@@ -625,10 +575,10 @@ def embedding_lookup_sparse_v2(params,
       list of tensors all of same shape except for the first dimension,
       representing sharded embedding tensors following "div" partition strategy.
     sp_ids: N x M `SparseTensor` of int64 ids where N is typically batch size
-      and M is arbitrary.
-    sp_weights: either a `SparseTensor` of float / double weights, or `None` to
-      indicate all weights should be taken to be 1. If specified, `sp_weights`
-      must have exactly the same shape and indices as `sp_ids`.
+      and M is arbitrary or a `RaggedTensor` with rank 2.
+    sparse_weights: `SparseTensor` or `RaggedTensor` of same type and shape as
+      `sparse_ids`, containing float / double weights corresponding to
+      `sparse_ids`, or `None` if all weights are assumed to be 1.0.
     combiner: A string specifying the reduction op. Currently "mean", "sqrtn"
       and "sum" are supported. "sum" computes the weighted sum of the embedding
       results for each row. "mean" is the weighted sum divided by the total
@@ -637,6 +587,10 @@ def embedding_lookup_sparse_v2(params,
     max_norm: If not `None`, each embedding is clipped if its l2-norm is larger
       than this value, before combining.
     name: Optional name for the op.
+    allow_fast_lookup: An optional boolean specifying whether to allow
+      simplified embedding lookups when `params` is a single tensor and
+      `max_norm` is `None`. Setting this flag to `True` during training can
+      cause the use of dense gradients with increased memory footprint.
 
   Returns:
     A dense tensor representing the combined embeddings for the
@@ -678,19 +632,30 @@ def embedding_lookup_sparse_v2(params,
       neither `None` nor `SparseTensor`.
     ValueError: If `combiner` is not one of {"mean", "sqrtn", "sum"}.
   """
-  return embedding_lookup_sparse(params, sp_ids, sp_weights, "div", name,
-                                 combiner, max_norm)
+  return embedding_lookup_sparse(
+      params,
+      sp_ids,
+      sp_weights,
+      "div",
+      name,
+      combiner,
+      max_norm,
+      allow_fast_lookup,
+  )
 
 
 @tf_export("nn.safe_embedding_lookup_sparse", v1=[])
 @dispatch.add_dispatch_support
-def safe_embedding_lookup_sparse_v2(embedding_weights,
-                                    sparse_ids,
-                                    sparse_weights=None,
-                                    combiner="mean",
-                                    default_id=None,
-                                    max_norm=None,
-                                    name=None):
+def safe_embedding_lookup_sparse_v2(
+    embedding_weights,
+    sparse_ids,
+    sparse_weights=None,
+    combiner="mean",
+    default_id=None,
+    max_norm=None,
+    name=None,
+    allow_fast_lookup=False,
+):
   """Lookup embedding results, accounting for invalid IDs and empty features.
 
   The partitioned embedding in `embedding_weights` must all be the same shape
@@ -701,8 +666,10 @@ def safe_embedding_lookup_sparse_v2(embedding_weights,
   with non-positive weight. For an entry with no features, the embedding vector
   for `default_id` is returned, or the 0-vector if `default_id` is not supplied.
 
-  The ids and weights may be multi-dimensional. Embeddings are always aggregated
-  along the last dimension.
+  The ids and weights may be multi-dimensional `SparseTensor`s or
+  `RaggedTensor`s with rank of 2. For `SpareTensor`s with left-aligned non-zero
+  entries which can be described as `RaggedTensor`s, use of `RaggedTensor`s can
+  yield higher performance.
 
   If `len(embedding_weights) > 1`, each element `id` of `ids` is partitioned
   between the elements of `embedding_weights` according to the "div" partition
@@ -720,10 +687,10 @@ def safe_embedding_lookup_sparse_v2(embedding_weights,
       dimension, representing sharded embedding tensors following "div"
       partition strategy.
     sparse_ids: `SparseTensor` of shape `[d_0, d_1, ..., d_n]` containing the
-      ids. `d_0` is typically batch size.
-    sparse_weights: `SparseTensor` of same shape as `sparse_ids`, containing
-      float weights corresponding to `sparse_ids`, or `None` if all weights are
-      be assumed to be 1.0.
+      ids, where `d_0` is typically batch size, or a `RaggedTensor` with rank 2.
+    sparse_weights: `SparseTensor` or `RaggedTensor` of same type and shape as
+      `sparse_ids`, containing float weights corresponding to `sparse_ids`, or
+      `None` if all weights are assumed to be 1.0.
     combiner: A string specifying how to combine embedding results for each
       entry. Currently "mean", "sqrtn" and "sum" are supported, with "mean" the
       default.
@@ -732,6 +699,10 @@ def safe_embedding_lookup_sparse_v2(embedding_weights,
     max_norm: If not `None`, all embeddings are l2-normalized to max_norm before
       combining.
     name: A name for this operation (optional).
+    allow_fast_lookup: An optional boolean specifying whether to allow
+      simplified embedding lookups when `params` is a single tensor and
+      `max_norm` is `None`. Setting this flag to `True` during training can
+      cause the use of dense gradients with increased memory footprint.
 
   Returns:
     A dense tensor representing the combined embeddings for the
@@ -781,19 +752,24 @@ def safe_embedding_lookup_sparse_v2(embedding_weights,
       default_id=default_id,
       name=name,
       partition_strategy="div",
-      max_norm=max_norm)
+      max_norm=max_norm,
+      allow_fast_lookup=allow_fast_lookup,
+  )
 
 
 @tf_export(v1=["nn.safe_embedding_lookup_sparse"])
 @dispatch.add_dispatch_support
-def safe_embedding_lookup_sparse(embedding_weights,
-                                 sparse_ids,
-                                 sparse_weights=None,
-                                 combiner="mean",
-                                 default_id=None,
-                                 name=None,
-                                 partition_strategy="div",
-                                 max_norm=None):
+def safe_embedding_lookup_sparse(
+    embedding_weights,
+    sparse_ids,
+    sparse_weights=None,
+    combiner="mean",
+    default_id=None,
+    name=None,
+    partition_strategy="div",
+    max_norm=None,
+    allow_fast_lookup=False,
+):
   """Lookup embedding results, accounting for invalid IDs and empty features.
 
   The partitioned embedding in `embedding_weights` must all be the same shape
@@ -807,8 +783,11 @@ def safe_embedding_lookup_sparse(embedding_weights,
   with non-positive weight. For an entry with no features, the embedding vector
   for `default_id` is returned, or the 0-vector if `default_id` is not supplied.
 
-  The ids and weights may be multi-dimensional. Embeddings are always aggregated
-  along the last dimension.
+  The ids and weights may be multi-dimensional `SparseTensor`s or
+  `RaggedTensor`s with rank of 2. For `SpareTensor`s with left-aligned non-zero
+  entries which can be described as `RaggedTensor`s, use of `RaggedTensor`s can
+  yield higher performance. Embeddings are always aggregated along the last
+  dimension.
 
   Args:
     embedding_weights: A single tensor representing the complete embedding
@@ -817,10 +796,10 @@ def safe_embedding_lookup_sparse(embedding_weights,
       `PartitionedVariable`, created by partitioning along dimension 0. Each
       element must be appropriately sized for the given `partition_strategy`.
     sparse_ids: `SparseTensor` of shape `[d_0, d_1, ..., d_n]` containing the
-      ids. `d_0` is typically batch size.
-    sparse_weights: `SparseTensor` of same shape as `sparse_ids`, containing
-      float weights corresponding to `sparse_ids`, or `None` if all weights are
-      be assumed to be 1.0.
+      ids, where `d_0` is typically batch size, or a `RaggedTensor` with rank 2.
+    sparse_weights: `SparseTensor` or `RaggedTensor` of same type and shape as
+      `sparse_ids`, containing float weights corresponding to `sparse_ids`, or
+      `None` if all weights are assumed to be 1.0.
     combiner: A string specifying how to combine embedding results for each
       entry. Currently "mean", "sqrtn" and "sum" are supported, with "mean" the
       default.
@@ -830,6 +809,10 @@ def safe_embedding_lookup_sparse(embedding_weights,
       `"div"` and `"mod"` are supported. Default is `"div"`.
     max_norm: If not `None`, all embeddings are l2-normalized to max_norm before
       combining.
+    allow_fast_lookup: An optional boolean specifying whether to allow
+      simplified embedding lookups when `params` is a single tensor and
+      `max_norm` is `None`. Setting this flag to `True` during training can
+      cause the use of dense gradients with increased memory footprint.
 
   Returns:
     A dense tensor representing the combined embeddings for the
@@ -926,7 +909,9 @@ def safe_embedding_lookup_sparse(embedding_weights,
         combiner=combiner,
         partition_strategy=partition_strategy,
         name=None if default_id is None else scope,
-        max_norm=max_norm)
+        max_norm=max_norm,
+        allow_fast_lookup=allow_fast_lookup,
+    )
 
     if default_id is None:
       # Broadcast is_row_empty to the same shape as embedding_lookup_result,
@@ -949,55 +934,104 @@ def safe_embedding_lookup_sparse(embedding_weights,
         ], 0))
     final_result.set_shape(
         tensor_shape.unknown_shape(
-            (tensor_shape.Dimension(original_rank_dim) - 1).value).concatenate(
-                result.get_shape()[1:]))
+            (tensor_shape.Dimension(original_rank_dim) - 1).value
+        ).concatenate(result.get_shape()[1:])
+    )
     return final_result
 
 
-def embedding_lookup_ragged(embedding_weights,
-                            ragged_ids,
-                            partition_strategy="mod",
-                            max_norm=None,
-                            name=None):
-  """Look up the ragged ids in a list of embedding tensors.
+def embedding_lookup_sparse_impl(
+    params,
+    segment_ids,
+    sp_weights,
+    ids,
+    combiner,
+    ignore_weights,
+    max_norm,
+    allow_fast_lookup,
+    partition_strategy,
+    name,
+):
+  """Implementation of sparse embedding aggregation."""
+  if len(params) == 1 and max_norm is None and allow_fast_lookup:
+    idx = ids
+    embeddings = params[0]
+  else:
+    ids, idx = array_ops.unique(ids)
+    embeddings = embedding_lookup(
+        params, ids, partition_strategy=partition_strategy, max_norm=max_norm
+    )
 
-  Args:
-    embedding_weights: A tensor representing the complete embedding tensor
-      having the shape [e1, ...eM]
-    ragged_ids: A 'RaggedTensor' with type 'int32' or 'int64' containing the ids
-      to be looked up in 'embedding_weights' of shape [r0, ..rN]. Values must be
-      in the range '[0, embedding_weights.shape[0]]'.
-    partition_strategy: A string specifying the partitioning strategy.
-    max_norm: If not `None`, each embedding is clipped if its l2-norm is larger
-      than this value.
-    name: A name for the operation (optional)
+  if not ignore_weights:
+    if segment_ids.dtype != dtypes.int32:
+      segment_ids = math_ops.cast(segment_ids, dtypes.int32)
 
-  Returns:
-    A ragged tensor of shape [r0, r1, ...rN, e1, ...eM].
+    weights = sp_weights.values
+    embeddings = array_ops.gather(embeddings, idx)
 
-  Raises:
-    ValueError: whether the embedding_weights is empty or the ragged_ids is
-    not a RaggedTensor.
-  """
-  if embedding_weights is None:
-    raise ValueError("The embedding weights must be specified.")
-  if isinstance(embedding_weights, (list, tuple)) and not embedding_weights:
-    raise ValueError("The embedding weights should not be empty.")
-  if ragged_ids.dtype != dtypes.int32 and ragged_ids.dtype != dtypes.int64:
-    raise ValueError("The values contained by the inputs have type "
-                     f"{str(ragged_ids.dtype)}"
-                     " and cannot be processed. All values"
-                     " should be indices, either of type `in32` or `int64`.")
+    original_dtype = embeddings.dtype
+    if embeddings.dtype in (dtypes.float16, dtypes.bfloat16):
+      # Cast low-precision embeddings to float32 during the computation to
+      # avoid numerical issues.
+      embeddings = math_ops.cast(embeddings, dtypes.float32)
+    if weights.dtype != embeddings.dtype:
+      weights = math_ops.cast(weights, embeddings.dtype)
 
-  with ops.name_scope(name, "embedding_lookup_ragged") as name:
-    looked_up_ragged = ragged_functional_ops.map_flat_values(
-        embedding_lookup,
-        params=embedding_weights,
-        ids=ragged_ids,
-        partition_strategy=partition_strategy,
-        max_norm=max_norm)
+    # Reshape weights to allow broadcast
+    ones_shape = array_ops.expand_dims(array_ops.rank(embeddings) - 1, 0)
+    ones = array_ops.ones(ones_shape, dtype=dtypes.int32)
+    bcast_weights_shape = array_ops.concat([array_ops.shape(weights), ones], 0)
 
-    return looked_up_ragged
+    orig_weights_shape = weights.get_shape()
+    weights = array_ops.reshape(weights, bcast_weights_shape)
+
+    # Set the weight shape, since after reshaping to bcast_weights_shape,
+    # the shape becomes None.
+    if embeddings.get_shape().ndims is not None:
+      weights.set_shape(
+          orig_weights_shape.concatenate(
+              [1 for _ in range(embeddings.get_shape().ndims - 1)]
+          )
+      )
+
+    embeddings *= weights
+
+    if combiner == "sum":
+      embeddings = math_ops.segment_sum(embeddings, segment_ids, name=name)
+    elif combiner == "mean":
+      embeddings = math_ops.segment_sum(embeddings, segment_ids)
+      weight_sum = math_ops.segment_sum(weights, segment_ids)
+      embeddings = math_ops.div_no_nan(embeddings, weight_sum, name=name)
+    elif combiner == "sqrtn":
+      embeddings = math_ops.segment_sum(embeddings, segment_ids)
+      weights_squared = math_ops.pow(weights, 2)
+      weight_sum = math_ops.segment_sum(weights_squared, segment_ids)
+      weight_sum_sqrt = math_ops.sqrt(weight_sum)
+      embeddings = math_ops.div_no_nan(embeddings, weight_sum_sqrt, name=name)
+    else:
+      assert False, "Unrecognized combiner"
+    if embeddings.dtype != original_dtype:
+      embeddings = math_ops.cast(embeddings, original_dtype)
+  else:
+    if segment_ids.dtype not in (dtypes.int32, dtypes.int64):
+      segment_ids = math_ops.cast(segment_ids, dtypes.int32)
+    assert idx is not None
+    if combiner == "sum":
+      embeddings = math_ops.sparse_segment_sum(
+          embeddings, idx, segment_ids, name=name
+      )
+    elif combiner == "mean":
+      embeddings = math_ops.sparse_segment_mean(
+          embeddings, idx, segment_ids, name=name
+      )
+    elif combiner == "sqrtn":
+      embeddings = math_ops.sparse_segment_sqrt_n(
+          embeddings, idx, segment_ids, name=name
+      )
+    else:
+      assert False, "Unrecognized combiner"
+
+  return embeddings
 
 
 def _prune_invalid_ids(sparse_ids, sparse_weights):

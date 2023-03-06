@@ -40,9 +40,9 @@ from tensorflow.python.types import core as core_types
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
-#===============================================================================
+# ===============================================================================
 # Masking
-#===============================================================================
+# ===============================================================================
 
 
 @tf_export('ragged.boolean_mask')
@@ -210,9 +210,9 @@ def boolean_mask(data, mask, name=None):
       return masked_values
 
 
-#===============================================================================
+# ===============================================================================
 # Tiling
-#===============================================================================
+# ===============================================================================
 @dispatch.dispatch_for_api(array_ops.tile)
 def tile(input: ragged_tensor.Ragged, multiples, name=None):  # pylint: disable=redefined-builtin
   """Constructs a `RaggedTensor` by tiling a given `RaggedTensor`.
@@ -382,9 +382,9 @@ def _tile_ragged_splits(rt_input, multiples, const_multiples=None):
   return result_splits
 
 
-#===============================================================================
+# ===============================================================================
 # Reshaping
-#===============================================================================
+# ===============================================================================
 
 
 @dispatch.dispatch_for_api(array_ops.expand_dims_v2)
@@ -471,9 +471,9 @@ def _ragged_expand_dims_v1(
   return expand_dims(input=input, axis=axis, name=name)
 
 
-#===============================================================================
+# ===============================================================================
 # RaggedTensor Size
-#===============================================================================
+# ===============================================================================
 
 
 @dispatch.dispatch_for_api(array_ops.size_v2)
@@ -509,9 +509,9 @@ def _ragged_size_v1(
   return size(input=input, out_type=out_type, name=name)
 
 
-#===============================================================================
+# ===============================================================================
 # ragged.rank
-#===============================================================================
+# ===============================================================================
 @dispatch.dispatch_for_api(array_ops.rank)
 def rank(input: ragged_tensor.Ragged, name=None):  # pylint: disable=redefined-builtin
   """Returns the rank of a RaggedTensor.
@@ -539,9 +539,9 @@ def rank(input: ragged_tensor.Ragged, name=None):  # pylint: disable=redefined-b
     return input.ragged_rank + array_ops.rank(input.flat_values)
 
 
-#===============================================================================
+# ===============================================================================
 # ragged.one_hot
-#===============================================================================
+# ===============================================================================
 @dispatch.dispatch_for_api(array_ops.one_hot)
 def ragged_one_hot(indices: ragged_tensor.Ragged,
                    depth,
@@ -568,9 +568,9 @@ def ragged_one_hot(indices: ragged_tensor.Ragged,
                           dtype, name))
 
 
-#===============================================================================
+# ===============================================================================
 # ragged.stack_dynamic_partitions
-#===============================================================================
+# ===============================================================================
 @tf_export('ragged.stack_dynamic_partitions')
 @dispatch.add_dispatch_support
 def stack_dynamic_partitions(data, partitions, num_partitions, name=None):
@@ -677,9 +677,9 @@ def stack_dynamic_partitions(data, partitions, num_partitions, name=None):
                                         num_partitions)
 
 
-#===============================================================================
+# ===============================================================================
 # Reverse
-#===============================================================================
+# ===============================================================================
 @dispatch.dispatch_for_api(array_ops.reverse)
 def reverse(tensor: ragged_tensor.Ragged, axis, name=None):
   """Reverses a RaggedTensor along the specified axes.
@@ -732,9 +732,9 @@ def reverse(tensor: ragged_tensor.Ragged, axis, name=None):
     return tensor[tuple(slices)]
 
 
-#===============================================================================
+# ===============================================================================
 # Cross
-#===============================================================================
+# ===============================================================================
 
 
 @tf_export('ragged.cross')
@@ -873,9 +873,85 @@ def _cross_internal(inputs,
         values_out, splits_out, validate=False)
 
 
-#===============================================================================
+def fill_empty_rows(ragged_input, default_value, name=None):
+  """Fills empty rows in the input `RaggedTensor` with rank 2 with a default
+
+  value.
+
+  This op adds entries with the specified `default_value` for any row in the
+  input that does not already have a value.
+
+  The op also returns an indicator vector such that
+
+      empty_row_indicator[i] = True iff row i was an empty row.
+
+  Args:
+    ragged_input: A `RaggedTensor` with rank 2.
+    default_value: The value to fill for empty rows, with the same type as
+      `ragged_input.`
+    name: A name prefix for the returned tensors (optional)
+
+  Returns:
+    ragged_ordered_output: A `RaggedTensor`with all empty rows filled in with
+      `default_value`.
+    empty_row_indicator: A bool vector indicating whether each input row was
+      empty.
+
+  Raises:
+    TypeError: If `ragged_input` is not a `RaggedTensor`.
+  """
+  with ops.name_scope(name, 'RaggedFillEmptyRows', [ragged_input]):
+    if not isinstance(ragged_input, ragged_tensor.RaggedTensor):
+      raise TypeError(
+          'ragged_input must be RaggedTensor,             got'
+          f' {type(ragged_input)}'
+      )
+    default_value = ops.convert_to_tensor(
+        default_value, dtype=ragged_input.dtype
+    )
+    (
+        output_value_rowids,
+        output_values,
+        empty_row_indicator,
+        unused_reverse_index_map,
+    ) = gen_ragged_array_ops.ragged_fill_empty_rows(
+        value_rowids=ragged_input.value_rowids(),
+        values=ragged_input.values,
+        nrows=ragged_input.nrows(),
+        default_value=default_value,
+    )
+    return (
+        ragged_tensor.RaggedTensor.from_value_rowids(
+            values=output_values,
+            value_rowids=output_value_rowids,
+            validate=False,
+        ),
+        empty_row_indicator,
+    )
+
+
+@ops.RegisterGradient('RaggedFillEmptyRows')
+def _ragged_fill_empty_rows_grad(
+    op,
+    unused_grad_output_indices,
+    output_grad_values,
+    unused_grad_empty_row_indicator,
+    unused_grad_reverse_index_map,
+):
+  """Gradients for RaggedFillEmptyRows."""
+  reverse_index_map = op.outputs[3]
+
+  d_values, d_default_value = gen_ragged_array_ops.ragged_fill_empty_rows_grad(
+      reverse_index_map=reverse_index_map, grad_values=output_grad_values
+  )
+
+  # d_value_rowids, d_values, d_nrows, d_default_value.
+  return [None, d_values, None, d_default_value]
+
+
+# ===============================================================================
 # dynamic_partition
-#===============================================================================
+# ===============================================================================
 @dispatch.dispatch_for_api(data_flow_ops.dynamic_partition)
 def dynamic_partition(data: ragged_tensor.RaggedOrDense,
                       partitions: ragged_tensor.RaggedOrDense,
@@ -888,9 +964,9 @@ def dynamic_partition(data: ragged_tensor.RaggedOrDense,
   return [result[i] for i in range(num_partitions)]
 
 
-#===============================================================================
+# ===============================================================================
 # split
-#===============================================================================
+# ===============================================================================
 @dispatch.dispatch_for_api(array_ops.split)
 def split(value: ragged_tensor.Ragged,
           num_or_size_splits,
@@ -1050,9 +1126,9 @@ def split(value: ragged_tensor.Ragged,
     return splited_rts
 
 
-#===============================================================================
+# ===============================================================================
 # RaggedTensor shape operations
-#===============================================================================
+# ===============================================================================
 
 
 @dispatch.dispatch_for_api(array_ops.reshape)
@@ -1176,9 +1252,9 @@ def fill(dims: dynamic_ragged_shape.DynamicRaggedShape,
   return dims._add_row_partitions(flat_values)  # pylint: disable=protected-access
 
 
-#===============================================================================
+# ===============================================================================
 # bitcast
-#===============================================================================
+# ===============================================================================
 @dispatch.dispatch_for_api(array_ops.bitcast)
 def bitcast(
     input: ragged_tensor.RaggedOrDense,  # pylint: disable=redefined-builtin

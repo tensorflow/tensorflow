@@ -1262,6 +1262,7 @@ cc_library(
     name = "ragged_ops",
     deps = [
         ":ragged_cross_op",
+        ":ragged_fill_empty_rows_op",
         ":ragged_gather_op",
         ":ragged_range_op",
         ":ragged_tensor_from_variant_op",
@@ -1466,6 +1467,36 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+    ],
+)
+
+tf_kernel_library(
+    name = "ragged_fill_empty_rows_op",
+    prefix = "ragged_fill_empty_rows_op",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "fill_empty_rows_functor",
+    ] + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
+        ":gpu_prim_helpers",
+    ]) + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
+    ]),
+)
+
+tf_cc_test(
+    name = "ragged_fill_empty_rows_op_test",
+    size = "small",
+    srcs = ["ragged_fill_empty_rows_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ragged_fill_empty_rows_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -4861,7 +4892,25 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_fill_empty_rows_op",
     prefix = "sparse_fill_empty_rows_op",
-    deps = SPARSE_DEPS + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
+    deps = SPARSE_DEPS + [
+        ":gpu_prim_hdrs",
+        "fill_empty_rows_functor",
+    ] + if_cuda_or_rocm([
+        ":gpu_prim_helpers",
+    ]) + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
+    ]),
+)
+
+tf_kernel_library(
+    name = "fill_empty_rows_functor",
+    prefix = "fill_empty_rows_functor",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ] + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
         ":gpu_prim_helpers",
     ]) + if_cuda([
         "//tensorflow/core/util:cuda_solvers",
@@ -6266,6 +6315,7 @@ filegroup(
         "diag_op.h",
         "dilation_ops.h",
         "fake_quant_ops_functor.h",
+        "fill_empty_rows_functor.h",
         "fused_batch_norm_op.h",
         "inplace_ops.cc",
         "inplace_ops_functor.h",
@@ -6312,7 +6362,6 @@ filegroup(
         "stateless_random_ops.h",
         "stateless_random_ops_v2.h",
         "sparse_xent_op.h",
-        "sparse_fill_empty_rows_op.h",
         "sparse_reorder_op.h",
         "sparse_slice_op.h",
         "sparse_tensor_dense_matmul_op.h",

@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/fill_empty_rows_functor.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/gpu_prim_helpers.h"
-#include "tensorflow/core/kernels/sparse_fill_empty_rows_op.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
@@ -165,8 +165,8 @@ __global__ __launch_bounds__(1024) void ScatterNewElementsKernel(
 
 }  // namespace
 
-template <typename T, typename Tindex>
-struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
+template <typename T, typename Tindex, bool RaggedOperands>
+struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
   Status operator()(OpKernelContext* context, const Tensor& default_value_t,
                     const Tensor& indices_t, const Tensor& values_t,
                     const Tensor& dense_shape_t,
@@ -174,12 +174,12 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     const int kEmptyRowIndicatorOutput = 2;
 
     const auto default_value = default_value_t.scalar<T>();
-    const auto indices = indices_t.matrix<Tindex>();
+    const auto indices = indices_t.tensor<Tindex, IndicesRank>();
     const auto values = values_t.vec<T>();
-    const auto dense_shape = dense_shape_t.vec<Tindex>();
+    const auto dense_shape = dense_shape_t.tensor<Tindex, IndicesRank - 1>();
 
     const Tindex N = indices_t.shape().dim_size(0);
-    const int rank = indices_t.shape().dim_size(1);
+    const int rank = IndicesRank == 1 ? 1 : indices_t.shape().dim_size(1);
     const Tindex dense_rows = dense_shape(0);  // Must be on the host
     DataType index_type = DataTypeToEnum<Tindex>::value;
     const GPUDevice& device = context->eigen_device<GPUDevice>();
@@ -429,15 +429,26 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
   }
 
  private:
+  static constexpr int IndicesRank = RaggedOperands ? 1 : 2;
+
   Status AllocateOutputsExceptEmptyRowIndicator(
       OpKernelContext* context, Tindex N, int rank, Tindex num_empty_rows,
       Tindex** output_indices, T** output_values, Tindex** reverse_index_map) {
     Tensor* output_indices_t;
     const Tindex N_full = N + num_empty_rows;
-    TensorShape output_indices_shape({N_full, rank});
-    TF_RETURN_IF_ERROR(context->allocate_output(
-        "output_indices", output_indices_shape, &output_indices_t));
-    *output_indices = output_indices_t->matrix<Tindex>().data();
+    TensorShape output_indices_shape;
+    if constexpr (RaggedOperands) {
+      TF_RETURN_IF_ERROR(
+          TensorShape::BuildTensorShape({N_full}, &output_indices_shape));
+      TF_RETURN_IF_ERROR(context->allocate_output(
+          "output_value_rowids", output_indices_shape, &output_indices_t));
+    } else {
+      TF_RETURN_IF_ERROR(
+          TensorShape::BuildTensorShape({N_full, rank}, &output_indices_shape));
+      TF_RETURN_IF_ERROR(context->allocate_output(
+          "output_indices", output_indices_shape, &output_indices_t));
+    }
+    *output_indices = output_indices_t->tensor<Tindex, IndicesRank>().data();
 
     Tensor* output_values_t;
     TF_RETURN_IF_ERROR(context->allocate_output(
@@ -456,10 +467,11 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     return OkStatus();
   }
 
-  Status ArgSortByRows(OpKernelContext* context, const GPUDevice& device,
-                       Tindex N, int rank, Tindex dense_rows,
-                       typename TTypes<Tindex>::ConstMatrix indices,
-                       Tensor* input_index_map_t) {
+  Status ArgSortByRows(
+      OpKernelContext* context, const GPUDevice& device, Tindex N, int rank,
+      Tindex dense_rows,
+      typename TTypes<Tindex, IndicesRank>::ConstTensor indices,
+      Tensor* input_index_map_t) {
     DataType index_type = DataTypeToEnum<Tindex>::value;
     // Extract row indices into separate array for use as keys for sorting.
     Tensor row_indices_t;
@@ -485,8 +497,15 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
 
 }  // namespace functor
 
-#define DEFINE_INT64(T) \
-  template struct functor::SparseFillEmptyRows<GPUDevice, T, int64>;
+#define DEFINE_INT64(T)                                       \
+  template struct functor::FillEmptyRows<GPUDevice, T, int64, \
+                                         /*RaggedOperands=*/true>;
+TF_CALL_POD_TYPES(DEFINE_INT64)
+#undef DEFINE_INT64
+
+#define DEFINE_INT64(T)                                       \
+  template struct functor::FillEmptyRows<GPUDevice, T, int64, \
+                                         /*RaggedOperands=*/false>;
 TF_CALL_POD_TYPES(DEFINE_INT64)
 #undef DEFINE_INT64
 
@@ -519,7 +538,7 @@ struct ZeroMaskedValues {
 namespace functor {
 
 template <typename T, typename Tindex>
-struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex> {
+struct FillEmptyRowsGrad<GPUDevice, T, Tindex> {
   Status operator()(OpKernelContext* context,
                     typename TTypes<Tindex>::ConstVec reverse_index_map,
                     typename TTypes<T>::ConstVec grad_values,
@@ -562,7 +581,7 @@ struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex> {
 
     if (gpuprim_status != gpuSuccess) {
       return errors::Internal(
-          "SparseFillEmptyRowsGrad: Could not launch "
+          "FillEmptyRowsGrad: Could not launch "
           "gpuprim::DeviceReduce::Sum to calculate temp_storage_bytes, "
           "status: ",
           GpuGetErrorString(gpuprim_status));
@@ -582,7 +601,7 @@ struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex> {
 
     if (gpuprim_status != gpuSuccess) {
       return errors::Internal(
-          "SparseFillEmptyRowsGrad: Could not launch "
+          "FillEmptyRowsGrad: Could not launch "
           "gpuprim::DeviceReduce::Sum to sum values from originally-empty "
           "rows. temp_storage_bytes: ",
           temp_storage_bytes, ", status: ", GpuGetErrorString(gpuprim_status));
@@ -595,7 +614,7 @@ struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex> {
 }  // namespace functor
 
 #define DEFINE_INT64(T) \
-  template struct functor::SparseFillEmptyRowsGrad<GPUDevice, T, int64>;
+  template struct functor::FillEmptyRowsGrad<GPUDevice, T, int64>;
 TF_CALL_REAL_NUMBER_TYPES(DEFINE_INT64);
 #undef DEFINE_INT64
 
