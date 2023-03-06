@@ -187,9 +187,8 @@ struct ComputeTileSizesPattern : public OpRewritePattern<gml_st::FusionOp> {
 
     const int64_t numLoops = rootOp.getLoopIteratorTypes().size();
 
-    fusionOp.setParallelTileSizesAttr(
-        rewriter.getI64ArrayAttr(getParallelTileSizes(numLoops)));
-    fusionOp.setReductionTileSizesAttr(rewriter.getI64ArrayAttr({}));
+    fusionOp.setParallelTileSizes(getParallelTileSizes(numLoops));
+    fusionOp.setReductionTileSizes(SmallVector<int64_t>(numLoops, 0));
 
     return success();
   };

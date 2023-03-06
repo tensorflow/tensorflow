@@ -103,8 +103,8 @@ func.func @reverse(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 // CHECK:       gml_st.fusion
 // CHECK:         thlo.reverse
 // CHECK:         gml_st.yield
-// CHECK:         parallel_tile_sizes = [1, 8]
-// CHECK-SAME:    reduction_tile_sizes = []
+// CHECK:         parallel_tile_sizes = array<i64: 1, 8>
+// CHECK-SAME:    reduction_tile_sizes = array<i64: 0, 0>
 
 // -----
 
@@ -134,8 +134,8 @@ func.func @map(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 // CHECK:       gml_st.fusion
 // CHECK:         linalg.map
 // CHECK:         gml_st.yield
-// CHECK:         parallel_tile_sizes = [1, 8]
-// CHECK-SAME:    reduction_tile_sizes = []
+// CHECK:         parallel_tile_sizes = array<i64: 1, 8>
+// CHECK-SAME:    reduction_tile_sizes = array<i64: 0, 0>
 
 // -----
 
@@ -157,8 +157,8 @@ func.func @map_non_unique_users(%arg: tensor<?x?xf32>,
 // CHECK:         gml_st.fusion
 // CHECK-COUNT-3:   linalg.map
 // CHECK:           gml_st.yield
-// CHECK:           parallel_tile_sizes = [1, 8]
-// CHECK-SAME:      reduction_tile_sizes = []
+// CHECK:           parallel_tile_sizes = array<i64: 1, 8>
+// CHECK-SAME:      reduction_tile_sizes = array<i64: 0, 0>
 
 // -----
 
@@ -254,8 +254,8 @@ func.func @value_used_in_op_region(%arg0: tensor<i1>,
 // CHECK-SAME:        %[[EXTRACTED_:[a-zA-Z0-9]*]] = %[[EXTRACTED]]: i1
 // CHECK:         linalg.map
 // CHECK:           arith.select %[[EXTRACTED_]]
-// CHECK:           parallel_tile_sizes = [8]
-// CHECK-SAME:      reduction_tile_sizes = []
+// CHECK:           parallel_tile_sizes = array<i64: 8>
+// CHECK-SAME:      reduction_tile_sizes = array<i64: 0>
 
 // -----
 
@@ -313,8 +313,8 @@ func.func @tensor_empty_init(%input: tensor<?xf32>)
 // CHECK-SAME:        outs(%[[TMP]]
 // CHECK:           %[[MAPPED0:.*]] = linalg.map
 // CHECK-SAME:        outs(%[[EMPTY_]]
-// CHECK:             parallel_tile_sizes = [8]
-// CHECK-SAME:        reduction_tile_sizes = []
+// CHECK:             parallel_tile_sizes = array<i64: 8>
+// CHECK-SAME:        reduction_tile_sizes = array<i64: 0>
 
 // -----
 
