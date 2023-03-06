@@ -193,7 +193,7 @@ struct GmlStCPUTilingOptions
   Option<bool> enableFusionClusters{
       *this, "enable-fusion-clusters",
       llvm::cl::desc("Enable the pass to create gml_st.fusion clusters."),
-      llvm::cl::init(false)};
+      llvm::cl::init(true)};
 
   Option<bool> enableFusionClusterOutlining{
       *this, "enable-fusion-cluster-outlining",
