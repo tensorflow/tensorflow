@@ -6,6 +6,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "cc_library_with_android_deps",
+    "tf_cc_binary",
     "tf_cc_test",
     "tf_copts",
     "transitive_hdrs",
@@ -899,6 +900,37 @@ tf_gen_op_wrappers_cc(
     name = "test_op",
     op_lib_names = [
         "test_op",
+    ],
+)
+
+tf_cc_binary(
+    name = "tutorials_example_inference",
+    srcs = ["tutorials/example_inference.cc"],
+    copts = tf_copts(),
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//tensorflow:macos": [
+            "-lm",
+            "-lpthread",
+        ],
+        "//tensorflow:ios": [
+            "-lm",
+            "-lpthread",
+        ],
+        "//conditions:default": [
+            "-lm",
+            "-lpthread",
+            "-lrt",
+        ],
+    }),
+    deps = [
+        ":cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/compiler/jit:jit",
     ],
 )
 
