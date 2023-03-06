@@ -20,6 +20,11 @@
     If this breaks you, simply add `save_format="h5"` to your `.save()` call
     to revert back to the prior behavior.
 
+* The LMDB kernels have been changed to return an error. This is in preparation
+  for completely removing them from TensorFlow. The LMDB dependency that these
+  kernels are bringing to TensorFlow has been dropped, thus making the build
+  slightly faster and more secure.
+
 ## Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>

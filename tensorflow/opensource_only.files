@@ -304,7 +304,6 @@ third_party/llvm_openmp/BUILD:
 third_party/llvm_openmp/cmake_vars.bzl:
 third_party/llvm_openmp/expand_cmake_vars:.py
 third_party/llvm_openmp/openmp.bzl:
-third_party/lmdb.BUILD:
 third_party/mkl/BUILD:
 third_party/mkl/build_defs.bzl:
 third_party/mkl_dnn/LICENSE:
