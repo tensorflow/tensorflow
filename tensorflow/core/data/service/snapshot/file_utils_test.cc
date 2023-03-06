@@ -131,6 +131,12 @@ TEST(FileUtilsTest, GetChildrenDirectoryNotFound) {
               StatusIs(tsl::error::NOT_FOUND));
 }
 
+TEST(FileUtilsTest, IsTemporaryFile) {
+  EXPECT_TRUE(IsTemporaryFile("file.tmp"));
+  EXPECT_FALSE(IsTemporaryFile("file"));
+  EXPECT_FALSE(IsTemporaryFile(""));
+}
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

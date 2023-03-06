@@ -268,6 +268,7 @@ cc_library(
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:regexp",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:thread_annotations",
         "@com_google_absl//absl/strings",
     ],

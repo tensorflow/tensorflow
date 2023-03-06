@@ -118,11 +118,15 @@ tsl::StatusOr<std::vector<std::string>> GetChildren(absl::string_view directory,
   }
 
   for (std::string& file : files) {
-    if (!absl::EndsWith(file, kTempFileSuffix)) {
+    if (!IsTemporaryFile(file)) {
       result.push_back(std::move(file));
     }
   }
   return result;
+}
+
+bool IsTemporaryFile(absl::string_view filename) {
+  return absl::EndsWith(filename, kTempFileSuffix);
 }
 
 }  // namespace data
