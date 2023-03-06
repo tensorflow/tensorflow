@@ -13,11 +13,13 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status.h"
 
 #include <unordered_map>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/stack_frame.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace tsl {
@@ -43,6 +45,21 @@ TEST(ToStringTest, MatchesAbslStatus) {
                                             "payload_value %c%c%c", 1, 2, 3)));
 
   EXPECT_EQ(status.ToString(), absl_status.ToString());
+}
+
+TEST(StackTrace, SerializeAndDeserializeCorrectly) {
+  Status status = errors::Aborted("Aborted Error Message");
+  std::vector<StackFrame> stack_trace;
+  stack_trace.push_back(StackFrame("filename_1", 33, "func_name_1"));
+  stack_trace.push_back(StackFrame("filename_2", 66, "func_name_2"));
+  errors::SetStackTrace(status, stack_trace);
+
+  std::vector<StackFrame> deserialized = errors::GetStackTrace(status);
+
+  EXPECT_EQ(stack_trace.size(), deserialized.size());
+  for (size_t i = 0; i < stack_trace.size(); ++i) {
+    EXPECT_EQ(stack_trace[i], deserialized[i]);
+  }
 }
 
 TEST(StatusGroupTest, DeterministicOrderWithoutPayloads) {
