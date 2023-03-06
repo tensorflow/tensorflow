@@ -135,12 +135,6 @@ bool IsByteSwappable(DataType dtype) {
     case DT_COMPLEX128:
       return true;
     
-    // Types that ought to be supported in the future
-    case DT_RESOURCE:
-    case DT_VARIANT:
-      VLOG(1) << "Byte-swapping not yet implemented for tensors with dtype " << dtype;
-      return false;
-    
     default:
       return false;
   }
