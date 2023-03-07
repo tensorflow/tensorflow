@@ -37,6 +37,35 @@ func.func @fuse_broadcast_map(%arg0: tensor<16xf32>, %arg1: tensor<16x32xf32>)
 
 // -----
 
+// CHECK-LABEL: func @do_not_fuse_multiple_uses
+func.func @do_not_fuse_multiple_uses(%arg0: tensor<?xf32>,
+    %arg1: tensor<?x?xf32>) -> (tensor<?x?xf32>, tensor<?x?xf32>) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %dim0 = tensor.dim %arg1, %c0 : tensor<?x?xf32>
+  %dim1 = tensor.dim %arg1, %c1 : tensor<?x?xf32>
+  %init = tensor.empty(%dim0, %dim1) : tensor<?x?xf32>
+  %bcast = linalg.broadcast
+    ins(%arg0 : tensor<?xf32>)
+    outs(%init : tensor<?x?xf32>)
+    dimensions = [1]
+
+  %result = linalg.map { arith.addf }
+    ins(%bcast, %arg1 : tensor<?x?xf32>, tensor<?x?xf32>)
+    outs(%init : tensor<?x?xf32>)
+    { op_label = "root" }
+  func.return %result, %bcast : tensor<?x?xf32>, tensor<?x?xf32>
+}
+
+// CHECK: tensor.empty
+// CHECK: %[[BCAST:.*]] = linalg.broadcast
+// CHECK: %[[RESULT:.*]] = scf.forall
+// CHECK:   linalg.map
+// CHECK:   scf.forall.in_parallel
+// CHECK: return %[[RESULT]], %[[BCAST]]
+
+// -----
+
 // CHECK-LABEL: func @do_not_fuse_map_reduce
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<16x32xf32>, %[[ARG1:.*]]: tensor<16xf32>)
 func.func @do_not_fuse_map_reduce(%arg0: tensor<16x32xf32>, %arg1: tensor<16xf32>)
