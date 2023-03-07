@@ -41,7 +41,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gradients_impl
@@ -52,6 +51,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
@@ -322,7 +322,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       def loop_body(_):
         return variable_scope.get_variable('a', shape=())
 
-      return control_flow_ops.while_loop(loop_test, loop_body, [0.0])
+      return while_loop.while_loop(loop_test, loop_body, [0.0])
 
     self.assertEqual(test_function().shape, [])
 

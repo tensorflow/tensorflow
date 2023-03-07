@@ -50,11 +50,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import traceback_utils
 
@@ -515,7 +515,7 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
       def body_fn(i):
         return ds_context.get_replica_context().merge_call(merge_fn, args=(i,))
 
-      return control_flow_ops.while_loop_v2(lambda i: i < 2, body_fn, [0])
+      return while_loop.while_loop_v2(lambda i: i < 2, body_fn, [0])
 
     with distribution.scope():
       with self.assertRaisesRegex(
