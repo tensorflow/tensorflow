@@ -12,8 +12,8 @@ WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
 License for the specific language governing permissions and limitations under
 the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_LIVE_RANGE_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_LIVE_RANGE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_HLO_UTILS_HLO_LIVE_RANGE_H_
+#define TENSORFLOW_COMPILER_XLA_HLO_UTILS_HLO_LIVE_RANGE_H_
 
 #include <memory>
 #include <string>
@@ -231,4 +231,4 @@ class HloLiveRange {
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_LIVE_RANGE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_HLO_UTILS_HLO_LIVE_RANGE_H_
