@@ -7116,7 +7116,7 @@ def to_raw_op(f):
 
 
 def raise_from_not_ok_status(e, name):
-  e.message += (" name: " + name if name is not None else "")
+  e.message += (" name: " + str(name if name is not None else ""))
   raise core._status_to_exception(e) from None  # pylint: disable=protected-access
 
 

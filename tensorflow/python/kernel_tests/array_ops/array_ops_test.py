@@ -2177,6 +2177,16 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
 
     _ = g.get_concrete_function()
 
+  def testInvalidValuesLowerBound(self):
+    arg_0_tensor = random_ops.random_uniform([3, 3], dtype=dtypes.float32)
+    arg_0 = array_ops.identity(arg_0_tensor)
+    arg_1_tensor = random_ops.random_uniform([3], dtype=dtypes.float32)
+    arg_1 = array_ops.identity(arg_1_tensor)
+    arg_2 = dtypes.int32
+    arg_3 = False
+    with self.assertRaises(Exception):
+      gen_array_ops.lower_bound(arg_0, arg_1, arg_2, arg_3,)
+
 
 class BatchGatherNdTest(test_util.TensorFlowTestCase):
 
