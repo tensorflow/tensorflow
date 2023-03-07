@@ -218,8 +218,8 @@ struct ShardedBufferAdapter<
         // not supposed to explode.
       } else if (std::holds_alternative<PyArray>(buf_or_arr)) {
         auto& arr = std::get<PyArray>(buf_or_arr);
-        CHECK(llvm::isa<ifrt::SingleDeviceSharding>(
-            &arr.ifrt_array()->sharding()));
+        CHECK_EQ(arr.ifrt_array()->sharding().devices().size(), 1)
+            << arr.ifrt_array()->sharding().DebugString();
         ifrt_arrays.push_back(tsl::FormRef(arr.ifrt_array()));
         devices.push_back(arr.ifrt_array()->sharding().devices().front());
       } else {
