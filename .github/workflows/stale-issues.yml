@@ -15,10 +15,12 @@
 
 name: Close inactive issues
 on:
+  workflow_dispatch:
   schedule:
     - cron: "30 1 * * *"
 
 jobs:
+  
   close-issues:
     runs-on: ubuntu-latest
     permissions:
