@@ -12,6 +12,8 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/mlir/tools/mlir_replay/public:compiler_trace_proto_cc_impl",
         "//tensorflow/compiler/xla/mlir/tools/mlir_replay/public:execution_trace_proto_cc",
         "//tensorflow/compiler/xla/mlir/tools/mlir_replay/public:execution_trace_utils",
+        "//tensorflow/compiler/xla/mlir/xla_cpu/ir:xla_cpu",
+        "//tensorflow/compiler/xla/mlir_hlo:deallocation",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
