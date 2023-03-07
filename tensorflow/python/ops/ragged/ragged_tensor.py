@@ -37,6 +37,7 @@ from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_ragged_conversion_ops
 from tensorflow.python.ops import math_ops
@@ -2834,7 +2835,7 @@ def _assert_sparse_indices_are_ragged_right(indices):
   message = [
       "SparseTensor is not right-ragged", "SparseTensor.indices =", indices
   ]
-  return [control_flow_ops.Assert(sparse_indices_are_ragged_right, message)]
+  return [control_flow_assert.Assert(sparse_indices_are_ragged_right, message)]
 
 
 @ops.RegisterGradient("RaggedTensorToSparse")

@@ -29,6 +29,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
@@ -79,7 +80,7 @@ def _assert(cond, ex_type, msg):
     A list, containing at most one assert op.
   """
   if _is_tensor(cond):
-    return [control_flow_ops.Assert(cond, [msg])]
+    return [control_flow_assert.Assert(cond, [msg])]
   else:
     if not cond:
       raise ex_type(msg)
@@ -4133,11 +4134,11 @@ def _verify_compatible_image_shapes(img1, img2):
   # TODO(sjhwang): Check if shape1[:-3] and shape2[:-3] are broadcastable.
   checks = []
   checks.append(
-      control_flow_ops.Assert(
+      control_flow_assert.Assert(
           math_ops.greater_equal(array_ops.size(shape1), 3), [shape1, shape2],
           summarize=10))
   checks.append(
-      control_flow_ops.Assert(
+      control_flow_assert.Assert(
           math_ops.reduce_all(math_ops.equal(shape1[-3:], shape2[-3:])),
           [shape1, shape2],
           summarize=10))
@@ -4314,12 +4315,12 @@ def _ssim_per_channel(img1,
 
   shape1, shape2 = array_ops.shape_n([img1, img2])
   checks = [
-      control_flow_ops.Assert(
+      control_flow_assert.Assert(
           math_ops.reduce_all(
               math_ops.greater_equal(shape1[-3:-1], filter_size)),
           [shape1, filter_size],
           summarize=8),
-      control_flow_ops.Assert(
+      control_flow_assert.Assert(
           math_ops.reduce_all(
               math_ops.greater_equal(shape2[-3:-1], filter_size)),
           [shape2, filter_size],

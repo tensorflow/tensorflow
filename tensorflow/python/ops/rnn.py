@@ -21,6 +21,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
@@ -730,7 +731,7 @@ def dynamic_rnn(cell,
     def _assert_has_shape(x, shape):
       x_shape = array_ops.shape(x)
       packed_shape = array_ops_stack.stack(shape)
-      return control_flow_ops.Assert(
+      return control_flow_assert.Assert(
           math_ops.reduce_all(math_ops.equal(x_shape, packed_shape)), [
               "Expected shape for Tensor %s is " % x.name, packed_shape,
               " but saw shape: ", x_shape

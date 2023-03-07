@@ -41,6 +41,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util_v2
@@ -1700,11 +1701,11 @@ class AssertTest(test_util.TensorFlowTestCase):
   @test_util.run_deprecated_v1
   def testAssert(self):
     i = constant_op.constant(0)
-    c = control_flow_ops.Assert(i < 10, [i, [10], [i + 1]])
+    c = control_flow_assert.Assert(i < 10, [i, [10], [i + 1]])
     self.evaluate(c)
 
     i = constant_op.constant(10)
-    c = control_flow_ops.Assert(i < 10, [i, [10], [i + 1]])
+    c = control_flow_assert.Assert(i < 10, [i, [10], [i + 1]])
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(c)
 
@@ -1719,7 +1720,7 @@ class AssertTest(test_util.TensorFlowTestCase):
 
     @def_function.function
     def whiny(value):
-      control_flow_ops.Assert(value, ["Raised false"])
+      control_flow_assert.Assert(value, ["Raised false"])
       return constant_op.constant(5)
 
     with self.assertRaises(errors.InvalidArgumentError):

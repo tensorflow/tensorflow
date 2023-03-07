@@ -21,7 +21,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_config
@@ -345,7 +345,7 @@ class RaggedTensorDynamicShape:
         'lengths=', lengths, 'dim_size=',
         self.dimension_size(axis)
     ]
-    broadcast_check = control_flow_ops.Assert(
+    broadcast_check = control_flow_assert.Assert(
         condition, data=broadcast_err, summarize=10)
 
     with ops.control_dependencies([broadcast_check]):
