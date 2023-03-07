@@ -2612,12 +2612,15 @@ TEST_F(ModelTimingTest, OptimizeStageBased_CappedByParameterMax) {
     output: 1
   )pb");
 
+  CellReader<int64_t> cell_reader(
+      "/tensorflow/data/autotune_stopping_criteria");
   CancellationManager cancellation_manager;
   model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 20, 1000, 50,
                    &cancellation_manager);
 
   // The max value is set to 3. Otherwise, the expected parallelism value is 5.
   EXPECT_EQ(3, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+  EXPECT_EQ(cell_reader.Read("parameter_max_exceeded:ParallelMapV2(id:1)"), 1);
 }
 
 TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages) {
@@ -2715,7 +2718,7 @@ TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages_RamBudgetExceeded) {
       key: 2
       value: {
         id: 2
-        name: "ParallelMapV2"
+        name: "ParallelMapV2[0]_Arbitrary[15]_Stuff"
         autotune: true
         num_elements: 100
         processing_time: 70000
@@ -2748,22 +2751,34 @@ TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages_RamBudgetExceeded) {
     output: 1
   )pb");
 
+  CellReader<int64_t> cell_reader(
+      "/tensorflow/data/autotune_stopping_criteria");
   CancellationManager cancellation_manager;
   // Not enough RAM, the original `parallelism` should not change.
   model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 10, 100, 0,
                    &cancellation_manager);
   EXPECT_EQ(4, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
   EXPECT_EQ(4, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
+  EXPECT_EQ(cell_reader.Delta(
+                "ram_budget_exceeded:ParallelMapV2[]_Arbitrary[]_Stuff(id:2)"),
+            1);
   // Has enough RAM, the original `parallelism` should increase.
   model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 10, 100000, 0,
                    &cancellation_manager);
   EXPECT_EQ(12, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
   EXPECT_EQ(16, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
+  EXPECT_EQ(
+      cell_reader.Delta(
+          "parameter_max_exceeded:ParallelMapV2[]_Arbitrary[]_Stuff(id:2)"),
+      1);
   // Not enough RAM, the original `parallelism` should not change.
   model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 10, 100, 0,
                    &cancellation_manager);
   EXPECT_EQ(12, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
   EXPECT_EQ(16, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
+  EXPECT_EQ(cell_reader.Delta(
+                "ram_budget_exceeded:ParallelMapV2[]_Arbitrary[]_Stuff(id:2)"),
+            1);
 }
 
 TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatio) {

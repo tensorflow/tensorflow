@@ -192,6 +192,29 @@ class NodeParallelismParameters {
   absl::flat_hash_map<const Node*, Parameter*> node_parallelism_;
 };
 
+// Replaces `\[[0-9].+\]` with `\[\]`.
+std::string RemoveArrayIndices(absl::string_view s) {
+  absl::string_view::size_type start_pos = 0;
+  absl::string_view::size_type pos;
+  std::string res;
+  do {
+    pos = s.find("[", start_pos);
+    if (pos == absl::string_view::npos) {
+      break;
+    }
+    res.append(s.data() + start_pos, pos - start_pos + 1);
+    start_pos = pos + 1;
+    pos = s.find("]", start_pos);
+    if (pos == absl::string_view::npos) {
+      break;
+    }
+    res.append(s.data() + pos, 1);
+    start_pos = pos + 1;
+  } while (true);
+  res.append(s.data() + start_pos, s.length() - start_pos);
+  return res;
+}
+
 // Returns true if all parameters have reached their max values.
 bool AreAllParametersMax(const Model::ModelParameters& parameters) {
   for (const auto& pair : parameters) {
@@ -2589,6 +2612,7 @@ void Model::OptimizeStageBasedParallelism(
   StatusOr<std::pair<double, Node*>> critical_root_status =
       priority_queue.PopSlowestStageRoot();
   if (!critical_root_status.ok()) {
+    metrics::RecordTFDataAutotuneStoppingCriteria("empty_critical_queue");
     return;
   }
   NodeParallelismParameters node_parallelism;
@@ -2598,8 +2622,18 @@ void Model::OptimizeStageBasedParallelism(
         node_parallelism.Get(critical_root.second);
     // Stop optimization if the critical stage has no `parallelism` parameter or
     // it has reached the max parallelism value.
-    if (parallelism_parameter == nullptr ||
-        parallelism_parameter->value >= parallelism_parameter->max) {
+    if (parallelism_parameter == nullptr) {
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "no_optimizable_parameter:",
+          RemoveArrayIndices(critical_root.second->long_name())));
+      break;
+    }
+    if (parallelism_parameter->value >= parallelism_parameter->max) {
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "parameter_max_exceeded:",
+          RemoveArrayIndices(critical_root.second->long_name())));
       break;
     }
     parallelism_parameter->value += 1.0;
@@ -2611,6 +2645,10 @@ void Model::OptimizeStageBasedParallelism(
       // is under-optimized. For that reason, return immediately without
       // updating the parameter state values.
       parallelism_parameter->value -= 1.0;
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "ram_budget_exceeded:",
+          RemoveArrayIndices(critical_root.second->long_name())));
       return;
     }
     // Compute the new total time and put the node back in the queue after its
@@ -2622,6 +2660,10 @@ void Model::OptimizeStageBasedParallelism(
     if (critical_root.first <=
         (root_timing->total_time_nsec * root_timing->pipeline_ratio)) {
       parallelism_parameter->value -= 1.0;
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "total_time_not_improved:",
+          RemoveArrayIndices(critical_root.second->long_name())));
       break;
     }
     // Push it back to the priority queue.
@@ -2629,6 +2671,7 @@ void Model::OptimizeStageBasedParallelism(
     // Get the next critical stage root.
     critical_root_status = priority_queue.PopSlowestStageRoot();
     if (!critical_root_status.ok()) {
+      metrics::RecordTFDataAutotuneStoppingCriteria("empty_critical_queue");
       break;
     }
     critical_root = critical_root_status.value();
