@@ -23,6 +23,7 @@ import six
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -1051,7 +1052,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
   def testUnpack(self):
     self._assertOpOutputMatchesExpected(
-        array_ops.unstack,
+        array_ops_stack.unstack,
         np.array([[1., 2.], [3., 4.], [5., 6.]], dtype=np.float32),
         expected=[
             np.array([1., 2.], dtype=np.float32),
@@ -1061,7 +1062,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
         equality_test=self.ListsAreClose)
 
     self._assertOpOutputMatchesExpected(
-        lambda x: array_ops.unstack(x, axis=1),
+        lambda x: array_ops_stack.unstack(x, axis=1),
         np.array([[1., 2.], [3., 4.], [5., 6.]], dtype=np.float32),
         expected=[
             np.array([1., 3., 5.], dtype=np.float32),
