@@ -47,7 +47,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
-#include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/refcount.h"
@@ -168,7 +167,7 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
   OpKernelContext ctx(&op_params, /*num_outputs=*/0);
   TF_RETURN_IF_ERROR(data::FinalizeDataset(&ctx, dataset, &finalized_dataset));
   core::ScopedUnref unref(finalized_dataset);
-  *result = WrapUnique(new Dataset(
+  *result = absl::WrapUnique(new Dataset(
       finalized_dataset, dataset, device_mgr.release(), pflr.release(),
       flib_def.release(), pool.release(), std::move(runner)));
   return OkStatus();
@@ -203,8 +202,8 @@ Status Dataset::MakeIterator(
   std::unique_ptr<IteratorBase> iterator;
   TF_RETURN_IF_ERROR(finalized_dataset_->MakeIterator(
       ctx.get(), /*parent=*/nullptr, "Iterator", &iterator));
-  *result = WrapUnique(new Iterator(iterator.release(), ctx.release(),
-                                    serialization_ctx.release()));
+  *result = absl::WrapUnique(new Iterator(iterator.release(), ctx.release(),
+                                          serialization_ctx.release()));
   return OkStatus();
 }
 
