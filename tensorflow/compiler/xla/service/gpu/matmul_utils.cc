@@ -819,6 +819,10 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
   TF_ASSIGN_OR_RETURN(
       se::blas::ComputationType computation_type,
       GetBlasComputationType(output_layout.dtype, config.compute_precision));
+  if (lhs_layout.dtype == F8E4M3FN || lhs_layout.dtype == F8E5M2) {
+    computation_type = se::blas::ComputationType::kF32;
+  }
+
   TF_ASSIGN_OR_RETURN(
       se::cuda::BlasLt::MatmulDesc op_desc,
       se::cuda::BlasLt::MatmulDesc::Create(
