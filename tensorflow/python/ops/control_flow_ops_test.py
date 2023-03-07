@@ -58,6 +58,7 @@ from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import momentum
@@ -221,7 +222,7 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
       cost += math_ops.reduce_sum(embedding)
       return it + 1, cost
 
-    _, cost = control_flow_ops.while_loop(
+    _, cost = while_loop.while_loop(
         cond, body, [constant_op.constant(0),
                      constant_op.constant(0.0)])
     optimizer = momentum.MomentumOptimizer(0.1, 0.9)
@@ -243,7 +244,7 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
       cost += math_ops.reduce_sum(embedding)
       return it + 1, cost
 
-    _, cost = control_flow_ops.while_loop(
+    _, cost = while_loop.while_loop(
         cond, body, [constant_op.constant(0),
                      constant_op.constant(0.0)])
     with self.cached_session():
@@ -266,7 +267,7 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
           (lambda: cost + math_ops.reduce_sum(embedding)))
       return it + 1, cost
 
-      _, cost = control_flow_ops.while_loop(
+      _, cost = while_loop.while_loop(
           cond, body, [constant_op.constant(0),
                        constant_op.constant(0.0)])
 
@@ -311,8 +312,8 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
           outputs = outputs.write(i, x)
           return i + 1, outputs
 
-        _, outputs = control_flow_ops.while_loop(cond, body,
-                                                 [initial_i, initial_outputs])
+        _, outputs = while_loop.while_loop(cond, body,
+                                           [initial_i, initial_outputs])
 
         outputs = math_ops.reduce_sum(outputs.stack())
         r = gradients_impl.gradients([outputs], [inputs])[0]
@@ -339,8 +340,8 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
           outputs = outputs.write(i, x)
           return i + 1, outputs
 
-        _, outputs = control_flow_ops.while_loop(cond, body,
-                                                 [initial_i, initial_outputs])
+        _, outputs = while_loop.while_loop(cond, body,
+                                           [initial_i, initial_outputs])
 
         outputs = math_ops.reduce_sum(outputs.stack())
         r = gradients_impl.gradients([outputs], [inputs])[0]
@@ -489,8 +490,7 @@ class ContextTest(test_util.TensorFlowTestCase):
       i = constant_op.constant(0)
       c = lambda i: math_ops.less(i, 10)
       b = lambda i: math_ops.add(i, 1)
-      control_flow_ops.while_loop(
-          c, b, [i], maximum_iterations=maximum_iterations)
+      while_loop.while_loop(c, b, [i], maximum_iterations=maximum_iterations)
       for op in sess.graph.get_operations():
         control_flow_context = op._get_control_flow_context()
         if control_flow_context:
@@ -987,7 +987,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
           (TestTuple(matrix * 4, matrix * 2), matrix))
       return [i + 1, result_tuple.a]
 
-    iteration, matrix = control_flow_ops.while_loop(
+    iteration, matrix = while_loop.while_loop(
         lambda i, matrix: i < 10,
         body,
         loop_vars=[constant_op.constant(0),
@@ -1187,7 +1187,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           next_i, branch_out = control_flow_ops.switch_case(i, make_branches(i))
         return next_i, result + branch_out
 
-      _, result = control_flow_ops.while_loop(cond, body, [0, 0.])
+      _, result = while_loop.while_loop(cond, body, [0, 0.])
 
       run_metadata = config_pb2.RunMetadata()
       run_options = config_pb2.RunOptions(
@@ -1456,7 +1456,7 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
     i = constant_op.constant(0)
     c = lambda i: math_ops.less(i, 10)
     b = lambda i: math_ops.add(i, 1)
-    r = control_flow_ops.while_loop(c, b, [i])
+    r = while_loop.while_loop(c, b, [i])
 
     self.assertEqual(self.evaluate(r), 10)
 
@@ -1465,7 +1465,7 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
     i = constant_op.constant(0)
     c = lambda i: math_ops.less(i, 10)
     b = lambda i: (math_ops.add(i, 1),)
-    r = control_flow_ops.while_loop(c, b, [i])
+    r = while_loop.while_loop(c, b, [i])
 
     # Expect a tuple since that is what the body returns.
     self.assertEqual(self.evaluate(r), (10,))
@@ -1479,11 +1479,11 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
     b = lambda i, _: [math_ops.add(i, 1), []]
 
     # Should only return the tensor.
-    r = control_flow_ops.while_loop(c, b, [i, []])
+    r = while_loop.while_loop(c, b, [i, []])
     self.assertEqual(self.evaluate(r), 10)
 
     # Adding maximum_iterations should yield the same result.
-    r = control_flow_ops.while_loop(c, b, [i, []], maximum_iterations=50)
+    r = while_loop.while_loop(c, b, [i, []], maximum_iterations=50)
     # Note: this result is still incorrect - it should be just 10.
     self.assertEqual(self.evaluate(r), [10, []])
 
@@ -1495,11 +1495,11 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
     b = lambda i: math_ops.add(i, 1)
 
     # Should only return the tensor.
-    r = control_flow_ops.while_loop(c, b, [i])
+    r = while_loop.while_loop(c, b, [i])
     self.assertEqual(self.evaluate(r), 10)
 
     # Adding maximum_iterations should yield the same result.
-    r = control_flow_ops.while_loop(c, b, [i], maximum_iterations=50)
+    r = while_loop.while_loop(c, b, [i], maximum_iterations=50)
     self.assertEqual(self.evaluate(r), 10)
 
   def testWhileLoopSameReturnShape_True(self):
@@ -1510,11 +1510,11 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
     b = lambda i, _: [math_ops.add(i, 1), []]
 
     # Should only return the original structure.
-    r = control_flow_ops.while_loop(c, b, [i, []], return_same_structure=True)
+    r = while_loop.while_loop(c, b, [i, []], return_same_structure=True)
     self.assertEqual(self.evaluate(r), [10, []])
 
     # Adding maximum_iterations should yield the same result.
-    r = control_flow_ops.while_loop(
+    r = while_loop.while_loop(
         c, b, [i, []], return_same_structure=True, maximum_iterations=50)
     self.assertEqual(self.evaluate(r), [10, []])
 
@@ -1525,11 +1525,11 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
     b = lambda i: [math_ops.add(i, 1)]
 
     # Should not unpack the single variable
-    r = control_flow_ops.while_loop(c, b, [i], return_same_structure=True)
+    r = while_loop.while_loop(c, b, [i], return_same_structure=True)
     self.assertEqual(self.evaluate(r), [10])
 
     # Adding maximum_iterations should yield the same result.
-    r = control_flow_ops.while_loop(
+    r = while_loop.while_loop(
         c, b, [i], return_same_structure=True, maximum_iterations=50)
     self.assertEqual(self.evaluate(r), [10])
 
@@ -1558,7 +1558,7 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
 
     with backprop.GradientTape() as tape:
       tape.watch(x)
-      out = control_flow_ops.while_loop(cond, body, (array_ops.constant(0.0),))
+      out = while_loop.while_loop(cond, body, (array_ops.constant(0.0),))
 
     grad = tape.gradient(out, x)
     self.assertAllEqual(grad, 20.0)

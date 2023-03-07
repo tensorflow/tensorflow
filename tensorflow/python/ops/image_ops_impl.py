@@ -40,6 +40,7 @@ from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
@@ -5332,10 +5333,11 @@ def _suppression_loop_body(boxes, iou_threshold, output_size, idx, tile_size):
     # Iterates over tiles that can possibly suppress the current tile.
     box_slice = array_ops.slice(boxes, [0, idx * tile_size, 0],
                                 [batch_size, tile_size, 4])
-    _, box_slice, _, _ = control_flow_ops.while_loop(
+    _, box_slice, _, _ = while_loop.while_loop(
         lambda _boxes, _box_slice, _threshold, inner_idx: inner_idx < idx,
         cross_suppression_func,
-        [boxes, box_slice, iou_threshold, constant_op.constant(0)])
+        [boxes, box_slice, iou_threshold,
+         constant_op.constant(0)])
 
     # Iterates over the current tile to compute self-suppression.
     iou = _bbox_overlap(box_slice, box_slice)
@@ -5345,11 +5347,13 @@ def _suppression_loop_body(boxes, iou_threshold, output_size, idx, tile_size):
                 math_ops.range(tile_size), [-1, 1]), 0)
     iou *= math_ops.cast(
         math_ops.logical_and(mask, iou >= iou_threshold), iou.dtype)
-    suppressed_iou, _, _, _ = control_flow_ops.while_loop(
+    suppressed_iou, _, _, _ = while_loop.while_loop(
         lambda _iou, loop_condition, _iou_sum, _: loop_condition,
-        _self_suppression,
-        [iou, constant_op.constant(True), math_ops.reduce_sum(iou, [1, 2]),
-         iou_threshold])
+        _self_suppression, [
+            iou,
+            constant_op.constant(True),
+            math_ops.reduce_sum(iou, [1, 2]), iou_threshold
+        ])
     suppressed_box = math_ops.reduce_sum(suppressed_iou, 1) > 0
     box_slice *= array_ops.expand_dims(
         1.0 - math_ops.cast(suppressed_box, box_slice.dtype), 2)
@@ -5662,7 +5666,7 @@ def non_max_suppression_padded_v2(boxes,
     return _suppression_loop_body(
         boxes, iou_threshold, output_size, idx, tile_size)
 
-  selected_boxes, _, output_size, _ = control_flow_ops.while_loop(
+  selected_boxes, _, output_size, _ = while_loop.while_loop(
       _loop_cond,
       suppression_loop_body,
       [
