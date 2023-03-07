@@ -12696,8 +12696,8 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Copy(op::CollectivePermute(
-                  op::Reshape(op::Reshape(op::Transpose(op::AllToAll(_)))))));
+              op::Copy(op::Reshape(op::CollectivePermute(
+                  op::Reshape(op::Transpose(op::AllToAll(_)))))));
 }
 
 TEST_F(SpmdPartitioningTest, PaddedConvReshard) {
