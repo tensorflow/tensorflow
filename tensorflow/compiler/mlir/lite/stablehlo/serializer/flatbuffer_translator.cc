@@ -144,6 +144,19 @@ static flatbuffers::Offset<::stablehlo::flatbuf::Operator> CreateMaxOperator(
                                               outputs);
 }
 
+static flatbuffers::Offset<::stablehlo::flatbuf::Operator>
+CreateConvertOperator(mlir::stablehlo::ConvertOp& hlo_op,
+                      flatbuffers::FlatBufferBuilder* fbb,
+                      uint32_t opcode_index,
+                      const std::vector<int32_t>& operands,
+                      const std::vector<int32_t>& results) {
+  auto inputs = fbb->CreateVector(operands);
+  auto outputs = fbb->CreateVector(results);
+
+  return ::stablehlo::flatbuf::CreateOperator(*fbb, opcode_index, inputs,
+                                              outputs);
+}
+
 static flatbuffers::Offset<::stablehlo::flatbuf::Operator> CreateDotOperator(
     mlir::stablehlo::DotOp& hlo_op, flatbuffers::FlatBufferBuilder* fbb,
     uint32_t opcode_index, const std::vector<int32_t>& operands,
@@ -394,6 +407,8 @@ CreateFlatBufferOperator(mlir::Operation* op, uint32_t opcode_index,
   if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::ConcatenateOp>(op))
     return CreateConcatenateOperator(hlo_op, fbb, opcode_index, operands,
                                      results);
+  if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::ConvertOp>(op))
+    return CreateConvertOperator(hlo_op, fbb, opcode_index, operands, results);
   return std::nullopt;
 }
 
@@ -445,13 +460,15 @@ std::optional<::stablehlo::flatbuf::OperatorCode> GetOpCode(
     return ::stablehlo::flatbuf::OperatorCode_CLAMP;
   if (isa<mlir::stablehlo::ConcatenateOp>(op))
     return ::stablehlo::flatbuf::OperatorCode_CONCATENATE;
+  if (isa<mlir::stablehlo::ConvertOp>(op))
+    return ::stablehlo::flatbuf::OperatorCode_CONVERT;
 
   // For now we assume the incoming custom op is a resize_bilinear, it is
   // expected any other custom op will cause the program to error out
   if (isa<mlir::stablehlo::CustomCallOp>(op))
     return ::stablehlo::flatbuf::OperatorCode_RESIZE_BILINEAR;
 
-  op->emitError(Twine("unsupported op type"));
+  op->emitError(Twine("unsupported op type " + op->getName().getStringRef()));
   return std::nullopt;
 }
 
