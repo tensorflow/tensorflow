@@ -67,7 +67,7 @@ def call_with_layout(fn: Callable[...,
       result = fn(*args, **kwargs)
       return relayout(result, layout)
     else:
-      with run_on(layout.mesh):
+      with default_mesh(layout.mesh):
         with _dtensor_device()._default_layout(layout):  # pylint: disable=protected-access
           return fn(*args, **kwargs)
   return fn(*args, **kwargs)
@@ -178,7 +178,7 @@ def copy_to_mesh(
     A DTensor on the DTensor device with the given layout.
   """
   del source_layout
-  with run_on(layout.mesh):
+  with default_mesh(layout.mesh):
     return gen_dtensor_ops.copy_to_mesh(tensor, layout.to_string())
 
 
@@ -434,7 +434,7 @@ def relayout(tensor: ops.Tensor, layout: layout_lib.Layout) -> ops.Tensor:
     A DTensor output from the Relayout op.
   """
   layout_str = layout.to_string()
-  with run_on(layout.mesh):
+  with default_mesh(layout.mesh):
     return gen_dtensor_ops.relayout(tensor, layout_str)
 
 
