@@ -116,6 +116,7 @@ struct TileByOnePass : public impl::TileByOnePassBase<TileByOnePass> {
     RewritePatternSet patterns(ctx);
     // clang-format off
     patterns.add<
+        TileByOnePattern<thlo::ConcatenateOp>,
         TileByOnePattern<thlo::ReverseOp>,
         TileByOnePattern<linalg::MapOp>>(ctx);
     // clang-format on
