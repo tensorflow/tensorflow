@@ -129,14 +129,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                                           params);
   }
 
-  int64_t CardinalityInternal() const override {
-    if (preserve_cardinality_) {
-      return input_->Cardinality();
-    } else {
-      return kUnknownCardinality;
-    }
-  }
-
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     if (preserve_cardinality_) {
       return input_->Cardinality(options);
