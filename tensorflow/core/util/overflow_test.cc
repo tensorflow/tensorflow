@@ -39,8 +39,9 @@ bool HasMultiplyOverflow(int64_t x, int64_t y) {
 }
 bool HasAddOverflow(int64_t x, int64_t y) {
   int64_t carry_from_lower_bits = ((x & 0xffffffff) + (y & 0xffffffff)) >> 32;
+  // If upper bits plus carry would roll into the sign bit, we have overflowed.
   if ((x >> 32) + (y >> 32) + carry_from_lower_bits >=
-      (static_cast<int64_t>(1) << 32)) {
+      (static_cast<int64_t>(1) << 31)) {
     return true;
   }
   return false;
