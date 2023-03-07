@@ -72,6 +72,7 @@ def RetainOp : DeallocationOp<"retain", [AttrSizedOperandSegments]> {
   }];
 
   let hasCanonicalizer = 1;
+  let hasVerifier = 1;
 }
 
 #endif  // DEALLOCATION_TD_
