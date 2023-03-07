@@ -2,7 +2,7 @@
 load("//tensorflow:pytype.default.bzl", "pytype_library", "pytype_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
-load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
+load("//tensorflow/python/tpu:tpu.bzl", "internal_create_sanitizer_settings", "tpu_py_test")
 
 # Do not add anymore paths here. You do not need to be in the visibility list
 # to use TPU symbols. They are accessible from tf.contrib.tpu in TF 1.x and
@@ -842,3 +842,5 @@ tf_proto_library(
 #     deps = [":tensor_tracer_proto"],
 # )
 # copybara:uncomment_end
+
+internal_create_sanitizer_settings()
