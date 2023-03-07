@@ -960,7 +960,7 @@ inline Value makeSafeIntDiv(ImplicitLocOpBuilder& lb, Type originalType,
   Value smin = makeConstant(APInt::getSignedMinValue(elementType.getWidth()));
   Value lhsIsSmin =
       lb.create<arith::CmpIOp>(arith::CmpIPredicate::eq, lhs, smin);
-  Value minusOne = makeConstant(APInt::getAllOnesValue(elementType.getWidth()));
+  Value minusOne = makeConstant(APInt::getAllOnes(elementType.getWidth()));
   Value rhsIsMinusOne =
       lb.create<arith::CmpIOp>(arith::CmpIPredicate::eq, rhs, minusOne);
   Value hasIntMinOverflow = lb.create<arith::AndIOp>(lhsIsSmin, rhsIsMinusOne);
@@ -996,7 +996,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::DivOp>(Location loc,
     return getConstantOrSplat(&lb, lb.getLoc(), type,
                               lb.getIntegerAttr(elementType, i));
   };
-  Value minusOne = makeConstant(APInt::getAllOnesValue(elementType.getWidth()));
+  Value minusOne = makeConstant(APInt::getAllOnes(elementType.getWidth()));
   Value smin = makeConstant(APInt::getSignedMinValue(elementType.getWidth()));
   return makeSafeIntDiv<arith::DivUIOp, arith::DivSIOp>(
       lb, originalType, adaptor.getLhs(), adaptor.getRhs(),
@@ -1063,7 +1063,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::NotOp>(Location loc,
     Value allOnes = getConstantOrSplat(
         b, loc, adaptor.getOperand().getType(),
         b->getIntegerAttr(integerType,
-                          APInt::getAllOnesValue(integerType.getWidth())));
+                          APInt::getAllOnes(integerType.getWidth())));
     return b->create<::mlir::arith::XOrIOp>(loc, allOnes, adaptor.getOperand());
   }
   return nullptr;
