@@ -263,9 +263,9 @@ std::unique_ptr<StrategyVector> FollowReduceStrategy(
           src_strategies->leaf_vector[sid].output_sharding;
       const auto& tensor_dim_to_mesh = cluster_env.GetTensorDimToMeshDimWrapper(
           operand->shape(), input_sharding);
-      std::vector<int64> all_reduce_dims;
-      for (int64 op_dim = 0; op_dim < operand->shape().rank(); ++op_dim) {
-        int64 mesh_dim = tensor_dim_to_mesh[op_dim];
+      std::vector<int64_t> all_reduce_dims;
+      for (int64_t op_dim = 0; op_dim < operand->shape().rank(); ++op_dim) {
+        int64_t mesh_dim = tensor_dim_to_mesh[op_dim];
         // Replicates on this mesh dim.
         if (mesh_dim == -1) {
           continue;
