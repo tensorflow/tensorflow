@@ -1304,7 +1304,7 @@ REGISTER_OP("GatherNd")
     .Input("indices: Tindices")
     .Output("output: Tparams")
     .Attr("Tparams: type")
-    .Attr("Tindices: {int16, int32,int64}")
+    .Attr("Tindices: {int16,int32,int64}")
     .SetShapeFn(shape_inference::GatherNdShape);
 
 // --------------------------------------------------------------------------
