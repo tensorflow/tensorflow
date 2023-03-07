@@ -312,9 +312,10 @@ struct RemoveOptionalZeroBias : public OpRewritePattern<ConcreteOpType> {
           rewriter.getUnknownLoc(), rewriter.getNoneType(),
           rewriter.getUnitAttr());
       op.getBiasMutable().assign(none_value);
+      return success();
     }
 
-    return success();
+    return failure();
   }
 };
 
@@ -2140,6 +2141,7 @@ struct CastDonwInt64BeginEndToInt32 : public OpRewritePattern<TFL::SliceOp> {
           begin_op, begin_type, slice_op.getLoc(), &rewriter);
       if (new_begin != nullptr) {
         slice_op.setOperand(1, new_begin);
+        return success();
       }
     }
 
@@ -2149,10 +2151,11 @@ struct CastDonwInt64BeginEndToInt32 : public OpRewritePattern<TFL::SliceOp> {
           size_op, size_type, slice_op.getLoc(), &rewriter);
       if (new_size != nullptr) {
         slice_op.setOperand(2, new_size);
+        return success();
       }
     }
 
-    return success();
+    return failure();
   }
 };
 
@@ -2600,6 +2603,7 @@ struct RemoveLSTMOpZeroBias : public OpRewritePattern<LSTMOp> {
           rewriter.getUnknownLoc(), rewriter.getNoneType(),
           rewriter.getUnitAttr());
       op.getInputGateBiasMutable().assign(none_value);
+      return success();
     }
 
     if (EqualsZero(op.getProjectionBias())) {
@@ -2607,9 +2611,10 @@ struct RemoveLSTMOpZeroBias : public OpRewritePattern<LSTMOp> {
           rewriter.getUnknownLoc(), rewriter.getNoneType(),
           rewriter.getUnitAttr());
       op.getProjectionBiasMutable().assign(none_value);
+      return success();
     }
 
-    return success();
+    return failure();
   }
 };
 
