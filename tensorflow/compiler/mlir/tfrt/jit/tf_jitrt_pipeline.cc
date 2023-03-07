@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
 #include "mlir/Transforms/Passes.h"
+#include "llvm/TargetParser/Host.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
@@ -165,7 +166,8 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
 
   // Add passes to perform fusion, tiling, peeling and vectorization.
   if (options.vectorize) {
-    auto gml_st_opts = mlir::gml_st::getDefaultCPUPipelineOptions();
+    auto gml_st_opts =
+        mlir::gml_st::getDefaultCPUPipelineOptions(llvm::sys::getHostCPUName());
     gml_st_opts.matmulTileSizes = options.matmul_tile_sizes;
     gml_st_opts.lowerToMmt4d = options.lower_to_mmt4d;
     mlir::gml_st::addCPUTilingPipeline(pm, gml_st_opts);

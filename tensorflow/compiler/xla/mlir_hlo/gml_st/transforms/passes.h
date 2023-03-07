@@ -200,10 +200,16 @@ struct GmlStCPUTilingOptions
       llvm::cl::desc(
           "Enable passes to outline and deduplicate gml_st.fusion clusters."),
       llvm::cl::init(false)};
+
+  Option<StringRef> cpuName{
+      *this, "cpu",
+      llvm::cl::desc("CPU name, similar to llc's -mcpu flag. e.g. 'znver2', "
+                     "'skylake-avx512'."),
+      llvm::cl::init("")};
 };
 
 // Returns default "optimized" tiling parameters.
-GmlStCPUTilingOptions getDefaultCPUPipelineOptions();
+GmlStCPUTilingOptions getDefaultCPUPipelineOptions(StringRef cpuName);
 
 // Adds tiling-fusion-vectorization passes for tHLO/Linalg ops mix.
 void addCPUTilingPipeline(OpPassManager &pm,
@@ -211,7 +217,7 @@ void addCPUTilingPipeline(OpPassManager &pm,
 
 // Adds tiling-fusion-vectorization passes for tHLO/Linalg ops mix with the
 // "optimized" tiling parameters.
-void addDefaultCPUTilingPipeline(OpPassManager &pm);
+void addDefaultCPUTilingPipeline(OpPassManager &pm, StringRef cpuName);
 
 #define GEN_PASS_REGISTRATION
 #include "gml_st/transforms/passes.h.inc"

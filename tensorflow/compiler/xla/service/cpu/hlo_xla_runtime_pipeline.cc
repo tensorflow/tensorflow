@@ -169,7 +169,7 @@ static Status CreateHloXlaPipeline(
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   if (options.enable_tiling_and_fusion) {
-    mlir::gml_st::addDefaultCPUTilingPipeline(pm);
+    mlir::gml_st::addDefaultCPUTilingPipeline(pm, options.cpu_name);
   } else {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::createLinalgElementwiseOpFusionPass());

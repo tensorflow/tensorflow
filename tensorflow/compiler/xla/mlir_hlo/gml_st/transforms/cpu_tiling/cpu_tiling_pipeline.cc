@@ -15,24 +15,25 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <iostream>
 
 #include "gml_st/transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Func/Transforms/Passes.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
 namespace mlir {
 namespace gml_st {
 
-GmlStCPUTilingOptions getDefaultCPUPipelineOptions() {
+GmlStCPUTilingOptions getDefaultCPUPipelineOptions(StringRef cpuName) {
   GmlStCPUTilingOptions opts;
   opts.vectorSize = 8;
   opts.reduction1DTileSize = 32;
   opts.reduction2DTileSizes = {4, 4};
   opts.matmulTileSizes = {};
   opts.lowerToMmt4d = false;
+  opts.cpuName = cpuName;
   return opts;
 }
 
@@ -47,6 +48,61 @@ int64_t roundDownToPowerOfTwo(int64_t n) {
   n |= n >> 16;
   n |= n >> 32;
   return (n + 1) >> 1;
+}
+
+// Tiling heuristic that was tuned for static power-of-two sized shapes on
+// Skylake.
+MatmulSizes skylakeTilingHeuristic(MatmulSizes sizes) {
+  if (sizes.m == 1) {
+    return {1, sizes.n, 1};
+  }
+
+  if (sizes.n == 1) {
+    if (sizes.k <= 8) {
+      return {1, 1, 1};
+    }
+    return {std::min<int64_t>(8, sizes.m), 1, 4};
+  }
+
+  MatmulSizes result;
+  result.k = sizes.k <= 8 ? 1 : 4;
+  result.n = std::min<int64_t>(8, sizes.n) << (sizes.m <= 16 ? 1 : 0);
+  result.m = std::min<int64_t>(32, sizes.m) << (sizes.n <= 4 ? 1 : 0);
+  return result;
+}
+
+// Tiling heuristic that was tuned for static power-of-two sized shapes on Zen
+// v2 ("Rome").
+MatmulSizes znver2TilingHeuristic(MatmulSizes sizes) {
+  MatmulSizes result;
+  result.k = sizes.n == 1 ? 8 : 1;
+  if (sizes.n == 1) {
+    result.m = sizes.k >= 32 ? 16 : 8;
+  } else {
+    result.m = sizes.n <= 8 ? 8 : 4;
+  }
+  if (sizes.m == 1) {
+    result.n = std::min<int64_t>(64, sizes.n) * (sizes.k <= 64 ? 1 : 2);
+  } else {
+    result.n = std::min<int64_t>(16, sizes.n);
+  }
+  return result;
+}
+
+std::function<MatmulSizes(MatmulSizes)> wrapHeuristic(
+    const std::function<MatmulSizes(MatmulSizes)>& heuristic,
+    MatmulSizes dynamicDefault) {
+  return [=](MatmulSizes sizes) {
+    if (sizes.n < 0 || sizes.m < 0 || sizes.k < 0) {
+      return dynamicDefault;
+    }
+
+    sizes.m = roundDownToPowerOfTwo(sizes.m);
+    sizes.n = roundDownToPowerOfTwo(sizes.n);
+    sizes.k = roundDownToPowerOfTwo(sizes.k);
+
+    return heuristic(sizes);
+  };
 }
 
 }  // namespace
@@ -76,34 +132,9 @@ void addCPUTilingPipeline(OpPassManager& pm,
                            options.matmulTileSizes[2]};
     tilingHeuristic = [=](MatmulSizes) { return fixedSizes; };
   } else {
-    tilingHeuristic = [](MatmulSizes sizes) -> MatmulSizes {
-      if (sizes.n < 0 || sizes.m < 0 || sizes.k < 0) {
-        // Dynamic dimensions present, use a reasonable default.
-        // TODO(jreiffers): Consider supporting partially dynamic shapes.
-        return {16, 16, 4};
-      }
-
-      sizes.m = roundDownToPowerOfTwo(sizes.m);
-      sizes.n = roundDownToPowerOfTwo(sizes.n);
-      sizes.k = roundDownToPowerOfTwo(sizes.k);
-
-      if (sizes.m == 1) {
-        return {1, sizes.n, 1};
-      }
-
-      if (sizes.n == 1) {
-        if (sizes.k <= 8) {
-          return {1, 1, 1};
-        }
-        return {std::min<int64_t>(8, sizes.m), 1, 4};
-      }
-
-      MatmulSizes result;
-      result.k = sizes.k <= 8 ? 1 : 4;
-      result.n = std::min<int64_t>(8, sizes.n) << (sizes.m <= 16 ? 1 : 0);
-      result.m = std::min<int64_t>(32, sizes.m) << (sizes.n <= 4 ? 1 : 0);
-      return result;
-    };
+    tilingHeuristic = options.cpuName.starts_with("znver")
+                          ? wrapHeuristic(znver2TilingHeuristic, {16, 8, 8})
+                          : wrapHeuristic(skylakeTilingHeuristic, {16, 16, 4});
   }
   pm.addNestedPass<FuncOp>(createTransformDotForCpuPass(tilingHeuristic));
   pm.addNestedPass<FuncOp>(
@@ -129,8 +160,8 @@ void addCPUTilingPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(createScalarizationPass());
 }
 
-void addDefaultCPUTilingPipeline(OpPassManager& pm) {
-  addCPUTilingPipeline(pm, getDefaultCPUPipelineOptions());
+void addDefaultCPUTilingPipeline(OpPassManager& pm, StringRef cpuName) {
+  addCPUTilingPipeline(pm, getDefaultCPUPipelineOptions(cpuName));
 }
 
 }  // namespace gml_st
