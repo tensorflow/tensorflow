@@ -5863,7 +5863,8 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   //
   // This should make fusion easier or use less memory bandwidth in the unfused
   // case.
-  if (arg->opcode() == HloOpcode::kConcatenate &&
+  if (options_.push_concat_to_consumers() &&
+      arg->opcode() == HloOpcode::kConcatenate &&
       absl::c_linear_search(reduce->dimensions(),
                             arg->concatenate_dimension())) {
     HloInstruction* old_reduce = nullptr;
