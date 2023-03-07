@@ -642,12 +642,17 @@ class Conv2DOperationParser : public TFLiteOperationParser {
       RETURN_IF_ERROR(reader->AddOutputs(node));
       RETURN_IF_ERROR(MaybeFuseActivation(tf_options->activation, graph, node));
       return absl::OkStatus();
-    } else {
-      // weights are constants
+    } else {  // weights are constants
+      BHWC src_shape, dst_shape;
+      RETURN_IF_ERROR(
+          ExtractTensorShape(*reader->GetInputTensor(0), &src_shape));
+      RETURN_IF_ERROR(
+          ExtractTensorShape(*reader->GetOutputTensor(0), &dst_shape));
       const int src_group_size = attr.weights.shape.i;
-      if (attr.weights.shape.i == 1) {
+      if (attr.weights.shape.i == 1 && src_shape.c == dst_shape.c) {
         // when weights shape input channels = 1 =>
         // groups count = src_shape channels =>
+        // when src channels == dst channels && weights input channels == 1 =>
         // CONVOLUTION_2D equivalent to DEPTHWISE_CONVOLUTION
         DepthwiseConvolution2DAttributes dw_attr;
         dw_attr.weights.id = attr.weights.id;
