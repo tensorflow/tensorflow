@@ -65,16 +65,20 @@ constexpr int kMaxAttrValueTensorByteSize = 32 * 1024 * 1024;  // 32mb
 constexpr int kMaxTensorNestDepth = 100;
 
 // Compute TensorProto hash by creating a Tensor, serializing it as tensor
-// content, and computing a hash of it's string representation. This is unsafe
-// operation, because large tensors can be represented as TensorProto, but can't
-// be serialized to tensor content.
+// content, and computing a hash of it's string representation. If it's failed
+// to serialize, compute hash based on TensorProto string representation.
+// This approach may result different hash codes with identical Tensors if they
+// are defined with different TensorProto representations.
 uint64 TensorProtoHash(const TensorProto& tp) {
   Tensor tensor(tp.dtype());
   bool success = tensor.FromProto(tp);
-  DCHECK(success);
-  TensorProto p;
-  tensor.AsProtoTensorContent(&p);
-  return DeterministicProtoHash64(p);
+  if (success) {
+    TensorProto p;
+    tensor.AsProtoTensorContent(&p);
+    return DeterministicProtoHash64(p);
+  } else {
+    return DeterministicProtoHash64(tp);
+  }
 }
 
 // Do not create large tensors in memory, compute hash based on TensorProto

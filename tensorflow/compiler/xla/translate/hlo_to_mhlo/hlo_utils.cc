@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/tsl/platform/bfloat16.h"
 #include "tensorflow/tsl/platform/float8.h"
 
@@ -502,12 +503,8 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
                  op)) {
     return xla::HloOpcode::kBroadcast;
   } else {
-    std::string s;
-    {
-      llvm::raw_string_ostream os(s);
-      op->print(os);
-    }
-    return Unimplemented("Unimplemented MHLO -> HloOpcode: %s", s);
+    return Unimplemented("Unimplemented MHLO -> HloOpcode: %s",
+                         llvm_ir::DumpToString(op));
   }
 }
 

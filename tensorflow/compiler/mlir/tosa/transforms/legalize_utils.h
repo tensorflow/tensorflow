@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <numeric>
+#include <optional>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -44,11 +45,11 @@ namespace tosa {
 LogicalResult getDynamicDims(PatternRewriter& rewriter, Value value,
                              llvm::SmallVector<Value>& dims);
 
-llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
-                                                  Operation* op,
-                                                  Value input_value,
-                                                  ShapedType output_type,
-                                                  llvm::ArrayRef<Value> dims);
+std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
+                                                 Operation* op,
+                                                 Value input_value,
+                                                 ShapedType output_type,
+                                                 llvm::ArrayRef<Value> dims);
 
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
@@ -130,8 +131,8 @@ bool getTransposeConv2dPaddingValues(
 // Default template creates a constant tensor in T.
 // To create INT48 TOSA constant, need to pass in llvm::APInt instead.
 template <typename T>
-llvm::Optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
-                                     ArrayRef<T> vec, ArrayRef<int64_t> shape);
+std::optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
+                                    ArrayRef<T> vec, ArrayRef<int64_t> shape);
 
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type);

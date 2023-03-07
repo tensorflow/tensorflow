@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <optional>
 #include <queue>
 #include <string>
 
@@ -775,7 +776,7 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
       os_ << ": ";
       printType(arg.getType());
     }
-    printOptionalAttrDict(argAttrs, llvm::None);
+    printOptionalAttrDict(argAttrs, std::nullopt);
   }
 
   void printOperand(mlir::Value value) override { printOperand(value, os_); }

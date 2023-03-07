@@ -18,11 +18,11 @@ limitations under the License.
 
 #include "numpy/arrayobject.h"
 #include "numpy/ufuncobject.h"
-#include "pybind11/chrono.h"
-#include "pybind11/complex.h"
-#include "pybind11/functional.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
+#include "pybind11/chrono.h"  // from @pybind11
+#include "pybind11/complex.h"  // from @pybind11
+#include "pybind11/functional.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/c/checkpoint_reader.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/lib/core/errors.h"

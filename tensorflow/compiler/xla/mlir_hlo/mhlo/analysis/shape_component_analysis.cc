@@ -811,7 +811,7 @@ bool SymbolicExpr::isKnownNotOne() const {
   return false;
 }
 
-llvm::Optional<Symbol> SymbolicExpr::singleton() const {
+std::optional<Symbol> SymbolicExpr::singleton() const {
   if (expr.isa<AffineSymbolExpr>() &&
       expr.cast<AffineSymbolExpr>().getPosition() == 0) {
     assert(symbols.size() == 1);

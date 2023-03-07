@@ -166,7 +166,7 @@ struct HloProtoEvaluator {
                                   .ToProto();
     }
     if (opcode.has_value()) {
-      *inst.mutable_opcode() = HloOpcodeString(opcode.value());
+      *inst.mutable_opcode() = std::string(HloOpcodeString(opcode.value()));
     }
     absl::flat_hash_map<int64_t, HloComputation*> computation_map;
     if (inst.called_computation_ids_size() != 0) {

@@ -24,8 +24,8 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
-#include "pybind11/numpy.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/numpy.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_array.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
@@ -34,6 +34,32 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
+
+struct PyHostValue {
+  static Status CopyToHostAsync(std::shared_ptr<PyHostValue>& host_value,
+                                std::optional<Shape>& dynamic_shape_holder,
+                                ifrt::Array* ifrt_array);
+
+  static StatusOr<pybind11::object> AsNumPyArray(
+      std::shared_ptr<PyHostValue>& host_value,
+      std::optional<Shape>& dynamic_shape_holder, ifrt::Array* ifrt_array,
+      pybind11::handle this_obj);
+
+  absl::Notification ready;
+  Status status;
+  std::shared_ptr<xla::Literal> value;
+};
+
+struct IfrtHelpers {
+  static StatusOr<const Shape*> xla_dynamic_shape(
+      ifrt::Array* ifrt_array, std::optional<Shape>& scratch);
+  static StatusOr<tsl::RCReference<ifrt::Array>> CopyToDevice(
+      ifrt::Array* ifrt_array, PjRtDevice* dst_device);
+  static PjRtBuffer* pjrt_buffer(ifrt::Array* ifrt_array);
+  static PjRtDevice* pjrt_device(ifrt::Array* ifrt_array);
+  static pybind11::tuple python_shape(ifrt::Array* ifrt_array);
+  static pybind11::dtype python_dtype(ifrt::Array* ifrt_array);
+};
 
 // Python wrapper around PjRtBuffer. We use a wrapper class:
 // a) to keep the PjRtClient alive via a std::shared_ptr<>
@@ -78,6 +104,7 @@ class PyBuffer {
   // Short-term escape hatch to get PjRtBuffer from PyBuffer.
   // TODO(hyeontaek): Migrate all users of this method to be agnostic of PjRt.
   PjRtBuffer* pjrt_buffer() const {
+    return IfrtHelpers::pjrt_buffer(ifrt_array_.get());
     auto* arr =
         llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array_.get());
     if (arr == nullptr) {
@@ -178,8 +205,12 @@ class PyBuffer {
   // Returns the number of dimensions of the (host) numpy array.
   int ndim() const { return ifrt_array_->shape().dims().size(); }
 
-  pybind11::tuple python_shape() const;
-  pybind11::dtype python_dtype() const;
+  pybind11::tuple python_shape() const {
+    return IfrtHelpers::python_shape(ifrt_array());
+  }
+  pybind11::dtype python_dtype() const {
+    return IfrtHelpers::python_dtype(ifrt_array());
+  }
 
   // Representing the logical view of the underlying dynamic shapes.
   StatusOr<const Shape*> xla_dynamic_shape();
@@ -216,15 +247,10 @@ class PyBuffer {
 
   friend class PyClient;
 
-  struct HostValue {
-    absl::Notification ready;
-    Status status;
-    std::shared_ptr<xla::Literal> value;
-  };
   std::shared_ptr<PyClient> client_;
   tsl::RCReference<ifrt::Array> ifrt_array_;
   std::shared_ptr<Traceback> traceback_;
-  std::shared_ptr<HostValue> host_value_;  // Protected by the GIL.
+  std::shared_ptr<PyHostValue> host_value_;  // Protected by the GIL.
 
   // JAX uses this field to record whether a buffer is committed to a particular
   // device by the user (https://github.com/google/jax/pull/1916).

@@ -812,7 +812,6 @@ tf_cuda_cc_test(
     tags = [
         "no_cuda_asan",  # TODO(b/181771536)
         "no_windows",  # TODO(b/155444728)
-        "noasan",
     ],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
@@ -867,10 +866,6 @@ tf_cc_test(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    tags = [
-        "nomsan",  # b/149031034
-        "notsan",  # b/149031034
-    ],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     deps = [
@@ -942,7 +937,6 @@ tf_cuda_cc_test(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    tags = ["noasan"],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     deps = [
@@ -988,7 +982,6 @@ tf_cc_test(
     linkopts = select({
         "//conditions:default": [],
     }),
-    tags = ["noasan"],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     deps = [

@@ -38,19 +38,6 @@ void DeallocationDialect::initialize() {
 
 namespace {
 
-LogicalResult retainOfNothing(RetainOp op, PatternRewriter& rewriter) {
-  if (!op.getAllocs().empty()) {
-    return failure();
-  }
-
-  auto nulls = llvm::to_vector(
-      llvm::map_range(TypeRange{op.getRetained()}, [&](Type ty) -> Value {
-        return rewriter.create<NullOp>(op.getLoc(), getUnrankedMemrefType(ty));
-      }));
-  rewriter.replaceOp(op, nulls);
-  return success();
-}
-
 LogicalResult retainNoOp(RetainOp op, PatternRewriter& rewriter) {
   if (op.getAllocs().size() != 1 || op.getAllocs() != op.getRetained()) {
     return failure();
@@ -59,9 +46,44 @@ LogicalResult retainNoOp(RetainOp op, PatternRewriter& rewriter) {
   return success();
 }
 
-bool allocIsNonNullImpl(Value v, llvm::DenseSet<Value>& pending) {
+enum AllocNullability : uint32_t {
+  UNDEFINED = 0,
+  ALWAYS_NULL = 1,
+  NEVER_NULL = 2,
+  SOMETIMES_NULL = 3
+};
+
+AllocNullability operator|=(AllocNullability& lhs, AllocNullability rhs) {
+  return lhs = static_cast<AllocNullability>(static_cast<uint32_t>(lhs) | rhs);
+}
+
+// Returns the nullability of `v`. `pending` contains a set of `Values` we're
+// already considering in the computation of some value's nullability. It is
+// assumed that we will eventually take the maximum (logical or) of all
+// nullability values in this set.
+AllocNullability getAllocNullabilityImpl(Value v,
+                                         llvm::DenseSet<Value>& pending) {
   if (llvm::isa_and_present<memref::AllocOp>(v.getDefiningOp())) {
-    return true;
+    return NEVER_NULL;
+  }
+
+  if (llvm::isa_and_present<deallocation::NullOp>(v.getDefiningOp())) {
+    return ALWAYS_NULL;
+  }
+
+  if (auto retain =
+          llvm::dyn_cast_or_null<deallocation::RetainOp>(v.getDefiningOp())) {
+    // We start with ALWAYS_NULL because a retain without any allocs is null.
+    // Also, because a retain with a non-null alloc can be null (otherwise, this
+    // would have been cleaned up by `retainNoOp`).
+    AllocNullability nullability = ALWAYS_NULL;
+    for (auto alloc : retain.getAllocs()) {
+      if (pending.insert(alloc).second) {
+        nullability |= getAllocNullabilityImpl(alloc, pending);
+      }
+      if (nullability == SOMETIMES_NULL) break;
+    }
+    return nullability;
   }
 
   if (llvm::isa_and_present<memref::SubViewOp, memref::CastOp,
@@ -69,43 +91,57 @@ bool allocIsNonNullImpl(Value v, llvm::DenseSet<Value>& pending) {
                             memref::ReshapeOp, memref::ViewOp,
                             memref::ReinterpretCastOp, memref::TransposeOp>(
           v.getDefiningOp())) {
-    return allocIsNonNullImpl(v.getDefiningOp()->getOperand(0), pending);
+    return getAllocNullabilityImpl(v.getDefiningOp()->getOperand(0), pending);
   }
 
-  // If v is a block argument, check all incoming edges.
+  // Returns the nullability of an operand in each of the region's predecessors.
+  auto getPredecessorNullability =
+      [&](RegionBranchOpInterface rbi,
+          std::optional<int64_t> successorRegionIndex,
+          int64_t successorArgIndex) {
+        AllocNullability nullability = UNDEFINED;
+        for (const auto& pred :
+             getPredecessorRegions(rbi, successorRegionIndex)) {
+          Value operand = pred.getPredecessorOperand(successorArgIndex);
+          // It is safe to skip values that are already being considered higher
+          // up in the call stack, because we end up taking the maximum of all
+          // nullability values.
+          if (pending.insert(operand).second) {
+            nullability |= getAllocNullabilityImpl(operand, pending);
+          }
+          if (nullability == SOMETIMES_NULL) break;
+        }
+        return nullability;
+      };
+
+  // If `v` is a block argument, check all incoming edges.
   if (auto bbarg = v.dyn_cast<BlockArgument>()) {
     if (auto rbi = llvm::dyn_cast<RegionBranchOpInterface>(
             bbarg.getParentRegion()->getParentOp())) {
-      for (auto pred : getPredecessorRegions(
-               rbi, bbarg.getParentRegion()->getRegionNumber())) {
-        Value operand = pred.getPredecessorOperand(bbarg.getArgNumber());
-
-        if (pending.insert(operand).second &&
-            !allocIsNonNullImpl(operand, pending)) {
-          return false;
-        }
-      }
-      return true;
+      return getPredecessorNullability(
+          rbi, bbarg.getParentRegion()->getRegionNumber(),
+          bbarg.getArgNumber());
     }
   }
 
-  if (auto op =
+  if (auto rbi =
           llvm::dyn_cast_or_null<RegionBranchOpInterface>(v.getDefiningOp())) {
-    unsigned resultNumber = llvm::cast<OpResult>(v).getResultNumber();
-    for (const auto& exit : getPredecessorRegions(op, std::nullopt)) {
-      if (!allocIsNonNullImpl(exit.getPredecessorOperand(resultNumber),
-                              pending))
-        return false;
-    }
-    return true;
+    return getPredecessorNullability(rbi, std::nullopt,
+                                     llvm::cast<OpResult>(v).getResultNumber());
   }
 
-  return false;
+  // Something we don't understand.
+  return AllocNullability::SOMETIMES_NULL;
 }
 
 bool allocIsNonNull(Value v) {
   llvm::DenseSet<Value> pendingChecks;
-  return allocIsNonNullImpl(v, pendingChecks);
+  return getAllocNullabilityImpl(v, pendingChecks) == NEVER_NULL;
+}
+
+bool allocIsNull(Value v) {
+  llvm::DenseSet<Value> pendingChecks;
+  return getAllocNullabilityImpl(v, pendingChecks) == ALWAYS_NULL;
 }
 
 LogicalResult retainIsDealloc(RetainOp op, PatternRewriter& rewriter) {
@@ -114,6 +150,21 @@ LogicalResult retainIsDealloc(RetainOp op, PatternRewriter& rewriter) {
     return failure();
   }
   rewriter.replaceOpWithNewOp<memref::DeallocOp>(op, op.getAllocs()[0]);
+  return success();
+}
+
+LogicalResult retainIsNull(RetainOp op, PatternRewriter& rewriter) {
+  // If all allocs are null, the result is null and there is nothing to
+  // deallocate.
+  if (!llvm::all_of(op.getAllocs(), allocIsNull)) {
+    return failure();
+  }
+
+  auto nulls = llvm::to_vector(
+      llvm::map_range(TypeRange{op.getRetained()}, [&](Type ty) -> Value {
+        return rewriter.create<NullOp>(op.getLoc(), getUnrankedMemrefType(ty));
+      }));
+  rewriter.replaceOp(op, nulls);
   return success();
 }
 
@@ -133,10 +184,11 @@ LogicalResult splitRetain(RetainOp op, PatternRewriter& rewriter) {
 
 void RetainOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext*) {
-  results.add(retainOfNothing);
-  results.add(retainNoOp);
-  results.add(retainIsDealloc);
-  results.add(splitRetain);
+  results.add(retainNoOp, 2);
+  results.add(retainIsDealloc, 2);
+  results.add(splitRetain, 2);
+  // Run the above analyses first. They make retainIsNull cheaper.
+  results.add(retainIsNull, 1);
 }
 
 }  // namespace deallocation

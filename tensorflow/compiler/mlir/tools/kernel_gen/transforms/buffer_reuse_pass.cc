@@ -51,13 +51,14 @@ class BufferReuseAnalysis {
 
   static constexpr int32_t kIndexAmbiguous = -1;
 
-  Optional<SmallVector<int32_t, 2>> get_reuse_candiates(memref::AllocOp op) {
+  std::optional<SmallVector<int32_t, 2>> get_reuse_candiates(
+      memref::AllocOp op) {
     auto it = reuse_candidates_.find(op);
     if (it == reuse_candidates_.end()) return std::nullopt;
     return it->second;
   }
 
-  Optional<int32_t> get_output_index(memref::AllocOp op) {
+  std::optional<int32_t> get_output_index(memref::AllocOp op) {
     auto it = output_indices_.find(op);
     if (it == output_indices_.end()) return std::nullopt;
     return it->second;

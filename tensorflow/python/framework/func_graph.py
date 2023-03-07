@@ -26,7 +26,6 @@ from tensorflow.core.function import trace_type
 from tensorflow.core.function.capture import capture_container
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
-from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.eager.polymorphic_function import composite_tensor_utils
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import composite_tensor
@@ -757,10 +756,17 @@ class FuncGraph(ops.Graph):
   def _capture_helper(self, tensor, name, shape=None):
     capture = self._function_captures.by_val_captures.get(id(tensor))
     if capture is None:
-      placeholder = _create_substitute_placeholder(
-          tensor, name=name, dtype=tensor.dtype, shape=shape)
+      spec = trace_type.from_value(tensor)
+      spec._name = name  # pylint: disable=protected-access
+      placeholder_ctx = trace_type.InternalPlaceholderContext(self)
+      # Note: setting ops.control_dependencies(None) ensures we always put
+      # capturing placeholders outside of any control flow context.
+      with ops.control_dependencies(None):
+        placeholder = spec.placeholder_value(placeholder_ctx)
+      handle_data_util.copy_handle_data(tensor, placeholder)
+
       # Record the composite device as an attribute to the placeholder.
-      # This attribute would be propogated into the arg_attr of the FunctionDef.
+      # This attribute would be propagated into the arg_attr of the FunctionDef.
       # Currently, a packed eager tensor is always placed on a CompositeDevice.
       if isinstance(tensor, ops.EagerTensor) and tensor.is_packed:
         placeholder.op._set_attr(  # pylint: disable=protected-access
@@ -1314,19 +1320,6 @@ def pack_sequence_as(structure, flat_sequence):
       flat_sequence[i] = tensor_array_ops.build_ta_with_new_flow(
           old_ta=flattened_structure[i], flow=flat_sequence[i])
   return nest.pack_sequence_as(structure, flat_sequence, expand_composites=True)
-
-
-def _create_substitute_placeholder(value, name=None, dtype=None, shape=None):
-  """Creates a placeholder for `value` and propagates shape info to it."""
-  # Note: setting ops.control_dependencies(None) ensures we always put
-  # capturing placeholders outside of any control flow context.
-  if shape is None:
-    shape = value.shape
-  with ops.control_dependencies(None):
-    placeholder = graph_placeholder(
-        dtype=dtype or value.dtype, shape=shape, name=name)
-  handle_data_util.copy_handle_data(value, placeholder)
-  return placeholder
 
 
 def _create_placeholders(args, kwargs, arg_names=None):

@@ -128,7 +128,7 @@ _tfcompile_model_library = rule(
     },
 )
 
-def tf_library(
+def _tf_library(
         name,
         graph,
         config,
@@ -150,66 +150,6 @@ def tf_library(
         deps = None,
         tags = [],
         copts = []):
-    """Runs tfcompile to compile a TensorFlow graph into executable code with fast
-    math enabled on cpu.
-
-    Given an invocation of tf_library(name="foo", ...), generates the following
-    build targets:
-      foo:           A cc_library containing the generated header and
-                     computation.
-      foo_test:      A cc_test with simple tests and benchmarks. Only created if
-                     gen_test=True.
-      foo_benchmark: A cc_binary that runs a minimal-dependency benchmark,
-                     useful for mobile devices or other platforms that can't
-                     compile the full test libraries. Only created if
-                     gen_benchmark=True.
-    The output header is called <name>.h.
-
-    Args:
-      name: The name of the build rule.
-      graph: The TensorFlow GraphDef to compile.  If the file ends in '.pbtxt'
-        it is expected to be in the human-readable proto text format, otherwise
-        it is expected to be in the proto binary format.
-      config: File containing tensorflow.tf2xla.Config proto.  If the file ends
-        in '.pbtxt' it is expected to be in the human-readable proto text
-        format, otherwise it is expected to be in the proto binary format.
-      freeze_checkpoint: If provided, run freeze_graph with this checkpoint to
-        convert variables into constants.
-      freeze_saver: If provided, run freeze_graph with this saver, in SaverDef
-        binary form, to convert variables into constants.
-      cpp_class: The name of the generated C++ class, wrapping the generated
-        function.  The syntax of this flag is
-        [[<optional_namespace>::],...]<class_name>.  This mirrors the C++ syntax
-        for referring to a class, where multiple namespaces may precede the
-        class name, separated by double-colons.  The class will be generated in
-        the given namespace(s), or if no namespaces are given, within the global
-        namespace.
-      gen_test: If True, also generate a cc_test rule that builds a simple
-        test and benchmark.
-      gen_benchmark: If True, also generate a binary with a simple benchmark.
-        Unlike the output of gen_test, this benchmark can be run on android.
-      gen_compiler_log: If True, dumps XLA:CPU debug output to a log file.
-      visibility: Bazel build visibility.
-      testonly:   Bazel testonly attribute.
-      tfcompile_flags: Extra flags to pass to tfcompile to control compilation.
-      tfcompile_tool: The tfcompile binary. A non-default can be passed to
-        use a tfcompile built with extra dependencies.
-      include_standard_runtime_deps: If True, the standard list of
-        kernel/runtime deps is added to deps.  If False, deps must contain the
-        full set of deps needed by the generated library.
-      enable_xla_hlo_profiling: Enable XLA HLO profiling in the generated
-        program, and emit metadata that lets us pretty-print the gathered
-        profile counters.
-      enable_tracemes: Tell tfcompile to generate calls to
-        TraceMe::Activity{Start|End} around HLO instructions that can be used by
-        Xprof to construct profiler timelines.
-      mlir_components: When the value is "None", no components use MLIR. When
-        the value is "Bridge", use MLIR to translate GraphDef to HLO.
-      deps: a list of deps to include on the build rules for the generated
-        library, added to the standard deps if standard_runtime_deps is True.
-      tags: tags to apply to subsidiary build rules.
-      copts: list of copts to pass to cc rules.
-    """
     if not cpp_class:
         fail("cpp_class must be specified")
 
@@ -257,7 +197,7 @@ def tf_library(
         freeze_saver_srcs = []
         if freeze_saver:
             freeze_args += " --input_saver=$(location " + freeze_saver + ")"
-            freeze_saver_srcs += [freeze_saver]
+            freeze_saver_srcs.append(freeze_saver)
         native.genrule(
             name = freeze_name,
             srcs = [
@@ -280,7 +220,7 @@ def tf_library(
     # Rule that runs tfcompile to produce the header and object file.
     header_file = name + ".h"
 
-    # The XLA backends morph kernal name prefix __ that is not in the form of
+    # The XLA backends morph kernel name prefix __ that is not in the form of
     # __xla_.
     ep = ("__xla_" + native.package_name() + "__" + name).replace("/", "_")
     if type(tfcompile_flags) == type(""):
@@ -487,6 +427,136 @@ def tf_library(
                 "//tensorflow/compiler/aot:benchmark_extra_android",
             ]),
             tags = tags,
+        )
+
+def tf_library(
+        name,
+        graph,
+        config,
+        debug_info = None,
+        freeze_checkpoint = None,
+        freeze_saver = None,
+        cpp_class = None,
+        gen_test = True,
+        gen_benchmark = True,
+        gen_compiler_log = False,
+        visibility = None,
+        testonly = None,
+        tfcompile_flags = None,
+        tfcompile_tool = "//tensorflow/compiler/aot:tfcompile",
+        include_standard_runtime_deps = True,
+        enable_xla_hlo_profiling = False,
+        enable_tracemes = False,
+        mlir_components = "None",
+        deps = None,
+        tags = [],
+        copts = []):
+    """Compiles a TensorFlow graph into an executable with fast math enabled.
+
+    Given an invocation of tf_library(name="foo", ...), generates the following
+    build targets:
+      foo:           A cc_library containing the generated header and
+                      computation.
+      foo_test:      A cc_test with simple tests and benchmarks. Only created if
+                      gen_test=True.
+      foo_benchmark: A cc_binary that runs a minimal-dependency benchmark,
+                      useful for mobile devices or other platforms that can't
+                      compile the full test libraries. Only created if
+                      gen_benchmark=True.
+    The output header is called <name>.h.
+
+    Args:
+      name: The name of the build rule.
+      graph: The TensorFlow GraphDef to compile.  If the file ends in '.pbtxt'
+        it is expected to be in the human-readable proto text format, otherwise
+        it is expected to be in the proto binary format.
+      config: File containing tensorflow.tf2xla.Config proto.  If the file ends
+        in '.pbtxt' it is expected to be in the human-readable proto text
+        format, otherwise it is expected to be in the proto binary format.
+      debug_info: Debug info to include in the output.
+      freeze_checkpoint: If provided, run freeze_graph with this checkpoint to
+        convert variables into constants.
+      freeze_saver: If provided, run freeze_graph with this saver, in SaverDef
+        binary form, to convert variables into constants.
+      cpp_class: The name of the generated C++ class, wrapping the generated
+        function.  The syntax of this flag is
+        [[<optional_namespace>::],...]<class_name>.  This mirrors the C++ syntax
+        for referring to a class, where multiple namespaces may precede the
+        class name, separated by double-colons.  The class will be generated in
+        the given namespace(s), or if no namespaces are given, within the global
+        namespace.
+      gen_test: If True, also generate a cc_test rule that builds a simple
+        test and benchmark.
+      gen_benchmark: If True, also generate a binary with a simple benchmark.
+        Unlike the output of gen_test, this benchmark can be run on android.
+      gen_compiler_log: If True, dumps XLA:CPU debug output to a log file.
+      visibility: Bazel build visibility.
+      testonly:   Bazel testonly attribute.
+      tfcompile_flags: Extra flags to pass to tfcompile to control compilation.
+      tfcompile_tool: The tfcompile binary. A non-default can be passed to
+        use a tfcompile built with extra dependencies.
+      include_standard_runtime_deps: If True, the standard list of
+        kernel/runtime deps is added to deps.  If False, deps must contain the
+        full set of deps needed by the generated library.
+      enable_xla_hlo_profiling: Enable XLA HLO profiling in the generated
+        program, and emit metadata that lets us pretty-print the gathered
+        profile counters.
+      enable_tracemes: Tell tfcompile to generate calls to
+        TraceMe::Activity{Start|End} around HLO instructions that can be used by
+        Xprof to construct profiler timelines.
+      mlir_components: When the value is "None", no components use MLIR. When
+        the value is "Bridge", use MLIR to translate GraphDef to HLO.
+      deps: a list of deps to include on the build rules for the generated
+        library, added to the standard deps if standard_runtime_deps is True.
+      tags: tags to apply to subsidiary build rules.
+      copts: list of copts to pass to cc rules.
+    """
+    _tf_library(
+        name,
+        graph,
+        config,
+        debug_info,
+        freeze_checkpoint,
+        freeze_saver,
+        cpp_class,
+        gen_test,
+        gen_benchmark,
+        gen_compiler_log,
+        visibility,
+        testonly,
+        tfcompile_flags,
+        tfcompile_tool,
+        include_standard_runtime_deps,
+        enable_xla_hlo_profiling,
+        enable_tracemes,
+        mlir_components,
+        deps,
+        tags,
+        copts,
+    )
+    if mlir_components == "None":
+        _tf_library(
+            name + "_mlir",
+            graph,
+            config,
+            debug_info,
+            freeze_checkpoint,
+            freeze_saver,
+            cpp_class,
+            gen_test,
+            gen_benchmark,
+            gen_compiler_log,
+            visibility,
+            testonly,
+            tfcompile_flags,
+            tfcompile_tool,
+            include_standard_runtime_deps,
+            enable_xla_hlo_profiling,
+            enable_tracemes,
+            "HloLowering",
+            deps,
+            tags + ["notap", "local", "manual"],
+            copts,
         )
 
 def target_llvm_triple():

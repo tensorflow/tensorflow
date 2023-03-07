@@ -548,10 +548,12 @@ static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
 
 // Extracts sharding from attribute string.
 static std::optional<xla::OpSharding> CreateOpShardingFromStringRef(
-    llvm::StringRef sharding) {
+    llvm::StringRef sharding_str) {
   xla::OpSharding sharding_proto;
-  if (!sharding_proto.ParseFromString(sharding.str())) return std::nullopt;
-  return sharding_proto;
+  if (sharding_proto.ParseFromString(sharding_str.str())) return sharding_proto;
+  StatusOr<xla::HloSharding> sharding = xla::ParseSharding(sharding_str.str());
+  if (sharding.ok()) return sharding->ToProto();
+  return std::nullopt;
 }
 
 // Returns an OpSharding proto from the "sharding" attribute of the op. If the

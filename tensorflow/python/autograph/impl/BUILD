@@ -45,9 +45,6 @@ tf_py_test(
     srcs = ["api_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "notsan",  # TODO(b/186153876)
-    ],
     deps = [
         ":impl",
         "//tensorflow/python:client_testlib",

@@ -16,6 +16,7 @@
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -112,6 +113,10 @@ def smart_case(pred_fn_pairs, default=None, exclusive=False, name="smart_case"):
     TypeError: If `fns[i]` is not callable for any i, or `default` is not
                callable.
   """
-  return control_flow_ops._case_helper(  # pylint: disable=protected-access
-      smart_cond, pred_fn_pairs, default, exclusive, name,
+  return control_flow_case._case_helper(  # pylint: disable=protected-access
+      smart_cond,
+      pred_fn_pairs,
+      default,
+      exclusive,
+      name,
       allow_python_preds=True)

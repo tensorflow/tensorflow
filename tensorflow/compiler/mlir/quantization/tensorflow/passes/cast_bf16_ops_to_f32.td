@@ -110,6 +110,24 @@ def CastBFloat16MatMulToFloat32 : Pat<
    (IsBF16ElementType $filter)],
   (addBenefit 1)>;
 
+def CastBFloat16BatchMatMulV2ToFloat32 : Pat<
+  (TF_BatchMatMulV2Op:$res
+    $input, $filter, $adj_x, $adj_y),
+  (TF_CastOp
+    (TF_BatchMatMulV2Op
+      (TF_CastOp
+        $input, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $input))),
+      (TF_CastOp
+        $filter, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $filter))),
+      $adj_x, $adj_y,
+      (returnType (CloneTypeWithF32ElementType $res))),
+    /*truncate=*/ConstBoolAttrFalse),
+  [(IsBF16ElementType $input),
+   (IsBF16ElementType $filter)],
+  (addBenefit 1)>;
+
 def CastBFloat16DepthwiseConvToFloat32 : Pat<
   (TF_DepthwiseConv2dNativeOp:$res
     $input, $filter, $strides, $padding,
@@ -128,4 +146,19 @@ def CastBFloat16DepthwiseConvToFloat32 : Pat<
     /*truncate=*/ConstBoolAttrFalse),
   [(IsBF16ElementType $input),
    (IsBF16ElementType $filter)],
+  (addBenefit 1)>;
+
+def CastBFloat16GatherToFloat32 : Pat<
+  (TF_GatherV2Op:$res
+    $params, $indices, $axis, $batch_dims),
+  (TF_CastOp
+    (TF_GatherV2Op
+      (TF_CastOp
+        $params, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $params))),
+      $indices, $axis, $batch_dims,
+      (returnType (CloneTypeWithF32ElementType $res))),
+    /*truncate=*/ConstBoolAttrFalse),
+  [(IsBF16ElementType $params),
+    (IsConstTensor $params)],
   (addBenefit 1)>;

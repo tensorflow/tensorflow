@@ -14,7 +14,7 @@
 # ==============================================================================
 """Internal APIs to be removed in the future."""
 
-from tensorflow.python.eager.polymorphic_function import monomorphic_function
+from tensorflow.python.eager.polymorphic_function import atomic_function
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.util import deprecation
@@ -121,7 +121,7 @@ def add_function_callback(function_callback):
   Args:
     function_callback: The callback to add.
   """
-  monomorphic_function._function_callbacks.add(function_callback)  # pylint: disable=protected-access
+  atomic_function.function_callbacks.add(function_callback)
 
 
 # TODO(b/244360504): Remove this API in favour of the graph transformation API.
@@ -133,13 +133,13 @@ def remove_function_callback(function_callback):
   Args:
     function_callback: The callback to remove.
   """
-  monomorphic_function._function_callbacks.remove(function_callback)  # pylint: disable=protected-access
+  atomic_function.function_callbacks.remove(function_callback)
 
 
 # TODO(b/244360504): Remove this API in favour of the graph transformation API.
 def clear_function_callbacks():
   """Clear all function callbacks, if any have been regisered."""
-  monomorphic_function._function_callbacks.clear()  # pylint: disable=protected-access
+  atomic_function.function_callbacks.clear()
 
 
 @deprecation.deprecated(

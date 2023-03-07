@@ -218,6 +218,8 @@ std::unique_ptr<llvm::MemoryBuffer> ExecutionEngineObjectCache::stealObject(
 
 // -------------------------------------------------------------------------- //
 
+// llvm_ir::DumpToString() is not used here, because we don't want to add too
+// many dependencies to the runtime.
 std::string ToString(const llvm::Error &err) {
   std::string str;
   llvm::raw_string_ostream(str) << err;

@@ -15,7 +15,7 @@ func.func @col_reduce_static(%input: tensor<100x10xf32>,
 //       CHECK:   scf.for
 //       CHECK:     vector.multi_reduction
 //  CHECK-SAME:       : vector<4x4xf32> to vector<4xf32>
-//  CHECK-NEXT:     scf.yield %{{.*}} : vector<4xf32>
+//  CHECK-NEXT:     scf.yield %{{.*}} : {{.*}}, vector<4xf32>
 //       CHECK:   gml_st.set_yield
 
 // -----
@@ -39,12 +39,12 @@ func.func @row_reduce_dynamic(%input: tensor<?x?xf32>,
 // CHECK:        scf.for
 // CHECK:          vector.multi_reduction
 // CHECK-SAME:       : vector<4x4xf32> to vector<4xf32>
-// CHECK-NEXT:     scf.yield %{{.*}} : vector<4xf32>
+// CHECK-NEXT:     scf.yield %{{.*}} : {{.*}}, vector<4xf32>
 
 // CHECK:        scf.for
 // CHECK:          vector.multi_reduction
 // CHECK-SAME:       : vector<4x1xf32> to vector<4xf32>
-// CHECK-NEXT:     scf.yield %{{.*}} : vector<4xf32>
+// CHECK-NEXT:     scf.yield %{{.*}} : {{.*}}, vector<4xf32>
 // CHECK:        gml_st.set_yield
 
 // CHECK:      gml_st.parallel
@@ -76,7 +76,7 @@ func.func @col_reduce_dynamic(%input: tensor<?x?xf32>,
 // CHECK:        scf.for
 // CHECK:          vector.multi_reduction
 // CHECK-SAME:       : vector<4x4xf32> to vector<4xf32>
-// CHECK-NEXT:     scf.yield %{{.*}} : vector<4xf32>
+// CHECK-NEXT:     scf.yield %{{.*}} : {{.*}}, vector<4xf32>
 
 // CHECK:        scf.for
 // CHECK:          arith.mulf %{{.*}} : f32

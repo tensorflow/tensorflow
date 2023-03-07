@@ -60,6 +60,20 @@ def TosaStripQuantTypesPass : Pass<"tosa-strip-quant-types", "mlir::func::FuncOp
   let dependentDialects = ["TosaDialect"];
 }
 
+def TosaLowerComplexTypesPass : Pass<"tosa-lower-complex-types", "mlir::func::FuncOp"> {
+  let summary = "Convert all complex types to their storage type.";
+  let description = [{
+    Complex tensors are not supported in TOSA and are instead represented by two floating
+    point tensors corresponding to the "real" and "imag" parts of the complex tensor. This
+    pass replaces all complex tensors of shape [x, ..., y] with floating point tensors of
+    shape [x, ..., y, 2] where each inner pair of values represents a complex value. In
+    doing so, a 1:1 mapping between TFL and TOSA input/output tensors is maintained. The
+    pass will fail if not all complex tensors are converted.
+  }];
+  let constructor = "createLowerComplexTypesPass()";
+  let dependentDialects = ["TosaDialect"];
+}
+
 def TosaDequantizeTFLSoftmaxPass : Pass<"tosa-dequantize-tfl-softmax", "mlir::func::FuncOp"> {
   let summary = "Dequantize TFLite Softmax ops.";
   let description = [{

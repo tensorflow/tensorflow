@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
-#include "llvm/ADT/Optional.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -108,7 +107,7 @@ class DTensorSetHloShardingPass
   using DTensorSetHloShardingPassBase::DTensorSetHloShardingPassBase;
 
   explicit DTensorSetHloShardingPass(
-      llvm::Optional<bool> check_layout_use_xla_spmd) {
+      std::optional<bool> check_layout_use_xla_spmd) {
     if (check_layout_use_xla_spmd.has_value()) {
       check_layout_use_xla_spmd_ = *check_layout_use_xla_spmd;
     }
@@ -132,8 +131,7 @@ class DTensorSetHloShardingPass
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateDTensorSetHloShardingPass(
-    llvm::Optional<bool> check_layout_use_xla_spmd) {
+CreateDTensorSetHloShardingPass(std::optional<bool> check_layout_use_xla_spmd) {
   return std::make_unique<DTensorSetHloShardingPass>(check_layout_use_xla_spmd);
 }
 

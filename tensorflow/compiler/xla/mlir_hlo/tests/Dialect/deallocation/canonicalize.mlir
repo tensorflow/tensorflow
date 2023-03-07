@@ -144,3 +144,27 @@ func.func @split_retain(%arg0: memref<*xi32>, %arg1: memref<*xf32>) {
 // CHECK-LABEL: @split_retain
 // CHECK-DAG: deallocation.retain() of(%{{.*}}) : (memref<*xi32>) -> ()
 // CHECK-DAG: deallocation.retain() of(%{{.*}}) : (memref<*xf32>) -> ()
+
+func.func @retain_of_null(%arg0: memref<4xi32>, %arg1: memref<4xi32>,
+                          %arg2: index, %arg3: index, %arg4: index) {
+  %0 = deallocation.null : memref<*xi32>
+  %1 = deallocation.null : memref<*xi32>
+  %2:4 = scf.for %arg5 = %arg2 to %arg3 step %arg4
+      iter_args(%arg6 = %arg0, %arg7 = %arg1, %arg8 = %0, %arg9 = %1) ->
+      (memref<4xi32>, memref<4xi32>, memref<*xi32>, memref<*xi32>) {
+    "test.use"(%arg6, %arg7) : (memref<4xi32>, memref<4xi32>) -> ()
+    %3 = deallocation.retain(%arg6) of(%arg8)
+      : (memref<4xi32>, memref<*xi32>) -> memref<*xi32>
+    %4 = deallocation.retain(%arg7) of(%arg9)
+      : (memref<4xi32>, memref<*xi32>) -> memref<*xi32>
+    scf.yield %arg7, %arg6, %4, %3
+      : memref<4xi32>, memref<4xi32>, memref<*xi32>, memref<*xi32>
+  }
+  deallocation.retain() of(%2#2) : (memref<*xi32>) -> ()
+  deallocation.retain() of(%2#3) : (memref<*xi32>) -> ()
+  return
+}
+
+// CHECK-LABEL: @retain_of_null
+// CHECK-NOT: deallocation.null
+// CHECK-NOT: deallocation.retain()

@@ -1509,14 +1509,13 @@ Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
 }
 
 Status CheckAsyncOpComputationThreadName(const HloInstruction* async_op) {
-  std::optional<absl::string_view> async_execution_thread =
-      async_op->async_execution_thread();
+  absl::string_view async_execution_thread = async_op->async_execution_thread();
   if (async_execution_thread !=
       async_op->async_wrapped_computation()->execution_thread()) {
     return InternalError(
-        "async-start expects same async thread name as wrapped computation's "
+        "%s expects same async thread name as wrapped computation's "
         "thread name (%s vs %s).",
-        async_execution_thread ? absl::StrCat(*async_execution_thread) : "none",
+        HloOpcodeString(async_op->opcode()), async_execution_thread,
         async_op->async_wrapped_computation()->execution_thread());
   }
   return CheckNestedComputationThreadNameEqual(
@@ -2075,39 +2074,39 @@ Status CheckSameIsHostTransfer(const HloInstruction* instr1,
 Status VerifySingleUser(const HloInstruction* instruction,
                         const absl::flat_hash_set<HloOpcode>& expected_users) {
   TF_RET_CHECK(instruction->users().size() == 1)
-      << "The " << HloOpcodeString(instruction->opcode())
+      << "The " << instruction->opcode()
       << " instruction requires one consumer, found "
       << instruction->users().size();
 
   const HloInstruction* user = instruction->users().front();
   TF_RET_CHECK(expected_users.contains(user->opcode()))
-      << "The consumer of a " << HloOpcodeString(instruction->opcode())
+      << "The consumer of a " << instruction->opcode()
       << " instruction needs to be one of ("
       << absl::StrJoin(expected_users, ", ",
                        [](std::string* out, HloOpcode opcode) {
-                         out->append(HloOpcodeString(opcode));
+                         absl::StrAppend(out, HloOpcodeString(opcode));
                        })
-      << "), found " << HloOpcodeString(user->opcode());
+      << "), found " << user->opcode();
   return OkStatus();
 }
 
 Status VerifySingleOperand(const HloInstruction* instruction,
                            const std::vector<HloOpcode>& expected_operands) {
   TF_RET_CHECK(instruction->operands().size() == 1)
-      << "The " << HloOpcodeString(instruction->opcode())
+      << "The " << instruction->opcode()
       << " instruction requires one consumer, found "
       << instruction->users().size();
 
   const HloInstruction* operand = instruction->operand(0);
   TF_RET_CHECK(absl::c_find(expected_operands, operand->opcode()) !=
                expected_operands.end())
-      << "The operand of a " << HloOpcodeString(instruction->opcode())
+      << "The operand of a " << instruction->opcode()
       << " instruction needs to be "
       << absl::StrJoin(expected_operands, " or ",
                        [](std::string* out, HloOpcode opcode) {
-                         out->append(HloOpcodeString(opcode));
+                         absl::StrAppend(out, HloOpcodeString(opcode));
                        })
-      << ", found " << HloOpcodeString(operand->opcode());
+      << ", found " << operand->opcode();
   return OkStatus();
 }
 
@@ -2682,7 +2681,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         continue;
       }
       TF_RET_CHECK(check_inst->sharding() == common_sharding_inst->sharding())
-          << "Inconsistent " << HloOpcodeString(parent->opcode())
+          << "Inconsistent " << parent->opcode()
           << " sharding among instructions: \n"
           << common_sharding_inst->ToString() << "\n"
           << check_inst->ToString();

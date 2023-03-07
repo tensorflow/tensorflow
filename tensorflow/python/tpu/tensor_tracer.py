@@ -34,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_math_ops
@@ -1664,7 +1665,7 @@ class TensorTracer:
       # num_replicas - 1 statically; and return the corresponding static file
       # name. We cannot simply set the file name in python, as replica_id is
       # only known during tf runtime, and we cannot create dynamic filenames.
-      return control_flow_ops.case(flush_op_cases, exclusive=True)
+      return control_flow_case.case(flush_op_cases, exclusive=True)
 
     cache = self._create_or_get_tensor_values_cache(_TT_SUMMARY_TAG, graph)
     if self._use_temp_cache():

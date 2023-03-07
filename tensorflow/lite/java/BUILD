@@ -359,7 +359,7 @@ android_library(
     name = "tensorflowlite_gpu_api",
     srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
     exports_manifest = 1,
-    manifest = "AndroidManifest.xml",
+    manifest = "AndroidManifestGpu.xml",
     proguard_specs = ["proguard.flags"],
     deps = [":tensorflowlite_api"],
 )
@@ -743,7 +743,6 @@ java_test(
         "no_cuda_on_cpu_tap",  # CUDA + flex is not officially supported.
         "no_gpu",  # GPU + flex is not officially supported.
         "no_oss",  # Currently requires --config=monolithic, b/118895218.
-        "notsan",  # TODO(b/185859069) Re-enable after fixing race condition.
     ],
     test_class = "org.tensorflow.lite.InterpreterFlexTest",
     visibility = ["//visibility:private"],

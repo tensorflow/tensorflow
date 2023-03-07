@@ -89,9 +89,6 @@ cc_library_with_tflite_with_c_headers_test(
     name = "stable_delegate",
     hdrs = ["stable_delegate.h"],
     generate_opaque_delegate_target = True,
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = ["//tensorflow/lite/core/experimental/acceleration/configuration/c:stable_delegate"],
 )

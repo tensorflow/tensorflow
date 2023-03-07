@@ -140,6 +140,34 @@ TEST_F(BlockingValidatorRunnerTest, SucceedWithFdCloexecEmbeddedValidation) {
   }
 }
 
+TEST_F(BlockingValidatorRunnerTest, SucceedWithBufferModel) {
+  if (!should_perform_test_) {
+    std::cerr << "Skipping test";
+    return;
+  }
+
+  options_.model_buffer =
+      g_tflite_acceleration_embedded_mobilenet_validation_model;
+  options_.model_size =
+      g_tflite_acceleration_embedded_mobilenet_validation_model_len;
+  options_.model_path.clear();
+
+  BlockingValidatorRunner runner(options_);
+  ASSERT_EQ(runner.Init(), kMinibenchmarkSuccess);
+  FlatBufferBuilder fbb;
+  fbb.Finish(CreateTFLiteSettings(fbb));
+
+  std::vector<FlatBufferBuilder> results = runner.TriggerValidation(
+      {flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer())});
+  EXPECT_THAT(results, testing::Not(testing::IsEmpty()));
+  for (auto& result : results) {
+    const BenchmarkEvent* event =
+        GetRoot<BenchmarkEvent>(result.GetBufferPointer());
+    EXPECT_EQ(event->event_type(), BenchmarkEventType_END);
+    EXPECT_TRUE(event->result()->ok());
+  }
+}
+
 TEST_F(BlockingValidatorRunnerTest, SucceedWithFdModelCustomValidation) {
   if (!should_perform_test_) {
     std::cerr << "Skipping test";

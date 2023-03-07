@@ -94,7 +94,6 @@ tf_py_test(
     tags = [
         "no_pip",  # TODO(b/250108043)
         "no_windows",  # TODO(b/201457117)
-        "notsan",  # TODO(b/74395663)
     ],
     deps = [
         ":checkpoint",
@@ -132,9 +131,6 @@ tf_py_test(
 tf_py_test(
     name = "checkpoint_with_v1_optimizers_test",
     srcs = ["checkpoint_with_v1_optimizers_test.py"],
-    tags = [
-        "notsan",  # b/74395663
-    ],
     deps = [
         ":checkpoint",
         "//tensorflow/python:framework_ops",

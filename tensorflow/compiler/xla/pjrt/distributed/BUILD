@@ -68,9 +68,6 @@ cc_library(
 xla_cc_test(
     name = "service_test",
     srcs = ["service_test.cc"],
-    tags = [
-        "nomsan",  # b/163629207
-    ],
     deps = [
         ":protocol_proto_cc",
         ":service",
@@ -135,9 +132,6 @@ xla_cc_test(
     name = "client_server_test",
     size = "small",
     srcs = ["client_server_test.cc"],
-    tags = [
-        "notsan",  # Occassionally times out.
-    ],
     deps = [
         ":client",
         ":distributed",

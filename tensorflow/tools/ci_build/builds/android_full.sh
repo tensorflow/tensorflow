@@ -67,6 +67,8 @@ done
 echo "========== Building TensorFlow Android Jar and Demo =========="
 bazel --bazelrc=/dev/null build --config=monolithic --fat_apk_cpu=${CPUS} \
     --compilation_mode=opt --cxxopt=-std=c++17 \
+    --define=android_dexmerger_tool=d8_dexmerger \
+    --define=android_incremental_dexing_tool=d8_dexbuilder \
     --distinct_host_configuration=true \
     --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
     --spawn_strategy=sandboxed --genrule_strategy=sandboxed \

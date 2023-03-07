@@ -375,7 +375,6 @@ cuda_py_test(
     tags = [
         "no_cuda_asan",  # b/173825938
         "no_windows",  #TODO(b/139745667)
-        "notsan",  #TODO(b/139745667)
     ],
     xla_tags = [
         "no_cuda_asan",  # times out
@@ -418,9 +417,6 @@ cuda_py_test(
     size = "small",
     srcs = ["core_test.py"],
     python_version = "PY3",
-    tags = [
-        "notsan",  # TODO(b/183962087)
-    ],
     deps = [
         ":context",
         ":core",

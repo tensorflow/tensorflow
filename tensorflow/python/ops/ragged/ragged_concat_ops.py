@@ -254,12 +254,19 @@ def _ragged_stack_concat_axis_1(rt_inputs, stack_values):
   """
   num_inputs = len(rt_inputs)
 
+  nrows_checks = []
   rt_nrows = rt_inputs[0].nrows()
-  nrows_msg = 'Input tensors have incompatible shapes.'
-  nrows_checks = [
-      check_ops.assert_equal(rt.nrows(), rt_nrows, message=nrows_msg)
-      for rt in rt_inputs[1:]
-  ]
+  for index, rt in enumerate(rt_inputs[1:]):
+    nrows_checks.append(
+        check_ops.assert_equal(
+            rt_nrows,
+            rt.nrows(),
+            message=(
+                f'Input tensors at index 0 (=x) and {index+1} (=y) have'
+                ' incompatible shapes.'
+            ),
+        )
+    )
 
   with ops.control_dependencies(nrows_checks):
     # Concatenate the inputs together to put them in a single ragged tensor.

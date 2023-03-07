@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "tensorflow/lite/core/async/backend_async_kernel_interface.h"
-#include "tensorflow/lite/core/async/common.h"
+#include "tensorflow/lite/core/async/c/types.h"
 
 namespace tflite {
 namespace async {

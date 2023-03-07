@@ -21,23 +21,16 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.types import core
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
-
-# Loaded lazily due to a circular dependency
-# ops->tensor_conversion_registry->constant_op->ops.
-constant_op = lazy_loader.LazyLoader(
-    "constant_op", globals(),
-    "tensorflow.python.framework.constant_op")
 
 
 _tensor_conversion_func_registry = collections.defaultdict(list)
 _tensor_conversion_func_cache = {}
 _tensor_conversion_func_lock = threading.Lock()
 
-# Instances of these types are always converted using
-# `_default_conversion_function`.
-_UNCONVERTIBLE_TYPES = (
+# Instances of these types should only be converted by internally-registered
+# conversion functions.
+_CONSTANT_OP_CONVERTIBLES = (
     int,
     float,
     np.generic,
@@ -45,12 +38,45 @@ _UNCONVERTIBLE_TYPES = (
 )
 
 
-def _default_conversion_function(value, dtype, name, as_ref):
-  del as_ref  # Unused.
-  return constant_op.constant(value, dtype, name=name)
-
-
 # TODO(josh11b): Add ctx argument to conversion_func() signature.
+def register_tensor_conversion_function_internal(base_type,
+                                                 conversion_func,
+                                                 priority=100):
+  """Internal version of register_tensor_conversion_function.
+
+  See docstring of `register_tensor_conversion_function` for details.
+
+  The internal version of the function allows registering conversions
+  for types in the _UNCONVERTIBLE_TYPES tuple.
+
+  Args:
+    base_type: The base type or tuple of base types for all objects that
+      `conversion_func` accepts.
+    conversion_func: A function that converts instances of `base_type` to
+      `Tensor`.
+    priority: Optional integer that indicates the priority for applying this
+      conversion function. Conversion functions with smaller priority values run
+      earlier than conversion functions with larger priority values. Defaults to
+      100.
+
+  Raises:
+    TypeError: If the arguments do not have the appropriate type.
+  """
+  base_types = base_type if isinstance(base_type, tuple) else (base_type,)
+  if any(not isinstance(x, type) for x in base_types):
+    raise TypeError("Argument `base_type` must be a type or a tuple of types. "
+                    f"Obtained: {base_type}")
+  del base_types  # Only needed for validation.
+  if not callable(conversion_func):
+    raise TypeError("Argument `conversion_func` must be callable. Received "
+                    f"{conversion_func}.")
+
+  with _tensor_conversion_func_lock:
+    _tensor_conversion_func_registry[priority].append(
+        (base_type, conversion_func))
+    _tensor_conversion_func_cache.clear()
+
+
 @tf_export("register_tensor_conversion_function")
 def register_tensor_conversion_function(base_type,
                                         conversion_func,
@@ -97,18 +123,12 @@ def register_tensor_conversion_function(base_type,
   if any(not isinstance(x, type) for x in base_types):
     raise TypeError("Argument `base_type` must be a type or a tuple of types. "
                     f"Obtained: {base_type}")
-  if any(issubclass(x, _UNCONVERTIBLE_TYPES) for x in base_types):
+  if any(issubclass(x, _CONSTANT_OP_CONVERTIBLES) for x in base_types):
     raise TypeError("Cannot register conversions for Python numeric types and "
                     "NumPy scalars and arrays.")
   del base_types  # Only needed for validation.
-  if not callable(conversion_func):
-    raise TypeError("Argument `conversion_func` must be callable. Received "
-                    f"{conversion_func}.")
-
-  with _tensor_conversion_func_lock:
-    _tensor_conversion_func_registry[priority].append(
-        (base_type, conversion_func))
-    _tensor_conversion_func_cache.clear()
+  register_tensor_conversion_function_internal(
+      base_type, conversion_func, priority)
 
 
 def get(query):
@@ -120,9 +140,6 @@ def get(query):
   Returns:
     A list of conversion functions in increasing order of priority.
   """
-  if issubclass(query, _UNCONVERTIBLE_TYPES):
-    return [(query, _default_conversion_function)]
-
   conversion_funcs = _tensor_conversion_func_cache.get(query)
   if conversion_funcs is None:
     with _tensor_conversion_func_lock:
@@ -187,8 +204,9 @@ def convert(value,
   if preferred_dtype is not None:
     preferred_dtype = dtypes.as_dtype(preferred_dtype)
 
-  if isinstance(value, core.TensorProtocol):
-    return value.__tf_tensor__(dtype, name)
+  overload = getattr(value, "__tf_tensor__", None)
+  if overload is not None:
+    return overload(dtype, name)  #  pylint: disable=not-callable
 
   for base_type, conversion_func in get(type(value)):
     # If dtype is None but preferred_dtype is not None, we try to

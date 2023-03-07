@@ -26,7 +26,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager.polymorphic_function import monomorphic_function
+from tensorflow.python.eager.polymorphic_function import atomic_function
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.eager.polymorphic_function import quarantine
 from tensorflow.python.framework import config
@@ -2028,9 +2028,9 @@ class FunctionCallbackTest(test.TestCase, parameterized.TestCase):
   def testClearFunctionCallbacks(self):
     quarantine.add_function_callback(lambda f: None)
     quarantine.add_function_callback(lambda f: None)
-    self.assertLen(monomorphic_function._function_callbacks, 2)
+    self.assertLen(atomic_function.function_callbacks, 2)
     quarantine.clear_function_callbacks()
-    self.assertEmpty(monomorphic_function._function_callbacks)  # pylint:disable=protected-access
+    self.assertEmpty(atomic_function.function_callbacks)
 
   @test_util.run_in_graph_and_eager_modes
   def testBackwardNoneGradient(self):

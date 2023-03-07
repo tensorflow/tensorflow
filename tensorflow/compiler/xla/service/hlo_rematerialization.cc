@@ -1199,7 +1199,7 @@ Status MemoryUsageTracker::AddRematerializedInstruction(
       }
       default: {
         LOG(FATAL) << "Unsupported indirect instruction with opcode "
-                   << HloOpcodeString(indirect_user->instruction->opcode());
+                   << indirect_user->instruction->opcode();
         break;
       }
     }

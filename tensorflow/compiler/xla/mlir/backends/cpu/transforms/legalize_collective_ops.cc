@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/Utils/Utils.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Utils/StaticValueUtils.h"  // from @llvm-project
@@ -181,9 +182,9 @@ class AllToAllLowering : public OpRewritePattern<mhlo::AllToAllOp> {
         dsts.push_back(CreateEmptyLike(rewriter, op.getLoc(), operand));
       }
     } else {
-      auto sizes =
-          getAsValues(b, b.getLoc(),
-                      tensor::getMixedSizes(b, op.getLoc(), op->getOperand(0)));
+      auto sizes = getValueOrCreateConstantIndexOp(
+          b, b.getLoc(),
+          tensor::getMixedSizes(b, op.getLoc(), op->getOperand(0)));
       uint64_t split_dimension = *op.getSplitDimension();
       Value split_count = b.create<arith::ConstantIndexOp>(*op.getSplitCount());
       sizes[split_dimension] = b.createOrFold<arith::DivUIOp>(

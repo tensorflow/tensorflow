@@ -1033,6 +1033,7 @@ py_library(
         ":versions",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:control_flow_util",
+        "//tensorflow/python:handle_data_util",
         "//tensorflow/python:platform",
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:context",
@@ -1138,7 +1139,6 @@ py_library(
         "//tensorflow/python/autograph",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
-        "//tensorflow/python/eager:graph_only_ops",
         "//tensorflow/python/platform",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/util",
@@ -1292,6 +1292,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":tensor_util",
+        "//tensorflow/python:control_flow_case",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:pywrap_tf_session",
     ],
@@ -1762,7 +1763,6 @@ cuda_py_test(
     shard_count = 10,
     tags = [
         "no_rocm",
-        "noasan",
         "optonly",
     ],
     deps = [
@@ -2190,7 +2190,10 @@ cuda_py_test(
     srcs = ["test_util_test.py"],
     main = "test_util_test.py",
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         ":combinations",
         ":errors",
@@ -2207,6 +2210,7 @@ cuda_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/util/protobuf:compare_test_proto_py",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -2225,7 +2229,6 @@ tf_py_test(
         "no_windows",
         "noasan",  # TODO(b/149948895): Re-enable.
         "nomsan",  # TODO(b/149948895): Re-enable.
-        "notsan",  # TODO(b/149948895): Re-enable.
     ],
     deps = [
         ":test_lib",

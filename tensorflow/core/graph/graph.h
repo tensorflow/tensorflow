@@ -750,6 +750,22 @@ class Graph {
     return construction_context_;
   }
 
+  // Set full type information for a node given its name.
+  // Note that if this is called in a loop iterating over all the nodes
+  // elsewhere it would be O(n^2) complexity. If this case was important in the
+  // future, an alternative method could be added that takes in a flat_hash_map
+  // of name: type and simply iterates through the graph once and annotates all
+  // nodes.
+  void SetNodeType(StringPiece name, const FullTypeDef& type);
+
+  // Get full type information for a node given its name.
+  // Note that if this is called in a loop iterating over all the nodes
+  // elsewhere it would be O(n^2) complexity. If this case was important in the
+  // future, an alternative method could be added that takes in flat_hash_map of
+  // name: type and simply iterates through the graph once and stores all the
+  // information in the map.
+  void NodeType(StringPiece name, const FullTypeDef** result);
+
   // TODO(josh11b): uint64 hash() const;
 
  private:

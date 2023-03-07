@@ -250,7 +250,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:all_gather_decomposer",
         "//tensorflow/compiler/xla/service:all_reduce_promotion",
         "//tensorflow/compiler/xla/service:all_to_all_decomposer",
-        "//tensorflow/compiler/xla/service:bfloat16_normalization",
+        "//tensorflow/compiler/xla/service:float_normalization",
         "//tensorflow/compiler/xla/service:bitcast_dtypes_expander",
         "//tensorflow/compiler/xla/service:broadcast_canonicalizer",
         "//tensorflow/compiler/xla/service:copy_insertion",

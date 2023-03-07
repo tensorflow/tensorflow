@@ -14,6 +14,7 @@ py_library(
     deps = [
         ":coordinator_context",
         ":metric_utils",
+        ":remote_value",
         ":utils",
         ":values",
         ":watchdog",
@@ -42,6 +43,13 @@ py_library(
         "coordinator_context.py",
     ],
     srcs_version = "PY3",
+    deps = [":remote_value"],
+)
+
+py_library(
+    name = "remote_value",
+    srcs = ["remote_value.py"],
+    srcs_version = "PY3",
     deps = [],
 )
 
@@ -50,6 +58,7 @@ py_library(
     srcs = ["values.py"],
     srcs_version = "PY3",
     deps = [
+        ":remote_value",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
@@ -78,7 +87,7 @@ distribute_py_test(
     ],
     deps = [
         ":cluster_coordinator",
-        ":values",
+        ":remote_value",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -109,7 +118,6 @@ tf_py_test(
         "no_oss",  # TODO(b/219580021)
         "noasan",  # Multi-process runner does not work with test sanitizers
         "nomac",  # TODO(b/177065434)
-        "notsan",  # Multi-process runner does not work with test sanitizers
         "no_rocm", # Added SR 01/12/2021
     ],
     deps = [
@@ -203,9 +211,7 @@ tf_py_test(
     shard_count = 3,
     tags = [
         "no_oss",  # TODO(b/219580021)
-        "noasan",  # Multi-process runner does not work with test sanitizers
         "nomac",  # TODO(b/177065434)
-        "notsan",  # Multi-process runner does not work with test sanitizers
     ],
     deps = [
         "//tensorflow/python/distribute:multi_worker_test_base",

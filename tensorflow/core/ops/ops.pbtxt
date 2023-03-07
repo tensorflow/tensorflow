@@ -21351,26 +21351,6 @@ op {
   output_arg {
     name: "components"
     type_list_attr: "output_types"
-    experimental_full_type {
-      type_id: TFT_DATASET
-      args {
-        type_id: TFT_FOR_EACH
-        args {
-          type_id: TFT_PRODUCT
-        }
-        args {
-          type_id: TFT_TENSOR
-          args {
-            type_id: TFT_VAR
-            s: "output_types"
-          }
-        }
-        args {
-          type_id: TFT_VAR
-          s: "output_types"
-        }
-      }
-    }
   }
   attr {
     name: "output_types"

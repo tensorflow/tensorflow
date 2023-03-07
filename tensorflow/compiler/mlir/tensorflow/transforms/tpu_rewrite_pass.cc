@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <type_traits>
 
 #include "absl/strings/match.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -116,7 +116,8 @@ LogicalResult EncapsulateFuncAndSerialize(func::FuncOp entry_func,
     // Find any SymbolRefAttr in func that maps to a FuncOp. We need to clone
     // all found FuncOps to new_module to make sure new_module is
     // self-contained.
-    Optional<SymbolTable::UseRange> uses = SymbolTable::getSymbolUses(func);
+    std::optional<SymbolTable::UseRange> uses =
+        SymbolTable::getSymbolUses(func);
     assert(uses && "expected to be able to collect symbol uses");
     for (SymbolTable::SymbolUse use : *uses) {
       func::FuncOp referenced_func = entry_module_table.lookup<func::FuncOp>(
@@ -284,7 +285,7 @@ LogicalResult SetMetadataProtoRetvals(
 // TODO(lyandy): Support session handle and guaranteed consts.
 LogicalResult SetMetadataProtoFromClusterFuncOp(
     tf_device::ClusterFuncOp op, int num_replicas, int num_cores_per_replica,
-    llvm::Optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
+    std::optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
     tensorflow::tpu::TPUCompileMetadataProto* metadata) {
   if (auto options_attr =
           op->getAttrOfType<StringAttr>("tpu_compile_options_proto")) {
@@ -337,7 +338,7 @@ tf_device::LaunchOp WrapOpInLaunch(OpBuilder* builder, Location loc,
 Operation* BuildCompileOp(
     tf_device::ClusterFuncOp cluster_func, int num_replicas,
     int num_cores_per_replica, llvm::StringRef compilation_device,
-    llvm::Optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
+    std::optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
     OpBuilder* builder, bool tpu_compile_metadata_debug) {
   // Set metadata from attributes.
   tensorflow::tpu::TPUCompileMetadataProto metadata;

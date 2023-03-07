@@ -182,6 +182,25 @@ SmallVector<Range> getIterationDomainForTensor(OpBuilder &b, Location loc,
   }));
 }
 
+static void getDstStyleOpEffectsImpl(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects,
+    ValueRange results, const OpOperandVector &inputOperands,
+    const OpOperandVector &outputOperands) {
+  for (auto *operand : inputOperands) {
+    if (!operand->get().getType().isa<MemRefType>()) continue;
+    effects.emplace_back(MemoryEffects::Read::get(), operand->get(),
+                         SideEffects::DefaultResource::get());
+  }
+  for (auto *operand : outputOperands) {
+    if (!operand->get().getType().isa<MemRefType>()) continue;
+    effects.emplace_back(MemoryEffects::Read::get(), operand->get(),
+                         SideEffects::DefaultResource::get());
+    effects.emplace_back(MemoryEffects::Write::get(), operand->get(),
+                         SideEffects::DefaultResource::get());
+  }
+}
+
 }  // namespace
 }  // namespace mlir
 
@@ -533,6 +552,13 @@ LogicalResult ConcatenateOp::verify() {
   return verifyDestinationStyleOp(getOperation());
 }
 
+void ConcatenateOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
+                           getDpsInputOperands(), getDpsInitOperands());
+}
+
 //===----------------------------------------------------------------------===//
 // DynamicBroadcastInDimOp
 //===----------------------------------------------------------------------===//
@@ -679,6 +705,13 @@ FailureOr<Value> DynamicBroadcastInDimOp::generateResultTileValue(
       .front()
       ->getResults()
       .front();
+}
+
+void DynamicBroadcastInDimOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
+                           getDpsInputOperands(), getDpsInitOperands());
 }
 
 //===----------------------------------------------------------------------===//
@@ -835,6 +868,13 @@ FailureOr<Value> ScatterOp::generateResultTileValue(
   return getTiledImplementation(b, offsets, sizes).front()->getResult(0);
 }
 
+void ScatterOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
+                           getDpsInputOperands(), getDpsInitOperands());
+}
+
 //===----------------------------------------------------------------------===//
 // GatherOp
 //===----------------------------------------------------------------------===//
@@ -924,6 +964,13 @@ FailureOr<Value> GatherOp::generateResultTileValue(
     ArrayRef<OpFoldResult> sizes) {
   assert(resultNumber == 0 && "resultNumber > 0 not implemented");
   return getTiledImplementation(b, offsets, sizes).front()->getResult(0);
+}
+
+void GatherOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
+                           getDpsInputOperands(), getDpsInitOperands());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1168,6 +1215,13 @@ FailureOr<Value> SortOp::generateResultTileValue(OpBuilder &b,
       ->getResult(resultNumber);
 }
 
+void SortOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
+                           getDpsInputOperands(), getDpsInitOperands());
+}
+
 //===----------------------------------------------------------------------===//
 // ReverseOp
 //===----------------------------------------------------------------------===//
@@ -1280,6 +1334,13 @@ OpFoldResult ReverseOp::fold(
     if (inputType.getDimSize(getReverseDimensions()[i]) != 1) return nullptr;
   }
   return getInput();
+}
+
+void ReverseOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
+                           getDpsInputOperands(), getDpsInitOperands());
 }
 
 }  // namespace thlo

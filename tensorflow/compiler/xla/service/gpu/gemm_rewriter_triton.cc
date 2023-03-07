@@ -16,12 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 
 #include <array>
+#include <cstdint>
 #include <stack>
 #include <string>
 #include <tuple>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
@@ -243,15 +245,34 @@ Status DimensionOrder::HandleBitcast(const HloInstruction* hlo) {
 }
 
 Status DimensionOrder::HandleCopyOrTranspose(const HloInstruction* hlo) {
-  const Layout& operand_layout = hlo->operand(0)->shape().layout();
+  // Every HLO dimension can correspond to a group of subdimensions in
+  // dim_order_. For the easier handling of permutations: group dim_order_ by
+  // dimension, apply permutations, then finally remove the grouping.
+  // Group subdimensions by iterating over them in the same order as over
+  // dimensions and matching by total size.
+  std::vector<DimOrderVector> out_physical;
+  out_physical.reserve(hlo->shape().rank());
+  auto dim_order_it = dim_order_.cbegin();
+  for (int64_t dim_index : hlo->shape().layout().minor_to_major()) {
+    const int64_t dim_size = hlo->shape().dimensions(dim_index);
+    int64_t subdim_size_accumulator = 1;
+    DimOrderVector subdim_group;
+    do {
+      subdim_size_accumulator *= dim_order_it->size;
+      subdim_group.push_back(*dim_order_it);
+      ++dim_order_it;
+    } while (subdim_size_accumulator < dim_size);
+    CHECK_EQ(subdim_size_accumulator, dim_size);
+    out_physical.push_back(subdim_group);
+  }
   // Out physical -> out logical.
-  DimOrderVector out_logical;
-  out_logical.resize(dim_order_.size());
-  for (int i = 0; i < dim_order_.size(); ++i) {
-    out_logical[hlo->shape().layout().minor_to_major(i)] = dim_order_[i];
+  std::vector<DimOrderVector> out_logical;
+  out_logical.resize(out_physical.size());
+  for (int i = 0; i < out_physical.size(); ++i) {
+    out_logical[hlo->shape().layout().minor_to_major(i)] = out_physical[i];
   }
   // Out logical -> operand logical.
-  DimOrderVector operand_logical;
+  std::vector<DimOrderVector> operand_logical;
   if (hlo->opcode() == HloOpcode::kTranspose) {
     auto transpose = ::xla::Cast<HloTransposeInstruction>(hlo);
     operand_logical.resize(out_logical.size());
@@ -264,9 +285,13 @@ Status DimensionOrder::HandleCopyOrTranspose(const HloInstruction* hlo) {
     CHECK(ShapeUtil::SameDimensions(hlo->shape(), operand_shape));
     operand_logical = out_logical;
   }
-  // Operand logical -> operand physical.
-  for (int i = 0; i < dim_order_.size(); ++i) {
-    dim_order_[i] = operand_logical[operand_layout.minor_to_major(i)];
+  // Operand logical -> operand physical and ungroup subdimensions.
+  const Layout& operand_layout = hlo->operand(0)->shape().layout();
+  dim_order_.clear();
+  for (int64_t dim_idx : operand_layout.minor_to_major()) {
+    for (const DimDescription& subdim : operand_logical[dim_idx]) {
+      dim_order_.push_back(subdim);
+    }
   }
   return OkStatus();
 }
@@ -337,6 +362,7 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
     // Original instruction -> fused one.
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>
         old_to_new_mapping;
+    absl::flat_hash_set<const HloInstruction*> visited;
     std::vector<HloInstruction*> call_operands;
     // Traverse and fuse dot() inputs bottom-up starting from direct operands.
     // If an input is not fusible stop there and make it a parameter of the new
@@ -349,7 +375,7 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
       bool top_is_ready_to_fuse = true;
       HloInstruction* hlo = to_fuse.top();
       for (HloInstruction* operand : hlo->mutable_operands()) {
-        if (!old_to_new_mapping.contains(operand)) {
+        if (visited.insert(operand).second) {
           DimensionOrder operand_dim_order = [&] {
             // Direct dot inputs are described by default dimension orders.
             if (operand == dot->operand(0)) {

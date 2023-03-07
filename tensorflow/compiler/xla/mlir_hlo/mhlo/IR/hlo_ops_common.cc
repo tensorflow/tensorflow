@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "mhlo/IR/hlo_ops_common.h"
 
+#include <optional>
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "mlir/IR/Builders.h"
@@ -138,11 +140,11 @@ void printWindowAttribute(OpAsmPrinter &p, DenseElementsAttr attribute) {
 }  // namespace
 
 void printWindowAttributes(OpAsmPrinter &p, Operation * /*op*/,
-                           llvm::Optional<DenseIntElementsAttr> windowStrides,
-                           llvm::Optional<DenseIntElementsAttr> padding,
-                           llvm::Optional<DenseIntElementsAttr> lhsDilation,
-                           llvm::Optional<DenseIntElementsAttr> rhsDilation,
-                           llvm::Optional<DenseElementsAttr> windowReversal) {
+                           std::optional<DenseIntElementsAttr> windowStrides,
+                           std::optional<DenseIntElementsAttr> padding,
+                           std::optional<DenseIntElementsAttr> lhsDilation,
+                           std::optional<DenseIntElementsAttr> rhsDilation,
+                           std::optional<DenseElementsAttr> windowReversal) {
   using pair_t = std::pair<DenseElementsAttr, StringRef>;
   std::array<pair_t, 5> printedAttributes = {{
       {windowStrides ? *windowStrides : nullptr, "stride"},

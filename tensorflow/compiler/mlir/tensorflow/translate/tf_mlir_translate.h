@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_TF_MLIR_TRANSLATE_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_TF_MLIR_TRANSLATE_H_
 
+#include <optional>
 #include <string>
 #include <unordered_set>
 
@@ -42,7 +43,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirTranslateFunction(
     llvm::StringRef input, absl::string_view debug_info_file,
     const std::vector<std::string>& input_arrays,
     const std::vector<std::string>& input_dtypes,
-    const std::vector<llvm::Optional<std::vector<int>>>& input_shapes,
+    const std::vector<std::optional<std::vector<int>>>& input_shapes,
     const std::vector<std::string>& output_arrays,
     const std::vector<std::string>& control_output_arrays,
     bool prune_unused_nodes, bool convert_legacy_fed_inputs,
@@ -115,7 +116,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    MLIRImportOptions options, bool lift_variables = true,
+    MLIRImportOptions options,
     std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle =
         nullptr);
 

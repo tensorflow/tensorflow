@@ -112,6 +112,18 @@ mlir::LogicalResult AllReduceStartOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// AllToAllStartOp
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult AllToAllStartOp::verify() {
+  AllToAllStartOp op = *this;
+  return mlir::hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
+                                        /*allGroupsMustHaveSameSize=*/true,
+                                        /*useGlobalDeviceIds=*/false,
+                                        /*expectedGroupSize=*/std::nullopt);
+}
+
+//===----------------------------------------------------------------------===//
 // CollectivePermuteStartOp
 //===----------------------------------------------------------------------===//
 
@@ -131,6 +143,25 @@ mlir::LogicalResult AllGatherStartOp::verify() {
                                         /*allGroupsMustHaveSameSize=*/true,
                                         op.getUseGlobalDeviceIds(),
                                         /*expectedGroupSize=*/std::nullopt);
+}
+
+//===----------------------------------------------------------------------===//
+// ReduceScatterStartOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ReduceScatterStartOp::verify() {
+  ReduceScatterStartOp op = *this;
+  if (failed(hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
+                                      /*allGroupsMustHaveSameSize=*/true,
+                                      op.getUseGlobalDeviceIds(),
+                                      /*expectedGroupSize=*/std::nullopt)))
+    return failure();
+  if (failed(mlir::hlo::verifyReduceScatter(
+          op, /*operandTypes=*/op.getInputs().getTypes(),
+          /*resultTypes=*/op.getOutputs().getTypes(),
+          /*scatterDimension=*/op.getScatterDimension())))
+    return failure();
+  return success();
 }
 
 }  // namespace lmhlo_gpu

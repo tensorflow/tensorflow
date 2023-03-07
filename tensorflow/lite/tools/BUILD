@@ -6,6 +6,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -204,6 +205,7 @@ cc_test(
 cc_library_with_tflite(
     name = "verifier",
     hdrs = ["verifier.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     tflite_deps = [
         "//tensorflow/lite:framework",
@@ -226,6 +228,7 @@ cc_library_with_tflite(
 cc_library_with_tflite(
     name = "verifier_internal",
     hdrs = ["verifier_internal.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     visibility = verifier_internal_visibility_allowlist() + [
         "//tensorflow/lite/core/shims:__subpackages__",

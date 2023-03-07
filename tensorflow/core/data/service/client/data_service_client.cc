@@ -341,6 +341,8 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
     StatusOr<std::unique_ptr<DataServiceWorkerClient>> worker =
         CreateWorkerClient(default_protocol, task_info);
     if (worker.ok()) {
+      LOG(INFO) << "Client " << params_.address
+                << " is participating in the \"data_transfer\" experiment.";
       return worker;
     }
     LOG(ERROR) << "failed to start client for data transfer protocol '"

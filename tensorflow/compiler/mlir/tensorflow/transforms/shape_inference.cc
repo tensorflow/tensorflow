@@ -229,7 +229,7 @@ bool NeedsCastBack(OpOperand& use, Dialect* tf_dialect) {
          !IsSupportedNonTFOp(use.getOwner());
 }
 
-TensorType CreateTensorType(llvm::Optional<llvm::ArrayRef<int64_t>> shape,
+TensorType CreateTensorType(std::optional<llvm::ArrayRef<int64_t>> shape,
                             Type element_type) {
   if (shape.has_value())
     return tensorflow::GetTypeFromTFTensorShape(shape.value(), element_type);
@@ -1480,7 +1480,7 @@ bool ShapeInference::InferShapeForVarHandleOp(VarHandleOp op) {
 
 // Helper function for creating a Window proto from user-supplied data.
 // Returns std::nullopt if the user-supplied data was invalid.
-llvm::Optional<xla::Window> InferWindowFromDimensions(
+std::optional<xla::Window> InferWindowFromDimensions(
     llvm::SmallVector<int64_t> window_dimensions,
     llvm::SmallVector<int64_t> window_strides,
     llvm::SmallVector<std::pair<int64_t, int64_t>> padding,
@@ -1537,7 +1537,7 @@ llvm::Optional<xla::Window> InferWindowFromDimensions(
   return window;
 }
 
-llvm::Optional<RankedTensorType> InferWindowOutputShape(
+std::optional<RankedTensorType> InferWindowOutputShape(
     const ShapedType& base_shape, const xla::Window& window,
     Type element_type) {
   if (window.dimensions_size() != base_shape.getRank()) {
@@ -1745,7 +1745,7 @@ bool ShapeInference::InferShapeForXlaGatherOp(XlaGatherOp op) {
   return RefineResultType(op, op.getOutput(), *refined_type);
 }
 
-llvm::Optional<RankedTensorType> InferXlaConvOutputShape(
+std::optional<RankedTensorType> InferXlaConvOutputShape(
     llvm::SmallVector<int64_t> input_tensor_dims,
     llvm::SmallVector<int64_t> kernel_tensor_dims,
     llvm::SmallVector<int64_t> window_strides,
@@ -2228,14 +2228,14 @@ bool ShapeInference::InferShapeForWhile(WhileOpTy op,
           GetElementTypeFromOperand(body_result_type, result_type);
       potential_refined_type = CreateTensorType(
           body_result_type.hasRank() ? body_result_type.getShape()
-                                     : llvm::Optional<ArrayRef<int64_t>>(),
+                                     : std::optional<ArrayRef<int64_t>>(),
           element_type);
     } else {
       TensorType operand_type = std::get<0>(entry).template cast<TensorType>();
       Type element_type = GetElementTypeFromOperand(operand_type, result_type);
       potential_refined_type = CreateTensorType(
           result_type.hasRank() ? result_type.getShape()
-                                : llvm::Optional<ArrayRef<int64_t>>(),
+                                : std::optional<ArrayRef<int64_t>>(),
           element_type);
     }
     changed |= RefineResultType(op, result, potential_refined_type);
@@ -2590,7 +2590,7 @@ llvm::SmallVector<Type, 4> GetWhileCompatibleTypes(
           operand_type.cast<TensorType>(), region_argument_type);
       Type potential_refined_type = CreateTensorType(
           region_argument_type.hasRank() ? region_argument_type.getShape()
-                                         : llvm::Optional<ArrayRef<int64_t>>(),
+                                         : std::optional<ArrayRef<int64_t>>(),
           element_type);
       types.push_back(potential_refined_type);
     }

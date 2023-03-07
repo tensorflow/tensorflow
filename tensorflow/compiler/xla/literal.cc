@@ -1294,8 +1294,9 @@ std::optional<int64_t> LiteralBase::GetIntegralAsS64(
 
 std::optional<double> LiteralBase::GetAsDouble(
     absl::Span<const int64_t> multi_index) const {
-  CHECK(LayoutUtil::IsDenseArray(shape()));
-  switch (shape().element_type()) {
+  const Shape& s = shape();
+  CHECK(LayoutUtil::IsDenseArray(s));
+  switch (s.element_type()) {
     case F8E5M2:
       return static_cast<double>(Get<tsl::float8_e5m2>(multi_index));
     case F8E4M3FN:
@@ -1311,6 +1312,47 @@ std::optional<double> LiteralBase::GetAsDouble(
     default:
       return std::nullopt;
   }
+}
+
+std::optional<double> LiteralBase::GetSumAsDouble(
+    absl::Span<const int64_t> linear_indices) const {
+  const Shape& s = shape();
+  CHECK(LayoutUtil::IsDenseArray(s));
+  double sum = 0.0;
+
+#define SUMLOOP(native_type)                   \
+  do {                                         \
+    auto d = root_piece().data<native_type>(); \
+    for (const int64_t idx : linear_indices) { \
+      sum += static_cast<double>(d[idx]);      \
+    }                                          \
+  } while (0)
+
+  switch (s.element_type()) {
+    case F8E5M2:
+      SUMLOOP(tsl::float8_e5m2);
+      break;
+    case F8E4M3FN:
+      SUMLOOP(tsl::float8_e4m3fn);
+      break;
+    case F16:
+      SUMLOOP(half);
+      break;
+    case F32:
+      SUMLOOP(float);
+      break;
+    case F64:
+      SUMLOOP(double);
+      break;
+    case BF16:
+      SUMLOOP(bfloat16);
+      break;
+    default:
+      return std::nullopt;
+  }
+#undef SUMLOOP
+
+  return sum;
 }
 
 std::optional<complex128> LiteralBase::GetAsComplex128(

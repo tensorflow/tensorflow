@@ -16,6 +16,8 @@ limitations under the License.
 #include <atomic>
 #define EIGEN_USE_THREADS
 
+#include <optional>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -1068,7 +1070,7 @@ void RunHandlerWorkQueue::AddTask(TaskFunction work) {
       run_handler_->step_id(), "inter", std::move(work)));
 }
 
-Optional<TaskFunction> RunHandlerWorkQueue::AddBlockingTask(
+std::optional<TaskFunction> RunHandlerWorkQueue::AddBlockingTask(
     TaskFunction work, bool allow_queuing) {
   LOG_EVERY_N_SEC(ERROR, 10)
       << "RunHandlerWorkQueue::AddBlockingTask() is not supposed to be called.";

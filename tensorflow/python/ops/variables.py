@@ -582,10 +582,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
       A `Tensor` holding the value of this variable after its initializer
       has run.
     """
-    with ops.init_scope():
-      return control_flow_ops.cond(
-          is_variable_initialized(self), self.read_value,
-          lambda: self.initial_value)
+    raise NotImplementedError
 
   @property
   def initial_value(self):
@@ -1576,6 +1573,12 @@ class VariableV1(Variable):
     """
 
   SaveSliceInfo = Variable.SaveSliceInfo
+
+  def initialized_value(self):
+    with ops.init_scope():
+      return control_flow_ops.cond(
+          is_variable_initialized(self), self.read_value,
+          lambda: self.initial_value)
 
 
 # TODO(apassos): do not repeat all comments here

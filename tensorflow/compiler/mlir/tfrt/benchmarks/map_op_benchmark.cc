@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
 #include <string>
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
@@ -47,7 +48,7 @@ std::string Map(llvm::ArrayRef<bool> dynamic_dims,
 
 auto EigenMap() {
   return [](llvm::ArrayRef<Tensor> inputs,
-            llvm::Optional<Eigen::ThreadPoolDevice>) {
+            std::optional<Eigen::ThreadPoolDevice>) {
     Tensor output(DT_FLOAT, {inputs[0].dim_size(0), inputs[0].dim_size(1)});
 
     auto in = inputs[0].tensor<float, 2>();

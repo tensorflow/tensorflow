@@ -1132,7 +1132,7 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
     Status status = AddTensorOrWeights(output_name, output);
     if (!status.ok()) {
       return errors::Create(
-          status.code(),
+          static_cast<absl::StatusCode>(status.code()),
           StrCat("Failed to add output for node: ", node_def.name(), ": ",
                  status.error_message()),
           errors::GetPayloads(status));

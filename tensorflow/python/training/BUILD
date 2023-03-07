@@ -591,9 +591,6 @@ tf_py_test(
     srcs = ["server_lib_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
-    tags = [
-        "noasan",  # TODO(b/161236904): flaky timeout in trying to start gRPC server
-    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -744,7 +741,6 @@ tf_py_test(
     python_version = "PY3",
     tags = [
         "no_oss",  # Test flaky due to port collisions.
-        "notsan",  # data race due to b/62910646
         "oss_serial",
     ],
     deps = [
@@ -921,11 +917,7 @@ tf_py_test(
     size = "medium",
     srcs = ["saver_large_variable_test.py"],
     python_version = "PY3",
-    tags = [
-        "manual",
-        "noasan",  # http://b/30379628
-        "notsan",  # http://b/30379628
-    ],
+    tags = ["manual"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
@@ -941,10 +933,6 @@ tf_py_test(
     size = "medium",
     srcs = ["saver_large_partitioned_variable_test.py"],
     python_version = "PY3",
-    tags = [
-        "noasan",  # http://b/30782289
-        "notsan",  # http://b/30782289
-    ],
     deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -1108,7 +1096,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_windows",  # b/139083295: bfloat16 tests fail on Windows
-        "notsan",
     ],
     xla_tags = [
         "no_cuda_asan",  # times out

@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Path.h"
@@ -62,7 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_graph_optimization_pass.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
@@ -309,7 +308,7 @@ tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
                                     elide_large_elements_attrs));
   }
 
-  llvm::Optional<tensorflow::Session*> session = std::nullopt;
+  std::optional<tensorflow::Session*> session = std::nullopt;
   if (bundle) session = bundle->GetSession();  // NOMUTANTS--it should pass.
 
   if (freeze_tf_graph) {
@@ -361,7 +360,7 @@ void initAllPasses() {
   mlir::registerTensorFlowPasses();
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
-  // These are in compiler/mlir/xla and not part of the above MHLO passes.
+  // These are in compiler/mlir/tf2xla and not part of the above MHLO passes.
   mlir::mhlo::registerTfXlaPasses();
   mlir::mhlo::registerLegalizeTFPass();
   mlir::mhlo::registerLegalizeTfTypesPassPass();

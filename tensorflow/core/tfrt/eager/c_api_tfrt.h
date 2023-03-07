@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_EAGER_C_API_TFRT_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -391,8 +392,10 @@ class TensorHandleInterface
     return ptr->getKind() == kTfrt;
   }
 
+  tensorflow::FullTypeDef FullType() const override { return full_type_; }
+
  private:
-  llvm::Optional<const TensorMetadata*> Metadata() const;
+  std::optional<const TensorMetadata*> Metadata() const;
 
   tensorflow::StatusOr<tensorflow::DataType> ObtainDataTypeFromMetaData(
       const TensorMetadata*) const;
@@ -401,12 +404,14 @@ class TensorHandleInterface
   // is known from the function output signature.
   // Therefore, we can obtain the datatype earlier, before the function
   // execution completes.
-  llvm::Optional<tensorflow::DataType> dtype_;
+  std::optional<tensorflow::DataType> dtype_;
 
   TfrtContext& context_;
 
   // Value of tfrt::TensorHandle.
   Value value_;
+
+  tensorflow::FullTypeDef full_type_;
 };
 
 template <typename T>

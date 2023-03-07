@@ -88,6 +88,20 @@ void TfLiteInterpreterOptionsSetOpResolverV1(
   options->op_resolver_callbacks.user_data = op_resolver_user_data;
 }
 
+void TfLiteInterpreterOptionsSetOpResolverV2(
+    TfLiteInterpreterOptions* options,
+    const TfLiteRegistration_V2* (*find_builtin_op_v2)(void* user_data,
+                                                       TfLiteBuiltinOperator op,
+                                                       int version),
+    const TfLiteRegistration_V2* (*find_custom_op_v2)(void* user_data,
+                                                      const char* op,
+                                                      int version),
+    void* op_resolver_user_data) {
+  options->op_resolver_callbacks.find_builtin_op_v2 = find_builtin_op_v2;
+  options->op_resolver_callbacks.find_custom_op_v2 = find_custom_op_v2;
+  options->op_resolver_callbacks.user_data = op_resolver_user_data;
+}
+
 void TfLiteInterpreterOptionsSetUseNNAPI(TfLiteInterpreterOptions* options,
                                          bool enable) {
   options->use_nnapi = enable;
