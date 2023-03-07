@@ -23,6 +23,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <ostream>
+#include <utility>
 
 #include "absl/numeric/bits.h"
 #include "third_party/eigen3/Eigen/Core"
@@ -55,8 +56,11 @@ class float8_base {
   constexpr bool operator==(const Derived& other) const {
     if (Eigen::numext::isnan(derived()) || Eigen::numext::isnan(other)) {
       return false;
-    } else if ((rep() & 0x7F) == 0) {
-      return (other.rep() & 0x7F) == 0;
+    }
+    auto [lhs_sign, lhs_mag] = SignAndMagnitude(derived());
+    auto [rhs_sign, rhs_mag] = SignAndMagnitude(other);
+    if (lhs_mag == 0 && rhs_mag == 0) {
+      return true;
     }
     return rep() == other.rep();
   }
@@ -105,22 +109,58 @@ class float8_base {
 
   EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator<(
       const Derived& other) const {
-    return float{derived()} < float{other};
+    if (Eigen::numext::isnan(derived()) || Eigen::numext::isnan(other)) {
+      return false;
+    }
+    auto [lhs_sign, lhs_mag] = SignAndMagnitude(derived());
+    auto [rhs_sign, rhs_mag] = SignAndMagnitude(other);
+    if (lhs_mag == 0 && rhs_mag == 0) {
+      return false;
+    }
+    return SignAndMagnitudeToTwosComplement(lhs_sign, lhs_mag) <
+           SignAndMagnitudeToTwosComplement(rhs_sign, rhs_mag);
   }
 
   EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator<=(
       const Derived& other) const {
-    return float{derived()} <= float{other};
+    if (Eigen::numext::isnan(derived()) || Eigen::numext::isnan(other)) {
+      return false;
+    }
+    auto [lhs_sign, lhs_mag] = SignAndMagnitude(derived());
+    auto [rhs_sign, rhs_mag] = SignAndMagnitude(other);
+    if (lhs_mag == 0 && rhs_mag == 0) {
+      return true;
+    }
+    return SignAndMagnitudeToTwosComplement(lhs_sign, lhs_mag) <=
+           SignAndMagnitudeToTwosComplement(rhs_sign, rhs_mag);
   }
 
   EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator>(
       const Derived& other) const {
-    return float{derived()} > float{other};
+    if (Eigen::numext::isnan(derived()) || Eigen::numext::isnan(other)) {
+      return false;
+    }
+    auto [lhs_sign, lhs_mag] = SignAndMagnitude(derived());
+    auto [rhs_sign, rhs_mag] = SignAndMagnitude(other);
+    if (lhs_mag == 0 && rhs_mag == 0) {
+      return false;
+    }
+    return SignAndMagnitudeToTwosComplement(lhs_sign, lhs_mag) >
+           SignAndMagnitudeToTwosComplement(rhs_sign, rhs_mag);
   }
 
   EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator>=(
       const Derived& other) const {
-    return float{derived()} >= float{other};
+    if (Eigen::numext::isnan(derived()) || Eigen::numext::isnan(other)) {
+      return false;
+    }
+    auto [lhs_sign, lhs_mag] = SignAndMagnitude(derived());
+    auto [rhs_sign, rhs_mag] = SignAndMagnitude(other);
+    if (lhs_mag == 0 && rhs_mag == 0) {
+      return true;
+    }
+    return SignAndMagnitudeToTwosComplement(lhs_sign, lhs_mag) >=
+           SignAndMagnitudeToTwosComplement(rhs_sign, rhs_mag);
   }
 
   // Compound assignment.
@@ -149,6 +189,17 @@ class float8_base {
   }
 
  private:
+  static std::pair<uint8_t, uint8_t> SignAndMagnitude(Derived x) {
+    const uint8_t x_abs_bits =
+        Eigen::numext::bit_cast<uint8_t>(Eigen::numext::abs(x));
+    const uint8_t x_bits = Eigen::numext::bit_cast<uint8_t>(x);
+    const uint8_t x_sign = x_bits ^ x_abs_bits;
+    return {x_sign, x_abs_bits};
+  }
+  static int8_t SignAndMagnitudeToTwosComplement(uint8_t sign,
+                                                 uint8_t magnitude) {
+    return magnitude ^ (static_cast<int8_t>(sign) < 0 ? -1 : 0);
+  }
   uint8_t rep_;
 };
 
