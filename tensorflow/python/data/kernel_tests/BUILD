@@ -19,6 +19,8 @@ tf_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_combinations",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor_value",
         "//third_party/py/numpy",
