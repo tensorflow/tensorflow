@@ -435,6 +435,30 @@ func.func @testLess(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i1> {
   func.return %0#0 : tensor<? x i1>
 }
 
+// CHECK-LABEL: testLessInt16
+func.func @testLessInt16(tensor<? x i16>, tensor<? x i16>) -> tensor<? x i1> {
+^bb0(%arg0: tensor<? x i16>, %arg1: tensor<? x i16>):
+  // CHECK: tfl.less(%arg0, %arg1)
+  %0 = "tfl.less"(%arg0, %arg1) : (tensor<? x i16>, tensor<? x i16>) -> tensor<? x i1>
+  func.return %0#0 : tensor<? x i1>
+}
+
+// CHECK-LABEL: testGreaterEqual
+func.func @testGreaterEqual(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i1> {
+^bb0(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>):
+  // CHECK: tfl.greater_equal(%arg0, %arg1)
+  %0 = "tfl.greater_equal"(%arg0, %arg1) : (tensor<? x i32>, tensor<? x i32>) -> tensor<? x i1>
+  func.return %0#0 : tensor<? x i1>
+}
+
+// CHECK-LABEL: testGreaterEqualInt16
+func.func @testGreaterEqualInt16(tensor<? x i16>, tensor<? x i16>) -> tensor<? x i1> {
+^bb0(%arg0: tensor<? x i16>, %arg1: tensor<? x i16>):
+  // CHECK: tfl.greater_equal(%arg0, %arg1)
+  %0 = "tfl.greater_equal"(%arg0, %arg1) : (tensor<? x i16>, tensor<? x i16>) -> tensor<? x i1>
+  func.return %0#0 : tensor<? x i1>
+}
+
 // -----
 
 // CHECK-LABEL: testFloorDivI32
@@ -1086,6 +1110,14 @@ func.func @testEqual(tensor<? x f32>, tensor<? x f32>) -> tensor<? x i1> {
 ^bb0(%arg0: tensor<? x f32>, %arg1: tensor<? x f32>):
   // CHECK: "tfl.equal"(%arg0, %arg1)
   %0 = "tfl.equal"(%arg0, %arg1) : (tensor<? x f32>, tensor<? x f32>) -> tensor<? x i1>
+  func.return %0#0 : tensor<? x i1>
+}
+
+// CHECK-LABEL: testEqualInt16
+func.func @testEqualInt16(tensor<? x i16>, tensor<? x i16>) -> tensor<? x i1> {
+^bb0(%arg0: tensor<? x i16>, %arg1: tensor<? x i16>):
+  // CHECK: "tfl.equal"(%arg0, %arg1)
+  %0 = "tfl.equal"(%arg0, %arg1) : (tensor<? x i16>, tensor<? x i16>) -> tensor<? x i1>
   func.return %0#0 : tensor<? x i1>
 }
 

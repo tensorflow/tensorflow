@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -50,7 +51,7 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
                                 PatternRewriter &rewriter) const override {
     if (hasLabel(op, kMapTransformedLabel)) return failure();
 
-    if (isa<gml_st::ParallelOp, scf::ForOp>(op->getParentOp())) {
+    if (isa<scf::ForallOp, scf::ForOp>(op->getParentOp())) {
       return rewriter.notifyMatchFailure(
           op, "has already been tiled by another pass.");
     }
@@ -120,7 +121,8 @@ struct TransformMapForCpuPass
 
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<mlir::gml_st::GmlStDialect, arith::ArithDialect,
-                    linalg::LinalgDialect, tensor::TensorDialect>();
+                    linalg::LinalgDialect, tensor::TensorDialect,
+                    scf::SCFDialect>();
     linalg::registerTilingInterfaceExternalModels(registry);
   }
 
@@ -130,6 +132,7 @@ struct TransformMapForCpuPass
 
     RewritePatternSet patterns(context);
     patterns.add<TileMapPattern>(context, tileSize);
+    populateCollapseForallOpDimensionsPattern(patterns);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();

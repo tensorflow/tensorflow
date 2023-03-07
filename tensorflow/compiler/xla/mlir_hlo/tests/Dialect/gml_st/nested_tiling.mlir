@@ -15,20 +15,20 @@ func.func @add(%lhs : tensor<?x?xf32>, %rhs : tensor<?x?xf32>)
   // CHECK-DAG:  %[[C256:.*]] = arith.constant 256
   // CHECK-DAG:  %[[C512:.*]] = arith.constant 512
   // CHECK:      %[[INIT:.*]] = tensor.empty
-  // CHECK:      %[[LOOP:.*]] = gml_st.parallel
-  // CHECK-SAME:     outs (%[[INIT_:.*]] = %[[INIT]]:
+  // CHECK:      %[[LOOP:.*]] = scf.forall
+  // CHECK-SAME:     shared_outs(%[[INIT_:.*]] = %[[INIT]])
   // CHECK:        %[[LHS_SUB:.*]] = tensor.extract_slice %[[LHS]]
   // CHECK:        %[[RHS_SUB:.*]] = tensor.extract_slice %[[RHS]]
   // CHECK:        %[[INIT_SUB:.*]] = tensor.extract_slice %[[INIT_]]
 
-  // CHECK:        %[[LOOP_:.*]] = gml_st.parallel
-  // CHECK-SAME:       outs (%[[INIT_SUB_:.*]] = %[[INIT_SUB]]:
+  // CHECK:        %[[LOOP_:.*]] = scf.forall
+  // CHECK-SAME:       shared_outs(%[[INIT_SUB_:.*]] = %[[INIT_SUB]])
   // CHECK:          %[[LHS_SUB_2:.*]] = tensor.extract_slice %[[LHS_SUB]]
   // CHECK:          %[[RHS_SUB_2:.*]] = tensor.extract_slice %[[RHS_SUB]]
   // CHECK:          %[[INIT_SUB_2:.*]] = tensor.extract_slice %[[INIT_SUB_]]
   // CHECK:          %[[GENERIC:.*]] = linalg.generic
-  // CHECK:          gml_st.set_yield %[[GENERIC]] into %[[INIT_SUB_]]
-  // CHECK:        gml_st.set_yield %[[LOOP_]] into %[[INIT_]]
+  // CHECK:          tensor.parallel_insert_slice %[[GENERIC]] into %[[INIT_SUB_]]
+  // CHECK:        tensor.parallel_insert_slice %[[LOOP_]] into %[[INIT_]]
   // CHECK:      return %[[LOOP]]
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index

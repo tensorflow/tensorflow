@@ -2400,24 +2400,16 @@ HloSharding SplitShardingDimension(const HloSharding& sharding,
                     current_dimension / new_dim_size);
   dimensions[dimension] = new_dim_size;
   new_tile_assignment.Reshape(dimensions);
-  auto new_sharding = sharding.ReplicateOnLastTileDim()
-                          ? HloSharding::PartialTile(new_tile_assignment)
-                          : HloSharding::Subgroup(new_tile_assignment,
-                                                  sharding.subgroup_types());
-  std::vector<int64_t> permutation(new_sharding.tile_assignment().dimensions());
-  absl::c_iota(permutation, 0);
-  std::swap(permutation[dimension], permutation[dimension + 1]);
-  return TransposeSharding(new_sharding, permutation);
+  return sharding.ReplicateOnLastTileDim()
+             ? HloSharding::PartialTile(new_tile_assignment)
+             : HloSharding::Subgroup(new_tile_assignment,
+                                     sharding.subgroup_types());
 }
 
 HloSharding MergeShardingDimension(const HloSharding& sharding,
                                    int64_t dimension) {
   CHECK_GT(sharding.TiledDataRank(), dimension);
-  std::vector<int64_t> permutation(sharding.tile_assignment().dimensions());
-  absl::c_iota(permutation, 0);
-  std::swap(permutation[dimension], permutation[dimension + 1]);
-  auto transposed_sharding = TransposeSharding(sharding, permutation);
-  auto new_tile_assignment = transposed_sharding.tile_assignment();
+  auto new_tile_assignment = sharding.tile_assignment();
   std::vector<int64_t> dimensions = new_tile_assignment.dimensions();
   dimensions[dimension] *= dimensions[dimension + 1];
   dimensions.erase(dimensions.begin() + dimension + 1);

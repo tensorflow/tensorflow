@@ -42,6 +42,8 @@ struct Float8TestParamNames {
   static std::string GetName(int idx) {
     if constexpr (std::is_same_v<TypeParam, float8_e4m3fn>) {
       return "float8_e4m3fn";
+    } else if constexpr (std::is_same_v<TypeParam, float8_e4m3b11>) {
+      return "float8_e4m3b11";
     } else if constexpr (std::is_same_v<TypeParam, float8_e5m2>) {
       return "float8_e5m2";
     }
@@ -49,7 +51,8 @@ struct Float8TestParamNames {
   }
 };
 
-using Float8Types = ::testing::Types<float8_e4m3fn, float8_e5m2>;
+using Float8Types =
+    ::testing::Types<float8_e4m3fn, float8_e5m2, float8_e4m3b11>;
 TYPED_TEST_SUITE(Float8Test, Float8Types, Float8TestParamNames);
 
 TEST(Float8E4m3Test, NumericLimits) {

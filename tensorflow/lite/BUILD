@@ -148,6 +148,7 @@ cc_library(
 alias(
     name = "schema_fbs_version",
     actual = ":version",
+    compatible_with = get_compatible_with_portable(),
     # avoid_dep tells build_cleaner to not use schema_fbs_version.
     tags = ["avoid_dep"],
 )
@@ -455,6 +456,7 @@ alias_with_tflite(
 alias_with_tflite(
     name = "framework",
     actual = "framework_experimental",
+    compatible_with = get_compatible_with_portable(),
 )
 
 # The public target for the C++ API excluding experimental APIs.
@@ -548,6 +550,7 @@ cc_library_with_tflite(
 alias_with_tflite(
     name = "cc_api",
     actual = "cc_api_experimental",
+    compatible_with = get_compatible_with_portable(),
     generate_opaque_delegate_target = True,
     visibility = [
         "//tensorflow/lite/core/shims:__subpackages__",
@@ -1339,7 +1342,7 @@ cc_library_with_tflite(
     ],
     visibility = [":tflite_test_util_visibility"],
     deps = [
-        "//testing/base/public:gunit_for_library_testonly",
+        "@com_google_googletest//:gtest",
     ],
 )
 

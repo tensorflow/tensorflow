@@ -422,7 +422,7 @@ message DebugOptions {
   int64 xla_gpu_redzone_scratch_max_megabytes = 167;
 
   // Allows all floating-point conversions to be simplified, including those
-  // that affect the numerics. The `BFloat16Normalization` pass inserts many
+  // that affect the numerics. The `FloatNormalization` pass inserts many
   // `f32 -> bf16 -> f32` conversion pairs. These are not removed by the
   // `AlgebraicSimplifier`, as that will only simplify conversions that are
   // no-ops, e.g. `bf16 -> f32 -> bf16`. Removing these improves accuracy.

@@ -34,6 +34,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.errors import InvalidArgumentError
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_logging_ops
@@ -447,7 +448,7 @@ class FunctionTest(test.TestCase):
     @function.Defun(dtypes.float32)
     def MyFn(x):
       with ops.control_dependencies(
-          [control_flow_ops.Assert(math_ops.less_equal(x, 10.0), [x])]):
+          [control_flow_assert.Assert(math_ops.less_equal(x, 10.0), [x])]):
         return array_ops.identity(x)
 
     with self.cached_session():
@@ -483,7 +484,7 @@ class FunctionTest(test.TestCase):
     @function.Defun(dtypes.int32)
     def AssertFail(x):
       # Assertion that always fails and does not have a data dependency on `x`.
-      assert_false = control_flow_ops.Assert(False, [42])
+      assert_false = control_flow_assert.Assert(False, [42])
       with ops.control_dependencies([assert_false]):
         return array_ops.identity(x)
 

@@ -82,7 +82,7 @@ TEST_F(ConstantsTest, OneCellF16) {
 
   XlaBuilder builder(TestName());
   auto c = ConstantR1<half>(&builder, constant);
-  // F8 outputs are not yet supported so convert to F32
+  // F16 outputs are not yet supported so convert to F32
   ConvertElementType(c, F32);
 
   ComputeAndCompareR1<float>(&builder, {2.0f}, {}, error_spec_);

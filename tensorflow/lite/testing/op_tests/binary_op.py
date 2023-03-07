@@ -329,12 +329,38 @@ def make_pow_tests(options):
 
 @register_make_test_function()
 def make_floor_div_tests(options):
-  make_binary_op_tests(options, tf.math.floordiv)
+  """Make zip tests for floor_div op with int16 case."""
+  test_parameters = [
+      {
+          "dtype": [tf.int8, tf.int16],
+          "input_shape_1": [[1, 3, 3, 3, 3]],
+          "input_shape_2": [[3]],
+          "activation": [False],
+          "fully_quantize": [False],
+          "dynamic_range_quantize": [False],
+      },
+  ]
+  make_binary_op_tests(
+      options, tf.math.floordiv, test_parameters=test_parameters
+  )
 
 
 @register_make_test_function()
 def make_floor_mod_tests(options):
-  make_binary_op_tests(options, tf.math.floormod)
+  """Make zip tests for floor_mod op with int16 case."""
+  test_parameters = [
+      {
+          "dtype": [tf.int8, tf.int16],
+          "input_shape_1": [[1, 3, 3, 3, 3]],
+          "input_shape_2": [[3]],
+          "activation": [False],
+          "fully_quantize": [False],
+          "dynamic_range_quantize": [False],
+      },
+  ]
+  make_binary_op_tests(
+      options, tf.math.floormod, test_parameters=test_parameters
+  )
 
 
 @register_make_test_function()

@@ -262,7 +262,7 @@ bool MayPreventVectorization(mlir::Operation* op) {
 
     CHECK(instr.getDialect() ==
           instr.getContext()->getLoadedDialect<mlir::mhlo::MhloDialect>())
-        << MlirToString(op);
+        << llvm_ir::DumpToString(op);
     switch (*MhloToHloOpcode(&instr)) {
       case HloOpcode::kReduceWindow:
       case HloOpcode::kSort:
@@ -1279,7 +1279,7 @@ std::pair<bool, int> RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
       }
     }
     VLOG(2) << "Row vectorization not enabled due to this op: "
-            << MlirToString(&op);
+            << llvm_ir::DumpToString(&op);
     return std::make_pair(false, 0);
   }
   // Trigger only when there is a row broadcasting.
@@ -1725,7 +1725,7 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
 #if GOOGLE_CUDA
 Status IrEmitterUnnested::EmitTritonFusion(
     mlir::Operation* op, tensorflow::AutotuneResult::TritonGemmKey& config) {
-  VLOG(3) << MlirToString(op);
+  VLOG(3) << llvm_ir::DumpToString(op);
   auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
 
   TF_ASSIGN_OR_RETURN(
@@ -1829,7 +1829,7 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
           continue;
         }
       }
-      VLOG(2) << "few_waves not enabled due to: " << MlirToString(&op);
+      VLOG(2) << "few_waves not enabled due to: " << llvm_ir::DumpToString(&op);
       return false;
     }
     return true;
@@ -2195,7 +2195,7 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
     auto strides = *select_and_scatter_op.getWindowStrides();
     auto paddings = *select_and_scatter_op.getPadding();
 
-    for (auto stride_and_padding :
+    for (const auto& stride_and_padding :
          llvm::enumerate(llvm::zip(strides, paddings))) {
       const int i = stride_and_padding.index();
       int64_t stride = std::get<0>(stride_and_padding.value()).getSExtValue();
@@ -2932,16 +2932,14 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
     auto thunk =
         std::make_unique<NcclThunkType>(GetThunkInfo(op), collective_permute_op,
                                         replica_count, partition_count, buffer);
-    if constexpr (std::is_same_v<NcclThunkType,
-                                 NcclCollectivePermuteStartThunk>) {
+    if constexpr (NcclThunkType::IsAsync()) {
       async_executor = &thunk->async_executor();
     }
     AddThunkToThunkSequence(std::move(thunk));
   }
 
   // Signal that start thunk not created with nullptr.
-  if constexpr (std::is_same_v<NcclThunkType,
-                               NcclCollectivePermuteStartThunk>) {
+  if constexpr (NcclThunkType::IsAsync()) {
     async_executors_.insert({op, async_executor});
   }
   return OkStatus();
@@ -2968,7 +2966,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   // Stash relevant information in NcclCollectiveThunk::Buffer even if we may
   // not generate an NcclCollectiveThunk.
   std::vector<NcclCollectiveThunk::Buffer> buffers;
-  buffers.reserve(op.getOperands().size());
+  buffers.reserve(op.getInputs().size());
   for (auto it : llvm::zip(op.getInputs(), op.getOutputs())) {
     mlir::Value operand = std::get<0>(it);
     mlir::Value result = std::get<1>(it);
@@ -2988,7 +2986,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
         std::make_unique<NcclThunkType>(GetThunkInfo(op), op,
                                         /*buffers=*/std::move(buffers));
 
-    if constexpr (std::is_same_v<NcclThunkType, NcclAllReduceStartThunk>) {
+    if constexpr (NcclThunkType::IsAsync()) {
       async_executors_.insert({untyped_op, &thunk->async_executor()});
     }
 
@@ -2997,7 +2995,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   }
 
   // Signal that start thunk not created with nullptr.
-  if constexpr (std::is_same_v<NcclThunkType, NcclAllReduceStartThunk>) {
+  if constexpr (NcclThunkType::IsAsync()) {
     async_executors_.insert({untyped_op, nullptr});
   }
 
@@ -3717,7 +3715,7 @@ ReductionCodegenState IrEmitterUnnested::GenerateReductionCodegenState(
     absl::Span<const HloReduceInstruction* const> reduce_instr_index_group,
     FusedIrEmitter& fused_emitter) {
   ReductionCodegenState reduction_codegen_state(reduction_info);
-  VLOG(10) << "Emit prologue for reduction: " << MlirToString(fusion);
+  VLOG(10) << "Emit prologue for reduction: " << llvm_ir::DumpToString(fusion);
 
   for (const HloReduceInstruction* reduce_hlo : reduce_instr_index_group) {
     int num_partial_results = reduction_codegen_state.GetNumPartialResults();
@@ -4362,19 +4360,17 @@ Status IrEmitterUnnested::EmitTransposeTile(
         return FindAnyTiledTranspose(FindNonTrivialHero(*instr));
       }));
 
-  const Shape& out_shape = first_transpose->shape();
   const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
+  auto first_tiled_transpose = FindAnyTiledTranspose(*first_transpose);
 
   // We need the following invariant:
   // For every tuple element:
   //  -> EITHER it's a kCopy: S{L} -> S{L'}
   //  -> OR it's an elementwise op of shape S{L}
   for (HloInstruction* root : hlo_roots) {
-    if (FindAnyTiledTranspose(*root)) {
-      const HloInstruction& hero = FindNonTrivialHero(*root);
-      CHECK(ShapeUtil::EqualIgnoringElementType(transpose_in_shape,
-                                                hero.operand(0)->shape()));
-      CHECK(ShapeUtil::EqualIgnoringElementType(out_shape, hero.shape()));
+    auto tiled_transpose = FindAnyTiledTranspose(*root);
+    if (tiled_transpose) {
+      CHECK(*tiled_transpose == *first_tiled_transpose);
     } else {
       CHECK(ShapeUtil::IsReshapeOrTransposeBitcast(
           root->shape(), transpose_in_shape,
@@ -4433,7 +4429,13 @@ Status IrEmitterUnnested::EmitTransposeTile(
               const HloInstruction& hero = FindNonTrivialHero(*root);
               llvm_ir::ElementGenerator input_gen =
                   *fused_emitter.GetGenerator(*hero.operand(0));
-              llvm::Value* value = *input_gen(input_index);
+              IrArray::Index used_index = input_index;
+              if (!ShapeUtil::EqualIgnoringElementType(
+                      hero.operand(0)->shape(), transpose_in_shape)) {
+                used_index = used_index.SourceIndexOfBitcast(
+                    transpose_in_shape, hero.operand(0)->shape(), &b_);
+              }
+              llvm::Value* value = *input_gen(used_index);
               llvm::Value* addr = thread_id_info.GEPIntoSharedMemory(
                   &b_, tiles[&hero], {y_loc, x_loc});
 
@@ -5119,7 +5121,7 @@ Status IrEmitterUnnested::EmitUnnestedReduction(
       GroupDisjointReductions(fused_computation);
 
   VLOG(2) << StrCat("Generate in ", instr_index_groups.size(), " groups for ",
-                    MlirToString(fusion));
+                    llvm_ir::DumpToString(fusion));
 
   // hlo_roots has same ordering as fusion_roots.
   auto hlo_roots = GetFusionRoots(fused_computation);
@@ -5573,6 +5575,16 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
     return EmitNcclThunk<NcclAllGatherThunk, mlir::lmhlo::AllGatherOp>(op);
   }
 
+  if (mlir::isa<mlir::lmhlo_gpu::AllGatherStartOp>(op)) {
+    return EmitNcclThunk<NcclAllGatherStartThunk,
+                         mlir::lmhlo_gpu::AllGatherStartOp>(op);
+  }
+
+  if (mlir::isa<mlir::lmhlo_gpu::AllGatherDoneOp>(op)) {
+    return EmitNcclAsyncDone<NcclAllGatherDoneThunk,
+                             mlir::lmhlo_gpu::AllGatherDoneOp>(op);
+  }
+
   if (mlir::isa<mlir::lmhlo::AllReduceOp>(op)) {
     return EmitNcclThunk<NcclAllReduceThunk, mlir::lmhlo::AllReduceOp>(op);
   }
@@ -5592,8 +5604,28 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
         op);
   }
 
+  if (mlir::isa<mlir::lmhlo_gpu::ReduceScatterStartOp>(op)) {
+    return EmitNcclThunk<NcclReduceScatterStartThunk,
+                         mlir::lmhlo_gpu::ReduceScatterStartOp>(op);
+  }
+
+  if (mlir::isa<mlir::lmhlo_gpu::ReduceScatterDoneOp>(op)) {
+    return EmitNcclAsyncDone<NcclReduceScatterDoneThunk,
+                             mlir::lmhlo_gpu::ReduceScatterDoneOp>(op);
+  }
+
   if (mlir::isa<mlir::lmhlo::AllToAllOp>(op)) {
     return EmitNcclThunk<NcclAllToAllThunk, mlir::lmhlo::AllToAllOp>(op);
+  }
+
+  if (mlir::isa<mlir::lmhlo_gpu::AllToAllStartOp>(op)) {
+    return EmitNcclThunk<NcclAllToAllStartThunk,
+                         mlir::lmhlo_gpu::AllToAllStartOp>(op);
+  }
+
+  if (mlir::isa<mlir::lmhlo_gpu::AllToAllDoneOp>(op)) {
+    return EmitNcclAsyncDone<NcclAllToAllDoneThunk,
+                             mlir::lmhlo_gpu::AllToAllDoneOp>(op);
   }
 
   if (mlir::isa<mlir::lmhlo::InfeedOp>(op)) {
@@ -5635,7 +5667,7 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
                            "implemented as thunks");
   }
 
-  return InternalError("Unrecognized op: %s", MlirToString(op));
+  return InternalError("Unrecognized op: %s", llvm_ir::DumpToString(op));
 }
 
 Status IrEmitterUnnested::EmitLmhloRegion(mlir::Region* region) {

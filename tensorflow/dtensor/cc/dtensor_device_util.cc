@@ -677,7 +677,7 @@ Status PrepareGraphForMlir(
     // the SPMD and layout propagation passes.
     if (!input->const_value_node() ||
         !input->const_value_node()->const_value().has_value() ||
-        !function_manager.IsConstantFoldable(doperation, i)) {
+        !function_manager.ShouldFoldInput(doperation, i)) {
       graph_op_inputs.push_back(FunctionArgument{
           arg_node, NodeDefBuilder::NodeOut{arg_node->name(), i, dtype}});
       graph->AddControlEdge(graph->source_node(), arg_node);

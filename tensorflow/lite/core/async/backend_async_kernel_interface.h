@@ -22,7 +22,7 @@ limitations under the License.
 // TODO(b/191883048): This interface should only depend on C API instead of
 // internal definitions.
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
-#include "tensorflow/lite/core/async/common.h"
+#include "tensorflow/lite/core/async/c/types.h"
 
 namespace tflite {
 namespace delegates {
@@ -46,15 +46,17 @@ class BackendAsyncKernelInterface {
 
   // Buffer operations
   // ======================
-  // Registers the buffer to `handle`.
-  // `buffer` and `attrs` lifespan is not gauranteed after the function call.
+  // Registers the TfLiteBackendBuffer to `handle`.
+  // `TfLiteBackendBuffer` is a wrapper around a platform-specific buffer
+  // object (e.g. AHardwareBuffer).
+  // `buffer` and `attrs` lifespan is not guaranteed after the function call.
   // kernels should read the stored attributes instead of caching the
   // attribute map.
   // `io_type` specifies whether this buffer is used as an input buffer
   // or an output buffer. If a buffer is both used as input and output,
   // specify it as output. Not null.
-  // `attrs` describes the attributes of the buffer. It's gauranteed to be
-  // of kTfLiteBufferAttrMap type and not null.
+  // `attrs` describes the attributes of the buffer. It's guaranteed to be
+  // of kTfLiteAttrMapTypeBuffer type and not null.
   // `handle` is the buffer handle assigned by TfLite runtime to recognize
   // this piece of buffer.
   // In `attrs`, the application must provide the type of the buffer.
@@ -96,7 +98,7 @@ class BackendAsyncKernelInterface {
 
   // Reconciliations
   // ===================
-  // Inspects the buffer types supported by the backend.
+  // Inspects the buffer object types supported by the backend.
   // `io_type` specify whether the call returns supported input or output
   // buffer.
   virtual const std::vector<const char*>& SupportedBufferTypes(

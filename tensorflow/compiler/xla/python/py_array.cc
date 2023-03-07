@@ -25,8 +25,10 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
+#include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
+#include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -194,6 +196,33 @@ PyArray::Storage* Construct(PyArrayObject* self, Args&&... args) {
 
 }  // namespace
 
+PyArray_Storage::PyArray_Storage(pybind11::object aval, bool weak_type,
+                                 pybind11::dtype dtype,
+                                 std::vector<int64_t> shape,
+                                 pybind11::object sharding, bool committed,
+                                 std::shared_ptr<PyClient> py_client,
+                                 std::shared_ptr<Traceback> traceback,
+                                 tsl::RCReference<ifrt::Array> ifrt_array)
+    : fastpath_enabled(true),
+      aval(std::move(aval)),
+      weak_type(weak_type),
+      dtype(std::move(dtype)),
+      shape(std::move(shape)),
+      sharding(std::move(sharding)),
+      committed(committed),
+      py_client(std::move(py_client)),
+      traceback(std::move(traceback)),
+      ifrt_array(std::move(ifrt_array)) {
+  next = this->py_client->arrays_;
+  this->py_client->arrays_ = this;
+  if (next) {
+    next->prev = this;
+  }
+  prev = nullptr;
+}
+
+PyArray_Storage::PyArray_Storage(DisableFastpath) : fastpath_enabled(false) {}
+
 void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
                      absl::Span<const PyArray> py_arrays, bool committed,
                      bool skip_checks) {
@@ -236,6 +265,37 @@ void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
 void PyArray::PyInit(py::object self, DisableFastpath) {
   Construct(reinterpret_cast<PyArrayObject*>(self.ptr()),
             PyArray_Storage::DisableFastpath());
+}
+
+PyArrayResultHandler::PyArrayResultHandler(py::object aval, py::object sharding,
+                                           bool committed, bool skip_checks)
+    : aval_(std::move(aval)),
+      sharding_(std::move(sharding)),
+      committed_(committed),
+      skip_checks_(skip_checks) {
+  weak_type_ = pybind11::cast<bool>(aval_.attr("weak_type"));
+  dtype_ = aval_.attr("dtype");
+  shape_ = pybind11::cast<std::vector<int64_t>>(aval_.attr("shape"));
+}
+
+PyArray PyArrayResultHandler::Call(
+    absl::Span<const PyBuffer::object> py_buffers) const {
+  return Call(py_buffers.at(0).buf()->client(),
+              CreateIfRtArrayFromPyBuffers(dtype_, shape_, py_buffers));
+}
+
+PyArray PyArrayResultHandler::Call(absl::Span<const PyArray> py_arrays) const {
+  return Call(py_arrays.at(0).py_client(),
+              CreateIfRtArrayFromSingleDeviceShardedPyArrays(dtype_, shape_,
+                                                             py_arrays));
+}
+
+PyArray PyArrayResultHandler::Call(
+    std::shared_ptr<PyClient> py_client,
+    tsl::RCReference<ifrt::Array> ifrt_array) const {
+  return PyArray(aval_, weak_type_, dtype_, shape_, sharding_,
+                 std::move(py_client), Traceback::Get(), std::move(ifrt_array),
+                 committed_, skip_checks_);
 }
 
 PyArray::PyArray(py::object aval, bool weak_type, py::dtype dtype,
@@ -404,6 +464,53 @@ PyArray::Storage::~PyArray_Storage() {
   }
 }
 
+StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(
+    ifrt::DeviceList devices, pybind11::object dst_sharding) {
+  auto* ifrt_array_ptr = ifrt_array();
+  if (ifrt_array_ptr->sharding().devices().devices() == devices.devices()) {
+    return *this;
+  }
+  tsl::RCReference<ifrt::Array> out_array;
+  {
+    auto transfer_guard_formatter = [this, &dst_sharding] {
+      return absl::StrCat(
+          "aval=", py::cast<std::string>(py::repr(aval())),
+          ", sharding=", py::cast<std::string>(py::repr(sharding())),
+          ", dst_sharding=", py::cast<std::string>(py::repr(dst_sharding)));
+    };
+    TF_RETURN_IF_ERROR(
+        jax::ApplyTransferGuardToDeviceToDevice(transfer_guard_formatter));
+    GlobalPyRefManager()->CollectGarbage();
+    py::gil_scoped_release gil_release;
+
+    if (llvm::isa<ifrt::SingleDeviceSharding>(ifrt_array_ptr->sharding())) {
+      TF_ASSIGN_OR_RETURN(out_array,
+                          ifrt_array_ptr->Reshard(
+                              ifrt::SingleDeviceSharding::Create(devices[0]),
+                              ifrt::ArrayCopySemantics::kReuseInput));
+    } else if (llvm::isa<ifrt::OpaqueSharding>(ifrt_array_ptr->sharding())) {
+      auto opaque_sharding = ifrt::OpaqueSharding::Create(
+          std::move(devices),
+          llvm::dyn_cast<ifrt::OpaqueSharding>(&ifrt_array_ptr->sharding())
+              ->disassemble_func());
+      TF_ASSIGN_OR_RETURN(
+          out_array,
+          ifrt_array_ptr->Reshard(opaque_sharding,
+                                  ifrt::ArrayCopySemantics::kReuseInput));
+    } else {
+      return InvalidArgument(
+          "resharding only supported for ifrt::SingleDeviceSharding and "
+          "ifrt::OpaqueSharding");
+    }
+  }
+  auto traceback = Traceback::Get();
+  absl::Span<const int64_t> shape_span = shape();
+  return PyArray(aval(), weak_type(), dtype(),
+                 std::vector<int64_t>(shape_span.begin(), shape_span.end()),
+                 dst_sharding, py_client(), std::move(traceback),
+                 std::move(out_array), committed(), true);
+}
+
 std::vector<py::object> PyClient::LiveArrays() {
   std::vector<py::object> result;
   for (PyArray::Storage* array = arrays_; array; array = array->next) {
@@ -505,6 +612,37 @@ Status PyArray::RegisterTypes(py::module& m) {
       py::cpp_function(&PyArray::IsDeleted, py::is_method(type));
   type.attr("traceback") = jax::property_readonly(&PyArray::traceback);
   type.attr("__module__") = m.attr("__name__");
+
+  m.attr("copy_array_to_devices_with_sharding") = py::cpp_function(
+      [](PyArray self, std::vector<ClientAndPtr<PjRtDevice>> dst_devices,
+         py::object sharding) {
+        ifrt::DeviceList::Devices devices;
+        devices.reserve(dst_devices.size());
+        for (auto& d : dst_devices) {
+          devices.push_back(d.get());
+        }
+        return self.CopyToDeviceWithSharding(ifrt::DeviceList(devices),
+                                             std::move(sharding));
+      });
+  m.attr("array_result_handler") = py::cpp_function(
+      [](py::object aval, py::object sharding, bool committed,
+         bool skip_checks) -> std::unique_ptr<PyArrayResultHandler> {
+        return std::make_unique<PyArrayResultHandler>(
+            std::move(aval), std::move(sharding), committed, skip_checks);
+      },
+      py::arg("aval"), py::arg("sharding"), py::arg("committed"),
+      py::arg("_skip_checks") = false);
+
+  py::class_<PyArrayResultHandler>(m, "ResultHandler")
+      .def("__call__",
+           [](const PyArrayResultHandler& self,
+              absl::Span<const PyBuffer::object> py_arrays) {
+             return self.Call(py_arrays);
+           })
+      .def("__call__", [](const PyArrayResultHandler& self,
+                          absl::Span<const PyArray> py_arrays) {
+        return self.Call(py_arrays);
+      });
 
   return OkStatus();
 }

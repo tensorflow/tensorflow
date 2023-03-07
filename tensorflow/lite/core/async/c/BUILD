@@ -24,7 +24,6 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":types",
-        "//tensorflow/lite/core/async:common",
         "//tensorflow/lite/core/async:task_internal",
         "//tensorflow/lite/core/async/interop/c:types",
         "//tensorflow/lite/core/c:c_api_types",
@@ -38,7 +37,6 @@ cc_test(
     deps = [
         ":task",
         ":types",
-        "//tensorflow/lite/core/async:common",
         "//tensorflow/lite/core/async:task_internal",
         "//tensorflow/lite/core/async/interop/c:types",
         "//tensorflow/lite/core/c:common",

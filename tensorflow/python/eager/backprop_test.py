@@ -1945,6 +1945,29 @@ class JacobianTest(test.TestCase):
     jacobian_pfor = tape.jacobian(grad, x, experimental_use_pfor=True)
     self.assertAllClose(6., jacobian_pfor)
 
+  def test_empty_tensor_consistent_jacobian(self):
+    variable = variables.Variable(1.0)
+    inputs = (
+        constant_op.constant(np.random.uniform(size=(0, 4))),
+        constant_op.constant(np.random.uniform(size=(0, 3))),
+    )
+    with backprop.GradientTape(persistent=True) as tape:
+      outputs = variable * math_ops.cast(
+          array_ops.concat(inputs, axis=-1), dtypes.float32
+      )
+
+    jacobians_pfor = tape.jacobian(
+        outputs,
+        variable,
+        experimental_use_pfor=True,
+    )
+    jacobians_loop = tape.jacobian(
+        outputs,
+        variable,
+        experimental_use_pfor=False,
+    )
+    self.assertAllClose(jacobians_pfor, jacobians_loop)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class BatchJacobianTest(test.TestCase, parameterized.TestCase):

@@ -39,7 +39,9 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_toggles
@@ -594,9 +596,9 @@ class DataTypesTest(test_util.TensorFlowTestCase):
         _raw_nested_shape(_get_nested_shape(output_cond)),
         _raw_nested_shape(expected_shape))
 
-    output_case = control_flow_ops.case([(condition, fn_true)],
-                                        fn_false,
-                                        strict=strict)
+    output_case = control_flow_case.case([(condition, fn_true)],
+                                         fn_false,
+                                         strict=strict)
     self.assertEqual(
         _raw_nested_shape(_get_nested_shape(output_case)),
         _raw_nested_shape(expected_shape))
@@ -615,9 +617,9 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     condition = array_ops.placeholder(dtypes.bool)
     output_cond = control_flow_ops.cond(
         condition, fn_true, fn_false, strict=strict)
-    output_case = control_flow_ops.case([(condition, fn_true)],
-                                        fn_false,
-                                        strict=strict)
+    output_case = control_flow_case.case([(condition, fn_true)],
+                                         fn_false,
+                                         strict=strict)
 
     with self.cached_session() as sess:
       self.evaluate(variables.global_variables_initializer())
@@ -875,14 +877,14 @@ class DataTypesTest(test_util.TensorFlowTestCase):
           constant_op.constant(True), fn_list, fn_tuple, strict=True)
 
     with self.assertRaises(ValueError):
-      control_flow_ops.case([(constant_op.constant(True), fn_tensor)],
-                            fn_list,
-                            strict=True)
+      control_flow_case.case([(constant_op.constant(True), fn_tensor)],
+                             fn_list,
+                             strict=True)
 
     with self.assertRaises(TypeError):
-      control_flow_ops.case([(constant_op.constant(True), fn_list)],
-                            fn_tuple,
-                            strict=True)
+      control_flow_case.case([(constant_op.constant(True), fn_list)],
+                             fn_tuple,
+                             strict=True)
 
   @test_util.run_deprecated_v1
   def test_singleton_list(self):
@@ -1157,7 +1159,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     with ops.Graph().as_default() as g:
       nbranches = 7
-      matrices = array_ops.unstack(  # Ensure all are ready before while.
+      matrices = array_ops_stack.unstack(  # Ensure all are ready before while.
           array_ops.matrix_diag(
               random_ops.random_uniform([nbranches, 8, 512]) + 1e-3))
 
@@ -1381,7 +1383,7 @@ class CaseTest(test_util.TensorFlowTestCase):
     conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
                   (math_ops.equal(x, 2), lambda: constant_op.constant(4))]
     default = lambda: constant_op.constant(6)
-    output = control_flow_ops.case(conditions, default, exclusive=True)
+    output = control_flow_case.case(conditions, default, exclusive=True)
     with self.cached_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
@@ -1394,7 +1396,7 @@ class CaseTest(test_util.TensorFlowTestCase):
                   (math_ops.equal(x, 2), lambda: constant_op.constant(4)),
                   (math_ops.equal(x, 2), lambda: constant_op.constant(6))]
     default = lambda: constant_op.constant(8)
-    output = control_flow_ops.case(conditions, default, exclusive=True)
+    output = control_flow_case.case(conditions, default, exclusive=True)
     with self.cached_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       self.assertEqual(sess.run(output, feed_dict={x: 3}), 8)
@@ -1408,7 +1410,7 @@ class CaseTest(test_util.TensorFlowTestCase):
                   (math_ops.equal(x, 2), lambda: constant_op.constant(4)),
                   (math_ops.equal(x, 2), lambda: constant_op.constant(6))]
     default = lambda: constant_op.constant(8)
-    output = control_flow_ops.case(conditions, default, exclusive=False)
+    output = control_flow_case.case(conditions, default, exclusive=False)
     with self.cached_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
@@ -1420,7 +1422,7 @@ class CaseTest(test_util.TensorFlowTestCase):
     conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
                   (math_ops.equal(x, 2), lambda: constant_op.constant(4)),
                   (math_ops.equal(x, 3), lambda: constant_op.constant(6))]
-    output = control_flow_ops.case(conditions, exclusive=True)
+    output = control_flow_case.case(conditions, exclusive=True)
     with self.cached_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
@@ -1432,7 +1434,7 @@ class CaseTest(test_util.TensorFlowTestCase):
   def testCase_withoutDefault_oneCondition(self):
     x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
     conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2))]
-    output = control_flow_ops.case(conditions, exclusive=True)
+    output = control_flow_case.case(conditions, exclusive=True)
     with self.cached_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       with self.assertRaisesRegex(errors.InvalidArgumentError, "Input error:"):
@@ -1443,7 +1445,7 @@ class CaseTest(test_util.TensorFlowTestCase):
     x = constant_op.constant(2)
     conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
                   (math_ops.equal(x, 2), lambda: constant_op.constant(4))]
-    output = control_flow_ops.case(conditions, exclusive=True)
+    output = control_flow_case.case(conditions, exclusive=True)
     self.assertEqual(4, self.evaluate(output))
 
 

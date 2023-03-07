@@ -31,8 +31,13 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_replace.h"
+#include "absl/strings/str_split.h"
 #include "absl/types/optional.h"
 #include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/stack_frame.h"
 #include "tensorflow/tsl/platform/stacktrace.h"
 #include "tensorflow/tsl/platform/str_util.h"
 #include "tensorflow/tsl/platform/strcat.h"
@@ -125,30 +130,49 @@ static constexpr const char kStackTraceProtoUrl[] =
     "type.googleapis.com/tensorflow.StackTracePayload";
 
 void SetStackTrace(::tsl::Status& status, std::vector<StackFrame> stack_trace) {
-  status.SetStackTrace(stack_trace);
+  // Given the StackFrame fields are (a) line number (b) filename (c) function
+  // name, we can safely assume that there is no `\n` in there.
+  // Thus, we can serialize as strings using a simple new line delimiter.
+  //
+  // This has the benefit that we don't need to depend on protobuf. Note that
+  // we do this only the serialization of the StackFrame is an implementation
+  // detail and that we don't not need persistent storage or wire serialization.
+  std::vector<std::string> items;
+  items.reserve(stack_trace.size());
+  for (StackFrame& frame : stack_trace) {
+    // We are extra safe and remove any new line in the filename and function
+    // name.
+    items.push_back(
+        absl::StrCat(absl::StrReplaceAll(frame.file_name, {{"\n", ""}}), "\n",
+                     frame.line_number, "\n",
+                     absl::StrReplaceAll(frame.function_name, {{"\n", ""}})));
+  }
+  status.SetPayload(kStackTraceProtoUrl,
+                    absl::Cord(absl::StrJoin(items, "\n")));
 }
 
 std::vector<StackFrame> GetStackTrace(const ::tsl::Status& status) {
-  return status.GetStackTrace();
+  std::vector<StackFrame> stack_trace;
+  absl::optional<absl::Cord> maybe_serialized_payload =
+      status.GetPayload(kStackTraceProtoUrl);
+  if (maybe_serialized_payload.has_value()) {
+    std::vector<std::string> split =
+        absl::StrSplit(maybe_serialized_payload.value().Flatten(), '\n');
+    assert(split.size() % 3 == 0);
+    for (int i = 0; i < split.size() / 3; ++i) {
+      const int idx = 3 * i;
+      int line_number = -1;
+      CHECK(absl::SimpleAtoi(split[idx + 1], &line_number));  // Crash OK
+      stack_trace.emplace_back(std::move(split[idx]), line_number,
+                               std::move(split[idx + 2]));
+    }
+  }
+  return stack_trace;
 }
 
 }  // namespace errors
 
 Status::~Status() {}
-
-void Status::SetStackTrace(std::vector<StackFrame> stack_trace) {
-  if (state_ != nullptr) {
-    state_->stack_trace = stack_trace;
-  }
-}
-
-std::vector<StackFrame> Status::GetStackTrace() const {
-  if (state_ != nullptr) {
-    return state_->stack_trace;
-  } else {
-    return std::vector<StackFrame>();
-  }
-}
 
 absl::Span<const SourceLocation> Status::GetSourceLocations() const {
   return state_ != nullptr ? state_->source_locations

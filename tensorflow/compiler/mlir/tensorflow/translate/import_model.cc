@@ -64,6 +64,7 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/loader_util.h"
@@ -80,6 +81,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/mark_initialized_variables.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_attr.h"
@@ -1983,12 +1985,16 @@ mlir::Operation* ImporterBase::CreateOperation(
         bool resource = false;
         std::function<bool(mlir::Type)> record_resource;
         record_resource = [&](mlir::Type type) {
-          if (resource) return true;
-          if (type.isa<mlir::TF::ResourceType>()) {
-            resource = true;
-            return true;
-          }
-          type.walk([&](mlir::Type t) { record_resource(t); });
+          type.walk([&](mlir::Type t) {
+            if (resource) return mlir::WalkResult::interrupt();
+            if (type.isa<mlir::TF::ResourceType>()) {
+              resource = true;
+              return mlir::WalkResult::interrupt();
+            }
+
+            return mlir::WalkResult::advance();
+          });
+
           return resource;
         };
 
@@ -2756,8 +2762,7 @@ class SavedModelObjectGraphImporter : public ImporterBase {
   // Module.
   static StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Convert(
       SavedModelV2Bundle* saved_model, absl::Span<std::string> exported_names,
-      mlir::MLIRContext* context, bool add_default_attributes,
-      bool unconditionally_use_set_output_shapes);
+      mlir::MLIRContext* context, MLIRImportOptions options);
 
  private:
   explicit SavedModelObjectGraphImporter(
@@ -3311,7 +3316,7 @@ Status CreateSavedModelIR(
     const ObjectNames& object_names, mlir::ModuleOp module,
     const SavedObjectGraph& object_graph,
     const std::unordered_map<std::string, std::string>& tf_name_to_mlir_name,
-    SavedModelV2Bundle* saved_model) {
+    SavedModelV2Bundle* saved_model, MLIRImportOptions import_options) {
   mlir::OpBuilder builder(module.getBodyRegion());
   mlir::SymbolTable symbol_table(module);
 
@@ -3441,40 +3446,60 @@ Status CreateSavedModelIR(
       const SavedVariable& variable = object.variable();
       // Find the trackable in the side data structure.
       auto variable_trackable_it = restored_objects.find(node_id);
-      if (variable_trackable_it == restored_objects.end()) {
-        return errors::FailedPrecondition("Could not restore saved variable: ",
-                                          variable.name());
-      }
-      const auto* serialized_tensor_attr = FindSerializedTensorInTrackable(
-          *variable_trackable_it->second, "VARIABLE_VALUE");
-      if (!serialized_tensor_attr) {
-        return errors::FailedPrecondition(
-            "Could not find serialized tensor for saved variable: ",
-            variable.name());
-      }
-      const auto& checkpoint_key = serialized_tensor_attr->checkpoint_key();
 
-      // Load it from the reader.
-      Tensor value;
-      TF_RETURN_WITH_CONTEXT_IF_ERROR(
-          saved_model->variable_reader()->Lookup(checkpoint_key, &value),
-          "Could not read checkpoint key from variables bundle: ",
-          checkpoint_key);
-      TF_ASSIGN_OR_RETURN(auto value_attr, ConvertTensor(value, &builder));
-      // A variable can have a partially known type, such as tensor<?x27x?xf32>,
-      // even if the initializer is a specific static shape.
       TF_ASSIGN_OR_RETURN(
           auto type, ConvertToMlirTensorType(variable.shape(), variable.dtype(),
                                              &builder));
-      auto op = builder.create<GlobalTensorOp>(
-          builder.getUnknownLoc(),
-          builder.getStringAttr(object_names.GetSymbolTableName(node_id)),
-          value_attr,
-          /*type=*/mlir::TypeAttr::get(type),
-          /*is_mutable=*/builder.getUnitAttr());
-      op->setAttr(
-          kTfSavedModelExportedNamesAttr,
-          builder.getStrArrayAttr(object_names.GetExportedNames(node_id)));
+
+      if (variable_trackable_it == restored_objects.end()) {
+        if (!import_options.allow_uninitialized_variables) {
+          return errors::FailedPrecondition(
+              "Could not restore saved variable: ", variable.name());
+        }
+
+        // The user indicated we should allow loading the model with
+        // uninitialized variables, use the type information to construct a
+        // dummy uninitialized variable operation.
+        auto op = builder.create<mlir::tf_saved_model::GlobalTensorOp>(
+            builder.getUnknownLoc(),
+            builder.getStringAttr(object_names.GetSymbolTableName(node_id)),
+            mlir::ElementsAttr(),
+            /*type=*/mlir::TypeAttr::get(type),
+            /*is_mutable=*/builder.getUnitAttr());
+        op->setAttr(
+            kTfSavedModelExportedNamesAttr,
+            builder.getStrArrayAttr(object_names.GetExportedNames(node_id)));
+      } else {
+        const auto* serialized_tensor_attr = FindSerializedTensorInTrackable(
+            *variable_trackable_it->second, "VARIABLE_VALUE");
+        if (!serialized_tensor_attr) {
+          return errors::FailedPrecondition(
+              "Could not find serialized tensor for saved variable: ",
+              variable.name());
+        }
+        const auto& checkpoint_key = serialized_tensor_attr->checkpoint_key();
+
+        // Load it from the reader.
+        Tensor value;
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(
+            saved_model->variable_reader()->Lookup(checkpoint_key, &value),
+            "Could not read checkpoint key from variables bundle: ",
+            checkpoint_key);
+        TF_ASSIGN_OR_RETURN(auto value_attr, ConvertTensor(value, &builder));
+        // A variable can have a partially known type, such as
+        // tensor<?x27x?xf32>, even if the initializer is a specific static
+        // shape.
+        auto op = builder.create<GlobalTensorOp>(
+            builder.getUnknownLoc(),
+            builder.getStringAttr(object_names.GetSymbolTableName(node_id)),
+            value_attr,
+            /*type=*/mlir::TypeAttr::get(type),
+            /*is_mutable=*/builder.getUnitAttr());
+        op->setAttr(
+            kTfSavedModelExportedNamesAttr,
+            builder.getStrArrayAttr(object_names.GetExportedNames(node_id)));
+      }
+
     } else if (object.kind_case() == SavedObject::kConstant) {
       const SavedConstant& constant = object.constant();
       const TensorProto* value = ExtractConstTensorFromGraph(
@@ -3505,11 +3530,10 @@ Status CreateSavedModelIR(
 }
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-SavedModelObjectGraphImporter::Convert(
-    SavedModelV2Bundle* saved_model, absl::Span<std::string> exported_names,
-    mlir::MLIRContext* context, bool add_default_attributes,
-    // TODO(b/200093974): Remove post triage.
-    bool unconditionally_use_set_output_shapes) {
+SavedModelObjectGraphImporter::Convert(SavedModelV2Bundle* saved_model,
+                                       absl::Span<std::string> exported_names,
+                                       mlir::MLIRContext* context,
+                                       MLIRImportOptions import_options) {
   LoadImporterDialects(*context);
   GraphDebugInfo dummy_debug_info;
   const GraphDebugInfo& debug_info =
@@ -3518,7 +3542,7 @@ SavedModelObjectGraphImporter::Convert(
   GraphImportConfig specs;
   specs.prune_unused_nodes = true;
   specs.unconditionally_use_set_output_shapes =
-      unconditionally_use_set_output_shapes;
+      import_options.unconditionally_use_set_output_shapes;
   mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
@@ -3528,11 +3552,11 @@ SavedModelObjectGraphImporter::Convert(
 
   GraphConstructorOptions options;
   options.allow_internal_ops = true;
-  options.add_default_attributes = add_default_attributes;
+  options.add_default_attributes = import_options.add_default_attributes;
   Graph graph(OpRegistry::Global());
 
   GraphDef preprocessed_graphdef(graphdef);
-  if (add_default_attributes) {
+  if (import_options.add_default_attributes) {
     TF_RETURN_IF_ERROR(PreprocessGraphDef(nullptr, &preprocessed_graphdef));
   }
 
@@ -3579,7 +3603,7 @@ SavedModelObjectGraphImporter::Convert(
   // Construct the SavedModel IR.
   TF_RETURN_IF_ERROR(CreateSavedModelIR(object_names, module.get(),
                                         object_graph, tf_name_to_mlir_name,
-                                        saved_model));
+                                        saved_model, import_options));
   assert(mlir::succeeded(mlir::verify(module.get())));
 
   return module;
@@ -4129,8 +4153,7 @@ class SavedModelSignatureDefImporter {
   static StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Convert(
       const SavedModelBundle& bundle,
       std::optional<absl::Span<const std::string>> exported_names,
-      mlir::MLIRContext* context, tensorflow::MLIRImportOptions options,
-      bool lift_varhandle_ops_to_args = true) {
+      mlir::MLIRContext* context, tensorflow::MLIRImportOptions options) {
     // debug_info might not be loaded with loader_lite.
     GraphDebugInfo debug_info;
     if (bundle.debug_info != nullptr) debug_info = *bundle.debug_info;
@@ -4147,8 +4170,7 @@ class SavedModelSignatureDefImporter {
     mlir::OpBuilder builder(module->getContext());
     (*module)->setAttr("tf_saved_model.under_construction",
                        builder.getUnitAttr());
-    TF_RETURN_IF_ERROR(
-        LiftVariables(bundle, *module, lift_varhandle_ops_to_args));
+    TF_RETURN_IF_ERROR(LiftVariables(bundle, *module, options.lift_variables));
     (*module)->removeAttr("tf_saved_model.under_construction");
 
     return module;
@@ -4272,24 +4294,21 @@ tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertFunctionToMlir(
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelToMlir(
     SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
-    absl::Span<std::string> exported_names, bool add_default_attributes,
-    bool unconditionally_use_set_output_shapes) {
-  return SavedModelObjectGraphImporter::Convert(
-      saved_model, exported_names, context, add_default_attributes,
-      unconditionally_use_set_output_shapes);
+    absl::Span<std::string> exported_names, MLIRImportOptions options) {
+  return SavedModelObjectGraphImporter::Convert(saved_model, exported_names,
+                                                context, options);
 }
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlir(
     const SavedModelBundle& saved_model, absl::Span<std::string> exported_names,
-    mlir::MLIRContext* context, MLIRImportOptions options,
-    bool lift_variables) {
+    mlir::MLIRContext* context, MLIRImportOptions options) {
   std::optional<absl::Span<const std::string>> optional_exported_names;
   // TODO(b/187062560): Change ConvertSavedModelV1ToMlir() to take an optional
   // `exported_names` so that it can be configured to import only restore/init
   // graphs.
   if (!exported_names.empty()) optional_exported_names = exported_names;
   return SavedModelSignatureDefImporter::Convert(
-      saved_model, optional_exported_names, context, options, lift_variables);
+      saved_model, optional_exported_names, context, options);
 }
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlirLite(

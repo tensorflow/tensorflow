@@ -60,11 +60,14 @@ void MoveResourceArgsToEnd(func::FuncOp callee) {
                                            callee.getResultTypes()));
 }
 
-void RewriteCall(tf_device::ClusterFuncOp cluster_func_op, SymbolTable &symtab,
-                 OpBuilder &builder) {
+template <typename OpT,
+          typename std::enable_if<llvm::is_one_of<
+              OpT, TF::PartitionedCallOp,
+              TF::StatefulPartitionedCallOp>::value>::type * = nullptr>
+void RewriteCall(OpT call_op, SymbolTable &symtab) {
   llvm::SmallVector<Value> non_resource_args, resource_args;
   bool has_resources = false, in_order = true;
-  for (const Value &arg : cluster_func_op.getOperands()) {
+  for (const Value &arg : call_op.getArgs()) {
     if (!getElementTypeOrSelf(arg.getType()).template isa<TF::ResourceType>()) {
       non_resource_args.push_back(arg);
       if (has_resources) in_order = false;
@@ -77,26 +80,33 @@ void RewriteCall(tf_device::ClusterFuncOp cluster_func_op, SymbolTable &symtab,
   if (!in_order) {
     // Functions do not get reused in practice, so skip the check for if the
     // callee has been updated.
-    StringAttr callee_sym = cluster_func_op.getFuncAttr().getAttr();
+    StringAttr callee_sym =
+        cast<SymbolRefAttr>(call_op.getFAttr()).getRootReference();
     MoveResourceArgsToEnd(symtab.lookup<func::FuncOp>(callee_sym));
   }
-  builder.setInsertionPoint(cluster_func_op);
+  OpBuilder builder(call_op->getContext());
+  builder.setInsertionPoint(call_op);
   auto xla_launch_op = builder.create<TF::XlaLaunchOp>(
-      cluster_func_op.getLoc(), cluster_func_op.getResultTypes(),
+      call_op.getLoc(), call_op.getResultTypes(),
       /*constants=*/ValueRange({}), ValueRange(non_resource_args),
-      ValueRange(resource_args), cluster_func_op.getFuncAttr());
+      ValueRange(resource_args), call_op.getFAttr());
 
-  CopyDeviceAndUnderscoredAttributes(cluster_func_op, xla_launch_op);
-  cluster_func_op.replaceAllUsesWith(xla_launch_op.getResults());
-  cluster_func_op.erase();
+  CopyDeviceAndUnderscoredAttributes(call_op, xla_launch_op);
+  call_op.replaceAllUsesWith(xla_launch_op.getResults());
+  call_op.erase();
 }
 
 void XlaRewritePass::runOnOperation() {
   ModuleOp module = getOperation();
   SymbolTable symtab(module);
-  OpBuilder builder(&getContext());
-  module.walk([&](tf_device::ClusterFuncOp cluster_func_op) {
-    RewriteCall(cluster_func_op, symtab, builder);
+  module.walk([&](tf_device::ClusterOp cluster_op) {
+    cluster_op.getBody().walk([&](mlir::Operation *op) {
+      if (auto call_op = llvm::dyn_cast<TF::StatefulPartitionedCallOp>(op)) {
+        RewriteCall(call_op, symtab);
+      } else if (auto call_op = llvm::dyn_cast<TF::PartitionedCallOp>(op)) {
+        RewriteCall(call_op, symtab);
+      }
+    });
   });
 
   // Verify that there are no nested XLA launch ops.

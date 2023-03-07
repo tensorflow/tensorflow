@@ -1714,6 +1714,18 @@ def TestFactory(xla_backend,
       expected = np.array([[[[2, 7]]], [[[5, 6]]]], dtype=np.int32)
       np.testing.assert_allclose(g, expected, rtol=1e-4)
 
+    def testAllGather(self):
+      a = np.arange(9).astype(np.int32).reshape((3, 3))
+      c = self._NewComputation()
+      ops.AllGather(
+          operand=ops.Constant(c, a),
+          all_gather_dimension=0,
+          shard_count=1,
+          replica_groups=xla_client.make_replica_groups([[0]]),
+          use_global_device_ids=False)
+      [g] = self._Execute(c, ())
+      np.testing.assert_equal(g, a)
+
     def testFft(self):
       if self.backend.platform == "tpu":
         self.skipTest("TPU only supports 1D FFT")

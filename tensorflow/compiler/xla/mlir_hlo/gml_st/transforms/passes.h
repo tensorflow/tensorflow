@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef MLIR_HLO_GML_ST_TRANSFORMS_PASSES_H
 #define MLIR_HLO_GML_ST_TRANSFORMS_PASSES_H
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // IWYU pragma: keep
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 
 #define GEN_PASS_DECL
@@ -29,6 +31,15 @@ limitations under the License.
 
 namespace mlir {
 namespace gml_st {
+
+struct MatmulSizes {
+  // [m, k] x [k, n]
+  int64_t m;
+  int64_t n;
+  int64_t k;
+};
+
+using MatmulTileSizeComputationFn = std::function<MatmulSizes(MatmulSizes)>;
 
 /// Pass to tile ops using TilingInterface.
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
@@ -74,30 +85,20 @@ std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass();
 /// Pass to eliminate dead `memref.copy`.
 std::unique_ptr<OperationPass<func::FuncOp>> createSimplifyDeadCopyPass();
 
-/// Pass to rewrite vector.contract.
-std::unique_ptr<OperationPass<func::FuncOp>> createRewriteVectorContractPass();
-
-/// Pass to rewrite vector.transpose.
-std::unique_ptr<OperationPass<func::FuncOp>> createRewriteVectorTransposePass();
-
-/// Pass to rewrite vector.multi_reduction.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createRewriteVectorMultiReductionPass();
-
-/// Pass to optimize vector.transpose, vector.transfer_read and
-/// vector.transfer_write.
-std::unique_ptr<OperationPass<func::FuncOp>> createOptimizeVectorTransferPass();
+/// Pass to gradually lower vector ops to SCF.
+std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorsPass(
+    bool enableAVX2 = true);
 
 /// Pass to transform a thlo.scatter op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
 
 /// Pass to transform a dot operation for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformDotForCpuPass(
-    ArrayRef<int64_t> dotTileSizes = std::nullopt);
+    MatmulTileSizeComputationFn tileSizeFn = nullptr);
 
 /// Pass to transform a linalg.matmul op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForCpuPass(
-    ArrayRef<int64_t> matmulTileSizes = std::nullopt,
+    MatmulTileSizeComputationFn tileSizeFn = nullptr,
     bool lowerToMmt4DOp = false);
 
 /// Pass to fuse linalg on tensor operations.
@@ -133,17 +134,24 @@ createTransformGenericForCpuPass();
 
 /// Pass to create fusion clusters.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createFusionPlanningForCpuPass();
+createFusionPlanningForCpuPass(int64_t vectorSize = 8);
 
 /// Pass to outline fusion regions into functions.
-std::unique_ptr<OperationPass<ModuleOp>> createFusionOutliningPass();
+std::unique_ptr<OperationPass<mlir::ModuleOp>> createFusionOutliningPass();
 
 /// Pass to inline fusion clusters.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createInlineFusionClustersPass();
 
+/// Pass to rewrite tensor.from_elements into tensor.insert.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createRewriteFromElementsOpPass();
+
 /// Pass to add debug info to be propagated into LLVM backend.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAddDebugInfoPass();
+
+/// Populate pattern to remove single/zero iteration scf.forall dimensions.
+void populateCollapseForallOpDimensionsPattern(RewritePatternSet &patterns);
 
 struct GmlStCPUTilingOptions
     : public mlir::PassPipelineOptions<GmlStCPUTilingOptions> {
@@ -154,6 +162,7 @@ struct GmlStCPUTilingOptions
     this->reduction1DTileSize = opts.reduction1DTileSize;
     this->reduction2DTileSizes = opts.reduction2DTileSizes;
     this->vectorSize = opts.vectorSize;
+    this->enableFusionClusters = opts.enableFusionClusters;
   }
 
   Option<int64_t> vectorSize{*this, "vector-size",
@@ -171,13 +180,25 @@ struct GmlStCPUTilingOptions
 
   ListOption<int64_t> matmulTileSizes{
       *this, "matmul-tile-sizes",
-      llvm::cl::desc("Tile sizes for `linalg.matmul`."),
-      llvm::cl::list_init<int64_t>({4, 4, 4}), llvm::cl::ZeroOrMore};
+      llvm::cl::desc("Tile sizes for `linalg.matmul`. Leave empty to determine "
+                     "sizes automatically."),
+      llvm::cl::list_init<int64_t>({}), llvm::cl::ZeroOrMore};
 
   Option<bool> lowerToMmt4d{
       *this, "lower-to-mmt4d",
       llvm::cl::desc("Enable the specific code generation (packing) for matmul "
                      "operations."),
+      llvm::cl::init(false)};
+
+  Option<bool> enableFusionClusters{
+      *this, "enable-fusion-clusters",
+      llvm::cl::desc("Enable the pass to create gml_st.fusion clusters."),
+      llvm::cl::init(true)};
+
+  Option<bool> enableFusionClusterOutlining{
+      *this, "enable-fusion-cluster-outlining",
+      llvm::cl::desc(
+          "Enable passes to outline and deduplicate gml_st.fusion clusters."),
       llvm::cl::init(false)};
 };
 

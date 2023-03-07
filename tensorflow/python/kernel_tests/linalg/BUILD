@@ -12,9 +12,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["cholesky_op_test.py"],
     shard_count = 5,
-    tags = [
-        "nomsan",  # TODO(b/131773093): Re-enable.
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -137,7 +134,6 @@ cuda_py_test(
     srcs = ["linear_operator_adjoint_test.py"],
     shard_count = 5,
     tags = [
-        "noasan",  # times out, b/63678675
         "optonly",  # times out
     ],
     deps = [
@@ -174,10 +170,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["linear_operator_block_diag_test.py"],
     shard_count = 8,
-    tags = [
-        "noasan",
-        "optonly",
-    ],
+    tags = ["optonly"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -196,10 +189,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["linear_operator_block_lower_triangular_test.py"],
     shard_count = 8,
-    tags = [
-        "noasan",
-        "optonly",
-    ],
+    tags = ["optonly"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -219,7 +209,6 @@ cuda_py_test(
     srcs = ["linear_operator_composition_test.py"],
     shard_count = 5,
     tags = [
-        "noasan",  # times out, b/63678675
         "optonly",  # times out
     ],
     deps = [
@@ -242,7 +231,6 @@ cuda_py_test(
     shard_count = 15,
     tags = [
         "no_cuda11",  # TODO(b/197522782): reenable test after fixing.
-        "noasan",  # times out, b/63678675
         "optonly",  # times out, b/79171797
     ],
     deps = [
@@ -264,10 +252,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["linear_operator_diag_test.py"],
     shard_count = 5,
-    tags = [
-        "noasan",
-        "optonly",
-    ],
+    tags = ["optonly"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -286,10 +271,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["linear_operator_full_matrix_test.py"],
     shard_count = 5,
-    tags = [
-        "noasan",
-        "optonly",
-    ],
+    tags = ["optonly"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -306,10 +288,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["linear_operator_householder_test.py"],
     shard_count = 5,
-    tags = [
-        "noasan",
-        "optonly",
-    ],
+    tags = ["optonly"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -328,10 +307,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["linear_operator_identity_test.py"],
     shard_count = 5,
-    tags = [
-        "noasan",
-        "optonly",
-    ],
+    tags = ["optonly"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -350,7 +326,6 @@ cuda_py_test(
     srcs = ["linear_operator_inversion_test.py"],
     shard_count = 5,
     tags = [
-        "noasan",  # times out, b/63678675
         "optonly",  # times out
     ],
     deps = [
@@ -371,10 +346,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["linear_operator_kronecker_test.py"],
     shard_count = 10,
-    tags = [
-        "noasan",
-        "optonly",
-    ],
+    tags = ["optonly"],
     xla_enable_strict_auto_jit = True,
     deps = [
         "//tensorflow/python:array_ops",
@@ -394,10 +366,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["linear_operator_low_rank_update_test.py"],
     shard_count = 10,
-    tags = [
-        "noasan",  # times out
-        "optonly",
-    ],
+    tags = ["optonly"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -414,10 +383,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["linear_operator_lower_triangular_test.py"],
     shard_count = 4,
-    tags = [
-        "noasan",
-        "optonly",
-    ],
+    tags = ["optonly"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -434,10 +400,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["linear_operator_permutation_test.py"],
     shard_count = 5,
-    tags = [
-        "noasan",
-        "optonly",
-    ],
+    tags = ["optonly"],
     xla_enable_strict_auto_jit = True,
     deps = [
         "//tensorflow/python:array_ops",
@@ -476,7 +439,6 @@ cuda_py_test(
     tags = [
         "no_cuda_on_cpu_tap",  # flaky, b/135701551
         "no_gpu",  # flaky, b/135701551
-        "noasan",  # times out, b/63678675
         "optonly",  # times out, b/79171797
     ],
     deps = [
@@ -500,7 +462,6 @@ cuda_py_test(
     shard_count = 5,
     tags = [
         "no_windows_gpu",
-        "noasan",
         "optonly",
     ],
     xla_enable_strict_auto_jit = True,
@@ -522,10 +483,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["linear_operator_util_test.py"],
     shard_count = 5,
-    tags = [
-        "noasan",
-        "optonly",
-    ],
+    tags = ["optonly"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -618,9 +576,6 @@ cuda_py_test(
     name = "matrix_solve_ls_op_test",
     size = "medium",
     srcs = ["matrix_solve_ls_op_test.py"],
-    tags = [
-        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -674,10 +629,7 @@ cuda_py_test(
     srcs = ["normalize_op_test.py"],
     shard_count = 20,
     # TODO(b/117236102): Re-enable in msan build.
-    tags = [
-        "no_windows_gpu",
-        "nomsan",
-    ],
+    tags = ["no_windows_gpu"],
     # TODO(b/208263392): Re-enable. tf.Squeeze op after tf.Where op doesn't reshape.
     xla_enable_strict_auto_jit = False,
     deps = [
@@ -694,10 +646,7 @@ cuda_py_test(
     srcs = ["norm_op_test.py"],
     shard_count = 20,
     # TODO(b/117236102): Re-enable in msan build.
-    tags = [
-        "no_windows_gpu",
-        "nomsan",
-    ],
+    tags = ["no_windows_gpu"],
     # TODO(b/208263392): Re-enable. tf.Squeeze op after tf.Where op doesn't reshape.
     xla_enable_strict_auto_jit = False,
     deps = [
@@ -768,7 +717,6 @@ cuda_py_test(
     shard_count = 30,
     tags = [
         "no_oss",  # b/117185141.
-        "nomsan",  # TODO(b/117236102): Re-enable in msan build.
     ],
     xla_tags = [
         "no_cuda_asan",  # times out

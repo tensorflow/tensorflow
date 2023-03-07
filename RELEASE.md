@@ -5,6 +5,26 @@
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
+*  `tf.keras`
+
+    *  Remove the Keras scikit-learn API wrappers (`KerasClassifier` and
+       `KerasRegressor`), which had been deprecated in August 2021.
+       We recommend using [SciKeras](https://github.com/adriangb/scikeras)
+       instead.
+
+*   The default Keras model saving format is now the Keras v3 format:
+    calling `model.save("xyz.keras")` will no longer create a H5 file,
+    it will create a native Keras model file.
+    This will only be breaking for you if you were manually inspecting or
+    modifying H5 files saved by Keras under a `.keras` extension.
+    If this breaks you, simply add `save_format="h5"` to your `.save()` call
+    to revert back to the prior behavior.
+
+* The LMDB kernels have been changed to return an error. This is in preparation
+  for completely removing them from TensorFlow. The LMDB dependency that these
+  kernels are bringing to TensorFlow has been dropped, thus making the build
+  slightly faster and more secure.
+
 ## Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
@@ -20,6 +40,10 @@
         `experimental_disable_delegate_clustering` to turn-off delegate
         clustering.
     *   Add int16x8 support for the built-in op `mirror_pad`
+    *   Add 16-bit int type support for built-in op `less`, `greater_than`,
+        `equal`
+    *   Add 8-bit and 16-bit support for `floor_div` and `floor_mod`.
+    *   Add int16 indices support for built-in op `gather`.
 
 *   `tf.keras`
 
@@ -37,12 +61,47 @@
         `SidecarEvaluator` evaluator. The evaluator regularly evaluates the
         model and exports it if the user-defined comparison function determines
         that it is an improvement.
+    *   Added warmup capabilities to `tf.keras.optimizers.schedules.CosineDecay`
+        learning rate scheduler. You can now specify an initial and target
+        learning rate, and our scheduler will perform a linear interpolation
+        between the two after which it will begin a decay phase.
+
+*   `tf.function`:
+
+    *   ConcreteFunction (`tf.types.experimental.ConcreteFunction`) as generated
+        through `get_concrete_function` now performs holistic input validation
+        similar to calling `tf.function` directly. This can cause breakages
+        where existing calls pass Tensors with the wrong shape or omit certain
+        non-Tensor arguments (including default values).
+
+*   `tf.nn`
+
+    *   `tf.nn.embedding_lookup_sparse` and `tf.nn.safe_embedding_lookup_sparse`
+        now support ids and weights described by `tf.RaggedTensor`s.
+    *   Added a new boolean argument `allow_fast_lookup` to
+        `tf.nn.embedding_lookup_sparse` and
+        `tf.nn.safe_embedding_lookup_sparse`, which enables a simplified and
+        typically faster lookup procedure.
 
 ## Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
+
+*   `tf.distribute`
+
+    *   Opened an experimental API,
+        `tf.distribute.experimental.coordinator.get_current_worker_index`, for
+        retrieving the worker index from within a worker, when using parameter
+        server training with a custom training loop.
+
+*   `tf.experimental.dtensor`:
+
+    *   Deprecated `dtensor.run_on` in favor of `dtensor.default_mesh` to
+        correctly indicate that the context does not override the mesh that the
+        ops and functions will run on, it only sets a fallback default mesh.
+
 
 ## Thanks to our Contributors
 

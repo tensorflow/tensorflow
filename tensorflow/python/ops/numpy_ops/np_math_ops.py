@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -1269,7 +1270,7 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
     weights = np_array_ops.array(weights, out_dtype)
 
     def rank_equal_case():
-      control_flow_ops.Assert(
+      control_flow_assert.Assert(
           math_ops.reduce_all(array_ops.shape(a) == array_ops.shape(weights)),
           [array_ops.shape(a), array_ops.shape(weights)])
       weights_sum = math_ops.reduce_sum(weights, axis=axis)
@@ -1281,7 +1282,7 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
     else:
 
       def rank_not_equal_case():
-        control_flow_ops.Assert(
+        control_flow_assert.Assert(
             array_ops.rank(weights) == 1, [array_ops.rank(weights)])
         weights_sum = math_ops.reduce_sum(weights)
         axes = ops.convert_to_tensor([[axis], [0]])

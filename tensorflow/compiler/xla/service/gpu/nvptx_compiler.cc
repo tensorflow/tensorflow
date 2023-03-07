@@ -29,11 +29,11 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
-#include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
-#include "tensorflow/compiler/xla/service/bfloat16_support.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/convert_mover.h"
 #include "tensorflow/compiler/xla/service/dump.h"
+#include "tensorflow/compiler/xla/service/float_normalization.h"
+#include "tensorflow/compiler/xla/service/float_support.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
@@ -72,23 +72,24 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class ConvBfloat16Support : public BFloat16Support {
+class ConvBfloat16Support : public FloatSupport {
  public:
   explicit ConvBfloat16Support(
       se::dnn::VersionInfo cudnn_version,
       se::CudaComputeCapability cuda_compute_capability)
-      : is_conv_bf16_supported_((cudnn_version.major_version() > 8 ||
+      : FloatSupport(BF16),
+        is_conv_bf16_supported_((cudnn_version.major_version() > 8 ||
                                  (cudnn_version.major_version() == 8 &&
                                   cudnn_version.minor_version() >= 2)) &&
                                 cuda_compute_capability.IsAtLeast(
                                     se::CudaComputeCapability::AMPERE)) {}
 
-  bool SupportsBF16Operand(const HloInstruction& hlo,
-                           int64_t operand_index) const override {
+  bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
+                                   int64_t operand_index) const override {
     return (hlo.opcode() != HloOpcode::kConvolution) || is_conv_bf16_supported_;
   }
 
-  bool SupportsBF16Output(const HloInstruction& hlo) const override {
+  bool SupportsLowPrecisionOutput(const HloInstruction& hlo) const override {
     return (hlo.opcode() != HloOpcode::kConvolution) || is_conv_bf16_supported_;
   }
 
@@ -113,7 +114,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 
   // Convert upsupported bf16 convolutions to f32.
   ConvBfloat16Support conv_bf16_support(dnn_version, cuda_compute_capability);
-  pipeline.AddPass<BFloat16Normalization>(&conv_bf16_support);
+  pipeline.AddPass<FloatNormalization>(&conv_bf16_support);
 
   pipeline.AddPass<GpusolverRewriter>();
   pipeline.AddPass<GpuConvRewriter>();
@@ -130,6 +131,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 
   AlgebraicSimplifierOptions algsimp_options;
   algsimp_options.set_enable_conv_operand_swap(false);
+  algsimp_options.set_enable_normalize_broadcast_operand(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
 
   // CudnnSimplifyPadding gets rid of some padding introduced by

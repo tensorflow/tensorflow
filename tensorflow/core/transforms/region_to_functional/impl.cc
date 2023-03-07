@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/region_to_functional/impl.h"
 
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -142,7 +143,7 @@ class BasePattern {
 
   // Try to find a name for a data or control value. For op results, check the
   // op for a name. Otherwise, check the enclosing function's arg attributes.
-  StringAttr TryFindName(Value value, Optional<ValueRange> args) const;
+  StringAttr TryFindName(Value value, std::optional<ValueRange> args) const;
 
   // Get the `control_ret_attrs` attributes for control returns. Use a name
   // uniquer to unique names across function arguments, results, and control
@@ -420,7 +421,7 @@ void BasePattern::CollectValuesDefinedAbove(Region &region,
     Value value = operand->get();
     if (value.getType() != control_ty) {
       datas.insert(value);
-    } else if (Optional<Value> data = LookupDataValue(value)) {
+    } else if (std::optional<Value> data = LookupDataValue(value)) {
       datas.insert(*data);
     } else {
       ctls.insert(value);
@@ -516,7 +517,7 @@ NamedAttrList BasePattern::BuildAttributes(RegionAttr preserved,
 
   // For each argument and result, lookup a name and regenerate output shapes.
   const auto build_attrs = [&](ArrayAttr attr, auto &it,
-                               Optional<ValueRange> args) {
+                               std::optional<ValueRange> args) {
     NamedAttrList attrs(attr ? attr[it.index()].template cast<DictionaryAttr>()
                              : DictionaryAttr());
     // If no name was preserved, try to find one.
@@ -535,7 +536,7 @@ NamedAttrList BasePattern::BuildAttributes(RegionAttr preserved,
   for (auto &it : llvm::enumerate(results))
     res_attrs.push_back(build_attrs(preserved_res_attrs, it, arguments));
 
-  Optional<RegisteredOperationName> name =
+  std::optional<RegisteredOperationName> name =
       RegisteredOperationName::lookup(GraphFuncOp::getOperationName(), ctx_);
   attrs.append(GraphFuncOp::getArgAttrsAttrName(*name),
                ArrayAttr::get(ctx_, arg_attrs));
@@ -545,7 +546,7 @@ NamedAttrList BasePattern::BuildAttributes(RegionAttr preserved,
 }
 
 StringAttr BasePattern::TryFindName(Value value,
-                                    Optional<ValueRange> args) const {
+                                    std::optional<ValueRange> args) const {
   // If this is an op result, return the op's name.
   if (auto result = value.dyn_cast<OpResult>()) {
     Operation *op = result.getOwner();

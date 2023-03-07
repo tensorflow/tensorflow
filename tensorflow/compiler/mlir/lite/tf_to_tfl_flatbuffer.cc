@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -199,7 +200,7 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
     mlir::PassManager& pass_manager, mlir::ModuleOp module, bool export_to_mlir,
     mlir::StatusScopedDiagnosticHandler& statusHandler,
     const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
-    llvm::Optional<tensorflow::Session*> session, std::string* result) {
+    std::optional<tensorflow::Session*> session, std::string* result) {
   // Currently, TF quantization only support dynamic range quant, as such
   // when toco flag post training quantization is specified with converting to
   // stablehlo, we automatically enable dynamic range quantization
@@ -259,7 +260,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
     llvm::StringRef saved_model_dir,
-    llvm::Optional<tensorflow::Session*> session, std::string* result) {
+    std::optional<tensorflow::Session*> session, std::string* result) {
   // Explicitly disable dumping Op details on failures.
   module.getContext()->printOpOnDiagnostic(false);
 
@@ -409,9 +410,10 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     MLIRImportOptions options;
     options.upgrade_legacy = specs.upgrade_legacy;
     options.unconditionally_use_set_output_shapes = true;
+    options.lift_variables = enable_variable_lifting;
     auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
         input_filename, tags, exported_names, context, options,
-        enable_variable_lifting, saved_model_bundle);
+        saved_model_bundle);
 
     if (!module_or.status().ok()) return module_or.status();
     return std::move(module_or).value();

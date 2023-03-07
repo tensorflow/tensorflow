@@ -16,8 +16,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/cc/saved_model/fingerprinting.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 

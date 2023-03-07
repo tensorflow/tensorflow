@@ -595,6 +595,16 @@ func.func @floor_div(tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32> {
 // CHECK:  return
 }
 
+func.func @floor_div_i16(tensor<8x16xi16>, tensor<8x16xi16>) -> tensor<8x16xi16> {
+^bb0(%arg0: tensor<8x16xi16>, %arg1: tensor<8x16xi16>):
+  %0 = "tf.FloorDiv"(%arg0, %arg1) : (tensor<8x16xi16>, tensor<8x16xi16>) -> tensor<8x16xi16>
+  func.return %0 : tensor<8x16xi16>
+
+// CHECK-LABEL: floor_div_i16
+// CHECK:  tfl.floor_div %arg0, %arg1 : tensor<8x16xi16>
+// CHECK:  return
+}
+
 func.func @not_equal(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xi1> {
   %0 = "tf.NotEqual"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
   func.return %0 : tensor<8x16xi1>
@@ -1566,6 +1576,13 @@ func.func @floor_mod(%arg0: tensor<5xf32>, %arg1: tensor<5xf32>) -> tensor<5xf32
   func.return %0 : tensor<5xf32>
   // CHECK-LABEL: floor_mod
   // CHECK: "tfl.floor_mod"(%arg0, %arg1) : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
+}
+
+func.func @floor_mod_i16(%arg0: tensor<5xi16>, %arg1: tensor<5xi16>) -> tensor<5xi16> {
+  %0 = "tf.FloorMod"(%arg0, %arg1) : (tensor<5xi16>, tensor<5xi16>) -> tensor<5xi16>
+  func.return %0 : tensor<5xi16>
+  // CHECK-LABEL: floor_mod_i16
+  // CHECK: "tfl.floor_mod"(%arg0, %arg1) : (tensor<5xi16>, tensor<5xi16>) -> tensor<5xi16>
 }
 
 func.func @exp(%arg0: tensor<5xf32>) -> tensor<5xf32> {

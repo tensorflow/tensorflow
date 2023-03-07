@@ -133,6 +133,7 @@ py_library(
         ":zip_op",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",

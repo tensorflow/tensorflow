@@ -73,7 +73,7 @@ from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import base
 from tensorflow.python.trackable import resource
 from tensorflow.python.trackable import trackable_utils
-from tensorflow.python.training.saving import saveable_object_util
+from tensorflow.python.training.saving import trace_saveable_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
@@ -467,7 +467,7 @@ def _gen_save_and_restore_functions(checkpoint_factory_map):
     else:
       # Trace deprecated SaveableObject save and restore functions.
       saveable_fn_map[obj] = (
-          saveable_object_util.trace_save_restore_function_map(
+          trace_saveable_util.trace_save_restore_function_map(
               obj, factory_data_list))
   return saveable_fn_map
 

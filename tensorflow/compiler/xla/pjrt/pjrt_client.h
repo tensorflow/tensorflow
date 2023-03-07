@@ -747,7 +747,8 @@ class PjRtClient {
 
   // Return the PjRtHostMemoryForDeviceManager for this client. It can be
   // nullptr if the implementation does not provide one.
-  PjRtHostMemoryForDeviceManager* GetPjRtHostMemoryForDeviceManager() const {
+  virtual PjRtHostMemoryForDeviceManager* GetPjRtHostMemoryForDeviceManager()
+      const {
     return host_memory_for_device_manager_.get();
   }
 

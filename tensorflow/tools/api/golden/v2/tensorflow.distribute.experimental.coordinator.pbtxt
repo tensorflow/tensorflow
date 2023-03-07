@@ -12,4 +12,8 @@ tf_module {
     name: "RemoteValue"
     mtype: "<type \'type\'>"
   }
+  member_method {
+    name: "get_current_worker_index"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
 }

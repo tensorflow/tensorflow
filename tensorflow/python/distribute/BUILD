@@ -477,9 +477,6 @@ cuda_py_test(
     tags = [
         "no_pip",  # TODO(b/266520226)
         "no_windows",  # TODO(b/184424727): Re-enable this.
-        "noasan",  # TODO(b/180630068)
-        "nomsan",  # TODO(b/180630068)
-        "notsan",  # TODO(b/151841995)
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -1064,10 +1061,7 @@ distribute_py_test(
     srcs = ["strategy_combinations_test.py"],
     disable_mlir_bridge = False,
     python_version = "PY3",
-    tags = [
-        "no_cuda_asan",
-        "noasan",
-    ],  # TODO(b/195246941) b/196591124
+    tags = ["no_cuda_asan"],  # TODO(b/195246941) b/196591124
     deps = [
         ":central_storage_strategy",
         ":collective_all_reduce_strategy",
@@ -1166,7 +1160,6 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # TODO(b/214574707): times out
-        "notsan",  # TODO(b/177098062): flaky for over a year
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -1413,8 +1406,6 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
         "no_oss",  # b/178656226
-        "noasan",  # b/175816710
-        "notsan",  # b/168645872
     ],
     tpu_tags = [
         "noasan",  # TODO(b/337374867) fails with -fsanitize=null
@@ -1508,8 +1499,6 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
-        "noasan",  # b/175816710
-        "notsan",  # b/168645872
     ],
     tpu_tags = [
         "noasan",  # TODO(b/337374867) fails with -fsanitize=null
@@ -1548,8 +1537,6 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
-        "noasan",  # b/175816710
-        "notsan",  # b/168645872
     ],
     tpu_tags = [
         "noasan",  # TODO(b/337374867) fails with -fsanitize=null
@@ -1914,7 +1901,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
-        "nomsan",  # b/154224457: Re-enable when fixed.
         "notsan",  # TODO(b/220133218)
     ],
     # b/155301154 broken with XLA:GPU
@@ -2099,8 +2085,6 @@ cuda_py_test(
     tags = [
         "multi_gpu",
         "no_pip",  # TODO(b/266520226)
-        "noasan",
-        "nomsan",
     ],  # b/175904958
     deps = [
         ":combinations",
@@ -2130,10 +2114,7 @@ distribute_py_test(
     disable_mlir_bridge = False,
     python_version = "PY3",
     shard_count = 2,
-    tags = [
-        "multi_and_single_gpu",
-        "notsan",  # TODO(b/160006974)
-    ],
+    tags = ["multi_and_single_gpu"],
     xla_enable_strict_auto_jit = True,
     deps = [
         ":collective_all_reduce_strategy",
@@ -2286,7 +2267,6 @@ distribute_py_test(
         "multi_and_single_gpu",
         "nomac",  # TODO(b/201788023): Attempt MultiProcessCluster to fix this.
         "notpu",
-        "notsan",  # Tsan failure doesn't seem to be caused by TF.
     ],
     deps = [
         ":combinations",

@@ -91,7 +91,8 @@ class HloDataflowAnalysisTest : public HloTestBase,
 
   std::unique_ptr<HloComputation> CreateR0F32UnaryOpComputation(
       HloOpcode opcode) {
-    HloComputation::Builder builder(TestName() + "." + HloOpcodeString(opcode));
+    HloComputation::Builder builder(
+        absl::StrCat(TestName(), ".", HloOpcodeString(opcode)));
     HloInstruction* param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, scalar_shape_, "param0"));
     builder.AddInstruction(

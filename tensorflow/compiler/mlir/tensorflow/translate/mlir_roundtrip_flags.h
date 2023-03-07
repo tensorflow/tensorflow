@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_MLIR_ROUNDTRIP_FLAGS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_MLIR_ROUNDTRIP_FLAGS_H_
 
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/MapVector.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringMap.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -122,7 +122,7 @@ Status ParseInputArrayInfo(absl::string_view array_names,
 Status ParseInputArrayInfo(
     const std::vector<string>& node_names,
     const std::vector<string>& node_dtypes,
-    const std::vector<llvm::Optional<std::vector<int>>>& node_shapes,
+    const std::vector<std::optional<std::vector<int>>>& node_shapes,
     GraphImportConfig::InputArrays* inputs);
 
 // Parses shapes from the given string into shapes_vector which is a structured
@@ -130,7 +130,7 @@ Status ParseInputArrayInfo(
 // NOTE: If shapes_str is empty, shapes_vector will also be empty.
 Status ParseNodeShapes(
     absl::string_view shapes_str,
-    std::vector<llvm::Optional<std::vector<int>>>& shapes_vector);
+    std::vector<std::optional<std::vector<int>>>& shapes_vector);
 
 // Parses names from the given string into the names_vector.
 // NOTE: If names_str is empty, names_vector will also be empty.

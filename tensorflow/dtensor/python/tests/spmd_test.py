@@ -239,7 +239,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     first_dim_sharded = self.first_dimension_sharded_layout
     second_dim_sharded = self.last_dimension_sharded_layout
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       m1 = numpy_util.stateless_random_uniform(
           layout=second_dim_sharded, shape=[a, b], seed=seed
       )
@@ -279,7 +279,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
           layout=layout,
       )
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       m1 = uniform(layout=second_dim_sharded, shape=[a, b], seed=seed)
       m2 = uniform(layout=first_dim_sharded, shape=[b, c], seed=seed)
 
@@ -332,7 +332,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     layout = Layout.replicated(self.mesh, rank=3)
     # Due to Perf concerns, `pack` does not check the compatibility of
     # components and layout. Here, we inject a wrong value components.
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       b = api.pack(
           [constant_op.constant([[[(x + 1) * 1.0]]]) for x in range(8)],
           layout=layout)
@@ -820,7 +820,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     b = constant_op.constant([[1., 2.], [3., 4.]])
     expected_result = op([a, b])
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       a = api.relayout(a, layout_a)
       b = api.relayout(b, layout_b)
       c = op([a, b])
@@ -897,7 +897,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
       expected_result = reduction_op(a)
 
       a = api.copy_to_mesh(a, self.replicated_layout_2d)
-      with api.run_on(self.mesh):
+      with api.default_mesh(self.mesh):
         dtensor_result = reduction_op(a)
 
       self.assertDTensorEqual(expected_result, expected_layout, dtensor_result)
@@ -932,7 +932,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
 
       a = api.relayout(a, self.first_dimension_sharded_layout)
 
-      with api.run_on(self.mesh):
+      with api.default_mesh(self.mesh):
         dtensor_result = reduction_op(a)
 
         self.assertDTensorEqual(expected_result, expected_layout,
@@ -946,7 +946,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
 
     a = api.relayout(a, self.first_dimension_sharded_layout)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = math_ops.reduce_logsumexp(a, axis=-1)
 
       self.assertDTensorEqual(expected_result,
@@ -988,7 +988,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
       # pylint: disable=g-long-lambda
       a = api.relayout(a, self.first_dimension_sharded_layout)
 
-      with api.run_on(self.mesh):
+      with api.default_mesh(self.mesh):
         dtensor_result = reduction_op(a)
 
         self.assertDTensorEqual(expected_result, expected_layout,
@@ -1029,7 +1029,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
       # pylint: disable=g-long-lambda
       a = api.relayout(a, self.first_dimension_sharded_layout)
 
-      with api.run_on(self.mesh):
+      with api.default_mesh(self.mesh):
         dtensor_result = reduction_op(a)
 
         self.assertDTensorEqual(expected_result, expected_layout,
@@ -1061,7 +1061,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     expected_result = reduction_op(a)
     a = api.relayout(a, self.replicated_layout_2d)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = reduction_op(a)
 
       self.assertDTensorEqual(expected_result, self.replicated_layout_1d,
@@ -1093,7 +1093,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     expected_result = reduction_op(a)
     a = api.relayout(a, self.first_dimension_sharded_layout)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = reduction_op(a)
 
       self.assertDTensorEqual(expected_result,
@@ -1135,7 +1135,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     expected_result = reduction_op(a)
     a = api.relayout(a, self.first_dimension_sharded_layout)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = reduction_op(a)
 
       self.assertDTensorEqual(expected_result, self.scalar_replicated_layout,
@@ -1237,7 +1237,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     global_op_args = inputs()
     expected_result = op(*global_op_args)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_op_args = inputs()
 
       def _broadcast_to_replicated(x):
@@ -1260,7 +1260,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     global_op_args = inputs()
     expected_result = op(*global_op_args)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_op_args = inputs()
 
       def _broadcast_to_replicated(x):
@@ -1286,7 +1286,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     first_d_shard_layout = Layout([_MESH_DIM_X, layout_lib.UNSHARDED],
                                   self.mesh)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_op_args = inputs()
 
       def _broadcast_to_replicated(x):
@@ -1308,7 +1308,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     expected_result = array_ops.slice(t, [0, 0], [-1, 2])
 
     a = api.copy_to_mesh(t, self.replicated_layout_2d)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.slice(a, [0, 0], [-1, 2])
 
     self.assertDTensorEqual(expected_result, self.replicated_layout_2d,
@@ -1321,7 +1321,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     sharded_layout = self.first_dimension_sharded_layout
 
     t = api.relayout(t, sharded_layout)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.slice(t, [0, 0], [size, 2])
 
     self.assertDTensorEqual(expected_result, sharded_layout, dtensor_result)
@@ -1745,7 +1745,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     segment_ids = api.relayout(
         segment_ids, Layout.batch_sharded(self.mesh, _MESH_DIM_Y, rank=1)
     )
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = gen_math_ops.unsorted_segment_sum(
           data, segment_ids, num_segments)
       expected_layout = Layout.replicated(self.mesh, 2)
@@ -1764,7 +1764,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     segment_ids = api.relayout(
         segment_ids, Layout([_MESH_DIM_X, _MESH_DIM_Y], self.mesh)
     )
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = gen_math_ops.unsorted_segment_sum(
           data, segment_ids, num_segments)
       expected_layout = Layout.replicated(self.mesh, 2)
@@ -2226,7 +2226,7 @@ class DTensorConvSPMDTest(test_util.DTensorBaseTest):
 
     # Explicitly open the scope as ops generated from tape could be broadcasted
     # to replicated by default.
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       with backprop.GradientTape() as tape:
         tape.watch([x, kernel])
         got = nn_ops.conv2d_v2(x, kernel, strides=[1, 1, 1, 1], padding=padding)
@@ -2294,7 +2294,7 @@ class DTensorConvSPMDTest(test_util.DTensorBaseTest):
         inputs, Layout([self._dims[0]] + [layout_lib.UNSHARDED] * 3, self.mesh)
     )
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       with backprop.GradientTape() as tape:
         tape.watch([x])
         dtensor_result = nn_ops.max_pool_v2(x, window_size, stride_size,
@@ -2537,7 +2537,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     expected = gen_array_ops.broadcast_to(inputs, shape)
 
     inputs = api.copy_to_mesh(inputs, Layout.replicated(self.mesh, rank=1))
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = gen_array_ops.broadcast_to(inputs, shape)
 
     self.assertDTensorEqual(expected, Layout.replicated(self.mesh, rank=2),
@@ -2568,7 +2568,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
 
     layout = Layout(sharding, self.mesh)
     inputs = api.relayout(inputs.numpy(), layout)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       with backprop.GradientTape() as tape:
         tape.watch([inputs])
         dtensor_result = gen_math_ops.tanh(inputs)
@@ -2861,7 +2861,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     segment_ids = api.relayout(
         segment_ids, Layout.batch_sharded(self.mesh, _MESH_DIM_Y, rank=1)
     )
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = gen_math_ops.unsorted_segment_sum(
           data, segment_ids, num_segments)
       expected_layout = Layout.replicated(self.mesh, 2)
@@ -2882,7 +2882,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     segment_ids = api.relayout(segment_ids, Layout.replicated(self.mesh, 1))
 
     with api._dtensor_device()._default_layout(Layout.replicated(self.mesh, 2)):
-      with api.run_on(self.mesh):
+      with api.default_mesh(self.mesh):
         dtensor_result = gen_math_ops.unsorted_segment_sum(
             data, segment_ids, num_segments)
         expected_layout = Layout.replicated(self.mesh, 2)
@@ -2905,7 +2905,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     expected_layout = Layout(
         [layout_lib.UNSHARDED, layout_lib.UNSHARDED, layout_lib.UNSHARDED],
         self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.gather_v2(params, indices, axis=0)
       self.assertDTensorEqual(expected, expected_layout, dtensor_result)
 
@@ -2930,7 +2930,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
 
     expected_layout = Layout(
         [_MESH_DIM_X, layout_lib.UNSHARDED, layout_lib.UNSHARDED], self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.gather_v2(params, indices, axis=0)
       self.assertDTensorEqual(expected, expected_layout, dtensor_result)
 
@@ -2950,7 +2950,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
 
     expected_layout = Layout(
         [_MESH_DIM_X, layout_lib.UNSHARDED, layout_lib.UNSHARDED], self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.gather_v2(params, indices, axis=1)
       self.assertDTensorEqual(expected, expected_layout, dtensor_result)
 
@@ -2966,7 +2966,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     )
     expected_layout = Layout(
         [layout_lib.UNSHARDED, _MESH_DIM_Y, layout_lib.UNSHARDED], self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       with api._dtensor_device()._default_layout(expected_layout):
         dtensor_result = array_ops.gather_v2(params, indices, axis=0)
         self.assertDTensorEqual(expected, expected_layout, dtensor_result)
@@ -2996,7 +2996,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
         _MESH_DIM_X, layout_lib.UNSHARDED, layout_lib.UNSHARDED,
         layout_lib.UNSHARDED
     ], self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.gather_v2(
           params, indices, batch_dims=1, axis=1)
       self.assertDTensorEqual(expected, expected_layout, dtensor_result)
@@ -3025,7 +3025,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     expected_layout = Layout(
         [_MESH_DIM_X, _MESH_DIM_Y, layout_lib.UNSHARDED, layout_lib.UNSHARDED],
         self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.gather_v2(
           params, indices, batch_dims=1, axis=2)
       self.assertDTensorEqual(expected, expected_layout, dtensor_result)
@@ -3061,7 +3061,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
         _MESH_DIM_X, layout_lib.UNSHARDED, layout_lib.UNSHARDED,
         layout_lib.UNSHARDED, _MESH_DIM_Y
     ], self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.gather_v2(
           params, indices, batch_dims=1, axis=2)
       self.assertDTensorEqual(expected, expected_layout, dtensor_result)
@@ -3096,7 +3096,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
         _MESH_DIM_X, layout_lib.UNSHARDED, _MESH_DIM_Y, layout_lib.UNSHARDED,
         layout_lib.UNSHARDED
     ], self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.gather_v2(
           params, indices, batch_dims=1, axis=2)
       self.assertDTensorEqual(expected, expected_layout, dtensor_result)
@@ -3120,7 +3120,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
 
     expected_layout = Layout(
         [layout_lib.UNSHARDED, layout_lib.UNSHARDED, _MESH_DIM_X], self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.gather_v2(
           params, indices, batch_dims=1, axis=1)
       self.assertDTensorEqual(expected, expected_layout, dtensor_result)
@@ -3149,7 +3149,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
         _MESH_DIM_X, layout_lib.UNSHARDED, layout_lib.UNSHARDED,
         layout_lib.UNSHARDED
     ], self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.gather_v2(
           params, indices, batch_dims=1, axis=1)
       self.assertDTensorEqual(expected, expected_layout, dtensor_result)
@@ -3176,7 +3176,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
 
       a = api.relayout(a, original_layout)
       expected_layout = Layout(expected_spec, self.mesh)
-      with api.run_on(self.mesh):
+      with api.default_mesh(self.mesh):
         dtensor_result = array_ops.transpose_v2(a, perm)
         self.assertDTensorEqual(expected, expected_layout, dtensor_result)
 
@@ -3189,7 +3189,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     expected_layout = Layout([layout_lib.UNSHARDED, layout_lib.UNSHARDED],
                              self.mesh)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.slice(t, [0, 0], [1, 2])
       self.assertDTensorEqual(expected_result, expected_layout, dtensor_result)
 
@@ -3201,7 +3201,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     t = api.relayout(t, sharded_layout)
     expected_layout = Layout([layout_lib.UNSHARDED, _MESH_DIM_Y], self.mesh)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.slice(t, [0, 0], [1, 4])
       self.assertDTensorEqual(expected_result, expected_layout, dtensor_result)
 
@@ -3218,7 +3218,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     t = api.relayout(t, sharded_layout)
     expected_layout = Layout([_MESH_DIM_X, layout_lib.UNSHARDED], self.mesh)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
 
       @polymorphic_function.function
       def op_fn(x):
@@ -3242,7 +3242,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     t = api.relayout(t, operand_layout)
     expected_layout = Layout([_MESH_DIM_X, layout_lib.UNSHARDED], self.mesh)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
 
       @polymorphic_function.function
       def op_fn(x):

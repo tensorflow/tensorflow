@@ -1303,5 +1303,52 @@ void BM_MakeValidatedShape(::testing::benchmark::State& state) {
 }
 BENCHMARK(BM_MakeValidatedShape);
 
+Shape ShapeForBenchmark(::testing::benchmark::State& state) {
+  Shape shape;
+  switch (state.range(0)) {
+    case 0: {
+      shape = ShapeUtil::MakeShape(xla::F32, {1});
+      break;
+    }
+    case 1: {
+      shape = ShapeUtil::MakeShape(xla::F32, {4, 1});
+      break;
+    }
+    case 2: {
+      shape = ShapeUtil::MakeShape(xla::F32, {256, 1, 1024});
+      break;
+    }
+  }
+  state.SetLabel(shape.ToString());
+  return shape;
+}
+
+void BM_ForEachIndex(::testing::benchmark::State& state) {
+  Shape shape = ShapeForBenchmark(state);
+  for (auto s : state) {
+    int count = 0;
+    auto increment_func =
+        [&count](absl::Span<const int64_t> indexes) -> StatusOr<bool> {
+      count++;
+      return true;
+    };
+    ShapeUtil::ForEachIndex(shape, increment_func);
+  }
+}
+BENCHMARK(BM_ForEachIndex)->Arg(0)->Arg(1)->Arg(2);
+
+void BM_ForEachIndexNoStatus(::testing::benchmark::State& state) {
+  Shape shape = ShapeForBenchmark(state);
+  for (auto s : state) {
+    int count = 0;
+    auto increment_func = [&count](absl::Span<const int64_t> indexes) -> bool {
+      count++;
+      return true;
+    };
+    ShapeUtil::ForEachIndexNoStatus(shape, increment_func);
+  }
+}
+BENCHMARK(BM_ForEachIndexNoStatus)->Arg(0)->Arg(1)->Arg(2);
+
 }  // namespace
 }  // namespace xla

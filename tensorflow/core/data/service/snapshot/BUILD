@@ -182,6 +182,24 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "snapshot_manager_test",
+    size = "small",
+    srcs = ["snapshot_manager_test.cc"],
+    deps = [
+        ":snapshot_manager",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data/service:common_proto_cc",
+        "//tensorflow/core/data/service:dispatcher_proto_cc",
+        "//tensorflow/core/data/service:test_util",
+        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:statusor",
+    ],
+)
+
 cc_library(
     name = "snapshot_reader",
     srcs = ["snapshot_reader.cc"],
@@ -250,6 +268,7 @@ cc_library(
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:regexp",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:thread_annotations",
         "@com_google_absl//absl/strings",
     ],
@@ -294,6 +313,7 @@ tf_cc_test(
         "//tensorflow/core/data/service:common_proto_cc",
         "//tensorflow/core/data/service:task_runner",
         "//tensorflow/core/data/service:test_util",
+        "//tensorflow/tsl/lib/monitoring:cell_reader",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:path",

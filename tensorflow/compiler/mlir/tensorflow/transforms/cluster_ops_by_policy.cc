@@ -99,7 +99,7 @@ void ValuesConstraintSet::Walk(
   for (auto &kv : constraints_) walk(kv.getFirst(), kv.getSecond());
 }
 
-Optional<ValueConstraint> ValuesConstraintSet::GetConstraint(
+std::optional<ValueConstraint> ValuesConstraintSet::GetConstraint(
     Value value) const {
   auto it = constraints_.find(value);
   if (it == constraints_.end()) return std::nullopt;
@@ -383,7 +383,7 @@ LogicalResult ClusteringState::Union(unsigned a, unsigned b,
 // Returns constraints on the operands specified by the clustering policy if the
 // operation can be clustered (constraints could be empty). Otherwise return
 // empty optional.
-static Optional<ValuesConstraintSet> CanBeClustered(
+static std::optional<ValuesConstraintSet> CanBeClustered(
     Operation *op, const ClusteringPolicySet &policies,
     const std::function<bool(Operation *op)> &filter) {
   // Check that op has no side effects. This guarantees that we will not

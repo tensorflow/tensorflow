@@ -933,53 +933,104 @@ Literal LiteralBase::ToStatic() const {
   return result;
 }
 
-StatusOr<Literal> LiteralBase::Broadcast(
-    const Shape& result_shape, absl::Span<const int64_t> dimensions) const {
-  if (!shape().IsArray()) {
-    return InvalidArgument("Broadcast only supports arrays.");
-  }
-
+namespace {
+template <int64_t PRIMITIVE_SIZE>
+StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
+                                  const Shape& src_shape,
+                                  const Shape& result_shape,
+                                  absl::Span<const int64_t> dimensions) {
   for (int64_t i = 0, end = dimensions.size(); i < end; i++) {
-    TF_RET_CHECK(shape().dimensions(i) ==
+    TF_RET_CHECK(src_shape.dimensions(i) ==
                  result_shape.dimensions(dimensions[i]));
   }
 
-  TF_RET_CHECK(result_shape.element_type() == shape().element_type());
+  TF_RET_CHECK(result_shape.element_type() == src_shape.element_type());
   Literal result(result_shape);
-  // scratch_source_index is temporary storage space for the computed index into
-  // the input literal.  We put it here to avoid allocating an std::vector in
-  // every iteration of ShapeUtil::ForEachIndex.
-  std::vector<int64_t> scratch_source_index(shape().dimensions_size());
-
-  char* dest_data = static_cast<char*>(result.untyped_data());
-  const char* source_data = static_cast<const char*>(untyped_data());
-  const int64_t primitive_size =
-      ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
-  if (shape().is_dynamic()) {
+  if (src_shape.is_dynamic()) {
     for (int64_t i = 0; i < dimensions.size(); ++i) {
-      if (shape().is_dynamic_dimension(i)) {
+      if (src_shape.is_dynamic_dimension(i)) {
         // Set any dynamic sizes in the new literal.
-        int64_t dynamic_size = GetDynamicSize(i);
+        int64_t dynamic_size = src.GetDynamicSize(i);
         result.SetDynamicSize(dimensions[i], dynamic_size);
       }
     }
   }
 
-  ShapeUtil::ForEachIndex(
+  // scratch_source_index is temporary storage space for the computed index into
+  // the input literal.  We put it here to avoid allocating an std::vector in
+  // every iteration of ShapeUtil::ForEachIndex.
+  int src_shape_dims = src_shape.dimensions_size();
+  std::vector<int64_t> scratch_source_index(src_shape_dims);
+  // Make the span once outside the ForEachIndex... loop, pointing into
+  // scratch_source_index
+  absl::Span<int64_t> scratch_source_span(scratch_source_index);
+  int64_t* scratch_source_array = scratch_source_span.data();
+
+  const char* source_data = static_cast<const char*>(src.untyped_data());
+  char* dest_data = static_cast<char*>(result.untyped_data());
+
+  auto src_minor_to_major = LayoutUtil::MinorToMajor(src_shape);
+  auto result_minor_to_major = LayoutUtil::MinorToMajor(result_shape);
+
+  ShapeUtil::ForEachIndexNoStatus(
       result_shape, [&](absl::Span<const int64_t> output_index) {
-        for (int64_t i = 0, end = dimensions.size(); i < end; ++i) {
-          scratch_source_index[i] = output_index[dimensions[i]];
-        }
+        // Compute dest_index
         int64_t dest_index = IndexUtil::MultidimensionalIndexToLinearIndex(
-            result_shape, output_index);
-        int64_t source_index = IndexUtil::MultidimensionalIndexToLinearIndex(
-            shape(), scratch_source_index);
-        memcpy(dest_data + primitive_size * dest_index,
-               source_data + primitive_size * source_index, primitive_size);
+            result_shape, result_minor_to_major, output_index);
+
+        // Compute source_index
+        int64_t source_index;
+        for (int64_t i = 0, end = dimensions.size(); i < end; ++i) {
+          scratch_source_array[i] = output_index[dimensions[i]];
+        }
+        if (src_shape_dims == 1) {
+          // Fast path for this case
+          source_index = scratch_source_array[0];
+          DCHECK_EQ(source_index,
+                    IndexUtil::MultidimensionalIndexToLinearIndex(
+                        src_shape, src_minor_to_major, scratch_source_span));
+        } else {
+          source_index = IndexUtil::MultidimensionalIndexToLinearIndex(
+              src_shape, src_minor_to_major, scratch_source_span);
+        }
+        // Move one element from source_index in source to dest_index in dest
+        memcpy(dest_data + PRIMITIVE_SIZE * dest_index,
+               source_data + PRIMITIVE_SIZE * source_index, PRIMITIVE_SIZE);
         return true;
       });
 
   return std::move(result);
+}
+}  // anonymous namespace
+
+StatusOr<Literal> LiteralBase::Broadcast(
+    const Shape& result_shape, absl::Span<const int64_t> dimensions) const {
+  const LiteralBase& src = *this;
+  const Shape& src_shape = shape();
+  if (!src_shape.IsArray()) {
+    return InvalidArgument("Broadcast only supports arrays.");
+  }
+  const int64_t primitive_size =
+      ShapeUtil::ByteSizeOfPrimitiveType(src_shape.element_type());
+
+  switch (primitive_size) {
+    case 0:
+      return BroadcastHelper<0>(src, src_shape, result_shape, dimensions);
+    case 1:
+      return BroadcastHelper<1>(src, src_shape, result_shape, dimensions);
+    case 2:
+      return BroadcastHelper<2>(src, src_shape, result_shape, dimensions);
+    case 4:
+      return BroadcastHelper<4>(src, src_shape, result_shape, dimensions);
+    case 8:
+      return BroadcastHelper<8>(src, src_shape, result_shape, dimensions);
+    case 16:
+      return BroadcastHelper<16>(src, src_shape, result_shape, dimensions);
+    default:
+      LOG(FATAL) << "Unhandled primitive size " << primitive_size;
+      return InvalidArgument("Unhandled primitive size");
+      break;
+  }
 }
 
 StatusOr<Literal> LiteralBase::Reshape(
@@ -1243,8 +1294,9 @@ std::optional<int64_t> LiteralBase::GetIntegralAsS64(
 
 std::optional<double> LiteralBase::GetAsDouble(
     absl::Span<const int64_t> multi_index) const {
-  CHECK(LayoutUtil::IsDenseArray(shape()));
-  switch (shape().element_type()) {
+  const Shape& s = shape();
+  CHECK(LayoutUtil::IsDenseArray(s));
+  switch (s.element_type()) {
     case F8E5M2:
       return static_cast<double>(Get<tsl::float8_e5m2>(multi_index));
     case F8E4M3FN:
@@ -1260,6 +1312,47 @@ std::optional<double> LiteralBase::GetAsDouble(
     default:
       return std::nullopt;
   }
+}
+
+std::optional<double> LiteralBase::GetSumAsDouble(
+    absl::Span<const int64_t> linear_indices) const {
+  const Shape& s = shape();
+  CHECK(LayoutUtil::IsDenseArray(s));
+  double sum = 0.0;
+
+#define SUMLOOP(native_type)                   \
+  do {                                         \
+    auto d = root_piece().data<native_type>(); \
+    for (const int64_t idx : linear_indices) { \
+      sum += static_cast<double>(d[idx]);      \
+    }                                          \
+  } while (0)
+
+  switch (s.element_type()) {
+    case F8E5M2:
+      SUMLOOP(tsl::float8_e5m2);
+      break;
+    case F8E4M3FN:
+      SUMLOOP(tsl::float8_e4m3fn);
+      break;
+    case F16:
+      SUMLOOP(half);
+      break;
+    case F32:
+      SUMLOOP(float);
+      break;
+    case F64:
+      SUMLOOP(double);
+      break;
+    case BF16:
+      SUMLOOP(bfloat16);
+      break;
+    default:
+      return std::nullopt;
+  }
+#undef SUMLOOP
+
+  return sum;
 }
 
 std::optional<complex128> LiteralBase::GetAsComplex128(

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -1193,7 +1194,7 @@ static LogicalResult VerifyIfLikeRegionOp(IfLikeRegionOp op) {
 // Given an potentially null attribute that would represent a constant value,
 // try to narrow it to a statically known condition.
 // TODO(jeffniu): Incorporate the other cases of `tf.ToBool`.
-static Optional<bool> GetStaticallyKnownBranch(Attribute cond_attr) {
+static std::optional<bool> GetStaticallyKnownBranch(Attribute cond_attr) {
   // Only handle the case of a scalar tensor of i1.
   auto cond = cond_attr.dyn_cast_or_null<ElementsAttr>();
   if (cond && cond.getNumElements() == 1 &&
@@ -1260,7 +1261,8 @@ static LogicalResult VerifyCaseLikeRegionOp(CaseLikeRegionOp op) {
 
 // Given a potentially null attribute that would represent a constant value,
 // try to narrow it to a statically known branch index.
-static Optional<unsigned> GetStaticallyKnownCaseBranch(Attribute branch_attr) {
+static std::optional<unsigned> GetStaticallyKnownCaseBranch(
+    Attribute branch_attr) {
   auto branch = branch_attr.dyn_cast_or_null<ElementsAttr>();
   if (branch && branch.getNumElements() == 1 &&
       branch.getElementType().isSignlessInteger(32))
@@ -1362,7 +1364,7 @@ static void GetWhileLikeRegionOpSuccessorRegions(
       cast<ConditionOp>(op.getCondRegion().front().getTerminator());
   Attribute cond_attr;
   matchPattern(condition.getCond(), m_Constant(&cond_attr));
-  Optional<bool> cond = GetStaticallyKnownBranch(cond_attr);
+  std::optional<bool> cond = GetStaticallyKnownBranch(cond_attr);
   if (!cond || *cond) {
     regions.emplace_back(&op.getBodyRegion(),
                          GetLoopRegionDataArgs(op.getBodyRegion()));

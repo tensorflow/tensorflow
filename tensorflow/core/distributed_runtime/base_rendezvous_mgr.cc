@@ -116,6 +116,7 @@ void BaseRendezvousMgr::CleanupAll() {
   for (auto iter = table_.begin(); iter != table_.end(); iter++) {
     iter->second->Unref();
   }
+  table_.clear();
 }
 
 BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env,

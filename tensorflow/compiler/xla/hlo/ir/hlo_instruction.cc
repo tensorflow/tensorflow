@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_op_metadata.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -608,7 +609,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
               shape, operands(0), source_target_pairs, channel_id);
         } else {
           LOG(FATAL) << "Expect CollectivePermute or CollectivePermuteStart, "
-                     << "but got " << HloOpcodeString(opcode);
+                     << "but got " << opcode;
         }
       } else {
         std::vector<std::vector<int64_t>> slice_sizes;
@@ -693,7 +694,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
               source_target_pairs, slice_sizes, channel_id);
         } else {
           LOG(FATAL) << "Expect CollectivePermute or CollectivePermuteStart, "
-                     << "but got " << HloOpcodeString(opcode);
+                     << "but got " << opcode;
         }
       }
       break;
@@ -1139,8 +1140,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kTan:
       break;
     default:
-      LOG(FATAL) << "Invalid unary instruction opcode "
-                 << HloOpcodeString(opcode);
+      LOG(FATAL) << "Invalid unary instruction opcode " << opcode;
   }
   return CreateNary(shape, opcode, {operand});
 }
@@ -1170,8 +1170,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kStochasticConvert:
       break;
     default:
-      LOG(FATAL) << "Invalid binary instruction opcode "
-                 << HloOpcodeString(opcode);
+      LOG(FATAL) << "Invalid binary instruction opcode " << opcode;
   }
   return CreateNary(shape, opcode, {lhs, rhs});
 }
@@ -1186,8 +1185,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kSelect:
       break;
     default:
-      LOG(FATAL) << "Invalid ternary instruction opcode "
-                 << HloOpcodeString(opcode);
+      LOG(FATAL) << "Invalid ternary instruction opcode " << opcode;
   }
   return CreateNary(shape, opcode, {lhs, rhs, ehs});
 }
@@ -2422,20 +2420,25 @@ bool HloInstruction::IdenticalInternal(
         eq_operands,
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations,
-    bool layout_sensitive, bool ignore_channel_id_values,
+    bool layout_sensitive, bool sharding_sensitive,
+    bool ignore_channel_id_values,
     bool ignore_commutative_operand_order) const {
   // An instruction is always identical to itself.
   if (this == &other) {
     return true;
   }
 
-  // Identical instruction must have the same opcode, shape, and identical
-  // operands.
+  // Identical instruction must have the same opcode, shape, shardings and
+  // identical operands.
   if (opcode() != other.opcode()) {
     return false;
   }
   if (!(layout_sensitive ? ShapeUtil::Equal(shape(), other.shape())
                          : ShapeUtil::Compatible(shape(), other.shape()))) {
+    return false;
+  }
+  if (sharding_sensitive && has_sharding() && other.has_sharding() &&
+      sharding() != other.sharding()) {
     return false;
   }
   if (operands().size() != other.operands().size()) {
@@ -2857,10 +2860,10 @@ bool HloInstruction::IsEffectiveBitcast() const {
 HloComputation* HloInstruction::to_apply() const {
   if (has_to_apply()) {
     CHECK_EQ(called_computations_.size(), 1)
-        << "Expected a to_apply computation for " << HloOpcodeString(opcode());
+        << "Expected a to_apply computation for " << opcode();
     return called_computations_[0];
   }
-  LOG(FATAL) << "Invalid opcode for to_apply(): " << HloOpcodeString(opcode());
+  LOG(FATAL) << "Invalid opcode for to_apply(): " << opcode();
 }
 
 void HloInstruction::set_to_apply(HloComputation* computation) {
@@ -2869,11 +2872,11 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
   CHECK(!IsFused());
   if (has_to_apply()) {
     CHECK_EQ(called_computations_.size(), 1)
-        << "Expected a to_apply computation for " << HloOpcodeString(opcode());
+        << "Expected a to_apply computation for " << opcode();
     called_computations_[0] = computation;
     return;
   }
-  LOG(FATAL) << "Invalid opcode for to_apply(): " << HloOpcodeString(opcode());
+  LOG(FATAL) << "Invalid opcode for to_apply(): " << opcode();
 }
 
 bool HloInstruction::has_to_apply() const {
@@ -3515,7 +3518,7 @@ HloInstructionProto HloInstruction::ToProto() const {
          "instruction is inside a module before dumping it.";
   proto.set_id(unique_id_);
   proto.set_name(name_);
-  proto.set_opcode(HloOpcodeString(opcode_));
+  *proto.mutable_opcode() = std::string(HloOpcodeString(opcode_));
   *proto.mutable_shape() = shape_.ToProto();
   for (const HloInstruction* operand : operands_) {
     proto.add_operand_ids(operand->unique_id());
@@ -3552,7 +3555,7 @@ std::string HloInstruction::ToCategory() const {
     return "non-fusion elementwise";
   }
 
-  return HloOpcodeString(opcode());
+  return std::string(HloOpcodeString(opcode()));
 }
 
 bool HloInstruction::IsFused() const {

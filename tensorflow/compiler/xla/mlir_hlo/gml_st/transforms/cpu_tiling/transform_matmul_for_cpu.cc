@@ -106,7 +106,7 @@ SmallVector<OpFoldResult> getDims(OpBuilder &builder, Location loc,
       [&](int64_t dim) { return getDim(builder, loc, shapedTypeValue, dim); }));
 }
 
-Optional<Value> getPaddingValue(Value &source) {
+std::optional<Value> getPaddingValue(Value &source) {
   auto padOp = source.getDefiningOp<tensor::PadOp>();
   if (!padOp || padOp.getNofold() || !padOp.hasZeroLowPad())
     return std::nullopt;
@@ -127,7 +127,7 @@ Value pack(Location loc, PatternRewriter &rewriter, Value source,
       getAsOpFoldResult(rewriter.getI64ArrayAttr(innerTileSizes));
   auto empty = tensor::PackOp::createDestinationTensor(
       rewriter, loc, source, innerTileSizesOfr, innerDimsPos, outerDimsPerm);
-  Optional<Value> paddingValue = getPaddingValue(source);
+  std::optional<Value> paddingValue = getPaddingValue(source);
   return rewriter.create<tensor::PackOp>(loc, source, empty, innerDimsPos,
                                          innerTileSizesOfr, paddingValue,
                                          outerDimsPerm);
@@ -510,22 +510,18 @@ struct Mmt4DTransformPattern : public OpRewritePattern<linalg::Mmt4DOp> {
 struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
   using OpRewritePattern<linalg::MatmulOp>::OpRewritePattern;
 
-  explicit MatmulTransformPattern(MLIRContext *context,
-                                  int64_t lhsParallelDimTileSize = 2,
-                                  int64_t rhsParallelDimTileSize = 4,
-                                  int64_t reductionDimTileSize = 8,
-                                  PatternBenefit benefit = 1)
+  MatmulTransformPattern(MLIRContext *context,
+                         MatmulTileSizeComputationFn tileSizeFn,
+                         PatternBenefit benefit = 1)
       : OpRewritePattern<linalg::MatmulOp>(context, benefit),
-        lhsParallelDimTileSize(lhsParallelDimTileSize),
-        rhsParallelDimTileSize(rhsParallelDimTileSize),
-        reductionDimTileSize(reductionDimTileSize) {}
+        tileSizeFn(std::move(tileSizeFn)) {}
 
   LogicalResult matchAndRewrite(linalg::MatmulOp matmulOp,
                                 PatternRewriter &rewriter) const override {
     if (hasLabel(matmulOp, kMatmulTransformedLabel))
       return rewriter.notifyMatchFailure(matmulOp,
                                          "has already been transformed.");
-    if (isa<gml_st::ParallelOp, scf::ForOp>(matmulOp->getParentOp()))
+    if (isa<scf::ForallOp, scf::ForOp>(matmulOp->getParentOp()))
       return rewriter.notifyMatchFailure(
           matmulOp, "has already been tiled by another pass.");
 
@@ -533,10 +529,15 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     auto fusionCluster = cluster.operations;
     auto *tilingRoot = cluster.root;
 
+    auto lhsTy = matmulOp.getOperandTypes()[0].cast<ShapedType>();
+    auto resultTy = matmulOp.getResultTypes()[0].cast<ShapedType>();
+
+    auto tileSize = tileSizeFn(
+        {resultTy.getDimSize(0), resultTy.getDimSize(1), lhsTy.getDimSize(1)});
+
     // Tiling of linalg.map requires two dimensions, linalg.matmul requires
     // three.
-    SmallVector<int64_t> parallelDimsTileSizes{lhsParallelDimTileSize,
-                                               rhsParallelDimTileSize};
+    SmallVector<int64_t> parallelDimsTileSizes{tileSize.m, tileSize.n};
     if (isa<linalg::MatmulOp>(tilingRoot)) parallelDimsTileSizes.push_back(0);
 
     // First level tiling: parallel dimensions.
@@ -553,14 +554,14 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
       // Fuse ops into the loop.
       fuseGreedily(rewriter, *tilingRoot->getBlock(),
                    [&](Operation *op) { return fusionCluster.contains(op); });
-      (void)fuseFillOpsIntoParallelOp(rewriter, tilingParallelDimsResult->loop);
+      (void)fuseFillOpsIntoForallOp(rewriter, tilingParallelDimsResult->loop);
     }
 
     // Second level tiling: reduction dimension for matmuls.
     SmallVector<scf::SCFTilingResult> tilingReductionDimsResults;
     for (auto op :
          llvm::to_vector(tilingRoot->getBlock()->getOps<linalg::MatmulOp>())) {
-      auto result = tileMatmulReductionDims(rewriter, op);
+      auto result = tileMatmulReductionDims(rewriter, op, tileSize);
       if (failed(result)) return failure();
       tilingReductionDimsResults.push_back(*result);
     }
@@ -583,8 +584,9 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
 
  private:
   FailureOr<scf::SCFTilingResult> tileMatmulReductionDims(
-      PatternRewriter &rewriter, linalg::MatmulOp matmulOp) const {
-    SmallVector<int64_t> reductionDimsTileSizes{0, 0, reductionDimTileSize};
+      PatternRewriter &rewriter, linalg::MatmulOp matmulOp,
+      const MatmulSizes &tileSize) const {
+    SmallVector<int64_t> reductionDimsTileSizes{0, 0, tileSize.k};
     scf::SCFTilingOptions opts;
     opts.setTileSizes(reductionDimsTileSizes);
     auto tilingReductionDimsResult =
@@ -602,18 +604,19 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     return tilingReductionDimsResult;
   }
 
-  int64_t lhsParallelDimTileSize;
-  int64_t rhsParallelDimTileSize;
-  int64_t reductionDimTileSize;
+  MatmulTileSizeComputationFn tileSizeFn;
 };
 
 struct TransformMatmulForCpuPass
     : public impl::TransformMatmulForCpuPassBase<TransformMatmulForCpuPass> {
   TransformMatmulForCpuPass() = default;
 
-  explicit TransformMatmulForCpuPass(llvm::ArrayRef<int64_t> matmulTileSizes,
-                                     bool lowerToMmt4DOp) {
-    tileSizes = matmulTileSizes;
+  explicit TransformMatmulForCpuPass(MatmulTileSizeComputationFn tileSizeFn,
+                                     bool lowerToMmt4DOp)
+      : tileSizeFn(tileSizeFn ? std::move(tileSizeFn)
+                              : [](MatmulSizes) -> MatmulSizes {
+          return {4, 4, 4};
+        }) {
     lowerToMmt4D = lowerToMmt4DOp;
   }
 
@@ -632,14 +635,8 @@ struct TransformMatmulForCpuPass
 
     // Just do tiling and fusion on linalg.matmul.
     if (!lowerToMmt4D) {
-      if (tileSizes.empty()) {
-        tileSizes = {4, 4, 4};
-      }
-      assert(tileSizes.size() == 3 &&
-             "Tiling sizes for MatMul should have 3 elements");
       RewritePatternSet patterns(ctx);
-      patterns.add<MatmulTransformPattern>(ctx, tileSizes[0], tileSizes[1],
-                                           tileSizes[2]);
+      patterns.add<MatmulTransformPattern>(ctx, tileSizeFn);
       if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
         return signalPassFailure();
       }
@@ -699,6 +696,9 @@ struct TransformMatmulForCpuPass
       }
     }
   }
+
+ private:
+  MatmulTileSizeComputationFn tileSizeFn;
 };
 
 /// Remove memref::CopyOp whose target (can be either a memref::SubViewOp or
@@ -770,10 +770,10 @@ createTransformMatmulForCpuPass() {
 }
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createTransformMatmulForCpuPass(llvm::ArrayRef<int64_t> matmulTileSizes,
+createTransformMatmulForCpuPass(MatmulTileSizeComputationFn tileSizeFn,
                                 bool lowerToMmt4DOp) {
   return std::make_unique<mlir::gml_st::TransformMatmulForCpuPass>(
-      matmulTileSizes, lowerToMmt4DOp);
+      std::move(tileSizeFn), lowerToMmt4DOp);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createSimplifyDeadCopyPass() {

@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/util/incremental_barrier.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace serving {
@@ -247,9 +248,10 @@ string GetTensorNamesAndShapesString(const OpKernelContext* context,
 
 Status BatchResourceBase::RegisterInput(
     int64_t guid, OpKernelContext* context, const string& batcher_queue_name,
+    const CreateBatchTaskFn& create_batch_task_fn,
     AsyncOpKernel::DoneCallback done_callback) {
-  std::unique_ptr<BatchTask> batch_components;
-  TF_RETURN_IF_ERROR(CreateBatchTask(context, &batch_components));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<BatchTask> batch_components,
+                      create_batch_task_fn());
   batch_components->start_time = EnvTime::NowNanos();
   batch_components->guid = guid;
   batch_components->propagated_context = Context(ContextKind::kThread);
@@ -912,13 +914,6 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
   }
   *queue = new_queue.get();
   batcher_queues_[queue_name] = std::move(new_queue);
-  return OkStatus();
-}
-
-Status BatchResourceBase::CreateBatchTask(
-    OpKernelContext* context,
-    std::unique_ptr<BatchResourceBase::BatchTask>* output) const {
-  *output = absl::make_unique<BatchResourceBase::BatchTask>();
   return OkStatus();
 }
 

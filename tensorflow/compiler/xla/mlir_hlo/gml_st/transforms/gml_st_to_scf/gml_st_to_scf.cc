@@ -33,14 +33,14 @@ namespace {
 #define GEN_PASS_DEF_GMLSTTOSCF
 #include "gml_st/transforms/passes.h.inc"
 
-/// Converts gml_st.parallel to SCF loop nest.
-struct ParallelOpToSCFPattern : public OpRewritePattern<ParallelOp> {
-  using OpRewritePattern<ParallelOp>::OpRewritePattern;
+/// Converts scf.forall to scf.parallel.
+struct ForallOpToParallelPattern : public OpRewritePattern<scf::ForallOp> {
+  using OpRewritePattern<scf::ForallOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(ParallelOp loop,
+  LogicalResult matchAndRewrite(scf::ForallOp loop,
                                 PatternRewriter &rewriter) const override {
     // Fail conversion if the loop has not been bufferized.
-    if (!loop.hasBufferSemantics()) return failure();
+    if (loop.getNumResults() != 0) return failure();
 
     auto cloneBody = [&](OpBuilder &builder, Location /*loc*/, ValueRange ivs) {
       IRMapping bvm;
@@ -50,9 +50,9 @@ struct ParallelOpToSCFPattern : public OpRewritePattern<ParallelOp> {
         builder.clone(op, bvm);
     };
 
-    rewriter.create<scf::ParallelOp>(loop.getLoc(), loop.getLowerBound(),
-                                     loop.getUpperBound(), loop.getStep(),
-                                     cloneBody);
+    rewriter.create<scf::ParallelOp>(
+        loop.getLoc(), loop.getLowerBound(rewriter),
+        loop.getUpperBound(rewriter), loop.getStep(rewriter), cloneBody);
 
     rewriter.eraseOp(loop);
     return success();
@@ -63,7 +63,7 @@ struct GmlStToScfPass : public impl::GmlStToScfBase<GmlStToScfPass> {
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
-    patterns.add<ParallelOpToSCFPattern>(patterns.getContext());
+    patterns.add<ForallOpToParallelPattern>(patterns.getContext());
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       signalPassFailure();

@@ -176,8 +176,6 @@ tf_py_test(
     size = "small",
     srcs = ["optimization_test.py"],
     shard_count = 2,
-    # TODO(b/200273447): Re-enable.
-    tags = ["notsan"],  # Seems flaky in TSAN.
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

@@ -173,6 +173,11 @@ auto* tf_data_service_cross_trainer_cache_size_bytes =
         "/tensorflow/data/service/cross_trainer_cache_size_bytes",
         "tf.data service cross-trainer cache memory usage in bytes.");
 
+auto* tf_data_service_snapshot_bytes_committed =
+    tsl::monitoring::Counter<0>::New(
+        "/tensorflow/data/service/snapshot_bytes_committed",
+        "tf.data service distributed snapshot committed bytes.");
+
 auto* tf_data_service_data_transfer_protocol_used =
     tsl::monitoring::Counter<1>::New(
         "/tensorflow/data/service/data_transfer_protocol_used",
@@ -432,6 +437,10 @@ void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit) {
 void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes) {
   tf_data_service_cross_trainer_cache_size_bytes->GetCell()->Set(
       static_cast<int64_t>(bytes));
+}
+
+void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes) {
+  tf_data_service_snapshot_bytes_committed->GetCell()->IncrementBy(bytes);
 }
 
 void RecordTFDataFilename(const string& name, const string& filename) {

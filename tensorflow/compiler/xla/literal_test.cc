@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/float8.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -2200,6 +2201,30 @@ TEST_F(LiteralUtilTest, DynamicBroadcast) {
   EXPECT_EQ(broadcasted_literal.GetDynamicSize(1), 1);
 }
 
+TEST_F(LiteralUtilTest, GetAsDouble) {
+  auto m = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  EXPECT_EQ(*m.GetAsDouble({0, 0}), 1.0);
+  EXPECT_EQ(*m.GetAsDouble({1, 0}), 3.0);
+}
+
+TEST_F(LiteralUtilTest, GetSumAsDouble) {
+  auto m = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  EXPECT_EQ(*m.GetSumAsDouble({0, 3}), 1.0 + 4.0);
+  EXPECT_EQ(*m.GetSumAsDouble({0, 1, 2, 3}), 1.0 + 2.0 + 3.0 + 4.0);
+  auto md = LiteralUtil::CreateR2<double>({{1.0, 2.0}, {3.0, 4.0}});
+  EXPECT_EQ(*md.GetSumAsDouble({0, 3}), 1.0 + 4.0);
+  EXPECT_EQ(*md.GetSumAsDouble({0, 1, 2, 3}), 1.0 + 2.0 + 3.0 + 4.0);
+
+  // Test fetching every other value for a range of number of indices
+  std::vector<float> vals(1024, 1.0);
+  auto v = LiteralUtil::CreateR1<float>(vals);
+  std::vector<int64_t> indices;
+  for (int i = 0; i < 1024; i += 2) {
+    indices.push_back(i);
+    EXPECT_EQ(*v.GetSumAsDouble(indices), (i + 2) / 2.0);
+  }
+}
+
 TEST_F(LiteralUtilTest, GetAsComplex128) {
   complex128 value = {1, 0};
   Literal c1 = LiteralUtil::CreateR0<complex128>(value);
@@ -2545,6 +2570,32 @@ TEST_F(LiteralUtilTest, PopulateR3FromArray3DDynamicDim2) {
 })";
   EXPECT_EQ(expected, literal.ToString());
 }
+
+void BM_BroadcastVectorToMatrix(::testing::benchmark::State& state) {
+  const int d0 = state.range(0);
+  const int d1 = state.range(1);
+  std::vector<int64_t> v(d0);
+  for (int i = 0; i < d0; i++) {
+    v[i] = i;
+  }
+  Literal literal = LiteralUtil::CreateR1<int64_t>(v);
+  int count = 0;
+  for (auto s : state) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        Literal broadcasted_literal,
+        literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S64, {d0, d1}),
+                          /*dimensions=*/{0}));
+    if (count == 0) {
+      state.SetLabel(literal.shape().ToString() + " to " +
+                     broadcasted_literal.shape().ToString());
+    }
+    count++;
+  }
+}
+BENCHMARK(BM_BroadcastVectorToMatrix)
+    ->ArgPair(16, 16)
+    ->ArgPair(16, 1024)
+    ->ArgPair(1024, 1024);
 
 }  // namespace
 }  // namespace xla

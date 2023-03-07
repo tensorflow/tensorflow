@@ -381,6 +381,10 @@ tensorflow::SessionOptions GetSessionConfg() {
   // It seems  that we need to disable the optimizer entirely to prevent the
   // folding.
   rewriter_opts->set_disable_meta_optimizer(true);
+
+  // Disable optimizations for static graph to allow calls to Session::Extend.
+  opts.config.mutable_experimental()->set_disable_optimize_for_static_graph(
+      true);
   return opts;
 }
 

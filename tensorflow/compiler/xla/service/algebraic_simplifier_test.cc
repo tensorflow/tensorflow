@@ -1045,6 +1045,23 @@ TEST_F(AlgebraicSimplifierTest, DegenerateDimsInOperandRemovedFromBroadcast) {
               GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
 }
 
+// Test that Broadcast(x) where x has degenerate dimensions first does not
+// remove the degenerate dimensions if the corresponding option is disabled.
+TEST_F(AlgebraicSimplifierTest,
+       DegenerateDimsInOperandNotRemovedFromBroadcast) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      c = f32[1,4] parameter(0)
+      ROOT b = f32[5,1,4,3] broadcast(c), dimensions={1,2}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_enable_normalize_broadcast_operand(false);
+  ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
+}
+
 // Test to catch a crash where we were overshooting the reshaped_dimensions
 // vector.
 TEST_F(AlgebraicSimplifierTest, ArrayOvershootTest) {

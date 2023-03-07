@@ -44,15 +44,14 @@ add_mlir_library(GmlStPasses
   cpu_tiling/transform_transpose_for_cpu.cc
   fusion/fusion.cc
   gml_st_to_scf/gml_st_to_scf.cc
-  optimize_vector_transfer/optimize_vector_transfer.cc
+  passes.cc
   peeling/peeling.cc
-  rewrite_vector_ops/rewrite_vector_contract.cc
-  rewrite_vector_ops/rewrite_vector_multi_reduction.cc
-  rewrite_vector_ops/rewrite_vector_transpose.cc
+  rewrite_from_elements_op/rewrite_from_elements_op.cc
   scalarization/scalarization.cc
   tiling/tile_by_one.cc
   tiling/tiling.cc
   tiling_softmax/tiling_softmax.cc
+  vectorization/lower_vectors.cc
   vectorization/vectorization.cc
   vectorization/vectorize_copy.cc
   vectorization/vectorize_for_cpu.cc
@@ -65,11 +64,10 @@ add_mlir_library(GmlStPasses
   Core
 
   LINK_LIBS PUBLIC
-  MLIRDestinationStyleOpInterface
-  MhloDialect
-  MLIRDialectUtils
   MLIRAffineDialect
   MLIRArithDialect
+  MLIRDestinationStyleOpInterface
+  MLIRDialectUtils
   MLIRFuncDialect
   MLIRIR
   MLIRLinalgDialect
@@ -79,6 +77,9 @@ add_mlir_library(GmlStPasses
   MLIRSCFUtils
   MLIRSupport
   MLIRVectorDialect
+  MLIRVectorToSCF
+  MLIRX86VectorTransforms
+  MhloDialect
 )
 
 add_mlir_library(GmlStTransforms
@@ -104,7 +105,6 @@ add_mlir_library(GmlStTestPasses
   Core
 
   LINK_LIBS PUBLIC
-  GmlStBufferizableOpInterface
   GmlStDialect
   GmlStTransforms
   MLIRPass

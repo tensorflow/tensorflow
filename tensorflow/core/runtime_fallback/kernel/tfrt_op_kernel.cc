@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/kernel/tfrt_op_kernel.h"
 
+#include <optional>
+
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "llvm/Support/raw_ostream.h"
@@ -115,7 +117,7 @@ void TFRTOpKernelConstruction::CtxFailureWithWarning(const char* file, int line,
   CtxFailure(file, line, s);
 }
 
-const llvm::Optional<std::string>& TFRTOpKernelConstruction::error() {
+const std::optional<std::string>& TFRTOpKernelConstruction::error() {
   return error_;
 }
 
@@ -129,7 +131,7 @@ TFRTOpKernelContext::TFRTOpKernelContext(
 
 const Tensor& TFRTOpKernelContext::output(int index) { return outputs_[index]; }
 
-const llvm::Optional<std::string>& TFRTOpKernelContext::error() {
+const std::optional<std::string>& TFRTOpKernelContext::error() {
   return error_;
 }
 

@@ -694,15 +694,17 @@ Status ExportNonConversionReportToCSV(
   tensorflow::profiler::TraceMe activity(
       "ExportNonConversionReportToCSV",
       tensorflow::profiler::TraceMeLevel::kInfo);
-  std::fstream csv_file(filename, std::fstream::out | std::fstream::trunc);
+  std::unique_ptr<WritableFile> csv_file;
+  auto open_status = Env::Default()->NewWritableFile(filename, &csv_file);
 
-  if (!csv_file || !csv_file.good()) {
+  if (!open_status.ok()) {
     return errors::Internal("Failed to open output file: `", filename, "`");
   }
 
   LOG(WARNING) << "TF-TRT Non-Conversion Report saved at: `" << filename << "`";
 
-  csv_file << "OP Name" << sep << "Reason" << sep << "Count" << std::endl;
+  std::ostringstream sstream;
+  sstream << "OP Name" << sep << "Reason" << sep << "Count" << std::endl;
 
   for (auto& op_details : nonconverted_ops_map) {
     auto op_name = op_details.first;
@@ -711,13 +713,19 @@ Status ExportNonConversionReportToCSV(
     for (auto& reject_data : op_data) {
       auto reason = reject_data.first;
       auto count = reject_data.second;
-      csv_file << op_name << sep << reason << sep << count << std::endl;
+      sstream << op_name << sep << reason << sep << count << std::endl;
     }
   }
 
-  csv_file.close();
+  auto append_status = csv_file->Append(sstream.str());
 
-  if (csv_file.bad() || csv_file.fail()) {
+  if (!append_status.ok()) {
+    return errors::Internal("Error writing to output file `", filename, "`.");
+  }
+
+  auto close_status = csv_file->Close();
+
+  if (!close_status.ok()) {
     return errors::Internal("Error closing the file `", filename,
                             "`. The file might be corrupted.");
   }

@@ -875,6 +875,36 @@ func.func @main(%arg0: tensor<3xi8>, %arg1: tensor<3xi8>) -> tensor<i64> {
 
 // -----
 
+// Test dot i4xi4 -> i8
+
+func.func @main(%arg0: tensor<3xi4>, %arg1: tensor<3xi4>) -> tensor<i8> {
+  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<3xi4>, tensor<3xi4>) -> tensor<i8>
+  func.return %0 : tensor<i8>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[CALLEE_1:%.*]] ([[ARG_1:.*]]: s4[3], [[ARG_2:.*]]: s4[3]) -> s8[]
+// CHECK:  %[[ARG_1:.*]] = s4[3] parameter(0)
+// CHECK:  %[[ARG_2:.*]] = s4[3] parameter(1)
+// CHECK:  ROOT %[[DOT:.*]] = s8[] dot(s4[3] %[[ARG_1:.*]], s4[3] %[[ARG_2:.*]])
+
+// -----
+
+// Test dot ui4xui4 -> ui8
+
+func.func @main(%arg0: tensor<3xui4>, %arg1: tensor<3xui4>) -> tensor<ui8> {
+  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<3xui4>, tensor<3xui4>) -> tensor<ui8>
+  func.return %0 : tensor<ui8>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[CALLEE_1:%.*]] ([[ARG_1:.*]]: u4[3], [[ARG_2:.*]]: u4[3]) -> u8[]
+// CHECK:  %[[ARG_1:.*]] = u4[3] parameter(0)
+// CHECK:  %[[ARG_2:.*]] = u4[3] parameter(1)
+// CHECK:  ROOT %[[DOT:.*]] = u8[] dot(u4[3] %[[ARG_1:.*]], u4[3] %[[ARG_2:.*]])
+
+// -----
+
 // Test dot i8xi8 -> i32.
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<2x2x2xi8>, %arg1: tensor<2x2x3xi8>) -> tensor<2x2x3xi32> {

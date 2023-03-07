@@ -30,6 +30,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -582,10 +583,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
       A `Tensor` holding the value of this variable after its initializer
       has run.
     """
-    with ops.init_scope():
-      return control_flow_ops.cond(
-          is_variable_initialized(self), self.read_value,
-          lambda: self.initial_value)
+    raise NotImplementedError
 
   @property
   def initial_value(self):
@@ -1322,9 +1320,9 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
         assert isinstance(save_slice_info_def, variable_pb2.SaveSliceInfoDef)
         self.full_name = ops.prepend_name_scope(
             save_slice_info_def.full_name, import_scope=import_scope)
-        self.full_shape = [i for i in save_slice_info_def.full_shape]
-        self.var_offset = [i for i in save_slice_info_def.var_offset]
-        self.var_shape = [i for i in save_slice_info_def.var_shape]
+        self.full_shape = list(save_slice_info_def.full_shape)
+        self.var_offset = list(save_slice_info_def.var_offset)
+        self.var_shape = list(save_slice_info_def.var_shape)
       else:
         self.full_name = full_name
         self.full_shape = full_shape
@@ -1576,6 +1574,12 @@ class VariableV1(Variable):
     """
 
   SaveSliceInfo = Variable.SaveSliceInfo
+
+  def initialized_value(self):
+    with ops.init_scope():
+      return control_flow_ops.cond(
+          is_variable_initialized(self), self.read_value,
+          lambda: self.initial_value)
 
 
 # TODO(apassos): do not repeat all comments here
@@ -3101,7 +3105,7 @@ class PartitionedVariable:
       assert len(value) == len(self._variable_list)
       value_list = value
     elif isinstance(value, PartitionedVariable):
-      value_list = [var_part for var_part in value]
+      value_list = list(value)
     else:
       partition_ix = partition_axes[0]
       size_splits_list = [
@@ -3452,7 +3456,7 @@ def assert_variables_initialized(var_list=None):
     if len(ranks) == 1:
       return ranks[0]
     else:
-      return array_ops.stack(ranks)
+      return array_ops_stack.stack(ranks)
 
 
 @tf_export(v1=["report_uninitialized_variables"])
@@ -3494,7 +3498,7 @@ def report_uninitialized_variables(var_list=None,
         return array_ops.constant([], dtype=dtypes.string)
       else:
         # Get a 1-D boolean tensor listing whether each variable is initialized.
-        variables_mask = math_ops.logical_not(array_ops.stack(init_vars))
+        variables_mask = math_ops.logical_not(array_ops_stack.stack(init_vars))
         # Get a 1-D string tensor containing all the variable names.
         variable_names_tensor = array_ops.constant(
             [s.op.name for s in var_list])

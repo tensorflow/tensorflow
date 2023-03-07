@@ -27,9 +27,7 @@ class HloComputationDeduplicator : public HloModulePass {
   bool ContainsLargeConstants(HloComputation* comp);
 
  public:
-  absl::string_view name() const override {
-    return "computation-deduplicator ";
-  }
+  absl::string_view name() const override { return "computation-deduplicator"; }
 
   using HloPassInterface::Run;
   StatusOr<bool> Run(

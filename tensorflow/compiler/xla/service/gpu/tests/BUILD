@@ -202,9 +202,7 @@ xla_cc_test(
 
 xla_cc_test(
     name = "gemm_rewrite_test",
-    srcs = [
-        "gemm_rewrite_test.cc",
-    ],
+    srcs = if_cuda_is_configured(["gemm_rewrite_test.cc"]),
     tags = tf_cuda_tests_tags() + [
         "no_rocm",
     ],

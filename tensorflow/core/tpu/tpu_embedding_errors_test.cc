@@ -30,7 +30,7 @@ StatusOr<std::string> GenerateTFStatusOr(errors::Code code,
   if (code == errors::Code::OK) {
     return std::string(value);
   } else {
-    return errors::Create(code, /*message=*/"", /*payloads=*/{});
+    return tsl::Status(code, value);
   }
 }
 

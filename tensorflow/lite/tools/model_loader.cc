@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/lite/core/model_builder.h"
@@ -46,9 +45,23 @@ bool ModelLoader::Init() {
 
 bool PathModelLoader::InitInternal() {
   if (model_path_.empty()) {
+    TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "model_path is empty.");
     return false;
   }
   model_ = FlatBufferModel::VerifyAndBuildFromFile(model_path_.c_str());
+  return true;
+}
+
+bool BufferModelLoader::InitInternal() {
+  if (!caller_owned_buffer_ || model_size_ <= 0) {
+    TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
+                    "Failed to create BufferModelLoader: caller_owned_buffer "
+                    "is %s; model_size: %zu",
+                    caller_owned_buffer_ ? "not null" : "null", model_size_);
+    return false;
+  }
+  model_ = FlatBufferModel::VerifyAndBuildFromBuffer(caller_owned_buffer_,
+                                                     model_size_);
   return true;
 }
 
@@ -59,7 +72,7 @@ bool MmapModelLoader::InitInternal() {
     TFLITE_LOG_PROD(
         TFLITE_LOG_ERROR,
         "Invalid model file descriptor. file descriptor: %d model_offset: "
-        "%d model_size: %d",
+        "%zu model_size: %zu",
         model_fd_, model_offset_, model_size_);
     return false;
   }
@@ -98,24 +111,29 @@ bool PipeModelLoader::InitInternal() {
   // Close the read pipe.
   close(pipe_fd_);
   if (read_bytes < 0 || remaining_bytes != 0) {
-    TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
-                    "Read Model from pipe failed: %s. Expect to read %d bytes, "
-                    "%d bytes missing.",
-                    std::strerror(errno), model_size_, remaining_bytes);
+    TFLITE_LOG_PROD(
+        TFLITE_LOG_ERROR,
+        "Read Model from pipe failed: %s. Expect to read %zu bytes, "
+        "%d bytes missing.",
+        std::strerror(errno), model_size_, remaining_bytes);
     // If read() failed with -1, or read partial or too much data.
     return false;
   }
 
-  model_ = FlatBufferModel::BuildFromModel(tflite::GetModel(model_buffer_));
+  model_ = FlatBufferModel::VerifyAndBuildFromBuffer(
+      reinterpret_cast<const char*>(model_buffer_), model_size_);
   return true;
 }
 
 #endif  // !_WIN32
 
 std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path) {
+  std::vector<absl::string_view> parts = absl::StrSplit(path, ':');
+  if (parts.empty()) {
+    return nullptr;
+  }
 #ifndef _WIN32
-  if (absl::StartsWith(path, "fd:")) {
-    std::vector<std::string> parts = absl::StrSplit(path, ':');
+  if (parts[0] == "fd") {
     int model_fd;
     size_t model_offset, model_size;
     if (parts.size() != 4 || !absl::SimpleAtoi(parts[1], &model_fd) ||
@@ -127,8 +145,7 @@ std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path) {
     return std::make_unique<MmapModelLoader>(model_fd, model_offset,
                                              model_size);
   }
-  if (absl::StartsWith(path, "pipe:")) {
-    std::vector<std::string> parts = absl::StrSplit(path, ':');
+  if (parts[0] == "pipe") {
     int read_fd, write_fd;
     size_t model_size;
     if (parts.size() != 4 || !absl::SimpleAtoi(parts[1], &read_fd) ||
@@ -144,6 +161,17 @@ std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path) {
     return std::make_unique<PipeModelLoader>(read_fd, model_size);
   }
 #endif  // !_WIN32
+  if (parts[0] == "buffer") {
+    int64_t buffer_handle;
+    size_t model_size;
+    if (parts.size() != 3 || !absl::SimpleAtoi(parts[1], &buffer_handle) ||
+        !absl::SimpleAtoi(parts[2], &model_size)) {
+      TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Failed to parse model path: %s", path);
+      return nullptr;
+    }
+    return std::make_unique<BufferModelLoader>(
+        reinterpret_cast<const char*>(buffer_handle), model_size);
+  }
   return std::make_unique<PathModelLoader>(path);
 }
 

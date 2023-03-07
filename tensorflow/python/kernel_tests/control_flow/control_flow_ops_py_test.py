@@ -46,6 +46,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import data_flow_ops
@@ -1043,7 +1045,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         return control_flow_ops.no_op()
 
       def fn2():
-        return control_flow_ops.Assert(False, ["Wrong branch!!!"])
+        return control_flow_assert.Assert(False, ["Wrong branch!!!"])
 
       r = control_flow_ops.cond(pred, fn1, fn2)
       self.evaluate(r)
@@ -1059,7 +1061,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
       def fn2():
         with ops.device("/cpu:0"):
-          return control_flow_ops.Assert(False, ["Wrong branch!!!"])
+          return control_flow_assert.Assert(False, ["Wrong branch!!!"])
 
       r = control_flow_ops.cond(pred, fn1, fn2)
       self.evaluate(r)
@@ -4221,28 +4223,30 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       f2 = lambda: constant_op.constant(23)
       f3 = lambda: constant_op.constant(-1)
 
-      r1 = control_flow_ops.case(
-          {
-              x < y: f1,
-              x > z: f2
-          }, default=f3, exclusive=True)
+      r1 = control_flow_case.case({
+          x < y: f1,
+          x > z: f2
+      },
+                                  default=f3,
+                                  exclusive=True)
       self.assertAllEqual(r1, 17)
 
-      r2 = control_flow_ops.case([(y > z, f1), (y > x, f2)], default=f3)
+      r2 = control_flow_case.case([(y > z, f1), (y > x, f2)], default=f3)
       self.assertAllEqual(r2, 23)
 
       # Duplicate events can happen, first one is selected
-      r3 = control_flow_ops.case([(x < y, f1), (x < y, f2)], default=f3)
+      r3 = control_flow_case.case([(x < y, f1), (x < y, f2)], default=f3)
       self.assertAllEqual(r3, 17)
 
       # Duplicate events cause an error if exclusive = True
-      r4 = control_flow_ops.case(
-          [(x < y, f1), (x < y, f2)], default=f3, exclusive=True)
+      r4 = control_flow_case.case([(x < y, f1), (x < y, f2)],
+                                  default=f3,
+                                  exclusive=True)
       with self.assertRaisesOpError("Input error:"):
         self.evaluate(r4)
 
       # Check that the default is called if none of the others are
-      r5 = control_flow_ops.case({x > y: f1}, default=f3)
+      r5 = control_flow_case.case({x > y: f1}, default=f3)
       self.assertAllEqual(r5, -1)
 
       ran_once = [False, False, False]
@@ -4258,9 +4262,9 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       # Should not fail - each conditional gets called exactly once
       # except default.  Default gets called twice: once to create an
       # empty output and once for the actual cond switch.
-      r6 = control_flow_ops.case(
-          [(x < y, break_run_twice(0)), (x > y, break_run_twice(1))],
-          default=lambda: constant_op.constant(2))
+      r6 = control_flow_case.case([(x < y, break_run_twice(0)),
+                                   (x > y, break_run_twice(1))],
+                                  default=lambda: constant_op.constant(2))
 
       self.assertAllEqual(r6, 0)
 
@@ -4278,12 +4282,15 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       x = constant_op.constant(1)
       y = constant_op.constant(2)
 
-      r0 = control_flow_ops.case(
-          ((x < y, a), (x > y, b)), default=c, exclusive=True)
-      r1 = control_flow_ops.case(
-          ((x > y, a), (x < y, b)), default=c, exclusive=True)
-      r2 = control_flow_ops.case(
-          ((x > y, a), (x > y, b)), default=c, exclusive=True)
+      r0 = control_flow_case.case(((x < y, a), (x > y, b)),
+                                  default=c,
+                                  exclusive=True)
+      r1 = control_flow_case.case(((x > y, a), (x < y, b)),
+                                  default=c,
+                                  exclusive=True)
+      r2 = control_flow_case.case(((x > y, a), (x > y, b)),
+                                  default=c,
+                                  exclusive=True)
 
       self.evaluate(variables.global_variables_initializer())
       self.assertAllEqual(self.evaluate([v0, v1, v2]), [-1] * 3)
@@ -4931,7 +4938,8 @@ class AssertTest(test.TestCase):
         value = constant_op.constant(1.0)
       with ops.device("/cpu:0"):
         true = constant_op.constant(True)
-        guarded_assert = control_flow_ops.Assert(true, [value], name="guarded")
+        guarded_assert = control_flow_assert.Assert(
+            true, [value], name="guarded")
         unguarded_assert = gen_logging_ops._assert(
             true, [value], name="unguarded")
       opts = config_pb2.RunOptions(trace_level=config_pb2.RunOptions.FULL_TRACE)
@@ -5154,8 +5162,9 @@ class EagerTest(test.TestCase):
       f2 = lambda: constant_op.constant(23)
       f3 = lambda: constant_op.constant(-1)
 
-      r1 = control_flow_ops.case(
-          [(x < y, f1), (x > z, f2)], default=f3, exclusive=True)
+      r1 = control_flow_case.case([(x < y, f1), (x > z, f2)],
+                                  default=f3,
+                                  exclusive=True)
       self.assertAllEqual(r1.numpy(), 17)
 
 

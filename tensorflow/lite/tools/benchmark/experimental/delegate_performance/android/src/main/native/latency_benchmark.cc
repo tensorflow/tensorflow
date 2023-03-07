@@ -187,6 +187,10 @@ std::vector<std::string> ParseArgumentsFromTfLiteSettings(
       }
       break;
     }
+    case Delegate_EDGETPU: {
+      args.push_back("--use_edgetpu=true");
+      break;
+    }
     default:
       TFLITE_LOG_PROD(TFLITE_LOG_WARNING,
                       "Delegate type %s is not enabled by the latency module.",

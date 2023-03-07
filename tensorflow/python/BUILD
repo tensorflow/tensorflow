@@ -180,9 +180,6 @@ py_library(
         ":weights_broadcast_ops",
         ":while_v2",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/lite/python:analyzer",
-        "//tensorflow/lite/python:lite",
-        "//tensorflow/lite/python/authoring",
         "//tensorflow/python/client",
         "//tensorflow/python/client:_pywrap_events_writer",
         "//tensorflow/python/client:pywrap_tf_session",
@@ -289,6 +286,7 @@ py_library(
 alias(
     name = "util",
     actual = "//tensorflow/python/util:util",
+    deprecation = "This target has been split. Depend on the sub-targets in //third_party/tensorflow/python/util instead.",
     visibility = visibility + [
         "//tensorflow:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",
@@ -1303,6 +1301,25 @@ cuda_py_test(
 )
 
 py_library(
+    name = "control_flow_assert",
+    srcs = ["ops/control_flow_assert.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":array_ops",
+        ":control_flow_ops_gen",
+        ":logging_ops_gen",
+        ":math_ops_gen",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_should_use",
+    ],
+)
+
+py_library(
     name = "control_flow_grad",
     srcs =
         ["ops/control_flow_grad.py"],
@@ -1326,23 +1343,64 @@ py_library(
     deps = [
         ":array_ops",
         ":array_ops_gen",
+        ":control_flow_assert",
+        ":control_flow_case",
         ":control_flow_ops_gen",
         ":control_flow_util",
         ":functional_ops_gen",
-        ":logging_ops_gen",
         ":math_ops",
         ":platform",
         ":tensor_array_ops",
-        ":tf2",
+        ":while_loop",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:indexed_slices",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/framework:type_spec",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_library(
+    name = "control_flow_case",
+    srcs = ["ops/control_flow_case.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":array_ops",
+        ":control_flow_assert",
+        ":math_ops",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/platform",
         "//tensorflow/python/util",
-        "//tensorflow/python/util:tf_should_use",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_library(
+    name = "while_loop",
+    srcs = ["ops/while_loop.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":control_flow_util",
+        ":math_ops",
+        ":tensor_array_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:type_spec",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -1607,7 +1665,7 @@ py_library(
         ":protos_all_py",
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
     ],
 )
@@ -1781,6 +1839,7 @@ py_library(
         ":array_ops",
         ":check_ops",
         ":clip_ops",
+        ":control_flow_case",
         ":control_flow_ops",
         ":gradients",
         ":image_ops_gen",
@@ -1803,6 +1862,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":array_ops_stack",
         ":linalg_ops_gen",
         ":linalg_ops_impl",
         ":math_ops",
@@ -1820,6 +1880,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":array_ops_stack",
         ":linalg_ops_gen",
         ":linalg_ops_impl",
         ":math_ops",
@@ -2249,6 +2310,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":array_ops_stack",
         ":math_ops",
         ":random_index_shuffle_ops_gen",
         ":shape_util",
@@ -2547,6 +2609,7 @@ py_library(
         ":check_ops",
         ":clip_ops",
         ":confusion_matrix",
+        ":control_flow_case",
         ":control_flow_ops",
         ":critical_section_ops",
         ":cudnn_rnn_grad",
@@ -2815,6 +2878,7 @@ cuda_py_test(
     deps = [
         ":array_ops",
         ":cond_v2",
+        ":control_flow_case",
         ":control_flow_ops",
         ":control_flow_v2_toggles",
         ":embedding_ops",
@@ -3255,8 +3319,6 @@ cuda_py_test(
     tags = [
         "no_rocm",
         "no_windows_gpu",
-        "noasan",  # b/159332048
-        "nomsan",  # b/148630708
     ],
     deps = [
         ":array_ops",
@@ -3338,7 +3400,7 @@ py_library(
 pywrap_tensorflow_macro(
     name = "pywrap_tensorflow_internal",
     srcs = ["pywrap_tensorflow_internal.cc"],
-    dynamic_deps = select({
+    dynamic_deps = ["//tensorflow/tsl/python/lib/core:bfloat16.so"] + select({
         "//tensorflow:macos": [
             "//tensorflow:libtensorflow_cc.%s.dylib" % VERSION,
             "//tensorflow:libtensorflow_framework.%s.dylib" % VERSION,
@@ -3350,7 +3412,7 @@ pywrap_tensorflow_macro(
         "//tensorflow:windows": [],
     }),
     exports_filter = [
-        "@pybind11//:pybind11",
+        "@pybind11",
         "@local_config_python//:python_headers",
     ] + if_windows([
         "//:__subpackages__",
@@ -3399,7 +3461,6 @@ pywrap_tensorflow_macro(
         "@llvm-project//:__subpackages__",
         "@llvm_terminfo//:__subpackages__",
         "@llvm_zlib//:__subpackages__",
-        "@lmdb//:__subpackages__",
         "@local_config_cuda//:__subpackages__",
         "@local_config_git//:__subpackages__",
         "@local_config_nccl//:__subpackages__",

@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_algorithm_denylist.h"
@@ -394,9 +393,12 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
     if (it != autotune_cache.end()) {
       return it->second;
     }
-    return InternalError(
-        "Failed to load autotune result when running GpuConvAlgorithmPicker in "
-        "deviceless mode");
+
+    // Return an autotune result with algo id -1, which means that we autotune
+    // at runtime.
+    AutotuneResult result;
+    result.mutable_algorithm()->set_algo_id(-1);
+    return result;
   }
 
   se::StreamExecutor* stream_exec = std::get<DeviceConfig>(config_).stream_exec;
@@ -538,7 +540,7 @@ GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
 
   GpuConvAlgorithmPicker::AutotuneRuntimeArguments runtime_arguments = {
       result_shape,           hlo_module_config, operand_buffers, result_buffer,
-      input_output_allocator, gpu_conv_config,   canonical_hlo};
+      input_output_allocator, gpu_conv_config,   {canonical_hlo}};
 
   return runtime_arguments;
 }
@@ -714,28 +716,30 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
 
   if (!input_output_allocator_redzone_clear ||
       !scratch_allocator_redzone_clear) {
-    auto canonical_hlo = runtime_arguments.canonical_hlo;
-    std::string blas_version;
-    if (auto* blas = stream_exec->AsBlas()) {
-      (void)blas->GetVersion(&blas_version);
+    if (runtime_arguments.canonical_hlo.has_value()) {
+      std::string canonical_hlo = runtime_arguments.canonical_hlo.value();
+      std::string blas_version;
+      if (auto* blas = stream_exec->AsBlas()) {
+        (void)blas->GetVersion(&blas_version);
+      }
+
+      AlgorithmDenylist proto;
+      auto entry = proto.add_entries();
+      entry->set_hlo(canonical_hlo);
+      *entry->mutable_cc() = GetComputeCapability(stream_exec);
+      *entry->mutable_cudnn_version() = GetCudnnVersion(stream_exec);
+      entry->set_blas_version(blas_version);
+      auto algo = entry->add_algos();
+      algo->set_id(alg.algo_id());
+      algo->set_tensor_ops(alg.tensor_ops_enabled());
+
+      LOG(ERROR) << "To denylist this algorithm for this convolution, "
+                    "copy-paste the following "
+                    "proto to the denylist file pointed by XLA_FLAGS "
+                    "--xla_gpu_algorithm_denylist_path="
+                 << GetDebugOptionsFromFlags().xla_gpu_algorithm_denylist_path()
+                 << " : " << proto.ShortDebugString();
     }
-
-    AlgorithmDenylist proto;
-    auto entry = proto.add_entries();
-    entry->set_hlo(canonical_hlo);
-    *entry->mutable_cc() = GetComputeCapability(stream_exec);
-    *entry->mutable_cudnn_version() = GetCudnnVersion(stream_exec);
-    entry->set_blas_version(blas_version);
-    auto algo = entry->add_algos();
-    algo->set_id(alg.algo_id());
-    algo->set_tensor_ops(alg.tensor_ops_enabled());
-
-    LOG(ERROR) << "To denylist this algorithm for this convolution, "
-                  "copy-paste the following "
-                  "proto to the denylist file pointed by XLA_FLAGS "
-                  "--xla_gpu_algorithm_denylist_path="
-               << GetDebugOptionsFromFlags().xla_gpu_algorithm_denylist_path()
-               << " : " << proto.ShortDebugString();
 
     // CheckRedzones has modified the result in-place to include a failure.
     return result;
@@ -815,9 +819,11 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   }
 
   absl::Span<const AlgorithmDesc> disabled_algos;
-  disabled_algos = GetDisabledConvAlgorithms(
-      GetComputeCapability(stream_exec), GetCudnnVersion(stream_exec),
-      blas_version, runtime_arguments.canonical_hlo);
+  if (runtime_arguments.canonical_hlo.has_value()) {
+    disabled_algos = GetDisabledConvAlgorithms(
+        GetComputeCapability(stream_exec), GetCudnnVersion(stream_exec),
+        blas_version, runtime_arguments.canonical_hlo.value());
+  }
 
   const bool cudnn_frontend_enabled =
       debug_options.xla_gpu_enable_cudnn_frontend();
@@ -845,8 +851,10 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   // they include some very slow algorithms.
   if (!reference_result) {
     LOG(WARNING) << "None of the algorithms provided by cuDNN heuristics "
-                    "worked; trying fallback algorithms.  Conv: "
-                 << runtime_arguments.canonical_hlo;
+                    "worked; trying fallback algorithms.";
+    if (runtime_arguments.canonical_hlo.has_value()) {
+      LOG(WARNING) << "Conv: " << runtime_arguments.canonical_hlo.value();
+    }
 
     TF_ASSIGN_OR_RETURN(std::vector<MaybeFusedConvRunner> fallback_runners,
                         GetAlgorithms(runtime_arguments.gpu_conv_config, stream,
@@ -908,6 +916,36 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   return selected_algorithm;
 }
 #endif
+
+StatusOr<tensorflow::AutotuneResult>
+GpuConvAlgorithmPicker::PickBestAlgorithmWithAllocatedBuffer(
+    const GpuConvConfig conv_config,
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options,
+    const std::vector<se::DeviceMemoryBase> buffers,
+    const se::DeviceMemoryBase result_buffer) {
+#if GOOGLE_CUDA
+  Shape output_shape = conv_config.output_shape;
+  HloModuleConfig hlo_module_config;
+  se::Stream* stream = run_options->stream();
+  se::DeviceMemoryAllocator* allocator = run_options->allocator();
+  se::RedzoneAllocator input_output_allocator(
+      stream, allocator, PtxOptsFromDebugOptions(*debug_options),
+      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
+      se::RedzoneAllocator::kDefaultRedzoneSize);
+
+  GpuConvAlgorithmPicker::AutotuneRuntimeArguments autotune_runtime_arguments =
+      {output_shape,  hlo_module_config,       buffers,
+       result_buffer, &input_output_allocator, conv_config,
+       std::nullopt};
+
+  return PickBestAlgorithmNoCacheCuda(
+      /*instr=*/nullptr, allocator, stream,
+      /*instruction_info=*/std::nullopt, autotune_runtime_arguments);
+#else
+  return InternalError("CUDA is not enabled");
+#endif
+}
 
 StatusOr<tensorflow::AutotuneResult>
 GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(

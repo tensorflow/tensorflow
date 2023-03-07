@@ -45,6 +45,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import lookup_ops
@@ -641,7 +642,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
                                math_ops.equal(y, 3)), defaults_two),
       ]
 
-      return control_flow_ops.case(
+      return control_flow_case.case(
           pred_fn_pairs, default=multiply, exclusive=True)
 
     def build_dataset(row, num):
@@ -674,7 +675,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
                                math_ops.equal(y, 3)), divide),
       ]
 
-      return control_flow_ops.case(
+      return control_flow_case.case(
           pred_fn_pairs, default=multiply, exclusive=True)
 
     def build_dataset(row, num):
@@ -715,7 +716,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
                                math_ops.equal(y, 3)), defaults_two),
       ]
 
-      return control_flow_ops.case(
+      return control_flow_case.case(
           pred_fn_pairs, default=multiply, exclusive=True)
 
     row = np.arange(6)

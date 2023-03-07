@@ -351,7 +351,10 @@ TransformResult Deallocator::transformOp(
   // Assume any memref operand may alias any memref result.
   for (auto result : llvm::make_filter_range(op->getResults(), isMemref)) {
     for (auto arg : llvm::make_filter_range(op->getOperands(), isMemref)) {
-      aliases.unionSets(result, arg);
+      if (getElementTypeOrSelf(result.getType()) ==
+          getElementTypeOrSelf(arg.getType())) {
+        aliases.unionSets(result, arg);
+      }
     }
   }
   // No new allocations or releases.

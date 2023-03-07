@@ -107,7 +107,7 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
                                          "has already been transformed.");
     }
 
-    if (isa<gml_st::ParallelOp, scf::ForOp>(reduceOp->getParentOp())) {
+    if (isa<scf::ForallOp, scf::ForOp>(reduceOp->getParentOp())) {
       return rewriter.notifyMatchFailure(
           reduceOp, "has already been tiled by another pass.");
     }
@@ -115,9 +115,15 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     if (failed(validateOp(reduceOp, rewriter, /*expectedRank=*/1)))
       return failure();
 
-    Location loc = reduceOp.getLoc();
+    // 0-d tensor with the neutral elements.
+    auto fillOp = reduceOp.getInits().front().getDefiningOp<linalg::FillOp>();
+    if (!fillOp)
+      return rewriter.notifyMatchFailure(reduceOp,
+                                         "init not defined by fill op");
+    auto neutralValue = fillOp.value();
 
     // Constants.
+    Location loc = reduceOp.getLoc();
     Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     Value tileSizeValue =
         rewriter.create<arith::ConstantIndexOp>(loc, tileSize);
@@ -133,16 +139,9 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     Value remainderSize =
         getRemainderSize(rewriter, loc, tileableBound, inputSize);
 
-    // 0-d tensor with the neutral elements.
-    auto fillOp = reduceOp.getInits().front().getDefiningOp<linalg::FillOp>();
-    if (!fillOp) return failure();
-    auto neutralValue = fillOp.value();
-
-    // fillOp.getValue();
-    Type elementType = neutralValue.getType();
-
     // Create tensor<VECTOR_SIZExELEM_TYPE> with neutral elements for tile loop
     // init.
+    Type elementType = neutralValue.getType();
     Value emptyVector = rewriter.create<tensor::EmptyOp>(
         loc, llvm::ArrayRef({vectorSize}), elementType);
     Value filledVector =
@@ -289,7 +288,7 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     if (reduceOp.getDimensions().size() != 1) return failure();
     int64_t reductionDim = reduceOp.getDimensions()[0];
 
-    if (reduceOp->getParentOfType<ParallelOp>()) return failure();
+    if (reduceOp->getParentOfType<scf::ForallOp>()) return failure();
     if (hasLabel(reduceOp, kReduceTransformedLabel)) {
       return rewriter.notifyMatchFailure(reduceOp,
                                          "has already been transformed.");
@@ -327,13 +326,13 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     fuseGreedily(rewriter, *tilingRoot->getBlock(),
                  [&](Operation *op) { return fusionCluster.contains(op); });
 
-    (void)fuseFillOpsIntoParallelOp(rewriter, tilingParallelDimsResult->loop);
+    (void)fuseFillOpsIntoForallOp(rewriter, tilingParallelDimsResult->loop);
 
     // Process main parallel loop.
     auto peeledParallelLoop =
         peelAllLoops(tilingParallelDimsResult->loop, rewriter);
 
-    ParallelOp mainParallelLoop = peeledParallelLoop.mainLoop;
+    scf::ForallOp mainParallelLoop = peeledParallelLoop.mainLoop;
     if (mainParallelLoop) {
       for (auto tiledReduceOp : llvm::to_vector(
                tilingRoot->getBlock()->getOps<linalg::ReduceOp>())) {
@@ -383,12 +382,13 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     }
 
     // Process tail parallel loop.
-    ParallelOp tailParallelLoop = peeledParallelLoop.tailLoops.size() == 1
-                                      ? peeledParallelLoop.tailLoops.front()
-                                      : nullptr;
+    scf::ForallOp tailParallelLoop = peeledParallelLoop.tailLoops.size() == 1
+                                         ? peeledParallelLoop.tailLoops.front()
+                                         : nullptr;
     if (tailParallelLoop) {
-      auto terminatorOp = tailParallelLoop.getTerminator();
-      auto *definingOp = terminatorOp->getOperand(0).getDefiningOp();
+      Value yieldedTensor =
+          getYieldedValues(tailParallelLoop.getTerminator()).front();
+      auto *definingOp = yieldedTensor.getDefiningOp();
       if (!definingOp) return failure();
 
       mlir::gml_st::TilingOptions opts;
@@ -404,7 +404,7 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
           fusionClusterFn);
       if (failed(parallelDimTilingResult)) return failure();
 
-      (void)fuseFillOpsIntoParallelOp(rewriter, *parallelDimTilingResult);
+      (void)fuseFillOpsIntoForallOp(rewriter, *parallelDimTilingResult);
 
       for (auto tiledReduceOp :
            llvm::to_vector(parallelDimTilingResult->getBody()
@@ -575,6 +575,7 @@ struct TransformReduceForCpuPass
     RewritePatternSet patterns(ctx);
     patterns.add<Reduce1DTransformPattern>(ctx, vectorSize, tileSize1D);
     patterns.add<Reduce2DTransformPattern>(ctx, tileSizes2D[0], tileSizes2D[1]);
+    populateCollapseForallOpDimensionsPattern(patterns);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();

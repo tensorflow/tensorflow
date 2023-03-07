@@ -76,6 +76,7 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
+from tensorflow.python.ops import control_flow_assert
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -130,6 +131,14 @@ class PForTest(PForTestCase):
   def test_parallel_iterations_one(self):
     with self.assertRaisesRegex(ValueError, "Use `for_loop` instead"):
       pfor_control_flow_ops.pfor(lambda i: 1, 8, parallel_iterations=1)
+
+  def test_zero_loop_iters_basic(self):
+    self._test_loop_fn(lambda i: 1, 0)
+
+  def test_zero_loop_iters_tensor(self):
+    self._test_loop_fn(
+        lambda i: array_ops.zeros([10, 3], dtype=dtypes.int32), 0
+    )
 
   def test_vectorized_map(self):
 
@@ -973,7 +982,7 @@ class LoggingTest(PForTestCase):
   def test_assert(self):
 
     def loop_fn(i):
-      return control_flow_ops.Assert(i < 10, [i, [10], [i + 1]])
+      return control_flow_assert.Assert(i < 10, [i, [10], [i + 1]])
 
     # TODO(agarwal): make this work with for_loop.
     with session.Session() as sess:
@@ -1193,6 +1202,22 @@ class TensorListTest(PForTestCase):
               list_ops.tensor_list_element_shape(handle, dtypes.int64))
 
     self._test_loop_fn(loop_fn, 2)
+
+  def test_create_outside_and_read_zero_loop_iters(self):
+    handle = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+    handle = list_ops.tensor_list_set_item(handle, 0, 0)
+    handle = list_ops.tensor_list_set_item(handle, 1, 1)
+
+    def loop_fn(i):
+      return (
+          list_ops.tensor_list_get_item(handle, i, dtypes.int32),
+          list_ops.tensor_list_get_item(handle, 0, dtypes.int32),
+          list_ops.tensor_list_length(handle),
+          list_ops.tensor_list_element_shape(handle, dtypes.int32),
+          list_ops.tensor_list_element_shape(handle, dtypes.int64),
+      )
+
+    self._test_loop_fn(loop_fn, 0)
 
   def test_create_inside_and_read(self):
 

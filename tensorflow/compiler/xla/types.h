@@ -28,6 +28,14 @@ using ::Eigen::half;      // NOLINT(misc-unused-using-decls)
 using complex64 = std::complex<float>;
 using complex128 = std::complex<double>;
 
+struct u4 {
+  uint8_t v : 4;
+};
+
+struct s4 {
+  int8_t v : 4;
+};
+
 }  // namespace xla
 
 // Alias namespace ::stream_executor as ::xla::se.

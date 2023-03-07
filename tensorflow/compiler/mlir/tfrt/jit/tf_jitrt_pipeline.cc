@@ -20,7 +20,6 @@ limitations under the License.
 #include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
-#include "mlir/Conversion/VectorToSCF/VectorToSCF.h"
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
@@ -28,10 +27,11 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
+#include "tensorflow/compiler/xla/mlir_hlo/_virtual_includes/gml_st_passes/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/transforms/passes.h"
@@ -66,6 +66,8 @@ struct AddTensorflowProducerVersion
 };
 
 void AddBufferizationPasses(OpPassManager& pm) {
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createRewriteFromElementsOpPass());
+  pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
   // Rewrite tensor.empty ops to bufferization.alloc_tensor ops.
   pm.addNestedPass<FuncOp>(
       mlir::bufferization::createEmptyTensorToAllocTensorPass());
@@ -186,7 +188,6 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   if (options.vectorize) {
     pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeCopyPass());
     pm.addNestedPass<FuncOp>(mlir::gml_st::createSimplifyDeadCopyPass());
-    pm.addNestedPass<FuncOp>(mlir::gml_st::createOptimizeVectorTransferPass());
   }
 
   // Deallocate all temporary buffers.
@@ -205,14 +206,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
-  pm.addNestedPass<FuncOp>(mlir::gml_st::createRewriteVectorTransposePass());
-
-  mlir::VectorTransferToSCFOptions vec_to_scf_options;
-  vec_to_scf_options.unroll = true;
-  pm.addNestedPass<FuncOp>(
-      mlir::createConvertVectorToSCFPass(vec_to_scf_options));
-  pm.addNestedPass<FuncOp>(
-      mlir::gml_st::createRewriteVectorMultiReductionPass());
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createLowerVectorsPass());
 
   pm.addNestedPass<FuncOp>(CreateMathApproximationPass({"all"}));
 }

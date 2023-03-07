@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/compatibility/database_generated.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/devicedb.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility_binary.h"
-#include "tensorflow/lite/experimental/acceleration/compatibility/variables.h"
 
 namespace tflite {
 namespace acceleration {
@@ -88,6 +87,21 @@ bool GPUCompatibilityList::Includes(
     const ::tflite::gpu::GpuInfo& gpu_info) const {
   auto variables = CalculateVariables(android_info, gpu_info);
   return variables[gpu::kStatus] == std::string(gpu::kStatusSupported);
+}
+
+gpu::CompatibilityStatus GPUCompatibilityList::GetStatus(
+    std::map<std::string, std::string>& variables) const {
+  CanonicalizeValues(&variables);
+  if (!database_) return gpu::CompatibilityStatus::kUnknown;
+  UpdateVariablesFromDatabase(&variables, *database_);
+  const std::string& status = variables[gpu::kStatus];
+  if (status == gpu::kStatusSupported) {
+    return gpu::CompatibilityStatus::kSupported;
+  } else if (status == gpu::kStatusUnsupported) {
+    return gpu::CompatibilityStatus::kUnsupported;
+  } else {
+    return gpu::CompatibilityStatus::kUnknown;
+  }
 }
 
 TfLiteGpuDelegateOptionsV2 GPUCompatibilityList::GetBestOptionsFor(

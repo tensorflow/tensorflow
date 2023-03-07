@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <atomic>
+#include <memory>
 #define EIGEN_USE_THREADS
+
+#include <optional>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/lib/core/threadpool_interface.h"
@@ -774,9 +777,9 @@ class RunHandlerPool::Impl {
     thread_local std::unique_ptr<
         Eigen::MaxSizeVector<internal::ThreadWorkSource*>>
         thread_work_sources =
-            std::unique_ptr<Eigen::MaxSizeVector<internal::ThreadWorkSource*>>(
-                new Eigen::MaxSizeVector<internal::ThreadWorkSource*>(
-                    max_handlers_));
+            std::make_unique<Eigen::MaxSizeVector<internal::ThreadWorkSource*>>(
+
+                max_handlers_);
     uint64_t version;
     int num_active_requests;
     RunHandler::Impl* handler_impl;
@@ -1068,7 +1071,7 @@ void RunHandlerWorkQueue::AddTask(TaskFunction work) {
       run_handler_->step_id(), "inter", std::move(work)));
 }
 
-Optional<TaskFunction> RunHandlerWorkQueue::AddBlockingTask(
+std::optional<TaskFunction> RunHandlerWorkQueue::AddBlockingTask(
     TaskFunction work, bool allow_queuing) {
   LOG_EVERY_N_SEC(ERROR, 10)
       << "RunHandlerWorkQueue::AddBlockingTask() is not supposed to be called.";

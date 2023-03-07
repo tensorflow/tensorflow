@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -1101,7 +1100,7 @@ Type VariantToUnrankedTensorType(Type type, Value value) {
 }
 
 // Returns true if we can deduce the type is tensorlist.
-bool IsTensorListType(Type type, llvm::Optional<Value> value) {
+bool IsTensorListType(Type type, std::optional<Value> value) {
   TF::VariantType variant_ty =
       getElementTypeOrSelf(type).dyn_cast<TF::VariantType>();
   if (!variant_ty) {

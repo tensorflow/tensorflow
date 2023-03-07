@@ -117,7 +117,7 @@ LogicalResult AbsOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// AllToAllOp
+// AllGatherOp
 //===----------------------------------------------------------------------===//
 
 // TODO(jurahul): Add verification for output shape.
@@ -128,6 +128,10 @@ LogicalResult AllGatherOp::verify() {
                                         op.getUseGlobalDeviceIds(),
                                         /*expectedGroupSize=*/std::nullopt);
 }
+
+//===----------------------------------------------------------------------===//
+// AllToAllOp
+//===----------------------------------------------------------------------===//
 
 // TODO(jurahul): Add verification for output shape.
 LogicalResult AllToAllOp::verify() {

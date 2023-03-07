@@ -122,6 +122,12 @@ class MlirTensor : public TracingTensorHandle {
     return ptr->getKind() == kMlir;
   }
 
+  // Return default (TFT_UNSET) full type information. This could be updated in
+  // the future if full type information is needed.
+  tensorflow::FullTypeDef FullType() const override {
+    return tensorflow::FullTypeDef();
+  }
+
  private:
   Value value_;
 };

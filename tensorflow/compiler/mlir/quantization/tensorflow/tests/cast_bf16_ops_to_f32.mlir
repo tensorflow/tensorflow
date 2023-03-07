@@ -81,3 +81,51 @@ func.func @cast_bf16_depthwise_conv_to_fp32(%arg0: tensor<1x3x4x3xf32>) -> (tens
 // CHECK: %[[depthwise_conv:.*]] = "tf.DepthwiseConv2dNative"(%arg0, %[[cst]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 2, 2, 1]} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<1x2x2x6xf32>
 // CHECK: %[[identity:.*]] = "tf.IdentityN"(%[[depthwise_conv]]) {device = ""} : (tensor<1x2x2x6xf32>) -> tensor<1x2x2x6xf32>
 // CHECK: return %[[identity]] : tensor<1x2x2x6xf32>
+
+func.func @cast_bf16_batch_matmul_v2_to_fp32(%arg0: tensor<1x1x10xf32>) -> (tensor<1x1x2xf32>) {
+  %cst = "tf.Const"() {device = "", value = dense<1.000000e+01> : tensor<10x2xbf16>} : () -> tensor<10x2xbf16>
+  %0 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<1x1x10xf32>) -> tensor<1x1x10xbf16>
+  %1 = "tf.BatchMatMulV2"(%0, %cst) {adj_x = false, adj_y = false, device = ""} : (tensor<1x1x10xbf16>, tensor<10x2xbf16>) -> tensor<1x1x2xbf16>
+  %2 = "tf.Cast"(%1) {Truncate = false} : (tensor<1x1x2xbf16>) -> tensor<1x1x2xf32>
+  %3 = "tf.IdentityN"(%2) {device = ""} : (tensor<1x1x2xf32>) -> tensor<1x1x2xf32>
+  return %3 : tensor<1x1x2xf32>
+}
+
+// CHECK: func @cast_bf16_batch_matmul_v2_to_fp32
+// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<10x2xf32>} : () -> tensor<10x2xf32>
+// CHECK: %[[batch_matmul:.*]] = "tf.BatchMatMulV2"(%arg0, %[[cst]])
+// CHECK: %[[identity:.*]] = "tf.IdentityN"(%[[batch_matmul]]) {device = ""} : (tensor<1x1x2xf32>) -> tensor<1x1x2xf32>
+// CHECK: return %[[identity]] : tensor<1x1x2xf32>
+
+func.func @cast_bf16_gather_v2_to_fp32(%arg0: tensor<1xi64>) -> (tensor<1x3x4x3xf32>) {
+  %cst = "tf.Const"() {device = "", value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %cst_0 = "tf.Const"() {device = "", value = dense<1.000000e+01> : tensor<1024x3x4x3xbf16>} : () -> tensor<1024x3x4x3xbf16>
+  %0 = "tf.GatherV2"(%cst_0, %arg0, %cst) {batch_dims = 0 : i64, device = ""} : (tensor<1024x3x4x3xbf16>, tensor<1xi64>, tensor<i32>) -> tensor<1x3x4x3xbf16>
+  %1 = "tf.Cast"(%0) {Truncate = false} : (tensor<1x3x4x3xbf16>) -> tensor<1x3x4x3xf32>
+  %2 = "tf.IdentityN"(%1) {device = ""} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3xf32>
+  return %2 : tensor<1x3x4x3xf32>
+}
+
+// CHECK: func @cast_bf16_gather_v2_to_fp32
+// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<1024x3x4x3xf32>} : () -> tensor<1024x3x4x3xf32>
+// CHECK-DAG: %[[cst_0:.*]] = "tf.Const"() {device = "", value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK: %[[gather:.*]] = "tf.GatherV2"(%[[cst]], %arg0, %[[cst_0]]) {batch_dims = 0 : i64} : (tensor<1024x3x4x3xf32>, tensor<1xi64>, tensor<i32>) -> tensor<1x3x4x3xf32>
+// CHECK: %[[identity:.*]] = "tf.IdentityN"(%[[gather]])
+// CHECK: return %[[identity]] : tensor<1x3x4x3xf32>
+
+// Tests that an AddV2 op accepting two bf16 operands is transformed into
+// an AddV2 op that accepts two fp32 operands.
+func.func @cast_bf16_add_v2_to_fp32(%arg0: tensor<2xbf16>, %arg1: tensor<2xbf16>) -> tensor<2xbf16> {
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<2xbf16>, tensor<2xbf16>) -> tensor<2xbf16>
+  return %0 : tensor<2xbf16>
+}
+// The signature of the function is not changed.
+// CHECK: func @cast_bf16_add_v2_to_fp32(%[[ARG_0:.*]]: tensor<2xbf16>, %[[ARG_1:.*]]: tensor<2xbf16>) -> tensor<2xbf16>
+
+// bfloat16 operands are cast to f32 operands.
+// CHECK-DAG: %[[CAST_0:.*]] = "tf.Cast"(%[[ARG_0]]) {Truncate = false} : (tensor<2xbf16>) -> tensor<2xf32>
+// CHECK-DAG: %[[CAST_1:.*]] = "tf.Cast"(%[[ARG_1]]) {Truncate = false} : (tensor<2xbf16>) -> tensor<2xf32>
+// CHECK: %[[ADD:.*]] = "tf.AddV2"(%[[CAST_0]], %[[CAST_1]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+// f32 outputs are cast back to bfloat16.
+// CHECK: %[[CAST_2:.*]] = "tf.Cast"(%[[ADD]]) {Truncate = false} : (tensor<2xf32>) -> tensor<2xbf16>
+// CHECK: return %[[CAST_2]] : tensor<2xbf16>

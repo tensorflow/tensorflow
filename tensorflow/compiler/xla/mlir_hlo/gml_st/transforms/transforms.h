@@ -16,25 +16,7 @@ limitations under the License.
 #ifndef MLIR_HLO_GML_ST_TRANSFORMS_TRANSFORMS_H
 #define MLIR_HLO_GML_ST_TRANSFORMS_TRANSFORMS_H
 
-#include "gml_st/IR/gml_st_ops.h"
-#include "llvm/ADT/Hashing.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/Pass/PassManager.h"
-#include "mlir/Pass/PassOptions.h"
-
-namespace mlir {
-
-class OpPassManager;
-
-namespace linalg {
-
-class LinalgOp;
-struct TiledLinalgOp;
-struct LinalgTilingOptions;
-
-}  // namespace linalg
-}  // namespace mlir
+#include "mlir/IR/Operation.h"
 
 namespace mlir {
 namespace gml_st {
