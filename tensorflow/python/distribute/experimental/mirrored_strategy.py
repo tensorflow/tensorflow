@@ -373,7 +373,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     d_args = nest.map_structure(map_fn, args)
     d_kwargs = nest.map_structure(map_fn, kwargs)
 
-    with d_api.run_on(self._mesh):
+    with d_api.default_mesh(self._mesh):
       with self._container_strategy().scope():
         with dtensor_util.DTensorReplicaContext(self._container_strategy()):
           dtensor_result = fn(*d_args, **d_kwargs)
