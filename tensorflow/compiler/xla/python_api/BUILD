@@ -49,7 +49,10 @@ py_test(
     srcs = ["xla_shape_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = ["optonly"],
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
     deps = [
         ":xla_shape",
         "//third_party/py/numpy",
@@ -62,7 +65,10 @@ py_test(
     srcs = ["xla_literal_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = ["optonly"],
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
     deps = [
         ":xla_literal",
         "//third_party/py/numpy",
