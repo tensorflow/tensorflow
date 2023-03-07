@@ -1,1 +1,12 @@
+diff --ruN a/stablehlo/stablehlo/dialect/Serialization.cpp b/stablehlo/stablehlo/dialect/Serialization.cpp
+--- stablehlo/stablehlo/dialect/Serialization.cpp
++++ stablehlo/stablehlo/dialect/Serialization.cpp
+@@ -24,7 +24,6 @@
+ #include "mlir/Parser/Parser.h"
+ #include "mlir/Pass/PassManager.h"
+ #include "mlir/Support/LogicalResult.h"
+-#include "stablehlo/dialect/Version.h"
+ #include "stablehlo/dialect/VhloOps.h"
+ #include "stablehlo/transforms/Passes.h"
+ 
 
