@@ -211,7 +211,7 @@ Status RunGpuFMHAImpl(const GpufMHAParams &params, se::Stream *stream,
                                         output_shape.layout().minor_to_major());
 
   config.kind = desc.kind;
-  const CudnnfMHABackendConfig &backend_config = desc.backend_config;
+  const FusedMHABackendConfig &backend_config = desc.backend_config;
   config.algorithm = se::dnn::AlgorithmDesc(backend_config.algorithm());
 
   auto check_and_assign_mask = [&]() -> Status {

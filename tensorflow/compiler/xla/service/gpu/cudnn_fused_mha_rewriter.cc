@@ -306,7 +306,7 @@ StatusOr<bool> FuseBatchedMatmuls(HloComputation* comp,
     TF_ASSIGN_OR_RETURN(auto config_bmm2,
                         bmm_2->backend_config<GemmBackendConfig>());
 
-    CudnnfMHABackendConfig fmha_config;
+    FusedMHABackendConfig fmha_config;
     *fmha_config.mutable_bmm1_dot_dimension_numbers() =
         config_bmm1.dot_dimension_numbers();
     *fmha_config.mutable_bmm2_dot_dimension_numbers() =

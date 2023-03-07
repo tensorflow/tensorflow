@@ -1266,7 +1266,7 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHA(
     const HloCustomCallInstruction* custom_call) {
   TF_ASSIGN_OR_RETURN(
       auto const config,
-      custom_call->backend_config<xla::gpu::CudnnfMHABackendConfig>());
+      custom_call->backend_config<xla::gpu::FusedMHABackendConfig>());
 
   TF_ASSIGN_OR_RETURN(const xla::gpu::CudnnfMHAKind kind,
                       xla::gpu::GetCudnnfMHAKind(custom_call));

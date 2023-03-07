@@ -142,17 +142,16 @@ bool IsCudnnConvolutionReorder(const HloInstruction& hlo);
 // cudnn$fmhaBiasScaleMaskSoftmax.
 // The fMHA signatures currently supported by cudnn are:
 // 1. BMM1 - BMM2
-// 2. BMM1 - Scale - Bias - Mask - Softmax - BMM2
-// 3. BMM1 - Scale - Bias - Mask - Softmax - Dropout - BMM2
-// 4. BMM1 - Scale - Mask - Softmax - BMM2
-// 5. BMM1 - Scale - Mask - Softmax - Dropout - BMM2
-// 6. BMM1 - Softmax - Dropout - BMM2
-
 extern const absl::string_view kCudnnfMHABmmBmmCallTarget;
+// 2. BMM1 - Scale - Bias - Mask - Softmax - BMM2
 extern const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxCallTarget;
+// 3. BMM1 - Scale - Bias - Mask - Softmax - Dropout - BMM2
 extern const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget;
+// 4. BMM1 - Scale - Mask - Softmax - BMM2
 extern const absl::string_view kCudnnfMHAScaleMaskSoftmaxCallTarget;
+// 5. BMM1 - Scale - Mask - Softmax - Dropout - BMM2
 extern const absl::string_view kCudnnfMHAScaleMaskSoftmaxDropoutCallTarget;
+// 6. BMM1 - Softmax - Dropout - BMM2
 extern const absl::string_view kCudnnfMHASoftmaxDropoutCallTarget;
 
 bool IsCustomCallTofMHA(const HloInstruction& hlo);

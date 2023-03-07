@@ -1313,7 +1313,8 @@ Status IrEmitterUnnested::EmitFusedMHAThunk(mlir::Operation* op) {
   };
   BufferAllocation::Slice mask_slice;
   BufferAllocation::Slice bias_slice;
-  auto allocate_buffer = [&](auto fmha, OptionalBuffer optional_buffer_kind) {
+  auto get_buffer_allocation_slice = [&](auto fmha,
+                                         OptionalBuffer optional_buffer_kind) {
     if (optional_buffer_kind == OptionalBuffer::kMask) {
       TF_ASSIGN_OR_RETURN(mask_slice, GetAllocationSlice(fmha.getMask()));
     } else if (optional_buffer_kind == OptionalBuffer::kBias) {
@@ -1348,8 +1349,8 @@ Status IrEmitterUnnested::EmitFusedMHAThunk(mlir::Operation* op) {
         GetShape(fmha_with_scaled_mask_op.getMask()).dimensions(),
         GetShape(fmha_with_scaled_mask_op.getMask()).layout().minor_to_major());
 
-    TF_RETURN_IF_ERROR(
-        allocate_buffer(fmha_with_scaled_mask_op, OptionalBuffer::kMask));
+    TF_RETURN_IF_ERROR(get_buffer_allocation_slice(fmha_with_scaled_mask_op,
+                                                   OptionalBuffer::kMask));
 
     if (fmha_with_scaled_mask_op.getBias() != nullptr) {
       TF_RET_CHECK(kind == xla::gpu::CudnnfMHAKind::kScaleBiasMaskSoftmax ||
@@ -1365,8 +1366,8 @@ Status IrEmitterUnnested::EmitFusedMHAThunk(mlir::Operation* op) {
               .layout()
               .minor_to_major());
 
-      TF_RETURN_IF_ERROR(
-          allocate_buffer(fmha_with_scaled_mask_op, OptionalBuffer::kBias));
+      TF_RETURN_IF_ERROR(get_buffer_allocation_slice(fmha_with_scaled_mask_op,
+                                                     OptionalBuffer::kBias));
     }
     TF_RETURN_IF_ERROR(populate_common(fmha_with_scaled_mask_op));
   } else {

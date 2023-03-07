@@ -136,17 +136,24 @@ std::string CudnnConvKindToString(CudnnConvKind kind) {
 StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(
     const HloCustomCallInstruction* instr) {
   absl::string_view target = instr->custom_call_target();
-  if (target == kCudnnfMHABmmBmmCallTarget) return CudnnfMHAKind::kBmmBmm;
-  if (target == kCudnnfMHAScaleBiasMaskSoftmaxCallTarget)
+  if (target == kCudnnfMHABmmBmmCallTarget) {
+    return CudnnfMHAKind::kBmmBmm;
+  }
+  if (target == kCudnnfMHAScaleBiasMaskSoftmaxCallTarget) {
     return CudnnfMHAKind::kScaleBiasMaskSoftmax;
-  if (target == kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget)
+  }
+  if (target == kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget) {
     return CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout;
-  if (target == kCudnnfMHAScaleMaskSoftmaxCallTarget)
+  }
+  if (target == kCudnnfMHAScaleMaskSoftmaxCallTarget) {
     return CudnnfMHAKind::kScaleMaskSoftmax;
-  if (target == kCudnnfMHAScaleMaskSoftmaxDropoutCallTarget)
+  }
+  if (target == kCudnnfMHAScaleMaskSoftmaxDropoutCallTarget) {
     return CudnnfMHAKind::kScaleMaskSoftmaxDropout;
-  if (target == kCudnnfMHASoftmaxDropoutCallTarget)
+  }
+  if (target == kCudnnfMHASoftmaxDropoutCallTarget) {
     return CudnnfMHAKind::kSoftmaxDropout;
+  }
 
   return InternalError("Unexpected call target: %s", target);
 }

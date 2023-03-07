@@ -91,7 +91,7 @@ message BitcastBackendConfig {
 
 // Backend config for a fused Multi-Headed Attention (fMHA) that runs through
 // cudnn.
-message CudnnfMHABackendConfig {
+message FusedMHABackendConfig {
   // Opaque algorithm number and tuning knobs chosen for this fMHA.
   stream_executor.dnn.AlgorithmProto algorithm = 8;
 

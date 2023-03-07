@@ -107,7 +107,7 @@ ENTRY main.6 {
                      m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
                      .WithShape(BF16, {20, 40, 64})));
   TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+                          fmha->backend_config<FusedMHABackendConfig>());
   EXPECT_EQ(config.fmha_scale(), 1.0);
   EXPECT_EQ(config.dropout_rate(), 0.0);
 }
@@ -221,7 +221,7 @@ ENTRY main.6 {
                      m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
                      .WithShape(F16, {20, 40, 64})));
   TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+                          fmha->backend_config<FusedMHABackendConfig>());
   EXPECT_EQ(config.fmha_scale(), 1.0);
   EXPECT_EQ(config.dropout_rate(), 0.0);
 }

@@ -40,7 +40,7 @@ namespace gpu {
 // LHLO GPU dialect in MLIR.
 struct GpufMHADescriptor {
   CudnnfMHAKind kind;
-  CudnnfMHABackendConfig backend_config;
+  FusedMHABackendConfig backend_config;
   Shape lhs_bmm1_shape;
   Shape rhs_bmm1_shape;
   Shape rhs_bmm2_shape;
