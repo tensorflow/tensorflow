@@ -397,12 +397,24 @@ CreateFlatBufferOperator(mlir::Operation* op, uint32_t opcode_index,
   return std::nullopt;
 }
 
-// Set `isSigned` to false if the `type` is an 8-bit unsigned integer type.
-// Since tflite doesn't support unsigned for other types, returns error if
-// `isSigned` is set to false for other types.
 static StatusOr<::stablehlo::flatbuf::DataType> GetDataType(
     Type type, bool is_signed = true) {
-  return ::stablehlo::flatbuf::DataType_FLOAT32;
+  if (type.isF16()) return ::stablehlo::flatbuf::DataType_FLOAT16;
+  if (type.isF32()) return ::stablehlo::flatbuf::DataType_FLOAT32;
+  if (type.isF64()) return ::stablehlo::flatbuf::DataType_FLOAT64;
+  if (type.isSignlessInteger(8)) return ::stablehlo::flatbuf::DataType_INT8;
+  if (type.isSignlessInteger(16)) return ::stablehlo::flatbuf::DataType_INT16;
+  if (type.isSignlessInteger(32)) return ::stablehlo::flatbuf::DataType_INT32;
+  if (type.isSignlessInteger(64)) return ::stablehlo::flatbuf::DataType_INT64;
+  if (type.isUnsignedInteger(8)) return ::stablehlo::flatbuf::DataType_UINT8;
+  if (type.isUnsignedInteger(16)) return ::stablehlo::flatbuf::DataType_UINT16;
+  if (type.isUnsignedInteger(32)) return ::stablehlo::flatbuf::DataType_UINT32;
+  if (type.isUnsignedInteger(64)) return ::stablehlo::flatbuf::DataType_UINT64;
+  std::string type_str;
+  llvm::raw_string_ostream str_stream(type_str);
+  str_stream << type;
+  LOG(ERROR) << "unsupported datatype" << type_str;
+  return tensorflow::errors::InvalidArgument("unsupported datatype" + type_str);
 }
 
 std::optional<::stablehlo::flatbuf::OperatorCode> GetOpCode(
@@ -624,6 +636,8 @@ Translator::BuildTensor(Value value, const std::string& name,
   }
 
   Type element_type = type.getElementType();
+  auto status = GetDataType(element_type);
+  if (!status.ok()) return std::nullopt;
   ::stablehlo::flatbuf::DataType data_type = GetDataType(element_type).value();
 
   return ::stablehlo::flatbuf::CreateTensor(
