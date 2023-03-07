@@ -1026,6 +1026,7 @@ py_library(
         ":op_callbacks",
         ":op_def_registry",
         ":registry",
+        ":stack",
         ":tensor_conversion_registry",
         ":tensor_shape",
         ":tensor_util",
@@ -1467,6 +1468,16 @@ pytype_library(
         ":type_spec",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/structured:structured_tensor",
+    ],
+)
+
+py_library(
+    name = "stack",
+    srcs = ["stack.py"],
+    visibility = visibility + ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
