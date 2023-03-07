@@ -30,6 +30,8 @@ jobs:
           days-before-issue-stale: 7
           days-before-issue-close: 7
           stale-issue-label: "stale"
+          # reason for closed the issue default value is not_planned
+          close-issue-reason: completed
           only-labels: "stat:awaiting response"
           stale-issue-message: > 
             This issue is stale because it has been open for 7 days with no activity.
@@ -48,6 +50,8 @@ jobs:
           days-before-issue-stale: 180
           days-before-issue-close: 365
           stale-issue-label: "stale"
+          # reason for closed the issue default value is not_planned
+          close-issue-reason: completed
           any-of-labels: "stat:contribution welcome,stat:good first issue"
           stale-issue-message: > 
             This issue is stale because it has been open for 180 days with no activity.
