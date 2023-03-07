@@ -636,7 +636,7 @@ class TraceOpLowering : public OpConversionPattern<TraceOp> {
     // Replace trace operation with inlined region.
     b.setInsertionPointAfter(op);
     auto terminator = cast<YieldOp>(op.getBody().front().getTerminator());
-    rewriter.mergeBlockBefore(terminator->getBlock(), op);
+    rewriter.inlineBlockBefore(terminator->getBlock(), op);
     rewriter.replaceOp(op, terminator->getOperands());
     rewriter.eraseOp(terminator);
 

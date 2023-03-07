@@ -3105,7 +3105,7 @@ LogicalResult FoldConstantIfRegionOp::matchAndRewrite(
     }
   }
   // Inline the region into the block containing the IfRegion.
-  rewriter.mergeBlockBefore(&region.front(), op);
+  rewriter.inlineBlockBefore(&region.front(), op);
   rewriter.eraseOp(yield);
   rewriter.replaceOp(op, updated_results);
   return success();

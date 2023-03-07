@@ -396,8 +396,8 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
     // Move body region into the new loop operation.
     IRMapping mapping;
     rewriter.eraseOp(op.getBody().front().getTerminator());
-    rewriter.mergeBlockBefore(&op.getBody().front(),
-                              loop.getLoopBody().front().getTerminator());
+    rewriter.inlineBlockBefore(&op.getBody().front(),
+                               loop.getLoopBody().front().getTerminator());
 
     // Erase the original while loop.
     rewriter.eraseOp(op);
