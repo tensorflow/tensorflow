@@ -1188,8 +1188,8 @@ class IteratorBase : public Checkpointable {
   std::vector<std::function<void()>> cleanup_fns_;
   std::shared_ptr<model::Node> node_ = nullptr;
   const IteratorBase* parent_ = nullptr;  // Not owned.
-  int64_t id_ = 0;
-  int64_t parent_id_ = 0;
+  uint64_t id_ = 0;
+  uint64_t parent_id_ = 0;
 };
 
 // Represents runtime information needed to construct a dataset.
