@@ -19,10 +19,8 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
-#include "mlir/Dialect/Affine/ViewLikeInterfaceUtils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -106,6 +104,14 @@ struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
     return scalarizeLinalgOp(linalgOp, rewriter);
   }
 };
+
+// Get reassociation indices to collapse first dimension.
+SmallVector<ReassociationIndices> getCollapseFirstDimReassociation(
+    unsigned rank) {
+  SmallVector<ReassociationIndices> result{{0, 1}};
+  for (unsigned i = 2; i < rank; ++i) result.push_back({i});
+  return result;
+}
 
 // Returns `startIndices`[0, :] for `startIndices` of shape 1xn. Returns None if
 // startIndices has a different shape.
@@ -242,7 +248,7 @@ LogicalResult hoistTensorExtractFromForOp(scf::ForOp forOp,
   if (!bbArg.hasOneUse()) return failure();
 
   Operation *user = *bbArg.getUsers().begin();
-  auto extractOp = dyn_cast<tensor::ExtractOp>(user);
+  auto extractOp = dyn_cast<ExtractOp>(user);
   if (!extractOp) return failure();
 
   Operation *terminator = forOp.getBody()->getTerminator();
@@ -253,8 +259,8 @@ LogicalResult hoistTensorExtractFromForOp(scf::ForOp forOp,
   OpBuilder::InsertionGuard g(rewriter);
   rewriter.setInsertionPoint(forOp);
   Location loc = forOp.getLoc();
-  Value extractedElement = rewriter.create<tensor::ExtractOp>(
-      loc, iterOperand.get(), extractOp.getIndices());
+  Value extractedElement = rewriter.create<ExtractOp>(loc, iterOperand.get(),
+                                                      extractOp.getIndices());
   auto newForOp = rewriter.create<scf::ForOp>(
       loc, forOp.getLowerBound(), forOp.getUpperBound(), forOp.getStep(),
       ValueRange{extractedElement});
@@ -273,7 +279,7 @@ LogicalResult hoistTensorExtractFromForOp(scf::ForOp forOp,
   // element.
   Operation *newTerminator = newForOp.getBody()->getTerminator();
   rewriter.setInsertionPointAfter(newTerminator);
-  Value elemOfYieldedTensor = rewriter.create<tensor::ExtractOp>(
+  Value elemOfYieldedTensor = rewriter.create<ExtractOp>(
       loc, terminator->getOperand(0), extractOp.getIndices());
   rewriter.replaceOpWithNewOp<scf::YieldOp>(newTerminator, elemOfYieldedTensor);
 
@@ -321,11 +327,11 @@ LogicalResult hoistTensorExtractFromIfOp(scf::IfOp ifOp,
     llvm::SmallVector<Value> zeroIndices(
         unscalarizedResultType[i].cast<RankedTensorType>().getRank(), zero);
     rewriter.setInsertionPoint(scalarizedOp.thenYield());
-    Value thenScalar = rewriter.createOrFold<tensor::ExtractOp>(
+    Value thenScalar = rewriter.createOrFold<ExtractOp>(
         loc, scalarizedOp.thenYield().getOperand(i), zeroIndices);
     scalarizedOp.thenYield().setOperand(i, thenScalar);
     rewriter.setInsertionPoint(scalarizedOp.elseYield());
-    Value elseScalar = rewriter.createOrFold<tensor::ExtractOp>(
+    Value elseScalar = rewriter.createOrFold<ExtractOp>(
         loc, scalarizedOp.elseYield().getOperand(i), zeroIndices);
     scalarizedOp.elseYield().setOperand(i, elseScalar);
   }
@@ -473,8 +479,8 @@ LogicalResult scalarizeGatherOp(thlo::GatherOp gatherOp,
 
         // Materialize the value and yield it.
         SmallVector<OpFoldResult> ones(initRank, oneAttr);
-        Value val = nestedBuilder.create<tensor::ExtractOp>(bodyLoc, operand,
-                                                            readIndices);
+        Value val =
+            nestedBuilder.create<ExtractOp>(bodyLoc, operand, readIndices);
         Value updatedInit = nestedBuilder.create<tensor::InsertOp>(
             bodyLoc, val, loopInits.front(), ivs);
 
@@ -523,31 +529,8 @@ LogicalResult scalarizeReverseOp(thlo::ReverseOp reverseOp,
   return scalarizeOp(reverseOp, rewriter, input, output);
 }
 
-FailureOr<ExtractSliceOp> insertComposedSlice(OpBuilder &b, Location loc,
-                                              RankedTensorType type,
-                                              Value tensor,
-                                              ArrayRef<OpFoldResult> offsets,
-                                              ArrayRef<OpFoldResult> sizes,
-                                              ArrayRef<OpFoldResult> strides) {
-  auto extractSliceOp = tensor.getDefiningOp<ExtractSliceOp>();
-  if (!extractSliceOp)
-    return b.create<ExtractSliceOp>(loc, type, tensor, offsets, sizes, strides);
-
-  SmallVector<OpFoldResult> combinedOffsets, combinedSizes, combinedStrides;
-  if (failed(mergeOffsetsSizesAndStrides(
-          b, loc, offsets, sizes, strides, extractSliceOp.getDroppedDims(),
-          extractSliceOp.getMixedOffsets(), extractSliceOp.getMixedSizes(),
-          extractSliceOp.getMixedStrides(), combinedOffsets, combinedSizes,
-          combinedStrides)))
-    return failure();
-
-  return b.create<ExtractSliceOp>(loc, type, extractSliceOp.getSource(),
-                                  combinedOffsets, combinedSizes,
-                                  combinedStrides);
-}
-
-LogicalResult scalarizeScatterOp(thlo::ScatterOp scatterOp,
-                                 PatternRewriter &rewriter) {
+FailureOr<scf::IfOp> rewriteScatterOpAsIfOp(thlo::ScatterOp scatterOp,
+                                            PatternRewriter &rewriter) {
   Location loc = scatterOp.getLoc();
   ImplicitLocOpBuilder b(loc, rewriter);
   b.setInsertionPoint(scatterOp);
@@ -600,36 +583,35 @@ LogicalResult scalarizeScatterOp(thlo::ScatterOp scatterOp,
 
           // Create rank-reducing `tensor.extract_slice` to avoid insertion of
           // `tensor.collapse_shape` to get rid of the outer size-1 dimension.
-          RankedTensorType resultType =
-              ExtractSliceOp::inferCanonicalRankReducedResultType(
-                  /*resultRank=*/updatesRank - 1,
-                  updatesType.cast<RankedTensorType>(), offsets,
-                  updatesDimSizes, strides);
-          FailureOr<ExtractSliceOp> extractedOr =
-              insertComposedSlice(thenBuilder, thenLoc, resultType, updates,
-                                  offsets, updatesDimSizes, strides);
-          Value extracted = extractedOr->getResult();
+          Value extracted = thenBuilder.create<ExtractSliceOp>(
+              thenLoc, updates, offsets, updatesDimSizes, strides);
+          Value collapsed = thenBuilder.create<tensor::CollapseShapeOp>(
+              thenLoc, extracted,
+              getCollapseFirstDimReassociation(updatesRank));
 
           // Insert resized `updates` into `init`.
           Value inserted = thenBuilder.create<tensor::InsertSliceOp>(
-              thenLoc, extracted, init, collapsedOffsets, collapsedSizes,
+              thenLoc, collapsed, init, collapsedOffsets, collapsedSizes,
               collapsedStrides);
           thenBuilder.create<scf::YieldOp>(thenLoc, inserted);
           return;
         }
 
-        // Extract a slice form `init`.
+        // Extract a slice for `init`.
         Value extracted = thenBuilder.create<ExtractSliceOp>(
             thenLoc, init, collapsedOffsets, collapsedSizes, collapsedStrides);
 
+        // Insert indentity slice for `updates`.
+        Value updatesSlice = thenBuilder.create<ExtractSliceOp>(
+            thenLoc, updates,
+            SmallVector<OpFoldResult>(updatesRank, b.getIndexAttr(0)),
+            updatesDimSizes,
+            SmallVector<OpFoldResult>(updatesRank, b.getIndexAttr(1)));
+
         // Reduce `updates` into that slice.
-        Value updatesToReduce = updates;
-        if (auto updatesSlice = updates.getDefiningOp<ExtractSliceOp>()) {
-          updatesToReduce = thenBuilder.clone(*updatesSlice)->getResult(0);
-        }
         auto reduced = thenBuilder.create<linalg::ReduceOp>(
-            thenLoc, extracted.getType().cast<RankedTensorType>(),
-            updatesToReduce, extracted, ArrayRef<int64_t>({0}));
+            thenLoc, extracted.getType().cast<RankedTensorType>(), updatesSlice,
+            extracted, ArrayRef<int64_t>({0}));
         reduced.getRegion().takeBody(scatterOp.getBodyRegion());
 
         Operation *yield = reduced.getBlock()->getTerminator();
@@ -648,7 +630,12 @@ LogicalResult scalarizeScatterOp(thlo::ScatterOp scatterOp,
         elseBuilder.create<scf::YieldOp>(elseLoc, init);
       });
   rewriter.replaceOp(scatterOp, ifOp.getResults());
-  return success();
+  return ifOp;
+}
+
+LogicalResult scalarizeScatterOp(thlo::ScatterOp scatterOp,
+                                 PatternRewriter &rewriter) {
+  return rewriteScatterOpAsIfOp(scatterOp, rewriter);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass() {

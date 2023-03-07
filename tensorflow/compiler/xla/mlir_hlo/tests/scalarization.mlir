@@ -220,7 +220,10 @@ func.func @scatter_f32_with_update_computation(%indices: tensor<1x2xindex>,
 // CHECK-SAME:   %[[INDEX_1]]] [%[[UPDATES_DIM_1]], %[[UPDATES_DIM_2]]] [%[[C1]],
 // CHECK-SAME:   %[[C1]]] : tensor<?x?xf32> to tensor<?x?xf32>
 
-// CHECK-NEXT: %[[SUM:.*]] = linalg.reduce ins(%[[UPDATES]] : tensor<1x?x?xf32>)
+// CHECK-NEXT: %[[UPDATES_SLICE:.*]] = tensor.extract_slice %[[UPDATES]]
+
+// CHECK-NEXT: %[[SUM:.*]] = linalg.reduce
+// CHECK-SAME:   ins(%[[UPDATES_SLICE]] : tensor<1x?x?xf32>)
 // CHECK-SAME:   outs(%[[EXTRACTED]] : tensor<?x?xf32>) dimensions = [0]
 // CHECK-NEXT:   (%[[ARG1:.*]]: f32, %[[ARG2:.*]]: f32) {
 // CHECK-NEXT:     %[[ADD:.*]] = arith.addf %[[ARG1]], %[[ARG2]] : f32
@@ -239,76 +242,6 @@ func.func @scatter_f32_with_update_computation(%indices: tensor<1x2xindex>,
 
 // -----
 
-func.func @scatter_f32_with_slices_with_update_computation(
-    %indices_full: tensor<2x2xindex>, %updates_full: tensor<2x?x?xf32>,
-    %init: tensor<?x?xf32>) -> tensor<?x?xf32> {
- %indices = tensor.extract_slice %indices_full [0, 0] [1, 2] [1, 1]
-   : tensor<2x2xindex> to tensor<1x2xindex>
-
-  %c1 = arith.constant 1 : index
-  %c2 = arith.constant 2 : index
-  %dim_1 = tensor.dim %updates_full, %c1 : tensor<2x?x?xf32>
-  %dim_2 = tensor.dim %updates_full, %c2 : tensor<2x?x?xf32>
-  %updates = tensor.extract_slice %updates_full
-    [0, 0, 0] [1, %dim_1, %dim_2] [1, 1, 1]
-    : tensor<2x?x?xf32> to tensor<1x?x?xf32>
-  %0 = thlo.scatter ins(%indices: tensor<1x2xindex>, %updates: tensor<1x?x?xf32>)
-                    outs(%init: tensor<?x?xf32>)
-    (%in: f32, %out: f32) {
-      %1 = arith.addf %in, %out: f32
-      thlo.yield %1: f32
-    }
-  return %0: tensor<?x?xf32>
-}
-// CHECK-LABEL: func.func @scatter_f32_with_slices_with_update_computation(
-// CHECK-SAME:      %[[INDICES_FULL:.*]]: tensor<2x2xindex>,
-// CHECK-SAME:      %[[UPDATES_FULL:.*]]: tensor<2x?x?xf32>,
-// CHECK-SAME:      %[[INIT:.*]]: tensor<?x?xf32>) -> tensor<?x?xf32> {
-
-// CHECK-DAG:  %[[C0:.*]] = arith.constant 0
-// CHECK-DAG:  %[[C1:.*]] = arith.constant 1
-// CHECK-DAG:  %[[C2:.*]] = arith.constant 2
-// CHECK:      %[[INDICES:.*]] = tensor.extract_slice %[[INDICES_FULL]]
-
-// CHECK-DAG:  %[[UPDATES_DIM_1:.*]] = tensor.dim %[[UPDATES_FULL]], %[[C1]]
-// CHECK-DAG:  %[[UPDATES_DIM_2:.*]] = tensor.dim %[[UPDATES_FULL]], %[[C2]]
-
-// Extract scatter indices from `indices` arg.
-// CHECK-DAG:  %[[INDEX_0:.*]] = tensor.extract %[[INDICES]][%[[C0]],
-// CHECK-DAG:  %[[INDEX_1:.*]] = tensor.extract %[[INDICES]][%[[C0]],
-
-// CHECK-DAG:  %[[INIT_DIM_0:.*]] = tensor.dim %[[INIT]], %[[C0]]
-// CHECK-DAG:  %[[INIT_DIM_1:.*]] = tensor.dim %[[INIT]], %[[C1]]
-
-
-// CHECK-COUNT-7: arith.andi
-
-// CHECK:      scf.if
-// CHECK-NEXT: %[[EXTRACTED:.*]] = tensor.extract_slice %[[INIT]][%[[INDEX_0]],
-// CHECK-SAME:   %[[INDEX_1]]] [%[[UPDATES_DIM_1]], %[[UPDATES_DIM_2]]] [%[[C1]],
-// CHECK-SAME:   %[[C1]]] : tensor<?x?xf32> to tensor<?x?xf32>
-
-// CHECK-NEXT: %[[UPDATES:.*]] = tensor.extract_slice %[[UPDATES_FULL]]
-// CHECK-SAME:   [0, 0, 0] [1, %[[UPDATES_DIM_1]], %[[UPDATES_DIM_2]]] [1, 1, 1]
-// CHECK-SAME:   : tensor<2x?x?xf32> to tensor<1x?x?xf32>
-// CHECK-NEXT: %[[SUM:.*]] = linalg.reduce ins(%[[UPDATES]] : tensor<1x?x?xf32>)
-// CHECK-SAME:   outs(%[[EXTRACTED]] : tensor<?x?xf32>) dimensions = [0]
-// CHECK-NEXT:   (%[[ARG1:.*]]: f32, %[[ARG2:.*]]: f32) {
-// CHECK-NEXT:     %[[ADD:.*]] = arith.addf %[[ARG1]], %[[ARG2]] : f32
-// CHECK-NEXT:     linalg.yield %[[ADD]] : f32
-// CHECK-NEXT:   }
-
-// CHECK-NEXT: %[[INSERTED:.*]] = tensor.insert_slice %[[SUM]] into %[[INIT]]
-// CHECK-SAME:   [%[[INDEX_0]], %[[INDEX_1]]] [%[[UPDATES_DIM_1]],
-// CHECK-SAME:   %[[UPDATES_DIM_2]]] [%[[C1]], %[[C1]]] : tensor<?x?xf32>
-// CHECK-SAME:   into tensor<?x?xf32>
-// CHECK-NEXT:       scf.yield %[[INSERTED]] : tensor<?x?xf32>
-// CHECK-NEXT:   } else {
-// CHECK-NEXT:       scf.yield %[[INIT]] : tensor<?x?xf32>
-// CHECK-NEXT:   }
-// CHECK-NEXT:   return
-
-// -----
 func.func @scatter_i64_no_update_computation(%indices: tensor<1x1xindex>,
                            %updates: tensor<1x1x3x4xi64>,
                            %init: tensor<3x3x4xi64>) -> tensor<3x3x4xi64> {
@@ -333,58 +266,10 @@ func.func @scatter_i64_no_update_computation(%indices: tensor<1x1xindex>,
 // CHECK-SAME:      %[[C0]]] : tensor<1x1xindex>
 
 // CHECK:         scf.if
-// CHECK-NEXT:      %[[EXTRACTED:.*]] = tensor.extract_slice %[[UPDATES]][%[[C0]],
-// CHECK-SAME:        %[[C0]], %[[C0]], %[[C0]]] [1, 1, 3, 4]
-// CHECK-SAME:        [%[[C1]], %[[C1]], %[[C1]], %[[C1]]]
-// CHECK-SAME:        : tensor<1x1x3x4xi64> to tensor<1x3x4xi64>
-// CHECK-NEXT:      %[[INSERTED:.*]] = tensor.insert_slice %[[EXTRACTED]] into
-// CHECK-SAME:        %[[INIT]][%[[INDEX_0]], %[[C0]], %[[C0]]] [1, 3, 4]
-// CHECK-SAME:        [%[[C1]], %[[C1]], %[[C1]]]
-// CHECK-SAME:        : tensor<1x3x4xi64> into tensor<3x3x4xi64>
-// CHECK-NEXT:      scf.yield %[[INSERTED]] : tensor<3x3x4xi64>
-// CHECK-NEXT:    } else {
-// CHECK-NEXT:      scf.yield %[[INIT]] : tensor<3x3x4xi64>
-// CHECK-NEXT:    }
-// CHECK-NEXT:    return
-
-// -----
-
-func.func @scatter_i64_with_slices_no_update_computation(
-                           %indices_full: tensor<2x1xindex>,
-                           %updates_full: tensor<2x1x3x4xi64>,
-                           %init: tensor<3x3x4xi64>) -> tensor<3x3x4xi64> {
- %indices = tensor.extract_slice %indices_full [0, 0] [1, 1] [1, 1]
-   : tensor<2x1xindex> to tensor<1x1xindex>
-
- %updates = tensor.extract_slice %updates_full
-   [0, 0, 0, 0] [1, 1, 3, 4] [1, 1, 1, 1]
-   : tensor<2x1x3x4xi64> to tensor<1x1x3x4xi64>
- %0 = thlo.scatter ins(%indices : tensor<1x1xindex>,
-                       %updates : tensor<1x1x3x4xi64>)
-                   outs(%init : tensor<3x3x4xi64>)
-   (%arg5: i64, %arg6: i64) {
-     thlo.yield %arg5 : i64
- }
- func.return %0 : tensor<3x3x4xi64>
-}
-// CHECK-LABEL:   func.func @scatter_i64_with_slices_no_update_computation(
-// CHECK-SAME:         %[[INDICES_FULL:.*]]: tensor<2x1xindex>,
-// CHECK-SAME:         %[[UPDATES_FULL:.*]]: tensor<2x1x3x4xi64>,
-// CHECK-SAME:         %[[INIT:.*]]: tensor<3x3x4xi64>) -> tensor<3x3x4xi64> {
-
-// CHECK:           %[[C0:.*]] = arith.constant 0 : index
-// CHECK:           %[[C1:.*]] = arith.constant 1 : index
-// CHECK:           %[[C3:.*]] = arith.constant 3 : index
-
-// CHECK:           %[[INDICES:.*]] = tensor.extract_slice %[[INDICES_FULL]]
-// CHECK:           %[[INDEX_0:.*]] = tensor.extract %[[INDICES]][%[[C0]],
-// CHECK-SAME:      %[[C0]]] : tensor<1x1xindex>
-
-// CHECK:         scf.if
-// CHECK-NEXT:      %[[EXTRACTED:.*]] = tensor.extract_slice %[[UPDATES_FULL]]
-// CHECK-SAME:        [0, 0, 0, 0] [1, 1, 3, 4] [1, 1, 1, 1]
-// CHECK-SAME:        : tensor<2x1x3x4xi64> to tensor<1x3x4xi64>
-// CHECK-NEXT:      %[[INSERTED:.*]] = tensor.insert_slice %[[EXTRACTED]] into
+// CHECK-NEXT:      %[[COLLAPSED:.*]] = tensor.collapse_shape %[[UPDATES]]
+// CHECK-SAME:        [0, 1], [2], [3]]
+// CHECK-SAME:        : tensor<1x1x3x4xi64> into tensor<1x3x4xi64>
+// CHECK-NEXT:      %[[INSERTED:.*]] = tensor.insert_slice %[[COLLAPSED]] into
 // CHECK-SAME:        %[[INIT]][%[[INDEX_0]], %[[C0]], %[[C0]]] [1, 3, 4]
 // CHECK-SAME:        [%[[C1]], %[[C1]], %[[C1]]]
 // CHECK-SAME:        : tensor<1x3x4xi64> into tensor<3x3x4xi64>

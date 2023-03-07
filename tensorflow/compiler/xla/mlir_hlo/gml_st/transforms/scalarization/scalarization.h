@@ -49,6 +49,9 @@ LogicalResult scalarizeReverseOp(thlo::ReverseOp reverseOp,
 LogicalResult scalarizeScatterOp(thlo::ScatterOp scatterOp,
                                  PatternRewriter &rewriter);
 
+FailureOr<scf::IfOp> rewriteScatterOpAsIfOp(thlo::ScatterOp scatterOp,
+                                            PatternRewriter &rewriter);
+
 }  // namespace gml_st
 }  // namespace mlir
 
