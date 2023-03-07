@@ -22,10 +22,8 @@ import traceback
 
 from absl import logging
 
-from tensorflow.core.config import flags
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import versions_pb2
-from tensorflow.core.protobuf import fingerprint_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
@@ -53,6 +51,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import builder_impl
+from tensorflow.python.saved_model import fingerprinting_utils
 from tensorflow.python.saved_model import function_serialization
 from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model import pywrap_saved_model
@@ -67,7 +66,6 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import tracing_utils
 from tensorflow.python.saved_model import utils_impl
 from tensorflow.python.saved_model.pywrap_saved_model import constants
-from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import base
@@ -1277,9 +1275,6 @@ def save_and_return_nodes(obj,
       the root node to the key node)
   """
   options = options or save_options.SaveOptions()
-  # TODO(b/205008509): Factor out some subset of SavedModelBuilder which is 2.x
-  # compatible (no sessions) and share it with this export API rather than
-  # making a SavedModel proto and writing it directly.
   saved_model = saved_model_pb2.SavedModel()
   meta_graph_def = saved_model.meta_graphs.add()
 
@@ -1309,7 +1304,7 @@ def save_and_return_nodes(obj,
           f"{err}\n You may be trying to save on a different device from the "
           "computational device. Consider setting the "
           "`experimental_io_device` option in `tf.saved_model.SaveOptions` "
-          "to the io_device such as '/job:localhost'.")
+          "to the io_device such as '/job:localhost'.") from err
 
   # We will slowly migrate code in this function to pywrap_saved_model.Save
   # as we build up the C++ API.
@@ -1317,26 +1312,12 @@ def save_and_return_nodes(obj,
 
   saved_model_serialized = saved_model.SerializeToString(deterministic=True)
 
-  # Write fingerprint protobuf, if requested.
-  if flags.config().saved_model_fingerprinting.value():
-    fingerprint_path = file_io.join(
-        compat.as_str(export_dir),
-        compat.as_str(constants.FINGERPRINT_FILENAME))
-    fingerprint_serialized = fingerprinting.CreateFingerprintDef(
-        saved_model_serialized, export_dir)
-    file_io.atomic_write_string_to_file(fingerprint_path,
-                                        fingerprint_serialized)
-    # We need to deserialize the fingerprint in order to send its values.
-    fingerprint_proto = fingerprint_pb2.FingerprintDef()
-    fingerprint_proto.ParseFromString(fingerprint_serialized)
-    metrics.SetWriteFingerprint(
-        saved_model_checksum=str(fingerprint_proto.saved_model_checksum))
+  fingerprinting_utils.write_fingerprint(export_dir, saved_model_serialized)
 
   path = file_io.join(
       compat.as_str(export_dir),
       compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
-  file_io.atomic_write_string_to_file(
-      path, saved_model.SerializeToString(deterministic=True))
+  file_io.atomic_write_string_to_file(path, saved_model_serialized)
 
   # Save debug info, if requested.
   if options.save_debug_info:

@@ -28,9 +28,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import fingerprinting_utils
 from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model import signature_def_utils
+from tensorflow.python.saved_model.pywrap_saved_model import constants
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
@@ -416,6 +417,9 @@ class _SavedModelBuilder(object):
     if not file_io.file_exists(self._export_dir):
       file_io.recursive_create_dir(self._export_dir)
 
+    saved_model_serialized = self._saved_model.SerializeToString(
+        deterministic=True)
+
     if as_text:
       path = file_io.join(
           compat.as_bytes(self._export_dir),
@@ -426,9 +430,13 @@ class _SavedModelBuilder(object):
           compat.as_bytes(self._export_dir),
           compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
       file_io.write_string_to_file(
-          path, self._saved_model.SerializeToString(deterministic=True))
+          path, saved_model_serialized)
     tf_logging.info("SavedModel written to: %s", compat.as_text(path))
     metrics.IncrementWrite(write_version="1")
+
+    fingerprinting_utils.write_fingerprint(
+        self._export_dir, saved_model_serialized)
+
     return path
 
 
