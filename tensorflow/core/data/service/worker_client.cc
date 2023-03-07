@@ -58,7 +58,6 @@ CreateDataServiceWorkerClient(const std::string& address,
   auto client = std::make_unique<DataServiceWorkerClient>(address, protocol,
                                                           transfer_protocol);
   TF_RETURN_IF_ERROR(client->Initialize());
-  metrics::RecordTFDataServiceDataTransferProtocolUsed(transfer_protocol);
   return client;
 }
 
@@ -79,6 +78,8 @@ Status DataServiceWorkerClient::EnsureInitialized() {
 }
 
 std::string DataServiceWorkerClient::GetDataTransferProtocol() const {
+  // TODO(mpcallanan): Test local transfer with alternative data transfer
+  // protocols.
   if (transfer_protocol_ == kGrpcTransferProtocol &&
       LocalWorkers::Get(address_) != nullptr) {
     return kLocalTransferProtocol;
