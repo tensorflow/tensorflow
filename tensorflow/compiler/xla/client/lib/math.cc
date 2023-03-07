@@ -330,8 +330,10 @@ XlaOp Erf(XlaOp x) {
     }
     // Erf(c)Impl don't have enough precision when run with bf16 intermediates
     // (not surprising!), so upcast to f32 in this case.
-    return DoWithUpcastToF32(x, {BF16, F16},
-                             [](XlaOp x) { return ErfImpl32(x); });
+    return DoWithUpcastToF32(x, {BF16, F16}, [](XlaOp x) {
+      return Select(Lt(Abs(x), ScalarLike(x, 1)), ErfImpl32(x),
+                    ScalarLike(x, 1) - ErfcImpl32(x));
+    });
   });
 }
 
