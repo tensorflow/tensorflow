@@ -1,6 +1,7 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -1599,6 +1600,13 @@ cc_library(
     alwayslink = True,
 )
 
+build_test(
+    name = "mlir-hlo-opt_build_test",
+    targets = [
+        ":mlir-hlo-opt",
+    ],
+)
+
 cc_binary(
     name = "mlir-hlo-opt",
     srcs = ["tools/mlir-hlo-opt/mlir-hlo-opt.cc"],
@@ -1981,6 +1989,13 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+build_test(
+    name = "mlir-interpreter-runner_build_test",
+    targets = [
+        ":mlir-interpreter-runner",
     ],
 )
 

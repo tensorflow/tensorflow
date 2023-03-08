@@ -21,6 +21,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -777,6 +778,13 @@ xla_cc_test(
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+build_test(
+    name = "hlo_to_llvm_ir_build_test",
+    targets = [
+        ":hlo_to_llvm_ir",
     ],
 )
 

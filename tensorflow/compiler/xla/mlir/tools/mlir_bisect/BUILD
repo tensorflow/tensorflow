@@ -1,5 +1,13 @@
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+
+build_test(
+    name = "mlir-bisect_build_test",
+    targets = [
+        ":mlir-bisect",
+    ],
+)
 
 xla_cc_binary(
     name = "mlir-bisect",
