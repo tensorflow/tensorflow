@@ -569,20 +569,37 @@ static std::optional<xla::OpSharding> CreateOpShardingFromAttribute(
 // Returns a FrontendAttributes proto from the "frontend_attributes" attribute
 // of the op. An empty FrontendAttributes proto is returned if an op does not
 // have frontend attributes.
-static xla::FrontendAttributes CreateOpFrontendAttributesFromAttribute(
-    mlir::Operation* op) {
-  xla::FrontendAttributes frontend_attributes;
-  auto frontend_attributes_dict =
-      op->getAttrOfType<mlir::DictionaryAttr>(kFrontendAttributesAttr);
-
-  if (!frontend_attributes_dict) return frontend_attributes;
-
+void ConstructFrontendAttributesFromAttribute(
+    const mlir::DictionaryAttr& frontend_attributes_dict,
+    xla::FrontendAttributes& frontend_attributes) {
   for (const auto& attr : frontend_attributes_dict)
     if (auto value_str_attr = attr.getValue().dyn_cast<mlir::StringAttr>())
       frontend_attributes.mutable_map()->insert(
           {attr.getName().str(), value_str_attr.getValue().str()});
+}
 
+static xla::FrontendAttributes CreateXlaFrontendAttributesFromOp(
+    mlir::Operation* op) {
+  xla::FrontendAttributes frontend_attributes;
+  auto frontend_attributes_dict =
+      op->getAttrOfType<mlir::DictionaryAttr>(kFrontendAttributesAttr);
+  if (!frontend_attributes_dict) return frontend_attributes;
+  ConstructFrontendAttributesFromAttribute(frontend_attributes_dict,
+                                           frontend_attributes);
   return frontend_attributes;
+}
+
+static void ExtractFrontendAttributesFromFunction(
+    mlir::func::FuncOp function,
+    llvm::SmallVectorImpl<std::optional<xla::FrontendAttributes>>* fe_attrs) {
+  fe_attrs->resize(function.getNumArguments(), std::nullopt);
+  for (int i = 0, end = function.getNumArguments(); i < end; ++i)
+    if (auto fe_attr = function.getArgAttrOfType<mlir::DictionaryAttr>(
+            i, kFrontendAttributesAttr)) {
+      xla::FrontendAttributes frontend_attributes;
+      ConstructFrontendAttributesFromAttribute(fe_attr, frontend_attributes);
+      (*fe_attrs)[i] = frontend_attributes;
+    }
 }
 
 // Checks if all shardings are set.
@@ -680,6 +697,7 @@ class ConvertToHloModule {
       const std::vector<bool>& entry_args_same_across_replicas,
       llvm::ArrayRef<std::optional<xla::OpSharding>> arg_shardings,
       llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings,
+      llvm::ArrayRef<std::optional<xla::FrontendAttributes>> fe_attrs,
       xla::XlaComputation* result,
       std::optional<llvm::ArrayRef<mlir::Value>> implicit_operands =
           std::nullopt);
@@ -2791,6 +2809,8 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
   // callees, but eventually before lowering call graph is "flattened" to
   // make that true. This is done before lowering because buffer assignment
   // needs this invariant.
+  xla::FrontendAttributes fe_attrs = CreateXlaFrontendAttributesFromOp(call_op);
+  xla::XlaScopedFrontendAttributesAssignment assignment(builder, fe_attrs);
   xla::XlaOp call_result =
       xla::Call(builder, lowered_computation_[callee], operands);
   // Use GetTupleElement for multiple outputs
@@ -2822,6 +2842,7 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
   std::vector<bool> entry_args_same_across_replicas;
   llvm::SmallVector<std::optional<xla::OpSharding>, 4> arg_shardings;
   llvm::SmallVector<std::optional<xla::OpSharding>, 4> ret_shardings;
+  llvm::SmallVector<std::optional<xla::FrontendAttributes>, 4> arg_fe_attrs;
   if (entry_function) {
     bool any_arg_replicated = false;
     entry_args_same_across_replicas.reserve(f.getNumArguments());
@@ -2858,11 +2879,12 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
     if (!any_arg_replicated) entry_args_same_across_replicas.clear();
 
     ExtractShardingsFromFunction(f, &arg_shardings, &ret_shardings);
+    ExtractFrontendAttributesFromFunction(f, &arg_fe_attrs);
   }
   if (failed(LowerBasicBlockAsFunction(&f.front(), &builder, entry_function,
                                        false, entry_args_same_across_replicas,
                                        arg_shardings, ret_shardings,
-                                       &computation))) {
+                                       arg_fe_attrs, &computation))) {
     return failure();
   }
   if (auto execution_thread =
@@ -2958,6 +2980,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     const std::vector<bool>& entry_args_same_across_replicas,
     llvm::ArrayRef<std::optional<xla::OpSharding>> arg_shardings,
     llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings,
+    llvm::ArrayRef<std::optional<xla::FrontendAttributes>> fe_attrs,
     xla::XlaComputation* result,
     std::optional<llvm::ArrayRef<mlir::Value>> implicit_operands) {
   // Mapping from the Value to lowered XlaOp.
@@ -3043,6 +3066,11 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
         if (!arg_shardings.empty() && arg_shardings[num]) {
           builder->SetSharding(*arg_shardings[num]);
         }
+        if (!fe_attrs.empty() && fe_attrs[num]) {
+          // Populates frontend attributes for parameters only for the entry
+          // functions with no tuple args.
+          builder->SetFrontendAttributes(*fe_attrs[num]);
+        }
         if (entry_args_same_across_replicas.empty()) {
           lowering[arg] =
               xla::Parameter(builder, num, shape, absl::StrCat("Arg_", num));
@@ -3053,6 +3081,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
                                 xla::ShapeUtil::GetLeafCount(shape)));
         }
         builder->ClearSharding();
+        builder->ClearFrontendAttributes();
       }
     }
   }
@@ -3086,7 +3115,7 @@ LogicalResult ConvertToHloModule::LowerRegionAsComputation(
                                    /*ensure_single_arg*/ ensure_single_arg,
                                    /*entry_args_same_across_replicas=*/{},
                                    /*arg_shardings=*/{}, /*ret_shardings=*/{},
-                                   func, implicit_operands);
+                                   /*fe_attrs=*/{}, func, implicit_operands);
 }
 
 void AddDynamicParameterBindingEntry(xla::DynamicParameterBindingProto* binding,
