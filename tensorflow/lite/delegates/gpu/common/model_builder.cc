@@ -1207,6 +1207,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       case OperationType::NEG:
       case OperationType::RSQRT:
       case OperationType::SIGMOID:
+      case OperationType::SIGN:
       case OperationType::SIN:
       case OperationType::SQRT:
       case OperationType::SQUARE:
@@ -3166,6 +3167,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
     case kTfLiteBuiltinSelect:
     case kTfLiteBuiltinSelectV2:
       return std::make_unique<SelectV2OperationParser>();
+    case kTfLiteBuiltinSign:
+      return std::make_unique<ElementwiseOperationParser>(OperationType::SIGN);
     case kTfLiteBuiltinSin:
       return std::make_unique<ElementwiseOperationParser>(OperationType::SIN);
     case kTfLiteBuiltinSlice:

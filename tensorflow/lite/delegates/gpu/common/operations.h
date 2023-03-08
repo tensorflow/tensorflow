@@ -97,6 +97,7 @@ enum class OperationType {
   SELECT,
   SELECT_V2,
   SIGMOID,
+  SIGN,
   SIN,
   SLICE,
   SOFTMAX,

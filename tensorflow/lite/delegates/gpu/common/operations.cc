@@ -200,6 +200,8 @@ std::string ToString(enum OperationType op) {
       return "select_v2";
     case OperationType::SIGMOID:
       return "sigmoid";
+    case OperationType::SIGN:
+      return "sign";
     case OperationType::SIN:
       return "sin";
     case OperationType::SLICE:
@@ -295,6 +297,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"select", OperationType::SELECT},
           {"select_v2", OperationType::SELECT_V2},
           {"sigmoid", OperationType::SIGMOID},
+          {"sign", OperationType::SIGN},
           {"sin", OperationType::SIN},
           {"slice", OperationType::SLICE},
           {"softmax", OperationType::SOFTMAX},

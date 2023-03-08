@@ -738,6 +738,7 @@ absl::Status GPUOperationFromNodePart0(
     case OperationType::NEG:
     case OperationType::RSQRT:
     case OperationType::SIGMOID:
+    case OperationType::SIGN:
     case OperationType::SIN:
     case OperationType::SQRT:
     case OperationType::SQUARE:
