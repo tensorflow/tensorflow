@@ -76,7 +76,7 @@ tsl::Status PluginRegistry::RegisterFactoryInternal(
 
   if (factories->find(plugin_id) != factories->end()) {
     return tsl::Status(
-        tsl::error::ALREADY_EXISTS,
+        absl::StatusCode::kAlreadyExists,
         absl::StrFormat("Attempting to register factory for plugin %s when "
                         "one has already been registered",
                         plugin_name));

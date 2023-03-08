@@ -463,7 +463,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
           VLOG(1) << "Compiled PTX size:" << ptx.size()
                   << " CUBIN size: " << cache_value->cubin_data.size();
         } else {
-          if (maybe_cubin.status().code() == tsl::error::Code::NOT_FOUND) {
+          if (maybe_cubin.status().code() == absl::StatusCode::kNotFound) {
             if (!hlo_module_config.debug_options()
                      .xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found()) {
               LOG(WARNING) << nvptx::CantFindCudaMessage(
@@ -489,7 +489,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
                 "using $PATH.",
                 hlo_module_config.debug_options().xla_gpu_cuda_data_dir());
           } else if (maybe_cubin.status().code() !=
-                     tsl::error::Code::UNIMPLEMENTED) {
+                     absl::StatusCode::kUnimplemented) {
             // If unimplemented is returned, we fallback to the driver.
             LOG(FATAL) << "ptxas returned an error during compilation of ptx "
                           "to sass: '"
