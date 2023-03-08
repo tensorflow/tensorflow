@@ -1072,7 +1072,10 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       const auto& next_node = output_tensor_info.consumers[0];
       TfLiteType dst_type =
           context->tensors[next_node.first->outputs->data[0]].type;
-      if (next_node.second->builtin_code == kTfLiteBuiltinCast &&
+      int next_code = next_node.second->builtin_code;
+      if ((next_code == kTfLiteBuiltinCast ||
+           next_code == kTfLiteBuiltinSelect ||
+           next_code == kTfLiteBuiltinSelectV2) &&
           (dst_type == kTfLiteFloat16 || dst_type == kTfLiteFloat32)) {
         return absl::OkStatus();
       } else {
@@ -3160,6 +3163,7 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<Resize2DOperationParser>(SamplingType::NEAREST);
     case kTfLiteBuiltinRsqrt:
       return std::make_unique<ElementwiseOperationParser>(OperationType::RSQRT);
+    case kTfLiteBuiltinSelect:
     case kTfLiteBuiltinSelectV2:
       return std::make_unique<SelectV2OperationParser>();
     case kTfLiteBuiltinSin:
@@ -3261,7 +3265,8 @@ TfLiteIntArray* GetOpsToReplace(
     if (registration->builtin_code == kTfLiteBuiltinOneHot) {
       allowed_in_types.push_back(kTfLiteInt32);
     }
-    if (registration->builtin_code == kTfLiteBuiltinSelectV2) {
+    if (registration->builtin_code == kTfLiteBuiltinSelect ||
+        registration->builtin_code == kTfLiteBuiltinSelectV2) {
       allowed_in_types.push_back(kTfLiteBool);
     }
     if (registration->builtin_code == kTfLiteBuiltinLogicalAnd) {
