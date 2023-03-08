@@ -195,6 +195,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     visibility = [
+        "//tensorflow/lite/core/async/c:__subpackages__",
         "//tensorflow/lite/core/c:__subpackages__",
         "//tensorflow/lite/delegates/utils:__pkg__",
     ],
