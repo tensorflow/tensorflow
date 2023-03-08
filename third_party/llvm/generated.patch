@@ -1,12 +1,1 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-@@ -380,6 +380,7 @@
-         ":__support_macros_attributes",
-         ":__support_macros_properties_architectures",
-         ":__support_macros_sanitizer",
-+        ":errno",
-         ":libc_root",
-     ],
- )
