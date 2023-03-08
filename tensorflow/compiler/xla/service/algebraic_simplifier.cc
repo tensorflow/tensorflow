@@ -5859,7 +5859,6 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   }
   // Convert Reduce(concat({a,b,...})) to
   //  map(reduce(a),map(reduce(b),...,))
-  // provided that the shapes of a,b,... are the same.
   //
   // This should make fusion easier or use less memory bandwidth in the unfused
   // case.
@@ -5867,29 +5866,18 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       arg->opcode() == HloOpcode::kConcatenate &&
       absl::c_linear_search(reduce->dimensions(),
                             arg->concatenate_dimension())) {
-    bool same_shapes = true;
-    for (int64_t i = 1; i < arg->operand_count(); ++i) {
-      if (!ShapeUtil::EqualIgnoringElementType(arg->operand(i)->shape(),
-                                               arg->operand(0)->shape())) {
-        same_shapes = false;
-        break;
+    HloInstruction* old_reduce = nullptr;
+    for (HloInstruction* operand : arg->operands()) {
+      HloInstruction* new_reduce = reduce->AddInstruction(
+          HloInstruction::CreateReduce(reduce_result_shape, operand, init_value,
+                                       reduce->dimensions(), function));
+      if (old_reduce != nullptr) {
+        new_reduce = reduce->AddInstruction(HloInstruction::CreateMap(
+            reduce_result_shape, {old_reduce, new_reduce}, function));
       }
+      old_reduce = new_reduce;
     }
-    if (same_shapes) {
-      HloInstruction* old_reduce = nullptr;
-      for (HloInstruction* operand : arg->operands()) {
-        HloInstruction* new_reduce =
-            reduce->AddInstruction(HloInstruction::CreateReduce(
-                reduce_result_shape, operand, init_value, reduce->dimensions(),
-                function));
-        if (old_reduce != nullptr) {
-          new_reduce = reduce->AddInstruction(HloInstruction::CreateMap(
-              reduce_result_shape, {old_reduce, new_reduce}, function));
-        }
-        old_reduce = new_reduce;
-      }
-      return ReplaceInstruction(reduce, old_reduce);
-    }
+    return ReplaceInstruction(reduce, old_reduce);
   }
 
   HloInstruction *dot, *lhs, *rhs;
