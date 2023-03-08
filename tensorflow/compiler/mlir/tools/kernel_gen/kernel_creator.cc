@@ -416,7 +416,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
   mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::parseSourceString<mlir::ModuleOp>(tf_code, &context);
   if (!module)
-    return tensorflow::Status(tensorflow::error::Code::INVALID_ARGUMENT,
+    return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                               "invalid kernel IR");
   return module;
 }
@@ -430,7 +430,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForTfCode(
     bool jit_i64_indexed_for_large_tensors, bool apply_cl_options) {
   if (jit_compile && jit_i64_indexed_for_large_tensors) {
     return tensorflow::Status(
-        tensorflow::error::Code::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         "jit compilation for large tensors "
         "(`jit_i64_indexed_for_large_tensors`) and unconditioned jit "
         "compilation (`jit`) must not be requested together");
