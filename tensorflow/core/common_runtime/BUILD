@@ -287,7 +287,6 @@ filegroup(
         "memory_types.h",
         "mkl_cpu_allocator.h",
         "mkl_layout_pass.h",
-        "mkl_tfconversion_pass.h",
         "node_file_writer.h",
         "optimization_registry.h",
         "partitioning_utils.h",
@@ -1345,26 +1344,6 @@ cc_library(
 )
 
 cc_library(
-    name = "mkl_tfconversion_pass",
-    srcs = ["mkl_tfconversion_pass.cc"],
-    hdrs = [
-        "mkl_tfconversion_pass.h",
-        "//tensorflow/core/graph:mkl_graph_util_header",
-    ],
-    copts = tf_copts(),
-    deps = [
-        ":function",
-        ":optimization_registry",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "node_file_writer",
     srcs = ["node_file_writer.cc"],
     hdrs = ["node_file_writer.h"],
@@ -1937,7 +1916,6 @@ tf_cuda_library(
         ":memory_types",
         ":mkl_cpu_allocator",
         ":mkl_layout_pass",
-        ":mkl_tfconversion_pass",
         ":optimization_registry",
         ":optimized_function_graph_info",
         ":parallel_concat_optimizer",
@@ -3121,59 +3099,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
-)
-
-tf_cc_test_mkl(
-    name = "mkl_related_tests",
-    size = "small",
-    srcs = [
-        "mkl_layout_pass_test.cc",
-        "mkl_tfconversion_pass_test.cc",
-    ],
-    linkstatic = 1,
-    deps = [
-        ":core",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:ops",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:scope",
-        "//tensorflow/cc:sendrecv_ops",
-        "//tensorflow/core/kernels:ops_util",
-        "//third_party/eigen3",
-    ] + if_mkl([
-        "//tensorflow/core/kernels/mkl:mkl_aggregate_ops",
-        "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
-        "//tensorflow/core/kernels/mkl:mkl_concat_op",
-        "//tensorflow/core/kernels/mkl:mkl_conv_op",
-        "//tensorflow/core/kernels/mkl:mkl_cwise_ops_common",
-        "//tensorflow/core/kernels/mkl:mkl_dequantize_op",
-        "//tensorflow/core/kernels/mkl:mkl_einsum_op",
-        "//tensorflow/core/kernels/mkl:mkl_fused_batch_norm_op",
-        "//tensorflow/core/kernels/mkl:mkl_identity_op",
-        "//tensorflow/core/kernels/mkl:mkl_input_conversion_op",
-        "//tensorflow/core/kernels/mkl:mkl_lrn_op",
-        "//tensorflow/core/kernels/mkl:mkl_matmul_op",
-        "//tensorflow/core/kernels/mkl:mkl_pooling_ops",
-        "//tensorflow/core/kernels/mkl:mkl_qmatmul_op",
-        "//tensorflow/core/kernels/mkl:mkl_quantize_op",
-        "//tensorflow/core/kernels/mkl:mkl_relu_op",
-        "//tensorflow/core/kernels/mkl:mkl_reshape_op",
-        "//tensorflow/core/kernels/mkl:mkl_slice_op",
-        "//tensorflow/core/kernels/mkl:mkl_softmax_op",
-        "//tensorflow/core/kernels/mkl:mkl_tfconv_op",
-        "//tensorflow/core/kernels/mkl:mkl_transpose_op",
-        "//tensorflow/core/kernels/mkl:mkl_tmp_bf16_ops",
-    ]),
 )
 
 # TODO(bmzhao): Refactor this target to use granular dependencies
