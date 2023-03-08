@@ -113,6 +113,7 @@ COPY install/*.sh /install/
 COPY release/common.sh /install/common.sh
 COPY release/* tensorflow/tools/ci_build/release/
 ARG DEBIAN_FRONTEND=noninteractive
+RUN /install/install_patchelf.sh
 RUN /install/install_deb_packages.sh
 RUN /install/install_bootstrap_deb_packages.sh
 RUN /install/install_pi_python3.9_toolchain.sh

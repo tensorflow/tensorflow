@@ -36,6 +36,7 @@ pciutils
 pciutils-devel 
 pciutils-libs 
 java-11-openjdk-devel 
+patchelf
 pkgconfig 
 pth 
 qemu-kvm 
