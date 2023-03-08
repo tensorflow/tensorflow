@@ -105,6 +105,8 @@ class DTensorDevice {
     }
   }
 
+  bool use_parallel_executor() const { return parallel_executor_ != nullptr; }
+
   void AddMesh(std::unique_ptr<MeshWithParallelDevice> mesh,
                bool is_host_mesh) {
     if (is_host_mesh) {
@@ -280,6 +282,10 @@ class DTensorDevice {
   std::vector<TFE_TensorHandle*> Unpack(TFE_Context* context,
                                         TFE_TensorHandle* input,
                                         TF_Status* status);
+
+  TFE_TensorHandle* ToHostTensorHandle(TFE_Context* context,
+                                       TensorWithLayout* input,
+                                       TF_Status* status);
 
   // Return the layout for the input tensor.
   std::string FetchLayout(TFE_Context* context, TFE_TensorHandle* input,
@@ -753,17 +759,69 @@ std::vector<TFE_TensorHandle*> DTensorDevice::Unpack(TFE_Context* context,
                  "DTensorUnpack is not supported on a remote mesh.");
     return outputs;
   }
-  const int output_size = t->num_tensors();
-  outputs.resize(output_size);
 
-  for (int output_index = 0; output_index < output_size; ++output_index) {
-    outputs[output_index] =
-        TFE_TensorHandleCopySharingTensor(t->get_tensor(output_index), status);
-    if (TF_GetCode(status) != TF_OK) {
+  if (parallel_executor_) {
+    StatusOr<
+        std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>>
+        tensor_with_layouts = parallel_executor_->Disassemble(t);
+    if (!tensor_with_layouts.ok()) {
+      TF_SetStatus(status, TF_INTERNAL,
+                   "Failed to disassemble the TensorWithLayout.");
       return outputs;
+    }
+    outputs.reserve(tensor_with_layouts->size());
+    for (auto& tensor_with_layout : *tensor_with_layouts) {
+      TFE_TensorHandle* output = MakeLayoutTensorHandle(
+          context, std::move(tensor_with_layout), status);
+      if (TF_GetCode(status) != TF_OK) {
+        return outputs;
+      }
+      outputs.push_back(output);
+    }
+  } else {
+    const int output_size = t->num_tensors();
+    outputs.resize(output_size);
+
+    for (int output_index = 0; output_index < output_size; ++output_index) {
+      outputs[output_index] = TFE_TensorHandleCopySharingTensor(
+          t->get_tensor(output_index), status);
+      if (TF_GetCode(status) != TF_OK) {
+        return outputs;
+      }
     }
   }
   return outputs;
+}
+
+TFE_TensorHandle* DTensorDevice::ToHostTensorHandle(TFE_Context* context,
+                                                    TensorWithLayout* input,
+                                                    TF_Status* status) {
+  if (!parallel_executor_) {
+    TF_SetStatus(
+        status, TF_UNIMPLEMENTED,
+        "ToHostTensorHandle has not been implemented for the case of not "
+        "using parallel executor.");
+    return nullptr;
+  }
+  StatusOr<Tensor> tensor = parallel_executor_->ToHostBuffer(input).Await();
+  if (!tensor.ok()) {
+    TF_SetStatus(status, TF_INTERNAL, tensor.status().ToString().c_str());
+    return nullptr;
+  }
+  Status tf_tensor_from_tensor_status;
+  TF_Tensor* tf_tensor =
+      TF_TensorFromTensor(*tensor, &tf_tensor_from_tensor_status);
+  if (!tf_tensor_from_tensor_status.ok()) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 tf_tensor_from_tensor_status.ToString().c_str());
+    return nullptr;
+  }
+  TFE_TensorHandle* tensor_handle =
+      TFE_NewTensorHandleFromTensor(context, tf_tensor, status);
+  if (TF_GetCode(status) != TF_OK) {
+    return nullptr;
+  }
+  return tensor_handle;
 }
 
 void DTensorDevice::MaybeHandleDTensorCustomOps(
@@ -2182,10 +2240,20 @@ TFE_TensorHandle* CopyFromDTensorDevice(TFE_Context* context,
   // requires blocking waiting for other devices to flush their execution
   // queues.
   // Note that we also only need to sync the threads on the parallel_device()
-  // directly, or a context level sync might cause unintentional deadlocks when
-  // grabbing locks on other threads.
+  // directly, or a context level sync might cause unintentional deadlocks
+  // when grabbing locks on other threads.
   dev->AsyncWait(context, status);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
+  if (TF_GetCode(status) != TF_OK) {
+    return nullptr;
+  }
+  if (dev->use_parallel_executor()) {
+    TFE_TensorHandle* handle =
+        dev->ToHostTensorHandle(context, typed_input, status);
+    if (TF_GetCode(status) != TF_OK) {
+      return nullptr;
+    }
+    return handle;
+  }
   return TFE_TensorHandleCopySharingTensor(typed_input->get_tensor(0), status);
 }
 
