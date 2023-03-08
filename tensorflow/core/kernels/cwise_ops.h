@@ -922,8 +922,8 @@ struct acos : base<T, Eigen::internal::scalar_acos_op<T>> {};
 template <typename T>
 struct atan : base<T, Eigen::internal::scalar_atan_op<T>> {};
 
-struct logical_not : base<bool, Eigen::internal::scalar_boolean_not_op<bool>> {
-};
+template <typename T>
+struct logical_not : base<T, Eigen::internal::scalar_boolean_not_op<T>> {};
 
 // Flip all bits. Named invert to be consistent with numpy.
 template <typename T>
@@ -1132,9 +1132,11 @@ struct equal_to : base<T, Eigen::internal::equal_to<T>, bool> {};
 template <typename T>
 struct not_equal_to : base<T, Eigen::internal::not_equal_to<T>, bool> {};
 
-struct logical_and : base<bool, Eigen::internal::scalar_boolean_and_op> {};
+template <typename T>
+struct logical_and : base<T, Eigen::internal::scalar_boolean_and_op<T>> {};
 
-struct logical_or : base<bool, Eigen::internal::scalar_boolean_or_op> {};
+template <typename T>
+struct logical_or : base<T, Eigen::internal::scalar_boolean_or_op<T>> {};
 
 template <typename T>
 struct bitwise_and_op {
