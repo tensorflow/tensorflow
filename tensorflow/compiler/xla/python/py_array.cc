@@ -524,7 +524,7 @@ std::vector<py::object> PyClient::LiveArrays() {
 }
 
 Status PyArray::SetUpType() {
-  static constexpr char kName[] = "Array";
+  static constexpr char kName[] = "ArrayImpl";
 
   py::str name = py::str(kName);
   py::str qualname = py::str(kName);
