@@ -2698,7 +2698,10 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     // support inputs of other integer dtypes. Currently only aim to use it in
     // matmul and convolution op.
     if (has_s4u4_operand && instruction->opcode() != HloOpcode::kDot &&
-        instruction->opcode() != HloOpcode::kConvolution) {
+        instruction->opcode() != HloOpcode::kConvolution &&
+        instruction->opcode() != HloOpcode::kConvert &&
+        instruction->opcode() != HloOpcode::kFusion &&
+        instruction->opcode() != HloOpcode::kBitcast) {
       return InvalidArgument(
           "S4/U4 is currently only supported in matmul and convolution, but "
           "got instruction with S4/U4 input: %s",
