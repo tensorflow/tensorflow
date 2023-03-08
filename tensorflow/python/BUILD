@@ -218,6 +218,7 @@ py_library(
         "//tensorflow/python/module",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
         "//tensorflow/python/ops/linalg/sparse",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/numpy_ops:numpy",

@@ -7,65 +7,6 @@ package(
 )
 
 py_strict_library(
-    name = "linalg",
-    srcs = glob(["*.py"]),
-    deprecation = "This target has been split. Depend on the sub-targets instead.",
-    srcs_version = "PY3",
-    deps = [
-        ":__init__",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:array_ops_gen",
-        "//tensorflow/python:check_ops",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:linalg_ops",
-        "//tensorflow/python:linalg_ops_gen",
-        "//tensorflow/python:manip_ops",
-        "//tensorflow/python:map_fn",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:sort_ops",
-        "//tensorflow/python:special_math_ops",
-        "//tensorflow/python:stateless_random_ops",
-        "//tensorflow/python:variables",
-        "//tensorflow/python:while_v2",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework:common_shapes",
-        "//tensorflow/python/framework:composite_tensor",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:random_seed",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/framework:type_spec",
-        "//tensorflow/python/framework:type_spec_registry",
-        "//tensorflow/python/module",
-        "//tensorflow/python/ops/distributions:util",
-        "//tensorflow/python/ops/signal",
-        "//tensorflow/python/platform",
-        "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/saved_model:load",
-        "//tensorflow/python/saved_model:nested_structure_coder",
-        "//tensorflow/python/saved_model:save",
-        "//tensorflow/python/trackable:data_structures",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_export",
-        "//tensorflow/python/util:tf_inspect",
-        "//tensorflow/python/util:variable_utils",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_strict_library(
     name = "linalg_impl",
     srcs = ["linalg_impl.py"],
     srcs_version = "PY3",
@@ -109,18 +50,13 @@ py_strict_library(
 )
 
 py_strict_library(
-    name = "__init__",
-    srcs = ["__init__.py"],
-)
-
-py_strict_library(
     name = "linear_operator_low_rank_update",
     srcs = ["linear_operator_low_rank_update.py"],
     deps = [
         ":linear_operator",
         ":linear_operator_diag",
         ":linear_operator_identity",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
@@ -136,7 +72,7 @@ py_strict_library(
     deps = [
         ":linalg_impl",
         ":linear_operator",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -154,7 +90,7 @@ py_strict_library(
     deps = [
         ":linalg_impl",
         ":linear_operator",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
@@ -172,7 +108,7 @@ py_strict_library(
     deps = [
         ":linalg_impl",
         ":linear_operator",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
@@ -210,7 +146,7 @@ py_strict_library(
         ":linalg_impl",
         ":linear_operator",
         ":linear_operator_algebra",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
@@ -240,33 +176,12 @@ py_strict_library(
 )
 
 py_strict_library(
-    name = "linalg_impl_py",
-    srcs = ["linalg_impl.py"],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:check_ops",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:linalg_ops",
-        "//tensorflow/python:linalg_ops_gen",
-        "//tensorflow/python:map_fn",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:special_math_ops",
-        "//tensorflow/python:stateless_random_ops",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_strict_library(
     name = "linear_operator",
     srcs = ["linear_operator.py"],
     deps = [
         ":linalg_impl",
         ":linear_operator_algebra",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         ":slicing",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -297,7 +212,7 @@ py_strict_library(
     srcs = ["linear_operator_inversion.py"],
     deps = [
         ":linear_operator",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python/util:tf_export",
     ],
@@ -335,7 +250,7 @@ py_strict_library(
     deps = [
         ":linalg_impl",
         ":linear_operator",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:check_ops",
@@ -354,7 +269,7 @@ py_strict_library(
         ":linalg_impl",
         ":linear_operator",
         ":linear_operator_circulant",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -365,29 +280,12 @@ py_strict_library(
 )
 
 py_strict_library(
-    name = "linear_operator_util_py",
-    srcs = ["linear_operator_util.py"],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:check_ops",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:linalg_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/module",
-        "//tensorflow/python/util:nest",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_strict_library(
     name = "linear_operator_block_diag",
     srcs = ["linear_operator_block_diag.py"],
     deps = [
         ":linear_operator",
         ":linear_operator_algebra",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
@@ -409,7 +307,7 @@ py_strict_library(
         ":linear_operator_identity",
         ":linear_operator_kronecker",
         ":linear_operator_lower_triangular",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
@@ -421,7 +319,7 @@ py_strict_library(
     srcs = ["linear_operator_test_util.py"],
     deps = [
         ":linalg_impl",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
@@ -453,7 +351,7 @@ py_strict_library(
     deps = [
         ":linalg_impl",
         ":linear_operator",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -486,7 +384,7 @@ py_strict_library(
 )
 
 py_strict_library(
-    name = "linalg_py",
+    name = "linalg",
     srcs = ["linalg.py"],
     deps = [
         ":adjoint_registrations",
@@ -519,7 +417,7 @@ py_strict_library(
     srcs = ["linear_operator_full_matrix.py"],
     deps = [
         ":linear_operator",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
@@ -533,7 +431,7 @@ py_strict_library(
     deps = [
         ":linalg_impl",
         ":linear_operator",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -550,7 +448,7 @@ py_strict_library(
     deps = [
         ":linalg_impl",
         ":linear_operator",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
@@ -580,7 +478,7 @@ py_strict_library(
     srcs = ["linear_operator_composition.py"],
     deps = [
         ":linear_operator",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
@@ -608,7 +506,7 @@ py_strict_library(
     deps = [
         ":linalg_impl",
         ":linear_operator",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
@@ -627,7 +525,7 @@ py_strict_library(
     deps = [
         ":linalg_impl",
         ":linear_operator",
-        ":linear_operator_util_py",
+        ":linear_operator_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
