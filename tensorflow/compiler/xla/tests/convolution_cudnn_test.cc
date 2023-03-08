@@ -71,11 +71,11 @@ XLA_TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32BiasNonConst) {
   // second with vectorization enabled. The reference implementation
   // (Interpreter) does not support the fused conv-add-relu-clamp operation,
   // thus cannot be used.
-  if (!backend()
-           .default_stream_executor()
-           ->GetDeviceDescription()
-           .cuda_compute_capability()
-           .IsAtLeast(8)) {
+  if (backend()
+          .default_stream_executor()
+          ->GetDeviceDescription()
+          .cuda_compute_capability()
+          .major != 8) {
     return;
   }
   constexpr char kHloBase[] = R"(

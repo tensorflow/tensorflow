@@ -4228,6 +4228,7 @@ TEST_F(CublasLtF8GemmRewriteTest, UnscaledABUnscaledDF8) {
 
 )";
 
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16]) -> f8e4m3fn[16,16] {
@@ -4569,6 +4570,9 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
     GTEST_SKIP()
         << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
   }
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
+#endif
   const char* hlo_text = R"(
     HloModule test
 
@@ -4810,6 +4814,9 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
     GTEST_SKIP()
         << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
   }
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
+#endif
   const char* hlo_text = R"(
     HloModule test
 

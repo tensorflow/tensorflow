@@ -142,8 +142,10 @@ bool IsSupportedMatrixMultiplication(
     return false;
   }
   if (IsF8Type(dot.operand(0)) || IsF8Type(dot.operand(1))) {
-    // cuBLAS only supports F8 matmuls on Hopper and above.
-    return compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER);
+    // cuBLAS only supports F8 matmuls on Hopper and above, and such matmuls
+    // are only supported with cuBLAS LT.
+    return compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER) &&
+           dot.GetModule()->config().debug_options().xla_gpu_enable_cublaslt();
   }
   return true;
 }
@@ -693,8 +695,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     // Fuse the possible addition of a matrix bias here to enable the subsequent
-    // fusion of the scaling and conversion of D into the Custom Call.
+    // fusion of the scaling and conversion of D into the Custom Call. Fusing
+    // a matrix bias is only supported with CUDA 12 and above.
     HloInstruction *c = nullptr;
+#if CUDA_VERSION > 12000
     if (instr->user_count() == 1 &&
         instr->users()[0]->opcode() == HloOpcode::kAdd) {
       HloInstruction *add = instr->users()[0];
@@ -705,6 +709,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         TF_RETURN_IF_ERROR(ReplaceInstruction(add, instr));
       }
     }
+#endif  // CUDA_VERSION > 12000
     // If a matrix bias was not fused, set C to a matrix of zeros.
     if (!c) {
       Literal c_literal = LiteralUtil::Zero(c_type);
