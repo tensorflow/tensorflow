@@ -48,7 +48,7 @@ jobs:
         uses: actions/stale@v5
         with:
           days-before-issue-stale: 180
-          days-before-issue-close: 365
+          days-before-issue-close: 7
           stale-issue-label: "stale"
           # reason for closed the issue default value is not_planned
           close-issue-reason: completed
@@ -57,5 +57,6 @@ jobs:
             This issue is stale because it has been open for 180 days with no activity.
             It will be closed if no further activity occurs. Thank you.
           close-issue-message: >
-            This issue was closed because it has been inactive for 1 year.
+            This issue was closed because it has been inactive for 7 days since being marked as stale.
+            Please reopen if you'd like to work on this further.
           repo-token: ${{ secrets.GITHUB_TOKEN }}
