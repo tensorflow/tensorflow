@@ -129,7 +129,6 @@ def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
   let summary = "Converts ops on tensors with 1 element to scalar ops.";
   let dependentDialects = [
     "arith::ArithDialect",
-    "gml_st::GmlStDialect",
     "scf::SCFDialect",
     "tensor::TensorDialect"
   ];

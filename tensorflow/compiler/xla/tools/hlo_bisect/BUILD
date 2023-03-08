@@ -6,10 +6,18 @@ load(
     "xla_cc_test",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
     default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
+)
+
+build_test(
+    name = "hlo_bisect_build_test",
+    targets = [
+        ":hlo_bisect",
+    ],
 )
 
 xla_cc_binary(

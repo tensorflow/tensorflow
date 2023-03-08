@@ -767,6 +767,12 @@ Status DatasetBase::MakeSplitProviders(
 int64_t DatasetBase::Cardinality() const {
   mutex_lock l(cardinality_mu_);
   if (cardinality_ == kUnknownCardinality) {
+    CardinalityOptions options;
+    cardinality_ = CardinalityInternal(options);
+  }
+  if (cardinality_ == kUnknownCardinality) {
+    // Some subclasses may only implement this deprecated signature.
+    // TODO(yuxinw) remove this branch after all subclasses are migrated.
     cardinality_ = CardinalityInternal();
   }
   return cardinality_;

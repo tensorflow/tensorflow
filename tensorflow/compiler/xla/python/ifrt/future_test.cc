@@ -56,7 +56,7 @@ TEST(FutureTest, JoinOneFailingFuture) {
 
   ASSERT_FALSE(future.IsReady());
   promise.Set(InvalidArgument("Some error"));
-  EXPECT_THAT(future.Await(), StatusIs(tensorflow::error::INVALID_ARGUMENT,
+  EXPECT_THAT(future.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
                                        HasSubstr("Some error")));
 }
 
@@ -97,7 +97,7 @@ TEST(FutureTest, JoinAllFailingFutures) {
   for (Promise<Status>& promise : promises) {
     promise.Set(InvalidArgument("Some error"));
   }
-  EXPECT_THAT(future.Await(), StatusIs(tensorflow::error::INVALID_ARGUMENT,
+  EXPECT_THAT(future.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
                                        HasSubstr("Some error")));
 }
 
@@ -125,7 +125,7 @@ TEST_P(JoinAllOkFuturesExceptForOneTest, JoinAllOkFuturesExceptForOne) {
       promises[i].Set(OkStatus());
     }
   }
-  EXPECT_THAT(future.Await(), StatusIs(tensorflow::error::INVALID_ARGUMENT,
+  EXPECT_THAT(future.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
                                        HasSubstr("Some error")));
 }
 

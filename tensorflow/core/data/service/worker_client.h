@@ -48,14 +48,14 @@ class DataServiceWorkerClient : public DataServiceClientBase {
   // client, and causes further calls to return Cancelled status.
   void TryCancel();
 
- protected:
-  Status EnsureInitialized() override;
-
- private:
   // Returns the data transfer protocol, preferring to use the local transfer
   // protocol if a local tf.data worker exists.
   std::string GetDataTransferProtocol() const;
 
+ protected:
+  Status EnsureInitialized() override;
+
+ private:
   const std::string transfer_protocol_;
   mutex mu_;
   // Initialization is guarded by `mu_`, but using the stub does not require

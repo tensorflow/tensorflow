@@ -25,6 +25,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import critical_section_ops
@@ -109,7 +110,7 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
     v = resource_variable_ops.ResourceVariable(0.0, name="v")
 
     def fn(i):
-      error = control_flow_ops.Assert((i % 2) == 1, ["Error"])
+      error = control_flow_assert.Assert((i % 2) == 1, ["Error"])
       with ops.control_dependencies([error]):
         return v.read_value()
 

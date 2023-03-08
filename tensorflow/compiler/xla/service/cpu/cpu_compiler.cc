@@ -51,12 +51,12 @@ limitations under the License.
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -189,7 +189,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace {
 
@@ -336,6 +335,7 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
     HloXlaRuntimePipelineOptions options;
     options.enable_tiling_and_fusion =
         GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
+    options.cpu_name = llvm::sys::getHostCPUName();
     Status status = CreateHloXlaRuntimePipeline(passes, options);
     if (!status.ok()) {
       LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
@@ -1034,7 +1034,8 @@ void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
 }
 
 Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
-                       mlir::MLIRContext& mlir_context) {
+                       mlir::MLIRContext& mlir_context,
+                       const llvm::TargetMachine& target) {
   LoadMLIRDialects(mlir_context);
   mlir::PassManager pm(&mlir_context);
   if (VLOG_IS_ON(5)) {
@@ -1059,6 +1060,7 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
       GetDebugOptionsFromFlags().xla_cpu_enable_experimental_deallocation();
   // TODO(b/271126383): The flag should depend on the lowering target.
   options.enable_avx2 = true;
+  options.cpu_name = target.getTargetCPU();
   TF_RETURN_IF_ERROR(CreateHloXlaRuntimePipeline(xla_pm, options));
 
   runtime::CpuPipelineOptions cpu_pipeline_opts;
@@ -1620,7 +1622,8 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       TF_ASSIGN_OR_RETURN(
           auto mlir_module,
           createMLIRModule(module, mlir_context, assignment.get()));
-      TF_RETURN_IF_ERROR(LowerMLIRModule(module, *mlir_module, mlir_context));
+      TF_RETURN_IF_ERROR(
+          LowerMLIRModule(module, *mlir_module, mlir_context, *target_machine));
 
       llvm::cast<mlir::LLVM::LLVMFuncOp>(
           mlir_module->lookupSymbol("main_xla_framework"))

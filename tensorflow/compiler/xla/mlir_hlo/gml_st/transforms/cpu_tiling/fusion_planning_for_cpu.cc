@@ -232,7 +232,13 @@ struct FusionPlanningForCpuPass
       patterns.add(fusionPattern<thlo::ScatterOp>);
       patterns.add(fusionPattern<thlo::SortOp>);
 
-      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+      GreedyRewriteConfig config = GreedyRewriteConfig();
+      // TODO(shyshkov): Refactor the fusion pattern so it doesn't visit all ops
+      // too many times. Currently pattern might need O(N^2) iterations to
+      // create fusion clusters for N ops.
+      config.maxIterations = GreedyRewriteConfig::kNoLimit;
+      if (failed(
+              applyPatternsAndFoldGreedily(f, std::move(patterns), config))) {
         return signalPassFailure();
       }
     }

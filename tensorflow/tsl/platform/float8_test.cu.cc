@@ -417,9 +417,9 @@ TYPED_TEST(Float8Test, CallTheConstOperator) {
 
       EXPECT_EQ(a == b, float{a} == float{b}) << float{a} << " vs " << float{b};
       EXPECT_EQ(a != b, float{a} != float{b});
-      EXPECT_EQ(a < b, float{a} < float{b});
+      EXPECT_EQ(a < b, float{a} < float{b}) << float{a} << " vs " << float{b};
       EXPECT_EQ(a <= b, float{a} <= float{b});
-      EXPECT_EQ(a > b, float{a} > float{b});
+      EXPECT_EQ(a > b, float{a} > float{b}) << float{a} << " vs " << float{b};
       EXPECT_EQ(a >= b, float{a} >= float{b});
     }
   }

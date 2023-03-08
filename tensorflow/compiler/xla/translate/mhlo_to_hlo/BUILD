@@ -2,6 +2,7 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -95,6 +96,13 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+build_test(
+    name = "operator_writer_gen_build_test",
+    targets = [
+        ":operator_writer_gen",
     ],
 )
 

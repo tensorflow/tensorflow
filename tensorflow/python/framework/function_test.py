@@ -48,6 +48,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
@@ -472,7 +473,7 @@ class FunctionTest(test.TestCase):
         x2.set_shape([])
         return x2
 
-      loop = control_flow_ops.while_loop(lambda x: x < 1e5, Body, [1.0])
+      loop = while_loop.while_loop(lambda x: x < 1e5, Body, [1.0])
 
       ans = self.evaluate(loop)
       self.assertAllClose(ans, 131072.)
@@ -493,8 +494,7 @@ class FunctionTest(test.TestCase):
       x = array_ops.placeholder(dtypes.int32)
       cond = control_flow_ops.cond(pred, lambda: x + 1, lambda: AssertFail(x))
       # pylint: disable=unnecessary-lambda
-      loop = control_flow_ops.while_loop(lambda y: pred,
-                                         lambda y: AssertFail(y), [x])
+      loop = while_loop.while_loop(lambda y: pred, lambda y: AssertFail(y), [x])
       # pylint: enable=unnecessary-lambda
 
     rewriter_config = rewriter_config_pb2.RewriterConfig(
@@ -800,8 +800,7 @@ class FunctionTest(test.TestCase):
 
       @function.Defun()
       def Foo():
-        return control_flow_ops.while_loop(lambda i: i < 10, lambda i: i + x,
-                                           [0])
+        return while_loop.while_loop(lambda i: i < 10, lambda i: i + x, [0])
 
       y = Foo()
 

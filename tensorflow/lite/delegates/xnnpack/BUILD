@@ -101,6 +101,15 @@ cc_library(
 )
 
 cc_library(
+    name = "xnnpack_delegate_test",
+    testonly = True,
+    hdrs = ["xnnpack_delegate_test.h"],
+    deps = [
+        ":xnnpack_delegate",
+    ],
+)
+
+cc_library(
     name = "xnnpack_delegate",
     srcs = ["xnnpack_delegate.cc"],
     hdrs = ["xnnpack_delegate.h"],

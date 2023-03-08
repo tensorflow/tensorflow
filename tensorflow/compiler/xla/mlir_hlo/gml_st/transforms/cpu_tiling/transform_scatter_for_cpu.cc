@@ -17,9 +17,9 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
+#include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/scalarization/scalarization.h"
-#include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -51,7 +51,7 @@ struct TileScatterPattern : public OpRewritePattern<thlo::ScatterOp> {
           scatterOp, "has already been tiled by another pass.");
     }
 
-    // Tile everything to points.
+    // Tile everything to points and fuse.
     scf::SCFTilingOptions opts;
     opts.setTileSizeComputationFunction([](OpBuilder &b, Operation *op) {
       OpBuilder::InsertionGuard guard(b);
@@ -63,19 +63,26 @@ struct TileScatterPattern : public OpRewritePattern<thlo::ScatterOp> {
           loops.size(), b.create<arith::ConstantIndexOp>(op->getLoc(), 1));
     });
 
-    auto tilingResult = scf::tileUsingSCFForOp(
-        rewriter, cast<TilingInterface>(scatterOp.getOperation()), opts);
+    auto fuseFilterFn = [](Operation *op) {
+      return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp,
+                 thlo::ReverseOp, linalg::TransposeOp>(op);
+    };
+    auto tilingResult = tileUsingSCFForOpAndFuseGreedily(
+        rewriter, scatterOp, opts, kScatterTransformedLabel, fuseFilterFn);
+
     if (failed(tilingResult)) return failure();
-    rewriter.replaceOp(scatterOp, tilingResult->replacements);
 
     assert(tilingResult->tiledOps.size() == 1 &&
            "Tiling of thlo.scatter should generate a single op");
 
     // Scalarize scatter op.
     scatterOp = cast<thlo::ScatterOp>(tilingResult->tiledOps.front());
-    if (failed(scalarizeScatterOp(scatterOp, rewriter))) return failure();
+    FailureOr<scf::IfOp> ifOpOr = rewriteScatterOpAsIfOp(scatterOp, rewriter);
+    if (failed(ifOpOr)) return failure();
 
-    // Add fusion here.
+    // Fuse into `then` block.
+    fuseGreedily(rewriter, ifOpOr->getThenRegion().front(), fuseFilterFn);
+
     return success();
   }
 };
@@ -93,11 +100,9 @@ struct TransformScatterForCpuPass
 
     RewritePatternSet patterns(ctx);
     patterns.add<TileScatterPattern>(ctx);
-    populateCollapseForallOpDimensionsPattern(patterns);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
-
     // Ensure we drop the marker in the end.
     f.walk([](thlo::ScatterOp scatterOp) {
       removeLabel(scatterOp, kScatterTransformedLabel);

@@ -44,6 +44,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/framework:smart_cond",
         "//tensorflow/python/ops/signal",
         "@absl_py//absl/flags",
@@ -74,6 +75,7 @@ py_library(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python:while_loop",
         "@absl_py//absl/flags",
     ],
 )
@@ -94,6 +96,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/ops/numpy_ops:numpy",
@@ -135,6 +138,7 @@ cuda_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:util",
+        "//tensorflow/python:while_loop",
     ],
 )
 
@@ -159,6 +163,7 @@ cuda_py_test(
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/compiler/xla",
     ],
 )
@@ -215,10 +220,10 @@ cuda_py_test(
         ":control_flow_ops",
         ":gradients",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:layers",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
     ],

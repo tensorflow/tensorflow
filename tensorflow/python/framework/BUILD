@@ -272,6 +272,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:execute",
+        "//tensorflow/security/fuzzing/py:annotation_types",
         "//tensorflow/tools/docs:doc_controls",
     ],
 )
@@ -1025,6 +1026,7 @@ py_library(
         ":op_callbacks",
         ":op_def_registry",
         ":registry",
+        ":stack",
         ":tensor_conversion_registry",
         ":tensor_shape",
         ":tensor_util",
@@ -1180,6 +1182,7 @@ tf_py_test(
         ":auto_control_deps",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:sendrecv_ops_gen",
+        "//tensorflow/python:while_loop",
     ],
 )
 
@@ -1466,6 +1469,16 @@ pytype_library(
         ":type_spec",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/structured:structured_tensor",
+    ],
+)
+
+py_library(
+    name = "stack",
+    srcs = ["stack.py"],
+    visibility = visibility + ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -1787,6 +1800,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
     ],
 )
@@ -1823,6 +1837,7 @@ tf_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
     ],
 )
@@ -1860,6 +1875,7 @@ tf_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
     ],
 )
 
@@ -1968,6 +1984,7 @@ tf_py_test(
         "//tensorflow/python:resources",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python:while_v2",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
@@ -2002,6 +2019,17 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "python_op_gen_annotation_test",
+    size = "small",
+    srcs = ["python_op_gen_annotation_test.py"],
+    main = "python_op_gen_annotation_test.py",
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/security/fuzzing/py:annotation_types",
+    ],
+)
+
+tf_py_test(
     name = "ops_enable_eager_test",
     size = "small",
     srcs = ["ops_enable_eager_test.py"],
@@ -2025,6 +2053,7 @@ tf_py_test(
         ":test_lib",
         ":type_spec_registry",
         ":type_utils",
+        "//tensorflow/python:while_loop",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -2357,6 +2386,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:while_loop",
     ],
 )
 

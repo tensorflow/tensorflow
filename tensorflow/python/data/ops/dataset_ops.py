@@ -4639,7 +4639,7 @@ nested_structure_coder.register_codec(
 )
 
 
-class _NumpyIterator:
+class _NumpyIterator(tracking_base.Trackable):
   """Iterator over a dataset with elements converted to numpy."""
 
   __slots__ = ["_iterator"]
@@ -4664,6 +4664,16 @@ class _NumpyIterator:
 
   def next(self):
     return self.__next__()
+
+  # override
+  def _serialize_to_tensors(self):
+    # pylint: disable=protected-access
+    return self._iterator._serialize_to_tensors()
+
+  # override
+  def _restore_from_tensors(self, restored_tensors):
+    # pylint: disable=protected-access
+    return self._iterator._restore_from_tensors(restored_tensors)
 
 
 class _VariantTracker(resource_lib.CapturableResource):

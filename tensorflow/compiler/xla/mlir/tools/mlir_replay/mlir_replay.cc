@@ -28,6 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/execution_trace.pb.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/execution_trace_utils.h"
+#include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu.h"
+#include "tensorflow/compiler/xla/mlir_hlo/deallocation/IR/deallocation_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/IR/gml_st_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -105,9 +107,9 @@ void TestAll(mlir::MLIRContext& context, const ReplayOptions& opts) {
       } else {
         if (!ResultsMatch(snapshot, *results, failures)) {
           failures.push_back(
-              std::string("run :mlir_replay -- --mlir_compilation_trace=") +
-              trace_path + " --hlo_snapshot=" + snapshot_path +
-              " --print_changes_only --stop_after_first_failure");
+              std::string("run :mlir_replay -- --mlir-compilation-trace=") +
+              trace_path + " --hlo-snapshot=" + snapshot_path +
+              " --print-changes-only --stop-after-first-failure");
         }
       }
     }
@@ -154,18 +156,19 @@ int main(int argc, char* argv[]) {
 
   CHECK(opts.mlir_compilation_trace.empty() !=
         opts.mlir_compilation_trace_dir.empty())
-      << "Exactly one of --mlir_compilation_trace and "
-         "--mlir_compilation_trace_dir must be specified.";
+      << "Exactly one of --mlir-compilation-trace and "
+         "--mlir-compilation-trace-dir must be specified.";
 
   CHECK(opts.mlir_compilation_trace_dir.empty() || opts.hlo_snapshot.empty())
-      << "If --mlir_compilation_trace_dir is set, --hlo_snapshot must not be.";
+      << "If --mlir-compilation-trace-dir is set, --hlo-snapshot must not be.";
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
-  registry.insert<mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
+  registry.insert<mlir::deallocation::DeallocationDialect,
+                  mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
                   mlir::gml_st::GmlStDialect, mlir::thlo::THLODialect,
-                  xla::runtime::RuntimeDialect>();
+                  xla::runtime::RuntimeDialect, mlir::xla_cpu::XlaCpuDialect>();
 
   mlir::MLIRContext context(registry);
 

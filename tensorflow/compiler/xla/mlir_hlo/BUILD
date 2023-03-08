@@ -1,6 +1,7 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -1599,6 +1600,13 @@ cc_library(
     alwayslink = True,
 )
 
+build_test(
+    name = "mlir-hlo-opt_build_test",
+    targets = [
+        ":mlir-hlo-opt",
+    ],
+)
+
 cc_binary(
     name = "mlir-hlo-opt",
     srcs = ["tools/mlir-hlo-opt/mlir-hlo-opt.cc"],
@@ -1910,6 +1918,7 @@ cc_library(
     ),
     strip_include_prefix = ".",
     deps = [
+        ":deallocation",
         ":gml_st",
         ":mlir_hlo",
         ":mlir_interpreter_dialect_utils",
@@ -1919,6 +1928,7 @@ cc_library(
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgDialect",
@@ -1982,10 +1992,18 @@ cc_library(
     ],
 )
 
+build_test(
+    name = "mlir-interpreter-runner_build_test",
+    targets = [
+        ":mlir-interpreter-runner",
+    ],
+)
+
 cc_binary(
     name = "mlir-interpreter-runner",
     srcs = ["tools/mlir_interpreter/mlir-interpreter-runner.cc"],
     deps = [
+        ":deallocation",
         ":gml_st",
         ":hlo_dialect_registration",
         ":lhlo",

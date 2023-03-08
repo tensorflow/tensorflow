@@ -225,7 +225,7 @@ static void replaceOpWithRegion(PatternRewriter& rewriter, Operation* op,
   Block* block = &region.front();
   Operation* terminator = block->getTerminator();
   ValueRange results = terminator->getOperands();
-  rewriter.mergeBlockBefore(block, op, blockArgs);
+  rewriter.inlineBlockBefore(block, op, blockArgs);
   rewriter.replaceOp(op, results);
   rewriter.eraseOp(terminator);
 }

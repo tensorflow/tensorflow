@@ -319,17 +319,32 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
   // fused multiple times resulting in exponential code growth.
   eliminateEqualOps<tensor::ExtractSliceOp>(rewriter, block);
 
-  SetVector<Value> valuesFromAbove;
-  getUsedValuesDefinedAbove(*block.getParent(), valuesFromAbove);
+  SetVector<Operation*> fusionCandidates;
+  visitUsedValuesDefinedAbove(*block.getParent(), [&](OpOperand* operand) {
+    auto* fusionCandidate = operand->get().getDefiningOp();
+    // Do not fuse if there is no defining op. Of example, if it's an
+    // extract_slice from a function argument.
+    if (!fusionCandidate) return;
 
-  for (Value valueFromAbove : valuesFromAbove) {
-    auto* fusionCandidate = valueFromAbove.getDefiningOp();
-    // Do not fuse if there is no defining op. Of example if it's a
-    // materialize from a function argument.
-    if (!fusionCandidate) continue;
+    // Filter candidates that we don't want to fuse.
+    if (filterFn && !filterFn(fusionCandidate)) return;
 
-    if (filterFn && !filterFn(fusionCandidate)) continue;
+    // Check that the candidate doesn't have users that will block fusion.
+    if (!llvm::all_of(fusionCandidate->getUsers(), [](Operation* op) {
+          // Fusion candidates can only be fused into tensor.extract_slice or
+          // tensor.extract.
+          return isa<tensor::ExtractSliceOp, tensor::ExtractOp>(op) ||
+                 // tensor.dim is pushed 'above' the fusion candidate.
+                 isa<tensor::DimOp>(op) ||
+                 // Trivially dead ops will be removed.
+                 isOpTriviallyDead(op);
+        }))
+      return;
 
+    fusionCandidates.insert(fusionCandidate);
+  });
+
+  for (Operation* fusionCandidate : fusionCandidates) {
     // Ad-hoc DCE to trim the fusion candidate from dead users that could have
     // been added in the previous fusion cycles. Normally those ops would be
     // garbage collected after the pattern rewriter driver finished working,

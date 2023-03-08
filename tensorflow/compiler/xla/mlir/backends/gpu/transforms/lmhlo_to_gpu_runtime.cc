@@ -16,11 +16,11 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "absl/functional/any_invocable.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
@@ -396,8 +396,8 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
     // Move body region into the new loop operation.
     IRMapping mapping;
     rewriter.eraseOp(op.getBody().front().getTerminator());
-    rewriter.mergeBlockBefore(&op.getBody().front(),
-                              loop.getLoopBody().front().getTerminator());
+    rewriter.inlineBlockBefore(&op.getBody().front(),
+                               loop.getLoopBody().front().getTerminator());
 
     // Erase the original while loop.
     rewriter.eraseOp(op);
@@ -991,43 +991,62 @@ class PartitionIdOpLowering : public CollectiveIdOpLowering<PartitionIdOp> {
 };
 
 //===----------------------------------------------------------------------===//
-// Point-to-Point communication ops lowering (Send/Recv).
+// Host<->Device communication ops lowering (Send/Recv).
 //===----------------------------------------------------------------------===//
 
-template <typename OpT>
-class SendRecvOpLowering : public OpRewritePattern<OpT> {
+using lmhlo::RecvDoneOp;
+using lmhlo::RecvOp;
+using lmhlo::SendDoneOp;
+using lmhlo::SendOp;
+
+template <typename OpT, typename Derived>
+class HostSendRecvOpLowering : public OpRewritePattern<OpT> {
  public:
-  SendRecvOpLowering(MLIRContext* ctx, const char* custom_call_target,
-                     CustomCallDeclarations& custom_calls)
-      : OpRewritePattern<OpT>(ctx),
-        custom_call_target_(custom_call_target),
-        custom_calls_(custom_calls) {}
+  HostSendRecvOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : OpRewritePattern<OpT>(ctx), custom_calls_(custom_calls) {}
 
   LogicalResult matchAndRewrite(OpT op,
                                 PatternRewriter& rewriter) const override {
+    if (!op.getIsHostTransfer()) {
+      return failure();
+    }
+
+    constexpr bool is_done_op =
+        is_any<OpT, lmhlo::SendDoneOp, lmhlo::RecvDoneOp>;
+
     // Get or create a custom call function declaration.
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    // For done ops, drop the token input.
+    TypeRange input_types =
+        is_done_op ? TypeRange() : TypeRange(op->getOperands());
     func::FuncOp callee = custom_calls_.GetOrCreate(
-        b, custom_call_target_, TypeRange(op.getOperands()), TypeRange());
+        b, Derived::kCustomCallTarget, input_types, TypeRange());
 
     llvm::SmallVector<NamedAttribute> custom_call_attributes = {
-        {b.getStringAttr("channel_handle"), op.getChannelHandle()},
-        {b.getStringAttr("is_host_transfer"), op.getIsHostTransferAttr()},
-        {b.getStringAttr("frontend_attributes"), op.getFrontendAttributes()}};
+        {b.getStringAttr("channel_handle"), op.getChannelHandleAttr()}};
+    if constexpr (!is_done_op) {
+      custom_call_attributes.push_back(NamedAttribute(
+          b.getStringAttr("frontend_attributes"), op.getFrontendAttributes()));
+    }
 
-    // Convert Send/Recv to a function call.
+    // Convert Send/Recv/SendDone/RecvDone to a function call.
+    ValueRange inputs =
+        is_done_op ? ValueRange() : ValueRange(op->getOperands());
     auto call = rewriter.create<func::CallOp>(op.getLoc(), callee.getName(),
-                                              TypeRange(), op.getOperands());
+                                              TypeRange(), inputs);
     AppendCustomCallAttrs(call, custom_call_attributes);
 
-    // For communication operation we need to produce a fake token, that will be
-    // later removed, because corresponding `done` operation doesn't have the
-    // token argument. We rely on the `unrealized_conversion_cast` operation to
-    // create a fake token from the `i8` constant.
-    Value token = op.getResult();
-    Value c0 = b.create<arith::ConstantOp>(b.getI8IntegerAttr(0));
-    auto fake = b.create<UnrealizedConversionCastOp>(token.getType(), c0);
-    token.replaceAllUsesWith(fake.getResult(0));
+    if constexpr (!is_done_op) {
+      // For communication operation we need to produce a fake token, that will
+      // be later removed, because corresponding `done` operation doesn't have
+      // the token argument. We rely on the `unrealized_conversion_cast`
+      // operation to create a fake token from the `i8` constant.
+      Value token = op.getResult();
+      Value c0 = b.create<arith::ConstantOp>(b.getI8IntegerAttr(0));
+      auto fake = b.create<UnrealizedConversionCastOp>(token.getType(), c0);
+      token.replaceAllUsesWith(fake.getResult(0));
+    }
 
     // Erase the original operation.
     rewriter.eraseOp(op);
@@ -1036,66 +1055,20 @@ class SendRecvOpLowering : public OpRewritePattern<OpT> {
   }
 
  private:
-  const char* custom_call_target_;
   CustomCallDeclarations& custom_calls_;
 };
 
-template <typename OpT>
-class SendRecvDoneOpLowering : public OpRewritePattern<OpT> {
- public:
-  SendRecvDoneOpLowering(MLIRContext* ctx, const char* custom_call_target,
-                         CustomCallDeclarations& custom_calls)
-      : OpRewritePattern<OpT>(ctx),
-        custom_call_target_(custom_call_target),
-        custom_calls_(custom_calls) {}
-
-  LogicalResult matchAndRewrite(OpT op,
-                                PatternRewriter& rewriter) const override {
-    // Get or create a custom call function declaration.
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    func::FuncOp callee = custom_calls_.GetOrCreate(b, custom_call_target_,
-                                                    TypeRange(), TypeRange());
-
-    llvm::SmallVector<NamedAttribute> custom_call_attributes = {
-        {b.getStringAttr("channel_handle"), op.getChannelHandleAttr()},
-        {b.getStringAttr("is_host_transfer"), op.getIsHostTransferAttr()}};
-
-    // Convert SendDone/RecvDone to a function call.
-    auto call = rewriter.replaceOpWithNewOp<func::CallOp>(op, callee.getName(),
-                                                          TypeRange());
-    AppendCustomCallAttrs(call, custom_call_attributes);
-
-    return success();
+#define DEFINE_HOST_SENDRECV_OP_LOWERING(OP, custom_call)          \
+  struct Host##OP##Lowering                                        \
+      : public HostSendRecvOpLowering<OP, Host##OP##Lowering> {    \
+    static constexpr const char kCustomCallTarget[] = custom_call; \
+    using HostSendRecvOpLowering::HostSendRecvOpLowering;          \
   }
 
- private:
-  const char* custom_call_target_;
-  CustomCallDeclarations& custom_calls_;
-};
-
-struct SendOpLowering : public SendRecvOpLowering<lmhlo::SendOp> {
-  static constexpr const char kCustomCallTarget[] = "xla.gpu.send";
-  SendOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
-      : SendRecvOpLowering(ctx, kCustomCallTarget, custom_calls) {}
-};
-
-struct SendDoneOpLowering : public SendRecvDoneOpLowering<lmhlo::SendDoneOp> {
-  static constexpr const char kCustomCallTarget[] = "xla.gpu.send_done";
-  SendDoneOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
-      : SendRecvDoneOpLowering(ctx, kCustomCallTarget, custom_calls) {}
-};
-
-struct RecvOpLowering : public SendRecvOpLowering<lmhlo::RecvOp> {
-  static constexpr const char kCustomCallTarget[] = "xla.gpu.recv";
-  RecvOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
-      : SendRecvOpLowering(ctx, kCustomCallTarget, custom_calls) {}
-};
-
-struct RecvDoneOpLowering : public SendRecvDoneOpLowering<lmhlo::RecvDoneOp> {
-  static constexpr const char kCustomCallTarget[] = "xla.gpu.recv_done";
-  RecvDoneOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
-      : SendRecvDoneOpLowering(ctx, kCustomCallTarget, custom_calls) {}
-};
+DEFINE_HOST_SENDRECV_OP_LOWERING(SendOp, "xla.gpu.send_host");
+DEFINE_HOST_SENDRECV_OP_LOWERING(SendDoneOp, "xla.gpu.send_done_host");
+DEFINE_HOST_SENDRECV_OP_LOWERING(RecvOp, "xla.gpu.recv_host");
+DEFINE_HOST_SENDRECV_OP_LOWERING(RecvDoneOp, "xla.gpu.recv_done_host");
 
 //===----------------------------------------------------------------------===//
 
@@ -1165,9 +1138,11 @@ void ConvertLmhloToGpuRuntimePass::runOnOperation() {
                   ReduceScatterOpLowering, ReduceScatterStartOpLowering>(
       ctx, collective_uid, custom_calls);
 
-  // Convert lmhlo point-to-point communication operations to XLA gpu runtime.
-  patterns.insert<SendOpLowering, SendDoneOpLowering, RecvOpLowering,
-                  RecvDoneOpLowering>(ctx, custom_calls);
+  // Convert lmhlo host<->device point-to-point communication operations to XLA
+  // gpu runtime.
+  patterns.insert<HostSendOpLowering, HostSendDoneOpLowering,
+                  HostRecvOpLowering, HostRecvDoneOpLowering>(ctx,
+                                                              custom_calls);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();

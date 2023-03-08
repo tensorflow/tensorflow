@@ -1045,23 +1045,6 @@ TEST_F(AlgebraicSimplifierTest, DegenerateDimsInOperandRemovedFromBroadcast) {
               GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
 }
 
-// Test that Broadcast(x) where x has degenerate dimensions first does not
-// remove the degenerate dimensions if the corresponding option is disabled.
-TEST_F(AlgebraicSimplifierTest,
-       DegenerateDimsInOperandNotRemovedFromBroadcast) {
-  const char* kModuleStr = R"(
-    HloModule m
-    test {
-      c = f32[1,4] parameter(0)
-      ROOT b = f32[5,1,4,3] broadcast(c), dimensions={1,2}
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  AlgebraicSimplifierOptions options;
-  options.set_enable_normalize_broadcast_operand(false);
-  ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
-}
-
 // Test to catch a crash where we were overshooting the reshaped_dimensions
 // vector.
 TEST_F(AlgebraicSimplifierTest, ArrayOvershootTest) {
@@ -2755,52 +2738,78 @@ TEST_F(AlgebraicSimplifierTest, RemoveEmptyConcatenateOperands) {
 
 // Test that reduce of concat is simplified.
 TEST_F(AlgebraicSimplifierTest, SimplifyReduceOfConcat) {
-  auto m = CreateNewVerifiedModule();
-  const int kParamLength = 100;
-  Shape r3f32 =
-      ShapeUtil::MakeShape(F32, {kParamLength, kParamLength, kParamLength});
-  HloComputation::Builder builder(TestName());
-  HloInstruction* param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, r3f32, "param0"));
-  HloInstruction* param1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, r3f32, "param1"));
-  HloInstruction* param2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, r3f32, "param2"));
-  Shape concat_shape =
-      ShapeUtil::MakeShape(F32, {kParamLength, 3 * kParamLength, kParamLength});
-  HloInstruction* Concatenate =
-      builder.AddInstruction(HloInstruction::CreateConcatenate(
-          concat_shape, {param0, param1, param2}, 1));
-  HloComputation* add_computation = nullptr;
-  {
-    HloComputation::Builder builder(TestName() + ".add");
-    const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
-    HloInstruction* p0 = builder.AddInstruction(
-        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
-    HloInstruction* p1 = builder.AddInstruction(
-        HloInstruction::CreateParameter(1, scalar_shape, "p1"));
-    builder.AddInstruction(
-        HloInstruction::CreateBinary(scalar_shape, HloOpcode::kAdd, p0, p1));
-    add_computation = m->AddEmbeddedComputation(builder.Build());
-  }
-  Shape r4f32 = ShapeUtil::MakeShape(F32, {4, 5, 6, 7});
-  Shape reduce_shape = ShapeUtil::MakeShape(F32, {kParamLength});
+  const char* kModuleStr = R"(
+    HloModule m
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+    ENTRY test {
+      p0 = f32[100,100,100]{2,1,0} parameter(0)
+      p1 = f32[100,100,100]{2,1,0} parameter(1)
+      p2 = f32[100,100,100]{2,1,0} parameter(2)
+      cat = f32[100,300,100]{2,1,0} concatenate(p0, p1, p2), dimensions={1}
+      cst = f32[] constant(0)
+      ROOT reduce = f32[100]{0} reduce(cat, cst), dimensions={1,2}, to_apply=add
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Map(
+                  m::Map(m::Reduce(m::Parameter(0), m::ConstantScalar(0.0f)),
+                         m::Reduce(m::Parameter(1), m::ConstantScalar(0.0f))),
+                  m::Reduce(m::Parameter(2), m::ConstantScalar(0.0f)))));
+}
 
-  HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
-  builder.AddInstruction(HloInstruction::CreateReduce(
-      reduce_shape, Concatenate, zero, {1, 2}, add_computation));
+// Test that we are not eliminating a concat by producing multiple reduces if
+// we enable pushing concats to producers.
+TEST_F(AlgebraicSimplifierTest, KeepReducesWhenPushingConcatToProducer) {
+  const char* kModuleStr = R"(
+    HloModule m
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+    ENTRY test {
+      p0 = f32[100,100,100]{2,1,0} parameter(0)
+      p1 = f32[100,100,100]{2,1,0} parameter(1)
+      p2 = f32[100,100,100]{2,1,0} parameter(2)
+      cat = f32[100,300,100]{2,1,0} concatenate(p0, p1, p2), dimensions={1}
+      cst = f32[] constant(0)
+      ROOT reduce = f32[100]{0} reduce(cat, cst), dimensions={1,2}, to_apply=add
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_push_concat_to_consumers(false);
+  ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
+}
 
-  auto computation = m->AddEntryComputation(builder.Build());
-
-  AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).value());
-
-  EXPECT_THAT(
-      computation->root_instruction(),
-      GmockMatch(m::Map(m::Map(m::Reduce(m::Parameter(0), m::Op().Is(zero)),
-                               m::Reduce(m::Parameter(1), m::Op().Is(zero))),
-                        m::Reduce(m::Parameter(2), m::Op().Is(zero)))));
+// Test that reduce of concat is not simplified if the concat operand shapes
+// differ.
+TEST_F(AlgebraicSimplifierTest,
+       DoNotSimplifyReduceOfConcatBecauseShapesDiffer) {
+  const char* kModuleStr = R"(
+    HloModule m
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+    ENTRY test {
+      p0 = f32[100,100,100]{2,1,0} parameter(0)
+      p1 = f32[100,100,100]{2,1,0} parameter(1)
+      p2 = f32[100,90,100]{2,1,0} parameter(2)
+      cat = f32[100,290,100]{2,1,0} concatenate(p0, p1, p2), dimensions={1}
+      cst = f32[] constant(0)
+      ROOT reduce = f32[100]{0} reduce(cat, cst), dimensions={1,2}, to_apply=add
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
 // Test a concatenate with only empty operands is removed.

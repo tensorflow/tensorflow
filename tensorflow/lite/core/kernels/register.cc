@@ -161,7 +161,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_STRIDED_SLICE, Register_STRIDED_SLICE(),
              /* min_version = */ 1,
              /* max_version = */ 6);
-  AddBuiltin(BuiltinOperator_EXP, Register_EXP());
+  AddBuiltin(BuiltinOperator_EXP, Register_EXP(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_TOPK_V2, Register_TOPK_V2(),
              /* min_version = */ 1,
              /* max_version = */ 2);
@@ -372,16 +374,19 @@ BuiltinOpResolver::BuiltinOpResolver() {
   // Populate the list of TF Lite delegate creators. The created delegates could
   // be applied to the model graph by default at runtime.
   delegate_creators_.push_back([](TfLiteContext* context) {
-    return tflite::MaybeCreateXNNPACKDelegate(
-        context, /*enable_xnnpack_unsigned_quantized=*/false);
+    return tflite::MaybeCreateXNNPACKDelegate(context,
+                                              XNNPackQS8Options::default_value);
   });
 }
 
-BuiltinOpResolverWithXNNPACK::BuiltinOpResolverWithXNNPACK() {
+BuiltinOpResolverWithXNNPACK::BuiltinOpResolverWithXNNPACK(
+    bool enable_xnnpack_unsigned_quantized) {
   delegate_creators_.clear();
-  delegate_creators_.push_back([](TfLiteContext* context) {
-    return tflite::MaybeCreateXNNPACKDelegate(
-        context, /*enable_xnnpack_unsigned_quantized=*/true);
+  XNNPackQS8Options xnnpack_qs8_options = enable_xnnpack_unsigned_quantized
+                                              ? XNNPackQS8Options::enabled
+                                              : XNNPackQS8Options::disabled;
+  delegate_creators_.push_back([xnnpack_qs8_options](TfLiteContext* context) {
+    return tflite::MaybeCreateXNNPACKDelegate(context, xnnpack_qs8_options);
   });
 }
 

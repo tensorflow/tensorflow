@@ -352,29 +352,29 @@ PyObject* PyCustomFloat_RichCompare(PyObject* a, PyObject* b, int op) {
   if (!SafeCastToCustomFloat<T>(a, &x) || !SafeCastToCustomFloat<T>(b, &y)) {
     return PyGenericArrType_Type.tp_richcompare(a, b, op);
   }
+  bool less = x < y;
+  bool equal = x == y;
+  bool greater = x > y;
   bool result;
   switch (op) {
     case Py_LT:
-      result = x < y;
+      result = less;
       break;
     case Py_LE:
-      result = x <= y;
+      result = less || equal;
       break;
     case Py_EQ:
-      result = x == y;
+      result = equal;
       break;
     case Py_NE:
-      result = x != y;
+      result = !equal;
       break;
     case Py_GT:
-      result = x > y;
+      result = greater;
       break;
     case Py_GE:
-      result = x >= y;
+      result = greater || equal;
       break;
-    default:
-      LOG(ERROR) << "Invalid op type " << op;
-      result = false;
   }
   return PyBool_FromLong(result);
 }
@@ -530,20 +530,18 @@ int NPyCustomFloat_Compare(const void* a, const void* b, void* arr) {
 
   T y;
   memcpy(&y, b, sizeof(T));
-  float fy(y);
-  float fx(x);
 
-  if (fx < fy) {
+  if (x < y) {
     return -1;
   }
-  if (fy < fx) {
+  if (y < x) {
     return 1;
   }
   // NaNs sort to the end.
-  if (!Eigen::numext::isnan(fx) && Eigen::numext::isnan(fy)) {
+  if (!Eigen::numext::isnan(x) && Eigen::numext::isnan(y)) {
     return -1;
   }
-  if (Eigen::numext::isnan(fx) && !Eigen::numext::isnan(fy)) {
+  if (Eigen::numext::isnan(x) && !Eigen::numext::isnan(y)) {
     return 1;
   }
   return 0;
@@ -640,13 +638,14 @@ template <typename T>
 int NPyCustomFloat_ArgMaxFunc(void* data, npy_intp n, npy_intp* max_ind,
                               void* arr) {
   const T* bdata = reinterpret_cast<const T*>(data);
+  static_assert(std::numeric_limits<T>::has_quiet_NaN);
   // Start with a max_val of NaN, this results in the first iteration preferring
   // bdata[0].
-  float max_val = std::numeric_limits<float>::quiet_NaN();
+  T max_val = std::numeric_limits<T>::quiet_NaN();
   for (npy_intp i = 0; i < n; ++i) {
     // This condition is chosen so that NaNs are always considered "max".
-    if (!(static_cast<float>(bdata[i]) <= max_val)) {
-      max_val = static_cast<float>(bdata[i]);
+    if (!(bdata[i] <= max_val)) {
+      max_val = bdata[i];
       *max_ind = i;
       // NumPy stops at the first NaN.
       if (Eigen::numext::isnan(max_val)) {
@@ -661,13 +660,14 @@ template <typename T>
 int NPyCustomFloat_ArgMinFunc(void* data, npy_intp n, npy_intp* min_ind,
                               void* arr) {
   const T* bdata = reinterpret_cast<const T*>(data);
-  float min_val = std::numeric_limits<float>::quiet_NaN();
+  static_assert(std::numeric_limits<T>::has_quiet_NaN);
   // Start with a min_val of NaN, this results in the first iteration preferring
   // bdata[0].
+  T min_val = std::numeric_limits<T>::quiet_NaN();
   for (npy_intp i = 0; i < n; ++i) {
     // This condition is chosen so that NaNs are always considered "min".
-    if (!(static_cast<float>(bdata[i]) >= min_val)) {
-      min_val = static_cast<float>(bdata[i]);
+    if (!(bdata[i] >= min_val)) {
+      min_val = bdata[i];
       *min_ind = i;
       // NumPy stops at the first NaN.
       if (Eigen::numext::isnan(min_val)) {
@@ -1230,12 +1230,13 @@ struct Heaviside {
     if (Eigen::numext::isnan(x)) {
       return x;
     }
-    auto [sign_x, abs_x] = SignAndMagnitude(x);
-    // x == 0
-    if (abs_x == 0) {
-      return h0;
+    if (x < T(0)) {
+      return T(0.0f);
     }
-    return sign_x ? T(0.0f) : T(1.0f);
+    if (x > T(0)) {
+      return T(1.0f);
+    }
+    return h0;  // x == 0
   }
 };
 template <typename T>
@@ -1332,14 +1333,13 @@ struct Rint {
 template <typename T>
 struct Sign {
   T operator()(T a) {
-    if (Eigen::numext::isnan(a)) {
-      return a;
+    if (a < T(0)) {
+      return T(-1);
     }
-    auto [sign_a, abs_a] = SignAndMagnitude(a);
-    if (abs_a == 0) {
-      return a;
+    if (a > T(0)) {
+      return T(1);
     }
-    return sign_a ? T(-1) : T(1);
+    return a;
   }
 };
 template <typename T>
@@ -1467,31 +1467,19 @@ struct Ge {
 };
 template <typename T>
 struct Maximum {
-  T operator()(T a, T b) {
-    float fa(a), fb(b);
-    return Eigen::numext::isnan(fa) || fa > fb ? a : b;
-  }
+  T operator()(T a, T b) { return Eigen::numext::isnan(a) || a > b ? a : b; }
 };
 template <typename T>
 struct Minimum {
-  T operator()(T a, T b) {
-    float fa(a), fb(b);
-    return Eigen::numext::isnan(fa) || fa < fb ? a : b;
-  }
+  T operator()(T a, T b) { return Eigen::numext::isnan(a) || a < b ? a : b; }
 };
 template <typename T>
 struct Fmax {
-  T operator()(T a, T b) {
-    float fa(a), fb(b);
-    return Eigen::numext::isnan(fb) || fa > fb ? a : b;
-  }
+  T operator()(T a, T b) { return Eigen::numext::isnan(b) || a > b ? a : b; }
 };
 template <typename T>
 struct Fmin {
-  T operator()(T a, T b) {
-    float fa(a), fb(b);
-    return Eigen::numext::isnan(fb) || fa < fb ? a : b;
-  }
+  T operator()(T a, T b) { return Eigen::numext::isnan(b) || a < b ? a : b; }
 };
 
 template <typename T>

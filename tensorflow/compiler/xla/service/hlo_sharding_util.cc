@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array.h"
@@ -1471,7 +1472,7 @@ IdentityValueAndHloOpcodeForScatterReduceComputation(
   // We only handle computations with 2 parameters and only 1 calculation.
   if (computation->instruction_count() != 3) {
     return Status(
-        tsl::error::Code::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         "Expected scatter reduce computation with 2 parameters and only 1 "
         "calculation");
   }
@@ -1497,7 +1498,7 @@ IdentityValueAndHloOpcodeForScatterReduceComputation(
                           root_instruction->opcode());
   }
 
-  return Status(tsl::error::Code::INVALID_ARGUMENT,
+  return Status(absl::StatusCode::kInvalidArgument,
                 "Expected scatter reduce computation which is "
                 "add/or/multiply/add/min/max");
 }

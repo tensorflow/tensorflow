@@ -29,6 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.layers import convolutional
 from tensorflow.python.layers import pooling
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import functional_ops
@@ -68,7 +69,7 @@ class EagerTest(xla_test.XLATestCase):
   def testExecuteListOutputLen0(self):
     with self.test_scope():
       empty = constant_op.constant([], dtype=dtypes.float32)
-      result = array_ops.unstack(empty, 0)
+      result = array_ops_stack.unstack(empty, 0)
       self.assertTrue(isinstance(result, list))
       self.assertEqual(0, len(result))
 

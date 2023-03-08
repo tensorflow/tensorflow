@@ -10049,7 +10049,7 @@ ENTRY %module {
                           PartitionComputation(hlo_string, /*num_devices=*/8));
   const auto root = module->entry_computation()->root_instruction();
   VLOG(1) << module->ToString();
-  auto operand = AllOf(op::Shape("s32[2,2,2,2]"), op::Reshape());
+  auto operand = AllOf(op::Shape("s32[2,2,2,2]"), op::DynamicSlice());
   auto indices = AllOf(op::Shape("s32[2,2,2]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[2,2,2,2]"), op::Gather(operand, indices));
   EXPECT_THAT(root, op::AllReduce(op::AllReduce(
@@ -13117,48 +13117,6 @@ ENTRY %main.21 {
   EXPECT_NE(scatter, nullptr);
   auto* updates = scatter->operand(2);
   EXPECT_THAT(updates, op::Shape("bf16[4096,128]"));
-}
-
-TEST_F(SpmdPartitioningTest, ComplexReshardUnmergeToRight) {
-  const char* const hlo_string = R"(
-HloModule Test
-
-ENTRY main.4 {
-  Arg_0.1 = f32[8,32]{1,0} parameter(0), sharding={devices=[8,1]0,2,4,6,1,3,5,7}
-  tuple.2 = (f32[8,32]{1,0}) tuple(Arg_0.1), sharding={{devices=[2,4]0,2,4,6,1,3,5,7}}
-  ROOT get-tuple-element.3 = f32[8,32]{1,0} get-tuple-element(tuple.2), index=0, sharding={devices=[2,4]0,2,4,6,1,3,5,7}
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
-
-  XLA_VLOG_LINES(1, module->ToString());
-  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
-  EXPECT_EQ(allreduce, nullptr);
-  auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
-  EXPECT_NE(alltoall, nullptr);
-}
-
-TEST_F(SpmdPartitioningTest, ComplexReshardUnmergeToLeft) {
-  const char* const hlo_string = R"(
-HloModule Test
-
-ENTRY main.4 {
-  Arg_0.1 = f32[8,32]{1,0} parameter(0), sharding={devices=[1,8]0,2,4,6,1,3,5,7}
-  tuple.2 = (f32[8,32]{1,0}) tuple(Arg_0.1), sharding={{devices=[2,4]0,2,4,6,1,3,5,7}}
-  ROOT get-tuple-element.3 = f32[8,32]{1,0} get-tuple-element(tuple.2), index=0, sharding={devices=[2,4]0,2,4,6,1,3,5,7}
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
-
-  XLA_VLOG_LINES(1, module->ToString());
-  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
-  EXPECT_EQ(allreduce, nullptr);
-  auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
-  EXPECT_NE(alltoall, nullptr);
 }
 
 }  // namespace

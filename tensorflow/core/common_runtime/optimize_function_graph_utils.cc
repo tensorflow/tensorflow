@@ -364,6 +364,9 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       function_name, attrs, fdef, lib_def, &graph, &arg_nodes, &ret_nodes,
       &ret_node_names, &ret_types, &control_ret_node_names));
 
+  // Dump the initial graph.
+  DebugDataDumper::Global()->DumpGraph(function_name, graph.get(), "initial");
+
   GraphDef graph_def;
   graph->ToGraphDef(&graph_def);
   FunctionLibraryDefinition reachable_lib_def =

@@ -39,34 +39,36 @@ namespace deallocation {
 namespace {
 
 // Finds the start of a memref use chain (e.g. subview of cast of alloc). Stops
-// at block arguments and allocs. This assumes that hlo-deallocate was run
-// previously and the invariants that it guarantees still hold: each ranked
-// memref block argument should have a corresponding unranked ownership
-// indicator argument.
-Value rootAlloc(Value v) {
-  if (auto bbarg = llvm::dyn_cast<BlockArgument>(v)) {
-    if (v.getType().isa<UnrankedMemRefType>()) {
+// at block arguments and allocs. If `useDeallocateInvariants` is set, assumes
+// that hlo-deallocate was run previously and the invariants that it guarantees
+// still hold: each ranked memref block argument should have a corresponding
+// unranked ownership indicator argument.
+Value rootAlloc(Value v, bool useDeallocateInvariants) {
+  if (useDeallocateInvariants) {
+    if (auto bbarg = llvm::dyn_cast<BlockArgument>(v)) {
+      if (v.getType().isa<UnrankedMemRefType>()) {
+        return v;
+      }
+
+      auto memrefArgs = llvm::to_vector(llvm::make_filter_range(
+          bbarg.getParentBlock()->getArguments(),
+          [](BlockArgument arg) { return arg.getType().isa<MemRefType>(); }));
+      auto unrankedMemrefArgs = llvm::to_vector(llvm::make_filter_range(
+          bbarg.getParentBlock()->getArguments(), [](BlockArgument arg) {
+            return arg.getType().isa<UnrankedMemRefType>();
+          }));
+
+      // Find the ownership indicator for the block argument.
+      for (auto [memref, alloc] : llvm::zip(memrefArgs, unrankedMemrefArgs)) {
+        if (memref == bbarg) {
+          return alloc;
+        }
+      }
+
+      // There may not be an ownership indicator, for example if this is a
+      // function block argument.
       return v;
     }
-
-    auto memrefArgs = llvm::to_vector(llvm::make_filter_range(
-        bbarg.getParentBlock()->getArguments(),
-        [](BlockArgument arg) { return arg.getType().isa<MemRefType>(); }));
-    auto unrankedMemrefArgs = llvm::to_vector(llvm::make_filter_range(
-        bbarg.getParentBlock()->getArguments(), [](BlockArgument arg) {
-          return arg.getType().isa<UnrankedMemRefType>();
-        }));
-
-    // Find the ownership indicator for the block argument.
-    for (auto [memref, alloc] : llvm::zip(memrefArgs, unrankedMemrefArgs)) {
-      if (memref == bbarg) {
-        return alloc;
-      }
-    }
-
-    // There may not be an ownership indicator, for example if this is a
-    // function block argument.
-    return v;
   }
 
   if (llvm::isa_and_present<memref::SubViewOp, memref::CastOp,
@@ -74,7 +76,7 @@ Value rootAlloc(Value v) {
                             memref::ReshapeOp, memref::ViewOp,
                             memref::ReinterpretCastOp, memref::TransposeOp>(
           v.getDefiningOp())) {
-    return rootAlloc(v.getDefiningOp()->getOperand(0));
+    return rootAlloc(v.getDefiningOp()->getOperand(0), useDeallocateInvariants);
   }
   return v;
 }
@@ -94,15 +96,15 @@ void elideRedundantOwnershipArgs(RegionBranchOpInterface op) {
   // still intact.
   DenseMap<Value, Value> rootAllocs;
   for (auto operand : op->getOperands()) {
-    rootAllocs[operand] = rootAlloc(operand);
+    rootAllocs[operand] = rootAlloc(operand, true);
   }
   for (auto& region : op->getRegions()) {
     for (auto arg : region.getArguments()) {
-      rootAllocs[arg] = rootAlloc(arg);
+      rootAllocs[arg] = rootAlloc(arg, true);
     }
     for (auto operand :
          region.getBlocks().front().getTerminator()->getOperands()) {
-      rootAllocs[operand] = rootAlloc(operand);
+      rootAllocs[operand] = rootAlloc(operand, true);
     }
   }
 
@@ -183,7 +185,7 @@ void elideRedundantOwnershipArgs(Block& block) {
   block.walk(
       [](RegionBranchOpInterface rbi) { elideRedundantOwnershipArgs(rbi); });
   block.walk([](memref::DeallocOp dealloc) {
-    dealloc.setOperand(rootAlloc(dealloc.getMemref()));
+    dealloc.setOperand(rootAlloc(dealloc.getMemref(), false));
   });
 }
 
@@ -325,6 +327,7 @@ void doubleBuffer(Operation* op, memref::AllocOp alloc,
 }
 
 RegionBranchOpInterface doubleBuffer(RegionBranchOpInterface op) {
+  // TODO(jreiffers): Implement double buffering for all regions.
   auto [allocations, deallocations] =
       findAllocsAndDeallocs(op->getRegion(op->getNumRegions() - 1).front());
 
@@ -551,12 +554,13 @@ bool simplifyLoopDeallocs(Block& block) {
 }
 
 void promoteBuffers(Block& block) {
+  // TODO(jreiffers): Use byte sizes instead.
+  int64_t remainingAllowedStackUse = 1 << 20;
   for (auto* op = &block.front(); op;) {
     auto alloc = llvm::dyn_cast<memref::AllocOp>(op);
     op = op->getNextNode();
 
     if (alloc) {
-      // TODO(jreiffers): Add size heuristic.
       if (!alloc.getMemref().getType().hasStaticShape()) continue;
 
       auto dealloc = llvm::find_if(alloc->getUsers(), [&](Operation* user) {
@@ -569,7 +573,11 @@ void promoteBuffers(Block& block) {
           dealloc->erase();
           alloc->erase();
         } else {
-          promoteToStack(llvm::cast<memref::DeallocOp>(*dealloc));
+          int64_t numElements = alloc.getMemref().getType().getNumElements();
+          if (remainingAllowedStackUse >= numElements) {
+            remainingAllowedStackUse -= numElements;
+            promoteToStack(llvm::cast<memref::DeallocOp>(*dealloc));
+          }
         }
       }
     }

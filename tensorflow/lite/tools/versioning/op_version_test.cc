@@ -1233,4 +1233,22 @@ TEST(OpVersionTest, VersioningUnidirectionalLstmTest) {
   params.diagonal_recurrent_tensors = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
+
+TEST(OpVersionTest, VersioningExpTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_EXP,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+  fake_op_sig = {
+      .op = BuiltinOperator_EXP,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+  fake_op_sig = {
+      .op = BuiltinOperator_EXP,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
 }  // namespace tflite

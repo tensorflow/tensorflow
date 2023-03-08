@@ -2100,6 +2100,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 
@@ -3950,6 +3951,7 @@ tf_kernel_library(
         "conv_grad_input_ops.h",
         "conv_grad_ops.h",
         "conv_ops_fused_impl.h",
+        "conv_ops_impl.h",
         "deep_conv2d.h",
         "fill_functor.h",
         "gemm_functors.h",
@@ -4586,7 +4588,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "parse_tensor_op",
     prefix = "parse_tensor_op",
-    deps = PARSING_DEPS,
+    deps = [
+        "//tensorflow/core/util/tensor_bundle:byteswaptensor",
+    ] + PARSING_DEPS,
 )
 
 tf_cc_test(
@@ -6307,6 +6311,7 @@ filegroup(
         "conv_3d.h",
         "conv_ops.h",
         "conv_ops_gpu.h",
+        "conv_ops_impl.h",
         "data_format_ops.h",
         "depthtospace_op.h",
         "depthwise_conv_op.h",
@@ -6426,6 +6431,11 @@ filegroup(
         "conv_grad_shape_utils.cc",
         "conv_grad_shape_utils.h",
         "conv_ops.cc",
+        "conv_ops_bfloat16.cc",
+        "conv_ops_double.cc",
+        "conv_ops_float.cc",
+        "conv_ops_half.cc",
+        "conv_ops_int32.cc",
         "conv_ops_3d.cc",
         "conv_ops_fused_double.cc",
         "conv_ops_fused_float.cc",

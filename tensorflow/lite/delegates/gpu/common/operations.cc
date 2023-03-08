@@ -166,6 +166,8 @@ std::string ToString(enum OperationType op) {
       return "one_hot";
     case OperationType::PAD:
       return "pad";
+    case OperationType::PAD_V2:
+      return "pad_v2";
     case OperationType::POOLING_2D:
       return "pooling_2d";
     case OperationType::POW:
@@ -192,10 +194,14 @@ std::string ToString(enum OperationType op) {
       return "resize";
     case OperationType::RSQRT:
       return "rsqrt";
+    case OperationType::SELECT:
+      return "select";
     case OperationType::SELECT_V2:
       return "select_v2";
     case OperationType::SIGMOID:
       return "sigmoid";
+    case OperationType::SIGN:
+      return "sign";
     case OperationType::SIN:
       return "sin";
     case OperationType::SLICE:
@@ -274,6 +280,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"not_equal", OperationType::NOT_EQUAL},
           {"one_hot", OperationType::ONE_HOT},
           {"pad", OperationType::PAD},
+          {"pad_v2", OperationType::PAD_V2},
           {"pooling_2d", OperationType::POOLING_2D},
           {"pow", OperationType::POW},
           {"prelu", OperationType::PRELU},
@@ -287,8 +294,10 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"resize", OperationType::RESIZE},
           {"reshape", OperationType::RESHAPE},
           {"rsqrt", OperationType::RSQRT},
+          {"select", OperationType::SELECT},
           {"select_v2", OperationType::SELECT_V2},
           {"sigmoid", OperationType::SIGMOID},
+          {"sign", OperationType::SIGN},
           {"sin", OperationType::SIN},
           {"slice", OperationType::SLICE},
           {"softmax", OperationType::SOFTMAX},

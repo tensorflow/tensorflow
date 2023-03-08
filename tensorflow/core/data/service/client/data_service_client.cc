@@ -356,6 +356,8 @@ Status DataServiceClient::AddTask(const TaskInfo& task_info)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<DataServiceWorkerClient> worker,
                       CreateWorkerClient(task_info));
+  metrics::RecordTFDataServiceDataTransferProtocolUsed(
+      worker->GetDataTransferProtocol());
   tasks_.push_back(std::make_shared<Task>(task_info, std::move(worker)));
   worker_thread_cv_.notify_one();
   if (IsCoordinatedRead()) {

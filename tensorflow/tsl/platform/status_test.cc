@@ -142,7 +142,7 @@ TEST(StatusGroupTest, PayloadsMergedProperly) {
 }
 
 TEST(Status, ErrorStatusForEachPayloadIteratesOverAll) {
-  Status s(error::INTERNAL, "Error message");
+  Status s(absl::StatusCode::kInternal, "Error message");
   s.SetPayload("key1", absl::Cord("value1"));
   s.SetPayload("key2", absl::Cord("value2"));
   s.SetPayload("key3", absl::Cord("value3"));

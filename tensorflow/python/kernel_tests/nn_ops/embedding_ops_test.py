@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gradient_checker
@@ -284,7 +285,7 @@ class EmbeddingLookupTest(test.TestCase):
 
       norms = math_ops.sqrt(
           math_ops.reduce_sum(embeddings * embeddings, axis=1))
-      normalized = embeddings / array_ops.stack([norms, norms], axis=1)
+      normalized = embeddings / array_ops_stack.stack([norms, norms], axis=1)
       self.assertAllClose(embedding, 2 * self.evaluate(normalized))
 
   @test_util.run_deprecated_v1

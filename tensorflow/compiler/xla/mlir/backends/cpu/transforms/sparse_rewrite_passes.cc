@@ -78,7 +78,7 @@ class SparseCustomCallToPackRewriter
 
       // Converts the scalar nnz returned from UnpackOp back to tensor type.
       SmallVector<Value, 3> unpack_ret_v(unpack_op.getResults());
-      auto scalar_nnz = unpack_op.getNnz();
+      auto scalar_nnz = unpack_op.getNse();
       Value tensor_nnz = rewriter.create<tensor::EmptyOp>(
           op.getLoc(), ArrayRef<int64_t>{}, scalar_nnz.getType());
       tensor_nnz = rewriter.create<tensor::InsertOp>(op.getLoc(), scalar_nnz,

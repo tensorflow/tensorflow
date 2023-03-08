@@ -73,6 +73,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import moving_averages
@@ -4484,7 +4485,7 @@ def rnn(step_function,
         return (time + 1, output_ta_t,
                 tuple(flat_new_output)) + tuple(new_states)
 
-      final_outputs = control_flow_ops.while_loop(
+      final_outputs = while_loop.while_loop(
           body=_step,
           loop_vars=(time, output_ta, flat_zero_output) + states,
           **while_loop_kwargs)
@@ -4518,10 +4519,8 @@ def rnn(step_function,
         new_states = nest.pack_sequence_as(initial_states, flat_new_state)
         return (time + 1, output_ta_t) + tuple(new_states)
 
-      final_outputs = control_flow_ops.while_loop(
-          body=_step,
-          loop_vars=(time, output_ta) + states,
-          **while_loop_kwargs)
+      final_outputs = while_loop.while_loop(
+          body=_step, loop_vars=(time, output_ta) + states, **while_loop_kwargs)
       new_states = final_outputs[2:]
 
     output_ta = final_outputs[1]

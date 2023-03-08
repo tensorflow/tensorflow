@@ -247,6 +247,8 @@ func.func @allocs_in_different_scopes_with_no_overlap() {
 // CHECK-NEXT: while
 // CHECK-NOT: memref.alloc
 
+// -----
+
 func.func @allocs_in_different_scopes_with_no_overlap_2() {
   %alloc0 = memref.alloc() : memref<4xi32>
   %first0 = "first_op"(%alloc0) : (memref<4xi32>) -> (i32)
@@ -276,6 +278,8 @@ func.func @allocs_in_different_scopes_with_no_overlap_2() {
 // CHECK-NOT: memref.alloc
 // CHECK-NOT: memref.dealloc
 
+// -----
+
 func.func @elide_for_ownership() {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -292,4 +296,65 @@ func.func @elide_for_ownership() {
 }
 
 // CHECK-LABEL: @elide_for_ownership
+// CHECK-NEXT: return
+
+// -----
+
+func.func @elide_while_ownership() {
+  %alloc_1 = memref.alloc() : memref<5xi32>
+  %alloc_2 = memref.alloc() : memref<5xi32>
+  %alloc_3 = memref.alloc() : memref<5xi32>
+  %cast_1 = memref.cast %alloc_2 : memref<5xi32> to memref<*xi32>
+  %cast_2 = memref.cast %alloc_3 : memref<5xi32> to memref<*xi32>
+  %6:4 = scf.while (%arg0 = %alloc_2, %arg1 = %alloc_3, %arg2 = %cast_1, %arg3 = %cast_2)
+      : (memref<5xi32>, memref<5xi32>, memref<*xi32>, memref<*xi32>) ->
+        (memref<5xi32>, memref<5xi32>, memref<*xi32>, memref<*xi32>) {
+    %alloc_4 = memref.alloc() : memref<5xi32>
+    memref.dealloc %arg2 : memref<*xi32>
+    %alloc_5 = memref.alloc() : memref<5xi32>
+    deallocation.retain() of(%arg3) : (memref<*xi32>) -> ()
+    %cast_3 = memref.cast %alloc_4 : memref<5xi32> to memref<*xi32>
+    %cast_4 = memref.cast %alloc_5 : memref<5xi32> to memref<*xi32>
+    %cond = "test.make_condition"() : () -> (i1)
+    scf.condition(%cond) %alloc_4, %alloc_5, %cast_3, %cast_4
+      : memref<5xi32>, memref<5xi32>, memref<*xi32>, memref<*xi32>
+  } do {
+  ^bb0(%arg0: memref<5xi32>, %arg1: memref<5xi32>, %arg2: memref<*xi32>, %arg3: memref<*xi32>):
+    memref.dealloc %arg2 : memref<*xi32>
+    %alloc_55 = memref.alloc() : memref<5xi32>
+    memref.dealloc %arg3 : memref<*xi32>
+    %null = deallocation.null : memref<*xi32>
+    %cast_3 = memref.cast %alloc_55 : memref<5xi32> to memref<*xi32>
+    scf.yield %alloc_55, %alloc_1, %cast_3, %null
+      : memref<5xi32>, memref<5xi32>, memref<*xi32>, memref<*xi32>
+  }
+  memref.dealloc %alloc_1 : memref<5xi32>
+  memref.dealloc %6#2 : memref<*xi32>
+  memref.dealloc %6#3 : memref<*xi32>
+  return
+}
+
+// CHECK-LABEL: @elide_while_ownership
+// CHECK-NEXT: %[[ALLOCA:.*]] = memref.alloca()
+// CHECK-NEXT: %[[ALLOC0:.*]] = memref.alloc()
+// CHECK-NEXT: %[[ALLOC1:.*]] = memref.alloc()
+// CHECK-NEXT: %[[CAST:.*]] = memref.cast %[[ALLOC1]]
+// CHECK-NEXT: %[[WHILE:.*]]:2 = scf.while
+// CHECK-SAME:     %[[ARG0:.*]] = %[[ALLOC0]],
+// CHECK-SAME:     %[[ARG1:.*]] = %[[ALLOC1]],
+// CHECK-SAME:     %[[ARG2:.*]] = %[[CAST]]
+// TODO(jreiffers): There's no double buffering for the before region yet.
+// CHECK-NEXT:   %[[ALLOC2:.*]] = memref.alloc()
+// CHECK-NEXT:   deallocation.retain() of(%[[ARG2]])
+// CHECK-NEXT:   test.make_condition
+// CHECK-NEXT:   scf.condition
+// CHECK-SAME:     %[[ALLOC2]], %[[ARG0]]
+// CHECK-NEXT: } do {
+// CHECK-NEXT:   %[[ARG0:.*]]: memref<5xi32>, %[[ARG1:.*]]: memref<5xi32>
+// CHECK-NEXT:   dealloc %[[ARG1]]
+// CHECK-NEXT:   %[[NULL:.*]] = deallocation.null
+// CHECK-NEXT:   scf.yield %[[ARG0]], %[[ALLOCA]], %[[NULL]]
+// CHECK-NEXT: }
+// CHECK-NEXT: dealloc %[[WHILE]]#0
+// CHECK-NEXT: dealloc %[[WHILE]]#1
 // CHECK-NEXT: return

@@ -721,6 +721,7 @@ tf_cc_test(
     deps = [
         ":graph_constructor",
         "//tensorflow/cc:array_ops",
+        "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:const_op",
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:math_ops",
@@ -741,6 +742,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:slice_op",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/meta:type_traits",
     ],
 )
@@ -981,6 +983,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",

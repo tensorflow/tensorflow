@@ -16,14 +16,15 @@ limitations under the License.
 #include "deallocation/IR/deallocation_ops.h"
 
 #include <optional>
-#include <vector>
 
 #include "deallocation/IR/deallocation_dialect.cc.inc"
 #include "deallocation/utils/util.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeUtilities.h"
 
 namespace mlir {
 namespace deallocation {
@@ -189,6 +190,20 @@ void RetainOp::getCanonicalizationPatterns(RewritePatternSet& results,
   results.add(splitRetain, 2);
   // Run the above analyses first. They make retainIsNull cheaper.
   results.add(retainIsNull, 1);
+}
+
+LogicalResult RetainOp::verify() {
+  Type elemTy = getElementTypeOrSelf(getOperandTypes().front());
+  if (!llvm::all_of(
+          getOperandTypes(),
+          [&](Type it) { return getElementTypeOrSelf(it) == elemTy; }) ||
+      !llvm::all_of(getResultTypes(), [&](Type it) {
+        return getElementTypeOrSelf(it) == elemTy;
+      })) {
+    return emitOpError()
+           << "expected homogeneous operand and result element type";
+  }
+  return success();
 }
 
 }  // namespace deallocation

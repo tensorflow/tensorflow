@@ -28,6 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_string_ops
@@ -271,7 +272,7 @@ def _tf_tensor_len(s):
     msg = gen_string_ops.string_join(
         ['len requires non-zero rank, got ',
          gen_string_ops.as_string(rank)])
-    with ops.control_dependencies([control_flow_ops.Assert(False, [msg])]):
+    with ops.control_dependencies([control_flow_assert.Assert(False, [msg])]):
       return constant_op.constant(0, dtype=dtypes.int32)
 
   return control_flow_ops.cond(rank > 0, lambda: array_ops.shape(s)[0],

@@ -26,6 +26,15 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
+#ifdef TFLITE_KERNEL_USE_XNNPACK
+#include <algorithm>
+#include <array>
+#include <limits>
+
+#include "xnnpack.h"  // from @XNNPACK
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
+#endif  // TFLITE_KERNEL_USE_XNNPACK
+
 namespace tflite {
 namespace ops {
 namespace builtin {
@@ -164,9 +173,55 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   switch (op_context.output->type) {
-    case kTfLiteFloat32:
+    case kTfLiteFloat32: {
+#ifdef TFLITE_KERNEL_USE_XNNPACK
+      size_t num_input1_dims = static_cast<size_t>(
+          GetTensorShape(op_context.input1).DimensionsCount());
+      size_t num_input2_dims = static_cast<size_t>(
+          GetTensorShape(op_context.input2).DimensionsCount());
+      if (std::max(num_input1_dims, num_input2_dims) < XNN_MAX_TENSOR_DIMS) {
+        std::array<size_t, XNN_MAX_TENSOR_DIMS> input1_shape;
+        std::array<size_t, XNN_MAX_TENSOR_DIMS> input2_shape;
+        for (size_t i = 0; i < num_input1_dims; ++i) {
+          input1_shape[i] = GetTensorShape(op_context.input1).Dims(i);
+        }
+        for (size_t i = 0; i < num_input2_dims; ++i) {
+          input2_shape[i] = GetTensorShape(op_context.input2).Dims(i);
+        }
+        CpuBackendContext* cpu_backend_context =
+            CpuBackendContext::GetFromContext(context);
+        pthreadpool_t threadpool =
+            cpu_backend_context->get_xnnpack_threadpool();
+        enum xnn_status status = xnn_status_invalid_parameter;
+        if (std::is_same<OpType, MaximumOp>::value) {
+          status = xnn_run_maximum_nd_f32(
+              num_input1_dims, input1_shape.data(), num_input2_dims,
+              input2_shape.data(), GetTensorData<float>(op_context.input1),
+              GetTensorData<float>(op_context.input2),
+              GetTensorData<float>(op_context.output),
+              /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
+          if (status != xnn_status_success) {
+            TF_LITE_KERNEL_LOG(context, "Failed to run xnn_run_maximum_nd_f32");
+            return kTfLiteError;
+          }
+        } else if (std::is_same<OpType, MinimumOp>::value) {
+          status = xnn_run_minimum_nd_f32(
+              num_input1_dims, input1_shape.data(), num_input2_dims,
+              input2_shape.data(), GetTensorData<float>(op_context.input1),
+              GetTensorData<float>(op_context.input2),
+              GetTensorData<float>(op_context.output),
+              /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
+          if (status != xnn_status_success) {
+            TF_LITE_KERNEL_LOG(context, "Failed to run xnn_run_minimum_nd_f32");
+            return kTfLiteError;
+          }
+        }
+        break;
+      }
+#endif
       TFLiteOperation<kernel_type, float, OpType>(context, node, op_context);
       break;
+    }
     case kTfLiteUInt8:
       TFLiteOperation<kernel_type, uint8_t, OpType>(context, node, op_context);
       break;

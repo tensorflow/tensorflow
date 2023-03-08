@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
@@ -48,7 +47,7 @@ class TestEnv {
     cpu_device_ = devices.back().get();
     device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
     OptimizerOptions opts;
-    pflr_ = tensorflow::MakeUnique<ProcessFunctionLibraryRuntime>(
+    pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
         device_mgr_.get(), Env::Default(), /*config=*/nullptr,
         TF_GRAPH_DEF_VERSION, &flib_def_, opts,
         /*default_thread_pool=*/nullptr);

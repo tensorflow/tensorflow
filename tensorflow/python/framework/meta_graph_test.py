@@ -41,6 +41,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.training import queue_runner_impl
@@ -377,12 +378,10 @@ class ScopedMetaGraphTest(test.TestCase):
           biases2 += constant_op.constant(0.1, shape=[32])
           return it + 1, biases2
 
-        _, biases2 = control_flow_ops.while_loop(
-            loop_cond,
-            loop_body, [
-                constant_op.constant(0), variables.Variable(
-                    array_ops.zeros([32]), name="biases")
-            ])
+        _, biases2 = while_loop.while_loop(loop_cond, loop_body, [
+            constant_op.constant(0),
+            variables.Variable(array_ops.zeros([32]), name="biases")
+        ])
         hidden2 = nn_ops.relu(math_ops.matmul(hidden1, weights2) + biases2)
       # Linear
       with ops.name_scope("softmax_linear"):
@@ -525,7 +524,7 @@ class ScopedMetaGraphTest(test.TestCase):
       with ops.name_scope("export"):
         var = variables.Variable(0.)
         var_name = var.name
-        _, output = control_flow_ops.while_loop(
+        _, output = while_loop.while_loop(
             lambda i, x: i < 5,
             lambda i, x: (i + 1, x + math_ops.cast(i, dtypes.float32)),
             [0, var])
@@ -575,7 +574,7 @@ class ScopedMetaGraphTest(test.TestCase):
     # Create a simple while loop.
     with ops.Graph().as_default():
       var = variables.Variable(0.0)
-      _, output = control_flow_ops.while_loop(lambda i, x: i < 5,
+      _, output = while_loop.while_loop(lambda i, x: i < 5,
                                               lambda i, x: (i + 1, x * 2.0),
                                               [0, var])
       output_name = output.name
@@ -590,8 +589,7 @@ class ScopedMetaGraphTest(test.TestCase):
         meta_graph.import_scoped_meta_graph(meta_graph_def)
         return i + 1, ops.get_default_graph().get_tensor_by_name(output_name)
 
-      _, x = control_flow_ops.while_loop(lambda i, x: i < 2, body, [0, 0.0],
-                                         name="")
+      _, x = while_loop.while_loop(lambda i, x: i < 2, body, [0, 0.0], name="")
       with session.Session() as sess:
         self.evaluate(variables.global_variables_initializer())
         self.evaluate(x)

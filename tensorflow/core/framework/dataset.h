@@ -1188,8 +1188,8 @@ class IteratorBase : public Checkpointable {
   std::vector<std::function<void()>> cleanup_fns_;
   std::shared_ptr<model::Node> node_ = nullptr;
   const IteratorBase* parent_ = nullptr;  // Not owned.
-  int64_t id_ = 0;
-  int64_t parent_id_ = 0;
+  uint64_t id_ = 0;
+  uint64_t parent_id_ = 0;
 };
 
 // Represents runtime information needed to construct a dataset.
@@ -1343,7 +1343,7 @@ class DatasetBase : public core::RefCounted {
   int64_t Cardinality(CardinalityOptions options) const;
 
   // Internal implementation of cardinality for a dataset.
-  // TODO(shilpakrish): Remove this overload once all callers are migrated
+  // TODO(yuxinw): Remove this overload once all callers are migrated
   // to the API which passes in the options parameter.
   ABSL_DEPRECATED("Use the overload that passes in the options parameter.")
   virtual int64_t CardinalityInternal() const

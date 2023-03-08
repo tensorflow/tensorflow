@@ -683,7 +683,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
                                          /*required_runtime_inputs=*/1,
                                          /*required_outputs=*/1));
       return absl::OkStatus();
-
+    case kTfLiteBuiltinSelect:
     case kTfLiteBuiltinSelectV2:
       return CheckSelectV2GpuDelegateCompatibility(op_sig);
 
@@ -867,6 +867,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
     case kTfLiteBuiltinLogistic:  // Sigmoid
     case kTfLiteBuiltinNeg:
     case kTfLiteBuiltinRsqrt:
+    case kTfLiteBuiltinSign:
     case kTfLiteBuiltinSin:
     case kTfLiteBuiltinSqrt:
     case kTfLiteBuiltinSquare:

@@ -23,6 +23,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -343,7 +344,7 @@ def _embedding_lookup_for_sparse_tensor(
       and (inp_rank is None or inp_rank == 2)
   ):
     batch_size = math_ops.cast(array_ops.shape(inp)[0], dtype=dtypes.int64)
-    sparse_shape = array_ops.stack(
+    sparse_shape = array_ops_stack.stack(
         [batch_size, feature.max_sequence_length], axis=0
     )
     # TPU Embedding truncates sequences to max_sequence_length, and if we
@@ -352,7 +353,7 @@ def _embedding_lookup_for_sparse_tensor(
     truncated_inp = sparse_ops.sparse_slice(
         inp, start=[0, 0], size=sparse_shape)
 
-    dense_output_shape = array_ops.stack(
+    dense_output_shape = array_ops_stack.stack(
         [batch_size, feature.max_sequence_length, feature.table.dim], axis=0)
     return array_ops.scatter_nd(
         truncated_inp.indices,

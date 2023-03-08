@@ -206,6 +206,7 @@ tf_xla_py_test(
         "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/eager:backprop",
     ],
 )
@@ -243,6 +244,7 @@ cuda_py_test(
         ":polymorphic_function",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
@@ -278,6 +280,9 @@ tf_py_test(
     srcs = ["quarantine_test.py"],
     python_version = "PY3",
     deps = [
+        ":monomorphic_function",
+        ":polymorphic_function",
+        ":quarantine",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:constant_op",
@@ -304,9 +309,6 @@ tf_py_test(
         "//tensorflow/python/eager:cancellation",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/eager/polymorphic_function",
-        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
-        "//tensorflow/python/eager/polymorphic_function:quarantine",
         "@absl_py//absl/testing:parameterized",
     ],
 )

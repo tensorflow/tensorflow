@@ -19,6 +19,8 @@ on:
     - cron: "30 1 * * *"
 jobs:
   close-issues:
+    # Don't do this in forks
+    if: github.repository == 'tensorflow/tensorflow'
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -57,6 +59,5 @@ jobs:
             This issue is stale because it has been open for 180 days with no activity.
             It will be closed if no further activity occurs. Thank you.
           close-issue-message: >
-            This issue was closed because it has been inactive for 7 days since being marked as stale.
-            Please reopen if you'd like to work on this further.
+            This issue was closed because it has been inactive for 1 year.
           repo-token: ${{ secrets.GITHUB_TOKEN }}

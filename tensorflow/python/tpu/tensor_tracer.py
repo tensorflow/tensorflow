@@ -34,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -805,7 +806,7 @@ class TensorTracer:
       for _, val in sorted(signatures.items(),
                            key=lambda item: signature_indices[item[0]]):
         sorted_update.append(val)
-      updates = array_ops.stack(
+      updates = array_ops_stack.stack(
           sorted_update, axis=0, name='merge_single_op_signatures')
     elif self._num_signature_dimensions() == 1:
       # Avoid stack operation if there is only a single signature.
@@ -1572,7 +1573,7 @@ class TensorTracer:
           '\n', 'core:', replica_id, ',', 'step:', step_num, ',',
           tensor_name, '-->', old_value, new_value_from_var, delta])
 
-    diff_stack = array_ops.stack(diffs)
+    diff_stack = array_ops_stack.stack(diffs)
     step_max = math_ops.reduce_max(diff_stack)
 
     return control_flow_ops.cond(
@@ -1852,7 +1853,7 @@ class TensorTracer:
       aggregation_result.append(agg_tensor)
     # Merge results corresponding to different signatures
 
-    merged_signatures = array_ops.stack(aggregation_result)
+    merged_signatures = array_ops_stack.stack(aggregation_result)
     # merged_signatures has dimensions
     # num_signatures x num_traced_tensors, transpose it so that it
     # will match with the original structure
@@ -2151,7 +2152,7 @@ class TensorTracer:
         graph_cache_var = self._cache_variable_for_graph(graph)
         if graph not in self._temp_cache_var:
           raise RuntimeError('graph is not in self._temp_cache_var')
-        graph_cache_var[_TT_SUMMARY_TAG] = array_ops.stack(
+        graph_cache_var[_TT_SUMMARY_TAG] = array_ops_stack.stack(
             self._temp_cache_var[graph], axis=0, name='stack_all_op_signatures')
       if self._create_host_call():
         self._prepare_host_call_fn(processed_t_fetches, op_fetches, graph,

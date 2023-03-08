@@ -49,6 +49,7 @@ tf_cuda_library(
     ],
     hdrs = [
         "conversion_function.h",
+        "fallback_batch_kernel.h",
         "runtime_fallback_kernels.h",
         "runtime_fallback_op_handler.h",
         "runtime_fallback_tensor.h",

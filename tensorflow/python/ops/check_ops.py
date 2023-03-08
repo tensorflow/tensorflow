@@ -27,6 +27,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import compat
@@ -502,7 +503,7 @@ def _binary_assert(sym, opname, op_func, static_func, x, y, data, summarize,
       if x_static is not None and y_static is not None:
         condition_static = np.all(static_func(x_static, y_static))
         _assert_static(condition_static, data)
-      return control_flow_ops.Assert(condition, data, summarize=summarize)
+      return control_flow_assert.Assert(condition, data, summarize=summarize)
 
 
 @tf_export(
@@ -933,7 +934,7 @@ def assert_near(
     tol = atol + rtol * math_ops.abs(y)
     diff = math_ops.abs(x - y)
     condition = math_ops.reduce_all(math_ops.less(diff, tol))
-    return control_flow_ops.Assert(condition, data, summarize=summarize)
+    return control_flow_assert.Assert(condition, data, summarize=summarize)
 
 
 @tf_export('debugging.assert_less', 'assert_less', v1=[])
@@ -1055,7 +1056,7 @@ def _assert_rank_condition(
     rank_check = assert_rank(rank, 0, data=this_data)
     condition = control_flow_ops.with_dependencies([rank_check], condition)
 
-  return control_flow_ops.Assert(condition, data, summarize=summarize)
+  return control_flow_assert.Assert(condition, data, summarize=summarize)
 
 
 @tf_export('debugging.assert_rank', 'assert_rank', v1=[])
@@ -1320,7 +1321,7 @@ def _assert_ranks_condition(
       rank_check = assert_rank(rank, 0, data=this_data)
       condition = control_flow_ops.with_dependencies([rank_check], condition)
 
-  return control_flow_ops.Assert(condition, data, summarize=summarize)
+  return control_flow_assert.Assert(condition, data, summarize=summarize)
 
 
 @tf_export('debugging.assert_rank_in', v1=[])
@@ -1913,7 +1914,7 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
                 array_ops.shape(sizes.x)
             ]
           size_assertions.append(
-              control_flow_ops.Assert(condition, data_, summarize=summarize))
+              control_flow_assert.Assert(condition, data_, summarize=summarize))
         else:
           # Not sure if actual_sizes is a constant, but for safety, guard
           # on rank. See explanation above about actual_sizes need for safety.
