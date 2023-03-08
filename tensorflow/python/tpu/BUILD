@@ -322,6 +322,7 @@ pytype_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/compiler/xla",
         "//tensorflow/python/compiler/xla/experimental:xla_sharding",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
@@ -810,6 +811,7 @@ tpu_py_test(
     deps = [
         ":tpu_lib",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",

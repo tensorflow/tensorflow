@@ -57,6 +57,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -1885,8 +1886,8 @@ class MetaGraphTest(test.TestCase):
       control_flow_ops.cond(
           math_ops.less(v0, 10), lambda: math_ops.add(v0, 1),
           lambda: math_ops.subtract(v0, 1))
-      control_flow_ops.while_loop(lambda i: math_ops.less(i, 10),
-                                  lambda i: math_ops.add(i, 1), [v0])
+      while_loop.while_loop(lambda i: math_ops.less(i, 10),
+                            lambda i: math_ops.add(i, 1), [v0])
       var = variables.VariableV1(constant_op.constant(0, dtype=dtypes.int64))
       count_up_to = var.count_up_to(3)
       input_queue = data_flow_ops.FIFOQueue(
@@ -2188,10 +2189,10 @@ class MetaGraphTest(test.TestCase):
         biases += constant_op.constant(0.1, shape=[32])
         return it + 1, biases
 
-      _, biases = control_flow_ops.while_loop(
-          loop_cond, loop_body,
-          [constant_op.constant(0),
-           variables.VariableV1(array_ops.zeros([32]))])
+      _, biases = while_loop.while_loop(loop_cond, loop_body, [
+          constant_op.constant(0),
+          variables.VariableV1(array_ops.zeros([32]))
+      ])
       hidden2 = nn_ops.relu(math_ops.matmul(hidden1, weights) + biases)
     # Linear
     with ops_lib.name_scope("softmax_linear"):
@@ -2337,17 +2338,17 @@ class MetaGraphTest(test.TestCase):
     # Build a while loop with `outer_body_fn`, export it, and verify that it can
     # be imported and the gradient can be built and run correctly.
     # pylint: disable=g-long-lambda
-    return self._testGradientSerDes(
-        lambda x: control_flow_ops.while_loop(
-            lambda i, y: i < 5, outer_body_fn, [0, x])[1])
+    return self._testGradientSerDes(lambda x: while_loop.while_loop(
+        lambda i, y: i < 5, outer_body_fn, [0, x])[1])
     # pylint: enable=g-long-lambda
 
   def testNestedWhileLoopsSerDes(self):
     # Test two simple nested while loops.
     def body(i, x):
-      _, r = control_flow_ops.while_loop(lambda j, y: j < 3,
-                                         lambda j, y: (j + 1, y + x),
-                                         [0, 0.0])
+      _, r = while_loop.while_loop(
+          lambda j, y: j < 3,
+          lambda j, y: (j + 1, y + x),
+          [0, 0.0])
       return i + 1, x + r
     self._testWhileLoopAndGradientSerDes(body)
 
@@ -2357,7 +2358,7 @@ class MetaGraphTest(test.TestCase):
     def body(i, x):
       cond_result = control_flow_ops.cond(
           i > 0,
-          lambda: control_flow_ops.while_loop(
+          lambda: while_loop.while_loop(
               lambda j, y: j < 3,
               lambda j, y: (j + 1, y + x),
               [0, 0.0])[1],
@@ -2781,8 +2782,9 @@ class ScopedGraphTest(test.TestCase):
           biases2 += constant_op.constant(0.1, shape=[32])
           return it + 1, biases2
 
-        _, biases2 = control_flow_ops.while_loop(loop_cond, loop_body, [
-            constant_op.constant(0), variables.VariableV1(array_ops.zeros([32]))
+        _, biases2 = while_loop.while_loop(loop_cond, loop_body, [
+            constant_op.constant(0),
+            variables.VariableV1(array_ops.zeros([32]))
         ])
         hidden2 = nn_ops.relu(math_ops.matmul(hidden1, weights2) + biases2)
       # Linear
@@ -2853,8 +2855,9 @@ class ScopedGraphTest(test.TestCase):
           biases += constant_op.constant(0.1, shape=[32])
           return it + 1, biases
 
-        _, biases = control_flow_ops.while_loop(loop_cond, loop_body, [
-            constant_op.constant(0), variables.VariableV1(array_ops.zeros([32]))
+        _, biases = while_loop.while_loop(loop_cond, loop_body, [
+            constant_op.constant(0),
+            variables.VariableV1(array_ops.zeros([32]))
         ])
         hidden2 = nn_ops.relu(math_ops.matmul(hidden1, weights) + biases)
       # Linear

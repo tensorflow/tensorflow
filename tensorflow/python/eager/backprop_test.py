@@ -50,6 +50,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.training import training
 
 
@@ -180,7 +181,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
         self.assertIsNotNone(t.gradient(result, v))
         return 1.0
 
-      control_flow_ops.while_loop(lambda i: False, body, [1.0])
+      while_loop.while_loop(lambda i: False, body, [1.0])
 
   def testWhereGradient(self):
     # Note: where is special because only some of its arguments are of
@@ -857,7 +858,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
 
     with backprop.GradientTape() as g:
       g.watch([x])
-      _, y = control_flow_ops.while_loop(cond, body, [i, x])
+      _, y = while_loop.while_loop(cond, body, [i, x])
 
     if not context.executing_eagerly():
       with self.assertRaisesRegex(NotImplementedError, 'tf.gradients'):
@@ -1723,7 +1724,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
         i = constant_op.constant(0.0)
         c = lambda y, i: i < 10.
         b = lambda y, i: (inner(y), i + 1.0)
-        y, i = control_flow_ops.while_loop(c, b, [y, i])
+        y, i = while_loop.while_loop(c, b, [y, i])
 
         return y
 

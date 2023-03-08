@@ -673,6 +673,7 @@ tf_xla_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/eager:function",
     ],
 )
@@ -1537,6 +1538,7 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
+        "//tensorflow/python:while_loop",
     ],
 )
 
@@ -1735,6 +1737,7 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/compiler/xla:compiler_py",
     ],
 )

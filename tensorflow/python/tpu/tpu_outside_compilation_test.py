@@ -45,6 +45,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import summary_ops_v2 as summary
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 from tensorflow.python.tpu import functional as tpu_functional
@@ -608,8 +609,8 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
           )
 
           step = constant_op.constant(0)
-          step, tokens_var = control_flow_ops.while_loop(
-              cond, body, [step, tokens_var])
+          step, tokens_var = while_loop.while_loop(cond, body,
+                                                   [step, tokens_var])
 
           image_flat = array_ops.transpose(tokens_var.stack(), [1, 0])
           image = array_ops.tile(

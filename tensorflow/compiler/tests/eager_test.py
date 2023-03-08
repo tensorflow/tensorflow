@@ -38,6 +38,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import adam
 
@@ -613,7 +614,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
       def f(start):
         c = lambda x: math_ops.less(x, 13.0)
         b = lambda x: math_ops.add(x, 1.0)
-        return control_flow_ops.while_loop(c, b, [start])
+        return while_loop.while_loop(c, b, [start])
 
       y = f(constant_op.constant(3.0))
     self.assertEqual(13.0, y.numpy())
