@@ -422,6 +422,7 @@ class LegalizeMHLOToTHLOPass
     // clang-format off
     patterns.insert<
         ConcatenateOpPattern,
+        GatherPattern,
         ReversePattern,
         ScatterPattern,
         SortPattern,
@@ -429,11 +430,7 @@ class LegalizeMHLOToTHLOPass
     // clang-format on
 
     if (enableExperimental) {
-      // clang-format off
-      patterns.insert<
-          DynamicBroadcastInDimOpPattern,
-          GatherPattern>(*typeConverter, ctx);
-      // clang-format on
+      patterns.insert<DynamicBroadcastInDimOpPattern>(*typeConverter, ctx);
     }
 
     if (failed(applyPartialConversion(getOperation(), target,

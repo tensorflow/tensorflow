@@ -135,25 +135,24 @@ static Status CreateHloXlaPipeline(
       mlir::mhlo::createMhloExpandOpsSimplifierPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createHloCanonicalizeScatterPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createHloCanonicalizeGatherPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createHloCanonicalizeDotPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createGroupReductionDimensionsPass());
-  // TODO(kramerb): Give THLO lowerings priority over linalg when it's ready for
-  // concat, reduce and friends.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createLegalizeMHLOToTHLOPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeHloToLinalgPass(
           options.enable_tiling_and_fusion));
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createLegalizeMHLOToTHLOPass());
 
   // Lower index cast on tensors to tensor.generate.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createLowerIndexCastPass());
 
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
 
-  // Transform scatter ops.
+  // Tile tHLO ops to 1.
   if (!options.enable_tiling_and_fusion) {
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::gml_st::createTransformScatterForCpuPass());
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::gml_st::createTileByOnePass());
   }
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
