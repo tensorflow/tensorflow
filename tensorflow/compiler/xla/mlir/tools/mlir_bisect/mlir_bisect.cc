@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/tools/mlir_bisect/bisect_lib.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_bisect/test_passes.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/execution_trace_utils.h"
+#include "tensorflow/compiler/xla/mlir_hlo/deallocation/IR/deallocation_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/IR/gml_st_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/test_passes.h"
@@ -291,6 +292,7 @@ int main(int argc, char* argv[]) {
   mlir::mhlo::registerAllMhloDialects(registry);
 
   registry.insert<mlir::lmhlo::LmhloDialect, mlir::gml_st::GmlStDialect,
+                  mlir::deallocation::DeallocationDialect,
                   mlir::thlo::THLODialect, xla::runtime::RuntimeDialect>();
 
   mlir::MLIRContext context(registry);
