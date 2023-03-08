@@ -67,6 +67,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:gpu_conv_algorithm_picker",
         "//tensorflow/compiler/xla/service/gpu:gpu_conv_runner",
         "//tensorflow/compiler/xla/service/gpu:gpu_serializable_autotuner",
+        "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:attribute_exporter",

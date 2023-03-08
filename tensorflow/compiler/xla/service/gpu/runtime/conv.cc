@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
+#include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -321,7 +322,8 @@ static GpuConvDescriptor GetConvDescriptor(
 template <CudnnConvKind kind>
 static absl::Status ConvImpl(
     const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, State<ConvRunner> runner,
+    const DebugOptions* debug_options, NonAtomicallyUpgradeableRWLock* gpu_lock,
+    State<ConvRunner> runner,
     // Arguments
     StridedMemrefView operand0, StridedMemrefView operand1,
     std::optional<FlatMemrefView> bias,
@@ -386,6 +388,10 @@ static absl::Status ConvImpl(
 
   // Do runtime conv autotuning.
   if (runtime_autotuning) {
+    // Don't run autotuning concurrently on the same GPU.
+    NonAtomicallyUpgradeableRWLock::WriterLock writer_lock =
+        gpu_lock->UpgradeToWriterMutexLock();
+
     auto stream_exec = run_options->stream()->parent();
     auto allocator = run_options->allocator();
     DeviceConfig device_config = {stream_exec, allocator};
@@ -471,6 +477,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL_TEMPLATE(
         CustomCall::Bind("xla.gpu.conv")
             .UserData<const ServiceExecutableRunOptions*>()
             .UserData<const DebugOptions*>()
+            .UserData<NonAtomicallyUpgradeableRWLock*>()
             .State<ConvRunner>("uid")                   // runner
             .Arg<StridedMemrefView>()                   // operand0
             .Arg<StridedMemrefView>()                   // operand1
@@ -489,6 +496,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         CustomCall::Bind("xla.gpu.conv.fused")
             .UserData<const ServiceExecutableRunOptions*>()
             .UserData<const DebugOptions*>()
+            .UserData<NonAtomicallyUpgradeableRWLock*>()
             .State<ConvRunner>("uid")                   // runner
             .Arg<StridedMemrefView>()                   // operand0
             .Arg<StridedMemrefView>()                   // operand1
@@ -507,6 +515,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     BindConvAttributes(CustomCall::Bind("xla.gpu.conv.fused.side_input")
                            .UserData<const ServiceExecutableRunOptions*>()
                            .UserData<const DebugOptions*>()
+                           .UserData<NonAtomicallyUpgradeableRWLock*>()
                            .State<ConvRunner>("uid")  // runner
                            .Arg<StridedMemrefView>()  // operand0
                            .Arg<StridedMemrefView>()  // operand1
