@@ -665,6 +665,22 @@ TfLiteStatus Subgraph::GetModelMetadata(const struct TfLiteContext* context,
       ->GetModelMetadata(name, ptr, bytes);
 }
 
+TfLiteStatus Subgraph::MarkSubgraphAsDelegationSkippable(int subgraph_index) {
+  TF_LITE_ENSURE(&context_, subgraph_index > 0);
+  TF_LITE_ENSURE(&context_,
+                 static_cast<size_t>(subgraph_index) <= subgraphs_->size());
+  subgraphs_->at(subgraph_index)->MarkAsDelegationSkippable();
+  return kTfLiteOk;
+}
+
+TfLiteContext* Subgraph::GetSubgraphContext(int subgraph_index) {
+  if (subgraph_index < 0 ||
+      static_cast<size_t>(subgraph_index) >= subgraphs_->size()) {
+    return nullptr;
+  }
+  return subgraphs_->at(subgraph_index)->context();
+}
+
 TfLiteStatus Subgraph::PreviewDelegatePartitioning(
     const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegateParams** partition_params_array, int* num_partitions) {
@@ -1977,6 +1993,12 @@ TfLiteStatus Subgraph::UndoAllDelegates() {
                                        execution_plan_[execution_plan_index]);
   }
   nodes_and_registration_.resize(max_retained_node_index + 1);
+
+  // Reset all the is_delegation_skippable_ flags in subgraphs.
+  for (auto& subgraph : *subgraphs_) {
+    subgraph->is_delegation_skippable_ = false;
+  }
+
   // After undoing delegates, the graph is uninvokable, but mutable.
   state_ = kStateUninvokable;
 

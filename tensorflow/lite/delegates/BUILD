@@ -66,6 +66,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
     ],
@@ -89,7 +90,9 @@ cc_test(
     linkstatic = 1,
     deps = [
         ":utils",
+        "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest_main",
     ],
 )
