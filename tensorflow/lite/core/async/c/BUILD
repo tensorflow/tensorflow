@@ -28,6 +28,27 @@ tflite_cc_library_with_c_headers_test(
 )
 
 tflite_cc_library_with_c_headers_test(
+    name = "async_kernel",
+    srcs = ["async_kernel.cc"],
+    hdrs = ["async_kernel.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + tflite_copts_warnings(),
+    visibility = [
+        # TODO(b/271281434): Update targets that depend on this to instead use
+        # tensorflow/lite/async/c.
+        "//visibility:public",
+    ],
+    deps = [
+        ":types",
+        "//tensorflow/lite/core/async:async_kernel_internal",
+        "//tensorflow/lite/core/async/interop/c:attribute_map",
+        "//tensorflow/lite/core/async/interop/c:types",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+    ],
+)
+
+tflite_cc_library_with_c_headers_test(
     name = "task",
     srcs = ["task.cc"],
     hdrs = ["task.h"],

@@ -742,8 +742,9 @@ class DelegateAsyncKernel : public BackendAsyncKernelInterface {
       TfLiteIoType io_type) const override {
     return supported_synchronizations_;
   }
-  bool ReconcileRestrictions(TfLiteOpaqueContext* opaque_context,
-                             TfLiteOpaqueNode* opaque_node, int tensor_index,
+  bool ReconcileRestrictions(const TfLiteOpaqueContext* opaque_context,
+                             const TfLiteOpaqueNode* opaque_node,
+                             int tensor_index,
                              const TfLiteAttributeMap* user_provided_attributes,
                              TfLiteAttributeMap* merged,
                              TfLiteAttributeMap* conflict) const override;
@@ -844,7 +845,7 @@ absl::Status DelegateAsyncKernel::Init(TfLiteContext* context,
 
 namespace {
 
-bool ReconcileBufferRestrictions(TfLiteContext* context, int tensor_index,
+bool ReconcileBufferRestrictions(const TfLiteContext* context, int tensor_index,
                                  const BufferAttributes& user,
                                  BufferAttributes& merged,
                                  BufferAttributes& conflict) {
@@ -884,7 +885,7 @@ bool ReconcileBufferRestrictions(TfLiteContext* context, int tensor_index,
   return true;
 }
 
-bool ReconcileSyncRestrictions(TfLiteContext* context, int tensor_index,
+bool ReconcileSyncRestrictions(const TfLiteContext* context, int tensor_index,
                                const SyncAttributes& user,
                                SyncAttributes& merged,
                                SyncAttributes& conflict) {
@@ -900,13 +901,19 @@ bool ReconcileSyncRestrictions(TfLiteContext* context, int tensor_index,
 }  // namespace
 
 bool DelegateAsyncKernel::ReconcileRestrictions(
-    TfLiteOpaqueContext* opaque_context, TfLiteOpaqueNode* opaque_node,
-    int tensor_index, const TfLiteAttributeMap* user_provided_attributes,
+    const TfLiteOpaqueContext* opaque_context,
+    const TfLiteOpaqueNode* opaque_node, int tensor_index,
+    const TfLiteAttributeMap* user_provided_attributes,
     TfLiteAttributeMap* merged, TfLiteAttributeMap* conflict) const {
   TFLITE_ABORT_CHECK(opaque_context != nullptr, "");            // Crash OK
   TFLITE_ABORT_CHECK(user_provided_attributes != nullptr, "");  // Crash OK
   TFLITE_ABORT_CHECK(merged != nullptr, "");                    // Crash OK
-  auto* context = reinterpret_cast<TfLiteContext*>(opaque_context);
+
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent.
+  // TODO(b/272170534): Update to use opaque APIs.
+  const auto* context = reinterpret_cast<const TfLiteContext*>(opaque_context);
   if (TfLiteAttributeMapIsBufferAttributeMap(user_provided_attributes)) {
     if (!TfLiteAttributeMapIsBufferAttributeMap(merged)) {
       TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
@@ -964,6 +971,10 @@ bool DelegateAsyncKernel::ReconcileRestrictions(
 TfLiteStatus DelegateAsyncKernel::SetAttributes(
     TfLiteOpaqueContext* opaque_context, TfLiteOpaqueNode* opaque_node,
     int tensor_index, const TfLiteAttributeMap* attrs) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent.
+  // TODO(b/272170534): Update to use opaque APIs.
   auto* context = reinterpret_cast<TfLiteContext*>(opaque_context);
   auto* node = reinterpret_cast<TfLiteNode*>(opaque_node);
   return SetAttributesImpl(context, node, tensor_index, attrs);
@@ -997,6 +1008,10 @@ TfLiteStatus DelegateAsyncKernel::SetAttributesImpl(
 
 TfLiteStatus DelegateAsyncKernel::Prepare(TfLiteOpaqueContext* opaque_context,
                                           TfLiteOpaqueNode* opaque_node) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent.
+  // TODO(b/272170534): Update to use opaque APIs.
   auto* context = reinterpret_cast<TfLiteContext*>(opaque_context);
   auto* node = reinterpret_cast<TfLiteNode*>(opaque_node);
   return PrepareImpl(context, node);
@@ -1032,6 +1047,10 @@ TfLiteStatus DelegateAsyncKernel::RegisterBuffer(
     TfLiteOpaqueContext* opaque_context, TfLiteIoType io_type,
     const TfLiteBackendBuffer* buffer, const TfLiteAttributeMap* attrs,
     TfLiteBufferHandle handle) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent.
+  // TODO(b/272170534): Update to use opaque APIs.
   auto* context = reinterpret_cast<TfLiteContext*>(opaque_context);
   return RegisterBufferImpl(context, io_type, buffer, attrs, handle);
 }
@@ -1100,6 +1119,10 @@ TfLiteStatus DelegateAsyncKernel::RegisterBufferImpl(
 
 TfLiteStatus DelegateAsyncKernel::UnregisterBuffer(
     TfLiteOpaqueContext* opaque_context, TfLiteBufferHandle handle) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent.
+  // TODO(b/272170534): Update to use opaque APIs.
   auto* context = reinterpret_cast<TfLiteContext*>(opaque_context);
   return UnregisterBufferImpl(context, handle);
 }
@@ -1117,6 +1140,10 @@ TfLiteStatus DelegateAsyncKernel::UnregisterBufferImpl(
 TfLiteStatus DelegateAsyncKernel::Eval(TfLiteOpaqueContext* opaque_context,
                                        TfLiteOpaqueNode* opaque_node,
                                        TfLiteExecutionTask* task) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent.
+  // TODO(b/272170534): Update to use opaque APIs.
   auto* context = reinterpret_cast<TfLiteContext*>(opaque_context);
   auto* node = reinterpret_cast<TfLiteNode*>(opaque_node);
   return EvalImpl(context, node, task);

@@ -13,6 +13,7 @@ cc_library(
     hdrs = ["async_kernel_internal.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
     ],
@@ -87,7 +88,7 @@ cc_library(
     srcs = ["backend_async_kernel_interface.cc"],
     hdrs = ["backend_async_kernel_interface.h"],
     deps = [
-        ":async_kernel_internal",
+        "//tensorflow/lite/core/async/c:async_kernel",
         "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
@@ -137,7 +138,9 @@ cc_test(
     name = "backend_async_kernel_interface_test",
     srcs = ["backend_async_kernel_interface_test.cc"],
     deps = [
+        ":async_kernel_internal",
         ":backend_async_kernel_interface",
+        "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/core/async/testing:mock_async_kernel",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
