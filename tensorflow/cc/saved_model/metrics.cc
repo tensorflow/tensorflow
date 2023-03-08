@@ -129,11 +129,11 @@ auto* checkpoint_size = monitoring::Counter<2>::New(
 
 }  // namespace
 
-monitoring::CounterCell& SavedModelWrite(absl::string_view write_version) {
+monitoring::CounterCell& SavedModelWriteCount(absl::string_view write_version) {
   return *saved_model_write_counter->GetCell(std::string(write_version));
 }
 
-monitoring::CounterCell& SavedModelRead(absl::string_view write_version) {
+monitoring::CounterCell& SavedModelReadCount(absl::string_view write_version) {
   return *saved_model_read_counter->GetCell(std::string(write_version));
 }
 

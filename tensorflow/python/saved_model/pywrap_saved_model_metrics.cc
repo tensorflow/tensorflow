@@ -31,7 +31,7 @@ void DefineMetricsModule(py::module main_module) {
   m.def(
       "IncrementWrite",
       [](const char* write_version) {
-        metrics::SavedModelWrite(write_version).IncrementBy(1);
+        metrics::SavedModelWriteCount(write_version).IncrementBy(1);
       },
       py::kw_only(), py::arg("write_version"),
       py::doc("Increment the '/tensorflow/core/saved_model/write/count' "
@@ -40,7 +40,7 @@ void DefineMetricsModule(py::module main_module) {
   m.def(
       "GetWrite",
       [](const char* write_version) {
-        return metrics::SavedModelWrite(write_version).value();
+        return metrics::SavedModelWriteCount(write_version).value();
       },
       py::kw_only(), py::arg("write_version"),
       py::doc("Get value of '/tensorflow/core/saved_model/write/count' "
@@ -65,7 +65,7 @@ void DefineMetricsModule(py::module main_module) {
   m.def(
       "IncrementRead",
       [](const char* write_version) {
-        metrics::SavedModelRead(write_version).IncrementBy(1);
+        metrics::SavedModelReadCount(write_version).IncrementBy(1);
       },
       py::kw_only(), py::arg("write_version"),
       py::doc("Increment the '/tensorflow/core/saved_model/read/count' "
@@ -75,7 +75,7 @@ void DefineMetricsModule(py::module main_module) {
   m.def(
       "GetRead",
       [](const char* write_version) {
-        return metrics::SavedModelRead(write_version).value();
+        return metrics::SavedModelReadCount(write_version).value();
       },
       py::kw_only(), py::arg("write_version"),
       py::doc("Get value of '/tensorflow/core/saved_model/read/count' "

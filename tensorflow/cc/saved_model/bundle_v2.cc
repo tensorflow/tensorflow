@@ -50,7 +50,8 @@ Status ReadSavedModelProto(const string& export_dir,
     Status result =
         ReadBinaryProto(Env::Default(), saved_model_pb_path, saved_model_proto);
     if (result.ok()) {
-      metrics::SavedModelRead(saved_model::GetWriteVersion(*saved_model_proto))
+      metrics::SavedModelReadCount(
+          saved_model::GetWriteVersion(*saved_model_proto))
           .IncrementBy(1);
     }
     return result;
@@ -63,7 +64,8 @@ Status ReadSavedModelProto(const string& export_dir,
     Status result = ReadTextProto(Env::Default(), saved_model_pbtxt_path,
                                   saved_model_proto);
     if (result.ok()) {
-      metrics::SavedModelRead(saved_model::GetWriteVersion(*saved_model_proto))
+      metrics::SavedModelReadCount(
+          saved_model::GetWriteVersion(*saved_model_proto))
           .IncrementBy(1);
     }
     return result;
