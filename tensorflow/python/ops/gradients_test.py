@@ -58,7 +58,6 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import unconnected_gradients
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -280,9 +279,10 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         return (i + 1, a, ta.write(i, a))
 
       n = 4
-      i, _, ta = while_loop.while_loop(
-          lambda i, *_: i < n, _Step,
-          [0, 0, tensor_array_ops.TensorArray(dtypes.int32, size=n)])
+      i, _, ta = control_flow_ops.while_loop(
+          lambda i, *_: i < n,
+          _Step, [0, 0, tensor_array_ops.TensorArray(
+              dtypes.int32, size=n)])
       target = ta.read(i - 1)
       grad, = gradients.gradients(target, v)
       self.assertIsNone(grad)

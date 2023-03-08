@@ -28,9 +28,9 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
@@ -495,7 +495,7 @@ def map_fn(fn,
       ]
       return (i + 1, tas)
 
-    _, r_a = while_loop.while_loop(
+    _, r_a = control_flow_ops.while_loop(
         lambda i, _: i < n,
         compute, (i, result_batchable_ta),
         parallel_iterations=parallel_iterations,

@@ -27,7 +27,6 @@ from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.embedding_ops import embedding_lookup
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -701,7 +700,7 @@ class _InitializeClustersOpFactory:
       return i + 1, self._num_clusters - array_ops.shape(assigned_centers)[0]
 
     # Add num_to_sample new data points.
-    _, num_remaining = while_loop.while_loop(_cond, _body, [0, 0])
+    _, num_remaining = control_flow_ops.while_loop(_cond, _body, [0, 0])
     return num_remaining
 
   def _greedy_batch_sampler(self, sampler):
