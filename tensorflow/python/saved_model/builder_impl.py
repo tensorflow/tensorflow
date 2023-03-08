@@ -434,8 +434,7 @@ class _SavedModelBuilder(object):
     tf_logging.info("SavedModel written to: %s", compat.as_text(path))
     metrics.IncrementWrite(write_version="1")
 
-    fingerprinting_utils.write_fingerprint(
-        self._export_dir, saved_model_serialized)
+    # Placeholder for internal TF1 model fingerprint write
 
     return path
 

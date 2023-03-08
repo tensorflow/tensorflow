@@ -1372,7 +1372,7 @@ class SavedModelTest(SavedModelTestBase):
       loader.load(sess, ["foo"], export_dir)
 
   def testFingerprint(self):
-    # Skip fingerprinting test in OSS.
+    self.skipTest("TF1 fingerprinting disabled in OSS.")
     export_dir = self._get_export_dir("fingerprint")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
 
