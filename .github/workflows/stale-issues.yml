@@ -50,7 +50,7 @@ jobs:
         uses: actions/stale@v5
         with:
           days-before-issue-stale: 180
-          days-before-issue-close: 7
+          days-before-issue-close: 365
           stale-issue-label: "stale"
           # reason for closed the issue default value is not_planned
           close-issue-reason: completed
