@@ -21,7 +21,6 @@ import weakref
 
 import numpy as np
 
-from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.capture import capture_container
 from tensorflow.python.eager import context
@@ -36,7 +35,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
@@ -718,7 +716,7 @@ class FuncGraph(ops.Graph):
         return graph_const
 
       # Large EagerTensors and resources are captured with Placeholder ops
-      return self._capture_helper(tensor, name, shape)
+      return self._capture_helper(tensor, name)
     if tensor.graph is not self:
       self._validate_in_scope(tensor)
       if name is None:
@@ -753,30 +751,10 @@ class FuncGraph(ops.Graph):
             f"it was defined in {tensor.graph}, which is out of scope.")
       inner_graph = inner_graph.outer_graph
 
-  def _capture_helper(self, tensor, name, shape=None):
-    capture = self._function_captures.by_val_captures.get(id(tensor))
-    if capture is None:
-      spec = trace_type.from_value(tensor)
-      spec._name = name  # pylint: disable=protected-access
-      placeholder_ctx = trace_type.InternalPlaceholderContext(self)
-      # Note: setting ops.control_dependencies(None) ensures we always put
-      # capturing placeholders outside of any control flow context.
-      with ops.control_dependencies(None):
-        placeholder = spec.placeholder_value(placeholder_ctx)
-      handle_data_util.copy_handle_data(tensor, placeholder)
-
-      # Record the composite device as an attribute to the placeholder.
-      # This attribute would be propagated into the arg_attr of the FunctionDef.
-      # Currently, a packed eager tensor is always placed on a CompositeDevice.
-      if isinstance(tensor, ops.EagerTensor) and tensor.is_packed:
-        placeholder.op._set_attr(  # pylint: disable=protected-access
-            "_composite_device",
-            attr_value_pb2.AttrValue(s=compat.as_bytes(tensor.device)))
-      self.add_capture(tensor, placeholder)
-    else:
-      placeholder = capture.internal
-    placeholder._record_tape(tensor)  # pylint: disable=protected-access
-    return placeholder
+  # TODO(panzf): Rename this method along with usages in cond/while graph.
+  def _capture_helper(self, tensor, name):
+    return self._function_captures.create_placeholder_helper(
+        tensor, name, self)
 
   def _experimental_capture_side_input_by_ref(self, identifier: Hashable,
                                               func: Callable[[], Any]) ->...:

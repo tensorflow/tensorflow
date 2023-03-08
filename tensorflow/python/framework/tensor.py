@@ -235,7 +235,14 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
 
     name = self.name or placeholder_context.naming_scope
     context_graph = placeholder_context.context_graph
-    placeholder = self._graph_placeholder(context_graph, name=name)
+    if placeholder_context.with_none_control_dependencies:
+      # Note: setting ops.control_dependencies(None) ensures we always put
+      # capturing placeholders outside of any control flow context.
+      with ops.control_dependencies(None):
+        placeholder = self._graph_placeholder(context_graph, name=name)
+    else:
+      placeholder = self._graph_placeholder(context_graph, name=name)
+
     if name is not None:
       # Record the requested/user-specified name in case it's different than
       # the uniquified name, for validation when exporting signatures.
@@ -251,6 +258,16 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
           and handle_data.is_set
           and handle_data.shape_and_type):
         handle_data_util.set_handle_data(placeholder, handle_data)
+
+    # Record the composite device as an attribute to the placeholder.
+    # This attribute would be propagated into the arg_attr of the FunctionDef.
+    # Currently, a packed eager tensor is always placed on a CompositeDevice.
+    if placeholder_context.composite_device_name is not None:
+      placeholder.op._set_attr(  # pylint: disable=protected-access
+          "_composite_device",
+          attr_value_pb2.AttrValue(s=compat.as_bytes(
+              placeholder_context.composite_device_name)))
+
     return placeholder
 
   def _graph_placeholder(self, graph, name=None):

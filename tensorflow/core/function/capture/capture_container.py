@@ -19,6 +19,7 @@ import dataclasses
 import inspect
 from typing import Any, Callable, Hashable, Mapping, Union
 
+from tensorflow.core.function import trace_type
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import type_spec
@@ -171,6 +172,33 @@ class FunctionCaptures(object):
       func = capture.external
       snapshot[key] = func()
     return snapshot
+
+  # TODO(panzf): make this method private after moving FuncGraph.capture() here.
+  def create_placeholder_helper(self, tensor, name, graph):
+    """A helper function to create capture placeholder."""
+    capture = self._by_val.get(id(tensor))
+    if capture is None:
+      tracing_ctx = trace_type.InternalTracingContext()
+      spec = trace_type.from_value(tensor, tracing_ctx)
+      spec._name = name  # pylint: disable=protected-access
+      if isinstance(tensor, core.Value) and tensor.is_packed:
+        composite_device_name = tensor.device
+      else:
+        composite_device_name = None
+      placeholder_ctx = trace_type.InternalPlaceholderContext(
+          graph,
+          with_none_control_dependencies=True,
+          composite_device_name=composite_device_name)
+      placeholder_ctx._spec_id_to_handledata = (  # pylint: disable=protected-access
+          tracing_ctx.get_handledata_mapping()
+      )
+      placeholder = spec.placeholder_value(placeholder_ctx)
+      self.add_or_replace(tensor, placeholder, id(tensor), False)
+      graph.inputs.append(placeholder)
+    else:
+      placeholder = capture.internal
+    placeholder._record_tape(tensor)  # pylint: disable=protected-access
+    return placeholder
 
   # TODO(panzf): Use FunctionType/TraceType to create placeholder here.
   def _create_capture_placeholder(self, func: Callable[[], Any]) -> ...:
