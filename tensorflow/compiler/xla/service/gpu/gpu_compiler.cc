@@ -381,8 +381,6 @@ Status GpuCompiler::OptimizeHloModule(
   layout_insensitive_algsimp_opts.set_minmax_propagate_nan(
       !debug_options.xla_gpu_enable_fast_min_max());
 
-  layout_insensitive_algsimp_opts.set_enable_normalize_broadcast_operand(false);
-
   // GPU benefits from having concats as early as possible.
   layout_insensitive_algsimp_opts.set_push_concat_to_consumers(false);
 
