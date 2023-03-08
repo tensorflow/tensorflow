@@ -1218,6 +1218,9 @@ tf_py_test(
 py_strict_test(
     name = "io_test",
     srcs = ["io_test.py"],
+    tags = [
+        "notap",  # b/272281090
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
