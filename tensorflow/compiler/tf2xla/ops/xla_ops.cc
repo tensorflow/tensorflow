@@ -1355,7 +1355,7 @@ args: A list of `Tensor` with possibly different types to be passed as arguments
   platform argument (see `platforms`) nor the dimension arguments (see
   `dim_args_spec`).
 version: Tracks changes the semantics of the op, to support backwards
-  compatibility. Version 1 carries an MHLO text or bytecode `module`. From
+  compatibility. Minimum supported version is 2. From
   version 2, the op carries a StableHLO text or bytecode `module`. From
   version 3, the op also supports the `platforms` attribute.
 module: A serialized computation, a text or bytecode representation of
