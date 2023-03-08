@@ -1862,14 +1862,16 @@ ENTRY %xla_computation_unknown.45 (parameter.3: u8[], parameter.4: u8[], paramet
   EXPECT_THAT(root, op::Conditional());
   // We do not move reduce operations due to potential memory considerations.
   EXPECT_EQ(root->branch_computation(0)->instruction_count(), 4);
-  EXPECT_EQ(root->branch_computation(1)->instruction_count(), 6);
+  EXPECT_EQ(root->branch_computation(1)->instruction_count(), 8);
   // Expect the add.0 and convert.35 in brnach_1_comp.31 to be moved
   // inside conditional.39.
   HloInstruction* conditional_39 =
       root->branch_computation(1)->root_instruction();
   CHECK_EQ(conditional_39->opcode(), HloOpcode::kConditional);
   const HloInstruction* conditional_39_pred = conditional_39->operand(0);
-  EXPECT_THAT(conditional_39_pred, op::Convert(op::GetTupleElement()));
+  EXPECT_THAT(
+      conditional_39_pred,
+      op::Convert(op::Reduce(op::GetTupleElement(), op::GetTupleElement())));
   const HloInstruction* conditional_39_true =
       conditional_39->branch_computation(0)->root_instruction();
   EXPECT_THAT(conditional_39_true, op::Tuple(op::Convert(op::Convert(
