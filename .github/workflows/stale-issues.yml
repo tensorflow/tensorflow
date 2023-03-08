@@ -45,7 +45,7 @@ jobs:
           days-before-pr-stale: 14
           days-before-pr-close: 14
           stale-pr-message: "This PR is stale because it has been open for 14 days with no activity.It will be closed if no further activity occurs. Thank you."
-          close-pr-message: "This PR was closed because it has been inactive for 14 days since being marked as stale.Please reopen if you'd like to work on this further."
+          close-pr-message: "This PR was closed because it has been inactive for 14 days since being marked as stale. Please reopen if you'd like to work on this further."
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Contribution issues
         uses: actions/stale@v5
