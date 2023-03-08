@@ -150,6 +150,11 @@ class FakeTensorHandle : public tensorflow::ImmediateExecutionTensorHandle {
     Ref();
     return this;
   }
+  // Return default (TFT_UNSET) full type information. This could be updated in
+  // the future if full type information is needed.
+  tensorflow::FullTypeDef FullType() const override {
+    return tensorflow::FullTypeDef();
+  }
 
   static bool classof(const AbstractTensorHandle* ptr) { return true; }
 
