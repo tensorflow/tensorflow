@@ -51,6 +51,7 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops import while_v2
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import constants
@@ -446,7 +447,7 @@ class VariablesToConstantsTest(test.TestCase):
         tensor_spec.TensorSpec(shape=[2, 2], dtype=dtypes.float32)
     ])
     def model(x):
-      return control_flow_ops.while_loop(condition, body, [x])
+      return while_loop.while_loop(condition, body, [x])
 
     root, output_func = self._freezeModel(model)
 
@@ -817,7 +818,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
             tensor_spec.TensorSpec(shape=[2, 2], dtype=dtypes.float32)
         ])
         def model(x):
-          return control_flow_ops.while_loop(condition, body, [x])
+          return while_loop.while_loop(condition, body, [x])
 
         root, output_func = self._freezeModel(model)
 

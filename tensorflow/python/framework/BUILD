@@ -1182,6 +1182,7 @@ tf_py_test(
         ":auto_control_deps",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:sendrecv_ops_gen",
+        "//tensorflow/python:while_loop",
     ],
 )
 
@@ -1799,6 +1800,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
     ],
 )
@@ -1835,6 +1837,7 @@ tf_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
     ],
 )
@@ -1872,6 +1875,7 @@ tf_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
     ],
 )
 
@@ -1980,6 +1984,7 @@ tf_py_test(
         "//tensorflow/python:resources",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python:while_v2",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
@@ -2048,6 +2053,7 @@ tf_py_test(
         ":test_lib",
         ":type_spec_registry",
         ":type_utils",
+        "//tensorflow/python:while_loop",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -2380,6 +2386,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:while_loop",
     ],
 )
 

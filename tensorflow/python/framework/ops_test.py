@@ -60,6 +60,7 @@ from tensorflow.python.ops import resources
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 import tensorflow.python.ops.gradients  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import compat
@@ -1146,8 +1147,7 @@ class OperationTest(test_util.TensorFlowTestCase):
 
     @def_function.function
     def test():
-      output = control_flow_ops.while_loop(lambda x: x < 3, lambda x: x + 1,
-                                           [1])
+      output = while_loop.while_loop(lambda x: x < 3, lambda x: x + 1, [1])
       while_op = output.op
       self.assertEqual(while_op.type, "StatelessWhile")
       orig_num_inputs = len(while_op.inputs)
@@ -1366,7 +1366,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
         self.assertLen(new_ops, 1)
         return i
 
-      control_flow_ops.while_loop(lambda i: i < 10, body, [0], name="myloop")
+      while_loop.while_loop(lambda i: i < 10, body, [0], name="myloop")
 
     op = g.get_operation_by_name("myloop/myop")
     self.assertIsNotNone(op)
@@ -1398,7 +1398,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
           self.assertLen(new_ops, 1)
         return i
 
-      control_flow_ops.while_loop(lambda i: i < 10, body, [0], name="myloop")
+      while_loop.while_loop(lambda i: i < 10, body, [0], name="myloop")
 
     op = g.get_operation_by_name("myloop/myop")
     self.assertIsNotNone(op)
@@ -1422,7 +1422,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
           self.assertLen(new_ops, 1)
         return i
 
-      control_flow_ops.while_loop(lambda i: i < 10, body, [0], name="myloop")
+      while_loop.while_loop(lambda i: i < 10, body, [0], name="myloop")
 
     op = g.get_operation_by_name("myloop/myop")
     self.assertIsNotNone(op)
