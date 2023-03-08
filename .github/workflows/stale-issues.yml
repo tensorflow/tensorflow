@@ -17,6 +17,7 @@ name: Close inactive issues
 on:
   schedule:
     - cron: "30 1 * * *"
+
 jobs:
   close-issues:
     # Don't do this in forks
