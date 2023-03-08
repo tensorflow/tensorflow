@@ -166,6 +166,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/stable_sort_expander.h"
 #include "tensorflow/compiler/xla/service/stochastic_convert_decomposer.h"
+#include "tensorflow/compiler/xla/service/topk_rewriter.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_all_reduce_code_motion.h"
@@ -401,6 +402,10 @@ Status GpuCompiler::OptimizeHloModule(
     spmd_pipeline.AddPass<CallInliner>();
     spmd_pipeline.AddPass<ZeroSizedHloElimination>();
     spmd_pipeline.AddPass<ConditionalCanonicalizer>();
+    spmd_pipeline.AddPass<TopkRewriter>(
+        // We're only rewriting TopK to prevent SPMD partitioning from blowing
+        // it up. Always allow it.
+        [](const HloSortInstruction*, int64_t) { return true; });
 
     HloPassPipeline& spmd_simplify =
         spmd_pipeline.AddPass<HloPassFix<HloPassPipeline>>("spmd-simplify");
@@ -442,6 +447,7 @@ Status GpuCompiler::OptimizeHloModule(
   {
     HloPassPipeline pipeline("optimization");
     AddHloVerifier(&pipeline);
+    pipeline.AddPass<TopkDecomposer>();
     pipeline.AddPass<AllToAllDecomposer>();
 
     HloPredicate upcaster_filter = [&](const HloInstruction* instr) {

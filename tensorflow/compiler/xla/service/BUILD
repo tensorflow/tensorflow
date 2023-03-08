@@ -6464,7 +6464,9 @@ cc_library(
         ":pattern_matcher",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -6475,12 +6477,17 @@ xla_cc_test(
         ":hlo_dce",
         ":hlo_matchers",
         ":topk_rewriter",
+        ":tuple_simplifier",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:test_macros_cpu",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
     ],
 )
