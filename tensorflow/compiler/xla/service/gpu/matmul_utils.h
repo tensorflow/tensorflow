@@ -120,7 +120,8 @@ struct GemmConfig {
 };
 
 StatusOr<se::blas::ComputationType> GetBlasComputationType(
-    PrimitiveType dtype, int64_t compute_precision);
+    PrimitiveType dtype, int64_t compute_precision,
+    PrimitiveType lhs_dtype = PRIMITIVE_TYPE_INVALID);
 
 namespace cublas_lt {
 

@@ -402,18 +402,20 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
 }
 
 StatusOr<se::blas::ComputationType> GetBlasComputationType(
-    PrimitiveType dtype, int64_t compute_precision) {
+    PrimitiveType dtype, int64_t compute_precision, PrimitiveType lhs_dtype) {
   switch (dtype) {
     case F8E5M2:    // fall-through
     case F8E4M3FN:  // fall-through
-    case F16:  // fall-through
+    case F16:       // fall-through
     case BF16:
       // Accumulate in f32 precision.
       return se::blas::ComputationType::kF32;
     case F32:  // fall-through
     case C64:
 #if GOOGLE_CUDA
-      if (tsl::tensor_float_32_execution_enabled() && compute_precision <= 1) {
+      if (tsl::tensor_float_32_execution_enabled() && compute_precision <= 1 &&
+          lhs_dtype != F8E4M3FN && lhs_dtype != F8E5M2) {
+        // CublasLt requires compute type to be F32 for F8 matmul.
         return se::blas::ComputationType::kTF32AsF32;
       }
 #endif
@@ -818,10 +820,8 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
                       AsBlasDataType(output_layout.dtype));
   TF_ASSIGN_OR_RETURN(
       se::blas::ComputationType computation_type,
-      GetBlasComputationType(output_layout.dtype, config.compute_precision));
-  if (lhs_layout.dtype == F8E4M3FN || lhs_layout.dtype == F8E5M2) {
-    computation_type = se::blas::ComputationType::kF32;
-  }
+      GetBlasComputationType(output_layout.dtype, config.compute_precision,
+                             lhs_layout.dtype));  
 
   TF_ASSIGN_OR_RETURN(
       se::cuda::BlasLt::MatmulDesc op_desc,

@@ -4958,27 +4958,32 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
         << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
   }
 
-  std::array<std::array<absl::string_view, 7>, 32> combinations;
+  std::array<std::array<absl::string_view, 8>, 64> combinations;
   int i = 0;
-  for (bool d_is_col : {false, true}) {
-    for (bool a_is_col : {false, true}) {
-      for (bool b_is_col : {false, true}) {
-        for (int lhs_contracting_dim : {0, 1}) {
-          for (int rhs_contracting_dim : {0, 1}) {
-            const absl::string_view lcd =
-                lhs_contracting_dim == 1 ? "{1}" : "{0}";
-            const absl::string_view rcd =
-                rhs_contracting_dim == 1 ? "{1}" : "{0}";
-            const absl::string_view a_shape =
-                lhs_contracting_dim == 1 ? "[64,32]" : "[32,64]";
-            const absl::string_view b_shape =
-                rhs_contracting_dim == 0 ? "[32,16]" : "[16,32]";
-            const absl::string_view a_layout = a_is_col ? "{0,1}" : "{1,0}";
-            const absl::string_view b_layout = b_is_col ? "{0,1}" : "{1,0}";
-            const absl::string_view output_layout =
-                d_is_col ? "{0,1}" : "{1,0}";
-            combinations[i++] = std::array{
-                lcd, rcd, a_shape, b_shape, a_layout, b_layout, output_layout};
+  for (int a_is_e4m3 : {false, true}) {
+    for (bool d_is_col : {false, true}) {
+      for (bool a_is_col : {false, true}) {
+        for (bool b_is_col : {false, true}) {
+          for (int lhs_contracting_dim : {0, 1}) {
+            for (int rhs_contracting_dim : {0, 1}) {
+              const absl::string_view f8_type =
+                  a_is_e4m3 ? "f8e4m3fn" : "f8e5m2";
+              const absl::string_view lcd =
+                  lhs_contracting_dim == 1 ? "{1}" : "{0}";
+              const absl::string_view rcd =
+                  rhs_contracting_dim == 1 ? "{1}" : "{0}";
+              const absl::string_view a_shape =
+                  lhs_contracting_dim == 1 ? "[64,32]" : "[32,64]";
+              const absl::string_view b_shape =
+                  rhs_contracting_dim == 0 ? "[32,16]" : "[16,32]";
+              const absl::string_view a_layout = a_is_col ? "{0,1}" : "{1,0}";
+              const absl::string_view b_layout = b_is_col ? "{0,1}" : "{1,0}";
+              const absl::string_view output_layout =
+                  d_is_col ? "{0,1}" : "{1,0}";
+              combinations[i++] =
+                  std::array{lcd, rcd, a_shape, b_shape, a_layout, b_layout,
+                             output_layout, f8_type};
+            }
           }
         }
       }
@@ -4987,7 +4992,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
   const char* hlo_template = R"(
       HloModule test
     ENTRY test {
-      x = f8e4m3fn<<Ashape>><<Alayout>> parameter(0)
+      x = <<Atype>><<Ashape>><<Alayout>> parameter(0)
       x_f32 = f32<<Ashape>><<Alayout>> convert(x)
       x_scale = f32[] parameter(2)
       x_scale_bcast = f32<<Ashape>> broadcast(x_scale), dimensions={}
@@ -5009,6 +5014,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
     replacements["<<Alayout>>"] = std::get<4>(combination);
     replacements["<<Blayout>>"] = std::get<5>(combination);
     replacements["<<Olayout>>"] = std::get<6>(combination);
+    replacements["<<Atype>>"] = std::get<7>(combination);
     const auto hlo_text = absl::StrReplaceAll(hlo_template, replacements);
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
 
