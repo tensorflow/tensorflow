@@ -182,8 +182,12 @@ class GcpGpuTerminationConfig(TerminationConfig):
       termination_watcher_fn=None,
       exit_fn=None,
       grace_period=None,
-      save_fn=None):
-    self.termination_watcher_fn = termination_watcher_fn or failure_handling_util.termination_watcher_function_gce
+      save_fn=None,
+  ):
+    self.termination_watcher_fn = (
+        termination_watcher_fn
+        or failure_handling_util.termination_watcher_function_gce
+    )
     self.exit_fn = exit_fn or failure_handling_util.gce_exit_fn
     self.grace_period = (
         grace_period if grace_period or grace_period == 0 else
@@ -493,25 +497,41 @@ class PreemptionCheckpointHandler(object):
     self._platform_device = failure_handling_util.detect_platform()
 
     completed_termination_config = _complete_config_for_environment(
-        self._platform_device, self._termination_config)
-    self._termination_watcher_fn = completed_termination_config.termination_watcher_fn
+        self._platform_device, self._termination_config
+    )
+    self._termination_watcher_fn = (
+        completed_termination_config.termination_watcher_fn
+    )
     self._exit_fn = completed_termination_config.exit_fn
     self._grace_period = completed_termination_config.grace_period
     self._save_fn = completed_termination_config.save_fn
 
-    if self._platform_device in (failure_handling_util.PlatformDevice.GCE_TPU,
-                                 failure_handling_util.PlatformDevice.GCE_CPU):
+    if self._platform_device in (
+        failure_handling_util.PlatformDevice.GCE_TPU,
+        failure_handling_util.PlatformDevice.GCE_CPU,
+    ):
       # While running MultiWorkerMirroredStrategy training with GPUs and CPUs
       # are the same on Borg, GCE CPU VM and GPU VM are different in terms
       # of live migration, grace period, etc. We can make it work upon request.
-      raise NotImplementedError('PreemptionCheckpointHandler does not support '
-                                'usage with TPU or CPU device on GCP.')
+      raise NotImplementedError(
+          'PreemptionCheckpointHandler does not support '
+          'usage with TPU or CPU device on GCP.'
+      )
 
-    elif self._platform_device == failure_handling_util.PlatformDevice.INTERNAL_TPU:
+    elif (
+        self._platform_device
+        == failure_handling_util.PlatformDevice.INTERNAL_TPU
+    ):
       self._initialize_for_tpu_strategy()
 
     else:
-      self._initialize_for_multi_worker_mirrored()
+      if cluster_resolver and 'ps' in cluster_resolver.cluster_spec().as_dict():
+        raise NotImplementedError(
+            'PreemptionCheckpointHandler does not support'
+            'usage with tf.distribute.experimental.ParameterServerStrategy.'
+        )
+
+      self._initialize_for_mirrored_and_multi_worker_mirrored()
 
     logging.info('PreemptionCheckpointHandler initialized or restored.')
 
@@ -524,11 +544,15 @@ class PreemptionCheckpointHandler(object):
     self._read_checkpoint_manager.restore_or_initialize()
     self._run_counter = 0
 
-  def _initialize_for_multi_worker_mirrored(self):
-    """Makes configurations and start watchers for using with MWMS."""
-    if not self._cluster_resolver.cluster_spec().jobs:
-      # For local-mode MultiWorkerMirroredStrategy, an empty cluster spec is
-      # passed, and coordination service is not enabled nor is it needed (since
+  def _initialize_for_mirrored_and_multi_worker_mirrored(self):
+    """Makes configurations and start watchers for MS, MWMS, or OneDevice."""
+    if (
+        not self._cluster_resolver
+        or not self._cluster_resolver.cluster_spec().jobs
+    ):
+      # For MirroredStrategy, OneDeviceStrategy, and local-mode
+      # MultiWorkerMirroredStrategy, an empty cluster spec is passed, and
+      # coordination service is not enabled nor is it needed (since
       # it's used for cross-worker communication). Thus we will directly name
       # the worker id and is_chief properties and also skip the
       # uploading/reading from coordination service logic.
@@ -672,7 +696,7 @@ class PreemptionCheckpointHandler(object):
   def _maybe_set_received_own_sigterm(self):
     """Claim earliest preemption if no one else has done it before."""
     if self._local_mode:
-      logging.info('Member %s has received termination notice.',
+      logging.info('Received termination notice.',
                    self._id_in_cluster)
       self._received_own_sigterm_time = time.time()
       self._received_own_sigterm.set()
@@ -849,19 +873,24 @@ class PreemptionCheckpointHandler(object):
     # the dominant use case for TPU user. Besides, passing in a multi-step
     # `distributed_train_function` will require the user to track their own
     # training steps.
-    if self._platform_device == failure_handling_util.PlatformDevice.INTERNAL_TPU:
+    if (
+        self._platform_device
+        == failure_handling_util.PlatformDevice.INTERNAL_TPU
+    ):
       return self._run_for_tpu(distributed_train_function, *args, **kwargs)
     else:
-      return self._run_for_multi_worker_mirrored(distributed_train_function,
-                                                 *args, **kwargs)
+      return self._run_for_multi_worker_mirrored(
+          distributed_train_function, *args, **kwargs
+      )
 
   def _run_for_tpu(self, distributed_train_function, *args, **kwargs):
     """PreemptionCheckpointHandler.run implementation for TPUStrategy."""
     gen_check_preemption_op.check_preemption(preemption_key=PREEMPTION_KEY)
     return distributed_train_function(*args, **kwargs)
 
-  def _run_for_multi_worker_mirrored(self, distributed_train_function, *args,
-                                     **kwargs):
+  def _run_for_multi_worker_mirrored(
+      self, distributed_train_function, *args, **kwargs
+  ):
     """PreemptionCheckpointHandler.run implementation for MWMS."""
     try:
       self._check_preemption_and_maybe_checkpoint()
