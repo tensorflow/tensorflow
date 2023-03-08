@@ -1,6 +1,10 @@
 # Common computation builders for XLA.
 
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
+load(
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
 
@@ -556,7 +560,9 @@ xla_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:test",
-    ],
+    ] + if_cuda_is_configured([
+        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
+    ]),
 )
 
 cc_library(
