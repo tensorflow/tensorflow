@@ -57542,7 +57542,7 @@ func XlaCallModulePlatforms(value []string) XlaCallModuleAttr {
 //
 //	version: Tracks changes the semantics of the op, to support backwards
 //
-// compatibility. Version 1 carries an MHLO text or bytecode `module`. From
+// compatibility. Minimum supported version is 2. From
 // version 2, the op carries a StableHLO text or bytecode `module`. From
 // version 3, the op also supports the `platforms` attribute.
 //
