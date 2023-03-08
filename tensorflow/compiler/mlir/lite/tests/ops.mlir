@@ -304,6 +304,14 @@ func.func @testAdd(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
   func.return %0#0 : tensor<? x i32>
 }
 
+// CHECK-LABEL: testAddInt16
+func.func @testAddInt16(tensor<? x i16>, tensor<? x i16>) -> tensor<? x i16> {
+^bb0(%arg0: tensor<? x i16>, %arg1: tensor<? x i16>):
+  // CHECK: tfl.add %arg0, %arg1 {fused_activation_function = "RELU6"}
+  %0 = tfl.add %arg0, %arg1 {fused_activation_function = "RELU6"} : tensor<? x i16>
+  func.return %0#0 : tensor<? x i16>
+}
+
 // CHECK-LABEL: testSub
 func.func @testSub(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
 ^bb0(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>):

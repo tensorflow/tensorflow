@@ -749,6 +749,14 @@ func.func @addV2(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi32> {
 // CHECK:  tfl.add %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<1xi32>
 }
 
+func.func @addV2I16(%arg0: tensor<1xi16>, %arg1: tensor<1xi16>) -> tensor<1xi16> {
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<1xi16>, tensor<1xi16>) -> tensor<1xi16>
+  func.return %0 : tensor<1xi16>
+
+// CHECK-LABEL: addV2I16
+// CHECK:  tfl.add %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<1xi16>
+}
+
 func.func @addN(%arg0: tensor<2x3xi32>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
   %0 = "tf.AddN"(%arg0, %arg1, %arg2) : (tensor<2x3xi32>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   func.return %0 : tensor<2x3xi32>

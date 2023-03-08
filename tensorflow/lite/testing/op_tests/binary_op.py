@@ -247,10 +247,18 @@ def make_binary_op_tests_func(binary_operator):
 
 @register_make_test_function()
 def make_add_tests(options):
-  """Make zip tests for add op with uint32 case."""
+  """Make zip tests for add op with uint32 and int16 case."""
   test_parameters = [
       {
           "dtype": [tf.uint32],
+          "input_shape_1": [[1, 3, 3, 3], [1], [3, 3]],
+          "input_shape_2": [[3], [1]],
+          "activation": [False],
+          "fully_quantize": [False],
+          "dynamic_range_quantize": [False],
+      },
+      {
+          "dtype": [tf.int16],
           "input_shape_1": [[1, 3, 3, 3], [1], [3, 3]],
           "input_shape_2": [[3], [1]],
           "activation": [False],

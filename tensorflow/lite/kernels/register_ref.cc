@@ -274,7 +274,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_ADD, Register_ADD_REF(),
              /* min_version */ 1,
-             /* max_version */ 4);
+             /* max_version */ 5);
   AddBuiltin(BuiltinOperator_SPACE_TO_BATCH_ND,
              Register_SPACE_TO_BATCH_ND_REF(),
              /* min_version = */ 1,
