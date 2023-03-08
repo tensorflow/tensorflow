@@ -459,6 +459,9 @@ message DebugOptions {
 
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;
+    PARTITIONING_ALGORITHM_EXP0 = 1;
+    PARTITIONING_ALGORITHM_EXP1 = 2;
+    PARTITIONING_ALGORITHM_EXP2 = 3;
   }
   // The partitioning algorithm to be used in the PartitionAssignment pass.
   PartitioningAlgorithm xla_partitioning_algorithm = 187;
