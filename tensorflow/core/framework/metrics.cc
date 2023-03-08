@@ -185,6 +185,13 @@ auto* tf_data_service_data_transfer_protocol_used =
         "data transfer protocol.",
         "data_transfer_protocol");
 
+auto* tf_data_service_data_transfer_protocol_error =
+    tsl::monitoring::Counter<3>::New(
+        "/tensorflow/data/service/data_transfer_protocol_error",
+        "The number of times a tf.data service worker client got this type "
+        "of non-retriable error with this message when using this protocol.",
+        "data_transfer_protocol", "error_type", "error_message");
+
 auto* tf_data_filename_counter = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
     "name", "filename");
@@ -425,6 +432,14 @@ void RecordTFDataServiceClientIterators(
 void RecordTFDataServiceDataTransferProtocolUsed(
     const string& data_transfer_protocol) {
   tf_data_service_data_transfer_protocol_used->GetCell(data_transfer_protocol)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceDataTransferProtocolError(
+    const string& data_transfer_protocol, error::Code code,
+    const string& error_message) {
+  tf_data_service_data_transfer_protocol_error
+      ->GetCell(data_transfer_protocol, error::Code_Name(code), error_message)
       ->IncrementBy(1);
 }
 

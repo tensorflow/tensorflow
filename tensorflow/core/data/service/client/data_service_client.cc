@@ -338,14 +338,17 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
   }
   if (std::string default_protocol = DefaultDataTransferProtocol();
       default_protocol != kGrpcTransferProtocol) {
+    LOG(INFO)
+        << "this task is participating in the \"data_transfer\" experiment.";
     StatusOr<std::unique_ptr<DataServiceWorkerClient>> worker =
         CreateWorkerClient(default_protocol, task_info);
     if (worker.ok()) {
-      LOG(INFO) << "Client " << params_.address
-                << " is participating in the \"data_transfer\" experiment.";
+      LOG(INFO)
+          << "successfully started client for default data transfer protocol '"
+          << default_protocol << "'";
       return worker;
     }
-    LOG(ERROR) << "failed to start client for data transfer protocol '"
+    LOG(ERROR) << "failed to start client for default data transfer protocol '"
                << default_protocol << "'; falling back to grpc. "
                << "Original error: " << worker.status();
   }
@@ -758,9 +761,22 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
   for (int num_retries = 0;; ++num_retries) {
     Status s = TryGetElement(*task, get_element_result);
     if (s.ok()) break;
-    // Retry all errors that could indicate preemption.
     if (!IsPreemptedError(s)) {
-      return s;
+      if (!params_.data_transfer_protocol.empty() ||
+          DefaultDataTransferProtocol() == kGrpcTransferProtocol) {
+        return s;
+      }
+      mutex_lock l(mu_);
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<DataServiceWorkerClient> worker,
+          CreateWorkerClient(kGrpcTransferProtocol, task->info));
+      task->worker = std::move(worker);
+      LOG(ERROR) << "failed to use client for default data transfer protocol '"
+                 << DefaultDataTransferProtocol() << "'; falling back to grpc. "
+                 << "Original error: " << s;
+      metrics::RecordTFDataServiceDataTransferProtocolError(
+          DefaultDataTransferProtocol(), s.code(), s.error_message());
+      continue;
     }
     if (!IsCoordinatedRead()) {
       mutex_lock l(mu_);
