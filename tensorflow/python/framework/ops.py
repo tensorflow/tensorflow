@@ -5569,7 +5569,7 @@ def control_dependencies(control_inputs):
   else:
     return get_default_graph().control_dependencies(control_inputs)
 
-# Forwarded from `stack.py` for backwards compatibility.
+# TODO(b/271463878): Remove in favor of direct references to `stack`.
 get_default_session = stack.get_default_session
 
 
@@ -7145,7 +7145,7 @@ def _get_enclosing_context(graph):
     return _get_enclosing_context(graph.outer_graph)
 
 
-# Forward from `handle_data_util` for backwards compatibility.
+# TODO(b/271463878): Remove in favor of direct references to `handle_data_util`.
 get_resource_handle_data = handle_data_util.get_resource_handle_data
 
 
