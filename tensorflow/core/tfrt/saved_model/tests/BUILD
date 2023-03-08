@@ -615,6 +615,7 @@ cc_library(
         "@tf_runtime//backends/cpu:core_runtime_alwayslink",
         "@tf_runtime//backends/cpu:tf_ops_alwayslink",
     ],
+    alwayslink = 1,
 )
 
 tf_cc_test(
