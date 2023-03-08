@@ -171,7 +171,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt/eager:__subpackages__",
-        "//tensorflow/core/tfrt/saved_model:__subpackages__",
     ],
     deps = [
         "@com_google_absl//absl/strings",
