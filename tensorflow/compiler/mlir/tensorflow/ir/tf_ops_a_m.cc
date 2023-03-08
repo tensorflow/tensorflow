@@ -156,7 +156,7 @@ OpFoldResult AddNOp::fold(FoldAdaptor adaptor) {
     return false;
   };
 
-  for (auto it : llvm::enumerate(operands)) {
+  for (const auto& it : llvm::enumerate(operands)) {
     if (IsKnownZero(it.value())) continue;
     if (non_zero_index != -1) {
       // Don't fold if we find more than 1 non-zero operand.
@@ -892,7 +892,7 @@ static LogicalResult VerifyCaseOrIfOpBranchFunctions(
   TypeRangeWithDesc input{op->getOperands().drop_front().getTypes(), "input"};
   TypeRangeWithDesc result{op->getResultTypes(), "result"};
 
-  for (auto branch : llvm::enumerate(branches)) {
+  for (const auto& branch : llvm::enumerate(branches)) {
     auto branch_func = symbol_table.lookupNearestSymbolFrom<func::FuncOp>(
         op, branch.value().cast<SymbolRefAttr>());
     if (!branch_func)
@@ -962,7 +962,7 @@ LogicalResult CaseRegionOp::verify() {
 
   TypeRangeWithDesc results{op.getResultTypes(), "result"};
 
-  for (auto region_and_idx : llvm::enumerate(op.getBranches())) {
+  for (const auto& region_and_idx : llvm::enumerate(op.getBranches())) {
     std::string description =
         llvm::formatv("branch #{0} result", region_and_idx.index()).str();
     Operation* yield = region_and_idx.value().front().getTerminator();
@@ -1520,7 +1520,7 @@ LogicalResult ConcatOffsetOp::verify() {
            << ranked_dim.getRank();
 
   int64_t num_dims = -1;
-  for (auto shape_offset_idx :
+  for (const auto& shape_offset_idx :
        llvm::enumerate(llvm::zip(op.getShape(), op.getOffset()))) {
     Value shape = std::get<0>(shape_offset_idx.value());
     Value offset = std::get<1>(shape_offset_idx.value());
@@ -1591,7 +1591,7 @@ LogicalResult ConcatOffsetOp::fold(FoldAdaptor adaptor,
   for (int32_t dim : shapes.front().getValues<int32_t>()) shape0.push_back(dim);
 
   for (DenseIntElementsAttr shape : llvm::drop_begin(shapes, 1)) {
-    for (auto dims_and_idx : llvm::enumerate(llvm::zip(shape0, shape))) {
+    for (const auto& dims_and_idx : llvm::enumerate(llvm::zip(shape0, shape))) {
       if (dims_and_idx.index() == concat_dim) continue;
 
       if (std::get<0>(dims_and_idx.value()) !=
