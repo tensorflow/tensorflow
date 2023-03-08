@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/strcat.h"
@@ -47,12 +49,6 @@ namespace tensorflow {
 namespace {
 
 using ::tensorflow::shape_inference::InferenceContext;
-
-using NodeOutput = std::pair<const Node*, int>;
-
-std::string OutputName(const NodeOutput& output) {
-  return strings::StrCat(output.first->name(), ":", output.second);
-}
 
 bool IsRank(const Node& n) { return n.type_string() == "Rank"; }
 bool IsSize(const Node& n) { return n.type_string() == "Size"; }
@@ -213,116 +209,149 @@ bool IsSupportedForEvaluation(const Node& node) {
     return false;
   }
 
-  // During construction or import from GraphConstructor, back edges may not
-  // be filled in. In addition, control flow constructs may depend on
-  // control edges which aren't handled by this method. Don't constant fold
-  // through merges at all for now.
-  if (node.IsMerge()) {
+  // During graph construction, back edges may not be filled in. In addition,
+  // control flow constructs may depend on control edges which get erased by
+  // the subgraph extraction logic.
+  if (node.IsControlFlow()) {
     return false;
   }
 
-  // Don't constant fold enter/exit currently either, as it's easy to end
-  // up with a partial frame.
-  if (node.IsEnter() || node.IsExit()) {
+  // Function libraries are not supported at the moment.
+  if (node.IsFunctionCall()) {
     return false;
   }
+  for (const auto& [name, attr] : node.attrs()) {
+    if (attr.has_func() || !attr.list().func().empty()) {
+      return false;
+    }
+  }
 
-  // Since constant-folding runs on the CPU, do not attempt to constant-fold
-  // operators that have no CPU kernel.
+  // Evaluation runs on the same CPU, make sure that a kernel is available.
   return KernelDefAvailable(DEVICE_CPU, node.def());
 }
 
-// Extracts the subgraph ending at 'target_node' that is statically
-// computable and inserts into 'out_graph'. If statically computable,
-// returns a map of constant inputs.
-StatusOr<absl::flat_hash_map<NodeOutput, Tensor>> ExtractConstantSubgraph(
+// Constant subgraph.
+struct Subgraph {
+  Subgraph(const OpRegistryInterface* op_registry, int32_t graph_def_version)
+      : graph(op_registry == nullptr ? OpRegistry::Global() : op_registry) {
+    VersionDef versions = graph.versions();
+    versions.set_producer(graph_def_version);
+    graph.set_versions(versions);
+  }
+
+  GraphRunner::NamedTensorList inputs;
+  Graph graph;
+};
+
+// Node along with output index.
+using NodeOutput = std::pair<const Node*, int>;
+std::string OutputName(const NodeOutput& output) {
+  return strings::StrCat(output.first->name(), ":", output.second);
+}
+
+// Assuming that the subgraph ending at `target_node` is constant-foldable,
+// returns it along with all constant inputs necessary for evaluation.
+// Otherwise, returns null.
+StatusOr<std::unique_ptr<Subgraph>> ExtractConstantSubgraph(
     const Node& target_node, const ShapeRefiner& refiner,
     const absl::FunctionRef<std::optional<Tensor>(const Node&, int)> lookup,
-    Graph* out_graph) {
-  absl::flat_hash_map<NodeOutput, Tensor> const_inputs;
+    const OpRegistryInterface* op_registry, const int32_t graph_def_version) {
+  std::unique_ptr<Subgraph> subgraph;
   if (!target_node.IsEnter() && !IsSupportedForEvaluation(target_node)) {
-    return const_inputs;
+    return subgraph;
   }
-
-  // Identify the possibly constant subgraph by recursively iterating
-  // backwards through the inputs to 'target_node' until we either 1) find
-  // an already existing input to our subgraph 'const_inputs', 2) discover
-  // our graph is not constant, or 3) hit an argument node.
-  struct NodeAndRecursed {
-    Node* new_node = nullptr;
-    bool recursed = false;
-  };
-  absl::flat_hash_map<const Node*, NodeAndRecursed> old_to_new_and_recursed;
-  Node& target_node_copy = *out_graph->CopyNode(&target_node);
-  old_to_new_and_recursed[&target_node] = {&target_node_copy, true};
 
   // Add the target node's inputs to seed the recursion.
-  std::deque<const Edge*> edges_to_visit;
-  for (const Edge* e : target_node.in_edges()) {
-    if (!e->IsControlEdge()) {
-      edges_to_visit.push_back(e);
+  std::vector<const Edge*> edges;
+  for (const Edge* edge : target_node.in_edges()) {
+    if (!edge->IsControlEdge()) {
+      edges.push_back(edge);
     }
   }
 
-  // Iterate over the set of edges to visit (backwards).
-  bool is_constant_graph = true;
-  while (!edges_to_visit.empty()) {
-    const Edge& edge = *edges_to_visit.front();
-    edges_to_visit.pop_front();
+  // Traverse edges in BFS order.
+  absl::flat_hash_map<const Node*, Node*> new_by_old_node;
+  absl::InlinedVector<const Node*, 8> arg_nodes;
+  absl::flat_hash_map<NodeOutput, Tensor> const_inputs;
+  for (int edge_ix = 0; edge_ix < edges.size(); ++edge_ix) {
+    const Edge& edge = *edges[edge_ix];
     const Node& node = *edge.src();
-    const int node_output = edge.src_output();
+    const NodeOutput node_output = {&node, edge.src_output()};
 
-    // Add a copy of its node and a new edge to the new subgraph.
-    NodeAndRecursed& node_and_recursed = old_to_new_and_recursed[&node];
-    if (node_and_recursed.new_node == nullptr) {
-      // First time processing this node.
-      if (!IsSupportedForEvaluation(node)) {
-        is_constant_graph = false;
-        break;
-      }
-      node_and_recursed.new_node = out_graph->CopyNode(&node);
-    }
-
-    // Add the edge to the destination node.
-    {
-      auto it = old_to_new_and_recursed.find(edge.dst());
-      if (TF_PREDICT_FALSE(it == old_to_new_and_recursed.end())) {
-        return errors::Internal(
-            "Could not find mapping from old to new copy of the node: ",
-            edge.dst()->name());
-      }
-      out_graph->AddEdge(node_and_recursed.new_node, edge.src_output(),
-                         it->second.new_node, edge.dst_input());
-    }
-
-    if (const_inputs.contains(NodeOutput{&node, node_output})) {
+    // No need to exercise the node if it's already scheduled for evaluation.
+    if (new_by_old_node.contains(&node) || const_inputs.contains(node_output)) {
       continue;
     }
 
-    auto tensor = lookup(node, node_output);
+    // SUBTLE: Defer `lookup` for `Arg` nodes, otherwise it may trigger a new
+    // round of evaluation in the shape refiner even if the subgraph is not
+    // foldable.
+    if (node.IsArg()) {
+      arg_nodes.push_back(&node);
+      continue;
+    }
+
+    // Look up the output in the cache or try to infer from shape metadata.
+    auto tensor = lookup(node, node_output.second);
     if (!tensor.has_value()) {
-      TF_ASSIGN_OR_RETURN(tensor,
-                          TryInferFromShapes(node, node_output, refiner));
+      TF_ASSIGN_OR_RETURN(
+          tensor, TryInferFromShapes(node, node_output.second, refiner));
     }
     if (tensor.has_value()) {
-      const_inputs.emplace(NodeOutput{&node, node_output}, *tensor);
-    } else if (node.IsArg()) {
-      is_constant_graph = false;
-      break;
-    } else if (!node_and_recursed.recursed) {
-      node_and_recursed.recursed = true;
-      for (const Edge* e : node.in_edges()) {
-        if (!e->IsControlEdge()) {
-          edges_to_visit.push_back(e);
+      const_inputs.emplace(node_output, *std::move(tensor));
+    } else if (!IsSupportedForEvaluation(node)) {
+      return subgraph;
+    } else {
+      // The node has to be evaluated, traverse its children.
+      new_by_old_node.emplace(&node, /*new node*/ nullptr);
+      for (const Edge* edge : node.in_edges()) {
+        if (!edge->IsControlEdge()) {
+          edges.push_back(edge);
         }
       }
     }
   }
-  if (!is_constant_graph) {
-    const_inputs.clear();
-    out_graph->Clear();
+
+  // Look up args in the cache. SUBTLE: Even if some args are not available at
+  // the moment, we should `lookup` them all because it may flag these arguments
+  // for the next round of shape inference.
+  bool all_args_provided = true;
+  for (const Node* node : arg_nodes) {
+    auto tensor = lookup(*node, 0);
+    all_args_provided = all_args_provided && tensor.has_value();
+    if (all_args_provided) {
+      const_inputs.emplace(NodeOutput{node, 0}, *std::move(tensor));
+    }
   }
-  return const_inputs;
+  if (!all_args_provided) {
+    return subgraph;
+  }
+
+  subgraph = std::make_unique<Subgraph>(op_registry, graph_def_version);
+
+  // Initialize subgraph inputs.
+  auto& inputs = subgraph->inputs;
+  inputs.reserve(const_inputs.size());
+  for (auto& [node_output, tensor] : const_inputs) {
+    // Filter out outputs of nodes that we have to evaluate anyway.
+    if (!new_by_old_node.contains(node_output.first)) {
+      inputs.emplace_back(OutputName(node_output), std::move(tensor));
+    }
+  }
+
+  // Copy all reachable nodes and edges to the output graph.
+  Graph& graph = subgraph->graph;
+  new_by_old_node[&target_node] = graph.CopyNode(&target_node);
+  for (const Edge* edge : edges) {
+    Node*& src = new_by_old_node[edge->src()];
+    if (src == nullptr) {
+      src = graph.CopyNode(edge->src());
+    }
+    Node* dst = new_by_old_node.at(edge->dst());
+    graph.AddEdge(src, edge->src_output(), dst, edge->dst_input());
+  }
+
+  return subgraph;
 }
 
 }  // namespace
@@ -359,25 +388,11 @@ StatusOr<std::optional<Tensor>> EvaluateConstantTensor(
   }
 
   // Slow path: extract and run the subgraph.
-  Graph graph(runner->op_registry == nullptr ? OpRegistry::Global()
-                                             : runner->op_registry);
-  {
-    VersionDef versions = graph.versions();
-    versions.set_producer(runner->graph_def_version);
-    graph.set_versions(versions);
-  }
-
-  TF_ASSIGN_OR_RETURN(auto const_inputs,
-                      ExtractConstantSubgraph(node, refiner, lookup, &graph));
-  if (!const_inputs.empty() || graph.num_op_nodes() != 0) {
-    GraphRunner::NamedTensorList inputs;
-    inputs.reserve(const_inputs.size());
-    for (auto& [output, tensor] : const_inputs) {
-      inputs.emplace_back(OutputName(output), std::move(tensor));
-    }
-
-    const auto output_name = OutputName({&node, node_output});
-
+  TF_ASSIGN_OR_RETURN(
+      const auto subgraph,
+      ExtractConstantSubgraph(node, refiner, lookup, runner->op_registry,
+                              runner->graph_def_version));
+  if (subgraph != nullptr) {
     GraphRunner* graph_runner = runner->graph_runner;
     std::unique_ptr<GraphRunner> tmp_graph_runner;
     if (graph_runner == nullptr) {
@@ -389,12 +404,14 @@ StatusOr<std::optional<Tensor>> EvaluateConstantTensor(
     // support constant-expression evaluation on functions.
     FunctionLibraryRuntime* function_library = nullptr;
     std::vector<Tensor> outputs;
-    const auto status = graph_runner->Run(  //
-        &graph, function_library, inputs, {output_name}, &outputs);
+    auto status =
+        graph_runner->Run(&subgraph->graph, function_library, subgraph->inputs,
+                          {OutputName({&node, node_output})}, &outputs);
 
-    // If all kernels in the constant graph are not registered in the process,
-    // GraphRunner::Run may fail, in which case we cannot propagate constants,
-    // so this is best-effort.
+    // A graph may contain errors such as shape incompatibility or division by
+    // zero. Errors like that are usually uncovered by a full-graph analysis or
+    // during execution, not during construction where this function is mainly
+    // used. Suppress execution errors for this reason (best effort).
     if (status.ok()) {
       result = std::move(outputs[0]);
     }

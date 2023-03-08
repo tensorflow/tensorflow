@@ -22,12 +22,14 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/meta/type_traits.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/function_ops.h"
+#include "tensorflow/cc/ops/logging_ops.h"
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -63,6 +65,7 @@ class EvaluateConstantTensorTest : public ::testing::Test {
       TF_RETURN_IF_ERROR(refiner.AddNode(node));
     }
     auto lookup = [this](const Node& node, int index) -> std::optional<Tensor> {
+      requested_.insert(&node);
       auto it = cache_.find(std::make_pair(&node, index));
       if (it == cache_.end()) {
         return std::nullopt;
@@ -71,6 +74,7 @@ class EvaluateConstantTensorTest : public ::testing::Test {
     };
     auto runner = runner_;
     runner_ = std::nullopt;
+    requested_.clear();
     return EvaluateConstantTensor(*output.node(), output.index(), refiner,
                                   lookup, runner);
   }
@@ -91,6 +95,7 @@ class EvaluateConstantTensorTest : public ::testing::Test {
  protected:
   Scope scope_ = Scope::NewRootScope();
   absl::flat_hash_map<std::pair<const Node*, int>, Tensor> cache_;
+  absl::flat_hash_set<const Node*> requested_;
   std::optional<EvaluateConstantTensorRunner> runner_ = std::nullopt;
 };
 
@@ -200,6 +205,57 @@ TEST_F(EvaluateConstantTensorTest, DoNotEvalPlaceholderWithDefault) {
   auto result2 = ops::PlaceholderWithDefault(scope_, tensor, tensor.shape());
   WithRunner().ExpectTensor(result1, tensor);
   WithRunner().ExpectNull(result2);
+}
+
+TEST_F(EvaluateConstantTensorTest, AllArgsMustBeRequestedForConstSubgraph) {
+  auto arg0 = ops::_Arg(scope_, DT_INT32, 0);
+  auto arg1 = ops::_Arg(scope_, DT_INT32, 1);
+  auto arg2 = ops::_Arg(scope_, DT_INT32, 2);
+  auto result = ops::Mul(scope_, arg0, ops::Add(scope_, arg1, arg2));
+
+  cache_.emplace(std::make_pair(arg1.node(), 0), test::AsScalar<int32_t>(3));
+  WithRunner().ExpectNull(result);
+  EXPECT_TRUE(requested_.contains(arg0.node()));
+  EXPECT_TRUE(requested_.contains(arg1.node()));
+  EXPECT_TRUE(requested_.contains(arg2.node()));
+
+  cache_.emplace(std::make_pair(arg0.node(), 0), test::AsScalar<int32_t>(5));
+  cache_.emplace(std::make_pair(arg2.node(), 0), test::AsScalar<int32_t>(7));
+  WithRunner().ExpectTensor(result, test::AsScalar<int32_t>(5 * (3 + 7)));
+}
+
+TEST_F(EvaluateConstantTensorTest, NoArgsMustBeRequestedForNonConstSubgraph) {
+  auto arg0 = ops::_Arg(scope_, DT_INT32, 0);
+  auto arg1 = ops::_Arg(scope_, DT_INT32, 1);
+  auto arg2 = ops::_Arg(scope_, DT_INT32, 2);
+  auto feed = Placeholder<int32_t>(scope_, {});
+  auto result = ops::Mul(scope_, arg0,
+                         ops::Add(scope_, arg1, ops::Add(scope_, arg2, feed)));
+
+  WithRunner().ExpectNull(result);
+  EXPECT_FALSE(requested_.contains(arg0.node()));
+  EXPECT_FALSE(requested_.contains(arg1.node()));
+  EXPECT_FALSE(requested_.contains(arg2.node()));
+  EXPECT_TRUE(requested_.contains(feed.node()));
+}
+
+TEST_F(EvaluateConstantTensorTest, MissingKernel) {
+  auto arg0 = ops::_Arg(scope_, DT_INT32, 0);
+  auto arg1 = ops::_Arg(scope_, DT_INT32, 1);
+  auto print = ops::Print(scope_, arg1, {arg1.output});
+  auto result = ops::Add(scope_, arg0, print);
+  ASSERT_FALSE(KernelDefAvailable(DEVICE_CPU, print.node()->def()));
+
+  WithRunner().ExpectNull(result);
+
+  cache_.emplace(std::make_pair(arg0.node(), 0), test::AsScalar<int32_t>(3));
+  WithRunner().ExpectNull(result);
+
+  cache_.emplace(std::make_pair(arg1.node(), 0), test::AsScalar<int32_t>(5));
+  WithRunner().ExpectNull(result);
+
+  cache_.emplace(std::make_pair(print.node(), 0), test::AsScalar<int32_t>(7));
+  WithRunner().ExpectTensor(result, test::AsScalar<int32_t>(3 + 7));
 }
 
 template <bool kEvaluated>
