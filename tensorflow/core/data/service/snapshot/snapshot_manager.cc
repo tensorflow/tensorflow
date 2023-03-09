@@ -40,7 +40,9 @@ namespace data {
 using ::tsl::OkStatus;
 using ::tsl::errors::InvalidArgument;
 
-const absl::Duration kWorkerTimeout = absl::Seconds(45);
+// The time for which an UNKNOWN stream should transition to ORPHAN if no worker
+// claims ownership of it via heartbeat.
+const absl::Duration kUnknownStreamTimeout = absl::Seconds(45);
 
 StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
     const SnapshotRequest& request, Env* env) {
@@ -439,7 +441,7 @@ void SnapshotManager::UpdateStreams() {
   // Check for streams to move from `unknowns_` to `orphans_`.
   if (resume_time_micros_.has_value() && !unknowns_.empty() &&
       absl::Microseconds(env_->NowMicros()) - resume_time_micros_.value() >
-          kWorkerTimeout) {
+          kUnknownStreamTimeout) {
     for (auto stream_index : unknowns_) {
       orphans_.insert(stream_index);
     }
