@@ -63,20 +63,23 @@ class AttributeMap {
                               AttributeMap* conflict) const;
 
   // Retrieves attribute value by key.
-  // Returns true if corresponding attribute exists, otherwise returns false.
-  template <typename ValueT>
-  bool GetAttr(TfLiteBufferAttrKey key, ValueT* value) const {
+  // Returns true if corresponding attribute exists and requested type matches,
+  // otherwise returns false.
+  template <typename AttrKeyT, typename ValueT>
+  bool GetAttr(AttrKeyT key, ValueT* value) const {
     if (auto it = attrs_.find(static_cast<uint32_t>(key)); it != attrs_.end()) {
-      *value = it->second.Get<ValueT>();
-      return true;
+      if (auto* v = it->second.Get<ValueT>(); v != nullptr) {
+        *value = *v;
+        return true;
+      }
     }
     return false;
   }
 
   // Sets attribute value by key.
-  template <typename ValueT>
-  void SetAttr(TfLiteBufferAttrKey key, ValueT value) {
-    attrs_.insert_or_assign(static_cast<uint32_t>(key), value);
+  template <typename AttrKeyT, typename ValueT>
+  void SetAttr(AttrKeyT key, ValueT value) {
+    attrs_.insert_or_assign(static_cast<KeyT>(key), value);
   }
 
   // Retrieves custom attribute value by key.
@@ -84,8 +87,10 @@ class AttributeMap {
   template <typename ValueT>
   bool GetCustomAttr(CustomKeyT key, ValueT* value) const {
     if (auto it = custom_attrs_.find(key); it != custom_attrs_.end()) {
-      *value = it->second.Get<ValueT>();
-      return true;
+      if (auto* v = it->second.Get<ValueT>(); v != nullptr) {
+        *value = *v;
+        return true;
+      }
     }
     return false;
   }

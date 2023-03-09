@@ -90,7 +90,7 @@ TEST_F(AsyncSignatureRunnerTest, RegisterBufferTest) {
       .WillOnce(Return(kTfLiteOk));
   EXPECT_CALL(*kernel_, UnregisterBuffer(_, _)).WillOnce(Return(kTfLiteOk));
   TfLiteBufferHandle handle;
-  auto* attr = TfLiteAttributeMapCreate(0);
+  auto* attr = TfLiteAttributeMapCreate(kTfLiteAttrMapTypeBuffer);
   auto* buf = TfLiteBackendBufferCreate();
   EXPECT_EQ(kTfLiteOk, TfLiteAsyncSignatureRunnerRegisterBuffer(
                            runner_, kTfLiteIoTypeInput, buf, attr, &handle));
@@ -123,7 +123,7 @@ TEST_F(AsyncSignatureRunnerTest, ReconcileTest) {
   EXPECT_CALL(*kernel_, ReconcileRestrictions(_, _, _, _, _, _))
       .WillOnce(Return(true));
   EXPECT_CALL(*kernel_, SetAttributes(_, _, _, _)).WillOnce(Return(kTfLiteOk));
-  auto* attr = TfLiteAttributeMapCreate(0);
+  auto* attr = TfLiteAttributeMapCreate(kTfLiteAttrMapTypeBuffer);
   EXPECT_TRUE(TfLiteAsyncSignatureRunnerReconcileRestrictions(
       runner_, kTfLiteIoTypeInput, "input", attr, attr, nullptr));
   EXPECT_EQ(kTfLiteOk, TfLiteAsyncSignatureRunnerSetAttributes(
