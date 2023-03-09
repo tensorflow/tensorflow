@@ -317,9 +317,9 @@ class DTensorDevice {
                 std::unique_ptr<ParallelExecutor> parallel_executor)
       : name_(name),
         same_shape_policy_enabled_(false),
-        function_manager_(new ExecutableManager<ExecutionFunctions>()),
         module_manager_(
             new ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>()),
+        function_manager_(new ExecutableManager<ExecutionFunctions>()),
         cancellation_manager_(std::make_unique<CancellationManager>()),
         parallel_executor_(std::move(parallel_executor)) {}
 
@@ -453,9 +453,16 @@ class DTensorDevice {
   };
   absl::flat_hash_map<int64_t, CachedLayout> shape_layout_cache_;
 
-  core::RefCountPtr<ExecutableManager<ExecutionFunctions>> function_manager_;
+  // DTensor op execution is divided into two general stages:
+  // Stage 1: DTensor function is converted to MLIR module. And the
+  // module_manager_ is used in this stage to cache the module. The cache key
+  // generated in this stage will be reused in the next stage.
   core::RefCountPtr<ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>>
       module_manager_;
+  // Stage 2: MLIR module is processed. On TensorFlow runtime execution the
+  // module is lowered to ExecutionFunctions for execution. function_manager_
+  // caches the ExecutionFunctions.
+  core::RefCountPtr<ExecutableManager<ExecutionFunctions>> function_manager_;
 
   // Coordinates cancelling ops across meshes on error. Must outlive any queued
   // async op launches, so we only reset it after seeing a failure status.
@@ -1462,7 +1469,7 @@ DTensorDevice::DTensorOperationToModule(
     // key computation, since they might depend on the current DTensorDevice
     // state.
     TF_RETURN_IF_ERROR(PrepareGraphForMlir(
-        *function_manager_, inputs, doperation, *flib_def, eager_attributes,
+        *module_manager_, inputs, doperation, *flib_def, eager_attributes,
         default_layout_, result.graph.get(), &result.global_output_shapes,
         &result.output_layouts));
 
@@ -1480,8 +1487,11 @@ DTensorDevice::DTensorOperationToModule(
         result.graph.get(), &result.output_layouts));
   }
 
-  auto [cache_key, cached_mlir_module] = module_manager_->GetCachedExecutable(
-      doperation, eager_attributes, inputs, result.output_layouts);
+  TF_ASSIGN_OR_RETURN(
+      auto cached_key_and_module,
+      module_manager_->GetCachedExecutable(doperation, eager_attributes, inputs,
+                                           result.output_layouts));
+  auto [cache_key, cached_mlir_module] = cached_key_and_module;
   result.doperation_cache_key = cache_key;
 
   if (cached_mlir_module != nullptr) {
@@ -1503,7 +1513,7 @@ DTensorDevice::DTensorOperationToModule(
     // cache key computation to reduce the overheads of running the same
     // function multiple times.
     TF_RETURN_IF_ERROR(PrepareGraphForMlir(
-        *function_manager_, inputs, doperation, *flib_def, eager_attributes,
+        *module_manager_, inputs, doperation, *flib_def, eager_attributes,
         default_layout_, result.graph.get(), &result.global_output_shapes,
         &result.output_layouts));
   }

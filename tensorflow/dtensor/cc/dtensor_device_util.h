@@ -26,6 +26,8 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
@@ -521,7 +523,7 @@ class ExecutableManager : public tsl::core::WeakRefCounted {
   // Returns a nullptr for the lowered executable if there is a cache miss.
   // Upon a cache miss, this will save some metadata about the function
   // and the small inputs to keep track of information for constant folding.
-  std::pair<tensorflow::Fprint128, const T*> GetCachedExecutable(
+  StatusOr<std::pair<tensorflow::Fprint128, const T*>> GetCachedExecutable(
       const DTensorOperation& doperation, const NameAttrList& attributes,
       const std::vector<TensorWithLayout*>& inputs,
       const std::vector<const Layout*>& output_layouts);
@@ -535,8 +537,8 @@ class ExecutableManager : public tsl::core::WeakRefCounted {
   // folded into function `doperation`. An input is not constant folded if we
   // have ran this function at least twice and the small input value changed
   // across separate runs.
-  bool ShouldFoldInput(const DTensorOperation& doperation,
-                       int input_index) const;
+  StatusOr<bool> ShouldFoldInput(const DTensorOperation& doperation,
+                                 int input_index) const;
 
   // Returns the current Stats of the execution manager.
   // The result is a snapshot at the moment of the call.
@@ -554,7 +556,7 @@ class ExecutableManager : public tsl::core::WeakRefCounted {
  private:
   // Generates a cache key for the graph, including its attributes,
   // inputs, and outputs.
-  tensorflow::Fprint128 CacheKeyForGraph(
+  StatusOr<tensorflow::Fprint128> CacheKeyForGraph(
       const DTensorOperation& doperation, const NameAttrList& attributes,
       const std::vector<TensorWithLayout*>& inputs,
       const std::vector<const Layout*>& output_layouts);
@@ -594,7 +596,7 @@ std::vector<int64_t> TensorShapeAsVector(TFE_TensorHandle* tensor,
 // Creates a Graph with _Arg and _Retval nodes surrounding an
 // `operation_name`-type node.
 Status PrepareGraphForMlir(
-    const ExecutableManager<ExecutionFunctions>& function_manager,
+    const ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>& module_manager,
     const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation,
     const tensorflow::FunctionLibraryDefinition& flib_def,
@@ -644,7 +646,7 @@ Status InsertFunctionForTPUEmbeddingCheckpoint(
 // - default mesh.
 // - values of constant foldable inputs.
 template <typename T>
-tensorflow::Fprint128 ExecutableManager<T>::CacheKeyForGraph(
+StatusOr<tensorflow::Fprint128> ExecutableManager<T>::CacheKeyForGraph(
     const DTensorOperation& doperation, const NameAttrList& attributes,
     const std::vector<TensorWithLayout*>& inputs,
     const std::vector<const Layout*>& output_layouts) {
@@ -658,8 +660,8 @@ tensorflow::Fprint128 ExecutableManager<T>::CacheKeyForGraph(
       tensorflow::Fingerprint128(doperation.default_mesh.ToString()));
   // Higher level cache based on operation name and input shapes.
   for (int i = 0; i < inputs.size(); ++i) {
-    if (!ShouldFoldInput(doperation, i) &&
-        inputs[i]->const_value_node() != nullptr) {
+    TF_ASSIGN_OR_RETURN(bool should_fold_input, ShouldFoldInput(doperation, i));
+    if (!should_fold_input && inputs[i]->const_value_node() != nullptr) {
       inputs[i]->const_value_node()->reset_const_value();
     }
     cache_key = FingerprintCat128(cache_key, inputs[i]->CacheKey());
@@ -678,13 +680,14 @@ tensorflow::Fprint128 ExecutableManager<T>::CacheKeyForGraph(
 
 // Thread-safe method.
 template <typename T>
-std::pair<tensorflow::Fprint128, const T*>
+StatusOr<std::pair<tensorflow::Fprint128, const T*>>
 ExecutableManager<T>::GetCachedExecutable(
     const DTensorOperation& doperation, const NameAttrList& attributes,
     const std::vector<TensorWithLayout*>& inputs,
     const std::vector<const Layout*>& output_layouts) {
-  tensorflow::Fprint128 cache_key =
-      CacheKeyForGraph(doperation, attributes, inputs, output_layouts);
+  TF_ASSIGN_OR_RETURN(
+      tensorflow::Fprint128 cache_key,
+      CacheKeyForGraph(doperation, attributes, inputs, output_layouts));
 
   {
     mutex_lock lock(mu_);
@@ -692,28 +695,29 @@ ExecutableManager<T>::GetCachedExecutable(
     if (auto iter = function_cache_.find(cache_key);
         iter != function_cache_.end()) {
       stats_.hits++;
-      return std::pair<Fprint128, T*>(cache_key, &iter->second);
+      return {{cache_key, &iter->second}};
     }
   }
   // For eager ops we early return the cache miss and do not make further
   // optimizations.
   if (!doperation.is_func()) {
     stats_.misses++;
-    return std::pair<Fprint128, std::nullptr_t>(cache_key, nullptr);
+    return {{cache_key, nullptr}};
   }
 
   bool missed = UpdateDTensorOpAndSmallInputsCache(doperation, inputs);
 
   if (missed) {
     stats_.misses++;
-    return std::pair<Fprint128, std::nullptr_t>(cache_key, nullptr);
+    return {{cache_key, nullptr}};
   }
   // Generate a new cache key since we updated small const inputs which change
   // the cache key.
-  cache_key = CacheKeyForGraph(doperation, attributes, inputs, output_layouts);
+  TF_ASSIGN_OR_RETURN(cache_key, CacheKeyForGraph(doperation, attributes,
+                                                  inputs, output_layouts));
 
   stats_.misses++;
-  return std::pair<Fprint128, std::nullptr_t>(cache_key, nullptr);
+  return {{cache_key, nullptr}};
 }
 
 template <typename T>
@@ -784,8 +788,8 @@ const T* ExecutableManager<T>::AddCachedExecutable(
 }
 
 template <typename T>
-bool ExecutableManager<T>::ShouldFoldInput(const DTensorOperation& doperation,
-                                           const int input_index) const {
+StatusOr<bool> ExecutableManager<T>::ShouldFoldInput(
+    const DTensorOperation& doperation, const int input_index) const {
   // For eager ops, assume the inputs are constant foldable.
   if (!doperation.is_func()) return true;
   const tensorflow::Fprint128 doperation_hash =
@@ -799,6 +803,11 @@ bool ExecutableManager<T>::ShouldFoldInput(const DTensorOperation& doperation,
   return doperation_iter == dtensor_op_and_small_inputs_.end() ||
          doperation_iter->second.contains(input_index);
 }
+
+// ExecutionFunctions manager can not check if the input is foldable.
+template <>
+StatusOr<bool> ExecutableManager<ExecutionFunctions>::ShouldFoldInput(
+    const DTensorOperation& doperation, int input_index) const;
 
 }  // namespace dtensor
 }  // namespace tensorflow
