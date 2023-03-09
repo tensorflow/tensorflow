@@ -220,7 +220,7 @@ static XlaOp UnrevectorizeInstr(XlaOp instr, int64_t dim, int64_t vect_dim,
 // incrementing any dimensions which appear after the feature dim.  The implicit
 // vector dim is then in this "empty" spot.
 static ConvolutionDimensionNumbers VectorizeDnums(
-    ConvolutionDimensionNumbers dnums) {
+    ConvolutionDimensionNumbers dnums, bool reordered_filter) {
   int64_t input_vect_dim = dnums.input_feature_dimension();
   if (dnums.input_batch_dimension() > input_vect_dim) {
     dnums.set_input_batch_dimension(dnums.input_batch_dimension() + 1);
@@ -231,14 +231,16 @@ static ConvolutionDimensionNumbers VectorizeDnums(
     }
   }
 
-  int64_t kernel_vect_dim = dnums.kernel_input_feature_dimension();
-  if (dnums.kernel_output_feature_dimension() > kernel_vect_dim) {
-    dnums.set_kernel_output_feature_dimension(
-        dnums.kernel_output_feature_dimension() + 1);
-  }
-  for (int64_t& d : *dnums.mutable_kernel_spatial_dimensions()) {
-    if (d > kernel_vect_dim) {
-      ++d;
+  if (!reordered_filter) {
+    int64_t kernel_vect_dim = dnums.kernel_input_feature_dimension();
+    if (dnums.kernel_output_feature_dimension() > kernel_vect_dim) {
+      dnums.set_kernel_output_feature_dimension(
+          dnums.kernel_output_feature_dimension() + 1);
+    }
+    for (int64_t& d : *dnums.mutable_kernel_spatial_dimensions()) {
+      if (d > kernel_vect_dim) {
+        ++d;
+      }
     }
   }
 
@@ -259,29 +261,43 @@ static ConvolutionDimensionNumbers VectorizeDnums(
 // cudnnReorderFilterAndBias.  Also marks that the filter + bias are reordered
 // in the conv's backend-config.
 Status ReorderInt8NchwVect(HloCustomCallInstruction* conv, XlaOp* operands) {
+  bool has_bias = conv->operand_count() > 2;
+  VLOG(1) << "Reordering filter" << (has_bias ? " and bias" : "")
+          << " (replacement for cudnnReorderFilterAndBias)";
+
+  auto builder = operands->builder();
+  ConvolutionDimensionNumbers dnums = conv->convolution_dimension_numbers();
+
   // Update convolution backend config.
   TF_ASSIGN_OR_RETURN(auto config,
                       conv->backend_config<CudnnConvBackendConfig>());
   config.set_reordered_int8_nchw_vect(true);
   TF_RETURN_IF_ERROR(conv->set_backend_config(config));
 
-  XlaBuilder& builder = *operands->builder();
-  Shape filter_shape = builder.GetShape(operands[1]).value();
+  // Reorder the filter.
+  TF_ASSIGN_OR_RETURN(Shape filter_shape, builder->GetShape(operands[1]));
+  TF_ASSIGN_OR_RETURN(auto reorder, CudnnInferTransposeForFilterReordering(
+                                        filter_shape, dnums));
+  XlaOp reshape = Reshape(reorder.transpose_shape, operands[1]);
+  XlaOp transpose = Transpose(reshape, reorder.permutation);
+  operands[1] = Reshape(reorder.result_shape, transpose);
 
-  if (conv->operand_count() > 2) {
-    // Reorder filter and bias.
-    Shape bias_shape = builder.GetShape(operands[2]).value();
-    XlaOp reorder = CustomCall(
-        &builder, std::string(kCudnnConvReorderFilterAndBiasCallTarget),
-        {operands[1], operands[2]},
-        ShapeUtil::MakeTupleShape({filter_shape, bias_shape}));
-    operands[1] = GetTupleElement(reorder, 0);
-    operands[2] = GetTupleElement(reorder, 1);
-  } else {
-    // Reorder just the filter.
-    operands[1] =
-        CustomCall(&builder, std::string(kCudnnConvReorderFilterCallTarget),
-                   {operands[1]}, filter_shape);
+  // The reshape-transpose-reshape we did above makes sure the resulting filter
+  // has dimension numbers corresponding to "oihw?", so update them.
+  dnums.set_kernel_output_feature_dimension(0);
+  dnums.set_kernel_input_feature_dimension(1);
+  dnums.set_kernel_spatial_dimensions(0, 2);
+  dnums.set_kernel_spatial_dimensions(1, 3);
+  conv->set_convolution_dimension_numbers(dnums);
+
+  if (has_bias) {
+    // Reorder the bias.
+    TF_ASSIGN_OR_RETURN(Shape bias_shape, builder->GetShape(operands[2]));
+    TF_ASSIGN_OR_RETURN(reorder,
+                        CudnnInferTransposeForBiasReordering(bias_shape));
+    reshape = Reshape(reorder.transpose_shape, operands[2]);
+    transpose = Transpose(reshape, reorder.permutation);
+    operands[2] = Reshape(reorder.result_shape, transpose);
   }
   return OkStatus();
 }
@@ -301,14 +317,16 @@ static StatusOr<bool> TryRevectorizeConv(
   const Shape& input_shape = conv->operand(0)->shape();
   const Shape& kernel_shape = conv->operand(1)->shape();
   const Shape& output_shape = conv->shape().tuple_shapes(0);
-  const auto& dnums = conv->convolution_dimension_numbers();
+  const ConvolutionDimensionNumbers* dnums =
+      &conv->convolution_dimension_numbers();
 
   // Find the vectorized-features dim in the input/kernel/output.
   std::optional<int64_t> input_vect_dim;
   std::optional<int64_t> kernel_vect_dim;
   std::optional<int64_t> output_vect_dim;
   std::tie(input_vect_dim, kernel_vect_dim, output_vect_dim) =
-      FindVectorizedFeatureDims(dnums, input_shape, kernel_shape, output_shape);
+      FindVectorizedFeatureDims(*dnums, input_shape, kernel_shape,
+                                output_shape);
 
   if (!input_vect_dim.has_value() || !kernel_vect_dim.has_value() ||
       !output_vect_dim.has_value()) {
@@ -316,9 +334,9 @@ static StatusOr<bool> TryRevectorizeConv(
   }
 
   int64_t input_feat_size =
-      input_shape.dimensions(dnums.input_feature_dimension());
+      input_shape.dimensions(dnums->input_feature_dimension());
   int64_t output_feat_size =
-      output_shape.dimensions(dnums.output_feature_dimension());
+      output_shape.dimensions(dnums->output_feature_dimension());
   int64_t input_vect_size = input_shape.dimensions(*input_vect_dim);
   int64_t output_vect_size = output_shape.dimensions(*output_vect_dim);
   if (vect_size % input_vect_size != 0 || vect_size % output_vect_size != 0 ||
@@ -349,13 +367,13 @@ static StatusOr<bool> TryRevectorizeConv(
   XlaBuilder b(absl::StrCat(conv->name(), ".revectorized"));
   b.SetOpMetadata(conv->metadata());
 
+  XlaOp filter = Parameter(&b, 1, conv->operand(1)->shape(), "filter");
   absl::InlinedVector<XlaOp, 4> new_operands = {
       RevectorizeInstr(Parameter(&b, 0, conv->operand(0)->shape(), "input"),
-                       dnums.input_feature_dimension(), *input_vect_dim,
+                       dnums->input_feature_dimension(), *input_vect_dim,
                        vect_size),
-      RevectorizeInstr(Parameter(&b, 1, conv->operand(1)->shape(), "filter"),
-                       dnums.kernel_input_feature_dimension(), *kernel_vect_dim,
-                       vect_size),
+      RevectorizeInstr(filter, dnums->kernel_input_feature_dimension(),
+                       *kernel_vect_dim, vect_size),
   };
   if (conv->operand_count() > 2) {
     // Bias, if present.  This is passed through unmodified.
@@ -364,7 +382,7 @@ static StatusOr<bool> TryRevectorizeConv(
   if (conv->operand_count() > 3) {
     new_operands.push_back(RevectorizeInstr(
         Parameter(&b, 3, conv->operand(3)->shape(), "side_input"),
-        dnums.input_feature_dimension(), *input_vect_dim, vect_size));
+        dnums->input_feature_dimension(), *input_vect_dim, vect_size));
   }
 
   if (conv->operand_count() > 4) {
@@ -378,17 +396,26 @@ static StatusOr<bool> TryRevectorizeConv(
   //
   // TODO(jlebar): Remove this guard once JAX no longer supports cudnn 8.3.
   const auto& debug_options = conv->GetModule()->config().debug_options();
-  if (input_shape.element_type() == xla::S8 && vect_size == 32 &&
+  bool use_reordering =
+      input_shape.element_type() == xla::S8 && vect_size == 32 &&
       debug_options.xla_gpu_enable_cudnn_int8x32_convolution_reordering() &&
-      cudnn_version >= se::dnn::VersionInfo{8, 3, 0}) {
+      cudnn_version >= se::dnn::VersionInfo{8, 3, 0};
+  if (use_reordering) {
+    // Reordering helper supports vector sizes of 4 and 32, so an additional
+    // reshape-transpose-reshape is not necessary in these cases.
+    int64_t kernel_vect_size = kernel_shape.dimensions(*kernel_vect_dim);
+    if (kernel_vect_size == 4 || kernel_vect_size == 32) {
+      new_operands[1] = filter;
+    }
     TF_RETURN_IF_ERROR(ReorderInt8NchwVect(conv, new_operands.data()));
+    dnums = &conv->convolution_dimension_numbers();
   }
 
   // The custom-call returns a tuple (new_output_shape, u8[0]), where the second
   // value in the tuple represents the convolution's scratch memory.
   DimensionVector new_output_dims(output_shape.dimensions().begin(),
                                   output_shape.dimensions().end());
-  new_output_dims[dnums.output_feature_dimension()] /=
+  new_output_dims[dnums->output_feature_dimension()] /=
       (vect_size / output_vect_size);
   new_output_dims[*output_vect_dim] = vect_size;
   XlaOp new_conv = CustomCallWithConvDnums(
@@ -400,13 +427,13 @@ static StatusOr<bool> TryRevectorizeConv(
       /*opaque=*/conv->raw_backend_config_string(), /*has_side_effect=*/false,
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
       /*window=*/conv->window(),
-      /*dnums=*/conv->convolution_dimension_numbers());
+      /*dnums=*/*dnums);
 
   XlaOp new_conv_result = GetTupleElement(new_conv, 0);
   XlaOp new_conv_scratch = GetTupleElement(new_conv, 1);
 
   XlaOp new_conv_result_unrevectorized = UnrevectorizeInstr(
-      new_conv_result, dnums.output_feature_dimension(), *output_vect_dim,
+      new_conv_result, dnums->output_feature_dimension(), *output_vect_dim,
       /*orig_vect_size=*/output_shape.dimensions(*output_vect_dim));
 
   TF_ASSIGN_OR_RETURN(
@@ -450,17 +477,19 @@ static StatusOr<bool> TryVectorizeConv(
     int64_t vect_size) {
   const Shape& input_shape = conv->operand(0)->shape();
   const Shape& output_shape = conv->shape().tuple_shapes(0);
-  const auto& dnums = conv->convolution_dimension_numbers();
-  int64_t in_channels = input_shape.dimensions(dnums.input_feature_dimension());
+  const ConvolutionDimensionNumbers* dnums =
+      &conv->convolution_dimension_numbers();
+  int64_t in_channels =
+      input_shape.dimensions(dnums->input_feature_dimension());
   int64_t out_channels =
-      output_shape.dimensions(dnums.output_feature_dimension());
+      output_shape.dimensions(dnums->output_feature_dimension());
 
   if (in_channels % vect_size != 0 || out_channels % vect_size != 0) {
     return false;
   }
 
   if (input_shape.dimensions_size() >
-      2 + dnums.input_spatial_dimensions_size()) {
+      2 + dnums->input_spatial_dimensions_size()) {
     // Conv already has an extra dimension, which we assume is the vectorized
     // features dim.
     return false;
@@ -487,11 +516,11 @@ static StatusOr<bool> TryVectorizeConv(
   XlaBuilder b(absl::StrCat(conv->name(), ".revectorized"));
   b.SetOpMetadata(conv->metadata());
 
+  XlaOp filter = Parameter(&b, 1, conv->operand(1)->shape(), "filter");
   absl::InlinedVector<XlaOp, 4> new_operands = {
       SplitAtDim(Parameter(&b, 0, conv->operand(0)->shape(), "input"),
-                 dnums.input_feature_dimension(), vect_size),
-      SplitAtDim(Parameter(&b, 1, conv->operand(1)->shape(), "filter"),
-                 dnums.kernel_input_feature_dimension(), vect_size),
+                 dnums->input_feature_dimension(), vect_size),
+      SplitAtDim(filter, dnums->kernel_input_feature_dimension(), vect_size),
   };
   if (conv->operand_count() > 2) {
     // Bias, if present.  This is passed through unmodified.
@@ -501,7 +530,7 @@ static StatusOr<bool> TryVectorizeConv(
     // Handle side input, which has same shape as the input.
     new_operands.push_back(
         SplitAtDim(Parameter(&b, 3, conv->operand(3)->shape(), "side_input"),
-                   dnums.input_feature_dimension(), vect_size));
+                   dnums->input_feature_dimension(), vect_size));
   }
   if (conv->operand_count() > 4) {
     return InvalidArgument(
@@ -514,16 +543,20 @@ static StatusOr<bool> TryVectorizeConv(
   //
   // TODO(jlebar): Remove this guard once JAX no longer supports cudnn 8.3.
   const auto& debug_options = conv->GetModule()->config().debug_options();
-  if (input_shape.element_type() == xla::S8 && vect_size == 32 &&
+  bool use_reordering =
+      input_shape.element_type() == xla::S8 && vect_size == 32 &&
       debug_options.xla_gpu_enable_cudnn_int8x32_convolution_reordering() &&
-      cudnn_version >= se::dnn::VersionInfo{8, 3, 0}) {
+      cudnn_version >= se::dnn::VersionInfo{8, 3, 0};
+  if (use_reordering) {
+    new_operands[1] = filter;
     TF_RETURN_IF_ERROR(ReorderInt8NchwVect(conv, new_operands.data()));
+    dnums = &conv->convolution_dimension_numbers();
   }
 
   // The custom-call returns a tuple (new_output_shape, u8[0]), where the second
   // value in the tuple represents the convolution's scratch memory.
   Shape new_output_shape = SplitShapeAtDim(
-      output_shape, dnums.output_feature_dimension(), vect_size);
+      output_shape, dnums->output_feature_dimension(), vect_size);
   XlaOp new_conv = CustomCallWithConvDnums(
       &b, conv->custom_call_target(), new_operands,
       ShapeUtil::MakeTupleShape(
@@ -532,15 +565,15 @@ static StatusOr<bool> TryVectorizeConv(
       /*opaque=*/conv->raw_backend_config_string(), /*has_side_effect=*/false,
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
       /*window=*/conv->window(),
-      /*dnums=*/VectorizeDnums(dnums));
+      /*dnums=*/VectorizeDnums(*dnums, use_reordering));
 
   XlaOp new_conv_result = GetTupleElement(new_conv, 0);
   XlaOp new_conv_scratch = GetTupleElement(new_conv, 1);
 
   // Reshape back to the original shape.
-  XlaOp conv_result_collapsed = Collapse(
-      new_conv_result,
-      {dnums.output_feature_dimension(), dnums.output_feature_dimension() + 1});
+  XlaOp conv_result_collapsed =
+      Collapse(new_conv_result, {dnums->output_feature_dimension(),
+                                 dnums->output_feature_dimension() + 1});
 
   TF_ASSIGN_OR_RETURN(
       HloComputation * new_conv_comp,

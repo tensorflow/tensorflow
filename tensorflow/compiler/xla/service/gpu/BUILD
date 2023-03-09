@@ -1620,7 +1620,7 @@ cc_library(
     deps = [
         ":cublas_cudnn",
         "//tensorflow/compiler/xla:comparison_util",
-        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
@@ -1712,6 +1712,7 @@ xla_cc_test(
     name = "cudnn_vectorize_convolutions_test",
     srcs = ["cudnn_vectorize_convolutions_test.cc"],
     deps = [
+        ":backend_configs_cc",
         ":cublas_cudnn",
         ":cudnn_vectorize_convolutions",
         "//tensorflow/compiler/xla:status_macros",
@@ -1731,6 +1732,7 @@ cc_library(
     srcs = ["cudnn_simplify_padding.cc"],
     hdrs = ["cudnn_simplify_padding.h"],
     deps = [
+        ":backend_configs_cc",
         ":cublas_cudnn",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
