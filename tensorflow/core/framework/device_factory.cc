@@ -245,9 +245,12 @@ Status DeviceFactory::AddDevices(
     }
   }
 
+  DeviceFactory *stream_cpu_factory = nullptr, *stream_gpu_factory = nullptr;
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   // Then Stream Devices
-  auto stream_gpu_factory = GetFactory("STREAM_GPU");
-  auto stream_cpu_factory = GetFactory("STREAM_CPU");
+  stream_gpu_factory = GetFactory("STREAM_GPU");
+  stream_cpu_factory = GetFactory("STREAM_CPU");
   if (!stream_gpu_factory) {
     return errors::NotFound(
         "STREAM_GPU Factory not registered. Did you link in "
@@ -266,6 +269,7 @@ Status DeviceFactory::AddDevices(
       LOG(INFO) << "No STREAM_CPU devices are available in this process";
     }
   }
+#endif
 
   auto cpu_factory = GetFactory("CPU");
   // Then the rest (including GPU).
