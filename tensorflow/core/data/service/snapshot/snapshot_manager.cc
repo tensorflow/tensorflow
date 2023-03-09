@@ -53,7 +53,7 @@ StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
 
 Status SnapshotManager::Start(const SnapshotRequest& request) {
   if (env_->FileExists(request.path()).ok()) {
-    return InvalidArgument("Distributed tf.data snapshot at " + request.path(),
+    return InvalidArgument("Distributed tf.data snapshot at ", request.path(),
                            " already exists.");
   }
   TF_RETURN_IF_ERROR(CreateSplitProviders(request.dataset(), split_providers_));
