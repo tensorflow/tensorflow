@@ -272,6 +272,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:execute",
+        "//tensorflow/security/fuzzing/py:annotation_types",
         "//tensorflow/tools/docs:doc_controls",
     ],
 )
@@ -2014,6 +2015,17 @@ tf_py_test(
         ":framework",
         ":test_lib",
         ":test_namespace_ops",
+    ],
+)
+
+tf_py_test(
+    name = "python_op_gen_annotation_test",
+    size = "small",
+    srcs = ["python_op_gen_annotation_test.py"],
+    main = "python_op_gen_annotation_test.py",
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/security/fuzzing/py:annotation_types",
     ],
 )
 

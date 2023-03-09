@@ -236,7 +236,8 @@ int main(int argc, char* argv[]) {
       tsl::str_util::Split(api_def_dirs_raw, ",", tsl::str_util::SkipEmpty());
 
   // Add op name here to generate type annotations for it
-  const std::unordered_set<std::string> type_annotate_ops{};
+  const std::unordered_set<std::string> type_annotate_ops{
+      "FusedBatchNorm", "Add", "DynamicStitch"};
 
   TF_CHECK_OK(tensorflow::PrintAllPythonOps(
       api_def_dirs, source_file_list, out_path, op_reg_offsets, op_allowlist,
