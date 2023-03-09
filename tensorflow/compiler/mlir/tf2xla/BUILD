@@ -94,6 +94,10 @@ tf_cc_test(
     srcs = ["api/v0/compile_mlir_util_test.cc"],
     deps = [
         ":compile_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/core:framework",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
@@ -284,6 +288,26 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "verify_tfxla_legalization_test",
+    srcs = ["transforms/verify_tfxla_legalization_test.cc"],
+    deps = [
+        ":legalize_tf",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
 cc_library(
     name = "xla_legalize_tf",
     srcs = [
@@ -327,6 +351,7 @@ cc_library(
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:attribute_importer",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:type_to_shape",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/quantization:uniform_quant_ops_params",
         "@com_google_absl//absl/strings",
