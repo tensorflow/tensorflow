@@ -402,7 +402,7 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
 }
 
 StatusOr<se::blas::ComputationType> GetBlasComputationType(
-    PrimitiveType dtype, int64_t compute_precision, PrimitiveType lhs_dtype) {
+    PrimitiveType lhs_dtype, PrimitiveType dtype, int64_t compute_precision) {
   switch (dtype) {
     case F8E5M2:    // fall-through
     case F8E4M3FN:  // fall-through
@@ -512,9 +512,11 @@ Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
                            se::blas::ComputePrecision compute_precision,
                            se::blas::ProfileResult* profile_result) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
+  PrimitiveType lhs_type = primitive_util::NativeToPrimitiveType<Input>();
   PrimitiveType output_type = primitive_util::NativeToPrimitiveType<Output>();
-  TF_ASSIGN_OR_RETURN(se::blas::ComputationType computation_type,
-                      GetBlasComputationType(output_type, compute_precision));
+  TF_ASSIGN_OR_RETURN(
+      se::blas::ComputationType computation_type,
+      GetBlasComputationType(lhs_type, output_type, compute_precision));
   se::DeviceMemory<Output> output_data(output.data);
 
   if (batch_size != 1) {
@@ -820,8 +822,8 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
                       AsBlasDataType(output_layout.dtype));
   TF_ASSIGN_OR_RETURN(
       se::blas::ComputationType computation_type,
-      GetBlasComputationType(output_layout.dtype, config.compute_precision,
-                             lhs_layout.dtype));  
+      GetBlasComputationType(lhs_layout.dtype, output_layout.dtype,
+                             config.compute_precision));
 
   TF_ASSIGN_OR_RETURN(
       se::cuda::BlasLt::MatmulDesc op_desc,
