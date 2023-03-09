@@ -402,8 +402,9 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
 }
 
 StatusOr<se::blas::ComputationType> GetBlasComputationType(
-    PrimitiveType lhs_dtype, PrimitiveType dtype, int64_t compute_precision) {
-  switch (dtype) {
+    PrimitiveType lhs_dtype, PrimitiveType output_dtype,
+    int64_t compute_precision) {
+  switch (output_dtype) {
     case F8E5M2:    // fall-through
     case F8E4M3FN:  // fall-through
     case F16:       // fall-through
