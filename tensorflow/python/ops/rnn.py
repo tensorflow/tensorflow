@@ -29,6 +29,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import while_loop
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
@@ -951,7 +952,7 @@ def _dynamic_rnn_loop(cell,
     # Using max_sequence_length isn't currently supported in the Eager branch.
     loop_bound = time_steps
 
-  _, output_final_ta, final_state = control_flow_ops.while_loop(
+  _, output_final_ta, final_state = while_loop.while_loop(
       cond=lambda time, *_: time < loop_bound,
       body=_time_step,
       loop_vars=(time, output_ta, state),
@@ -1289,7 +1290,7 @@ def raw_rnn(cell,
       return (next_time, elements_finished, next_input, emit_ta, next_state,
               loop_state)
 
-    returned = control_flow_ops.while_loop(
+    returned = while_loop.while_loop(
         condition,
         body,
         loop_vars=[
