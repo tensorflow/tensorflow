@@ -299,6 +299,10 @@ PyArray PyArrayResultHandler::Call(
                  committed_, skip_checks_);
 }
 
+PyArray PyArrayResultHandler::Call(PyArray py_array) const {
+  return Call(py_array.py_client(), tsl::FormRef(py_array.ifrt_array()));
+}
+
 PyArray::PyArray(py::object aval, bool weak_type, py::dtype dtype,
                  std::vector<int64_t> shape, py::object sharding,
                  std::shared_ptr<PyClient> py_client,
@@ -713,15 +717,16 @@ Status PyArray::RegisterTypes(py::module& m) {
           PjRtClient::HostBufferSemantics::kZeroCopy);
 
   py::class_<PyArrayResultHandler>(m, "ResultHandler")
+      .def("__call__", [](const PyArrayResultHandler& self,
+                          PyArray arg) { return self.Call(arg); })
       .def("__call__",
            [](const PyArrayResultHandler& self,
-              absl::Span<const PyBuffer::object> py_arrays) {
+              std::vector<PyBuffer::object> py_arrays) {
              return self.Call(py_arrays);
            })
-      .def("__call__", [](const PyArrayResultHandler& self,
-                          absl::Span<const PyArray> py_arrays) {
-        return self.Call(py_arrays);
-      });
+      .def("__call__",
+           [](const PyArrayResultHandler& self,
+              std::vector<PyArray> py_arrays) { return self.Call(py_arrays); });
 
   return OkStatus();
 }

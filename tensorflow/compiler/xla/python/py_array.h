@@ -229,6 +229,7 @@ class PyArrayResultHandler {
 
   PyArray Call(absl::Span<const PyBuffer::object> py_buffers) const;
   PyArray Call(absl::Span<const PyArray> py_arrays) const;
+  PyArray Call(PyArray py_array) const;
 
   PyArray Call(std::shared_ptr<PyClient> py_client,
                tsl::RCReference<ifrt::Array> ifrt_array) const;
