@@ -105,6 +105,11 @@ class Status {
   Status(absl::StatusCode code, absl::string_view msg,
          SourceLocation loc = SourceLocation::current());
   // Deprecated constructor using the Tensorflow protobuf enum error code.
+#ifndef SWIG
+  ABSL_DEPRECATED(
+      "Use `Status(absl::StatusCode, ...) instead of Status(tsl::errors::Code, "
+      "...).")
+#endif
   Status(tsl::errors::Code code, absl::string_view msg,
          SourceLocation loc = SourceLocation::current());
 
