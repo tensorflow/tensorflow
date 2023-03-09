@@ -1380,7 +1380,7 @@ StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
     // nodes. This should just be increasing from 0 to n where n
     // is the total number of arguments. Note that this definition to
     // the `index` attribute is different from the definition we set in
-    // PrepareGraphForMLIR.
+    // PrepareGraphForMlir.
     // This attribute is needed for each arg node when converting a Graph to
     // a FunctionDef.
     if (n->IsArg()) {
@@ -1547,8 +1547,21 @@ DTensorDevice::DTensorOperationToModule(
           device_set, doperation.is_func(), doperation.default_mesh, *flib_def,
           *result.graph, result.doperation_cache_key));
 
+  tsl::core::WeakPtr<ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>>
+      manager{module_manager_.get()};
+
   cached_mlir_module = module_manager_->AddCachedExecutable(
       cache_key, mlir_module_ref.release());
+
+  tensorflow::unwrap(context)
+      ->AddRemoveFunctionNotifier(doperation.name,
+                                  [manager, key = cache_key]() {
+                                    // Removes from the cache.
+                                    auto manager_ref = manager.GetNewRef();
+                                    if (!manager_ref) return;
+                                    manager_ref->Remove(key);
+                                  })
+      .IgnoreError();
   result.module = **cached_mlir_module;
   return result;
 }
@@ -1641,8 +1654,55 @@ void DTensorDevice::ModuleToExecutionFunctions(
     }
   }
 
+  tsl::core::WeakPtr<ExecutableManager<ExecutionFunctions>> manager{
+      function_manager_.get()};
+  std::vector<std::string> translated_names;
+  translated_names.reserve(functions.function_list.size());
+  for (TranslatedFunction& function : functions.function_list) {
+    translated_names.push_back(function.translated_function_name);
+  }
+  std::vector<std::string> func_names;
+  for (auto function : lowering_context.module->getOps<mlir::func::FuncOp>()) {
+    func_names.push_back(function.getName().str());
+  }
+  /*
+  std::vector<std::string> names;
+  names.reserve(functions.function_list.size());
+  for (TranslatedFunction& function : functions.function_list) {
+    names.push_back(function.function_name);
+  } */
+
   *execution_functions = function_manager_->AddCachedExecutable(
       lowering_context.doperation_cache_key, std::move(functions));
+
+  tensorflow::unwrap(context)
+      ->AddRemoveFunctionNotifier(
+          doperation.name,
+          [context, manager, key = lowering_context.doperation_cache_key,
+           func_names, translated_names]() {
+            // Removes the cache.
+            auto manager_ref = manager.GetNewRef();
+            if (manager_ref) {
+              manager_ref->Remove(key);
+            }
+
+            // Do no purge under TFRT, TFRT refers to these defs even after
+            // the top level function is removed from Python.
+            if (tensorflow::unwrap(context)->UsesTFRT()) return;
+
+            // Translated functions are added to the eager context.
+            for (const auto& name : translated_names) {
+              tensorflow::unwrap(context)->RemoveFunction(name).IgnoreError();
+            }
+            // Untranslated functions are only added to the
+            // FunctionLibraryDefinition.
+            FunctionLibraryDefinition* flib_def =
+                tensorflow::unwrap(context)->FuncLibDef();
+            for (const auto& name : func_names) {
+              flib_def->RemoveFunction(name).IgnoreError();
+            }
+          })
+      .IgnoreError();
 }
 
 void DTensorDevice::ExecuteFunctionAndWait(

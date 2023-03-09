@@ -1031,6 +1031,19 @@ std::vector<string> EagerContext::ListFunctionNames() {
   return func_lib_def_.ListFunctionNames();
 }
 
+Status EagerContext::AddRemoveFunctionNotifier(const string& func,
+                                               std::function<void()> notifier) {
+  mutex_lock l(remove_function_notifiers_mu_);
+  auto iter = remove_function_notifiers_.find(func);
+  if (iter != remove_function_notifiers_.end()) {
+    iter->second.push_back(notifier);
+  } else {
+    std::vector<std::function<void()>> notifiers = {notifier};
+    remove_function_notifiers_.insert({func, notifiers});
+  }
+  return OkStatus();
+}
+
 tensorflow::ImmediateExecutionContext::CacheStats
 EagerContext::GetCacheStats() {
   CacheStats stats;
@@ -1051,6 +1064,7 @@ EagerContext::GetCacheStats() {
 
 Status EagerContext::RemoveFunction(const string& func) {
   // TODO(mdan): The context owns these functions. Why check refcount then?
+  std::vector<std::function<void()>> notifiers;
   bool is_last_ref = false;
   {
     mutex_lock l(cache_mu_);
@@ -1069,11 +1083,21 @@ Status EagerContext::RemoveFunction(const string& func) {
     registered_function->Unref();
     if (is_last_ref) {
       TF_RETURN_IF_ERROR(func_lib_def_.RemoveFunction(func));
+
+      mutex_lock l(remove_function_notifiers_mu_);
+      auto iter = remove_function_notifiers_.find(func);
+      if (iter != remove_function_notifiers_.end()) {
+        notifiers = std::move(iter->second);
+      }
+      remove_function_notifiers_.erase(func);
     }
   }
   // MaybeRemoveFunctionRemotely contains rpc calls. Including it to mutex lock
   // will cause error.
   if (is_last_ref) {
+    for (const auto& notifier : notifiers) {
+      notifier();
+    }
     return MaybeRemoveFunctionRemotely(func);
   }
   return OkStatus();

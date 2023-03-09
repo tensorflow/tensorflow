@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -1110,6 +1111,11 @@ tensorflow::Status ContextInterface::RemoveFunction(const std::string& func) {
   // finished before removing it.
   function_cache_.RemoveFunction(func);
   return GetEagerContext()->RemoveFunction(func);
+}
+
+tensorflow::Status ContextInterface::AddRemoveFunctionNotifier(
+    const std::string& func, std::function<void()> notifier) {
+  return GetEagerContext()->AddRemoveFunctionNotifier(func, notifier);
 }
 
 const tensorflow::FunctionDef* ContextInterface::FindFunctionDef(

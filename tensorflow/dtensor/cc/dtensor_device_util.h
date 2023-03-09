@@ -794,6 +794,15 @@ const T* ExecutableManager<T>::AddCachedExecutable(
 }
 
 template <typename T>
+void ExecutableManager<T>::Remove(tensorflow::Fprint128 cache_key) {
+  mutex_lock lock(mu_);
+  auto iter = function_cache_.find(cache_key);
+  if (iter != function_cache_.end()) {
+    function_cache_.erase(iter);
+  }
+}
+
+template <typename T>
 StatusOr<bool> ExecutableManager<T>::ShouldFoldInput(
     const DTensorOperation& doperation, const int input_index) const {
   // For eager ops, assume the inputs are constant foldable.

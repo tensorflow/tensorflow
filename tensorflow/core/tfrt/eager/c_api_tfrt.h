@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_EAGER_C_API_TFRT_H_
 #define TENSORFLOW_CORE_TFRT_EAGER_C_API_TFRT_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -164,6 +165,8 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
   std::vector<std::string> ListFunctionNames() override;
   tensorflow::ImmediateExecutionContext::CacheStats GetCacheStats() override;
   tensorflow::Status RemoveFunction(const std::string& func) override;
+  tensorflow::Status AddRemoveFunctionNotifier(
+      const std::string& func, std::function<void()> notifier) override;
   const tensorflow::FunctionDef* FindFunctionDef(
       const std::string& name) const override;
 
