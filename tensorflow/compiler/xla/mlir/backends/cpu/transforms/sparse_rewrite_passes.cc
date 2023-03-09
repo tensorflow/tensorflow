@@ -38,6 +38,7 @@ namespace {
 
 using namespace mlir;  // NOLINT
 
+// TODO(ajcbik): rename the pass to CustomCallToSparse or so?
 class SparseCustomCallToPackPass
     : public impl::SparseCustomCallToPackPassBase<SparseCustomCallToPackPass> {
   void runOnOperation() override;
@@ -52,6 +53,7 @@ class SparseCustomCallToPackRewriter
                                 PatternRewriter& rewriter) const override {
     const StringRef sparse_pack_call_name = "sparse_tensor_pack";
     const StringRef sparse_unpack_call_name = "sparse_tensor_unpack";
+    const StringRef sparse_transpose_call_name = "sparse_tensor_transpose";
 
     if (op.getCallTargetName().equals(sparse_pack_call_name)) {
       assert(op.getInputs().size() == 2 && "Need two arrays (data/indices)");
@@ -85,6 +87,26 @@ class SparseCustomCallToPackRewriter
                                                      tensor_nnz, ValueRange{});
       unpack_ret_v.back() = tensor_nnz;
       rewriter.replaceOp(op, unpack_ret_v);
+      return success();
+    } else if (op.getCallTargetName().equals(sparse_transpose_call_name)) {
+      assert(op.getInputs().size() >= 2 && "Need argument and permutation");
+      assert(op.getResults().size() == 1 && "Need one output tensor");
+      // Rebuild the permutation from the parameters.
+      unsigned sz = op.getInputs().size() - 1;
+      llvm::SmallVector<int64_t> permutation_array(sz);
+      for (int64_t i = 0; i < sz; i++) {
+        auto input = op.getInputs()[i + 1].getDefiningOp<mhlo::ConstantOp>();
+        auto attr = input.getValue().cast<DenseElementsAttr>();
+        permutation_array[i] = attr.getValues<uint64_t>()[0];
+      }
+      DenseIntElementsAttr permutation = DenseIntElementsAttr::get(
+          RankedTensorType::get(permutation_array.size(),
+                                rewriter.getI64Type()),
+          permutation_array);
+      // Reconstruct the transpose operation.
+      Value ret_sp_tensor = op.getResults()[0];
+      rewriter.replaceOpWithNewOp<mhlo::TransposeOp>(
+          op, ret_sp_tensor.getType(), op.getInputs()[0], permutation);
       return success();
     }
     // Returns failure on unmatched call target.

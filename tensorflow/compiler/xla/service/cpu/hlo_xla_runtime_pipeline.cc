@@ -76,7 +76,6 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions() {
 }
 
 void AddSparsificationPasses(mlir::OpPassManager& pm) {
-  pm.addNestedPass<FuncOp>(createSparseCustomCallToPackUnpackOpPass());
   pm.addNestedPass<FuncOp>(mlir::createLinalgGeneralizationPass());
   pm.addNestedPass<FuncOp>(mlir::gml_st::createRewriteFromElementsOpPass());
   pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
@@ -120,6 +119,7 @@ static Status CreateHloXlaPipeline(
 
   // Some early sparse rewriting rules.
   if (options.sparse_bufferization) {
+    pm.addNestedPass<FuncOp>(createSparseCustomCallToPackUnpackOpPass());
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::mhlo::createSparseRewritingPass());
   }
