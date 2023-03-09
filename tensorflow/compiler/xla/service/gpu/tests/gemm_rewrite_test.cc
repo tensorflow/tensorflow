@@ -4186,6 +4186,25 @@ class CublasLtF8GemmRewriteTest : public CublasLtGemmRewriteTest {
     debug_options.set_xla_gpu_enable_xla_runtime_executable(false);
     return debug_options;
   }
+
+ protected:
+  void CheckFp8IfOnHopper(absl::string_view hlo_text) {
+    if (!GetCudaComputeCapability().IsAtLeast(
+            se::CudaComputeCapability::HOPPER)) {
+      return;
+    }
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
+
+    // Most FP8 tests directly create a GemmRewriter and check the output.
+    // Here, also run the entire HLO pass pipeline to ensure no other passes
+    // interfere with GemmRewriter's pattern matching.
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                            GetOptimizedModule(hlo_text));
+    const HloInstruction* call =
+        FindInstruction(optimized_module.get(), HloOpcode::kCustomCall);
+    ASSERT_NE(call, nullptr);
+    EXPECT_EQ(call->custom_call_target(), "__cublas$lt$matmul$f8");
+  }
 };
 
 TEST_F(CublasLtF8GemmRewriteTest, DoNotRewriteToF8OnPreHopper) {
@@ -4212,11 +4231,6 @@ TEST_F(CublasLtF8GemmRewriteTest, DoNotRewriteToF8OnPreHopper) {
 }
 
 TEST_F(CublasLtF8GemmRewriteTest, UnscaledABUnscaledDF8) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -4228,9 +4242,11 @@ TEST_F(CublasLtF8GemmRewriteTest, UnscaledABUnscaledDF8) {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
 ; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16]) -> f8e4m3fn[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
@@ -4259,11 +4275,6 @@ TEST_F(CublasLtF8GemmRewriteTest, UnscaledABUnscaledDF8) {
 }
 
 TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -4283,9 +4294,11 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8) {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
 ; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
@@ -4316,11 +4329,6 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8) {
 }
 
 TEST_F(CublasLtF8GemmRewriteTest, BitcastScaledABUnscaledDF8) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -4343,7 +4351,8 @@ TEST_F(CublasLtF8GemmRewriteTest, BitcastScaledABUnscaledDF8) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(GetCudaComputeCapability());
+  GemmRewriter pass(
+      se::CudaComputeCapability{se::CudaComputeCapability::HOPPER, 0});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -4354,11 +4363,6 @@ TEST_F(CublasLtF8GemmRewriteTest, BitcastScaledABUnscaledDF8) {
 }
 
 TEST_F(CublasLtF8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -4378,9 +4382,11 @@ TEST_F(CublasLtF8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
 ; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[10,16,32], y: f8e4m3fn[10,32,16], x_scale: f32[], y_scale: f32[]) -> f32[10,16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[10,16,32]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[10,32,16]{2,1,0} parameter(1)
@@ -4411,11 +4417,6 @@ TEST_F(CublasLtF8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
 }
 
 TEST_F(CublasLtF8GemmRewriteTest, ScaledABAlphaDF8) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -4438,9 +4439,11 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABAlphaDF8) {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
 
 ; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
@@ -4472,11 +4475,6 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABAlphaDF8) {
 }
 
 TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -4499,9 +4497,11 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
 
 ; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
@@ -4533,11 +4533,6 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
 }
 
 TEST_F(CublasLtF8GemmRewriteTest, InvScaledABUnscaledDF8) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -4557,19 +4552,16 @@ TEST_F(CublasLtF8GemmRewriteTest, InvScaledABUnscaledDF8) {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{2e-2, 0.}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
       )");
 }
 
 TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
-  }
 #if CUDA_VERSION < 12000
   GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
 #endif
@@ -4594,9 +4586,11 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
 
 ; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], b: f32[16,16], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
@@ -4627,11 +4621,6 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
 }
 
 TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDF8) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -4660,11 +4649,13 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDF8) {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{2e-3, 0.}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
 ; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[], z_scale: f32[]) -> f8e4m3fn[16,16] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
+; CHECK:         [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
 ; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
@@ -4672,8 +4663,9 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDF8) {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
-; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C1]], [[P4]])
+; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C2]], [[P4]])
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[P4_INV]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
@@ -4695,11 +4687,6 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDF8) {
 }
 
 TEST_F(CublasLtF8GemmRewriteTest, ScaledABInvScaledDF8) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -4728,9 +4715,11 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABInvScaledDF8) {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{2e-3, 0.}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
 
 ; CHECK-NOT:     divide
 
@@ -4740,11 +4729,6 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABInvScaledDF8) {
 }
 
 TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
-  }
   const char* hlo_text = R"(
     HloModule test
     ENTRY test {
@@ -4774,11 +4758,13 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
           }
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{2e-3, 0.}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
 ; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[], z_scale: f32[]) -> f8e4m3fn[16,16] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
+; CHECK:         [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
 ; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
@@ -4786,8 +4772,9 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
-; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C1]], [[P4]])
+; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C2]], [[P4]])
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[P4_INV]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
@@ -4809,11 +4796,6 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
 }
 
 TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
-  }
 #if CUDA_VERSION < 12000
   GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
 #endif
@@ -4847,9 +4829,11 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{5e-1, 0.}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
 
 ; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], b: f16[16,16], x_scale: f16[], y_scale: f16[], z_scale: f16[]) -> f8e4m3fn[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
@@ -4866,11 +4850,11 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
 ; CHECK-DAG:         \"alpha_real\":1
 ; CHECK-DAG:         \"alpha_imag\":0
 ; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{ 
+; CHECK-DAG:         \"dot_dimension_numbers\":{
 ; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
 ; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
 ; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[] 
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         \"precision_config\":{
 ; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
@@ -4881,11 +4865,6 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
 }
 
 TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -4924,9 +4903,11 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{2e-3, 0.}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
 ; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[], z_scale: f32[]) -> (f8e4m3fn[16,16], f32[]) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
@@ -4936,9 +4917,10 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
-; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C1]], [[P4]])
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = (f8e4m3fn[16,16]{1,0}, f32[]) custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[P4_INV]]),
+; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C2]], [[P4]])
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = (f8e4m3fn[16,16]{1,0}, f32[]) custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[P4_INV]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -4959,12 +4941,6 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
 }
 
 TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
-  }
-
   std::array<std::array<absl::string_view, 7>, 32> combinations;
   int i = 0;
 
@@ -5019,10 +4995,12 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
     replacements["<<Blayout>>"] = std::get<5>(combination);
     replacements["<<Olayout>>"] = std::get<6>(combination);
     const auto hlo_text = absl::StrReplaceAll(hlo_template, replacements);
-    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+    CheckFp8IfOnHopper(hlo_text);
 
-    MatchOptimizedHlo(hlo_text,
-                      R"(
+    RunAndFilecheckHloRewrite(hlo_text,
+                              GemmRewriter(se::CudaComputeCapability{
+                                  se::CudaComputeCapability::HOPPER, 0}),
+                              R"(
     ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
           )");
   }
@@ -5032,22 +5010,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ParameterizedBatched) {
   // TODO(wenscarl): For batched matmaul, not all combinations of A, B and
   // output layouts get pattern matched successfully to FP8 custom call. Only
   // a handful of cases are tested here.
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
-  }
-
-  auto assemble_layout = [](std::vector<int>& layout_v) {
-    return "{" +
-           std::accumulate(++layout_v.begin(), layout_v.end(),
-                           std::to_string(layout_v[0]),
-                           [](const std::string& a, int b) {
-                             return a + "," + std::to_string(b);
-                           }) +
-           "}";
-  };
-  std::array<std::array<std::string, 7>, 96> combinations;
+  std::array<std::array<std::string, 7>, 32> combinations;
   std::string lcd, rcd, a_shape, b_shape, a_layout, b_layout, o_layout;
   int i = 0;
   for (bool o_is_col : {false, true}) {
@@ -5057,16 +5020,11 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ParameterizedBatched) {
         rcd = rhs_contracting_dim == 2 ? "{2}" : "{1}";
         a_shape = lhs_contracting_dim == 2 ? "[2,64,32]" : "[2,32,64]";
         b_shape = rhs_contracting_dim == 1 ? "[2,32,16]" : "[2,16,32]";
+        o_layout = o_is_col ? "{2, 0, 1}" : "{2, 1, 0}";
         for (std::string a_layout : {"{2,1,0}", "{1,2,0}"}) {
           for (std::string b_layout : {"{2,1,0}", "{1,2,0}"}) {
-            for (int o_batch_dim_pos : {0, 1, 2}) {
-              std::vector<int> o_layout_v =
-                  o_is_col ? std::vector<int>{0, 1} : std::vector<int>{1, 0};
-              o_layout_v.insert(o_layout_v.begin() + o_batch_dim_pos, 2);
-              o_layout = assemble_layout(o_layout_v);
-              combinations[i++] = std::array{
-                  lcd, rcd, a_shape, b_shape, a_layout, b_layout, o_layout};
-            }
+            combinations[i++] = std::array{lcd,      rcd,      a_shape, b_shape,
+                                           a_layout, b_layout, o_layout};
           }
         }
       }
@@ -5081,7 +5039,7 @@ ENTRY f {
   x_scale_broadcast = f32<<Ashape>><<Alayout>> broadcast(x_scale), dimensions={}
   x_q_convert = f32<<Ashape>><<Alayout>> convert(x_q)
   x_qdq = f32<<Ashape>><<Alayout>> multiply(x_q_convert, x_scale_broadcast)
-  
+
   y_q = f8e4m3fn<<Bshape>><<Blayout>> parameter(1)
   y_scale = f32[] parameter(3)
   y_scale_broadcast = f32<<Bshape>><<Blayout>> broadcast(y_scale), dimensions={}
@@ -5102,21 +5060,18 @@ ENTRY f {
     replacements["<<Olayout>>"] = std::get<6>(combination);
 
     const auto hlo_text = absl::StrReplaceAll(hlo_template, replacements);
-    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+    CheckFp8IfOnHopper(hlo_text);
 
-    MatchOptimizedHlo(hlo_text,
-                      R"(
+    RunAndFilecheckHloRewrite(hlo_text,
+                              GemmRewriter(se::CudaComputeCapability{
+                                  se::CudaComputeCapability::HOPPER, 0}),
+                              R"(
     ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
           )");
   }
 }
 
 TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -5138,9 +5093,11 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
   bool tf32_state_ = tsl::tensor_float_32_execution_enabled();
   tsl::enable_tensor_float_32_execution(true);
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
     ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
           )");
   tsl::enable_tensor_float_32_execution(tf32_state_);

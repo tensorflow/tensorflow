@@ -665,9 +665,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           inv_scales[i] = instr->AddInstruction(HloInstruction::CreateBinary(
               scales[i]->shape(), HloOpcode::kDivide, one, scales[i]));
         }
-        scales_f32[i] = instr->AddInstruction(HloInstruction::CreateConvert(
-            ShapeUtil::MakeScalarShape(F32),
-            mult_scale[i] ? scales[i] : inv_scales[i]));
+        scales_f32[i] = mult_scale[i] ? scales[i] : inv_scales[i];
+        if (scales_f32[i]->shape().element_type() != F32) {
+          scales_f32[i] = instr->AddInstruction(HloInstruction::CreateConvert(
+              ShapeUtil::MakeScalarShape(F32), scales_f32[i]));
+        }
       } else {
         scales_f32[i] = one;
       }
@@ -954,11 +956,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       d_scale = instr->AddInstruction(HloInstruction::CreateBinary(
           d_scale->shape(), HloOpcode::kDivide, one, d_scale));
     }
-    HloInstruction *d_scale_f32 =
-        instr->AddInstruction(HloInstruction::CreateConvert(
-            ShapeUtil::MakeScalarShape(F32), d_scale));
-
-    TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(6, d_scale_f32));
+    if (d_scale->shape().element_type() != F32) {
+      d_scale = instr->AddInstruction(HloInstruction::CreateConvert(
+          ShapeUtil::MakeScalarShape(F32), d_scale));
+    }
+    TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(6, d_scale));
 
     // If present, elide the calculation of the maximum of the absolute values
     // of the result of the GEMM.
