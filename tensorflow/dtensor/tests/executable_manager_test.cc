@@ -33,7 +33,7 @@ using ::tsl::testing::StatusIs;
 class ExecutableManagerTest : public ::testing::Test {
  protected:
   DTensorOperation CreateTestDTensorOperation() {
-    return DTensorOperation{"test_fn", nullptr, empty_mesh_};
+    return DTensorOperation{"test_fn", nullptr, empty_mesh_, {}};
   }
 
   Mesh empty_mesh_ = Mesh::Empty();

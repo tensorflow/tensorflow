@@ -244,6 +244,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   const FunctionDef* GetFunctionDef(const string& function_name);
 
   std::vector<string> ListFunctionNames() override;
+  tensorflow::ImmediateExecutionContext::CacheStats GetCacheStats() override;
 
   Status RemoveFunction(const string& func) override;
 

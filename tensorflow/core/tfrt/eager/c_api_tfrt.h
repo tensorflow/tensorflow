@@ -162,6 +162,7 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
       const tensorflow::FunctionDef& fdef,
       const tensorflow::StackTracesMap& stack_traces) override;
   std::vector<std::string> ListFunctionNames() override;
+  tensorflow::ImmediateExecutionContext::CacheStats GetCacheStats() override;
   tensorflow::Status RemoveFunction(const std::string& func) override;
   const tensorflow::FunctionDef* FindFunctionDef(
       const std::string& name) const override;

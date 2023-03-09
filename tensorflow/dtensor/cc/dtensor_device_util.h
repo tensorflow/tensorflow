@@ -92,6 +92,9 @@ struct TranslatedFunction {
   // Maps i-th local output to output index of global graph.
   std::vector<int> output_index_map;
 
+  // Original function name in the graph.
+  std::string function_name;
+  // Translated function name to be called.
   std::string translated_function_name;
   // For resource ops, layouts of resource handles are inferred lazily
   // during SPMD expansion of resource assign ops. In that case,
@@ -130,6 +133,7 @@ struct DTensorOperation {
   // Default mesh is used when Mesh Propagation does not identify a mesh
   // otherwise.
   const Mesh& default_mesh;
+  const StackTracesMap& stack_traces;
   inline bool is_func() const { return function_def != nullptr; }
 };
 
@@ -664,6 +668,8 @@ StatusOr<tensorflow::Fprint128> ExecutableManager<T>::CacheKeyForGraph(
     if (!should_fold_input && inputs[i]->const_value_node() != nullptr) {
       inputs[i]->const_value_node()->reset_const_value();
     }
+    cache_key = FingerprintCat128(
+        cache_key, tensorflow::Fingerprint128(absl::StrFormat("%x", i)));
     cache_key = FingerprintCat128(cache_key, inputs[i]->CacheKey());
   }
   for (int output_index = 0; output_index < output_layouts.size();

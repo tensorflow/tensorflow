@@ -1031,6 +1031,24 @@ std::vector<string> EagerContext::ListFunctionNames() {
   return func_lib_def_.ListFunctionNames();
 }
 
+tensorflow::ImmediateExecutionContext::CacheStats
+EagerContext::GetCacheStats() {
+  CacheStats stats;
+  {
+    mutex_lock l(cache_mu_);
+    stats.kernel_cache_size = kernel_cache_.size();
+    for (const auto& iter : registered_functions_) {
+      stats.func_kernel_cache_entries[iter.first] =
+          iter.second->cached_kernel_keys->size();
+    }
+  }
+  {
+    mutex_lock dl(device_cache_mu_);
+    stats.device_cache_size = device_cache_.size();
+  }
+  return stats;
+}
+
 Status EagerContext::RemoveFunction(const string& func) {
   // TODO(mdan): The context owns these functions. Why check refcount then?
   bool is_last_ref = false;

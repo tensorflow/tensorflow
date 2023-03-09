@@ -1273,7 +1273,19 @@ Status DTensorDevice::UpdateOutputLayoutsWithSameShapePolicy(
 std::unordered_map<std::string, int> DTensorDevice::GetFunctionCacheStats(
     TFE_Context* context, TF_Status* status) const {
   const auto stats = function_manager_->GetStats();
-  return {{"hit", stats.hits}, {"miss", stats.misses}, {"size", stats.size}};
+
+  const auto eager_stats = tensorflow::unwrap(context)->GetCacheStats();
+  std::unordered_map<std::string, int> result{
+      {"hit", stats.hits},
+      {"miss", stats.misses},
+      {"size", stats.size},
+      {"device_cache.size", eager_stats.device_cache_size},
+      {"kernel_cache.size", eager_stats.kernel_cache_size},
+  };
+  for (const auto& iter : eager_stats.func_kernel_cache_entries) {
+    result[absl::StrCat("kernel_cache.", iter.first, ".size")] = iter.second;
+  }
+  return result;
 }
 
 void DTensorDevice::SetIteratorElementLayouts(
@@ -1396,6 +1408,7 @@ StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
 // Adds processed graph to run for each mesh computation in
 // `execution_functions` to function definition library.
 Status AddExecutionFunctionDefsToFunctionDefLibrary(
+    const std::string doperation_name, const StackTracesMap& stack_traces,
     const absl::flat_hash_set<Node*>& control_ret_nodes, TFE_Context* context,
     const Graph& graph, ExecutionFunctions* execution_functions) {
   // Note: We use node name instead of node pointer for comparison because
@@ -1422,7 +1435,9 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
 
     static std::atomic<int64_t> unique_function_number(0);
     function.translated_function_name =
-        absl::StrCat(func.name(), "_", unique_function_number.fetch_add(1));
+        absl::StrCat(doperation_name, "_", func.name(), "_",
+                     unique_function_number.fetch_add(1));
+    function.function_name = func.name();
     auto control_ret_node_names =
         [&control_ret_names, &selected_call_node_name](
             const Node* node) -> std::optional<std::string> {
@@ -1445,7 +1460,9 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
     }
 
     AddDTensorFunctionAttr(to_run);
-    TF_RETURN_IF_ERROR(tensorflow::unwrap(context)->AddFunctionDef(to_run));
+    TF_RETURN_IF_ERROR(
+        tensorflow::unwrap(context)->AddFunctionDefWithStackTraces(
+            to_run, stack_traces));
   }
 
   return OkStatus();
@@ -1495,6 +1512,8 @@ DTensorDevice::DTensorOperationToModule(
   result.doperation_cache_key = cache_key;
 
   if (cached_mlir_module != nullptr) {
+    VLOG(2) << "DTensor cache key lookup found for " << doperation.name
+            << ". DTensor is (re-)using its SPMD transformation.";
     result.module = **cached_mlir_module;
     return result;
   } else if (function_def) {
@@ -1552,6 +1571,8 @@ void DTensorDevice::ModuleToExecutionFunctions(
       lowering_context.doperation_cache_key);
   if (cached_function != nullptr) {
     *execution_functions = cached_function;
+    VLOG(2) << "DTensor cache key lookup found for " << doperation.name
+            << ". DTensor is (re-)using its ExecutionFunctions.";
     return;
   } else {
     if (doperation.is_func()) {
@@ -1608,7 +1629,8 @@ void DTensorDevice::ModuleToExecutionFunctions(
 
   RETURN_C_STATUS_IF_NOT_OK(
       AddExecutionFunctionDefsToFunctionDefLibrary(
-          control_ret_nodes, context, *lowering_context.graph, &functions),
+          doperation.name, doperation.stack_traces, control_ret_nodes, context,
+          *lowering_context.graph, &functions),
       status);
   functions.num_device_ids = 1;
   if (function_def) {
@@ -1774,7 +1796,7 @@ void DTensorDevice::ExecuteRegularOperation(
       epu_fn_ptr = std::make_unique<const TranslatedFunction>(function);
       excluded_fn_names.insert(function.translated_function_name);
     }
-    if (absl::StartsWith(function.translated_function_name, kLoadEmbeddingFn)) {
+    if (absl::StartsWith(function.function_name, kLoadEmbeddingFn)) {
       if (load_embedding_ptr != nullptr) {
         RETURN_STATUS(status, TF_INTERNAL,
                       "There are more than one function defined on EPU mesh.");
@@ -2068,11 +2090,15 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
         "No default mesh has been registered to DTensor. Use dtensor.run_on to "
         "explicit specify a mesh.");
   }
+  FunctionLibraryDefinition* flib_def =
+      tensorflow::unwrap(context)->FuncLibDef();
   DTensorOperation dtensor_operation{
       /*name*/ operation_name,
       /*function_def*/
       tensorflow::unwrap(context)->FindFunctionDef(operation_name),
       /*default_mesh*/ default_mesh_->mesh_config(),
+      /*stack_traces*/
+      flib_def->GetStackTraces(operation_name),
   };
 
   // First handle DTensor-specific virtual operations.
