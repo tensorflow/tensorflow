@@ -90,6 +90,12 @@
     *   `tf.data.Dataset.zip` now supports Python-style zipping, i.e.
         `Dataset.zip(a, b, c)`.
 
+*   `tf.SavedModel`
+
+    *   Introduce class method
+        `tf.saved_model.experimental.Fingerprint.from_proto(proto)`, which can
+        be used to construct a `Fingerprint` object directly from a protobuf.
+
 ## Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>

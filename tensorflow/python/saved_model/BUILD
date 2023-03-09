@@ -426,6 +426,7 @@ py_library(
         "ignore_for_dep=third_party.py.keras.optimizers.optimizer_v2",
     ],
     deps = [
+        ":fingerprinting",
         ":function_deserialization",
         ":load_options",
         ":load_v1_in_v2",
@@ -466,6 +467,7 @@ py_library(
         "//tensorflow/python/trackable:trackable_utils",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/util:tf_export",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -704,6 +706,7 @@ tf_py_test(
     name = "metrics_test",
     srcs = ["metrics_test.py"],
     deps = [
+        ":fingerprinting",
         ":pywrap_saved_model",
         "//tensorflow/python/eager:test",
     ],
@@ -784,6 +787,7 @@ py_strict_library(
     srcs = ["fingerprinting.py"],
     deps = [
         ":pywrap_saved_model",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/util:tf_export",
     ],
 )
