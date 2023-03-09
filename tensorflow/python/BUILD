@@ -2357,11 +2357,15 @@ py_library(
 
 py_library(
     name = "script_ops",
-    srcs = ["ops/script_ops.py"],
+    srcs = [
+        "ops/autograph_ops.py",
+        "ops/script_ops.py",
+    ],
     srcs_version = "PY3",
     deps = [
         ":array_ops",
         ":script_ops_gen",
+        "//tensorflow/python/autograph/operators",
         "//tensorflow/python/eager:backprop_util",
         "//tensorflow/python/eager:tape",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -2596,6 +2600,17 @@ py_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "autograph_ops_test",
+    srcs = ["ops/autograph_ops_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":script_ops",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 

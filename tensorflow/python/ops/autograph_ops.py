@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,26 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Pyfunc creation utilities."""
+"""Autograph specific overrides for objects covered by tensor_util.is_tf_type."""
 
-from collections import namedtuple
-
+from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import script_ops
 
 
-class MatchDType(namedtuple('MatchDType', ('arg_number',))):
-  """Allows matching the dtype of an argument.
-
-  Used in conjunction with function calls. For example, MatchDType(0) will
-  match the DType of the first argument.
-  """
-
-  pass
-
-
-def wrap_py_func(f, return_dtypes, args, kwargs=None, use_dummy_return=False):
+def wrap_py_func(f, args, kwargs=None):
   """Helper that wraps a callable to py_func.
 
   The helper passes tensor arguments through the py_func interface. Non-tensor
@@ -42,24 +31,14 @@ def wrap_py_func(f, return_dtypes, args, kwargs=None, use_dummy_return=False):
 
   Args:
     f: Callable
-    return_dtypes: None, individual of tuple/list of DType or MatchDType, the
-        data type for each of f's return value(s). Set to None if f has no
-        return values or use_dummy_return is True. Use MatchDType to define a
-        dtype identical to that of `i`th argument (argument 0 is the first);
-        an argument must of Tensor type if it is to be used with MatchDType.
     args: Positional arguments for f, as list or tuple.
     kwargs: Keyword arguments for f, as dict with string keys. May be None.
-    use_dummy_return: If True, the function will return a dummy value of 1
-        and discard its actual return value.
+
   Returns:
     The return values of f converted to tensor.
   Raises:
     ValueError: if any of the arguments are incorrect.
   """
-
-  if return_dtypes and use_dummy_return:
-    raise ValueError('if use_dummy_return is True, return_dtypes must be empty')
-
   tensor_args = []
   tensor_args_idx = {}
 
@@ -94,35 +73,42 @@ def wrap_py_func(f, return_dtypes, args, kwargs=None, use_dummy_return=False):
   else:
     kwarg_keys = ()
 
-  # Set up return dtypes.
-  def match_arg_dtype(arg_number):
-    arg = args[arg_number]
-    if not arg_is_tensor[arg_number]:
-      raise ValueError(
-          'argument %d was used with MatchDType and must be a tf.Tensor, but '
-          'was %s instead' % (arg_number, type(arg)))
-    return arg.dtype
-
-  if return_dtypes:
-    if isinstance(return_dtypes, MatchDType):
-      return_dtypes = match_arg_dtype(return_dtypes.arg_number)
-    elif isinstance(return_dtypes, (list, tuple)):
-      return_dtypes = tuple(
-          match_arg_dtype(a.arg_number) if isinstance(a, MatchDType) else a
-          for a in return_dtypes)
-    else:
-      assert isinstance(return_dtypes, dtypes.DType)
-
   def f_wrapper(*tensor_args):
-    f_args = tuple(tensor_args[tensor_args_idx[i]] if arg_is_tensor[i] else a
-                   for i, a in enumerate(args))
+    f_args = tuple(
+        tensor_args[tensor_args_idx[i]] if arg_is_tensor[i] else a
+        for i, a in enumerate(args)
+    )
     f_kwargs = {
         k: tensor_args[tensor_args_idx[k]] if kwarg_is_tensor[k] else kwargs[k]
         for i, k in enumerate(kwarg_keys)
     }
-    retval = f(*f_args, **f_kwargs)
-    return 1 if use_dummy_return else retval
+    f(*f_args, **f_kwargs)
+    return 1
 
-  if use_dummy_return:
-    return_dtypes = dtypes.int32
-  return script_ops.eager_py_func(f_wrapper, tensor_args, return_dtypes)
+  return script_ops.eager_py_func(f_wrapper, tensor_args, dtypes.int32)
+
+
+def _tf_py_func_print(*objects, **kwargs):
+  """Overload of print_ as a py_func implementation."""
+  override_kwargs = {
+      k: v for k, v in kwargs.items() if v is not py_builtins.UNSPECIFIED
+  }
+  if 'flush' not in override_kwargs:
+    # Defaulting to flushing the console in graph mode, which helps reduce
+    # garbled output in IPython.
+    override_kwargs['flush'] = True
+
+  def print_wrapper(*vals, **kwargs):
+    vals = tuple(v.numpy() if tensor_util.is_tf_type(v) else v for v in vals)
+    # TensorFlow doesn't seem to generate Unicode when passing strings to
+    # py_func. This causes the print to add a "b'" wrapper to the output,
+    # which is probably never what you want.
+    vals = tuple(v.decode('utf-8') if isinstance(v, bytes) else v for v in vals)
+    print(*vals, **kwargs)
+
+  return wrap_py_func(print_wrapper, objects, override_kwargs)
+
+
+py_builtins.print_registry.register(
+    tensor_util.tf_type_classes, _tf_py_func_print
+)

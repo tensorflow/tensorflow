@@ -33,7 +33,6 @@ py_library(
         "ag_logging.py",
         "context_managers.py",
         "misc.py",
-        "py_func.py",
         "tensor_list.py",
         "tensors.py",
         "testing.py",
@@ -44,7 +43,6 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:list_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:script_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/autograph/pyct",
     ],
@@ -66,18 +64,6 @@ py_test(
     srcs = ["misc_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    deps = [
-        ":utils",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "py_func_test",
-    srcs = ["py_func_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    tags = ["no_windows"],
     deps = [
         ":utils",
         "//tensorflow/python:client_testlib",
