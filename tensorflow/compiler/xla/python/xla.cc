@@ -530,9 +530,16 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor,
         py::arg("buffer"), py::arg("take_ownership") = true);
-  m.def("dlpack_managed_tensor_to_buffer", DLPackManagedTensorToBuffer,
-        py::arg("dlpack"), py::arg("cpu_backend") = nullptr,
-        py::arg("gpu_backend") = nullptr);
+  m.def(
+      "dlpack_managed_tensor_to_buffer",
+      [](const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,
+         std::shared_ptr<PyClient> gpu_client) {
+        return DLPackManagedTensorToBuffer(tensor, std::move(cpu_client),
+                                           std::move(gpu_client),
+                                           jax::GetEnableJaxArray());
+      },
+      py::arg("dlpack"), py::arg("cpu_backend") = nullptr,
+      py::arg("gpu_backend") = nullptr);
 
   BuildProfilerSubmodule(&m);
   BuildOpsSubmodule(&m);

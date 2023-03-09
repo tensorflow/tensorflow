@@ -101,6 +101,10 @@ class PyArray : public pybind11::object {
           tsl::RCReference<ifrt::Array> ifrt_array,
           bool committed, bool skip_checks = true);
 
+  static PyArray MakeFromSingleDeviceArray(
+      std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
+      tsl::RCReference<ifrt::Array> ifrt_array, bool weak_type, bool committed);
+
   static Status RegisterTypes(pybind11::module& m);
 
   using Storage = PyArray_Storage;

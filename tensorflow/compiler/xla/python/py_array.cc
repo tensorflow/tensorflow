@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
+#include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/util.h"
@@ -266,6 +267,42 @@ void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
 void PyArray::PyInit(py::object self, DisableFastpath) {
   Construct(reinterpret_cast<PyArrayObject*>(self.ptr()),
             PyArray_Storage::DisableFastpath());
+}
+
+PyArray PyArray::MakeFromSingleDeviceArray(
+    std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
+    tsl::RCReference<ifrt::Array> ifrt_array, bool weak_type, bool committed) {
+  if (!llvm::isa<ifrt::SingleDeviceSharding>(ifrt_array->sharding())) {
+    throw XlaRuntimeError(
+        InvalidArgument("Constructing single device jax.Array from non-single "
+                        "device ifrt array."));
+  }
+  static const py::handle* shaped_array = nullptr;
+  if (shaped_array == nullptr) {
+    auto* jax_core = PyImport_ImportModule("jax.core");
+    if (jax_core != nullptr) {
+      shaped_array = new py::handle(
+          py::reinterpret_steal<py::module>(jax_core).attr("ShapedArray"));
+    } else {
+      PyErr_Clear();
+    }
+  }
+  PrimitiveType primitive = ifrt::ToPrimitiveType(ifrt_array->dtype()).value();
+  auto dtype = PrimitiveTypeToDtype(primitive).value();
+  py::object aval;
+  if (shaped_array != nullptr) {
+    aval = (*shaped_array)(SpanToTuple(ifrt_array->shape().dims()), dtype,
+                           weak_type);
+  } else {
+    aval = py::none();
+  }
+  auto shape_span = ifrt_array->shape().dims();
+  auto shape = std::vector<int64_t>(shape_span.begin(), shape_span.end());
+  auto sharding = py::cast(std::make_unique<jax::SingleDeviceSharding>(py::cast(
+      WrapWithClient(py_client, ifrt_array->sharding().devices().front()))));
+  return PyArray(std::move(aval), weak_type, dtype, std::move(shape),
+                 std::move(sharding), std::move(py_client),
+                 std::move(traceback), std::move(ifrt_array), committed);
 }
 
 PyArrayResultHandler::PyArrayResultHandler(py::object aval, py::object sharding,
