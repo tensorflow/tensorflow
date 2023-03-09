@@ -506,6 +506,7 @@ class PreemptionCheckpointHandler(object):
     self._grace_period = completed_termination_config.grace_period
     self._save_fn = completed_termination_config.save_fn
 
+    self._local_mode = True
     if self._platform_device in (
         failure_handling_util.PlatformDevice.GCE_TPU,
         failure_handling_util.PlatformDevice.GCE_CPU,
@@ -513,9 +514,9 @@ class PreemptionCheckpointHandler(object):
       # While running MultiWorkerMirroredStrategy training with GPUs and CPUs
       # are the same on Borg, GCE CPU VM and GPU VM are different in terms
       # of live migration, grace period, etc. We can make it work upon request.
-      raise NotImplementedError(
-          'PreemptionCheckpointHandler does not support '
-          'usage with TPU or CPU device on GCP.'
+      logging.warning(
+          'PreemptionCheckpointHandler does not support usage with '
+          'TPU or CPU device on GCP.'
       )
 
     elif (
@@ -878,6 +879,11 @@ class PreemptionCheckpointHandler(object):
         == failure_handling_util.PlatformDevice.INTERNAL_TPU
     ):
       return self._run_for_tpu(distributed_train_function, *args, **kwargs)
+    elif self._platform_device in (
+        failure_handling_util.PlatformDevice.GCE_TPU,
+        failure_handling_util.PlatformDevice.GCE_CPU,
+    ):
+      return distributed_train_function(*args, **kwargs)
     else:
       return self._run_for_multi_worker_mirrored(
           distributed_train_function, *args, **kwargs
@@ -972,6 +978,12 @@ class PreemptionCheckpointHandler(object):
 
         else:
           raise
+
+    elif self._platform_device in (
+        failure_handling_util.PlatformDevice.GCE_TPU,
+        failure_handling_util.PlatformDevice.GCE_CPU,
+    ):
+      return
 
     else:
       self._check_preemption_and_maybe_checkpoint(*args, **kwargs)
