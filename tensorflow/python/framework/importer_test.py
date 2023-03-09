@@ -31,6 +31,7 @@ from tensorflow.python.framework import test_ops  # pylint: disable=unused-impor
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -940,7 +941,7 @@ class ImportGraphDefTest(test.TestCase):
   def testWithExtensionAndAttr(self):
     with ops.Graph().as_default() as g:
       c = constant_op.constant(5.0, dtype=dtypes.float32, name="c")
-      array_ops.stack([c, c], name="pack")
+      array_ops_stack.stack([c, c], name="pack")
     gdef = g.as_graph_def()
 
     with self.cached_session():

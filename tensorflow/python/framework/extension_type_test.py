@@ -45,6 +45,7 @@ from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.saving import save as keras_save
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import while_loop
@@ -756,7 +757,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     @def_function.function
     def fn(info):
       prices = [toy.price for toy in info.toys]
-      return math_ops.reduce_sum(array_ops.stack(prices))
+      return math_ops.reduce_sum(array_ops_stack.stack(prices))
 
     self.assertAllClose(fn(toy_info), 4.7)
 

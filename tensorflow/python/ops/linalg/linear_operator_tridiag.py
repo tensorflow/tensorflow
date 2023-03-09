@@ -16,6 +16,7 @@
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
@@ -285,13 +286,13 @@ class LinearOperatorTridiag(linear_operator.LinearOperator):
       return linalg.adjoint(diagonals)
     else:
       diagonals = math_ops.conj(diagonals)
-      superdiag, diag, subdiag = array_ops.unstack(
+      superdiag, diag, subdiag = array_ops_stack.unstack(
           diagonals, num=3, axis=-2)
       # The subdiag and the superdiag swap places, so we need
       # to shift all arguments.
       new_superdiag = manip_ops.roll(subdiag, shift=-1, axis=-1)
       new_subdiag = manip_ops.roll(superdiag, shift=1, axis=-1)
-      return array_ops.stack([new_superdiag, diag, new_subdiag], axis=-2)
+      return array_ops_stack.stack([new_superdiag, diag, new_subdiag], axis=-2)
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
     diagonals = self.diagonals
@@ -363,7 +364,7 @@ class LinearOperatorTridiag(linear_operator.LinearOperator):
     diagonals = [
         ops.convert_to_tensor_v2_with_dispatch(d) for d in self.diagonals
     ]
-    diagonals = array_ops.stack(diagonals, axis=-2)
+    diagonals = array_ops_stack.stack(diagonals, axis=-2)
 
     return gen_array_ops.matrix_diag_v3(
         diagonals,

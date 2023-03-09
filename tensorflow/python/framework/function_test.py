@@ -34,6 +34,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.errors import InvalidArgumentError
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -868,7 +869,7 @@ class FunctionTest(test.TestCase):
     @function.Defun(
         shape_func=lambda op: [[1] + op.inputs[0].get_shape().as_list()])
     def Bar(x):
-      return array_ops.stack([x])
+      return array_ops_stack.stack([x])
 
     g = ops.Graph()
     with g.as_default():
@@ -1525,7 +1526,7 @@ class UnrollLSTMTest(test.TestCase):
   def _BuildForward(self, weights, inp, mode="cell"):
 
     def Loop(cell, w, i):
-      x = array_ops.unstack(i, self.NUM_UNROLL)
+      x = array_ops_stack.unstack(i, self.NUM_UNROLL)
       m = array_ops.zeros_like(x[0])
       c = array_ops.zeros_like(x[0])
       for i in range(self.NUM_UNROLL):
@@ -1566,7 +1567,7 @@ class UnrollLSTMTest(test.TestCase):
 
       @function.Defun(dtypes.float32, dtypes.float32)
       def LSTMLoop10(weights, inp):
-        x = array_ops.unstack(inp, self.NUM_UNROLL)
+        x = array_ops_stack.unstack(inp, self.NUM_UNROLL)
         m = array_ops.zeros_like(x[0])
         c = array_ops.zeros_like(x[0])
         assert self.NUM_UNROLL % 10 == 0

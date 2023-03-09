@@ -21,6 +21,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -310,7 +311,8 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
     return batch_shape.concatenate(matrix_shape)
 
   def _shape_tensor(self):
-    matrix_shape = array_ops.stack((self._num_rows, self._num_rows), axis=0)
+    matrix_shape = array_ops_stack.stack(
+        (self._num_rows, self._num_rows), axis=0)
     if self._batch_shape_arg is None:
       return matrix_shape
 
@@ -675,7 +677,8 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
     return batch_shape.concatenate(matrix_shape)
 
   def _shape_tensor(self):
-    matrix_shape = array_ops.stack((self._num_rows, self._num_rows), axis=0)
+    matrix_shape = array_ops_stack.stack(
+        (self._num_rows, self._num_rows), axis=0)
 
     batch_shape = array_ops.shape(self.multiplier)
     return array_ops.concat((batch_shape, matrix_shape), 0)
