@@ -312,6 +312,7 @@ py_strict_library(
         # TODO(mdan): Remove these dependencies.
         "//third_party/py/tf_slim:__subpackages__",
         "//learning/deepmind/research/language/translation/lm:__subpackages__",
+        "//learning/brain/analytics:__subpackages__",
     ],
     deps = [
         "@six_archive//:six",
