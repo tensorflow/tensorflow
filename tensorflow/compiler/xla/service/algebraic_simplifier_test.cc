@@ -801,6 +801,47 @@ TEST_F(AlgebraicSimplifierTest, AddReassociateMergeBroadcastedConstants) {
                                                     m::ConstantScalar(2.0))))));
 }
 
+TEST_F(AlgebraicSimplifierTest, SubAddReassociateMergeConstants) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      c0 = f32[] constant(1.0)
+      c1 = f32[] constant(2.0)
+      sub = f32[] subtract(c0, p0)
+      ROOT add = f32[] add(sub, c1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Subtract(
+                  m::Add(m::ConstantScalar(1.0), m::ConstantScalar(2.0)),
+                  m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, SubAddReassociateMergeBroadcastedConstants) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      c0 = f32[] constant(1.0)
+      c1 = f32[] constant(2.0)
+      b0 = f32[4] broadcast(c0), dimensions={}
+      b1 = f32[4] broadcast(c1), dimensions={}
+      sub = f32[4] subtract(b0, p0)
+      ROOT add = f32[4] add(sub, b1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Subtract(
+          m::Broadcast(m::Add(m::ConstantScalar(1.0), m::ConstantScalar(2.0))),
+          m::Parameter(0))));
+}
+
 TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR0Operand) {
   auto m = CreateNewVerifiedModule();
   Shape r2f32 = ShapeUtil::MakeShape(F32, {3, 2});
