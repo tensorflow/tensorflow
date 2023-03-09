@@ -47,7 +47,6 @@ class PublicAPIVisitor:
             # When the tf.dtensor becomes the public API, it will actually pick
             # up from tf.compat.v2.dtensor as priority and hide the
             # tensorflow/dtensor package.
-            'security',
             'dtensor',
             'python',
             'tsl',  # TODO(tlongeri): Remove after TSL is moved out of TF.
