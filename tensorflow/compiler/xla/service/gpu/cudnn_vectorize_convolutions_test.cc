@@ -49,6 +49,12 @@ class CudnnVectorizeConvolutionsTest : public HloTestBase {
 
     return changed;
   }
+
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
+    return debug_options;
+  }
 };
 
 TEST_F(CudnnVectorizeConvolutionsTest, VectorizeTo4) {
