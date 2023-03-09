@@ -68,6 +68,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_op_interfaces",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_side_effects",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_traits",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/dtensor/mlir/dtensor_dialect:ir/dtensor_attributes",

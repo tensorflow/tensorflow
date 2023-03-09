@@ -72,7 +72,7 @@ def Tf_DTensorRecv : TF_Op<"DTensorRecv", []> {
  TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF_DTensorLayout: TF_Op<"DTensorLayout", [DeclareOpInterfaceMethods<InferTypeOpInterface>, Pure, TF_AllTypesMatch<["input", "output"]>, TF_NoConstantFold]> {
+def TF_DTensorLayout: TF_Op<"DTensorLayout", [DeclareOpInterfaceMethods<InferTypeOpInterface>, Pure, TF_AllTypesMatch<["input", "output"]>, TF_MustExecute, TF_NoConstantFold]> {
   let summary = [{
     Represents computational layout of an input tensor.
     }];
