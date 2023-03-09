@@ -996,15 +996,10 @@ cc_library(
     hdrs = ["gemm_rewriter_triton.h"],
     deps = [
         ":ir_emission_utils",
-        ":launch_dimensions",
-        ":stream_executor_util",
-        ":target_util",
-        "//tensorflow/compiler/xla:autotune_results_proto_cc",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/stream_executor:device_description",
@@ -1012,9 +1007,6 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@llvm-project//llvm:Linker",
-        "@llvm-project//llvm:ir_headers",
     ],
 )
 
