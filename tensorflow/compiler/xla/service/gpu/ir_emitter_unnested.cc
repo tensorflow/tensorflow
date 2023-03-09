@@ -1824,7 +1824,7 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
       }
       if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastInDimOp>(op)) {
         if (broadcast.getBroadcastDimensions().empty() ||
-            // More then 2 bit inputs cause one speed regression.
+            // More than 3 big inputs cause a speed regression.
             (row_vectorized && num_big_inputs <= 3)) {
           continue;
         }
