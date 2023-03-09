@@ -464,27 +464,39 @@ class Sampler(Metric):
     return SamplerCell(super(Sampler, self).get_cell(*labels))
 
 
+# Keeping track of current MonitoredTimer sections to prevent repetitive
+# counting.
+MonitoredTimerSections = []
+
+
 class MonitoredTimer(object):
   """A context manager to measure the walltime and increment a Counter cell."""
 
-  __slots__ = ["cell", "t"]
+  __slots__ = ["cell", "t", "monitored_section_name"]
 
-  def __init__(self, cell):
+  def __init__(self, cell, monitored_section_name=None):
     """Creates a new MonitoredTimer.
 
     Args:
       cell: the cell associated with the time metric that will be inremented.
+      monitored_section_name: name of action being monitored here.
     """
     self.cell = cell
+    self.monitored_section_name = monitored_section_name
 
   def __enter__(self):
     self.t = time.time()
+    if self.monitored_section_name:
+      MonitoredTimerSections.append(self.monitored_section_name)
+
     return self
 
   def __exit__(self, exception_type, exception_value, traceback):
     del exception_type, exception_value, traceback
     micro_seconds = (time.time() - self.t) * 1000000
     self.cell.increase_by(int(micro_seconds))
+    if self.monitored_section_name:
+      MonitoredTimerSections.remove(self.monitored_section_name)
 
 
 def monitored_timer(cell):

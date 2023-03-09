@@ -2131,47 +2131,53 @@ class StrategyExtendedV2(object):
 
     def creator_with_resource_vars(next_creator, **kwargs):
       """Variable creator to use in `_CurrentDistributionContext`."""
-      _require_strategy_scope_extended(self)
-      kwargs["use_resource"] = True
-      kwargs["distribute_strategy"] = strategy
-
-      # Unwrap `initial_value` if it is a `CheckpointInitialValue` to avoid
-      # dereferencing a `Tensor` that is without a `name`. We still need to
-      # propagate the metadata it's holding.
-      if isinstance(kwargs["initial_value"], trackable.CheckpointInitialValue):
-        checkpoint_restore_uid = kwargs[
-            "initial_value"].checkpoint_position.restore_uid
-        kwargs["initial_value"] = kwargs["initial_value"].wrapped_value
-      elif isinstance(kwargs["initial_value"],
-                      trackable.CheckpointInitialValueCallable):
-        checkpoint_restore_uid = kwargs[
-            "initial_value"].checkpoint_position.restore_uid
-      elif (isinstance(kwargs["initial_value"], functools.partial) and
-            isinstance(kwargs["initial_value"].func,
-                       trackable.CheckpointInitialValueCallable)):
-        # Some libraries (e.g, Keras) create partial function out of initializer
-        # to bind shape/dtype, for example:
-        #  initial_val = functools.partial(initializer, shape, dtype=dtype)
-        # Therefore to get the restore_uid we need to examine the "func" of
-        # the partial function.
-        checkpoint_restore_uid = kwargs[
-            "initial_value"].func.checkpoint_position.restore_uid
+      if ops.inside_function():
+        if_graph_building = "graph_building"
       else:
-        checkpoint_restore_uid = None
+        if_graph_building = "not_graph_building"
 
-      created = self._create_variable(next_creator, **kwargs)
+      with monitoring.MonitoredTimer(distributed_variable_creation_time_counter.get_cell(strategy.__class__.__name__, if_graph_building)):
+        _require_strategy_scope_extended(self)
+        kwargs["use_resource"] = True
+        kwargs["distribute_strategy"] = strategy
 
-      if checkpoint_restore_uid is not None:
-        # pylint: disable=protected-access
-        # Let the checkpointing infrastructure know that the variable was
-        # already restored so it doesn't waste memory loading the value again.
-        # In this case of CheckpointInitialValueCallable this may already be
-        # done by the final variable creator, but it doesn't hurt to do it
-        # again.
-        created._maybe_initialize_trackable()
-        created._update_uid = checkpoint_restore_uid
-        # pylint: enable=protected-access
-      return created
+        # Unwrap `initial_value` if it is a `CheckpointInitialValue` to avoid
+        # dereferencing a `Tensor` that is without a `name`. We still need to
+        # propagate the metadata it's holding.
+        if isinstance(kwargs["initial_value"], trackable.CheckpointInitialValue):
+          checkpoint_restore_uid = kwargs[
+              "initial_value"].checkpoint_position.restore_uid
+          kwargs["initial_value"] = kwargs["initial_value"].wrapped_value
+        elif isinstance(kwargs["initial_value"],
+                        trackable.CheckpointInitialValueCallable):
+          checkpoint_restore_uid = kwargs[
+              "initial_value"].checkpoint_position.restore_uid
+        elif (isinstance(kwargs["initial_value"], functools.partial) and
+              isinstance(kwargs["initial_value"].func,
+                         trackable.CheckpointInitialValueCallable)):
+          # Some libraries (e.g, Keras) create partial function out of initializer
+          # to bind shape/dtype, for example:
+          #  initial_val = functools.partial(initializer, shape, dtype=dtype)
+          # Therefore to get the restore_uid we need to examine the "func" of
+          # the partial function.
+          checkpoint_restore_uid = kwargs[
+              "initial_value"].func.checkpoint_position.restore_uid
+        else:
+          checkpoint_restore_uid = None
+
+        created = self._create_variable(next_creator, **kwargs)
+
+        if checkpoint_restore_uid is not None:
+          # pylint: disable=protected-access
+          # Let the checkpointing infrastructure know that the variable was
+          # already restored so it doesn't waste memory loading the value again.
+          # In this case of CheckpointInitialValueCallable this may already be
+          # done by the final variable creator, but it doesn't hurt to do it
+          # again.
+          created._maybe_initialize_trackable()
+          created._update_uid = checkpoint_restore_uid
+          # pylint: enable=protected-access
+        return created
 
     def distributed_getter(getter, *args, **kwargs):
       if not self._allow_variable_partition():
@@ -3850,3 +3856,6 @@ distribution_strategy_replica_gauge = monitoring.IntGauge(
 distribution_strategy_input_api_counter = monitoring.Counter(
     "/tensorflow/api/distribution_strategy/input_api",
     "Counter to track the usage of the input APIs", "strategy", "api")
+distributed_variable_creation_time_counter = monitoring.Counter(
+    "/tensorflow/api/distribution_strategy/distributed_variable_creation_time_usecs",
+    "Time to create distributed variables (us).", "strategy", "if_graph_building")
