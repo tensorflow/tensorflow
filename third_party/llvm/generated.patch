@@ -1,1 +1,13 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/libcxx/include/optional b/libcxx/include/optional
+--- a/libcxx/include/optional
++++ b/libcxx/include/optional
+@@ -172,6 +172,8 @@
+ #include <__type_traits/is_trivially_destructible.h>
+ #include <__type_traits/is_trivially_move_assignable.h>
+ #include <__type_traits/is_trivially_move_constructible.h>
++#include <__type_traits/conjunction.h>
++#include <__type_traits/disjunction.h>
+ #include <__type_traits/negation.h>
+ #include <__utility/declval.h>
+ #include <__utility/forward.h>
