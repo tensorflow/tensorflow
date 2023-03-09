@@ -1017,7 +1017,7 @@ class DatasetV2(
     # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
-  def zip(datasets, name=None):
+  def zip(*args, datasets=None, name=None):
     """Creates a `Dataset` by zipping together the given datasets.
 
     This method has similar semantics to the built-in `zip()` function
@@ -1026,14 +1026,14 @@ class DatasetV2(
     nesting mechanisms are documented
     [here] (https://www.tensorflow.org/guide/data#dataset_structure).
 
-    >>> # The nested structure of the `datasets` argument determines the
-    >>> # structure of elements in the resulting dataset.
+    >>> # The datasets or nested structure of datasets `*args` argument
+    >>> # determines the structure of elements in the resulting dataset.
     >>> a = tf.data.Dataset.range(1, 4)  # ==> [ 1, 2, 3 ]
     >>> b = tf.data.Dataset.range(4, 7)  # ==> [ 4, 5, 6 ]
-    >>> ds = tf.data.Dataset.zip((a, b))
+    >>> ds = tf.data.Dataset.zip(a, b)
     >>> list(ds.as_numpy_iterator())
     [(1, 4), (2, 5), (3, 6)]
-    >>> ds = tf.data.Dataset.zip((b, a))
+    >>> ds = tf.data.Dataset.zip(b, a)
     >>> list(ds.as_numpy_iterator())
     [(4, 1), (5, 2), (6, 3)]
     >>>
@@ -1041,7 +1041,7 @@ class DatasetV2(
     >>> c = tf.data.Dataset.range(7, 13).batch(2)  # ==> [ [7, 8],
     ...                                            #       [9, 10],
     ...                                            #       [11, 12] ]
-    >>> ds = tf.data.Dataset.zip((a, b, c))
+    >>> ds = tf.data.Dataset.zip(a, b, c)
     >>> for element in ds.as_numpy_iterator():
     ...   print(element)
     (1, 4, array([7, 8]))
@@ -1051,12 +1051,16 @@ class DatasetV2(
     >>> # The number of elements in the resulting dataset is the same as
     >>> # the size of the smallest dataset in `datasets`.
     >>> d = tf.data.Dataset.range(13, 15)  # ==> [ 13, 14 ]
-    >>> ds = tf.data.Dataset.zip((a, d))
+    >>> ds = tf.data.Dataset.zip(a, d)
     >>> list(ds.as_numpy_iterator())
     [(1, 13), (2, 14)]
 
     Args:
-      datasets: A (nested) structure of datasets.
+      *args: Datasets or nested structures of datasets to zip together. This
+        can't be set if `datasets` is set.
+      datasets: A (nested) structure of datasets. This can't be set if `*args`
+        is set. Note that this exists only for backwards compatibility and it is
+        preferred to use *args.
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
@@ -1066,8 +1070,16 @@ class DatasetV2(
     # dataset_ops).
     # pylint: disable=g-import-not-at-top,protected-access
     from tensorflow.python.data.ops import zip_op
+
+    if not args and datasets is None:
+      raise TypeError("Must pass at least one dataset to `zip`.")
+    if args and datasets is not None:
+      raise TypeError("Both `*args` and `datasets` cannot be set.")
+    if len(args) == 1:
+      datasets = args[0]
+    elif len(args) > 1:
+      datasets = args
     return zip_op._zip(datasets, name)
-    # pylint: enable=g-import-not-at-top,protected-access
 
   def concatenate(self, dataset, name=None):
     """Creates a `Dataset` by concatenating the given dataset with this dataset.
@@ -3937,8 +3949,8 @@ class DatasetV1(DatasetV2, data_types.DatasetV1):
 
   @staticmethod
   @functools.wraps(DatasetV2.zip)
-  def zip(datasets, name=None):
-    return DatasetV1Adapter(DatasetV2.zip(datasets, name=name))
+  def zip(*args, datasets=None, name=None):
+    return DatasetV1Adapter(DatasetV2.zip(*args, datasets=datasets, name=name))
 
   @functools.wraps(DatasetV2.concatenate)
   def concatenate(self, dataset, name=None):
