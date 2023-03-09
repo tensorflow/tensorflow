@@ -150,7 +150,8 @@ LogicalResult copyConstantLikeFillOp(linalg::FillOp fillOp,
   if (std::distance(fillOp->user_begin(), fillOp->user_end()) <= 1)
     return failure();
 
-  for (auto& use : fillOp->getUses()) {
+  bool modified = false;
+  for (auto& use : llvm::make_early_inc_range(fillOp->getUses())) {
     Operation* ownerOp = use.getOwner();
 
     auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(ownerOp);
@@ -158,9 +159,9 @@ LogicalResult copyConstantLikeFillOp(linalg::FillOp fillOp,
 
     auto newFillOp = cast<linalg::FillOp>(rewriter.clone(*fillOp));
     use.set(newFillOp.getResult(0));
-    return success();
+    modified = true;
   }
-  return failure();
+  return success(modified);
 }
 
 // Add attributes with tile sizes for parallel and reduction dimensions.
