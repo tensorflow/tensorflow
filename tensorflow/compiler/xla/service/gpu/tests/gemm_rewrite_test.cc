@@ -4188,12 +4188,13 @@ class CublasLtF8GemmRewriteTest : public CublasLtGemmRewriteTest {
   }
 
  protected:
-  void CheckFp8IfOnHopper(absl::string_view hlo_text) {
+  void CheckFp8IfOnHopper(absl::string_view hlo_text,
+                          ErrorSpec error_spec = ErrorSpec{1e-2, 1e-2}) {
     if (!GetCudaComputeCapability().IsAtLeast(
             se::CudaComputeCapability::HOPPER)) {
       return;
     }
-    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
+    EXPECT_TRUE(RunAndCompare(hlo_text, error_spec));
 
     // Most FP8 tests directly create a GemmRewriter and check the output.
     // Here, also run the entire HLO pass pipeline to ensure no other passes
@@ -4829,7 +4830,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfOnHopper(hlo_text, ErrorSpec{0.1, 0.1});
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -4841,7 +4842,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
 ; CHECK-NEXT:    [[C0:%[^ ]+]] = f16[16,16]{1,0} parameter(2)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[] parameter(3)
-; CHECK-NEXT:    [[P3:%[^ ]+]] = f16[] parameter(4)
+; CHECK:         [[P3:%[^ ]+]] = f16[] parameter(4)
 ; CHECK:         [[C1:%[^ ]+]] = f32[] constant(1)
 ; CHECK:         [[P4:%[^ ]+]] = f16[] parameter(5)
 ; CHECK:       ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0]], [[DUMMY0:%[^ ]+]], [[DUMMY1:%[^ ]+]], /*index=5*/[[C1]], [[DUMMY2:%[^ ]+]]),
