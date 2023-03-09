@@ -76,6 +76,7 @@ struct PyArray_Storage {
 class PyArray : public pybind11::object {
  public:
   PYBIND11_OBJECT(PyArray, pybind11::object, PyArray::IsPyArray);
+  PyArray() = default;
 
   // "__init__" methods. Only used in python
   static void PyInit(pybind11::object self, pybind11::object aval,
@@ -155,6 +156,20 @@ class PyArray : public pybind11::object {
           "This operation is implemented for a PjRt-compatible backend only.");
     }
     return arr->pjrt_buffers();
+  }
+
+  int num_addressable_shards() const {
+    ifrt::Array* ifrt_array_ptr = ifrt_array();
+    if (ifrt_array_ptr == nullptr) {
+      return 0;
+    }
+    auto* arr =
+        llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array_ptr);
+    if (arr == nullptr) {
+      // TODO(hyeontaek): Add num_addressable_shards to ifrt.
+      return num_shards();
+    }
+    return arr->pjrt_buffers().size();
   }
 
   std::vector<PyBuffer::object>& py_buffers() {

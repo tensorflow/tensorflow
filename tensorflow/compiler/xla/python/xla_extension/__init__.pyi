@@ -498,6 +498,8 @@ class ArrayImpl:
 
 def copy_array_to_devices_with_sharding(self: ArrayImpl, devices: List[Device], sharding: Any) -> ArrayImpl: ...
 
+def batched_device_put(aval: Any, sharding: Any, shards: Sequence[Any], devices: List[Device]) -> ArrayImpl: ...
+
 def array_result_handler(
                aval: Any,
                sharding: Any,

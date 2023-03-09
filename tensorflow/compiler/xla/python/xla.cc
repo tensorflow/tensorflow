@@ -496,14 +496,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("execute_with_token", &PyLoadedExecutable::ExecuteWithToken,
            py::arg("arguments"), py::arg("device") = std::nullopt)
       .def("execute_sharded_on_local_devices",
-           py::overload_cast<absl::Span<
-               const std::vector<std::variant<PyBuffer::object, PyArray>>>>(
-               &PyLoadedExecutable::ExecuteShardedOnLocalDevices),
+           &PyLoadedExecutable::ExecuteShardedOnLocalDevices,
            py::arg("arguments"))
       .def("execute_sharded_on_local_devices_with_tokens",
-           py::overload_cast<absl::Span<
-               const std::vector<std::variant<PyBuffer::object, PyArray>>>>(
-               &PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens),
+           &PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens,
            py::arg("arguments"))
       // TODO(parkers): Switch execute_sharded_on_local_devices* to this.
       .def("execute_sharded", &PyLoadedExecutable::ExecuteSharded,

@@ -284,16 +284,18 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj,
         "Only single-sharded Array is expected in device_put.");
   }
 
-  if (py_array.sharding().get_type() == jax::PmapSharding::type()) {
-    // We are only handling single device case for PmapSharding here. For other
-    // cases, it fallbacks to python.
-    return HandleNumpyArray(obj.attr("_value"), client, to_device, options);
-  }
-
   ifrt::Array* ifrt_array = py_array.ifrt_array();
   if (ifrt_array == nullptr) {
     return InvalidArgument("Array has been deleted.");
   }
+
+  // Fallback to python for non-matching clients or pmap sharding.
+  if (py_array.sharding().get_type() == jax::PmapSharding::type() ||
+      ifrt_array->sharding().devices().front()->client() !=
+          to_device->client()) {
+    return HandleNumpyArray(obj.attr("_value"), client, to_device, options);
+  }
+
   if (ifrt_array->sharding().devices().front() == to_device) {
     return DevicePutResult(
         tsl::FormRef(ifrt_array), py_array.weak_type(),
