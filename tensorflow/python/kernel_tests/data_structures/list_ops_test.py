@@ -31,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gradients_impl
@@ -1015,7 +1016,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     l_new_0 = list_ops.tensor_list_from_tensor([3.0, 4.0], element_shape=[])
     l_new_1 = list_ops.tensor_list_from_tensor([5.0, 6.0], element_shape=[])
     updated_v = state_ops.scatter_update(v, [3, 5], [l_new_0, l_new_1])
-    updated_v_elems = array_ops.unstack(updated_v)
+    updated_v_elems = array_ops_stack.unstack(updated_v)
     updated_v_stacked = [
         list_ops.tensor_list_stack(el, dtypes.float32) for el in updated_v_elems
     ]
@@ -1038,7 +1039,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     c56 = constant_op.constant([5, 6], dtype=dtypes.int64)
     l_new_1 = list_ops.tensor_list_from_tensor(c56, element_shape=[])
     updated_v = state_ops.scatter_update(v, [3, 5], [l_new_0, l_new_1])
-    updated_v_elems = array_ops.unstack(updated_v)
+    updated_v_elems = array_ops_stack.unstack(updated_v)
     updated_v_stacked = [
         list_ops.tensor_list_stack(el, dtypes.int64) for el in updated_v_elems
     ]
@@ -1051,8 +1052,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     c = constant_op.constant([1.0, 2.0], dtype=dtypes.float32)
     l0 = list_ops.tensor_list_from_tensor(c, element_shape=[])
     l1 = list_ops.tensor_list_from_tensor([-1.0], element_shape=[])
-    l_batch_0 = array_ops.stack([l0, l1])
-    l_batch_1 = array_ops.stack([l1, l0])
+    l_batch_0 = array_ops_stack.stack([l0, l1])
+    l_batch_1 = array_ops_stack.stack([l1, l0])
 
     l_concat_01 = list_ops.tensor_list_concat_lists(
         l_batch_0, l_batch_1, element_dtype=dtypes.float32)
@@ -1075,8 +1076,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
          l_concat_00, l_concat_01, l_concat_10, l_concat_11],
         [expected_0, expected_1,
          expected_00, expected_01, expected_10, expected_11])):
-      splitted = array_ops.unstack(concat)
-      splitted_stacked_ret = self.evaluate(
+      splitted = array_ops_stack.unstack(concat)                # go/LEGACY_TYPO
+      splitted_stacked_ret = self.evaluate(                     # go/LEGACY_TYPO
           (list_ops.tensor_list_stack(splitted[0], dtypes.float32),
            list_ops.tensor_list_stack(splitted[1], dtypes.float32)))
       print("Test concat %d: %s, %s, %s, %s"
@@ -1100,7 +1101,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     else:
       expected_error = (ValueError, "Shapes must be equal rank")
     with self.assertRaisesRegex(*expected_error):
-      l_batch_of_vec_tls = array_ops.stack(
+      l_batch_of_vec_tls = array_ops_stack.stack(
           [list_ops.tensor_list_from_tensor([[1.0]], element_shape=[1])] * 2)
       self.evaluate(
           list_ops.tensor_list_concat_lists(l_batch_0, l_batch_of_vec_tls,
@@ -1112,7 +1113,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     else:
       expected_error = (ValueError, "input_b.type != element_dtype")
     with self.assertRaisesRegex(*expected_error):
-      l_batch_of_int_tls = array_ops.stack(
+      l_batch_of_int_tls = array_ops_stack.stack(
           [list_ops.tensor_list_from_tensor([1], element_shape=[])] * 2)
       self.evaluate(
           list_ops.tensor_list_concat_lists(l_batch_0, l_batch_of_int_tls,
@@ -1123,16 +1124,16 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     c = constant_op.constant([1.0, 2.0], dtype=dtypes.float32)
     l0 = list_ops.tensor_list_from_tensor(c, element_shape=[])
     l1 = list_ops.tensor_list_from_tensor([-1.0], element_shape=[])
-    l_batch = array_ops.stack([l0, l1])
+    l_batch = array_ops_stack.stack([l0, l1])
     l_push = list_ops.tensor_list_push_back_batch(l_batch, [3.0, 4.0])
-    l_unstack = array_ops.unstack(l_push)
+    l_unstack = array_ops_stack.unstack(l_push)
     l0_ret = list_ops.tensor_list_stack(l_unstack[0], dtypes.float32)
     l1_ret = list_ops.tensor_list_stack(l_unstack[1], dtypes.float32)
     self.assertAllClose([1.0, 2.0, 3.0], self.evaluate(l0_ret))
     self.assertAllClose([-1.0, 4.0], self.evaluate(l1_ret))
 
     with ops.control_dependencies([l_push]):
-      l_unstack_orig = array_ops.unstack(l_batch)
+      l_unstack_orig = array_ops_stack.unstack(l_batch)
       l0_orig_ret = list_ops.tensor_list_stack(l_unstack_orig[0],
                                                dtypes.float32)
       l1_orig_ret = list_ops.tensor_list_stack(l_unstack_orig[1],

@@ -83,7 +83,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
@@ -460,7 +460,7 @@ def _evaluate_var_is_initialized(variables):
       # Stack all the var_is_initialized values into one tensor and interpret
       # the numpy value. This will reduce the number of RPCs between client and
       # worker in the remote case.
-      return array_ops.stack(var_is_initialized).numpy()
+      return array_ops_stack.stack(var_is_initialized).numpy()
     except errors.UnimplementedError:
       # Some devices do not support implicit copy-off to host. Fall back to
       # variable-by-variable processing.
@@ -472,7 +472,7 @@ def _evaluate_var_is_initialized(variables):
           # each replica and assert that they're identical.
           components = parallel_device.unpack(var_is_initialized[index])
           with ops.device(None):
-            components = array_ops.stack(components)
+            components = array_ops_stack.stack(components)
             all_initialized = math_ops.reduce_all(components).numpy()
             any_initialized = math_ops.reduce_any(components).numpy()
           if all_initialized != any_initialized:

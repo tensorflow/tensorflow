@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_assert
@@ -402,7 +403,7 @@ def kron(a, b):  # pylint: disable=missing-function-docstring
       shapes = [ones, shape]
     else:
       shapes = [shape, ones]
-    return array_ops.reshape(array_ops.stack(shapes, axis=1), [-1])
+    return array_ops.reshape(array_ops_stack.stack(shapes, axis=1), [-1])
 
   a_shape = array_ops.shape(t_a)
   b_shape = array_ops.shape(t_b)
@@ -448,7 +449,7 @@ def polyval(p, x):  # pylint: disable=missing-function-docstring
   def f(p, x):
     if p.shape.rank == 0:
       p = array_ops.reshape(p, [1])
-    p = array_ops.unstack(p)
+    p = array_ops_stack.unstack(p)
     # TODO(wangpeng): Make tf version take a tensor for p instead of a list.
     y = math_ops.polyval(p, x)
     # If the polynomial is 0-order, numpy requires the result to be broadcast to

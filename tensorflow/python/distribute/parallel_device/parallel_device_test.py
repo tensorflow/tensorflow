@@ -30,6 +30,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -83,8 +84,8 @@ class _Dense(module.Module):
     if self.kernel is None:
       self.kernel = variables.Variable(
           array_ops.ones(
-              array_ops.stack([self.output_size,
-                               array_ops.shape(x)[-1]])))
+              array_ops_stack.stack([self.output_size,
+                                     array_ops.shape(x)[-1]])))
       self.bias = variables.Variable(array_ops.ones([self.output_size]))
     return math_ops.matmul(x, self.kernel, transpose_b=True) + self.bias
 

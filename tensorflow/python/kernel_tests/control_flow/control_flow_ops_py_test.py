@@ -46,6 +46,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
@@ -2068,7 +2069,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     with self.cached_session():
       n = np.array([0])  # Note, [0] would not work here; that is a list
       c = lambda x: x[0] < 10000
-      b = lambda x: array_ops.stack([x[0] + 1])
+      b = lambda x: array_ops_stack.stack([x[0] + 1])
       r = while_loop_tf.while_loop(c, b, [n], parallel_iterations=20)
       self.assertEqual([10000], self.evaluate(r))
 
@@ -2324,7 +2325,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     i = constant_op.constant(0)
     x = constant_op.constant([1])
     c = lambda i, _: i < 10
-    b = lambda i, x: (i + 1, array_ops.stack([x, x]))
+    b = lambda i, x: (i + 1, array_ops_stack.stack([x, x]))
     shape_invariants = [
         tensor_spec.TensorSpec([], dtype=dtypes.int32),
         tensor_spec.TensorSpec(None, dtype=dtypes.int32)]

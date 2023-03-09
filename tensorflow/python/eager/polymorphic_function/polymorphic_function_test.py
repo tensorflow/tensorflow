@@ -59,6 +59,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import cond_v2
@@ -3100,7 +3101,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     ])
     def f(x, s):
       old_shape = array_ops.shape(x)
-      new_shape = array_ops.stack([old_shape[0], s], axis=0)
+      new_shape = array_ops_stack.stack([old_shape[0], s], axis=0)
       y = array_ops.ones(shape=new_shape, dtype=dtypes.int32)
       return y
 
@@ -3122,8 +3123,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         tensor_spec.TensorSpec((), dtype=dtypes.int32),
     ])
     def f(x, s):
-      s0, _ = array_ops.unstack(array_ops.shape(x), axis=0)
-      new_shape = array_ops.stack([s0, s], axis=0)
+      s0, _ = array_ops_stack.unstack(array_ops.shape(x), axis=0)
+      new_shape = array_ops_stack.stack([s0, s], axis=0)
       y = array_ops.ones(shape=new_shape, dtype=dtypes.int32)
       return y
 

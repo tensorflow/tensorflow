@@ -30,6 +30,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import data_flow_ops
@@ -982,7 +983,7 @@ class TensorArrayTest(test.TestCase):
 
         def body(time, ta_t, state):
           sliced = array_ops.slice(
-              v0, begin=array_ops.stack([time, 0]), size=[1, -1])
+              v0, begin=array_ops_stack.stack([time, 0]), size=[1, -1])
           sliced = array_ops.squeeze(sliced)
           out = sliced + var + state
           state += sliced

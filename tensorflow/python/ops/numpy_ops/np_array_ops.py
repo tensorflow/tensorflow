@@ -26,6 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import linalg_ops
@@ -858,7 +859,8 @@ def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
 
     def _remove_indices(a, b):
       """Remove indices (`b`) from `a`."""
-      items = array_ops.unstack(sort_ops.sort(array_ops.stack(b)), num=len(b))
+      items = array_ops_stack.unstack(
+          sort_ops.sort(array_ops_stack.stack(b)), num=len(b))
 
       i = 0
       result = []
@@ -1055,7 +1057,7 @@ def stack(arrays, axis=0):  # pylint: disable=missing-function-docstring
   unwrapped_arrays = [
       a if isinstance(a, np_arrays.ndarray) else a for a in arrays
   ]
-  return asarray(array_ops.stack(unwrapped_arrays, axis))
+  return asarray(array_ops_stack.stack(unwrapped_arrays, axis))
 
 
 @np_utils.np_doc('hstack')
@@ -1162,7 +1164,7 @@ def nonzero(a):
   if a.shape.rank is None:
     raise ValueError("The rank of `a` is unknown, so we can't decide how many "
                      'arrays to return.')
-  return array_ops.unstack(
+  return array_ops_stack.unstack(
             array_ops.where_v2(math_ops.cast(a, dtypes.bool)),
             a.shape.rank,
             axis=1)
@@ -1605,9 +1607,10 @@ def _slice_helper(tensor, slice_spec, update_method=None, updates=None):
       'strided_slice', [tensor] + begin + end + strides,
       skip_on_eager=False) as name:
     if begin:
-      packed_begin, packed_end, packed_strides = (array_ops.stack(begin),
-                                                  array_ops.stack(end),
-                                                  array_ops.stack(strides))
+      packed_begin, packed_end, packed_strides = (
+          array_ops_stack.stack(begin),
+          array_ops_stack.stack(end),
+          array_ops_stack.stack(strides))
       if (packed_begin.dtype == dtypes.int64 or
           packed_end.dtype == dtypes.int64 or
           packed_strides.dtype == dtypes.int64):
@@ -1696,7 +1699,7 @@ def _slice_helper(tensor, slice_spec, update_method=None, updates=None):
     indices = [advanced_indices_map[x] for x in dims]
     indices = _promote_dtype(*indices)
     indices = np_utils.tf_broadcast(*indices)
-    stacked_indices = array_ops.stack(indices, axis=-1)
+    stacked_indices = array_ops_stack.stack(indices, axis=-1)
     # Skip the contiguous-dims optimization for update because there is no
     # tf.*scatter* op that supports the `axis` argument.
     if not dims_contiguous or updates is not None:

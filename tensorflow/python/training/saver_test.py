@@ -46,6 +46,7 @@ from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gradients_impl
@@ -2234,7 +2235,7 @@ class MetaGraphTest(test.TestCase):
       indices = array_ops.expand_dims(math_ops.range(0, batch_size), 1)
       concated = array_ops.concat([indices, labels], 1)
       onehot_labels = sparse_ops.sparse_to_dense(
-          concated, array_ops.stack([batch_size, 10]), 1.0, 0.0)
+          concated, array_ops_stack.stack([batch_size, 10]), 1.0, 0.0)
       logits = ops_lib.get_collection("logits")[0]
       cross_entropy = nn_ops.softmax_cross_entropy_with_logits(
           labels=onehot_labels, logits=logits, name="xentropy")
@@ -2679,8 +2680,8 @@ class CheckpointReaderTest(test.TestCase):
       self.assertTrue(reader.has_tensor("v1"))
       debug_string = reader.debug_string()
       # Verifies that debug string contains the right strings.
-      self.assertTrue(compat.as_bytes("v0 (DT_FLOAT) [2,3]") in debug_string)
-      self.assertTrue(compat.as_bytes("v1 (DT_FLOAT) [3,2,1]") in debug_string)
+      self.assertIn(compat.as_bytes("v0 (DT_FLOAT) [2,3]"), debug_string)
+      self.assertIn(compat.as_bytes("v1 (DT_FLOAT) [3,2,1]"), debug_string)
       # Verifies get_variable_to_shape_map() returns the correct information.
       var_map = reader.get_variable_to_shape_map()
       self.assertEqual([2, 3], var_map["v0"])
