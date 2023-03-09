@@ -119,7 +119,7 @@ static Status CreateHloXlaPipeline(
 
   // Some early sparse rewriting rules.
   if (options.sparse_bufferization) {
-    pm.addNestedPass<FuncOp>(createSparseCustomCallToPackUnpackOpPass());
+    pm.addNestedPass<FuncOp>(createSparseCustomCallRewritingPass());
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::mhlo::createSparseRewritingPass());
   }

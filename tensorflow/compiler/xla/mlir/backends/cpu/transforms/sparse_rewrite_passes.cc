@@ -33,19 +33,18 @@ namespace xla {
 namespace cpu {
 namespace {
 
-#define GEN_PASS_DEF_SPARSECUSTOMCALLTOPACKPASS
+#define GEN_PASS_DEF_SPARSECUSTOMCALLREWRITINGPASS
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h.inc"
 
 using namespace mlir;  // NOLINT
 
-// TODO(ajcbik): rename the pass to CustomCallToSparse or so?
-class SparseCustomCallToPackPass
-    : public impl::SparseCustomCallToPackPassBase<SparseCustomCallToPackPass> {
+class SparseCustomCallRewritingPass
+    : public impl::SparseCustomCallRewritingPassBase<
+          SparseCustomCallRewritingPass> {
   void runOnOperation() override;
 };
 
-class SparseCustomCallToPackRewriter
-    : public OpRewritePattern<mhlo::CustomCallOp> {
+class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
   using OpRewritePattern<mhlo::CustomCallOp>::OpRewritePattern;
   // Rewrites a CustomCallOp to target 'sparse_tensor_pack/unpack' to
   // the corresponding sparse_tensor::PackOp and sparse_tensor::UnpackOp.
@@ -128,12 +127,12 @@ class ReallocToAllocRewriter : public OpRewritePattern<memref::ReallocOp> {
   }
 };
 
-void SparseCustomCallToPackPass::runOnOperation() {
+void SparseCustomCallRewritingPass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
 
   RewritePatternSet patterns(ctx);
-  patterns.insert<SparseCustomCallToPackRewriter>(ctx);
+  patterns.insert<SparseCustomCallRewriter>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     return signalPassFailure();
@@ -143,8 +142,8 @@ void SparseCustomCallToPackPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>>
-createSparseCustomCallToPackUnpackOpPass() {
-  return std::make_unique<SparseCustomCallToPackPass>();
+createSparseCustomCallRewritingPass() {
+  return std::make_unique<SparseCustomCallRewritingPass>();
 }
 
 }  // namespace cpu
