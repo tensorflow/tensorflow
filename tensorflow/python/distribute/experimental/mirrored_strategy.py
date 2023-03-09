@@ -196,11 +196,12 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     # TODO(scottzhu): The layout information should be injected via kwargs, or
     # lazily set later.
     initial_value = kwargs.pop('initial_value')
+    dtype = kwargs.get('dtype', None)
     def new_initial_value():
       if callable(initial_value):
-        init_var = ops.convert_to_tensor(initial_value())
+        init_var = ops.convert_to_tensor(initial_value(), dtype=dtype)
       else:
-        init_var = ops.convert_to_tensor(initial_value)
+        init_var = ops.convert_to_tensor(initial_value, dtype=dtype)
       rank = init_var.shape.rank
       return d_api.copy_to_mesh(
           init_var, layout.Layout.replicated(self._mesh, rank))

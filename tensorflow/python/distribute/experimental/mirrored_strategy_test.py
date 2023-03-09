@@ -70,6 +70,15 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertIsNotNone(v.layout)
     self.assertEqual(v.layout, layout.Layout.replicated(self.mesh, rank=1))
 
+  def test_variable_creation_with_dtype(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    with strategy.scope():
+      v = variables.Variable(
+          0, dtype='int64',
+          aggregation=variables.VariableAggregationV2.ONLY_FIRST_REPLICA)
+    self.assertIsInstance(v, d_variable.DVariable)
+    self.assertEqual(v.dtype, dtypes.int64)
+
   def test_mesh(self):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
     self.assertEqual(strategy._mesh, self.mesh)
