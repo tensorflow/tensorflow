@@ -99,7 +99,6 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   // AlgebraicSimplifier  We run algsimp to a fixed point.
   AlgebraicSimplifierOptions options;
   options.set_enable_conv_operand_swap(false);
-  options.set_push_concat_to_consumers(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
   pipeline.AddPass<HloConstantFolding>();

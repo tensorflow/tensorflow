@@ -382,9 +382,6 @@ Status GpuCompiler::OptimizeHloModule(
   layout_insensitive_algsimp_opts.set_minmax_propagate_nan(
       !debug_options.xla_gpu_enable_fast_min_max());
 
-  // GPU benefits from having concats as early as possible.
-  layout_insensitive_algsimp_opts.set_push_concat_to_consumers(false);
-
   if (gpu_target_config.platform_name == "ROCM") {
     layout_insensitive_algsimp_opts.set_enable_conv_operand_swap(false);
   }
