@@ -3652,18 +3652,9 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/8));
   VLOG(1) << module->ToString();
-  // Left halo size should be 3 with 3 collective-permute.
-  auto reshape =
-      AllOf(op::Reshape(op::AllReduce(op::Select(
-                _,
-                op::DynamicSlice(
-                    op::Concatenate(op::CollectivePermute(op::Parameter()),
-                                    op::CollectivePermute(op::Parameter()),
-                                    op::CollectivePermute(op::Parameter()),
-                                    op::Parameter()),
-                    _, _),
-                _))),
-            op::Shape("f32[1,1,123]"));
+  auto reshape = AllOf(op::Reshape(op::AllReduce(op::Select(
+                           _, op::CollectivePermute(op::Parameter()), _))),
+                       op::Shape("f32[1,1,123]"));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, reshape);
 }
