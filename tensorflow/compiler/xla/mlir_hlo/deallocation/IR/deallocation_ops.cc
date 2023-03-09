@@ -43,7 +43,12 @@ LogicalResult retainNoOp(RetainOp op, PatternRewriter& rewriter) {
   if (op.getAllocs().size() != 1 || op.getAllocs() != op.getRetained()) {
     return failure();
   }
-  rewriter.replaceOp(op, op.getAllocs());
+  if (op.getType(0) != op.getAllocs().front().getType()) {
+    rewriter.replaceOpWithNewOp<memref::CastOp>(op, op.getType(0),
+                                                op.getAllocs().front());
+  } else {
+    rewriter.replaceOp(op, op.getAllocs());
+  }
   return success();
 }
 

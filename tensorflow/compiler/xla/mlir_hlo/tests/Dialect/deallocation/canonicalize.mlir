@@ -25,6 +25,19 @@ func.func @retain_is_noop(%arg: memref<*xf32>) -> memref<*xf32> {
 
 // -----
 
+func.func @retain_is_cast(%arg: memref<2xf32>) -> memref<*xf32> {
+  %ret = deallocation.retain(%arg) of(%arg) :
+     (memref<2xf32>, memref<2xf32>) -> (memref<*xf32>)
+  return %ret : memref<*xf32>
+}
+
+// CHECK-LABEL: @retain_is_cast
+// CHECK-SAME: (%[[ARG:.*]]: memref<2xf32>)
+// CHECK-NEXT: %[[CAST:.*]] = memref.cast %[[ARG]]
+// CHECK-NEXT: return %[[CAST]] : memref<*xf32>
+
+// -----
+
 func.func @retain_of_nothing(%arg: memref<2xf32>) -> memref<*xf32> {
   %ret = deallocation.retain(%arg) of() : (memref<2xf32>) -> (memref<*xf32>)
   return %ret : memref<*xf32>
