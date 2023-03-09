@@ -161,6 +161,12 @@ def TransformMatmulForCpuPass :
   ];
 }
 
+def TransformConvForCpuPass :
+    Pass<"xla-cpu-transform-conv", "mlir::func::FuncOp"> {
+  let summary = "Transform conv ops for running on CPU";
+  let constructor = "createTransformConvForCpuPass()";
+}
+
 def TransformMapForCpuPass :
     Pass <"gml-st-cpu-transform-map", "mlir::func::FuncOp"> {
   let summary = "Transform map ops for running on CPU";

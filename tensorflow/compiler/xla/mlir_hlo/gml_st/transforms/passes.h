@@ -89,6 +89,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createSimplifyDeadCopyPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorsPass(
     bool enableAVX2 = true);
 
+/// Pass to transform a conv op for CPU backend.
+std::unique_ptr<OperationPass<func::FuncOp>> createTransformConvForCpuPass();
+
 /// Pass to transform a thlo.scatter op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
 

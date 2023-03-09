@@ -34,6 +34,7 @@ add_mlir_library(GmlStPasses
   cpu_tiling/fusion_outlining.cc
   cpu_tiling/fusion_planning_for_cpu.cc
   cpu_tiling/transform_dot_for_cpu.cc
+  cpu_tiling/transform_conv_for_cpu.cc
   cpu_tiling/transform_generic_for_cpu.cc
   cpu_tiling/transform_map_for_cpu.cc
   cpu_tiling/transform_matmul_for_cpu.cc
