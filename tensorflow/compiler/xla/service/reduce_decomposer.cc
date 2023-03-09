@@ -20,10 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/status.h"
 
 namespace xla {
@@ -42,7 +42,7 @@ class VariadicReductionLayoutEqualizer : public DfsHloRewriteVisitor {
       auto first_input_s = first_input->shape();
       auto input_s = input->shape();
       if (first_input_s.layout() != input_s.layout()) {
-        Shape new_input_s = ShapeUtil::MakeShapeWithLayout(
+        Shape new_input_s = ShapeUtil::MakeShapeWithDenseLayout(
             input_s.element_type(), input_s.dimensions(),
             first_input_s.layout().minor_to_major());
         auto copy = MakeCopyHlo(input, new_input_s);
@@ -61,7 +61,7 @@ class VariadicReductionLayoutEqualizer : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, new_reduce));
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -147,12 +147,16 @@ class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-StatusOr<bool> ReduceDecomposer::Run(HloModule* module) {
+StatusOr<bool> ReduceDecomposer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(bool changed1,
-                      VariadicReductionLayoutEqualizer{}.RunOnModule(module));
+                      VariadicReductionLayoutEqualizer{}.RunOnModule(
+                          module, execution_threads));
   TF_ASSIGN_OR_RETURN(
       bool changed2,
-      ReduceDecomposerVisitor{custom_layout_allowed_}.RunOnModule(module));
+      ReduceDecomposerVisitor{custom_layout_allowed_}.RunOnModule(
+          module, execution_threads));
   return changed1 || changed2;
 }
 

@@ -1,27 +1,31 @@
 # Using TensorFlow Securely
 
-This document discusses how to safely deal with untrusted programs (models or
-model parameters), and input data. Below, we also provide guidelines on how to
-report vulnerabilities in TensorFlow.
+This document discusses the TensorFlow security model. It describes how to
+safely deal with untrusted programs (models or model parameters), and input
+data. We also provide guidelines on what constitutes a vulnerability in
+TensorFlow and how to report them.
+
+This document applies to other repositories in the TensorFlow organization,
+covering security practices for the entirety of the TensorFlow ecosystem.
 
 ## TensorFlow models are programs
 
-TensorFlow's runtime system interprets and executes programs. What machine
-learning practitioners term
-[**models**](https://developers.google.com/machine-learning/glossary/#model) are
-expressed as programs that TensorFlow executes.  TensorFlow programs are encoded
-as computation
+TensorFlow
+[**models**](https://developers.google.com/machine-learning/glossary/#model) (to
+use a term commonly used by machine learning practitioners) are expressed as
+programs that TensorFlow executes. TensorFlow programs are encoded as
+computation
 [**graphs**](https://developers.google.com/machine-learning/glossary/#graph).
 The model's parameters are often stored separately in **checkpoints**.
 
 At runtime, TensorFlow executes the computation graph using the parameters
-provided. Note that the behavior of the computation graph may change
-depending on the parameters provided. TensorFlow itself is not a sandbox. When
+provided. Note that the behavior of the computation graph may change depending
+on the parameters provided. **TensorFlow itself is not a sandbox**. When
 executing the computation graph, TensorFlow may read and write files, send and
 receive data over the network, and even spawn additional processes. All these
-tasks are performed with the permissions of the TensorFlow process. Allowing
-for this flexibility makes for a powerful machine learning platform,
-but it has implications for security.
+tasks are performed with the permission of the TensorFlow process. Allowing for
+this flexibility makes for a powerful machine learning platform, but it has
+security implications.
 
 The computation graph may also accept **inputs**. Those inputs are the
 data you supply to TensorFlow to train a model, or to use a model to run
@@ -30,6 +34,41 @@ inference on the data.
 **TensorFlow models are programs, and need to be treated as such from a security
 perspective.**
 
+## Execution models of TensorFlow code
+
+The TensorFlow library has a wide API which can be used in multiple scenarios.
+The security requirements are also different depending on the usage.
+
+The API usage with the least security concerns is doing iterative exploration
+via the Python interpreter or small Python scripts. Here, only some parts of the
+API are exercised and eager execution is the default, meaning that each
+operation executes immediately. This mode is useful for testing, including
+fuzzing. For direct access to the C++ kernels, users of TensorFlow can directly
+call `tf.raw_ops.xxx` APIs. This gives control over all the parameters that
+would be sent to the kernel. Passing invalid combinations of parameters can
+allow insecure behavior (see definition of a vulnerability in a section below).
+However, these won’t always translate to actual vulnerabilities in TensorFlow.
+This would be similar to directly dereferencing a null pointer in a C++ program:
+not a vulnerability by itself but a coding error.
+
+The next 2 modes of using the TensorFlow API have the most security
+implications. These relate to the actual building and use of machine learning
+models. Both during training and inference, the TensorFlow runtime will build
+and execute computation graphs from (usually Python) code written by a
+practitioner (using compilation techniques to turn eager code into graph mode).
+In both of these scenarios, a vulnerability can be exploited to cause
+significant damage, hence the goal of the security team is to eliminate these
+vulnerabilities or otherwise reduce their impact. This is essential, given that
+both training and inference can run on accelerators (e.g. GPU, TPU) or in a
+distributed manner.
+
+Finally, the last mode of executing TensorFlow library code is as part of
+additional tooling. For example, TensorFlow provides a `saved_model_cli` tool
+which can be used to scan a `SavedModel` (the serialization format used by
+TensorFlow for models) and describe it. These tools are usually run by a single
+developer, on a single host, so the impact of a vulnerability in them is
+somewhat reduced.
+
 ## Running untrusted models
 
 As a general rule: **Always** execute untrusted models inside a sandbox (e.g.,
@@ -37,37 +76,41 @@ As a general rule: **Always** execute untrusted models inside a sandbox (e.g.,
 
 There are several ways in which a model could become untrusted. Obviously, if an
 untrusted party supplies TensorFlow kernels, arbitrary code may be executed.
-The same is true if the untrusted party provides Python code, such as the
-Python code that generates TensorFlow graphs.
+The same is true if the untrusted party provides Python code, such as the Python
+code that generates TensorFlow graphs.
 
-Even if the untrusted party only supplies the serialized computation
-graph (in form of a `GraphDef`, `SavedModel`, or equivalent on-disk format), the
-set of computation primitives available to TensorFlow is powerful enough that
-you should assume that the TensorFlow process effectively executes arbitrary
-code. One common solution is to allow only a few safe Ops. While this is
-possible in theory, we still recommend you sandbox the execution.
+Even if the untrusted party only supplies the serialized computation graph (in
+form of a `GraphDef`, `SavedModel`, or equivalent on-disk format), the set of
+computation primitives available to TensorFlow is powerful enough that you
+should assume that the TensorFlow process effectively executes arbitrary code.
+One common solution is to allow only a few safe Ops. While this is possible in
+theory, we still recommend you sandbox the execution.
 
 It depends on the computation graph whether a user provided checkpoint is safe.
 It is easily possible to create computation graphs in which malicious
 checkpoints can trigger unsafe behavior. For example, consider a graph that
-contains a `tf.cond` depending on the value of a `tf.Variable`. One branch of
-the `tf.cond` is harmless, but the other is unsafe. Since the `tf.Variable` is
-stored in the checkpoint, whoever provides the checkpoint now has the ability to
-trigger unsafe behavior, even though the graph is not under their control.
+contains a `tf.cond` operation depending on the value of a `tf.Variable`. One
+branch of the `tf.cond` is harmless, but the other is unsafe. Since the
+`tf.Variable` is stored in the checkpoint, whoever provides the checkpoint now
+has the ability to trigger unsafe behavior, even though the graph is not under
+their control.
 
 In other words, graphs can contain vulnerabilities of their own. To allow users
 to provide checkpoints to a model you run on their behalf (e.g., in order to
 compare model quality for a fixed model architecture), you must carefully audit
 your model, and we recommend you run the TensorFlow process in a sandbox.
 
-## Accepting untrusted Inputs
+Similar considerations should apply if the model uses **custom ops** (C++ code
+written outside of the TensorFlow tree and loaded as plugins).
 
-It is possible to write models that are secure in a sense that they can safely
-process untrusted inputs assuming there are no bugs. There are two main reasons
-to not rely on this: First, it is easy to write models which must not be exposed
-to untrusted inputs, and second, there are bugs in any software system of
-sufficient complexity. Letting users control inputs could allow them to trigger
-bugs either in TensorFlow or in dependent libraries.
+## Accepting untrusted inputs
+
+It is possible to write models that are secure in the sense that they can safely
+process untrusted inputs assuming there are no bugs. There are, however, two
+main reasons to not rely on this: First, it is easy to write models which must
+not be exposed to untrusted inputs, and second, there are bugs in any software
+system of sufficient complexity. Letting users control inputs could allow them
+to trigger bugs either in TensorFlow or in dependencies.
 
 In general, it is good practice to isolate parts of any system which is exposed
 to untrusted (e.g., user-provided) inputs in a sandbox.
@@ -118,21 +161,37 @@ authenticating requests to any TensorFlow server connected to an untrusted
 network, as well as sandboxing the server to minimize the adverse effects of
 any breach.
 
+## Multitenancy environments
+
+It is possible to run multiple TensorFlow models in parallel. For example,
+`ModelServer` collates all computation graphs exposed to it (from multiple
+`SavedModel`) and executes them in parallel on available executors. A denial of
+service caused by one model could bring down the entire server, but we don't
+consider this as a high impact vulnerability, given that there exists solutions
+to prevent this from happening (e.g., rate limits, ACLs, monitors to restart
+broken servers).
+
+However, it is a critical vulnerability if a model could be manipulated such
+that it would output parameters of another model (or itself!) or data that
+belongs to another model.
+
+Models that also run on accelerators could be abused to do hardware damage or to
+leak data that exists on the accelerators from previous executions, if not
+cleared.
+
 ## Vulnerabilities in TensorFlow
 
 TensorFlow is a large and complex system. It also depends on a large set of
 third party libraries (e.g., `numpy`, `libjpeg-turbo`, PNG parsers, `protobuf`).
-It is possible that TensorFlow or its dependent libraries contain
-vulnerabilities that would allow triggering unexpected or dangerous behavior
-with specially crafted inputs.
-
-### What is a vulnerability?
+It is possible that TensorFlow or its dependencies may contain vulnerabilities
+that would allow triggering unexpected or dangerous behavior with specially
+crafted inputs.
 
 Given TensorFlow's flexibility, it is possible to specify computation graphs
 which exhibit unexpected or unwanted behavior. The fact that TensorFlow models
 can perform arbitrary computations means that they may read and write files,
-communicate via the network, produce deadlocks and infinite loops, or run out
-of memory. It is only when these behaviors are outside the specifications of the
+communicate via the network, produce deadlocks and infinite loops, or run out of
+memory. It is only when these behaviors are outside the specifications of the
 operations involved that such behavior is a vulnerability.
 
 A `FileWriter` writing a file is not unexpected behavior and therefore is not a
@@ -157,102 +216,72 @@ One of the most critical parts of any system is input handling. If malicious
 input can trigger side effects or incorrect behavior, this is a bug, and likely
 a vulnerability.
 
-### Reporting vulnerabilities
+**Note**: Assertion failures used to be considered a vulnerability in
+TensorFlow. If an assertion failure  only leads to program termination and no
+other exploits, we will no longer consider assertion failures (e.g.,
+`CHECK`-fails) as vulnerabilities. However, if the assertion failure occurs only
+in debug mode (e.g., `DCHECK`) and in production-optimized mode the issue turns
+into other code weakness(e.g., heap overflow, etc.), then we will consider
+this to be a vulnerability. We recommend reporters to try to maximize the impact
+of the vulnerability report (see also [the Google VRP
+rules](https://bughunters.google.com/about/rules/6625378258649088/google-and-alphabet-vulnerability-reward-program-vrp-rules)
+and [the Google OSS VRP
+rules](https://bughunters.google.com/about/rules/6521337925468160/google-open-source-software-vulnerability-reward-program-rules)).
 
-Please email reports about any security related issues you find to
-`security@tensorflow.org`. This mail is delivered to a small security team. For
-critical problems, you may encrypt your report (see below).
+**Note**: Although the iterative exploration of TF API via fuzzing
+`tf.raw_ops.xxx` symbols is the best way to uncover code weakeness, please bear
+in mind that this is not a typical usecase that has security implications. It is
+better to try to translate the vulnerability to something that can be exploited
+during training or inference of a model (i.e., build a model that when given a
+specific input would produce unwanted behavior). Alternatively, if the
+TensorFlow API is only used in ancillary tooling, consider the environment where
+the tool would run. For example, if `saved_model_cli` tool would crash on
+parsing a `SavedModel` that is not considered a vulnerability but a bug (since
+the user can use other ways to inspect the model if needed). However, it would
+be a vulnerability if passing a `SavedModel` to `saved_model_cli` would result
+in opening a new network connection, corrupting CPU state, or other forms of
+unwanted behavior.
 
-Please use a descriptive subject line for your report email. After the initial
-reply to your report, the security team will endeavor to keep you informed of
-the progress being made towards a fix and announcement.
+## Reporting vulnerabilities
+
+Please use [Google Bug Hunters reporting form](https://g.co/vulnz) to report security
+related issues.
+
+Please use a descriptive title for your report.
 
 In addition, please include the following information along with your report:
 
-* Your name and affiliation (if any).
-* A description of the technical details of the vulnerabilities. It is very
-  important to let us know how we can reproduce your findings.
-* An explanation who can exploit this vulnerability, and what they gain when
-  doing so -- write an attack scenario. This will help us evaluate your report
-  quickly, especially if the issue is complex.
-* Whether this vulnerability public or known to third parties. If it is, please
-  provide details.
+*   Your name and affiliation (if any).
+*   A description of the technical details of the vulnerabilities. It is very
+    important to let us know how we can reproduce your findings.
+*   A minimal example of the vulnerabity.
+*   An explanation of who can exploit this vulnerability, and what they gain
+    when doing so -- write an attack scenario. This will help us evaluate your
+    report quickly, especially if the issue is complex.
+*   Whether this vulnerability is public or known to third parties. If it is,
+    please provide details.
 
-If you believe that an existing (public) issue is security-related, please send
-an email to `security@tensorflow.org`. The email should include the issue ID and
-a short description of why it should be handled according to this security
-policy.
+After the initial reply to your report, the security team will endeavor to keep
+you informed of the progress being made towards a fix and announcement.
+TensorFlow uses the following disclosure process:
 
-For each vulnerability, we try to ingress it as soon as possible, given the size
-of the team and the number of reports. If the vulnerability is not high impact,
-we will delay ingress during the period before a branch cut and the final
-release. For these cases, vulnerabilities will always be batched to be fixed at
-the same time as a quarterly release.
-
-If a vulnerability is high impact, we will acknowledge reception and issue
-patches within an accelarated timeline and not wait for the patch release.
-
-Once an issue is reported, TensorFlow uses the following disclosure process:
-
-* When a report is received, we confirm the issue and determine its severity,
-  according to the timeline listed above.
+* When a report is received, we confirm the issue and determine its severity.
+  **Please try to maximize impact in the report**, going beyond just obtaining
+  unwanted behavior in a fuzzer.
 * If we know of specific third-party services or software based on TensorFlow
   that require mitigation before publication, those projects will be notified.
 * An advisory is prepared (but not published) which details the problem and
   steps for mitigation.
 * The vulnerability is fixed and potential workarounds are identified.
-* Wherever possible, the fix is also prepared for the branches corresponding to
-  all releases of TensorFlow at most one year old. We will attempt to commit
-  these fixes as soon as possible, and as close together as possible.
-* Patch releases are published for all fixed released versions, a
-  notification is sent to discuss@tensorflow.org, and the advisory is published.
+* We will publish a security advisory for all fixed vulnerabilities.
 
-Note that we mostly do patch releases for security reasons and each version of
-TensorFlow is supported for only 1 year after the release.
+For each vulnerability, we try to ingress it as soon as possible, given the size
+of the team and the number of reports. Vulnerabilities will, in general, be
+batched to be fixed at the same time as a quarterly release.
 
-Past security advisories are listed below. We credit reporters for identifying
-security issues, although we keep your name confidential if you request it.
-
-#### Encryption key for `security@tensorflow.org`
-
-If your disclosure is extremely sensitive, you may choose to encrypt your
-report using the key below. Please only use this for critical security
-reports.
-
-```
------BEGIN PGP PUBLIC KEY BLOCK-----
-
-mQENBFpqdzwBCADTeAHLNEe9Vm77AxhmGP+CdjlY84O6DouOCDSq00zFYdIU/7aI
-LjYwhEmDEvLnRCYeFGdIHVtW9YrVktqYE9HXVQC7nULU6U6cvkQbwHCdrjaDaylP
-aJUXkNrrxibhx9YYdy465CfusAaZ0aM+T9DpcZg98SmsSml/HAiiY4mbg/yNVdPs
-SEp/Ui4zdIBNNs6at2gGZrd4qWhdM0MqGJlehqdeUKRICE/mdedXwsWLM8AfEA0e
-OeTVhZ+EtYCypiF4fVl/NsqJ/zhBJpCx/1FBI1Uf/lu2TE4eOS1FgmIqb2j4T+jY
-e+4C8kGB405PAC0n50YpOrOs6k7fiQDjYmbNABEBAAG0LVRlbnNvckZsb3cgU2Vj
-dXJpdHkgPHNlY3VyaXR5QHRlbnNvcmZsb3cub3JnPokBTgQTAQgAOBYhBEkvXzHm
-gOJBnwP4Wxnef3wVoM2yBQJaanc8AhsDBQsJCAcCBhUKCQgLAgQWAgMBAh4BAheA
-AAoJEBnef3wVoM2yNlkIAICqetv33MD9W6mPAXH3eon+KJoeHQHYOuwWfYkUF6CC
-o+X2dlPqBSqMG3bFuTrrcwjr9w1V8HkNuzzOJvCm1CJVKaxMzPuXhBq5+DeT67+a
-T/wK1L2R1bF0gs7Pp40W3np8iAFEh8sgqtxXvLGJLGDZ1Lnfdprg3HciqaVAiTum
-HBFwszszZZ1wAnKJs5KVteFN7GSSng3qBcj0E0ql2nPGEqCVh+6RG/TU5C8gEsEf
-3DX768M4okmFDKTzLNBm+l08kkBFt+P43rNK8dyC4PXk7yJa93SmS/dlK6DZ16Yw
-2FS1StiZSVqygTW59rM5XNwdhKVXy2mf/RtNSr84gSi5AQ0EWmp3PAEIALInfBLR
-N6fAUGPFj+K3za3PeD0fWDijlC9f4Ety/icwWPkOBdYVBn0atzI21thPRbfuUxfe
-zr76xNNrtRRlbDSAChA1J5T86EflowcQor8dNC6fS+oHFCGeUjfEAm16P6mGTo0p
-osdG2XnnTHOOEFbEUeWOwR/zT0QRaGGknoy2pc4doWcJptqJIdTl1K8xyBieik/b
-nSoClqQdZJa4XA3H9G+F4NmoZGEguC5GGb2P9NHYAJ3MLHBHywZip8g9oojIwda+
-OCLL4UPEZ89cl0EyhXM0nIAmGn3Chdjfu3ebF0SeuToGN8E1goUs3qSE77ZdzIsR
-BzZSDFrgmZH+uP0AEQEAAYkBNgQYAQgAIBYhBEkvXzHmgOJBnwP4Wxnef3wVoM2y
-BQJaanc8AhsMAAoJEBnef3wVoM2yX4wIALcYZbQhSEzCsTl56UHofze6C3QuFQIH
-J4MIKrkTfwiHlCujv7GASGU2Vtis5YEyOoMidUVLlwnebE388MmaJYRm0fhYq6lP
-A3vnOCcczy1tbo846bRdv012zdUA+wY+mOITdOoUjAhYulUR0kiA2UdLSfYzbWwy
-7Obq96Jb/cPRxk8jKUu2rqC/KDrkFDtAtjdIHh6nbbQhFuaRuWntISZgpIJxd8Bt
-Gwi0imUVd9m9wZGuTbDGi6YTNk0GPpX5OMF5hjtM/objzTihSw9UN+65Y/oSQM81
-v//Fw6ZeY+HmRDFdirjD7wXtIuER4vqCryIqR6Xe9X8oJXz9L/Jhslc=
-=CDME
------END PGP PUBLIC KEY BLOCK-----
-```
-
-### Known Vulnerabilities
-
-For a list of known vulnerabilities and security advisories for TensorFlow,
-[click here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/README.md).
+Past security advisories are listed
+[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/README.md).
+In the future, we might sunset this list and only use GitHub's Security Advisory
+format, to simplify the post-vulnerability-fix process.  We credit reporters for
+identifying security issues, although we keep your name confidential if you
+request it.

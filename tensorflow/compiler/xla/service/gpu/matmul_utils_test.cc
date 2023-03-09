@@ -20,17 +20,17 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using ::tensorflow::testing::IsOkAndHolds;
 using ::testing::ElementsAre;
+using ::tsl::testing::IsOkAndHolds;
 
 TEST(GetNonContractingDimsTest, Valid) {
-  Shape shape = ParseShape("f32[1,2,3,4,5,6]").ValueOrDie();
+  Shape shape = ParseShape("f32[1,2,3,4,5,6]").value();
   EXPECT_THAT(GetNonContractingDims(shape, /*batch_dims=*/{4},
                                     /*contracting_dims=*/{1, 5}),
               IsOkAndHolds(ElementsAre(0, 2, 3)));
@@ -50,10 +50,10 @@ using GetBatchRowColumnShapeTest =
 TEST_P(GetBatchRowColumnShapeTest, ValidShape) {
   const GetBatchRowColumnShapeTestParams& params = GetParam();
 
-  Shape shape = ParseShape(params.shape).ValueOrDie();
+  Shape shape = ParseShape(params.shape).value();
   EXPECT_THAT(GetBatchRowColumnShape(shape, params.batch_dims, params.row_dims,
                                      params.col_dims),
-              IsOkAndHolds(ParseShape(params.expected_shape).ValueOrDie()));
+              IsOkAndHolds(ParseShape(params.expected_shape).value()));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -73,7 +73,7 @@ INSTANTIATE_TEST_SUITE_P(
     }));
 
 TEST(GetBatchRowColumnShapeTest, BatchRowsColsInterleaved) {
-  Shape shape = ParseShape("f32[3,4,5,6,7,8]{5,4,3,2,1,0}").ValueOrDie();
+  Shape shape = ParseShape("f32[3,4,5,6,7,8]{5,4,3,2,1,0}").value();
   auto result =
       GetBatchRowColumnShape(shape, /*batch_dims=*/{0, 3},
                              /*row_dims=*/{1, 4}, /*col_dims=*/{2, 5});
@@ -81,7 +81,7 @@ TEST(GetBatchRowColumnShapeTest, BatchRowsColsInterleaved) {
 }
 
 TEST(GetBatchRowColumnShapeTest, WrongPhysicalOrder) {
-  Shape shape = ParseShape("f32[3,4,5,6]{3,2,0,1}").ValueOrDie();
+  Shape shape = ParseShape("f32[3,4,5,6]{3,2,0,1}").value();
   auto result = GetBatchRowColumnShape(shape, /*batch_dims=*/{0, 1},
                                        /*row_dims=*/{2}, /*col_dims=*/{3});
   EXPECT_FALSE(result.ok());
@@ -104,8 +104,8 @@ using GetMatrixLayoutTest = ::testing::TestWithParam<GetMatrixLayoutTestParams>;
 TEST_P(GetMatrixLayoutTest, ValidShape) {
   const GetMatrixLayoutTestParams& params = GetParam();
 
-  Shape shape = ParseShape(params.shape).ValueOrDie();
-  MatrixLayout result = MatrixLayout::For(shape).ValueOrDie();
+  Shape shape = ParseShape(params.shape).value();
+  MatrixLayout result = MatrixLayout::For(shape).value();
   EXPECT_EQ(result.batch_size, params.batch_size);
   EXPECT_EQ(result.num_rows, params.num_rows);
   EXPECT_EQ(result.num_cols, params.num_cols);
@@ -126,7 +126,7 @@ INSTANTIATE_TEST_SUITE_P(
     }));
 
 TEST(GetMatrixLayoutTest, BatchInMostMinorPhysicalDimension) {
-  Shape shape = ParseShape("f32[3,4,5]{0,2,1}").ValueOrDie();
+  Shape shape = ParseShape("f32[3,4,5]{0,2,1}").value();
   EXPECT_FALSE(MatrixLayout::For(shape).ok());
 }
 

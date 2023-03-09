@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for binary_op."""
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -247,10 +247,18 @@ def make_binary_op_tests_func(binary_operator):
 
 @register_make_test_function()
 def make_add_tests(options):
-  """Make zip tests for add op with uint32 case."""
+  """Make zip tests for add op with uint32 and int16 case."""
   test_parameters = [
       {
           "dtype": [tf.uint32],
+          "input_shape_1": [[1, 3, 3, 3], [1], [3, 3]],
+          "input_shape_2": [[3], [1]],
+          "activation": [False],
+          "fully_quantize": [False],
+          "dynamic_range_quantize": [False],
+      },
+      {
+          "dtype": [tf.int16],
           "input_shape_1": [[1, 3, 3, 3], [1], [3, 3]],
           "input_shape_2": [[3], [1]],
           "activation": [False],
@@ -304,7 +312,22 @@ def make_sub_tests(options):
 
 @register_make_test_function()
 def make_mul_tests(options):
-  make_binary_op_tests(options, tf.multiply, allow_fully_quantize=True)
+  """Make zip tests for mul op with additional complex cases."""
+  test_parameters = [
+      {
+          "dtype": [tf.complex64],
+          "input_shape_1": [[1, 3, 3, 3, 3]],
+          "input_shape_2": [[3]],
+          "activation": [False],
+          "fully_quantize": [False],
+          "dynamic_range_quantize": [False],
+      },
+  ]
+  make_binary_op_tests(
+      options,
+      tf.multiply,
+      allow_fully_quantize=True,
+      test_parameters=test_parameters)
 
 
 @register_make_test_function()
@@ -314,12 +337,38 @@ def make_pow_tests(options):
 
 @register_make_test_function()
 def make_floor_div_tests(options):
-  make_binary_op_tests(options, tf.math.floordiv)
+  """Make zip tests for floor_div op with int16 case."""
+  test_parameters = [
+      {
+          "dtype": [tf.int8, tf.int16],
+          "input_shape_1": [[1, 3, 3, 3, 3]],
+          "input_shape_2": [[3]],
+          "activation": [False],
+          "fully_quantize": [False],
+          "dynamic_range_quantize": [False],
+      },
+  ]
+  make_binary_op_tests(
+      options, tf.math.floordiv, test_parameters=test_parameters
+  )
 
 
 @register_make_test_function()
 def make_floor_mod_tests(options):
-  make_binary_op_tests(options, tf.math.floormod)
+  """Make zip tests for floor_mod op with int16 case."""
+  test_parameters = [
+      {
+          "dtype": [tf.int8, tf.int16],
+          "input_shape_1": [[1, 3, 3, 3, 3]],
+          "input_shape_2": [[3]],
+          "activation": [False],
+          "fully_quantize": [False],
+          "dynamic_range_quantize": [False],
+      },
+  ]
+  make_binary_op_tests(
+      options, tf.math.floormod, test_parameters=test_parameters
+  )
 
 
 @register_make_test_function()

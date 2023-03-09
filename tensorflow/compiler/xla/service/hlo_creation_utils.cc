@@ -15,7 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 
+#include <algorithm>
+#include <iterator>
 #include <memory>
+#include <numeric>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
@@ -23,11 +30,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_clone_context.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -36,12 +43,13 @@ namespace xla {
 using absl::StrCat;
 
 StatusOr<HloInstruction*> MakeUnaryHlo(HloOpcode opcode,
-                                       HloInstruction* operand) {
+                                       HloInstruction* operand,
+                                       const OpMetadata* metadata) {
   HloComputation* computation = operand->parent();
   TF_ASSIGN_OR_RETURN(Shape unary_op_shape,
                       ShapeInference::InferUnaryOpShape(opcode, operand));
   return computation->AddInstruction(
-      HloInstruction::CreateUnary(unary_op_shape, opcode, operand));
+      HloInstruction::CreateUnary(unary_op_shape, opcode, operand), metadata);
 }
 
 HloInstruction* MakeCopyHlo(HloInstruction* from, const Shape& to) {
@@ -50,50 +58,60 @@ HloInstruction* MakeCopyHlo(HloInstruction* from, const Shape& to) {
 }
 
 StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
-                                        HloInstruction* rhs) {
+                                        HloInstruction* rhs,
+                                        const OpMetadata* metadata) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(Shape binary_op_shape,
                       ShapeInference::InferBinaryOpShape(opcode, lhs, rhs));
   return computation->AddInstruction(
-      HloInstruction::CreateBinary(binary_op_shape, opcode, lhs, rhs));
+      HloInstruction::CreateBinary(binary_op_shape, opcode, lhs, rhs),
+      metadata);
 }
 
 StatusOr<HloInstruction*> MakeCompareHlo(ComparisonDirection direction,
                                          HloInstruction* lhs,
-                                         HloInstruction* rhs) {
+                                         HloInstruction* rhs,
+                                         const OpMetadata* metadata) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(
       Shape binary_op_shape,
       ShapeInference::InferBinaryOpShape(HloOpcode::kCompare, lhs, rhs));
   return computation->AddInstruction(
-      HloInstruction::CreateCompare(binary_op_shape, lhs, rhs, direction));
+      HloInstruction::CreateCompare(binary_op_shape, lhs, rhs, direction),
+      metadata);
 }
 
 StatusOr<HloInstruction*> MakePadHlo(HloInstruction* operand,
                                      HloInstruction* padding_value,
-                                     const PaddingConfig& padding_config) {
+                                     const PaddingConfig& padding_config,
+                                     const OpMetadata* metadata) {
   HloComputation* computation = operand->parent();
   CHECK_EQ(computation, padding_value->parent());
   TF_ASSIGN_OR_RETURN(
       Shape pad_shape,
       ShapeInference::InferPadShape(operand->shape(), padding_value->shape(),
                                     padding_config));
-  return computation->AddInstruction(HloInstruction::CreatePad(
-      pad_shape, operand, padding_value, padding_config));
+  return computation->AddInstruction(
+      HloInstruction::CreatePad(pad_shape, operand, padding_value,
+                                padding_config),
+      metadata);
 }
 
 StatusOr<HloInstruction*> MakeSliceHlo(HloInstruction* operand,
                                        absl::Span<const int64_t> start_indices,
                                        absl::Span<const int64_t> limit_indices,
-                                       absl::Span<const int64_t> strides) {
+                                       absl::Span<const int64_t> strides,
+                                       const OpMetadata* metadata) {
   HloComputation* computation = operand->parent();
   TF_ASSIGN_OR_RETURN(Shape slice_shape, ShapeInference::InferSliceShape(
                                              operand->shape(), start_indices,
                                              limit_indices, strides));
-  return computation->AddInstruction(HloInstruction::CreateSlice(
-      slice_shape, operand, start_indices, limit_indices, strides));
+  return computation->AddInstruction(
+      HloInstruction::CreateSlice(slice_shape, operand, start_indices,
+                                  limit_indices, strides),
+      metadata);
 }
 
 StatusOr<HloInstruction*> MakeConvolveHlo(
@@ -101,7 +119,8 @@ StatusOr<HloInstruction*> MakeConvolveHlo(
     int64_t batch_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
-    std::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type,
+    const OpMetadata* metadata) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(
@@ -109,9 +128,11 @@ StatusOr<HloInstruction*> MakeConvolveHlo(
       ShapeInference::InferConvolveShape(
           lhs->shape(), rhs->shape(), feature_group_count, batch_group_count,
           window, dimension_numbers, preferred_element_type));
-  return computation->AddInstruction(HloInstruction::CreateConvolve(
-      convolve_shape, lhs, rhs, feature_group_count, batch_group_count, window,
-      dimension_numbers, precision_config));
+  return computation->AddInstruction(
+      HloInstruction::CreateConvolve(
+          convolve_shape, lhs, rhs, feature_group_count, batch_group_count,
+          window, dimension_numbers, precision_config),
+      metadata);
 }
 
 StatusOr<HloInstruction*> MakeTransposeHlo(
@@ -139,7 +160,11 @@ StatusOr<HloInstruction*> MakeReshapeHlo(
 
 StatusOr<HloInstruction*> MakeDynamicSliceHlo(
     HloInstruction* operand, absl::Span<HloInstruction* const> start_indices,
-    absl::Span<const int64_t> slice_sizes) {
+    absl::Span<const int64_t> slice_sizes, const OpMetadata* metadata) {
+  // slice of a scalar is no-op
+  if (start_indices.empty() || slice_sizes.empty()) {
+    return operand;
+  }
   HloComputation* computation = operand->parent();
   std::vector<Shape> scalar_start_indices_shapes(
       start_indices.size(),
@@ -148,13 +173,15 @@ StatusOr<HloInstruction*> MakeDynamicSliceHlo(
       Shape dynamic_slice_shape,
       ShapeInference::InferDynamicSliceShape(
           operand->shape(), scalar_start_indices_shapes, slice_sizes));
-  return computation->AddInstruction(HloInstruction::CreateDynamicSlice(
-      dynamic_slice_shape, operand, start_indices, slice_sizes));
+  return computation->AddInstruction(
+      HloInstruction::CreateDynamicSlice(dynamic_slice_shape, operand,
+                                         start_indices, slice_sizes),
+      metadata);
 }
 
 StatusOr<HloInstruction*> MakeDynamicSliceHlo(
     HloInstruction* operand, HloInstruction* start_indices,
-    absl::Span<const int64_t> slice_sizes) {
+    absl::Span<const int64_t> slice_sizes, const OpMetadata* metadata) {
   HloComputation* computation = operand->parent();
   CHECK_EQ(computation, start_indices->parent());
   int64_t rank = start_indices->shape().dimensions(0);
@@ -175,13 +202,15 @@ StatusOr<HloInstruction*> MakeDynamicSliceHlo(
       Shape dynamic_slice_shape,
       ShapeInference::InferDynamicSliceShape(
           operand->shape(), scalar_start_indices_shapes, slice_sizes));
-  return computation->AddInstruction(HloInstruction::CreateDynamicSlice(
-      dynamic_slice_shape, operand, scalar_start_indices, slice_sizes));
+  return computation->AddInstruction(
+      HloInstruction::CreateDynamicSlice(dynamic_slice_shape, operand,
+                                         scalar_start_indices, slice_sizes),
+      metadata);
 }
 
 StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
     HloInstruction* operand, HloInstruction* update,
-    HloInstruction* start_indices) {
+    HloInstruction* start_indices, const OpMetadata* metadata) {
   HloComputation* computation = operand->parent();
   CHECK_EQ(computation, update->parent());
   CHECK_EQ(computation, start_indices->parent());
@@ -203,40 +232,69 @@ StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
       Shape dynamic_update_slice_shape,
       ShapeInference::InferDynamicUpdateSliceShape(
           operand->shape(), update->shape(), scalar_start_indices_shapes));
-  return computation->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-      dynamic_update_slice_shape, operand, update, scalar_start_indices));
+  return computation->AddInstruction(
+      HloInstruction::CreateDynamicUpdateSlice(
+          dynamic_update_slice_shape, operand, update, scalar_start_indices),
+      metadata);
 }
 
-HloInstruction* MakeBroadcastHlo(
-    HloInstruction* operand, absl::Span<const int64_t> broadcast_dimensions,
-    absl::Span<const int64_t> result_shape_bounds) {
+StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
+    HloInstruction* operand, HloInstruction* update,
+    absl::Span<HloInstruction* const> start_indices,
+    const OpMetadata* metadata) {
   HloComputation* computation = operand->parent();
-  Shape broadcast_shape = ShapeUtil::MakeShape(operand->shape().element_type(),
-                                               result_shape_bounds);
-
-  return computation->AddInstruction(HloInstruction::CreateBroadcast(
-      broadcast_shape, operand, broadcast_dimensions));
+  CHECK_EQ(computation, update->parent());
+  std::vector<Shape> scalar_start_indices_shapes;
+  scalar_start_indices_shapes.reserve(start_indices.size());
+  for (auto start_index : start_indices) {
+    scalar_start_indices_shapes.push_back(start_index->shape());
+  }
+  TF_ASSIGN_OR_RETURN(
+      Shape dynamic_update_slice_shape,
+      ShapeInference::InferDynamicUpdateSliceShape(
+          operand->shape(), update->shape(), scalar_start_indices_shapes));
+  return computation->AddInstruction(
+      HloInstruction::CreateDynamicUpdateSlice(dynamic_update_slice_shape,
+                                               operand, update, start_indices),
+      metadata);
 }
 
 HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
                                  absl::Span<const int64_t> broadcast_dimensions,
-                                 const Shape& shape) {
-  return MakeBroadcastHlo(operand, broadcast_dimensions, shape.dimensions());
+                                 absl::Span<const int64_t> result_shape_bounds,
+                                 const OpMetadata* metadata) {
+  Shape broadcast_shape = ShapeUtil::MakeShape(operand->shape().element_type(),
+                                               result_shape_bounds);
+  return MakeBroadcastHlo(operand, broadcast_dimensions, broadcast_shape,
+                          metadata);
+}
+
+HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
+                                 absl::Span<const int64_t> broadcast_dimensions,
+                                 const Shape& shape,
+                                 const OpMetadata* metadata) {
+  HloComputation* computation = operand->parent();
+  return computation->AddInstruction(
+      HloInstruction::CreateBroadcast(shape, operand, broadcast_dimensions),
+      metadata);
 }
 
 StatusOr<HloInstruction*> MakeGetTupleElementHlo(HloInstruction* operand,
-                                                 int64_t index) {
+                                                 int64_t index,
+                                                 const OpMetadata* metadata) {
   HloComputation* computation = operand->parent();
 
   TF_ASSIGN_OR_RETURN(
       Shape gte_shape,
       ShapeInference::InferGetTupleElementShape(operand->shape(), index));
   return computation->AddInstruction(
-      HloInstruction::CreateGetTupleElement(gte_shape, operand, index));
+      HloInstruction::CreateGetTupleElement(gte_shape, operand, index),
+      metadata);
 }
 
 StatusOr<HloInstruction*> MakeConcatHlo(
-    absl::Span<HloInstruction* const> operands, int64_t dimension) {
+    absl::Span<HloInstruction* const> operands, int64_t dimension,
+    const OpMetadata* metadata) {
   CHECK_GT(operands.size(), 0);
 
   HloComputation* computation = operands[0]->parent();
@@ -251,27 +309,30 @@ StatusOr<HloInstruction*> MakeConcatHlo(
   TF_ASSIGN_OR_RETURN(Shape concat_shape, ShapeInference::InferConcatOpShape(
                                               operand_shapes, dimension));
   return computation->AddInstruction(
-      HloInstruction::CreateConcatenate(concat_shape, operands, dimension));
+      HloInstruction::CreateConcatenate(concat_shape, operands, dimension),
+      metadata);
 }
 
-HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type) {
+HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type,
+                                 const OpMetadata* metadata) {
   if (hlo->shape().element_type() == type) {
     return hlo;
   }
   Shape shape = ShapeUtil::ChangeElementType(hlo->shape(), type);
-  hlo =
-      hlo->parent()->AddInstruction(HloInstruction::CreateConvert(shape, hlo));
+  hlo = hlo->parent()->AddInstruction(HloInstruction::CreateConvert(shape, hlo),
+                                      metadata);
   CHECK_EQ(hlo->shape().element_type(), type);
   return hlo;
 }
 
-HloInstruction* MakeBitcastHlo(HloInstruction* hlo, const Shape& shape) {
+HloInstruction* MakeBitcastHlo(HloInstruction* hlo, const Shape& shape,
+                               const OpMetadata* metadata) {
   return hlo->parent()->AddInstruction(
-      HloInstruction::CreateBitcast(shape, hlo));
+      HloInstruction::CreateBitcast(shape, hlo), metadata);
 }
 
-HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
-                                        PrimitiveType type) {
+HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo, PrimitiveType type,
+                                        const OpMetadata* metadata) {
   if (hlo->shape().element_type() == type) {
     return hlo;
   }
@@ -282,7 +343,7 @@ HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
     return MakeConvertToHlo(hlo, type);
   }
   hlo = hlo->parent()->AddInstruction(
-      HloInstruction::CreateBitcastConvert(shape, hlo));
+      HloInstruction::CreateBitcastConvert(shape, hlo), metadata);
   CHECK_EQ(hlo->shape().element_type(), type);
   return hlo;
 }
@@ -297,19 +358,23 @@ StatusOr<HloInstruction*> MakeDotHlo(
     HloInstruction* lhs, HloInstruction* rhs,
     const DotDimensionNumbers& dim_numbers,
     const PrecisionConfig& precision_config,
-    std::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type,
+    const OpMetadata* metadata) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(
       Shape dot_shape,
       ShapeInference::InferDotOpShape(lhs->shape(), rhs->shape(), dim_numbers,
                                       preferred_element_type));
-  return computation->AddInstruction(HloInstruction::CreateDot(
-      dot_shape, lhs, rhs, dim_numbers, precision_config));
+  return computation->AddInstruction(
+      HloInstruction::CreateDot(dot_shape, lhs, rhs, dim_numbers,
+                                precision_config),
+      metadata);
 }
 
 StatusOr<HloInstruction*> MakeMapHlo(absl::Span<HloInstruction* const> operands,
-                                     HloComputation* map_computation) {
+                                     HloComputation* map_computation,
+                                     const OpMetadata* metadata) {
   CHECK(!operands.empty()) << "Map Hlo requires at least one operand.";
   HloComputation* computation = operands.front()->parent();
   std::vector<const Shape*> operand_shapes;
@@ -326,31 +391,51 @@ StatusOr<HloInstruction*> MakeMapHlo(absl::Span<HloInstruction* const> operands,
       ShapeInference::InferMapShape(
           operand_shapes, map_computation->ComputeProgramShape(), map_dims));
   return computation->AddInstruction(
-      HloInstruction::CreateMap(map_shape, operands, map_computation));
+      HloInstruction::CreateMap(map_shape, operands, map_computation),
+      metadata);
 }
 
 HloInstruction* MakeReducePrecisionHlo(HloInstruction* operand,
-                                       int exponent_bits, int mantissa_bits) {
+                                       int exponent_bits, int mantissa_bits,
+                                       const OpMetadata* metadata) {
   return operand->parent()->AddInstruction(
       HloInstruction::CreateReducePrecision(operand->shape(), operand,
-                                            exponent_bits, mantissa_bits));
+                                            exponent_bits, mantissa_bits),
+      metadata);
 }
 
 StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         HloInstruction* init_value,
                                         absl::Span<const int64_t> dimensions,
-                                        HloComputation* reduce_computation) {
+                                        HloComputation* reduce_computation,
+                                        const OpMetadata* metadata) {
   auto scalar_shape = ShapeUtil::MakeShape(operand->shape().element_type(), {});
   auto result_shape = ShapeUtil::DeleteDimensions(dimensions, operand->shape());
 
-  return operand->parent()->AddInstruction(HloInstruction::CreateReduce(
-      result_shape, operand, init_value, dimensions, reduce_computation));
+  return operand->parent()->AddInstruction(
+      HloInstruction::CreateReduce(result_shape, operand, init_value,
+                                   dimensions, reduce_computation),
+      metadata);
+}
+
+StatusOr<HloInstruction*> MakeReduceWindowHlo(
+    HloInstruction* operand, HloInstruction* init_value, const Window& window,
+    HloComputation* reduce_computation, const OpMetadata* metadata) {
+  TF_ASSIGN_OR_RETURN(Shape inferred_shape,
+                      ShapeInference::InferReduceWindowShape(
+                          operand->shape(), init_value->shape(), window,
+                          reduce_computation->ComputeProgramShape()));
+  return operand->parent()->AddInstruction(
+      HloInstruction::CreateReduceWindow(inferred_shape, operand, init_value,
+                                         window, reduce_computation),
+      metadata);
 }
 
 StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         HloInstruction* init_value,
                                         absl::Span<const int64_t> dimensions,
-                                        HloOpcode binary_opcode) {
+                                        HloOpcode binary_opcode,
+                                        const OpMetadata* metadata) {
   auto scalar_shape = ShapeUtil::MakeShape(operand->shape().element_type(), {});
   HloComputation* reduce_computation;
   {
@@ -362,15 +447,17 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
     b.AddInstruction(
         HloInstruction::CreateBinary(scalar_shape, binary_opcode, lhs, rhs));
     reduce_computation =
-        operand->parent()->parent()->AddEmbeddedComputation(b.Build());
+        operand->GetModule()->AddEmbeddedComputation(b.Build());
   }
-  return MakeReduceHlo(operand, init_value, dimensions, reduce_computation);
+  return MakeReduceHlo(operand, init_value, dimensions, reduce_computation,
+                       metadata);
 }
 
 StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         HloInstruction* init_value,
                                         HloOpcode binary_opcode,
-                                        HloModule* module) {
+                                        HloModule* module,
+                                        const OpMetadata* metadata) {
   DCHECK_NE(nullptr, module);
   std::vector<int64_t> all_dims(operand->shape().rank());
   std::iota(all_dims.begin(), all_dims.end(), 0);
@@ -387,13 +474,15 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
         HloInstruction::CreateBinary(scalar_shape, binary_opcode, lhs, rhs));
     reduce_computation = module->AddEmbeddedComputation(b.Build());
   }
-  return MakeReduceHlo(operand, init_value, all_dims, reduce_computation);
+  return MakeReduceHlo(operand, init_value, all_dims, reduce_computation,
+                       metadata);
 }
 
 StatusOr<HloInstruction*> MakeReduceHlo(
     absl::Span<HloInstruction* const> operands,
     absl::Span<HloInstruction* const> init_values,
-    absl::Span<const int64_t> dimensions, HloComputation* reduce_computation) {
+    absl::Span<const int64_t> dimensions, HloComputation* reduce_computation,
+    const OpMetadata* metadata) {
   CHECK(!operands.empty());
   CHECK_EQ(operands.size(), init_values.size());
   auto root = reduce_computation->root_instruction();
@@ -414,17 +503,21 @@ StatusOr<HloInstruction*> MakeReduceHlo(
 
   auto output_shape = ShapeUtil::MakeMaybeTupleShape(expected_shapes);
 
-  return operands[0]->parent()->AddInstruction(HloInstruction::CreateReduce(
-      output_shape, operands, init_values, dimensions, reduce_computation));
+  return operands[0]->parent()->AddInstruction(
+      HloInstruction::CreateReduce(output_shape, operands, init_values,
+                                   dimensions, reduce_computation),
+      metadata);
 }
 
 StatusOr<HloInstruction*> MakeReverseHlo(HloInstruction* operand,
-                                         absl::Span<const int64_t> dimensions) {
+                                         absl::Span<const int64_t> dimensions,
+                                         const OpMetadata* metadata) {
   HloComputation* computation = operand->parent();
   TF_ASSIGN_OR_RETURN(Shape reverse_shape, ShapeInference::InferReverseShape(
                                                operand->shape(), dimensions));
   return computation->AddInstruction(
-      HloInstruction::CreateReverse(reverse_shape, operand, dimensions));
+      HloInstruction::CreateReverse(reverse_shape, operand, dimensions),
+      metadata);
 }
 
 StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
@@ -473,10 +566,13 @@ HloInstruction* MaybeMakeTuple(absl::Span<HloInstruction* const> operands) {
 StatusOr<HloInstruction*> MakeSortHlo(
     const Shape& sort_shape, absl::Span<HloInstruction* const> operands,
     int64_t dimension_to_sort, bool is_stable, HloComputation::Builder* builder,
-    HloModule* module) {
+    HloModule* module, const OpMetadata* metadata) {
   CHECK(!operands.empty()) << "Sort Hlo requires at least one operand.";
   HloComputation* compare_computation;
   XlaBuilder b("Sort.Compare");
+  if (metadata != nullptr) {
+    b.SetOpMetadata(*metadata);
+  }
   std::vector<PrimitiveType> operand_types(operands.size());
   for (int64_t i = 0; i < operands.size(); ++i) {
     operand_types[i] = operands[i]->shape().element_type();
@@ -608,10 +704,16 @@ StatusOr<HloInstruction*> PadVectorWithZeros(HloInstruction* operand,
 HloInstruction* BroadcastZeros(HloComputation* computation,
                                PrimitiveType element_type,
                                absl::Span<const int64_t> broadcast_dimensions) {
-  HloInstruction* zero = computation->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
-  return MakeBroadcastHlo(zero, /*broadcast_dimensions=*/{},
-                          /*result_shape_bounds=*/broadcast_dimensions);
+  return BroadcastZeros(
+      computation, ShapeUtil::MakeShape(element_type, broadcast_dimensions));
+}
+
+HloInstruction* BroadcastZeros(HloComputation* computation,
+                               const Shape& broadcast_shape) {
+  HloInstruction* zero =
+      computation->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::Zero(broadcast_shape.element_type())));
+  return MakeBroadcastHlo(zero, /*broadcast_dimensions=*/{}, broadcast_shape);
 }
 
 HloInstruction* BroadcastOnes(HloComputation* computation,
@@ -664,6 +766,79 @@ StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(
   // a (recursive) broadcast here to avoid creating large constants.
   CreateDummyOp(&b, range);
   return b.Build();
+}
+
+HloInstruction* CreateDegenerateRemovingReshape(HloInstruction* hlo,
+                                                const int64_t index_to_remove) {
+  Shape input_shape = hlo->shape();
+  std::vector<int64_t> dims;
+  dims.reserve(input_shape.rank() - 1);
+  for (int64_t index = 0; index < input_shape.rank(); index++) {
+    if (index == index_to_remove) {
+      continue;
+    }
+    int64_t dim_size = input_shape.dimensions(index);
+    dims.push_back(dim_size);
+  }
+  Shape new_shape = ShapeUtil::MakeShape(input_shape.element_type(), dims);
+  return hlo->AddInstruction(HloInstruction::CreateReshape(new_shape, hlo));
+}
+
+HloInstruction* CreateDegenerateAddingReshape(HloInstruction* hlo,
+                                              const int index_to_add) {
+  Shape input_shape = hlo->shape();
+  std::vector<int64_t> dims;
+  dims.reserve(input_shape.rank() - 1);
+  for (int64_t index = 0; index < input_shape.rank(); index++) {
+    if (index == index_to_add) {
+      dims.push_back(1);
+    }
+    int64_t dim_size = input_shape.dimensions(index);
+    dims.push_back(dim_size);
+  }
+  if (index_to_add == input_shape.rank()) {
+    dims.push_back(1);
+  }
+  Shape new_shape = ShapeUtil::MakeShape(input_shape.element_type(), dims);
+  return hlo->AddInstruction(HloInstruction::CreateReshape(new_shape, hlo));
+}
+
+HloInstruction* ExpandDegenerateReshape(HloInstruction* inst) {
+  std::optional<ShapeUtil::ShapeEqualityDescriptor> reshape_degenerate =
+      inst->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
+  if (reshape_degenerate.has_value()) {
+    if (reshape_degenerate->deleted_dimensions.empty() &&
+        reshape_degenerate->inserted_dimensions.size() == 1) {
+      return nullptr;
+    }
+    if (reshape_degenerate->inserted_dimensions.empty() &&
+        reshape_degenerate->deleted_dimensions.size() == 1) {
+      return nullptr;
+    }
+    absl::c_reverse(reshape_degenerate->deleted_dimensions);
+    HloInstruction* degenerate_removing_hlo = nullptr;
+    if (!reshape_degenerate->deleted_dimensions.empty()) {
+      degenerate_removing_hlo = CreateDegenerateRemovingReshape(
+          inst->mutable_operand(0), reshape_degenerate->deleted_dimensions[0]);
+      for (int64_t r = 1; r < reshape_degenerate->deleted_dimensions.size();
+           r++) {
+        degenerate_removing_hlo = CreateDegenerateRemovingReshape(
+            degenerate_removing_hlo, reshape_degenerate->deleted_dimensions[r]);
+      }
+    }
+    HloInstruction* degenerate_adding_hlo = degenerate_removing_hlo != nullptr
+                                                ? degenerate_removing_hlo
+                                                : inst->mutable_operand(0);
+    if (!reshape_degenerate->inserted_dimensions.empty()) {
+      for (int64_t a = 0; a < reshape_degenerate->inserted_dimensions.size();
+           a++) {
+        degenerate_adding_hlo = CreateDegenerateAddingReshape(
+            degenerate_adding_hlo, reshape_degenerate->inserted_dimensions[a]);
+      }
+    }
+    return degenerate_adding_hlo;
+  }
+  return nullptr;
 }
 
 }  // namespace xla

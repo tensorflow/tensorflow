@@ -72,7 +72,8 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
             ",kernel_name=", tagged_node.node_item->kernel->name_view(),
             ",num_output_edges=", tagged_node.node_item->num_output_edges,
             ",num_output_control_edges=",
-            tagged_node.node_item->num_output_control_edges, "#");
+            tagged_node.node_item->num_output_control_edges,
+            ",input_frame=", tagged_node.input_frame->frame_id, "#");
       },
       profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
 
@@ -94,7 +95,7 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
     DCHECK_EQ(input_frame, output_frame);
     FrameState* frame = input_frame;
     is_frame_done = frame->ActivateNodesAndAdjustOutstanding(
-        item, is_dead, output_iter, outputs, ready);
+        item, is_dead, output_iter, outputs, ready, /*decrement_activation=*/1);
   } else if (item->is_enter) {
     FindOrCreateChildFrame(input_frame, input_iter, *item, &output_frame);
     {
@@ -113,55 +114,79 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
     is_frame_done = input_frame->DecrementOutstandingOps(input_iter, ready);
   } else if (item->is_exit) {
     if (is_dead) {
-      mutex_lock l(input_frame->mu);
-      // Stop and remember this node if it is a dead exit.
-      if (input_iter->iter_num == input_frame->iteration_count) {
-        input_frame->dead_exits.push_back(item);
+      {
+        tf_shared_lock l(input_frame->mu);
+        // Stop and remember this node if it is a dead exit.
+        if (input_iter->iter_num == input_frame->iteration_count) {
+          mutex_lock l(input_frame->iter_mu);
+          input_frame->dead_exits.push_back(item);
+        }
       }
-      is_frame_done =
-          input_frame->DecrementOutstandingOpsLocked(input_iter, ready);
+      is_frame_done = input_frame->DecrementOutstandingOps(input_iter, ready);
     } else {
       output_frame = input_frame->parent_frame;
       output_iter = input_frame->parent_iter;
-      {
-        mutex_lock l(output_frame->mu);
-        int activated = output_frame->ActivateNodesLocked(
-            item, is_dead, output_iter, outputs, ready);
-        output_frame->AdjustOutstandingOpsLocked(output_iter, activated, ready);
-      }
+      output_frame->ActivateNodesAndAdjustOutstanding(
+          item, is_dead, output_iter, outputs, ready,
+          /*decrement_activation=*/0);
       is_frame_done = input_frame->DecrementOutstandingOps(input_iter, ready);
     }
   } else {
     DCHECK(item->is_next_iteration);
-    mutex_lock l(input_frame->mu);
     if (is_dead) {
       // Stop the deadness propagation.
       output_frame = nullptr;
     } else {
-      if (input_iter->iter_num == input_frame->iteration_count &&
-          input_frame->num_outstanding_iterations ==
-              input_frame->max_parallel_iterations) {
-        // Reached the maximum for parallel iterations.
-        input_frame->next_iter_roots.push_back({item, (*outputs)[0]});
-        output_frame = nullptr;
-      } else {
-        // If this is a new iteration, start it.
+      bool need_create_iter = false;
+      {
+        tf_shared_lock l(input_frame->mu);
         if (input_iter->iter_num == input_frame->iteration_count) {
-          output_iter = input_frame->IncrementIteration(ready);
+          if (input_frame->num_outstanding_iterations ==
+              input_frame->max_parallel_iterations) {
+            // Reached the maximum for parallel iterations.
+            output_frame = nullptr;
+            mutex_lock l(input_frame->iter_mu);
+            input_frame->next_iter_roots.push_back({item, (*outputs)[0]});
+          } else {
+            // Need to create iteration state after acquiring mutex lock.
+            need_create_iter = true;
+          }
         } else {
           output_iter = input_frame->GetIteration(input_iter->iter_num + 1);
         }
       }
+      if (output_frame != nullptr) {
+        if (need_create_iter) {
+          profiler::TraceMe activit1y(
+              [&]() {
+                return strings::StrCat(
+                    "PropagateOutputs::NextIteration::CreateIterationState");
+              },
+              profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
+          mutex_lock l(input_frame->mu);
+          if (input_iter->iter_num == input_frame->iteration_count) {
+            // Check another time since another thread may create the required
+            // iteration state.
+            // TODO(fishx): This may cause contention since multiple threads may
+            // race for this mutex lock. Further improve this if needed.
+            output_iter = input_frame->IncrementIteration(ready);
+          } else {
+            output_iter = input_frame->GetIteration(input_iter->iter_num + 1);
+          }
+          DCHECK(input_frame == output_frame);
+          int activated = output_frame->ActivateNodesLocked(
+              item, is_dead, output_iter, outputs, ready);
+          output_frame->AdjustOutstandingOpsLocked(output_iter, activated,
+                                                   ready);
+        } else {
+          DCHECK(input_frame == output_frame);
+          output_frame->ActivateNodesAndAdjustOutstanding(
+              item, is_dead, output_iter, outputs, ready,
+              /*decrement_activation=*/0);
+        }
+      }
     }
-    if (output_frame != nullptr) {
-      // This is the case when node is not Enter, Exit, or NextIteration.
-      DCHECK(input_frame == output_frame);
-      int activated = output_frame->ActivateNodesLocked(
-          item, is_dead, output_iter, outputs, ready);
-      output_frame->AdjustOutstandingOpsLocked(output_iter, activated, ready);
-    }
-    is_frame_done =
-        input_frame->DecrementOutstandingOpsLocked(input_iter, ready);
+    is_frame_done = input_frame->DecrementOutstandingOps(input_iter, ready);
   }
 
   // At this point, this node is completely done. We also know if the
@@ -293,6 +318,7 @@ void PropagatorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
     mutex_lock parent_frame_lock(parent_frame->mu);
     // Propagate all the dead exits to the parent frame.
     mutex_lock this_frame_lock(frame->mu);
+    mutex_lock iter_lock(frame->iter_mu);
 
     for (const NodeItem* item : frame->dead_exits) {
       auto maybe_add_to_ready = [&](const NodeItem& dst_item, bool dst_ready,
@@ -399,13 +425,13 @@ int PropagatorState::FrameState::ActivateNodesFastPathInternal(
 // performance-critical and we need to ensure that the code is inlined.
 #define MAYBE_ADD_TO_READY(dst_id, adjust_result)         \
   do {                                                    \
-    if (!adjust_result.any_pending) {                     \
+    if (!(adjust_result.pending_count > 0)) {             \
       const NodeItem* dst_item = &gview.node_ref(dst_id); \
       TaggedNode& t = ready->emplace_back();              \
       t.node_item = dst_item;                             \
       t.input_frame = this;                               \
       t.input_iter = iter_state;                          \
-      t.is_dead = adjust_result.any_dead;                 \
+      t.is_dead = adjust_result.dead_count > 0;           \
       new_outstanding++;                                  \
     }                                                     \
   } while (0);
@@ -448,7 +474,8 @@ int PropagatorState::FrameState::ActivateNodesFastPathInternal(
 #undef MAYBE_ADD_TO_READY
 }
 
-int PropagatorState::FrameState::ActivateNodesSlowPath(
+template <bool atomic>
+int PropagatorState::FrameState::ActivateNodesSlowPathInternal(
     const NodeItem* item, const bool is_dead, IterationState* iter_state,
     EntryVector* outputs, TaggedNodeSeq* ready) {
   // If any of the edge destinations is a merge or a control trigger node,
@@ -477,7 +504,6 @@ int PropagatorState::FrameState::ActivateNodesSlowPath(
 
     bool dst_dead = false;
     bool dst_ready = false;
-    bool dst_need_input = true;
 
     if (dst_item->is_merge) {
       // A merge node is ready if all control inputs have arrived and either
@@ -486,45 +512,66 @@ int PropagatorState::FrameState::ActivateNodesSlowPath(
       // arrived.
       if ((*outputs)[src_slot].state != Entry::State::NO_VALUE) {
         // This is a live data input.
-        int count = iter_state->pending(dst_pending_id);
-        iter_state->mark_live(dst_pending_id);
-        // Only the first live edge sets the input and (potentially)
-        // triggers execution. The low bit of count is set if and
-        // only if no live input has been used yet (mark_live clears
-        // it). The node should be started if and only if this is
-        // the first live input and there are no pending control
+
+        // We have an assumption that merge op has only one live edge. Based on
+        // this assumption, we set the total pending count of a merge op to be
+        // 2 * control_edge + 1. So if we got a live data input of merge op, it
+        // is fine to directly set the input.
+        // NOTE(fishx): If there are multiple live edge for merge op, it will
+        // be a race condition and the last live edge will override the input
+        // of merge op. This should indicates a graph level issue.
+        const int dst_loc = e.input_slot;
+        if (e.is_last) {
+          input_tensors[dst_loc] = std::move((*outputs)[src_slot]);
+        } else {
+          input_tensors[dst_loc] = (*outputs)[src_slot];
+        }
+
+        const PendingCounts::AdjustResult adjust_result =
+            atomic ? iter_state->adjust_for_mark_live_atomic(dst_pending_id)
+                   : iter_state->adjust_for_mark_live(dst_pending_id);
+
+        // The low bit of count is set if and only if no live input has been
+        // used yet (mark_live clears it). The node should be started if and
+        // only if this is the first live input and there are no pending control
         // edges, i.e. count == 1.
-        dst_ready = (count == 1);
-        dst_need_input = ((count & 0x1) == 1);
+        dst_ready = (adjust_result.pending_count == 1);
       } else {
         // This is a dead data input. Note that dst_node is dead if node is
         // a dead enter. We need this to handle properly a while loop on
         // the untaken branch of a conditional.
         // TODO(yuanbyu): This is a bit hacky, but a good solution for
         // now.
-        iter_state->increment_dead_count(dst_pending_id);
-        const int dead_cnt = iter_state->dead_count(dst_pending_id);
-        dst_dead = (dead_cnt == dst_item->num_inputs) || item->is_enter;
-        dst_ready = (iter_state->pending(dst_pending_id) == 1) && dst_dead;
-        dst_need_input = false;
+        const PendingCounts::AdjustResult adjust_result =
+            atomic
+                ? iter_state->adjust_for_increment_dead_atomic(dst_pending_id)
+                : iter_state->adjust_for_increment_dead(dst_pending_id);
+        dst_dead = (adjust_result.dead_count == dst_item->num_inputs) ||
+                   item->is_enter;
+        dst_ready = (adjust_result.pending_count == 1) && dst_dead;
       }
     } else {
       // Handle all other (non-merge) nodes.
-      const bool increment_dead =
-          (is_dead || ((*outputs)[src_slot].state == Entry::State::NO_VALUE));
-      const PendingCounts::AdjustResult adjust_result =
-          iter_state->adjust_for_activation(dst_pending_id, increment_dead);
-      dst_dead = adjust_result.any_dead;
-      dst_ready = !adjust_result.any_pending;
-    }
 
-    if (dst_need_input) {
+      // We need to set the input of the op before adjusting activation.
+      // Otherwise it may have race condition since another thread may execute
+      // the op after adjusted activation.
       const int dst_loc = e.input_slot;
       if (e.is_last) {
         input_tensors[dst_loc] = std::move((*outputs)[src_slot]);
       } else {
         input_tensors[dst_loc] = (*outputs)[src_slot];
       }
+
+      const bool increment_dead =
+          (is_dead || ((*outputs)[src_slot].state == Entry::State::NO_VALUE));
+      const PendingCounts::AdjustResult adjust_result =
+          atomic ? iter_state->adjust_for_activation_atomic(dst_pending_id,
+                                                            increment_dead)
+                 : iter_state->adjust_for_activation(dst_pending_id,
+                                                     increment_dead);
+      dst_dead = adjust_result.dead_count > 0;
+      dst_ready = !(adjust_result.pending_count > 0);
     }
 
     maybe_add_to_ready(dst_id, dst_item, dst_ready, dst_dead);
@@ -543,17 +590,23 @@ int PropagatorState::FrameState::ActivateNodesSlowPath(
       // a) a live data input becomes available or b) all data inputs are
       // dead. For Merge, pending's LSB is set iff a live data input has
       // arrived.
-      iter_state->decrement_pending(dst_pending_id, 2);
-      int count = iter_state->pending(dst_pending_id);
-      int dead_cnt = iter_state->dead_count(dst_pending_id);
-      dst_dead = (dead_cnt == dst_item->num_inputs);
-      dst_ready = (count == 0) || ((count == 1) && dst_dead);
+      const PendingCounts::AdjustResult adjust_result =
+          atomic ? iter_state->adjust_for_decrement_pending_atomic(
+                       dst_pending_id, /*decrement_pending=*/2)
+                 : iter_state->adjust_for_decrement_pending(
+                       dst_pending_id,
+                       /*decrement_pending=*/2);
+      dst_dead = (adjust_result.dead_count == dst_item->num_inputs);
+      dst_ready = (adjust_result.pending_count == 0) ||
+                  ((adjust_result.pending_count == 1) && dst_dead);
     } else {
       // Handle all other (non-merge) nodes.
       const PendingCounts::AdjustResult adjust_result =
-          iter_state->adjust_for_activation(dst_pending_id, is_dead);
-      dst_dead = adjust_result.any_dead;
-      dst_ready = !adjust_result.any_pending;
+          atomic ? iter_state->adjust_for_activation_atomic(dst_pending_id,
+                                                            is_dead)
+                 : iter_state->adjust_for_activation(dst_pending_id, is_dead);
+      dst_dead = adjust_result.dead_count > 0;
+      dst_ready = adjust_result.pending_count == 0;
     }
     maybe_add_to_ready(dst_id, dst_item, dst_ready, dst_dead);
   }
@@ -561,24 +614,58 @@ int PropagatorState::FrameState::ActivateNodesSlowPath(
   return activated;
 }
 
-bool PropagatorState::FrameState::ActivateNodesAndAdjustOutstanding(
+int PropagatorState::FrameState::ActivateNodesFastPathLocked(
     const NodeItem* item, const bool is_dead, IterationState* iter_state,
     EntryVector* outputs, TaggedNodeSeq* ready) {
+  return ActivateNodesFastPathInternal<false>(item, is_dead, iter_state,
+                                              outputs, ready);
+}
+
+int PropagatorState::FrameState::ActivateNodesFastPathShared(
+    const NodeItem* item, const bool is_dead, IterationState* iter_state,
+    EntryVector* outputs, TaggedNodeSeq* ready) {
+  return ActivateNodesFastPathInternal<true>(item, is_dead, iter_state, outputs,
+                                             ready);
+}
+
+int PropagatorState::FrameState::ActivateNodesSlowPathLocked(
+    const NodeItem* item, const bool is_dead, IterationState* iter_state,
+    EntryVector* outputs, TaggedNodeSeq* ready) {
+  return ActivateNodesSlowPathInternal<false>(item, is_dead, iter_state,
+                                              outputs, ready);
+}
+
+int PropagatorState::FrameState::ActivateNodesSlowPathShared(
+    const NodeItem* item, const bool is_dead, IterationState* iter_state,
+    EntryVector* outputs, TaggedNodeSeq* ready) {
+  return ActivateNodesSlowPathInternal<true>(item, is_dead, iter_state, outputs,
+                                             ready);
+}
+
+bool PropagatorState::FrameState::ActivateNodesAndAdjustOutstanding(
+    const NodeItem* item, const bool is_dead, IterationState* iter_state,
+    EntryVector* outputs, TaggedNodeSeq* ready, int decrement_activation) {
   if (TF_PREDICT_FALSE(item->is_any_consumer_merge_or_control_trigger)) {
-    mutex_lock l(mu);
+    tf_shared_lock l(mu);
     int activated =
-        ActivateNodesSlowPath(item, is_dead, iter_state, outputs, ready);
-    return AdjustOutstandingOpsLocked(iter_state, activated - 1, ready);
-  }
-  {
+        ActivateNodesSlowPathShared(item, is_dead, iter_state, outputs, ready);
+    bool iter_done = AdjustOutstandingOpsFastPath(
+        iter_state, activated - decrement_activation);
+    if (!iter_done) return false;
+  } else {
     tf_shared_lock l(mu);
     int activated =
         ActivateNodesFastPathShared(item, is_dead, iter_state, outputs, ready);
-    bool iter_done = AdjustOutstandingOpsFastPath(iter_state, activated - 1);
+    bool iter_done = AdjustOutstandingOpsFastPath(
+        iter_state, activated - decrement_activation);
     if (!iter_done) return false;
   }
-  mutex_lock l(mu);
-  return CleanupIterations(iter_state, ready);
+  if (decrement_activation > 0) {
+    mutex_lock l(mu);
+    return CleanupIterations(iter_state, ready);
+  } else {
+    return true;
+  }
 }
 
 int PropagatorState::FrameState::ActivateNodesLocked(const NodeItem* item,
@@ -587,7 +674,8 @@ int PropagatorState::FrameState::ActivateNodesLocked(const NodeItem* item,
                                                      EntryVector* outputs,
                                                      TaggedNodeSeq* ready) {
   if (TF_PREDICT_FALSE(item->is_any_consumer_merge_or_control_trigger)) {
-    return ActivateNodesSlowPath(item, is_dead, iter_state, outputs, ready);
+    return ActivateNodesSlowPathLocked(item, is_dead, iter_state, outputs,
+                                       ready);
   } else {
     return ActivateNodesFastPathLocked(item, is_dead, iter_state, outputs,
                                        ready);
@@ -613,6 +701,7 @@ void PropagatorState::FrameState::ActivateNexts(IterationState* iter_state,
 void PropagatorState::FrameState::ActivateLoopInvs(IterationState* iter_state,
                                                    TaggedNodeSeq* ready) {
   // Propagate loop invariants to the new iteration.
+  mutex_lock l(iter_mu);
   int activated = 0;
   for (auto& node_entry : inv_values) {
     const NodeItem* item = node_entry.first;
@@ -628,8 +717,11 @@ void PropagatorState::FrameState::ActivateLoopInvs(IterationState* iter_state,
 void PropagatorState::FrameState::AddLoopInv(const NodeItem* item,
                                              const Entry& entry,
                                              TaggedNodeSeq* ready) {
-  // Store this value.
-  inv_values.push_back({item, entry});
+  {
+    mutex_lock l(iter_mu);
+    // Store this value.
+    inv_values.push_back({item, entry});
+  }
 
   // Make this value available to all iterations.
   const bool is_dead = entry.state == Entry::State::NO_VALUE;
@@ -665,7 +757,10 @@ PropagatorState::FrameState::IncrementIteration(TaggedNodeSeq* ready) {
       new IterationState(iteration_count, pending_counts, total_input_tensors);
   SetIteration(iteration_count, next_iter);
   num_outstanding_iterations++;
-  dead_exits.clear();
+  {
+    mutex_lock l(iter_mu);
+    dead_exits.clear();
+  }
 
   // Activate the successors of the deferred roots in the new iteration.
   ActivateNexts(next_iter, ready);
@@ -687,7 +782,12 @@ bool PropagatorState::FrameState::CleanupIterations(IterationState* iter_state,
 
     // When one iteration is completed, we check for deferred iteration,
     // and start it if there is one.
-    if (!next_iter_roots.empty()) {
+    bool increment_iteration = false;
+    {
+      tf_shared_lock l(iter_mu);
+      increment_iteration = !next_iter_roots.empty();
+    }
+    if (increment_iteration) {
       IncrementIteration(ready);
     }
 

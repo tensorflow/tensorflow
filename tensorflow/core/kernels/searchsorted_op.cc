@@ -101,10 +101,20 @@ class UpperBoundOp : public OpKernel {
     const Tensor& sorted_inputs_t = ctx->input(0);
     const Tensor& values_t = ctx->input(1);
 
-    // inputs must be at least a matrix
+    // Inputs must be a matrix
+    // This replicates the shape requirements for the op in array_ops.cc
     OP_REQUIRES(
-        ctx, sorted_inputs_t.shape().dims() >= 2,
-        errors::InvalidArgument("sorted input argument must be a matrix"));
+        ctx, sorted_inputs_t.shape().dims() == 2,
+        errors::InvalidArgument(absl::StrCat(
+            "Shape must be rank 2 but is rank ", sorted_inputs_t.shape().dims(),
+            " for "
+            "`sorted_inputs` argument")));
+    // Values must be a matrix
+    // This replicates the shape requirements for the op in array_ops.cc
+    OP_REQUIRES(ctx, values_t.shape().dims() == 2,
+                errors::InvalidArgument(absl::StrCat(
+                    "Shape must be rank 2 but is rank ",
+                    values_t.shape().dims(), " for `values` argument")));
     // must have same batch dim_size for both
     OP_REQUIRES(ctx, sorted_inputs_t.dim_size(0) == values_t.dim_size(0),
                 Status(error::INVALID_ARGUMENT,
@@ -154,10 +164,20 @@ class LowerBoundOp : public OpKernel {
     const Tensor& sorted_inputs_t = ctx->input(0);
     const Tensor& values_t = ctx->input(1);
 
-    // inputs must be at least a matrix
+    // Inputs must be a matrix
+    // This replicates the shape requirements for the op in array_ops.cc
     OP_REQUIRES(
-        ctx, sorted_inputs_t.shape().dims() >= 2,
-        errors::InvalidArgument("sorted input argument must be a matrix"));
+        ctx, sorted_inputs_t.shape().dims() == 2,
+        errors::InvalidArgument(absl::StrCat(
+            "Shape must be rank 2 but is rank ", sorted_inputs_t.shape().dims(),
+            " for "
+            "`sorted_inputs` argument")));
+    // Values must be a matrix
+    // This replicates the shape requirements for the op in array_ops.cc
+    OP_REQUIRES(ctx, values_t.shape().dims() == 2,
+                errors::InvalidArgument(absl::StrCat(
+                    "Shape must be rank 2 but is rank ",
+                    values_t.shape().dims(), " for `values` argument")));
     // must have same batch dim_size for both
     OP_REQUIRES(ctx, sorted_inputs_t.dim_size(0) == values_t.dim_size(0),
                 Status(error::INVALID_ARGUMENT,

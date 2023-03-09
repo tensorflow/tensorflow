@@ -28,6 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
@@ -580,26 +581,28 @@ class NestTest(parameterized.TestCase, test.TestCase):
     inp_abc = ["a", "b", "c"]
     with self.assertRaisesWithLiteralMatch(  # pylint: disable=g-error-prone-assert-raises
         ValueError,
-        nest._STRUCTURES_HAVE_MISMATCHING_LENGTHS.format(
-            input_length=len(inp_ab),
-            shallow_length=len(inp_abc))):
+        nest.STRUCTURES_HAVE_MISMATCHING_LENGTHS.format(
+            input_length=len(inp_ab), shallow_length=len(inp_abc)
+        ),
+    ):
       nest.assert_shallow_structure(inp_abc, inp_ab)
 
     inp_ab1 = [(1, 1), (2, 2)]
     inp_ab2 = [[1, 1], [2, 2]]
     with self.assertRaisesWithLiteralMatch(
         TypeError,
-        nest._STRUCTURES_HAVE_MISMATCHING_TYPES.format(
-            shallow_type=type(inp_ab2[0]),
-            input_type=type(inp_ab1[0]))):
+        nest.STRUCTURES_HAVE_MISMATCHING_TYPES.format(
+            shallow_type=type(inp_ab2[0]), input_type=type(inp_ab1[0])
+        ),
+    ):
       nest.assert_shallow_structure(inp_ab2, inp_ab1)
     nest.assert_shallow_structure(inp_ab2, inp_ab1, check_types=False)
 
     inp_ab1 = {"a": (1, 1), "b": {"c": (2, 2)}}
     inp_ab2 = {"a": (1, 1), "b": {"d": (2, 2)}}
     with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        nest._SHALLOW_TREE_HAS_INVALID_KEYS.format(["d"])):
+        ValueError, nest.SHALLOW_TREE_HAS_INVALID_KEYS.format(["d"])
+    ):
       nest.assert_shallow_structure(inp_ab2, inp_ab1)
 
     inp_ab = collections.OrderedDict([("a", 1), ("b", (2, 3))])
@@ -619,6 +622,15 @@ class NestTest(parameterized.TestCase, test.TestCase):
     inp_deep = [1, 2]
     nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=False)
     nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=True)
+
+    # This assertion is expected to pass: a VariableSpec with alias_id and
+    # a Variable are considered identical.
+    inp_shallow = resource_variable_ops.VariableSpec(None, alias_id=0)
+    inp_deep = resource_variable_ops.ResourceVariable(1.)
+    nest.assert_shallow_structure(inp_shallow, inp_deep,
+                                  expand_composites=False)
+    nest.assert_shallow_structure(inp_shallow, inp_deep,
+                                  expand_composites=True)
 
   def testFlattenUpTo(self):
     # Shallow tree ends at scalar.
@@ -763,8 +775,9 @@ class NestTest(parameterized.TestCase, test.TestCase):
 
     input_tree = [(1,), (2,), 3]
     shallow_tree = [(1,), (2,)]
-    expected_message = nest._STRUCTURES_HAVE_MISMATCHING_LENGTHS.format(
-        input_length=len(input_tree), shallow_length=len(shallow_tree))
+    expected_message = nest.STRUCTURES_HAVE_MISMATCHING_LENGTHS.format(
+        input_length=len(input_tree), shallow_length=len(shallow_tree)
+    )
     with self.assertRaisesRegex(ValueError, expected_message):  # pylint: disable=g-error-prone-assert-raises
       nest.assert_shallow_structure(shallow_tree, input_tree)
 
@@ -901,9 +914,10 @@ class NestTest(parameterized.TestCase, test.TestCase):
 
     with self.assertRaisesWithLiteralMatch(  # pylint: disable=g-error-prone-assert-raises
         ValueError,
-        nest._STRUCTURES_HAVE_MISMATCHING_LENGTHS.format(
-            input_length=len(input_tree),
-            shallow_length=len(shallow_tree))):
+        nest.STRUCTURES_HAVE_MISMATCHING_LENGTHS.format(
+            input_length=len(input_tree), shallow_length=len(shallow_tree)
+        ),
+    ):
       get_paths_and_values(shallow_tree, input_tree)
 
     # Using non-iterable elements.
@@ -960,7 +974,8 @@ class NestTest(parameterized.TestCase, test.TestCase):
     shallow_tree = ["shallow_tree"]
     with self.assertRaisesWithLiteralMatch(
         TypeError,
-        nest._IF_SHALLOW_IS_SEQ_INPUT_MUST_BE_SEQ.format(type(input_tree))):
+        nest.IF_SHALLOW_IS_SEQ_INPUT_MUST_BE_SEQ.format(type(input_tree)),
+    ):
       (flattened_input_tree_paths,
        flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree)
     (flattened_shallow_tree_paths,
@@ -972,7 +987,8 @@ class NestTest(parameterized.TestCase, test.TestCase):
     shallow_tree = ["shallow_tree_9", "shallow_tree_8"]
     with self.assertRaisesWithLiteralMatch(
         TypeError,
-        nest._IF_SHALLOW_IS_SEQ_INPUT_MUST_BE_SEQ.format(type(input_tree))):
+        nest.IF_SHALLOW_IS_SEQ_INPUT_MUST_BE_SEQ.format(type(input_tree)),
+    ):
       (flattened_input_tree_paths,
        flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree)
     (flattened_shallow_tree_paths,
@@ -985,7 +1001,8 @@ class NestTest(parameterized.TestCase, test.TestCase):
     shallow_tree = [9]
     with self.assertRaisesWithLiteralMatch(
         TypeError,
-        nest._IF_SHALLOW_IS_SEQ_INPUT_MUST_BE_SEQ.format(type(input_tree))):
+        nest.IF_SHALLOW_IS_SEQ_INPUT_MUST_BE_SEQ.format(type(input_tree)),
+    ):
       (flattened_input_tree_paths,
        flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree)
     (flattened_shallow_tree_paths,
@@ -997,7 +1014,8 @@ class NestTest(parameterized.TestCase, test.TestCase):
     shallow_tree = [9, 8]
     with self.assertRaisesWithLiteralMatch(
         TypeError,
-        nest._IF_SHALLOW_IS_SEQ_INPUT_MUST_BE_SEQ.format(type(input_tree))):
+        nest.IF_SHALLOW_IS_SEQ_INPUT_MUST_BE_SEQ.format(type(input_tree)),
+    ):
       (flattened_input_tree_paths,
        flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree)
     (flattened_shallow_tree_paths,
@@ -1037,8 +1055,8 @@ class NestTest(parameterized.TestCase, test.TestCase):
     inp_val = dict(a=2, b=3)
     inp_ops = dict(a=dict(add=1, mul=2), c=dict(add=2, mul=3))
     with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        nest._SHALLOW_TREE_HAS_INVALID_KEYS.format(["b"])):
+        ValueError, nest.SHALLOW_TREE_HAS_INVALID_KEYS.format(["b"])
+    ):
       nest.map_structure_up_to(
           inp_val,
           lambda val, ops: (val + ops["add"]) * ops["mul"], inp_val, inp_ops)
@@ -1056,8 +1074,8 @@ class NestTest(parameterized.TestCase, test.TestCase):
     inp_val = dict(a=2, b=3)
     inp_ops = _CustomMapping(a=dict(add=1, mul=2), c=dict(add=2, mul=3))
     with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        nest._SHALLOW_TREE_HAS_INVALID_KEYS.format(["b"])):
+        ValueError, nest.SHALLOW_TREE_HAS_INVALID_KEYS.format(["b"])
+    ):
       nest.map_structure_up_to(
           inp_val,
           lambda val, ops: (val + ops["add"]) * ops["mul"], inp_val, inp_ops)

@@ -23,8 +23,8 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
-#include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/blocking_counter.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
                                      void*, int64_t*, uint64_t*);
@@ -83,7 +83,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
   std::vector<XlaCustomCallStatus> statuses(num_partitions);
 
   // Dispatch 'num_partitions - 1' compute functions to run in parallel.
-  tensorflow::BlockingCounter bc(num_partitions - 1);
+  tsl::BlockingCounter bc(num_partitions - 1);
   for (int32_t i = 1; i < num_partitions; ++i) {
     const int64_t offset = i * stride;
     run_options->intra_op_thread_pool()->enqueueNoNotification(

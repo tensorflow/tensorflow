@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace sparse_utils {
@@ -544,6 +545,44 @@ INSTANTIATE_TEST_SUITE_P(
           return "Ordered";
       }
     });
+
+//==============================================================================
+// BENCHMARKS
+//==============================================================================
+
+// Benchmark time to validate a valid sparse tensor (the common case, worst-case
+// latency).
+void BM_ValidateSparseTensor(::testing::benchmark::State& state,
+                             TensorShape dense_shape,
+                             IndexValidation index_validation) {
+  Tensor indices, values, shape;
+  const int64_t nnz = state.range(0);
+  GenerateRandomSparseTensor(nnz, dense_shape, /*ordered=*/true, indices,
+                             values, shape);
+  for (auto s : state) {
+    ::benchmark::DoNotOptimize(ValidateSparseTensor<int64_t>(
+        indices, values, shape, index_validation));
+  }
+}
+
+BENCHMARK_CAPTURE(BM_ValidateSparseTensor, Ordered1024, TensorShape({1024}),
+                  IndexValidation::kOrdered)
+    ->Range(8, 512);
+BENCHMARK_CAPTURE(BM_ValidateSparseTensor, Unordered1024, TensorShape({1024}),
+                  IndexValidation::kUnordered)
+    ->Range(8, 512);
+BENCHMARK_CAPTURE(BM_ValidateSparseTensor, Ordered1024x1024,
+                  TensorShape({1024, 1024}), IndexValidation::kOrdered)
+    ->Range(8, 1024);
+BENCHMARK_CAPTURE(BM_ValidateSparseTensor, Unordered1024x1024,
+                  TensorShape({1024, 1024}), IndexValidation::kUnordered)
+    ->Range(8, 1024);
+BENCHMARK_CAPTURE(BM_ValidateSparseTensor, Ordered1024x1024x1024,
+                  TensorShape({1024, 1024, 1024}), IndexValidation::kOrdered)
+    ->Range(8, 1024 * 32);
+BENCHMARK_CAPTURE(BM_ValidateSparseTensor, Unordered1024x1024x1024,
+                  TensorShape({1024, 1024, 1024}), IndexValidation::kUnordered)
+    ->Range(8, 1024 * 32);
 
 }  // namespace
 }  // namespace sparse_utils

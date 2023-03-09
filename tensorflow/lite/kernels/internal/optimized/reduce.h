@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_REDUCE_OPS_H_
-#define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_REDUCE_OPS_H_
+#ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_REDUCE_H_
+#define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_REDUCE_H_
 
 #include <stdint.h>
 
@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/reduce.h"
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 namespace optimized_ops {
@@ -257,48 +258,6 @@ inline void Mean(const tflite::MeanParams& op_params,
   }
 }
 
-template <typename T, typename U>
-inline bool MeanGeneral(const T* input_data, const int* input_dims,
-                        const int input_num_dims, T* output_data,
-                        const int* output_dims, const int output_num_dims,
-                        const int* axis, const int num_axis_dimensions,
-                        bool keep_dims, int* temp_index, int* resolved_axis,
-                        U* temp_sum) {
-  return reference_ops::Mean(input_data, input_dims, input_num_dims,
-                             output_data, output_dims, output_num_dims, axis,
-                             num_axis_dimensions, keep_dims, temp_index,
-                             resolved_axis, temp_sum);
-}
-
-template <>
-inline bool MeanGeneral<float, float>(
-    const float* input_data, const int* input_dims, const int input_num_dims,
-    float* output_data, const int* output_dims, const int output_num_dims,
-    const int* axis, const int num_axis_dimensions, bool keep_dims,
-    int* temp_index, int* resolved_axis, float* temp_sum) {
-  // Handle reduce_mean for the last dimensions.
-  if (num_axis_dimensions == 1 && axis[0] == (input_num_dims - 1)) {
-    ruy::profiler::ScopeLabel label("MeanLastDim/Float");
-    int output_size = 1;
-    for (int i = 0; i < input_num_dims - 1; ++i) {
-      output_size *= input_dims[i];
-    }
-    const int last_input_dim = input_dims[axis[0]];
-
-    // TODO(b/152563685): Consider use eigen to cover more general cases.
-    const MatrixMap<const float> in_mat(input_data, last_input_dim,
-                                        output_size);
-    VectorMap<float> out(output_data, output_size, 1);
-    out = (in_mat.array().colwise().sum()) / static_cast<float>(last_input_dim);
-    return true;
-  }
-
-  return reference_ops::Mean(input_data, input_dims, input_num_dims,
-                             output_data, output_dims, output_num_dims, axis,
-                             num_axis_dimensions, keep_dims, temp_index,
-                             resolved_axis, temp_sum);
-}
-
 template <typename T>
 struct SumOp {
   inline T operator()(const T& a) const { return a; }
@@ -352,10 +311,7 @@ struct OrOp {
 template <typename T>
 void ReduceIsCopy(const T* input_data, const int* input_dims,
                   const int input_num_dims, T* output_data) {
-  int num_elems = 1;
-  for (int i = 0; i < input_num_dims; ++i) {
-    num_elems *= input_dims[i];
-  }
+  int num_elems = NumElements(input_dims, input_num_dims);
   memcpy(output_data, input_data, num_elems * sizeof(T));
 }
 
@@ -481,10 +437,18 @@ bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
     return false;
   }
 
-  if (!Reduce<T, U, CastSumOp<T, U>, CastSumOp<T, U>>(
-          input_data, normalized_dims, normalized_num_dims, resolved_axis,
-          num_resolved_axis, temp_sum, CastSumOp<T, U>(), CastSumOp<T, U>())) {
-    return false;
+  if (num_resolved_axis == 0) {
+    int count = NumElements(input_dims, input_num_dims);
+    for (int i = 0; i < count; ++i) {
+      temp_sum[i] = U(input_data[i]);
+    }
+  } else {
+    if (!Reduce<T, U, CastSumOp<T, U>, CastSumOp<T, U>>(
+            input_data, normalized_dims, normalized_num_dims, resolved_axis,
+            num_resolved_axis, temp_sum, CastSumOp<T, U>(),
+            CastSumOp<T, U>())) {
+      return false;
+    }
   }
 
   // Calculate mean by dividing output_data by num of aggregated element.
@@ -692,6 +656,123 @@ inline bool QuantizedReduceProd(
   return true;
 }
 
+template <typename T>
+inline void Mean(const tflite::MeanParams& op_params,
+                 const RuntimeShape& input_shape, const T* input_data,
+                 const RuntimeShape& output_shape, T* output_data) {
+  return reference_ops::Mean(op_params, input_shape, input_data, output_shape,
+                             output_data);
+}
+
+// Computes the mean of elements across dimensions given in axis.
+// It does so in two stages, first calculates the sum of elements along the axis
+// then divides it by the number of element in axis.
+template <typename T, typename U>
+inline bool MeanGeneral(const T* input_data, const int* input_dims,
+                        const int input_num_dims, T* output_data,
+                        const int* output_dims, const int output_num_dims,
+                        const int* axis, const int num_axis_dimensions,
+                        bool keep_dims, int* normalized_dims,
+                        int* resolved_axis, U* temp_sum) {
+  ruy::profiler::ScopeLabel label("Mean");
+  // Resolve axis.
+  int num_resolved_axis = 0;
+  int normalized_num_dims = 0;
+  if (!reduce_utils::ResolveAxis(input_num_dims, axis, num_axis_dimensions,
+                                 resolved_axis, num_resolved_axis, input_dims,
+                                 normalized_dims, normalized_num_dims)) {
+    return false;
+  }
+  if (num_resolved_axis == 0) {
+    optimized_ops::ReduceIsCopy(input_data, input_dims, input_num_dims,
+                                output_data);
+    return true;
+  }
+  // Reset output data.
+  size_t num_outputs = 1;
+  for (int idx = 0; idx < output_num_dims; ++idx) {
+    size_t current = static_cast<size_t>(output_dims[idx]);
+    // Overflow prevention.
+    if (num_outputs > std::numeric_limits<size_t>::max() / current) {
+      return false;
+    }
+    num_outputs *= current;
+  }
+
+  if (!Reduce<T, U, CastSumOp<T, U>, CastSumOp<T, U>>(
+          input_data, normalized_dims, normalized_num_dims, resolved_axis,
+          num_resolved_axis, temp_sum, CastSumOp<T, U>(), CastSumOp<T, U>())) {
+    return false;
+  }
+
+  // Calculate mean by dividing output_data by num of aggregated element.
+  size_t num_elements_in_axis = 1;
+  for (int idx = 0; idx < num_resolved_axis; ++idx) {
+    size_t current = static_cast<size_t>(normalized_dims[resolved_axis[idx]]);
+    // Overflow prevention.
+    if (current > (std::numeric_limits<size_t>::max() / num_elements_in_axis)) {
+      return false;
+    }
+    num_elements_in_axis *= current;
+  }
+
+  if (num_elements_in_axis > 0) {
+    for (size_t idx = 0; idx < num_outputs; ++idx) {
+      output_data[idx] =
+          static_cast<T>(temp_sum[idx] / static_cast<U>(num_elements_in_axis));
+    }
+  }
+  return true;
+}
+
+template <typename T, typename U>
+inline bool Mean(const T* input_data, const int* input_dims,
+                 const int input_num_dims, T* output_data,
+                 const int* output_dims, const int output_num_dims,
+                 const int* axis, const int num_axis_dimensions, bool keep_dims,
+                 int* normalized_dims, int* resolved_axis, U* temp_sum) {
+  return MeanGeneral(input_data, input_dims, input_num_dims, output_data,
+                     output_dims, output_num_dims, axis, num_axis_dimensions,
+                     false, normalized_dims, resolved_axis, temp_sum);
+}
+
+// Use Eigen when Mean is calculated over the last dimension only of a float
+// tensor.
+template <>
+inline bool Mean<float, float>(const float* input_data, const int* input_dims,
+                               const int input_num_dims, float* output_data,
+                               const int* output_dims,
+                               const int output_num_dims, const int* axis,
+                               const int num_axis_dimensions, bool keep_dims,
+                               int* normalized_dims, int* resolved_axis,
+                               float* temp_sum) {
+  // Handle reduce_mean for the last dimensions.
+  int num_resolved_axis = 0;
+  int normalized_num_dims = 0;
+  if (!reduce_utils::ResolveAxis(input_num_dims, axis, num_axis_dimensions,
+                                 resolved_axis, num_resolved_axis, input_dims,
+                                 normalized_dims, normalized_num_dims)) {
+    return false;
+  }
+  if (normalized_num_dims > 1 && num_resolved_axis == 1 &&
+      resolved_axis[0] == (normalized_num_dims - 1)) {
+    ruy::profiler::ScopeLabel label("MeanLastDim/Float");
+    int output_size = normalized_dims[0];
+    const int last_input_dim = normalized_dims[1];
+
+    // TODO(b/152563685): Consider use eigen to cover more general cases.
+    const MatrixMap<const float> in_mat(input_data, last_input_dim,
+                                        output_size);
+    VectorMap<float> out(output_data, output_size, 1);
+    out = (in_mat.array().colwise().sum()) / static_cast<float>(last_input_dim);
+    return true;
+  }
+
+  return MeanGeneral(input_data, input_dims, input_num_dims, output_data,
+                     output_dims, output_num_dims, axis, num_axis_dimensions,
+                     false, normalized_dims, resolved_axis, temp_sum);
+}
+
 // Computes the generic value (i.e., sum/max/min/prod) of elements across
 // dimensions given in axis. It needs to pass in init_value and reducer.
 template <typename T>
@@ -721,4 +802,4 @@ inline bool ReduceGeneric(const T* input_data, const int* input_dims,
 }  // namespace optimized_ops
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_OPTIMIZED_OPS_H_
+#endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_REDUCE_H_

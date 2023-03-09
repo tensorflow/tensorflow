@@ -15,15 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_CLIENT_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_CLIENT_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
-#include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -31,9 +30,9 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -44,6 +43,8 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   DataServiceDispatcherClient(const std::string& address,
                               const std::string& protocol)
       : DataServiceClientBase(address, protocol) {}
+
+  Status Initialize() override;
 
   // Sends a heartbeat to the dispatcher. If the worker wasn't already
   // registered with the dispatcher, this will register the worker. The
@@ -66,10 +67,24 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
                   int64_t split_provider_index, Tensor& split,
                   bool& end_of_splits);
 
+  // Gets the next split for the specified source of a stream of the snapshot in
+  // `base_path`. If `end_of_splits` returns true, then there are no more splits
+  // to be processed for the specified stream source.
+  virtual Status GetSnapshotSplit(const std::string& worker_address,
+                                  const std::string& base_path,
+                                  int64_t stream_index, int64_t source_index,
+                                  Tensor& split, int64_t& local_split_index,
+                                  bool& end_of_splits);
+
+  // Initiates the process of materializing `dataset`'s output to `path`.
+  Status Snapshot(const DatasetDef& dataset, const std::string& path,
+                  const experimental::DistributedSnapshotMetadata& metadata);
+
   // Registers a dataset with the tf.data service, and stores the generated
   // dataset id in `dataset_id`.
   Status RegisterDataset(const DatasetDef& dataset,
                          const DataServiceMetadata& metadata,
+                         const std::optional<std::string>& requested_dataset_id,
                          std::string& dataset_id);
 
   // If `job_name` is set, looks up a job matching `job_name`.
@@ -77,7 +92,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // new job. The resulting job id is stored in `job_id`.
   Status GetOrCreateJob(const std::string& dataset_id,
                         const ProcessingModeDef& processing_mode,
-                        const absl::optional<std::string>& job_name,
+                        const std::optional<std::string>& job_name,
                         std::optional<int64_t> num_consumers,
                         bool use_cross_trainer_cache,
                         TargetWorkers target_workers, int64_t& job_id);

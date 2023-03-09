@@ -38,7 +38,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
     self.assertIn('Subgraph#0(T#1) -> [T#2]', txt)
     self.assertIn('Op#0 ADD(T#1, T#1) -> [T#0]', txt)
     self.assertIn('Op#1 ADD(T#0, T#1) -> [T#2]', txt)
-    self.assertNotIn('Your model looks compatibile with GPU delegate', txt)
+    self.assertNotIn('Your model looks compatible with GPU delegate', txt)
 
   def testMlir(self):
     model_path = resource_loader.get_path_to_datafile('../testdata/add.bin')
@@ -70,7 +70,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
           model_path=model_path, experimental_use_mlir=True)
     mlir = mock_stdout.getvalue()
     self.assertIn(
-        '%1 = "tfl.pseudo_const"() {value = opaque<"elided_large_const", "0xDEADBEEF"> : '
+        '%1 = "tfl.pseudo_const"() {value = dense_resource<__elided__> : '
         'tensor<3x3x3x8xf32>} : () -> tensor<3x3x3x8xf32>', mlir)
 
   def testTxtWithFlatBufferModel(self):
@@ -144,7 +144,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
           model_content=fb_model, gpu_compatibility=True)
     txt = mock_stdout.getvalue()
     self.assertIn(
-        'Your model looks compatibile with GPU delegate with TFLite runtime',
+        'Your model looks compatible with GPU delegate with TFLite runtime',
         txt)
 
   def testTxtSignatureDefs(self):
@@ -227,13 +227,13 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
     self.assertIn('Op#3 RESHAPE(T#7, T#2[1, 100, 8, 64]) -> [T#8]', txt)
     self.assertIn(
         'T#2(einsum/Einsum) shape:[4], type:INT32 RO 16 bytes, '
-        'data:[1, 100, 8, 64]', txt)
+        'buffer: 3, data:[1, 100, 8, 64]', txt)
     self.assertIn(
         'T#3(einsum/Einsum2) shape:[2], type:INT32 RO 8 bytes, '
-        'data:[1, 0]', txt)
+        'buffer: 4, data:[1, 0]', txt)
     self.assertIn(
         'T#4(einsum/Einsum3) shape:[2], type:INT32 RO 8 bytes, '
-        'data:[512, 512]', txt)
+        'buffer: 5, data:[512, 512]', txt)
 
 
 if __name__ == '__main__':

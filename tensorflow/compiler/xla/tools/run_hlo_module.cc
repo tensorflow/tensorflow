@@ -27,9 +27,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/testing.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/error_spec.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_comparison.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
@@ -39,9 +39,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tools/run_hlo_module.pb.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -52,25 +52,22 @@ void WriteLiteralToTempFile(const LiteralSlice& literal,
   // Bazel likes for tests to write "debugging outputs" like these to
   // TEST_UNDECLARED_OUTPUTS_DIR.  This plays well with tools that inspect test
   // results, especially when they're run on remote machines.
-  auto* env = tensorflow::Env::Default();
+  auto* env = tsl::Env::Default();
   std::string binary_filename;
   std::string text_filename;
   std::string outdir;
-  if (tensorflow::io::GetTestUndeclaredOutputsDir(&outdir)) {
-    std::string filename = tensorflow::io::JoinPath(
+  if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
+    std::string filename = tsl::io::JoinPath(
         outdir, absl::StrFormat("tempfile-%d-%s", env->NowMicros(), name));
     binary_filename = absl::StrCat(filename, ".pb");
     text_filename = absl::StrCat(filename, ".txt");
   } else {
-    binary_filename =
-        tensorflow::io::GetTempFilename(absl::StrCat(name, ".pb"));
-    text_filename = tensorflow::io::GetTempFilename(absl::StrCat(name, ".txt"));
+    binary_filename = tsl::io::GetTempFilename(absl::StrCat(name, ".pb"));
+    text_filename = tsl::io::GetTempFilename(absl::StrCat(name, ".txt"));
   }
 
-  TF_CHECK_OK(
-      tensorflow::WriteBinaryProto(env, binary_filename, literal.ToProto()));
-  TF_CHECK_OK(
-      tensorflow::WriteStringToFile(env, text_filename, literal.ToString()));
+  TF_CHECK_OK(tsl::WriteBinaryProto(env, binary_filename, literal.ToProto()));
+  TF_CHECK_OK(tsl::WriteStringToFile(env, text_filename, literal.ToString()));
   LOG(ERROR) << "wrote Literal to " << name << " binary: " << binary_filename
              << " text: " << text_filename;
 }
@@ -91,23 +88,31 @@ void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
   WriteLiteralToTempFile(mismatches, "mismatches");
 }
 
-Literal ExecuteWithRunner(std::unique_ptr<HloModule> module,
-                          absl::Span<const Literal> args,
-                          HloRunnerInterface* runner, bool run_hlo_passes) {
-  TF_QCHECK_OK(VerifyHloModule(module.get(), /*layout_sensitive=*/false,
-                               /*allow_mixed_precision=*/true))
-      << " (on " << runner->Name() << ")";
+StatusOr<Literal> ExecuteWithRunner(std::unique_ptr<HloModule> module,
+                                    absl::Span<const Literal> args,
+                                    HloRunnerInterface* runner,
+                                    bool run_hlo_passes) {
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      VerifyHloModule(module.get(), /*layout_sensitive=*/false,
+                      /*allow_mixed_precision=*/true),
+      absl::StrCat("(on ", runner->Name(), ")"));
 
   std::cerr << "Running HLO module with runner " << runner->Name() << "...\n";
   XLA_VLOG_LINES(1, module->ToString());
   const auto start = std::chrono::high_resolution_clock::now();
-  auto result_status = runner->Execute(std::move(module), args, run_hlo_passes);
+  ExecutionProfile profile;
+  auto result_status =
+      runner->Execute(std::move(module), args, run_hlo_passes, &profile);
   const auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> diff = end - start;
   std::cerr << "... compiled and ran in " << diff.count() << "s.\n";
+  double run_time = static_cast<double>(profile.compute_time_ns()) / 1e9;
+  std::cerr << "execution time for runner " << runner->Name() << ": "
+            << run_time << "s.\n";
 
-  TF_QCHECK_OK(result_status.status())
-      << "Failed to execute on " << runner->Name() << "\n";
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      result_status.status(),
+      absl::StrCat("Failed to execute on ", runner->Name()));
 
   return std::move(result_status).value();
 }
@@ -135,9 +140,10 @@ Status RunAndCompare(
 
   const HloModuleProto test_module_proto = test_module->ToProto();
 
-  std::vector<Literal> args = MakeFakeArguments(test_module.get(), engine,
-                                                options.use_large_float_range)
-                                  .value();
+  TF_ASSIGN_OR_RETURN(auto args,
+                      MakeFakeArguments(test_module.get(), engine,
+                                        options.use_large_float_range,
+                                        options.treat_gte_as_data_formatting));
   // Use provided input literals as arguments, if any.
   if (iteration_literals_proto != nullptr &&
       iteration_literals_proto->arguments_size() != 0) {
@@ -179,14 +185,16 @@ Status RunAndCompare(
   if (reference_runner != nullptr) {
     // PrepareReferenceModule needs to know the *test* runner, in order to
     // properly match the test runner's numerics.
-    reference_module =
+    TF_ASSIGN_OR_RETURN(
+        reference_module,
         PrepareReferenceModule(*test_module, test_runner, config_modifier_hook,
-                               reference_module_modifier_hook)
-            .value();
+                               reference_module_modifier_hook));
   }
 
-  Literal test_result = ExecuteWithRunner(
-      std::move(test_module), args, test_runner, options.run_test_hlo_passes);
+  TF_ASSIGN_OR_RETURN(
+      auto test_result,
+      ExecuteWithRunner(std::move(test_module), args, test_runner,
+                        options.run_test_hlo_passes));
   if (options.print_literals) {
     std::cout << "\n** Result with test runner " << test_runner->Name()
               << " **\n"
@@ -202,9 +210,10 @@ Status RunAndCompare(
     return OkStatus();
   }
 
-  Literal reference_result =
+  TF_ASSIGN_OR_RETURN(
+      auto reference_result,
       ExecuteWithRunner(std::move(reference_module), args, reference_runner,
-                        options.run_reference_hlo_passes);
+                        options.run_reference_hlo_passes));
 
   if (options.print_literals) {
     std::cout << "\n** Result with reference runner "
@@ -232,10 +241,21 @@ Status RunAndCompare(
     std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
         reference_module_modifier_hook,
     std::function<void(HloModuleConfig*)> config_modifier_hook) {
-  std::unique_ptr<HloModule> test_module =
+  TF_ASSIGN_OR_RETURN(
+      auto test_module,
       LoadModuleFromFile(hlo_filename, hlo_module_loader_details::Config(),
-                         options.input_format, config_modifier_hook)
-          .ValueOrDie();
+                         options.input_format, config_modifier_hook));
+  std::unique_ptr<RunHloModuleIterationLiterals> iteration_literals_proto_local;
+  if (iteration_literals_proto == nullptr) {
+    // User did not explicitly give input
+    if (options.input_format == "pb" || options.input_format == "pbtxt") {
+      // User is giving a snapshot (which contains inputs)
+      TF_ASSIGN_OR_RETURN(
+          iteration_literals_proto_local,
+          LoadInputFromFile(hlo_filename, options.input_format));
+      iteration_literals_proto = iteration_literals_proto_local.get();
+    }
+  }
   return RunAndCompare(std::move(test_module), test_runner, reference_runner,
                        engine, options, iteration_literals_proto,
                        reference_module_modifier_hook, config_modifier_hook);

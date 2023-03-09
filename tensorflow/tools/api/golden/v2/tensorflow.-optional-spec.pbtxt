@@ -2,7 +2,9 @@ path: "tensorflow.OptionalSpec"
 tf_class {
   is_instance: "<class \'tensorflow.python.data.ops.optional_ops.OptionalSpec\'>"
   is_instance: "<class \'tensorflow.python.framework.type_spec.TypeSpec\'>"
+  is_instance: "<class \'tensorflow.python.types.internal.TypeSpec\'>"
   is_instance: "<class \'tensorflow.python.types.trace.TraceType\'>"
+  is_instance: "<class \'tensorflow.core.function.trace_type.serialization.Serializable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "value_type"
@@ -11,6 +13,18 @@ tf_class {
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'element_spec\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_as_proto"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_from_proto"
+    argspec: "args=[\'cls\', \'proto\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_type_proto"
+    argspec: "args=[\'cls\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "from_value"
@@ -31,5 +45,9 @@ tf_class {
   member_method {
     name: "most_specific_compatible_type"
     argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "placeholder_value"
+    argspec: "args=[\'self\', \'placeholder_context\'], varargs=None, keywords=None, defaults=None"
   }
 }

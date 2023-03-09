@@ -16,9 +16,8 @@
 
 import re
 
-import six
-
 from tensorflow.python import tf2
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
 from tensorflow.python.trackable import autotrackable
@@ -37,7 +36,7 @@ class Module(autotrackable.AutoTrackable):
 
   >>> class Dense(tf.Module):
   ...   def __init__(self, input_dim, output_size, name=None):
-  ...     super(Dense, self).__init__(name=name)
+  ...     super().__init__(name=name)
   ...     self.w = tf.Variable(
   ...       tf.random.normal([input_dim, output_size]), name='w')
   ...     self.b = tf.Variable(tf.zeros([output_size]), name='b')
@@ -75,7 +74,7 @@ class Module(autotrackable.AutoTrackable):
 
   >>> class MLP(tf.Module):
   ...   def __init__(self, input_size, sizes, name=None):
-  ...     super(MLP, self).__init__(name=name)
+  ...     super().__init__(name=name)
   ...     self.layers = []
   ...     with self.name_scope:
   ...       for size in sizes:
@@ -184,7 +183,8 @@ class Module(autotrackable.AutoTrackable):
       name) followed by variables from all submodules recursively (breadth
       first).
     """
-    return tuple(self._flatten(predicate=_is_non_trainable_variable))
+    return tuple(self._flatten(
+        predicate=_is_non_trainable_variable, expand_composites=True))
 
   @property
   def submodules(self):
@@ -227,7 +227,7 @@ class Module(autotrackable.AutoTrackable):
     ```
     class Foo(tf.Module):
       def __init__(self):
-        super(Foo, self).__init__()
+        super().__init__()
         self.x = [tf.constant('a'), tf.constant('b')]
         self.y = {'i': tf.constant('c'), 'j': tf.constant('d')}
         self.z = tf.constant('e')
@@ -340,6 +340,21 @@ def camel_to_snake(value):
   return _CAMEL_TO_SNAKE_R.sub(r"_\1", value).lower()
 
 
+def _flatten_non_variable_composites_with_tuple_path(structure, path_prefix=()):
+  """Flattens composite tensors with tuple path expect variables."""
+  for path, child in nest.flatten_with_tuple_paths(structure):
+    if (isinstance(child, composite_tensor.CompositeTensor) and
+        not _is_variable(child)):
+      # pylint: disable=protected-access
+      spec = child._type_spec
+      yield from _flatten_non_variable_composites_with_tuple_path(
+          spec._to_components(child),
+          path_prefix + path + (spec.value_type.__name__,))
+      # pylint: enable=protected-access
+    else:
+      yield path_prefix + path, child
+
+
 def _flatten_module(module,
                     recursive,
                     predicate,
@@ -403,13 +418,13 @@ def _flatten_module(module,
 
     prop = module_dict[key]
     try:
-      leaves = nest.flatten_with_tuple_paths(
-          prop, expand_composites=expand_composites)
+      if expand_composites:
+        leaves = list(_flatten_non_variable_composites_with_tuple_path(prop))
+      else:
+        leaves = nest.flatten_with_tuple_paths(prop)
     except Exception as cause:  # pylint: disable=broad-except
-      six.raise_from(
-          ValueError(
-              "Error processing property {!r} of {!r}".format(key, prop)),
-          cause)
+      raise ValueError("Error processing property {!r} of {!r}".format(
+          key, prop)) from cause
 
     for leaf_path, leaf in leaves:
       leaf_path = (key,) + leaf_path

@@ -20,7 +20,6 @@ import sys as _sys
 # go/tf-wildcard-import
 
 from absl.flags import *  # pylint: disable=wildcard-import
-import six as _six
 
 from tensorflow.python.util import tf_decorator
 
@@ -43,7 +42,7 @@ def _wrap_define_function(original_function):
   def wrapper(*args, **kwargs):
     """Wrapper function that turns old keyword names to new ones."""
     has_old_names = False
-    for old_name, new_name in _six.iteritems(_RENAMED_ARGUMENTS):
+    for old_name, new_name in _RENAMED_ARGUMENTS.items():
       if old_name in kwargs:
         has_old_names = True
         value = kwargs.pop(old_name)
@@ -57,7 +56,7 @@ def _wrap_define_function(original_function):
   return tf_decorator.make_decorator(original_function, wrapper)
 
 
-class _FlagValuesWrapper(object):
+class _FlagValuesWrapper:
   """Wrapper class for absl.flags.FLAGS.
 
   The difference is that tf.flags.FLAGS implicitly parses flags with sys.argv
@@ -70,7 +69,7 @@ class _FlagValuesWrapper(object):
 
   def __getattribute__(self, name):
     if name == '__dict__':
-      return super(_FlagValuesWrapper, self).__getattribute__(name)
+      return super().__getattribute__(name)
     return self.__dict__['__wrapped'].__getattribute__(name)
 
   def __getattr__(self, name):

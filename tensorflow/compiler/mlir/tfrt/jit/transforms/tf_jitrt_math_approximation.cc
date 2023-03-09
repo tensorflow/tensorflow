@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include <optional>
+
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -24,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_MATHAPPROXIMATION
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 using ::llvm::ArrayRef;
@@ -47,8 +49,8 @@ using TypePredicate = ::llvm::function_ref<bool(Type)>;
 
 // Returns vector shape if the element type is matching the predicate (scalars
 // that do match the predicate have shape equal to `{1}`).
-static llvm::Optional<SmallVector<int64_t, 2>> vectorShape(Type type,
-                                                           TypePredicate pred) {
+static std::optional<SmallVector<int64_t, 2>> vectorShape(Type type,
+                                                          TypePredicate pred) {
   // If the type matches the predicate then its shape is `{1}`.
   if (pred(type)) return SmallVector<int64_t, 2>{1};
 
@@ -58,7 +60,7 @@ static llvm::Optional<SmallVector<int64_t, 2>> vectorShape(Type type,
     return llvm::to_vector<2>(vectorType.getShape());
   }
 
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Returns vector shape of the type. If the type is a scalar returns `1`.
@@ -245,16 +247,72 @@ LogicalResult EigenExpApproximation::matchAndRewrite(
   return mlir::success();
 }
 
+struct EigenExpM1Approximation : public OpRewritePattern<math::ExpM1Op> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(math::ExpM1Op op,
+                                PatternRewriter &rewriter) const final;
+};
+
+LogicalResult EigenExpM1Approximation::matchAndRewrite(
+    math::ExpM1Op op, PatternRewriter &rewriter) const {
+  auto shape = vectorShape(op.getOperand().getType(), isF32);
+  if (!shape.has_value())
+    return rewriter.notifyMatchFailure(op, "unsupported operand type");
+
+  ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
+  auto bcast = [&](Value value) -> Value {
+    return broadcast(builder, value, *shape);
+  };
+
+  // expm1(x) = exp(x) - 1 = u - 1.
+  // We have to handle it carefully when x is near 0, i.e. u ~= 1,
+  // and when the input is ~= -inf, i.e. u - 1 ~= -1.
+  Value cstOne = bcast(f32Cst(builder, 1.0f));
+  Value cstNegOne = bcast(f32Cst(builder, -1.0f));
+  Value x = op.getOperand();
+  Value u = builder.create<math::ExpOp>(x);
+  Value uEqOneOrNaN =
+      builder.create<arith::CmpFOp>(arith::CmpFPredicate::UEQ, u, cstOne);
+  Value uMinusOne = builder.create<arith::SubFOp>(u, cstOne);
+  Value uMinusOneEqNegOne = builder.create<arith::CmpFOp>(
+      arith::CmpFPredicate::OEQ, uMinusOne, cstNegOne);
+  // logU = log(u) ~= x
+  Value logU = builder.create<math::LogOp>(u);
+
+  // Detect exp(x) = +inf; written this way to avoid having to form +inf.
+  Value isInf =
+      builder.create<arith::CmpFOp>(arith::CmpFPredicate::OEQ, logU, u);
+
+  // (u - 1) * (x / ~x)
+  Value expm1 = builder.create<arith::MulFOp>(
+      uMinusOne, builder.create<arith::DivFOp>(x, logU));
+  expm1 = builder.create<arith::SelectOp>(isInf, u, expm1);
+  Value approximation = builder.create<arith::SelectOp>(
+      uEqOneOrNaN, x,
+      builder.create<arith::SelectOp>(uMinusOneEqNegOne, cstNegOne, expm1));
+  rewriter.replaceOp(op, approximation);
+
+  return mlir::success();
+}
+
 static void populateMathApproximationPatterns(RewritePatternSet &patterns,
                                               ArrayRef<std::string> oplist) {
   for (const std::string &op : oplist) {
-    if (op == "exp" || op == "all")
+    if (op == "all") {
+      patterns.add<EigenExpApproximation, EigenExpM1Approximation>(
+          patterns.getContext());
+    } else if (op == "exp") {
       patterns.add<EigenExpApproximation>(patterns.getContext());
+    } else if (op == "expm1") {
+      patterns.add<EigenExpM1Approximation>(patterns.getContext());
+    }
   }
 }
 
 struct MathApproximationPass
-    : public MathApproximationBase<MathApproximationPass> {
+    : public impl::MathApproximationBase<MathApproximationPass> {
   explicit MathApproximationPass(ArrayRef<std::string> approx_oplist) {
     this->oplist = approx_oplist;
   }

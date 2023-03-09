@@ -74,10 +74,13 @@ MiniBenchmarkTestHelper::MiniBenchmarkTestHelper()
   DumpToTempFile("librunner_main.so", g_tflite_acceleration_embedded_runner,
                  g_tflite_acceleration_embedded_runner_len);
 
+  // We extract the test files here as that's the only way to get the right
+  // architecture when building tests for multiple architectures.
   std::string validator_runner_so_path = DumpToTempFile(
       "libvalidator_runner_entrypoint.so",
       g_tflite_acceleration_embedded_validator_runner_entrypoint,
       g_tflite_acceleration_embedded_validator_runner_entrypoint_len);
+
   // Load this library here because it contains the validation entry point
   // "Java_org_tensorflow_lite_acceleration_validation_entrypoint" that is then
   // found using dlsym (using RTLD_DEFAULT hence not needing the handle) in the

@@ -79,7 +79,7 @@ Status BuildNodeMap(const Graph& graph,
                                    node->name());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 EngineInfo::EngineType GetEngineType(
@@ -283,7 +283,7 @@ Status GetEngineInfo(const Graph* g,
                  "assigned during graph execution (inference).";
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Helper function to update edge connection from the removed node to the
@@ -565,7 +565,7 @@ Status CreateTRTNode(const TRTOptimizationPass::ConversionParams& params,
           graph->UpdateEdge(engine_node, conn.port_number, output_node, port));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 int64 GetNextGraphSequenceNumber() {
@@ -581,7 +581,7 @@ constexpr char kCastInputTypeAttrName[] = "SrcT";
 //
 Status MaybeRewriteCastToFp32(GraphDef* graph_def, NodeDef* node_def) {
   if (node_def->op() != "Cast") {
-    return Status::OK();
+    return OkStatus();
   }
 
   DataTypeVector input_types;
@@ -594,7 +594,7 @@ Status MaybeRewriteCastToFp32(GraphDef* graph_def, NodeDef* node_def) {
   }
 
   if (input_types[0] == DT_HALF || output_types[0] != DT_FLOAT) {
-    return Status::OK();
+    return OkStatus();
   }
 
   VLOG(2) << "Rewriting cast to FP32 " << node_def->DebugString();
@@ -615,7 +615,7 @@ Status MaybeRewriteCastToFp32(GraphDef* graph_def, NodeDef* node_def) {
   VLOG(2) << castToFp16->DebugString();
   VLOG(2) << node_def->DebugString();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -636,7 +636,7 @@ Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
   VLOG(1) << "Adding funcdef " << segment_func->signature().name()
           << " to graphlib";
   TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(library));
-  return Status::OK();
+  return OkStatus();
 }
 
 std::pair<int, Allocator*> GetDeviceAndAllocator(
@@ -725,7 +725,7 @@ Status CreateStaticEngine(const TRTOptimizationPass::ConversionParams& params,
   TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
   *segment_string = string(static_cast<const char*>(engine_data->data()),
                            engine_data->size());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvertGraph(const TRTOptimizationPass::ConversionParams& params,
@@ -785,13 +785,17 @@ Status ConvertGraph(const TRTOptimizationPass::ConversionParams& params,
                              params.use_calibration, params.use_implicit_batch,
                              params.use_explicit_precision);
   TF_RETURN_IF_ERROR(segment::SegmentGraph(
-      &graph, &static_graph_properties,
+      /*tf_graph=*/&graph,
+      /*graph_properties=*/&static_graph_properties,
+      /*candidate_fn=*/
       std::bind(&TrtNodeValidator::IsTensorRTCandidate, &validator,
                 std::placeholders::_1),
       // Input validation is already done by TrtNodeValidator, so we don't
       // need to check the input edges.
-      [](const Edge* edge) { return true; }, OutputEdgeValidator(),
-      segment_options, &initial_segments));
+      /*input_candidate_fn=*/[](const Edge* edge) { return true; },
+      /*output_candidate_fn=*/OutputEdgeValidator(),
+      /*options=*/segment_options,
+      /*segments=*/&initial_segments));
   LOG(INFO) << "Number of TensorRT candidate segments: "
             << initial_segments.size();
 
@@ -930,7 +934,7 @@ Status ConvertGraph(const TRTOptimizationPass::ConversionParams& params,
     }
   }
   graph.ToGraphDef(output);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace convert

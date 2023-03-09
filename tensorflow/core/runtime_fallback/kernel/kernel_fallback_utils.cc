@@ -28,12 +28,13 @@ void SetUpParams(const tfrt_stub::OpKernelRunner& runner,
                  tensorflow::Device* device,
                  tfrt_stub::OpKernelRunState& run_state) {
   auto& params = run_state.params;
-  params.inputs = &run_state.input_tf_tensor_values;
+  params.step_id = fallback_request_state.step_id();
+  params.inputs = run_state.input_tf_tensor_values;
   params.device = device;
   params.op_kernel = runner.op_kernel();
   // Still use original device's resource_manager.
   params.resource_manager = runner.resource_manager();
-  params.input_alloc_attrs = &runner.input_alloc_attrs();
+  params.input_alloc_attrs = runner.input_alloc_attrs();
   params.output_attr_array = runner.output_alloc_attrs().data();
   params.step_container = fallback_request_state.step_container();
   // Following two parameters are used to support executing tf.data via

@@ -15,421 +15,43 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/selectors/special_selector.h"
 
+#include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 
 #include "absl/types/any.h"
-#include "tensorflow/lite/delegates/gpu/common/data_type.h"
-#include "tensorflow/lite/delegates/gpu/common/flops_util.h"
-#include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/mean_stddev_normalization.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/conv_pointwise.h"
-#include "tensorflow/lite/delegates/gpu/common/tasks/special/depthwise_conv_plus_1x1_conv.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/special/dw7x7_conv2to6_concat_conv8to8.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/fc_fc_add.h"
-#include "tensorflow/lite/delegates/gpu/common/tensor.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/special/thin_pointwise_fuser.h"
 
 namespace tflite {
 namespace gpu {
-namespace {
-absl::Status TryDepthwiseConvPlus1x1Conv(
-    const GpuInfo& gpu_info, CalculationsPrecision precision,
-    const GraphFloat32& graph, NodeId first_node_id,
-    const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
-    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph) {
-  auto* dw_node = graph.GetNode(first_node_id);
-  if (dw_node == nullptr) {
-    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
-  }
-  if (OperationTypeFromString(dw_node->operation.type) !=
-      OperationType::DEPTHWISE_CONVOLUTION) {
-    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
-  }
-  auto dw_inputs = graph.FindInputs(dw_node->id);
-  if (dw_inputs.size() != 1) {
-    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
-  }
-  auto dw_outputs = graph.FindOutputs(dw_node->id);
-  auto consumers = graph.FindConsumers(dw_outputs[0]->id);
-  if (consumers.size() != 1) {
-    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
-  }
-
-  Node* next_node;
-  next_node = consumers[0];
-  if (next_node == nullptr) {
-    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
-  }
-  if (consumed_nodes->find(next_node->id) != consumed_nodes->end()) {
-    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
-  }
-  Node* relu_node = nullptr;
-  ReLUAttributes relu_attributes;
-  if (OperationTypeFromString(next_node->operation.type) ==
-      OperationType::RELU) {
-    relu_node = next_node;
-    auto relu_outputs = graph.FindOutputs(relu_node->id);
-    consumers = graph.FindConsumers(relu_outputs[0]->id);
-    if (consumers.size() != 1) {
-      return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
-    }
-    relu_attributes =
-        absl::any_cast<ReLUAttributes>(relu_node->operation.attributes);
-    next_node = consumers[0];
-  }
-
-  auto* conv_node = next_node;
-  if (OperationTypeFromString(conv_node->operation.type) !=
-      OperationType::CONVOLUTION_2D) {
-    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
-  }
-  if (graph.FindInputs(conv_node->id).size() != 1) {
-    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
-  }
-  auto dw_attr = absl::any_cast<DepthwiseConvolution2DAttributes>(
-      dw_node->operation.attributes);
-  auto conv_attr =
-      absl::any_cast<Convolution2DAttributes>(conv_node->operation.attributes);
-  auto conv_outputs = graph.FindOutputs(conv_node->id);
-  OperationDef op_def;
-  op_def.precision = precision;
-  auto it = tensor_descriptors.find(dw_inputs[0]->id);
-  if (it != tensor_descriptors.end()) {
-    op_def.src_tensors.push_back(it->second);
-  }
-  it = tensor_descriptors.find(conv_outputs[0]->id);
-  if (it != tensor_descriptors.end()) {
-    op_def.dst_tensors.push_back(it->second);
-  }
-  if (!IsDepthwiseConvPlus1x1ConvSupported(op_def, gpu_info, dw_attr, conv_attr,
-                                           &conv_outputs[0]->tensor.shape)) {
-    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
-  }
-  std::unique_ptr<GPUOperation>* gpu_op =
-      InitSingleOpSubgraph(dw_inputs, conv_outputs, gpu_subgraph);
-  ReLUAttributes* relu_attr_ptr = relu_node ? &relu_attributes : nullptr;
-  auto operation = CreateDepthwiseConvPlus1x1Conv(op_def, gpu_info, dw_attr,
-                                                  conv_attr, relu_attr_ptr);
-  *gpu_op = std::make_unique<GPUOperation>(std::move(operation));
-  (*gpu_op)->flops_ = GetDepthwiseConvolutionFlops(dw_outputs[0]->tensor.shape,
-                                                   dw_attr.weights.shape) +
-                      GetConvolutionFlops(conv_outputs[0]->tensor.shape,
-                                          conv_attr.weights.shape);
-  std::string fused_nodes = std::to_string(dw_node->id);
-  if (relu_node) {
-    fused_nodes += " " + std::to_string(relu_node->id);
-  }
-  fused_nodes += " " + std::to_string(conv_node->id);
-  gpu_subgraph->operations[0].name =
-      "depthwise_conv_plus_1x1_conv " + fused_nodes;
-  consumed_nodes->insert(dw_node->id);
-  if (relu_node) {
-    consumed_nodes->insert(relu_node->id);
-  }
-  consumed_nodes->insert(conv_node->id);
-  return absl::OkStatus();
-}
-
-// fully connected + fully connected + add
-absl::Status TryFCFCAdd(
-    const GpuInfo& gpu_info, CalculationsPrecision precision,
-    const GraphFloat32& graph, NodeId first_node_id,
-    const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
-    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph) {
-  auto* fc0_node = graph.GetNode(first_node_id);
-  if (fc0_node == nullptr) {
-    return absl::NotFoundError("FCFCAdd not suitable.");
-  }
-  auto first_op_type = OperationTypeFromString(fc0_node->operation.type);
-  if (first_op_type != OperationType::FULLY_CONNECTED &&
-      first_op_type != OperationType::FULLY_CONNECTED_INT8) {
-    return absl::NotFoundError("FCFCAdd not suitable.");
-  }
-  const bool first_quantized =
-      first_op_type == OperationType::FULLY_CONNECTED_INT8;
-  auto fc0_inputs = graph.FindInputs(fc0_node->id);
-  if (fc0_inputs.size() != 1) {
-    return absl::NotFoundError("FCFCAdd not suitable.");
-  }
-  auto fc0_output_id = graph.FindOutputs(fc0_node->id)[0]->id;
-  auto consumers = graph.FindConsumers(fc0_output_id);
-  if (consumers.size() != 1) {
-    return absl::NotFoundError("FCFCAdd not suitable.");
-  }
-  auto* add_node = consumers[0];
-  if (add_node == nullptr) {
-    return absl::NotFoundError("FCFCAdd not suitable.");
-  }
-  if (consumed_nodes->find(add_node->id) != consumed_nodes->end()) {
-    return absl::NotFoundError("FCFCAdd not suitable.");
-  }
-  if (OperationTypeFromString(add_node->operation.type) != OperationType::ADD) {
-    return absl::NotFoundError("FCFCAdd not suitable.");
-  }
-  auto add_inputs = graph.FindInputs(add_node->id);
-  if (add_inputs.size() != 2) {
-    return absl::NotFoundError("FCFCAdd not suitable.");
-  }
-  auto fc1_output_id = add_inputs[0]->id + add_inputs[1]->id - fc0_output_id;
-  auto* fc1_node = graph.FindProducer(fc1_output_id);
-  if (fc1_node == nullptr) {
-    return absl::NotFoundError("FCFCAdd not suitable.");
-  }
-  auto second_op_type = OperationTypeFromString(fc1_node->operation.type);
-  if (second_op_type != OperationType::FULLY_CONNECTED &&
-      second_op_type != OperationType::FULLY_CONNECTED_INT8) {
-    return absl::NotFoundError("FCFCAdd not suitable.");
-  }
-  const bool second_quantized =
-      second_op_type == OperationType::FULLY_CONNECTED_INT8;
-  const bool both_quantized = first_quantized && second_quantized;
-  const bool both_not_quantized = !first_quantized && !second_quantized;
-  if (!(both_quantized || both_not_quantized)) {
-    return absl::NotFoundError("FCFCAdd not suitable.");
-  }
-  if (consumed_nodes->find(fc1_node->id) != consumed_nodes->end()) {
-    return absl::NotFoundError("FCFCAdd not suitable.");
-  }
-  auto fc1_inputs = graph.FindInputs(fc1_node->id);
-  if (fc1_inputs.size() != 1) {
-    return absl::NotFoundError("FCFCAdd not suitable.");
-  }
-  auto add_outputs = graph.FindOutputs(add_node->id);
-
-  OperationDef op_def;
-  op_def.precision = precision;
-  auto it = tensor_descriptors.find(fc0_inputs[0]->id);
-  if (it != tensor_descriptors.end()) {
-    op_def.src_tensors.push_back(it->second);
-  }
-  it = tensor_descriptors.find(fc1_inputs[0]->id);
-  if (it != tensor_descriptors.end()) {
-    op_def.src_tensors.push_back(it->second);
-  }
-  it = tensor_descriptors.find(add_outputs[0]->id);
-  if (it != tensor_descriptors.end()) {
-    op_def.dst_tensors.push_back(it->second);
-  }
-
-  for (int i = 0; i < fc1_inputs.size(); ++i) {
-    fc0_inputs.push_back(fc1_inputs[i]);
-  }
-  std::unique_ptr<GPUOperation>* gpu_op =
-      InitSingleOpSubgraph(fc0_inputs, add_outputs, gpu_subgraph);
-  FCFCAdd fc;
-  if (both_not_quantized) {
-    auto fc0_attr = absl::any_cast<FullyConnectedAttributes>(
-        fc0_node->operation.attributes);
-    auto fc1_attr = absl::any_cast<FullyConnectedAttributes>(
-        fc1_node->operation.attributes);
-    if (fc0_attr.weights.shape.o != fc1_attr.weights.shape.o) {
-      return absl::NotFoundError("FCFCAdd not suitable.");
-    }
-    fc = CreateFCFCAdd(gpu_info, op_def, fc0_attr, fc1_attr);
-  } else {
-    // both_quantized
-    auto fc0_attr = absl::any_cast<FullyConnectedInt8Attributes>(
-        fc0_node->operation.attributes);
-    auto fc1_attr = absl::any_cast<FullyConnectedInt8Attributes>(
-        fc1_node->operation.attributes);
-    if (fc0_attr.weights.shape.o != fc1_attr.weights.shape.o) {
-      return absl::NotFoundError("FCFCAdd not suitable.");
-    }
-    fc = CreateFCFCAdd(gpu_info, op_def, fc0_attr, fc1_attr);
-  }
-  *gpu_op = std::make_unique<FCFCAdd>(std::move(fc));
-  const std::string fused_nodes = std::to_string(fc0_node->id) + " " +
-                                  std::to_string(fc1_node->id) + " " +
-                                  std::to_string(add_node->id);
-  gpu_subgraph->operations[0].name =
-      "fully_connected_x2_and_add " + fused_nodes;
-  consumed_nodes->insert(fc0_node->id);
-  consumed_nodes->insert(fc1_node->id);
-  consumed_nodes->insert(add_node->id);
-  return absl::OkStatus();
-}
-
-absl::Status CheckIfValidNodeOfType(const Node* node,
-                                    OperationType required_type) {
-  if (node == nullptr) {
-    return absl::NotFoundError("Invalid node.");
-  }
-  if (OperationTypeFromString(node->operation.type) != required_type) {
-    return absl::NotFoundError("Type mismatch.");
-  }
-  return absl::OkStatus();
-}
-
-absl::Status GetElementwiseScalarValue(const Node* node, float* result) {
-  auto attr = absl::any_cast<ElementwiseAttributes>(node->operation.attributes);
-  const float* value = absl::get_if<float>(&attr.param);
-  if (!value) {
-    return absl::NotFoundError("Not a scalar value inside attributes.");
-  }
-  *result = *value;
-  return absl::OkStatus();
-}
-
-absl::Status GetNextSingleNode(const GraphFloat32& graph, const Node& node,
-                               OperationType next_type, Node** next_node) {
-  auto consumers = graph.FindConsumers(graph.FindOutputs(node.id)[0]->id);
-  if (consumers.size() != 1) {
-    return absl::NotFoundError("Not a single consumer.");
-  }
-  RETURN_IF_ERROR(CheckIfValidNodeOfType(consumers[0], next_type));
-  *next_node = consumers[0];
-  return absl::OkStatus();
-}
-
-// MeanStdDevNormalization fusion works with this subgraph
-//       input
-//       /    \
-//      |    mean
-//       \    /
-//     substraction
-//       /    \
-//      |      |
-//      |     pow
-//      |      |
-//      |     mean
-//      |      |
-//      |     add
-//      |      |
-//      |    rsqrt
-//      |      |
-//       \    /
-//    multiplication
-//          |
-//        output
-absl::Status TryMeanStdDevNormalization(
-    const GpuInfo& gpu_info, CalculationsPrecision precision,
-    const GraphFloat32& graph, NodeId first_node_id,
-    const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
-    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph) {
-  Node* first_mean_node = graph.GetNode(first_node_id);
-  RETURN_IF_ERROR(CheckIfValidNodeOfType(first_mean_node, OperationType::MEAN));
-  auto first_mean_attr =
-      absl::any_cast<MeanAttributes>(first_mean_node->operation.attributes);
-  if (first_mean_attr.dims != std::set<Axis>{Axis::CHANNELS}) {
-    return absl::NotFoundError("MeanStdDevNormalization not suitable.");
-  }
-  Node* sub_node;
-  RETURN_IF_ERROR(GetNextSingleNode(graph, *first_mean_node, OperationType::SUB,
-                                    &sub_node));
-  auto sub_inputs = graph.FindInputs(sub_node->id);
-  if (sub_inputs.size() != 2) {
-    return absl::NotFoundError("MeanStdDevNormalization not suitable.");
-  } else {
-    // checking structure
-    //       input
-    //       /    \
-    //      |    mean
-    //       \    /
-    //     substraction
-    Node* sub_first_parent = graph.FindProducer(sub_inputs[0]->id);
-    Node* sub_second_parent = graph.FindProducer(sub_inputs[1]->id);
-    if (sub_second_parent != first_mean_node) {
-      return absl::NotFoundError("MeanStdDevNormalization not suitable.");
-    }
-    auto mean_inputs = graph.FindInputs(first_mean_node->id);
-    Node* mean_parent = graph.FindProducer(mean_inputs[0]->id);
-    if (mean_parent != sub_first_parent) {
-      return absl::NotFoundError("MeanStdDevNormalization not suitable.");
-    }
-  }
-  auto sub_output = graph.FindOutputs(sub_node->id)[0]->id;
-  auto consumers = graph.FindConsumers(sub_output);
-  if (consumers.size() != 2) {
-    return absl::NotFoundError("MeanStdDevNormalization not suitable.");
-  }
-  Node* pow_node = consumers[0];
-  Node* sub_child_mul_node = consumers[1];
-  if (!CheckIfValidNodeOfType(pow_node, OperationType::POW).ok()) {
-    pow_node = consumers[1];
-    sub_child_mul_node = consumers[0];
-  }
-  RETURN_IF_ERROR(CheckIfValidNodeOfType(pow_node, OperationType::POW));
-  RETURN_IF_ERROR(
-      CheckIfValidNodeOfType(sub_child_mul_node, OperationType::MUL));
-  float pow_value;
-  RETURN_IF_ERROR(GetElementwiseScalarValue(pow_node, &pow_value));
-  if (pow_value != 2.0) {
-    return absl::NotFoundError("MeanStdDevNormalization not suitable.");
-  }
-  Node* second_mean_node;
-  RETURN_IF_ERROR(GetNextSingleNode(graph, *pow_node, OperationType::MEAN,
-                                    &second_mean_node));
-  auto second_mean_attr =
-      absl::any_cast<MeanAttributes>(second_mean_node->operation.attributes);
-  if (second_mean_attr.dims != std::set<Axis>{Axis::CHANNELS}) {
-    return absl::NotFoundError("MeanStdDevNormalization not suitable.");
-  }
-  Node* add_node;
-  RETURN_IF_ERROR(GetNextSingleNode(graph, *second_mean_node,
-                                    OperationType::ADD, &add_node));
-  float add_value;
-  RETURN_IF_ERROR(GetElementwiseScalarValue(add_node, &add_value));
-  Node* rsqrt_node;
-  RETURN_IF_ERROR(
-      GetNextSingleNode(graph, *add_node, OperationType::RSQRT, &rsqrt_node));
-  Node* mul_node;
-  RETURN_IF_ERROR(
-      GetNextSingleNode(graph, *rsqrt_node, OperationType::MUL, &mul_node));
-  if (sub_child_mul_node != mul_node) {
-    return absl::NotFoundError("MeanStdDevNormalization not suitable.");
-  }
-
-  OperationDef op_def;
-  op_def.precision = precision;
-  auto input_id = graph.FindInputs(first_mean_node->id)[0]->id;
-  auto it = tensor_descriptors.find(input_id);
-  if (it != tensor_descriptors.end()) {
-    op_def.src_tensors.push_back(it->second);
-  }
-  auto output_id = graph.FindInputs(mul_node->id)[0]->id;
-  it = tensor_descriptors.find(output_id);
-  if (it != tensor_descriptors.end()) {
-    op_def.dst_tensors.push_back(it->second);
-  }
-
-  auto subgraph_inputs = graph.FindInputs(first_mean_node->id);
-  auto subgraph_outputs = graph.FindOutputs(mul_node->id);
-  std::unique_ptr<GPUOperation>* gpu_op =
-      InitSingleOpSubgraph(subgraph_inputs, subgraph_outputs, gpu_subgraph);
-  *gpu_op =
-      std::make_unique<MeanStdDevNormalization>(CreateMeanStdDevNormalization(
-          op_def, gpu_info, subgraph_inputs[0]->tensor.shape, add_value,
-          /*two_step*/ false));
-
-  consumed_nodes->insert(first_mean_node->id);
-  consumed_nodes->insert(sub_node->id);
-  consumed_nodes->insert(pow_node->id);
-  consumed_nodes->insert(second_mean_node->id);
-  consumed_nodes->insert(add_node->id);
-  consumed_nodes->insert(rsqrt_node->id);
-  consumed_nodes->insert(mul_node->id);
-
-  return absl::OkStatus();
-}
-}  // namespace
-
 absl::Status GPUSubgraphFromGraph(
-    const GpuInfo& gpu_info, CalculationsPrecision precision,
-    const GraphFloat32& graph, NodeId first_node_id,
+    const ModelHints& hints, const GpuInfo& gpu_info,
+    CalculationsPrecision precision, const GraphFloat32& graph,
+    NodeId first_node_id,
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
     std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph) {
-  if ((gpu_info.IsAdreno() || gpu_info.IsNvidia() || gpu_info.IsMali() ||
-       gpu_info.IsApple() || gpu_info.IsAMD()) &&
-      TryDepthwiseConvPlus1x1Conv(gpu_info, precision, graph, first_node_id,
-                                  tensor_descriptors, consumed_nodes,
-                                  gpu_subgraph)
+  if (hints.Check(ModelHints::kAllowSpecialKernels) &&
+      TryDW7x7Conv2To6ConcatConv8to8(gpu_info, precision, graph, first_node_id,
+                                     tensor_descriptors, consumed_nodes,
+                                     gpu_subgraph)
           .ok()) {
     return absl::OkStatus();
   }
-  if ((gpu_info.IsIntel() || gpu_info.IsNvidia() || gpu_info.IsAMD()) &&
+  if (hints.Check(ModelHints::kAllowSpecialKernels) &&
+      TryThinPointwiseFuser(gpu_info, precision, graph, first_node_id,
+                            tensor_descriptors, consumed_nodes, gpu_subgraph)
+          .ok()) {
+    return absl::OkStatus();
+  }
+  if (hints.Check(ModelHints::kAllowSpecialKernels) &&
       TryFCFCAdd(gpu_info, precision, graph, first_node_id, tensor_descriptors,
                  consumed_nodes, gpu_subgraph)
           .ok()) {

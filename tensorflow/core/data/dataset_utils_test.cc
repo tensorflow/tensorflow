@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/data/compression_utils.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -31,12 +34,16 @@ limitations under the License.
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/core/util/determinism_test_util.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tensorflow/tsl/util/determinism_test_util.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
+
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 TEST(DatasetUtilsTest, MatchesAnyVersion) {
   EXPECT_TRUE(MatchesAnyVersion("BatchDataset", "BatchDataset"));
@@ -187,13 +194,33 @@ TEST(DatasetUtilsTest, BoolConstructor) {
   EXPECT_FALSE(DeterminismPolicy(false).IsDefault());
 }
 
-REGISTER_DATASET_EXPERIMENT("test_only_experiment_0", 0);
-REGISTER_DATASET_EXPERIMENT("test_only_experiment_1", 1);
-REGISTER_DATASET_EXPERIMENT("test_only_experiment_5", 5);
-REGISTER_DATASET_EXPERIMENT("test_only_experiment_10", 10);
-REGISTER_DATASET_EXPERIMENT("test_only_experiment_50", 50);
-REGISTER_DATASET_EXPERIMENT("test_only_experiment_99", 99);
-REGISTER_DATASET_EXPERIMENT("test_only_experiment_100", 100);
+template <int64_t rollout_pct>
+bool RandomJobSamplePercentage(std::function<uint64(const string&)> hash_func,
+                               const std::string& experiment_name,
+                               const std::string& job_name) {
+  return hash_func(strings::StrCat(job_name, experiment_name)) % 100 <
+         rollout_pct;
+}
+bool IndependentHostTasks(int64_t task_id) { return (task_id & 0x2) == 0x2; }
+bool AllTasks(int64_t task_id) { return true; }
+
+REGISTER_DATASET_EXPERIMENT("test_only_experiment_0",
+                            RandomJobSamplePercentage<0>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("test_only_experiment_1",
+                            RandomJobSamplePercentage<1>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("test_only_experiment_5",
+                            RandomJobSamplePercentage<5>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("test_only_experiment_10",
+                            RandomJobSamplePercentage<10>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("test_only_experiment_50",
+                            RandomJobSamplePercentage<50>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("test_only_experiment_99",
+                            RandomJobSamplePercentage<99>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("test_only_experiment_100",
+                            RandomJobSamplePercentage<100>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("test_only_task_experiment_100",
+                            RandomJobSamplePercentage<100>,
+                            IndependentHostTasks);
 
 struct GetExperimentsHashTestCase {
   uint64 hash;
@@ -207,9 +234,10 @@ class GetExperimentsHashTest
 TEST_P(GetExperimentsHashTest, DatasetUtils) {
   const GetExperimentsHashTestCase test_case = GetParam();
   uint64 hash_result = test_case.hash;
-  auto job_name = "job";
+  const std::string job_name = "job";
+  const int64_t task_id = 0;
   auto hash_func = [hash_result](const string& str) { return hash_result; };
-  auto experiments = GetExperiments(job_name, hash_func);
+  auto experiments = GetExperiments(job_name, task_id, hash_func);
 
   absl::flat_hash_set<string> experiment_set(experiments.begin(),
                                              experiments.end());
@@ -315,9 +343,10 @@ TEST_P(GetExperimentsOptTest, DatasetUtils) {
     setenv("TF_DATA_EXPERIMENT_OPT_OUT", str_util::Join(opt_outs, ",").c_str(),
            1);
   }
-  auto job_name = "job";
+  const std::string job_name = "job";
+  const int64_t task_id = 0;
   auto hash_func = [](const string& str) { return 0; };
-  auto experiments = GetExperiments(job_name, hash_func);
+  auto experiments = GetExperiments(job_name, task_id, hash_func);
 
   absl::flat_hash_set<string> experiment_set(experiments.begin(),
                                              experiments.end());
@@ -437,6 +466,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 struct GetExperimentsJobNameTestCase {
   string job_name;
+  int64_t task_id;
   std::vector<string> expected_in;
   std::vector<string> expected_out;
 };
@@ -447,8 +477,9 @@ class GetExperimentsJobNameTest
 TEST_P(GetExperimentsJobNameTest, DatasetUtils) {
   const GetExperimentsJobNameTestCase test_case = GetParam();
   auto job_name = test_case.job_name;
+  auto task_id = test_case.task_id;
   auto hash_func = [](const string& str) { return 0; };
-  auto experiments = GetExperiments(job_name, hash_func);
+  auto experiments = GetExperiments(job_name, task_id, hash_func);
 
   absl::flat_hash_set<string> experiment_set(experiments.begin(),
                                              experiments.end());
@@ -464,22 +495,71 @@ TEST_P(GetExperimentsJobNameTest, DatasetUtils) {
 
 INSTANTIATE_TEST_SUITE_P(
     Test, GetExperimentsJobNameTest,
-    ::testing::Values(GetExperimentsJobNameTestCase{
-                          /*job_name=*/"",
-                          /*expected_in=*/{},
-                          /*expected_out=*/
-                          {"test_only_experiment_0", "test_only_experiment_1",
-                           "test_only_experiment_5", "test_only_experiment_10",
-                           "test_only_experiment_50", "test_only_experiment_99",
-                           "test_only_experiment_100"}},
-                      GetExperimentsJobNameTestCase{
-                          /*job_name=*/"job_name",
-                          /*expected_in=*/
-                          {"test_only_experiment_1", "test_only_experiment_5",
-                           "test_only_experiment_10", "test_only_experiment_50",
-                           "test_only_experiment_99",
-                           "test_only_experiment_100"},
-                          /*expected_out=*/{"test_only_experiment_0"}}));
+    ::testing::Values(
+        GetExperimentsJobNameTestCase{
+            /*job_name=*/"",
+            /*task_id=*/0,
+            /*expected_in=*/{},
+            /*expected_out=*/
+            {"test_only_experiment_0", "test_only_experiment_1",
+             "test_only_experiment_5", "test_only_experiment_10",
+             "test_only_experiment_50", "test_only_experiment_99",
+             "test_only_experiment_100", "test_only_task_experiment_100"}},
+        GetExperimentsJobNameTestCase{
+            /*job_name=*/"",
+            /*task_id=*/-1,
+            /*expected_in=*/{},
+            /*expected_out=*/
+            {"test_only_experiment_0", "test_only_experiment_1",
+             "test_only_experiment_5", "test_only_experiment_10",
+             "test_only_experiment_50", "test_only_experiment_99",
+             "test_only_experiment_100", "test_only_task_experiment_100"}},
+        GetExperimentsJobNameTestCase{
+            /*job_name=*/"",
+            /*task_id=*/2,
+            /*expected_in=*/{},
+            /*expected_out=*/
+            {"test_only_experiment_0", "test_only_experiment_1",
+             "test_only_experiment_5", "test_only_experiment_10",
+             "test_only_experiment_50", "test_only_experiment_99",
+             "test_only_experiment_100", "test_only_task_experiment_100"}},
+        GetExperimentsJobNameTestCase{
+            /*job_name=*/"job_name",
+            /*task_id=*/-1,
+            /*expected_in=*/{},
+            /*expected_out=*/
+            {"test_only_experiment_0", "test_only_experiment_1",
+             "test_only_experiment_5", "test_only_experiment_10",
+             "test_only_experiment_50", "test_only_experiment_99",
+             "test_only_experiment_100", "test_only_task_experiment_100"}},
+        GetExperimentsJobNameTestCase{
+            /*job_name=*/"job_name",
+            /*task_id=*/0,
+            /*expected_in=*/
+            {"test_only_experiment_1", "test_only_experiment_5",
+             "test_only_experiment_10", "test_only_experiment_50",
+             "test_only_experiment_99", "test_only_experiment_100"},
+            /*expected_out=*/
+            {"test_only_experiment_0", "test_only_task_experiment_100"}},
+        GetExperimentsJobNameTestCase{
+            /*job_name=*/"job_name",
+            /*task_id=*/1,
+            /*expected_in=*/
+            {"test_only_experiment_1", "test_only_experiment_5",
+             "test_only_experiment_10", "test_only_experiment_50",
+             "test_only_experiment_99", "test_only_experiment_100"},
+            /*expected_out=*/
+            {"test_only_experiment_0", "test_only_task_experiment_100"}},
+        GetExperimentsJobNameTestCase{
+            /*job_name=*/"job_name",
+            /*task_id=*/2,
+            /*expected_in=*/
+            {"test_only_experiment_1", "test_only_experiment_5",
+             "test_only_experiment_10", "test_only_experiment_50",
+             "test_only_experiment_99", "test_only_experiment_100",
+             "test_only_task_experiment_100"},
+            /*expected_out=*/
+            {"test_only_experiment_0"}}));
 
 struct GetOptimizationsTestCase {
   Options options;
@@ -496,7 +576,7 @@ GetOptimizationsTestCase GetOptimizationTestCase1() {
       /*expected_disabled=*/{},
       /*expected_default=*/
       {"noop_elimination", "map_and_batch_fusion", "shuffle_and_repeat_fusion",
-       "map_parallelization", "parallel_batch"}};
+       "map_parallelization", "parallel_batch", "inject_prefetch"}};
 }
 
 // Tests disabling application of default optimizations.
@@ -520,7 +600,7 @@ GetOptimizationsTestCase GetOptimizationTestCase3() {
           /*expected_enabled=*/{"make_sloppy", "map_and_batch_fusion"},
           /*expected_disabled=*/{"parallel_batch", "map_parallelization"},
           /*expected_default=*/
-          {"noop_elimination", "shuffle_and_repeat_fusion"}};
+          {"noop_elimination", "shuffle_and_repeat_fusion", "inject_prefetch"}};
 }
 
 // Test enabling all / most available optimizations.
@@ -537,15 +617,17 @@ GetOptimizationsTestCase GetOptimizationTestCase4() {
   options.mutable_optimization_options()->set_parallel_batch(true);
   options.mutable_optimization_options()->set_shuffle_and_repeat_fusion(true);
   options.mutable_optimization_options()->set_inject_prefetch(true);
+  options.mutable_optimization_options()->set_warm_start(true);
   options.set_slack(true);
-  return {options,
-          /*expected_enabled=*/
-          {"filter_fusion", "filter_parallelization", "make_sloppy",
-           "map_and_batch_fusion", "map_and_filter_fusion", "map_fusion",
-           "map_parallelization", "noop_elimination", "parallel_batch",
-           "shuffle_and_repeat_fusion", "slack", "inject_prefetch"},
-          /*expected_disabled=*/{},
-          /*expected_default=*/{}};
+  return {
+      options,
+      /*expected_enabled=*/
+      {"filter_fusion", "filter_parallelization", "make_sloppy",
+       "map_and_batch_fusion", "map_and_filter_fusion", "map_fusion",
+       "map_parallelization", "noop_elimination", "parallel_batch",
+       "shuffle_and_repeat_fusion", "slack", "inject_prefetch", "warm_start"},
+      /*expected_disabled=*/{},
+      /*expected_default=*/{}};
 }
 
 class GetOptimizationsTest
@@ -574,7 +656,9 @@ INSTANTIATE_TEST_SUITE_P(Test, GetOptimizationsTest,
                                            GetOptimizationTestCase4()));
 
 TEST(DeterministicOpsTest, GetOptimizations) {
-  test::DeterministicOpsScope det_scope;
+  // TODO(b/259305727): Re-enable for MacOS when the bug is fixed.
+#if !defined(__APPLE__)
+  tsl::test::DeterministicOpsScope det_scope;
   Options options;
   // options.deterministic should be ignored when deterministic ops are enabled.
   options.set_deterministic(false);
@@ -583,14 +667,51 @@ TEST(DeterministicOpsTest, GetOptimizations) {
   EXPECT_THAT(std::vector<string>(actual_enabled.begin(), actual_enabled.end()),
               ::testing::UnorderedElementsAreArray({"make_deterministic"}));
   EXPECT_EQ(actual_disabled.size(), 0);
+#endif
 }
 
-REGISTER_DATASET_EXPERIMENT("test_only_experiment", 42);
+REGISTER_DATASET_EXPERIMENT("test_only_experiment",
+                            RandomJobSamplePercentage<42>, AllTasks);
 
 TEST(DatasetUtilsTest, DatasetExperimentRegistry) {
   auto experiments = DatasetExperimentRegistry::Experiments();
   EXPECT_TRUE(experiments.find("test_only_experiment") != experiments.end());
   EXPECT_TRUE(experiments.find("non_existing_experiment") == experiments.end());
+}
+
+TEST(DatasetUtilsTest, CountBytes) {
+  std::vector<Tensor> uncompressed = {
+      CreateTensor<int64_t>(TensorShape{128, 2}),
+      CreateTensor<int64_t>(TensorShape{64, 4})};
+  EXPECT_EQ(GetAllocatedBytes(uncompressed), 4096);
+  EXPECT_EQ(GetTotalBytes(uncompressed), 4096);
+
+  CompressedElement compressed_element;
+  TF_ASSERT_OK(CompressElement(uncompressed, &compressed_element));
+  std::vector<Tensor> compressed{{DT_VARIANT, TensorShape({})}};
+  compressed.front().scalar<Variant>()() = compressed_element;
+  EXPECT_EQ(GetAllocatedBytes(compressed), compressed_element.ByteSizeLong());
+  EXPECT_EQ(GetTotalBytes(compressed), compressed_element.ByteSizeLong());
+}
+
+TEST_F(DatasetOpsTestBase, TestVariantEqualityChecking) {
+  Tensor scalar_0{DT_VARIANT, TensorShape({})};
+  scalar_0.scalar<Variant>()() = TestVariant({CreateTensor<int64_t>({}, {0})});
+  TF_EXPECT_OK(ExpectEqual(scalar_0, scalar_0));
+
+  Tensor scalar_1{DT_VARIANT, TensorShape({})};
+  scalar_1.scalar<Variant>()() = TestVariant({CreateTensor<int64_t>({}, {1})});
+  EXPECT_THAT(ExpectEqual(scalar_0, scalar_1),
+              StatusIs(tsl::error::INTERNAL, HasSubstr("aren't equal")));
+
+  Tensor nonscalar{DT_VARIANT, TensorShape({2})};
+  EXPECT_THAT(ExpectEqual(nonscalar, nonscalar),
+              StatusIs(tsl::error::INTERNAL, HasSubstr("must be scalars")));
+
+  Tensor unsupported{DT_VARIANT, TensorShape({})};
+  unsupported.scalar<Variant>()() = 0;
+  EXPECT_THAT(ExpectEqual(unsupported, unsupported),
+              StatusIs(tsl::error::INTERNAL, HasSubstr("types must be")));
 }
 
 }  // namespace

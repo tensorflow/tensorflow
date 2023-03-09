@@ -47,10 +47,10 @@ struct SplitVOpGPULaunch {
 // Explicit instantiations in split_lib_gpu.cu.cc.
 #define REGISTER_GPU_KERNEL(T)                        \
   extern template struct SplitOpGPULaunch<T>;         \
+  extern template struct SplitVOpGPULaunch<T, int8>;  \
   extern template struct SplitVOpGPULaunch<T, int32>; \
   extern template struct SplitVOpGPULaunch<T, int64_t>;
 
-TF_CALL_bfloat16(REGISTER_GPU_KERNEL);
 TF_CALL_uint8(REGISTER_GPU_KERNEL);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL

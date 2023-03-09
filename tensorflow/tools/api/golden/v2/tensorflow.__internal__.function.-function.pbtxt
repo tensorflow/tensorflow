@@ -1,6 +1,6 @@
 path: "tensorflow.__internal__.function.Function"
 tf_class {
-  is_instance: "<class \'tensorflow.python.eager.def_function.Function\'>"
+  is_instance: "<class \'tensorflow.python.eager.polymorphic_function.polymorphic_function.Function\'>"
   is_instance: "<class \'tensorflow.python.types.core.GenericFunction\'>"
   is_instance: "<class \'tensorflow.python.types.core.Callable\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
@@ -23,7 +23,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'python_function\', \'name\', \'input_signature\', \'autograph\', \'jit_compile\', \'reduce_retracing\', \'experimental_implements\', \'experimental_autograph_options\', \'experimental_follow_type_hints\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'False\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'python_function\', \'name\', \'input_signature\', \'autograph\', \'jit_compile\', \'reduce_retracing\', \'experimental_implements\', \'experimental_autograph_options\', \'experimental_attributes\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'False\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "experimental_get_compiler_ir"

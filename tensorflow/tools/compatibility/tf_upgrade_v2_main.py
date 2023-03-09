@@ -16,8 +16,6 @@
 
 import argparse
 
-import six
-
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import ipynb
 from tensorflow.tools.compatibility import tf_upgrade_v2
@@ -37,10 +35,10 @@ _IMPORT_RENAME_DEFAULT = False
 def process_file(in_filename, out_filename, upgrader):
   """Process a file of type `.py` or `.ipynb`."""
 
-  if six.ensure_str(in_filename).endswith(".py"):
+  if in_filename.endswith(".py"):
     files_processed, report_text, errors = \
       upgrader.process_file(in_filename, out_filename)
-  elif six.ensure_str(in_filename).endswith(".ipynb"):
+  elif in_filename.endswith(".ipynb"):
     files_processed, report_text, errors = \
       ipynb.process_file(in_filename, out_filename, upgrader)
   else:
@@ -177,24 +175,24 @@ Simple usage:
     for f in errors:
       if errors[f]:
         num_errors += len(errors[f])
-        report.append(six.ensure_str("-" * 80) + "\n")
+        report.append("-" * 80 + "\n")
         report.append("File: %s\n" % f)
-        report.append(six.ensure_str("-" * 80) + "\n")
+        report.append("-" * 80 + "\n")
         report.append("\n".join(errors[f]) + "\n")
 
     report = ("TensorFlow 2.0 Upgrade Script\n"
               "-----------------------------\n"
               "Converted %d files\n" % files_processed +
               "Detected %d issues that require attention" % num_errors + "\n" +
-              six.ensure_str("-" * 80) + "\n") + "".join(report)
-    detailed_report_header = six.ensure_str("=" * 80) + "\n"
+              "-" * 80 + "\n") + "".join(report)
+    detailed_report_header = "=" * 80 + "\n"
     detailed_report_header += "Detailed log follows:\n\n"
-    detailed_report_header += six.ensure_str("=" * 80) + "\n"
+    detailed_report_header += "=" * 80 + "\n"
 
     with open(report_filename, "w") as report_file:
       report_file.write(report)
       report_file.write(detailed_report_header)
-      report_file.write(six.ensure_str(report_text))
+      report_file.write(report_text)
 
     if args.print_all:
       print(report)

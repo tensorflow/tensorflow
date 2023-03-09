@@ -1,7 +1,8 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -23,7 +24,6 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 

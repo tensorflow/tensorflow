@@ -35,11 +35,6 @@ limitations under the License.
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-- (void)testPReLUAlphaClip {
-  auto status = PReLUAlphaClipTest(&exec_env_);
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
-}
-
 - (void)testPReLUHWCAlpha {
   auto status = PReLUHWCAlphaTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());

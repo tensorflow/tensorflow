@@ -23,16 +23,21 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
-#include "mlir/Dialect/Arithmetic/Utils/Utils.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/Utils/Utils.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/cpu/backend_config.pb.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
@@ -40,16 +45,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/cpu/tiled_dot_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/vector_support_library.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -315,9 +317,9 @@ Status DotOpEmitter::EmitLinalgMatmul() {
           }
         }
 
-        llvm::SmallVector<llvm::StringRef, 4> iteratorTypes(
-            parallel_exprs.size(), toString(mlir::IteratorType::Parallel));
-        iteratorTypes.push_back(toString(mlir::IteratorType::Reduction));
+        llvm::SmallVector<mlir::utils::IteratorType, 4> iteratorTypes(
+            parallel_exprs.size(), mlir::utils::IteratorType::parallel);
+        iteratorTypes.push_back(mlir::utils::IteratorType::reduction);
         builder->create<mlir::linalg::GenericOp>(
             function.getLoc(),
             /*inputs=*/mlir::ValueRange{b, c},
@@ -334,45 +336,43 @@ Status DotOpEmitter::EmitLinalgMatmul() {
             });
         builder->create<mlir::func::ReturnOp>(function.getLoc());
 
-        mlir::linalg::LinalgTilingOptions tilingOptions;
-        tilingOptions = tilingOptions.setTileSizes(GetMlirGemmTileSize());
-        // TODO: this has been retired upstream, reevaluate whether this 
-        // path really needs it or if it is even relevant anymore.
+        // TODO(kramerb): this has been retired upstream, reevaluate whether
+        // this path really needs it or if it is even relevant anymore.
+        // mlir::linalg::LinalgTilingOptions tilingOptions;
+        // tilingOptions = tilingOptions.setTileSizes(GetMlirGemmTileSize());
         // int64_t alignment =
         //     target_machine_features_.minimum_alignment_for_allocation(
         //         ShapeUtil::ByteSizeOf(dot_info_.result_shape));
-        mlir::linalg::CodegenStrategy strategy;
-        strategy
-            .tile(mlir::linalg::GenericOp::getOperationName(), tilingOptions)
-            // TODO: this has been retired upstream, reevaluate whether this 
-            // path really needs it or if it is even relevant anymore.
-            // .promote(mlir::linalg::GenericOp::getOperationName(),
-            //          mlir::linalg::LinalgPromotionOptions()
-            //              .setAlignment(alignment)
-            //              .setUseFullTileBuffersByDefault(true)
-            //              .setUseAlloca(true))
-            .vectorize(mlir::linalg::GenericOp::getOperationName())
-            .vectorLowering(
-                mlir::linalg::LinalgVectorLoweringOptions()
-                    .setVectorTransformsOptions(
-                        mlir::vector::VectorTransformsOptions()
-                            .setVectorTransformsOptions(
-                                mlir::vector::VectorContractLowering::
-                                    OuterProduct))
-                    .setVectorTransferToSCFOptions(
-                        mlir::VectorTransferToSCFOptions().enableFullUnroll()));
-        // TODO: this should be within a pass and we should be able to create a
-        // nested OpPassManager.
+        // mlir::linalg::CodegenStrategy strategy;
+        // strategy.tile(mlir::linalg::GenericOp::getOperationName(),
+        //               tilingOptions);
+        // .promote(mlir::linalg::GenericOp::getOperationName(),
+        //          mlir::linalg::LinalgPromotionOptions()
+        //              .setAlignment(alignment)
+        //              .setUseFullTileBuffersByDefault(true)
+        //              .setUseAlloca(true))
+        // .vectorize(mlir::linalg::GenericOp::getOperationName())
+        // .vectorLowering(
+        //    mlir::linalg::LinalgVectorLoweringOptions()
+        //        .setVectorTransformsOptions(
+        //            mlir::vector::VectorTransformsOptions()
+        //                .setVectorTransformsOptions(
+        //                    mlir::vector::VectorContractLowering::
+        //                        OuterProduct))
+        //        .setVectorTransferToSCFOptions(
+        //            mlir::VectorTransferToSCFOptions().enableFullUnroll()));
+        // TODO(kramerb): this should be within a pass and we should be able to
+        // create a nested OpPassManager.
         // Created a nested OpPassManager, populate the strategy and run.
         // mlir::OpPassManager dynamicPM("func.func");
         // strategy.configurePassPipeline(dynamicPM, function.getContext());
         // Propagate pass failure?
         // (void)mlir::runPipeline(dynamicPM, function);
-        mlir::PassManager pm(function.getContext(),
-                             function.getOperationName());
-        strategy.configurePassPipeline(pm, function.getContext());
+        // mlir::PassManager pm(function.getContext(),
+        //                      function.getOperationName());
+        // strategy.configurePassPipeline(pm, function.getContext());
         // Propagate pass failure?
-        (void)pm.run(function);
+        // (void)pm.run(function);
       });
 }
 
@@ -997,7 +997,7 @@ Status DotOpEmitter::EmitCallToBatchRuntime() {
        b_->getInt64(mat_mult_dims.k), b_->getInt64(lhs_shape.dimensions(0)),
        b_->getInt32(static_cast<uint32_t>(transpose_lhs)),
        b_->getInt32(static_cast<uint32_t>(transpose_rhs))});
-  return Status::OK();
+  return OkStatus();
 }
 
 DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
@@ -1113,7 +1113,7 @@ namespace {
 bool IsRank2(const Shape& shape) { return shape.rank() == 2; }
 
 bool IsSimpleLayout(const Layout& layout) {
-  return layout.tiles().empty() && layout.format() == DENSE;
+  return layout.tiles().empty() && LayoutUtil::IsDense(layout);
 }
 
 // In a gemm operation where output = lhs * rhs, check whether the given shapes
@@ -1370,7 +1370,7 @@ bool PotentiallyImplementedAsEigenMatmul(
   }
 
   DotImplementationStrategy impl_strategy = GetDotImplementationStrategy(
-      dot.parent()->parent()->config(), dot_info, target_machine_features);
+      dot.GetModule()->config(), dot_info, target_machine_features);
 
   return impl_strategy == DotImplementationStrategy::kEigen;
 }
@@ -1473,7 +1473,7 @@ bool DotImplementationCanHandleTranspose(
     const HloInstruction& dot_instr,
     const TargetMachineFeatures& target_machine_features) {
   DotImplementationStrategy impl_strategy =
-      GetDotImplementationStrategy(dot_instr.parent()->parent()->config(),
+      GetDotImplementationStrategy(dot_instr.GetModule()->config(),
                                    DotInfo(dot_instr), target_machine_features);
 
   return impl_strategy == DotImplementationStrategy::kNaiveLlvmIr ||
@@ -1492,7 +1492,7 @@ bool DotOperandsAndResultMustHaveRowMajorLayout(
   }
 
   DotImplementationStrategy impl_strategy =
-      GetDotImplementationStrategy(dot_instr.parent()->parent()->config(),
+      GetDotImplementationStrategy(dot_instr.GetModule()->config(),
                                    DotInfo(dot_instr), target_machine_features);
 
   return impl_strategy == DotImplementationStrategy::kTiledLlvmIrGemm ||
@@ -1510,7 +1510,11 @@ Status EmitDotOperation(const HloInstruction& dot,
                         const TargetMachineFeatures& target_machine_features) {
   // This routine assumes that the dot operation is not in a parallelized
   // enclosing computation.
-  CHECK(dot.parent()->root_instruction()->outer_dimension_partitions().empty());
+  CHECK(dot.parent()
+            ->root_instruction()
+            ->backend_config<BackendConfig>()
+            ->outer_dimension_partitions()
+            .empty());
 
   if (IsBatchDot(dot)) {
     TF_RET_CHECK(addend_array == nullptr);

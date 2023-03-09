@@ -47,6 +47,18 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
   const bool dst_host =
       (recv_args.alloc_attrs.on_host() || parsed.dst.type == "CPU");
   if (src_host && dst_host) {
+    if (VLOG_IS_ON(3)) {
+      bool src_override =
+          send_args.alloc_attrs.on_host() && !(parsed.src.type == "CPU");
+      bool dst_override =
+          recv_args.alloc_attrs.on_host() && !(parsed.dst.type == "CPU");
+      if (src_override || dst_override) {
+        VLOG(3) << "Shortcut to keep tensor on host (src_override "
+                << src_override << " and dst_override " << dst_override
+                << ") tensor dtype:" << DataTypeString(in.dtype()) << " "
+                << parsed.FullKey();
+      }
+    }
     *out = in;
     done(OkStatus());
     return;
@@ -156,7 +168,8 @@ void IntraProcessRecvAsyncImpl(const DeviceMgr* device_mgr,
 
 RefCountedIntraProcessRendezvous::RefCountedIntraProcessRendezvous(
     const DeviceMgr* device_mgr)
-    : device_mgr_(device_mgr), local_(this) {}
+    : device_mgr_(device_mgr),
+      local_(this, /* num_shards= */ device_mgr->NumDevices()) {}
 
 RefCountedIntraProcessRendezvous::~RefCountedIntraProcessRendezvous() {}
 
@@ -185,7 +198,8 @@ Status RefCountedIntraProcessRendezvous::GetLocalRendezvousStatus() {
 
 PrivateIntraProcessRendezvous::PrivateIntraProcessRendezvous(
     const DeviceMgr* device_mgr)
-    : device_mgr_(device_mgr), local_(nullptr) {}
+    : device_mgr_(device_mgr),
+      local_(nullptr, /* num_shards= */ device_mgr->NumDevices()) {}
 
 PrivateIntraProcessRendezvous::~PrivateIntraProcessRendezvous() {}
 

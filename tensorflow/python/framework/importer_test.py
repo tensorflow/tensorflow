@@ -38,6 +38,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
@@ -404,7 +405,7 @@ class ImportGraphDefTest(test.TestCase):
     # Produce GraphDef containing while loop.
     graph = ops.Graph()
     with graph.as_default():
-      r = control_flow_ops.while_loop(lambda i: i < 10, lambda i: i + 1, [0])
+      r = while_loop.while_loop(lambda i: i < 10, lambda i: i + 1, [0])
       # Add an op that consumes the while loop output.
       math_ops.add(r, 1)
     graph_def = graph.as_graph_def()
@@ -421,7 +422,7 @@ class ImportGraphDefTest(test.TestCase):
     # Produce GraphDef containing while loop.
     graph = ops.Graph()
     with graph.as_default():
-      r = control_flow_ops.while_loop(lambda i: i < 10, lambda i: i + 1, [0])
+      r = while_loop.while_loop(lambda i: i < 10, lambda i: i + 1, [0])
     graph_def = graph.as_graph_def()
 
     # Import the GraphDef inside a cond and make sure it runs.
@@ -442,7 +443,7 @@ class ImportGraphDefTest(test.TestCase):
     # Produce GraphDef containing while loop.
     graph = ops.Graph()
     with graph.as_default():
-      r = control_flow_ops.while_loop(lambda i: i < 10, lambda i: i + 1, [0])
+      r = while_loop.while_loop(lambda i: i < 10, lambda i: i + 1, [0])
     graph_def = graph.as_graph_def()
 
     # Import the GraphDef inside another loop and make sure it runs.
@@ -451,8 +452,9 @@ class ImportGraphDefTest(test.TestCase):
       def ImportFn(_):
         return importer.import_graph_def(graph_def, return_elements=[r.name])[0]
 
-      out = control_flow_ops.while_loop(
-          lambda i: i < 2, ImportFn, [0],
+      out = while_loop.while_loop(
+          lambda i: i < 2,
+          ImportFn, [0],
           shape_invariants=[tensor_shape.TensorShape(None)])
       with self.cached_session() as sess:
         self.assertEqual(self.evaluate(out), 10)

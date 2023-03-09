@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -187,6 +188,56 @@ class RaggedTensorToVariantOp : public OpKernel {
     batched_ragged_input.set_values(context->input(ragged_nested_splits_len));
     batched_ragged_input.mutable_nested_splits()->reserve(
         ragged_nested_splits_len);
+
+    // Validate nested_row_splits.
+    for (int i = ragged_nested_splits_len - 1; i >= 0; --i) {
+      OP_REQUIRES(context, ragged_nested_splits_in[i].dims() == 1,
+                  errors::InvalidArgument("Requires nested_row_splits[", i, "]",
+                                          " to be rank 1 but is rank ",
+                                          ragged_nested_splits_in[i].dims()));
+      OP_REQUIRES(
+          context, ragged_nested_splits_in[i].dim_size(0) >= 1,
+          errors::InvalidArgument("Requires nested_row_splits[", i, "]",
+                                  " has at least one splits, but is empty."));
+      OP_REQUIRES(context,
+                  ragged_nested_splits_in[i].flat<SPLIT_TYPE>()(0) ==
+                      static_cast<SPLIT_TYPE>(0),
+                  errors::InvalidArgument(
+                      "Requires the first element of nested_row_splits[", i,
+                      "]", " to be 0 but is ",
+                      ragged_nested_splits_in[i].flat<SPLIT_TYPE>()(0)));
+
+      SPLIT_TYPE last_split = 0;
+      for (int j = 1; j < ragged_nested_splits_in[i].dim_size(0); j++) {
+        auto split = ragged_nested_splits_in[i].flat<SPLIT_TYPE>()(j);
+        OP_REQUIRES(
+            context, split >= last_split,
+            errors::InvalidArgument("Requires splits to be monotonically "
+                                    "increasing, but nested_row_splits[",
+                                    i, "][", j, "]=", split,
+                                    " is smaller than nested_row_splits[", i,
+                                    "][", j - 1, "]=", last_split));
+        last_split = split;
+      }
+      SPLIT_TYPE nvals;
+      if (i == ragged_nested_splits_len - 1) {
+        OP_REQUIRES(context, batched_ragged_input.values().dims() >= 1,
+                    errors::InvalidArgument(
+                        "Requires flat_values to have rank>=1 when "
+                        "nested_row_splits is not empty, but is 0."));
+        nvals = batched_ragged_input.values().dim_size(0);
+      } else {
+        nvals = ragged_nested_splits_in[i + 1].dim_size(0) - 1;
+      }
+
+      OP_REQUIRES(context, last_split == nvals,
+                  errors::InvalidArgument("Requires nested_row_splits[", i,
+                                          "][-1]=", last_split,
+                                          " to be equal with the number of "
+                                          "values in this dimension, which is ",
+                                          nvals, "."));
+    }
+
     for (int i = 0; i < ragged_nested_splits_len; i++) {
       batched_ragged_input.append_splits(ragged_nested_splits_in[i]);
     }

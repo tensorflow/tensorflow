@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <deque>
+#include <memory>
+#include <numeric>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -107,16 +109,6 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
 
   const std::vector<PartialTensorShape>& output_shapes() const override {
     return input_->output_shapes();
-  }
-
-  int64_t CardinalityInternal() const override {
-    if (count_ == -1 || input_->Cardinality() == kInfiniteCardinality) {
-      return kInfiniteCardinality;
-    } else if (input_->Cardinality() == kUnknownCardinality) {
-      return kUnknownCardinality;
-    } else {
-      return input_->Cardinality() * count_;
-    }
   }
 
   int64_t CardinalityInternal(CardinalityOptions options) const override {

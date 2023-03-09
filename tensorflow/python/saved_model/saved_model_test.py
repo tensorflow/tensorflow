@@ -15,7 +15,6 @@
 """Tests for SavedModel."""
 
 import os
-import six
 
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import config_pb2
@@ -37,6 +36,7 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import fingerprinting
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import main_op
@@ -90,7 +90,7 @@ class SavedModelTestBase(test.TestCase):
     Returns:
       The evaluated tensor as a numpy array.
     """
-    name = tensor if isinstance(tensor, six.string_types) else tensor.name
+    name = tensor if isinstance(tensor, str) else tensor.name
     index = "0"
     if ":" in name:
       name, index = name.split(":")
@@ -1370,6 +1370,28 @@ class SavedModelTest(SavedModelTestBase):
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 "(?s)No OpKernel was registered.*DOUBLE"):
       loader.load(sess, ["foo"], export_dir)
+
+  def testFingerprint(self):
+    self.skipTest("TF1 fingerprinting disabled in OSS.")
+    export_dir = self._get_export_dir("fingerprint")
+    builder = saved_model_builder._SavedModelBuilder(export_dir)
+
+    with ops.Graph().as_default():
+      with self.session(graph=ops.Graph()) as sess:
+        builder.add_meta_graph_and_variables(sess, ["foo"])
+
+      # Save the SavedModel to disk.
+      builder.save()
+
+      # Restore the graph with tag "foo", whose variables were saved.
+      with self.session(graph=ops.Graph()) as sess:
+        loader.load(sess, ["foo"], export_dir)
+
+        # Load the model's fingerprint.
+        try:
+          fingerprinting.read_fingerprint(export_dir)
+        except ValueError:
+          self.fail("Fingerprint read failed.")
 
 
 class SavedModelV1Test(SavedModelTestBase):

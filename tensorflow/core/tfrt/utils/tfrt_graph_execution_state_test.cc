@@ -19,19 +19,32 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/functional_ops.h"
+#include "tensorflow/cc/ops/math_ops.h"
+#include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/cc/ops/while_loop.h"
+#include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/tf2xla/cc/ops/xla_jit_ops.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
+#include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -709,8 +722,13 @@ TEST_F(ExtendGraphTest, ExtendGraph) {
     TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state,
-                          tensorflow::tfrt_stub::FallbackState::Create({}, {}));
+  SessionOptions session_options;
+  // Disable optimizations for static graph to allow calls to Session::Extend.
+  session_options.config.mutable_experimental()
+      ->set_disable_optimize_for_static_graph(true);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create(session_options, {}));
 
   TfrtGraphExecutionState::Options options;
   options.run_placer_grappler_on_functions = false;
@@ -854,29 +872,17 @@ TEST_F(InsertTransferOpsTest, InsertTransferOps) {
       auto optimized_graph,
       graph_execution_state->CreateOptimizedGraph(graph_import_config));
 
-  GraphDef new_graphdef;
-  optimized_graph.graph->ToGraphDef(&new_graphdef);
-
-  GraphInfo graph_info =
-      GetGraphInfo(/*input=*/"a", /*output=*/"c", new_graphdef);
-
-  ASSERT_THAT(graph_info.input_node, NotNull());
-  ASSERT_THAT(graph_info.output_node, NotNull());
-  ASSERT_THAT(graph_info.partitioned_call_nodes, SizeIs(2));
-  ASSERT_THAT(graph_info.stateful_partitioned_call_node, NotNull());
-
-  // Verify that each partition contains a _Send op and a _Recv op.
-  for (const FunctionDef& fdef : graph_info.fdefs) {
-    int send_count = 0, recv_count = 0;
-    for (const NodeDef& node : fdef.node_def()) {
-      if (node.op() == "_Send")
-        ++send_count;
-      else if (node.op() == "_Recv")
-        ++recv_count;
-    }
-    EXPECT_EQ(send_count, 1);
-    EXPECT_EQ(recv_count, 1);
+  // Verify that two paris of Send/Recv nodes are added.
+  int send_count = 0, recv_count = 0;
+  for (const auto* op : optimized_graph.graph->op_nodes()) {
+    if (op->IsSend())
+      ++send_count;
+    else if (op->IsRecv())
+      ++recv_count;
   }
+  EXPECT_EQ(optimized_graph.graph->num_op_nodes(), 7);
+  EXPECT_EQ(send_count, 2);
+  EXPECT_EQ(recv_count, 2);
 }
 
 TEST_F(InsertTransferOpsTest, InsertTransferOpsWithFunctionInlining) {
@@ -965,29 +971,270 @@ TEST_F(InsertTransferOpsTest, InsertTransferOpsWithFunctionInlining) {
       auto optimized_graph,
       graph_execution_state->CreateOptimizedGraph(graph_import_config));
 
-  GraphDef new_graphdef;
-  optimized_graph.graph->ToGraphDef(&new_graphdef);
+  // Verify that the resultant graph has no PartitionedCall ops, function body
+  // is inlined into the main graph, and send/recv ops are added.
+  int partitioned_call_count = 0, mul_count = 0, send_count = 0, recv_count = 0;
+  for (const auto* op : optimized_graph.graph->op_nodes()) {
+    if (op->IsPartitionedCall())
+      ++partitioned_call_count;
+    else if (op->IsSend())
+      ++send_count;
+    else if (op->IsRecv())
+      ++recv_count;
+    else if (op->type_string() == "Mul")
+      ++mul_count;
+  }
 
-  GraphInfo graph_info =
-      GetGraphInfo(/*input=*/"a", /*output=*/"c", new_graphdef);
+  EXPECT_EQ(partitioned_call_count, 0);
+  EXPECT_EQ(send_count, 2);
+  EXPECT_EQ(recv_count, 2);
+  EXPECT_EQ(mul_count, 1);
+}
 
-  ASSERT_THAT(graph_info.input_node, NotNull());
-  ASSERT_THAT(graph_info.output_node, NotNull());
-  ASSERT_THAT(graph_info.partitioned_call_nodes, SizeIs(2));
-  ASSERT_THAT(graph_info.stateful_partitioned_call_node, NotNull());
+TEST_F(InsertTransferOpsTest, AppendIdentityN) {
+  GraphDef graphdef;
+  {
+    Scope scope = Scope::NewRootScope();
+    Scope scope1 = scope.WithDevice(device0_->name());
+    Scope scope2 = scope.WithDevice(device1_->name());
 
-  // Verify that each partition contains a _Send op and a _Recv op.
-  for (const FunctionDef& fdef : graph_info.fdefs) {
-    int send_count = 0, recv_count = 0;
-    for (const NodeDef& node : fdef.node_def()) {
-      if (node.op() == "_Send")
+    // A graph with two nodes assigned on different devices.
+    // a(Const, on device0) -> b(Abs, on device1)
+    Output a = ops::Const(scope1.WithOpName("a"), 2.0, {1, 1});
+    Output b = ops::Abs(scope2.WithOpName("b"), a);
+
+    TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
+
+    // There is no IdentityN/Send/Recv nodes originally.
+    int identity_count = 0, abs_count = 0, const_count = 0, send_count = 0,
+        recv_count = 0;
+    for (const auto* op : scope.graph()->op_nodes()) {
+      if (op->type_string() == "IdentityN")
+        ++identity_count;
+      else if (op->IsConstant())
+        ++const_count;
+      else if (op->type_string() == "Abs")
+        ++abs_count;
+      else if (op->IsSend())
         ++send_count;
-      else if (node.op() == "_Recv")
+      else if (op->IsRecv())
         ++recv_count;
     }
-    EXPECT_EQ(send_count, 1);
-    EXPECT_EQ(recv_count, 1);
+    ASSERT_EQ(scope.graph()->num_op_nodes(), 2);
+    ASSERT_EQ(identity_count, 0);
+    ASSERT_EQ(const_count, 1);
+    ASSERT_EQ(abs_count, 1);
+    ASSERT_EQ(send_count, 0);
+    ASSERT_EQ(recv_count, 0);
   }
+  TfrtGraphExecutionState::Options options;
+  options.run_placer_grappler_on_functions = false;
+  options.enable_tfrt_gpu = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(options, graphdef, *fallback_state_));
+
+  tensorflow::GraphImportConfig graph_import_config;
+  graph_import_config.prune_unused_nodes = true;
+  graph_import_config.enable_shape_inference = false;
+  tensorflow::ArrayInfo array_info;
+  array_info.imported_dtype = DT_FLOAT;
+  array_info.shape.set_unknown_rank(true);
+  graph_import_config.inputs["a"] = array_info;
+  graph_import_config.outputs = {"b"};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto optimized_graph,
+      graph_execution_state->CreateOptimizedGraph(graph_import_config));
+  GraphDef optimized_graphdef;
+  optimized_graph.graph->ToGraphDef(&optimized_graphdef);
+
+  // Verify that IdentityN/Send/Recv nodes are added.
+  int identity_count = 0, abs_count = 0, const_count = 0, send_count = 0,
+      recv_count = 0;
+  for (const auto* op : optimized_graph.graph->op_nodes()) {
+    if (op->type_string() == "IdentityN")
+      ++identity_count;
+    else if (op->IsConstant())
+      ++const_count;
+    else if (op->type_string() == "Abs")
+      ++abs_count;
+    else if (op->IsSend())
+      ++send_count;
+    else if (op->IsRecv())
+      ++recv_count;
+  }
+  EXPECT_EQ(optimized_graph.graph->num_op_nodes(), 7);
+  EXPECT_EQ(identity_count, 1);
+  EXPECT_EQ(const_count, 1);
+  EXPECT_EQ(abs_count, 1);
+  EXPECT_EQ(send_count, 2);
+  EXPECT_EQ(recv_count, 2);
+}
+
+std::unique_ptr<Graph> MakeOuterGraph(const FunctionLibraryDefinition& flib_def,
+                                      const std::string& function_name) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  TF_EXPECT_OK(scope.graph()->AddFunctionLibrary(flib_def.ToProto()));
+
+  auto a = ops::Placeholder(scope.WithOpName("A"), DT_INT32);
+  auto b = ops::Placeholder(scope.WithOpName("B"), DT_FLOAT);
+  auto c = ops::Placeholder(scope.WithOpName("C"), DT_INT32);
+  auto d = ops::Placeholder(scope.WithOpName("D"), DT_FLOAT);
+  auto u = ops::Placeholder(scope.WithOpName("U"), DT_RESOURCE);
+  auto v = ops::Placeholder(scope.WithOpName("V"), DT_RESOURCE);
+  auto w = ops::Placeholder(scope.WithOpName("W"), DT_RESOURCE);
+
+  std::vector<tensorflow::NodeDefBuilder::NodeOut> func_inputs;
+  func_inputs.push_back(
+      tensorflow::NodeDefBuilder::NodeOut(a.node()->name(), 0, DT_INT32));
+  func_inputs.push_back(tensorflow::NodeDefBuilder::NodeOut(b.node()->name(), 0,
+                                                            b.output.type()));
+  func_inputs.push_back(tensorflow::NodeDefBuilder::NodeOut(c.node()->name(), 0,
+                                                            c.output.type()));
+  func_inputs.push_back(tensorflow::NodeDefBuilder::NodeOut(d.node()->name(), 0,
+                                                            d.output.type()));
+  func_inputs.push_back(tensorflow::NodeDefBuilder::NodeOut(u.node()->name(), 0,
+                                                            u.output.type()));
+  func_inputs.push_back(tensorflow::NodeDefBuilder::NodeOut(v.node()->name(), 0,
+                                                            v.output.type()));
+  func_inputs.push_back(tensorflow::NodeDefBuilder::NodeOut(w.node()->name(), 0,
+                                                            w.output.type()));
+
+  std::vector<DataType> input_dtypes;
+  for (const NodeDefBuilder::NodeOut& func_input : func_inputs) {
+    input_dtypes.push_back(func_input.data_type);
+  }
+
+  std::vector<DataType> output_dtypes = {DT_FLOAT, DT_INT32, DT_FLOAT,
+                                         DT_FLOAT};
+
+  NameAttrList f;
+  f.set_name(function_name);
+
+  NodeDef def;
+  TF_CHECK_OK(NodeDefBuilder("xla_call_0", "StatefulPartitionedCall", &flib_def)
+                  .Input(func_inputs)
+                  .Attr("Tin", input_dtypes)
+                  .Attr("Tout", output_dtypes)
+                  .Attr("f", f)
+                  .Device("/gpu:0")
+                  .Attr(kXlaMustCompileAttr, true)
+                  .Finalize(&def));
+
+  Status status;
+  Node* launch = scope.graph()->AddNode(def, &status);
+  TF_CHECK_OK(status);
+  TF_CHECK_OK(scope.DoShapeInference(launch));
+  scope.graph()->AddEdge(a.node(), 0, launch, 0);
+  scope.graph()->AddEdge(b.node(), 0, launch, 1);
+  scope.graph()->AddEdge(c.node(), 0, launch, 2);
+  scope.graph()->AddEdge(d.node(), 0, launch, 3);
+  scope.graph()->AddEdge(u.node(), 0, launch, 4);
+  scope.graph()->AddEdge(v.node(), 0, launch, 5);
+  scope.graph()->AddEdge(w.node(), 0, launch, 6);
+
+  auto consumer0_a =
+      ops::Identity(scope.WithOpName("consumer0_a"), Output(launch, 0));
+  auto consumer0_b =
+      ops::Identity(scope.WithOpName("consumer0_b"), Output(launch, 0));
+  auto consumer0_c =
+      ops::Identity(scope.WithOpName("consumer0_c"), Output(launch, 0));
+  auto consumer1 =
+      ops::Identity(scope.WithOpName("consumer1"), Output(launch, 1));
+  auto consumer2 =
+      ops::Identity(scope.WithOpName("consumer2"), Output(launch, 2));
+  auto consumer3 =
+      ops::Identity(scope.WithOpName("consumer3"), Output(launch, 3));
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_CHECK_OK(scope.ToGraph(graph.get()));
+  return graph;
+}
+
+// Makes an encapsulate body graph for use in tests.
+std::unique_ptr<Graph> MakeBodyGraph() {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+
+  auto arg0 = ops::_Arg(scope.WithOpName("a_0_arg"), DT_INT32, 0);
+  auto arg1 = ops::_Arg(scope.WithOpName("b_0_arg"), DT_FLOAT, 1);
+  auto arg2 = ops::_Arg(scope.WithOpName("c_0_arg"), DT_INT32, 2);
+  auto arg3 = ops::_Arg(scope.WithOpName("d_0_arg"), DT_FLOAT, 3);
+
+  auto arg4 = ops::_Arg(scope.WithOpName("u_0_arg"), DT_RESOURCE, 4);
+  auto arg5 = ops::_Arg(scope.WithOpName("v_0_arg"), DT_RESOURCE, 5);
+  auto arg6 = ops::_Arg(scope.WithOpName("w_0_arg"), DT_RESOURCE, 6);
+
+  auto b_identity = ops::Identity(scope.WithOpName("B_identity"), arg1);
+  auto read_u = ops::ReadVariableOp(scope.WithOpName("ReadU"), arg4, DT_FLOAT);
+  auto read_v = ops::ReadVariableOp(scope.WithOpName("ReadV"), arg5, DT_FLOAT);
+  auto read_w = ops::ReadVariableOp(scope.WithOpName("ReadW"), arg6, DT_FLOAT);
+
+  auto e = ops::Add(scope.WithOpName("E"), arg0, arg2);
+  auto f = ops::Add(scope.WithOpName("F"), read_v, read_w);
+  auto g = ops::Add(scope.WithOpName("G"), f, arg3);
+
+  auto out0 = ops::_Retval(scope.WithOpName("b_identity_0_retval_RetVal"),
+                           b_identity, 0);
+  auto out1 = ops::_Retval(scope.WithOpName("e_0_retval_RetVal"), e, 1);
+  auto out2 = ops::_Retval(scope.WithOpName("g_0_retval_RetVal"), g, 2);
+  auto out3 =
+      ops::_Retval(scope.WithOpName("readu_0_retval_RetVal"), read_u, 3);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_CHECK_OK(scope.ToGraph(graph.get()));
+  return graph;
+}
+
+TEST(BuildXlaOpsTest, BuildXlaLaunchOp) {
+  std::unique_ptr<Graph> body_graph = MakeBodyGraph();
+  FunctionDefLibrary flib;
+  TF_ASSERT_OK(
+      GraphToFunctionDef(*body_graph, "xla_func_0", flib.add_function()));
+
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(), flib);
+
+  std::unique_ptr<Graph> graph = MakeOuterGraph(flib_def, "xla_func_0");
+  TF_ASSERT_OK(BuildXlaLaunchOps(graph.get()));
+
+  Scope scope = Scope::DisabledShapeInferenceScope().ExitOnError();
+  TF_EXPECT_OK(scope.graph()->AddFunctionLibrary(flib));
+
+  auto a = ops::Placeholder(scope.WithOpName("A"), DT_INT32);
+  auto b = ops::Placeholder(scope.WithOpName("B"), DT_FLOAT);
+  auto c = ops::Placeholder(scope.WithOpName("C"), DT_INT32);
+  auto d = ops::Placeholder(scope.WithOpName("D"), DT_FLOAT);
+  auto u = ops::Placeholder(scope.WithOpName("U"), DT_RESOURCE);
+  auto v = ops::Placeholder(scope.WithOpName("V"), DT_RESOURCE);
+  auto w = ops::Placeholder(scope.WithOpName("W"), DT_RESOURCE);
+
+  NameAttrList function;
+  function.set_name("xla_func_0");
+  auto launch = ops::XlaLaunch(
+      scope.WithOpName("xla_call_0").WithDevice("/gpu:0"),
+      std::initializer_list<Input>{}, std::initializer_list<Input>{a, b, c, d},
+      std::initializer_list<Input>{u, v, w},
+      DataTypeVector{DT_FLOAT, DT_INT32, DT_FLOAT, DT_FLOAT}, function);
+
+  auto consumer0_a =
+      ops::Identity(scope.WithOpName("consumer0_a"), launch.results[0]);
+  auto consumer0_b =
+      ops::Identity(scope.WithOpName("consumer0_b"), launch.results[0]);
+  auto consumer0_c =
+      ops::Identity(scope.WithOpName("consumer0_c"), launch.results[0]);
+  auto consumer1 =
+      ops::Identity(scope.WithOpName("consumer1"), launch.results[1]);
+  auto consumer2 =
+      ops::Identity(scope.WithOpName("consumer2"), launch.results[2]);
+  auto consumer3 =
+      ops::Identity(scope.WithOpName("consumer3"), launch.results[3]);
+
+  GraphDef expected_def;
+  TF_ASSERT_OK(scope.ToGraphDef(&expected_def));
+
+  GraphDef actual_def;
+  graph->ToGraphDef(&actual_def);
+  TF_EXPECT_GRAPH_EQ(expected_def, actual_def);
 }
 
 }  // namespace

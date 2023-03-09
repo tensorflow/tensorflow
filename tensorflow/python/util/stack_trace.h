@@ -61,17 +61,32 @@ class StackTrace final {
     if (limit == -1) limit = std::numeric_limits<int>::max();
 
     StackTrace result;
+#if PY_VERSION_HEX >= 0x030B0000
+    PyFrameObject* oldframe;
+    PyFrameObject* frame = PyThreadState_GetFrame(PyThreadState_GET());
+#else
     const PyFrameObject* frame = PyThreadState_GET()->frame;
+#endif
     int i = 0;
+#if PY_VERSION_HEX >= 0x030B0000
+    for (; i < limit && frame != nullptr; oldframe = frame,
+                                          frame = PyFrame_GetBack(frame),
+                                          Py_DECREF(oldframe), ++i) {
+      PyCodeObject* code_obj = PyFrame_GetCode(frame);
+#else
     for (; i < limit && frame != nullptr; frame = frame->f_back, ++i) {
       PyCodeObject* code_obj = frame->f_code;
+      Py_XINCREF(code_obj);
+#endif
       DCHECK(code_obj != nullptr);
 
-      Py_INCREF(code_obj);
       int line_number =
           PyFrame_GetLineNumber(const_cast<PyFrameObject*>(frame));
       result.code_objs_.push_back(std::make_pair(code_obj, line_number));
     }
+#if PY_VERSION_HEX >= 0x030B0000
+    Py_XDECREF(frame);
+#endif
     return result;
   }
 
@@ -117,7 +132,7 @@ class StackTrace final {
 };
 
 // A class that manages Python stack traces in a circular buffer. Users can
-// insert stack trace entries and retrive them by ids.
+// insert stack trace entries and retrieve them by ids.
 class StackTraceManager {
  public:
   static constexpr int kStackTraceCircularBufferSize = 1024;

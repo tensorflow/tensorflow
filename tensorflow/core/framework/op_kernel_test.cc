@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -132,6 +133,42 @@ class TestOp5Gpu : public tensorflow::OpKernel {
 REGISTER_KERNEL_BUILDER(Name("Test5").Device(DEVICE_GPU).Priority(1),
                         TestOp5Gpu);
 
+NodeDef StripNodeDef(OpKernelConstruction* ctx) {
+  const NodeDef& original = ctx->def();
+  NodeDef ret;
+  ret.set_name(original.name());
+  ret.set_op(original.op());
+  return ret;
+}
+
+class StrippedNode : public tensorflow::OpKernel {
+ public:
+  explicit StrippedNode(OpKernelConstruction* context)
+      : OpKernel(context, StripNodeDef(context), false) {}
+  void Compute(OpKernelContext* context) override {}
+};
+
+REGISTER_OP("StrippedNode").Input("i: float").Output("o: float");
+REGISTER_KERNEL_BUILDER(Name("StrippedNode").Device(DEVICE_CPU), StrippedNode);
+
+class RefInputs : public tensorflow::OpKernel {
+ public:
+  explicit RefInputs(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    ctx->delete_ref_input(0, false);
+    Tensor t;
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, TensorShape({}), &t));
+    OP_REQUIRES_OK(ctx, ctx->replace_ref_input("b", t, false));
+  }
+};
+
+REGISTER_OP("RefInputs")
+    .Input("a: Ref(float)")
+    .Input("b: Ref(float)")
+    .Output("c: float");
+REGISTER_KERNEL_BUILDER(Name("RefInputs").Device(DEVICE_CPU), RefInputs);
+
 static std::vector<DeviceType> DeviceTypes() {
   return {DeviceType(DEVICE_GPU), DeviceType(DEVICE_CPU)};
 }
@@ -202,6 +239,10 @@ class OpKernelTest : public ::testing::Test {
 TEST_F(OpKernelTest, SuccessCpu) {
   ExpectSuccess("Test1", DEVICE_CPU, {DT_FLOAT, DT_INT32}, {DT_UINT8});
   ExpectSuccess("Test1", DEVICE_CPU, {DT_FLOAT_REF, DT_INT32}, {DT_UINT8});
+}
+
+TEST_F(OpKernelTest, SuccessStrippedNode) {
+  ExpectSuccess("StrippedNode", DEVICE_CPU, {DT_FLOAT}, {DT_FLOAT});
 }
 
 TEST_F(OpKernelTest, SuccessGpu) {
@@ -341,7 +382,7 @@ TEST_F(OpKernelTest, TooManyInputs) {
   ExpectFailure(node_def.DebugString(), DEVICE_CPU, invalid);
 }
 
-TEST_F(OpKernelTest, MatchSignatureFailes) {
+TEST_F(OpKernelTest, MatchSignatureFails) {
   const auto invalid = error::INVALID_ARGUMENT;
   foo::match_signature_ = true;
   ExpectFailure(CreateNodeDef("Test2", {DT_FLOAT}).DebugString(), DEVICE_GPU,
@@ -374,7 +415,7 @@ TEST_F(OpKernelTest, InputDtype) {
   Tensor c(DT_UINT8, TensorShape({}));
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b),
                                             TensorValue(&c)};
-  params.inputs = &inputs;
+  params.inputs = inputs;
   auto ctx = absl::make_unique<OpKernelContext>(&params);
 
   DataType dtype;
@@ -383,6 +424,79 @@ TEST_F(OpKernelTest, InputDtype) {
   EXPECT_EQ(dtype, DT_FLOAT);
   ASSERT_TRUE(ctx->input_dtype("b", &dtype).ok());
   EXPECT_EQ(dtype, DT_INT32);
+}
+
+TEST_F(OpKernelTest, RefInputs) {
+  Env* env = Env::Default();
+  OpKernelContext::Params params;
+  DummyDevice device(env);
+  params.device = &device;
+  Status status;
+  std::unique_ptr<OpKernel> op(
+      CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
+                     CreateNodeDef("RefInputs", {DT_FLOAT_REF, DT_FLOAT_REF}),
+                     TF_GRAPH_DEF_VERSION, &status));
+  EXPECT_TRUE(status.ok());
+  params.op_kernel = op.get();
+  Tensor* a = new Tensor(DT_FLOAT, TensorShape({}));
+  Tensor* b = new Tensor(DT_FLOAT, TensorShape({2}));
+  mutex mu_a, mu_b;
+  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&mu_a, a),
+                                            TensorValue(&mu_b, b)};
+  params.inputs = inputs;
+  auto ctx = std::make_unique<OpKernelContext>(&params);
+
+  op->Compute(ctx.get());
+  // We mutate the second input to have a {} Shape in the kernel. Asserting that
+  // here.
+  EXPECT_NE(ctx->mutable_input(1, false).shape(), TensorShape({2}));
+  // a doesn't need deletion since the kernel deletes it.
+  delete b;
+}
+
+TEST_F(OpKernelTest, AllocateOutput) {
+  Env* env = Env::Default();
+  OpKernelContext::Params params;
+  DummyDevice device(env);
+  params.device = &device;
+  Status status;
+  std::unique_ptr<OpKernel> op(
+      CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
+                     CreateNodeDef("Test1", {DT_FLOAT, DT_INT32}),
+                     TF_GRAPH_DEF_VERSION, &status));
+  EXPECT_TRUE(status.ok());
+  params.op_kernel = op.get();
+  Tensor a(DT_FLOAT, TensorShape({}));
+  Tensor b(DT_INT32, TensorShape({}));
+  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b)};
+  params.inputs = inputs;
+  auto ctx = std::make_unique<OpKernelContext>(&params);
+  Tensor* output = nullptr;
+
+  // Allocating to index -1 should fail (Only 0 should work).
+  Status s = ctx->allocate_output(-1, TensorShape({}), &output);
+  EXPECT_THAT(s, tensorflow::testing::StatusIs(error::INTERNAL));
+  EXPECT_THAT(s.error_message(), ::testing::ContainsRegex("bad index=-1"));
+
+  // Allocating to index 1 should fail (Only 0 should work).
+  s = ctx->allocate_output(1, TensorShape({}), &output);
+  EXPECT_THAT(s, tensorflow::testing::StatusIs(error::INTERNAL));
+  EXPECT_THAT(s.error_message(), ::testing::ContainsRegex("bad index=1"));
+
+  // Testing allocate_output when allocator attributes are set.
+  AllocatorAttributes attrs;
+  attrs.set_on_host(true);
+  TF_ASSERT_OK(ctx->allocate_output("o", TensorShape({}), &output, attrs));
+
+  // Index -1 should fail as only 1 output for the op.
+  s = ctx->allocate_output(-1, TensorShape({}), &output, attrs);
+  EXPECT_THAT(s, tensorflow::testing::StatusIs(error::INTERNAL));
+  EXPECT_THAT(s.error_message(), ::testing::ContainsRegex("bad index=-1"));
+
+  // Index 1 should fail as only 1 output for the op.
+  s = ctx->allocate_output(1, TensorShape({}), &output, attrs);
+  EXPECT_THAT(s, tensorflow::testing::StatusIs(error::INTERNAL));
+  EXPECT_THAT(s.error_message(), ::testing::ContainsRegex("bad index=1"));
 }
 
 // A mock device that mimics the behavior of scoped allocator upon calling
@@ -477,6 +591,30 @@ TEST_F(OpKernelTest, ScopedAllocationTest) {
   ctx->set_output(0, temp1);
   EXPECT_EQ(sa_device->num_allocations(false), 2);
   EXPECT_EQ(sa_device->num_allocations(true), 1);
+}
+
+TEST_F(OpKernelTest, TraceString) {
+  Env* env = Env::Default();
+  OpKernelContext::Params params;
+  DummyDevice device(env);
+  params.device = &device;
+
+  Status status;
+  std::unique_ptr<OpKernel> op(CreateOpKernel(
+      DEVICE_CPU, params.device, cpu_allocator(),
+      CreateNodeDef("Test4", {DT_FLOAT}), TF_GRAPH_DEF_VERSION, &status));
+  TF_CHECK_OK(status);
+
+  params.op_kernel = op.get();
+  Tensor a(DT_FLOAT, TensorShape({4, 8}));
+  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a)};
+  params.inputs = inputs;
+
+  params.op_kernel = op.get();
+  OpKernelContext ctx(&params);
+
+  EXPECT_THAT(op->TraceString(ctx, true),
+              ::testing::ContainsRegex("Test4-op:Test4#shape"));
 }
 
 REGISTER_OP("BuildCPU");
@@ -625,8 +763,6 @@ TEST_F(OpKernelBuilderTest, OpOutputList) {
       TF_GRAPH_DEF_VERSION, &status));
   EXPECT_TRUE(status.ok()) << status.ToString();
   params.op_kernel = op.get();
-  gtl::InlinedVector<TensorValue, 4> inputs{};
-  params.inputs = &inputs;
   auto ctx = absl::make_unique<OpKernelContext>(&params);
 
   EXPECT_EQ(DT_INT32, ctx->expected_output_dtype(0));
@@ -993,7 +1129,7 @@ void BM_TraceString(::testing::benchmark::State& state) {
   Tensor a(DT_FLOAT, TensorShape({99000, 256}));
   Tensor b(DT_FLOAT, TensorShape({256, 256}));
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b)};
-  params.inputs = &inputs;
+  params.inputs = inputs;
   auto ctx = absl::make_unique<OpKernelContext>(&params);
 
   for (auto s : state) {

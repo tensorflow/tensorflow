@@ -63,6 +63,39 @@ void ParseQualcommOpenClCompilerVersion(
   result->patch = (main_part[6] - '0') * 10 + (main_part[7] - '0');
 }
 
+static void ParsePowerVRDriverVersion(const std::string& cl_driver_version,
+                                      PowerVRInfo::DriverVersion& result) {
+  size_t position = cl_driver_version.find('@');
+  if (position == std::string::npos) {
+    return;
+  }
+
+  // string format: "*.**@*******" where * is digit
+  int main = 0;
+  size_t curpos = 0;
+  while (curpos < position && absl::ascii_isdigit(cl_driver_version[curpos])) {
+    main = main * 10 + cl_driver_version[curpos] - '0';
+    ++curpos;
+  }
+
+  ++curpos;
+  int minor = 0;
+  while (curpos < position) {
+    minor = minor * 10 + cl_driver_version[curpos] - '0';
+    ++curpos;
+  }
+
+  curpos = position + 1;
+  int id = 0;
+  while (curpos < cl_driver_version.length()) {
+    id = id * 10 + cl_driver_version[curpos] - '0';
+    ++curpos;
+  }
+  result.branch_main = main;
+  result.branch_minor = minor;
+  result.id = id;
+}
+
 template <>
 std::string GetDeviceInfo<std::string>(cl_device_id id, cl_device_info info) {
   size_t size;
@@ -180,6 +213,18 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
       ParseCLVersion(info.opencl_info.opencl_c_version);
   info.opencl_info.extensions =
       absl::StrSplit(GetDeviceInfo<std::string>(id, CL_DEVICE_EXTENSIONS), ' ');
+  const std::vector<std::string> unsupported_extensions =
+      GetUnsupportedExtensions();
+  for (const auto& unsupported_extension : unsupported_extensions) {
+    for (auto it = info.opencl_info.extensions.begin();
+         it != info.opencl_info.extensions.end();) {
+      if (*it == unsupported_extension) {
+        it = info.opencl_info.extensions.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
   info.opencl_info.supports_fp16 = false;
   info.opencl_info.supports_image3d_writes = false;
   for (const auto& ext : info.opencl_info.extensions) {
@@ -307,6 +352,9 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
   if (info.IsAdreno()) {
     ParseQualcommOpenClCompilerVersion(info.opencl_info.driver_version,
                                        &info.adreno_info.cl_compiler_version);
+  } else if (info.IsPowerVR()) {
+    ParsePowerVRDriverVersion(info.opencl_info.driver_version,
+                              info.powervr_info.driver_version);
   }
   return info;
 }

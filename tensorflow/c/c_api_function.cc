@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -184,7 +185,7 @@ TF_Function* TF_GraphToFunctionWithControlOutputs(
   if (control_output_names) {
     control_output_names_vec.reserve(ncontrol_outputs);
     for (int i = 0; i < ncontrol_outputs; ++i) {
-      control_output_names_vec.push_back(string(output_names[i]));
+      control_output_names_vec.push_back(string(control_output_names[i]));
     }
   }
 

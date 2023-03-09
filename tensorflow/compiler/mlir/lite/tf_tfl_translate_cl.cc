@@ -110,7 +110,6 @@ opt<std::string> quant_stats_file_name("quant-stats",
                                        llvm::cl::value_desc("filename"),
                                        llvm::cl::init(""));
 
-
 // A list of comma separated TF operators which are created by the user.
 // This must be used with `-emit-select-tf-ops=true`.
 // NOLINTNEXTLINE
@@ -170,4 +169,16 @@ opt<bool> enable_hlo_to_tf_conversion(
 opt<bool> preserve_assert_op(
     "preserve-assert-op",
     llvm::cl::desc("Preserve AssertOp during tfl legalization."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> enable_stablehlo_conversion(
+    "enable-stablehlo-conversion",
+    llvm::cl::desc("Enable converting TF to Stablehlo."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> post_training_quantization(
+    "post-training-quantization",
+    llvm::cl::desc("Enable post_training_quantization."),
     llvm::cl::init(false));

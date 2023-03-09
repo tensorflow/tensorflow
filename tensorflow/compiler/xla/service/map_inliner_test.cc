@@ -18,11 +18,11 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -63,7 +63,7 @@ TEST_F(MapInlinerTest, MapMax) {
   hlo_module->AddEntryComputation(std::move(computation));
 
   MapInliner inliner;
-  EXPECT_TRUE(inliner.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_TRUE(inliner.Run(hlo_module.get()).value());
   EXPECT_THAT(hlo_module->entry_computation()->root_instruction(),
               op::Maximum(lhs, rhs));
 
@@ -97,7 +97,7 @@ TEST_F(MapInlinerTest, MapConstant) {
   hlo_module->AddEntryComputation(std::move(computation));
   HloInstruction* root = hlo_module->entry_computation()->root_instruction();
   MapInliner inliner;
-  EXPECT_TRUE(inliner.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_TRUE(inliner.Run(hlo_module.get()).value());
   root = hlo_module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Broadcast(op::Constant()));
 
@@ -135,7 +135,7 @@ TEST_F(MapInlinerTest, MapSubtractOppositeOrder) {
   hlo_module->AddEntryComputation(std::move(computation));
 
   MapInliner inliner;
-  EXPECT_TRUE(inliner.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_TRUE(inliner.Run(hlo_module.get()).value());
   EXPECT_THAT(hlo_module->entry_computation()->root_instruction(),
           op::Subtract(rhs, lhs));
 
@@ -167,7 +167,7 @@ TEST_F(MapInlinerTest, MapParameter) {
   hlo_module->AddEntryComputation(std::move(computation));
 
   MapInliner inliner;
-  EXPECT_TRUE(inliner.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_TRUE(inliner.Run(hlo_module.get()).value());
   EXPECT_THAT(hlo_module->entry_computation()->root_instruction(), rhs);
 
   // Verify execution on CPU.

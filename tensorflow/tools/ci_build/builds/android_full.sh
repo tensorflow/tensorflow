@@ -26,7 +26,9 @@ copy_lib() {
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/builds_common.sh"
-configure_android_workspace
+# To setup Android via `configure` script.
+export TF_SET_ANDROID_WORKSPACE=1
+yes "" | ./configure
 
 CPUS=armeabi-v7a,arm64-v8a
 
@@ -41,7 +43,7 @@ for CPU in ${CPUS//,/ }
 do
     echo "========== Building native libs for Android ${CPU} =========="
     bazel build --config=monolithic --cpu=${CPU} \
-        --compilation_mode=opt --cxxopt=-std=c++14 \
+        --compilation_mode=opt --cxxopt=-std=c++17 \
         --distinct_host_configuration=true \
         --crosstool_top=//external:android/crosstool \
         --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
@@ -64,7 +66,9 @@ done
 # TODO(gunan): remove extra flags once sandboxing is enabled for all builds.
 echo "========== Building TensorFlow Android Jar and Demo =========="
 bazel --bazelrc=/dev/null build --config=monolithic --fat_apk_cpu=${CPUS} \
-    --compilation_mode=opt --cxxopt=-std=c++14 \
+    --compilation_mode=opt --cxxopt=-std=c++17 \
+    --define=android_dexmerger_tool=d8_dexmerger \
+    --define=android_incremental_dexing_tool=d8_dexbuilder \
     --distinct_host_configuration=true \
     --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
     --spawn_strategy=sandboxed --genrule_strategy=sandboxed \

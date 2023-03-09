@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/full_type_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -102,6 +104,8 @@ REGISTER_KERNEL_BUILDER(Name(kRetOp).Device(DEVICE_TPU_SYSTEM), RetvalOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER);
 TF_CALL_QUANTIZED_TYPES(REGISTER);
 TF_CALL_bool(REGISTER);
+TF_CALL_float8_e5m2(REGISTER);
+TF_CALL_float8_e4m3fn(REGISTER);
 
 REGISTER_KERNEL_BUILDER(
     Name(kDeviceArgOp).Device(DEVICE_DEFAULT).TypeConstraint<int32>("T"),
@@ -140,6 +144,8 @@ TF_CALL_qint16(REGISTER);
 TF_CALL_quint16(REGISTER);
 REGISTER(Variant);
 TF_CALL_bool(REGISTER);
+TF_CALL_float8_e5m2(REGISTER);
+TF_CALL_float8_e4m3fn(REGISTER);
 
 REGISTER_KERNEL_BUILDER(Name(kRetOp)
                             .Device(DEVICE_DEFAULT)
@@ -232,7 +238,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(
         ctx, lib->Instantiate(kGradientOp, AttrSlice(def()), &handle), done);
 
-    FunctionLibraryRuntime::Options opts;
+    FunctionLibraryRuntime::Options opts(ctx->step_id());
     opts.rendezvous = ctx->rendezvous();
     opts.cancellation_manager = ctx->cancellation_manager();
     opts.collective_executor = ctx->collective_executor();
@@ -273,7 +279,8 @@ REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_DEFAULT),
                         SymbolicGradientOp);
 
-RemoteCallOp::RemoteCallOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
+RemoteCallOp::RemoteCallOp(OpKernelConstruction* ctx)
+    : AsyncOpKernel(ctx), return_type_(ctx->def().experimental_type()) {
   OP_REQUIRES_OK(ctx,
                  ctx->GetAttr(FunctionLibraryDefinition::kFuncAttr, &func_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("Tin", &input_dtypes_));
@@ -358,9 +365,30 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     opts.args_alloc_attrs.push_back(arg_alloc_attrs);
   }
   opts.rets_alloc_attrs.reserve(output_dtypes_.size());
+  DCHECK(!return_type_.IsInitialized() ||
+         (return_type_.type_id() == TFT_UNSET) ||
+         (output_dtypes_.size() == return_type_.args_size()))
+      << "RemoteCall op has a full type information for "
+      << return_type_.args_size() << " outputs but the number of outputs is "
+      << output_dtypes_.size();
   for (const auto& dtype : output_dtypes_) {
     AllocatorAttributes ret_alloc_attrs;
-    ret_alloc_attrs.set_on_host(DataTypeAlwaysOnHost(dtype));
+    bool on_host = DataTypeAlwaysOnHost(dtype);
+    if (return_type_.IsInitialized() && (return_type_.type_id() != TFT_UNSET)) {
+      DCHECK(return_type_.type_id() == TFT_PRODUCT)
+          << return_type_.DebugString();
+      FullTypeDef ftd = full_type::GetArgDefaultUnset(
+          return_type_, opts.rets_alloc_attrs.size());
+      if (full_type::IsHostMemoryType(ftd)) {
+        on_host = true;
+      }
+      VLOG(5) << "FulltypeDef for RemoteCall output="
+              << opts.rets_alloc_attrs.size()
+              << ", IsHostMemoryType=" << full_type::IsHostMemoryType(ftd)
+              << ":\n"
+              << ftd.DebugString();
+    }
+    ret_alloc_attrs.set_on_host(on_host);
     opts.rets_alloc_attrs.push_back(ret_alloc_attrs);
   }
   auto* rets = new std::vector<Tensor>;

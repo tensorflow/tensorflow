@@ -22,6 +22,7 @@ from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute.cluster_resolver import cluster_resolver
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import remote_utils
@@ -179,10 +180,26 @@ def connect_to_cluster(cluster_spec_or_resolver,
     job_def.tasks[0] = "localhost:{}".format(local_port)
 
   if context.context().coordination_service is None:
+    service_type = remote_utils.coordination_service_type(protocol)
+    service_leader = ""
     # Maybe enable coordination service for the communication protocol
-    coordination_service = remote_utils.coordination_service_type(protocol)
-    if coordination_service:
-      context.context().configure_coordination_service(coordination_service)
+    # TODO(b/243839559): Fix UPTC + Coordination service crashing
+    if isinstance(cluster_spec_or_resolver,
+                  tpu_cluster_resolver.TPUClusterResolver):
+      is_uptc_sess = ".uptc-worker." in cluster_spec_or_resolver.master()
+      service_type = remote_utils.coordination_service_type(
+          protocol, is_uptc_sess)
+      service_leader = cluster_spec_or_resolver.get_coordination_service_leader(
+      )
+    if service_type:
+      # If `enable_health_check` is true, coordination service agent would
+      # do connecting (and tasks would send heartbeat if connection is set up)
+      # while creating eager contexts. Enabling health check does not mutate
+      # coordination service.
+      context.context().configure_coordination_service(
+          service_type=service_type,
+          service_leader=service_leader,
+          enable_health_check=False)
 
   server_def = ServerDef(
       cluster=cluster_def,

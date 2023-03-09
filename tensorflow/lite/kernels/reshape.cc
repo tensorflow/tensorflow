@@ -17,8 +17,8 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -30,6 +30,13 @@ namespace reshape {
 constexpr int kInputTensor = 0;
 constexpr int kShapeTensor = 1;
 constexpr int kOutputTensor = 0;
+
+struct OpData {
+  // Store the output pointer here if the output was written during 'Prepare'.
+  // This is to prevent incorrect results when mischievous users overwrite
+  // output pointers with their own.
+  const void* output_ptr;
+};
 
 TfLiteIntArray* GetOutputShape(TfLiteContext*, TfLiteNode*);
 
@@ -138,6 +145,8 @@ TfLiteIntArray* GetOutputShape(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, NumInputs(node) == 1 || NumInputs(node) == 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  op_data->output_ptr = nullptr;
 
   // Always postpone sizing string tensors, even if we could in principle
   // calculate their shapes now. String tensors don't benefit from having their
@@ -147,9 +156,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
   if (output->type != kTfLiteString) {
-    if (NumInputs(node) == 1 ||
-        IsConstantTensor(GetInput(context, node, kShapeTensor))) {
-      TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
+    const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+    const TfLiteTensor* shape = GetInput(context, node, kShapeTensor);
+    if (NumInputs(node) == 1 || IsConstantOrPersistentTensor(shape)) {
+      if (IsConstantOrPersistentTensor(input)) {
+        SetTensorToPersistentRo(output);
+        TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
+        op_data->output_ptr = output->data.data;
+        memcpy(output->data.data, input->data.data, input->bytes);
+        return kTfLiteOk;
+      } else {
+        TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
+      }
     } else {
       SetTensorToDynamic(output);
     }
@@ -158,6 +176,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   TfLiteTensor* output;
@@ -183,15 +202,29 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     output->bytes = bytes_required;
   }
 
-  memcpy(output->data.raw, input->data.raw, input->bytes);
+  if (op_data->output_ptr == output->data.data) {
+    return kTfLiteOk;
+  }
+  // Only copy data if input and output do not share a buffer.
+  if (output->data.data != input->data.data) {
+    memcpy(output->data.data, input->data.data, input->bytes);
+  }
 
   return kTfLiteOk;
+}
+
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  return new OpData;
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<OpData*>(buffer);
 }
 
 }  // namespace reshape
 
 TfLiteRegistration* Register_RESHAPE() {
-  static TfLiteRegistration r = {nullptr, nullptr, reshape::Prepare,
+  static TfLiteRegistration r = {reshape::Init, reshape::Free, reshape::Prepare,
                                  reshape::Eval};
   return &r;
 }

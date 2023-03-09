@@ -25,15 +25,16 @@ limitations under the License.
 // does not exist any operation placed on host_B that conumes any result of any
 // operation placed on host_A.
 
+#include <optional>
+
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace mlir {
@@ -108,7 +109,7 @@ struct FunctionMetadata {
 // for that remote host. The metadata of the function specifies the input
 // values, result values, result devices and the operations to be included in
 // the function body.
-llvm::Optional<llvm::StringMap<FunctionMetadata>> GetFunctionMetadatas(
+std::optional<llvm::StringMap<FunctionMetadata>> GetFunctionMetadatas(
     func::FuncOp func_op) {
   llvm::StringMap<FunctionMetadata> metadatas;
   WalkResult result = func_op.getBody().walk([&](Operation *op) {
@@ -170,7 +171,7 @@ llvm::Optional<llvm::StringMap<FunctionMetadata>> GetFunctionMetadatas(
     return WalkResult::advance();
   });
 
-  if (result.wasInterrupted()) return llvm::None;
+  if (result.wasInterrupted()) return std::nullopt;
 
   return metadatas;
 }
@@ -227,7 +228,7 @@ void CreateFunctions(ModuleOp module_op,
     // operation should use the arguments of the newly created func_op as
     // appropriate.
     OpBuilder builder(block, block->end());
-    BlockAndValueMapping mapping;
+    IRMapping mapping;
     for (int i : llvm::seq<int>(0, metadata.inputs.size())) {
       Value original_value = metadata.inputs[i];
       Value new_value = func_op.getArgument(i);
@@ -255,7 +256,7 @@ void CreateFunctions(ModuleOp module_op,
 // tf_device.remote_run calls.
 void CreateRemoteRunCalls(MLIRContext *context,
                           const llvm::StringMap<FunctionMetadata> &metadatas) {
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   for (auto &iter : metadatas) {
     llvm::StringRef host = iter.first();
     const FunctionMetadata &metadata = iter.second;
@@ -298,8 +299,11 @@ void CreateRemoteRunCalls(MLIRContext *context,
   }
 }
 
+#define GEN_PASS_DEF_CLUSTERTFOPSBYHOSTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class ClusterTFOpsByHostPass
-    : public ClusterTFOpsByHostPassBase<ClusterTFOpsByHostPass> {
+    : public impl::ClusterTFOpsByHostPassBase<ClusterTFOpsByHostPass> {
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     ModuleOp module_op = getOperation();
@@ -308,7 +312,7 @@ class ClusterTFOpsByHostPass
       original_func.push_back(func_op);
     }
     for (auto func_op : original_func) {
-      llvm::Optional<llvm::StringMap<FunctionMetadata>> metadatas =
+      std::optional<llvm::StringMap<FunctionMetadata>> metadatas =
           GetFunctionMetadatas(func_op);
       if (!metadatas) {
         signalPassFailure();

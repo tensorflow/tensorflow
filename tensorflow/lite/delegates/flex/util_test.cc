@@ -15,14 +15,15 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/util.h"
 
 #include <cstdarg>
+#include <iterator>
 #include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
@@ -129,6 +130,8 @@ TEST(UtilTest, TypeConversionsFromTFLite) {
   EXPECT_EQ(TF_BOOL, GetTensorFlowDataType(kTfLiteBool));
   EXPECT_EQ(TF_RESOURCE, GetTensorFlowDataType(kTfLiteResource));
   EXPECT_EQ(TF_VARIANT, GetTensorFlowDataType(kTfLiteVariant));
+  // TODO(b/246806634): Tensorflow DT_INT4 type doesn't exist yet
+  EXPECT_EQ(TF_INT8, GetTensorFlowDataType(kTfLiteInt4));
 }
 
 TEST(UtilTest, TypeConversionsFromTensorFlow) {
@@ -209,17 +212,17 @@ TEST(UtilTest, CreateTfTensorFromTfLiteTensorFloat) {
   dims->data[1] = 3;
   tflite_tensor.dims = dims;
   float data_arr[] = {1.1, 0.456, 0.322};
-  std::vector<float_t> data(std::begin(data_arr), std::end(data_arr));
-  size_t num_bytes = data.size() * sizeof(float_t);
+  std::vector<float> data(std::begin(data_arr), std::end(data_arr));
+  size_t num_bytes = data.size() * sizeof(float);
   tflite_tensor.data.raw = static_cast<char*>(malloc(num_bytes));
   memcpy(tflite_tensor.data.raw, data.data(), num_bytes);
   tflite_tensor.bytes = num_bytes;
 
   auto tf_tensor_or = CreateTfTensorFromTfLiteTensor(&tflite_tensor);
   EXPECT_TRUE(tf_tensor_or.ok());
-  tensorflow::Tensor tf_tensor = tf_tensor_or.ValueOrDie();
+  tensorflow::Tensor tf_tensor = tf_tensor_or.value();
   EXPECT_EQ(tf_tensor.NumElements(), 3);
-  auto* tf_data = static_cast<float_t*>(tf_tensor.data());
+  auto* tf_data = static_cast<float*>(tf_tensor.data());
   for (float weight : data_arr) {
     EXPECT_EQ(*tf_data, weight);
     tf_data++;
@@ -229,7 +232,7 @@ TEST(UtilTest, CreateTfTensorFromTfLiteTensorFloat) {
 }
 
 TEST(UtilTest, CreateTfTensorFromTfLiteTensorString) {
-  TfLiteTensor tflite_tensor;
+  TfLiteTensor tflite_tensor{};
   tflite_tensor.type = kTfLiteString;
   tflite_tensor.is_variable = false;
   tflite_tensor.sparsity = nullptr;
@@ -249,13 +252,13 @@ TEST(UtilTest, CreateTfTensorFromTfLiteTensorString) {
   std::string data_arr[] = {std::string("a_str\0ing", 9), "b_string"};
   tflite::DynamicBuffer buf;
   for (const auto& value : data_arr) {
-    buf.AddString(value.data(), value.length());
+    ASSERT_EQ(buf.AddString(value.data(), value.length()), kTfLiteOk);
   }
   buf.WriteToTensor(&tflite_tensor, nullptr);
 
   auto tf_tensor_or = CreateTfTensorFromTfLiteTensor(&tflite_tensor);
   EXPECT_TRUE(tf_tensor_or.ok());
-  tensorflow::Tensor tf_tensor = tf_tensor_or.ValueOrDie();
+  tensorflow::Tensor tf_tensor = tf_tensor_or.value();
   EXPECT_EQ(tf_tensor.NumElements(), 2);
   auto* tf_data = static_cast<tensorflow::tstring*>(tf_tensor.data());
   for (const auto& str : data_arr) {

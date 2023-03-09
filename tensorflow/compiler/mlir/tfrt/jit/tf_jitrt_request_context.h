@@ -16,18 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_REQUEST_CONTEXT_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_REQUEST_CONTEXT_H_
 
+#include "tensorflow/compiler/xla/runtime/async_values_cache.h"
+#include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/core/platform/status.h"
-#include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
+#include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 
 struct TfJitRtRequestState {
-  explicit TfJitRtRequestState(
-      tfrt::jitrt::JitExecutableCache* jit_executable_cache)
+  using JitExecutableCache =
+      xla::runtime::AsyncValuesCache<size_t, xla::runtime::JitExecutable>;
+
+  explicit TfJitRtRequestState(JitExecutableCache* jit_executable_cache)
       : jit_executable_cache(jit_executable_cache) {}
 
   // A pointer to the Jit Executable cache owned by the resource context.
-  tfrt::jitrt::JitExecutableCache* jit_executable_cache;
+  JitExecutableCache* jit_executable_cache;
 };
 
 // Sets up RequestContext with the JitRt state required for running `tf_jitrt`

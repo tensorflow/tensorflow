@@ -16,16 +16,17 @@
 
 import collections
 import timeit
+import weakref
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.trace_type import default_types
 from tensorflow.python.compat import v2_compat
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -34,7 +35,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
-from tensorflow.python.types import trace
 
 
 class TestAttr:
@@ -60,32 +60,9 @@ class TestAttrsClass:
 
 class DummyGenericClass:
   """Helps test memory leaks for GenericType."""
-  pass
 
 
-class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
-
-  @combinations.generate(combinations.combine(mode=['eager']))
-  def testIteratorAliasing(self):
-    it1 = iter(dataset_ops.DatasetV2.from_tensor_slices([1, 2, 3]))
-    it2 = iter(dataset_ops.DatasetV2.from_tensor_slices([1, 2, 3]))
-
-    self.assertEqual(
-        trace_type.from_object((it1, it1)),
-        trace_type.from_object((it2, it2)))
-    self.assertEqual(
-        trace_type.from_object((it1, it2)),
-        trace_type.from_object((it2, it1)))
-    self.assertNotEqual(
-        trace_type.from_object((it1, it1)),
-        trace_type.from_object((it1, it2)))
-
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
-  def testIteratorTypesImplementTracing(self):
-    self.assertTrue(
-        issubclass(iterator_ops.OwnedIterator, trace.SupportsTracingProtocol))
-    self.assertTrue(
-        issubclass(iterator_ops.IteratorSpec, trace.SupportsTracingProtocol))
+class TraceTypeBuilderTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testCompositeAndSpec(self):
@@ -94,23 +71,22 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
     spec = ragged_tensor.RaggedTensorSpec([2, None], dtypes.int32)
 
     self.assertEqual(
-        trace_type.from_object(composite_tensor),
-        trace_type.from_object(spec))
+        trace_type.from_value(composite_tensor), trace_type.from_value(spec))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testVariableAliasing(self):
     v1 = resource_variable_ops.ResourceVariable([1])
     v2 = resource_variable_ops.ResourceVariable([1])
     v3 = resource_variable_ops.ResourceVariable([1])
-    all_unique = trace_type.from_object((v1, v2, v3))
-    all_same = trace_type.from_object((v1, v1, v1))
+    all_unique = trace_type.from_value((v1, v2, v3))
+    all_same = trace_type.from_value((v1, v1, v1))
     self.assertNotEqual(all_unique, all_same)
 
     v3 = resource_variable_ops.ResourceVariable([2])
     v4 = resource_variable_ops.ResourceVariable([2])
     v5 = resource_variable_ops.ResourceVariable([2])
-    all_unique_again = trace_type.from_object((v3, v4, v5))
-    all_same_again = trace_type.from_object((v4, v4, v4))
+    all_unique_again = trace_type.from_value((v3, v4, v5))
+    all_same_again = trace_type.from_value((v4, v4, v4))
     self.assertEqual(all_unique, all_unique_again)
     self.assertEqual(all_same, all_same_again)
 
@@ -155,20 +131,19 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(spec_1, spec_2)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
-  def testAttrsCacheKeyGeneration(self):
-    trace_a = trace_type.from_object(TestAttrsClass(1, 2))
+  def testAttrsTraceTypeGeneration(self):
+    trace_a = trace_type.from_value(TestAttrsClass(1, 2))
     expected = default_types.Attrs.from_type_and_attributes(
-        TestAttrsClass,
-        (default_types.Literal(1), default_types.Literal(2)))
+        TestAttrsClass, (default_types.Literal(1), default_types.Literal(2)))
     self.assertEqual(trace_a, expected)
     self.assertTrue(trace_a.is_subtype_of(trace_a))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testTupleEquality(self):
-    trace_a = trace_type.from_object((1, 2, 3, 4))
-    trace_b = trace_type.from_object((1, 2, 2, 4))
-    trace_c = trace_type.from_object((1, 2, 3))
-    trace_d = trace_type.from_object((1, 2, 3, 4))
+    trace_a = trace_type.from_value((1, 2, 3, 4))
+    trace_b = trace_type.from_value((1, 2, 2, 4))
+    trace_c = trace_type.from_value((1, 2, 3))
+    trace_d = trace_type.from_value((1, 2, 3, 4))
     self.assertNotEqual(trace_a, trace_b)
     self.assertNotEqual(trace_a, trace_c)
     self.assertNotEqual(trace_b, trace_c)
@@ -176,10 +151,10 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testListEquality(self):
-    trace_a = trace_type.from_object([1, 2, 3, 4])
-    trace_b = trace_type.from_object([1, 2, 2, 4])
-    trace_c = trace_type.from_object([1, 2, 3])
-    trace_d = trace_type.from_object([1, 2, 3, 4])
+    trace_a = trace_type.from_value([1, 2, 3, 4])
+    trace_b = trace_type.from_value([1, 2, 2, 4])
+    trace_c = trace_type.from_value([1, 2, 3])
+    trace_d = trace_type.from_value([1, 2, 3, 4])
     self.assertNotEqual(trace_a, trace_b)
     self.assertNotEqual(trace_a, trace_c)
     self.assertNotEqual(trace_b, trace_c)
@@ -187,10 +162,10 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testDictEquality(self):
-    trace_a = trace_type.from_object({1: 2, 3: 4})
-    trace_b = trace_type.from_object({1: 2, 3: 2})
-    trace_c = trace_type.from_object({1: 2, 3: 0})
-    trace_d = trace_type.from_object({3: 4, 1: 2})
+    trace_a = trace_type.from_value({1: 2, 3: 4})
+    trace_b = trace_type.from_value({1: 2, 3: 2})
+    trace_c = trace_type.from_value({1: 2, 3: 0})
+    trace_d = trace_type.from_value({3: 4, 1: 2})
     self.assertNotEqual(trace_a, trace_b)
     self.assertNotEqual(trace_a, trace_c)
     self.assertNotEqual(trace_b, trace_c)
@@ -199,8 +174,8 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testComplexStruct(self):
     struct = {(1, 2, 3): {(1, 2): {12: 2}}, (3, 2, 3): (2, {2: 3})}
-    trace_a = trace_type.from_object(struct)
-    trace_b = trace_type.from_object(struct)
+    trace_a = trace_type.from_value(struct)
+    trace_b = trace_type.from_value(struct)
     self.assertEqual(trace_a, trace_b)
     self.assertTrue(trace_a.is_subtype_of(trace_b))
     self.assertTrue(trace_b.is_subtype_of(trace_a))
@@ -218,9 +193,9 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
 
     object_a = CustomUnequable()
     object_b = CustomUnequable()
-    trace_a_1 = trace_type.from_object(object_a)
-    trace_a_2 = trace_type.from_object(object_a)
-    trace_b = trace_type.from_object(object_b)
+    trace_a_1 = trace_type.from_value(object_a)
+    trace_a_2 = trace_type.from_value(object_a)
+    trace_b = trace_type.from_value(object_b)
     self.assertEqual(trace_a_1, trace_a_2)
 
     with self.assertRaises(ValueError):
@@ -245,14 +220,15 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
     obj = CustomUnhashable()
     with self.assertRaisesRegex(
         TypeError,
-        r'could not be represented through the generic tracing type'):
-      trace_type.from_object(obj)
+        r'Could not generate a generic TraceType for'):
+      trace_type.from_value(obj)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
-  def testGetPlaceholderValue(self):
+  def testGetDefaultPlaceholderValue(self):
+    placeholder_context = trace_type.InternalPlaceholderContext()
     composite_value = [1, 2, (3, [4, 5]), {6: [7]}, TestAttrsClass(8, (10, 11))]
-    composite_type = trace_type.from_object(composite_value)
-    placeholder_value = composite_type._placeholder_value()
+    composite_type = trace_type.from_value(composite_value)
+    placeholder_value = composite_type.placeholder_value(placeholder_context)
     self.assertEqual(composite_value, placeholder_value)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -267,40 +243,185 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
       __wrapped__ = ActualType(1, 2, 3)
 
     self.assertEqual(
-        trace_type.from_object(MockWrapper()),
-        trace_type.from_object(ActualType(1, 2, 3)))
+        trace_type.from_value(MockWrapper()),
+        trace_type.from_value(ActualType(1, 2, 3)))
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testBadReturnType(self):
+    class MyClass:
+
+      def __tf_tracing_type__(self, _):
+        return 1
+
+    with self.assertRaises(TypeError):
+      trace_type.from_value(MyClass())
 
 
-class CacheKeyMemoryTest(test.TestCase):
+class CastDefaultTypesTest(test.TestCase, parameterized.TestCase):
+
+  def testLiteral(self):
+    trace_float = default_types.Literal(1.5)
+    ctx = trace_type.InternalCastContext()
+    value = trace_float._cast(1.5, ctx)
+    self.assertEqual(value, 1.5)
+    with self.assertRaises(AssertionError):
+      _ = trace_float._cast(1, ctx)
+
+  @parameterized.parameters(list, tuple)
+  def testTupleAndList(self, container_type):
+    foo = (
+        constant_op.constant(1.0, dtypes.float32),
+        constant_op.constant(2.0, dtypes.float32))
+    foo = container_type(foo)
+    trace_foo = trace_type.from_value(foo)
+    bar = (1, 2)
+    bar = container_type(bar)
+    ctx = trace_type.InternalCastContext()
+    value = trace_foo._cast(bar, ctx)
+
+    self.assertIsInstance(value, container_type)
+    self.assertLen(value, len(bar))
+    self.assertSequenceEqual(value, bar)
+    self.assertEqual(value[0].dtype, dtypes.float32)
+    self.assertEqual(value[1].dtype, dtypes.float32)
+
+  @parameterized.parameters(
+      (list, tuple),
+      (tuple, list))
+  def testTupleAndListCannotBeCasted(self, type_a, type_b):
+    foo = (
+        constant_op.constant(1.0, dtypes.float32),
+        constant_op.constant(2.0, dtypes.float32))
+    foo = type_a(foo)
+    trace_foo = trace_type.from_value(foo)
+    bar = (1, 2)
+    bar = type_b(bar)
+    ctx = trace_type.InternalCastContext()
+    with self.assertRaises(AssertionError):
+      _ = trace_foo._cast(bar, ctx)
+
+  def testNamedTuple(self):
+    Foo = collections.namedtuple('Foo', ['x', 'y'])
+    foo = Foo(
+        constant_op.constant(1.0, dtypes.float32),
+        constant_op.constant(2.0, dtypes.float32))
+    trace_foo = trace_type.from_value(foo)
+    bar = Foo(1, 2)
+    ctx = trace_type.InternalCastContext()
+    value = trace_foo._cast(bar, ctx)
+
+    self.assertIsInstance(value, Foo)
+    self.assertLen(value, len(bar))
+    self.assertSequenceEqual(value, bar)
+    self.assertEqual(value[0].dtype, dtypes.float32)
+    self.assertEqual(value[1].dtype, dtypes.float32)
+
+  def testAttrs(self):
+    foo = TestAttrsClass(
+        constant_op.constant(1.0, dtypes.float32),
+        constant_op.constant(2.0, dtypes.float32),)
+    trace_foo = trace_type.from_value(foo)
+    bar = TestAttrsClass(1, 2)
+    ctx = trace_type.InternalCastContext()
+    value = trace_foo._cast(bar, ctx)
+
+    self.assertIsInstance(value, TestAttrsClass)
+    self.assertEqual(value.a.dtype, dtypes.float32)
+    self.assertEqual(value.b.dtype, dtypes.float32)
+
+  def testDict(self):
+    foo = {'x': constant_op.constant(1.0, dtypes.float32),
+           'y': constant_op.constant(2.0, dtypes.float32)}
+    trace_foo = trace_type.from_value(foo)
+    bar = {'x': 1, 'y': 2}
+    ctx = trace_type.InternalCastContext()
+    value = trace_foo._cast(bar, ctx)
+
+    self.assertIsInstance(value, dict)
+    self.assertSequenceEqual(
+        set(value.keys()),
+        set(bar.keys()))
+    self.assertIn('x', value)
+    self.assertIn('y', value)
+    self.assertEqual(value['x'].dtype, dtypes.float32)
+    self.assertEqual(value['y'].dtype, dtypes.float32)
+
+  def testNumpy(self):
+    ndarray = np.array([1, 2, 3])
+    ndarray_type = trace_type.from_value(ndarray)
+    self.assertEqual(
+        ndarray_type, default_types.TENSOR(ndarray.shape, ndarray.dtype)
+    )
+
+  def testWeakrefInput(self):
+    obj = DummyGenericClass()
+    ref = weakref.ref(obj)
+    with self.assertRaisesRegex(TypeError, 'weakref input .* not supported'):
+      trace_type.from_value(ref)
+
+
+class SignatureToTraceTypeTest(test.TestCase):
+
+  def testTensorSpecs(self):
+    self.assertEqual(
+        trace_type.from_value(
+            tensor_spec.TensorSpec(shape=None),
+            trace_type.InternalTracingContext(is_legacy_signature=True)),
+        tensor_spec.TensorSpec(shape=None))
+
+  def testListofTensorSpecs(self):
+    self.assertEqual(
+        trace_type.from_value([
+            tensor_spec.TensorSpec(shape=None),
+            tensor_spec.TensorSpec(shape=None)
+        ], trace_type.InternalTracingContext(is_legacy_signature=True)),
+        default_types.List(
+            tensor_spec.TensorSpec(shape=None),
+            tensor_spec.TensorSpec(shape=None)))
+
+  def testDictofTensorSpecs(self):
+    self.assertEqual(
+        trace_type.from_value(
+            {
+                'a': tensor_spec.TensorSpec(shape=None),
+                'b': tensor_spec.TensorSpec(shape=None)
+            }, trace_type.InternalTracingContext(is_legacy_signature=True)),
+        default_types.Dict({
+            'a': tensor_spec.TensorSpec(shape=None),
+            'b': tensor_spec.TensorSpec(shape=None)
+        }))
+
+
+class TraceTypeMemoryTest(test.TestCase):
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testGeneric(self):
-    trace_type.from_object(1)
-    trace_type.from_object(DummyGenericClass())
+    trace_type.from_value(1)
+    trace_type.from_value(DummyGenericClass())
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testTensor(self):
     tensor = array_ops.zeros([10])
-    trace_type.from_object(tensor)
+    trace_type.from_value(tensor)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testTuple(self):
-    trace_type.from_object((1, 2, 3))
+    trace_type.from_value((1, 2, 3))
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testDict(self):
-    trace_type.from_object({1: 1, 2: 2, 3: 3})
+    trace_type.from_value({1: 1, 2: 2, 3: 3})
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testList(self):
-    trace_type.from_object([1, 2, 3])
+    trace_type.from_value([1, 2, 3])
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testAttrs(self):
-    trace_type.from_object(TestAttrsClass(1, 2))
+    trace_type.from_value(TestAttrsClass(1, 2))
 
 
-class CacheKeyGenerationBenchmark(test.Benchmark):
+class TraceTypeGenerationBenchmark(test.Benchmark):
 
   def benchmarkTensor(self):
     shapes = [[1], [2, 19], [5, 11, 24], [4, 5, 9, 23]]
@@ -309,7 +430,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
       tensors.append(array_ops.zeros(s))
 
     def encode_tensors(tensors):
-      trace_type.from_object(tensors)
+      trace_type.from_value(tensors)
 
     iterations = 100000
     t = timeit.timeit(lambda: encode_tensors(tensors), number=iterations)
@@ -329,7 +450,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
       tensor_specs.append(tensor_spec.TensorSpec(s, dtypes.int32))
 
     def encode_tensor_specs(tensor_specs):
-      trace_type.from_object(tensor_specs)
+      trace_type.from_value(tensor_specs)
 
     iterations = 100000
     t = timeit.timeit(
@@ -351,7 +472,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     ]
 
     def encode_variables(var_list):
-      trace_type.from_object(var_list)
+      trace_type.from_value(var_list)
 
     iterations = 10000
     t = timeit.timeit(lambda: encode_variables(var_list), number=iterations)
@@ -364,9 +485,9 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
             'value': t / iterations * 1000
         }])
 
-  def benchmarkCacheKeyLookup(self):
+  def benchmarkTraceTypeLookup(self):
 
-    @function.defun
+    @def_function.function
     def defined(t):
       return t
 
@@ -398,7 +519,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     struct = {(1, 2, 3): {(1, 2): {12: 2}}, (3, 2, 3): (2, {2: 3})}
 
     def encode_struct(struct):
-      trace_type.from_object(struct)
+      trace_type.from_value(struct)
 
     iterations = 100000
     t = timeit.timeit(lambda: encode_struct(struct), number=iterations)
@@ -417,7 +538,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         'variable': variables.Variable(1.0)
     })
 
-    @function.defun
+    @def_function.function
     def defined(t):
       return t
 
@@ -433,6 +554,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
             'name': 'function_invocation_time_avg_ms',
             'value': t / iterations * 1000
         }])
+
 
 if __name__ == '__main__':
   v2_compat.enable_v2_behavior()

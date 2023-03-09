@@ -22,6 +22,7 @@ from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -182,20 +183,30 @@ class FromListRandomAccessTest(test_base.DatasetTestBase,
 class FromListCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                              parameterized.TestCase):
 
-  def _build_list_dataset(self, elements):
-    return from_list.from_list(elements)
+  def _build_list_dataset(self, elements, options=None):
+    dataset = from_list.from_list(elements)
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def test(self, verify_fn):
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, symbolic_checkpoint):
     # Equal length elements
     elements = [
         np.tile(np.array([[1], [2], [3], [4]]), 20),
         np.tile(np.array([[12], [13], [14], [15]]), 22),
         np.array([37, 38, 39, 40])
     ]
-    verify_fn(self, lambda: self._build_list_dataset(elements), num_outputs=3)
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(
+        self,
+        lambda: self._build_list_dataset(elements, options),
+        num_outputs=3)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
@@ -213,6 +224,7 @@ class FromListCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     }]
     verify_fn(
         self, lambda: self._build_list_dataset(dict_elements), num_outputs=3)
+
 
 if __name__ == "__main__":
   test.main()

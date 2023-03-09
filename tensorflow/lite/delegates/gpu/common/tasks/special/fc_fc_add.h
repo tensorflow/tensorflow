@@ -18,18 +18,20 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -160,25 +162,20 @@ void FCFCAdd::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
 
     args_.AddObject(name, std::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
-    Texture2DDescriptor desc;
-    desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-    // desc.element_type = DataType::UINT8;
-    // desc.normalized = true;
-    // desc.normalized_type = f32_weights ? DataType::FLOAT32 :
-    // DataType::FLOAT16;
-    desc.size = int2(src_depth * 4, dst_depth);
-    desc.data.resize(float4_size * elements_count);
-
+    std::vector<uint8_t> data(float4_size * elements_count);
     if (f32_weights) {
-      float* ptr = reinterpret_cast<float*>(desc.data.data());
+      float* ptr = reinterpret_cast<float*>(data.data());
       RearrangeFCWeightsToOIO4I4(weights, ptr);
     } else {
-      half* ptr = reinterpret_cast<half*>(desc.data.data());
+      half* ptr = reinterpret_cast<half*>(data.data());
       RearrangeFCWeightsToOIO4I4(weights, ptr);
     }
 
-    args_.AddObject(name,
-                    std::make_unique<Texture2DDescriptor>(std::move(desc)));
+    TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
+        f32_weights ? DataType::FLOAT32 : DataType::FLOAT16,
+        TensorStorageType::TEXTURE_2D, src_depth * 4, dst_depth, data.data());
+
+    args_.AddObject(name, std::make_unique<TensorDescriptor>(std::move(desc)));
   }
 }
 
@@ -189,6 +186,12 @@ FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
 FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
                       const FullyConnectedInt8Attributes& attr0,
                       const FullyConnectedInt8Attributes& attr1);
+
+absl::Status TryFCFCAdd(
+    const GpuInfo& gpu_info, CalculationsPrecision precision,
+    const GraphFloat32& graph, NodeId first_node_id,
+    const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
+    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph);
 
 }  // namespace gpu
 }  // namespace tflite

@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/test_util.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -40,27 +42,36 @@ namespace testing {
 namespace {
 
 using ::tensorflow::testing::IsOkAndHolds;
+using ::testing::ElementsAre;
 using ::testing::IsEmpty;
-using ::testing::SizeIs;
 
-tstring LocalTempFilename() {
-  std::string path;
-  CHECK(Env::Default()->LocalTempFilename(&path));
-  return tstring(path);
-}
-
-StatusOr<std::vector<std::vector<Tensor>>> GetIteratorOutput(
-    standalone::Iterator& iterator) {
-  bool end_of_input = false;
-  std::vector<std::vector<Tensor>> result;
-  while (!end_of_input) {
-    std::vector<tensorflow::Tensor> outputs;
-    TF_RETURN_IF_ERROR(iterator.GetNext(&outputs, &end_of_input));
-    if (!end_of_input) {
-      result.push_back(outputs);
+template <class T>
+StatusOr<std::vector<T>> GetIteratorOutput(standalone::Iterator& iterator) {
+  std::vector<T> result;
+  for (bool end_of_sequence = false; !end_of_sequence;) {
+    std::vector<tensorflow::Tensor> tensors;
+    TF_RETURN_IF_ERROR(iterator.GetNext(&tensors, &end_of_sequence));
+    if (end_of_sequence) {
+      break;
     }
+    if (tensors.size() != 1) {
+      return errors::Internal("GetNext Tensor size is not 1.");
+    }
+    result.push_back(tensors[0].unaligned_flat<T>().data()[0]);
   }
   return result;
+}
+
+TEST(TestUtilTest, RangeDataset) {
+  const auto dataset_def = RangeDataset(/*range=*/10);
+  standalone::Dataset::Params params;
+  std::unique_ptr<standalone::Dataset> dataset;
+  TF_ASSERT_OK(
+      standalone::Dataset::FromGraph(params, dataset_def.graph(), &dataset));
+  std::unique_ptr<standalone::Iterator> iterator;
+  TF_ASSERT_OK(dataset->MakeIterator(&iterator));
+  EXPECT_THAT(GetIteratorOutput<int64_t>(*iterator),
+              IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 }
 
 TEST(TestUtilTest, RangeSquareDataset) {
@@ -71,12 +82,25 @@ TEST(TestUtilTest, RangeSquareDataset) {
       standalone::Dataset::FromGraph(params, dataset_def.graph(), &dataset));
   std::unique_ptr<standalone::Iterator> iterator;
   TF_ASSERT_OK(dataset->MakeIterator(&iterator));
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<Tensor>> result,
-                          GetIteratorOutput(*iterator));
+  EXPECT_THAT(GetIteratorOutput<int64_t>(*iterator),
+              IsOkAndHolds(ElementsAre(0, 1, 4, 9, 16, 25, 36, 49, 64, 81)));
+}
 
-  ASSERT_EQ(result.size(), 10);
-  for (int i = 0; i < result.size(); ++i) {
-    test::ExpectEqual(result[i][0], Tensor(int64_t{i * i}));
+TEST(TestUtilTest, InfiniteDataset) {
+  const auto dataset_def = InfiniteDataset();
+  standalone::Dataset::Params params;
+  std::unique_ptr<standalone::Dataset> dataset;
+  TF_ASSERT_OK(
+      standalone::Dataset::FromGraph(params, dataset_def.graph(), &dataset));
+  std::unique_ptr<standalone::Iterator> iterator;
+  TF_ASSERT_OK(dataset->MakeIterator(&iterator));
+
+  // Verifies the first 10 elements.
+  for (int64_t i = 0; i < 10; ++i) {
+    std::vector<tensorflow::Tensor> outputs;
+    bool end_of_sequence;
+    TF_ASSERT_OK(iterator->GetNext(&outputs, &end_of_sequence));
+    test::ExpectEqual(outputs[0], Tensor(i));
   }
 }
 
@@ -88,7 +112,7 @@ TEST(TestUtilTest, EmptyDataset) {
       standalone::Dataset::FromGraph(params, dataset_def.graph(), &dataset));
   std::unique_ptr<standalone::Iterator> iterator;
   TF_ASSERT_OK(dataset->MakeIterator(&iterator));
-  EXPECT_THAT(GetIteratorOutput(*iterator), IsOkAndHolds(IsEmpty()));
+  EXPECT_THAT(GetIteratorOutput<int64_t>(*iterator), IsOkAndHolds(IsEmpty()));
 }
 
 TEST(TestUtilTest, InterleaveTextline) {
@@ -101,11 +125,8 @@ TEST(TestUtilTest, InterleaveTextline) {
       standalone::Dataset::FromGraph(params, dataset_def.graph(), &dataset));
   std::unique_ptr<standalone::Iterator> iterator;
   TF_ASSERT_OK(dataset->MakeIterator(&iterator));
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<Tensor>> result,
-                          GetIteratorOutput(*iterator));
-  ASSERT_THAT(result, SizeIs(2));
-  test::ExpectEqual(result[0][0], Tensor("0"));
-  test::ExpectEqual(result[1][0], Tensor("1"));
+  EXPECT_THAT(GetIteratorOutput<tstring>(*iterator),
+              IsOkAndHolds(ElementsAre("0", "1")));
 }
 
 TEST(TestUtilTest, InterleaveTextlineWithNewLines) {
@@ -119,12 +140,9 @@ TEST(TestUtilTest, InterleaveTextlineWithNewLines) {
       standalone::Dataset::FromGraph(params, dataset_def.graph(), &dataset));
   std::unique_ptr<standalone::Iterator> iterator;
   TF_ASSERT_OK(dataset->MakeIterator(&iterator));
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<Tensor>> result,
-                          GetIteratorOutput(*iterator));
-  ASSERT_THAT(result, SizeIs(10));
-  for (int64 i = 0; i < 10; ++i) {
-    test::ExpectEqual(result[i][0], Tensor(absl::StrCat(i)));
-  }
+  EXPECT_THAT(GetIteratorOutput<tstring>(*iterator),
+              IsOkAndHolds(ElementsAre("0", "1", "2", "3", "4", "5", "6", "7",
+                                       "8", "9")));
 }
 
 TEST(TestUtilTest, InterleaveTextlineEmptyFiles) {
@@ -137,7 +155,20 @@ TEST(TestUtilTest, InterleaveTextlineEmptyFiles) {
       standalone::Dataset::FromGraph(params, dataset_def.graph(), &dataset));
   std::unique_ptr<standalone::Iterator> iterator;
   TF_ASSERT_OK(dataset->MakeIterator(&iterator));
-  EXPECT_THAT(GetIteratorOutput(*iterator), IsOkAndHolds(IsEmpty()));
+  EXPECT_THAT(GetIteratorOutput<tstring>(*iterator), IsOkAndHolds(IsEmpty()));
+}
+
+TEST(TestUtilTest, ChooseFromDatasets) {
+  TF_ASSERT_OK_AND_ASSIGN(const DatasetDef dataset_def, ChooseFromDatasets());
+  standalone::Dataset::Params params;
+  std::unique_ptr<standalone::Dataset> dataset;
+  TF_ASSERT_OK(
+      standalone::Dataset::FromGraph(params, dataset_def.graph(), &dataset));
+  std::unique_ptr<standalone::Iterator> iterator;
+  TF_ASSERT_OK(dataset->MakeIterator(&iterator));
+  EXPECT_THAT(GetIteratorOutput<tstring>(*iterator),
+              IsOkAndHolds(ElementsAre("a", "b", "c", "a", "b", "c", "a", "b",
+                                       "c", "a", "b", "c", "a", "b", "c")));
 }
 
 }  // namespace

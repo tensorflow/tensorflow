@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/runtime_fft_impl.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 TEST(FftTypeTest, MatchesProto) {
   EXPECT_EQ(::xla::FftType_ARRAYSIZE, 4);

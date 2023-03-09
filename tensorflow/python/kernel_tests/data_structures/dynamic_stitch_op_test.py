@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
@@ -63,7 +64,12 @@ class DynamicStitchTestBase(object):
     # Test various datatypes in the simple case to ensure that the op was
     # registered under those types.
     dtypes_to_test = [
-        dtypes.float32, dtypes.qint8, dtypes.quint8, dtypes.qint32
+        dtypes.float32,
+        dtypes.float16,
+        dtypes.bfloat16,
+        dtypes.qint8,
+        dtypes.quint8,
+        dtypes.qint32,
     ]
     for dtype in dtypes_to_test:
       indices = [
@@ -220,6 +226,19 @@ class DynamicStitchTestBase(object):
     with self.assertRaises(ValueError):
       self.stitch_op(indices, data)
 
+  def testOutOfBoundsIndexRaisesInvalidArgument(self):
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "out of range"):
+      indices = [[-1000], [405], [519], [758], [1015]]
+      data = [
+          [110.27793884277344],
+          [120.29475402832031],
+          [157.2418212890625],
+          [157.2626953125],
+          [188.45382690429688],
+      ]
+
+      self.evaluate(self.stitch_op(indices, data))
+
 
 class DynamicStitchTest(DynamicStitchTestBase, test.TestCase):
 
@@ -308,6 +327,29 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
     for datum, grad in zip(data, self.evaluate(grads[3:])):
       self.assertAllEqual(7.0 * self.evaluate(datum), grad)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testMismatchedDataAndIndexListSizes(self):
+    indices = [
+        constant_op.constant([2]),
+        constant_op.constant([1]),
+        constant_op.constant([0]),
+        constant_op.constant([3]),
+    ]
+    data = [
+        constant_op.constant([1.0]),
+        constant_op.constant([2.0]),
+        constant_op.constant([3.0]),
+        constant_op.constant([4.0])
+    ]
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "expected inputs .* do not match|List argument .* must match"):
+      self.evaluate(data_flow_ops.dynamic_stitch(indices[0:2], data))
+
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "expected inputs .* do not match|List argument .* must match"):
+      self.evaluate(data_flow_ops.dynamic_stitch(indices, data[0:2]))
 
 if __name__ == "__main__":
   test.main()

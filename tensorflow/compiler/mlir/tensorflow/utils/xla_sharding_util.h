@@ -57,14 +57,19 @@ mlir::LogicalResult ParseAndValidateOutputSharding(
 mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
     const int core_id, llvm::ArrayRef<xla::OpSharding> output_sharding_config,
     mlir::tf_device::ClusterFuncOp cluster_func,
-    llvm::SmallVectorImpl<mlir::Type>* output_types);
+    llvm::SmallVectorImpl<mlir::Type>* output_types,
+    llvm::SmallVectorImpl<int>* cluster_to_core_index);
 
 // Remaps outputs of `new_parallel_execute` op that represent concurrent
 // execution of the `tf_device.cluster_func` at index `cluster_idx` of
 // `old_parallel_execute` with its users.
+// `num_results_pre_cluster` represent the # of outputs of
+// `new_parallel_execute` which are from ops before `tf_device.cluster_func` op
 mlir::LogicalResult RemapOutputsFromLogicalDevices(
     const mlir::Location& location,
     llvm::ArrayRef<xla::OpSharding> output_sharding_config,
+    llvm::SmallVector<llvm::SmallVector<int, 4>, 4> cluster_to_core_index,
+    int num_results_pre_cluster,
     mlir::tf_device::ParallelExecuteOp old_parallel_execute, int cluster_idx,
     mlir::tf_device::ParallelExecuteOp new_parallel_execute,
     mlir::OpBuilder* builder);

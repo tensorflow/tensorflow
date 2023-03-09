@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFR_IR_TFR_UTILS_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_TFR_IR_TFR_UTILS_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFR_UTILS_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_TFR_UTILS_UTILS_H_
 
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -61,4 +61,4 @@ void PropagateAttrsToOperations(CallOp src, Block::iterator begin,
 }  // namespace TFR
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFR_IR_TFR_UTILS_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFR_UTILS_UTILS_H_

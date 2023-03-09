@@ -24,14 +24,14 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/internal/signature_def.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 
-// Test helper for accessing private Intrepreter members and methods.
+// Test helper for accessing private Interpreter members and methods.
 class InterpreterTest : public ::testing::Test {
  public:
   InterpreterTest() : interpreter_(new Interpreter) {}
@@ -60,12 +60,22 @@ class InterpreterTest : public ::testing::Test {
   void BuildSignature(const std::string& signature_key,
                       const std::map<std::string, uint32_t>& inputs,
                       const std::map<std::string, uint32_t>& outputs) {
+    BuildSignature(interpreter_.get(), signature_key, inputs, outputs);
+  }
+
+  // TODO(b/271296489): Refactor InterpreterTest for C API (i.e.
+  // TfLiteInterpreter). Currently this method is added to manipulate the
+  // interpreter instance within TfLiteInterpreter.
+  static void BuildSignature(Interpreter* interpreter,
+                             const std::string& signature_key,
+                             const std::map<std::string, uint32_t>& inputs,
+                             const std::map<std::string, uint32_t>& outputs) {
     internal::SignatureDef signature;
     signature.inputs = inputs;
     signature.outputs = outputs;
     signature.signature_key = signature_key;
     signature.subgraph_index = 0;
-    interpreter_->SetSignatureDef({signature});
+    interpreter->SetSignatureDef({signature});
   }
 
   TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan) {

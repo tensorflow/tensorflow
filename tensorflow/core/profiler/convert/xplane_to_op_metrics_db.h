@@ -48,6 +48,10 @@ OpMetricsDb ConvertHostThreadsXPlaneToOpMetricsDb(const XPlane& host_trace);
 
 OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace);
 
+// Convert TPU DeviceTrace XPlane to OpMetricDb
+OpMetricsDb ConvertTpuDeviceTraceXPlaneToOpMetricsDb(
+    const XPlane& device_trace);
+
 }  // namespace profiler
 }  // namespace tensorflow
 

@@ -15,12 +15,24 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 
+#include <memory>
+#include <optional>
 #include <utility>
+#include <vector>
 
+#include "tensorflow/compiler/jit/device_compiler_client.h"
+#include "tensorflow/compiler/jit/device_executable_persistor.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/xla_device_compiler_client.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
+namespace {
+using XlaDeviceCompiler =
+    DeviceCompiler<xla::LocalExecutable, xla::LocalClient>;
+}  // namespace
 
 xla::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
     absl::string_view visible_device_list) {
@@ -43,18 +55,35 @@ xla::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
   return {{gpu_ids}};
 }
 
-Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
-                                const XlaPlatformInfo& platform_info,
-                                XlaCompilationCache** cache) {
-  XlaCompilationCache::Config cache_config(
+Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
+                              const XlaPlatformInfo& platform_info,
+                              XlaDeviceCompiler** xla_device_compiler) {
+  using XlaDeviceExecutablePersistor =
+      DeviceExecutablePersistor<xla::LocalExecutable, xla::LocalClient>;
+  XlaDeviceExecutablePersistor::Config persistor_config(
       GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_directory,
       GetMarkForCompilationPassFlags()->tf_xla_disable_strict_signature_checks,
       GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix);
 
   if (platform_info.xla_device_metadata()) {
-    *cache = new XlaCompilationCache(
-        std::move(cache_config), platform_info.xla_device_metadata()->client(),
+    auto persistor = std::make_unique<XlaDeviceExecutablePersistor>(
+        std::move(persistor_config),
         platform_info.xla_device_metadata()->jit_device_type());
+    auto compiler_client = std::make_unique<XlaDeviceCompilerClient>(
+        platform_info.xla_device_metadata()->client());
+    *xla_device_compiler =
+        new XlaDeviceCompiler(std::move(persistor), std::move(compiler_client));
+    return OkStatus();
+  }
+
+  // TFRT-TPU is used if device type is `DEVICE_TPU` and platform_info does not
+  // have `xla_device_metadata`.
+  if (platform_info.device_type() == DEVICE_TPU) {
+    auto persistor = std::make_unique<XlaDeviceExecutablePersistor>(
+        std::move(persistor_config), DeviceType(DEVICE_TPU_XLA_JIT));
+    auto compiler_client = std::make_unique<XlaDeviceCompilerClient>(nullptr);
+    *xla_device_compiler =
+        new XlaDeviceCompiler(std::move(persistor), std::move(compiler_client));
     return OkStatus();
   }
 
@@ -65,7 +94,7 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
   }
 
   StatusOr<xla::Compiler*> compiler_for_platform =
-      xla::Compiler::GetForPlatform(platform.ValueOrDie());
+      xla::Compiler::GetForPlatform(platform.value());
   if (!compiler_for_platform.ok()) {
     // In some rare cases (usually in unit tests with very small clusters) we
     // may end up transforming an XLA cluster with at least one GPU operation
@@ -80,13 +109,13 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
     const Status& status = compiler_for_platform.status();
     if (status.code() == error::NOT_FOUND) {
       return errors::Unimplemented("Could not find compiler for platform ",
-                                   platform.ValueOrDie()->Name(), ": ",
+                                   platform.value()->Name(), ": ",
                                    status.ToString());
     }
   }
 
   xla::LocalClientOptions client_options;
-  client_options.set_platform(platform.ValueOrDie());
+  client_options.set_platform(platform.value());
   client_options.set_intra_op_parallelism_threads(
       device->tensorflow_cpu_worker_threads()->num_threads);
 
@@ -108,9 +137,14 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
     return errors::InvalidArgument("No JIT device registered for ",
                                    platform_info.device_type().type());
   }
-  *cache = new XlaCompilationCache(
-      std::move(cache_config), client.ValueOrDie(),
+
+  auto persistor = std::make_unique<XlaDeviceExecutablePersistor>(
+      std::move(persistor_config),
       DeviceType(registration->compilation_device_name));
+  auto compiler_client =
+      std::make_unique<XlaDeviceCompilerClient>(client.value());
+  *xla_device_compiler =
+      new XlaDeviceCompiler(std::move(persistor), std::move(compiler_client));
   return OkStatus();
 }
 
@@ -158,23 +192,23 @@ std::shared_ptr<se::DeviceMemoryAllocator> GetAllocator(
     // Stream is not set for the host platform.
     se::Platform* platform =
         se::MultiPlatformManager::PlatformWithId(platform_info.platform_id())
-            .ValueOrDie();
+            .value();
     return std::make_shared<se::TfAllocatorAdapter>(alloc, platform);
   }
   return std::make_shared<se::TfAllocatorAdapter>(alloc, stream);
 }
 
 XlaCompiler::Options GenerateCompilerOptions(
-    const XlaCompilationCache& cache,
+    const XlaDeviceCompiler& xla_device_compiler,
     const FunctionLibraryRuntime& function_library, DeviceBase* device,
     se::Stream* stream, const XlaPlatformInfo& platform_info,
     bool has_ref_vars) {
   XlaCompiler::Options options;
-  options.client = static_cast<xla::LocalClient*>(cache.client());
+  options.client = static_cast<xla::LocalClient*>(xla_device_compiler.client());
   if (stream != nullptr) {
     options.device_ordinal = stream->parent()->device_ordinal();
   }
-  options.device_type = cache.device_type();
+  options.device_type = xla_device_compiler.device_type();
   options.flib_def = function_library.GetFunctionLibraryDefinition();
   options.graph_def_version = function_library.graph_def_version();
   options.allow_cpu_custom_calls =
@@ -188,6 +222,19 @@ XlaCompiler::Options GenerateCompilerOptions(
   // passthrough parameters without performing a copy.
   options.alias_passthrough_params =
       !has_ref_vars && !platform_info.is_on_xla_device();
+  return options;
+}
+
+XlaCompiler::Options GenerateTfrtTpuCompilerOptions(
+    const XlaDeviceCompiler& xla_device_compiler,
+    const FunctionLibraryRuntime& function_library) {
+  XlaCompiler::Options options;
+  // TODO(b/238830423): consider device_ordinal and shape_determination_fns.
+  options.device_type = xla_device_compiler.device_type();
+  options.flib_def = function_library.GetFunctionLibraryDefinition();
+  options.graph_def_version = function_library.graph_def_version();
+  options.allow_cpu_custom_calls = false;
+  options.alias_passthrough_params = false;
   return options;
 }
 

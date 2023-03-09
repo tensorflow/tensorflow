@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_XNNPACK_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_XNNPACK_DELEGATE_H_
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,6 +44,9 @@ typedef struct {
   // Cache for packed weights, can be shared between multiple instances of
   // delegates.
   struct TfLiteXNNPackDelegateWeightsCache* weights_cache;
+  // Whether READ_VARIABLE, ASSIGN_VARIABLE, and VARIABLE_HANDLE operations
+  // should be handled by XNNPACK.
+  bool handle_variable_ops;
 } TfLiteXNNPackDelegateOptions;
 
 // Returns a structure with the default XNNPack delegate options.
@@ -58,6 +61,12 @@ TfLiteXNNPackDelegateOptionsDefault();
 TFL_CAPI_EXPORT TfLiteDelegate* TfLiteXNNPackDelegateCreate(
     const TfLiteXNNPackDelegateOptions* options);
 
+// Performs the same task as TfLiteXNNPackDelegateCreate, with one exception.
+// If the context passed contains a non-null xnnpack_threadpool field,
+// we will use it as the threadpool for the delegate created.
+TfLiteDelegate* TfLiteXNNPackDelegateCreateWithThreadpool(
+    const TfLiteXNNPackDelegateOptions* options, TfLiteContext* context);
+
 // Returns the pthreadpool_t object used for parallelization in XNNPACK.
 // Can return NULL if the XNNPack delegate is single-threaded.
 //
@@ -69,9 +78,15 @@ TFL_CAPI_EXPORT void* TfLiteXNNPackDelegateGetThreadPool(
 TFL_CAPI_EXPORT void TfLiteXNNPackDelegateDelete(TfLiteDelegate* delegate);
 
 // Creates a new weights cache that can be shared with multiple delegate
-// instances.
+// instances. Prefer TfLiteXNNPackDelegateWeightsCacheCreateWithSize which can
+// reduce memory bandwidth.
 TFL_CAPI_EXPORT struct TfLiteXNNPackDelegateWeightsCache*
 TfLiteXNNPackDelegateWeightsCacheCreate();
+// Creates a new weights cache with a specified initial size that can be shared
+// with multiple delegate instances. The weights cache can hold up to size bytes
+// without growing.
+TFL_CAPI_EXPORT struct TfLiteXNNPackDelegateWeightsCache*
+TfLiteXNNPackDelegateWeightsCacheCreateWithSize(size_t size);
 // Soft-finalize a weights cache. Extra space will be left in the weights cache
 // to allow for cache "insertion" only if it is a cache hit. This has memory
 // overhead compared to TfLiteXNNPackDelegateWeightsCacheFinalizeHard. Use this

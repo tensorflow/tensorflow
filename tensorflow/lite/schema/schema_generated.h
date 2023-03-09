@@ -50,6 +50,10 @@ struct SparsityParameters;
 struct SparsityParametersBuilder;
 struct SparsityParametersT;
 
+struct VariantSubType;
+struct VariantSubTypeBuilder;
+struct VariantSubTypeT;
+
 struct Tensor;
 struct TensorBuilder;
 struct TensorT;
@@ -538,6 +542,14 @@ struct ATan2Options;
 struct ATan2OptionsBuilder;
 struct ATan2OptionsT;
 
+struct UnsortedSegmentMinOptions;
+struct UnsortedSegmentMinOptionsBuilder;
+struct UnsortedSegmentMinOptionsT;
+
+struct SignOptions;
+struct SignOptionsBuilder;
+struct SignOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeBuilder;
 struct OperatorCodeT;
@@ -588,11 +600,12 @@ enum TensorType : int8_t {
   TensorType_VARIANT = 14,
   TensorType_UINT32 = 15,
   TensorType_UINT16 = 16,
+  TensorType_INT4 = 17,
   TensorType_MIN = TensorType_FLOAT32,
-  TensorType_MAX = TensorType_UINT16
+  TensorType_MAX = TensorType_INT4
 };
 
-inline const TensorType (&EnumValuesTensorType())[17] {
+inline const TensorType (&EnumValuesTensorType())[18] {
   static const TensorType values[] = {
     TensorType_FLOAT32,
     TensorType_FLOAT16,
@@ -610,13 +623,14 @@ inline const TensorType (&EnumValuesTensorType())[17] {
     TensorType_RESOURCE,
     TensorType_VARIANT,
     TensorType_UINT32,
-    TensorType_UINT16
+    TensorType_UINT16,
+    TensorType_INT4
   };
   return values;
 }
 
 inline const char * const *EnumNamesTensorType() {
-  static const char * const names[18] = {
+  static const char * const names[19] = {
     "FLOAT32",
     "FLOAT16",
     "INT32",
@@ -634,13 +648,14 @@ inline const char * const *EnumNamesTensorType() {
     "VARIANT",
     "UINT32",
     "UINT16",
+    "INT4",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameTensorType(TensorType e) {
-  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_UINT16)) return "";
+  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_INT4)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesTensorType()[index];
 }
@@ -1049,11 +1064,13 @@ enum BuiltinOperator : int32_t {
   BuiltinOperator_UNSORTED_SEGMENT_MAX = 154,
   BuiltinOperator_UNSORTED_SEGMENT_SUM = 155,
   BuiltinOperator_ATAN2 = 156,
+  BuiltinOperator_UNSORTED_SEGMENT_MIN = 157,
+  BuiltinOperator_SIGN = 158,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_ATAN2
+  BuiltinOperator_MAX = BuiltinOperator_SIGN
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[157] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[159] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1211,13 +1228,15 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[157] {
     BuiltinOperator_UNSORTED_SEGMENT_PROD,
     BuiltinOperator_UNSORTED_SEGMENT_MAX,
     BuiltinOperator_UNSORTED_SEGMENT_SUM,
-    BuiltinOperator_ATAN2
+    BuiltinOperator_ATAN2,
+    BuiltinOperator_UNSORTED_SEGMENT_MIN,
+    BuiltinOperator_SIGN
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[158] = {
+  static const char * const names[160] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1375,13 +1394,15 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "UNSORTED_SEGMENT_MAX",
     "UNSORTED_SEGMENT_SUM",
     "ATAN2",
+    "UNSORTED_SEGMENT_MIN",
+    "SIGN",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_ATAN2)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_SIGN)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1507,13 +1528,15 @@ enum BuiltinOptions : uint8_t {
   BuiltinOptions_DynamicUpdateSliceOptions = 117,
   BuiltinOptions_UnsortedSegmentProdOptions = 118,
   BuiltinOptions_UnsortedSegmentMaxOptions = 119,
-  BuiltinOptions_UnsortedSegmentSumOptions = 120,
-  BuiltinOptions_ATan2Options = 121,
+  BuiltinOptions_UnsortedSegmentMinOptions = 120,
+  BuiltinOptions_UnsortedSegmentSumOptions = 121,
+  BuiltinOptions_ATan2Options = 122,
+  BuiltinOptions_SignOptions = 123,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_ATan2Options
+  BuiltinOptions_MAX = BuiltinOptions_SignOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[122] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[124] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1635,14 +1658,16 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[122] {
     BuiltinOptions_DynamicUpdateSliceOptions,
     BuiltinOptions_UnsortedSegmentProdOptions,
     BuiltinOptions_UnsortedSegmentMaxOptions,
+    BuiltinOptions_UnsortedSegmentMinOptions,
     BuiltinOptions_UnsortedSegmentSumOptions,
-    BuiltinOptions_ATan2Options
+    BuiltinOptions_ATan2Options,
+    BuiltinOptions_SignOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char * const names[123] = {
+  static const char * const names[125] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -1763,15 +1788,17 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "DynamicUpdateSliceOptions",
     "UnsortedSegmentProdOptions",
     "UnsortedSegmentMaxOptions",
+    "UnsortedSegmentMinOptions",
     "UnsortedSegmentSumOptions",
     "ATan2Options",
+    "SignOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_ATan2Options)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_SignOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -2256,12 +2283,20 @@ template<> struct BuiltinOptionsTraits<tflite::UnsortedSegmentMaxOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_UnsortedSegmentMaxOptions;
 };
 
+template<> struct BuiltinOptionsTraits<tflite::UnsortedSegmentMinOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_UnsortedSegmentMinOptions;
+};
+
 template<> struct BuiltinOptionsTraits<tflite::UnsortedSegmentSumOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_UnsortedSegmentSumOptions;
 };
 
 template<> struct BuiltinOptionsTraits<tflite::ATan2Options> {
   static const BuiltinOptions enum_value = BuiltinOptions_ATan2Options;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::SignOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_SignOptions;
 };
 
 template<typename T> struct BuiltinOptionsUnionTraits {
@@ -2744,12 +2779,20 @@ template<> struct BuiltinOptionsUnionTraits<tflite::UnsortedSegmentMaxOptionsT> 
   static const BuiltinOptions enum_value = BuiltinOptions_UnsortedSegmentMaxOptions;
 };
 
+template<> struct BuiltinOptionsUnionTraits<tflite::UnsortedSegmentMinOptionsT> {
+  static const BuiltinOptions enum_value = BuiltinOptions_UnsortedSegmentMinOptions;
+};
+
 template<> struct BuiltinOptionsUnionTraits<tflite::UnsortedSegmentSumOptionsT> {
   static const BuiltinOptions enum_value = BuiltinOptions_UnsortedSegmentSumOptions;
 };
 
 template<> struct BuiltinOptionsUnionTraits<tflite::ATan2OptionsT> {
   static const BuiltinOptions enum_value = BuiltinOptions_ATan2Options;
+};
+
+template<> struct BuiltinOptionsUnionTraits<tflite::SignOptionsT> {
+  static const BuiltinOptions enum_value = BuiltinOptions_SignOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -3734,6 +3777,14 @@ struct BuiltinOptionsUnion {
     return type == BuiltinOptions_UnsortedSegmentMaxOptions ?
       reinterpret_cast<const tflite::UnsortedSegmentMaxOptionsT *>(value) : nullptr;
   }
+  tflite::UnsortedSegmentMinOptionsT *AsUnsortedSegmentMinOptions() {
+    return type == BuiltinOptions_UnsortedSegmentMinOptions ?
+      reinterpret_cast<tflite::UnsortedSegmentMinOptionsT *>(value) : nullptr;
+  }
+  const tflite::UnsortedSegmentMinOptionsT *AsUnsortedSegmentMinOptions() const {
+    return type == BuiltinOptions_UnsortedSegmentMinOptions ?
+      reinterpret_cast<const tflite::UnsortedSegmentMinOptionsT *>(value) : nullptr;
+  }
   tflite::UnsortedSegmentSumOptionsT *AsUnsortedSegmentSumOptions() {
     return type == BuiltinOptions_UnsortedSegmentSumOptions ?
       reinterpret_cast<tflite::UnsortedSegmentSumOptionsT *>(value) : nullptr;
@@ -3749,6 +3800,14 @@ struct BuiltinOptionsUnion {
   const tflite::ATan2OptionsT *AsATan2Options() const {
     return type == BuiltinOptions_ATan2Options ?
       reinterpret_cast<const tflite::ATan2OptionsT *>(value) : nullptr;
+  }
+  tflite::SignOptionsT *AsSignOptions() {
+    return type == BuiltinOptions_SignOptions ?
+      reinterpret_cast<tflite::SignOptionsT *>(value) : nullptr;
+  }
+  const tflite::SignOptionsT *AsSignOptions() const {
+    return type == BuiltinOptions_SignOptions ?
+      reinterpret_cast<const tflite::SignOptionsT *>(value) : nullptr;
   }
 };
 
@@ -4663,6 +4722,94 @@ inline flatbuffers::Offset<SparsityParameters> CreateSparsityParametersDirect(
 
 flatbuffers::Offset<SparsityParameters> CreateSparsityParameters(flatbuffers::FlatBufferBuilder &_fbb, const SparsityParametersT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct VariantSubTypeT : public flatbuffers::NativeTable {
+  typedef VariantSubType TableType;
+  std::vector<int32_t> shape{};
+  tflite::TensorType type = tflite::TensorType_FLOAT32;
+  bool has_rank = false;
+};
+
+struct VariantSubType FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef VariantSubTypeT NativeTableType;
+  typedef VariantSubTypeBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_SHAPE = 4,
+    VT_TYPE = 6,
+    VT_HAS_RANK = 8
+  };
+  const flatbuffers::Vector<int32_t> *shape() const {
+    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_SHAPE);
+  }
+  tflite::TensorType type() const {
+    return static_cast<tflite::TensorType>(GetField<int8_t>(VT_TYPE, 0));
+  }
+  bool has_rank() const {
+    return GetField<uint8_t>(VT_HAS_RANK, 0) != 0;
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_SHAPE) &&
+           verifier.VerifyVector(shape()) &&
+           VerifyField<int8_t>(verifier, VT_TYPE, 1) &&
+           VerifyField<uint8_t>(verifier, VT_HAS_RANK, 1) &&
+           verifier.EndTable();
+  }
+  VariantSubTypeT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(VariantSubTypeT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<VariantSubType> Pack(flatbuffers::FlatBufferBuilder &_fbb, const VariantSubTypeT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct VariantSubTypeBuilder {
+  typedef VariantSubType Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_shape(flatbuffers::Offset<flatbuffers::Vector<int32_t>> shape) {
+    fbb_.AddOffset(VariantSubType::VT_SHAPE, shape);
+  }
+  void add_type(tflite::TensorType type) {
+    fbb_.AddElement<int8_t>(VariantSubType::VT_TYPE, static_cast<int8_t>(type), 0);
+  }
+  void add_has_rank(bool has_rank) {
+    fbb_.AddElement<uint8_t>(VariantSubType::VT_HAS_RANK, static_cast<uint8_t>(has_rank), 0);
+  }
+  explicit VariantSubTypeBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  flatbuffers::Offset<VariantSubType> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<VariantSubType>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<VariantSubType> CreateVariantSubType(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    flatbuffers::Offset<flatbuffers::Vector<int32_t>> shape = 0,
+    tflite::TensorType type = tflite::TensorType_FLOAT32,
+    bool has_rank = false) {
+  VariantSubTypeBuilder builder_(_fbb);
+  builder_.add_shape(shape);
+  builder_.add_has_rank(has_rank);
+  builder_.add_type(type);
+  return builder_.Finish();
+}
+
+inline flatbuffers::Offset<VariantSubType> CreateVariantSubTypeDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    const std::vector<int32_t> *shape = nullptr,
+    tflite::TensorType type = tflite::TensorType_FLOAT32,
+    bool has_rank = false) {
+  auto shape__ = shape ? _fbb.CreateVector<int32_t>(*shape) : 0;
+  return tflite::CreateVariantSubType(
+      _fbb,
+      shape__,
+      type,
+      has_rank);
+}
+
+flatbuffers::Offset<VariantSubType> CreateVariantSubType(flatbuffers::FlatBufferBuilder &_fbb, const VariantSubTypeT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct TensorT : public flatbuffers::NativeTable {
   typedef Tensor TableType;
   std::vector<int32_t> shape{};
@@ -4674,6 +4821,7 @@ struct TensorT : public flatbuffers::NativeTable {
   std::unique_ptr<tflite::SparsityParametersT> sparsity{};
   std::vector<int32_t> shape_signature{};
   bool has_rank = false;
+  std::vector<std::unique_ptr<tflite::VariantSubTypeT>> variant_tensors{};
   TensorT() = default;
   TensorT(const TensorT &o);
   TensorT(TensorT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -4692,7 +4840,8 @@ struct Tensor FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_IS_VARIABLE = 14,
     VT_SPARSITY = 16,
     VT_SHAPE_SIGNATURE = 18,
-    VT_HAS_RANK = 20
+    VT_HAS_RANK = 20,
+    VT_VARIANT_TENSORS = 22
   };
   const flatbuffers::Vector<int32_t> *shape() const {
     return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_SHAPE);
@@ -4721,6 +4870,9 @@ struct Tensor FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   bool has_rank() const {
     return GetField<uint8_t>(VT_HAS_RANK, 0) != 0;
   }
+  const flatbuffers::Vector<flatbuffers::Offset<tflite::VariantSubType>> *variant_tensors() const {
+    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::VariantSubType>> *>(VT_VARIANT_TENSORS);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_SHAPE) &&
@@ -4737,6 +4889,9 @@ struct Tensor FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyOffset(verifier, VT_SHAPE_SIGNATURE) &&
            verifier.VerifyVector(shape_signature()) &&
            VerifyField<uint8_t>(verifier, VT_HAS_RANK, 1) &&
+           VerifyOffset(verifier, VT_VARIANT_TENSORS) &&
+           verifier.VerifyVector(variant_tensors()) &&
+           verifier.VerifyVectorOfTables(variant_tensors()) &&
            verifier.EndTable();
   }
   TensorT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4775,6 +4930,9 @@ struct TensorBuilder {
   void add_has_rank(bool has_rank) {
     fbb_.AddElement<uint8_t>(Tensor::VT_HAS_RANK, static_cast<uint8_t>(has_rank), 0);
   }
+  void add_variant_tensors(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::VariantSubType>>> variant_tensors) {
+    fbb_.AddOffset(Tensor::VT_VARIANT_TENSORS, variant_tensors);
+  }
   explicit TensorBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -4796,8 +4954,10 @@ inline flatbuffers::Offset<Tensor> CreateTensor(
     bool is_variable = false,
     flatbuffers::Offset<tflite::SparsityParameters> sparsity = 0,
     flatbuffers::Offset<flatbuffers::Vector<int32_t>> shape_signature = 0,
-    bool has_rank = false) {
+    bool has_rank = false,
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::VariantSubType>>> variant_tensors = 0) {
   TensorBuilder builder_(_fbb);
+  builder_.add_variant_tensors(variant_tensors);
   builder_.add_shape_signature(shape_signature);
   builder_.add_sparsity(sparsity);
   builder_.add_quantization(quantization);
@@ -4820,10 +4980,12 @@ inline flatbuffers::Offset<Tensor> CreateTensorDirect(
     bool is_variable = false,
     flatbuffers::Offset<tflite::SparsityParameters> sparsity = 0,
     const std::vector<int32_t> *shape_signature = nullptr,
-    bool has_rank = false) {
+    bool has_rank = false,
+    const std::vector<flatbuffers::Offset<tflite::VariantSubType>> *variant_tensors = nullptr) {
   auto shape__ = shape ? _fbb.CreateVector<int32_t>(*shape) : 0;
   auto name__ = name ? _fbb.CreateString(name) : 0;
   auto shape_signature__ = shape_signature ? _fbb.CreateVector<int32_t>(*shape_signature) : 0;
+  auto variant_tensors__ = variant_tensors ? _fbb.CreateVector<flatbuffers::Offset<tflite::VariantSubType>>(*variant_tensors) : 0;
   return tflite::CreateTensor(
       _fbb,
       shape__,
@@ -4834,7 +4996,8 @@ inline flatbuffers::Offset<Tensor> CreateTensorDirect(
       is_variable,
       sparsity,
       shape_signature__,
-      has_rank);
+      has_rank,
+      variant_tensors__);
 }
 
 flatbuffers::Offset<Tensor> CreateTensor(flatbuffers::FlatBufferBuilder &_fbb, const TensorT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -6293,6 +6456,7 @@ struct UnidirectionalSequenceLSTMOptionsT : public flatbuffers::NativeTable {
   float proj_clip = 0.0f;
   bool time_major = false;
   bool asymmetric_quantize_inputs = false;
+  bool diagonal_recurrent_tensors = false;
 };
 
 struct UnidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -6303,7 +6467,8 @@ struct UnidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatb
     VT_CELL_CLIP = 6,
     VT_PROJ_CLIP = 8,
     VT_TIME_MAJOR = 10,
-    VT_ASYMMETRIC_QUANTIZE_INPUTS = 12
+    VT_ASYMMETRIC_QUANTIZE_INPUTS = 12,
+    VT_DIAGONAL_RECURRENT_TENSORS = 14
   };
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
@@ -6320,6 +6485,9 @@ struct UnidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatb
   bool asymmetric_quantize_inputs() const {
     return GetField<uint8_t>(VT_ASYMMETRIC_QUANTIZE_INPUTS, 0) != 0;
   }
+  bool diagonal_recurrent_tensors() const {
+    return GetField<uint8_t>(VT_DIAGONAL_RECURRENT_TENSORS, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
@@ -6327,6 +6495,7 @@ struct UnidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatb
            VerifyField<float>(verifier, VT_PROJ_CLIP, 4) &&
            VerifyField<uint8_t>(verifier, VT_TIME_MAJOR, 1) &&
            VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS, 1) &&
+           VerifyField<uint8_t>(verifier, VT_DIAGONAL_RECURRENT_TENSORS, 1) &&
            verifier.EndTable();
   }
   UnidirectionalSequenceLSTMOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6353,6 +6522,9 @@ struct UnidirectionalSequenceLSTMOptionsBuilder {
   void add_asymmetric_quantize_inputs(bool asymmetric_quantize_inputs) {
     fbb_.AddElement<uint8_t>(UnidirectionalSequenceLSTMOptions::VT_ASYMMETRIC_QUANTIZE_INPUTS, static_cast<uint8_t>(asymmetric_quantize_inputs), 0);
   }
+  void add_diagonal_recurrent_tensors(bool diagonal_recurrent_tensors) {
+    fbb_.AddElement<uint8_t>(UnidirectionalSequenceLSTMOptions::VT_DIAGONAL_RECURRENT_TENSORS, static_cast<uint8_t>(diagonal_recurrent_tensors), 0);
+  }
   explicit UnidirectionalSequenceLSTMOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -6370,10 +6542,12 @@ inline flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> CreateUnidirection
     float cell_clip = 0.0f,
     float proj_clip = 0.0f,
     bool time_major = false,
-    bool asymmetric_quantize_inputs = false) {
+    bool asymmetric_quantize_inputs = false,
+    bool diagonal_recurrent_tensors = false) {
   UnidirectionalSequenceLSTMOptionsBuilder builder_(_fbb);
   builder_.add_proj_clip(proj_clip);
   builder_.add_cell_clip(cell_clip);
+  builder_.add_diagonal_recurrent_tensors(diagonal_recurrent_tensors);
   builder_.add_asymmetric_quantize_inputs(asymmetric_quantize_inputs);
   builder_.add_time_major(time_major);
   builder_.add_fused_activation_function(fused_activation_function);
@@ -8364,6 +8538,7 @@ struct TransposeConvOptionsT : public flatbuffers::NativeTable {
   tflite::Padding padding = tflite::Padding_SAME;
   int32_t stride_w = 0;
   int32_t stride_h = 0;
+  tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE;
 };
 
 struct TransposeConvOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -8372,7 +8547,8 @@ struct TransposeConvOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_PADDING = 4,
     VT_STRIDE_W = 6,
-    VT_STRIDE_H = 8
+    VT_STRIDE_H = 8,
+    VT_FUSED_ACTIVATION_FUNCTION = 10
   };
   tflite::Padding padding() const {
     return static_cast<tflite::Padding>(GetField<int8_t>(VT_PADDING, 0));
@@ -8383,11 +8559,15 @@ struct TransposeConvOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table
   int32_t stride_h() const {
     return GetField<int32_t>(VT_STRIDE_H, 0);
   }
+  tflite::ActivationFunctionType fused_activation_function() const {
+    return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_PADDING, 1) &&
            VerifyField<int32_t>(verifier, VT_STRIDE_W, 4) &&
            VerifyField<int32_t>(verifier, VT_STRIDE_H, 4) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
            verifier.EndTable();
   }
   TransposeConvOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -8408,6 +8588,9 @@ struct TransposeConvOptionsBuilder {
   void add_stride_h(int32_t stride_h) {
     fbb_.AddElement<int32_t>(TransposeConvOptions::VT_STRIDE_H, stride_h, 0);
   }
+  void add_fused_activation_function(tflite::ActivationFunctionType fused_activation_function) {
+    fbb_.AddElement<int8_t>(TransposeConvOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
+  }
   explicit TransposeConvOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -8423,10 +8606,12 @@ inline flatbuffers::Offset<TransposeConvOptions> CreateTransposeConvOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
     tflite::Padding padding = tflite::Padding_SAME,
     int32_t stride_w = 0,
-    int32_t stride_h = 0) {
+    int32_t stride_h = 0,
+    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE) {
   TransposeConvOptionsBuilder builder_(_fbb);
   builder_.add_stride_h(stride_h);
   builder_.add_stride_w(stride_w);
+  builder_.add_fused_activation_function(fused_activation_function);
   builder_.add_padding(padding);
   return builder_.Finish();
 }
@@ -11300,6 +11485,84 @@ inline flatbuffers::Offset<ATan2Options> CreateATan2Options(
 
 flatbuffers::Offset<ATan2Options> CreateATan2Options(flatbuffers::FlatBufferBuilder &_fbb, const ATan2OptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct UnsortedSegmentMinOptionsT : public flatbuffers::NativeTable {
+  typedef UnsortedSegmentMinOptions TableType;
+};
+
+struct UnsortedSegmentMinOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef UnsortedSegmentMinOptionsT NativeTableType;
+  typedef UnsortedSegmentMinOptionsBuilder Builder;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  UnsortedSegmentMinOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(UnsortedSegmentMinOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<UnsortedSegmentMinOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentMinOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct UnsortedSegmentMinOptionsBuilder {
+  typedef UnsortedSegmentMinOptions Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit UnsortedSegmentMinOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  flatbuffers::Offset<UnsortedSegmentMinOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<UnsortedSegmentMinOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<UnsortedSegmentMinOptions> CreateUnsortedSegmentMinOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  UnsortedSegmentMinOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<UnsortedSegmentMinOptions> CreateUnsortedSegmentMinOptions(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentMinOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct SignOptionsT : public flatbuffers::NativeTable {
+  typedef SignOptions TableType;
+};
+
+struct SignOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef SignOptionsT NativeTableType;
+  typedef SignOptionsBuilder Builder;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  SignOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(SignOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<SignOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const SignOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct SignOptionsBuilder {
+  typedef SignOptions Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit SignOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  flatbuffers::Offset<SignOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<SignOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<SignOptions> CreateSignOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  SignOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<SignOptions> CreateSignOptions(flatbuffers::FlatBufferBuilder &_fbb, const SignOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   int8_t deprecated_builtin_code = 0;
@@ -11800,11 +12063,17 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::UnsortedSegmentMaxOptions *builtin_options_as_UnsortedSegmentMaxOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_UnsortedSegmentMaxOptions ? static_cast<const tflite::UnsortedSegmentMaxOptions *>(builtin_options()) : nullptr;
   }
+  const tflite::UnsortedSegmentMinOptions *builtin_options_as_UnsortedSegmentMinOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_UnsortedSegmentMinOptions ? static_cast<const tflite::UnsortedSegmentMinOptions *>(builtin_options()) : nullptr;
+  }
   const tflite::UnsortedSegmentSumOptions *builtin_options_as_UnsortedSegmentSumOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_UnsortedSegmentSumOptions ? static_cast<const tflite::UnsortedSegmentSumOptions *>(builtin_options()) : nullptr;
   }
   const tflite::ATan2Options *builtin_options_as_ATan2Options() const {
     return builtin_options_type() == tflite::BuiltinOptions_ATan2Options ? static_cast<const tflite::ATan2Options *>(builtin_options()) : nullptr;
+  }
+  const tflite::SignOptions *builtin_options_as_SignOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_SignOptions ? static_cast<const tflite::SignOptions *>(builtin_options()) : nullptr;
   }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
@@ -12318,12 +12587,20 @@ template<> inline const tflite::UnsortedSegmentMaxOptions *Operator::builtin_opt
   return builtin_options_as_UnsortedSegmentMaxOptions();
 }
 
+template<> inline const tflite::UnsortedSegmentMinOptions *Operator::builtin_options_as<tflite::UnsortedSegmentMinOptions>() const {
+  return builtin_options_as_UnsortedSegmentMinOptions();
+}
+
 template<> inline const tflite::UnsortedSegmentSumOptions *Operator::builtin_options_as<tflite::UnsortedSegmentSumOptions>() const {
   return builtin_options_as_UnsortedSegmentSumOptions();
 }
 
 template<> inline const tflite::ATan2Options *Operator::builtin_options_as<tflite::ATan2Options>() const {
   return builtin_options_as_ATan2Options();
+}
+
+template<> inline const tflite::SignOptions *Operator::builtin_options_as<tflite::SignOptions>() const {
+  return builtin_options_as_SignOptions();
 }
 
 struct OperatorBuilder {
@@ -13287,6 +13564,38 @@ inline flatbuffers::Offset<SparsityParameters> CreateSparsityParameters(flatbuff
       _dim_metadata);
 }
 
+inline VariantSubTypeT *VariantSubType::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<VariantSubTypeT>(new VariantSubTypeT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void VariantSubType::UnPackTo(VariantSubTypeT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = shape(); if (_e) { _o->shape.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->shape[_i] = _e->Get(_i); } } }
+  { auto _e = type(); _o->type = _e; }
+  { auto _e = has_rank(); _o->has_rank = _e; }
+}
+
+inline flatbuffers::Offset<VariantSubType> VariantSubType::Pack(flatbuffers::FlatBufferBuilder &_fbb, const VariantSubTypeT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateVariantSubType(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<VariantSubType> CreateVariantSubType(flatbuffers::FlatBufferBuilder &_fbb, const VariantSubTypeT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const VariantSubTypeT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _shape = _o->shape.size() ? _fbb.CreateVector(_o->shape) : 0;
+  auto _type = _o->type;
+  auto _has_rank = _o->has_rank;
+  return tflite::CreateVariantSubType(
+      _fbb,
+      _shape,
+      _type,
+      _has_rank);
+}
+
 inline TensorT::TensorT(const TensorT &o)
       : shape(o.shape),
         type(o.type),
@@ -13297,6 +13606,8 @@ inline TensorT::TensorT(const TensorT &o)
         sparsity((o.sparsity) ? new tflite::SparsityParametersT(*o.sparsity) : nullptr),
         shape_signature(o.shape_signature),
         has_rank(o.has_rank) {
+  variant_tensors.reserve(o.variant_tensors.size());
+  for (const auto &v : o.variant_tensors) { variant_tensors.emplace_back((v) ? new tflite::VariantSubTypeT(*v) : nullptr); }
 }
 
 inline TensorT &TensorT::operator=(TensorT o) FLATBUFFERS_NOEXCEPT {
@@ -13309,6 +13620,7 @@ inline TensorT &TensorT::operator=(TensorT o) FLATBUFFERS_NOEXCEPT {
   std::swap(sparsity, o.sparsity);
   std::swap(shape_signature, o.shape_signature);
   std::swap(has_rank, o.has_rank);
+  std::swap(variant_tensors, o.variant_tensors);
   return *this;
 }
 
@@ -13330,6 +13642,7 @@ inline void Tensor::UnPackTo(TensorT *_o, const flatbuffers::resolver_function_t
   { auto _e = sparsity(); if (_e) { if(_o->sparsity) { _e->UnPackTo(_o->sparsity.get(), _resolver); } else { _o->sparsity = std::unique_ptr<tflite::SparsityParametersT>(_e->UnPack(_resolver)); } } }
   { auto _e = shape_signature(); if (_e) { _o->shape_signature.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->shape_signature[_i] = _e->Get(_i); } } }
   { auto _e = has_rank(); _o->has_rank = _e; }
+  { auto _e = variant_tensors(); if (_e) { _o->variant_tensors.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { if(_o->variant_tensors[_i]) { _e->Get(_i)->UnPackTo(_o->variant_tensors[_i].get(), _resolver); } else { _o->variant_tensors[_i] = std::unique_ptr<tflite::VariantSubTypeT>(_e->Get(_i)->UnPack(_resolver)); }; } } }
 }
 
 inline flatbuffers::Offset<Tensor> Tensor::Pack(flatbuffers::FlatBufferBuilder &_fbb, const TensorT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -13349,6 +13662,7 @@ inline flatbuffers::Offset<Tensor> CreateTensor(flatbuffers::FlatBufferBuilder &
   auto _sparsity = _o->sparsity ? CreateSparsityParameters(_fbb, _o->sparsity.get(), _rehasher) : 0;
   auto _shape_signature = _o->shape_signature.size() ? _fbb.CreateVector(_o->shape_signature) : 0;
   auto _has_rank = _o->has_rank;
+  auto _variant_tensors = _o->variant_tensors.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::VariantSubType>> (_o->variant_tensors.size(), [](size_t i, _VectorArgs *__va) { return CreateVariantSubType(*__va->__fbb, __va->__o->variant_tensors[i].get(), __va->__rehasher); }, &_va ) : 0;
   return tflite::CreateTensor(
       _fbb,
       _shape,
@@ -13359,7 +13673,8 @@ inline flatbuffers::Offset<Tensor> CreateTensor(flatbuffers::FlatBufferBuilder &
       _is_variable,
       _sparsity,
       _shape_signature,
-      _has_rank);
+      _has_rank,
+      _variant_tensors);
 }
 
 inline Conv2DOptionsT *Conv2DOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -13979,6 +14294,7 @@ inline void UnidirectionalSequenceLSTMOptions::UnPackTo(UnidirectionalSequenceLS
   { auto _e = proj_clip(); _o->proj_clip = _e; }
   { auto _e = time_major(); _o->time_major = _e; }
   { auto _e = asymmetric_quantize_inputs(); _o->asymmetric_quantize_inputs = _e; }
+  { auto _e = diagonal_recurrent_tensors(); _o->diagonal_recurrent_tensors = _e; }
 }
 
 inline flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> UnidirectionalSequenceLSTMOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const UnidirectionalSequenceLSTMOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -13994,13 +14310,15 @@ inline flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> CreateUnidirection
   auto _proj_clip = _o->proj_clip;
   auto _time_major = _o->time_major;
   auto _asymmetric_quantize_inputs = _o->asymmetric_quantize_inputs;
+  auto _diagonal_recurrent_tensors = _o->diagonal_recurrent_tensors;
   return tflite::CreateUnidirectionalSequenceLSTMOptions(
       _fbb,
       _fused_activation_function,
       _cell_clip,
       _proj_clip,
       _time_major,
-      _asymmetric_quantize_inputs);
+      _asymmetric_quantize_inputs,
+      _diagonal_recurrent_tensors);
 }
 
 inline BidirectionalSequenceLSTMOptionsT *BidirectionalSequenceLSTMOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -15020,6 +15338,7 @@ inline void TransposeConvOptions::UnPackTo(TransposeConvOptionsT *_o, const flat
   { auto _e = padding(); _o->padding = _e; }
   { auto _e = stride_w(); _o->stride_w = _e; }
   { auto _e = stride_h(); _o->stride_h = _e; }
+  { auto _e = fused_activation_function(); _o->fused_activation_function = _e; }
 }
 
 inline flatbuffers::Offset<TransposeConvOptions> TransposeConvOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const TransposeConvOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -15033,11 +15352,13 @@ inline flatbuffers::Offset<TransposeConvOptions> CreateTransposeConvOptions(flat
   auto _padding = _o->padding;
   auto _stride_w = _o->stride_w;
   auto _stride_h = _o->stride_h;
+  auto _fused_activation_function = _o->fused_activation_function;
   return tflite::CreateTransposeConvOptions(
       _fbb,
       _padding,
       _stride_w,
-      _stride_h);
+      _stride_h,
+      _fused_activation_function);
 }
 
 inline ExpandDimsOptionsT *ExpandDimsOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -16571,6 +16892,52 @@ inline flatbuffers::Offset<ATan2Options> CreateATan2Options(flatbuffers::FlatBuf
       _fbb);
 }
 
+inline UnsortedSegmentMinOptionsT *UnsortedSegmentMinOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<UnsortedSegmentMinOptionsT>(new UnsortedSegmentMinOptionsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void UnsortedSegmentMinOptions::UnPackTo(UnsortedSegmentMinOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<UnsortedSegmentMinOptions> UnsortedSegmentMinOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentMinOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateUnsortedSegmentMinOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<UnsortedSegmentMinOptions> CreateUnsortedSegmentMinOptions(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentMinOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const UnsortedSegmentMinOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateUnsortedSegmentMinOptions(
+      _fbb);
+}
+
+inline SignOptionsT *SignOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<SignOptionsT>(new SignOptionsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void SignOptions::UnPackTo(SignOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<SignOptions> SignOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const SignOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateSignOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<SignOptions> CreateSignOptions(flatbuffers::FlatBufferBuilder &_fbb, const SignOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const SignOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateSignOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::unique_ptr<OperatorCodeT>(new OperatorCodeT());
   UnPackTo(_o.get(), _resolver);
@@ -17590,12 +17957,20 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const tflite::UnsortedSegmentMaxOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_UnsortedSegmentMinOptions: {
+      auto ptr = reinterpret_cast<const tflite::UnsortedSegmentMinOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     case BuiltinOptions_UnsortedSegmentSumOptions: {
       auto ptr = reinterpret_cast<const tflite::UnsortedSegmentSumOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
     case BuiltinOptions_ATan2Options: {
       auto ptr = reinterpret_cast<const tflite::ATan2Options *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_SignOptions: {
+      auto ptr = reinterpret_cast<const tflite::SignOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
     default: return true;
@@ -18093,12 +18468,20 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::UnsortedSegmentMaxOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_UnsortedSegmentMinOptions: {
+      auto ptr = reinterpret_cast<const tflite::UnsortedSegmentMinOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     case BuiltinOptions_UnsortedSegmentSumOptions: {
       auto ptr = reinterpret_cast<const tflite::UnsortedSegmentSumOptions *>(obj);
       return ptr->UnPack(resolver);
     }
     case BuiltinOptions_ATan2Options: {
       auto ptr = reinterpret_cast<const tflite::ATan2Options *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_SignOptions: {
+      auto ptr = reinterpret_cast<const tflite::SignOptions *>(obj);
       return ptr->UnPack(resolver);
     }
     default: return nullptr;
@@ -18584,6 +18967,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const tflite::UnsortedSegmentMaxOptionsT *>(value);
       return CreateUnsortedSegmentMaxOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_UnsortedSegmentMinOptions: {
+      auto ptr = reinterpret_cast<const tflite::UnsortedSegmentMinOptionsT *>(value);
+      return CreateUnsortedSegmentMinOptions(_fbb, ptr, _rehasher).Union();
+    }
     case BuiltinOptions_UnsortedSegmentSumOptions: {
       auto ptr = reinterpret_cast<const tflite::UnsortedSegmentSumOptionsT *>(value);
       return CreateUnsortedSegmentSumOptions(_fbb, ptr, _rehasher).Union();
@@ -18591,6 +18978,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
     case BuiltinOptions_ATan2Options: {
       auto ptr = reinterpret_cast<const tflite::ATan2OptionsT *>(value);
       return CreateATan2Options(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_SignOptions: {
+      auto ptr = reinterpret_cast<const tflite::SignOptionsT *>(value);
+      return CreateSignOptions(_fbb, ptr, _rehasher).Union();
     }
     default: return 0;
   }
@@ -19074,12 +19465,20 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) : 
       value = new tflite::UnsortedSegmentMaxOptionsT(*reinterpret_cast<tflite::UnsortedSegmentMaxOptionsT *>(u.value));
       break;
     }
+    case BuiltinOptions_UnsortedSegmentMinOptions: {
+      value = new tflite::UnsortedSegmentMinOptionsT(*reinterpret_cast<tflite::UnsortedSegmentMinOptionsT *>(u.value));
+      break;
+    }
     case BuiltinOptions_UnsortedSegmentSumOptions: {
       value = new tflite::UnsortedSegmentSumOptionsT(*reinterpret_cast<tflite::UnsortedSegmentSumOptionsT *>(u.value));
       break;
     }
     case BuiltinOptions_ATan2Options: {
       value = new tflite::ATan2OptionsT(*reinterpret_cast<tflite::ATan2OptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_SignOptions: {
+      value = new tflite::SignOptionsT(*reinterpret_cast<tflite::SignOptionsT *>(u.value));
       break;
     }
     default:
@@ -19684,6 +20083,11 @@ inline void BuiltinOptionsUnion::Reset() {
       delete ptr;
       break;
     }
+    case BuiltinOptions_UnsortedSegmentMinOptions: {
+      auto ptr = reinterpret_cast<tflite::UnsortedSegmentMinOptionsT *>(value);
+      delete ptr;
+      break;
+    }
     case BuiltinOptions_UnsortedSegmentSumOptions: {
       auto ptr = reinterpret_cast<tflite::UnsortedSegmentSumOptionsT *>(value);
       delete ptr;
@@ -19691,6 +20095,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_ATan2Options: {
       auto ptr = reinterpret_cast<tflite::ATan2OptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_SignOptions: {
+      auto ptr = reinterpret_cast<tflite::SignOptionsT *>(value);
       delete ptr;
       break;
     }

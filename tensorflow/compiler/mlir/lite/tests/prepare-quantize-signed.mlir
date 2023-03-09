@@ -36,10 +36,10 @@ func.func @uint8_to_int8_narrow_range(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32>
 
 // CHECK-LABEL: prepareStatistics
 func.func @prepareStatistics(%arg0: tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
-  %0 = "quant.stats"(%arg0) {
+  %0 = "quantfork.stats"(%arg0) {
     layerStats = dense<[-1.0, 1.0]> : tensor<2xf32>
   } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
-  %1 = "quant.stats"(%0) {
+  %1 = "quantfork.stats"(%0) {
     layerStats = dense<[-1.0, 1.0]> : tensor<2xf32>,
     axisStats = dense<[
       [-1.0, 1.0],
@@ -58,10 +58,10 @@ func.func @prepareStatistics(%arg0: tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
 
 // CHECK-LABEL: prepareStatisticsNudge
 func.func @prepareStatisticsNudge(%arg0: tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
-  %0 = "quant.stats"(%arg0) {
+  %0 = "quantfork.stats"(%arg0) {
     layerStats = dense<[0.1, 1.0]> : tensor<2xf32>
   } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
-  %1 = "quant.stats"(%0) {
+  %1 = "quantfork.stats"(%0) {
     layerStats = dense<[0.1, 1.0]> : tensor<2xf32>,
     axisStats = dense<[
       [-1.0, 1.0],
@@ -188,7 +188,7 @@ func.func @QuantizeFullyConnected(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x11
 func.func @QuantizeTransposeConv(%arg0: tensor<32x4x4x128xf32>, %arg1: tensor<4xi32>) -> tensor<1x32x42x128xf32> {
   %w = arith.constant dense<127.0> : tensor<1x32x42x128xf32>
   %b = arith.constant dense<0.0> : tensor<1x32x42x128xf32>
-  %tc = "tfl.transpose_conv"(%arg1, %w, %arg0, %b) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<1x32x42x128xf32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>) -> tensor<1x32x42x128xf32>
+  %tc = "tfl.transpose_conv"(%arg1, %w, %arg0, %b) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<1x32x42x128xf32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>) -> tensor<1x32x42x128xf32>
   func.return %tc : tensor<1x32x42x128xf32>
 
 // CHECK: %[[CST:.*]] = arith.constant dense<1.270000e+02> : tensor<1x32x42x128xf32>
@@ -204,7 +204,7 @@ func.func @QuantizeTransposeConv(%arg0: tensor<32x4x4x128xf32>, %arg1: tensor<4x
 
 // CHECK-LABEL: bias_adjust_pertensor
 func.func @bias_adjust_pertensor(%arg0: tensor<1x2xf32>) -> (tensor<1x2xf32>) {
-  %0 = "quant.stats"(%arg0) {
+  %0 = "quantfork.stats"(%arg0) {
     layerStats = dense<[-1.28e-5, 1.27e-5]> : tensor<2xf32>
   } : (tensor<1x2xf32>) -> tensor<1x2xf32>
   %w = arith.constant dense<[[0.0, 1.0], [1.0, 2.0]]> : tensor<2x2xf32>
@@ -225,13 +225,13 @@ func.func @bias_adjust_pertensor(%arg0: tensor<1x2xf32>) -> (tensor<1x2xf32>) {
 
 // CHECK-LABEL: bias_adjust_perchannel
 func.func @bias_adjust_perchannel(%arg0: tensor<1x5x5x2xf32>, %arg1: tensor<4xi32>) -> (tensor<1x5x5x3xf32>) {
-  %0 = "quant.stats"(%arg0) {
+  %0 = "quantfork.stats"(%arg0) {
     layerStats = dense<[-1.28e-5, 1.27e-5]> : tensor<2xf32>
   } : (tensor<1x5x5x2xf32>) -> tensor<1x5x5x2xf32>
   %w = arith.constant dense<[[[[-1.0, 1.0]]], [[[1.0, 2.0]]], [[[-2.0, 1.0]]]]> : tensor<3x1x1x2xf32>
   %b = arith.constant dense<[1.0e-2, 2.1473647e1, -2.1473647e2]> : tensor<3xf32>
   %transpose_conv = "tfl.transpose_conv"(%arg1, %w, %0, %b) {
-    padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32
+    padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"
   } : (tensor<4xi32>, tensor<3x1x1x2xf32>, tensor<1x5x5x2xf32>, tensor<3xf32>) -> tensor<1x5x5x3xf32>
   func.return %transpose_conv : tensor<1x5x5x3xf32>
 // CHECK: %[[bias:.*]] = arith.constant dense<[0.00999999977, 21.4736462, -214.736465]>
@@ -248,7 +248,7 @@ func.func @bias_adjust_perchannel(%arg0: tensor<1x5x5x2xf32>, %arg1: tensor<4xi3
 
 // CHECK-LABEL: bias_adjust_duplicate_filter
 func.func @bias_adjust_duplicate_filter(%arg0: tensor<1x5x5x2xf32>) -> (tensor<1x5x5x3xf32>, tensor<1x5x5x3xf32>) {
-  %0 = "quant.stats"(%arg0) {
+  %0 = "quantfork.stats"(%arg0) {
     layerStats = dense<[-1.28e-5, 1.27e-5]> : tensor<2xf32>
   } : (tensor<1x5x5x2xf32>) -> tensor<1x5x5x2xf32>
   %w = arith.constant dense<[[[[-1.0, 1.0]]], [[[1.0, 2.0]]], [[[-2.0, 1.0]]]]> : tensor<3x1x1x2xf32>
@@ -282,11 +282,11 @@ func.func @bias_adjust_duplicate_filter(%arg0: tensor<1x5x5x2xf32>) -> (tensor<1
 
 // CHECK-LABEL: bias_adjust_pass_immutable
 func.func @bias_adjust_pass_immutable(%arg0: tensor<1x2xf32>) -> (tensor<1x2xf32>) {
-  %0 = "quant.stats"(%arg0) {
+  %0 = "quantfork.stats"(%arg0) {
     layerStats = dense<[-1.28e-5, 1.27e-5]> : tensor<2xf32>
   } : (tensor<1x2xf32>) -> tensor<1x2xf32>
   %w = arith.constant dense<[[0.0, 1.0], [1.0, 2.0]]> : tensor<2x2xf32>
-  %w_q = "quant.stats"(%w) {
+  %w_q = "quantfork.stats"(%w) {
     layerStats = dense<[0.0, 2.0]> : tensor<2xf32>
   } : (tensor<2x2xf32>) -> tensor<2x2xf32>
   %b = arith.constant dense<[0.0, 2.1473647e3]> : tensor<2xf32>

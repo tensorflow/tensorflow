@@ -25,8 +25,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -385,14 +387,14 @@ def kron(a, b):  # pylint: disable=missing-function-docstring
   # pylint: disable=protected-access,g-complex-comprehension
   a, b = np_array_ops._promote_dtype(a, b)
   t_a = np_utils.cond(
-      a.ndim < b.ndim,
+      a.shape.rank < b.shape.rank,
       lambda: np_array_ops.reshape(  # pylint: disable=g-long-lambda
-          a, np_array_ops._pad_left_to(b.ndim, a.shape)),
+          a, np_array_ops._pad_left_to(b.shape.rank, a.shape)),
       lambda: a)
   t_b = np_utils.cond(
-      b.ndim < a.ndim,
+      b.shape.rank < a.shape.rank,
       lambda: np_array_ops.reshape(  # pylint: disable=g-long-lambda
-          b, np_array_ops._pad_left_to(a.ndim, b.shape)),
+          b, np_array_ops._pad_left_to(a.shape.rank, b.shape)),
       lambda: b)
 
   def _make_shape(shape, prepend):
@@ -401,7 +403,7 @@ def kron(a, b):  # pylint: disable=missing-function-docstring
       shapes = [ones, shape]
     else:
       shapes = [shape, ones]
-    return array_ops.reshape(array_ops.stack(shapes, axis=1), [-1])
+    return array_ops.reshape(array_ops_stack.stack(shapes, axis=1), [-1])
 
   a_shape = array_ops.shape(t_a)
   b_shape = array_ops.shape(t_b)
@@ -447,7 +449,7 @@ def polyval(p, x):  # pylint: disable=missing-function-docstring
   def f(p, x):
     if p.shape.rank == 0:
       p = array_ops.reshape(p, [1])
-    p = array_ops.unstack(p)
+    p = array_ops_stack.unstack(p)
     # TODO(wangpeng): Make tf version take a tensor for p instead of a list.
     y = math_ops.polyval(p, x)
     # If the polynomial is 0-order, numpy requires the result to be broadcast to
@@ -526,9 +528,11 @@ def lcm(x1, x2):  # pylint: disable=missing-function-docstring
     # Same as the `x2_safe` trick above
     d_safe = array_ops.where_v2(
         math_ops.equal(d, 0), constant_op.constant(1, d.dtype), d)
+    x1 = math_ops.abs(x1)
+    x2 = math_ops.abs(x2)
     return array_ops.where_v2(
         math_ops.equal(d, 0), constant_op.constant(0, d.dtype),
-        math_ops.abs(x1 * x2) // d_safe)
+        x1 * (x2 // d_safe))
 
   return _bin_op(f, x1, x2)
 
@@ -1267,7 +1271,7 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
     weights = np_array_ops.array(weights, out_dtype)
 
     def rank_equal_case():
-      control_flow_ops.Assert(
+      control_flow_assert.Assert(
           math_ops.reduce_all(array_ops.shape(a) == array_ops.shape(weights)),
           [array_ops.shape(a), array_ops.shape(weights)])
       weights_sum = math_ops.reduce_sum(weights, axis=axis)
@@ -1279,7 +1283,7 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
     else:
 
       def rank_not_equal_case():
-        control_flow_ops.Assert(
+        control_flow_assert.Assert(
             array_ops.rank(weights) == 1, [array_ops.rank(weights)])
         weights_sum = math_ops.reduce_sum(weights)
         axes = ops.convert_to_tensor([[axis], [0]])

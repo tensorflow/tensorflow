@@ -16,6 +16,7 @@ def generated_test_models():
         "add",
         "add_n",
         "arg_min_max",
+        "atan2",
         "avg_pool",
         "avg_pool3d",
         "batch_to_space_nd",
@@ -89,6 +90,7 @@ def generated_test_models():
         "logical_or",
         "logical_xor",
         "lstm",
+        "matrix_band_part",
         "matrix_diag",
         "matrix_set_diag",
         "max_pool",
@@ -142,6 +144,8 @@ def generated_test_models():
         "shape",
         "shape_to_strided_slice",
         "sigmoid",
+        "sigmoid_grad",
+        "sign",
         "sin",
         "slice",
         "softmax",
@@ -181,7 +185,9 @@ def generated_test_models():
         "unpack",
         "unroll_batch_matmul",
         "unsorted_segment_max",
+        "unsorted_segment_min",
         "unsorted_segment_prod",
+        "unsorted_segment_sum",
         "where",
         "where_v2",
         "while",
@@ -195,12 +201,6 @@ def mlir_generated_test_denylisted_models():
         # changing on 3/3, this will only be disabled temporarily.
         "unidirectional_sequence_lstm",
         "unidirectional_sequence_rnn",
-    ]
-
-# Test cases which only work internally now.
-def no_oss_generated_test_models():
-    return [
-        "sparse_to_dense",
     ]
 
 # List of models that fail generated tests for the conversion mode.
@@ -230,6 +230,7 @@ def generated_test_models_failing(conversion_mode, delegate):
             "gather_nd",
             "global_batch_norm",
             "leaky_relu",
+            "matrix_band_part",
             "mean",
             "mirror_pad",
             "multinomial",
@@ -270,7 +271,9 @@ def generated_test_models_failing(conversion_mode, delegate):
             "transpose",
             "unique",
             "unsorted_segment_max",
+            "unsorted_segment_min",
             "unsorted_segment_prod",
+            "unsorted_segment_sum",
             "where",
             "where_v2",
             "while",
@@ -443,7 +446,6 @@ def generated_test_models_all():
             (conversion mode, delegate to use, name of test, test tags, test args).
     """
     conversion_modes = generated_test_conversion_modes()
-    no_oss_tests = no_oss_generated_test_models()
     options = []
     for conversion_mode in conversion_modes:
         for delegate in generated_test_delegates():
@@ -451,10 +453,6 @@ def generated_test_models_all():
             for test in mlir_generated_test_models():
                 tags = []
                 args = []
-
-                # TODO(b/187992093): Exclude tests that are failing in OSS for now.
-                if test in no_oss_tests:
-                    tags.append("no_oss")
 
                 # Forward-compat coverage testing is largely redundant, and
                 # contributes to coverage test bloat.

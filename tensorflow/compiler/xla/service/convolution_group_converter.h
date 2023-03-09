@@ -19,7 +19,7 @@ limitations under the License.
 #include <functional>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
@@ -44,7 +44,10 @@ class ConvolutionGroupConverter : public HloModulePass {
 
   // Run convolution rewriting on the given computation. Returns whether the
   // computation was changed.
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Predicate that determines whether this pass should rewrite a given
   // convolution.

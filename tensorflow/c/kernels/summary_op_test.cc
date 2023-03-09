@@ -79,7 +79,7 @@ void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_output,
   gtl::InlinedVector<TensorValue, 4> inputs;
   inputs.emplace_back(tags);
   inputs.emplace_back(values);
-  params.inputs = &inputs;
+  params.inputs = inputs;
   OpKernelContext ctx(&params, 1);
   kernel->Compute(&ctx);
   ASSERT_EQ(expected_code, ctx.status().code());

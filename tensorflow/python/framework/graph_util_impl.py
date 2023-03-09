@@ -18,23 +18,15 @@
 import copy
 import re
 
-import six
-
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.framework import _proto_comparators
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
 
 tf_export(v1=["GraphDef"])(graph_pb2.GraphDef)
-
-# A normal import here would generate circular dependencies.
-convert_to_constants = lazy_loader.LazyLoader(
-    "convert_to_constants", globals(),
-    "tensorflow.python.framework.convert_to_constants")
 
 _VARIABLE_OPS = {
     "Assign",
@@ -57,6 +49,11 @@ _CONTROL_FLOW_OP_NAMES_OR_IDENTITY = [
     "Merge",
     "NextIteration",
 ]
+
+_DEPRECATION_MSG = (
+    "This API was designed for TensorFlow v1. See "
+    "https://www.tensorflow.org/guide/migrate for instructions on how to "
+    "migrate your code to TensorFlow v2.")
 
 
 def _is_variable_op(op):
@@ -104,7 +101,7 @@ If you would like to create a `GraphDef` in TF2, use `tf.function` and
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use `tf.compat.v1.graph_util.must_run_on_cpu`")
+    instructions=_DEPRECATION_MSG)
 @tf_export(v1=["graph_util.must_run_on_cpu"])
 def must_run_on_cpu(node, pin_variables_on_cpu=False):
   """Returns True if the given node_def must run on CPU, otherwise False.
@@ -220,7 +217,7 @@ def _bfs_for_reachable_nodes(target_nodes, name_to_input_name):
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use `tf.compat.v1.graph_util.extract_sub_graph`")
+    instructions=_DEPRECATION_MSG)
 @tf_export(v1=["graph_util.extract_sub_graph"])
 def extract_sub_graph(graph_def, dest_nodes):
   """Extract the subgraph that can reach any of the nodes in 'dest_nodes'.
@@ -239,7 +236,7 @@ def extract_sub_graph(graph_def, dest_nodes):
     raise TypeError("graph_def must be a graph_pb2.GraphDef proto, but got "
                     f"type {type(graph_def)}.")
 
-  if isinstance(dest_nodes, six.string_types):
+  if isinstance(dest_nodes, str):
     raise TypeError("dest_nodes must be an iterable of strings, but got "
                     f"type {type(dest_nodes)}.")
 
@@ -263,8 +260,7 @@ def extract_sub_graph(graph_def, dest_nodes):
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use `tf.compat.v1.graph_util.tensor_shape_from_node_def_name`"
-)
+    instructions=_DEPRECATION_MSG)
 @tf_export(v1=["graph_util.tensor_shape_from_node_def_name"])
 def tensor_shape_from_node_def_name(graph, input_name):
   """Convenience function to get a shape from a NodeDef's input string."""
@@ -282,51 +278,7 @@ def tensor_shape_from_node_def_name(graph, input_name):
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use `tf.compat.v1.graph_util.convert_variables_to_constants`")
-@tf_export(v1=["graph_util.convert_variables_to_constants"])
-def convert_variables_to_constants(sess,
-                                   input_graph_def,
-                                   output_node_names,
-                                   variable_names_whitelist=None,
-                                   variable_names_blacklist=None):
-  """Replaces all the variables in a graph with constants of the same values.
-
-  If you have a trained graph containing Variable ops, it can be convenient to
-  convert them all to Const ops holding the same values. This makes it possible
-  to describe the network fully with a single GraphDef file, and allows the
-  removal of a lot of ops related to loading and saving the variables.
-
-  Args:
-    sess: Active TensorFlow session containing the variables.
-    input_graph_def: GraphDef object holding the network.
-    output_node_names: List of name strings for the result nodes of the graph.
-    variable_names_whitelist: The set of variable names to convert (by default,
-                              all variables are converted).
-    variable_names_blacklist: The set of variable names to omit converting
-                              to constants.
-
-  Returns:
-    GraphDef containing a simplified version of the original.
-
-  Raises:
-    RuntimeError: if a DT_RESOURCE op is found whose ancestor Variables are both
-      denylisted AND whitelisted for freezing.
-  """
-  ret = convert_to_constants.convert_variables_to_constants_from_session_graph(
-      session=sess,
-      graph_def=input_graph_def,
-      output_node_names=output_node_names,
-      variable_names_allowlist=variable_names_whitelist,
-      variable_names_denylist=variable_names_blacklist)
-  # The previous code logic generated an empty versions field, we clear it here
-  # to maintain backwards compatibility.
-  ret.versions.Clear()
-  return ret
-
-
-@deprecation.deprecated(
-    date=None,
-    instructions="Use `tf.compat.v1.graph_util.remove_training_nodes`")
+    instructions=_DEPRECATION_MSG)
 @tf_export(v1=["graph_util.remove_training_nodes"])
 def remove_training_nodes(input_graph, protected_nodes=None):
   """Prunes out nodes that aren't needed for inference.
@@ -376,15 +328,23 @@ def remove_training_nodes(input_graph, protected_nodes=None):
   types_to_splice = {"Identity": True}
   control_input_names = set()
   node_names_with_control_input = set()
+  node_in_colocated = set()
+
   for node in nodes_after_removal:
     for node_input in node.input:
       if "^" in node_input:
         control_input_names.add(node_input.replace("^", ""))
         node_names_with_control_input.add(node.name)
+    # Prevent colocated nodes from being lost.
+    if "_class" in node.attr:
+      for colocated_node_name in node.attr["_class"].list.s:
+        node_in_colocated.add(_get_colocated_node_name(colocated_node_name))
 
   names_to_splice = {}
   for node in nodes_after_removal:
     if node.op in types_to_splice and node.name not in protected_nodes:
+      if node.name in node_in_colocated:
+        continue
       # We don't want to remove nodes that have control edge inputs, because
       # they might be involved in subtle dependency issues that removing them
       # will jeopardize.

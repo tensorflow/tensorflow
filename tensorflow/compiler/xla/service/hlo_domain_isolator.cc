@@ -17,15 +17,15 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_remover.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -58,10 +58,12 @@ StatusOr<int64_t> AddExitDomains(HloInstruction* instruction,
   return added_domains;
 }
 
-StatusOr<bool> RunInternal(HloModule* module,
-                           HloDomainIsolator::DomainCreator* creator) {
+StatusOr<bool> RunInternal(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    HloDomainIsolator::DomainCreator* creator) {
   int64_t added_domains = 0;
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     // Walk in post order and place all the required kDomain instructions.
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
@@ -123,9 +125,11 @@ StatusOr<bool> HloDomainIsolator::UpdateDomains(HloInstruction* instruction) {
   return changed;
 }
 
-StatusOr<bool> HloDomainIsolator::Run(HloModule* module) {
+StatusOr<bool> HloDomainIsolator::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   DomainCreator creator = creator_factory_();
-  return RunInternal(module, &creator);
+  return RunInternal(module, execution_threads, &creator);
 }
 
 }  // namespace xla

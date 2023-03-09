@@ -190,10 +190,9 @@ class ResourceScatterOp : public XlaOpKernel {
     const xla::XlaOp updates = context->Input(2);
 
     auto result = XlaScatter(var_value, updates, indices, indices_are_vectors_,
-                             combiner_, builder);
+                             /*indices_are_sorted=*/false, combiner_, builder);
     OP_REQUIRES_OK(context, result.status());
-    OP_REQUIRES_OK(context,
-                   context->AssignVariable(0, dtype, result.ValueOrDie()));
+    OP_REQUIRES_OK(context, context->AssignVariable(0, dtype, result.value()));
   }
 
  private:

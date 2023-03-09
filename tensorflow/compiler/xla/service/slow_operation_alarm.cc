@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
 namespace {
@@ -85,8 +85,8 @@ void SlowOperationAlarm::ScheduleAlarm(SlowOperationAlarm* alarm) {
   absl::call_once(init_flag, [] {
     ready = new absl::CondVar();
     outstanding_alarms = new std::list<SlowOperationAlarm*>();
-    (void)tensorflow::Env::Default()->StartThread(
-        tensorflow::ThreadOptions(), "SlowOperationAlarm", [] { AlarmLoop(); });
+    [[maybe_unused]] static tsl::Thread* t = tsl::Env::Default()->StartThread(
+        tsl::ThreadOptions(), "SlowOperationAlarm", [] { AlarmLoop(); });
   });
 
   absl::MutexLock lock(&mu);

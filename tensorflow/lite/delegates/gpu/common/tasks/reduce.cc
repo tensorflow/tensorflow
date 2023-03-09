@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
@@ -74,12 +75,26 @@ int3 GetMaximumPossibleWGSize(const std::vector<int>& ordered_sizes,
                               int max_total_wg_size) {
   int3 wg_size = int3(1, 1, 1);
   int wg_size_total = 1;
+  // Make sure that a minimum number of reductions happens inside the loop over
+  // reduction dims. Otherwise, the reduction size could equal the number of
+  // workgroups and the inner loop would just copy the values to the reducer,
+  // which is inefficient.
+  const int minimum_loop_reductions = 4;
+  int total_loop_reductions = 1;
   for (int i = ordered_sizes.size() - 1; i >= 0; i--) {
     const int wg_index = ordered_sizes.size() - 1 - i;
     if (wg_index >= 3) {
       return wg_size;
     }
-    while (ordered_sizes[i] >= wg_size[wg_index] * 2) {
+    int loop_reductions_dim = 1;
+    while (ordered_sizes[i] >= wg_size[wg_index] * 2 * loop_reductions_dim) {
+      // Don't increase the work group size of this dim until we have at least
+      // 'minimum_loop_reductions' reductions.
+      if (total_loop_reductions < minimum_loop_reductions) {
+        total_loop_reductions *= 2;
+        loop_reductions_dim *= 2;
+        continue;
+      }
       wg_size_total *= 2;
       if (wg_size_total > max_total_wg_size) {
         return wg_size;
@@ -192,7 +207,7 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
       }
     }
   }
-  const bool channels_reductin = HasAxis(axis_to_reduce, Axis::CHANNELS);
+  const bool channels_reduction = HasAxis(axis_to_reduce, Axis::CHANNELS);
   int wg_dims = 0;
   if (use_wg_reduction_) {
     if (work_group_size.y == 1 && work_group_size.z == 1) {
@@ -321,7 +336,7 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
              op_type == OperationType::REDUCE_MINIMUM) {
     c += "  " + accum_type_decl + " reducer = args.src_tensor.Read" +
          read_as_template + "(" + src_coordinates + ");\n";
-    if (channels_reductin) {
+    if (channels_reduction) {
       c += "  reducer.y = reducer.x;\n";
       c += "  reducer.z = reducer.x;\n";
       c += "  reducer.w = reducer.x;\n";
@@ -384,7 +399,7 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
   }
   c += "    " + accum_type_decl + " src_val = args.src_tensor.Read" +
        read_as_template + "(" + src_coordinates + ");\n";
-  if (channels_reductin) {
+  if (channels_reduction) {
     if (op_type == OperationType::REDUCE_SUM ||
         op_type == OperationType::MEAN) {
       c += "    src_val = src_val * mask_a;\n";
@@ -408,27 +423,29 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
     const int total_size =
         work_group_size.x * work_group_size.y * work_group_size.z;
     int offset = 1;
-    int reminder = total_size / 4;
-    for (; reminder >= 8; reminder /= 4, offset *= 4) {
-      c += "  if (local_id < " + std::to_string(reminder) + ") {\n";
+    int remainder = total_size / 4;
+    for (; remainder >= 8; remainder /= 4, offset *= 4) {
+      c += "  if (local_id < " + std::to_string(remainder) + ") {\n";
       c += "    int t = local_id * " + std::to_string(offset * 4) + ";\n";
-      c += "    " + accum_type_decl + " sum = accum[t + " +
+      c += "    " + accum_type_decl + " reduced = accum[t + " +
            std::to_string(offset) + "];\n";
-      c += "    sum = " +
-           MakeOp(op_type, "sum",
+      c += "    reduced = " +
+           MakeOp(op_type, "reduced",
                   "accum[t + " + std::to_string(offset * 2) + "]") +
            ";\n";
-      c += "    sum = " +
-           MakeOp(op_type, "sum",
+      c += "    reduced = " +
+           MakeOp(op_type, "reduced",
                   "accum[t + " + std::to_string(offset * 3) + "]") +
            ";\n";
-      c += "    accum[t] = " + MakeOp(op_type, "accum[t]", "sum") + ";\n";
+      c += "    accum[t] = " + MakeOp(op_type, "accum[t]", "reduced") + ";\n";
       c += "  }\n";
       c += "  LOCAL_MEM_BARRIER;\n";
     }
+    // Ensure only id 0 executes a write command.
+    c += "  if (local_id != 0) return;\n";
     c += "  reducer = accum[0];\n";
-    reminder *= 4;
-    for (int i = 1; i < reminder; ++i) {
+    remainder *= 4;
+    for (int i = 1; i < remainder; ++i) {
       c += "  reducer = " +
            MakeOp(op_type, "reducer",
                   "accum[" + std::to_string(offset * i) + "]") +
@@ -438,7 +455,7 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
       c += "  reducer *= args.inv_multiplier_2;\n";
     }
   }
-  if (channels_reductin) {
+  if (channels_reduction) {
     if (op_type == OperationType::REDUCE_SUM ||
         op_type == OperationType::MEAN) {
       c += "  reducer.x += reducer.y + reducer.z + reducer.w;\n";
@@ -456,11 +473,8 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
   }
   const std::string conversion = GetTypeConversion(
       gpu_info, accum_type, op_def.src_tensors[0].GetDataType(), 4);
-  if (conversion.empty()) {
-    c += "  args.src_tensor::type result = reducer;\n";
-  } else {
-    c += "  args.src_tensor::type result = " + conversion + "(reducer);\n";
-  }
+  c += "  args.src_tensor::type result = " +
+       absl::Substitute(conversion, "reducer") + ";\n";
   std::string dst_coordinates;
   for (const auto& a : all_axis) {
     if (op_def.dst_tensors[0].HasAxis(a)) {

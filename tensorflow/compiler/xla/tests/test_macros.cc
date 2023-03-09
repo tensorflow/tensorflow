@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -24,7 +24,7 @@ static bool InitModule() {
   VLOG(1) << "DisabledManifestPath: " << *DisabledManifestPath();
   *TestPlatform() = XLA_PLATFORM;
   VLOG(1) << "TestPlatform: " << *TestPlatform();
-  return false;
+  return true;
 }
 
 static bool module_initialized = InitModule();

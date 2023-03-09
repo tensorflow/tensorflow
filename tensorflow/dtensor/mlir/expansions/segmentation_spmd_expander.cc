@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/segmentation_spmd_expander.h"
 
-#include "llvm/Support/FormatVariadic.h"
+#include <string>
+
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -28,18 +30,27 @@ limitations under the License.
 namespace tensorflow {
 namespace dtensor {
 
-// We always forward replicated layout to operands/output of
-// UnsortedSegmentedSum op as SPMD logic sharded UnsortedSegmentedSum op is not
-// implemented yet.
-// TODO(b/171079751): Implement layout propagation for non-trivial layouts
 StatusOr<llvm::DenseMap<int, Layout>>
 UnsortedSegmentSumSPMDExpander::ComputeLayoutForward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
   TF_ASSIGN_OR_RETURN(const auto mesh, ExtractDeviceMeshEnclosingCluster(op));
   auto unsorted_segmented_sum = llvm::cast<mlir::TF::UnsortedSegmentSumOp>(op);
+  const int output_rank = ValueRank(unsorted_segmented_sum.getOutput());
+  if (input_layouts.find(0) != input_layouts.end()) {
+    // If the data layout exists, we can use it to forward propagate a layout
+    // to the output.
+    const int segment_ids_rank =
+        ValueRank(unsorted_segmented_sum.getSegmentIds());
+
+    return llvm::DenseMap<int, Layout>(
+        {{0, input_layouts.lookup(0)
+                 .Truncate(segment_ids_rank, /*end=*/true)
+                 .LeftPad(output_rank)}});
+  }
+
+  // When we don't have a data layout we can only output a replicated layout.
   return llvm::DenseMap<int, Layout>(
-      {{0, Layout::ReplicatedOnMesh(
-               mesh, /*rank=*/ValueRank(unsorted_segmented_sum.output()))}});
+      {{0, Layout::ReplicatedOnMesh(mesh, output_rank)}});
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>
@@ -47,106 +58,83 @@ UnsortedSegmentSumSPMDExpander::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
   TF_ASSIGN_OR_RETURN(const auto mesh, ExtractDeviceMeshEnclosingCluster(op));
   auto unsorted_segmented_sum = llvm::cast<mlir::TF::UnsortedSegmentSumOp>(op);
+
+  Layout segment_ids_layout =
+      Layout::ReplicatedOnMesh(mesh, ValueRank(op->getOperand(1)));
+  Layout num_segments_layout = Layout::ReplicatedOnMesh(mesh, /*rank=*/0);
+  if (!output_layouts.empty()) {
+    // If we have an output layout, we can send it backwards to the last few
+    // dimension
+    const int data_rank = ValueRank(unsorted_segmented_sum.getData());
+    return llvm::DenseMap<int, Layout>({{0, output_layouts.lookup(0)
+                                                .Truncate(1, /*end=*/true)
+                                                .LeftPad(data_rank)},
+                                        {1, segment_ids_layout},
+                                        {2, num_segments_layout}});
+  }
   return llvm::DenseMap<int, Layout>(
       {{0, Layout::ReplicatedOnMesh(
-               mesh, /*rank=*/ValueRank(unsorted_segmented_sum.data()))},
-       {1,
-        Layout::ReplicatedOnMesh(mesh, /*rank=*/ValueRank(op->getOperand(1)))},
-       {2, Layout::ReplicatedOnMesh(mesh, /*rank=*/0)}});
+               mesh, /*rank=*/ValueRank(unsorted_segmented_sum.getData()))},
+       {1, segment_ids_layout},
+       {2, num_segments_layout}});
 }
 
 StatusOr<mlir::Operation*> UnsortedSegmentSumSPMDExpander::ExpandOp(
     mlir::Operation* op) {
   // The algorithm is simple
   //
-  // 1. Up to rank of the segment_ids, if the data or ids are sharded, perform
-  //    all-concat, respectively.
-  // 2. We do not care the sharding dims of data[rank(ids):] and just leave as
-  //    is
-  // 3. output.layout[0] is expected to be replicated due to the steps above.
-  //    otherwise, perform a slicing.
-  // 4. output.layout[1:] is expected to be same as data.layout[rank(ids):] as
-  //    untouched. otherwise, perform all-concat or slicing.
-  //
-  // For item 3 and 4, we perform a single all-concat Op.
-  //
-  // Alternative to the steps 1 and 2 above could be
-  //   a. all-concat data
-  //   b. local unsorted seg sum followed by a all reduce with some masks.
-  //
-  // Alternative to the step 4 above is merging it with step 1 (upon the dim is
-  // compatible).
+  // 1. Relayout segment_ids to match the layout of data[:rank(segment_ids)].
+  //    An improved version of this would merge the layouts of segment_ids and
+  //    data into a common layout (e.g. data with layout [x,*,*,*] and
+  //    segment_ids with layout [*,y] would result in [x,y,*,*] and [x,y].
+  // 2. Emit a local UnsortedSegmentSum.
+  // 3. Emit an AllReduce on the output.
+  // 4. Emit a Relayout to the output layout.
 
   auto sum_op = mlir::cast<mlir::TF::UnsortedSegmentSumOp>(op);
-  auto data = sum_op.data();
-  auto segment_ids = sum_op.segment_ids();
+  mlir::Value data = sum_op.getData();
+  mlir::Value segment_ids = sum_op.getSegmentIds();
 
-  TF_ASSIGN_OR_RETURN(auto data_layout, ExtractLayoutFromOperand(data));
-  TF_ASSIGN_OR_RETURN(auto segment_ids_layout,
-                      ExtractLayoutFromOperand(segment_ids));
+  TF_ASSIGN_OR_RETURN(Layout data_layout,
+                      ExtractRequiredLayoutFromOperand(data));
+  TF_ASSIGN_OR_RETURN(Layout segment_ids_layout,
+                      ExtractRequiredLayoutFromOperand(segment_ids));
 
-  const auto data_rank = ValueRank(data);
-  const auto segment_ids_rank = ValueRank(segment_ids);
+  const int data_rank = data_layout.rank();
+  const int segment_ids_rank = segment_ids_layout.rank();
 
-  // Prepares the resulting output layout. Fills the default unsharded dim for
-  // the first axis (dim size is num_segments).
-  LayoutProto result_output_layout;
-  *result_output_layout.mutable_mesh_config() = data_layout->mesh().ToProto();
-  result_output_layout.add_sharding_specs()->set_sharding_spec(
-      Layout::kUnshardedDim);
+  Layout new_segment_ids_layout = data_layout.Truncate(segment_ids_rank);
 
-  // Prepares the replicated target data output (up to segment_ids_rank).
-  LayoutProto tgt_data_layout;
-  *tgt_data_layout.mutable_mesh_config() = data_layout->mesh().ToProto();
+  absl::flat_hash_set<std::string> reduce_dimensions;
+  for (int i = 0; i < segment_ids_rank; i++)
+    if (new_segment_ids_layout.sharding_spec(i) != Layout::kUnshardedDim)
+      reduce_dimensions.insert(new_segment_ids_layout.sharding_spec(i));
 
-  bool need_data_all_concat = false;
-  for (int i = 0; i < data_rank; i++) {
-    if (i < segment_ids_rank) {
-      tgt_data_layout.add_sharding_specs()->set_sharding_spec(
-          Layout::kUnshardedDim);
-      if (data_layout->sharding_spec(i) != Layout::kUnshardedDim) {
-        need_data_all_concat = true;
-      }
-    } else {
-      tgt_data_layout.add_sharding_specs()->set_sharding_spec(
-          data_layout->sharding_spec(i));
-      result_output_layout.add_sharding_specs()->set_sharding_spec(
-          data_layout->sharding_spec(i));
-    }
-  }
+  TF_ASSIGN_OR_RETURN(
+      mlir::Value new_segment_ids,
+      EmitRelayout(segment_ids, segment_ids_layout, new_segment_ids_layout));
 
   mlir::OpBuilder builder(op);
-  if (need_data_all_concat) {
-    TF_ASSIGN_OR_RETURN(
-        auto data_concat,
-        EmitAllGather(builder, data, *data_layout,
-                      Layout::FromProto(tgt_data_layout).ValueOrDie()));
-    data = data_concat;
-  }
-
-  // Ensure segment IDs are fully replicated.
-  if (!segment_ids_layout->IsFullyReplicated()) {
-    TF_ASSIGN_OR_RETURN(
-        auto segment_ids_concat,
-        EmitAllGather(builder, segment_ids, *segment_ids_layout,
-                      Layout::ReplicatedOnMesh(segment_ids_layout->mesh(),
-                                               segment_ids_layout->rank())));
-    segment_ids = segment_ids_concat;
-  }
-
-  auto new_sum_op = builder.create<mlir::TF::UnsortedSegmentSumOp>(
-      op->getLoc(), sum_op.output().getType(), data, segment_ids,
-      sum_op.num_segments());
+  mlir::Operation* new_sum_op = builder.create<mlir::TF::UnsortedSegmentSumOp>(
+      op->getLoc(), sum_op.getOutput().getType(), data, new_segment_ids,
+      sum_op.getNumSegments());
 
   InferSPMDExpandedLocalShape(new_sum_op);
 
-  // Transform the result to the expected output_layout, if necessary.
-  TF_ASSIGN_OR_RETURN(auto output_layout, ExtractSingleLayoutFromOp(op));
+  Layout result_output_layout =
+      data_layout.Truncate(segment_ids_rank, /*end=*/true)
+          .LeftPad(data_rank - segment_ids_rank + 1);  // This is output rank.
+
   TF_ASSIGN_OR_RETURN(
-      auto final_output,
-      EmitRelayout(new_sum_op.getResult(),
-                   Layout::FromProto(result_output_layout).ValueOrDie(),
-                   *output_layout));
+      new_sum_op, EmitAllReduce(builder, result_output_layout,
+                                reduce_dimensions, new_sum_op, kReduceOpAdd));
+
+  // Transform the result to the expected output_layout, if necessary.
+  TF_ASSIGN_OR_RETURN(Layout output_layout,
+                      ExtractRequiredSingleLayoutFromOp(op));
+  TF_ASSIGN_OR_RETURN(mlir::Value final_output,
+                      EmitRelayout(new_sum_op->getResult(0),
+                                   result_output_layout, output_layout));
   op->getResult(0).replaceAllUsesWith(final_output);
   op->erase();
 

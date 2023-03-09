@@ -61,7 +61,7 @@ Status Session::PRun(const string& handle,
 
 Session* NewSession(const SessionOptions& options) {
   // Starts exporting metrics through a platform-specific monitoring API (if
-  // provided). For builds using "tensorflow/core/platform/default", this is
+  // provided). For builds using "tensorflow/tsl/platform/default", this is
   // currently a no-op.
   session_created->GetCell()->Set(true);
   Session* out_session;
@@ -82,7 +82,7 @@ Status NewSession(const SessionOptions& options, Session** out_session) {
     return s;
   }
   // Starts exporting metrics through a platform-specific monitoring API (if
-  // provided). For builds using "tensorflow/core/platform/default", this is
+  // provided). For builds using "tensorflow/tsl/platform/default", this is
   // currently a no-op.
   session_created->GetCell()->Set(true);
   s = factory->NewSession(options, out_session);

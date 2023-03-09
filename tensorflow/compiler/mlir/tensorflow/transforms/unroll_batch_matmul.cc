@@ -36,7 +36,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
 namespace mlir {
@@ -59,11 +58,14 @@ class ConvertTFBatchMatMulOp : public OpRewritePattern<BatchMatMulOpType> {
                                 PatternRewriter& rewriter) const override;
 };
 
+#define GEN_PASS_DEF_UNROLLBATCHMATMULPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Unrolls a BatchMatMul on the batch dimension. We need to slice each batch out
 // of the inputs, matmul them individually, then stack them all back together at
 // the end.
 struct UnrollBatchMatMulPass
-    : public UnrollBatchMatMulPassBase<UnrollBatchMatMulPass> {
+    : public impl::UnrollBatchMatMulPassBase<UnrollBatchMatMulPass> {
   void runOnOperation() override;
 };
 
@@ -109,7 +111,7 @@ std::vector<Value> ConvertTFBatchMatMulOp<BatchMatMulOpType>::sliceInput(
     // [1, num_rows, num_cols] -> [num_rows, num_cols]
     auto reshape_op = createReshapeOp(value, {num_rows, num_cols}, element_type,
                                       loc, rewriter);
-    sliced.emplace_back(reshape_op.output());
+    sliced.emplace_back(reshape_op.getOutput());
   } else {
     // Reshape to rank-3 tensor with first dimension as the batch size.
     auto reshape_op = createReshapeOp(value, {batch_size, num_rows, num_cols},
@@ -126,16 +128,17 @@ std::vector<Value> ConvertTFBatchMatMulOp<BatchMatMulOpType>::sliceInput(
     SmallVector<int64_t, 3> slice_size = {1, num_rows, num_cols};
     Type slice_result_type = RankedTensorType::get(slice_size, element_type);
     llvm::SmallVector<Type, 4> output_types(batch_size, slice_result_type);
-    auto split_op = rewriter.create<TF::SplitOp>(
-        loc, output_types, split_dimension_op.output(), reshape_op.output());
+    auto split_op = rewriter.create<TF::SplitOp>(loc, output_types,
+                                                 split_dimension_op.getOutput(),
+                                                 reshape_op.getOutput());
 
     // Squeeze each batch, i.e. reshape
     // [1, num_rows, num_cols] -> [num_rows, num_cols]
-    for (const auto& split_value : split_op.output()) {
+    for (const auto& split_value : split_op.getOutput()) {
       auto reshape_op = createReshapeOp(split_value, {num_rows, num_cols},
                                         element_type, loc, rewriter);
 
-      sliced.emplace_back(reshape_op.output());
+      sliced.emplace_back(reshape_op.getOutput());
     }
   }
   return sliced;
@@ -144,8 +147,8 @@ std::vector<Value> ConvertTFBatchMatMulOp<BatchMatMulOpType>::sliceInput(
 template <typename BatchMatMulOpType>
 LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
     BatchMatMulOpType op, PatternRewriter& rewriter) const {
-  Value input_lhs = op.x();
-  Value input_rhs = op.y();
+  Value input_lhs = op.getX();
+  Value input_rhs = op.getY();
 
   if (!input_lhs.getType().isa<RankedTensorType>()) {
     // LHS must be a ranked tensor type
@@ -188,15 +191,15 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
 
   // Replace the last 2 dimensions of LHS and RHS if necessary.
   // The actual transpose is done by MatMulOp.
-  if (op.adj_x()) {
+  if (op.getAdjX()) {
     std::swap(lhs_shape[lhs_dims - 1], lhs_shape[lhs_dims - 2]);
   }
-  if (op.adj_y()) {
+  if (op.getAdjY()) {
     std::swap(rhs_shape[rhs_dims - 1], rhs_shape[rhs_dims - 2]);
   }
 
-  const int rows = lhs_shape[lhs_dims - 2];
-  const int cols = rhs_shape[rhs_dims - 1];
+  const int64_t rows = lhs_shape[lhs_dims - 2];
+  const int64_t cols = rhs_shape[rhs_dims - 1];
 
   if (lhs_shape[lhs_dims - 1] != rhs_shape[rhs_dims - 2]) {
     // Input dimensions must be compatible for multiplication.
@@ -210,20 +213,20 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
     rewriter.replaceOpWithNewOp<TF::MatMulOp>(op, matmul_type,
                                               /*a=*/input_lhs,
                                               /*b=*/input_rhs,
-                                              /*transpose_a=*/op.adj_x(),
-                                              /*transpose_b=*/op.adj_y());
+                                              /*transpose_a=*/op.getAdjX(),
+                                              /*transpose_b=*/op.getAdjY());
     return success();
   }
 
   // Input dimensions must be defined. MatMulBCast does not support partial
   // shapes.
   for (auto dim : lhs_shape) {
-    if (dim == -1) {
+    if (dim == mlir::ShapedType::kDynamic) {
       return failure();
     }
   }
   for (auto dim : rhs_shape) {
-    if (dim == -1) {
+    if (dim == mlir::ShapedType::kDynamic) {
       return failure();
     }
   }
@@ -258,9 +261,9 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
     auto matmul = rewriter.create<TF::MatMulOp>(loc, matmul_type,
                                                 /*a=*/sliced_lhs[lhs_batch_idx],
                                                 /*b=*/sliced_rhs[rhs_batch_idx],
-                                                /*transpose_a=*/op.adj_x(),
-                                                /*transpose_b=*/op.adj_y());
-    matmuls.emplace_back(matmul.product());
+                                                /*transpose_a=*/op.getAdjX(),
+                                                /*transpose_b=*/op.getAdjY());
+    matmuls.emplace_back(matmul.getProduct());
   }
 
   // Combine the result of each individual MatMul into a rank-3 tensor.
@@ -277,9 +280,9 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   result_shape.push_back(rows);
   result_shape.push_back(cols);
 
-  auto reshape_op = createReshapeOp(pack_op.output(), result_shape,
+  auto reshape_op = createReshapeOp(pack_op.getOutput(), result_shape,
                                     element_type, loc, rewriter);
-  rewriter.replaceOp(op, reshape_op.output());
+  rewriter.replaceOp(op, reshape_op.getOutput());
   return success();
 }
 

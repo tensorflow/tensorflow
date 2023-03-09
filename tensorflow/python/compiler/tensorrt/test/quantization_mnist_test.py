@@ -26,8 +26,8 @@ from tensorflow.python.estimator.estimator import Estimator
 from tensorflow.python.estimator.model_fn import EstimatorSpec
 from tensorflow.python.estimator.model_fn import ModeKeys
 from tensorflow.python.estimator.run_config import RunConfig
+from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -164,7 +164,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
         self._BuildGraph(x)
       self._LoadWeights(model_dir, sess)
       # Freeze
-      graph_def = graph_util.convert_variables_to_constants(
+      graph_def = convert_to_constants.convert_variables_to_constants(
           sess, sess.graph_def, output_node_names=[OUTPUT_NODE_NAME])
     # Convert with TF-TRT
     if use_trt:
@@ -175,10 +175,8 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
           nodes_denylist=[OUTPUT_NODE_NAME],
           max_batch_size=max_batch_size,
           precision_mode='INT8',
-          # There is a 2GB GPU memory limit for each test, so we set
-          # max_workspace_size_bytes to 256MB to leave enough room for TF
-          # runtime to allocate GPU memory.
-          max_workspace_size_bytes=1 << 28,
+          max_workspace_size_bytes=(
+              trt_convert.DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES),
           minimum_segment_size=2,
           use_calibration=False)
       graph_def = converter.convert()
@@ -342,7 +340,8 @@ class MNISTTestV2(QuantizationAwareTrainingMNISTTest):
         conv_params = trt_convert.TrtConversionParams(
             precision_mode='FP16',
             minimum_segment_size=2,
-            max_workspace_size_bytes=1 << 28,
+            max_workspace_size_bytes=(
+                trt_convert.DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES),
             maximum_cached_engines=1)
         converter = trt_convert.TrtGraphConverterV2(
             input_saved_model_dir=saved_model_dir,

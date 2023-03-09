@@ -69,8 +69,8 @@ TEST_F(QuantizedPoolingTest, SmallAveragePooling) {
 
   AddInputFromArray<quint8>(input_quantized.shape(),
                             input_quantized.flat<quint8>());
-  AddInputFromArray<float>(TensorShape({1}), {input_min});
-  AddInputFromArray<float>(TensorShape({1}), {input_max});
+  AddInputFromArray<float>(TensorShape({}), {input_min});
+  AddInputFromArray<float>(TensorShape({}), {input_max});
   TF_ASSERT_OK(RunOpKernel());
   const Tensor& output_quantized = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);
@@ -114,8 +114,8 @@ TEST_F(QuantizedPoolingTest, SmallMaxPooling) {
 
   AddInputFromArray<quint8>(input_quantized.shape(),
                             input_quantized.flat<quint8>());
-  AddInputFromArray<float>(TensorShape({1}), {input_min});
-  AddInputFromArray<float>(TensorShape({1}), {input_max});
+  AddInputFromArray<float>(TensorShape({}), {input_min});
+  AddInputFromArray<float>(TensorShape({}), {input_max});
   TF_ASSERT_OK(RunOpKernel());
   const Tensor& output_quantized = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);

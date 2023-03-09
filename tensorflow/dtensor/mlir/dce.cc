@@ -20,15 +20,16 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 
 namespace tensorflow {
 namespace dtensor {
 
 namespace {
+#define GEN_PASS_DEF_DTENSORDCE
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // MLIR pass that removes trivially unused operations in graph.
-struct DTensorDCE : public DTensorDCEBase<DTensorDCE> {
+struct DTensorDCE : public impl::DTensorDCEBase<DTensorDCE> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();
     mlir::OpBuilder builder(&context);

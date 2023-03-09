@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_conversion.h"
 
 namespace tflite {
@@ -124,10 +123,10 @@ std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
       c += "  FLT4 src3 = args.src_tensor.Read(X + 1, Y + 1, " + z + ");\n";
     } else if (op_def.src_tensors[0].IsLinear() &&
                op_def.src_tensors[0].ReturnsZeroForNegOneRead(gpu_info)) {
-      c += "  args.src_tensor.GetAddress(c0, X, Y, " + z + ");\n";
-      c += "  args.src_tensor.GetAddress(c1, X + 1, Y, " + z + ");\n";
-      c += "  args.src_tensor.GetAddress(c2, X, Y + 1, " + z + ");\n";
-      c += "  args.src_tensor.GetAddress(c3, X + 1, Y + 1, " + z + ");\n";
+      c += "  int c0 = args.src_tensor.GetAddress(X, Y, " + z + ");\n";
+      c += "  int c1 = args.src_tensor.GetAddress(X + 1, Y, " + z + ");\n";
+      c += "  int c2 = args.src_tensor.GetAddress(X, Y + 1, " + z + ");\n";
+      c += "  int c3 = args.src_tensor.GetAddress(X + 1, Y + 1, " + z + ");\n";
       c += "  bool x_in = X + 1 < args.src_tensor.Width();\n";
       c += "  bool y_in = Y + 1 < args.src_tensor.Height();\n";
       c += "  c1 = select(-1, c1, x_in);\n";
@@ -250,12 +249,10 @@ ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
   ConvolutionTransposed3x3Thin result(gpu_info, definition, attr);
   result.UploadWeights(attr.weights);
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition.GetDataType();
-  desc.UploadLinearData(attr.bias);
-  result.args_.AddObject(
-      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  result.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                       std::move(bias_tensor_desc)));
   return result;
 }
 
@@ -272,12 +269,10 @@ ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3ThinDynamicWeights(
       {weights_type, TensorStorageType::BUFFER, Layout::HWC});
   ConvolutionTransposed3x3Thin result(gpu_info, new_def, attr);
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
-  desc.element_type = new_def.GetDataType();
-  desc.UploadLinearData(attr.bias);
-  result.args_.AddObject(
-      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  result.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                       std::move(bias_tensor_desc)));
   return result;
 }
 

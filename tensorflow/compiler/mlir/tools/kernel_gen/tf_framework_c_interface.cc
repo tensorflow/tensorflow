@@ -28,14 +28,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_jit_cache.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/stream_executor/stream.h"
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
+#include <optional>
+
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_gpu_runtime_wrappers.h"
 #endif
 
@@ -99,7 +101,7 @@ extern "C" void _mlir_ciface_tf_dealloc(void* op_kernel_ctx, void* ptr) {
 
 extern "C" void _mlir_ciface_tf_report_error(void* op_kernel_ctx,
                                              int32_t error_code, char* msg) {
-  Optional<ErrorCode> symbol = symbolizeErrorCode(error_code);
+  std::optional<ErrorCode> symbol = symbolizeErrorCode(error_code);
   if (!symbol.has_value()) {
     LOG(ERROR) << "No valid conversion from integer value = " << error_code
                << "to ErrorCode attribute";
@@ -107,7 +109,7 @@ extern "C" void _mlir_ciface_tf_report_error(void* op_kernel_ctx,
   }
   auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
   ctx->CtxFailureWithWarning(
-      tensorflow::Status{ConvertAttrToEnumValue(symbol.getValue()), msg});
+      tensorflow::Status{ConvertAttrToEnumValue(symbol.value()), msg});
 }
 
 static void ReportError(void* op_kernel_ctx, ErrorCode error_code,
@@ -151,7 +153,7 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
     const std::string code, llvm::SmallVectorImpl<std::string>& architectures,
     llvm::SmallVectorImpl<int64_t>& tile_sizes,
     llvm::SmallVectorImpl<int64_t>& unroll_factors, int64_t max_supported_rank,
-    bool enable_ftz, bool index_64bit, bool cpu_codegen) {
+    bool enable_ftz, bool index_64bit) {
   std::string cache_dir;
   if (const char* dir = getenv(kTFJitCacheDirEnvVar.data())) {
     cache_dir = dir;
@@ -182,14 +184,14 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
     tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> status_or_module =
         tensorflow::kernel_gen::GenerateKernelForTfCode(
             context, code, architectures, tile_sizes, unroll_factors,
-            max_supported_rank, /*embed_memref_prints=*/false,
+            max_supported_rank,
             /*print_ptx=*/false, /*print_llvmir=*/false, enable_ftz,
-            index_64bit, cpu_codegen,
+            index_64bit,
             /*jit_compile=*/false,
             /*jit_i64_indexed_for_large_tensors=*/false,
             /*apply_cl_options=*/false);
     if (!status_or_module.ok()) return nullptr;
-    module = std::move(status_or_module.ValueOrDie());
+    module = std::move(status_or_module.value());
 
     if (!cache_dir.empty() && tenv->RecursivelyCreateDir(cache_dir).ok()) {
       // Save the compilation result here for future processes to use.
@@ -205,7 +207,7 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   } else {
     module = tensorflow::kernel_gen::SetupContextAndParseModule(
                  context, item.result_module())
-                 .ValueOrDie();
+                 .value();
   }
 
   // Initialize LLVM targets.
@@ -241,7 +243,7 @@ extern "C" void* _mlir_ciface_tf_jit_compile(
     void* op_kernel_ctx, char* code, int64_t num_tile_sizes,
     int64_t* tile_sizes_ptr, int64_t num_unroll_factors,
     int64_t* unroll_factors_ptr, int64_t max_supported_rank, bool enable_ftz,
-    bool index_64bit, bool cpu_codegen) {
+    bool index_64bit) {
   // Get the resource manager.
   auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
   tensorflow::ResourceMgr* rm = ctx->resource_manager();
@@ -283,7 +285,7 @@ extern "C" void* _mlir_ciface_tf_jit_compile(
   // Lookup or compile the execution module.
   ExecutionEngine* engine = jit_cache->LookupOrCompile(code, [&]() {
     return Compile(code, architectures, tile_sizes, unroll_factors,
-                   max_supported_rank, enable_ftz, index_64bit, cpu_codegen);
+                   max_supported_rank, enable_ftz, index_64bit);
   });
   if (engine == nullptr) {
     ReportError(op_kernel_ctx, ErrorCode::UNKNOWN, "JIT compilation failed.");

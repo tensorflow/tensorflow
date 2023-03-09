@@ -1,9 +1,10 @@
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow/distribute/experimental/rpc/kernels/oss:defs.bzl", "grpc_credentials_dependency")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__subpackages__",
     ],
@@ -15,9 +16,9 @@ cc_library(
     srcs = ["grpc_rpc_service.h"],
     hdrs = ["grpc_rpc_service.h"],
     deps = [
+        "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_cc_grpc_proto",
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_proto_cc",
-        "//tensorflow/stream_executor/platform",
         "@com_github_grpc_grpc//:grpc++",
     ],
     alwayslink = 1,
@@ -37,6 +38,7 @@ tf_kernel_library(
     deps = [
         ":grpc_credentials",
         ":grpc_rpc_service",
+        "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -48,7 +50,6 @@ tf_kernel_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_cc_grpc_proto",
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_proto_cc",
-        "//tensorflow/stream_executor/platform",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_EAGER_C_API_TFRT_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -69,7 +70,7 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
   ContextInterface(
       const tensorflow::SessionOptions& opts,
       tensorflow::ContextDevicePlacementPolicy default_device_placement_policy,
-      bool is_async, bool use_tfrt_distributed_runtime);
+      bool is_async);
   ~ContextInterface() override;
 
   void Release() override { delete this; }
@@ -116,6 +117,8 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
   tensorflow::Status RegisterFunction(tensorflow::AbstractFunction*) override;
 
   tensorflow::CustomDeviceOpHandler& GetCustomDeviceOpHandler() override;
+
+  bool IsCustomDevice(const std::string& device_name) override;
 
   tensorflow::Status RegisterCustomDevice(
       const std::string& name,
@@ -222,7 +225,7 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
 
   CoreRuntime* GetCoreRuntime();
   tensorflow::Status BuildFunctionRequestContext(
-      tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
+      tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table, int64_t step_id,
       RCReference<tfrt::RequestContext>* request_context);
   tensorflow::Status BuildOpRequestContext(
       RCReference<tfrt::RequestContext>* request_context);
@@ -263,22 +266,16 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
 
   std::vector<std::string> GetLoggedOpsTestonly() override;
 
-  bool UseTfrtDistributedRuntime() { return use_tfrt_distributed_runtime_; }
-
 #if !defined(IS_MOBILE_PLATFORM)
   void SetDistributedManager(
       std::unique_ptr<tensorflow::ImmediateExecutionDistributedManager>
           distributed) override {
-    distributed_manager_ = std::move(distributed);
+    llvm_unreachable("unimplemented method.");
   }
 
   tensorflow::ImmediateExecutionDistributedManager* GetDistributedManager()
       override {
-    if (use_tfrt_distributed_runtime_) {
-      return distributed_manager_.get();
-    } else {
-      return context_.GetEagerContext()->GetDistributedManager();
-    }
+    return context_.GetEagerContext()->GetDistributedManager();
   }
 #endif  // !IS_MOBILE_PLATFORM
 
@@ -309,14 +306,6 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
   mutex run_metadata_mu_;
   std::unique_ptr<tensorflow::RunMetadata> run_metadata_
       TFRT_GUARDED_BY(run_metadata_mu_);
-
-  // Use TFRT's implementation of distributed manager.
-  bool use_tfrt_distributed_runtime_ = false;
-
-  // A distributed manager that helps setup, update, and check liveness of
-  // member tasks in the cluster.
-  std::unique_ptr<tensorflow::ImmediateExecutionDistributedManager>
-      distributed_manager_;
 };
 
 class TensorInterface : public tensorflow::AbstractTensorInterface {
@@ -403,8 +392,10 @@ class TensorHandleInterface
     return ptr->getKind() == kTfrt;
   }
 
+  tensorflow::FullTypeDef FullType() const override { return full_type_; }
+
  private:
-  llvm::Optional<const TensorMetadata*> Metadata() const;
+  std::optional<const TensorMetadata*> Metadata() const;
 
   tensorflow::StatusOr<tensorflow::DataType> ObtainDataTypeFromMetaData(
       const TensorMetadata*) const;
@@ -413,12 +404,14 @@ class TensorHandleInterface
   // is known from the function output signature.
   // Therefore, we can obtain the datatype earlier, before the function
   // execution completes.
-  llvm::Optional<tensorflow::DataType> dtype_;
+  std::optional<tensorflow::DataType> dtype_;
 
   TfrtContext& context_;
 
   // Value of tfrt::TensorHandle.
   Value value_;
+
+  tensorflow::FullTypeDef full_type_;
 };
 
 template <typename T>
@@ -572,8 +565,9 @@ class OperationInterface : public tensorflow::ImmediateExecutionOperation {
     return stack_trace_;
   }
 
-  // Currently not supported.
-  void SetStepId(int64_t step_id) override {}
+  void SetStepId(int64_t step_id) override { step_id_ = step_id; }
+
+  int64_t step_id() { return step_id_; }
 
   // For LLVM style RTTI.
   static bool classof(const AbstractOperation* ptr) {
@@ -590,6 +584,7 @@ class OperationInterface : public tensorflow::ImmediateExecutionOperation {
   // attribute like "T" in order to run device placement logic from current TF.
   void MaybeInferInputAttrs();
 
+  int64_t step_id_ = 0;
   // This field holds a primitive op. If the op represents a function, it
   // will be held by function_state_ below, and this field will be empty.
   CoreRuntimeOp* op_;

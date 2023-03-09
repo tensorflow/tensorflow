@@ -15,14 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/horizontal_input_fusion.h"
 
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/filecheck.h"
 
 namespace xla {
 namespace gpu {
@@ -30,7 +27,11 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class HorizontalInputFusionTest : public GpuCodegenTest {};
+class HorizontalInputFusionTest : public GpuCodegenTest {
+ public:
+  GpuHorizontalInputFusion horizontal_input_fusion_{
+      TestGpuDeviceInfo::RTXA6000DeviceInfo()};
+};
 
 TEST_F(HorizontalInputFusionTest, BasicTest) {
   auto module = ParseAndReturnVerifiedModule(R"(
@@ -62,9 +63,9 @@ TEST_F(HorizontalInputFusionTest, BasicTest) {
    ROOT tuple.1 = (f16[], f16[]) tuple(fusion.1, fusion.2)
  }
 )")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(horizontal_input_fusion_.Run(module.get()).value());
 
   const HloInstruction* entry_root =
       module->entry_computation()->root_instruction();
@@ -206,9 +207,9 @@ TEST_F(HorizontalInputFusionTest, MultiOutputFusionTest) {
        tuple(gte.3, gte.4, gte.5, gte.6)
  }
 )")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(horizontal_input_fusion_.Run(module.get()).value());
 }
 
 TEST_F(HorizontalInputFusionTest, NonfusionInstrs) {
@@ -230,9 +231,9 @@ TEST_F(HorizontalInputFusionTest, NonfusionInstrs) {
    ROOT tuple.0 = (f16[], f16[]) tuple(reduce.0, reduce.1)
  }
 )")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(horizontal_input_fusion_.Run(module.get()).value());
 
   const HloInstruction* entry_root =
       module->entry_computation()->root_instruction();

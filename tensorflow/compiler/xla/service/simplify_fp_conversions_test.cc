@@ -16,18 +16,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/simplify_fp_conversions.h"
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-using ::tensorflow::testing::IsOkAndHolds;
 using ::testing::AllOf;
+using ::tsl::testing::IsOkAndHolds;
 
 using SimplifyFPConversionsTest = HloTestBase;
 

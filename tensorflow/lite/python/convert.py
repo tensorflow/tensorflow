@@ -15,14 +15,13 @@
 """Converts a frozen graph into a TFLite FlatBuffer."""
 
 import distutils.spawn
-import enum  # pylint: disable=g-bad-import-order
+import enum
+import hashlib
 import os as _os
 import platform as _platform
 import subprocess as _subprocess
 import tempfile as _tempfile
 import warnings
-
-import six
 
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
@@ -150,7 +149,7 @@ def _try_convert_to_unicode(output):
 
   if isinstance(output, bytes):
     try:
-      return six.ensure_text(output)
+      return output.decode("utf-8")
     except UnicodeDecodeError:
       pass
   return output
@@ -188,6 +187,14 @@ class OpsSet(enum.Enum):
   EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8 = (
       "EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8")
 
+  # Convert model using only stablehlo ops.
+  # This option can not be combined with other OpsSets.
+  # The feature is in early development.
+  # The code to execute StableHLO ops in the runtime is to be implemented
+  # and the serialization format is not stabilized yet.
+
+  EXPERIMENTAL_STABLEHLO_OPS = "EXPERIMENTAL_STABLEHLO_OPS"
+
   def __str__(self):
     return str(self.value)
 
@@ -207,7 +214,8 @@ def mlir_quantize(input_data_str,
                   enable_numeric_verify=False,
                   enable_whole_model_verify=False,
                   denylisted_ops=None,
-                  denylisted_nodes=None):
+                  denylisted_nodes=None,
+                  enable_variable_quantization=False):
   """Quantize `input_data_str` with calibration results.
 
   Args:
@@ -229,6 +237,9 @@ def mlir_quantize(input_data_str,
       ops will run with respective float and quantized output of previous ops.
     denylisted_ops: Experimental. Subject to change. Set of ops to denylist.
     denylisted_nodes: Experimental. Subject to change. Set of notes to denylist.
+    enable_variable_quantization: Experimental. Subject to change. Bool
+      indicating whether to enable quantization of the residual variables
+      remaining after the variable freezing pass.
 
   Returns:
     Quantized model in serialized form (e.g. a TFLITE model) with floating-point
@@ -239,7 +250,7 @@ def mlir_quantize(input_data_str,
       convert_tensor_tf_type_to_tflite_type(input_data_type),
       convert_tensor_tf_type_to_tflite_type(output_data_type),
       enable_numeric_verify, enable_whole_model_verify, denylisted_ops,
-      denylisted_nodes)
+      denylisted_nodes, enable_variable_quantization)
 
 
 @convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.SPARSIFY)
@@ -370,7 +381,7 @@ Alternative, use virtualenv.""")
 
       fp_model.write(model_flags_str)
       fp_conversion.write(conversion_flags_str)
-      fp_input.write(six.ensure_binary(input_data_str))
+      fp_input.write(input_data_str)
       debug_info_str = debug_info_str if debug_info_str else ""
       # if debug_info_str contains a "string value", then the call to
       # fp_debug.write(debug_info_str) will fail with the following error
@@ -502,6 +513,8 @@ def build_conversion_flags(inference_type=dtypes.float32,
                            enable_dynamic_update_slice=False,
                            preserve_assert_op=False,
                            guarantee_all_funcs_one_use=False,
+                           enable_mlir_variable_quantization=False,
+                           disable_fuse_mul_and_fc=False,
                            **_):
   """Builds protocol buffer describing a conversion of a model.
 
@@ -586,6 +599,12 @@ def build_conversion_flags(inference_type=dtypes.float32,
       function only has a single use. This option will be helpful if the
       conversion fails when the `PartitionedCall` or `StatefulPartitionedCall`
       can't be properly inlined (default: False).
+    enable_mlir_variable_quantization: Enable MLIR variable quantization. There
+      is a variable freezing pass, but some variables may not be fully frozen by
+      it. This flag enables quantization of those residual variables in the MLIR
+      graph.
+    disable_fuse_mul_and_fc: Disable fusing input multiplication with
+      fullyconnected operations. Useful when quantizing weights.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -619,6 +638,11 @@ def build_conversion_flags(inference_type=dtypes.float32,
       conversion_flags.enable_select_tf_ops = True
     if set(target_ops) == {OpsSet.SELECT_TF_OPS}:
       conversion_flags.force_select_tf_ops = True
+    if OpsSet.EXPERIMENTAL_STABLEHLO_OPS in target_ops:
+      conversion_flags.convert_to_stablehlo = True
+    if OpsSet.EXPERIMENTAL_STABLEHLO_OPS in target_ops and len(target_ops) > 1:
+      raise ValueError("StableHLO Ops set can not be specified with other Ops "
+                       "set together")
   if conversion_summary_dir:
     conversion_flags.conversion_summary_dir = conversion_summary_dir
   if select_user_tf_ops:
@@ -648,6 +672,9 @@ def build_conversion_flags(inference_type=dtypes.float32,
     conversion_flags.tf_quantization_mode = tf_quantization_mode
   conversion_flags.disable_infer_tensor_range = disable_infer_tensor_range
   conversion_flags.use_fake_quant_num_bits = use_fake_quant_num_bits
+  conversion_flags.enable_mlir_variable_quantization = (
+      enable_mlir_variable_quantization)
+  conversion_flags.disable_fuse_mul_and_fc = disable_fuse_mul_and_fc
   return conversion_flags
 
 
@@ -656,7 +683,7 @@ def build_conversion_flags(inference_type=dtypes.float32,
 def convert_graphdef_with_arrays(input_data, input_arrays_with_shape,
                                  output_arrays, control_output_arrays,
                                  **kwargs):
-  """"Convert a frozen GraphDef that can't be loaded in TF.
+  """Convert a frozen GraphDef that can't be loaded in TF.
 
   Conversion can be customized by providing arguments that are forwarded to
   `build_model_flags` and `build_conversion_flags` (see documentation).
@@ -664,9 +691,9 @@ def convert_graphdef_with_arrays(input_data, input_arrays_with_shape,
   Args:
     input_data: Input data (i.e. often `sess.graph_def`),
     input_arrays_with_shape: Tuple of strings representing input tensor names
-      and list of integers representing input shapes
-      (e.g., [("foo" : [1, 16, 16, 3])]). Use only when graph cannot be loaded
-        into TensorFlow and when `input_tensors` is None.
+      and list of integers representing input shapes (e.g., [("foo" : [1, 16,
+      16, 3])]). Use only when graph cannot be loaded into TensorFlow and when
+      `input_tensors` is None.
     output_arrays: List of output tensors to freeze graph with. Use only when
       graph cannot be loaded into TensorFlow and when `output_tensors` is None.
     control_output_arrays: Control output node names. This is used when
@@ -870,7 +897,7 @@ def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
 
 
 def deduplicate_readonly_buffers(tflite_model):
-  """"Generates a new model byte array after deduplicating readonly buffers.
+  """Generates a new model byte array after deduplicating readonly buffers.
 
   This function should be invoked after the model optimization toolkit. The
   model optimization toolkit assumes that each tensor object owns its each
@@ -881,7 +908,6 @@ def deduplicate_readonly_buffers(tflite_model):
 
   Returns:
     TFLite flatbuffer in a bytes array, processed with the deduplication method.
-
   """
   # Load TFLite Flatbuffer byte array into an object.
   model = flatbuffer_utils.convert_bytearray_to_object(tflite_model)
@@ -941,33 +967,47 @@ def deduplicate_readonly_buffers(tflite_model):
                            model.buffers[buffer_idx].data.size == 0)):
       read_only_buffer_indices.discard(buffer_idx)
 
-  # Sort by buffer size.
-  read_only_buffer_indices = list(read_only_buffer_indices)
-  sorted(
-      read_only_buffer_indices,
-      key=lambda idx: model.buffers[idx].data.data.tobytes())
+  class BufferIndex:
+    """A class to store index, size, hash of the buffers in TFLite model."""
+
+    def __init__(self, idx, size, hash_value):
+      self.idx = idx
+      self.size = size
+      self.hash_value = hash_value
+
+  read_only_buffers = list(
+      map(
+          lambda index: BufferIndex(  # pylint: disable=g-long-lambda
+              index, model.buffers[index].data.size,
+              hashlib.md5(model.buffers[index].data.data.tobytes()).hexdigest()
+          ),
+          read_only_buffer_indices))
+
+  # Sort read_only_buffers by buffer size & hash in descending order.
+  read_only_buffers = sorted(
+      read_only_buffers,
+      key=lambda buffer: (buffer.size, buffer.hash_value),
+      reverse=True)
 
   # Create a map of duplicate buffers (same size and same type).
   # eg: In [1, 2, 3, 4, 5, 6] if (1, 4, 6) and (2, 5) are each, groups of buffer
   # indices of the same size and type, then the map would be {4:1, 6:1, 5:2}
   duplicate_buffer_map = {}
-  for i, buffer_i_idx in enumerate(read_only_buffer_indices):
+  for i, buffer_i in enumerate(read_only_buffers):
     # This buffer is a duplicate.
-    if buffer_i_idx in duplicate_buffer_map:
+    if buffer_i.idx in duplicate_buffer_map:
       continue
     # This buffer is unique. Scan rest of the list to find duplicates
     # of this buffer and mark them accordingly.
-    buffer_i = model.buffers[buffer_i_idx]
-    for buffer_j_idx in read_only_buffer_indices[i + 1:]:
-      if buffer_j_idx in duplicate_buffer_map:
+    for buffer_j in read_only_buffers[i + 1:]:
+      if buffer_j.idx in duplicate_buffer_map:
         continue
-      buffer_j = model.buffers[buffer_j_idx]
-      if buffer_i.data.size != buffer_j.data.size:
+      if buffer_i.size != buffer_j.size:
         break
-      if buffer_i.data.data != buffer_j.data.data:
+      if buffer_i.hash_value != buffer_j.hash_value:
         continue
       # Found duplicate. Nullify j-th buffer and use i-th buffer instead.
-      duplicate_buffer_map[buffer_j_idx] = buffer_i_idx
+      duplicate_buffer_map[buffer_j.idx] = buffer_i.idx
 
   # Make the duplicated tensors use the single shared buffer index.
   for subgraph in model.subgraphs:

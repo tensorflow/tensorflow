@@ -29,6 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -36,12 +39,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -57,8 +58,7 @@ XLA_TEST_F(LocalClientExecuteTest, Constant) {
   XlaBuilder builder(TestName());
   ConstantR0<float>(&builder, 123.0f);
 
-  ScopedShapedBuffer result =
-      ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {});
+  ScopedShapedBuffer result = ExecuteLocallyOrDie(builder.Build().value(), {});
   LiteralTestUtil::ExpectR0Near<float>(123.f, ShapedBufferToLiteral(result),
                                        error_spec_);
 }
@@ -71,7 +71,7 @@ XLA_TEST_F(LocalClientExecuteTest, AddScalars) {
 
   auto x_value = LiteralToShapedBuffer(LiteralUtil::CreateR0<float>(42.0f));
   ScopedShapedBuffer result =
-      ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {&x_value});
+      ExecuteLocallyOrDie(builder.Build().value(), {&x_value});
   LiteralTestUtil::ExpectR0Near<float>(165.f, ShapedBufferToLiteral(result),
                                        error_spec_);
 }
@@ -84,7 +84,7 @@ XLA_TEST_F(LocalClientExecuteTest, AddZeroElementVectors) {
 
   auto x_array = LiteralToShapedBuffer(LiteralUtil::CreateR1<float>({}));
   ScopedShapedBuffer result =
-      ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {&x_array});
+      ExecuteLocallyOrDie(builder.Build().value(), {&x_array});
   LiteralTestUtil::ExpectR1Near<float>({}, ShapedBufferToLiteral(result),
                                        error_spec_);
 }
@@ -98,7 +98,7 @@ XLA_TEST_F(LocalClientExecuteTest, AddVectors) {
   auto x_array =
       LiteralToShapedBuffer(LiteralUtil::CreateR1<float>({0.0f, 1.0f, 2.0f}));
   ScopedShapedBuffer result =
-      ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {&x_array});
+      ExecuteLocallyOrDie(builder.Build().value(), {&x_array});
   LiteralTestUtil::ExpectR1Near<float>(
       {2.0f, 4.0f, 6.0f}, ShapedBufferToLiteral(result), error_spec_);
 }
@@ -113,7 +113,7 @@ XLA_TEST_F(LocalClientExecuteTest, AddVectorsWithProfile) {
       LiteralToShapedBuffer(LiteralUtil::CreateR1<float>({0.0f, 1.0f, 2.0f}));
   ExecutionProfile profile;
   ScopedShapedBuffer result = ExecuteLocallyOrDie(
-      builder.Build().ValueOrDie(), {&x_array}, DefaultExecutableBuildOptions(),
+      builder.Build().value(), {&x_array}, DefaultExecutableBuildOptions(),
       DefaultExecutableRunOptions().set_execution_profile(&profile));
 
   LiteralTestUtil::ExpectR1Near<float>(
@@ -167,11 +167,12 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentOutputLayouts) {
       LiteralUtil::CreateR2<float>({{10.0f, 20.0f}, {30.0f, 40.0f}}));
 
   // Run with col-major result layout.
-  ScopedShapedBuffer result_colmaj = ExecuteLocallyOrDie(
-      computation, {&x_array, &y_array},
-      DefaultExecutableBuildOptions().set_result_layout(
-          ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{2, 2}, {0, 1})),
-      DefaultExecutableRunOptions());
+  ScopedShapedBuffer result_colmaj =
+      ExecuteLocallyOrDie(computation, {&x_array, &y_array},
+                          DefaultExecutableBuildOptions().set_result_layout(
+                              ShapeUtil::MakeShapeWithDenseLayout(
+                                  F32, /*dimensions=*/{2, 2}, {0, 1})),
+                          DefaultExecutableRunOptions());
   EXPECT_TRUE(Layout::Equal().MinorToMajorOnly()(
       result_colmaj.on_device_shape().layout(),
       LayoutUtil::MakeLayout({0, 1})));
@@ -180,11 +181,12 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentOutputLayouts) {
                                        error_spec_);
 
   // Run with row-major result layout.
-  ScopedShapedBuffer result_rowmaj = ExecuteLocallyOrDie(
-      computation, {&x_array, &y_array},
-      DefaultExecutableBuildOptions().set_result_layout(
-          ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{2, 2}, {1, 0})),
-      DefaultExecutableRunOptions());
+  ScopedShapedBuffer result_rowmaj =
+      ExecuteLocallyOrDie(computation, {&x_array, &y_array},
+                          DefaultExecutableBuildOptions().set_result_layout(
+                              ShapeUtil::MakeShapeWithDenseLayout(
+                                  F32, /*dimensions=*/{2, 2}, {1, 0})),
+                          DefaultExecutableRunOptions());
   EXPECT_TRUE(Layout::Equal().MinorToMajorOnly()(
       result_rowmaj.on_device_shape().layout(),
       LayoutUtil::MakeLayout({1, 0})));
@@ -262,14 +264,14 @@ XLA_TEST_F(LocalClientExecuteTest, TupleResultWithLayout) {
 
   ExecutableBuildOptions options = DefaultExecutableBuildOptions();
   Shape shape_with_layout = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{2, 2},
-                                      /*minor_to_major=*/{0, 1}),
-       ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{2, 2},
-                                      /*minor_to_major=*/{1, 0})});
+      {ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{2, 2},
+                                           /*minor_to_major=*/{0, 1}),
+       ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{2, 2},
+                                           /*minor_to_major=*/{1, 0})});
   options.set_result_layout(shape_with_layout);
   ScopedShapedBuffer result =
-      ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {&array, &array},
-                          options, DefaultExecutableRunOptions());
+      ExecuteLocallyOrDie(builder.Build().value(), {&array, &array}, options,
+                          DefaultExecutableRunOptions());
 
   Literal result_literal = ShapedBufferToLiteral(result);
   LiteralTestUtil::ExpectR2Equal<float>({{1.0f, 2.0f}, {3.0f, 4.0f}},
@@ -560,8 +562,7 @@ XLA_TEST_F(LocalClientExecuteTest, InvalidNumberOfArguments) {
 
   auto x_array =
       LiteralToShapedBuffer(LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f}));
-  auto execute_status =
-      ExecuteLocally(builder.Build().ValueOrDie(), {&x_array});
+  auto execute_status = ExecuteLocally(builder.Build().value(), {&x_array});
 
   EXPECT_FALSE(execute_status.ok());
   EXPECT_THAT(execute_status.status().error_message(),
@@ -576,8 +577,7 @@ XLA_TEST_F(LocalClientExecuteTest, IncorrectArgumentShape) {
 
   auto x_array = LiteralToShapedBuffer(
       LiteralUtil::CreateR2<float>({{0.0f, 1.0f}, {2.0f, 3.0f}}));
-  auto execute_status =
-      ExecuteLocally(builder.Build().ValueOrDie(), {&x_array});
+  auto execute_status = ExecuteLocally(builder.Build().value(), {&x_array});
 
   EXPECT_FALSE(execute_status.ok());
   EXPECT_THAT(execute_status.status().error_message(),
@@ -594,11 +594,11 @@ XLA_TEST_F(LocalClientExecuteTest, InvalidResultLayout) {
   auto x_array = LiteralToShapedBuffer(
       LiteralUtil::CreateR2<float>({{0.0f, 1.0f}, {2.0f, 3.0f}}));
   auto execute_status = ExecuteLocally(
-      builder.Build().ValueOrDie(), {&x_array},
+      builder.Build().value(), {&x_array},
       DefaultExecutableBuildOptions().set_result_layout(
-          ShapeUtil::MakeShapeWithLayout(F32,
-                                         /*dimensions=*/{1, 2, 3, 4},
-                                         /*minor_to_major=*/{0, 1, 2, 3})),
+          ShapeUtil::MakeShapeWithDenseLayout(F32,
+                                              /*dimensions=*/{1, 2, 3, 4},
+                                              /*minor_to_major=*/{0, 1, 2, 3})),
       DefaultExecutableRunOptions());
 
   EXPECT_FALSE(execute_status.ok());
@@ -663,7 +663,7 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnStream) {
       continue;
     }
     se::StreamExecutor* executor =
-        local_client_->platform()->ExecutorForDevice(d).ValueOrDie();
+        local_client_->platform()->ExecutorForDevice(d).value();
     se::Stream stream(executor);
     stream.Init();
 
@@ -685,14 +685,14 @@ XLA_TEST_F(LocalClientExecuteTest,
   // match the platform of the service (!= CPU).
   se::Platform* wrong_platform =
       se::MultiPlatformManager::PlatformWithId(se::host::kHostPlatformId)
-          .ValueOrDie();
-  se::Stream wrong_stream(wrong_platform->ExecutorForDevice(0).ValueOrDie());
+          .value();
+  se::Stream wrong_stream(wrong_platform->ExecutorForDevice(0).value());
   wrong_stream.Init();
 
   XlaBuilder builder(TestName());
   ConstantR0<float>(&builder, 42.0f);
   auto execute_status = ExecuteLocally(
-      builder.Build().ValueOrDie(), {}, DefaultExecutableBuildOptions(),
+      builder.Build().value(), {}, DefaultExecutableBuildOptions(),
       DefaultExecutableRunOptions().set_stream(&wrong_stream));
   EXPECT_FALSE(execute_status.ok());
   EXPECT_THAT(execute_status.status().error_message(),
@@ -703,14 +703,14 @@ XLA_TEST_F(LocalClientExecuteTest,
            DISABLED_ON_CPU(AllocatorDoesNotMatchPlatform)) {
   se::Platform* wrong_platform =
       se::MultiPlatformManager::PlatformWithId(se::host::kHostPlatformId)
-          .ValueOrDie();
+          .value();
   TestAllocator allocator(wrong_platform);
 
   XlaBuilder builder(TestName());
   ConstantR0<float>(&builder, 123.0f);
 
   auto execute_status = ExecuteLocally(
-      builder.Build().ValueOrDie(), {}, DefaultExecutableBuildOptions(),
+      builder.Build().value(), {}, DefaultExecutableBuildOptions(),
       DefaultExecutableRunOptions().set_allocator(&allocator));
   EXPECT_FALSE(execute_status.ok());
   EXPECT_THAT(execute_status.status().error_message(),
@@ -726,12 +726,12 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnUninitializedStream) {
   se::StreamExecutor* executor =
       local_client_->platform()
           ->ExecutorForDevice(local_client_->default_device_ordinal())
-          .ValueOrDie();
+          .value();
   se::Stream stream(executor);
   // Don't call stream.Init().
 
   auto execute_status = ExecuteLocally(
-      builder.Build().ValueOrDie(), {}, DefaultExecutableBuildOptions(),
+      builder.Build().value(), {}, DefaultExecutableBuildOptions(),
       DefaultExecutableRunOptions().set_stream(&stream));
   EXPECT_FALSE(execute_status.ok());
   EXPECT_THAT(execute_status.status().error_message(),
@@ -746,10 +746,10 @@ XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
 
   Shape argument_layout =
       local_client_->backend().compiler()->DefaultDeviceShapeRepresentation(
-          ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{3}, {0}));
+          ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{3}, {0}));
   TF_ASSERT_OK_AND_ASSIGN(
       auto executables,
-      local_client_->Compile(builder.Build().ValueOrDie(), {&argument_layout},
+      local_client_->Compile(builder.Build().value(), {&argument_layout},
                              ExecutableBuildOptions()));
   EXPECT_EQ(1, executables.size());
 
@@ -759,7 +759,7 @@ XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
       executables[0]->Run({&x_array}, DefaultExecutableRunOptions()).value();
   ASSERT_IS_OK(local_client_->mutable_backend()
                    ->BorrowStream(0)
-                   .ValueOrDie()
+                   .value()
                    ->BlockHostUntilDone());
 
   LiteralTestUtil::ExpectR1Near<float>(
@@ -781,18 +781,23 @@ XLA_TEST_F(LocalClientExecuteTest, CompilePartitionedExecutable) {
   builder.ClearSharding();
 
   Shape argument_layout =
-      ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{3}, {0});
+      ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{3}, {0});
   ExecutableBuildOptions build_options;
   build_options.set_num_partitions(2);
   TF_ASSERT_OK_AND_ASSIGN(
       auto executables,
-      local_client_->Compile(builder.Build().ValueOrDie(), {&argument_layout},
+      local_client_->Compile(builder.Build().value(), {&argument_layout},
                              build_options));
   EXPECT_EQ(2, executables.size());
 }
 
 XLA_TEST_F(LocalClientExecuteTest,
            DISABLED_ON_INTERPRETER(SizeOfGeneratedCodeInBytes)) {
+  if (IsMlirLoweringEnabled()) {
+    // SizeOfGeneratedCodeInBytes is not supported by the MLIR pipeline.
+    GTEST_SKIP();
+  }
+
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
   constexpr int size = 100000;
@@ -803,10 +808,10 @@ XLA_TEST_F(LocalClientExecuteTest,
   Add(x, y);
 
   Shape argument_layout =
-      ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{}, {});
+      ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{}, {});
   TF_ASSERT_OK_AND_ASSIGN(
       auto executables,
-      local_client_->Compile(builder.Build().ValueOrDie(), {&argument_layout},
+      local_client_->Compile(builder.Build().value(), {&argument_layout},
                              ExecutableBuildOptions()));
   EXPECT_EQ(1, executables.size());
   // The executable should be at least as large as the constant it contains.
@@ -887,12 +892,11 @@ XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedTest)) {
   Add(in, constant);
 
   Literal result;
-  std::unique_ptr<tensorflow::Thread> thread(
-      tensorflow::Env::Default()->StartThread(
-          tensorflow::ThreadOptions(), "execute_thread", [&] {
-            result = ShapedBufferToLiteral(ExecuteLocallyOrDie(
-                builder.Build().ValueOrDie(), /*arguments=*/{}));
-          }));
+  std::unique_ptr<tsl::Thread> thread(tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "execute_thread", [&] {
+        result = ShapedBufferToLiteral(
+            ExecuteLocallyOrDie(builder.Build().value(), /*arguments=*/{}));
+      }));
 
   ASSERT_IS_OK(local_client_->TransferToInfeedLocal(
       LiteralUtil::CreateR1<float>({-5.0, 123.0, 42.0}),
@@ -913,10 +917,9 @@ XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedOutfeedTest)) {
   auto sum = Add(in, constant);
   Outfeed(sum, shape, /*outfeed_config=*/"");
 
-  std::unique_ptr<tensorflow::Thread> thread(
-      tensorflow::Env::Default()->StartThread(
-          tensorflow::ThreadOptions(), "execute_thread",
-          [&] { ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {}); }));
+  std::unique_ptr<tsl::Thread> thread(tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "execute_thread",
+      [&] { ExecuteLocallyOrDie(builder.Build().value(), {}); }));
 
   ASSERT_IS_OK(local_client_->TransferToInfeedLocal(
       LiteralUtil::CreateR1<float>({-5.0, 123.0, 42.0}),
@@ -932,13 +935,11 @@ XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedOutfeedTest)) {
 // Benchmark that measures the overhead of the LocalClient API when running a
 // trivial computation
 void BM_LocalClientOverhead(::testing::benchmark::State& state) {
-  se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
-  auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
+  se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
+  auto executors = PlatformUtil::GetStreamExecutors(platform).value();
   se::StreamExecutorMemoryAllocator allocator(platform, executors);
-  LocalClient* client =
-      ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie();
-  auto* transfer_manager =
-      TransferManager::GetForPlatform(platform).ValueOrDie();
+  LocalClient* client = ClientLibrary::GetOrCreateLocalClient(platform).value();
+  auto* transfer_manager = TransferManager::GetForPlatform(platform).value();
   int device_ordinal = client->default_device_ordinal();
 
   // Use a tiny add operation as the computation.
@@ -953,8 +954,7 @@ void BM_LocalClientOverhead(::testing::benchmark::State& state) {
           ->AllocateScopedShapedBuffer(shape, &allocator, /*device_ordinal=*/0)
           .value();
   auto literal = LiteralUtil::CreateR2<float>({{0, 0, 0}, {0, 0, 0}});
-  auto stream =
-      client->mutable_backend()->BorrowStream(device_ordinal).ValueOrDie();
+  auto stream = client->mutable_backend()->BorrowStream(device_ordinal).value();
   ASSERT_IS_OK(
       transfer_manager->TransferLiteralToDevice(stream.get(), literal, buffer));
 

@@ -4,6 +4,8 @@ package tensorflow.data;
 
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/protobuf/data_service.proto";
+import "tensorflow/core/protobuf/error_codes.proto";
+import "tensorflow/core/protobuf/snapshot.proto";
 
 // Next tag: 2
 message DatasetDef {
@@ -49,12 +51,12 @@ message TaskDef {
   bool use_cross_trainer_cache = 13;
 }
 
-// Next tag: 8
+// Next tag: 9
 message TaskInfo {
   // The address of the worker processing the task.
   string worker_address = 1;
-  // The transfer address of the worker processing the task.
-  string transfer_address = 4;
+  // The data transfer servers of the worker processing the task.
+  repeated DataTransferServerInfo transfer_servers = 8;
   // Tags attached to the worker. This allows reading from selected workers.
   // For example, by applying a "COLOCATED" tag, tf.data service is able to read
   // from the local tf.data worker if one exists, then from off-TF-host workers,
@@ -69,6 +71,50 @@ message TaskInfo {
   // The round to start reading from the task in. For non-round-robin reads,
   // this is always 0.
   int64 starting_round = 5;
+  reserved 4;
+}
+
+// Next tag: 5
+message SnapshotTaskDef {
+  // The base directory at which the snapshot is being materialized.
+  string base_path = 1;
+  // The index of the stream that the worker has been assigned to process.
+  int64 stream_index = 2;
+  // The number of source datasets (split providers).
+  int64 num_sources = 3;
+  // Snapshot metadata including the element spec and compression method.
+  experimental.DistributedSnapshotMetadata metadata = 4;
+}
+
+// Next tag: 5
+message SnapshotTaskProgress {
+  SnapshotTaskDef snapshot_task = 1;
+  // True if the snapshot is complete successfully. Unset if the snapshot is not
+  // complete or an error has occurred.
+  bool completed = 2;
+  // If any error occurs during the snapshot processing, the `error_code` and
+  // `error_message` will be filled with the error status.
+  error.Code error_code = 3;
+  string error_message = 4;
+}
+
+message SnapshotStreamInfo {
+  // The index of the stream being processed or having been processed.
+  int64 index = 1;
+
+  enum State {
+    // Unspecified.  Invalid state.
+    UNSPECIFIED = 0;
+    // The dispatcher thinks the stream has a live worker.
+    ASSIGNED = 1;
+    // The dispatcher doesn't think the stream has a live worker.
+    ORPHAN = 2;
+    // The dispatcher doesn't know whether or not the stream has a live worker.
+    UNKNOWN = 3;
+    // The dispatcher thinks the stream has no more splits left to be processed.
+    DONE = 4;
+  }
+  State state = 2;
 }
 
 // Specifies which tf.data service workers to read from.
@@ -80,4 +126,10 @@ enum TargetWorkers {
   TARGET_WORKERS_ANY = 2;
   // Only reads from local workers. If no local worker is found, it is an error.
   TARGET_WORKERS_LOCAL = 3;
+}
+
+// Information about one of a worker server's data transfer servers.
+message DataTransferServerInfo {
+  string protocol = 1;
+  string address = 2;
 }

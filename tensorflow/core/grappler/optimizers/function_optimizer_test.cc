@@ -15,10 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
 
+#include <string>
+#include <vector>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -2094,6 +2101,54 @@ TEST_F(FunctionOptimizerTest, PruningUselessLibraryFunctions) {
   ASSERT_EQ(output.library().function().size(), 1);
   EXPECT_EQ(output.library().function(0).signature().name(),
             "XTimesTwo_specialized_for_y_at_test_graph");
+}
+
+TEST_F(FunctionOptimizerTest, PreserveSaverDefFunctions) {
+  using test::function::NDef;
+  using FDH = FunctionDefHelper;
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
+  auto func = test::function::XTimesTwo();
+  (*func.mutable_attr())["_noinline"].set_b(true);
+  GrapplerItem item;
+  item.id = "test_graph";
+  item.graph = test::function::GDef(
+      {
+          NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}, "/device:CPU:0"),
+          NDef("y", "XTimesTwo", {"x"}, {{"T", DT_FLOAT}}, "/device:CPU:0"),
+          NDef("z", "Identity", {"y"}, {{"T", DT_FLOAT}}, "/device:CPU:0"),
+          NDef("Restore", "StatefulPartitionedCall", {},
+               {{"Tin", {}},
+                {"Tout", {}},
+                {"f", FDH::FunctionRef("RestoreFn", {})}},
+               "/device:CPU:0"),
+          NDef("Save", "StatefulPartitionedCall", {},
+               {{"Tin", {}},
+                {"Tout", {}},
+                {"f", FDH::FunctionRef("SaveFn", {})}},
+               "/device:CPU:0"),
+      },
+      // FunctionLib
+      {
+          func,
+          test::function::XTimesTwoInt32(),
+          test::function::XTimes16(),
+          FDH::Create("RestoreFn", {}, {}, {}, {}, {}),
+          FDH::Create("SaveFn", {}, {}, {}, {}, {}),
+      });
+  item.restore_op = "Restore";
+  item.save_op = "Save";
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  ASSERT_EQ(output.library().function().size(), 3);
+  std::vector<std::string> signature_names;
+  for (const auto& function : output.library().function()) {
+    signature_names.push_back(function.signature().name());
+  }
+  EXPECT_THAT(signature_names, ::testing::UnorderedElementsAre(
+                                   "XTimesTwo_specialized_for_y_at_test_graph",
+                                   "RestoreFn", "SaveFn"));
 }
 
 }  // namespace grappler

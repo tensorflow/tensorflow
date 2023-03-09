@@ -570,7 +570,9 @@ bool IsSparseTensorValueType(PyObject* o) {
 // Returns -1 if an error occurred.
 bool IsCompositeTensorHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
-    return IsInstanceOfRegisteredType(to_check, "CompositeTensor");
+    // TODO(b/246438937): Remove the ResourceVariable test.
+    return IsInstanceOfRegisteredType(to_check, "CompositeTensor") &&
+           !IsResourceVariable(to_check);
   });
   return check_cache->CachedLookup(o);
 }
@@ -582,6 +584,7 @@ bool IsCompositeTensorHelper(PyObject* o) {
 bool IsTypeSpecHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
     int is_type_spec = IsInstanceOfRegisteredType(to_check, "TypeSpec");
+    // TODO(b/246438937): Remove the VariableSpec special case.
     int is_dense_spec = (IsInstanceOfRegisteredType(to_check, "TensorSpec") ||
                          IsInstanceOfRegisteredType(to_check, "VariableSpec"));
     if ((is_type_spec == -1) || (is_dense_spec == -1)) return -1;
@@ -809,8 +812,8 @@ bool AssertSameStructureHelper(
                && !(IsMappingHelper(o1) && IsMappingHelper(o2))
                /* For CompositeTensor & TypeSpec, we check below. */
                && !(check_composite_tensor_type_spec &&
-                    (IsCompositeTensor(o1) || IsCompositeTensor(o2)) &&
-                    (IsTypeSpec(o1) || IsTypeSpec(o2)))) {
+                    (IsCompositeTensor(o1) || IsTypeSpec(o1)) &&
+                    (IsCompositeTensor(o2) || IsTypeSpec(o2)))) {
       *is_type_error = true;
       *error_msg = tensorflow::strings::StrCat(
           "The two namedtuples don't have the same sequence type. "

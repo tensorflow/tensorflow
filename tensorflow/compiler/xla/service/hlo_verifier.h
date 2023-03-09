@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/compiler/xla/service/shape_inference.h"
 
 namespace xla {
 
@@ -60,6 +59,16 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
+  HloVerifierOpts&& VerifyCustomCallNestedComputationThreadName() {
+    verify_custom_call_nested_computation_thread_name = true;
+    return std::move(*this);
+  }
+
+  HloVerifierOpts&& WithAllowBitcastToHaveDifferentSize(bool allow) {
+    allow_bitcast_to_have_different_size = allow;
+    return std::move(*this);
+  }
+
   HloVerifierOpts&& WithInstructionCanChangeLayout(
       const HloPredicate& instruction_can_change_layout_p) {
     instruction_can_change_layout = instruction_can_change_layout_p;
@@ -68,6 +77,11 @@ struct HloVerifierOpts {
 
   HloVerifierOpts&& WithCustomShapeSize(const ShapeSizeFn& shape_size_p) {
     shape_size = shape_size_p;
+    return std::move(*this);
+  }
+
+  HloVerifierOpts&& WithVerifyShardingDeviceNumbers(bool verify) {
+    verify_sharding_device_numbers = verify;
     return std::move(*this);
   }
 
@@ -101,6 +115,16 @@ struct HloVerifierOpts {
   // Check that reshape is a physical bitcast.
   bool verify_reshape_is_bitcast = false;
 
+  // Check that custom call's called computations have same thread name as
+  // parent computation.
+  bool verify_custom_call_nested_computation_thread_name = true;
+
+  // Check device numbers in sharding verification.
+  bool verify_sharding_device_numbers = true;
+
+  // Whether bitcast should have the same size, including all paddings.
+  bool allow_bitcast_to_have_different_size = false;
+
   HloPredicate instruction_can_change_layout;
 
   // Returns a target-specific shape size.
@@ -129,6 +153,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleIota(HloInstruction* hlo) override;
   Status HandleConvert(HloInstruction* convert) override;
   Status HandleBitcastConvert(HloInstruction* convert) override;
+  Status HandleStochasticConvert(HloInstruction* convert) override;
   Status HandleCopy(HloInstruction* copy) override;
   Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;
@@ -155,7 +180,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleRngBitGenerator(HloInstruction*) override;
   Status HandleRngGetAndUpdateState(HloInstruction*) override;
   Status HandleReverse(HloInstruction* reverse) override;
-  Status HandleSort(HloInstruction* sort) override;
+  Status HandleSort(HloInstruction* hlo) override;
   Status HandleConstant(HloInstruction* constant) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
@@ -293,8 +318,8 @@ class TargetVerifierMetadata {
 
   virtual std::unique_ptr<ShapeVerifier> GetVerifier() const = 0;
 
-  TargetVerifierMetadata() {}
-  virtual ~TargetVerifierMetadata() {}
+  TargetVerifierMetadata() = default;
+  virtual ~TargetVerifierMetadata() = default;
 
   TargetVerifierMetadata(const TargetVerifierMetadata&) = delete;
   TargetVerifierMetadata& operator=(const TargetVerifierMetadata&) = delete;
@@ -351,7 +376,11 @@ class HloVerifier : public HloModulePass {
   absl::string_view name() const override { return "hlo-verifier"; }
 
   // Never returns true; no instructions are ever modified by this pass.
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  using HloPassInterface::RunOnModuleGroup;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Owns verifier config.

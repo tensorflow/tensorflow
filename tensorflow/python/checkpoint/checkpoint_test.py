@@ -20,18 +20,19 @@ import sys
 import weakref
 
 from absl.testing import parameterized
-import six
 
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import graph_view
+from tensorflow.python.checkpoint import save_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import stack
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -48,11 +49,17 @@ from tensorflow.python.trackable import base
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as saver_lib
 
+try:
+  import psutil  # pylint: disable=g-import-not-at-top
+  psutil_import_succeeded = True
+except ImportError:
+  psutil_import_succeeded = False
+
 
 class NonLayerTrackable(autotrackable.AutoTrackable):
 
   def __init__(self):
-    super(NonLayerTrackable, self).__init__()
+    super().__init__()
     self.a_variable = trackable_utils.add_variable(
         self, name="a_variable", shape=[])
 
@@ -107,17 +114,16 @@ class InterfaceTests(test.TestCase):
       # The .name attribute may be globally influenced, but the checkpoint name
       # won't be (tested below).
       self.assertEqual("duplicate_1:0", duplicate.name)
-    named_variables, _, _ = (
-        graph_view.ObjectGraphView(obj).serialize_object_graph())
-    expected_checkpoint_names = (
+
+    expected_checkpoint_names = {
         "a_variable/.ATTRIBUTES/VARIABLE_VALUE",
         "bare_initializer/.ATTRIBUTES/VARIABLE_VALUE",
         "constant_initializer/.ATTRIBUTES/VARIABLE_VALUE",
         "duplicate/.ATTRIBUTES/VARIABLE_VALUE",
         "ones_initializer/.ATTRIBUTES/VARIABLE_VALUE",
-    )
-    six.assertCountEqual(
-        self, expected_checkpoint_names, [v.name for v in named_variables])
+    }
+    actual_checkpoint_names = _get_all_checkpoint_names(obj)
+    self.assertEqual(expected_checkpoint_names, set(actual_checkpoint_names))
 
   def testInitNotCalled(self):
 
@@ -154,8 +160,7 @@ class _MirroringSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
         tensor=tensor,
         slice_spec="",
         name=name)
-    super(_MirroringSaveable, self).__init__(
-        tensor, [spec], name)
+    super().__init__(tensor, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into both variables."""
@@ -188,6 +193,15 @@ class _OwnsMirroredVariables(base.Trackable):
     return self.non_dep_variable.name
 
 
+def _get_all_checkpoint_names(root):
+  serialized_tensors, _, _, _ = save_util.serialize_graph_view(
+      graph_view.ObjectGraphView(root))
+  checkpoint_names = []
+  for tensor_dict in serialized_tensors.values():
+    checkpoint_names.extend(tensor_dict.keys())
+  return checkpoint_names
+
+
 class CheckpointingTests(parameterized.TestCase, test.TestCase):
 
   @parameterized.named_parameters(
@@ -207,6 +221,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     ckpt_options = checkpoint_options.CheckpointOptions(
         experimental_enable_async_checkpoint=enable_async_ckpt)
     save_path = checkpoint.save(file_prefix=prefix, options=ckpt_options)
+    # TODO(chienchunh): Identify why sync needs to be called here.
+    if enable_async_ckpt:
+      checkpoint._async_checkpointer().sync()
     self.evaluate(v.non_dep_variable.assign(43.))
     self.evaluate(v.mirrored.assign(44.))
     checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
@@ -214,6 +231,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     self.assertEqual(42., self.evaluate(v.mirrored))
     self.evaluate(v.non_dep_variable.assign(44.))
     save_path = checkpoint.save(file_prefix=prefix, options=ckpt_options)
+    # TODO(chienchunh): Identify why sync needs to be called here.
+    if enable_async_ckpt:
+      checkpoint._async_checkpointer().sync()
     self.evaluate(v.non_dep_variable.assign(45.))
     checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
     self.assertEqual(44., self.evaluate(v.non_dep_variable))
@@ -411,11 +431,10 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     root = autotrackable.AutoTrackable()
     trackable_utils.add_variable(
         root, name=name, shape=[1, 2], dtype=dtypes.float64)
-    (named_variable,), _, _ = graph_view.ObjectGraphView(
-        root).serialize_object_graph()
-    with ops.name_scope("root/" + named_variable.name):
+    checkpoint_key = _get_all_checkpoint_names(root)[0]
+    with ops.name_scope("root/" + checkpoint_key):
       pass  # Make sure we can use this as an op name if we prefix it.
-    return named_variable.name
+    return checkpoint_key
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testVariableNameEscaping(self):
@@ -433,9 +452,8 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     leaf = autotrackable.AutoTrackable()
     root.leaf = leaf
     trackable_utils.add_variable(leaf, name="v", shape=[])
-    (named_variable,), _, _ = graph_view.ObjectGraphView(
-        root).serialize_object_graph()
-    self.assertEqual(r"leaf/v/.ATTRIBUTES/VARIABLE_VALUE", named_variable.name)
+    checkpoint_key = _get_all_checkpoint_names(root)[0]
+    self.assertEqual(r"leaf/v/.ATTRIBUTES/VARIABLE_VALUE", checkpoint_key)
 
   @test_util.run_in_graph_and_eager_modes
   def testLocalNameValidation(self):
@@ -444,10 +462,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     # Dots are escaped, which avoids conflicts with reserved names.
     root._track_trackable(leaf, name=".ATTRIBUTES")
     trackable_utils.add_variable(trackable=leaf, name="a", shape=[])
-    (named_variable,), _, _ = graph_view.ObjectGraphView(
-        root).serialize_object_graph()
+    checkpoint_key = _get_all_checkpoint_names(root)[0]
     self.assertEqual("..ATTRIBUTES/a/.ATTRIBUTES/VARIABLE_VALUE",
-                     named_variable.name)
+                     checkpoint_key)
 
   @test_util.run_in_graph_and_eager_modes
   def testLateDependencyTracking(self):
@@ -1127,6 +1144,33 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     ckpt2.read(save_path)
     self.assertEqual(ckpt.v.numpy(), 1.0)
 
+  @test_util.run_deprecated_v1
+  def test_save_in_graph_but_no_session(self):
+    v = variables_lib.Variable(1.0)
+    ckpt = trackable_utils.Checkpoint(v=v)
+    self.evaluate(v.initializer)
+    prefix = pathlib.Path(self.get_temp_dir()) / "ckpt"
+    with stack.default_session(None):
+      with self.assertRaisesRegex(RuntimeError, "create a session"):
+        ckpt.write(prefix)
+
+  def test_ckpt_files_closed_after_restoration(self):
+    if not psutil_import_succeeded:
+      self.skipTest(
+          "psutil is required to check that we've closed our files.")
+    root = autotrackable.AutoTrackable()
+    root.v = variables_lib.Variable(1)
+    ckpt = trackable_utils.Checkpoint(root=root)
+    save_path = ckpt.save(os.path.join(self.get_temp_dir(), "ckpt"))
+
+    root2 = autotrackable.AutoTrackable()
+    ckpt2 = trackable_utils.Checkpoint(root=root2)
+    ckpt2.restore(save_path)
+
+    proc = psutil.Process()
+    for file in proc.open_files():
+      self.assertNotIn(save_path, file[0])
+
 
 class SerializeToTensorTest(test.TestCase):
 
@@ -1143,8 +1187,9 @@ class SerializeToTensorTest(test.TestCase):
         return {"v1": self.v1, "v2": self.v2}
 
       def _restore_from_tensors(self, restored_tensors):
-        self.v1.assign(restored_tensors["v1"])
-        self.v2.assign(restored_tensors["v2"])
+        return control_flow_ops.group(
+            self.v1.assign(restored_tensors["v1"]),
+            self.v2.assign(restored_tensors["v2"]))
 
     root = MultiTensor(variables_lib.Variable(1), variables_lib.Variable(2))
     child = MultiTensor(variables_lib.Variable(3), variables_lib.Variable(4))
@@ -1180,6 +1225,28 @@ class SerializeToTensorTest(test.TestCase):
 
     self.assertAllEqual([1, 2, 3, 4],
                         self.evaluate([root.v1, root.v2, child.v1, child.v2]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_reference_variable(self):
+    # Test that refvariable is compatible with tf1 saver / tf2 checkpoint.
+
+    with self.cached_session() as sess:
+      root = autotrackable.AutoTrackable()
+      root.v = variables_lib.VariableV1(5, use_resource=False)
+      sess.run(root.v.initializer)
+      ckpt = trackable_utils.Checkpoint(root)
+      ckpt_path = os.path.join(self.get_temp_dir(), "ckpt")
+      ckpt.write(ckpt_path)
+
+      sess.run(root.v.assign(10))
+      saver = saver_lib.Saver(var_list=[root.v])
+      save_path = saver.save(sess, os.path.join(self.get_temp_dir(), "saver"))
+
+      ckpt.read(ckpt_path).assert_consumed().run_restore_ops()
+      self.assertEqual(5, sess.run(root.v))
+
+      saver.restore(sess, save_path)
+      self.assertEqual(10, sess.run(root.v))
 
 
 class TemplateTests(parameterized.TestCase, test.TestCase):

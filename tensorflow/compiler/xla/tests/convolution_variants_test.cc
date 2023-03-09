@@ -34,7 +34,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -48,6 +49,17 @@ class ConvolutionVariantsTest : public ClientLibraryTestBase {
 #else
   ErrorSpec error_spec_ = ErrorSpec(1e-4, 1e-2);
 #endif
+
+  void SetUp() override {
+    init_tf32_status_ = tsl::tensor_float_32_execution_enabled();
+    tsl::enable_tensor_float_32_execution(false);
+  }
+  void TearDown() override {
+    tsl::enable_tensor_float_32_execution(init_tf32_status_);
+  }
+
+ private:
+  bool init_tf32_status_;
 };
 
 XLA_TEST_F(ConvolutionVariantsTest, Minimal) {

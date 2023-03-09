@@ -18,7 +18,7 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 
 namespace tflite {
@@ -47,6 +47,8 @@ class InitializationStatus : public ResourceBase {
 
   // Returns true if this initialization is done.
   bool IsInitialized() override;
+
+  size_t GetMemoryUsage() override { return 0; }
 
  private:
   // True if the initialization process is done.

@@ -25,11 +25,11 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/ir/importexport/convert_tensor.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/ir/utils/shape_inference_utils.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
 namespace tfg {
@@ -37,6 +37,9 @@ namespace tfg {
 using tensorflow::shape_inference::DimensionHandle;
 using tensorflow::shape_inference::InferenceContext;
 using tensorflow::shape_inference::ShapeHandle;
+
+#define GEN_PASS_DEF_SHAPEINFERENCE
+#include "tensorflow/core/transforms/passes.h.inc"
 
 // Only non-static shape or type with subtype can be refined.
 static bool CanBeRefined(Type type) {
@@ -60,7 +63,7 @@ static bool CanBeRefined(Operation *op) {
                       static_cast<bool (*)(Type)>(CanBeRefined));
 }
 
-class ShapeInference : public ShapeInferenceBase<ShapeInference> {
+class ShapeInference : public impl::ShapeInferenceBase<ShapeInference> {
  public:
   void runOnOperation() override;
 
@@ -99,9 +102,8 @@ void ShapeInference::TryToCacheResultsTensorValue(Operation *op) {
   if (op_name == "Const") {
     cached_tensor_values_[op->getResult(0)] =
         op->getAttrOfType<DenseElementsAttr>("value");
-  } else if (op_name == "Identity" ||
-             (op_name == "IdentityN" &&
-              TFOp(op).getNonControlOperands().size() == 1)) {
+  } else if ((op_name == "Identity" || op_name == "IdentityN") &&
+             TFOp(op).getNonControlOperands().size() == 1) {
     DenseElementsAttr operand_tensor_value = GetTensorValue(op->getOperand(0));
     if (!operand_tensor_value) return;
     cached_tensor_values_[op->getResult(0)] = operand_tensor_value;
@@ -205,8 +207,8 @@ void ShapeInference::runOnOperation() {
       ShapedTypeComponents result = std::get<1>(it);
       TensorType inferred_type;
       if (result.hasRank()) {
-        inferred_type =
-            RankedTensorType::get(result.getDims(), result.getElementType());
+        inferred_type = mlir::RankedTensorType::get(result.getDims(),
+                                                    result.getElementType());
       } else {
         inferred_type = UnrankedTensorType::get(result.getElementType());
       }
@@ -239,7 +241,7 @@ void ShapeInference::runOnOperation() {
   getOperation()->walk<WalkOrder::PreOrder>([&](Operation *op) {
     if (auto func = dyn_cast<GraphFuncOp>(op)) {
       // Don't infer the shape of ops in generic function, just skip it.
-      if (func.generic()) return WalkResult::skip();
+      if (func.getGeneric()) return WalkResult::skip();
       return WalkResult::advance();
     }
     if (isa<ModuleOp, GraphOp>(op) || op->getNumResults() == 0)
@@ -266,7 +268,7 @@ void ShapeInference::runOnOperation() {
   getOperation()->walk<WalkOrder::PreOrder>([&](Operation *op) {
     if (auto func = dyn_cast<GraphFuncOp>(op)) {
       // Don't infer the shape of ops in generic function, just skip it.
-      if (func.generic()) return WalkResult::skip();
+      if (func.getGeneric()) return WalkResult::skip();
       return WalkResult::advance();
     }
     if (isa<ModuleOp, tfg::GraphOp>(op) || op->getNumResults() == 0)
@@ -300,8 +302,8 @@ void ShapeInference::runOnOperation() {
 
   // Update the function signature.
   getOperation()->walk([&](GraphFuncOp func) {
-    FunctionType func_type = func.function_type();
-    Operation *return_op = func.getBody()->getTerminator();
+    FunctionType func_type = func.getFunctionType();
+    Operation *return_op = func.SingleBlock::getBody()->getTerminator();
 
     bool types_updated = false;
     for (auto &indexed_type : llvm::enumerate(func_type.getResults())) {
@@ -315,7 +317,7 @@ void ShapeInference::runOnOperation() {
 
     if (!types_updated) return;
 
-    func.function_typeAttr(TypeAttr::get(
+    func.setFunctionTypeAttr(TypeAttr::get(
         FunctionType::get(&getContext(), func_type.getInputs(),
                           TFOp(return_op).getNonControlOperands().getTypes())));
   });

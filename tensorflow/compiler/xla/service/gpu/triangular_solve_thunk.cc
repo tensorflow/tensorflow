@@ -20,13 +20,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/gpu/precompiled_kernels.h"
+#include "tensorflow/compiler/xla/stream_executor/blas.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/blas.h"
-#include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -74,7 +74,7 @@ TriangularSolveThunk::TriangularSolveThunk(
 
 Status TriangularSolveThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& buffer_allocations = *params.buffer_allocations;
-  return RunTriangulatSolve(buffer_allocations.GetDeviceAddress(a_buffer_),
+  return RunTriangularSolve(buffer_allocations.GetDeviceAddress(a_buffer_),
                             buffer_allocations.GetDeviceAddress(b_buffer_),
                             buffer_allocations.GetDeviceAddress(temp_buffer_),
                             asm_opts_, uplo_, side_, unit_diagonal_,
@@ -82,7 +82,7 @@ Status TriangularSolveThunk::ExecuteOnStream(const ExecuteParams& params) {
                             a_batch_stride_, b_batch_stride_, params.stream);
 }
 
-Status RunTriangulatSolve(se::DeviceMemoryBase a_data,
+Status RunTriangularSolve(se::DeviceMemoryBase a_data,
                           se::DeviceMemoryBase b_data,
                           se::DeviceMemoryBase temp_data,
                           se::GpuAsmOpts asm_opts, se::blas::UpperLower uplo,

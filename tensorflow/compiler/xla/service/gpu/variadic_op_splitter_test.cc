@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/variadic_op_splitter.h"
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -43,8 +43,8 @@ TEST_F(VariadicOpSplitterTest, DontSplit) {
     p1 = f16[30,41] parameter(1)
     ROOT result = f16[60, 41] concatenate(p0, p1), dimensions={0}
   })")
-                    .ValueOrDie();
-  EXPECT_FALSE(VariadicOpSplitter().Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_FALSE(VariadicOpSplitter().Run(module.get()).value());
 }
 
 TEST_F(VariadicOpSplitterTest, SplitInto2) {
@@ -56,7 +56,7 @@ TEST_F(VariadicOpSplitterTest, SplitInto2) {
       ShapeUtil::MakeShape(S32, {255}), concat_operands, 0));
   auto module = CreateNewVerifiedModule();
   auto entry_computation = module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(VariadicOpSplitter().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(VariadicOpSplitter().Run(module.get()).value());
   EXPECT_TRUE(Match(entry_computation->root_instruction(),
                     Concatenate().WithNumOperands(128).WithOperand(
                         0, Concatenate().WithNumOperands(128))));
@@ -71,7 +71,7 @@ TEST_F(VariadicOpSplitterTest, SplitInto3) {
       ShapeUtil::MakeShape(S32, {256}), concat_operands, 0));
   auto module = CreateNewVerifiedModule();
   auto entry_computation = module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(VariadicOpSplitter().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(VariadicOpSplitter().Run(module.get()).value());
   EXPECT_TRUE(Match(entry_computation->root_instruction(),
                     Concatenate(Concatenate().WithNumOperands(128),
                                 Concatenate().WithNumOperands(128))));

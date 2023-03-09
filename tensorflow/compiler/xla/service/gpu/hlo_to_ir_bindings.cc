@@ -20,13 +20,13 @@ limitations under the License.
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -202,7 +202,7 @@ std::string HloToIrBindings::ToString() const {
   std::string s = StrCat("** HloToIrBindings **\n");
   StrAppend(&s, "  is_nested_=", is_nested_, "\n");
   StrAppend(&s,
-            "  temp_buffer_base_=", llvm_ir::DumpToString(*temp_buffer_base_),
+            "  temp_buffer_base_=", llvm_ir::DumpToString(temp_buffer_base_),
             "\n");
 
   if (base_ptrs_.empty()) {
@@ -230,7 +230,7 @@ std::string HloToIrBindings::ToString() const {
       const ShapeTree<llvm::Value*>& shape_tree = it->second;
       if (!instr->shape().IsTuple()) {
         const llvm::Value* val = shape_tree.begin()->second;
-        StrAppend(&s, " -> ", llvm_ir::DumpToString(*val), "\n");
+        StrAppend(&s, " -> ", llvm_ir::DumpToString(val), "\n");
         continue;
       }
 
@@ -239,8 +239,7 @@ std::string HloToIrBindings::ToString() const {
            ++shape_it) {
         llvm::Value* val = shape_it->second;
         StrAppend(&s, "      ", shape_it->first.ToString(), " -> ",
-                  (val != nullptr ? llvm_ir::DumpToString(*val) : "null"),
-                  "\n");
+                  (val != nullptr ? llvm_ir::DumpToString(val) : "null"), "\n");
       }
     }
   }

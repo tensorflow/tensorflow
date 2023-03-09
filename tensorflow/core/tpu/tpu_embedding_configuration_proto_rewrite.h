@@ -36,7 +36,7 @@ namespace tensorflow {
 // (2) If the user model fills in feature_descriptor, this function validates
 // that batch_size_per_tensor_core and TableDescriptor.num_features have not
 // been filled in, and then populated them with appropriate values.
-Status PopulateMissingFieldsInTPUEmbeddingConfig(
+tsl::Status PopulateMissingFieldsInTPUEmbeddingConfig(
     tpu::TPUEmbeddingConfiguration* config);
 
 }  // namespace tensorflow

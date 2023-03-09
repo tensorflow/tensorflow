@@ -25,7 +25,6 @@ documented at https://greentreesnakes.readthedocs.io/en/latest/.
 import collections
 
 import gast
-import six
 
 from tensorflow.python.autograph.pyct import gast_util
 from tensorflow.python.autograph.pyct import templates
@@ -33,7 +32,7 @@ from tensorflow.python.autograph.pyct import transformer
 
 
 # TODO(mdan): Replace with naming.Namer.
-class DummyGensym(object):
+class DummyGensym:
   """A dumb gensym that suffixes a stem by sequential numbers from 1000."""
 
   def __init__(self):
@@ -499,16 +498,37 @@ def _is_trivial(node):
       # Variable names
       gast.Name,
       # Non-nodes that show up as AST fields
-      bool, six.string_types,
+      bool,
+      str,
       # Binary operators
-      gast.Add, gast.Sub, gast.Mult, gast.Div, gast.Mod, gast.Pow,
-      gast.LShift, gast.RShift, gast.BitOr, gast.BitXor, gast.BitAnd,
+      gast.Add,
+      gast.Sub,
+      gast.Mult,
+      gast.Div,
+      gast.Mod,
+      gast.Pow,
+      gast.LShift,
+      gast.RShift,
+      gast.BitOr,
+      gast.BitXor,
+      gast.BitAnd,
       gast.FloorDiv,
       # Unary operators
-      gast.Invert, gast.Not, gast.UAdd, gast.USub,
+      gast.Invert,
+      gast.Not,
+      gast.UAdd,
+      gast.USub,
       # Comparison operators
-      gast.Eq, gast.NotEq, gast.Lt, gast.LtE, gast.Gt, gast.GtE,
-      gast.Is, gast.IsNot, gast.In, gast.NotIn,
+      gast.Eq,
+      gast.NotEq,
+      gast.Lt,
+      gast.LtE,
+      gast.Gt,
+      gast.GtE,
+      gast.Is,
+      gast.IsNot,
+      gast.In,
+      gast.NotIn,
       # Other leaf nodes that don't make sense standalone.
       gast.expr_context,
   )

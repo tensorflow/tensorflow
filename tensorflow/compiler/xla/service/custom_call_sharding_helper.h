@@ -13,8 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
+#include <memory>
+#include <string>
+
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CUSTOM_CALL_SHARDING_HELPER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CUSTOM_CALL_SHARDING_HELPER_H_
@@ -39,6 +42,30 @@ class CustomCallShardingHelper {
   virtual bool IsCustomCallShardable(const HloInstruction* instruction) const;
   virtual ~CustomCallShardingHelper() = default;
 };
+
+namespace spmd {
+class SpmdPartitioningVisitor;
+}  // namespace spmd
+
+// Helper class that provides a partitioning function in addition to sharding
+// policies.
+class CustomCallPartitioner : public CustomCallShardingHelper {
+ public:
+  virtual xla::Status Partition(spmd::SpmdPartitioningVisitor* partitioner,
+                                HloInstruction* hlo) const;
+
+  // Returns if the given side-effecting custom-call is allowed to have
+  // replicated sharding.
+  virtual bool CanSideEffectingHaveReplicatedSharding() const { return false; }
+};
+
+// Fetch partitioning overrides on a per-custom_call_target basis.
+const CustomCallPartitioner* GetCustomCallPartitioner(
+    const std::string& custom_call_target);
+// Register partitioning overrides on a per-custom_call_target basis.
+void RegisterCustomCallPartitioner(
+    const std::string& custom_call_target,
+    std::unique_ptr<CustomCallPartitioner> partitioner);
 
 }  // namespace xla
 

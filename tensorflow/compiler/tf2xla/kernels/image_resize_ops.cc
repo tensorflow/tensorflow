@@ -223,7 +223,7 @@ xla::XlaOp BroadcastSpatialDimensions(xla::XlaBuilder* builder,
   if (!broadcast_shape_or_status.ok()) {
     return builder->ReportError(broadcast_shape_or_status.status());
   }
-  xla::Shape broadcast_shape = broadcast_shape_or_status.ValueOrDie();
+  xla::Shape broadcast_shape = broadcast_shape_or_status.value();
   for (int32_t i = 0; i < in_size.size(); ++i) {
     if (in_size[i] == 1 && out_size[i] > 1) {
       broadcast_shape.set_dimensions(spatial_dimensions_offset + i,
@@ -301,7 +301,7 @@ xla::XlaOp ResizeUsingDilationAndConvolution(
     num_extended[1] = upper_padding[1] / (dims.kernel_size[1]);
 
     const int64_t batch_dim_size =
-        builder->GetShape(input).ValueOrDie().dimensions(0);
+        builder->GetShape(input).value().dimensions(0);
     if (num_extended[0] > 0) {
       auto slice = xla::Slice(
           input_data, {0, in_size[0] - 1, 0, 0},
@@ -512,8 +512,7 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners_,
     input = xla::ConvertElementType(input, xla::F32);
     input_type = xla::F32;
   }
-  DataType output_dtype =
-      EncodePrimitiveTypeAsDataType(input_type).ValueOrDie();
+  DataType output_dtype = EncodePrimitiveTypeAsDataType(input_type).value();
 
   xla::XlaOp scalar_one_op =
       xla::ConvertElementType(xla::ConstantR0(b, 1), input_type);

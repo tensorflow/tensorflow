@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -79,6 +80,17 @@ class GraphTensor : public TracingTensorHandle {
     TF_RETURN_IF_ERROR(tensorflow::TensorShapeUtils::MakeShape(dims, shape));
 
     return OkStatus();
+  }
+
+  tensorflow::FullTypeDef FullType() const override {
+    const FullTypeDef* ft;
+    mutex_lock l(graph_->mu);
+    graph_->graph.NodeType(output_.oper->node.name(), &ft);
+    if (ft == nullptr) {
+      return FullTypeDef();
+    } else {
+      return *ft;
+    }
   }
 
   TF_Output output_;

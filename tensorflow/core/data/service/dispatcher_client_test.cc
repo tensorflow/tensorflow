@@ -14,14 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/dispatcher_client.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <optional>
 #include <string>
 
-#include "absl/types/optional.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
+#include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/test_cluster.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -32,34 +34,71 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
+#include "tensorflow/core/protobuf/struct.pb.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
+using ::tensorflow::data::experimental::DistributedSnapshotMetadata;
+using ::tensorflow::data::testing::CreateDummyDistributedSnapshotMetadata;
 using ::tensorflow::data::testing::EqualsProto;
+using ::tensorflow::data::testing::InfiniteDataset;
+using ::tensorflow::data::testing::LocalTempFilename;
+using ::tensorflow::data::testing::RangeDataset;
 using ::tensorflow::testing::StatusIs;
 using ::testing::AllOf;
 using ::testing::HasSubstr;
 
 constexpr const char kProtocol[] = "grpc";
 
+DataServiceMetadata GetDefaultMetadata() {
+  StructuredValue decoded_spec;
+  TensorShapeProto::Dim* dim =
+      decoded_spec.mutable_tensor_shape_value()->add_dim();
+  dim->set_size(1);
+  dim->set_name(absl::StrCat("dim"));
+
+  DataServiceMetadata metadata;
+  metadata.set_element_spec(decoded_spec.SerializeAsString());
+  metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
+  metadata.set_cardinality(kUnknownCardinality);
+  return metadata;
+}
+
 class DispatcherClientTest : public ::testing::Test {
  protected:
-  void SetUp() override {
-    test_cluster_ = std::make_unique<TestCluster>(/*num_workers=*/1);
-    TF_ASSERT_OK(test_cluster_->Initialize());
+  Status SetUpTfDataService(int64_t num_workers) {
+    test_cluster_ = std::make_unique<TestCluster>(num_workers);
+    TF_RETURN_IF_ERROR(test_cluster_->Initialize());
     dispatcher_client_ = std::make_unique<DataServiceDispatcherClient>(
         test_cluster_->DispatcherAddress(), kProtocol);
+    return OkStatus();
   }
 
   // Creates a dataset and returns the dataset ID.
-  StatusOr<std::string> RegisterDataset(const DataServiceMetadata& metadata) {
-    const auto dataset_def = testing::RangeDataset(10);
+  StatusOr<std::string> RegisterDataset(
+      const DatasetDef& dataset, const DataServiceMetadata& metadata,
+      const std::optional<std::string>& requested_dataset_id = std::nullopt) {
     std::string dataset_id;
-    TF_RETURN_IF_ERROR(
-        dispatcher_client_->RegisterDataset(dataset_def, metadata, dataset_id));
+    TF_RETURN_IF_ERROR(dispatcher_client_->RegisterDataset(
+        dataset, metadata, requested_dataset_id, dataset_id));
     return dataset_id;
+  }
+
+  // Starts snapshots and returns the directories.
+  StatusOr<absl::flat_hash_set<std::string>> StartDummySnapshots() {
+    DistributedSnapshotMetadata metadata =
+        CreateDummyDistributedSnapshotMetadata();
+    // Create a set of local file paths to which snapshots will be materialized.
+    absl::flat_hash_set<std::string> directories = {LocalTempFilename(),
+                                                    LocalTempFilename()};
+    for (const auto& directory : directories) {
+      TF_RETURN_IF_ERROR(
+          dispatcher_client_->Snapshot(RangeDataset(10), directory, metadata));
+    }
+    return directories;
   }
 
   std::unique_ptr<TestCluster> test_cluster_;
@@ -67,12 +106,11 @@ class DispatcherClientTest : public ::testing::Test {
 };
 
 TEST_F(DispatcherClientTest, GetDataServiceMetadata) {
-  DataServiceMetadata metadata;
-  metadata.set_element_spec("encoded_element_spec");
-  metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
-  metadata.set_cardinality(kInfiniteCardinality);
+  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
+  DataServiceMetadata metadata = GetDefaultMetadata();
+  metadata.set_cardinality(10);
   TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
-                          RegisterDataset(metadata));
+                          RegisterDataset(RangeDataset(10), metadata));
 
   DataServiceMetadata result;
   TF_ASSERT_OK(dispatcher_client_->GetDataServiceMetadata(dataset_id, result));
@@ -80,26 +118,170 @@ TEST_F(DispatcherClientTest, GetDataServiceMetadata) {
 }
 
 TEST_F(DispatcherClientTest, DatasetDoesNotExist) {
-  DataServiceMetadata metadata;
+  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
+  DataServiceMetadata metadata = GetDefaultMetadata();
   EXPECT_THAT(
       dispatcher_client_->GetDataServiceMetadata(
           /*dataset_id=*/"not-found", metadata),
       StatusIs(error::NOT_FOUND, HasSubstr("Dataset id not-found not found")));
 }
 
+TEST_F(DispatcherClientTest, SnapshotAlreadyStarted) {
+  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
+  DistributedSnapshotMetadata metadata =
+      CreateDummyDistributedSnapshotMetadata();
+  std::string directory = LocalTempFilename();
+  TF_ASSERT_OK(
+      dispatcher_client_->Snapshot(RangeDataset(10), directory, metadata));
+  EXPECT_THAT(
+      dispatcher_client_->Snapshot(RangeDataset(10), directory, metadata),
+      StatusIs(error::INVALID_ARGUMENT, HasSubstr("already started")));
+}
+
 TEST_F(DispatcherClientTest, GetDataServiceConfig) {
+  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
   DataServiceConfig config;
   TF_ASSERT_OK(dispatcher_client_->GetDataServiceConfig(config));
   EXPECT_EQ(config.deployment_mode(), DEPLOYMENT_MODE_COLOCATED);
 }
 
+TEST_F(DispatcherClientTest, SnapshotSkeletonWritten) {
+  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
+  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> paths,
+                          StartDummySnapshots());
+  for (const auto& path : paths) {
+    TF_ASSERT_OK(Env::Default()->FileExists(CommittedChunksDirectory(path)));
+    TF_ASSERT_OK(Env::Default()->FileExists(StreamsDirectory(path)));
+  }
+}
+
+TEST_F(DispatcherClientTest, SnapshotMetadataAndDatasetDefWritten) {
+  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
+  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> paths,
+                          StartDummySnapshots());
+  for (const auto& path : paths) {
+    TF_ASSERT_OK(
+        Env::Default()->FileExists(io::JoinPath(path, "snapshot.metadata")));
+    TF_ASSERT_OK(
+        Env::Default()->FileExists(io::JoinPath(path, "dataset_def.proto")));
+  }
+}
+
+TEST_F(DispatcherClientTest, SnapshotsInHeartbeat) {
+  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
+  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> paths,
+                          StartDummySnapshots());
+  WorkerHeartbeatRequest worker_heartbeat_request;
+  worker_heartbeat_request.set_worker_address(test_cluster_->WorkerAddress(0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      WorkerHeartbeatResponse worker_heartbeat_response,
+      dispatcher_client_->WorkerHeartbeat(worker_heartbeat_request));
+  ASSERT_EQ(worker_heartbeat_response.snapshot_tasks_size(), paths.size());
+  for (const auto& snapshot_task : worker_heartbeat_response.snapshot_tasks()) {
+    ASSERT_TRUE(paths.count(snapshot_task.base_path()));
+    ASSERT_EQ(snapshot_task.stream_index(), 0);
+  }
+}
+
+TEST_F(DispatcherClientTest, GetSnapshotSplit) {
+  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
+  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> paths,
+                          StartDummySnapshots());
+  WorkerHeartbeatRequest worker_heartbeat_request;
+  worker_heartbeat_request.set_worker_address(test_cluster_->WorkerAddress(0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      WorkerHeartbeatResponse worker_heartbeat_response,
+      dispatcher_client_->WorkerHeartbeat(worker_heartbeat_request));
+  for (int64_t i = 0; i < 5; ++i) {
+    for (const auto& snapshot_task :
+         worker_heartbeat_response.snapshot_tasks()) {
+      GetSnapshotSplitRequest get_snapshot_split_request;
+      Tensor split;
+      int64_t local_split_index = 0;
+      bool end_of_splits = false;
+      TF_ASSERT_OK(dispatcher_client_->GetSnapshotSplit(
+          test_cluster_->WorkerAddress(0), snapshot_task.base_path(),
+          snapshot_task.stream_index(),
+          /*source_index=*/0, split, local_split_index, end_of_splits));
+      EXPECT_EQ(local_split_index, i);
+      EXPECT_FALSE(end_of_splits);
+    }
+  }
+}
+
+TEST_F(DispatcherClientTest, GetSnapshotSplitMultipleStreams) {
+  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/3));
+  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> paths,
+                          StartDummySnapshots());
+
+  for (int64_t i = 0; i < 3; ++i) {
+    WorkerHeartbeatRequest worker_heartbeat_request;
+    worker_heartbeat_request.set_worker_address(
+        test_cluster_->WorkerAddress(i));
+    TF_ASSERT_OK_AND_ASSIGN(
+        WorkerHeartbeatResponse worker_heartbeat_response,
+        dispatcher_client_->WorkerHeartbeat(worker_heartbeat_request));
+    for (const auto& snapshot_task :
+         worker_heartbeat_response.snapshot_tasks()) {
+      GetSnapshotSplitRequest get_snapshot_split_request;
+      Tensor split;
+      int64_t local_split_index = 0;
+      bool end_of_splits = false;
+      TF_ASSERT_OK(dispatcher_client_->GetSnapshotSplit(
+          test_cluster_->WorkerAddress(i), snapshot_task.base_path(),
+          snapshot_task.stream_index(),
+          /*source_index=*/0, split, local_split_index, end_of_splits));
+      EXPECT_EQ(local_split_index, 0);
+      EXPECT_FALSE(end_of_splits);
+    }
+  }
+}
+
+TEST_F(DispatcherClientTest, RegisterDatasetWithExplicitId) {
+  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
+  DataServiceMetadata metadata = GetDefaultMetadata();
+  metadata.set_cardinality(10);
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::string dataset_id1,
+      RegisterDataset(RangeDataset(10), metadata,
+                      /*requested_dataset_id=*/"dataset_id"));
+  EXPECT_EQ(dataset_id1, "dataset_id");
+
+  // Registers a dataset with the same dataset ID.
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::string dataset_id2,
+      RegisterDataset(RangeDataset(10), metadata,
+                      /*requested_dataset_id=*/"dataset_id"));
+  EXPECT_EQ(dataset_id1, dataset_id2);
+}
+
+TEST_F(DispatcherClientTest, DatasetsDoNotMatch) {
+  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
+  DataServiceMetadata metadata = GetDefaultMetadata();
+  metadata.set_cardinality(10);
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::string dataset_id1,
+      RegisterDataset(RangeDataset(10), metadata,
+                      /*requested_dataset_id=*/"dataset_id"));
+  EXPECT_EQ(dataset_id1, "dataset_id");
+
+  // Registers a dataset with the same dataset ID but different metadata.
+  metadata.set_cardinality(kInfiniteCardinality);
+  EXPECT_THAT(
+      RegisterDataset(InfiniteDataset(), metadata,
+                      /*requested_dataset_id=*/"dataset_id"),
+      StatusIs(
+          error::INVALID_ARGUMENT,
+          HasSubstr(
+              "Datasets with the same ID should have the same structure")));
+}
+
 TEST_F(DispatcherClientTest, EnableCrossTrainerCache) {
-  DataServiceMetadata metadata;
-  metadata.set_element_spec("encoded_element_spec");
-  metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
+  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
+  DataServiceMetadata metadata = GetDefaultMetadata();
   metadata.set_cardinality(kInfiniteCardinality);
   TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
-                          RegisterDataset(metadata));
+                          RegisterDataset(InfiniteDataset(), metadata));
 
   ProcessingModeDef processing_mode;
   processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
@@ -123,12 +305,11 @@ TEST_F(DispatcherClientTest, EnableCrossTrainerCache) {
 }
 
 TEST_F(DispatcherClientTest, CreateNamedJob) {
-  DataServiceMetadata metadata;
-  metadata.set_element_spec("encoded_element_spec");
-  metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
-  metadata.set_cardinality(kInfiniteCardinality);
+  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
+  DataServiceMetadata metadata = GetDefaultMetadata();
+  metadata.set_cardinality(10);
   TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
-                          RegisterDataset(metadata));
+                          RegisterDataset(RangeDataset(10), metadata));
 
   ProcessingModeDef processing_mode;
   processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
@@ -136,25 +317,24 @@ TEST_F(DispatcherClientTest, CreateNamedJob) {
   int64_t job_id_1 = -1;
   TF_ASSERT_OK(dispatcher_client_->GetOrCreateJob(
       dataset_id, processing_mode, job_name,
-      /*num_consumers=*/absl::nullopt,
+      /*num_consumers=*/std::nullopt,
       /*use_cross_trainer_cache=*/true, TARGET_WORKERS_AUTO, job_id_1));
 
   int64_t job_id_2 = -2;
   // Creating the same job should succeed and receive the same job id.
   TF_ASSERT_OK(dispatcher_client_->GetOrCreateJob(
       dataset_id, processing_mode, job_name,
-      /*num_consumers=*/absl::nullopt,
+      /*num_consumers=*/std::nullopt,
       /*use_cross_trainer_cache=*/true, TARGET_WORKERS_AUTO, job_id_2));
   ASSERT_EQ(job_id_1, job_id_2);
 }
 
 TEST_F(DispatcherClientTest, NamedJobsDoNotMatch) {
-  DataServiceMetadata metadata;
-  metadata.set_element_spec("encoded_element_spec");
-  metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
-  metadata.set_cardinality(kInfiniteCardinality);
+  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
+  DataServiceMetadata metadata = GetDefaultMetadata();
+  metadata.set_cardinality(10);
   TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
-                          RegisterDataset(metadata));
+                          RegisterDataset(RangeDataset(10), metadata));
 
   int64_t job_id = 0;
   ProcessingModeDef processing_mode;
@@ -162,7 +342,7 @@ TEST_F(DispatcherClientTest, NamedJobsDoNotMatch) {
   std::string job_name = "job";
   TF_ASSERT_OK(dispatcher_client_->GetOrCreateJob(
       dataset_id, processing_mode, job_name,
-      /*num_consumers=*/absl::nullopt,
+      /*num_consumers=*/std::nullopt,
       /*use_cross_trainer_cache=*/false, TARGET_WORKERS_AUTO, job_id));
 
   // Creating the same iteration with a different argument should fail.

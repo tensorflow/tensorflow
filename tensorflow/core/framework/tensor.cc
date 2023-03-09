@@ -29,6 +29,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor.h"
 
+#include <cstring>
+#include <memory>
+#include <ostream>
+#include <type_traits>
 #include <utility>
 
 #include "absl/strings/escaping.h"
@@ -38,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/framework/types.h"
@@ -58,6 +63,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/util/byte_swap_array.h"
 
 namespace tensorflow {
 
@@ -189,6 +195,21 @@ struct Helper {
       return nullptr;
     }
     port::CopyToArray(in, data);
+
+    if constexpr (std::is_same_v<typename std::remove_cv<T>::type, bool>) {
+      // Check that contents are valid and not trap representations for bool
+      // TODO(tlongeri): do we need this for any other types?
+      static constexpr bool true_value = true;
+      static constexpr bool false_value = false;
+      for (int64_t i = 0; i < n; ++i) {
+        if (std::memcmp(&true_value, data, sizeof(bool)) &&
+            std::memcmp(&false_value, data, sizeof(bool))) {
+          buf->Unref();
+          return nullptr;
+        }
+        data += sizeof(bool);
+      }
+    }
     return buf;
   }
 
@@ -481,6 +502,30 @@ struct ProtoHelper<Eigen::half> {
   }
 };
 
+template <typename Float8>
+struct Float8ProtoHelper {
+  typedef string RepeatedFieldType;
+  static const Float8* Begin(const TensorProto& proto) {
+    return reinterpret_cast<const Float8*>(proto.float8_val().data());
+  }
+  static size_t NumElements(const TensorProto& proto) {
+    return proto.float8_val().size();
+  }
+  static void Fill(const Float8* data, size_t n, TensorProto* proto) {
+    proto->mutable_float8_val()->reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+      proto->mutable_float8_val()->push_back(
+          Eigen::numext::bit_cast<uint8_t>(data[i]));
+    }
+  }
+};
+
+template <>
+struct ProtoHelper<float8_e5m2> : public Float8ProtoHelper<float8_e5m2> {};
+
+template <>
+struct ProtoHelper<float8_e4m3fn> : public Float8ProtoHelper<float8_e4m3fn> {};
+
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64_t n)
     : BufferBase(a, TypedAllocator::Allocate<T>(a, n, AllocationAttributes())),
@@ -735,6 +780,13 @@ void Tensor::CheckIsAlignedAndSingleElement() const {
 
 Tensor::~Tensor() { UnrefIfNonNull(buf_); }
 
+std::ostream& operator<<(std::ostream& out, const Tensor& tensor) {
+  // The default is to show 3 elements, but this is often insufficient for
+  // debugging.
+  out << tensor.DebugString(/*num_values=*/100);
+  return out;
+}
+
 Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
                            const TensorShape& shape) {
   int in_size = DataTypeSize(other.dtype());
@@ -754,8 +806,20 @@ Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
   shape_.set_data_type(dtype);
   if (buf_ != other.buf_) {
     UnrefIfNonNull(buf_);
-    buf_ = other.buf_;
-    RefIfNonNull(buf_);
+    if (port::kLittleEndian || in_size == out_size) {
+      buf_ = other.buf_;
+      RefIfNonNull(buf_);
+    } else {
+      Tensor ts_ = tensor::DeepCopy(other);
+      buf_ = ts_.buf_;
+      TF_RETURN_IF_ERROR(
+          tsl::ByteSwapArray((char*)(buf_->root_buffer()->data()), in_size,
+                             other.shape().num_elements()));
+      TF_RETURN_IF_ERROR(
+          tsl::ByteSwapArray((char*)(buf_->root_buffer()->data()), out_size,
+                             shape.num_elements()));
+      RefIfNonNull(buf_);
+    }
   }
   return OkStatus();
 }
@@ -802,6 +866,8 @@ bool Tensor::RefCountIsOne() const {
     CASE(Eigen::half, SINGLE_ARG(STMTS))                       \
     CASE(ResourceHandle, SINGLE_ARG(STMTS))                    \
     CASE(Variant, SINGLE_ARG(STMTS))                           \
+    CASE(float8_e5m2, SINGLE_ARG(STMTS))                       \
+    CASE(float8_e4m3fn, SINGLE_ARG(STMTS))                     \
     case DT_INVALID:                                           \
       INVALID;                                                 \
       break;                                                   \
@@ -862,7 +928,7 @@ Status Tensor::BuildTensor(DataType type, const TensorShape& shape,
 // default allocator is widely used throughout the codebase and in client code.
 static Allocator* get_default_cpu_allocator() {
   static Allocator* default_cpu_allocator =
-      cpu_allocator(port::kNUMANoAffinity);
+      cpu_allocator(tsl::port::kNUMANoAffinity);
   return default_cpu_allocator;
 }
 
@@ -895,7 +961,7 @@ class SubBuffer : public TensorBuffer {
     CHECK_LE(root_->base<T>(), this->base<T>());
     T* root_limit = root_->base<T>() + root_->size() / sizeof(T);
     CHECK_LE(this->base<T>(), root_limit);
-    CHECK_LE(this->base<T>() + n, root_limit);
+    CHECK_LE(n, root_limit - this->base<T>());
     // Hold a ref of the underlying root buffer.
     // NOTE: 'buf' is a sub-buffer inside the 'root_' buffer.
     root_->Ref();
@@ -1084,6 +1150,14 @@ inline float PrintOneElement(bfloat16 f, bool print_v2) {
   return static_cast<float>(f);
 }
 
+inline float PrintOneElement(float8_e5m2 f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
+inline float PrintOneElement(float8_e4m3fn f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
 // Print from left dim to right dim recursively.
 template <typename T>
 void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
@@ -1183,12 +1257,10 @@ void PrintOneDimV2(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
 }
 
 template <typename T>
-string SummarizeArray(int64_t limit, int64_t num_elts,
-                      const TensorShape& tensor_shape, const char* data,
-                      const bool print_v2) {
+string SummarizeArrayInternal(int64_t limit, int64_t num_elts,
+                              const TensorShape& tensor_shape, const T* array,
+                              const bool print_v2) {
   string ret;
-  const T* array = reinterpret_cast<const T*>(data);
-
   const gtl::InlinedVector<int64_t, 4> shape = tensor_shape.dim_sizes();
   if (shape.empty()) {
     for (int64_t i = 0; i < limit; ++i) {
@@ -1211,6 +1283,32 @@ string SummarizeArray(int64_t limit, int64_t num_elts,
 
   return ret;
 }
+
+template <typename T>
+string SummarizeArray(int64_t limit, int64_t num_elts,
+                      const TensorShape& tensor_shape, const char* data,
+                      const bool print_v2) {
+  const T* array = reinterpret_cast<const T*>(data);
+  return SummarizeArrayInternal<T>(limit, num_elts, tensor_shape, array,
+                                   print_v2);
+}
+
+template <>
+string SummarizeArray<bool>(int64_t limit, int64_t num_elts,
+                            const TensorShape& tensor_shape, const char* data,
+                            const bool print_v2) {
+  if (data == nullptr) {
+    return strings::StrCat("");  // we already print type and shape
+  }
+  // We first convert all chars to be 0/1 to not get InvalidEnumValue sanitizer
+  // error
+  auto mutable_data = std::unique_ptr<char[]>(new char[num_elts]);
+  for (int64_t i = 0; i < num_elts; ++i)
+    mutable_data.get()[i] = data[i] ? 1 : 0;
+  bool* array = reinterpret_cast<bool*>(mutable_data.get());
+  return SummarizeArrayInternal<bool>(limit, num_elts, tensor_shape, array,
+                                      print_v2);
+}
 }  // namespace
 
 string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
@@ -1232,6 +1330,12 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
       return SummarizeArray<Eigen::half>(limit, num_elts, shape_, data,
                                          print_v2);
       break;
+    case DT_FLOAT8_E5M2:
+      return SummarizeArray<float8_e5m2>(limit, num_elts, shape_, data,
+                                         print_v2);
+    case DT_FLOAT8_E4M3FN:
+      return SummarizeArray<float8_e4m3fn>(limit, num_elts, shape_, data,
+                                           print_v2);
     case DT_FLOAT:
       return SummarizeArray<float>(limit, num_elts, shape_, data, print_v2);
       break;

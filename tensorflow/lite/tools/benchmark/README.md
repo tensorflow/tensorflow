@@ -32,6 +32,9 @@ and the following optional parameters:
     The number of warmup runs to do before starting the benchmark.
 *   `num_runs`: `int` (default=50) \
     The number of runs. Increase this to reduce variance.
+*   `max_secs` : float (default=150.0) \
+    The maximum number of seconds the benchmark will run before being
+    terminated.
 *   `run_delay`: `float` (default=-1.0) \
     The delay in seconds between subsequent benchmark runs. Non-positive values
     mean use no delay.
@@ -46,55 +49,68 @@ and the following optional parameters:
 *   `max_profiling_buffer_entries`: `int` (default=1024) \
     The initial max number of profiling events that will be stored during each
     inference run. It is only meaningful when `enable_op_profiling` is set to
-     `true`. Note, the actual value of this parameter will be adjusted if the
-     model has more nodes than the specified value of this parameter. Also, when
-     `allow_dynamic_profiling_buffer_increase` is set to `true`, the number of
-     profiling buffer entries will be increased dynamically.
+    `true`. Note, the actual value of this parameter will be adjusted if the
+    model has more nodes than the specified value of this parameter. Also, when
+    `allow_dynamic_profiling_buffer_increase` is set to `true`, the number of
+    profiling buffer entries will be increased dynamically.
 *   `allow_dynamic_profiling_buffer_increase`: `bool` (default=false) \
     Whether allowing dynamic increase on the number of profiling buffer entries.
-    It is only meaningful when `enable_op_profiling` is set to `true`.
-    Note, allowing dynamic buffer size increase may cause more profiling
-    overhead, thus it is preferred to set `max_profiling_buffer_entries` to a
-    large-enough value.
+    It is only meaningful when `enable_op_profiling` is set to `true`. Note,
+    allowing dynamic buffer size increase may cause more profiling overhead,
+    thus it is preferred to set `max_profiling_buffer_entries` to a large-enough
+    value.
 
 *   `profiling_output_csv_file`: `str` (default="") \
     File path to export profile data to as CSV. The results are printed to
     `stdout` if option is not set. Requires `enable_op_profiling` to be `true`
     and the path to include the name of the output CSV; otherwise results are
     printed to `stdout`.
-*  `print_preinvoke_state`: `bool` (default=false) \
+
+*   `print_preinvoke_state`: `bool` (default=false) \
     Whether to print out the TfLite interpreter internals just before calling
     tflite::Interpreter::Invoke. The internals will include allocated memory
     size of each tensor etc. Enabling this could help understand TfLite graph
     and memory usage.
-*  `print_postinvoke_state`: `bool` (default=false) \
+
+*   `print_postinvoke_state`: `bool` (default=false) \
     Whether to print out the TfLite interpreter internals just before benchmark
     completes (i.e. after all repeated Invoke calls complete). The internals
     will include allocated memory size of each tensor etc. Enabling this could
     help understand TfLite graph and memory usage, particularly when there are
     dynamic-shaped tensors in the graph.
-*  `report_peak_memory_footprint`: `bool` (default=false) \
+
+*   `report_peak_memory_footprint`: `bool` (default=false) \
     Whether to report the peak memory footprint by periodically checking the
     memory footprint. Internally, a separate thread will be spawned for this
     periodic check. Therefore, the performance benchmark result could be
     affected.
-*  `memory_footprint_check_interval_ms`: `int` (default=50) \
-   The interval in millisecond between two consecutive memory footprint checks.
-   This is only used when --report_peak_memory_footprint is set to true.
 
-*  `dry_run`: `bool` (default=false) \
+*   `memory_footprint_check_interval_ms`: `int` (default=50) \
+    The interval in millisecond between two consecutive memory footprint checks.
+    This is only used when --report_peak_memory_footprint is set to true.
+
+*   `dry_run`: `bool` (default=false) \
     Whether to run the tool just with simply loading the model, allocating
     tensors etc. but without actually invoking any op kernels.
-*  `verbose`: `bool` (default=false) \
+
+*   `verbose`: `bool` (default=false) \
     Whether to log parameters whose values are not set. By default, only log
     those parameters that are set by parsing their values from the commandline
     flags.
-*  `release_dynamic_tensors`: `bool` (default=false) \
+
+*   `release_dynamic_tensors`: `bool` (default=false) \
     Whether to configure the Interpreter to immediately release the memory of
     dynamic tensors in the graph once they are not used.
-*  `optimize_memory_for_large_tensors`: `int` (default=0) \
+
+*   `optimize_memory_for_large_tensors`: `int` (default=0) \
     Whether to optimize memory usage for large tensors with sacrificing latency.
     When the feature is enabled, `release_dynamic_tensors` is also enabled.
+
+This list of parameters is not exhaustive. See
+[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/benchmark/benchmark_model.cc)
+and
+[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/benchmark/benchmark_tflite_model.cc)
+for all parameters that the binary takes.
 
 ### Model input parameters
 By default, the tool will use randomized data for model inputs. The following
@@ -125,8 +141,8 @@ running the benchmark tool:
     item is separated by ',', and the item value consists of input layer name
     and the file path separated by ':',
     e.g. 'input1:file_path1,input2:file_path2'. In case the input layer name
-    contains ':' e.g. "input:0", escape it with "\:" literal,
-    e.g. `input\:0:file_path1`. If a input name appears in both
+    contains ':' e.g. "input:0", escape it with "::" literal,
+    e.g. `input::0:file_path1`. If a input name appears in both
     `input_layer_value_range` and `input_layer_value_files`, the corresponding
     input value range specified by`input_layer_value_range` will be ignored.
     The file format is binary, and the content should be either a byte array or
@@ -199,6 +215,10 @@ for model benchmarking.
 #### External delegate
 *   `external_delegate_path`: `string` (default="")
 *   `external_delegate_options`: `string` (default="")
+
+#### Stable delegate [Experimental]
+*   `stable_delegate_loader_settings`: `string` (default="") A path to the
+    JSON-encoded delegate [`TFLiteSettings`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/acceleration/configuration/configuration.proto#L488) file, which is defined in `configuration.proto`.
 
 As some delegates are only available on certain platforms, when running the
 benchmark tool on a particular platform, specifying `--help` will print out all

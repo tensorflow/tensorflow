@@ -74,8 +74,8 @@ void do_custom_call(CUstream stream, void** buffers,
   const float* in1 = reinterpret_cast<const float*>(buffers[1]);
   float* out = reinterpret_cast<float*>(buffers[2]);
 
-  const int64 block_dim = 64;
-  const int64 grid_dim = 2048 / block_dim;
+  const int64_t block_dim = 64;
+  const int64_t grid_dim = 2048 / block_dim;
   custom_call_kernel<<<grid_dim, block_dim,
                        /*dynamic_shared_mem_bytes=*/0, stream>>>(in0, in1, out);
 }

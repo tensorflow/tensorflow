@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -48,9 +48,13 @@ class HloPassPipelineTest : public HloTestBase {
 class FooToBarModulePass : public HloModulePass {
   absl::string_view name() const override { return "foo2bar"; }
 
-  StatusOr<bool> Run(HloModule* module) override {
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(HloModule* module,
+                     const absl::flat_hash_set<absl::string_view>&
+                         execution_threads) override {
     bool changed = false;
-    for (HloComputation* computation : module->computations()) {
+    for (HloComputation* computation :
+         module->computations(execution_threads)) {
       for (HloInstruction* instruction : computation->instructions()) {
         if (instruction->name() == "foo") {
           instruction->SetAndSanitizeName("bar");
@@ -62,14 +66,40 @@ class FooToBarModulePass : public HloModulePass {
   }
 };
 
+// A module pass which renames root instructions names in reverse string order,
+// e.g. "xyz" becomes "zyx".
+class ReverseStringModulePass : public HloModulePass {
+  absl::string_view name() const override { return "reverse"; }
+
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(HloModule* module,
+                     const absl::flat_hash_set<absl::string_view>&
+                         execution_threads) override {
+    bool changed = false;
+    for (HloComputation* computation :
+         module->computations(execution_threads)) {
+      HloInstruction* root = computation->root_instruction();
+      std::string name = root->name();
+      std::reverse(name.begin(), name.end());
+      root->SetAndSanitizeName(name);
+      changed = true;
+    }
+    return changed;
+  }
+};
+
 // A module group pass which renames instructions named 'baz' to 'qux'.
 class BazToQuxModuleGroupPass : public HloModuleGroupPass {
   absl::string_view name() const override { return "baz2qux"; }
 
-  StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) override {
+  using HloPassInterface::RunOnModuleGroup;
+  StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group,
+                                  const absl::flat_hash_set<absl::string_view>&
+                                      execution_threads) override {
     bool changed = false;
     for (HloModule* module : module_group->modules()) {
-      for (HloComputation* computation : module->computations()) {
+      for (HloComputation* computation :
+           module->computations(execution_threads)) {
         for (HloInstruction* instruction : computation->instructions()) {
           if (instruction->name() == "baz") {
             instruction->SetAndSanitizeName("qux");
@@ -87,8 +117,12 @@ class BazToQuxModuleGroupPass : public HloModuleGroupPass {
 class BarBlowerUpper : public HloModulePass {
   absl::string_view name() const override { return "bar-blower-upper"; }
 
-  StatusOr<bool> Run(HloModule* module) override {
-    for (HloComputation* computation : module->computations()) {
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(HloModule* module,
+                     const absl::flat_hash_set<absl::string_view>&
+                         execution_threads) override {
+    for (HloComputation* computation :
+         module->computations(execution_threads)) {
       for (HloInstruction* instruction : computation->instructions()) {
         if (instruction->name() == "bar") {
           return InternalError("Module has instruction named bar");
@@ -140,6 +174,76 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(HloPassPipelineTest, ModulePassChangedForParallelThread) {
+  // Test an HLO module pass which changes a module.
+  const std::string module_str = R"(
+HloModule ModulePassChanged
+%async_builder {
+  %p0 = f32[10] parameter(0)
+  %p1 = f32[10] parameter(1)
+  ROOT %foo = add(%p0, %p1)
+}, execution_thread="parallel_thread"
+
+
+ENTRY %Entry (p0: f32[10], p1: f32[10]) -> f32[10] {
+  %p0 = f32[10] parameter(0)
+  %p1 = f32[10] parameter(1)
+  %async-start = ((f32[10], f32[10]), f32[10], s32[]) async-start(f32[10] %p0, f32[10] %p1), async_execution_thread="parallel_thread",calls=%async_builder
+  ROOT %baz = f32[10]{0} async-done(((f32[10], f32[10]), f32[10], s32[]) %async-start), async_execution_thread="parallel_thread", calls=%async_builder
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  HloPassPipeline pipeline(TestName());
+  pipeline.AddPass<ReverseStringModulePass>();
+
+  HloInstruction* main_root = module->entry_computation()->root_instruction();
+  HloInstruction* parallel_thread_root =
+      main_root->async_wrapped_computation()->root_instruction();
+  EXPECT_EQ(main_root->name(), "baz");
+  EXPECT_EQ(parallel_thread_root->name(), "foo");
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          pipeline.Run(module.get(), {"parallel_thread"}));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(main_root->name(), "baz");
+  EXPECT_EQ(parallel_thread_root->name(), "oof");
+}
+
+TEST_F(HloPassPipelineTest, ModulePassChangedForAllexecution_threads) {
+  // Test an HLO module pass which changes a module.
+  const std::string module_str = R"(
+HloModule ModulePassChanged
+%async_builder {
+  %p0 = f32[10] parameter(0)
+  %p1 = f32[10] parameter(1)
+  ROOT %foo = add(%p0, %p1)
+
+}, execution_thread="parallel_thread"
+
+
+ENTRY %Entry (p0: f32[10], p1: f32[10]) -> f32[10] {
+  %p0 = f32[10] parameter(0)
+  %p1 = f32[10] parameter(1)
+  %async-start = ((f32[10], f32[10]), f32[10], s32[]) async-start(f32[10] %p0, f32[10] %p1), async_execution_thread="parallel_thread",calls=%async_builder
+  ROOT %baz = f32[10]{0} async-done(((f32[10], f32[10]), f32[10], s32[]) %async-start), async_execution_thread="parallel_thread", calls=%async_builder
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  HloPassPipeline pipeline(TestName());
+  pipeline.AddPass<ReverseStringModulePass>();
+
+  HloInstruction* main_root = module->entry_computation()->root_instruction();
+  HloInstruction* parallel_thread_root =
+      main_root->async_wrapped_computation()->root_instruction();
+  EXPECT_EQ(main_root->name(), "baz");
+  EXPECT_EQ(parallel_thread_root->name(), "foo");
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(main_root->name(), "zab");
+  EXPECT_EQ(parallel_thread_root->name(), "oof");
 }
 
 TEST_F(HloPassPipelineTest, MixedPipeline) {

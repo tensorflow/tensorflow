@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/region_to_functional/impl.h"
 
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -27,11 +28,11 @@ limitations under the License.
 #include "llvm/ADT/iterator.h"
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -142,7 +143,7 @@ class BasePattern {
 
   // Try to find a name for a data or control value. For op results, check the
   // op for a name. Otherwise, check the enclosing function's arg attributes.
-  StringAttr TryFindName(Value value, Optional<ValueRange> args) const;
+  StringAttr TryFindName(Value value, std::optional<ValueRange> args) const;
 
   // Get the `control_ret_attrs` attributes for control returns. Use a name
   // uniquer to unique names across function arguments, results, and control
@@ -230,9 +231,9 @@ struct ConvertIfLikeRegionOpToExplicitCapture
   IfLikeRegionOp RebuildWith(IfLikeRegionOp op, ValueRange added,
                              PatternRewriter &rewriter) const override {
     return rewriter.create<IfLikeRegionOp>(
-        op.getLoc(), op.getResultTypes(), op.cond(), op.ctls(),
-        op.then_attrsAttr(), op.else_attrsAttr(), op.then_region_attrsAttr(),
-        op.else_region_attrsAttr());
+        op.getLoc(), op.getResultTypes(), op.getCond(), op.getCtls(),
+        op.getThenAttrsAttr(), op.getElseAttrsAttr(),
+        op.getThenRegionAttrsAttr(), op.getElseRegionAttrsAttr());
   }
 };
 
@@ -244,8 +245,9 @@ struct ConvertCaseLikeRegionOpToExplicitCapture
   CaseLikeRegionOp RebuildWith(CaseLikeRegionOp op, ValueRange added,
                                PatternRewriter &rewriter) const override {
     return rewriter.create<CaseLikeRegionOp>(
-        op.getLoc(), op.getResultTypes(), op.branch_index(), op.ctls(),
-        op.branch_attrsAttr(), op.region_attrsAttr(), op.branches().size());
+        op.getLoc(), op.getResultTypes(), op.getBranchIndex(), op.getCtls(),
+        op.getBranchAttrsAttr(), op.getRegionAttrsAttr(),
+        op.getBranches().size());
   }
 };
 
@@ -267,33 +269,34 @@ struct ConvertWhileLikeRegionOpToExplicitCapture
 
   WhileLikeRegionOp RebuildWith(WhileLikeRegionOp op, ValueRange added,
                                 PatternRewriter &rewriter) const override {
-    ConditionOp cond_op = op.cond_condition();
+    ConditionOp cond_op = op.getCondCondition();
     rewriter.setInsertionPoint(cond_op);
     rewriter.replaceOpWithNewOp<ConditionOp>(
-        cond_op, cond_op.cond(),
-        GetForwardedValues(added, op.cond_region().getArguments(),
-                           cond_op.args()),
-        cond_op.ctls());
+        cond_op, cond_op.getCond(),
+        GetForwardedValues(added, op.getCondRegion().getArguments(),
+                           cond_op.getArgs()),
+        cond_op.getCtls());
 
-    YieldOp yield_op = op.body_yield();
+    YieldOp yield_op = op.getBodyYield();
     rewriter.setInsertionPoint(yield_op);
     rewriter.replaceOpWithNewOp<YieldOp>(
         yield_op,
-        GetForwardedValues(added, op.body_region().getArguments(),
-                           yield_op.args()),
-        yield_op.ctls());
+        GetForwardedValues(added, op.getBodyRegion().getArguments(),
+                           yield_op.getArgs()),
+        yield_op.getCtls());
 
-    SmallVector<Value> operands = llvm::to_vector(op.init());
+    SmallVector<Value> operands = llvm::to_vector(op.getInit());
     llvm::append_range(operands, added);
-    SmallVector<Type> results = llvm::to_vector(op.outs().getTypes());
+    SmallVector<Type> results = llvm::to_vector(op.getOuts().getTypes());
     llvm::append_range(results, added.getTypes());
-    util::LoopRegionResultAdded(op.body_region(), added.size());
+    util::LoopRegionResultAdded(op.getBodyRegion(), added.size());
 
     rewriter.setInsertionPoint(op);
     return rewriter.create<WhileLikeRegionOp>(
-        op.getLoc(), results, op.ctl().getType(), operands, op.ctls(),
-        op.parallel_iterationsAttr(), op.cond_attrsAttr(), op.body_attrsAttr(),
-        op.cond_region_attrsAttr(), op.body_region_attrsAttr());
+        op.getLoc(), results, op.getCtl().getType(), operands, op.getCtls(),
+        op.getParallelIterationsAttr(), op.getCondAttrsAttr(),
+        op.getBodyAttrsAttr(), op.getCondRegionAttrsAttr(),
+        op.getBodyRegionAttrsAttr());
   }
 };
 
@@ -303,25 +306,25 @@ struct ConvertForRegionOpToExplicitCapture
 
   ForRegionOp RebuildWith(ForRegionOp op, ValueRange added,
                           PatternRewriter &rewriter) const override {
-    YieldOp yield_op = op.body_yield();
+    YieldOp yield_op = op.getBodyYield();
     rewriter.setInsertionPoint(yield_op);
     // Get the iteration arguments excluding the for loop index argument.
-    auto iter_args = GetLoopRegionDataArgs(op.body_region()).slice(1);
+    auto iter_args = GetLoopRegionDataArgs(op.getBodyRegion()).slice(1);
     rewriter.replaceOpWithNewOp<YieldOp>(
-        yield_op, GetForwardedValues(added, iter_args, yield_op.args()),
-        yield_op.ctls());
+        yield_op, GetForwardedValues(added, iter_args, yield_op.getArgs()),
+        yield_op.getCtls());
 
-    SmallVector<Value> operands = llvm::to_vector(op.init());
+    SmallVector<Value> operands = llvm::to_vector(op.getInit());
     llvm::append_range(operands, added);
-    SmallVector<Type> results = llvm::to_vector(op.outs().getTypes());
+    SmallVector<Type> results = llvm::to_vector(op.getOuts().getTypes());
     llvm::append_range(results, added.getTypes());
-    util::LoopRegionResultAdded(op.body_region(), added.size());
+    util::LoopRegionResultAdded(op.getBodyRegion(), added.size());
 
     rewriter.setInsertionPoint(op);
     return rewriter.create<ForRegionOp>(
-        op.getLoc(), results, op.ctl().getType(), op.start(), op.limit(),
-        op.delta(), operands, op.ctls(), op.body_attrsAttr(),
-        op.region_attrsAttr());
+        op.getLoc(), results, op.getCtl().getType(), op.getStart(),
+        op.getLimit(), op.getDelta(), operands, op.getCtls(),
+        op.getBodyAttrsAttr(), op.getRegionAttrsAttr());
   }
 };
 
@@ -418,7 +421,7 @@ void BasePattern::CollectValuesDefinedAbove(Region &region,
     Value value = operand->get();
     if (value.getType() != control_ty) {
       datas.insert(value);
-    } else if (Optional<Value> data = LookupDataValue(value)) {
+    } else if (std::optional<Value> data = LookupDataValue(value)) {
       datas.insert(*data);
     } else {
       ctls.insert(value);
@@ -514,7 +517,7 @@ NamedAttrList BasePattern::BuildAttributes(RegionAttr preserved,
 
   // For each argument and result, lookup a name and regenerate output shapes.
   const auto build_attrs = [&](ArrayAttr attr, auto &it,
-                               Optional<ValueRange> args) {
+                               std::optional<ValueRange> args) {
     NamedAttrList attrs(attr ? attr[it.index()].template cast<DictionaryAttr>()
                              : DictionaryAttr());
     // If no name was preserved, try to find one.
@@ -533,15 +536,17 @@ NamedAttrList BasePattern::BuildAttributes(RegionAttr preserved,
   for (auto &it : llvm::enumerate(results))
     res_attrs.push_back(build_attrs(preserved_res_attrs, it, arguments));
 
-  attrs.append(FunctionOpInterface::getArgDictAttrName(),
+  std::optional<RegisteredOperationName> name =
+      RegisteredOperationName::lookup(GraphFuncOp::getOperationName(), ctx_);
+  attrs.append(GraphFuncOp::getArgAttrsAttrName(*name),
                ArrayAttr::get(ctx_, arg_attrs));
-  attrs.append(FunctionOpInterface::getResultDictAttrName(),
+  attrs.append(GraphFuncOp::getResAttrsAttrName(*name),
                ArrayAttr::get(ctx_, res_attrs));
   return attrs;
 }
 
 StringAttr BasePattern::TryFindName(Value value,
-                                    Optional<ValueRange> args) const {
+                                    std::optional<ValueRange> args) const {
   // If this is an op result, return the op's name.
   if (auto result = value.dyn_cast<OpResult>()) {
     Operation *op = result.getOwner();
@@ -570,8 +575,8 @@ StringAttr BasePattern::TryFindName(Value value,
   }
   if (auto for_op = dyn_cast<ForRegionOp>(parent)) {
     unsigned arg_idx = arg.getArgNumber();
-    if (arg_idx == 0) return TryFindName(for_op.start(), {});
-    return TryFindName(for_op.init()[arg_idx - 1], {});
+    if (arg_idx == 0) return TryFindName(for_op.getStart(), {});
+    return TryFindName(for_op.getInit()[arg_idx - 1], {});
   }
   auto branch = cast<RegionBranchOpInterface>(parent);
   ValueRange inputs = branch.getSuccessorEntryOperands(
@@ -622,7 +627,7 @@ GraphFuncOp BasePattern::CreateFunc(Location loc, const Twine &sym_name,
   indices.set(0, args.size() * 2);
   region.front().eraseArguments(indices);
 
-  func.body().takeBody(region);
+  func.getBody().takeBody(region);
   return func;
 }
 
@@ -643,14 +648,15 @@ FuncAttr BasePattern::Outline(Operation *op, PatternRewriter &rewriter,
   NameUniquer name_uniquer(ctx_);
 
   NamedAttrList func_attrs = BuildAttributes(
-      preserved, args, cast<YieldOp>(region.front().getTerminator()).args(),
+      preserved, args, cast<YieldOp>(region.front().getTerminator()).getArgs(),
       &name_uniquer);
 
   auto yield = cast<YieldOp>(region.front().getTerminator());
+  SmallVector<Value> yieldArgs(yield.getArgs());
   rewriter.setInsertionPoint(yield);
   auto ret_op = rewriter.replaceOpWithNewOp<ReturnOp>(
       yield, yield.getOperands(),
-      GetControlRetAttrs(yield.ctls(), args, &name_uniquer));
+      GetControlRetAttrs(yield.getCtls(), args, &name_uniquer));
 
   // Derive a function name. Use a default name. If a previous name exists,
   // use it. If the op also has a name, derive a name based on that.
@@ -713,7 +719,7 @@ static bool HasNestedRegions(Region &region) {
 // checking for compatible types.
 static bool RegionEqualTo(Region &region, GraphFuncOp func) {
   assert(!HasNestedRegions(region));
-  assert(!HasNestedRegions(func.body()));
+  assert(!HasNestedRegions(func.getBody()));
 
   // Outlining is performed "bottom-up". I.e. regions with no nested regions are
   // outlined first, which means that we will not have to worry about comparing
@@ -729,7 +735,7 @@ static bool RegionEqualTo(Region &region, GraphFuncOp func) {
   // Compare the non-control block arguments.
   if (region.getNumArguments() != func.getNumArguments()) return false;
   for (auto &it : llvm::enumerate(GetLoopRegionDataArgs(region))) {
-    Value rhs = GraphFuncOp::getDataValue(func.body(), it.index());
+    Value rhs = GraphFuncOp::getDataValue(func.getBody(), it.index());
     if (!map_value(it.value(), rhs)) return false;
   }
 
@@ -767,21 +773,22 @@ static bool RegionEqualTo(Region &region, GraphFuncOp func) {
     return true;
   };
   if (!llvm::all_of_zip(region.front().without_terminator(),
-                        func.body().front().without_terminator(), compare_ops))
+                        func.getBody().front().without_terminator(),
+                        compare_ops))
     return false;
 
   // Compare just the operands of the terminators.
-  auto return_op = cast<ReturnOp>(func.body().front().getTerminator());
+  auto return_op = cast<ReturnOp>(func.getBody().front().getTerminator());
   Operation *terminator = region.front().getTerminator();
   if (auto yield = dyn_cast<YieldOp>(terminator)) {
     return map_value_range(yield->getOperands(), return_op->getOperands(),
                            map_value);
   } else {
     auto cond = cast<ConditionOp>(terminator);
-    return map_value(cond.cond(), return_op->getOperand(0)) &&
+    return map_value(cond.getCond(), return_op->getOperand(0)) &&
            map_value_range(
-               cond.ctls(),
-               return_op->getOperands().slice(1, cond.ctls().size()),
+               cond.getCtls(),
+               return_op->getOperands().slice(1, cond.getCtls().size()),
                map_value);
   }
 }
@@ -801,7 +808,7 @@ bool BasePattern::FuncHasNestedRegions(RegionAttr preserved) const {
   StringAttr name = GetFunctionName(preserved);
   if (!name) return false;
   auto func = table_.lookup<GraphFuncOp>(name);
-  return func && HasNestedRegions(func.body());
+  return func && HasNestedRegions(func.getBody());
 }
 
 //===----------------------------------------------------------------------===//
@@ -830,10 +837,11 @@ ConvertToExplicitCapture<OpT>::Run(OpT op, PatternRewriter &rewriter) {
 template <typename IfLikeRegionOp, typename IfLikeOp>
 LogicalResult ConvertIfLikeOp<IfLikeRegionOp, IfLikeOp>::matchAndRewrite(
     IfLikeRegionOp op, PatternRewriter &rewriter) const {
-  if (HasNestedRegions(op.then_region()) || HasNestedRegions(op.else_region()))
+  if (HasNestedRegions(op.getThenRegion()) ||
+      HasNestedRegions(op.getElseRegion()))
     return failure();
-  if (this->FuncHasNestedRegions(op.then_region_attrsAttr()) ||
-      this->FuncHasNestedRegions(op.else_region_attrsAttr()))
+  if (this->FuncHasNestedRegions(op.getThenRegionAttrsAttr()) ||
+      this->FuncHasNestedRegions(op.getElseRegionAttrsAttr()))
     return failure();
 
   // Convert the op to explicit capture.
@@ -847,19 +855,19 @@ LogicalResult ConvertIfLikeOp<IfLikeRegionOp, IfLikeOp>::matchAndRewrite(
   // Outline the regions.
   SmallVector<FuncAttr, 2> branches;
   this->ReuseAllOrOutline(op, rewriter, args,
-                          {{op.then_region(), op.then_region_attrsAttr(),
-                            op.then_attrsAttr(), "if_then_function"},
-                           {op.else_region(), op.else_region_attrsAttr(),
-                            op.else_attrsAttr(), "if_else_function"}},
+                          {{op.getThenRegion(), op.getThenRegionAttrsAttr(),
+                            op.getThenAttrsAttr(), "if_then_function"},
+                           {op.getElseRegion(), op.getElseRegionAttrsAttr(),
+                            op.getElseAttrsAttr(), "if_else_function"}},
                           branches);
 
   // Build the functional if-like op.
   SmallVector<Value> operands = llvm::to_vector(args);
-  llvm::append_range(operands, op.ctls());
+  llvm::append_range(operands, op.getCtls());
 
   rewriter.setInsertionPoint(op);
   auto func_op =
-      rewriter.create<IfLikeOp>(op.getLoc(), op.getResultTypes(), op.cond(),
+      rewriter.create<IfLikeOp>(op.getLoc(), op.getResultTypes(), op.getCond(),
                                 operands, branches[0], branches[1]);
   util::ForwardNonIntrinsicAttributes(op, func_op);
   rewriter.replaceOp(op, func_op.getResults());
@@ -873,8 +881,8 @@ LogicalResult ConvertIfLikeOp<IfLikeRegionOp, IfLikeOp>::matchAndRewrite(
 template <typename CaseLikeRegionOp, typename CaseLikeOp>
 LogicalResult ConvertCaseLikeOp<CaseLikeRegionOp, CaseLikeOp>::matchAndRewrite(
     CaseLikeRegionOp op, PatternRewriter &rewriter) const {
-  if (llvm::any_of(op.branches(), HasNestedRegions)) return failure();
-  if (ArrayAttr preserved = op.region_attrsAttr()) {
+  if (llvm::any_of(op.getBranches(), HasNestedRegions)) return failure();
+  if (ArrayAttr preserved = op.getRegionAttrsAttr()) {
     if (llvm::any_of(preserved.getAsRange<RegionAttr>(), [&](auto preserved) {
           return this->FuncHasNestedRegions(preserved);
         }))
@@ -890,14 +898,14 @@ LogicalResult ConvertCaseLikeOp<CaseLikeRegionOp, CaseLikeOp>::matchAndRewrite(
   std::tie(op, args) = std::move(*result);
 
   // Outline the regions.
-  ArrayAttr branch_func_attrs = op.branch_attrsAttr();
+  ArrayAttr branch_func_attrs = op.getBranchAttrsAttr();
   SmallVector<BasePattern::RegionFunction> branch_regions;
-  for (auto &it : llvm::enumerate(op.branches())) {
+  for (auto &it : llvm::enumerate(op.getBranches())) {
     unsigned idx = it.index();
     // Get the preserved attributes, if there are any.
     RegionAttr preserved =
-        op.region_attrs()
-            ? op.region_attrsAttr()[idx].template cast<RegionAttr>()
+        op.getRegionAttrs()
+            ? op.getRegionAttrsAttr()[idx].template cast<RegionAttr>()
             : nullptr;
     DictionaryAttr attrs =
         branch_func_attrs
@@ -911,11 +919,11 @@ LogicalResult ConvertCaseLikeOp<CaseLikeRegionOp, CaseLikeOp>::matchAndRewrite(
 
   // Build the functional case-like op.
   SmallVector<Value> operands = llvm::to_vector(args);
-  llvm::append_range(operands, op.ctls());
+  llvm::append_range(operands, op.getCtls());
 
   rewriter.setInsertionPoint(op);
   auto func_op = rewriter.create<CaseLikeOp>(op.getLoc(), op.getResultTypes(),
-                                             op.branch_index(), operands,
+                                             op.getBranchIndex(), operands,
                                              rewriter.getArrayAttr(branches));
   util::ForwardNonIntrinsicAttributes(op, func_op);
   rewriter.replaceOp(op, func_op.getResults());
@@ -930,10 +938,11 @@ template <typename WhileLikeRegionOp, typename WhileLikeOp>
 LogicalResult
 ConvertWhileLikeOp<WhileLikeRegionOp, WhileLikeOp>::matchAndRewrite(
     WhileLikeRegionOp op, PatternRewriter &rewriter) const {
-  if (HasNestedRegions(op.cond_region()) || HasNestedRegions(op.body_region()))
+  if (HasNestedRegions(op.getCondRegion()) ||
+      HasNestedRegions(op.getBodyRegion()))
     return failure();
-  if (this->FuncHasNestedRegions(op.cond_region_attrsAttr()) ||
-      this->FuncHasNestedRegions(op.body_region_attrsAttr()))
+  if (this->FuncHasNestedRegions(op.getCondRegionAttrsAttr()) ||
+      this->FuncHasNestedRegions(op.getBodyRegionAttrsAttr()))
     return failure();
 
   // Convert the op to explicit capture.
@@ -945,49 +954,53 @@ ConvertWhileLikeOp<WhileLikeRegionOp, WhileLikeOp>::matchAndRewrite(
 
   // Try to find re-usable functions for both the condition and body regions.
   FuncAttr body_ref = this->FindReusableFunc(
-      op.body_region(), op.body_region_attrsAttr(), op.body_attrsAttr());
+      op.getBodyRegion(), op.getBodyRegionAttrsAttr(), op.getBodyAttrsAttr());
   FuncAttr cond_ref = this->FindReusableFunc(
-      op.cond_region(), op.cond_region_attrsAttr(), op.cond_attrsAttr());
+      op.getCondRegion(), op.getCondRegionAttrsAttr(), op.getCondAttrsAttr());
 
   // If a function for either region could not be re-used, outline them out.
   if (!body_ref || !cond_ref) {
     // Handle the condition region. Unlike other regions, the terminator is
     // special and the function only has one result.
-    ConditionOp cond_op = op.cond_condition();
+    ConditionOp cond_op = op.getCondCondition();
     // Create a name scope for the condition function.
     NameUniquer name_uniquer(this->ctx_);
     // Create the function.
-    NamedAttrList cond_attrs = this->BuildAttributes(
-        op.cond_region_attrsAttr(), op.init(), cond_op.cond(), &name_uniquer);
+
+    NamedAttrList cond_attrs =
+        this->BuildAttributes(op.getCondRegionAttrsAttr(), op.getInit(),
+                              cond_op.getCond(), &name_uniquer);
     GraphFuncOp cond_func =
-        this->CreateFunc(op.getLoc(), "while_cond_function", op.cond_region(),
-                         cond_op.cond().getType(), std::move(cond_attrs));
+        this->CreateFunc(op.getLoc(), "while_cond_function", op.getCondRegion(),
+                         cond_op.getCond().getType(), std::move(cond_attrs));
+
     // Replace the condition terminator.
     rewriter.setInsertionPoint(cond_op);
-    SmallVector<Value> cond_rets = {cond_op.cond()};
-    llvm::append_range(cond_rets, cond_op.ctls());
+    SmallVector<Value> cond_rets = {cond_op.getCond()};
+    llvm::append_range(cond_rets, cond_op.getCtls());
     rewriter.replaceOpWithNewOp<ReturnOp>(
         cond_op, cond_rets,
-        this->GetControlRetAttrs(cond_op.ctls(), op.init(), &name_uniquer));
+        this->GetControlRetAttrs(cond_op.getCtls(), op.getInit(),
+                                 &name_uniquer));
     // Insert the function and grab a reference.
     cond_ref = FuncAttr::get(
         op.getContext(), this->table_.insert(cond_func),
-        op.cond_attrs().getValueOr(rewriter.getDictionaryAttr({})));
+        op.getCondAttrs().value_or(rewriter.getDictionaryAttr({})));
 
     // Outline the body.
-    body_ref = this->Outline(op, rewriter, op.init(), op.body_region(),
-                             op.body_region_attrsAttr(), op.body_attrsAttr(),
+    body_ref = this->Outline(op, rewriter, op.getInit(), op.getBodyRegion(),
+                             op.getBodyRegionAttrsAttr(), op.getBodyAttrsAttr(),
                              "while_body_function");
   }
 
   // Create the functional op.
-  SmallVector<Value> operands = llvm::to_vector(op.init());
-  llvm::append_range(operands, op.ctls());
+  SmallVector<Value> operands = llvm::to_vector(op.getInit());
+  llvm::append_range(operands, op.getCtls());
 
   rewriter.setInsertionPoint(op);
   auto func_op = rewriter.create<WhileLikeOp>(op.getLoc(), op.getResultTypes(),
                                               operands, cond_ref, body_ref,
-                                              op.parallel_iterationsAttr());
+                                              op.getParallelIterationsAttr());
   util::ForwardNonIntrinsicAttributes(op, func_op);
   rewriter.replaceOp(op, func_op.getResults());
   return success();
@@ -999,8 +1012,8 @@ ConvertWhileLikeOp<WhileLikeRegionOp, WhileLikeOp>::matchAndRewrite(
 
 LogicalResult ConvertForOp::matchAndRewrite(ForRegionOp op,
                                             PatternRewriter &rewriter) const {
-  if (HasNestedRegions(op.body_region())) return failure();
-  if (this->FuncHasNestedRegions(op.region_attrsAttr())) return failure();
+  if (HasNestedRegions(op.getBodyRegion())) return failure();
+  if (this->FuncHasNestedRegions(op.getRegionAttrsAttr())) return failure();
 
   // Convert the op to explicit capture.
   ConvertForRegionOpToExplicitCapture converter(dialect_, table_,
@@ -1010,22 +1023,22 @@ LogicalResult ConvertForOp::matchAndRewrite(ForRegionOp op,
   op = result->first;
 
   // Outline to body.
-  SmallVector<Value> func_args(/*Size=*/1, op.start());
-  llvm::append_range(func_args, op.init());
+  SmallVector<Value> func_args(/*Size=*/1, op.getStart());
+  llvm::append_range(func_args, op.getInit());
   SmallVector<FuncAttr, 1> body_ref;
   ReuseAllOrOutline(op, rewriter, func_args,
-                    {{op.body_region(), op.region_attrsAttr(),
-                      op.body_attrsAttr(), "for_body_function"}},
+                    {{op.getBodyRegion(), op.getRegionAttrsAttr(),
+                      op.getBodyAttrsAttr(), "for_body_function"}},
                     body_ref);
 
   // Create the functional op.
-  SmallVector<Value> operands = llvm::to_vector(op.init());
-  llvm::append_range(operands, op.ctls());
+  SmallVector<Value> operands = llvm::to_vector(op.getInit());
+  llvm::append_range(operands, op.getCtls());
 
   rewriter.setInsertionPoint(op);
-  auto func_op = rewriter.create<tfg::ForOp>(op.getLoc(), op.getResultTypes(),
-                                             op.start(), op.limit(), op.delta(),
-                                             operands, body_ref[0]);
+  auto func_op = rewriter.create<tfg::ForOp>(
+      op.getLoc(), op.getResultTypes(), op.getStart(), op.getLimit(),
+      op.getDelta(), operands, body_ref[0]);
   util::ForwardNonIntrinsicAttributes(op, func_op);
   rewriter.replaceOp(op, func_op.getResults());
   return success();

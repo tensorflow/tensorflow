@@ -36,8 +36,8 @@ limitations under the License.
 #endif
 #endif
 
+#include "tensorflow/lite/core/experimental/acceleration/configuration/delegate_registry.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
 
 namespace tflite {
 namespace delegates {
@@ -59,6 +59,9 @@ class GpuPlugin : public DelegatePluginInterface {
 #elif defined(REAL_IPHONE_DEVICE)
   const TFLGpuDelegateOptions& Options() { return options_; }
 #endif
+
+  std::string GetCacheDir() const { return cache_dir_; }
+  std::string GetModelToken() const { return model_token_; }
 
  private:
 #if TFLITE_SUPPORTS_GPU_DELEGATE

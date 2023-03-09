@@ -150,6 +150,11 @@ class FakeTensorHandle : public tensorflow::ImmediateExecutionTensorHandle {
     Ref();
     return this;
   }
+  // Return default (TFT_UNSET) full type information. This could be updated in
+  // the future if full type information is needed.
+  tensorflow::FullTypeDef FullType() const override {
+    return tensorflow::FullTypeDef();
+  }
 
   static bool classof(const AbstractTensorHandle* ptr) { return true; }
 
@@ -322,7 +327,7 @@ class FakeOperation : public ImmediateExecutionOperation {
 
 static std::unique_ptr<CoreRuntime> CreateCoreRuntime() {
   auto diag_handler = [](const DecodedDiagnostic& diag) {
-    LOG(ERROR) << "Encountered runtime error: " << diag.message << "\n";
+    LOG(ERROR) << "Encountered runtime error: " << diag.message() << "\n";
   };
   auto corert =
       CoreRuntime::Create(diag_handler, tfrt::CreateMallocAllocator(),
@@ -356,7 +361,8 @@ class SelectorTest : public ::testing::Test {
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
         /* async */ false, device_manager_,
         /* device_mgr_owned */ false, /* rendezvous */ nullptr,
-        /* cluster_flr */ nullptr);
+        /* cluster_flr */ nullptr, /*collective_executor_mgr=*/nullptr,
+        /*run_eager_op_as_function=*/true);
     corert_ = CreateCoreRuntime();
     fallback_op_handler_ = CreateOpHandler();
     cpu_op_handler_ = CreateOpHandler();

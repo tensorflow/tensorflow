@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -58,7 +57,8 @@ StatusOr<absl::optional<Layout>> ExtractSingleLayoutFromOp(
     // If DTensorLayout is used, then DTensorLayout op is the only consumer for
     // the operation output value.
     auto users = op->getUsers();
-    out.emplace(llvm::cast<mlir::TF::DTensorLayout>(*users.begin()).layout());
+    out.emplace(
+        llvm::cast<mlir::TF::DTensorLayout>(*users.begin()).getLayout());
   } else {
     TF_ASSIGN_OR_RETURN(auto layouts, ExtractLayoutFromOp(op, attr_name));
     if (layouts.empty()) return out;
@@ -97,7 +97,7 @@ StatusOr<std::vector<absl::optional<Layout>>> ExtractLayoutFromOp(
     for (auto op_result : op->getOpResults()) {
       outs.emplace_back(
           llvm::cast<mlir::TF::DTensorLayout>(*op_result.getUsers().begin())
-              .layout());
+              .getLayout());
     }
   } else {
     auto serialized_layouts = op->getAttrOfType<mlir::ArrayAttr>(attr_name);
@@ -165,7 +165,7 @@ StatusOr<absl::optional<Layout>> ExtractLayoutFromOperand(mlir::Value operand) {
     mlir::Operation* op = op_result.getDefiningOp();
     absl::optional<Layout> out;
     if (auto layout_op = llvm::dyn_cast<mlir::TF::DTensorLayout>(op)) {
-      out.emplace(layout_op.layout());
+      out.emplace(layout_op.getLayout());
     } else {
       const int result_number = op_result.getResultNumber();
       TF_ASSIGN_OR_RETURN(auto layouts, ExtractLayoutFromOp(op, kLayoutAttr));
@@ -268,8 +268,49 @@ StatusOr<absl::optional<Layout>> ExtractLayoutFromFunctionReturnAttr(
                       layout_string)
             .str());
 
-  layout.emplace(result_layout_or_status.ValueOrDie());
+  layout.emplace(result_layout_or_status.value());
   return layout;
+}
+
+StatusOr<llvm::SmallVector<Layout, 4>> ExtractElementLayoutsFromOperand(
+    mlir::OpOperand& input_value) {
+  const int operand_index = input_value.getOperandNumber();
+  auto defining_op = input_value.get().getDefiningOp();
+
+  if (defining_op) {
+    if (mlir::isa<mlir::TF::DTensorLayout,
+                  mlir::TF::IteratorGetNextAsOptionalOp>(defining_op)) {
+      return ExtractElementLayoutsFromOperand(defining_op->getOpOperand(0));
+    }
+  }
+
+  // If we reach this point, we're working with a function argument.
+  mlir::Operation* op = input_value.getOwner();
+  auto enclosing_function = op->getParentOfType<mlir::func::FuncOp>();
+  if (!enclosing_function)
+    return errors::InvalidArgument(
+        llvm::formatv("Could not find iterator at {0}-th input to op: {1}",
+                      operand_index, op->getName())
+            .str());
+
+  auto block_arg = input_value.get().dyn_cast<mlir::BlockArgument>();
+  auto array_attr = enclosing_function.getArgAttrOfType<mlir::ArrayAttr>(
+      block_arg.getArgNumber(), kIteratorElementLayouts);
+  if (!array_attr)
+    return errors::InvalidArgument(
+        llvm::formatv(
+            "Could not find `{0}` attribute of {1}-th input to op: {2}",
+            kIteratorElementLayouts, operand_index, op->getName())
+            .str());
+
+  llvm::SmallVector<Layout, 4> layouts(array_attr.size());
+  for (int i = 0; i < array_attr.size(); ++i) {
+    layouts[i] = Layout::FromString(
+                     array_attr[i].cast<mlir::StringAttr>().getValue().str())
+                     .value();
+  }
+
+  return layouts;
 }
 
 }  // namespace dtensor

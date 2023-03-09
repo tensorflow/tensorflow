@@ -38,11 +38,12 @@ std::string GetGlslPrecisionModifier(DataType data_type) {
     case DataType::INT16:
     case DataType::UINT16:
       return "mediump ";
-    case DataType::BOOL:
     case DataType::FLOAT32:
     case DataType::INT32:
     case DataType::UINT32:
       return "highp ";
+    case DataType::BOOL:
+      return "";
     default:
       return "";
   }
@@ -53,12 +54,12 @@ size_t SizeOf(DataType data_type) {
   switch (data_type) {
     case DataType::UINT8:
     case DataType::INT8:
+    case DataType::BOOL:
       return 1;
     case DataType::FLOAT16:
     case DataType::INT16:
     case DataType::UINT16:
       return 2;
-    case DataType::BOOL:
     case DataType::FLOAT32:
     case DataType::INT32:
     case DataType::UINT32:
@@ -183,9 +184,8 @@ DataType ToMetalTextureType(DataType data_type) {
     case DataType::INT8:
       return DataType::INT16;
     case DataType::UINT8:
-      return DataType::UINT16;
     case DataType::BOOL:
-      return DataType::FLOAT32;
+      return DataType::UINT16;
     default:
       return DataType::UNKNOWN;
   }
@@ -217,7 +217,7 @@ std::string ToGlslShaderDataType(DataType data_type, int vec_size,
     case DataType::UINT64:
       return precision_modifier + ToGlslType("uint", "uvec", vec_size);
     case DataType::BOOL:
-      return precision_modifier + ToGlslType("float", "vec", vec_size);
+      return ToGlslType("bool", "bvec", vec_size);
     case DataType::UNKNOWN:
       return "unknown";
   }

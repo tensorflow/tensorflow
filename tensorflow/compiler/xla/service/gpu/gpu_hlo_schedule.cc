@@ -15,180 +15,33 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 
+#include <cstddef>
 #include <deque>
+#include <iostream>
 #include <memory>
+#include <optional>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
-#include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
+#include "tensorflow/compiler/xla/service/latency_hiding_scheduler.h"
 
 namespace xla {
 namespace gpu {
 
 namespace {
 
-// An HLO partial ordering based on the actual stream assignment and thunk
-// launch order.
-class GpuHloOrdering : public PredecessorHloOrdering {
- public:
-  GpuHloOrdering(const HloModule* module,
-                 const StreamAssignment& stream_assignment,
-                 const std::vector<HloInstruction*>& thunk_launch_order);
-  ~GpuHloOrdering() override = default;
-
-  // Only the entry computation can possibly be sequentially ordered, and only
-  // if we've assigned all instructions to a single stream.
-  const HloInstructionSequence* SequentialOrder(
-      const HloComputation& computation) const override {
-    return &computation == module_->entry_computation() ? entry_sequence_.get()
-                                                        : nullptr;
-  }
-
-  std::string ToString() const override {
-    return ToStringHelper("GpuHloOrdering");
-  }
-
- private:
-  std::unique_ptr<HloInstructionSequence> entry_sequence_;
-};
-
-GpuHloOrdering::GpuHloOrdering(
-    const HloModule* module, const StreamAssignment& stream_assignment,
-    const std::vector<HloInstruction*>& thunk_launch_order)
-    : PredecessorHloOrdering(module) {
-  // The entry computation has a total order when there's only one stream.
-  if (stream_assignment.StreamCount() == 1) {
-    entry_sequence_ =
-        std::make_unique<HloInstructionSequence>(thunk_launch_order);
-  }
-
-  // The ordering of instructions for the entry computation is determined by the
-  // total order of thunk launches, and stream assignment. Instructions are
-  // sequential within a stream and concurrent across streams. In addition, the
-  // GpuExecutable adds cross-stream dependency edges to ensure each instruction
-  // waits for its operands before executing.
-  //
-  // The predecessor map is built incrementally, in thunk launch order. We
-  // record the most-recently seen instructions per stream in
-  // 'last_instruction_per_stream'. This lets us quickly determine the
-  // same-stream predecessors of each instruction.
-
-  // Compute the set of all instructions we will want to set reachability on.
-  auto predecessor_map = std::make_unique<HloReachabilityMap>(
-      module->entry_computation()->MakeInstructionPostOrder());
-
-  // The most recently visited instruction per stream.
-  std::vector<const HloInstruction*> last_instruction_per_stream(
-      stream_assignment.StreamCount(), nullptr);
-
-  for (const HloInstruction* hlo : thunk_launch_order) {
-    predecessor_map->SetReachable(hlo, hlo);
-    if (stream_assignment.HasStreamAssigned(*hlo)) {
-      // Gather all instruction which are immediate predecessors of 'hlo' in the
-      // reachability graph.
-      std::vector<const HloInstruction*> immediate_preds;
-      immediate_preds.insert(immediate_preds.end(), hlo->operands().begin(),
-                             hlo->operands().end());
-      immediate_preds.insert(immediate_preds.end(),
-                             hlo->control_predecessors().begin(),
-                             hlo->control_predecessors().end());
-
-      // All ops already queued on the same instruction stream, and their
-      // transitive predecessors, are predecessors.
-      const int stream_no = stream_assignment.StreamNumberForHlo(*hlo);
-      if (last_instruction_per_stream[stream_no] != nullptr) {
-        immediate_preds.push_back(last_instruction_per_stream[stream_no]);
-      }
-      predecessor_map->FastSetReachabilityToUnion(immediate_preds, hlo);
-      last_instruction_per_stream[stream_no] = hlo;
-    } else {
-      // Only parameters and constants don't have an assigned stream, since they
-      // don't require a thunk. These ops don't have any predecessors.
-      CHECK(hlo->opcode() == HloOpcode::kParameter ||
-            hlo->opcode() == HloOpcode::kConstant);
-      CHECK_EQ(hlo->operand_count(), 0);
-    }
-  }
-  predecessors_.emplace(module->entry_computation(),
-                        std::move(predecessor_map));
-
-  // The ordering of instructions in subcomputations is based solely on control
-  // and data dependencies.
-  //
-  // TODO(toddw): Each subcomputation is actually emitted as a function in DFS
-  // postorder, so we can do better and establish the total order here. We don't
-  // do that yet since it's hard to ensure that the order here is the order used
-  // by IrEmitterNested. And mismatched ordering bugs would be hard to find.
-  for (auto* computation : module->computations()) {
-    if (computation != module->entry_computation() &&
-        !computation->IsFusionComputation()) {
-      predecessors_.emplace(computation,
-                            HloReachabilityMap::Build(computation));
-    }
-  }
-}
-
-// Computes a topological launch_order that is close to a breadth-first
-// order. This heuristic works well for graphs where concurrent kernels are
-// located at the same layer. It can often reduce dependency between concurrent
-// GEMMs due to intra-stream total orders.  E.g. consider the following HLO
-// graph where the numbers in the parens indicate the stream assigned to each
-// HLO.
-//
-//   A(0) -> D(0) -> E(1)
-//    |
-//    v
-//   B(0)
-//    |
-//    v
-//   C(0)
-//
-// If the total order is A,B,C,D,E, then C and E would be sequentialized
-// because C completes before D starts in stream 0, and E depends on D.
-// However, if the total order is A,B,D,C,E, then C and E can run
-// concurrently.
-void BFSLaunchOrder(const HloComputation* computation,
-                    std::vector<HloInstruction*>* launch_order) {
-  // This topological sort uses two data structures:
-  // 1. `incoming_edge_count` which keeps track of the number of incoming
-  // edges to each HLO;
-  // 2. `queue` which contains all HLOs with no incoming edges.
-  //
-  // The sorting algorithm repeatedly pops the top from the queue and deletes
-  // that HLO from the graph, making more HLOs incoming-edge free.
-  std::deque<HloInstruction*> queue;
-  absl::flat_hash_map<const HloInstruction*, int64_t> incoming_edge_count;
-  for (auto* hlo : computation->instructions()) {
-    if (hlo->operand_count() == 0) {
-      queue.push_back(hlo);
-    } else {
-      incoming_edge_count[hlo] =
-          std::set<HloInstruction*>(hlo->operands().begin(),
-                                    hlo->operands().end())
-              .size();
-    }
-  }
-
-  while (!queue.empty()) {
-    HloInstruction* x = queue.front();
-    queue.pop_front();
-    launch_order->push_back(x);
-    for (HloInstruction* y : x->users()) {
-      --incoming_edge_count[y];
-      if (incoming_edge_count[y] == 0) {
-        queue.push_back(y);
-      }
-    }
-  }
-}
-
 bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
     case HloOpcode::kAllReduceStart:
+    case HloOpcode::kCollectivePermuteStart:
       return true;
     case HloOpcode::kCustomCall:
       return static_cast<const HloCustomCallInstruction&>(instr)
@@ -209,6 +62,7 @@ bool ShouldScheduleSuccessor(const HloInstruction& sussessor,
 bool ShouldScheduleAsLateAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
     case HloOpcode::kAllReduceDone:
+    case HloOpcode::kCollectivePermuteDone:
       return true;
     case HloOpcode::kCustomCall:
       return static_cast<const HloCustomCallInstruction&>(instr)
@@ -305,43 +159,98 @@ HloInstructionSequence PostprocessorToScheduleAsEarlyOrLateAsPossible(
   return result;
 }
 
+StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
+    const HloModule* module, int64_t pointer_size, bool enable_post_processor) {
+  MemorySchedulerPostprocessor post_processor =
+      enable_post_processor ? PostprocessorToScheduleAsEarlyOrLateAsPossible
+                            : nullptr;
+  return ScheduleModule(
+      module,
+      [pointer_size](const BufferValue& buffer) {
+        return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
+      },
+      ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler,
+                                            post_processor));
+}
+
+// Latency hiding scheduler support.
+
+SchedulerConfig GetSchedulerConfig(const GpuDeviceInfo& gpu_info) {
+  SchedulerConfig config;
+  config.all_reduce_overlap_limit = 1;
+  config.collective_permute_overlap_limit = 1;
+  config.use_real_cost_model = false;
+  config.aggressive_scheduling_policies = true;
+
+  // Assume 75% of the total device memory is available for XLA.
+  config.memory_limit = gpu_info.device_memory_size * 0.75;
+  return config;
+}
+
+class GpuLatencyEstimator : public ApproximateLatencyEstimator {
+ public:
+  TimeCost NodeCost(const HloInstruction* instr) const override {
+    // Consider cublas/cuddn/softmax custom calls as medium cost. Since the
+    // latency between async-start and async-done is 5000 and cost of each
+    // custom call is 1000, the LHS will try to schedule approximately 5 of
+    // these in between each start/end pair.
+    if (instr->opcode() == HloOpcode::kCustomCall) {
+      if (IsCublasGemm(*instr) || IsCustomCallToDnnConvolution(*instr)) {
+        return ApproximateLatencyEstimator::kMediumCost;
+      }
+      // consider other custom calls as medium cost for now. Keeping the case
+      // explicitly separate for further tuning.
+      return ApproximateLatencyEstimator::kMediumCost;
+    }
+    return ApproximateLatencyEstimator::NodeCost(instr);
+  }
+};
+
 }  // end namespace
 
-GpuHloSchedule::GpuHloSchedule() {}
-
-/* static */
-StatusOr<std::unique_ptr<GpuHloSchedule>> GpuHloSchedule::Build(
-    const HloModule* module, const StreamAssignment& stream_assignment,
-    int64_t pointer_size) {
-  std::unique_ptr<GpuHloSchedule> schedule(new GpuHloSchedule);
-
-  // Initialize thunk_launch_order_, the total order of thunk launches.
-  HloComputation* entry_computation = module->entry_computation();
-  if (stream_assignment.StreamCount() == 1) {
-    // All kernels are launched on a single stream, so there's no loss of
-    // concurrency by optimizing for minimal memory usage.
-    TF_ASSIGN_OR_RETURN(
-        HloSchedule sequences,
-        ScheduleModule(
-            module,
-            [pointer_size](const BufferValue& buffer) {
-              return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
-            },
-            ComputationSchedulerToModuleScheduler(
-                DefaultMemoryScheduler,
-                PostprocessorToScheduleAsEarlyOrLateAsPossible)));
-    schedule->thunk_launch_order_ =
-        sequences.sequence(entry_computation).instructions();
-    schedule->hlo_ordering_ =
-        std::make_unique<SequentialHloOrdering>(sequences);
-  } else {
-    // BFS tends to increase concurrency, but also increases memory usage.
-    BFSLaunchOrder(entry_computation, &schedule->thunk_launch_order_);
-    schedule->hlo_ordering_ = std::make_unique<GpuHloOrdering>(
-        module, stream_assignment, schedule->thunk_launch_order_);
+int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
+  int64_t size = ShapeUtil::ByteSizeOf(shape, pointer_size);
+  if (shape.is_static() || shape.IsTuple()) {
+    return size;
   }
+  // Each dynamic dimension size is represented as a S32.
+  int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();
+  return size + metadata_size;
+}
 
-  return std::move(schedule);
+Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
+                         const GpuDeviceInfo& gpu_info) {
+  const bool enable_latency_hiding_scheduler =
+      module->config()
+          .debug_options()
+          .xla_gpu_enable_latency_hiding_scheduler();
+  TF_ASSIGN_OR_RETURN(
+      HloSchedule schedule,
+      ScheduleGpuModuleWithMemoryScheduler(module, pointer_size,
+                                           !enable_latency_hiding_scheduler));
+  TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+
+  if (!enable_latency_hiding_scheduler) {
+    return OkStatus();
+  }
+  SchedulerConfig config = GetSchedulerConfig(gpu_info);
+  auto latency_estimator = std::make_unique<GpuLatencyEstimator>();
+  auto async_tracker = std::make_unique<AsyncTracker>(config);
+
+  auto shape_size_in_bytes = [pointer_size](const Shape& shape) {
+    return GetSizeOfShape(shape, pointer_size);
+  };
+  HloPassPipeline pipeline("latency-hiding-scheduler");
+  auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
+      shape_size_in_bytes, async_tracker.get(), latency_estimator.get(),
+      config);
+
+  pipeline.AddPass<LatencyHidingScheduler>(
+      std::move(latency_estimator), std::move(async_tracker),
+      std::move(scheduler_core), shape_size_in_bytes);
+
+  TF_RETURN_IF_ERROR(pipeline.Run(module).status());
+  return OkStatus();
 }
 
 }  // namespace gpu

@@ -366,9 +366,10 @@ absl::Status CheckSelectV2GpuDelegateCompatibility(const OpSignature& op_sig) {
   }
   // Only supports float inputs with non-broadcastable or scalar if/else.
   absl::Status error = absl::InvalidArgumentError(
-      "Cond must be float type, if, else tensors must be float and either "
-      "be same shape as output or constant, scalar.");
-  if ((op_sig.inputs.at(0).type != kTfLiteFloat16 &&
+      "Cond must be float or bool type, if, else tensors must be float and "
+      "either be same the shape as output or constant, scalar.");
+  if ((op_sig.inputs.at(0).type != kTfLiteBool &&
+       op_sig.inputs.at(0).type != kTfLiteFloat16 &&
        op_sig.inputs.at(0).type != kTfLiteFloat32) ||
       (op_sig.inputs.at(1).type != kTfLiteFloat16 &&
        op_sig.inputs.at(1).type != kTfLiteFloat32) ||
@@ -462,6 +463,10 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
           (op_sig.outputs.at(0).type == kTfLiteFloat16 ||
            op_sig.outputs.at(0).type == kTfLiteFloat32)) {
         return absl::OkStatus();
+      } else if ((op_sig.inputs.at(0).type == kTfLiteFloat16 ||
+                  op_sig.inputs.at(0).type == kTfLiteFloat32) &&
+                 op_sig.outputs.at(0).type == kTfLiteBool) {
+        return absl::OkStatus();
       } else if ((op_sig.inputs.at(0).type == kTfLiteFloat32 ||
                   op_sig.inputs.at(0).type == kTfLiteInt32) &&
                  (op_sig.outputs.at(0).type == kTfLiteFloat32 ||
@@ -544,6 +549,10 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
       if (GetNumberOfRuntimeInputs(op_sig) > 2) {
         return absl::UnimplementedError(
             "FullyConnected doesn't support more than 2 runtime inputs.");
+      }
+      if (op_sig.inputs[0].is_const) {
+        return absl::UnimplementedError(
+            "FullyConnected doesn't support constant input.");
       }
       if (tf_options->keep_num_dims == true) {
         const auto& input = op_sig.inputs.at(0);
@@ -674,7 +683,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
                                          /*required_runtime_inputs=*/1,
                                          /*required_outputs=*/1));
       return absl::OkStatus();
-
+    case kTfLiteBuiltinSelect:
     case kTfLiteBuiltinSelectV2:
       return CheckSelectV2GpuDelegateCompatibility(op_sig);
 
@@ -811,6 +820,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
     }
 
     case kTfLiteBuiltinPad:
+    case kTfLiteBuiltinPadv2:
     case kTfLiteBuiltinMirrorPad: {
       if (opcode == kTfLiteBuiltinMirrorPad) {
         const TfLiteMirrorPaddingParams* tf_options;
@@ -821,6 +831,11 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
               absl::StrCat("Only Reflective padding is supported for Mirror "
                            "Pad operation. But node has ",
                            tf_options->mode));
+        }
+      } else if (opcode == kTfLiteBuiltinPadv2 && op_sig.inputs.size() == 3) {
+        if (op_sig.inputs.at(2).type != kTfLiteFloat32) {
+          return absl::InvalidArgumentError(
+              "constant_values must be a scalar float");
         }
       }
       RETURN_IF_ERROR(CheckInputsOutputs(op_sig,
@@ -852,6 +867,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
     case kTfLiteBuiltinLogistic:  // Sigmoid
     case kTfLiteBuiltinNeg:
     case kTfLiteBuiltinRsqrt:
+    case kTfLiteBuiltinSign:
     case kTfLiteBuiltinSin:
     case kTfLiteBuiltinSqrt:
     case kTfLiteBuiltinSquare:
@@ -867,6 +883,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
     case kTfLiteBuiltinFloorMod:
     case kTfLiteBuiltinGreater:
     case kTfLiteBuiltinGreaterEqual:
+    case kTfLiteBuiltinLogicalAnd:
     case kTfLiteBuiltinLess:
     case kTfLiteBuiltinLessEqual:
     case kTfLiteBuiltinMaximum:

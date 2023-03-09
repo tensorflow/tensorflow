@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_mobile",
@@ -11,9 +12,10 @@ load(
     "if_static",
     "tf_cuda_tests_tags",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -22,8 +24,10 @@ package_group(
     name = "friends",
     packages = [
         # Authorized users go here.
-        "//tensorflow/core/tfrt/...",
+        "//tensorflow/compiler/mlir/tfrt/...",
+        "//tensorflow/core/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
+        # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/brain/mobile/lite/delegates/tfmrt/...",
     ],
 )
@@ -32,7 +36,6 @@ cc_library(
     name = "fallback_state",
     srcs = ["fallback_state.cc"],
     hdrs = ["fallback_state.h"],
-    # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
     deps = [
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
@@ -65,6 +68,7 @@ cc_library(
     visibility = [
         # copybara:uncomment "//tensorflow/core/runtime_fallback:internal",
         # copybara:uncomment "//tensorflow/core/tfrt/eager:__pkg__",
+        "//tensorflow/core/tfrt/graph_executor:__subpackages__",
         "//tensorflow/lite/delegates/flex:__pkg__",
     ],
     deps = [
@@ -82,12 +86,39 @@ cc_library(
 )
 
 cc_library(
-    name = "cost_recorder",
-    hdrs = ["cost_recorder.h"],
+    name = "op_kernel_runner_cache",
+    srcs = ["op_kernel_runner_cache.cc"],
+    hdrs = ["op_kernel_runner_cache.h"],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
+        ":op_kernel_runner",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "@tf_runtime//:hostcontext",
+    ],
+)
+
+cc_library(
+    name = "cost_recorder",
+    srcs = ["cost_recorder.cc"],
+    hdrs = ["cost_recorder.h"],
+    deps = [
+        ":op_cost_map_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/util:env_var",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+tf_cc_test(
+    name = "cost_recorder_test",
+    srcs = ["cost_recorder_test.cc"],
+    deps = [
+        ":cost_recorder",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -97,7 +128,9 @@ tf_cuda_cc_test(
     srcs = ["op_kernel_runner_test.cc"],
     tags = tf_cuda_tests_tags(),
     deps = [
+        ":fallback_state",
         ":op_kernel_runner",
+        ":op_kernel_runner_cache",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
@@ -110,4 +143,10 @@ tf_cuda_cc_test(
         ],
         [],
     ),
+)
+
+tf_proto_library(
+    name = "op_cost_map_proto",
+    srcs = ["op_cost_map.proto"],
+    cc_api_version = 2,
 )

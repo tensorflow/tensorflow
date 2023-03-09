@@ -28,7 +28,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
 
@@ -105,6 +105,18 @@ bool IsValidationSubgraph(const char* name);
 // have unsigned numbers. It is also generalized to work where sizeof(size_t)
 // is not 8.
 TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product);
+
+// Returns whether the TfLiteTensor is a resource or variant tensor.
+inline bool IsResourceOrVariant(const TfLiteTensor* tensor) {
+  return tensor->type == kTfLiteResource || tensor->type == kTfLiteVariant;
+}
+
+// Compute the number of bytes required to represent a tensor with dimensions
+// specified by the array dims (of length dims_size). Returns the status code
+// and bytes.
+TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
+                           size_t* bytes, TfLiteContext context);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_UTIL_H_

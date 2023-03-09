@@ -56,8 +56,8 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
-from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_hardware_feature
+from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
@@ -117,7 +117,7 @@ class TPUTest(test.TestCase):
     context.enable_jit_compile_rewrite()
     get_tpu_strategy(True)
     config.set_soft_device_placement(True)
-    with ops.device("/device:TPU:0"):
+    with ops.device("/device:TPU:1"):
       a = variables.Variable(1)
 
     def get_a_plus_one():
@@ -134,7 +134,7 @@ class TPUTest(test.TestCase):
       b = c + get_a_plus_one()
       return b + 1
 
-    with ops.device("/device:TPU:0"):
+    with ops.device("/device:TPU:1"):
       result = foo(a)
     self.assertAllEqual(33, result)
 
@@ -975,7 +975,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     def sparse_lookup(iterator):
 
       def tpu_function(sparse):
-        lookup = tpu.outside_compilation(
+        lookup = tpu_replication.outside_compilation(
             embedding_ops.safe_embedding_lookup_sparse, table, sparse)
         return math_ops.reduce_sum(lookup, axis=0)
 

@@ -35,7 +35,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -467,7 +467,7 @@ class MonitoredTrainingSessionTest(test.TestCase):
         self.assertEmpty(glob.glob(os.path.join(logdir, '*.meta')))
 
 
-class MockExtended(object):
+class MockExtended:
 
   def __init__(self, between_graph, should_init, should_checkpoint,
                should_save_summary):
@@ -477,7 +477,7 @@ class MockExtended(object):
     self.should_save_summary = should_save_summary
 
 
-class MockStrategy(object):
+class MockStrategy:
 
   def __init__(self,
                between_graph=False,
@@ -779,7 +779,7 @@ class CoordinatedSessionTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def test_propagates_exception_trace(self):
-    assertion = control_flow_ops.Assert(False, ['This should fail.'])
+    assertion = control_flow_assert.Assert(False, ['This should fail.'])
     with self.cached_session() as sess:
       coord = coordinator.Coordinator(clean_stop_exception_types=())
       coord_sess = monitored_session._CoordinatedSession(sess, coord)
@@ -804,7 +804,7 @@ class CoordinatedSessionTest(test.TestCase):
             'Traceback:\n%s' % tb)
 
 
-class AbortAtNSession(object):
+class AbortAtNSession:
   """A mock session that aborts at the N-th run call."""
 
   def __init__(self, sess, n):
@@ -895,7 +895,7 @@ class FailTrainingAfterCoordinatorStopped(StopCoordinatorWithException):
                                        'Session got garbage-collected.')
 
 
-class CountingSessionCreator(object):
+class CountingSessionCreator:
   """A creator that counts the number of created sessions."""
 
   def __init__(self, session):
@@ -917,7 +917,7 @@ class CountingSessionCreator(object):
 class RecoverableSessionTest(test.TestCase):
   """_RecoverableSession tests."""
 
-  class _SessionReturner(object):
+  class _SessionReturner:
 
     def __init__(self, sess):
       self._sess = sess
@@ -947,7 +947,7 @@ class RecoverableSessionTest(test.TestCase):
   def test_recovery(self):
     with self.cached_session() as sess:
 
-      class StackSessionCreator(object):
+      class StackSessionCreator:
 
         def __init__(self, sess):
           self.sessions_to_use = [
@@ -2020,7 +2020,7 @@ class MonitoredSessionTest(test.TestCase):
       c = array_ops.placeholder(dtypes.float32)
       v = array_ops.identity(c)
 
-      class Model(object):
+      class Model:
 
         def step_fn(self, step_context):
           return step_context.run_with_hooks(fetches=v, feed_dict={c: 3.2})
@@ -2032,7 +2032,7 @@ class MonitoredSessionTest(test.TestCase):
   def test_step_fn_belongs_to_a_class_and_has_extra_methods(self):
     with ops.Graph().as_default():
 
-      class Model(object):
+      class Model:
 
         def step_fn(self, step_context, extra_foo):
           del step_context, extra_foo

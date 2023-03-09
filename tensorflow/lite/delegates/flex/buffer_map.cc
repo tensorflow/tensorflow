@@ -33,10 +33,6 @@ bool BufferMap::HasTensor(int tensor_index) const {
   return id_to_tensor_.count(tensor_index) != 0;
 }
 
-bool BufferMap::IsTensorFlowTensor(int tensor_index) const {
-  return HasTensor(tensor_index) && owned_by_tf_.count(tensor_index) > 0;
-}
-
 tensorflow::Tensor BufferMap::GetTensor(int tensor_index) const {
   return id_to_tensor_.at(tensor_index);
 }
@@ -51,16 +47,10 @@ void BufferMap::SetFromTfLite(int tensor_index, const TfLiteTensor* tensor,
   TFLITE_CHECK(
       SetTfTensorFromTfLite(tensor, &id_to_tensor_[tensor_index], allow_reusing)
           .ok());
-  if (IsResourceOrVariant(tensor)) {
-    owned_by_tf_.insert(tensor_index);
-    return;
-  }
-  owned_by_tf_.erase(tensor_index);
 }
 
 void BufferMap::SetFromTensorFlow(int tensor_index, tensorflow::Tensor tensor) {
   id_to_tensor_[tensor_index] = std::move(tensor);
-  owned_by_tf_.insert(tensor_index);
 }
 
 }  // namespace flex

@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/simple_memory_arena.h"
@@ -50,7 +52,8 @@ class ArenaPlanner : public MemoryPlanner {
   // memory with any other tensor, effectively preserving them until the end
   // of inference.
   ArenaPlanner(TfLiteContext* context, std::unique_ptr<GraphInfo> graph_info,
-               bool preserve_all_tensors, int tensor_alignment);
+               bool preserve_all_tensors, int tensor_alignment,
+               int subgraph_index = 0);
   ~ArenaPlanner() override;
   ArenaPlanner(const ArenaPlanner&) = delete;
   ArenaPlanner& operator=(const ArenaPlanner&) = delete;
@@ -63,32 +66,40 @@ class ArenaPlanner : public MemoryPlanner {
   TfLiteStatus AcquireNonPersistentMemory() override;
   bool HasNonPersistentMemory() override;
   void DumpDebugInfo(const std::vector<int>& execution_plan) const override;
+  void GetAllocInfo(size_t* arena_size,
+                    size_t* arena_persist_size) const override;
 
   // Returns the base arena location for a given allocation type.
   std::intptr_t BasePointer(TfLiteAllocationType type);
 
  private:
+  // Identify tensors which may share memory.
+  void IdentifySharedTensors();
   // Make sure all the arenas have reserved enough memory to store all their
   // tensors.
-  TfLiteStatus Commit();
+  TfLiteStatus Commit(bool* arena_reallocated);
 
-  // Returns vector of tensor number ordered by the following algorithm.
-  // Comparator to sort tensors for the allocation algorithm:
+  // Sorts tensors_to_allocate` using by the following ordering:
   // - Tensors that have lifespan through the whole model inference time go
   // first;
-  // - Other tensors (e.g. intermediate and temporary ones) are sorted in
-  // non-increasing order of their size. If sizes of two tensors are equal, the
-  // one that needs to be allocated earlier goes first.
-  std::vector<int32_t> CreateTensorAllocationVector(int first_node,
-                                                    int last_node);
+  // - Other tensors (e.g. intermediate and temporary ones) are sorted from
+  // largest to smallest. For equal sized tensors, the tensor which is used
+  // first goes first.
+  void CreateTensorAllocationVector(std::vector<int32_t>* tensors_to_allocate);
+
+  // Returns vector containing the indices of all tensors allocated between
+  // `first_node` and `last_node`.
+  std::vector<int32_t> GetTensorsToAllocate(int first_node, int last_node);
 
   // Traverse the allocation queue and reserve space in the appropriate arena
   // for all tensors affected by ops in the interval [first_node, last_node].
-  TfLiteStatus CalculateAllocations(int first_node, int last_node);
+  TfLiteStatus CalculateAllocations(int first_node, int last_node,
+                                    std::vector<int32_t>* tensors_allocated);
 
   // Assign absolute memory location to a tensor, based on its relative
   // position inside the corresponding arena buffer.
-  TfLiteStatus ResolveTensorAllocation(int tensor_index);
+  TfLiteStatus ResolveTensorAllocation(int32_t tensor_index,
+                                       TfLiteTensor* tensors);
 
   // Register an allocation for all internal (temporary) tensors of
   // 'node_index'.
@@ -98,11 +109,18 @@ class ArenaPlanner : public MemoryPlanner {
   // 'node_index'.
   TfLiteStatus CalculateDeallocationOfInternalTensors(int node_index);
 
+  // Return the index of the tensor owing `tensor_index's` buffer.
+  int FindSharedTensor(int tensor_index);
+
   TfLiteContext* context_;
   std::unique_ptr<GraphInfo> graph_info_;
 
   // Stores allocation data for all tensors.
   std::vector<ArenaAllocWithUsageInterval> allocs_;
+
+  // Map of Tensors allocated by each node.
+  // NOLINTNEXTLINE - absl::flat_hash_set increases binary size by 106kB.
+  std::vector<std::unordered_set<int32_t>> nodes_to_tensors_;
 
   // First node, that uses the tensor. It needs to be allocated before
   // execution of the node's operation.
@@ -127,6 +145,14 @@ class ArenaPlanner : public MemoryPlanner {
 
   // Number of bytes that tensor buffers should be aligned to.
   int tensor_alignment_;
+
+  // Index of the last node whose tensors were allocated.
+  int last_active_node_;
+
+  // Holds index of original tensor if the tensor is sharing underlined
+  // data with another tensor.
+  // NOLINTNEXTLINE - absl::flat_hash_map increases binary size by 106kB.
+  std::unordered_map<int32_t, int32_t> actual_tensor_id_;
 };
 
 }  // namespace tflite

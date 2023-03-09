@@ -23,10 +23,10 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/recent_request_ids.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
+#include "tensorflow/core/framework/cancellation.h"
 
 namespace tensorflow {
 
-class CancellationManager;
 class Device;
 struct WorkerEnv;
 class WorkerSession;

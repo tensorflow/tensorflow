@@ -26,12 +26,12 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -384,7 +384,6 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
                   DetermineHloInstructionIsReplicated(
                       inst, index, cross_partition_spmd_, hlo_replication_,
                       support_partial_replication_);
-              return Status::OK();
             });
         changed |= assign_or_combine_shapetree(std::move(shape_tree), inst);
       }
@@ -393,7 +392,7 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
   return changed;
 }
 
-void HloReplicationAnalysis::ComputeHloReplication() {
+Status HloReplicationAnalysis::ComputeHloReplication() {
   // Add entry parameters to the above sets according to user annotation.
   // Replicated modules read from `parameter_replicated_at_leaf_buffers` whereas
   // SPMD partitioned modules read from HloSharding attributes.
@@ -404,7 +403,7 @@ void HloReplicationAnalysis::ComputeHloReplication() {
                                          HloReplication::UniqueOnAllDevices());
     const auto& replication = param->parameter_replicated_at_leaf_buffers();
     int leaf_index = 0;
-    ShapeUtil::ForEachSubshape(
+    Status status = ShapeUtil::ForEachSubshapeWithStatus(
         param->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
           if (!ShapeUtil::IsLeafIndex(param->shape(), index)) {
             return OkStatus();
@@ -438,10 +437,12 @@ void HloReplicationAnalysis::ComputeHloReplication() {
           }
           return OkStatus();
         });
+    TF_RETURN_IF_ERROR(status);
     hlo_replication_[param] = std::move(shape_tree);
   }
   ComputeHloReplicationOnComputation(entry,
                                      /*mark_everything_not_replicated=*/false);
+  return OkStatus();
 }
 
 bool HloReplicationAnalysis::HloInstructionIsReplicatedAt(
@@ -495,7 +496,7 @@ HloReplicationAnalysis::Run(const HloModule* module, bool cross_partition_spmd,
   auto analysis = absl::WrapUnique(new HloReplicationAnalysis(
       module, cross_partition_spmd, loops_known_with_same_iterations,
       /*support_partial_replication=*/false));
-  analysis->ComputeHloReplication();
+  TF_RETURN_IF_ERROR(analysis->ComputeHloReplication());
   return analysis;
 }
 
@@ -506,7 +507,7 @@ HloReplicationAnalysis::RunWithPartialReplication(const HloModule* module,
   auto analysis = absl::WrapUnique(
       new HloReplicationAnalysis(module, cross_partition_spmd, &empty,
                                  /*support_partial_replication=*/true));
-  analysis->ComputeHloReplication();
+  TF_RETURN_IF_ERROR(analysis->ComputeHloReplication());
   return analysis;
 }
 

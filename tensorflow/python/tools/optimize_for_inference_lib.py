@@ -282,15 +282,15 @@ def fold_batch_norms(input_graph_def):
                          " run first?" % (node.name, mean_op))
       continue
     mean_value = values_from_const(mean_op)
-    if bias is not None:
-      # Adjust the mean of the batchnorm based on the add op in-between the conv
-      # and the batchnorm.
-      mean_value = mean_value - values_from_const(bias)
     if mean_value.shape != (channel_count,):
       tf_logging.warning("Incorrect shape for mean, found %s, expected %s,"
                          " for node %s" % (str(mean_value.shape), str(
                              (channel_count,)), node.name))
       continue
+    if bias is not None:
+      # Adjust the mean of the batchnorm based on the add op in-between the conv
+      # and the batchnorm.
+      mean_value = mean_value - values_from_const(bias)
 
     var_op = node_from_map(input_node_map,
                            node.input[INPUT_ORDER[node.op].index("var_op")])

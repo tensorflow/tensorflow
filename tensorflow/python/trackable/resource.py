@@ -18,8 +18,6 @@ import contextlib
 import copy
 import weakref
 
-import six
-
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
@@ -31,7 +29,7 @@ from tensorflow.python.util.tf_export import tf_export
 _RESOURCE_TRACKER_STACK = []
 
 
-class ResourceTracker(object):
+class ResourceTracker:
   """An object that tracks a list of resources."""
 
   __slots__ = ["_resources"]
@@ -104,8 +102,7 @@ class _ResourceMetaclass(type):
     return previous_getter(*args, **kwargs)
 
 
-class CapturableResource(six.with_metaclass(_ResourceMetaclass,
-                                            base.Trackable)):
+class CapturableResource(base.Trackable, metaclass=_ResourceMetaclass):
   """Holds a Tensor which a tf.function can capture.
 
   `CapturableResource`s are discovered by traversing the graph of object
@@ -175,7 +172,8 @@ class CapturableResource(six.with_metaclass(_ResourceMetaclass,
         self._resource_handle = self._create_resource()
     return self._resource_handle
 
-  def _map_resources(self, _):
+  def _export_to_saved_model_graph(
+      self, object_map, tensor_map, **unused_kwargs):
     """For implementing `Trackable`."""
     new_obj = copy.copy(self)
     # pylint: disable=protected-access
@@ -183,11 +181,11 @@ class CapturableResource(six.with_metaclass(_ResourceMetaclass,
       new_resource = new_obj._create_resource()
     new_obj._resource_handle = new_resource
     # pylint: enable=protected-access
-    obj_map = {self: new_obj}
-    resource_map = {self.resource_handle: new_resource}
-    return obj_map, resource_map
+    object_map[self] = new_obj
+    tensor_map[self.resource_handle] = new_resource
+    return [self.resource_handle]
 
-  def _trackable_children(self, save_type, **kwargs):
+  def _trackable_children(self, save_type=base.SaveType.CHECKPOINT, **kwargs):
     children = super()._trackable_children(save_type, **kwargs)
     if save_type == "savedmodel":
       @def_function.function(input_signature=[], autograph=False)
@@ -284,7 +282,7 @@ class TrackableResource(CapturableResource):
     global _RESOURCE_TRACKER_STACK
     for resource_tracker in _RESOURCE_TRACKER_STACK:
       resource_tracker.add_resource(self)
-    super(TrackableResource, self).__init__(device=device)
+    super().__init__(device=device)
 
 
 # TODO(b/124205571,b/124092991): Solve destruction of resources.
@@ -292,7 +290,7 @@ class RestoredResource(TrackableResource):
   """Restored SavedResource."""
 
   def __init__(self, device=""):
-    super(RestoredResource, self).__init__(device=device)
+    super().__init__(device=device)
 
   @classmethod
   def _deserialize_from_proto(cls, object_proto, dependencies, **unused_kwargs):

@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_COPY_INSERTION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_COPY_INSERTION_H_
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -62,15 +62,20 @@ class CopyInsertion : public HloModulePass {
 
   // Run the pass on the given module. Returns whether the module was changed
   // (copies were inserted).
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Try to remove as many copies from the module as possible without
   // introducing live range interference. Only copy instructions that are
   // eligible for copy elision are considered for removal.
   // If check_live_range_ordering is true, check that live ranges are ordered
   // in all the existing aliased buffers.
-  Status RemoveUnnecessaryCopies(HloOrdering* ordering, HloModule* module,
-                                 bool check_live_range_ordering = false);
+  Status RemoveUnnecessaryCopies(
+      HloOrdering* ordering, HloModule* module,
+      bool check_live_range_ordering = false,
+      const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
   // Add copies to address special constraints on the roots of computations not
   // related to live range interference:
@@ -82,12 +87,16 @@ class CopyInsertion : public HloModulePass {
   //
   //    (3) Constants and parameters cannot be live out of the entry computation
   //
-  Status AddSpecialCaseCopies(HloModule* module);
+  Status AddSpecialCaseCopies(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
  protected:
   // Override which requires the caller to pass in a call graph.
-  virtual Status AddSpecialCaseCopies(const CallGraph& call_graph,
-                                      HloModule* module);
+  virtual Status AddSpecialCaseCopies(
+      const CallGraph& call_graph,
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      HloModule* module);
 
   // Add copies for conditional instructions.
   virtual Status AddCopiesForConditional(const HloAliasAnalysis& alias_analysis,
@@ -98,7 +107,9 @@ class CopyInsertion : public HloModulePass {
   HloDataflowAnalysis::CanShareBuffer can_share_buffer_;
 
  private:
-  Status AddCopiesToResolveInterference(HloModule* module);
+  Status AddCopiesToResolveInterference(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
   int64_t use_region_based_live_range_analysis_;
 };
 

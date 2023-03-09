@@ -22,8 +22,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/bind_front.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -45,9 +46,7 @@ class MappedPtrContainerSorterTest : public ::testing::Test {
   using Sorter = MappedPtrContainerSorter<std::string>;
 
   MappedPtrContainerSorterTest()
-      : map_ptr_(
-            [this](const std::string* ordered) { return MapPtr(ordered); }),
-        ordered_unique_ptrs_(CreateUniquePtrContainer(
+      : ordered_unique_ptrs_(CreateUniquePtrContainer(
             {"m0", "m1", "m2", "m3", "not_in_unordered"})),
         unordered_unique_ptrs_(
             CreateUniquePtrContainer({"m3", "m1", "m0", "m2"})) {
@@ -62,13 +61,17 @@ class MappedPtrContainerSorterTest : public ::testing::Test {
   }
 
  protected:
-  const std::string* MapPtr(const std::string* ordered) {
+  const std::string* MapPtr(const std::string* ordered) const {
     for (size_t i = 0; i < unordered_unique_ptrs_.size(); ++i) {
       if (*ordered == *unordered_unique_ptrs_[i]) {
         return unordered_unique_ptrs_[i].get();
       }
     }
     return nullptr;
+  }
+
+  auto MapPtrFn() const {
+    return absl::bind_front(&MappedPtrContainerSorterTest::MapPtr, this);
   }
 
   // unordered_unique_ptrs_: u0, m3, u1, u2, m2, m0, m2, u3
@@ -83,7 +86,6 @@ class MappedPtrContainerSorterTest : public ::testing::Test {
                                   std::make_unique<std::string>("u3"));
   }
 
-  Sorter::MapPtrFn map_ptr_;
   std::vector<std::unique_ptr<std::string>> ordered_unique_ptrs_;
   std::vector<std::unique_ptr<std::string>> unordered_unique_ptrs_;
   std::vector<std::string*> ordered_raw_ptrs_;
@@ -93,7 +95,7 @@ class MappedPtrContainerSorterTest : public ::testing::Test {
 };
 
 TEST_F(MappedPtrContainerSorterTest, SortUniquePtrs) {
-  TF_EXPECT_OK(Sorter::Sort(map_ptr_, Sorter::InvalidIndexFn(),
+  TF_EXPECT_OK(Sorter::Sort(MapPtrFn(), Sorter::InvalidIndexFn(),
                             ordered_unique_ptrs_, unordered_unique_ptrs_));
   EXPECT_THAT(
       unordered_unique_ptrs_,
@@ -102,7 +104,7 @@ TEST_F(MappedPtrContainerSorterTest, SortUniquePtrs) {
 }
 
 TEST_F(MappedPtrContainerSorterTest, RawPtrs) {
-  TF_EXPECT_OK(Sorter::Sort(map_ptr_, Sorter::InvalidIndexFn(),
+  TF_EXPECT_OK(Sorter::Sort(MapPtrFn(), Sorter::InvalidIndexFn(),
                             ordered_raw_ptrs_, unordered_raw_ptrs_));
   EXPECT_THAT(
       unordered_raw_ptrs_,
@@ -111,7 +113,7 @@ TEST_F(MappedPtrContainerSorterTest, RawPtrs) {
 }
 
 TEST_F(MappedPtrContainerSorterTest, ConstRawPtrs) {
-  TF_EXPECT_OK(Sorter::Sort(map_ptr_, Sorter::InvalidIndexFn(),
+  TF_EXPECT_OK(Sorter::Sort(MapPtrFn(), Sorter::InvalidIndexFn(),
                             ordered_const_raw_ptrs_,
                             unordered_const_raw_ptrs_));
   EXPECT_THAT(
@@ -126,7 +128,7 @@ TEST_F(MappedPtrContainerSorterTest, DifferentContainerTypes) {
     ordered_ptrs.push_back(std::move(ptr));
   }
 
-  TF_EXPECT_OK(Sorter::Sort(map_ptr_, Sorter::InvalidIndexFn(), ordered_ptrs,
+  TF_EXPECT_OK(Sorter::Sort(MapPtrFn(), Sorter::InvalidIndexFn(), ordered_ptrs,
                             unordered_unique_ptrs_));
   EXPECT_THAT(
       unordered_unique_ptrs_,
@@ -137,7 +139,7 @@ TEST_F(MappedPtrContainerSorterTest, DifferentContainerTypes) {
 TEST_F(MappedPtrContainerSorterTest, WithUnmappedPtrsAfterMappedPtrs) {
   AddUnmappedElementsToUnorderedUniquePtrs();
 
-  TF_EXPECT_OK(Sorter::Sort(map_ptr_, Sorter::IndexAfterMappedElementsFn(),
+  TF_EXPECT_OK(Sorter::Sort(MapPtrFn(), Sorter::IndexAfterMappedElementsFn(),
                             ordered_unique_ptrs_, unordered_unique_ptrs_));
   EXPECT_THAT(
       unordered_unique_ptrs_,
@@ -151,7 +153,7 @@ TEST_F(MappedPtrContainerSorterTest, WithUnmappedPtrsAfterMappedPtrs) {
 TEST_F(MappedPtrContainerSorterTest, WithUnmappedPtrsBeforeMappedPtrs) {
   AddUnmappedElementsToUnorderedUniquePtrs();
 
-  TF_EXPECT_OK(Sorter::Sort(map_ptr_, Sorter::IndexBeforeMappedElementsFn(),
+  TF_EXPECT_OK(Sorter::Sort(MapPtrFn(), Sorter::IndexBeforeMappedElementsFn(),
                             ordered_unique_ptrs_, unordered_unique_ptrs_));
   EXPECT_THAT(unordered_unique_ptrs_,
               ElementsAre(
@@ -163,8 +165,7 @@ TEST_F(MappedPtrContainerSorterTest, WithUnmappedPtrsBeforeMappedPtrs) {
 }
 
 TEST_F(MappedPtrContainerSorterTest, WithUnmappedPtrsInCustomLocations) {
-  Sorter::UnmappedPtrIndexFn unmapped_ptr_index =
-      [](const std::string* s) -> size_t {
+  auto unmapped_ptr_index = [](const std::string* s) -> size_t {
     if (*s == "u0") {
       return Sorter::IndexAfterMappedElementsFn()(s);
     }
@@ -181,8 +182,8 @@ TEST_F(MappedPtrContainerSorterTest, WithUnmappedPtrsInCustomLocations) {
   };
   AddUnmappedElementsToUnorderedUniquePtrs();
 
-  TF_EXPECT_OK(Sorter::Sort(map_ptr_, unmapped_ptr_index, ordered_unique_ptrs_,
-                            unordered_unique_ptrs_));
+  TF_EXPECT_OK(Sorter::Sort(MapPtrFn(), unmapped_ptr_index,
+                            ordered_unique_ptrs_, unordered_unique_ptrs_));
   EXPECT_THAT(
       unordered_unique_ptrs_,
       ElementsAre(
@@ -222,7 +223,7 @@ TEST_F(MappedPtrContainerSorterTest,
   ordered_raw_ptrs_.push_back(ordered_m1);
   unordered_raw_ptrs_.push_back(unordered_m1);
 
-  TF_EXPECT_OK(Sorter::Sort(map_ptr_, Sorter::IndexBeforeMappedElementsFn(),
+  TF_EXPECT_OK(Sorter::Sort(MapPtrFn(), Sorter::IndexBeforeMappedElementsFn(),
                             ordered_raw_ptrs_, unordered_raw_ptrs_));
   EXPECT_THAT(
       unordered_raw_ptrs_,
@@ -258,7 +259,7 @@ TEST_F(MappedPtrContainerSorterTest,
   unordered_raw_ptrs_.push_back(unordered_m1);
   unordered_raw_ptrs_.push_back(unordered_m1);
 
-  TF_EXPECT_OK(Sorter::Sort(map_ptr_, Sorter::IndexBeforeMappedElementsFn(),
+  TF_EXPECT_OK(Sorter::Sort(MapPtrFn(), Sorter::IndexBeforeMappedElementsFn(),
                             ordered_raw_ptrs_, unordered_raw_ptrs_));
   EXPECT_THAT(
       unordered_raw_ptrs_,
@@ -272,8 +273,7 @@ TEST_F(MappedPtrContainerSorterTest,
 
 TEST_F(MappedPtrContainerSorterTest, InvalidUnmappedIndex) {
   unordered_unique_ptrs_.push_back(std::make_unique<std::string>("u0"));
-  Sorter::UnmappedPtrIndexFn unmapped_index_fn =
-      [](const std::string* unmapped) -> size_t {
+  auto unmapped_index_fn = [](const std::string* unmapped) -> size_t {
     if (*unmapped == "u0") {
       // There are 4 mapped elements, so index 3 is the highest valid index,
       // (excluding special indices)
@@ -282,7 +282,7 @@ TEST_F(MappedPtrContainerSorterTest, InvalidUnmappedIndex) {
     return Sorter::IndexBeforeMappedElementsFn()(unmapped);
   };
 
-  EXPECT_FALSE(Sorter::Sort(map_ptr_, unmapped_index_fn, ordered_unique_ptrs_,
+  EXPECT_FALSE(Sorter::Sort(MapPtrFn(), unmapped_index_fn, ordered_unique_ptrs_,
                             unordered_unique_ptrs_)
                    .ok());
 }

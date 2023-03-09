@@ -32,15 +32,14 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  *
  * <p>For example, if a model takes only one input and returns only one output:
  *
- * <pre>{@code
+ * <pre> {@code
  * try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
  *   interpreter.run(input, output);
- * }
- * }</pre>
+ * }}</pre>
  *
  * <p>If a model takes multiple inputs or outputs:
  *
- * <pre>{@code
+ * <pre> {@code
  * Object[] inputs = {input0, input1, ...};
  * Map<Integer, Object> map_of_indices_to_outputs = new HashMap<>();
  * FloatBuffer ith_output = FloatBuffer.allocateDirect(3 * 2 * 4);  // Float tensor, shape 3x2x4.
@@ -48,18 +47,16 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  * map_of_indices_to_outputs.put(i, ith_output);
  * try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
  *   interpreter.runForMultipleInputsOutputs(inputs, map_of_indices_to_outputs);
- * }
- * }</pre>
+ * }}</pre>
  *
  * <p>If a model takes or produces string tensors:
  *
- * <pre>{@code
+ * <pre> {@code
  * String[] input = {"foo", "bar"};  // Input tensor shape is [2].
  * String[] output = new String[3][2];  // Output tensor shape is [3, 2].
  * try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
  *   interpreter.runForMultipleInputsOutputs(input, output);
- * }
- * }</pre>
+ * }}</pre>
  *
  * <p>Orders of inputs and outputs are determined when converting TensorFlow model to TensorFlowLite
  * model with Toco, as are the default shapes of the inputs.
@@ -89,6 +86,12 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
 
     Options(InterpreterImpl.Options options) {
       super(options);
+    }
+
+    @Override
+    public Options setUseXNNPACK(boolean useXNNPACK) {
+      super.setUseXNNPACK(useXNNPACK);
+      return this;
     }
 
     @Override
@@ -148,22 +151,6 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
     @Override
     public Options setCancellable(boolean allow) {
       super.setCancellable(allow);
-      return this;
-    }
-
-    /**
-     * Experimental: Disable an optimized set of CPU kernels (provided by XNNPACK).
-     *
-     * <p>Disabling this flag will disable use of a highly optimized set of CPU kernels provided via
-     * the XNNPACK delegate. Currently, this is restricted to a subset of floating point operations.
-     * See
-     * https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/xnnpack/README.md
-     * for more details.
-     *
-     * <p>WARNING: This is an experimental interface that is subject to change.
-     */
-    public Options setUseXNNPACK(boolean useXNNPACK) {
-      this.useXNNPACK = useXNNPACK;
       return this;
     }
 
@@ -280,7 +267,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
   }
 
   /**
-   * Gets the Tensor associated with the provdied input name and signature method name.
+   * Gets the Tensor associated with the provided input name and signature method name.
    *
    * <p>WARNING: This is an experimental API and subject to change.
    *
@@ -335,7 +322,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
   }
 
   /**
-   * Gets the Tensor associated with the provdied output name in specifc signature method.
+   * Gets the Tensor associated with the provided output name in specific signature method.
    *
    * <p>Note: Output tensor details (e.g., shape) may not be fully populated until after inference
    * is executed. If you need updated details *before* running inference (e.g., after resizing an
@@ -398,6 +385,6 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
     wrapper.setCancelled(cancelled);
   }
 
-  NativeInterpreterWrapperExperimental wrapperExperimental;
-  String[] signatureKeyList;
+  private final NativeInterpreterWrapperExperimental wrapperExperimental;
+  private final String[] signatureKeyList;
 }

@@ -63,6 +63,13 @@ Status FractionalPoolShapeFn(InferenceContext* c) {
     }
   }
 
+  for (std::size_t i = 0; i < pooling_ratio.size(); ++i) {
+    if (pooling_ratio[i] < 1) {
+      return errors::InvalidArgument(
+          "pooling_ratio cannot be smaller than 1, got: ", pooling_ratio[i]);
+    }
+  }
+
   c->set_output(0, c->MakeShape(output_dims));
   c->set_output(1, c->Vector(output_dims[1]));
   c->set_output(2, c->Vector(output_dims[2]));
@@ -389,6 +396,22 @@ REGISTER_OP("Conv2DBackpropInput")
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn(shape_inference::Conv2DBackpropInputShape);
 
+REGISTER_OP("Conv2DBackpropInputV2")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("out_backprop: T")
+    .Output("output: T")
+    .Attr("T: {half, bfloat16, float, double, int32}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn([](InferenceContext* c) {
+      return UnchangedShapeWithRank(c, 4);
+    });
+
 // TODO(jeff): Instead of 'use_cudnn_for_gpu', maybe we should have a
 // more general string attribute ('kernel_impl'?) that can be used to
 // select among several possible implementations.
@@ -412,17 +435,40 @@ REGISTER_OP("Conv2DBackpropFilter")
       return OkStatus();
     });
 
-REGISTER_OP("_FusedConv2D")
+REGISTER_OP("Conv2DBackpropFilterV2")
     .Input("input: T")
     .Input("filter: T")
-    .Input("args: num_args * T")
+    .Input("out_backprop: T")
     .Output("output: T")
-    .Attr("T: {half, float, double}")
-    .Attr("num_args: int >= 0")
+    .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrStringWithExplicit())
     .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &out));
+      c->set_output(0, out);
+      return OkStatus();
+    });
+
+REGISTER_OP("_FusedConv2D")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("args: TArgs")
+    .Input("host_args : num_host_args * float")
+    .Output("output: T")
+    .Attr("T: {half, float, double, int8, qint8}")
+    .Attr("TArgs: list(type)")
+    .Attr("num_args: int >= 0")
+    .Attr("num_host_args: int >= 0 =0")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
+    .Attr("data_format: { 'NHWC', 'NCHW', 'NCHW_VECT_C' } = 'NHWC'")
+    .Attr("filter_format: {'HWIO', 'OIHW', 'OIHW_VECT_I'} = 'HWIO'")
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("fused_ops: list(string) = []")
@@ -577,7 +623,7 @@ REGISTER_OP("FusedResizeAndPadConv2D")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .SetShapeFn([](InferenceContext* c) {
-      return CommonFusedConvCalculations(c, true /* has_resize */);
+      return CommonFusedConvCalculations(c, /*has_resize=*/true);
     });
 
 REGISTER_OP("FusedPadConv2D")
@@ -590,7 +636,7 @@ REGISTER_OP("FusedPadConv2D")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .SetShapeFn([](InferenceContext* c) {
-      return CommonFusedConvCalculations(c, false /* has_resize */);
+      return CommonFusedConvCalculations(c, /*has_resize=*/false);
     });
 
 // --------------------------------------------------------------------------
@@ -961,6 +1007,14 @@ REGISTER_OP("MaxPoolWithArgmax")
     .Output("argmax: Targmax")
     .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
+      std::vector<int32> ksize;
+      TF_RETURN_IF_ERROR(c->GetAttr("ksize", &ksize));
+      for (int i = 0; i < ksize.size(); ++i) {
+        if (ksize[i] <= 0) {
+          return errors::InvalidArgument(
+              "ksize must be a postive int32 value, got:", ksize[i]);
+        }
+      }
       TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
       c->set_output(1, c->output(0));
       return OkStatus();
@@ -1384,9 +1438,16 @@ Status ApproxTopKShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->GetAttr("aggregate_to_topk", &aggregate_to_topk));
   ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input_shape));
+  int64_t r_dim_copy = reduction_dimension;
+  int64_t rank = c->Rank(input_shape);
   if (reduction_dimension < 0) {
     // Reverse index
     reduction_dimension += c->Rank(input_shape);
+  }
+  if (reduction_dimension >= c->Rank(input_shape)) {
+    return errors::InvalidArgument("Invalid reduction dimension: ", r_dim_copy,
+                                   ". Must be within the range of [", -rank,
+                                   ", ", rank - 1, "]");
   }
   int64_t reduction_dim_value =
       c->Value(c->Dim(input_shape, reduction_dimension));
@@ -1394,6 +1455,10 @@ Status ApproxTopKShape(shape_inference::InferenceContext* c) {
   if (reduction_dim_value < k) {
     return errors::InvalidArgument("input must have last dimension >= k = ", k,
                                    " but was ", reduction_dim_value);
+  }
+  if (recall_target > 1.0 || recall_target <= 0.) {
+    return errors::InvalidArgument("Invalid recall target: ", recall_target,
+                                   ". Valid value range in : [0, 1.0].");
   }
 
   int64_t output_dim_value = [&] {
@@ -1936,7 +2001,7 @@ REGISTER_OP("_MklConv2DBackpropFilter")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Conv2DBackpropFilter. Uses MKL DNN APIs to compute the
@@ -1963,7 +2028,7 @@ REGISTER_OP("_MklNativeConv2DBackpropFilter")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Conv2DBackpropFilter for Eager mode. Uses MKL DNN APIs
@@ -2002,7 +2067,7 @@ REGISTER_OP("__MklDummyConv2DBackpropFilterWithBias")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &sh));
       TF_RETURN_IF_ERROR(c->WithRank(sh, 4, &sh));
       c->set_output(0, sh);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Dummy node that enables fusing Conv2DBackpropFilter and BiasAddGrad operator
@@ -2079,7 +2144,7 @@ REGISTER_OP("_MklConv2DBackpropInput")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Convolution2D backward input. Uses MKL DNN APIs to compute the
@@ -2106,7 +2171,7 @@ REGISTER_OP("_MklNativeConv2DBackpropInput")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Convolution2D backward input for Eager mode. Uses MKL DNN APIs
@@ -2159,7 +2224,7 @@ REGISTER_OP("_MklConv3DBackpropInputV2")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Convolution3D backward input. Uses MKL DNN APIs to compute the
@@ -2188,7 +2253,7 @@ REGISTER_OP("_MklConv3DBackpropFilterV2")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Conv3DBackpropFilter. Uses MKL DNN APIs to compute the
@@ -2321,20 +2386,6 @@ MKL version of EluGrad operator. Uses MKL DNN APIs to compute Elu
 gradients for Elu operation.
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
-)doc");
-
-REGISTER_OP("_MklSoftmax")
-    .Input("logits: T")
-    .Input("mkl_logits: uint8")
-    .Output("softmax: T")
-    .Output("mkl_softmax: uint8")
-    .Attr("T: {bfloat16, half, float, double}")
-    .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
-    })
-    .Doc(R"doc(
-MKL version of ReluGrad operator. Uses MKL DNN APIs to compute rectified
-linear gradients for Relu operation.
 )doc");
 
 REGISTER_OP("_MklTanh")
@@ -2600,7 +2651,7 @@ REGISTER_OP("_MklLRNGrad")
       TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));     // input_image
       TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));     // output_image
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of LRNGrad operator. Uses MKL DNN APIs to compute gradient for

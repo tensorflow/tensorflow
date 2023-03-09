@@ -25,6 +25,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.platform import test
@@ -54,12 +55,12 @@ class RGBToHSVTest(xla_test.XLATestCase):
         with self.test_scope():
           batch1 = image_ops.rgb_to_hsv(batch0)
           batch2 = image_ops.hsv_to_rgb(batch1)
-        split0 = array_ops.unstack(batch0)
+        split0 = array_ops_stack.unstack(batch0)
         with self.test_scope():
           split1 = list(map(image_ops.rgb_to_hsv, split0))
           split2 = list(map(image_ops.hsv_to_rgb, split1))
-        join1 = array_ops.stack(split1)
-        join2 = array_ops.stack(split2)
+        join1 = array_ops_stack.stack(split1)
+        join2 = array_ops_stack.stack(split2)
         batch1, batch2, join1, join2 = sess.run([batch1, batch2, join1, join2],
                                                 {batch0: inp})
 
@@ -78,7 +79,7 @@ class RGBToHSVTest(xla_test.XLATestCase):
         with self.test_scope():
           hsv = image_ops.rgb_to_hsv(placeholder)
           rgb = image_ops.hsv_to_rgb(hsv)
-        rgb_tf = rgb.eval(feed_dict={placeholder: rgb_np})
+          rgb_tf = rgb.eval(feed_dict={placeholder: rgb_np})
       self.assertAllCloseAccordingToType(rgb_tf, rgb_np, bfloat16_atol=0.03)
 
   def testRGBToHSVNumpy(self):
@@ -520,9 +521,6 @@ class ResizeNearestNeighborTest(xla_test.XLATestCase):
             dtype=np.float32))
 
   def testAlignCorners3x3To12x12_uint8(self):
-    # TODO(b/72099414): enable the test for TPU when the issue is fixed.
-    if (self.device not in ["XLA_GPU", "XLA_CPU"]):
-      return
     # Ensure that resize with convolution works on XLA/GPU for integer types
     self._assertForwardOpMatchesExpected(
         np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.uint8), [12, 12],

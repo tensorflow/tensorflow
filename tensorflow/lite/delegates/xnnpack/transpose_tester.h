@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_STATIC_TRANSPOSE_TESTER_H_
-#define TENSORFLOW_LITE_DELEGATES_XNNPACK_STATIC_TRANSPOSE_TESTER_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_TRANSPOSE_TESTER_H_
+#define TENSORFLOW_LITE_DELEGATES_XNNPACK_TRANSPOSE_TESTER_H_
 
 #include <cstdint>
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -74,4 +74,4 @@ class TransposeTester {
 }  // namespace xnnpack
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_XNNPACK_STATIC_TRANSPOSE_TESTER_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_XNNPACK_TRANSPOSE_TESTER_H_

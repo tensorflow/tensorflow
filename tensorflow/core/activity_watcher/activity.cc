@@ -19,9 +19,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace activity_watcher {
-void MaybeEnableMultiWorkersWatching(CoordinationServiceAgent* agent) {}
+void MaybeEnableMultiWorkersWatching(tsl::CoordinationServiceAgent* agent) {}
 
-namespace internal {
+namespace tfw_internal {
 
 std::atomic<int> g_watcher_level(kWatcherDisabled);
 ActivityId RecordActivityStart(std::unique_ptr<Activity>) {
@@ -29,7 +29,7 @@ ActivityId RecordActivityStart(std::unique_ptr<Activity>) {
 }
 void RecordActivityEnd(ActivityId id) {}
 
-}  // namespace internal
+}  // namespace tfw_internal
 
 }  // namespace activity_watcher
 }  // namespace tensorflow

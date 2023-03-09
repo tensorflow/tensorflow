@@ -31,8 +31,10 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
+#include "tensorflow/dtensor/mlir/expansions/replicated_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
@@ -53,7 +55,21 @@ SPMDExpanderBase* SPMDExpanderRegistry::GetPropagateFnForOp(
     mlir::Operation* op) {
   auto key = OpName(op);
   auto fn = op_to_propagate_fn_map_.find(key);
-  if (fn == op_to_propagate_fn_map_.end()) return nullptr;
+  if (fn == op_to_propagate_fn_map_.end()) {
+    if (EnableReplicatedSpmdAsDefault(key)) {
+      LOG(WARNING)
+          << key << " is defaulting to ReplicatedOpSPMDExpander. This "
+          << " has performance implications as all inputs and outputs "
+          << " will be replicated if they are not already. Please file a "
+          << " feature request to TF DTensor to implement an efficient "
+          << " SPMD for this operation.";
+      RegisterPropagateFn(key, std::make_unique<ReplicatedOpSPMDExpander>(
+                                   /*relayout_when_sharded=*/true));
+      return op_to_propagate_fn_map_.find(key)->second.get();
+    } else {
+      return nullptr;
+    }
+  }
   return fn->second.get();
 }
 
@@ -72,9 +88,18 @@ Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
 
   if (computed_layout.empty() && op->getNumResults() != 0) {
     return errors::InvalidArgument(
-        absl::StrCat("No attachced layout found for op : ", OpName(op),
+        absl::StrCat("No attached layout found for op : ", OpName(op),
                      " This might be due to an error in layout propagation.")
             .c_str());
+  }
+
+  // If op is on an XLA SPMD mesh, then set layout and skip expansion.
+  TF_ASSIGN_OR_RETURN(const Mesh& mesh, ExtractDeviceMeshEnclosingCluster(op));
+  if (mesh.use_xla_spmd()) {
+    *output = op;
+    SetLayoutOnOp(*output, absl::Span<std::optional<Layout>>(
+                               computed_layout.data(), computed_layout.size()));
+    return OkStatus();
   }
 
   // `op` may be removed/replaced from the graph during SPMD expansion, so
@@ -122,8 +147,7 @@ Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
     auto local_expanded_shape_or_status = GetShapeOfValue(output_value);
     if (!local_expanded_shape_or_status.ok()) continue;
 
-    const auto local_expanded_shape =
-        local_expanded_shape_or_status.ValueOrDie();
+    const auto local_expanded_shape = local_expanded_shape_or_status.value();
     const auto& layout = std::get<1>(output_and_layout);
     const auto expected_global_shape =
         layout->GlobalShapeFromLocalShape(local_expanded_shape);

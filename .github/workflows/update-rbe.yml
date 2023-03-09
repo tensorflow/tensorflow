@@ -27,7 +27,7 @@ jobs:
     if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
     steps:
     - name: Checkout code
-      uses: actions/checkout@v2
+      uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b # v3.2.0
     - name: Update the RBE Configs
       run: |
         function map() {
@@ -38,26 +38,50 @@ jobs:
           # match exactly sha256:<hash> because curl may include a ^M symbol at
           # the end of the line.
           # See https://cloud.google.com/architecture/using-container-images#exploring_image_manifests_digests_and_tags
+          echo -n "Trying to map name $1 to tag $2... "
           digest=$(curl -s --head "https://gcr.io/v2/tensorflow-sigs/build/manifests/$2" | egrep -o "sha256:[[:alnum:]]*")
           # Find the line matching the regex "sigbuild-r2.9" (with quotes) and
           # replace just the digest portion in it
           sed -i"" "/\"$1\"/ s/sha256:[[:alnum:]]*/$digest/g" tensorflow/tools/toolchains/remote_config/configs.bzl
+          echo "success."
         }
         # See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/toolchains/remote_config/configs.bzl
         # This is a mapping of name_container_map keys under sigbuild_tf_configs
         # to tag names on gcr.io/tensorflow-sigs/build.
+        # TF 2.9
         map sigbuild-r2.9 2.9-python3.9
-        map sigbuild-r2.9-python3.7 2.9-python3.7
         map sigbuild-r2.9-python3.8 2.9-python3.8
         map sigbuild-r2.9-python3.9 2.9-python3.9
         map sigbuild-r2.9-python3.10 2.9-python3.10
+        # TF 2.10
         map sigbuild-r2.10 2.10-python3.9
-        map sigbuild-r2.10-python3.7 2.10-python3.7
         map sigbuild-r2.10-python3.8 2.10-python3.8
         map sigbuild-r2.10-python3.9 2.10-python3.9
         map sigbuild-r2.10-python3.10 2.10-python3.10
+        # TF 2.11
+        map sigbuild-r2.11 2.11-python3.9
+        map sigbuild-r2.11-python3.8 2.11-python3.8
+        map sigbuild-r2.11-python3.9 2.11-python3.9
+        map sigbuild-r2.11-python3.10 2.11-python3.10
+        # WIP Clang Containers, used by TVCs
+        map sigbuild-57469 57469-python3.9
+        map sigbuild-57469-python3.8 57469-python3.8
+        map sigbuild-57469-python3.9 57469-python3.9
+        map sigbuild-57469-python3.10 57469-python3.10
+        # TF 2.12
+        map sigbuild-r2.12 2.12-python3.9
+        map sigbuild-r2.12-python3.8 2.12-python3.8
+        map sigbuild-r2.12-python3.9 2.12-python3.9
+        map sigbuild-r2.12-python3.10 2.12-python3.10
+        map sigbuild-r2.12-python3.11 2.12-python3.11
+        # TF 2.12 + Clang (containers are the same, but env vars in configs.bzl are different)
+        map sigbuild-r2.12-clang 2.12-python3.9
+        map sigbuild-r2.12-clang-python3.8 2.12-python3.8
+        map sigbuild-r2.12-clang-python3.9 2.12-python3.9
+        map sigbuild-r2.12-clang-python3.10 2.12-python3.10
+        map sigbuild-r2.12-clang-python3.11 2.12-python3.11
     - name: Create Pull Request with changes
-      uses: peter-evans/create-pull-request@v3
+      uses: peter-evans/create-pull-request@2b011faafdcbc9ceb11414d64d0573f37c774b04 # v4.2.3
       with:
         title: Update the RBE images to the latest container versions
         committer: TensorFlow Release Automation <jenkins@tensorflow.org>

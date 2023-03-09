@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_STATUS_CASTERS_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_STATUS_CASTERS_H_
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -42,7 +42,7 @@ T ValueOrThrow(StatusOr<T> v) {
 namespace pybind11 {
 namespace detail {
 
-// Status, StatusOr. Failing statuses become Python exceptions; Status::OK()
+// Status, StatusOr. Failing statuses become Python exceptions; OK Status()
 // becomes None.
 template <>
 struct type_caster<xla::Status> {
@@ -71,8 +71,8 @@ struct type_caster<xla::StatusOr<T>> {
     if (!src.ok()) {
       throw xla::XlaRuntimeError(src.status());
     }
-    return value_conv::cast(std::forward<xla::StatusOr<T>>(src).ValueOrDie(),
-                            policy, parent);
+    return value_conv::cast(std::forward<xla::StatusOr<T>>(src).value(), policy,
+                            parent);
   }
 };
 

@@ -37,12 +37,21 @@ class AddNTest(test.TestCase):
   def _supported_types(self):
     if test.is_gpu_available():
       return [
-          dtypes.float16, dtypes.float32, dtypes.float64, dtypes.complex64,
-          dtypes.complex128, dtypes.int64
+          dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64,
+          dtypes.complex64, dtypes.complex128, dtypes.int64
       ]
-    return [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
-            dtypes.float16, dtypes.float32, dtypes.float64, dtypes.complex64,
-            dtypes.complex128]
+    return [
+        dtypes.int8,
+        dtypes.int16,
+        dtypes.int32,
+        dtypes.int64,
+        dtypes.bfloat16,
+        dtypes.float16,
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.complex64,
+        dtypes.complex128,
+    ]
 
   def _buildData(self, shape, dtype):
     data = np.random.randn(*shape).astype(dtype.as_numpy_dtype)
@@ -61,8 +70,12 @@ class AddNTest(test.TestCase):
           actual = self.evaluate(math_ops.add_n(data))
           expected = np.sum(np.vstack(
               [np.expand_dims(d, 0) for d in data]), axis=0)
-          tol = 5e-3 if dtype == dtypes.float16 else 5e-7
-          self.assertAllClose(expected, actual, rtol=tol, atol=tol)
+          self.assertAllCloseAccordingToType(
+              expected,
+              actual,
+              half_rtol=5e-3,
+              half_atol=5e-3,
+          )
 
   @test_util.run_deprecated_v1
   def testUnknownShapes(self):
@@ -75,8 +88,12 @@ class AddNTest(test.TestCase):
           actual = sess.run(math_ops.add_n([data_ph] * count), {data_ph: data})
           expected = np.sum(np.vstack([np.expand_dims(data, 0)] * count),
                             axis=0)
-          tol = 5e-3 if dtype == dtypes.float16 else 5e-7
-          self.assertAllClose(expected, actual, rtol=tol, atol=tol)
+          self.assertAllCloseAccordingToType(
+              expected,
+              actual,
+              half_rtol=5e-3,
+              half_atol=5e-3,
+          )
 
   @test_util.run_deprecated_v1
   def testVariant(self):

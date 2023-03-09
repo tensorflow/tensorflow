@@ -29,7 +29,6 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
@@ -57,7 +56,6 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Interfaces/DecodeAttributesInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/FoldInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -90,15 +88,6 @@ struct TFConstantFoldInterface : public DialectFoldInterface {
   LogicalResult fold(Operation *op, ArrayRef<Attribute> operands,
                      SmallVectorImpl<OpFoldResult> &results) const final {
     return TensorFlowDialect::constantFold(op, operands, results);
-  }
-};
-
-struct TFDecodeAttributesInterface : public DialectDecodeAttributesInterface {
-  TFDecodeAttributesInterface(Dialect *dialect)
-      : DialectDecodeAttributesInterface(dialect) {}
-  LogicalResult decode(OpaqueElementsAttr input,
-                       ElementsAttr &output) const override {
-    return TensorFlowDialect::decode(input, output);
   }
 };
 
@@ -169,17 +158,17 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // Returns if its legal to inline 'src' region into the 'dest' region
   // attached to a TF operation.
   bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
-                       BlockAndValueMapping &valueMapping) const final {
+                       IRMapping &valueMapping) const final {
     // Allow inlining in regions attached to region based control flow
     // operations only if the src region is a single block region
-    return isa<IfRegionOp, WhileRegionOp>(dest->getParentOp()) &&
+    return isa<IfRegionOp, CaseRegionOp, WhileRegionOp>(dest->getParentOp()) &&
            llvm::hasSingleElement(*src);
   }
 
   // Returns true if its legal to inline a TF operation `op` into the `dest`
   // region.
   bool isLegalToInline(Operation *op, Region *dest, bool wouldBeCloned,
-                       BlockAndValueMapping &) const final {
+                       IRMapping &) const final {
     // An op is legal to inline if either of the following conditions is true:
     // (a) Its legal to duplicate the Op.
     // (b) The Op is inside a single use function. If that function is inlined,
@@ -237,7 +226,7 @@ bool TensorFlowDialect::CanDuplicate(Operation *op) {
   if (op->hasTrait<OpTrait::TF::CannotDuplicate>()) return false;
 
   // If the op has no memory side effects, it can be duplicated.
-  if (MemoryEffectOpInterface::hasNoEffect(op)) return true;
+  if (isMemoryEffectFree(op)) return true;
 
   // If the op is marked stateless using the `is_stateless` attribute, that
   // attribute determines if the op can be duplicated.
@@ -282,7 +271,7 @@ void *TensorFlowDialect::getRegisteredInterfaceForOp(
 // Returns true if the op can have side effects.
 bool TensorFlowDialect::CanHaveSideEffects(Operation *op) {
   // If the op has no memory side effects, it has no side effects
-  if (MemoryEffectOpInterface::hasNoEffect(op)) return false;
+  if (isMemoryEffectFree(op)) return false;
 
   // If the op is marked stateless using the `is_stateless` attribute, then
   // it has no side effects.
@@ -311,7 +300,6 @@ void TensorFlowDialect::RegisterAdditionalOperationHook(
 }
 
 TensorFlowDialect::ConstantFoldHook TensorFlowDialect::constant_fold_hook_;
-TensorFlowDialect::DecodeConstantHook TensorFlowDialect::decode_constant_hook_;
 
 TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
     : Dialect(/*name=*/"tf", context, TypeID::get<TensorFlowDialect>()) {
@@ -324,8 +312,7 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.cc.inc"
       >();
-  addInterfaces<TFInlinerInterface, TFDecodeAttributesInterface,
-                TFConstantFoldInterface>();
+  addInterfaces<TFInlinerInterface, TFConstantFoldInterface>();
   fallback_effect_op_interface_ =
       new TensorFlowRegistryEffectInterfaceFallback();
 

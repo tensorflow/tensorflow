@@ -16,9 +16,9 @@ limitations under the License.
 
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 
 namespace mlir {
@@ -29,25 +29,25 @@ void ConvertTFLQuantOpsToMlirQuantOps(func::FuncOp func) {
   func.walk([&](Operation* op) {
     b.setInsertionPoint(op);
     if (auto dq = llvm::dyn_cast<DequantizeOp>(op)) {
-      auto dcast = b.create<quant::DequantizeCastOp>(
-          dq.getLoc(), dq.output().getType(), dq.input());
-      dq.output().replaceAllUsesWith(dcast);
+      auto dcast = b.create<quantfork::DequantizeCastOp>(
+          dq.getLoc(), dq.getOutput().getType(), dq.getInput());
+      dq.getOutput().replaceAllUsesWith(dcast);
       dq.erase();
     } else if (auto q = llvm::dyn_cast<QuantizeOp>(op)) {
-      auto qcast = b.create<quant::QuantizeCastOp>(
-          q.getLoc(), q.output().getType(), q.input());
-      q.output().replaceAllUsesWith(qcast);
+      auto qcast = b.create<quantfork::QuantizeCastOp>(
+          q.getLoc(), q.getOutput().getType(), q.getInput());
+      q.getOutput().replaceAllUsesWith(qcast);
       q.erase();
     } else if (auto q = llvm::dyn_cast<ConstOp>(op)) {
-      auto value = q.value();
+      auto value = q.getValue();
       auto type = q.getResult().getType();
       if (arith::ConstantOp::isBuildableWith(value, type)) {
-        auto c = b.create<arith::ConstantOp>(q.getLoc(), q.value());
-        q.output().replaceAllUsesWith(c);
+        auto c = b.create<arith::ConstantOp>(q.getLoc(), q.getValue());
+        q.getOutput().replaceAllUsesWith(c);
         q.erase();
       } else if (TFL::NoValueOp::isBuildableWith(value, type)) {
         auto c = b.create<TFL::NoValueOp>(q.getLoc(), type, mlir::UnitAttr());
-        q.output().replaceAllUsesWith(c);
+        q.getOutput().replaceAllUsesWith(c);
         q.erase();
       }
     }
@@ -58,7 +58,7 @@ void ConvertMlirQuantOpsToTFLQuantOps(func::FuncOp func) {
   OpBuilder b(func);
   func.walk([&](Operation* op) {
     b.setInsertionPoint(op);
-    if (auto dq = llvm::dyn_cast<quant::DequantizeCastOp>(op)) {
+    if (auto dq = llvm::dyn_cast<quantfork::DequantizeCastOp>(op)) {
       auto dcast = b.create<DequantizeOp>(dq.getLoc(), dq.getResult().getType(),
                                           dq.getArg());
       dq.getResult().replaceAllUsesWith(dcast);
@@ -66,7 +66,7 @@ void ConvertMlirQuantOpsToTFLQuantOps(func::FuncOp func) {
         dcast->setAttr(mlir::quant::kVolatileOpAttrName, extra_attr);
       }
       dq.erase();
-    } else if (auto q = llvm::dyn_cast<quant::QuantizeCastOp>(op)) {
+    } else if (auto q = llvm::dyn_cast<quantfork::QuantizeCastOp>(op)) {
       auto out_type = q.getResult().getType();
       auto qcast = b.create<QuantizeOp>(q.getLoc(), out_type, q.getArg(),
                                         TypeAttr::get(out_type));

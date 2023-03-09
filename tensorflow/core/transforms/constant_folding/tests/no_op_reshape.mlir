@@ -34,6 +34,12 @@ module {
     // CHECK: Reshape{{.*}} name("r2")
     %Reshape_30, %ctl_31 = Reshape(%VariableV2_26, %Const_28) name("r2") {T = f32, Tshape = i32} : (tensor<17x1xf32>, tensor<1xi32>) -> (tensor<17xf32>)
     %Square_32, %ctl_33 = Square(%Reshape_30) name("s2") {T = f32} : (tensor<17xf32>) -> (tensor<17xf32>)
+    // CHECK: %[[VAR_5:.*]], %[[CTRL_6:.*]] = VariableV2 name("v5")
+    %VariableV2_27, %ctl_34 = VariableV2 name("v5") {container = "", dtype = f32, shape = #tf_type.shape<4294967296>, shared_name = ""} : () -> (tensor<4294967296xf32>)
+    // CHECK: %[[CONST_5:.*]], %[[CTRL_7:.*]] = Const {{.*}} name("c5")
+    %Const_29, %ctl_35 = Const [%ctl_34] name("c5") {dtype = f32, value = dense<4294967296> : tensor<1xi64>} : () -> (tensor<1xi64>)
+    // CHECK: Identity(%[[VAR_5]]) [%[[CTRL_7]]] name("r5")
+    %Reshape_31, %ctl_36 = Reshape(%VariableV2_27, %Const_29) name("r5") {T = f32, Tshape = i64} : (tensor<4294967296xf32>, tensor<1xi64>) -> (tensor<4294967296xf32>)
     return
   }
 }

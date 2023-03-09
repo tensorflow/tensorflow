@@ -15,15 +15,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/sharded_device_array.h"
 
+#include <memory>
 #include <optional>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/python/ifrt/array.h"
+#include "tensorflow/compiler/xla/python/ifrt/device.h"
+#include "tensorflow/compiler/xla/python/ifrt/sharding.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_array.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace jax {
 
@@ -75,40 +81,73 @@ void ShardedDeviceArray::Delete() {
   if (is_deleted_) {
     return;
   }
-  // We can't inline this expression into the for loop! Here, .value()
-  // returns an rvalue reference to the Span embedded in the StatusOr.
-  // Binding the reference would extend the lifetime of the Span itself,
-  // but not of the StatusOr, causing stack-use-after-scope errors. Also see
-  // https://en.cppreference.com/w/cpp/language/range-for#Temporary_range_expression
-  auto buffers = GetPjRtBuffers().value();
-  for (xla::PjRtBuffer* pjrt_buffer : buffers) {
-    pjrt_buffer->Delete();
+  auto array = ifrt_array();
+  if (!array.ok()) {
+    return;
   }
+  ifrt_array_ = std::nullopt;
   device_buffers_ = std::nullopt;
   cpp_device_buffers_ = std::nullopt;
   npy_value_ = std::nullopt;
   is_deleted_ = true;
 }
 
-xla::StatusOr<absl::Span<xla::PjRtBuffer* const>>
-ShardedDeviceArray::GetPjRtBuffers() {
-  if (cpp_device_buffers_.has_value()) {
-    return absl::MakeConstSpan(cpp_device_buffers_.value());
+xla::StatusOr<xla::ifrt::Array*> ShardedDeviceArray::ifrt_array() {
+  if (ifrt_array_.has_value()) {
+    return ifrt_array_->get();
   }
-
   if (!device_buffers_.has_value()) {
     return xla::InvalidArgument("ShardedDeviceArray has been deleted.");
   }
   const int num_devices = device_buffers_->size();
-  std::vector<xla::PjRtBuffer*> cpp_device_buffers;
-  cpp_device_buffers.reserve(num_devices);
-  int i = 0;
+  std::vector<tsl::RCReference<xla::ifrt::Array>> ifrt_arrays;
+  ifrt_arrays.reserve(num_devices);
+  std::vector<xla::ifrt::Shape> shapes;
+  shapes.reserve(num_devices);
+  xla::ifrt::DeviceList::Devices devices;
+  devices.reserve(num_devices);
   for (auto& handle : device_buffers_.value()) {
     // Note that invariants guarantee the cast should never fail.
     TF_ASSIGN_OR_RETURN(xla::PyBuffer * pybuffer,
                         xla::PyBuffer::AsPyBuffer(handle));
-    cpp_device_buffers.push_back(pybuffer->buffer());
-    i += 1;
+    ifrt_arrays.push_back(tsl::FormRef(pybuffer->ifrt_array()));
+    shapes.push_back(pybuffer->ifrt_array()->shape());
+    devices.push_back(pybuffer->ifrt_array()->sharding().devices().front());
+  }
+  xla::ifrt::Client* client = ifrt_arrays.front()->client();
+  xla::ifrt::Shape shape(
+      pybind11::cast<std::vector<int64_t>>(aval_.attr("shape")));
+  auto sharding = xla::ifrt::OpaqueSharding::Create(
+      xla::ifrt::DeviceList(std::move(devices)),
+      xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
+          std::move(shapes)));
+  TF_ASSIGN_OR_RETURN(
+      auto ifrt_array,
+      client->AssembleArrayFromSingleDeviceArrays(
+          std::move(shape), std::move(sharding), absl::MakeSpan(ifrt_arrays),
+          xla::ifrt::ArrayCopySemantics::kReuseInput));
+  ifrt_array_ = std::move(ifrt_array);
+  return ifrt_array_->get();
+}
+
+xla::StatusOr<absl::Span<xla::PjRtBuffer* const>>
+ShardedDeviceArray::pjrt_buffers() {
+  if (cpp_device_buffers_.has_value()) {
+    return absl::MakeConstSpan(*cpp_device_buffers_);
+  }
+
+  TF_ASSIGN_OR_RETURN(auto* ifrt_array, ifrt_array());
+  auto* pjrt_array =
+      llvm::dyn_cast_or_null<xla::ifrt::PjRtCompatibleArray>(ifrt_array);
+  if (pjrt_array == nullptr) {
+    throw xla::XlaRuntimeError(
+        "This operation is implemented for a PjRt-compatible backend only.");
+  }
+  const int num_devices = device_buffers_->size();
+  std::vector<xla::PjRtBuffer*> cpp_device_buffers;
+  cpp_device_buffers.reserve(num_devices);
+  for (const auto& pjrt_buffer : pjrt_array->pjrt_buffers()) {
+    cpp_device_buffers.push_back(pjrt_buffer.get());
   }
   cpp_device_buffers_ = std::move(cpp_device_buffers);
   return absl::MakeConstSpan(cpp_device_buffers_.value());
@@ -220,10 +259,12 @@ py::handle ShardedDeviceArray::AsHandle() {
   m.attr("ShardedDeviceArray") = type;
 
   type.attr("make") = def_static([](py::object aval, ShardingSpec sharding_spec,
-                                    py::list device_buffers, py::object indices,
-                                    bool weak_type) {
-    return ShardedDeviceArray::Make(aval, sharding_spec, device_buffers,
-                                    indices, weak_type);
+                                    py::object sharded_buffer_or_device_buffers,
+                                    py::object indices, bool weak_type) {
+    return ShardedDeviceArray::Make(
+        aval, sharding_spec,
+        std::move(sharded_buffer_or_device_buffers).cast<py::list>(), indices,
+        weak_type);
   });
   type.attr("aval") =
       property_readonly([](ShardedDeviceArray::object self) -> py::object {
@@ -278,7 +319,7 @@ py::handle ShardedDeviceArray::AsHandle() {
       [](ShardedDeviceArray::object self) { return self.sda()->is_deleted(); },
       py::is_method(type));
 
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 }  // namespace jax

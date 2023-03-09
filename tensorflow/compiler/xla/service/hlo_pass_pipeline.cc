@@ -28,8 +28,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -124,20 +125,22 @@ void SetInstructionMetadata(HloModuleGroup& module_group) {
 
 template <typename HloT>
 Status HloPassPipeline::RunInvariantCheckers(
-    HloT* hlo, absl::string_view after_pass_name) {
+    HloT* hlo, absl::string_view after_pass_name,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   for (auto& invariant_checker : invariant_checkers_) {
     VLOG(1) << "    Invariant checker " << invariant_checker->name();
-    StatusOr<bool> changed_status = RunHelper(invariant_checker.get(), hlo);
+    StatusOr<bool> changed_status =
+        RunHelper(invariant_checker.get(), hlo, execution_threads);
     VLOG(1) << "    Invariant checker done " << invariant_checker->name();
     if (!changed_status.ok()) {
       VLOG(2) << "Failed invariant check:";
       XLA_VLOG_LINES(2, hlo->ToString());
-      return tensorflow::errors::CreateWithUpdatedMessage(
+      return tsl::errors::CreateWithUpdatedMessage(
           changed_status.status(),
           absl::StrCat(changed_status.status().error_message(),
                        "\n\nFailed after ", after_pass_name));
     }
-    TF_RET_CHECK(!changed_status.ValueOrDie())
+    TF_RET_CHECK(!changed_status.value())
         << "invariant checkers must not change the graph";
   }
   return OkStatus();
@@ -145,7 +148,8 @@ Status HloPassPipeline::RunInvariantCheckers(
 
 template <typename HloT>
 StatusOr<bool> HloPassPipeline::RunPassesInternal(
-    HloT* hlo, const DebugOptions& debug_options) {
+    HloT* hlo, const DebugOptions& debug_options,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto passes = GetEnabledPasses(debug_options);
   // Copy string by value since debug options could get clobbered in an hlo
   // module group pass.
@@ -177,7 +181,20 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
       compilation_stats_->StartPass(pass_name);
     }
     RecordPassStartMetadata(*hlo, pass_name, pipeline_name);
-    TF_ASSIGN_OR_RETURN(bool pass_changed, RunHelper(pass, hlo));
+    // Embed RunHelper into lambda to enable recording of error statuses
+    auto run_helper_lambda =
+        [this, pass_name](
+            HloPassInterface* pass, HloT* hlo,
+            const absl::flat_hash_set<absl::string_view>& execution_threads) {
+          auto status_or = RunHelper(pass, hlo, execution_threads);
+          if (!status_or.ok()) {
+            compilation_stats_->RecordPassError(
+                pass_name, tsl::error_name(status_or.status().code()));
+          }
+          return status_or;
+        };
+    TF_ASSIGN_OR_RETURN(bool pass_changed,
+                        run_helper_lambda(pass, hlo, execution_threads));
     SetInstructionMetadata(*hlo);
     if (!dump_regex.empty() && (pass_changed || dump_regex != ".*")) {
       MaybeDumpHloAndSaveFilenames(*hlo,
@@ -190,8 +207,18 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
     changed |= pass_changed;
     if (pass_changed) {
       VLOG(3) << "  Pass caused changes " << pass->name();
+      // Embed RunInvariantCheckers into lambda to enable recording of errors
+      auto run_invariant_checkers_lambda = [this](HloT* hlo,
+                                                  absl::string_view pass_name) {
+        auto status = RunInvariantCheckers(hlo, pass_name);
+        if (!status.ok()) {
+          compilation_stats_->RecordPassError(pass_name,
+                                              tsl::error_name(status.code()));
+        }
+        return status;
+      };
+      TF_RETURN_IF_ERROR(run_invariant_checkers_lambda(hlo, pass_name));
     }
-    TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, pass_name));
     if (!pass->IsPassPipeline()) {
       compilation_stats_->EndPass(pass_name);
     }
@@ -263,16 +290,21 @@ void HloPassPipeline::MaybeDumpHloAndSaveFilenames(
   }
 }
 
-StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
+StatusOr<bool> HloPassPipeline::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   run_called_ = true;
 
   VLOG(1) << "Running HLO pass pipeline on module " << module->name() << ": "
           << name();
 
-  return RunPassesInternal(module, module->config().debug_options());
+  return RunPassesInternal(module, module->config().debug_options(),
+                           execution_threads);
 }
 
-StatusOr<bool> HloPassPipeline::RunOnModuleGroup(HloModuleGroup* module_group) {
+StatusOr<bool> HloPassPipeline::RunOnModuleGroup(
+    HloModuleGroup* module_group,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   run_called_ = true;
 
   VLOG(1) << "Running HLO pass pipeline on module group "
@@ -284,7 +316,8 @@ StatusOr<bool> HloPassPipeline::RunOnModuleGroup(HloModuleGroup* module_group) {
   }
 
   return RunPassesInternal(module_group,
-                           module_group->module(0).config().debug_options());
+                           module_group->module(0).config().debug_options(),
+                           execution_threads);
 }
 
 }  // namespace xla

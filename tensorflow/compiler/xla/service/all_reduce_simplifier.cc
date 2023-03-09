@@ -17,17 +17,19 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_replication_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 
-StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
+StatusOr<bool> AllReduceSimplifier::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(
       auto replication,
       HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/false));
@@ -52,7 +54,7 @@ StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
   };
 
   bool changed = false;
-  for (auto computation : module->computations()) {
+  for (auto computation : module->computations(execution_threads)) {
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
       // AllGather and ReduceScatter with the same input and output shape
       if ((inst->opcode() == HloOpcode::kAllGather ||
@@ -65,7 +67,7 @@ StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
     }
   }
 
-  for (auto computation : module->computations()) {
+  for (auto computation : module->computations(execution_threads)) {
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
       if (!inst->shape().IsArray()) {
         // We currently do not change tuple-shaped all-reduce.

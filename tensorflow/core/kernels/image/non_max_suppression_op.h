@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_IMAGENON_MAX_SUPPRESSION_OP_H_
-#define TENSORFLOW_CORE_KERNELS_IMAGENON_MAX_SUPPRESSION_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_IMAGE_NON_MAX_SUPPRESSION_OP_H_
+#define TENSORFLOW_CORE_KERNELS_IMAGE_NON_MAX_SUPPRESSION_OP_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_types.h"
@@ -47,4 +47,4 @@ Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_IMAGENON_MAX_SUPPRESSION_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_IMAGE_NON_MAX_SUPPRESSION_OP_H_

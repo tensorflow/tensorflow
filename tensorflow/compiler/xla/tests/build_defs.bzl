@@ -1,13 +1,13 @@
 """Build rules for XLA testing."""
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/compiler/xla/tests:plugin.bzl", "plugins")
 load(
-    "//tensorflow/stream_executor:build_defs.bzl",
+    "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
 load(
-    "//tensorflow/core/platform:build_config_root.bzl",
+    "//tensorflow/tsl/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
 
@@ -112,6 +112,7 @@ def xla_test(
     native.cc_library(
         name = "%s_lib" % name,
         srcs = srcs,
+        tags = tags,
         copts = copts,
         testonly = True,
         deps = deps,
@@ -144,7 +145,7 @@ def xla_test(
             for lib_dep in xla_test_library_deps:
                 backend_deps += ["%s_%s" % (lib_dep, backend)]
 
-        tf_cc_test(
+        xla_cc_test(
             name = test_name,
             srcs = srcs,
             tags = tags + backend_tags.get(backend, []) + this_backend_tags,
@@ -251,6 +252,6 @@ def generate_backend_test_macros(backends = []):
                 "-DXLA_DISABLED_MANIFEST=\\\"%s\\\"" % manifest,
             ],
             deps = [
-                "//tensorflow/core/platform:logging",
+                "//tensorflow/tsl/platform:logging",
             ],
         )

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_function.h"
 #include "tensorflow/c/eager/abstract_operation.h"
@@ -118,7 +118,7 @@ PYBIND11_MODULE(_unified_api, m) {
            [](AbstractContext* self, const char* op,
               const char* raw_device_name) {
              auto operation = self->CreateOperation();
-             operation->Reset(op, raw_device_name);
+             (void)operation->Reset(op, raw_device_name);
              return operation;
            })
       .def("RegisterFunction",

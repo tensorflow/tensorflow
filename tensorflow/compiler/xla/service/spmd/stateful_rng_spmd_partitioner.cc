@@ -16,9 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/spmd/stateful_rng_spmd_partitioner.h"
 
 #include <memory>
+#include <utility>
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 
 namespace xla {
 namespace spmd {
@@ -50,16 +51,18 @@ StatefulRngSpmdPartitioner::CreateVisitor(
     HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
     const spmd::SPMDCollectiveOpsCreator& collective_ops_creator,
     int64_t* next_channel_id, spmd::SpmdLogger* logger,
-    spmd::SpmdPartitionerOptions options) {
+    spmd::SpmdPartitionerOptions options, const CallGraph& call_graph) {
   return std::make_unique<StatefulRngSpmdPartitioningVisitor>(
       computation, num_partitions, num_replicas, collective_ops_creator,
-      next_channel_id, logger, std::move(options), this);
+      next_channel_id, logger, std::move(options), this, call_graph);
 }
 
-Status StatefulRngSpmdPartitioner::PreprocessSharding(HloModule* module) {
+Status StatefulRngSpmdPartitioner::PreprocessSharding(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // For rng-get-and-update-status with no sharding, set sharding to be
   // replicated.
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* hlo : computation->instructions()) {
       if (hlo->opcode() == HloOpcode::kRngGetAndUpdateState &&
           !hlo->has_sharding()) {
@@ -67,7 +70,7 @@ Status StatefulRngSpmdPartitioner::PreprocessSharding(HloModule* module) {
       }
     }
   }
-  return spmd::SpmdPartitioner::PreprocessSharding(module);
+  return spmd::SpmdPartitioner::PreprocessSharding(module, execution_threads);
 }
 
 bool StatefulRngSpmdPartitioner::CanSideEffectingHaveReplicatedSharding(

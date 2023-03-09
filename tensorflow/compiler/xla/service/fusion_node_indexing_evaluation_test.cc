@@ -16,12 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 
@@ -72,6 +72,15 @@ class InstructionFusionForTesting : public InstructionFusion {
         producer);
   }
 
+  const FusionNodeIndexingEvaluation* GetFusionNodeEvaluation(
+      const HloInstruction* consumer) {
+    auto it = fusion_node_evaluations_.find(consumer);
+    if (it == fusion_node_evaluations_.end()) {
+      return nullptr;
+    }
+    return &it->second;
+  }
+
  private:
   absl::flat_hash_map<const HloInstruction*, FusionNodeIndexingEvaluation>
       fusion_node_evaluations_;
@@ -85,7 +94,7 @@ TEST_F(FusionNodeIndexingEvaluationTest, FuseTwoInstructions) {
     add = f32[4,3]{1,0} add(p0, p0)
     ROOT sub = f32[4,3]{1,0} subtract(add, p0)
   })")
-                    .ValueOrDie();
+                    .value();
   HloInstruction* sub = module->entry_computation()->root_instruction();
   HloInstruction* add = sub->mutable_operand(0);
   InstructionFusionForTesting().Fuse(add, sub, module->entry_computation());
@@ -100,7 +109,7 @@ TEST_F(FusionNodeIndexingEvaluationTest, FuseThreeInstructions) {
     slice2 = f32[3]{0} slice(p0), slice={[0:3]}
     ROOT sub = f32[3]{0} subtract(slice1, slice2)
   })")
-                    .ValueOrDie();
+                    .value();
   HloInstruction* sub = module->entry_computation()->root_instruction();
   InstructionFusionForTesting instruction_fusion;
   HloInstruction* slice1 = sub->mutable_operand(0);
@@ -125,7 +134,7 @@ TEST_F(FusionNodeIndexingEvaluationTest, ExponentialDuplicationPattern) {
     slice2.1 = f32[2]{0} slice(add1), slice={[1:3]}
     ROOT add2 = f32[2]{0} add(slice2.0, slice2.1)
   })")
-                    .ValueOrDie();
+                    .value();
   // This corresponds to the following graph:
   //              add0
   //            /      \
@@ -198,7 +207,7 @@ ENTRY entry_computation {
   add0 = f32[4]{0} add(p0, p1)
   ROOT %fusion = f32[2]{0} fusion(add0), kind=kLoop, calls=%fused_computation
 })")
-                    .ValueOrDie();
+                    .value();
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   InstructionFusionForTesting instruction_fusion;
   HloInstruction* add0 = fusion->mutable_operand(0);
@@ -207,6 +216,54 @@ ENTRY entry_computation {
   // still get the same evaluation as before when we incrementally build the
   // cache.
   EXPECT_EQ(instruction_fusion.EvaluateEmittedInstructions(add0, fusion), 4);
+}
+
+TEST_F(FusionNodeIndexingEvaluationTest, CodeDuplicationTooHigh) {
+  // This is derived from the same pattern as in ExponentialDuplicationPattern
+  // above.
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule test_module
+%fused_computation (param: f32[6]) -> f32[2] {
+  %param = f32[6]{0} parameter(0)
+  %slice0.1 = f32[5]{0} slice(f32[6]{0} %param), slice={[0:5]}
+  %slice0.2 = f32[5]{0} slice(f32[6]{0} %param), slice={[1:6]}
+  %add0 = f32[5]{0} add(f32[5]{0} %slice0.1, f32[5]{0} %slice0.2)
+  %slice1.1 = f32[4]{0} slice(f32[5]{0} %add0), slice={[0:4]}
+  %slice1.2 = f32[4]{0} slice(f32[5]{0} %add0), slice={[1:5]}
+  %add1 = f32[4]{0} add(f32[4]{0} %slice1.1, f32[4]{0} %slice1.2)
+  %slice2.1 = f32[3]{0} slice(f32[4]{0} %add1), slice={[0:3]}
+  %slice2.2 = f32[3]{0} slice(f32[4]{0} %add1), slice={[1:4]}
+  %add2 = f32[3]{0} add(f32[3]{0} %slice2.1, f32[3]{0} %slice2.2)
+  %slice3.1 = f32[2]{0} slice(f32[3]{0} %add2), slice={[0:2]}
+  %slice3.2 = f32[2]{0} slice(f32[3]{0} %add2), slice={[1:3]}
+  ROOT %add3 = f32[2]{0} add(f32[2]{0} %slice3.1, f32[2]{0} %slice3.2)
+}
+
+ENTRY entry_computation {
+  p0 = f32[] parameter(0)
+  add = f32[] add(p0, p0)
+  broadcast = f32[6]{0} broadcast(add), dimensions={}
+  ROOT %fusion = f32[2]{0} fusion(broadcast), kind=kLoop, calls=%fused_computation
+})")
+                    .value();
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  InstructionFusionForTesting instruction_fusion;
+  HloInstruction* broadcast = fusion->mutable_operand(0);
+  EXPECT_EQ(broadcast->opcode(), HloOpcode::kBroadcast);
+  EXPECT_EQ(instruction_fusion.EvaluateEmittedInstructions(broadcast, fusion),
+            16);
+  // Normally we consider a code duplication of 16 too high, but for the
+  // Broadcast op we allow it.
+  EXPECT_FALSE(instruction_fusion.GetFusionNodeEvaluation(fusion)
+                   ->CodeDuplicationTooHigh(broadcast));
+  instruction_fusion.Fuse(broadcast, fusion, module->entry_computation());
+  HloInstruction* add = fusion->mutable_operand(0);
+  EXPECT_EQ(add->opcode(), HloOpcode::kAdd);
+  EXPECT_EQ(instruction_fusion.EvaluateEmittedInstructions(add, fusion), 16);
+  // For the operand of the broadcast (which is an add op) we don't allow this
+  // amount of code duplication.
+  EXPECT_TRUE(instruction_fusion.GetFusionNodeEvaluation(fusion)
+                  ->CodeDuplicationTooHigh(add));
 }
 
 }  // namespace xla

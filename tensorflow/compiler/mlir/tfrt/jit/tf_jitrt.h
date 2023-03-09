@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/runtime_fallback/util/type_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -69,10 +68,7 @@ class MemrefTensorBuffer : public TensorBuffer {
   bool owner_;
 };
 
-// Reuse conversion context as a kernel context for convenience, can be a
-// separate allocation if needed.
-struct TensorflowConversionContext
-    : public tfrt::jitrt::Executable::KernelContext {
+struct TensorflowConversionContext {
   // Keep track of compiled kernel operands to detect input to output
   // forwarding, and tensors returned multiple times.
   using TensorOrBuffer = llvm::PointerUnion<const Tensor*, TensorBuffer*>;
@@ -85,12 +81,6 @@ struct TensorflowConversionContext
   // Ensure that the context is always moved around instead of copying.
   TensorflowConversionContext(const TensorflowConversionContext&) = delete;
   TensorflowConversionContext(TensorflowConversionContext&&) = default;
-
-  void* forward(size_t size, size_t alignment,
-                llvm::ArrayRef<unsigned> candidates) override {
-    // TODO(ecg): Do the real buffer forwarding here.
-    return nullptr;
-  }
 
   // Memrefs that are already materialized as runtime tensors:
   //   1. Tensor operands that we got from the caller.

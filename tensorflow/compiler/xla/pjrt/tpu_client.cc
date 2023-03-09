@@ -15,35 +15,33 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 
+#include <array>
+#include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
-#include "absl/status/status.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
-#include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/pjrt/utils.h"
-#include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/tpu_computation_placer.h"
 #include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::FindAndLoadTpuLibrary
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/tpu/tpu_initializer_helper.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/tpu/tpu_executable.h"
-#include "tensorflow/stream_executor/tpu/tpu_executable_interface.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor_interface.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
-#include "tensorflow/stream_executor/tpu/tpu_stream.h"
+#include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tf_tpu = tensorflow::tpu;
 
@@ -104,16 +102,18 @@ PjRtTpuClient::PjRtTpuClient(
       }()) {
   // We always initialize the tpu client even if libtpu isn't linked in or
   // initialized.
-  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn !=
-      nullptr) {
-    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn();
+  if (stream_executor::tpu::ExecutorApiFn()
+          ->TpuAsyncCollectiveOffloadHelper_InitFn != nullptr) {
+    stream_executor::tpu::ExecutorApiFn()
+        ->TpuAsyncCollectiveOffloadHelper_InitFn();
   }
 }
 
 PjRtTpuClient::~PjRtTpuClient() {
-  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn !=
-      nullptr) {
-    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn();
+  if (stream_executor::tpu::ExecutorApiFn()
+          ->TpuAsyncCollectiveOffloadHelper_ShutdownFn != nullptr) {
+    stream_executor::tpu::ExecutorApiFn()
+        ->TpuAsyncCollectiveOffloadHelper_ShutdownFn();
   }
 }
 
@@ -133,7 +133,7 @@ StatusOr<DeviceAssignment> PjRtTpuClient::GetDefaultDeviceAssignment(
 }
 
 StatusOr<std::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
-    const PjRtExecutable& executable) const {
+    const PjRtLoadedExecutable& executable) const {
   if (executable.client() != this) {
     return InvalidArgument(
         "Passed executable from different client (platform '%s') to "
@@ -154,7 +154,7 @@ StatusOr<std::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
 }
 
 StatusOr<std::string> PjRtTpuClient::SerializeExecutable(
-    const PjRtExecutable& executable) const {
+    const PjRtLoadedExecutable& executable) const {
   const PjRtStreamExecutorExecutable* se_executable =
       tensorflow::down_cast<const PjRtStreamExecutorExecutable*>(&executable);
   if (se_executable->executables().size() > 1) {
@@ -168,12 +168,17 @@ StatusOr<std::string> PjRtTpuClient::SerializeExecutable(
   return tpu_executable->Serialize();
 }
 
-StatusOr<std::unique_ptr<PjRtExecutable>> PjRtTpuClient::DeserializeExecutable(
-    absl::string_view serialized, CompileOptions options) {
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtTpuClient::DeserializeExecutable(absl::string_view serialized,
+                                     std::optional<CompileOptions> options) {
+  if (!options.has_value()) {
+    return InvalidArgument(
+        "PjRtTpuClient::DeserializeExecutable() requires CompileOptions");
+  }
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TpuExecutable> tpu_executable,
                       TpuExecutable::Deserialize(serialized));
 
-  TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&options));
+  TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&*options));
 
   // TODO(skyewm): can we streamline this? e.g. removing proto serialization
   XlaComputation computation(tpu_executable->module().ToProto());
@@ -187,23 +192,23 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtTpuClient::DeserializeExecutable(
             .transfer_manager()
             ->ChooseCompactLayoutForShape(shape);
       },
-      options.argument_layouts, &options.executable_build_options,
+      options->argument_layouts, &options->executable_build_options,
       &unused_argument_layout_pointers));
 
   auto local_executable = std::make_unique<LocalExecutable>(
       std::move(tpu_executable), client_->mutable_backend(),
-      options.executable_build_options);
+      options->executable_build_options);
   std::vector<std::unique_ptr<LocalExecutable>> local_executables;
   local_executables.emplace_back(std::move(local_executable));
 
   auto pjrt_executable = std::make_unique<PjRtStreamExecutorExecutable>(
-      std::move(local_executables), options.parameter_is_tupled_arguments,
+      std::move(local_executables), options->parameter_is_tupled_arguments,
       std::move(extras.device_assignment),
       std::move(extras.addressable_device_logical_ids),
       std::move(extras.addressable_devices), this);
   TF_RETURN_IF_ERROR(
-      pjrt_executable->SetUpDonation(options.parameter_is_tupled_arguments));
-  return std::unique_ptr<PjRtExecutable>(std::move(pjrt_executable));
+      pjrt_executable->SetUpDonation(options->parameter_is_tupled_arguments));
+  return std::unique_ptr<PjRtLoadedExecutable>(std::move(pjrt_executable));
 }
 
 static StatusOr<std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>>
@@ -216,8 +221,7 @@ GetTpuDevices(
 
   std::map<int, int> core_id_to_device_ordinal;
   for (int i = 0; i < client->device_count(); ++i) {
-    se::StreamExecutor* executor =
-        client->backend().stream_executor(i).ValueOrDie();
+    se::StreamExecutor* executor = client->backend().stream_executor(i).value();
     tf_tpu::TpuExecutorInterface* tpu_executor =
         tensorflow::down_cast<tf_tpu::TpuExecutorInterface*>(
             executor->implementation());
@@ -268,7 +272,7 @@ StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
     // while(!platform->Initialized()) once the Initialized() function works
     // correctly, and remove this check. The platform may already be initialized
     // when running internally.
-    if (status.code() == tensorflow::error::ALREADY_EXISTS) {
+    if (status.code() == tsl::error::ALREADY_EXISTS) {
       LOG(INFO) << "TpuPlatform already initialized, continuing...";
       break;
     }
@@ -290,8 +294,7 @@ StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
   std::vector<std::unique_ptr<LocalDeviceState>> local_device_states;
   local_device_states.reserve(client->device_count());
   for (int i = 0; i < client->device_count(); ++i) {
-    se::StreamExecutor* executor =
-        client->backend().stream_executor(i).ValueOrDie();
+    se::StreamExecutor* executor = client->backend().stream_executor(i).value();
     local_device_states.push_back(std::make_unique<TpuDeviceState>(
         executor, client, max_inflight_computations));
   }

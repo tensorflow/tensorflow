@@ -1,14 +1,29 @@
 syntax = "proto3";
 
-package tensorflow;
+package tensorflow.quantization;
 
 option cc_enable_arenas = true;
+
+// This file contains the definition of TF GraphDef-level mixed-precision
+// quantization configuration. The configuration will be used in the
+// quantization path to determine the following factors:
+// 1) What will be the quantization method for the model.
+// 2) What will be the default quantization precision for the model.
+// 3) What will be the quantization precision for each unit (nodes / ops) in the
+//    model.
+
+// TODO(b/240220915): Add a checker for the quantization configuration.
+// There will be inconsistencies in the quantization configuration that users
+// write. Also, users can write an invalid quantization configuration.
+// Therefore, our quantization path will perform validation check for the
+// configuration in the future.
 
 // Model quantization method for optimization.
 //
 // Various techniques for model quantization are defined within this message
 // along with a field that specifies a method to be used for a particular
 // quantization request.
+// NEXT ID: 3
 message QuantizationMethod {
   // Quantization methods that are supported as a stable API.
   enum Method {
@@ -31,15 +46,139 @@ message QuantizationMethod {
     // determined in the graph executions. The weights are quantized during
     // conversion.
     DYNAMIC_RANGE = 2;
+
+    // Weight-only quantization. Only weights are quantized during conversion.
+    WEIGHT_ONLY = 3;
   }
 
+  // Quantization method is either exprimental or non-experimental method.
   oneof method_oneof {
     Method method = 1;
     ExperimentalMethod experimental_method = 2;
   }
 }
 
+// Quantization precisions. If the specified quantization
+// precision is not available, our quantizer needs to raise an error.
+enum QuantizationPrecision {
+  PRECISION_UNSPECIFIED = 0;
+  // Full Precision (Do not quantize)
+  PRECISION_FULL = 1;
+  // Weight 4 bit and activation 4 bit quantization
+  PRECISION_W4A4 = 2;
+  // Weight 4 bit and activation 8 bit quantization
+  PRECISION_W4A8 = 3;
+  // Weight 8 bit and activation 8 bit quantization
+  PRECISION_W8A8 = 4;
+}
+
+// Unit (either nodes or ops at this moment) wise quantization method for
+// mixed bit precision quantization. It contains the name of the unit,
+// the granularity of the unit, and the quantization method for each unit.
+// NEXT ID: 6
+message UnitWiseQuantizationPrecision {
+  // Quantization unit granularity.
+  // NEXT ID: 3
+  enum UnitType {
+    // This should never be used. Using this will generally result in an error.
+    UNIT_UNSPECIFIED = 0;
+    UNIT_NODE = 1;
+    UNIT_OP = 2;
+  }
+
+  // Available quantization unit. Currently node-wise and op-wise are
+  // available quantization units.
+  UnitType unit_type = 1;
+  // Uniqueness isn't guaranteed across SavedModels but within each function
+  // def's level, uniqueness is guaranteed. Updated
+  // the configuration interfaces to reflect such circumstances.
+  // If users do not need to guarantee uniqueness func_name can be omitted.
+  string func_name = 2;
+  string unit_name = 3;
+
+  // Quantization option information for the current unit.
+  // TODO(b/241322587): Support specifying quantization method for each unit of
+  // TF GraphDef.
+  QuantizationPrecision quantization_precision = 5;
+}
+
+// List of supported opsets to deploy the quantized model.
+// The quantized model contains different set of ops depending on the opset.
+// NEXT ID: 4
+enum OpSet {
+  OP_SET_UNSPECIFIED = 0;  // go/do-include-enum-unspecified
+  // Uses TF ops that mimic quantization behavior. Used when the corresponding
+  // integer op is not yet present.
+  TF = 1;
+  // Uses TF XLA ops
+  XLA = 2;
+  // Uses TF Uniform Quantized ops
+  UNIFORM_QUANTIZED = 3;
+}
+
+// Configurations for variable freezing during quantization passes.
+// NEXT ID: 2
+message FreezeAllVariables {
+  // Setting this to true freezes all variables to constants during
+  // quantization. Setting this to `false` is an experimental feature and does
+  // not have stability guarantees.
+  bool enabled = 1;
+}
+
 // Defines various options to specify and control the behavior of the quantizer.
+// It consists of
+// 1) Model-wise quantization configuration as a default configuration. If it is
+// None, the default configuration is "do not quantize the model".
+// 2) A set of supported operations.
+// 3) Unit wise quantization precision.
+// 4) Target hardware name.
+// NEXT ID: 11
 message QuantizationOptions {
+  // The default quantization configuration for the model. If the below
+  // unit-wise configuration does not exist, we use this default quantization
+  // configuration for the entire model. If the below unit-wise configuration
+  // exists, this default one will become the quantization configuration for
+  // units that are not specified in unit-wise configurations.
   QuantizationMethod quantization_method = 1;
+
+  OpSet op_set = 2;  // If not specified, it defaults to `TF`.
+
+  QuantizationPrecision quantization_precision = 3;
+
+  // Quantization precision for each unit. Units can become either
+  // nodes or ops, and the mixture of those different units are allowed.
+  // If there are conflicts or ambiguity in this unit-wise precision, our
+  // quantizer will raise an error.
+  repeated UnitWiseQuantizationPrecision unit_wise_quantization_precision = 4;
+
+  // Minimum number of weight elements to apply quantization. Currently only
+  // supported for Post-training Dynamic Range Quantization. By default, it is
+  // set to 1024. To disable this, set the value to -1 explicitly.
+  int64 min_num_elements_for_weights = 5;
+
+  // When set to `true`, freezes all variables in the model into constants.
+  // When set to `false` the model's large constants are converted to variables.
+  // Setting this to `false` is an experimental feature and quantization may
+  // fail. To quantize models larger than 2 GiB, this should be set to `false`.
+  // If not set, it defaults to `true`.
+  FreezeAllVariables freeze_all_variables = 6;
+
+  // Enables chnanel-wise quantizaiton. By default, channel-wise quantization is
+  // not applied regardless of the op support. Currently, it is supported for
+  // Uniform Quantized opset only.
+  bool enable_per_channel_quantization = 7;
+
+  // Enables two inputs of an operation to be both tensors.
+  // Currently supports MatMul and BatchMatMul ops for XLA.
+  // TODO(b/263528090): Check the condition when this feature is beneficial.
+  bool enable_two_input_tensors = 8;
+
+  // Supports TPU model quantization. If the target model for the quantization
+  // is already converted for TPU, this flag may be helpful. Note that this
+  // feature may be unstable as it is under the experimental stage.
+  bool experimental_enable_tpu_model_support = 9;
+
+  // Produces legacy weight-only graph where the qconst op(containing quantized
+  // values) is followed by a dequantization op.
+  bool enable_legacy_weight_only = 10;
 }

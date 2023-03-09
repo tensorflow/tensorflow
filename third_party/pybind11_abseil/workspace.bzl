@@ -8,14 +8,15 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def repo():
     """Imports pybind11_abseil."""
-    PA_COMMIT = "d9614e4ea46b411d02674305245cba75cd91c1c6"
-    PA_SHA256 = "a2b5509dc1c344954fc2f1ba1d277afae84167691c0daad59b6da71886d1f276"
+    PA_COMMIT = "2c4932ed6f6204f1656e245838f4f5eae69d2e29"
+    PA_SHA256 = "0223b647b8cc817336a51e787980ebc299c8d5e64c069829bf34b69d72337449"
     tf_http_archive(
         name = "pybind11_abseil",
         sha256 = PA_SHA256,
         strip_prefix = "pybind11_abseil-{commit}".format(commit = PA_COMMIT),
         urls = tf_mirror_urls("https://github.com/pybind/pybind11_abseil/archive/{commit}.tar.gz".format(commit = PA_COMMIT)),
         build_file = "//third_party/pybind11_abseil:BUILD",
+        patch_file = ["//third_party/pybind11_abseil:remove_license.patch"],
     )
 
     # pybind11_bazel is a dependency of pybind11_abseil.

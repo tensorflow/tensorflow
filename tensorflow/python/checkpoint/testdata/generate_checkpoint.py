@@ -39,6 +39,8 @@ class TableModule(module.Module):
         deleted_key=deleted_key,
         name="t1",
         initial_num_buckets=32)
+    self.lookup_table.insert(1, 1)
+    self.lookup_table.insert(2, 4)
 
 
 class VariableModule(module.Module):

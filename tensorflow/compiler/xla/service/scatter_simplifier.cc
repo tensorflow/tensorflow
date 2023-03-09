@@ -16,106 +16,31 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/scatter_simplifier.h"
 
 #include <algorithm>
-#include <iostream>
 #include <iterator>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/gather_scatter_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
-
-StatusOr<HloInstruction*> MaybeTranspose(HloInstruction* operand,
-                                         absl::Span<const int64_t> permutation,
-                                         absl::string_view name) {
-  if (IsIdentityPermutation(permutation)) {
-    return operand;
-  }
-  TF_ASSIGN_OR_RETURN(auto* result, MakeTransposeHlo(operand, permutation));
-  result->GetModule()->SetAndUniquifyInstrName(result, name);
-  return result;
-}
-
-StatusOr<HloInstruction*> MaybeReshape(HloInstruction* operand,
-                                       const xla::Shape& shape,
-                                       absl::string_view name) {
-  if (operand->shape() == shape) {
-    return operand;
-  }
-  TF_ASSIGN_OR_RETURN(auto* result, MakeReshapeHlo(shape, operand));
-  result->GetModule()->SetAndUniquifyInstrName(result, name);
-  return result;
-}
-
-StatusOr<HloInstruction*> TransformScatterIndices(
-    HloInstruction* scatter_indices, int index_vector_dim) {
-  auto scatter_indices_shape = scatter_indices->shape();
-  if (scatter_indices_shape.rank() == index_vector_dim) {
-    // Add a size 1 dimension to scatter_indices if index_vector_dim is
-    // scatter_indices.shape.rank.
-    scatter_indices_shape.add_dimensions(1);
-    scatter_indices_shape.mutable_layout()->add_minor_to_major(
-        index_vector_dim);
-    TF_ASSIGN_OR_RETURN(scatter_indices,
-                        MaybeReshape(scatter_indices, scatter_indices_shape,
-                                     "scatter_indices_with_vector_dim"));
-  } else if (index_vector_dim < scatter_indices_shape.rank() - 1) {
-    // If index_vector_dim is not the last dimension in scatter_indices, make it
-    // so.
-    std::vector<int64_t> permutation;
-    permutation.reserve(scatter_indices_shape.rank());
-    for (int i = 0; i < scatter_indices_shape.rank(); ++i) {
-      if (i != index_vector_dim) {
-        permutation.push_back(i);
-      }
-    }
-    permutation.push_back(index_vector_dim);
-
-    TF_ASSIGN_OR_RETURN(scatter_indices,
-                        MaybeTranspose(scatter_indices, permutation,
-                                       "transposed_scatter_indices"));
-  }
-
-  // Flatten scatter_indices, making it two-dimensional.
-  if (scatter_indices_shape.rank() > 2) {
-    if (scatter_indices_shape.is_dynamic()) {
-      return InvalidArgumentStrCat("scatter_indices.shape must be static, got ",
-                                   scatter_indices_shape.ToString());
-    }
-
-    TF_ASSIGN_OR_RETURN(
-        scatter_indices,
-        CollapseFirstNDims(scatter_indices, scatter_indices_shape.rank() - 1));
-    scatter_indices->GetModule()->SetAndUniquifyInstrName(
-        scatter_indices, "indices_collapsed_scatter_dims");
-  }
-
-  return scatter_indices;
-}
 
 StatusOr<HloInstruction*> FlattenAndTransposeUpdates(
     HloInstruction* updates, absl::Span<const int64_t> update_window_dims,
     absl::Span<const int64_t> inserted_window_dims,
     int64_t scatter_indices_size) {
   int64_t updates_rank = updates->shape().rank();
-  if (updates->shape().is_dynamic()) {
-    return InvalidArgumentStrCat("updates.shape must be static, got ",
-                                 updates->shape().ToString());
-  }
-  if (updates->shape().rank() == 0) {
-    return InvalidArgument("updates must have a rank of at least 1.");
-  }
 
   std::vector<int64_t> permutation;
   const int64_t num_scatter_dims = updates_rank - update_window_dims.size();
@@ -129,42 +54,26 @@ StatusOr<HloInstruction*> FlattenAndTransposeUpdates(
   }
   // Followed by the update_window_dims.
   absl::c_copy(update_window_dims, std::back_inserter(permutation));
-  TF_ASSIGN_OR_RETURN(
-      updates, MaybeTranspose(updates, permutation, "transposed_updates"));
+  TF_ASSIGN_OR_RETURN(updates, MaybeTranspose(updates, permutation));
+
+  // Collapse scatter dimensions to one.
+  if (num_scatter_dims > 1) {
+    TF_ASSIGN_OR_RETURN(updates, CollapseFirstNDims(updates, num_scatter_dims));
+  } else if (num_scatter_dims == 0) {
+    TF_ASSIGN_OR_RETURN(updates, InsertDegenerateDims(updates, {0}));
+  }
 
   // Insert size 1 dimensions.
-  std::vector<int64_t> new_dims;
-  new_dims.reserve(update_window_dims.size() + inserted_window_dims.size() + 1);
-  new_dims.push_back(scatter_indices_size);
-  for (int i = 0; i < update_window_dims.size(); ++i) {
-    new_dims.push_back(
-        updates->shape().dimensions(static_cast<int>(num_scatter_dims + i)));
-  }
-  for (int64_t i : inserted_window_dims) {
-    new_dims.insert(new_dims.begin() + i + 1, 1);
-  }
-
-  auto new_shape =
-      ShapeUtil::MakeShape(updates->shape().element_type(), new_dims);
-  return MaybeReshape(updates, new_shape, "reshaped_updates");
-}
-
-// Computes a permutation that makes 'operands' conform to
-// 'scatter_dims_to_operand_dims' (i.e., after applying this permutation,
-// scatter_dims_to_operand_dims can be replaced with the identity function).
-// Also returns its inverse.
-std::pair<std::vector<int64_t>, std::vector<int64_t>>
-MakeOperandsScatterIndexPermutations(
-    absl::Span<const int64_t> scatter_dims_to_operand_dims, int operand_rank) {
-  std::vector<int64_t> perm;
-  perm.reserve(operand_rank);
-  absl::c_copy(scatter_dims_to_operand_dims, std::back_inserter(perm));
-  for (int i = 0; i < operand_rank; ++i) {
-    if (!absl::c_linear_search(scatter_dims_to_operand_dims, i)) {
-      perm.push_back(i);
+  if (!inserted_window_dims.empty()) {
+    std::vector<int64_t> new_dims;
+    new_dims.reserve(inserted_window_dims.size());
+    for (int64_t i : inserted_window_dims) {
+      new_dims.push_back(i + 1);
     }
+    TF_ASSIGN_OR_RETURN(updates, InsertDegenerateDims(updates, new_dims));
   }
-  return {perm, InversePermutation(perm)};
+
+  return updates;
 }
 
 std::vector<int64_t> MakeUpdatePermutation(
@@ -196,23 +105,8 @@ StatusOr<std::vector<HloInstruction*>> TransformScatterUpdates(
         FlattenAndTransposeUpdates(update, attrs.update_window_dims(),
                                    attrs.inserted_window_dims(),
                                    scatter_indices_size));
-    TF_ASSIGN_OR_RETURN(scatter_updates.back(),
-                        MaybeTranspose(scatter_updates.back(),
-                                       update_permutation, "permuted_updates"));
   }
-  return scatter_updates;
-}
-
-StatusOr<std::vector<HloInstruction*>> TransformScatterOperands(
-    HloScatterInstruction* scatter,
-    const std::vector<int64_t>& operand_permutation) {
-  std::vector<HloInstruction*> operands;
-  for (auto* operand : scatter->scatter_operands()) {
-    TF_ASSIGN_OR_RETURN(
-        operands.emplace_back(),
-        MaybeTranspose(operand, operand_permutation, "permuted_operand"));
-  }
-  return operands;
+  return MaybeTranspose(scatter_updates, update_permutation);
 }
 
 ScatterDimensionNumbers MakeScatterDimensionNumbers(
@@ -251,24 +145,36 @@ StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
 
   // We permute updates and operands according to scatter_dims_to_operand_dims.
   auto [operand_permutation, operand_permutation_inverse] =
-      MakeOperandsScatterIndexPermutations(attrs.scatter_dims_to_operand_dims(),
-                                           operand_rank);
+      MakeOperandStartIndexPermutations(attrs.scatter_dims_to_operand_dims(),
+                                        operand_rank);
   auto update_permutation = MakeUpdatePermutation(operand_permutation);
 
   TF_ASSIGN_OR_RETURN(auto* scatter_indices,
-                      TransformScatterIndices(scatter->scatter_indices(),
-                                              attrs.index_vector_dim()));
+                      TransformStartIndices(scatter->scatter_indices(),
+                                            attrs.index_vector_dim()));
   TF_ASSIGN_OR_RETURN(
       auto scatter_updates,
       TransformScatterUpdates(scatter, update_permutation,
                               scatter_indices->shape().dimensions(0)));
-  TF_ASSIGN_OR_RETURN(auto scatter_operands,
-                      TransformScatterOperands(scatter, operand_permutation));
+  TF_ASSIGN_OR_RETURN(
+      auto scatter_operands,
+      MaybeTranspose(scatter->scatter_operands(), operand_permutation));
 
   auto dim_numbers = MakeScatterDimensionNumbers(
       operand_rank, attrs.scatter_dims_to_operand_dims().size());
+  Shape output_shape;
+  if (scatter_operands.size() == 1) {
+    output_shape = scatter_operands.front()->shape();
+  } else {
+    std::vector<Shape> shapes;
+    shapes.reserve(scatter_operands.size());
+    for (auto* operand : scatter_operands) {
+      shapes.push_back(operand->shape());
+    }
+    output_shape = ShapeUtil::MakeTupleShape(shapes);
+  }
   auto* result = scatter->AddInstruction(HloInstruction::CreateScatter(
-      scatter->shape(), scatter_operands, scatter_indices, scatter_updates,
+      output_shape, scatter_operands, scatter_indices, scatter_updates,
       scatter->called_computations().front(), dim_numbers,
       // TODO(unknown): Is this still correct?
       scatter->indices_are_sorted(), scatter->unique_indices()));
@@ -280,8 +186,7 @@ StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
   }
 
   if (scatter->scatter_operands().size() == 1) {
-    return MaybeTranspose(result, operand_permutation_inverse,
-                          "permuted_result");
+    return MaybeTranspose(result, operand_permutation_inverse);
   }
 
   std::vector<HloInstruction*> result_items;
@@ -291,8 +196,7 @@ StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
                         MakeGetTupleElementHlo(result, i));
     TF_ASSIGN_OR_RETURN(
         result_items.back(),
-        MaybeTranspose(result_items.back(), operand_permutation_inverse,
-                       "permuted_result"));
+        MaybeTranspose(result_items.back(), operand_permutation_inverse));
   }
 
   return MaybeMakeTuple(result_items);

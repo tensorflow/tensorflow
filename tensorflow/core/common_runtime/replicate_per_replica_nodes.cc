@@ -14,14 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
 
+#include <algorithm>
 #include <queue>
 
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/common_runtime/optimize_cross_host_control_deps.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace {
+
+constexpr int kOptimizeCrossHostEdgesTheshold = 8;
+constexpr int kOptimizeCrossHostDataEdgesTheshold = 2;
 
 // A helper for rewriting nodes assigned to a virtual composite device.
 class ReplicateHelper {
@@ -249,6 +255,9 @@ Status ReplicatePerReplicaNodesInFunctionGraph(
     const absl::flat_hash_map<string, const std::vector<string>*>&
         composite_devices,
     Graph* graph) {
+  VLOG(1) << "Starting ReplicatePerReplicaNodesInFunctionGraph";
+  VLOG(1) << "Graph #nodes " << graph->num_nodes() << " #edges "
+          << graph->num_edges();
   std::set<string> composite_device_names;
   for (const auto& it : composite_devices) {
     composite_device_names.insert(it.first);
@@ -266,6 +275,11 @@ Status ReplicatePerReplicaNodesInFunctionGraph(
       composite_device_to_cluster_nodes[n->assigned_device_name()].emplace(
           n, n->out_edges().size());
     }
+  }
+
+  if (composite_device_to_cluster_nodes.empty()) {
+    VLOG(1) << "No nodes with composiste device found.";
+    return OkStatus();
   }
 
   for (auto& it : composite_device_to_cluster_nodes) {
@@ -303,6 +317,20 @@ Status ReplicatePerReplicaNodesInFunctionGraph(
           cluster_nodes.begin()->first->assigned_device_name());
     }
   }
+
+  // Optimize cross host control output/input edges. We apply the optimizations
+  // at the end to reduce the newly created cross-host edges caused by
+  // per-replica nodes/edges replications.
+  TF_RETURN_IF_ERROR(OptimizeCrossHostControlOutputEdges(
+      graph, kOptimizeCrossHostEdgesTheshold));
+  TF_RETURN_IF_ERROR(OptimizeCrossHostControlInputEdges(
+      graph, kOptimizeCrossHostEdgesTheshold));
+  TF_RETURN_IF_ERROR(OptimizeCrossHostDataOutputEdges(
+      graph, kOptimizeCrossHostDataEdgesTheshold));
+
+  VLOG(1) << "Finished ReplicatePerReplicaNodesInFunctionGraph";
+  VLOG(1) << "Graph #nodes " << graph->num_nodes() << " #edges "
+          << graph->num_edges();
   return OkStatus();
 }
 

@@ -17,44 +17,46 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/no_op.h"
 
 namespace tensorflow {
 
 // This file contains temporary registrations for some of the Eigen CPU backend
-// operators for BFloat16 type. The kernel registered for all these ops is a
-// NoOp. We do this so that MKL graph pass can rewrite these ops into
+// operators for BFloat16 type. The kernel registered for all these ops simply
+// raises an error. We do this so that MKL graph pass can rewrite these ops into
 // corresponding MKL ops. Without such registrations, Placer component in
 // TensorFlow fails because Eigen CPU backend does not support these ops in
 // BFloat16 type.
 
+namespace {
+class RaiseBfloat16Error : public OpKernel {
+ public:
+  explicit RaiseBfloat16Error(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES(context, false,
+                errors::InvalidArgument("Op does not support bfloat16 inputs"));
+  }
+
+  void Compute(OpKernelContext* context) override {}
+};
+}  // namespace
+
 #define REGISTER_CPU(T)                                                       \
   REGISTER_KERNEL_BUILDER(                                                    \
-      Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);        \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("Conv2DBackpropFilter").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      NoOp);                                                                  \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("Conv2DBackpropInput").Device(DEVICE_CPU).TypeConstraint<T>("T"),  \
-      NoOp);                                                                  \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("_FusedConv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);  \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("AvgPool").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);       \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("AvgPoolGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);   \
+      Name("_FusedConv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"),         \
+      RaiseBfloat16Error);                                                    \
   REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV3")                            \
                               .Device(DEVICE_CPU)                             \
                               .TypeConstraint<bfloat16>("T")                  \
                               .TypeConstraint<float>("U"),                    \
-                          NoOp);                                              \
+                          RaiseBfloat16Error);                                \
   REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV3")                        \
                               .Device(DEVICE_CPU)                             \
                               .TypeConstraint<bfloat16>("T")                  \
                               .TypeConstraint<float>("U"),                    \
-                          NoOp);                                              \
+                          RaiseBfloat16Error);                                \
   REGISTER_KERNEL_BUILDER(                                                    \
-      Name("_FusedMatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);
+      Name("_FusedMatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"),         \
+      RaiseBfloat16Error);
 
 TF_CALL_bfloat16(REGISTER_CPU);
 #undef REGISTER_CPU

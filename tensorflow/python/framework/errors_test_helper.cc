@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/python/lib/core/pybind11_status.h"
 
 namespace tensorflow {
@@ -21,8 +21,8 @@ PYBIND11_MODULE(_errors_test_helper, m) {
   m.def("TestRaiseFromStatus", [](int code) {
     tensorflow::Status status(static_cast<tensorflow::error::Code>(code),
                               "test message");
-    status.SetPayload("key1", "value1");
-    status.SetPayload("key2", "value2");
+    status.SetPayload("key1", absl::Cord("value1"));
+    status.SetPayload("key2", absl::Cord("value2"));
     MaybeRaiseRegisteredFromStatus(status);
     return 0;
   });

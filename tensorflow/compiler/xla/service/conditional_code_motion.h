@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -38,13 +38,23 @@ namespace conditional_opt {
 // inside branches.
 class Boundary {
  public:
-  enum class Position { kInsideBranch, kOutsideBranch, kUndefined };
+  enum class Position {
+    kInsideBranch,
+    kOutsideBranchUser,
+    kOutsideBranchOperand,
+    kUndefined
+  };
   Boundary() : position_(Position::kUndefined) {}
   explicit Boundary(Position p) : position_(p) {}
   std::vector<HloInstruction*>& mutable_operands() { return operands_; }
   const std::vector<HloInstruction*>& operands() const { return operands_; }
   bool IsInsideBranch() const { return position_ == Position::kInsideBranch; }
-  bool IsOutsideBranch() const { return position_ == Position::kOutsideBranch; }
+  bool IsOutsideBranchUser() const {
+    return position_ == Position::kOutsideBranchUser;
+  }
+  bool IsOutsideBranchOperand() const {
+    return position_ == Position::kOutsideBranchOperand;
+  }
   Position GetPosition() const { return position_; }
   bool IsEmpty() const { return operands_.empty(); }
   std::string ToString() const {
@@ -166,7 +176,10 @@ class ConditionalCodeMotion : public HloModulePass {
   }
 
   absl::string_view name() const override { return "conditional-code-motion"; }
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Optimization decision for each boundary of the conditional instruction.
   class Decision {
@@ -206,13 +219,18 @@ class ConditionalCodeMotion : public HloModulePass {
   // configurations specified with the same index number for the conditional.
   absl::flat_hash_map<int64_t, std::vector<int64_t>> search_config_map_;
   std::vector<std::vector<int64_t>> move_config_, reuse_config_;
-
+  // How much memory increase, calculated using
+  // ShapeUtil::ByteSizeOf(hlo->shape(), 1) >> 9, is allowed per instruction
+  // moved.
+  const int64_t kMemoryAllowance = 10000;
+  int64_t memory_increase_ = 0;
   StatusOr<bool> MoveInstructionOut(HloInstruction* conditional,
                                     std::vector<Boundary>& to_move_out,
                                     std::vector<Boundary>& new_boundaries);
-  StatusOr<bool> MoveInstructionIn(HloInstruction* conditional,
-                                   std::vector<Boundary>& to_move_in,
-                                   std::vector<Boundary>& new_boundaries);
+  StatusOr<bool> MoveUserInstructionsIn(HloInstruction* conditional,
+                                        std::vector<Boundary>& to_move_in);
+  StatusOr<bool> MoveOperandInstructionsIn(HloInstruction* conditional,
+                                           std::vector<Boundary>& to_move_in);
   void SetDefaultMoveConfig();
 };
 }  // namespace conditional_opt

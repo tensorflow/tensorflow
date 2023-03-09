@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/analysis/cost_analysis.h"
 
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 
 namespace tensorflow {
 namespace tfrt_compiler {
@@ -52,8 +55,8 @@ int64_t InferLookupTableFindV2Cost(const CostContext& context,
   constexpr int64_t kLookupTableFindCostScale = 8;
   constexpr int64_t kLookupTableFindStringKeyCostScale = 16;
 
-  auto value_type = op.values().getType().cast<mlir::TensorType>();
-  auto key_type = op.keys().getType().cast<mlir::TensorType>();
+  auto value_type = op.getValues().getType().cast<mlir::TensorType>();
+  auto key_type = op.getKeys().getType().cast<mlir::TensorType>();
 
   int64_t output_size = InferTensorSize(context, value_type);
 
@@ -68,14 +71,14 @@ int64_t InferLookupTableFindV2Cost(const CostContext& context,
 // The cost function for tf.GatherV2.
 int64_t InferGatherV2Cost(const CostContext& context, mlir::TF::GatherV2Op op) {
   return InferTensorSize(context,
-                         op.output().getType().cast<mlir::TensorType>());
+                         op.getOutput().getType().cast<mlir::TensorType>());
 }
 
 // The cost function for tf.SparseSegmentSumOp.
 template <typename OpType>
 int64_t InferSparseSegmentOpCost(const CostContext& context, OpType op) {
   return InferTensorSize(
-      context, op.output().getType().template cast<mlir::TensorType>());
+      context, op.getOutput().getType().template cast<mlir::TensorType>());
 }
 
 // CostFunctionRegistry is a map from op names to their cost functions.
@@ -125,6 +128,15 @@ void RegisterCostFunction(absl::string_view op_name,
                        std::move(cost_function));
 }
 
+bool HasCostFunctionRegistered(absl::string_view op_name) {
+  return GetCostFunctionRegistry().contains(op_name);
+}
+
+int64_t CostAnalysis::GetCost(mlir::Operation* op) const {
+  assert(cost_map_.count(op) > 0);
+  return cost_map_.lookup(op);
+}
+
 void CostAnalysis::AnalyzeArguments(mlir::func::FuncOp func_op) {
   // Use the max size among function inputs as the default size of dynamic
   // shaped tensors in the function.
@@ -159,7 +171,8 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
 
   // Try to use its cost function if it is registered.
   const auto& registry = GetCostFunctionRegistry();
-  auto iter = registry.find(op->getName().getStringRef().str());
+  absl::string_view op_name = op->getName().getStringRef();
+  auto iter = registry.find(op_name);
   if (iter != registry.end()) {
     CostContext context;
     context.default_unranked_tensor_size = max_arg_size_;

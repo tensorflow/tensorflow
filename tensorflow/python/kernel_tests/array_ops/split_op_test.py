@@ -26,8 +26,8 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
-_TEST_DTYPES = (dtypes.float32, dtypes.float64, dtypes.complex64,
-                dtypes.complex128)
+_TEST_DTYPES = (dtypes.int8, dtypes.float32, dtypes.float64, dtypes.complex64,
+                dtypes.complex128, dtypes.bfloat16)
 
 
 class SplitOpTest(test.TestCase):
@@ -139,7 +139,7 @@ class SplitOpTest(test.TestCase):
     for i in range(num_split):
       slices[split_dim] = slice(offset, offset + size_splits[i])
       offset += size_splits[i]
-      self.assertAllEqual(result[i], inp[slices])
+      self.assertAllEqual(result[i], inp[tuple(slices)])
 
   def _testSpecialCasesVariable(self):
     inp = np.random.rand(4, 4).astype("f")
@@ -165,7 +165,7 @@ class SplitOpTest(test.TestCase):
     for i in range(num_split):
       slices[split_dim] = slice(offset, offset + size_splits[i])
       offset += size_splits[i]
-      self.assertAllEqual(result[i], inp[slices])
+      self.assertAllEqual(result[i], inp[tuple(slices)])
 
   @test_util.run_in_graph_and_eager_modes
   def testSpecialCasesVariable(self):
@@ -299,7 +299,7 @@ class SplitOpTest(test.TestCase):
     for i in range(num_split):
       slices[split_dim] = slice(offset, offset + length)
       offset += length
-      self.assertAllEqual(result[i], inp[slices])
+      self.assertAllEqual(result[i], inp[tuple(slices)])
 
   @test_util.run_in_graph_and_eager_modes
   def testRandom(self):
@@ -325,8 +325,9 @@ class SplitOpTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testGradientsAll(self):
     for dtype in _TEST_DTYPES:
-      self._testGradientsSimple(dtype)
-      self._testGradientsSimpleVariable(dtype)
+      if not dtype.is_integer:
+        self._testGradientsSimple(dtype)
+        self._testGradientsSimpleVariable(dtype)
 
   @test_util.run_deprecated_v1
   def testShapeFunctionEdgeCases(self):
@@ -401,6 +402,44 @@ class SplitOpTest(test.TestCase):
                                 "|can't split axis"):
       splits = [1, 2]
       self.evaluate(array_ops.split(x, splits, axis=0))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSplitVBigTensors(self):
+    input_shape = [1, 64, 32768]
+    x = np.linspace(
+        start=1,
+        stop=np.prod(input_shape),
+        num=np.prod(input_shape),
+        dtype=np.float32).reshape(input_shape)
+    split_axis = 1
+    size_splits = [1] * input_shape[split_axis]
+
+    y = array_ops.split(x, num_or_size_splits=size_splits, axis=split_axis)
+
+    for i in range(input_shape[split_axis]):
+      result = y[i]
+      expected = x[:, i:i + 1, :]
+      self.assertAllEqual(result, expected)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSplitVBigTensorsWithIrregularSplits(self):
+    input_shape = [1, 64, 32768]
+    x = np.linspace(start=1,
+                    stop=np.prod(input_shape),
+                    num=np.prod(input_shape),
+                    dtype=np.float32).reshape(input_shape)
+    split_axis = 1
+    size_splits = [32, 16, 8, 4, 2, 1, 1]
+
+    y = array_ops.split(x, num_or_size_splits=size_splits, axis=split_axis)
+
+    start = 0
+    for i in range(len(size_splits)):
+      result = y[i]
+      split_size = size_splits[i]
+      expected = x[:, start:start+split_size, :]
+      start += split_size
+      self.assertAllEqual(result, expected)
 
 
 if __name__ == "__main__":

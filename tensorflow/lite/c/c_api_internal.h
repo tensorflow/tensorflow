@@ -24,9 +24,10 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/profiling/telemetry/c/profiler.h"
 #include "tensorflow/lite/signature_runner.h"
 
 // Internal structures and subroutines used by the C API. These are likely to
@@ -37,7 +38,7 @@ limitations under the License.
 
 struct TfLiteModel {
   // Sharing is safe as FlatBufferModel is const.
-  std::shared_ptr<const tflite::FlatBufferModel> impl;
+  std::shared_ptr<const tflite::impl::FlatBufferModel> impl;
 };
 
 // The `TfLiteOpResolver` struct is an abstract callback interface that
@@ -62,6 +63,15 @@ struct TfLiteOpResolverCallbacks {
   // that was passed to `TfLiteInterpreterOptionsSetOpResolver`.
   const TfLiteRegistration* (*find_custom_op)(void* user_data, const char* op,
                                               int version);
+
+  // `find_builtin_op` which returns `TfLiteRegistration_V2`.
+  const TfLiteRegistration_V2* (*find_builtin_op_v2)(void* user_data,
+                                                     TfLiteBuiltinOperator op,
+                                                     int version);
+  // `find_custom_op` which returns `TfLiteRegistration_V2`.
+  const TfLiteRegistration_V2* (*find_custom_op_v2)(void* user_data,
+                                                    const char* op,
+                                                    int version);
 
   // `find_builtin_op` which returns `TfLiteRegistration_V1`.
   const TfLiteRegistration_V1* (*find_builtin_op_v1)(void* user_data,
@@ -108,12 +118,19 @@ struct TfLiteInterpreterOptions {
   // TfLiteRegistrationExternal objects owned by caller of
   // `TfLiteInterpreterOptionsAddRegistrationExternal` API.
   std::vector<TfLiteRegistrationExternal*> op_registrations;
+
+  // Determines whether to allow to cancel invocations with
+  // `Interpreter::Cancel` or `SignatureRunner::Cancel`.
+  bool enable_cancellation = false;
+
+  // If not nullptr, report telemetry metrics to profiler.
+  TfLiteTelemetryProfilerStruct* telemetry_profiler = nullptr;
 };
 
 struct TfLiteInterpreter {
   // Taking a reference to the (const) model data avoids lifetime-related issues
   // and complexity with the TfLiteModel's existence.
-  std::shared_ptr<const tflite::FlatBufferModel> model;
+  std::shared_ptr<const tflite::impl::FlatBufferModel> model;
 
   // The interpreter does not take ownership of the provided ErrorReporter
   // instance, so we ensure its validity here. Note that the interpreter may use
@@ -143,7 +160,7 @@ namespace internal {
 /// methods.
 class CallbackOpResolver : public ::tflite::OpResolver {
  public:
-  CallbackOpResolver() {}
+  CallbackOpResolver() = default;
   void SetCallbacks(
       const struct TfLiteOpResolverCallbacks& op_resolver_callbacks) {
     op_resolver_callbacks_ = op_resolver_callbacks;
@@ -156,6 +173,72 @@ class CallbackOpResolver : public ::tflite::OpResolver {
  private:
   CallbackOpResolver(const CallbackOpResolver&) = delete;
   CallbackOpResolver& operator=(const CallbackOpResolver&) = delete;
+
+  // Builds a builtin op TfLiteRegistration from a legacy registration
+  // (e.g. TfLiteRegistration_V1).
+  // The legacy registration type must be a POD struct type whose field types
+  // must be a prefix of the field types in TfLiteRegistration, and offset of
+  // the first field in TfLiteRegistration that is not present in the legacy
+  // registration type must be greater than or equal to the size of the legacy
+  // registration type.
+  // `legacy_find_builtin_op` is a callback that finds the
+  // legacy registration for a builtin operator by enum code. The caller owns
+  // the returned registration.
+  template <class LegacyRegistrationT>
+  TfLiteRegistration* BuildBuiltinOpFromLegacyRegistration(
+      tflite::BuiltinOperator op, int version,
+      const LegacyRegistrationT* (*legacy_find_builtin_op)(
+          void* user_data, TfLiteBuiltinOperator op, int version)) const {
+    if (legacy_find_builtin_op) {
+      // Get a deprecated Registration object to create a Registration.
+      const LegacyRegistrationT* legacy_registration = legacy_find_builtin_op(
+          op_resolver_callbacks_.user_data,
+          static_cast<TfLiteBuiltinOperator>(op), version);
+      if (legacy_registration) {
+        TfLiteRegistration* new_registration = new TfLiteRegistration();
+        memcpy(new_registration, legacy_registration,
+               sizeof(LegacyRegistrationT));
+        new_registration->registration_external = nullptr;
+        temporary_builtin_registrations_.push_back(
+            std::unique_ptr<TfLiteRegistration>(new_registration));
+        return new_registration;
+      }
+    }
+    return nullptr;
+  }
+
+  // Builds a custom op TfLiteRegistration from a legacy registration
+  // (e.g. TfLiteRegistration_V1).
+  // The legacy registration type must be a POD struct type whose field types
+  // must be a prefix of the field types in TfLiteRegistration, and offset of
+  // the first field in TfLiteRegistration that is not present in the legacy
+  // registration type must be greater than or equal to the size of the legacy
+  // registration type.
+  // `legacy_find_custom_op` is a callback that finds the legacy registration
+  // for a builtin operator by op name.
+  // The caller owns the returned registration.
+  template <class LegacyRegistrationT>
+  TfLiteRegistration* BuildCustomOpFromLegacyRegistration(
+      const char* op, int version,
+      const LegacyRegistrationT* (*legacy_find_custom_op)(void* user_data,
+                                                          const char* op,
+                                                          int version)) const {
+    if (legacy_find_custom_op) {
+      // Get a deprecated Registration object to create a Registration.
+      const LegacyRegistrationT* legacy_registration =
+          legacy_find_custom_op(op_resolver_callbacks_.user_data, op, version);
+      if (legacy_registration) {
+        TfLiteRegistration* new_registration = new TfLiteRegistration();
+        memcpy(new_registration, legacy_registration,
+               sizeof(LegacyRegistrationT));
+        new_registration->registration_external = nullptr;
+        temporary_custom_registrations_.push_back(
+            std::unique_ptr<TfLiteRegistration>(new_registration));
+        return new_registration;
+      }
+    }
+    return nullptr;
+  }
 
   struct TfLiteOpResolverCallbacks op_resolver_callbacks_ = {};
 

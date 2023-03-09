@@ -20,7 +20,6 @@ import functools
 import sys
 
 import pasta
-import six
 
 from tensorflow.tools.compatibility import all_renames_v2
 from tensorflow.tools.compatibility import ast_edits
@@ -44,8 +43,7 @@ class VersionedTFImport(ast_edits.AnalysisResult):
 
   def __init__(self, version):
     self.log_level = ast_edits.INFO
-    self.log_message = ("Not upgrading symbols because `tensorflow." +
-                        six.ensure_str(version) +
+    self.log_message = ("Not upgrading symbols because `tensorflow." + version +
                         "` was directly imported as `tf`.")
 
 
@@ -189,7 +187,6 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         },
         "tf.nn.softmax_cross_entropy_with_logits": {
             "dim": "axis",
-            "_sentinel": None,
         },
         "tf.nn.softmax_cross_entropy_with_logits_v2": {
             "dim": "axis"
@@ -254,6 +251,10 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
             "keep_dims": "keepdims"
         },
         "tf.debugging.assert_all_finite": {
+            "t": "x",
+            "msg": "message",
+        },
+        "tf.verify_tensor_all_finite": {
             "t": "x",
             "msg": "message",
         },
@@ -555,11 +556,9 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
     self.change_to_function = {}
 
     # pylint: disable=line-too-long
-    # This list should just contain names of functions that had
-    # their arguments reordered. After adding a function name to the list
-    # run the following to update reorders_v2.py:
-    # bazel build tensorflow/tools/compatibility/update:generate_v2_reorders_map
-    # bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
+    # This list contains names of functions that had their arguments reordered.
+    # After modifying this list, run the following to update reorders_v2.py:
+    # bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
     # pylint: enable=line-too-long
     self.reordered_function_names = {
         "tf.io.serialize_sparse",
@@ -665,13 +664,12 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.estimator.BaselineRegressor",
         "tf.initializers.uniform_unit_scaling",
         "tf.uniform_unit_scaling_initializer",
-        "tf.train.sdca_fprint",
-        "tf.train.sdca_optimizer",
-        "tf.train.sdca_shrink_l1",
         "tf.data.experimental.TensorStructure",
         "tf.data.experimental.SparseTensorStructure",
         "tf.data.experimental.RaggedTensorStructure",
         "tf.data.experimental.TensorArrayStructure",
+        "tf.debugging.assert_all_finite",
+        "tf.gather_nd",
     }
 
     # Manual mapping of function names to be reordered to their list of argument
@@ -905,6 +903,13 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "Please use model.save(path, save_format='tf') "
         "(or alternatively tf.keras.models.save_model), and "
         "tf.keras.models.load_model(path) instead.")
+
+    saved_model_load_warning = (
+        ast_edits.WARNING,
+        "tf.saved_model.load works differently in 2.0 compared to 1.0. See "
+        "migration information in the documentation of "
+        "tf.compat.v1.saved_model.load."
+        "\nThe calls have been converted to compat.v1.")
 
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
@@ -1262,6 +1267,8 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.summary.scalar": summary_api_comment,
         "tf.summary.tensor_summary": summary_api_comment,
         "tf.summary.text": summary_api_comment,
+        "tf.saved_model.load": saved_model_load_warning,
+        "tf.saved_model.loader.load": saved_model_load_warning,
     }
     all_renames_v2.add_contrib_direct_import_support(self.function_warnings)
 
@@ -1414,6 +1421,7 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
     }
     all_renames_v2.add_contrib_direct_import_support(self.function_arg_warnings)
 
+    # pylint: disable=line-too-long
     # Specially handled functions
     # Each transformer is a callable which will be called with the arguments
     #   transformer(parent, node, full_name, name, logs)
@@ -1429,6 +1437,9 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
     #   may get messy)
     # - a replacement for node, if the whole call node was replaced. The caller
     #   will take care of changing parent.
+    # After modifying this dict, run the following to update reorders_v2.py:
+    # bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
+    # pylint: enable=line-too-long
     canned_estimator_msg_optimizer = (
         "tf.keras.optimizers.* only, so the call was converted to compat.v1. "
         "Please note that tf.train.Optimizers have one-to-one correspondents "
@@ -1667,7 +1678,8 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
     return root_node, visitor.log, visitor.warnings_and_errors
 
   def clear_preprocessing(self):
-    self.__init__()
+    self.__init__(import_rename=self.import_rename,
+                  upgrade_compat_v1_import=self.upgrade_compat_v1_import)
 
 
 def _is_ast_str(node):
@@ -1759,7 +1771,7 @@ def _rename_if_arg_found_transformer(parent, node, full_name, name, logs,
 
   # All conditions met, insert v1 and log what we did.
   # We must have a full name, so the func is an attribute.
-  new_name = six.ensure_str(full_name).replace("tf.", "tf.compat.v1.", 1)
+  new_name = full_name.replace("tf.", "tf.compat.v1.", 1)
   node.func = ast_edits.full_name_node(new_name)
   logs.append((
       ast_edits.INFO, node.lineno, node.col_offset,
@@ -1787,8 +1799,8 @@ def _iterator_transformer(parent, node, full_name, name, logs):
   # (tf.compat.v1.data), or something which is handled in the rename
   # (tf.data). This transformer only handles the method call to function call
   # conversion.
-  if full_name and (six.ensure_str(full_name).startswith("tf.compat.v1.data") or
-                    six.ensure_str(full_name).startswith("tf.data")):
+  if full_name and (full_name.startswith("tf.compat.v1.data") or
+                    full_name.startswith("tf.data")):
     return
 
   # This should never happen, since we're only called for Attribute nodes.
@@ -2535,7 +2547,7 @@ def _name_scope_transformer(parent, node, full_name, name, logs):
 
 
 def _rename_to_compat_v1(node, full_name, logs, reason):
-  new_name = six.ensure_str(full_name).replace("tf.", "tf.compat.v1.", 1)
+  new_name = full_name.replace("tf.", "tf.compat.v1.", 1)
   return _rename_func(node, full_name, new_name, logs, reason)
 
 

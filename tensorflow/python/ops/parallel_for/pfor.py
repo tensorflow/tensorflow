@@ -16,12 +16,12 @@
 # pylint: disable=missing-docstring,g-direct-tensorflow-import
 
 import collections
+from functools import partial
 import string
 import sys
 import traceback
 
 import numpy as np
-from functools import partial
 
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.core.framework import full_type_pb2
@@ -38,15 +38,16 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gen_optional_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_sparse_ops
@@ -63,6 +64,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
@@ -760,7 +762,7 @@ class WhileOp:
                   list(new_inputs[num_outputs:]) + new_output_tas)
       return tuple(new_args)
 
-    while_outputs = control_flow_ops.while_loop(
+    while_outputs = while_loop.while_loop(
         cond, body, init_values, shape_invariants=shape_invariants)
     output_tas = while_outputs[-len(self._outputs):]
     outputs = []
@@ -1077,12 +1079,21 @@ def _wrap_and_tile_variants(tensor, length):
   return wrap(tensor)
 
 
-def _fallback_converter(pfor_input, root_cause="", warn=True):
+def _fallback_converter(pfor_input, root_cause="", warn=False):
+  msg = ("Using a while_loop for converting "
+         f"{pfor_input.op_type} cause {root_cause}")
   if warn:
-    logging.warning("Using a while_loop for converting %s cause %s",
-                    pfor_input.op_type, root_cause)
+    logging.warning(msg)
+  else:
+    logging.debug(msg)
   output_dtypes = [x.dtype for x in pfor_input.outputs]
-  iters = pfor_input.pfor.loop_len_vector[0]
+  iter_vec = pfor_input.pfor.loop_len_vector
+  # Use constant value if available, so that output shapes are static.
+  iter_vec_value = tensor_util.constant_value(iter_vec)
+  if iter_vec_value is not None:
+    iters = iter_vec_value[0].item()
+  else:
+    iters = iter_vec[0]
 
   def while_body(i, *ta_list):
     """Body of while loop."""
@@ -1100,14 +1111,14 @@ def _fallback_converter(pfor_input, root_cause="", warn=True):
     # the different iterations are the same.
     for out, ta in zip(op_outputs, ta_list):
       assert isinstance(out, ops.Tensor)
-      outputs.append(ta.write(i, array_ops.expand_dims(out, 0)))
+      outputs.append(ta.write(i, out))
     return tuple([i + 1] + outputs)
 
-  ta_list = control_flow_ops.while_loop(
+  ta_list = while_loop.while_loop(
       lambda i, *ta: i < iters, while_body, [0] +
       [tensor_array_ops.TensorArray(dtype, iters) for dtype in output_dtypes
       ])[1:]
-  return tuple([wrap(ta.concat(), True) for ta in ta_list])
+  return tuple([wrap(ta.stack(), True) for ta in ta_list])
 
 
 class PForConfig:
@@ -1305,7 +1316,9 @@ class PFor:
     loop_len_value = tensor_util.constant_value(loop_len)
     if loop_len_value is not None:
       loop_len = loop_len_value
-    self._loop_len_vector = array_ops.reshape(loop_len, [1])
+      self._loop_len_vector = ops.convert_to_tensor([loop_len])
+    else:
+      self._loop_len_vector = array_ops.reshape(loop_len, [1])
     self._all_indices_partitioned = all_indices_partitioned
     if all_indices_partitioned:
       assert all_indices is not None
@@ -2026,13 +2039,13 @@ def _convert_conv2d_backprop_filter(pfor_input):
           use_cudnn_on_gpu=use_cudnn_on_gpu,
           data_format=data_format,
           dilations=dilations)
-      return i + 1, ta.write(i, array_ops.expand_dims(output, 0))
+      return i + 1, ta.write(i, output)
 
     n = array_ops.reshape(pfor_input.pfor.loop_len_vector, [])
-    _, ta = control_flow_ops.while_loop(
+    _, ta = while_loop.while_loop(
         lambda i, ta: i < n, while_body,
         (0, tensor_array_ops.TensorArray(inputs.dtype, n)))
-    output = ta.concat()
+    output = ta.stack()
     return wrap(output, True)
   else:
     # We merge the stack dimension with the channel dimension of the gradients
@@ -2424,6 +2437,14 @@ def _convert_pad(pfor_input):
   paddings = pfor_input.unstacked_input(1)
   paddings = array_ops.concat([[[0, 0]], paddings], 0)
   return wrap(array_ops.pad(t, paddings, mode="CONSTANT"), True)
+
+
+@RegisterPFor("PadV2")
+def _convert_pad_v2(pfor_input):
+  t = pfor_input.stacked_input(0)
+  paddings = pfor_input.unstacked_input(1)
+  paddings = array_ops.concat([[[0, 0]], paddings], 0)
+  return wrap(array_ops.pad_v2(t, paddings, mode="CONSTANT"), True)
 
 
 @RegisterPFor("Split")
@@ -2824,7 +2845,7 @@ def _convert_clip_by_value(pfor_input):
   t = pfor_input.stacked_input(0)
   clip_value_min = pfor_input.unstacked_input(1)
   clip_value_max = pfor_input.unstacked_input(2)
-  return wrap(gen_math_ops.clip_by_value(t, clip_value_min, clip_value_max),
+  return wrap(gen_math_ops._clip_by_value(t, clip_value_min, clip_value_max),
               True)
 
 
@@ -3899,8 +3920,9 @@ def _untile_variant(t):
 def _convert_optional_from_value(pfor_input):
   pfor_input.stack_inputs()
   return wrap(
-      gen_dataset_ops.optional_from_value([x.t for x in pfor_input.inputs]),
-      True)
+      gen_optional_ops.optional_from_value([x.t for x in pfor_input.inputs]),
+      True,
+  )
 
 
 @RegisterPFor("OptionalGetValue")
@@ -3911,12 +3933,15 @@ def _convert_optional_get_value(pfor_input):
   output_shapes = []
   for shape in original_output_shapes:
     shape = tensor_shape.TensorShape(shape)
+    loop_len_value = tensor_util.constant_value(pfor_input.pfor.loop_len_vector)
     loop_len_shape = tensor_shape.TensorShape(
-        [tensor_util.constant_value(pfor_input.pfor.loop_len_vector)])
+        [loop_len_value[0] if loop_len_value is not None else None]
+    )
     shape = loop_len_shape.concatenate(shape)
     output_shapes.append(shape.as_proto())
-  results = gen_dataset_ops.optional_get_value(handle, output_types,
-                                               output_shapes)
+  results = gen_optional_ops.optional_get_value(
+      handle, output_types, output_shapes
+  )
   return [wrap(t, True) for t in results]
 
 
@@ -3963,8 +3988,8 @@ def _stack_tensor_list(handle, dtype, loop_len_vector, element_shape=None):
     elem = _stack(elem, loop_len_vector).t
     return i + 1, list_ops.tensor_list_set_item(h, i, elem)
 
-  return control_flow_ops.while_loop(lambda i, _: i < length, _body_fn,
-                                     [0, new_handle])[1]
+  return while_loop.while_loop(lambda i, _: i < length, _body_fn,
+                               [0, new_handle])[1]
 
 
 @RegisterPFor("TensorListGetItem")
@@ -4105,8 +4130,8 @@ def _convert_tensor_list_concat_v2(pfor_input):
 
   new_handle = list_ops.tensor_list_reserve(new_element_shape, length,
                                             element_dtype)
-  new_handle = control_flow_ops.while_loop(lambda i, _: i < length,
-                                           _transpose_elem, [0, new_handle])[1]
+  new_handle = while_loop.while_loop(lambda i, _: i < length, _transpose_elem,
+                                     [0, new_handle])[1]
   output, lengths = gen_list_ops.tensor_list_concat_v2(
       input_handle=new_handle,
       element_dtype=element_dtype,
@@ -4264,7 +4289,7 @@ def _convert_tensor_scatter_update(pfor_input):
 
   # Tile the loop count range for the batch dimensions (all except the first and
   # last dimensions of indices).
-  # Rank(indices) >= 3 always for this function so we always have atleast 1.
+  # Rank(indices) >= 3 always for this function so we always have at least 1.
   tile_multiplier = array_ops.tensor_scatter_nd_update(
       indices_shape, [[0], [indices_rank - 1]], [1, 1])
   meta_index = array_ops.tile(loop_count, tile_multiplier)
@@ -4593,6 +4618,51 @@ def _convert_if(pfor_input):
     return [wrap(t, True) for t in outputs]
 
 
+@RegisterPFor("Case")
+@RegisterPFor("StatelessCase")
+def _convert_stateless_case(pfor_input):
+  branch_idx, is_stacked, _ = pfor_input.input(0)
+  branches = pfor_input.get_attr("branches")
+  inputs = pfor_input.inputs[1:]
+
+  if is_stacked:
+    logging.info("Running stacked flow")
+
+    # Compute loop indices for the different branches
+    switch_indices = data_flow_ops.dynamic_partition(
+        pfor_input.pfor.all_indices, branch_idx, len(branches))
+    if pfor_input.pfor.all_indices_partitioned:
+      partitioned_indices = data_flow_ops.dynamic_partition(
+          math_ops.range(pfor_input.pfor.loop_len_vector[0]), branch_idx,
+          len(branches))
+    else:
+      partitioned_indices = switch_indices
+    # Partition inputs
+    input_list = []
+    for indices in partitioned_indices:
+      input_list.append(_partition_inputs_for_indices(inputs, indices))
+
+    outputs = []
+    for (b, indices, inputs) in zip(branches, switch_indices, input_list):
+      out = _outputs_for_branch(b.name, indices, pfor_input, inputs)
+      outputs.extend(out)
+
+    out = data_flow_ops.dynamic_stitch(partitioned_indices, outputs)
+    return [wrap(out, True)]
+  else:
+    new_branches = []
+    for b in branches:
+      def new_function(func=b.name):
+        return _outputs_for_branch(func, None, pfor_input,
+                                   pfor_input.inputs[1:])
+
+      new_branches.append(new_function)
+
+    outputs = []
+    outputs = control_flow_ops.switch_case(branch_idx, new_branches)
+    return [wrap(t, True) for t in outputs]
+
+
 class WhileV2:
   """Object for vectorizing V2 while_loop op."""
 
@@ -4700,10 +4770,8 @@ class WhileV2:
             size=length,
             dynamic_size=True,
             infer_shape=False)
-          _, output_ta = control_flow_ops.while_loop(
-              lambda index, _: index < length,
-              _init_loop_body,
-              [0, output_ta])
+          _, output_ta = while_loop.while_loop(lambda index, _: index < length,
+                                               _init_loop_body, [0, output_ta])
         else:
           output_ta = tensor_array_ops.TensorArray(
             inp.t.dtype,
@@ -4763,10 +4831,9 @@ class WhileV2:
             tensor_shape.TensorShape([None])
             + tensor_shape.TensorShape(shape_and_type.shape)[1:],
             user_list_len, shape_and_type.dtype)
-        _, new_inp, out_ta = control_flow_ops.while_loop(
+        _, new_inp, out_ta = while_loop.while_loop(
             lambda index, unused_new_inp, unused_new_out_ta: index < length,
-            _split_vectorized_ta_element,
-            [0, new_inp, output_tas[i]])
+            _split_vectorized_ta_element, [0, new_inp, output_tas[i]])
       else:
         # Partition the inputs.
         if stacked:
@@ -4843,8 +4910,9 @@ class WhileV2:
             # should not get executed. Hence we simply return `new_inputs` to
             # make sure the graph construction code completes.
             with ops.control_dependencies([
-                control_flow_ops.Assert(
-                    False, ["pfor ERROR: this branch should never execute"])]):
+                control_flow_assert.Assert(
+                    False, ["pfor ERROR: this branch should never execute"])
+            ]):
               return [array_ops.identity(x) for x in new_inputs]
           else:
             return [out.t for out in outputs]
@@ -4964,8 +5032,10 @@ class WhileV2:
           [tensor_shape.TensorShape([]), tensor_shape.TensorShape([None])]
           + output_shapes + ta_shape_invariants)
 
-      while_outputs = control_flow_ops.while_loop(
-          cond, body, init_values,
+      while_outputs = while_loop.while_loop(
+          cond,
+          body,
+          init_values,
           shape_invariants=shape_invariants,
           parallel_iterations=self._parallel_iterations)
       if indices_to_stack:
@@ -5007,9 +5077,8 @@ class WhileV2:
                 output_list = list_ops.tensor_list_reserve(
                     tensor_shape.TensorShape(shape_and_type.shape), length,
                     shape_and_type.dtype)
-                _, output_list = control_flow_ops.while_loop(
-                    lambda index, _: index < length,
-                    _stack_loop_body,
+                _, output_list = while_loop.while_loop(
+                    lambda index, _: index < length, _stack_loop_body,
                     [0, output_list])
                 outputs.append(output_list)
               else:

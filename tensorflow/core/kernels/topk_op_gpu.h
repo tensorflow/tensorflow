@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
+#include "tensorflow/core/kernels/gpu_prim_helpers.h"
 #include "tensorflow/core/kernels/topk_op.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/platform/logging.h"
@@ -480,51 +481,76 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
     sorted_values_ptr = temp_values.flat<T>().data();
   }
 
-  auto err = gpuprim::DeviceSegmentedRadixSort::SortPairsDescending(
-      /* d_temp_storage */ nullptr,
-      /* temp_storage_bytes */ temp_storage_bytes,
-      /* d_keys_in */ input,
-      /* d_keys_out */ sorted_values_ptr,
-      /* d_values_in */ input_indices_t.data(),
-      /* d_values_out */ sorted_indices_ptr,
-      /* num_items */ num_cols * num_rows,
-      /* num_segments */ num_rows,
-      /* d_begin_offsets */ segment_offsets_t,
-      /* d_end_offsets */ segment_offsets_t + 1,
-      /* begin_bit */ 0,
-      /* end_bit */ sizeof(T) * 8,
-      /* stream */ cu_stream);
-  if (err != cudaSuccess) {
-    return errors::Internal(
-        "TopKOp: Could not launch "
-        "gpuprim::DeviceSegmentedRadixSort::SortPairsDescending to calculate "
-        "temp_storage_bytes, status: ",
-        cudaGetErrorString(err));
+  bool ran_nonsegmented_version = false;
+  if (num_rows == 1) {
+#if GOOGLE_CUDA
+    constexpr bool is_supported = true;
+#else
+    // GpuRadixSortDescending is not supported on ROCm for fp16/bf16.
+    constexpr bool is_supported = !std::is_same<T, Eigen::half>::value &&
+                                  !std::is_same<T, Eigen::bfloat16>::value;
+#endif
+    if constexpr (is_supported) {
+      // Note: DeviceSegmentedRadixSort is very slow when num_segments=1 because
+      // it only uses 1 SM per segment. Calling the un-segmented version is much
+      // faster in this case.
+      TF_RETURN_IF_ERROR(
+          GpuRadixSortDescending(ctx, num_cols, /*keys_in=*/input,
+                                 /*keys_out=*/sorted_values_ptr,
+                                 /*indices_in=*/input_indices_t.data(),
+                                 /*indices_out=*/sorted_indices_ptr,
+                                 /*num_bits=*/sizeof(T) * 8));
+      ran_nonsegmented_version = true;
+    }
   }
-  Tensor temp_storage;
-  TF_RETURN_IF_ERROR(ctx->allocate_temp(
-      DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
-      &temp_storage));
-  err = gpuprim::DeviceSegmentedRadixSort::SortPairsDescending(
-      /* d_temp_storage */ temp_storage.flat<int8>().data(),
-      /* temp_storage_bytes */ temp_storage_bytes,
-      /* d_keys_in */ input,
-      /* d_keys_out */ sorted_values_ptr,
-      /* d_values_in */ input_indices_t.data(),
-      /* d_values_out */ sorted_indices_ptr,
-      /* num_items */ num_cols * num_rows,
-      /* num_segments */ num_rows,
-      /* d_begin_offsets */ segment_offsets_t,
-      /* d_end_offsets */ segment_offsets_t + 1,
-      /* begin_bit */ 0,
-      /* end_bit */ sizeof(T) * 8,
-      /* stream */ cu_stream);
-  if (err != cudaSuccess) {
-    return errors::Internal(
-        "TopKOp: Could not launch "
-        "gpuprim::DeviceSegmentedRadixSort::SortPairsDescending to sort input, "
-        "temp_storage_bytes: ",
-        temp_storage_bytes, ", status: ", cudaGetErrorString(err));
+  if (!ran_nonsegmented_version) {
+    auto err = gpuprim::DeviceSegmentedRadixSort::SortPairsDescending(
+        /* d_temp_storage */ nullptr,
+        /* temp_storage_bytes */ temp_storage_bytes,
+        /* d_keys_in */ input,
+        /* d_keys_out */ sorted_values_ptr,
+        /* d_values_in */ input_indices_t.data(),
+        /* d_values_out */ sorted_indices_ptr,
+        /* num_items */ num_cols * num_rows,
+        /* num_segments */ num_rows,
+        /* d_begin_offsets */ segment_offsets_t,
+        /* d_end_offsets */ segment_offsets_t + 1,
+        /* begin_bit */ 0,
+        /* end_bit */ sizeof(T) * 8,
+        /* stream */ cu_stream);
+    if (err != cudaSuccess) {
+      return errors::Internal(
+          "TopKOp: Could not launch "
+          "gpuprim::DeviceSegmentedRadixSort::SortPairsDescending to calculate "
+          "temp_storage_bytes, status: ",
+          cudaGetErrorString(err));
+    }
+    Tensor temp_storage;
+    TF_RETURN_IF_ERROR(ctx->allocate_temp(
+        DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
+        &temp_storage));
+    err = gpuprim::DeviceSegmentedRadixSort::SortPairsDescending(
+        /* d_temp_storage */ temp_storage.flat<int8>().data(),
+        /* temp_storage_bytes */ temp_storage_bytes,
+        /* d_keys_in */ input,
+        /* d_keys_out */ sorted_values_ptr,
+        /* d_values_in */ input_indices_t.data(),
+        /* d_values_out */ sorted_indices_ptr,
+        /* num_items */ num_cols * num_rows,
+        /* num_segments */ num_rows,
+        /* d_begin_offsets */ segment_offsets_t,
+        /* d_end_offsets */ segment_offsets_t + 1,
+        /* begin_bit */ 0,
+        /* end_bit */ sizeof(T) * 8,
+        /* stream */ cu_stream);
+    if (err != cudaSuccess) {
+      return errors::Internal(
+          "TopKOp: Could not launch "
+          "gpuprim::DeviceSegmentedRadixSort::SortPairsDescending to sort "
+          "input, "
+          "temp_storage_bytes: ",
+          temp_storage_bytes, ", status: ", cudaGetErrorString(err));
+    }
   }
   if (k < num_cols) {
     // Need to copy subsets of sorted_indices and sorted_outputs to
@@ -536,7 +562,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
     To32Bit(values).device(d) =
         To32Bit(temp_values.matrix<T>()).slice(slice_indices, slice_sizes);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace impl
@@ -566,7 +592,7 @@ struct TopKFunctor<GPUDevice, T> {
         return errors::Internal(
             "Could not launch TopKKernel: ", cudaGetErrorString(err), ".");
       } else {
-        return Status::OK();
+        return OkStatus();
       }
     }
   }

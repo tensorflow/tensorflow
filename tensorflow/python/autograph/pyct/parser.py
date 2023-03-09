@@ -19,6 +19,7 @@ Adapted from Tangent.
 
 import ast
 import inspect
+import io
 import linecache
 import re
 import sys
@@ -27,7 +28,6 @@ import tokenize
 
 import astunparse
 import gast
-import six
 
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
@@ -65,7 +65,7 @@ def dedent_block(code_string):
 
   code_string = _unfold_continuations(code_string)
 
-  token_gen = tokenize.generate_tokens(six.StringIO(code_string).readline)
+  token_gen = tokenize.generate_tokens(io.StringIO(code_string).readline)
 
   block_indentation = None
   tokens = []

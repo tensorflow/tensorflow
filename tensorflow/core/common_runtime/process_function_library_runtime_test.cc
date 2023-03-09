@@ -447,6 +447,45 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsSameDeviceXTimes) {
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({4, 8, 12, 16}));
 }
 
+TEST_F(ProcessFunctionLibraryRuntimeTest,
+       SameDeviceXTimesFourInt32MultiDevice) {
+  Init({test::function::XTimesTwoInt32(), test::function::XTimesFourInt32()});
+  auto x = test::AsTensor<int32>({1, 2, 3, 4});
+  FunctionLibraryRuntime::Options opts;
+  opts.source_device = "/job:a/replica:0/task:0/cpu:0";
+  opts.remote_execution = true;
+  FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+  instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
+  instantiate_opts.input_devices = {"/job:a/replica:0/task:0/cpu:0"};
+  instantiate_opts.output_devices = {"/job:a/replica:0/task:0/cpu:0"};
+  instantiate_opts.is_multi_device_function = true;
+  Tensor y;
+  TF_CHECK_OK(Run("XTimesFourInt32", opts, {{"T", DT_INT32}}, instantiate_opts,
+                  {x}, {&y}));
+  test::ExpectTensorEqual<int32>(y, test::AsTensor<int32>({4, 8, 12, 16}));
+}
+
+TEST_F(ProcessFunctionLibraryRuntimeTest,
+       MultipleCallsSameDeviceXTimesMultiDevice) {
+  Init({test::function::XTimesTwoInt32(), test::function::XTimesFourInt32()});
+  auto x = test::AsTensor<int32>({1, 2, 3, 4});
+  FunctionLibraryRuntime::Options opts;
+  opts.source_device = "/job:a/replica:0/task:0/cpu:0";
+  opts.remote_execution = true;
+  FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+  instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
+  instantiate_opts.input_devices = {"/job:a/replica:0/task:0/cpu:0"};
+  instantiate_opts.output_devices = {"/job:a/replica:0/task:0/cpu:0"};
+  instantiate_opts.is_multi_device_function = true;
+  Tensor y;
+  TF_CHECK_OK(Run("XTimesTwoInt32", opts, {{"T", DT_INT32}}, instantiate_opts,
+                  {x}, {&y}));
+  test::ExpectTensorEqual<int32>(y, test::AsTensor<int32>({2, 4, 6, 8}));
+  TF_CHECK_OK(Run("XTimesFourInt32", opts, {{"T", DT_INT32}}, instantiate_opts,
+                  {x}, {&y}));
+  test::ExpectTensorEqual<int32>(y, test::AsTensor<int32>({4, 8, 12, 16}));
+}
+
 TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsSameDeviceFindDevice) {
   Init({test::function::FindDevice()});
   FunctionLibraryRuntime::Options opts;

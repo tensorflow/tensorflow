@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -125,7 +124,7 @@ class SparseToDense : public OpKernel {
       indices_shaped = &indices;
     } else {
       TensorShape ix_shape({num_elems, num_dims});
-      indices_shaped_holder = MakeUnique<Tensor>(DT_INT64, ix_shape);
+      indices_shaped_holder = std::make_unique<Tensor>(DT_INT64, ix_shape);
       indices_shaped = indices_shaped_holder.get();
       if (indices.dtype() == DT_INT64) {
         CHECK(indices_shaped_holder->CopyFrom(indices, ix_shape));
@@ -142,8 +141,8 @@ class SparseToDense : public OpKernel {
     std::unique_ptr<Tensor> sparse_values_b_holder;
 
     if (TensorShapeUtils::IsScalar(sparse_values.shape())) {
-      sparse_values_b_holder = MakeUnique<Tensor>(DataTypeToEnum<T>::value,
-                                                  TensorShape({num_elems}));
+      sparse_values_b_holder = std::make_unique<Tensor>(
+          DataTypeToEnum<T>::value, TensorShape({num_elems}));
       sparse_values_b = sparse_values_b_holder.get();
       sparse_values_b_holder->vec<T>().setConstant(sparse_values.scalar<T>()());
     } else {
@@ -189,6 +188,10 @@ REGISTER_KERNELS_ALL(bool);
 REGISTER_KERNELS_ALL(tstring);
 REGISTER_KERNELS_ALL(complex64);
 REGISTER_KERNELS_ALL(complex128);
+REGISTER_KERNELS_ALL(qint8);
+REGISTER_KERNELS_ALL(qint16);
+REGISTER_KERNELS_ALL(quint8);
+REGISTER_KERNELS_ALL(quint16);
 
 #undef REGISTER_KERNELS_ALL
 #undef REGISTER_KERNELS
@@ -273,8 +276,8 @@ class SparseToDenseGPU : public AsyncOpKernel {
   REGISTER_GPU_KERNELS(type, int64_t);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS_ALL);
-TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS_ALL)
-REGISTER_GPU_KERNELS_ALL(bool)
+TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS_ALL);
+REGISTER_GPU_KERNELS_ALL(bool);
 
 #undef REGISTER_GPU_KERNELS_ALL
 #undef REGISTER_GPU_KERNELS

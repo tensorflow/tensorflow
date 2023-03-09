@@ -23,11 +23,11 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_FUSEINNERPARALLELLOOPSPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 struct FuseInnerParallelLoopsPass
-    : FuseInnerParallelLoopsPassBase<FuseInnerParallelLoopsPass> {
+    : impl::FuseInnerParallelLoopsPassBase<FuseInnerParallelLoopsPass> {
   void runOnOperation() override {
     getOperation().walk([](mlir::scf::ParallelOp op) {
       mlir::scf::naivelyFuseParallelOps(op.getRegion());

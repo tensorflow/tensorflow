@@ -113,13 +113,17 @@ enum PrimitiveType {
   F32,
   F64,
   C64,
-  C128
+  C128,
+  F8E5M2,
+  F8E4M3FN,
+  S4,
+  U4,
 };
 
 const std::vector<std::string>& primitive_strings() {
   static auto vec = new std::vector<std::string>(
       {"s16", "s32", "s64", "u8", "u16", "u32", "u64", "f16", "bf16", "f32",
-       "f64", "c64", "c128"});
+       "f64", "c64", "c128", "f8e5m2", "f8e4m3fn", "s4", "u4"});
   return *vec;
 }
 
@@ -278,27 +282,26 @@ class BufferTable {
 // Example of input:
 //
 // BufferAssignment:
-// allocation 0: 0x27017c46b600, size 32768, parameter 0, shape f32[256,32] at
+// allocation 0: size 32768, parameter 0, shape f32[256,32] at
 // ShapeIndex {}:
 //  value: <3 parameter @0> (size=32768,offset=0): f32[256,32]{1,0}
-// allocation 1: 0x27017c46b6b0, size 128, output shape is f32[32],
+// allocation 1: size 128, output shape is f32[32],
 // maybe-live-out:
 //  value: <5 reduce @0> (size=128,offset=0): f32[32]{0}
-// allocation 2: 0x27017c46b760, size 4, constant:
+// allocation 2: size 4, constant:
 //  value: <4 init_value @0> (size=4,offset=0): f32[]
-// allocation 3: 0x27017c46b810, size 4, thread-local:
+// allocation 3: size 4, thread-local:
 //  value: <0 x.1 @0> (size=4,offset=0): f32[]
-// allocation 4: 0x27017c46b8c0, size 4, thread-local:
+// allocation 4: size 4, thread-local:
 //  value: <1 y.1 @0> (size=4,offset=0): f32[]
-// allocation 5: 0x27017c46b970, size 4, output shape is f32[], thread-local:
+// allocation 5: size 4, output shape is f32[], thread-local:
 //  value: <2 add.1 @0> (size=4,offset=0): f32[]
 BufferAssignment ParseBufferAssignment(const std::string& fname) {
   BufferAssignment assignment;
   std::ifstream infile(fname);
   std::string line;
   while (std::getline(infile, line)) {
-    std::regex allocation_line_r(
-        "allocation ([0-9]+): .+, size ([0-9]+), (.+)");
+    std::regex allocation_line_r("allocation ([0-9]+): size ([0-9]+), (.+)");
     std::smatch match;
     if (std::regex_search(line, match, allocation_line_r)) {
       Log("Matched allocation description: " + line);
@@ -395,10 +398,14 @@ void Fill(void* buffer, const ArrayShape& shape) {
     case F64:
       return FillFloatT<double>(buffer, num_elements);
 
+    case F8E5M2:
+    case F8E4M3FN:
     case F16:
     case BF16:
     case C64:
     case C128:
+    case S4:
+    case U4:
       ExitWithMsg("Unsupported type: " + ToString(shape.type));
   }
 }
@@ -440,10 +447,14 @@ void Display(const void* buffer, const ArrayShape& shape) {
     case F64:
       return DisplayT<double>(buffer, num_elements);
 
+    case F8E5M2:
+    case F8E4M3FN:
     case F16:
     case BF16:
     case C64:
     case C128:
+    case S4:
+    case U4:
       ExitWithMsg("Unsupported type: " + ToString(shape.type));
   }
 }

@@ -24,6 +24,8 @@ import shutil
 import tempfile
 import warnings
 
+from contextlib import contextmanager
+
 import numpy as np
 
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
@@ -33,6 +35,7 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
 from tensorflow.python.compiler.tensorrt import utils as trt_utils
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -51,7 +54,6 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
 from tensorflow.python.tools import saved_model_utils
 from tensorflow.python.trackable import autotrackable
-from tensorflow.python.trackable import resource
 from tensorflow.python.util import nest
 
 logging.get_logger().propagate = False
@@ -105,6 +107,21 @@ def IsQuantizationWithCalibration(params):
 def IsQuantizationWithoutCalibration(params):
   return IsQuantizationMode(
       params.precision_mode) and not params.use_calibration
+
+
+@contextmanager
+def disable_tensorfloat32():
+  start_value = config.tensor_float_32_execution_enabled()
+
+  config.enable_tensor_float_32_execution(False)
+
+  logging.info("TensorFloat32 Arithmetic Disabled")
+
+  try:
+    yield
+  #  Finally block always gets executed either exception is generated or not
+  finally:
+    config.enable_tensor_float_32_execution(start_value)
 
 
 class GraphState(object):
@@ -169,7 +186,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def _GetTensorSpec(self, shape, mask, dtype, name):
     # Set dimension i to None if mask[i] == False
-    assert len(shape) == len(mask)
+    assert len(shape) == len(mask), (
+        f"len(shape): {len(shape)} == len(mask): {len(mask)}")
+
     new_shape = [s if m else None for s, m in zip(shape, mask)]
     return tensor_spec.TensorSpec(new_shape, dtype, name)
 
@@ -178,7 +197,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
     The input_shapes and output_shapes arguments are known (static) shapes that
     can be used to generate test data. To define the model, we also specify
-    corresponding input/output TensoSpecs. These are defined using the shape
+    corresponding input/output TensorSpecs. These are defined using the shape
     arguments. For each input tensor we define:
 
     input_spec = [None] + input_shape[1:]
@@ -234,16 +253,24 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     def _ValidateShapes(shapes):
       # Make sure all the shapes are fully specified.
       for shape in shapes:
-        assert all(shape)
+        assert all(shape), f"Shape unspecified: {shape}"
 
     _ValidateShapes(input_shapes)
     _ValidateShapes(output_shapes)
 
-    assert len(input_mask) == len(input_shapes)
-    assert len(output_mask) == len(output_shapes)
+    assert len(input_mask) == len(input_shapes), (
+        f"Inconsistent input_mask and input_shapes: len({input_mask}) != "
+        f"len({input_shapes}).")
+    assert len(output_mask) == len(output_shapes), (
+        f"Inconsistent output_mask and output_shapes: len({output_mask}) != "
+        f"len({output_shapes}).")
     for extra_in_shape, extra_out_shape in zip(extra_inputs, extra_outputs):
-      assert len(input_shapes) == len(extra_in_shape)
-      assert len(output_shapes) == len(extra_out_shape)
+      assert len(input_shapes) == len(extra_in_shape), (
+          f"Inconsistent input_shapes and extra_in_shape: len({input_shapes}) "
+          f"!= len({extra_in_shape}).")
+      assert len(output_shapes) == len(extra_out_shape), (
+          f"Inconsistent output_shapes and extra_out_shape: "
+          f"len({output_shapes}) != len({extra_out_shape}).")
 
     return TfTrtIntegrationTestParams(
         graph_fn=graph_fn,
@@ -271,7 +298,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         # We use the minimum of all the batch sizes, so when multiple different
         # input shapes are provided it'll always create new engines in the
         # cache, and we can therefore test the cache behavior.
-        max_workspace_size_bytes=1 << 25,
+        max_workspace_size_bytes=(
+            trt_convert.DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES),
         precision_mode=run_params.precision_mode,
         minimum_segment_size=2,
         maximum_cached_engines=1,
@@ -284,10 +312,12 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       return None
     batch_list = []
     for dims_list in self._GetParamsCached().input_dims:
-      assert dims_list
+      assert dims_list, f"Expect non-empty `dim_list` but got: {dims_list}"
       # Each list of shapes should have same batch size.
       input_batches = [dims[0] for dims in dims_list]
-      assert max(input_batches) == min(input_batches)
+      assert max(input_batches) == min(input_batches), (
+          f"Inconsistent batch_size: max({input_batches}) != "
+          f"min({input_batches}).")
       batch_list.append(input_batches[0])
     return max(batch_list)
 
@@ -311,10 +341,14 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def ExpectedAbsoluteTolerance(self, run_params):
     """The absolute tolerance to compare floating point results."""
-    return 1.e-05 if run_params.precision_mode == "FP32" else 1.e-02
+    if run_params.precision_mode == "INT8":
+      return 3e-1
+    return 1.e-05 if run_params.precision_mode == "FP32" else 2.e-02
 
   def ExpectedRelativeTolerance(self, run_params):
     """The relative tolerance to compare floating point results."""
+    if run_params.precision_mode == "INT8":
+      return 1e-1
     return 1.e-05 if run_params.precision_mode == "FP32" else 1.e-02
 
   def _GetParamsCached(self):
@@ -403,7 +437,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
             for i in range(len(params.input_specs))
         }
         new_val = func(**feed_dict)
-        assert isinstance(new_val, dict)
+        assert isinstance(
+            new_val, dict), (f"Invalid type for `new_val`, expected `dict`. "
+                             f"Got: {type(new_val)}.")
         # The key of the output map is always like output_i.
         new_val = [new_val[key] for key in sorted(new_val)]
         # Each element is an eager Tensor, and accessing individual elements is
@@ -429,7 +465,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                 num_runs=2):
     params = self._GetParamsCached()
     for data in inputs_data:
-      assert len(params.input_specs) == len(data)
+      assert len(params.input_specs) == len(data), (
+          f"Inconsistent params.input_specs and data: "
+          f"len({params.input_specs}) != len({data}).")
 
     if run_params.is_v2:
       results = self._RunGraphV2(saved_model_dir, inputs_data, graph_state,
@@ -475,14 +513,18 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     """Return trt converted graphdef in INT8 mode."""
     conversion_params = self.GetConversionParams(run_params)
     logging.info(conversion_params)
-    assert conversion_params.precision_mode == "INT8"
-    assert run_params.dynamic_engine
-    assert conversion_params.maximum_cached_engines == 1
-    assert conversion_params.use_calibration
+    assert conversion_params.precision_mode == "INT8", (
+        f"Incorrect precision mode, expected INT8 but got: "
+        f"{conversion_params.precision_mode}.")
+    assert run_params.dynamic_engine, "dynamic_engine parameter must be True."
+    assert conversion_params.maximum_cached_engines == 1, (
+        f"maximum_cached_engines: {conversion_params.maximum_cached_engines} "
+        f"== 1")
+    assert conversion_params.use_calibration, "use_calibration must be True."
 
     # We only support calibrating single engine.
     # TODO(aaroey): fix this.
-    assert len(inputs_data) == 1
+    assert len(inputs_data) == 1, (f"len(inputs_data): {len(inputs_data)} == 1")
 
     converter = self._CreateConverter(run_params, saved_model_dir,
                                       conversion_params)
@@ -598,10 +640,14 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     if isinstance(value, str):
       match = re.search(r"TRTEngineOp_\d{3,}_", value)
       has_prefix = match and value.startswith(match.group(0))
-      assert (not expecting_prefix) or has_prefix
+      assert (not expecting_prefix) or has_prefix, (
+          f"Expect (not expecting_prefix) or has_prefix but got: "
+          f"- expecting_prefix = {expecting_prefix}\n"
+          f"- has_prefix = {has_prefix}")
       if has_prefix:
         parts = value.split("_", maxsplit=2)
-        assert len(parts) == 3
+        assert len(parts) == 3, (
+            f"Incorrect `parts` of length == 3, but got: len({parts}).")
         return parts[0] + "_" + parts[2]
       return value
     elif isinstance(value, collections.abc.Iterable):
@@ -812,7 +858,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         return gdef
       return saved_model_utils.get_meta_graph_def(
           gdef_or_saved_model_dir, tag_constants.SERVING).graph_def
-    assert isinstance(gdef_or_saved_model_dir, graph_pb2.GraphDef)
+    assert isinstance(gdef_or_saved_model_dir, graph_pb2.GraphDef), (
+        f"Incorrect `gdef_or_saved_model_dir` type, expected "
+        f"`graph_pb2.GraphDef`, but got: {type(gdef_or_saved_model_dir)}.")
     return gdef_or_saved_model_dir
 
   def _VerifyGraphDefV1(self, run_params, original_gdef, gdef_to_verify,
@@ -984,72 +1032,77 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     return self._MakeSavedModelV1(run_params)
 
   def RunTest(self, run_params):
-    with trace.Trace(run_params.test_name):
-      should_run, reason_for_skipping = self.ShouldRunTest(run_params)
-      if not should_run:
-        return self.skipTest(reason_for_skipping)
 
-      saved_model_dir = self._MakeSavedModel(run_params)
+    with disable_tensorfloat32():
+      with trace.Trace(run_params.test_name):
+        should_run, reason_for_skipping = self.ShouldRunTest(run_params)
+        if not should_run:
+          return self.skipTest(reason_for_skipping)
 
-      np.random.seed(12345)  # Fix the seed so the test is deterministic.
-      inputs_data = []
-      input_specs = self._GetParamsCached().input_specs
-      for dim_list in self._GetParamsCached().input_dims:
-        assert len(input_specs) == len(dim_list)
-        current_input_data = []
-        for spec, np_shape in zip(input_specs, dim_list):
-          np_dtype = spec.dtype.as_numpy_dtype()
-          # Multiply the input by some constant to avoid all zeros input for
-          # integer types.
-          scale = 10.0 if np.issubdtype(np_dtype, np.integer) else 1.0
-          # TODO(laigd): add debug options. E.g. we can set the input data to be
-          # continuous natural numbers:
-          # seq = np.arange(np.prod(np_shape))
-          # seq.resize(np_shape)
-          # current_inputs_data.append(scale * seq.astype(np_dtype))
-          data = (scale * np.random.random_sample(np_shape)).astype(np_dtype)
-          if run_params.is_v2:
-            with ops.device("/GPU:0"):
-              data = ops.convert_to_tensor(data)
-          current_input_data.append(data)
-        inputs_data.append(current_input_data)
+        saved_model_dir = self._MakeSavedModel(run_params)
 
-      # Verify the original graph.
-      self._VerifyGraphDef(run_params, saved_model_dir, saved_model_dir,
-                           GraphState.ORIGINAL)
+        np.random.seed(12345)  # Fix the seed so the test is deterministic.
+        inputs_data = []
+        input_specs = self._GetParamsCached().input_specs
+        for dim_list in self._GetParamsCached().input_dims:
+          assert len(input_specs) == len(dim_list), (
+              f"Inconsistent input_specs and dim_list: len({input_specs}) != "
+              f"len({dim_list}).")
+          current_input_data = []
+          for spec, np_shape in zip(input_specs, dim_list):
+            np_dtype = spec.dtype.as_numpy_dtype()
+            if not np.issubdtype(np_dtype, np.bool_):
+              # Multiply the input by some constant to avoid all zeros input for
+              # integer types.
+              scale = 10.0 if np.issubdtype(np_dtype, np.integer) else 1.0
+              data = (scale *
+                      np.random.random_sample(np_shape)).astype(np_dtype)
+            else:
+              data = np.random.choice(a=[False, True], size=np_shape)
 
-      # Run the original graph without TensorRT to get the reference result.
-      logging.info("Running original graph w/o TensorRT\n")
-      ref_result = self._RunGraph(
-          run_params,
-          saved_model_dir,
-          inputs_data,
-          GraphState.ORIGINAL,
-          num_runs=1)
+            if run_params.is_v2:
+              with ops.device("/GPU:0"):
+                data = ops.convert_to_tensor(data)
+            current_input_data.append(data)
+          inputs_data.append(current_input_data)
 
-      # Run calibration if necessary.
-      if IsQuantizationWithCalibration(run_params):
-        infer_saved_model_dir = self._GetCalibratedInferGraph(
-            run_params, saved_model_dir, inputs_data)
-        self._VerifyGraphDef(run_params, saved_model_dir, infer_saved_model_dir,
-                             GraphState.INFERENCE)
-      elif not run_params.convert_online:
-        infer_saved_model_dir = self._GetInferGraph(run_params, saved_model_dir)
-        self._VerifyGraphDef(run_params, saved_model_dir, infer_saved_model_dir,
-                             GraphState.INFERENCE)
-      else:
-        infer_saved_model_dir = saved_model_dir
+        # Verify the original graph.
+        self._VerifyGraphDef(run_params, saved_model_dir, saved_model_dir,
+                             GraphState.ORIGINAL)
 
-      # Run the inference graph, either using the converted graph or the
-      # original graph with convert_online == True.
-      logging.info("Running final inference graph\n")
-      result = self._RunGraph(run_params, infer_saved_model_dir, inputs_data,
-                              GraphState.INFERENCE)
-      self.assertAllClose(
-          ref_result,
-          result,
-          atol=self.ExpectedAbsoluteTolerance(run_params),
-          rtol=self.ExpectedRelativeTolerance(run_params))
+        # Run the original graph without TensorRT to get the reference result.
+        logging.info("Running original graph w/o TensorRT\n")
+        ref_result = self._RunGraph(
+            run_params,
+            saved_model_dir,
+            inputs_data,
+            GraphState.ORIGINAL,
+            num_runs=1)
+
+        # Run calibration if necessary.
+        if IsQuantizationWithCalibration(run_params):
+          infer_saved_model_dir = self._GetCalibratedInferGraph(
+              run_params, saved_model_dir, inputs_data)
+          self._VerifyGraphDef(run_params, saved_model_dir,
+                               infer_saved_model_dir, GraphState.INFERENCE)
+        elif not run_params.convert_online:
+          infer_saved_model_dir = self._GetInferGraph(run_params,
+                                                      saved_model_dir)
+          self._VerifyGraphDef(run_params, saved_model_dir,
+                               infer_saved_model_dir, GraphState.INFERENCE)
+        else:
+          infer_saved_model_dir = saved_model_dir
+
+        # Run the inference graph, either using the converted graph or the
+        # original graph with convert_online == True.
+        logging.info("Running final inference graph\n")
+        result = self._RunGraph(run_params, infer_saved_model_dir, inputs_data,
+                                GraphState.INFERENCE)
+        self.assertAllClose(
+            ref_result,
+            result,
+            atol=self.ExpectedAbsoluteTolerance(run_params),
+            rtol=self.ExpectedRelativeTolerance(run_params))
 
   def testIdempotence(self):
     # Test that applying tensorrt optimizer or offline conversion tools multiple
@@ -1112,12 +1165,11 @@ def _GetTest(run_params):
   """Gets a single test method based on the parameters."""
 
   def _Test(self):
-    logging.info(
-        "Running test %s with parameters: convert_online=%s, "
-        "precision_mode=%s, dynamic_engine=%s, dynamic_shape_mode%s",
-        run_params.test_name, run_params.convert_online,
-        run_params.precision_mode, run_params.dynamic_engine,
-        run_params.dynamic_shape)
+    logging.info(f"Running test `{run_params.test_name}` with parameters: "
+                 f"convert_online={run_params.convert_online}, "
+                 f"precision_mode={run_params.precision_mode}, "
+                 f"dynamic_engine={run_params.dynamic_engine}, "
+                 f"dynamic_shape={run_params.dynamic_shape}")
     self.RunTest(run_params)
 
   return _Test

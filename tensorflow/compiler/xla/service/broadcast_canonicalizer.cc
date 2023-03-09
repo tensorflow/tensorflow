@@ -21,12 +21,15 @@ namespace xla {
 
 BroadcastCanonicalizer::BroadcastCanonicalizer() {}
 
-StatusOr<bool> BroadcastCanonicalizer::Run(HloModule* module) {
+StatusOr<bool> BroadcastCanonicalizer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
   // Sort broadcast dims. Then insert a transpose on the broadcast to get the
   // original shape back.
-  for (const auto& computation : module->MakeNonfusionComputations()) {
+  for (const auto& computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
       if (hlo->opcode() != HloOpcode::kBroadcast) {
         continue;

@@ -118,22 +118,14 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
   result += "#define bool2 uchar2\n";
   result += "#define bool3 uchar3\n";
   result += "#define bool4 uchar4\n";
-  result +=
-      "#define convert_bool2(value) (convert_uchar2((value) != 0) & (uchar2) "
-      "1)\n";
-  result +=
-      "#define convert_bool3(value) (convert_uchar3((value) != 0) & (uchar3) "
-      "1)\n";
-  result +=
-      "#define convert_bool4(value) (convert_uchar4((value) != 0) & (uchar4) "
-      "1)\n";
+
+  const auto cl_specific_defines = GetClSpecificDefines();
+  for (const auto& define : cl_specific_defines) {
+    result += "#define " + define.first + " " + define.second + "\n";
+  }
   return result;
 }
 }  // namespace
-
-absl::Status ClOperation::AddOperation(ClOperation* operation) {
-  return operation_->AddOperation(operation->operation_.get());
-}
 
 absl::Status ClOperation::UpdateParams() {
   for (int i = 0; i < operation_->GetSrcTensorsNames().size(); ++i) {
@@ -172,8 +164,7 @@ absl::Status ClOperation::SetDstTensor(int index, Tensor* tensor) {
 
 absl::Status ClOperation::Compile(const CreationContext& creation_context) {
   operation_->code_ =
-      GetCommonOpenCLDefines(operation_->GetDefinition().precision) +
-      operation_->code_;
+      GetCommonOpenCLDefines(operation_->GetPrecision()) + operation_->code_;
   RETURN_IF_ERROR(cl_args_.Init(
       creation_context.GetGpuInfo(),
       creation_context.context, &operation_->args_, &operation_->code_));

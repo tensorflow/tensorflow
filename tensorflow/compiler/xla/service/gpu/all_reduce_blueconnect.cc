@@ -23,11 +23,11 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -110,7 +110,7 @@ StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroup(
 StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroups(
     const HloAllReduceInstruction& all_reduce, size_t num_devices_per_host) {
   const DeviceAssignment& device_assignment =
-      all_reduce.parent()->parent()->config().static_device_assignment();
+      all_reduce.GetModule()->config().static_device_assignment();
 
   absl::Span<const ReplicaGroup> replica_groups = all_reduce.replica_groups();
 
@@ -265,7 +265,9 @@ StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
 
 }  // namespace
 
-StatusOr<bool> AllReduceBlueConnect::Run(HloModule* module) {
+StatusOr<bool> AllReduceBlueConnect::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running AllReduceBlueConnect";
 
   if (hlo_query::ContainsLayoutConstrainedAllReduce(*module)) {
@@ -282,7 +284,8 @@ StatusOr<bool> AllReduceBlueConnect::Run(HloModule* module) {
   }
 
   std::vector<HloAllReduceInstruction*> all_reduces;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kAllReduce) {
         all_reduces.push_back(Cast<HloAllReduceInstruction>(instruction));

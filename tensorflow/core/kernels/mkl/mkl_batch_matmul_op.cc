@@ -135,24 +135,60 @@ class BatchMatMulMkl : public OpKernel {
 
     // Compute parameters for DNNL matmul primitive.
     MklBatchMatMulHelper bmm;
-    auto params = bmm.CreateMatMulParams(lhs.shape(), rhs.shape(), out_shape,
-                                         adj_x_, adj_y_);
+    string prefix = "batchmatmul";
+    auto params = bmm.CreateMatMulParams(prefix, lhs.shape(), rhs.shape(),
+                                         out_shape, adj_x_, adj_y_);
 
-#ifdef DNNL_AARCH64_USE_ACL
-    // ACL does not support reuse of primitives with different data.
-    // For matmul, the previous approach (PR #47775) of using Tensor addresses
-    // does not work, as the addresses are re-used in matmul with different data
-    // The counter  ensure we still benefit from caching via SetMklMatmul().
-    params->aarch64_counter =
-        MklMatMulPrimitiveFactory<float, Tlhs, Trhs,
-                                  Toutput>::IncrementCounter();
-#endif
     this->ExtendMklMatMulParams(ctx, *params);
 
     // Create or retrieve matmul primitive from cache.
     MklMatMulPrimitive<Tlhs, Trhs, Toutput>* matmul_prim =
         MklMatMulPrimitiveFactory<float, Tlhs, Trhs, Toutput>::Get(
             *params, false /* value for do_not_cache */);
+
+    Trhs* weight_data = const_cast<Trhs*>(rhs.flat<Trhs>().data());
+
+// TODO(Arm, Intel): Reach agreement on whether this block should be deleted.
+// https://github.com/tensorflow/tensorflow/pull/57987#discussion_r993731524
+#ifdef DNNL_AARCH64_USE_ACL
+    memory::format_tag weight_format;
+    switch (params->b_dims.size()) {
+      case 2:
+        weight_format =
+            adj_y_ ? memory::format_tag::ba : memory::format_tag::ab;
+        break;
+      case 3:
+        weight_format =
+            adj_y_ ? memory::format_tag::acb : memory::format_tag::abc;
+        break;
+      case 4:
+        weight_format =
+            adj_y_ ? memory::format_tag::abdc : memory::format_tag::abcd;
+        break;
+      case 5:
+        weight_format =
+            adj_y_ ? memory::format_tag::abced : memory::format_tag::abcde;
+        break;
+      default:
+        weight_format = memory::format_tag::undef;
+    }
+    MklDnnData<Trhs> weights_mkl(&(this->cpu_engine_));
+    if (weight_format != memory::format_tag::undef) {
+      auto weight_md =
+          memory::desc(params->b_dims, MklDnnType<Trhs>(), weight_format);
+      std::shared_ptr<dnnl::matmul::primitive_desc> matmul_pd =
+          matmul_prim->GetPrimitiveDesc();
+      // Reorder weights if necessary.
+      // Check whether we need to do reorder.
+      if (weight_md != matmul_pd->weights_desc()) {
+        weights_mkl.SetUsrMem(weight_md, weight_data);
+        weights_mkl.CheckReorderToOpMem(matmul_pd.get()->weights_desc(),
+                                        this->cpu_engine_, ctx);
+        weight_data =
+            reinterpret_cast<Trhs*>(weights_mkl.GetOpMem().get_data_handle());
+      }
+    }
+#endif  // DNNL_AARCH64_USE_ACL
 
     UserScratchPad<unsigned char> scratch_pad;
     scratch_pad.AllocateSPTensor(matmul_prim, ctx);
@@ -173,15 +209,16 @@ class BatchMatMulMkl : public OpKernel {
         add_data = static_cast<void*>(
             const_cast<Toutput*>(add_tensor.flat<Toutput>().data()));
       }
-      matmul_prim->Execute(cpu_stream, lhs.flat<Tlhs>().data(),
-                           rhs.flat<Trhs>().data(), out->flat<Toutput>().data(),
-                           scratch_pad.Get(), mul_data, add_data);
+      matmul_prim->Execute(cpu_stream, lhs.flat<Tlhs>().data(), weight_data,
+                           out->flat<Toutput>().data(), scratch_pad.Get(),
+                           mul_data, add_data);
     } else {
-      matmul_prim->Execute(cpu_stream, lhs.flat<Tlhs>().data(),
-                           rhs.flat<Trhs>().data(), out->flat<Toutput>().data(),
-                           scratch_pad.Get());
+      matmul_prim->Execute(cpu_stream, lhs.flat<Tlhs>().data(), weight_data,
+                           out->flat<Toutput>().data(), scratch_pad.Get());
     }
   }
+
+  engine cpu_engine_ = engine(engine::kind::cpu, 0);
 
  protected:
   virtual void ExtendMklMatMulParams(OpKernelContext* ctx,

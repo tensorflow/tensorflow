@@ -189,7 +189,7 @@ class MklCPUAllocator : public Allocator {
     large_size_allocator_ =
         new BFCAllocator(absl::WrapUnique(sub_allocator_), max_mem_bytes, kName,
                          large_allocator_opts);
-    return Status::OK();
+    return OkStatus();
   }
 
   inline string Name() override { return kName; }
@@ -316,7 +316,7 @@ class MklCPUAllocator : public Allocator {
 
   // Size in bytes that defines the upper-bound for "small" allocations.
   // Any allocation below this threshold is "small" allocation.
-  static constexpr const size_t kSmallAllocationsThreshold = 4096;
+  static constexpr const size_t kSmallAllocationsThreshold = 262144;
 
   // Prevent copying and assignment
   TF_DISALLOW_COPY_AND_ASSIGN(MklCPUAllocator);

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/mlir/python/mlir.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
@@ -111,4 +111,12 @@ PYBIND11_MODULE(_pywrap_mlir, m) {
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
           return output;
         });
+
+  m.def("ExperimentalWriteBytecode", [](const std::string &filename,
+                                        const std::string &mlir_txt) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    tensorflow::ExperimentalWriteBytecode(filename, mlir_txt, status.get());
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+  });
 };

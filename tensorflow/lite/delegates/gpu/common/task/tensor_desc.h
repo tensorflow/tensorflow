@@ -17,9 +17,11 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_TENSOR_DESC_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
@@ -65,11 +67,11 @@ class TensorDescriptor : public GPUObjectDescriptor {
                        GenericGPUResourcesWithValue* resources) const;
 
   absl::Status PerformConstExpr(const GpuInfo& gpu_info,
-                                const std::string& const_expr,
+                                absl::string_view const_expr,
                                 std::string* result) const override;
 
   absl::Status PerformSelector(const GpuInfo& gpu_info,
-                               const std::string& selector,
+                               absl::string_view selector,
                                const std::vector<std::string>& args,
                                const std::vector<std::string>& template_args,
                                std::string* result) const override;
@@ -81,20 +83,23 @@ class TensorDescriptor : public GPUObjectDescriptor {
   size_t GetSizeInBytesForShape(const BHWDC& shape5d) const;
 
   bool HasAxis(Axis axis) const;
-  int GetWidthSize(BHWDC shape) const;
-  int GetSliceStrideSize(BHWDC shape) const;
 
   absl::Status GetLinkingContextFromWriteSelector(
       const std::vector<std::string>& args, std::string* value_name,
-      std::string* x_coord, std::string* y_coord, std::string* s_coord) const;
+      std::string* x_coord, std::string* y_coord, std::string* z_coord,
+      std::string* s_coord, std::string* b_coord) const;
 
   template <DataType T>
   void UploadData(const tflite::gpu::Tensor<BHWC, T>& src);
   template <DataType T>
   void DownloadData(tflite::gpu::Tensor<BHWC, T>* dst);
+  template <DataType T>
+  void UploadData(const tflite::gpu::Tensor<BHWDC, T>& src);
+  template <DataType T>
+  void DownloadData(tflite::gpu::Tensor<BHWDC, T>* dst);
 
-  void UploadData(const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src);
-  void UploadData(const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
+  template <DataType T>
+  void UploadData(const tflite::gpu::Tensor<HWC, T>& src);
 
   int GetLinearIndex(const BHWDC& shape5d, int b, int x, int y, int d, int s,
                      int sub_c) const;
@@ -125,6 +130,15 @@ class TensorDescriptor : public GPUObjectDescriptor {
   // with old storage type
   absl::Status UpdateToSupportedStorageType(const GpuInfo& gpu_info,
                                             const BHWC& shape);
+
+  // shape must be initialized when using this function
+  std::vector<uint64_t> GetStorageDims() const;
+  // shape must be initialized when using this function
+  int3 GetFullTensorRegion() const;
+  // shape must be initialized when using this function
+  uint64_t GetMemorySizeInBytes() const;
+  // shape must be initialized when using this function
+  int GetElementSize() const;
 
   void SetUseBufferForWriteOnlyTexture2d(bool value) {
     use_buffer_for_write_only_2d_texture_ = value;
@@ -157,6 +171,15 @@ class TensorDescriptor : public GPUObjectDescriptor {
   friend void Decode(const data::TensorDescriptor* fb_desc,
                      TensorDescriptor* desc);
 
+  template <DataType DataTypeT>
+  friend TensorDescriptor CreateConstantLinearTensorDescriptor(
+      DataType data_type, TensorStorageType storage_type,
+      const tflite::gpu::Tensor<Linear, DataTypeT>& src);
+
+  friend TensorDescriptor CreateConstantHWVec4TensorDescriptor(
+      DataType data_type, TensorStorageType storage_type, int width, int height,
+      const uint8_t* data);
+
   absl::Status PerformReadSelector(
       const GpuInfo& gpu_info, const std::vector<std::string>& args,
       const std::vector<std::string>& template_args, std::string* result) const;
@@ -173,70 +196,61 @@ class TensorDescriptor : public GPUObjectDescriptor {
   absl::Status PerformGetAddressSelector(const std::vector<std::string>& args,
                                          std::string* result) const;
 
-  absl::Status PerformGetPtrWithSliceOffsetSelector(
-      const std::vector<std::string>& args, std::string* result) const;
-
-  absl::Status PerformGetWHOffsetSelector(const std::vector<std::string>& args,
-                                          std::string* result) const;
-
   absl::Status PerformGetHandleSelector(const std::vector<std::string>& args,
                                         std::string* result) const;
 
-  std::string DeclareAddress(const std::string& var_name,
-                             const std::string& address) const;
-
   std::string StorageTypeToAddressType() const;
 
-  absl::Status PerformWriteSelector(
-      const GpuInfo& gpu_info, const std::vector<std::string>& args,
-      const std::vector<std::string>& template_args, std::string* result) const;
+  absl::Status PerformWriteSelector(const GpuInfo& gpu_info,
+                                    const std::vector<std::string>& args,
+                                    std::string* result) const;
 
-  absl::Status PerformWriteLinearSelector(
-      const GpuInfo& gpu_info, const std::vector<std::string>& args,
-      const std::vector<std::string>& template_args, std::string* result) const;
+  absl::Status PerformWriteLinearSelector(const GpuInfo& gpu_info,
+                                          const std::vector<std::string>& args,
+                                          std::string* result) const;
 
-  absl::Status PerformWrite2DSelector(
-      const GpuInfo& gpu_info, const std::vector<std::string>& args,
-      const std::vector<std::string>& template_args, std::string* result) const;
+  absl::Status PerformWrite2DSelector(const GpuInfo& gpu_info,
+                                      const std::vector<std::string>& args,
+                                      std::string* result) const;
 
   std::string Read(const GpuInfo& gpu_info, DataType read_as_type,
                    const std::vector<std::string>& coords) const;
-  std::string Write(const GpuInfo& gpu_info, DataType write_type,
-                    const std::string& var_name,
+  std::string Write(const GpuInfo& gpu_info, absl::string_view var_name,
                     const std::vector<std::string>& coords) const;
-
-  bool IsBatchedWidth() const;
 
   absl::Status MaybeGetDataTypeFromTemplateArgs(
       const std::vector<std::string>& template_args, DataType* result) const;
 
-  std::string GetGlobalAddressNoDeclaration(const std::string& xc,
-                                            const std::string& yc,
-                                            const std::string& zc,
-                                            const std::string& sc,
-                                            const std::string& bc) const;
+  std::string GetGlobalAddressNoDeclaration(absl::string_view xc,
+                                            absl::string_view yc,
+                                            absl::string_view zc,
+                                            absl::string_view sc,
+                                            absl::string_view bc) const;
 
-  std::vector<std::string> GetPhysicalCoordsWHS(const std::string& x,
-                                                const std::string& y,
-                                                const std::string& s) const;
-  std::vector<std::string> GetPhysicalCoordsWHSB(const std::string& x,
-                                                 const std::string& y,
-                                                 const std::string& s,
-                                                 const std::string& b) const;
-  std::vector<std::string> GetPhysicalCoordsWHDS(const std::string& x,
-                                                 const std::string& y,
-                                                 const std::string& z,
-                                                 const std::string& s) const;
-  std::vector<std::string> GetPhysicalCoordsWHDSB(const std::string& x,
-                                                  const std::string& y,
-                                                  const std::string& z,
-                                                  const std::string& s,
-                                                  const std::string& b) const;
-  std::vector<std::string> GetPhysicalCoords(const std::string& xc,
-                                             const std::string& yc,
-                                             const std::string& zc,
-                                             const std::string& sc,
-                                             const std::string& bc) const;
+  std::vector<std::string> GetPhysicalCoordsWHS(absl::string_view x,
+                                                absl::string_view y,
+                                                absl::string_view s) const;
+  std::vector<std::string> GetPhysicalCoordsWHSB(absl::string_view x,
+                                                 absl::string_view y,
+                                                 absl::string_view s,
+                                                 absl::string_view b) const;
+  std::vector<std::string> GetPhysicalCoordsWHDS(absl::string_view x,
+                                                 absl::string_view y,
+                                                 absl::string_view z,
+                                                 absl::string_view s) const;
+  std::vector<std::string> GetPhysicalCoordsWHDSB(absl::string_view x,
+                                                  absl::string_view y,
+                                                  absl::string_view z,
+                                                  absl::string_view s,
+                                                  absl::string_view b) const;
+  std::vector<std::string> GetPhysicalCoords(absl::string_view xc,
+                                             absl::string_view yc,
+                                             absl::string_view zc,
+                                             absl::string_view sc,
+                                             absl::string_view bc) const;
+  std::vector<std::string> GetPhysicalCoordsLinear(absl::string_view x) const;
+  std::vector<std::string> GetPhysicalCoordsHW(absl::string_view x,
+                                               absl::string_view y) const;
 
   bool ParseCoordsFromArgs(const std::vector<std::string>& args, int offset,
                            std::string* xc, std::string* yc, std::string* zc,
@@ -254,6 +268,7 @@ class TensorDescriptor : public GPUObjectDescriptor {
   // totally different.
   Layout layout_ =
       Layout::UNKNOWN;  // Supported layouts is HWC, BHWC, HWDC, BHWDC
+                        // HW and LINEAR (for constant objects only)
 
   // applicable only for TEXTURE_2D.
   // When Texture 2d created from buffer, we can use it as texture or as buffer.
@@ -276,6 +291,30 @@ class TensorDescriptor : public GPUObjectDescriptor {
   std::vector<uint8_t> data_;
 };
 
+TensorDescriptor CreateBhwcTensorDescriptor(DataType data_type,
+                                            TensorStorageType storage_type,
+                                            const BHWC& shape);
+TensorDescriptor CreateHwcTensorDescriptor(DataType data_type,
+                                           TensorStorageType storage_type,
+                                           const HWC& shape);
+
+TensorStorageType GetStorageTypeForLinearTensor(const GpuInfo& gpu_info,
+                                                DataType data_type,
+                                                const Linear& shape);
+template <DataType DataTypeT>
+TensorDescriptor CreateConstantLinearTensorDescriptor(
+    DataType data_type, TensorStorageType storage_type,
+    const tflite::gpu::Tensor<Linear, DataTypeT>& src);
+
+template <DataType DataTypeT>
+TensorDescriptor CreateConstantLinearTensorDescriptor(
+    const GpuInfo& gpu_info, DataType data_type,
+    const tflite::gpu::Tensor<Linear, DataTypeT>& src);
+
+TensorDescriptor CreateConstantHWVec4TensorDescriptor(
+    DataType data_type, TensorStorageType storage_type, int width, int height,
+    const uint8_t* data);
+
 template <DataType T>
 void TensorDescriptor::UploadData(const tflite::gpu::Tensor<BHWC, T>& src) {
   shape_ = BHWDC(src.shape.b, src.shape.h, src.shape.w, 1, src.shape.c);
@@ -289,15 +328,38 @@ void TensorDescriptor::DownloadData(tflite::gpu::Tensor<BHWC, T>* dst) {
   DownloadData(dst->data.data());
 }
 
+template <DataType T>
+void TensorDescriptor::UploadData(const tflite::gpu::Tensor<BHWDC, T>& src) {
+  shape_ = src.shape;
+  UploadData(src.data.data());
+}
+
+template <DataType T>
+void TensorDescriptor::DownloadData(tflite::gpu::Tensor<BHWDC, T>* dst) {
+  dst->shape = shape_;
+  dst->data.resize(dst->shape.DimensionsProduct(), 0.0f);
+  DownloadData(dst->data.data());
+}
+
 template <typename T>
 void TensorDescriptor::UploadData(const T* src) {
   data_.resize(GetSizeInBytesForShape(shape_));
-  if (data_type_ == DataType::FLOAT16) {
-    half* gpu_data = reinterpret_cast<half*>(data_.data());
-    DataFromBHWDC(src, shape_, *this, gpu_data);
-  } else {
-    T* gpu_data = reinterpret_cast<T*>(data_.data());
-    DataFromBHWDC(src, shape_, *this, gpu_data);
+  if (layout_ == Layout::LINEAR) {
+    if (data_type_ == DataType::FLOAT16) {
+      half* gpu_data = reinterpret_cast<half*>(data_.data());
+      DataFromLinear(src, *this, gpu_data);
+    } else {
+      T* gpu_data = reinterpret_cast<T*>(data_.data());
+      DataFromLinear(src, *this, gpu_data);
+    }
+  } else {  // HWC/BHWC/HWDC/BHWDC
+    if (data_type_ == DataType::FLOAT16) {
+      half* gpu_data = reinterpret_cast<half*>(data_.data());
+      DataFromBHWDC(src, shape_, *this, gpu_data);
+    } else {
+      T* gpu_data = reinterpret_cast<T*>(data_.data());
+      DataFromBHWDC(src, shape_, *this, gpu_data);
+    }
   }
 }
 
@@ -310,6 +372,27 @@ void TensorDescriptor::DownloadData(T* dst) {
   } else {
     T* gpu_data = reinterpret_cast<T*>(data_.data());
     DataToBHWDC(gpu_data, shape_, *this, dst);
+  }
+}
+
+template <typename FromType, typename ToType>
+void DataFromLinear(const FromType* src, const TensorDescriptor& desc,
+                    ToType* dst) {
+  const int element_size = desc.GetElementSize();
+  const Linear shape = Linear(desc.GetBHWCShape().c);
+  const int slices = DivideRoundUp(shape.v, element_size);
+  for (int s = 0; s < slices; ++s) {
+    for (int c = 0; c < element_size; ++c) {
+      FromType value;
+      if (s * 4 + c < shape.v) {
+        const int cpu_index = shape.LinearIndex({s * element_size + c});
+        value = src[cpu_index];
+      } else {
+        value = 0;
+      }
+      int gpu_index = s * element_size + c;
+      dst[gpu_index] = value;
+    }
   }
 }
 

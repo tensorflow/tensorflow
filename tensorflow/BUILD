@@ -8,24 +8,40 @@ load(
     "//tensorflow:tensorflow.bzl",
     "VERSION",
     "VERSION_MAJOR",
+    "check_deps",
     "if_google",
     "if_oss",
+    "if_xla_available",
     "tf_cc_shared_object",
     "tf_custom_op_library_additional_deps_impl",
+    "tf_monitoring_python_deps",
     "tf_native_cc_binary",
+    "tsl_async_value_deps",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_binary_deps",
 )
 load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+    "tf_additional_plugin_deps",
+    "tf_additional_profiler_deps",
+)
+load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl_ml",
 )
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_shared_library")
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "ADDITIONAL_API_INDEXABLE_SETTINGS",
+    "tf_cc_shared_library",
+)
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 # copybara:uncomment_begin
+# load("//devtools/copybara/rules:copybara.bzl", "copybara_config_test")
 # load("//tools/build_defs/license:license.bzl", "license")
 # copybara:uncomment_end
 
@@ -58,6 +74,8 @@ PACKAGE_STATIC_DEPS = [
     "@nsync//:__subpackages__",
     "@png//:__subpackages__",
     "@sobol_data//:__subpackages__",
+    "@stablehlo//:__subpackages__",
+    "@tf_runtime//:__subpackages__",
     "@bazel_tools//:__subpackages__",
     "@boringssl//:__subpackages__",
     "@com_github_cares_cares//:__subpackages__",
@@ -76,11 +94,9 @@ PACKAGE_STATIC_DEPS = [
     "@fft2d//:__subpackages__",
     "@gemmlowp//:__subpackages__",
     "@jsoncpp_git//:__subpackages__",
-    "@libxsmm_archive//:__subpackages__",
     "@llvm_openmp//:__subpackages__",
     "@llvm_terminfo//:__subpackages__",
     "@llvm_zlib//:__subpackages__",
-    "@lmdb//:__subpackages__",
     "@local_config_cuda//:__subpackages__",
     "@local_config_git//:__subpackages__",
     "@local_config_nccl//:__subpackages__",
@@ -89,12 +105,26 @@ PACKAGE_STATIC_DEPS = [
     "@local_execution_config_platform//:__subpackages__",
     "@mkl_dnn_acl_compatible//:__subpackages__",
     "@mkl_dnn_v1//:__subpackages__",
+    "@nccl_archive//:__subpackages__",
+    "@nvtx_archive//:__subpackages__",
     "@org_sqlite//:__subpackages__",
     "@platforms//:__subpackages__",
     "@snappy//:__subpackages__",
     "@upb//:__subpackages__",
     "@zlib//:__subpackages__",
-]
+    "@dlpack//:__subpackages__",
+    "@arm_neon_2_x86_sse//:__subpackages__",
+    "@cpuinfo//:__subpackages__",
+    "@ruy//:__subpackages__",
+    "@XNNPACK//:__subpackages__",
+    "@pthreadpool//:__subpackages__",
+    "@FXdiv//:__subpackages__",
+    "@FP16//:__subpackages__",
+    "@clog//:__subpackages__",
+    "@flatbuffers//:__subpackages__",
+    "@nccl_archive//:__subpackages__",
+    "@triton//:__subpackages__",
+] + tsl_async_value_deps()
 
 package(
     # copybara:uncomment default_applicable_licenses = [":license"],
@@ -105,6 +135,49 @@ package(
 # license(
 #     name = "license",
 #     package_name = "tensorflow",
+# )
+#
+# filegroup(
+#     name = "copybara_library",
+#     srcs = glob(
+#         [
+#             "*.bara.sky",
+#             "*.dic",
+#             "*.ftrcp",
+#         ],
+#         exclude = [
+#             "copy.bara.sky",
+#         ],
+#     ),
+#     visibility = ["//visibility:public"],
+# )
+#
+# filegroup(
+#     name = "copybara_config",
+#     srcs = ["copy.bara.sky"],
+#     data = [
+#         ":copybara_library",
+#         "//learning/brain/testing/copybara:all_bara_sky",
+#         "//third_party/tsl:copybara_library",
+#         "//third_party/xla:copybara_library",
+#     ],
+#     visibility = ["//visibility:public"],
+# )
+#
+# copybara_config_test(
+#     name = "copybara_config_test",
+#     config = "copy.bara.sky",
+#     tags = [
+#         "noasan",
+#         "nodfsan",
+#         "nogotsan",
+#         "nogpu",
+#         "nomsan",
+#         "nosan",
+#         "notsan",
+#         "noubsan",
+#     ],
+#     deps = [":copybara_config"],
 # )
 # copybara:uncomment_end
 
@@ -307,6 +380,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# TODO(jakeharmon): Remove in favor of TSL version
 config_setting(
     name = "windows",
     # Internal builds query the target OS.
@@ -328,16 +402,40 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# Sometimes Bazel reports darwin_x86_64 as "darwin" and sometimes as
+# "darwin_x86_64". The former shows up when building on a Mac x86_64 host for a Mac x86_64 target.
+# The latter shows up when cross-compiling for Mac x86_64 from a Mac ARM machine and in internal
+# Google builds.
 config_setting(
-    name = "macos_x86_64",
+    name = "macos_x86_64_default",
     flag_values = if_google(
         {"//tools/cpp:cc_target_os": "apple"},
         {},
     ),
     values = {
         "apple_platform_type": "macos",
-        "cpu": if_google("darwin_x86_64", "darwin"),
+        "cpu": "darwin",
     },
+)
+
+config_setting(
+    name = "macos_x86_64_crosscompile",
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "apple"},
+        {},
+    ),
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin_x86_64",
+    },
+)
+
+selects.config_setting_group(
+    name = "macos_x86_64",
+    match_any = [
+        ":macos_x86_64_default",
+        ":macos_x86_64_crosscompile",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -354,6 +452,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# TODO(jakeharmon): Remove in favor of TSL version
 selects.config_setting_group(
     name = "macos",
     match_any = [
@@ -376,6 +475,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# TODO(jakeharmon): Remove in favor of TSL version
 config_setting(
     name = "fuchsia",
     flag_values = if_google(
@@ -579,12 +679,6 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-config_setting(
-    name = "with_numa_support",
-    define_values = {"with_numa_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
 # Crosses between framework_shared_object and a bunch of other configurations
 # due to limitations in nested select() statements.
 config_setting(
@@ -775,11 +869,12 @@ selects.config_setting_group(
     match_any = [
         ":android",
         ":chromiumos",
+        # TODO(jakeharmon): Move all platform configs to TSL with fuchsia (non-blocking)
         ":fuchsia",
         ":emscripten",
         ":ios",
     ],
-    visibility = if_google(["//visibility:public"]),
+    visibility = ["//visibility:public"],
 )
 
 # This flag disables all google production dependencies, intended for
@@ -822,7 +917,7 @@ selects.config_setting_group(
 config_setting(
     name = "lite_protos_legacy",
     define_values = {"TENSORFLOW_PROTOS": "lite"},
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
 )
 
 config_setting(
@@ -843,7 +938,7 @@ selects.config_setting_group(
         ":lite_protos",
         ":mobile",
     ],
-    visibility = if_google(["//visibility:public"]),
+    visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(
@@ -852,7 +947,7 @@ selects.config_setting_group(
         ":full_protos",
         ":mobile",
     ],
-    visibility = if_google(["//visibility:public"]),
+    visibility = ["//visibility:public"],
 )
 
 # copybara:uncomment_begin(google-only)
@@ -890,6 +985,22 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+bool_flag(
+    name = "enable_api_indexable",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "api_indexable_flag",
+    flag_values = {":enable_api_indexable": "True"},
+)
+
+selects.config_setting_group(
+    name = "api_indexable",
+    match_any = [":api_indexable_flag"] + ADDITIONAL_API_INDEXABLE_SETTINGS,
+    visibility = ["//visibility:public"],
+)
+
 # DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
 # Instead, please use public APIs or public build rules TF provides.
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.
@@ -902,9 +1013,14 @@ package_group(
         "//learning/brain/mlir/...",
         "//learning/brain/tfrt/...",
         "//learning/lib/ami/simple_ml/...",
+        "//learning/pathways/...",
+        "//learning/serving/contrib/tfrt/mlir/canonical_ops/...",
+        "//perftools/accelerators/xprof/integration_tests/...",
+        "//smartass/brain/configure/...",
         "//tensorflow/...",
         "//tensorflow_decision_forests/...",
         "//tensorflow_federated/...",
+        "//third_party/cloud_tpu/convergence_tools/sdc_monitoring/...",
         "//third_party/cloud_tpu/inference_converter/...",
         "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
@@ -918,12 +1034,12 @@ package_group(name = "ndarray_tensor_allow_list")
 # Packages that use private types symbols, until they are exported.
 # TODO(b/154650521) Remove.
 # If this is modified, then copy.bara.sky must also be modified.
-package_group(name = "types_whitelist")
+package_group(name = "types_allowlist")
 
 # Packages that use StructuredTensors.
 # TODO(b/159007891) Remove this package once StructuredTensor is exported.
 # LINT.IfChange
-package_group(name = "structured_tensor_whitelist")
+package_group(name = "structured_tensor_allowlist")
 # LINT.ThenChange(copy.bara.sky)
 
 filegroup(
@@ -942,7 +1058,8 @@ bzl_library(
     deps = [
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
-        "//tensorflow/core/platform/default:cuda_build_defs_bzl",
+        "//tensorflow/tsl:tsl_bzl",
+        "//tensorflow/tsl/platform/default:cuda_build_defs_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//third_party/llvm_openmp:openmp_bzl",
         "//third_party/mkl:build_defs_bzl",
@@ -955,6 +1072,14 @@ bzl_library(
     ],
 )
 
+bzl_library(
+    name = "tensorflow_default_bzl",
+    srcs = ["tensorflow.default.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [":tensorflow_bzl"],
+)
+
+# TODO(jakeharmon): Remove these in favor of tsl:grpc
 # copybara:comment_begin(oss-only)
 cc_library(
     name = "grpc",
@@ -999,38 +1124,6 @@ cc_library(
 # global symbol table in order to support op registration. This means that
 # projects building with Bazel and importing TensorFlow as a dependency will not
 # depend on libtensorflow_framework.so unless they opt in.
-#
-# DEBUGGING DUPLICATE INITIALIZATION
-# ----------------------------------
-#
-# Having a dynamic library introduces a diamond dependency problem:
-# if a target X is depended on by both libtensorflow_framework.so and the
-# users of libtensorflow_framework.so, the definitions will get duplicated.
-# This causes global initializers which need to be run exactly once (e.g.
-# protobuf registration) to crash, as the initialization is run once from the
-# statically linked in global, and one by the global which comes in from
-# libtensorflow_framework.so.
-# Even worse, global objects which need to be singletons for semantical
-# correctness (e.g. registers) might get duplicated.
-#
-# In order to avoid these HARD TO DEBUG CRASHES, it is sufficient to follow
-# these rules:
-#  - All globals with non-trivial static constructors or for which a
-#    single identity is required (e.g. registers) need to live in `*_impl`
-#    targets.
-#
-#  - An `*_impl` target has to be (transitively) included into
-#    `libtensorflow_framework.so`.
-#
-#  - A target T1 can depend on `*_impl` target T2 only if:
-#
-#    -> It's a tf_cc_shared_object, and there is no other tf_cc_shared_object
-#       transitively depending on T2.
-#    -> It's an `*_impl` target by itself
-#    -> The dependency is guarded by `if_static`. This is discouraged,
-#       as it diverges dependency topology between static and dynamic TF.
-#
-# TODO(cheshire): Write tests to check for rule violations.
 tf_cc_shared_library(
     name = "tensorflow_framework",
     additional_linker_inputs = [
@@ -1055,28 +1148,38 @@ tf_cc_shared_library(
     linkstatic = 1,
     per_os_targets = True,
     roots = [
-        "//tensorflow/c/experimental/filesystem:filesystem_interface",
-        "//tensorflow/c/experimental/stream_executor:stream_executor",
-        "//tensorflow/c:env",
-        "//tensorflow/c:kernels",
-        "//tensorflow/c:kernels_experimental",
-        "//tensorflow/c:logging",
-        "//tensorflow/c:ops",
-        "//tensorflow/cc/saved_model:fingerprinting_impl",
-        "//tensorflow/cc/saved_model:loader_lite_impl",
-        "//tensorflow/cc/saved_model:metrics_impl",
-        "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
-        "//tensorflow/core/common_runtime:core_cpu_impl",
-        "//tensorflow/core:framework_internal_impl",
-        "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
-        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
-        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
-        "//tensorflow/core:lib_internal_impl",
-        "//tensorflow/core/profiler:profiler_impl",
-        "//tensorflow/core/util:determinism",
-        "//tensorflow/lite/kernels/shim:tf_kernel_shim",
-        "//tensorflow/stream_executor:stream_executor_impl",
-    ] + tf_additional_binary_deps(),
+                "//tensorflow/c/experimental/filesystem:filesystem_interface",
+                "//tensorflow/c/experimental/stream_executor:stream_executor",
+                "//tensorflow/c:env",
+                "//tensorflow/c:kernels",
+                "//tensorflow/c:kernels_experimental",
+                "//tensorflow/c:logging",
+                "//tensorflow/c:ops",
+                "//tensorflow/cc/saved_model:fingerprinting_impl",
+                "//tensorflow/cc/saved_model:loader_lite_impl",
+                "//tensorflow/cc/saved_model:metrics_impl",
+                "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
+                "//tensorflow/core/common_runtime:core_cpu_impl",
+                "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
+                "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
+                "//tensorflow/core:framework_internal_impl",
+                "//tensorflow/core/framework:tensor",
+                "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
+                "//tensorflow/core:lib_internal_impl",
+                "//tensorflow/core/profiler:profiler_impl",
+                "//tensorflow/core/util:determinism",  # Must be linked and exported to libtensorflow_framework.so.
+                "//tensorflow/lite/kernels/shim:tf_kernel_shim",
+                "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
+                "//tensorflow/tsl/framework:bfc_allocator",
+                "//tensorflow/tsl/framework:metrics",
+            ] + tf_additional_binary_deps() +
+            # TODO(b/259305727): Remove this select and include captured_function in macos builds.
+            select({
+                "//tensorflow:macos": [],
+                "//conditions:default": [
+                    "//tensorflow/core/data:captured_function",
+                ],
+            }),
     soversion = VERSION,
     static_deps = PACKAGE_STATIC_DEPS,
     visibility = ["//visibility:public"],
@@ -1150,7 +1253,10 @@ tf_cc_shared_object(
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/core:distributed_tensorflow_dependencies",
         "//tensorflow/core:tensorflow",
-    ],
+    ] + select({
+        "//tensorflow:windows": ["//tensorflow/c:kernels_experimental"],
+        "//conditions:default": [],
+    }),
 )
 
 tf_cc_shared_library(
@@ -1164,6 +1270,9 @@ tf_cc_shared_library(
         "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
         "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
     }),
+    exports_filter = [
+        "//:__subpackages__",
+    ],
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [
@@ -1176,41 +1285,170 @@ tf_cc_shared_library(
         ],
     }),
     per_os_targets = True,
-    soversion = VERSION,
-    static_deps = PACKAGE_STATIC_DEPS,
-    visibility = ["//visibility:public"],
-    # copybara:comment_begin(OSS Windows only: DEF file for exported symbols)
-    win_def_file = ":tensorflow_filtered_def_file",
-    # copybara:comment_end
-    deps = [
+    roots = [
         "//tensorflow/c:c_api",
-        "//tensorflow/c:env",
-        "//tensorflow/c:kernels",
-        "//tensorflow/c:kernels_experimental",
-        "//tensorflow/c:logging",
-        "//tensorflow/c:ops",
         "//tensorflow/c/eager:c_api",
-        "//tensorflow/c/experimental/filesystem:filesystem_interface",
-        "//tensorflow/c/experimental/stream_executor:stream_executor",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:scope",
-        "//tensorflow/cc/saved_model:fingerprinting_impl",
-        "//tensorflow/cc/saved_model:loader_lite_impl",
-        "//tensorflow/cc/saved_model:metrics_impl",
-        "//tensorflow/core:framework_internal_impl",
-        "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/data:standalone",
-        "//tensorflow/core/common_runtime:core_cpu_impl",
-        "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
-        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
-        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
-        "//tensorflow/core/profiler:profiler_impl",
-        "//tensorflow/core/util:determinism",
-        "//tensorflow/lite/kernels/shim:tf_kernel_shim",
-        "//tensorflow/stream_executor:stream_executor_impl",
-    ] + tf_additional_binary_deps(),
+        # Exports for pywrap_tensorflow_internal. Many of these are transitive
+        # depedencies of the above, but must be explicitly listed for
+        # cc_shared_library to work.
+        "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/eager:c_api_internal",
+        "//tensorflow/c/eager:dlpack",
+        "//tensorflow/c/eager:tape",
+        "//tensorflow/c/eager:tfe_context_internal",
+        "//tensorflow/c/eager:tfe_op_internal",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
+        "//tensorflow/c/experimental/gradients",
+        "//tensorflow/c/experimental/gradients/tape",
+        "//tensorflow/c/experimental/next_pluggable_device:c_api",
+        "//tensorflow/c/experimental/ops",
+        "//tensorflow/c:c_api_experimental",
+        "//tensorflow/c:c_api_internal",
+        "//tensorflow/c:c_api_no_xla",
+        "//tensorflow/c:checkpoint_reader",
+        "//tensorflow/c:tensor_interface",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/compiler/mlir/lite/metrics:error_collector",
+        "//tensorflow/compiler/mlir/lite/python:flatbuffer_to_mlir",
+        "//tensorflow/compiler/mlir/lite/python:graphdef_to_tfl_flatbuffer",
+        "//tensorflow/compiler/mlir/lite/python:jax_to_tfl_flatbuffer",
+        "//tensorflow/compiler/mlir/lite/python:saved_model_to_tfl_flatbuffer",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
+        "//tensorflow/compiler/mlir/lite/sparsity:sparsify_model",
+        "//tensorflow/compiler/mlir/python:mlir",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
+        "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/compiler/xla/service:computation_placer",
+        "//tensorflow/core",
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/config:flags",
+        "//tensorflow/core/data/service:dispatcher_client",
+        "//tensorflow/core/data/service:grpc_util",
+        "//tensorflow/core/data/service:py_utils",
+        "//tensorflow/core/data/service:server_lib",
+        "//tensorflow/core/debug",
+        "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/function/runtime_client:runtime_client_cc",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/clusters:single_machine",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/costs:graph_memory",
+        "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",
+        "//tensorflow/core/grappler/optimizers:meta_optimizer",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:grappler_item_builder",
+        "//tensorflow/core/kernels:data_service_ops",
+        "//tensorflow/core/kernels:dataset_ops",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:stacktrace_handler",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/core/profiler/internal:print_model_analysis",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/rpc/client:profiler_client_impl",
+        "//tensorflow/core/profiler/rpc:profiler_server_impl",
+        "//tensorflow/core/util:managed_stack_trace",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:reader_base",
+        "//tensorflow/core:script_ops_op_lib",
+        "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
+        "//tensorflow/dtensor/cc:dtensor_device_cc",
+        "//tensorflow/dtensor/cc:tensor_layout",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/delegates/flex:delegate",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:reference_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/toco/logging:conversion_log_util",
+        "//tensorflow/lite/toco/logging:toco_conversion_log_proto_cc",
+        "//tensorflow/lite/toco:model_flags_proto_cc",
+        "//tensorflow/lite/toco:toco_convert",
+        "//tensorflow/lite/toco:toco_flags_proto_cc",
+        "//tensorflow/lite/toco:toco_graphviz_dump_options",
+        "//tensorflow/lite/toco:toco_port",
+        "//tensorflow/lite/toco:toco_tooling",
+        "//tensorflow/lite/toco:tooling_util",
+        "//tensorflow/lite/toco:types_proto_cc",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:shared_library",
+        "//tensorflow/lite:stateful_error_reporter",
+        "//tensorflow/lite:string_util",
+        "//tensorflow/lite:util",
+        "//tensorflow/python/grappler:cost_analyzer_lib",
+        "//tensorflow/tools/graph_transforms:transform_graph_lib",
+    ] + (tf_monitoring_python_deps() +
+         tf_additional_plugin_deps() +
+         tf_additional_profiler_deps()) + if_xla_available([
+        "//tensorflow/compiler/aot:tfcompile_lib",
+    ]) + if_static(extra_deps = [
+        "//tensorflow/core/platform:tensor_float_32_utils",
+        "//tensorflow/core/platform:enable_tf2_utils",
+    ]) + if_oss([
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+    ]),
+    soversion = VERSION,
+    static_deps = PACKAGE_STATIC_DEPS,
+    visibility = ["//visibility:public"],
+    win_def_file = ":tensorflow_filtered_def_file",
+)
+
+# To avoid duplication, check that the C++ or python library does not depend on
+# the stream executor cuda plugins. Targets that want to use cuda APIs should
+# instead depend on the dummy plugins in //tensorflow/tsl/platform/default/build_config
+# and use header only targets.
+# TODO(ddunleavy): This seems completely broken. :tensorflow_cc depends on
+# cuda_platform from tf_additional_binary_deps and this doesn't break.
+check_deps(
+    name = "cuda_plugins_check_deps",
+    disallowed_deps = if_static(
+        [],
+        otherwise = [
+            "//tensorflow/compiler/xla/stream_executor/cuda:all_runtime",
+            "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
+            "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
+            "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
+            "//tensorflow/compiler/xla/stream_executor/cuda:cufft_plugin",
+            "//tensorflow/compiler/xla/stream_executor/cuda:curand_plugin",
+            "//tensorflow/compiler/xla/stream_executor:cuda_platform",
+        ],
+    ),
+    deps = if_cuda([
+        "//tensorflow:tensorflow_cc",
+        "//tensorflow/python:pywrap_tensorflow_internal",
+    ]),
 )
 
 # ** Targets for Windows build (start) **
@@ -1314,6 +1552,7 @@ genrule(
         "//tensorflow/c/eager:headers",
         "//tensorflow/cc:headers",
         "//tensorflow/core:headers",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_install_hdrs",
     ],
     outs = ["include"],
     cmd = """
@@ -1427,6 +1666,9 @@ py_library(
         },
     ) + [
         ":tensorflow_py_no_contrib",
+        "//tensorflow/lite/python:analyzer",
+        "//tensorflow/lite/python:lite",
+        "//tensorflow/lite/python/authoring",
         "//tensorflow/python/estimator:estimator_py",
     ],
 )
@@ -1441,6 +1683,11 @@ py_library(
     ],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/python:no_contrib"],
+    deps = [
+        "//tensorflow/lite/python:analyzer",
+        "//tensorflow/lite/python:lite",
+        "//tensorflow/lite/python/authoring",
+        "//tensorflow/python:no_contrib",
+    ],
 )
 # copybara:comment_end

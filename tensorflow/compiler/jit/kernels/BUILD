@@ -1,6 +1,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/tf2xla:internal",
         "//tensorflow/core/tpu:__subpackages__",
@@ -17,7 +18,9 @@ XLA_OPS_DEPS = [
     "//tensorflow/compiler/jit:flags",
     "//tensorflow/compiler/jit:xla_activity_listener",
     "//tensorflow/compiler/jit:xla_activity_proto_cc",
-    "//tensorflow/compiler/jit:xla_compilation_cache",
+    "//tensorflow/compiler/jit:device_compiler",
+    "//tensorflow/compiler/jit:variable_info",
+    "//tensorflow/compiler/jit:variable_info_util",
     "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
     "//tensorflow/compiler/jit:xla_cluster_util",
     "//tensorflow/compiler/jit:xla_launch_util",
@@ -39,7 +42,7 @@ XLA_OPS_DEPS = [
     "//tensorflow/core:state_ops_op_lib",
     "//tensorflow/core/platform:stream_executor_no_cuda",
     "//tensorflow/core/profiler/lib:traceme",
-    "//tensorflow/stream_executor:tf_allocator_adapter",
+    "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
     "@com_google_absl//absl/types:optional",
 ]
 
@@ -48,7 +51,14 @@ cc_library(
     name = "xla_ops_no_jit_rewrite_registration",
     srcs = ["xla_ops.cc"],
     hdrs = ["xla_ops.h"],
-    deps = XLA_OPS_DEPS + ["//tensorflow/core/platform:refcount"],
+    deps = XLA_OPS_DEPS + [
+        "//tensorflow/compiler/jit:device_compilation_cache",
+        "//tensorflow/compiler/jit:device_compilation_profiler",
+        "//tensorflow/compiler/jit:tf_graph_to_hlo_compiler",
+        "//tensorflow/compiler/jit:tf_to_hlo_compiler",
+        "//tensorflow/compiler/jit:xla_compile_util",
+        "//tensorflow/core/platform:refcount",
+    ],
     alwayslink = 1,
 )
 

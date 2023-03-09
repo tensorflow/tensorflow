@@ -41,8 +41,7 @@ class DatasetToGraphOp : public OpKernel {
 
  private:
   const int op_version_;
-  SerializationContext::ExternalStatePolicy external_state_policy_ =
-      SerializationContext::ExternalStatePolicy::kWarn;
+  ExternalStatePolicy external_state_policy_ = ExternalStatePolicy::POLICY_WARN;
   bool strip_device_assignment_ = false;
 };
 

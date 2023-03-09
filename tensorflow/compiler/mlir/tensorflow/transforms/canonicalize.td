@@ -334,8 +334,19 @@ def HashTableAndLookupTableFindToV2 :
 // Canonicalize tf.Maximum of zero to tf.Relu
 //===----------------------------------------------------------------------===//
 
-def MaximumOfZeroToRelu : Pat<(TF_MaximumOp $x, $y), (TF_ReluOp $x),
-                              [(IsConstantValueOf<0> $y)]>;
+def IsInteger32Pred: CPred<
+  "getElementTypeOrSelf($0.getType()).isInteger(32)">;
+
+// Whether the transformation is compatible with the device if given.
+// Currently, Relu with int32 is not supported on GPU.
+def IsDeviceCompatible: Constraint<
+  Neg<And<[IsOnGpuDevicePred, IsInteger32Pred]>>>;
+
+// TODO(b/239736969): Remove the device compatibility constraint to make the
+// canonicalization device independent, by adding an int32 GPU kernel for Relu.
+def MaximumOfZeroToRelu : Pat<
+  (TF_MaximumOp:$maximum_op $x, $y), (TF_ReluOp $x),
+  [(IsConstantValueOf<0> $y), (IsDeviceCompatible $maximum_op)]>;
 
 //===----------------------------------------------------------------------===//
 // Canonicalize tf.Relu of Minimul six to tf.Relu6

@@ -245,8 +245,8 @@ TEST(SetNodeShardingFromNeighbors, Basic) {
   auto parse_status = ParseShardingFromDevice(*c_node, num_cores_per_replica,
                                               /*add_metadata=*/false);
   TF_ASSERT_OK(parse_status.status());
-  ASSERT_TRUE(parse_status.ValueOrDie().has_value());
-  EXPECT_EQ(2, parse_status.ValueOrDie().value().tile_assignment_devices(0));
+  ASSERT_TRUE(parse_status.value().has_value());
+  EXPECT_EQ(2, parse_status.value().value().tile_assignment_devices(0));
 
   // Test where two inputs to c_node have a device.
   b_node->set_assigned_device_name("/device:TPU_REPLICATED_CORE:1");
@@ -254,16 +254,16 @@ TEST(SetNodeShardingFromNeighbors, Basic) {
   parse_status = ParseShardingFromDevice(*c_node, num_cores_per_replica,
                                          /*add_metadata=*/false);
   TF_ASSERT_OK(parse_status.status());
-  ASSERT_TRUE(parse_status.ValueOrDie().has_value());
-  EXPECT_EQ(1, parse_status.ValueOrDie().value().tile_assignment_devices(0));
+  ASSERT_TRUE(parse_status.value().has_value());
+  EXPECT_EQ(1, parse_status.value().value().tile_assignment_devices(0));
 
   // Test setting based on out edges.
   TF_ASSERT_OK(SetNodeShardingFromNeighbors(a_node, /*out_edges=*/true));
   parse_status = ParseShardingFromDevice(*a_node, num_cores_per_replica,
                                          /*add_metadata=*/false);
   TF_ASSERT_OK(parse_status.status());
-  ASSERT_TRUE(parse_status.ValueOrDie().has_value());
-  EXPECT_EQ(1, parse_status.ValueOrDie().value().tile_assignment_devices(0));
+  ASSERT_TRUE(parse_status.value().has_value());
+  EXPECT_EQ(1, parse_status.value().value().tile_assignment_devices(0));
 }
 
 REGISTER_OP("One")

@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/bcast.h"
+#include "tensorflow/core/util/overflow.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 
 namespace tensorflow {
@@ -1012,9 +1013,13 @@ bool ConstantFolding::IsFoldableUncached(
     for (const auto& input_prop : input_props) {
       const PartialTensorShape input_shape(input_prop.shape());
       if (input_shape.IsFullyDefined()) {
-        input_size_bytes +=
-            input_shape.num_elements() * DataTypeSize(input_prop.dtype());
+        int64_t bytes = MultiplyWithoutOverflow(
+            input_shape.num_elements(), DataTypeSize(input_prop.dtype()));
+        input_size_bytes = AddWithoutOverflow(input_size_bytes, bytes);
       }
+    }
+    if (input_size_bytes < 0) {  // Overflown
+      input_size_bytes = INT64_MAX;
     }
     for (const auto& output_prop : output_props) {
       PartialTensorShape output_shape;
@@ -1024,8 +1029,11 @@ bool ConstantFolding::IsFoldableUncached(
         return false;
       }
       if (output_shape.IsFullyDefined()) {
-        const int64_t num_bytes =
-            output_shape.num_elements() * DataTypeSize(output_prop.dtype());
+        const int64_t num_bytes = MultiplyWithoutOverflow(
+            output_shape.num_elements(), DataTypeSize(output_prop.dtype()));
+        if (num_bytes < 0) {  // Overflown
+          return false;
+        }
         if (num_bytes > input_size_bytes && num_bytes > kMaxConstantSize) {
           // Do not fold nodes if the in-memory size of output is too large.
           // Notice that this is not exactly the same check used in

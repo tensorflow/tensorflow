@@ -35,12 +35,6 @@ std::unique_ptr<NodeTransformation> NewRemoveIdentityReshape();
 // Removes strided slice with input tensor == output tensor
 std::unique_ptr<NodeTransformation> NewRemoveIdentityStridedSlice();
 
-// Transform this sequence:
-//   logical_op->bool_tensor->cast->float_tensor:
-// to:
-//   logical_op->float_tensor:
-std::unique_ptr<SequenceTransformation> NewRemoveCastAfterLogicalOp();
-
 }  // namespace gpu
 }  // namespace tflite
 

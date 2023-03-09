@@ -18,8 +18,9 @@ limitations under the License.
 
 #include <cmath>
 
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace tensorflow {
 // Returns a tensor containing 'shape' random values uniformly distributed in
@@ -40,6 +41,14 @@ xla::XlaOp MaybeConvertF32ToBF16(xla::XlaOp input, DataType dtype);
 // Combines two signed 32-bit seeds into a single unsigned 64 bit seed.
 xla::XlaOp GetU64FromS32Seeds(xla::XlaOp seed0, xla::XlaOp seed1);
 
+StatusOr<int> GetAlgId(XlaOpKernelContext* ctx, int alg_input_idx);
+
 }  // namespace tensorflow
+
+namespace xla {
+
+int GetCounterSize(RandomAlgorithm const& alg);
+
+}  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_KERNELS_RANDOM_OPS_UTIL_H_

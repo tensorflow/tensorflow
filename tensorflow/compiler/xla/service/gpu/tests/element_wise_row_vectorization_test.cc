@@ -39,7 +39,7 @@ ENTRY main {
   ROOT %fusion.0_small = f32[256,14,14,48]{3,2,1,0} fusion(%param_0, %param_1), kind=kLoop, calls=%fused_computation.0
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_text).value();
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 

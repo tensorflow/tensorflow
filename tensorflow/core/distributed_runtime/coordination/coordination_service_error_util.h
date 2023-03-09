@@ -12,46 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_ERROR_H_
-#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_ERROR_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_ERROR_UTIL_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_ERROR_UTIL_H_
 
-#include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/protobuf/coordination_service.pb.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
 
 namespace tensorflow {
-
-constexpr absl::string_view CoordinationErrorPayloadKey() {
-  return "type.googleapis.com/tensorflow.CoordinationServiceError";
-}
-
-// Mark error as a coordination service error (as opposed to RPC
-// errors).
-inline Status MakeCoordinationError(Status s) {
-  s.SetPayload(CoordinationErrorPayloadKey(), "");
-  return s;
-}
-
-// Mark error as a coordination service error (as opposed to RPC
-// errors), and indicate error origin.
-// Errors reported via the agent API by the user should set `is_reported_error`
-// to true.
-inline Status MakeCoordinationError(Status s, const CoordinatedTask& origin,
-                                    bool is_reported_error = false) {
-  CoordinationServiceError error;
-  *error.mutable_source_task() = origin;
-  error.set_is_reported_error(is_reported_error);
-  s.SetPayload(CoordinationErrorPayloadKey(), error.SerializeAsString());
-  return s;
-}
-
-// Mark error as a coordination service error with payload.
-inline Status MakeCoordinationError(Status s,
-                                    const CoordinationServiceError& payload) {
-  s.SetPayload(CoordinationErrorPayloadKey(), payload.SerializeAsString());
-  return s;
-}
+// NOLINTBEGIN(misc-unused-using-decls)
+using ::tsl::CoordinationErrorPayloadKey;
+using ::tsl::MakeCoordinationError;
+// NOLINTEND(misc-unused-using-decls)
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_ERROR_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_ERROR_UTIL_H_

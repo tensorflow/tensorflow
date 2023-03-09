@@ -22,9 +22,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/exceptions.h"
+#include "tensorflow/compiler/xla/python/ifrt/client.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 
@@ -32,7 +35,9 @@ namespace xla {
 
 class PyBuffer;
 class PyClient;
-class PyExecutable;
+class PyLoadedExecutable;
+class PyArray;
+struct PyArray_Storage;
 
 // Custom holder types.
 //
@@ -90,27 +95,51 @@ ClientAndPtr<T> WrapWithClient(std::shared_ptr<PyClient> client, T* contents) {
 // We use a wrapper class to add Python-specific functionality.
 class PyClient : public std::enable_shared_from_this<PyClient> {
  public:
-  explicit PyClient(std::unique_ptr<PjRtClient> pjrt_client);
-  explicit PyClient(std::shared_ptr<PjRtClient> pjrt_client);
+  explicit PyClient(std::shared_ptr<ifrt::Client> ifrt_client);
   virtual ~PyClient();
 
-  PjRtClient* pjrt_client() const { return pjrt_client_.get(); }
-  std::shared_ptr<PjRtClient> shared_pjrt_client() { return pjrt_client_; }
+  ifrt::Client* ifrt_client() const { return ifrt_client_.get(); }
+
+  // Short-term escape hatch to get PjRtClient from PyClient.
+  // TODO(hyeontaek): Migrate all users of this method to be agnostic of PjRt.
+  xla::PjRtClient* pjrt_client() const {
+    auto* pjrt_client =
+        llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(ifrt_client_.get());
+    if (pjrt_client == nullptr) {
+      throw XlaRuntimeError(
+          "This operation is implemented for a PjRt-compatible backend only.");
+    }
+    return pjrt_client->pjrt_client();
+  }
+  std::shared_ptr<PjRtClient> shared_ptr_pjrt_client() {
+    auto* pjrt_client =
+        llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(ifrt_client_.get());
+    if (pjrt_client == nullptr) {
+      throw XlaRuntimeError(
+          "This operation is implemented for a PjRt-compatible backend only.");
+    }
+    return pjrt_client->shared_ptr_pjrt_client();
+  }
+
+  // Legacy alises.
+  std::shared_ptr<PjRtClient> shared_pjrt_client() {
+    return shared_ptr_pjrt_client();
+  }
 
   absl::string_view platform_name() const {
-    return pjrt_client_->platform_name();
+    return ifrt_client_->platform_name();
   }
   absl::string_view platform_version() const {
-    return pjrt_client_->platform_version();
+    return ifrt_client_->platform_version();
   }
   absl::string_view runtime_type() const {
-    return PjRtRuntimeTypeString(pjrt_client_->runtime_type());
+    return ifrt_client_->runtime_type();
   }
   int addressable_device_count() const {
-    return pjrt_client_->addressable_device_count();
+    return ifrt_client_->addressable_device_count();
   }
-  int device_count() const { return pjrt_client_->device_count(); }
-  int process_index() const { return pjrt_client_->process_index(); }
+  int device_count() const { return ifrt_client_->device_count(); }
+  int process_index() const { return ifrt_client_->process_index(); }
 
   std::vector<ClientAndPtr<PjRtDevice>> Devices();
   std::vector<ClientAndPtr<PjRtDevice>> LocalDevices();
@@ -121,10 +150,10 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   std::vector<pybind11::object> LiveBuffers();
   std::vector<pybind11::object> LiveBuffersOnDevice(PjRtDevice* device);
 
-  // Returns a vector of live PyExecutable objects.
+  // Returns a vector of live PyLoadedExecutable objects.
   // note: must return std::shared_ptr instead of raw ptrs
   // https://pybind11.readthedocs.io/en/stable/advanced/smart_ptrs.html#std-shared-ptr
-  std::vector<std::shared_ptr<PyExecutable>> LiveExecutables();
+  std::vector<std::shared_ptr<PyLoadedExecutable>> LiveExecutables();
 
   // TODO(zhangqiaorjc): Remove when we have transparent defragmentation.
   Status Defragment();
@@ -138,10 +167,10 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
   StatusOr<ChannelHandle> CreateChannelHandle() { return ChannelHandle(); }
   StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() {
-    return pjrt_client_->CreateDeviceToHostChannelHandle();
+    return ifrt_client_->CreateDeviceToHostChannelHandle();
   }
   StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() {
-    return pjrt_client_->CreateHostToDeviceChannelHandle();
+    return ifrt_client_->CreateHostToDeviceChannelHandle();
   }
 
   StatusOr<std::vector<std::pair<pybind11::bytes, pybind11::object>>>
@@ -150,23 +179,20 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
   StatusOr<pybind11::object> BufferFromPyval(
       pybind11::handle argument, PjRtDevice* device, bool force_copy,
-      PjRtClient::HostBufferSemantics host_buffer_semantics);
+      ifrt::Client::HostBufferSemantics host_buffer_semantics);
 
-  StatusOr<std::shared_ptr<PyExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options,
-      std::vector<pybind11::capsule> host_callbacks);
-  StatusOr<std::shared_ptr<PyExecutable>> CompileMlir(
+  StatusOr<std::shared_ptr<PyLoadedExecutable>> Compile(
       std::string mlir_module, CompileOptions options,
       std::vector<pybind11::capsule> host_callbacks);
 
   StatusOr<pybind11::bytes> SerializeExecutable(
-      const PyExecutable& executable) const;
-  StatusOr<std::shared_ptr<PyExecutable>> DeserializeExecutable(
+      const PyLoadedExecutable& executable) const;
+  StatusOr<std::shared_ptr<PyLoadedExecutable>> DeserializeExecutable(
       const std::string& serialized, CompileOptions options,
       std::vector<pybind11::capsule> host_callbacks);
 
   // TODO(skyewm): remove when jax stop providing hlo_module
-  StatusOr<std::shared_ptr<PyExecutable>> DeserializeExecutable(
+  StatusOr<std::shared_ptr<PyLoadedExecutable>> DeserializeExecutable(
       const std::string& serialized, std::shared_ptr<HloModule> hlo_module,
       CompileOptions options, std::vector<pybind11::capsule> host_callbacks) {
     return DeserializeExecutable(serialized, options,
@@ -193,7 +219,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   GetEmitPythonCallbackDescriptor(pybind11::function callable,
                                   absl::Span<Shape const> operand_shapes,
                                   absl::Span<Shape const> result_shapes);
-  // Deprecated; please switch to emitting an MHLO `CustomCallOp` directly.
+  // Deprecated; please switch to emitting a `CustomCallOp` directly.
   StatusOr<XlaOp> EmitPythonCallbackFromDescriptor(
       XlaBuilder& builder, uint64_t descriptor,
       absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
@@ -211,19 +237,24 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // program through `send_channel_ids` and the results correspond to Recv ops
   // through `recv_channel_ids`. It returns the host callback as an opaque
   // object whose reference will keep the Python callback alive. The host
-  // callback can be passed to PyExecutable::Execute() so that the corresponding
-  // Send/Recv ops can trigger the execution of this host callback.
+  // callback can be passed to PyLoadedExecutable::Execute() so that the
+  // corresponding Send/Recv ops can trigger the execution of this host
+  // callback.
   StatusOr<pybind11::object> MakePythonCallbackUsingHostSendAndRecv(
       pybind11::function callable, absl::Span<Shape const> operand_shapes,
       absl::Span<Shape const> result_shapes,
       absl::Span<uint16_t const> send_channel_ids,
       absl::Span<uint16_t const> recv_channel_ids);
 
+  std::vector<pybind11::object> LiveArrays();
+
  private:
   friend class PyBuffer;
-  friend class PyExecutable;
+  friend class PyLoadedExecutable;
+  friend class PyArray;
+  friend struct PyArray_Storage;
 
-  std::shared_ptr<PjRtClient> pjrt_client_;
+  std::shared_ptr<ifrt::Client> ifrt_client_;
 
   // Pointers to intrusive doubly-linked lists of buffers and executables, used
   // to iterate over all known objects when heap profiling. The list structure
@@ -231,7 +262,8 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
   // buffers_ is a per-device list, indexed by device->id().
   std::vector<PyBuffer*> buffers_;
-  PyExecutable* executables_ = nullptr;
+  PyLoadedExecutable* executables_ = nullptr;
+  PyArray_Storage* arrays_ = nullptr;
 };
 
 }  // namespace xla

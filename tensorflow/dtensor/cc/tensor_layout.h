@@ -29,10 +29,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 // Definitions for DTensor mesh & layout.
 //
@@ -43,6 +43,10 @@ limitations under the License.
 // an operation with tensors of different layouts.
 namespace tensorflow {
 namespace dtensor {
+
+// Returns true if `size` is a dynamic size based on either MLIR and TF
+// standards.
+bool IsDynamicSize(int64_t size);
 
 // The location of a device in a mesh.
 //
@@ -92,7 +96,26 @@ class Mesh {
   // we use this string representation of an empty mesh instead to avoid
   // confusion.
   static constexpr const char* kEmptyMeshString = "empty_mesh";
+  static constexpr const char* kUseXLASPMDString = "use_xla_spmd";
+  static constexpr bool kUseXLASPMD = false;
+
   static Mesh Empty();
+  bool IsEmpty() const;
+  Mesh() = default;
+
+  // Creates fully defined mesh.
+  //
+  // When `use_xla_spmd` is true, all ops running on this mesh will use XLA SPMD
+  // instead of DTensor SPMD.
+  static Mesh CreateMesh(const std::string& mesh_name,
+                         const std::vector<std::string>& dim_names,
+                         const std::vector<std::int64_t>& mesh_shape,
+                         const std::vector<std::int64_t>& global_device_ids,
+                         const std::vector<std::string>& global_devices_str,
+                         const std::vector<std::int64_t>& local_device_ids,
+                         const std::vector<std::string>& local_devices_str,
+                         bool use_xla_spmd = Mesh::kUseXLASPMD);
+
   // Parses from MeshProto.
   static StatusOr<Mesh> ParseFromProto(const MeshProto& proto);
   // Parses from a human readable string version of the mesh, currently used
@@ -103,6 +126,9 @@ class Mesh {
   //  mesh =
   //  <name|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1,/job:localhost/task:0/device:CPU:2,/job:localhost/task:0/device:CPU:3>
   static StatusOr<Mesh> FromString(const std::string& str);
+  std::string ToString() const;
+  MeshProto ToProto() const;
+
   // Creates mesh without specific devices associated to it (aka abstract mesh).
   // This is an experimental API. Use only if strictly needed.
   static StatusOr<Mesh> GetAbstractMesh(
@@ -113,55 +139,53 @@ class Mesh {
       const std::vector<std::int64_t>& global_device_ids,
       const std::vector<std::int64_t>& local_device_ids,
       const std::vector<std::string>& local_devices,
-      const std::vector<std::string>& global_devices);
-  Mesh() = default;
-
-  bool IsEmpty() const;
-
-  // Device information methods.
-  std::string device_type() const;
-  std::vector<std::string> hosts() const;
+      const std::vector<std::string>& global_devices,
+      bool use_xla_spmd = Mesh::kUseXLASPMD);
 
   bool is_cpu_mesh() const { return device_type() == "CPU"; }
   bool is_epu_mesh() const { return device_type() == "EPU"; }
   bool is_tpu_mesh() const { return device_type() == "TPU"; }
-
-  // Returns the index of MeshDimension in mesh where the mesh dimension name is
-  // `mesh_name`.
-  int GetMeshDimIndexWithName(const std::string& mesh_name) const;
-  bool IsMeshDim(const std::string& dim_name) const;
-
-  const std::string& name() const { return name_; }
-  const MeshDimension& dim(int64 index) const { return mesh_dims_[index]; }
-  const std::string& dim_name(int64 index) const {
-    return mesh_dims_[index].name;
+  // Returns whether the mesh is a remote mesh.
+  bool is_remote() const {
+    return local_device_ids_.empty() && !global_device_ids_.empty();
   }
 
-  // Consumes a location in the mesh and returns its corresponding index in
-  // the flattened list of devices.
-  int64 GetFlattenedCoordinate(const DeviceLocation& loc) const;
+  // Device information methods.
+  std::string device_type() const;
   // Takes an index in the flattened list of devices and returns a location
   // in the mesh.
   StatusOr<const DeviceLocation> device_location(int offset) const;
-
-  std::vector<MeshDimension> dims() const { return mesh_dims_; }
-
-  // Parses names of local_devices according to TF's Device Name Utils.
-  StatusOr<const std::vector<DeviceNameUtils::ParsedName>> ParsedDevices()
-      const;
-
-  // Convert to given device type.
-  StatusOr<Mesh> ToDeviceType(const std::string& device_type) const;
+  int64 num_devices() const;
   absl::Span<const std::string> local_devices() const { return local_devices_; }
   absl::Span<const int64_t> local_device_ids() const {
     return local_device_ids_;
   }
+  // Parses names of local_devices according to TF's Device Name Utils.
+  StatusOr<const std::vector<DeviceNameUtils::ParsedName>> ParsedDevices()
+      const;
+  // Convert to given device type.
+  StatusOr<Mesh> ToDeviceType(const std::string& device_type) const;
+  std::vector<std::string> hosts() const;
 
+  // Consumes a location in the mesh and returns its corresponding index in
+  // the flattened list of devices.
+  int64 GetFlattenedCoordinate(const DeviceLocation& loc) const;
+
+  const MeshDimension& dim(int64 index) const { return mesh_dims_[index]; }
+  std::vector<MeshDimension> dims() const { return mesh_dims_; }
+  // Returns size of mesh dimension.
+  StatusOr<int64> dim_size(absl::string_view name) const;
+  // Returns list of mesh dimension sizes.
+  std::vector<int64> dim_sizes() const;
+  const std::string& dim_name(int64 index) const {
+    return mesh_dims_[index].name;
+  }
   int64_t min_global_device_id() const {
     DCHECK(!global_device_ids_.empty());
     return *std::min_element(global_device_ids_.begin(),
                              global_device_ids_.end());
   }
+  int64_t num_local_devices() const { return local_devices_.size(); }
 
   absl::Span<const int64_t> global_device_ids() const {
     return global_device_ids_;
@@ -170,26 +194,19 @@ class Mesh {
   const std::vector<std::string>& global_devices() const {
     return global_devices_;
   }
-
-  // Returns whether the mesh is a remote mesh.
-  bool is_remote() const {
-    return local_device_ids_.empty() && !global_device_ids_.empty();
-  }
-
   // Returns index of given dim_name in the mesh.
   StatusOr<int32> idx_for_dim(absl::string_view dim_name) const;
 
-  // Returns size of mesh dimension.
-  StatusOr<int64> dim_size(absl::string_view name) const;
+  // Returns the index of MeshDimension in mesh where the mesh dimension name is
+  // `mesh_name`.
+  int GetMeshDimIndexWithName(const std::string& mesh_name) const;
+  bool IsMeshDim(const std::string& dim_name) const;
+  std::vector<std::string> MeshDimNames() const;
 
-  // Returns list of mesh dimension sizes.
-  std::vector<int64> dim_sizes() const;
-
-  int64 num_devices() const;
   int64 rank() const;
   int64 size() const;
-
-  std::string ToString() const;
+  bool use_xla_spmd() const { return use_xla_spmd_; }
+  const std::string& name() const { return name_; }
 
   // Global unique fingerprint. Same on different workers.
   uint64 GlobalFingerprint() const;
@@ -204,8 +221,6 @@ class Mesh {
   friend H AbslHashValue(H h, const Mesh& m) {
     return H::combine(std::move(h), m.ToString());
   }
-
-  MeshProto ToProto() const;
 
   // A map from mesh names to their corresponding core ID mappings. The core ID
   // mapping is stored as a vector. The i-th element in the vector is the ID of
@@ -228,7 +243,16 @@ class Mesh {
   std::vector<int64_t> local_device_ids_;
   std::vector<int64_t> global_device_ids_;
   std::vector<std::string> global_devices_;
+  bool use_xla_spmd_ = Mesh::kUseXLASPMD;
 };
+
+// Obtain all possible forms of indexing a mesh.
+//
+// e.g. given a mesh with dimensions [x=2, y=3], returns {
+//   [0, 0], [0, 1], [0, 2],
+//   [1, 0], [1, 1], [1, 2]
+// }
+std::vector<DeviceLocation> ComputeDeviceLocations(const Mesh& mesh);
 
 class Layout {
  public:
@@ -259,8 +283,21 @@ class Layout {
   //  /job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1,
   //  /job:localhost/task:0/device:CPU:2,/job:localhost/task:0/device:CPU:3>
   static StatusOr<Layout> FromString(std::string layout_str);
+  // Creates human readable string version of a layout.
+  std::string ToString() const;
+  LayoutProto ToProto() const;
+
+  const Mesh& mesh() const { return mesh_; }
   static Layout ReplicatedOnMesh(const Mesh& mesh, int rank);
+  static Layout BatchShardedOnMesh(const Mesh& mesh, int rank,
+                                   const string& mesh_dim, int axis = 0);
+  static Layout ReplicatedLike(const Layout& layout);
+  static Layout BatchShardedLike(const Layout& layout, const string& mesh_dim,
+                                 int axis = 0);
   static Layout AnyOnMesh(const Mesh& mesh, int rank);
+  // Creates a mesh of unique shards.
+  Mesh ReducedMesh() const;
+  void set_mesh(Mesh mesh) { mesh_ = mesh; }
 
   // Returns a layout for the transposed matrix for given layout. This assumes
   // that only the last two dimensions are used for matrix computation and all
@@ -307,7 +344,7 @@ class Layout {
 
   // Compute global shape using the layout and provided local_shape.
   std::vector<int64_t> GlobalShapeFromLocalShape(
-      const std::vector<int64_t>& local_shape) const;
+      absl::Span<const int64_t> local_shape) const;
 
   std::vector<int64_t> LocalShapeFromGlobalShape(
       absl::Span<const int64_t> global_shape) const;
@@ -315,7 +352,6 @@ class Layout {
       const PartialTensorShape& global_shape) const;
 
   int64 rank() const { return sharding_specs_.size(); }
-  int64 num_devices() const { return mesh_.num_devices(); }
   size_t num_shards_for_dim(const ShardingSpec& dim) const;
   std::vector<int32> num_shards() const;
 
@@ -324,31 +360,25 @@ class Layout {
     return sharding_specs_;
   }
 
-  // Creates a mesh of unique shards.
-  Mesh ReducedMesh() const;
-
   // Computes the corresponding shard vector to this layout.
   ShardVector GetShardVector() const;
-
-  // Map hosts to shards.
-  std::map<std::string, ShardVector> HostShardMap() const;
 
   // Returns sharding specs in string form.
   std::vector<std::string> sharding_spec_strs() const;
 
-  // Creates human readable string version of a layout.
-  std::string ToString() const;
-  LayoutProto ToProto() const;
-
+  int64 num_devices() const { return mesh_.num_devices(); }
   StatusOr<const DeviceLocation> device_location(int64 device_id) const {
     return mesh_.device_location(device_id);
   }
+  // Map hosts to shards.
+  std::map<std::string, ShardVector> HostShardMap() const;
 
-  void set_mesh(Mesh mesh) { mesh_ = mesh; }
-
-  const Mesh& mesh() const { return mesh_; }
   const std::string& sharding_spec(int idx) const;
 
+  // Two layouts are equivalent if they would result in the same sharding for
+  // the tensor. E.g. if on is unsharded and the other is sharded on a mesh
+  // dimension of size 1.
+  bool IsEquivalent(const Layout& b) const;
   bool operator==(const Layout& b) const;
   bool operator!=(const Layout& b) const { return !((*this) == b); }
   bool operator<(const Layout& b) const {

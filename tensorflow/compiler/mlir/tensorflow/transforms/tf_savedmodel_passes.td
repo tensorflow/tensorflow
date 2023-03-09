@@ -65,3 +65,100 @@ def DedupBoundInputBindingPass : Pass<"tf-saved-model-dedup-bound-input-binding-
   let summary = "Remove duplicate 'tf_saved_model.bound_input' bindings.";
   let constructor = "mlir::tf_saved_model::CreateDedupBoundInputBindingPass()";
 }
+
+def LowerGlobalsToMlProgramPass: Pass<"tf-saved-model-lower-globals-to-mlprogram", "mlir::ModuleOp"> {
+  let summary = "Remove (and remap) function arguments that map to global tensors.";
+  let description = [{
+    This pass will lower AssignVariableOp and ReadVariableOp to their ml_program
+    equivalents, for those resources which stem from a "bound input" function argument
+    that maps to a GlobalTensorOp. The arguments in question will be removed.
+
+    So this will lower e.g.
+
+      func @f(%arg0 {tf_saved_model.bound_input = @v}) {
+        %0 = "tf.ReadVariableOp"(%arg0)
+        ...
+      }
+
+    to
+
+      func @f() {
+        %0 = ml_program.global_load @v
+        ...
+      }
+  }];
+  let constructor = "mlir::tf_saved_model::CreateLowerGlobalsToMlProgramPass()";
+}
+
+def LowerVariableOpsToMlProgramPass: Pass<"tf-saved-model-lower-variable-ops-to-mlprogram", "mlir::ModuleOp"> {
+  let summary = "Lower tf.ReadVariable and tf.AssignVariable";
+
+  let description = [{
+    This pass will lower AssignVariableOp and ReadVariableOp to their ml_program
+    equivalents, for those resources which come from a VarHandle op, but also
+    for those which come from a "bound input" parameter. For the latter,
+    said parameter will not be removed, unlike LowerGlobalsToMlProgramPass.
+
+    So this will lower e.g.
+
+      %0 = "tf.VarHandleOp" {name = "foo"}
+      %1 = "tf.ReadVariableOp"(%0)
+
+    to
+
+      %0 = ml_program.global_load @vars.foo
+  }];
+
+  let constructor = "::mlir::tf_saved_model::CreateLowerVariableOpsToMlProgramPass()";
+}
+
+def StripSavedModuleMetadataPass : Pass<"tf-strip-saved-module-metadata", "ModuleOp"> {
+  let summary = "Removes saved_model attributes.";
+  let description = [{
+      Removes all saved_model attributes from a module and its functions.
+      This only removes attributes, saved_model ops will stay in place.
+
+      This pass is useful for pass pipelines that have already consumed
+      all the tf_saved_model information, and now want to do further
+      transformations without tf_saved_model's verifiers kicking in.
+
+      For example, this would remove the semantics attribute from module:
+
+        module attributes {tf_saved_model.semantics} [...]
+
+      so the result becomes just
+
+        module [...]
+  }];
+  let constructor = "::mlir::tf_saved_model::CreateStripSavedModuleMetadataPass()";
+}
+
+def ConvertSessionInitializerToFunctionPass : Pass<"tf-saved-model-convert-session-initializer-to-function", "ModuleOp"> {
+  let summary = "Converts the session initializer to a function.";
+  let description = [{
+      This converts
+        "tf_saved_model.session_initializer"() {initializers = [@a, @b, @c]} : () -> ()
+      to
+	func.func @session_initializer() {
+	  call @a() : () -> ()
+	  call @b() : () -> ()
+	  call @c() : () -> ()
+	  return
+	}
+  }];
+  let constructor = "::mlir::tf_saved_model::CreateConvertSessionInitializerToFunctionPass()";
+}
+
+def AddFunctionsForExportedNamesPass : Pass<"tf-saved-model-add-functions-for-exported-names", "ModuleOp"> {
+  let summary = "Create a trampoline function for each exported name.";
+  let description = [{
+      This converts
+        func.func @foo() attributes {tf_saved_model.exported_names = ["a", "b", "c"]}
+      to
+        func.func @a() {return @foo_internal()}
+        func.func @b() {return @foo_internal()}
+        func.func @c() {return @foo_internal()}
+        func.func private @foo_internal()
+  }];
+  let constructor = "::mlir::tf_saved_model::CreateAddFunctionsForExportedNamesPass()";
+}

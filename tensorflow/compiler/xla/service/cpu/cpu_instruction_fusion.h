@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_INSTRUCTION_FUSION_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
 namespace xla {
@@ -30,9 +30,12 @@ class CpuInstructionFusion : public InstructionFusion {
       : InstructionFusion(CpuInstructionFusion::IsExpensive) {}
   ~CpuInstructionFusion() override = default;
 
-  StatusOr<bool> Run(HloModule* module) override {
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(HloModule* module,
+                     const absl::flat_hash_set<absl::string_view>&
+                         execution_threads) override {
     fusion_node_evaluations_.clear();
-    return InstructionFusion::Run(module);
+    return InstructionFusion::Run(module, execution_threads);
   }
 
  protected:

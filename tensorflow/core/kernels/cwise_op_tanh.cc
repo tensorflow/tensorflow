@@ -17,11 +17,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_gradients.h"
 
 namespace tensorflow {
-#if !defined(MLIR_GENERATED_CPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+
 REGISTER3(UnaryOp, CPU, "Tanh", functor::tanh, float, Eigen::half, double);
-#endif
-REGISTER3(UnaryOp, CPU, "Tanh", functor::tanh, bfloat16, complex64, complex128);
+REGISTER3(UnaryOp, CPU, "Tanh", functor::tanh, bfloat16, complex64, complex128)
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifndef MLIR_GENERATED_GPU_KERNELS_ENABLED

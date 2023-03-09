@@ -29,8 +29,11 @@ method is best for your use case:
 
 ### Dynamic range quantization
 
-The simplest form of post-training quantization statically quantizes only the
-weights from floating point to integer, which has 8-bits of precision:
+Dynamic range quantization is a recommended starting point because it provides
+reduced memory usage and faster computation without you having to provide a
+representative dataset for calibration. This type of quantization, statically
+quantizes only the weights from floating point to integer at conversion time,
+which provides 8-bits of precision:
 
 <pre>
 import tensorflow as tf
@@ -39,16 +42,12 @@ converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 tflite_quant_model = converter.convert()
 </pre>
 
-At inference, weights are converted from 8-bits of precision to floating point
-and computed using floating-point kernels. This conversion is done once and
-cached to reduce latency.
-
-To further improve latency, "dynamic-range" operators dynamically quantize
-activations based on their range to 8-bits and perform computations with 8-bit
-weights and activations. This optimization provides latencies close to fully
-fixed-point inference. However, the outputs are still stored using floating
-point so that the speedup with dynamic-range ops is less than a full fixed-point
-computation.
+To further reduce latency during inference, "dynamic-range" operators
+dynamically quantize activations based on their range to 8-bits and perform
+computations with 8-bit weights and activations. This optimization provides
+latencies close to fully fixed-point inferences. However, the outputs are still
+stored using floating point so the increased speed of dynamic-range ops is less
+than a full fixed-point computation.
 
 ### Full integer quantization
 
@@ -232,9 +231,12 @@ tflite_quant_model = converter.convert()
 </pre>
 
 Examples of the use cases where accuracy improvements provided by this
-quantization scheme include: * super-resolution, * audio signal processing such
-as noise cancelling and beamforming, * image de-noising, * HDR reconstruction
-from a single image.
+quantization scheme include:
+
+*   super-resolution,
+*   audio signal processing such as noise cancelling and beamforming,
+*   image de-noising,
+*   HDR reconstruction from a single image.
 
 The disadvantage of this quantization is:
 

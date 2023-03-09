@@ -67,5 +67,10 @@ Status InitializeTPUSystemGlobally(Env* env, tpu::TopologyProto* tpu_topology);
 Status InitializeTPUSystemGlobally();
 
 }  // namespace tensorflow
-
+// Many clients rely on ADL to lookup InitializeTPUSystemGlobally, now that Env
+// moved to namespace tsl they are all broken without these forwarding
+// declarations.
+namespace tsl {
+using tensorflow::InitializeTPUSystemGlobally;  // NOLINT
+}
 #endif  // TENSORFLOW_CORE_TPU_TPU_GLOBAL_INIT_H_

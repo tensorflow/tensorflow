@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/dispatcher_client.h"
 
+#include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,7 +27,6 @@ limitations under the License.
 #include "grpcpp/support/channel_arguments.h"
 #include "grpcpp/support/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
@@ -44,9 +45,46 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+Status DataServiceDispatcherClient::Initialize() {
+  mutex_lock l(mu_);
+  if (stub_) {
+    return OkStatus();
+  }
+  std::shared_ptr<grpc::ChannelCredentials> credentials;
+  TF_RETURN_IF_ERROR(
+      CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
+  grpc::ChannelArguments args;
+  args.SetMaxReceiveMessageSize(std::numeric_limits<int32>::max());
+  args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, true);
+  auto channel = grpc::CreateCustomChannel(address_, credentials, args);
+  stub_ = DispatcherService::NewStub(channel);
+  GetVersionRequest req;
+  GetVersionResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status s = stub_->GetVersion(&ctx, req, &resp);
+  if (!s.ok()) {
+    return grpc_util::WrapError(
+        absl::StrCat("Failed to get dispatcher version from dispatcher "
+                     "running at ",
+                     address_),
+        s);
+  }
+
+  if (resp.version() != kDataServiceVersion) {
+    return errors::FailedPrecondition(
+        "Version mismatch with tf.data service server. The server is running "
+        "version ",
+        resp.version(), ", while the client is running version ",
+        kDataServiceVersion,
+        ". Please ensure that the client and server side are running the "
+        "same version of TensorFlow. If you're running an MPM binary, make "
+        "sure the server is running an up-to-date MPM.");
+  }
+  return OkStatus();
+}
+
 StatusOr<WorkerHeartbeatResponse> DataServiceDispatcherClient::WorkerHeartbeat(
     const WorkerHeartbeatRequest& request) {
-  TF_RETURN_IF_ERROR(EnsureInitialized());
   WorkerHeartbeatResponse response;
   grpc::ClientContext client_ctx;
   grpc::Status status = stub_->WorkerHeartbeat(&client_ctx, request, &response);
@@ -59,7 +97,6 @@ StatusOr<WorkerHeartbeatResponse> DataServiceDispatcherClient::WorkerHeartbeat(
 Status DataServiceDispatcherClient::WorkerUpdate(
     const std::string& worker_address,
     std::vector<TaskProgress>& task_progress) {
-  TF_RETURN_IF_ERROR(EnsureInitialized());
   WorkerUpdateRequest req;
   req.set_worker_address(worker_address);
   for (const auto& update : task_progress) {
@@ -76,7 +113,6 @@ Status DataServiceDispatcherClient::WorkerUpdate(
 
 Status DataServiceDispatcherClient::GetDatasetDef(const std::string& dataset_id,
                                                   DatasetDef& dataset_def) {
-  TF_RETURN_IF_ERROR(EnsureInitialized());
   GetDatasetDefRequest req;
   req.set_dataset_id(dataset_id);
   GetDatasetDefResponse resp;
@@ -114,13 +150,64 @@ Status DataServiceDispatcherClient::GetSplit(int64_t iteration_id,
   return OkStatus();
 }
 
+Status DataServiceDispatcherClient::Snapshot(
+    const DatasetDef& dataset, const std::string& path,
+    const experimental::DistributedSnapshotMetadata& metadata) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+
+  SnapshotRequest req;
+  *req.mutable_dataset() = dataset;
+  req.set_path(path);
+  *req.mutable_metadata() = metadata;
+
+  SnapshotResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->Snapshot(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError("Failed to snapshot", status);
+  }
+  return OkStatus();
+}
+
+Status DataServiceDispatcherClient::GetSnapshotSplit(
+    const std::string& worker_address, const std::string& base_path,
+    int64_t stream_index, int64_t source_index, Tensor& split,
+    int64_t& local_split_index, bool& end_of_splits) {
+  GetSnapshotSplitRequest req;
+  req.set_worker_address(worker_address);
+  req.set_base_path(base_path);
+  req.set_stream_index(stream_index);
+  req.set_source_index(source_index);
+
+  GetSnapshotSplitResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->GetSnapshotSplit(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError("Failed to get snapshot split", status);
+  }
+  local_split_index = resp.local_split_index();
+  end_of_splits = resp.end_of_splits();
+  if (end_of_splits) {
+    return OkStatus();
+  }
+  if (!split.FromProto(resp.split())) {
+    return errors::Internal("Failed to parse split tensor proto: ",
+                            resp.split().DebugString());
+  }
+  return OkStatus();
+}
+
 Status DataServiceDispatcherClient::RegisterDataset(
     const DatasetDef& dataset, const DataServiceMetadata& metadata,
+    const std::optional<std::string>& requested_dataset_id,
     std::string& dataset_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrRegisterDatasetRequest req;
   *req.mutable_dataset() = dataset;
   *req.mutable_metadata() = metadata;
+  if (requested_dataset_id.has_value()) {
+    req.set_dataset_id(*requested_dataset_id);
+  }
 
   GetOrRegisterDatasetResponse resp;
   grpc::ClientContext client_ctx;
@@ -134,8 +221,8 @@ Status DataServiceDispatcherClient::RegisterDataset(
 
 Status DataServiceDispatcherClient::GetOrCreateJob(
     const std::string& dataset_id, const ProcessingModeDef& processing_mode,
-    const absl::optional<std::string>& job_name,
-    absl::optional<int64_t> num_consumers, bool use_cross_trainer_cache,
+    const std::optional<std::string>& job_name,
+    std::optional<int64_t> num_consumers, bool use_cross_trainer_cache,
     TargetWorkers target_workers, int64_t& job_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateJobRequest req;
@@ -159,7 +246,7 @@ Status DataServiceDispatcherClient::GetOrCreateJob(
         status);
   }
   job_id = resp.job_id();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetOrCreateIteration(
@@ -275,46 +362,9 @@ Status DataServiceDispatcherClient::GetDataServiceConfig(
 }
 
 Status DataServiceDispatcherClient::EnsureInitialized() {
-  mutex_lock l(mu_);
-  if (stub_) {
-    return OkStatus();
-  }
-  std::shared_ptr<grpc::ChannelCredentials> credentials;
-  TF_RETURN_IF_ERROR(
-      CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
-  grpc::ChannelArguments args;
-  args.SetMaxReceiveMessageSize(std::numeric_limits<int32>::max());
-  args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, true);
-  auto channel = grpc::CreateCustomChannel(address_, credentials, args);
-  stub_ = DispatcherService::NewStub(channel);
-  GetVersionRequest req;
-  GetVersionResponse resp;
-  TF_RETURN_IF_ERROR(grpc_util::Retry(
-      [&] {
-        grpc::ClientContext ctx;
-        grpc::Status s = stub_->GetVersion(&ctx, req, &resp);
-        if (!s.ok()) {
-          return grpc_util::WrapError(
-              absl::StrCat("Failed to get dispatcher version from dispatcher "
-                           "running at ",
-                           address_),
-              s);
-        }
-        return OkStatus();
-      },
-      "check service version",
-      /*deadline_micros=*/kint64max));
-  if (resp.version() != kDataServiceVersion) {
-    return errors::FailedPrecondition(
-        "Version mismatch with tf.data service server. The server is running "
-        "version ",
-        resp.version(), ", while the client is running version ",
-        kDataServiceVersion,
-        ". Please ensure that the client and server side are running the "
-        "same version of TensorFlow. If you're running an MPM binary, make "
-        "sure the server is running an up-to-date MPM.");
-  }
-  return OkStatus();
+  return grpc_util::Retry([this] { return Initialize(); },
+                          "Initialize dispatcher client",
+                          /*deadline_micros=*/kint64max);
 }
 
 }  // namespace data

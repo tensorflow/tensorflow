@@ -39,7 +39,12 @@ Status PartitionFunctionGraph(
     std::function<string(const Edge*)> get_tensor_name_attr = nullptr);
 
 // Inserts send/recv ops to `graph` if nodes are assigned to multiple devices.
-// Returns the new graph with the added nodes.
+// Returns the new graph with the added nodes. Moreover, the dependency between
+// a send/recv pair is made explicit by adding a control dependency between
+// them.
+// Note that, the returned graph is intended to be used by TF MLIR importer.
+// The dependencies between send/recv pairs ensure the importer will generate TF
+// MLIR ops in a valid order.
 StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
     const DeviceSet& device_set, std::unique_ptr<Graph> graph);
 

@@ -303,14 +303,16 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   }
 
   Tensor* output = ctx->mutable_output(0);
-  const Tensor* input = (col_params->instance.type == REDUCTION_COLLECTIVE ||
-                         col_params->instance.type == GATHER_COLLECTIVE ||
-                         col_params->instance.type == PERMUTE_COLLECTIVE ||
-                         col_params->instance.type == ALL_TO_ALL_COLLECTIVE ||
-                         (col_params->instance.type == BROADCAST_COLLECTIVE &&
-                          col_params->is_source))
-                            ? &ctx->input(0)
-                            : nullptr;
+  const Tensor* input =
+      (col_params->instance.type == REDUCTION_COLLECTIVE ||
+       col_params->instance.type == GATHER_COLLECTIVE ||
+       col_params->instance.type == PERMUTE_COLLECTIVE ||
+       col_params->instance.type == ALL_TO_ALL_COLLECTIVE ||
+       col_params->instance.type == REDUCE_SCATTER_COLLECTIVE ||
+       (col_params->instance.type == BROADCAST_COLLECTIVE &&
+        col_params->is_source))
+          ? &ctx->input(0)
+          : nullptr;
   CollectiveImplementationInterface* col_impl = nullptr;
   Status status = CreateCollective(*col_params, &col_impl);
   if (!status.ok()) {
@@ -335,11 +337,14 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
               context_id = producer.GetContextId()]() {
     core::ScopedUnref unref(col_impl);
     profiler::TraceMeConsumer consumer(
-        [ctx] {
+        [ctx, col_ctx] {
           string op = profiler::TraceMeOp(ctx->op_kernel().name_view(),
                                           ctx->op_kernel().type_string_view());
-          return profiler::TraceMeEncode(std::move(op),
-                                         {{"id", ctx->step_id()}});
+          return profiler::TraceMeEncode(
+              std::move(op),
+              {{"id", ctx->step_id()},
+               {"instance_key", col_ctx->col_params->instance.instance_key},
+               {"collective", col_ctx->col_params->instance.type}});
         },
         context_id);
     col_impl->Ref();
@@ -360,8 +365,12 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
   // timeout callback executes, done_safe will become a no-op and the timeout
   // callback is responsible for invoking done() at the end.
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
-  auto trace_id =
-      profiler::TraceMe::ActivityStart("CollectiveExecutor::CompleteParams");
+  int64_t trace_id = profiler::TraceMe::ActivityStart([cp]() {
+    return profiler::TraceMeEncode("CollectiveExecutor::CompleteParams",
+                                   {{"group_key", cp->group.group_key},
+                                    {"group_size", cp->group.group_size}});
+  });
+
   auto done_safe = [this, is_callback_called, cancel_mgr, trace_id,
                     done](const Status& s) {
     profiler::TraceMe::ActivityEnd(trace_id);

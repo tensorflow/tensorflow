@@ -1,41 +1,49 @@
-// RUN: hlo_to_llvm_ir %s | FileCheck %s
-// This test that we do not increase the grid launch size when
+// Disable the MLIR lowering path to test the ir emitter block size logic.
+// RUN: XLA_FLAGS="--xla_gpu_enable_mlir_lowering=false" \
+// RUN:   hlo_to_llvm_ir %s | FileCheck %s
+// This tests that we do not increase the grid launch size when
 // few_waves is enabled.
 
 // CHECK-LABEL: entry:
-// CHECK:       !2 = !{i32 0, i32 2}
-// CHECK:       !3 = !{i32 0, i32 256}
+// CHECK-DAG:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-DAG:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-DAG:   ![[ctaid_range]] = !{i32 0, i32 2}
+// CHECK-DAG:   ![[tid_range]] = !{i32 0, i32 1024}
 
 HloModule Test
 
 ENTRY main {
   a = f32[100, 20]{1,0} parameter(0)
-  ROOT b = f32[100, 20]{1,0} tanh(a)
+  ROOT b = f32[100, 20]{1,0} round-nearest-even(a)
 }
 
 // -----
 
-// This test that we cap grid launch code when few_waves is enabled.
+// This tests that we cap grid launch code when few_waves is enabled.
 
 // CHECK-LABEL: entry:
-// CHECK:       !2 = !{i32 0, i32 1280}
-// CHECK:       !3 = !{i32 0, i32 128}
+// CHECK-DAG:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-DAG:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-DAG:   ![[ctaid_range]] = !{i32 0, i32 1280}
+// CHECK-DAG:   ![[tid_range]] = !{i32 0, i32 128}
 
 HloModule Test
 
 ENTRY main {
   a = f32[10000, 10000]{1,0} parameter(0)
-  ROOT b = f32[10000, 10000]{1,0} tanh(a)
+  ROOT b = f32[10000, 10000]{1,0} round-nearest-even(a)
 }
 
 // -----
 
-// This test that we cap grid launch code when few_waves is enabled
+// This tests that we cap grid launch code when few_waves is enabled
 // and scalar broadcast are present.
 
 // CHECK-LABEL: entry:
-// CHECK:       !2 = !{i32 0, i32 1280}
-// CHECK:       !3 = !{i32 0, i32 128}
+// CHECK-DAG:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-DAG:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-DAG:   ![[ctaid_range]] = !{i32 0, i32 1280}
+// CHECK-DAG:   ![[tid_range]] = !{i32 0, i32 128}
 
 HloModule ScalarBroadcast
 
@@ -55,12 +63,14 @@ ENTRY main {
 
 
 // -----
-// This test the GELU kernel. The original kernel that
+// This tests the GELU kernel. The original kernel that
 // motivated few_waves implementation.
 
 // CHECK-LABEL: entry:
-// CHECK:       !2 = !{i32 0, i32 1280}
-// CHECK:       !3 = !{i32 0, i32 128}
+// CHECK-DAG:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-DAG:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-DAG:   ![[ctaid_range]] = !{i32 0, i32 1280}
+// CHECK-DAG:   ![[tid_range]] = !{i32 0, i32 128}
 
 HloModule Test
 

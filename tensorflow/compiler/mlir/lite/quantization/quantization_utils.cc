@@ -27,11 +27,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantizeUtils.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -39,6 +35,10 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantizeUtils.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
@@ -50,8 +50,8 @@ namespace mlir {
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_interface.cc.inc"
 
 namespace quant {
-
 namespace {
+
 constexpr double kSmallestHalfRange = kNearZeroTolerance / 2;
 using QType = quant::QuantizedType;
 
@@ -106,7 +106,8 @@ QuantizedType ResetMinMaxFromNumBits(QuantizedType type, int num_bits,
     return UniformQuantizedType::get(q_type.getFlags(), q_type.getStorageType(),
                                      q_type.getExpressedType(), scale,
                                      zero_point, qmin, qmax);
-  } else if (auto q_type = type.dyn_cast<UniformQuantizedPerAxisType>()) {
+  } else if (auto q_type =
+                 type.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
     const int size = q_type.getScales().size();
     SmallVector<double, 4> scales(size);
     SmallVector<int64_t, 4> zero_points(size);
@@ -114,7 +115,7 @@ QuantizedType ResetMinMaxFromNumBits(QuantizedType type, int num_bits,
       scales[i] = recalculate_scale(q_type.getScales()[i]);
       zero_points[i] = recalculate_zero_point(q_type.getZeroPoints()[i]);
     }
-    return UniformQuantizedPerAxisType::get(
+    return quant::UniformQuantizedPerAxisType::get(
         q_type.getFlags(), q_type.getStorageType(), q_type.getExpressedType(),
         scales, zero_points, q_type.getQuantizedDimension(), qmin, qmax);
   } else {
@@ -168,12 +169,10 @@ quant::UniformQuantizedPerAxisType ResetAxisAndBroadcast(
         BroadcastVector<int64_t>(shaped.getDimSize(quant_dim), zero_points)) {
       return {};
     }
-  } else if ((new_shape.size() == shape.size() + 1) && new_shape.back() == 1) {
-    // This is a trivial shift left, then we shift the quant_dim as well.
-    if (std::equal(shape.begin(), shape.end(), new_shape.begin()) &&
-        quant_dim == -1) {
-      quant_dim = shape.size() + quant_dim;
-    } else {
+  } else if ((new_shape.size() == shape.size() + 1) && new_shape.front() == 1) {
+    // Handle the [A, B, C] -> [1, A, B, C] reshape case.
+    if (!(std::equal(shape.begin(), shape.end(), new_shape.begin() + 1) &&
+          quant_dim == new_shape.size() - 1)) {
       return {};
     }
   } else {
@@ -198,14 +197,16 @@ bool IsOpNotQuantizable(Operation* op) {
 
   // Constant ops do not have QuantizableResult attribute but they can deal with
   // quantized tensors.
-  if (llvm::isa<func::ConstantOp, arith::ConstantOp, quant::StatisticsOp>(op))
+  if (llvm::isa<func::ConstantOp, arith::ConstantOp, quantfork::StatisticsOp>(
+          op))
     return false;
 
   bool prop_enforced_quantizable =
       op->hasTrait<OpTrait::quant::QuantizableResult>();
 
   return op->hasTrait<OpTrait::IsTerminator>() ||
-         llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp>(op) ||
+         llvm::isa<quantfork::QuantizeCastOp, quantfork::DequantizeCastOp>(
+             op) ||
          (!attr_enforced_quantizable && !prop_enforced_quantizable);
 }
 
@@ -218,7 +219,7 @@ Type GetQuantizedType(Builder builder, Type input_type, ArrayRef<double> min,
                       int storage_type_width, bool narrow_range, bool is_signed,
                       bool legacy_float_scale, bool use_fake_quant_num_bits) {
   auto converter =
-      quant::ExpressedToQuantizedConverter::forInputType(input_type);
+      quantfork::ExpressedToQuantizedConverter::forInputType(input_type);
 
   // Expand the range to prevent extremely small scales and large quantized
   // integers which can cause overflow. This leads to scale
@@ -228,7 +229,7 @@ Type GetQuantizedType(Builder builder, Type input_type, ArrayRef<double> min,
 
   quant::QuantizedType quantizedEleType;
   if (min.size() == 1 && max.size() == 1 && quant_dim == -1) {
-    quantizedEleType = quant::fakeQuantAttrsToType(
+    quantizedEleType = quantfork::fakeQuantAttrsToType(
         builder.getUnknownLoc(), storage_type_width, effective_mins[0],
         effective_maxs[0], narrow_range, converter.expressedType, is_signed);
     if (legacy_float_scale) {
@@ -243,7 +244,7 @@ Type GetQuantizedType(Builder builder, Type input_type, ArrayRef<double> min,
       return {};
     }
     // The quantization dim is set to the last dimension.
-    quantizedEleType = quant::fakeQuantAttrsToType(
+    quantizedEleType = quantfork::fakeQuantAttrsToType(
         builder.getUnknownLoc(), storage_type_width, quant_dim, effective_mins,
         effective_maxs, narrow_range, converter.expressedType, is_signed);
     if (legacy_float_scale) {
@@ -343,6 +344,10 @@ TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
   // Reset the quantization dimensions if it is per-axis.
   if (auto per_axis =
           qtype.dyn_cast_or_null<quant::UniformQuantizedPerAxisType>()) {
+    // For the pass-through ops, we don't know which the dimension will be the
+    // new quantization dimension. Only if the new quantization dimension can
+    // be inferred, it is safe to reset the per-axis quantized type.
+    if (axis == -1) return {};
     qtype =
         ResetAxisAndBroadcast(source_type.getShape(), per_axis, target, axis);
   }
@@ -567,7 +572,7 @@ ElementsAttr QuantizeLegacy(Attribute real_value, Type tensor_type) {
         return Quantize(real_value, tensor_type);
       }
     } else if (auto uniform_type =
-                   q_type.dyn_cast<UniformQuantizedPerAxisType>()) {
+                   q_type.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
       std::vector<float> scales_inv;
       std::vector<int32_t> dimension;
       dimension.insert(dimension.end(), new_dense_type.getShape().begin(),
@@ -612,7 +617,7 @@ ElementsAttr QuantizeLegacy(Attribute real_value, Type tensor_type) {
     if (auto uniform_type = q_type.dyn_cast<UniformQuantizedType>()) {
       scales.push_back(uniform_type.getScale());
     } else if (auto uniform_type =
-                   q_type.dyn_cast<UniformQuantizedPerAxisType>()) {
+                   q_type.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
       scales.insert(scales.end(), uniform_type.getScales().begin(),
                     uniform_type.getScales().end());
     } else {
@@ -635,22 +640,23 @@ ElementsAttr Quantize(Attribute real_value, Type tensor_type) {
   if (auto q_type =
           quant::QuantizedType::getQuantizedElementType(tensor_type)) {
     Type converted_type;
-    return quant::quantizeAttr(real_value, q_type, converted_type)
+    return quantfork::quantizeAttr(real_value, q_type, converted_type)
         .dyn_cast<ElementsAttr>();
   }
   return {};
 }
 
-QuantizedType DownCastScale(QuantizedType type, double min, double max,
-                            Location loc) {
+quant::QuantizedType DownCastScale(QuantizedType type, double min, double max,
+                                   Location loc) {
   SmallVector<double, 1> mins = {min};
   SmallVector<double, 1> maxs = {max};
   return DownCastScale(type, mins, maxs, loc);
 }
 
-QuantizedType DownCastScale(QuantizedType type,
-                            const SmallVectorImpl<double>& mins,
-                            const SmallVectorImpl<double>& maxs, Location loc) {
+quant::QuantizedType DownCastScale(QuantizedType type,
+                                   const SmallVectorImpl<double>& mins,
+                                   const SmallVectorImpl<double>& maxs,
+                                   Location loc) {
   // The given type can be null. For example, there can be an invalid scale and
   // so on.
   if (!type) return type;
@@ -658,7 +664,8 @@ QuantizedType DownCastScale(QuantizedType type,
   SmallVector<int64_t, 4> zero_points(mins.size());
   if (auto q_type = type.dyn_cast<UniformQuantizedType>()) {
     zero_points.push_back(q_type.getZeroPoint());
-  } else if (auto q_type = type.dyn_cast<UniformQuantizedPerAxisType>()) {
+  } else if (auto q_type =
+                 type.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
     zero_points = {q_type.getZeroPoints().begin(),
                    q_type.getZeroPoints().end()};
   }
@@ -683,8 +690,9 @@ QuantizedType DownCastScale(QuantizedType type,
                                      q_type.getExpressedType(), scales[0],
                                      zero_points[0], q_type.getStorageTypeMin(),
                                      q_type.getStorageTypeMax());
-  } else if (auto q_type = type.dyn_cast<UniformQuantizedPerAxisType>()) {
-    return UniformQuantizedPerAxisType::get(
+  } else if (auto q_type =
+                 type.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
+    return quant::UniformQuantizedPerAxisType::get(
         q_type.getFlags(), q_type.getStorageType(), q_type.getExpressedType(),
         scales, zero_points, q_type.getQuantizedDimension(),
         q_type.getStorageTypeMin(), q_type.getStorageTypeMax());
@@ -749,14 +757,16 @@ static bool IsSameScaleOp(Operation* op,
 bool RemoveRedundantStatsOps(
     mlir::func::FuncOp func, OpQuantSpecGetter op_quant_spec_getter,
     OpQuantScaleSpecGetter op_quant_scale_spec_getter) {
-  llvm::SmallVector<quant::StatisticsOp, 16> all_stats_ops;
+  llvm::SmallVector<quantfork::StatisticsOp, 16> all_stats_ops;
   llvm::DenseSet<Operation*> redundant_stats_ops;
 
-  // Step 0: remove the quant::StatisticsOp which are used by the quant.qcast
-  // op in case it overrides the information from training FakeQuant ops.
-  func.walk([&](quant::QuantizeCastOp q) {
+  // Step 0: remove the quantfork::StatisticsOp which are used by the
+  // quant.qcast op in case it overrides the information from training FakeQuant
+  // ops.
+  func.walk([&](quantfork::QuantizeCastOp q) {
     auto input_op = q.getArg().getDefiningOp();
-    if (auto stats = llvm::dyn_cast_or_null<quant::StatisticsOp>(input_op)) {
+    if (auto stats =
+            llvm::dyn_cast_or_null<quantfork::StatisticsOp>(input_op)) {
       q.setOperand(stats.getArg());
       if (stats.use_empty()) stats.erase();
     }
@@ -767,11 +777,12 @@ bool RemoveRedundantStatsOps(
   // which are produced by the ops with the `FixedOutputRangeInterface`.
   // Note that we don't propagate across the multiple-operands
   // `SameOperandsAndResultsScale` ops like `concatenation`.
-  func.walk(
-      [&](quant::StatisticsOp stats_op) { all_stats_ops.push_back(stats_op); });
+  func.walk([&](quantfork::StatisticsOp stats_op) {
+    all_stats_ops.push_back(stats_op);
+  });
 
   while (!all_stats_ops.empty()) {
-    quant::StatisticsOp stats_op = all_stats_ops.back();
+    quantfork::StatisticsOp stats_op = all_stats_ops.back();
     all_stats_ops.pop_back();
 
     if (auto def = stats_op.getArg().getDefiningOp()) {
@@ -792,8 +803,8 @@ bool RemoveRedundantStatsOps(
         if (!res.hasOneUse()) {
           continue;
         }
-        if (auto next_stats =
-                llvm::dyn_cast<quant::StatisticsOp>(*res.getUsers().begin())) {
+        if (auto next_stats = llvm::dyn_cast<quantfork::StatisticsOp>(
+                *res.getUsers().begin())) {
           // quantization parameters can be propagated to next_stats
           redundant_stats_ops.insert(next_stats);
           // add next_stats to the work list so propagation can continue.
@@ -805,14 +816,14 @@ bool RemoveRedundantStatsOps(
 
   // Step 2: backward pass: For the ops skiped in the forward pass, propagate
   // its results scale backwards as far as possible.
-  func.walk([&](quant::StatisticsOp stats_op) {
+  func.walk([&](quantfork::StatisticsOp stats_op) {
     if (redundant_stats_ops.find(stats_op) == redundant_stats_ops.end()) {
       all_stats_ops.push_back(stats_op);
     }
   });
 
   while (!all_stats_ops.empty()) {
-    quant::StatisticsOp stats_op = all_stats_ops.back();
+    quantfork::StatisticsOp stats_op = all_stats_ops.back();
     all_stats_ops.pop_back();
 
     if (auto def = stats_op.getArg().getDefiningOp()) {
@@ -820,7 +831,7 @@ bool RemoveRedundantStatsOps(
         continue;
       }
       for (auto input : def->getOperands()) {
-        if (auto next_stats = llvm::dyn_cast_or_null<quant::StatisticsOp>(
+        if (auto next_stats = llvm::dyn_cast_or_null<quantfork::StatisticsOp>(
                 input.getDefiningOp())) {
           redundant_stats_ops.insert(next_stats);
           all_stats_ops.push_back(next_stats);
@@ -831,8 +842,8 @@ bool RemoveRedundantStatsOps(
 
   // Step3: Remove all the redundant stats ops
   for (auto it : redundant_stats_ops) {
-    if (!llvm::isa<quant::StatisticsOp>(it)) return true;
-    auto stats_op = llvm::cast<quant::StatisticsOp>(it);
+    if (!llvm::isa<quantfork::StatisticsOp>(it)) return true;
+    auto stats_op = llvm::cast<quantfork::StatisticsOp>(it);
     stats_op.getResult().replaceAllUsesWith(stats_op.getArg());
     stats_op.erase();
   }
@@ -872,9 +883,9 @@ LogicalResult VerifySameScales(Operation* op) {
     // method.
     if (!same_scale_op.RequiredSameQuantizedAxes()) {
       auto expected_per_axis_qtype =
-          expected_params.dyn_cast<UniformQuantizedPerAxisType>();
+          expected_params.dyn_cast<quant::UniformQuantizedPerAxisType>();
       auto compared_per_axis_qtype =
-          compared_params.dyn_cast<UniformQuantizedPerAxisType>();
+          compared_params.dyn_cast<quant::UniformQuantizedPerAxisType>();
       if (expected_per_axis_qtype && compared_per_axis_qtype &&
           llvm::equal(expected_per_axis_qtype.getScales(),
                       compared_per_axis_qtype.getScales()) &&
@@ -921,10 +932,10 @@ quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
   if (!result_type.getElementType().isa<FloatType>()) return {};
   Builder builder(result_type.getContext());
 
-  // Only support 8-bits
-  if (bit_width != 8) return {};
+  // Only support 8-bits and 16-bits
+  if (bit_width != 8 && bit_width != 16) return {};
   IntegerType storage_type = builder.getIntegerType(bit_width);
-  if (!is_signed) {
+  if (!is_signed && bit_width == 8) {
     zero_point += 128;
     storage_min += 128;
     storage_max += 128;
@@ -933,6 +944,15 @@ quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
       builder.getUnknownLoc(), is_signed, storage_type,
       result_type.getElementType(), scale, zero_point, storage_min,
       storage_max);
+}
+
+quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
+                                                Type tensor_type, double scale,
+                                                int64_t zero_point) {
+  return GetFixedOutputRange(is_signed, bit_width, tensor_type, scale,
+                             zero_point,
+                             /*storage_min=*/-(1 << (bit_width - 1)),
+                             /*storage_max=*/(1 << (bit_width - 1)) - 1);
 }
 
 Type ConvertSignedQuantizedToUnsigned(Type signed_tensor_type, Location loc) {

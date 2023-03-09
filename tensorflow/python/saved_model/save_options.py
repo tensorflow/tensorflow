@@ -15,7 +15,6 @@
 """Options for saving SavedModels."""
 
 import enum
-import six
 
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
@@ -88,7 +87,7 @@ class VariablePolicy(enum.Enum):
 
 
 @tf_export("saved_model.SaveOptions")
-class SaveOptions(object):
+class SaveOptions:
   """Options for saving to SavedModel.
 
   This function may be used in the `options` argument in functions that
@@ -180,7 +179,7 @@ def _validate_namespace_whitelist(namespace_whitelist):
 
   processed = []
   for namespace in namespace_whitelist:
-    if not isinstance(namespace, six.string_types):
+    if not isinstance(namespace, str):
       raise ValueError("Whitelisted namespace must be a string. Got: "
                        f"{namespace} of type {type(namespace)}.")
     processed.append(compat.as_str(namespace))

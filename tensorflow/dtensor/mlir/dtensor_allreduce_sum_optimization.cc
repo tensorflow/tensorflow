@@ -28,14 +28,16 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORALLREDUCESUMOPTIMIZATION
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr int kMaxIteration = 10;
 
@@ -43,7 +45,7 @@ mlir::Value GetIdentitySkippedInputs(mlir::Value val) {
   mlir::Value input = val;
   while (auto identity = llvm::dyn_cast_or_null<mlir::TF::IdentityOp>(
              input.getDefiningOp())) {
-    input = identity.input();
+    input = identity.getInput();
   }
   return input;
 }
@@ -53,7 +55,7 @@ bool IsZeroConstant(mlir::Value val) {
       GetIdentitySkippedInputs(val).getDefiningOp());
   if (!const_input) return false;
   mlir::DenseFPElementsAttr attr =
-      const_input.value().dyn_cast<mlir::DenseFPElementsAttr>();
+      const_input.getValue().dyn_cast<mlir::DenseFPElementsAttr>();
   // This uses the fact that constant Attrs becomes splats, so we only need to
   // check one value.
   if (!attr || !attr.isSplat()) return false;
@@ -88,20 +90,20 @@ mlir::LogicalResult CheckReduceAndSumOptimizationCriteria(
 
   llvm::SmallDenseSet<mlir::Attribute> reduction_group_assignments;
   for (mlir::TF::DTensorAllReduceOp reduction : *reduction_ops) {
-    if (reduction.reduce_op().str() != kReduceOpAdd) {
+    if (reduction.getReduceOp().str() != kReduceOpAdd) {
       *can_be_reordered = false;
       return mlir::success();
     }
 
     mlir::DenseIntElementsAttr group_assignment;
-    if (!matchPattern(reduction.group_assignment(),
+    if (!matchPattern(reduction.getGroupAssignment(),
                       m_Constant(&group_assignment))) {
       *can_be_reordered = false;
       return mlir::success();
     }
 
     reduction_group_assignments.insert(group_assignment);
-    reduction_inputs->emplace_back(reduction.input());
+    reduction_inputs->emplace_back(reduction.getInput());
   }
 
   *can_be_reordered = (reduction_group_assignments.size() == 1);
@@ -145,7 +147,7 @@ mlir::LogicalResult OptimizeAllReduceAndSum(mlir::Operation* op,
   // From above check `CheckOptimizationCriteria()`, we know that all reduction
   // operations that are fused reused the same group assignment value.
   // 1) Get mlir::Value that represents group assignment used for reduction.
-  mlir::Value group_assignment = first_reduction_op.group_assignment();
+  mlir::Value group_assignment = first_reduction_op.getGroupAssignment();
 
   // Create a singe reduction operation that reduces the result of the locally
   // added tensor.
@@ -155,7 +157,7 @@ mlir::LogicalResult OptimizeAllReduceAndSum(mlir::Operation* op,
       builder.create<mlir::TF::DTensorAllReduceOp>(
           op->getLoc(), op->getResult(0).getType(), op->getResult(0),
           group_assignment, builder.getStringAttr(std::string(kReduceOpAdd)),
-          builder.getStringAttr(first_reduction_op.device_type()));
+          builder.getStringAttr(first_reduction_op.getDeviceType()));
 
   const auto layout_or_status = ExtractSingleLayoutFromOp(first_reduction_op);
   if (!layout_or_status.ok())
@@ -174,7 +176,7 @@ mlir::LogicalResult OptimizeAllReduceAndSum(mlir::Operation* op,
   // Replace usages of original tf.Add op with newly created output of
   // `all_reduce`.
   op->getResult(0).replaceAllUsesExcept(
-      all_reduce.output(),
+      all_reduce.getOutput(),
       llvm::SmallPtrSet<mlir::Operation*, 1>{all_reduce.getOperation()});
 
   // TODO(hongjunchoi, bfontain): Consider adding optimization for the case when
@@ -246,16 +248,18 @@ void OptimizeIdentityLikeOps(mlir::Operation* op, bool* changed) {
   if (!MayRemoveAllReduce(op)) return;
 
   dtensor_all_reduce->moveAfter(op);
-  mlir::Value input = dtensor_all_reduce.input();
+  mlir::Value input = dtensor_all_reduce.getInput();
   op->setOperand(0, input);
 
   mlir::Value op_output = op->getResult(0);
   dtensor_all_reduce.setOperand(0, op_output);
-  dtensor_all_reduce.input().setType(op_output.getType());
-  dtensor_all_reduce.output().setType(op_output.getType());
+  dtensor_all_reduce.getInput().setType(
+      op_output.getType().cast<mlir::TensorType>());
+  dtensor_all_reduce.getOutput().setType(
+      op_output.getType().cast<mlir::TensorType>());
 
   llvm::SmallPtrSet<mlir::Operation*, 4> exceptions{dtensor_all_reduce};
-  op_output.replaceAllUsesExcept(dtensor_all_reduce.output(), exceptions);
+  op_output.replaceAllUsesExcept(dtensor_all_reduce.getOutput(), exceptions);
   *changed = true;
 }
 
@@ -265,7 +269,7 @@ bool CheckWhileLoopOptimizationCriteria(
     mlir::OpOperand** add_input) {
   // Loop variant input that is being optimized should not be used in loop
   // condition.
-  mlir::Value loop_condition_input = while_op.cond().getArgument(index);
+  mlir::Value loop_condition_input = while_op.getCond().getArgument(index);
   if (!loop_condition_input.use_empty()) return false;
 
   // While loop output should be connected to add op.
@@ -304,11 +308,11 @@ bool CheckWhileLoopOptimizationCriteria(
   // DTensorAllReduce should calculate sum across devices and group assignment
   // must be statically known.
   mlir::Operation* group_assignment =
-      all_reduce.group_assignment().getDefiningOp();
+      all_reduce.getGroupAssignment().getDefiningOp();
   if (!group_assignment || !llvm::isa<mlir::TF::ConstOp>(group_assignment))
     return false;
 
-  if (all_reduce.reduce_op().str() != kReduceOpAdd) return false;
+  if (all_reduce.getReduceOp().str() != kReduceOpAdd) return false;
 
   // While loop block argument input connected to Add op should be
   // connected to constant operations with zero value.
@@ -368,7 +372,7 @@ mlir::LogicalResult ExtractAllReduceFromWhileOp(
     mlir::TF::WhileRegionOp while_op, mlir::OpOperand& add_input,
     mlir::Operation* add_op, bool* changed) {
   // Set add input to input of all reduce.
-  mlir::Value all_reduce_input = all_reduce.input();
+  mlir::Value all_reduce_input = all_reduce.getInput();
   const int replacement_add_input_index =
       add_input.getOperandNumber() == 0 ? 1 : 0;
   add_op->setOperand(replacement_add_input_index, all_reduce_input);
@@ -378,7 +382,7 @@ mlir::LogicalResult ExtractAllReduceFromWhileOp(
 
   mlir::Value while_output = while_op.getResult(output_index);
   mlir::Operation* group_assignment_const =
-      all_reduce.group_assignment().getDefiningOp();
+      all_reduce.getGroupAssignment().getDefiningOp();
   mlir::Operation* cloned_group_assignment =
       builder.clone(*group_assignment_const);
 
@@ -388,7 +392,7 @@ mlir::LogicalResult ExtractAllReduceFromWhileOp(
       all_reduce.getLoc(), while_output.getType(), while_output,
       cloned_group_assignment->getResult(0),
       builder.getStringAttr(std::string(kReduceOpAdd)),
-      builder.getStringAttr(all_reduce.device_type()));
+      builder.getStringAttr(all_reduce.getDeviceType()));
 
   const auto layout_or_status = ExtractSingleLayoutFromOp(all_reduce);
   if (!layout_or_status.ok())
@@ -406,7 +410,7 @@ mlir::LogicalResult ExtractAllReduceFromWhileOp(
 
   llvm::SmallPtrSet<mlir::Operation*, 4> exceptions;
   exceptions.insert(new_all_reduce.getOperation());
-  while_output.replaceAllUsesExcept(new_all_reduce.output(), exceptions);
+  while_output.replaceAllUsesExcept(new_all_reduce.getOutput(), exceptions);
 
   if (all_reduce.use_empty()) all_reduce.erase();
 
@@ -417,7 +421,7 @@ mlir::LogicalResult ExtractAllReduceFromWhileOp(
 mlir::LogicalResult OptimizeWhileLoopLazyAllReduce(
     mlir::TF::WhileRegionOp while_op, bool* changed) {
   mlir::Operation* while_body_terminator =
-      while_op.body().front().getTerminator();
+      while_op.getBody().front().getTerminator();
   for (const auto& data :
        llvm::enumerate(while_body_terminator->getOpOperands())) {
     const int index = data.index();
@@ -484,7 +488,7 @@ void CollectOptimizationCandidates(
 
 // MLIR pass that folds constants that can be removed or deduplicated away.
 struct DTensorAllReduceSumOptimization
-    : public DTensorAllReduceSumOptimizationBase<
+    : public impl::DTensorAllReduceSumOptimizationBase<
           DTensorAllReduceSumOptimization> {
   void runOnOperation() override {
     mlir::func::FuncOp function = getOperation();

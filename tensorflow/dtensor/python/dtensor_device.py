@@ -16,13 +16,13 @@
 
 import contextlib
 import logging
-import os
 import threading
 from typing import Any, List, Sequence, Set
 
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python import _pywrap_dtensor_device
@@ -32,11 +32,10 @@ from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 
-_DT_CLIENT_ID = "DTENSOR_CLIENT_ID"
-_DT_NUM_CLIENTS = "DTENSOR_NUM_CLIENTS"
-_DT_JOB_NAME = "DTENSOR_JOB_NAME"
 
 # TODO(allenl): Allow something other than "CUSTOM" so we don't need device
 # numbering hacks to avoid collisions between parallel devices and dtensor
@@ -48,7 +47,10 @@ _next_device_number_lock = threading.Lock()
 class DTensorDevice(object):
   """Wraps a custom device which attempts to propagate tensor layouts."""
 
-  def __init__(self, meshes: List[layout_lib.Mesh], is_async=True):
+  def __init__(self,
+               meshes: List[layout_lib.Mesh],
+               is_async=True,
+               in_flight_nodes_limit=8):
     """Create a new DTensorDevice which executes ops on `underlying_device`.
 
     Args:
@@ -57,6 +59,9 @@ class DTensorDevice(object):
       is_async: Indicates whether DTensor operations on this client will return
         immediately (with "non-ready" handles) or block until executed. This is
         on by default and is exposed as an option for ease of debugging.
+      in_flight_nodes_limit: Indicates the limit of in-flight nodes before
+        enqueueing of async operations to DTensorDevice is blocked. This limit
+        is per mesh. 0 for no limits from DTensor. Default is 8.
     """
     if any(not isinstance(mesh, layout_lib.Mesh) for mesh in meshes):
       raise TypeError(
@@ -74,32 +79,11 @@ class DTensorDevice(object):
     self._current_output_layout = None
     self._current_default_mesh = None
     self._is_async = is_async
+    self._in_flight_nodes_limit = in_flight_nodes_limit
     self._meshes = set()
     self._mesh_lock = threading.Lock()
     for mesh in meshes:
       self._register_mesh(mesh)
-
-# LINT.IfChange
-  def _num_clients(self):
-    """Returns number of clients in current DTensor cluster."""
-    # If missing, 1 is a good default.
-    return int(os.environ.get(_DT_NUM_CLIENTS, "1"))
-# LINT.ThenChange(//tensorflow/dtensor/cc/dtensor_utils.cc)
-
-# LINT.IfChange
-  def _client_id(self):
-    """Returns current client ID (int) in current DTensor cluster."""
-    return int(os.environ.get(_DT_CLIENT_ID, "0"))
-# LINT.ThenChange(//tensorflow/dtensor/cc/dtensor_utils.cc)
-
-  def _job_name(self):
-    """Returns the DTensor Borg job name."""
-    # If missing, the program is likely running locally or on Forge.
-    return os.environ.get(_DT_JOB_NAME, "localhost")
-
-  def _full_job_name(self):
-    """Returns the fully qualified TF job name for this task."""
-    return self._job_name() + "/replica:0/task:" + str(self._client_id())
 
   def _create_host_array(self, shape, host_id):
     """Returns ID and device lists that can be used to create a host mesh."""
@@ -107,7 +91,7 @@ class DTensorDevice(object):
     global_device_ids = np.arange(num_global_devices).reshape(shape)
     local_device_list = [
         tf_device.DeviceSpec(
-            job=self._full_job_name(), device_type="CPU", device_index=0)
+            job=config.full_job_name(), device_type="CPU", device_index=0)
     ]
     num_local_devices = len(local_device_list)
     local_device_ids = [
@@ -140,7 +124,7 @@ class DTensorDevice(object):
           "found", tpu_mesh.to_string())
       return None
 
-    ts_global_device_ids = np.arange(self._num_clients())
+    ts_global_device_ids = np.arange(config.num_clients())
     # TODO(zhonglinhan): parse global device specs as input when not None.
     return layout_lib.Mesh(
         dim_names=[tpu_mesh.dim_names[0]],  # 1D mesh.
@@ -153,7 +137,8 @@ class DTensorDevice(object):
     with self._mesh_lock:
       if mesh not in self._meshes:
         _pywrap_dtensor_device.AddMesh(self._device_info, mesh.to_string(),
-                                       self._is_async, False)
+                                       self._is_async, False,
+                                       self._in_flight_nodes_limit)
         self._meshes.add(mesh)
         if mesh.device_type().upper() == "TPU":
           logging.info(
@@ -161,7 +146,8 @@ class DTensorDevice(object):
               mesh.host_mesh().to_string(), mesh.to_string())
           _pywrap_dtensor_device.AddMesh(self._device_info,
                                          mesh.host_mesh().to_string(),
-                                         self._is_async, True)
+                                         self._is_async, True,
+                                         self._in_flight_nodes_limit)
           self._meshes.add(mesh.host_mesh())
           embedding_host_mesh = self._create_embedding_host_mesh(mesh)
           if embedding_host_mesh:
@@ -170,21 +156,19 @@ class DTensorDevice(object):
                 embedding_host_mesh.to_string(), mesh.to_string())
             _pywrap_dtensor_device.AddMesh(self._device_info,
                                            embedding_host_mesh.to_string(),
-                                           self._is_async, False)
+                                           self._is_async, False,
+                                           self._in_flight_nodes_limit)
             self._meshes.add(embedding_host_mesh)
 
   @property
   def meshes(self) -> Set[layout_lib.Mesh]:
     return self._meshes
 
-  def copy_to_mesh(self, tensor, new_layout, source_layout=None) -> ops.Tensor:
+  def copy_to_mesh(self, tensor, new_layout) -> ops.Tensor:
     """Copy `tensor` to `device` with the given layout."""
     self._register_mesh(new_layout.mesh)
     with ops.device(self.name):
-      return gen_dtensor_ops.copy_to_mesh(
-          tensor,
-          layout=new_layout.to_string(),
-          source_layout=source_layout.to_string() if source_layout else "")
+      return gen_dtensor_ops.copy_to_mesh(tensor, layout=new_layout.to_string())
 
   def pack(self, tensors: Sequence[Any], layout: layout_lib.Layout) -> Any:
     """Packs tensors into a DTensor handle on this DTensor device.
@@ -312,6 +296,29 @@ class DTensorDevice(object):
       raise core._status_to_exception(e) from None  # pylint: disable=protected-access
     return layout_lib.Layout.from_string(layout_string)
 
+  def is_dtensor(self, tensor: Any) -> bool:
+    """Check whether the input tensor is a DTensor.
+
+    In Python, a DTensor has the same type as a `tf.Tensor`. This method will
+    let you check and handle the tensor differently if a tf.Tensor is a DTensor.
+
+    Args:
+      tensor: an object to be checked.
+
+    Returns:
+      bool, True if the given tensor is a DTensor.
+    """
+    if not tensor_util.is_tensor(tensor):
+      return False
+    if isinstance(tensor, variables.Variable):
+      # Get the resource handle for tf.Variable
+      tensor = tensor._handle   # pylint: disable=protected-access
+    return _pywrap_dtensor_device.IsDTensor(
+        context.context()._handle,  # pylint: disable=protected-access
+        tensor,
+        self._device_info,
+    )
+
   def set_same_shape_policy(self, enabled):
     """Guess layouts using the layouts of other tensors with the same shape.
 
@@ -365,15 +372,35 @@ class DTensorDevice(object):
         self._device_info,
         tpu_core_locations)
 
-  def _get_function_cache_hit_and_miss_count(self):
+  def _get_function_cache_stats(self):
     """Returns the number of cache hit and miss for function compilation.
 
     Returns:
-      A dictionary keyed with miss and hit, corresponding to the cache hit and
+      A dictionary.
+        'miss': number of cache misses;
+        'hit': number of cache hits; and
+        'size': size of cache;
       miss count.
     """
-    return _pywrap_dtensor_device.GetFunctionCacheHitAndMissCount(
+    return _pywrap_dtensor_device.GetFunctionCacheStats(
         context.context()._handle,  # pylint: disable=protected-access,
+        self._device_info,
+    )
+
+  def set_iterator_element_layouts(self, iterator_resource_dtensor,
+                                   layouts: List[layout_lib.Layout]):
+    """Sets the element layouts on an iterator resource tensor.
+
+    Args:
+      iterator_resource_dtensor: a DTensor created by packing the individiual
+        iterator resource tensors.
+      layouts: the flattened list of layouts to be applied to the elements
+        emitted by the iterator resource DTensor.
+    """
+    _pywrap_dtensor_device.SetIteratorElementLayouts(
+        context.context()._handle,  # pylint: disable=protected-access
+        iterator_resource_dtensor,
+        [layout.to_string() for layout in layouts],
         self._device_info)
 
   @contextlib.contextmanager

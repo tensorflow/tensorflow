@@ -551,7 +551,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
 
   // Unary ops alphabetically sorted
   elementwise_ops_.emplace("Acos", EIGEN_COST(scalar_acos_op<float>));
-  elementwise_ops_.emplace("All", EIGEN_COST(scalar_boolean_and_op));
+  elementwise_ops_.emplace("All", EIGEN_COST(scalar_boolean_and_op<bool>));
   elementwise_ops_.emplace("ArgMax", EIGEN_COST(scalar_max_op<float>));
   elementwise_ops_.emplace("Asin", EIGEN_COST(scalar_asin_op<float>));
   elementwise_ops_.emplace("Atan", EIGEN_COST(scalar_atan_op<float>));
@@ -618,9 +618,10 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   elementwise_ops_.emplace("GreaterEqual", 1);
   elementwise_ops_.emplace("Less", 1);
   elementwise_ops_.emplace("LessEqual", 1);
-  elementwise_ops_.emplace("LogicalAnd", EIGEN_COST(scalar_boolean_and_op));
+  elementwise_ops_.emplace("LogicalAnd",
+                           EIGEN_COST(scalar_boolean_and_op<bool>));
   elementwise_ops_.emplace("LogicalNot", 1);
-  elementwise_ops_.emplace("LogicalOr", EIGEN_COST(scalar_boolean_or_op));
+  elementwise_ops_.emplace("LogicalOr", EIGEN_COST(scalar_boolean_or_op<bool>));
   elementwise_ops_.emplace("Maximum", EIGEN_COST(scalar_max_op<float>));
   elementwise_ops_.emplace("Minimum", EIGEN_COST(scalar_min_op<float>));
   elementwise_ops_.emplace("Mod", EIGEN_COST(scalar_mod_op<float>));
@@ -631,8 +632,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
                            EIGEN_COST(scalar_product_op<float>));
   elementwise_ops_.emplace("RealDiv", EIGEN_COST(scalar_quotient_op<float>));
   elementwise_ops_.emplace("ReluGrad", EIGEN_COST(scalar_max_op<float>));
-  elementwise_ops_.emplace("Select", EIGEN_COST(scalar_boolean_or_op));
-  elementwise_ops_.emplace("SelectV2", EIGEN_COST(scalar_boolean_or_op));
+  elementwise_ops_.emplace("Select", EIGEN_COST(scalar_boolean_or_op<bool>));
+  elementwise_ops_.emplace("SelectV2", EIGEN_COST(scalar_boolean_or_op<bool>));
   elementwise_ops_.emplace("SquaredDifference",
                            EIGEN_COST(scalar_square_op<float>) +
                                EIGEN_COST(scalar_difference_op<float>));
@@ -1650,7 +1651,13 @@ std::vector<int64_t> OpLevelCostEstimator::CalculateOutputTensorSize(
     auto output_shape = MaybeGetMinimumShape(original_output_shape, num_dims,
                                              found_unknown_shapes);
     for (const auto& dim : output_shape.dim()) {
-      output_size *= dim.size();
+      int64_t new_output_size =
+          MultiplyWithoutOverflow(output_size, dim.size());
+      if (new_output_size < 0) {
+        VLOG(1) << "Overflow encountered when estimating cost, multiplying "
+                << output_size << " with " << dim.size();
+      }
+      output_size = new_output_size;
     }
     output_tensor_size.push_back(output_size);
   }

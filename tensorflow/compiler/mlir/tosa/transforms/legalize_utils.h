@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H
-#define TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H
+#ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H_
 
 #include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <numeric>
+#include <optional>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -31,6 +32,8 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/util/padding.h"
@@ -38,6 +41,15 @@ limitations under the License.
 
 namespace mlir {
 namespace tosa {
+
+LogicalResult getDynamicDims(PatternRewriter& rewriter, Value value,
+                             llvm::SmallVector<Value>& dims);
+
+std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
+                                                 Operation* op,
+                                                 Value input_value,
+                                                 ShapedType output_type,
+                                                 llvm::ArrayRef<Value> dims);
 
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
@@ -76,7 +88,8 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
 void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
                             double input_scale, int32_t input_zp,
                             std::function<double(double)> func,
-                            Value& upper_const, Value& lower_const);
+                            Value& first_const, Value& second_const,
+                            Value& third_const, Value& fourth_const);
 
 // Create a 32-bit float constant operator from a float
 Value getTosaConstTensorSingleF32(PatternRewriter& rewriter, Operation* op,
@@ -96,12 +109,13 @@ bool getPaddingValuesFromPadType(tensorflow::Padding tf_pad,
                                  tensorflow::TensorFormat data_format_tf,
                                  uint32_t first_filter_spatial_dim,
                                  ShapedType input_type, ShapedType filter_type,
-                                 ArrayAttr strides, ArrayAttr dilations,
+                                 DenseI64ArrayAttr strides,
+                                 DenseI64ArrayAttr dilations,
                                  PatternRewriter& rewriter,
-                                 ArrayAttr& explicit_pad);
+                                 DenseI64ArrayAttr& explicit_pad);
 
 // Calculates the TOSA padding values for explicit-padded TF operators.
-ArrayAttr getPaddingValuesFromExplicitPadAttr(
+DenseI64ArrayAttr getPaddingValuesFromExplicitPadAttr(
     ArrayAttr explicit_pad, tensorflow::TensorFormat data_format_tf,
     PatternRewriter& rewriter);
 
@@ -109,16 +123,16 @@ ArrayAttr getPaddingValuesFromExplicitPadAttr(
 bool getTransposeConv2dPaddingValues(
     tensorflow::Padding tf_pad, tensorflow::TensorFormat data_format_tf,
     uint32_t first_filter_spatial_dim, ShapedType input_type,
-    ShapedType filter_type, ShapedType output_type, ArrayAttr strides,
-    PatternRewriter& rewriter, ArrayAttr& explicit_pad);
+    ShapedType filter_type, ShapedType output_type, DenseI64ArrayAttr strides,
+    PatternRewriter& rewriter, DenseI64ArrayAttr& explicit_pad);
 
 // Templated function to create a constant op for given type and shape.
 // T: storage C type.
 // Default template creates a constant tensor in T.
 // To create INT48 TOSA constant, need to pass in llvm::APInt instead.
 template <typename T>
-llvm::Optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
-                                     ArrayRef<T> vec, ArrayRef<int64_t> shape);
+std::optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
+                                    ArrayRef<T> vec, ArrayRef<int64_t> shape);
 
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type);
@@ -169,7 +183,11 @@ TosaOp CreateOpAndInfer(PatternRewriter& rewriter, Location loc, Type result_ty,
 
   // Compute the new type based on the joined version.
   auto newKnowledge = ValueKnowledge::join(currentKnowledge, inferredKnowledge);
-  auto new_ty = newKnowledge.getType();
+  Type new_ty =
+      newKnowledge.hasRank
+          ? Type{tensorflow::GetTypeFromTFTensorShape(
+                llvm::ArrayRef(newKnowledge.sizes), newKnowledge.dtype)}
+          : Type{mlir::UnrankedTensorType::get(newKnowledge.dtype)};
   result.setType(new_ty);
   return op;
 }
@@ -182,7 +200,16 @@ void CreateReplaceOpAndInfer(PatternRewriter& rewriter, Operation* op,
   rewriter.replaceOp(op, result->getResults());
 }
 
+void TrimQuantizedIntegerRangeMin(mlir::quant::UniformQuantizedType dtype,
+                                  int64_t& val_min);
+
+void TrimQuantizedIntegerRangeMax(mlir::quant::UniformQuantizedType dtype,
+                                  int64_t& val_max);
+
+void TrimQuantizedIntegerRange(mlir::quant::UniformQuantizedType dtype,
+                               int64_t& val_min, int64_t& val_max);
+
 }  // namespace tosa
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H
+#endif  // TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H_

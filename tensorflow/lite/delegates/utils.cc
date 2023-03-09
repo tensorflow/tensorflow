@@ -18,11 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -50,9 +52,23 @@ TfLiteStatus CreateNewTensorWithDifferentType(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-TfLiteStatus GraphPartitionHelper::Partition(
-    std::set<std::string>* unsupported_nodes_info) {
-  const auto prepare_status = PrepareSupportedNodes(unsupported_nodes_info);
+TfLiteContext* GetSubgraphContext(const struct TfLiteContext* context,
+                                  int subgraph_index) {
+  return static_cast<::tflite::Subgraph*>(context->impl_)
+      ->GetSubgraphContext(subgraph_index);
+}
+
+TfLiteStatus MarkSubgraphAsDelegationSkippable(const TfLiteContext* context,
+                                               int subgraph_index) {
+  return static_cast<::tflite::Subgraph*>(context->impl_)
+      ->MarkSubgraphAsDelegationSkippable(subgraph_index);
+}
+
+TfLiteStatus GraphPartitionHelper::PartitionImpl(
+    std::set<std::string>* unsupported_nodes_info, int start_node_index,
+    int end_node_index) {
+  const auto prepare_status = PrepareSupportedNodes(
+      unsupported_nodes_info, start_node_index, end_node_index);
   if (prepare_status != kTfLiteOk) return prepare_status;
 
   TfLiteDelegateParams* partition_params_array_ = nullptr;
@@ -113,7 +129,8 @@ std::vector<int> GraphPartitionHelper::GetNodesOfFirstNLargestPartitionsImpl(
 }
 
 TfLiteStatus GraphPartitionHelper::PrepareSupportedNodes(
-    std::set<std::string>* unsupported_nodes_info) {
+    std::set<std::string>* unsupported_nodes_info, int start_node_index,
+    int end_node_index) {
   if (!is_node_supported_fn_) return kTfLiteOk;
 
   TfLiteIntArray* execution_plan = nullptr;
@@ -149,6 +166,13 @@ TfLiteStatus GraphPartitionHelper::PrepareSupportedNodes(
     std::string unsupported_details;
     if (IsNodeSupported(context_, node, registration, node_id,
                         &unsupported_details)) {
+#ifdef TFLITE_DEBUG_DELEGATE
+      if (node_id < start_node_index) {
+        continue;
+      } else if (node_id > end_node_index) {
+        break;
+      }
+#endif  // TFLITE_DEBUG_DELEGATE
       supported_nodes_->data[supported_nodes_->size++] = node_id;
     } else if (unsupported_nodes_info) {
       std::string node_info = GetOpNameByRegistration(*registration);

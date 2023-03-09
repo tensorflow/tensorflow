@@ -17,19 +17,23 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/c/c_api_opaque.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/interpreter_builder.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
+#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
@@ -40,6 +44,7 @@ namespace delegates {
 
 using test_utils::SimpleDelegate;
 using test_utils::TestDelegate;
+using test_utils::TestDelegateWithControlEdges;
 using test_utils::TestFP16Delegation;
 using test_utils::TestTwoDelegates;
 
@@ -412,6 +417,192 @@ TEST_F(TestDelegate, TestCopyFromBuffer) {
   for (int i = 0; i < tensor->dims->data[0]; ++i) {
     ASSERT_EQ(tensor->data.f[i], 6.0f);
   }
+}
+
+// A utility struct, intended to be used to record the interaction between a
+// test delegate and the runtime.
+struct DelegateState {
+  bool delegate_prepared;
+  bool copy_from_buffer_handle_called;
+  bool free_buffer_handle_called;
+  int buffer_handle;
+
+  void Reset() {
+    delegate_prepared = false;
+    copy_from_buffer_handle_called = false;
+    free_buffer_handle_called = false;
+    buffer_handle = -1;
+  }
+};
+
+struct OpaqueTestDelegate {
+  static constexpr int kTestDelegateOutput = 42;
+
+  static inline TfLiteStatus Prepare(TfLiteOpaqueContext* opaque_context,
+                                     TfLiteOpaqueDelegate* opaque_delegate,
+                                     void* data) {
+    DelegateState* delegate_state = reinterpret_cast<DelegateState*>(data);
+    delegate_state->delegate_prepared = true;
+
+    TfLiteRegistration registration{};
+    registration.prepare = [](TfLiteContext* context,
+                              TfLiteNode* node) -> TfLiteStatus {
+      return kTfLiteOk;
+    };
+    registration.invoke = [](TfLiteContext* context,
+                             TfLiteNode* node) -> TfLiteStatus {
+      return kTfLiteOk;
+    };
+
+    TfLiteContext* context = reinterpret_cast<TfLiteContext*>(opaque_context);
+    TfLiteIntArray* execution_plan;
+    context->GetExecutionPlan(context, &execution_plan);
+    context->ReplaceNodeSubsetsWithDelegateKernels(
+        context, registration, execution_plan,
+        reinterpret_cast<TfLiteDelegate*>(opaque_delegate));
+    return kTfLiteOk;
+  }
+
+  static inline TfLiteStatus CopyFromBufferHandle(
+      TfLiteOpaqueContext* context, TfLiteOpaqueDelegate* delegate, void* data,
+      TfLiteBufferHandle buffer_handle, TfLiteOpaqueTensor* opaque_tensor) {
+    DelegateState* delegate_state = reinterpret_cast<DelegateState*>(data);
+    delegate_state->copy_from_buffer_handle_called = true;
+    delegate_state->buffer_handle = buffer_handle;
+
+    auto* output =
+        reinterpret_cast<float*>(TfLiteOpaqueTensorData(opaque_tensor));
+    int total_num_elements = 1;
+    for (int i = 0; i < TfLiteOpaqueTensorNumDims(opaque_tensor); ++i) {
+      total_num_elements *= TfLiteOpaqueTensorDim(opaque_tensor, i);
+    }
+    std::vector<float> meaning_of_life(total_num_elements, kTestDelegateOutput);
+    memcpy(output, meaning_of_life.data(),
+           meaning_of_life.size() * sizeof(float));
+
+    return kTfLiteOk;
+  }
+
+  static inline void FreeBufferHandle(TfLiteOpaqueContext* context,
+                                      TfLiteOpaqueDelegate* delegate,
+                                      void* data,
+                                      TfLiteBufferHandle* buffer_handle) {
+    DelegateState* delegate_state = reinterpret_cast<DelegateState*>(data);
+    delegate_state->free_buffer_handle_called = true;
+    delegate_state->buffer_handle = *buffer_handle;
+  }
+};
+
+// Ensure that the runtime correctly interacts with a delegate that uses the
+// 'TfLiteOpaqueDelegateBuilder'.  This test:
+// 1. Defines a delegate that will replace the full graph will a delegate
+//    kernel.
+// 2. Associates the model's output tensor with the delegate and marks the
+//    output tensor's data as stale, to prompt the runtime to use the delegate's
+//    'CopyFromBufferHandle' callback.
+// 3. The test driver will overwrite the output tensor's buffer handle, to
+//    prompt the runtime to use the delegate's 'FreeBufferHandle' callback.
+// 4. Eventually the test driver destroys the interpreter, and checks that
+//    also the second buffer handle gets deallocated via the delegate callback.
+TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
+  DelegateState delegate_state;
+  delegate_state.Reset();
+
+  std::unique_ptr<tflite::FlatBufferModel> model =
+      tflite::FlatBufferModel::BuildFromFile(
+          "third_party/tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+  constexpr int kNumTensorElements = 1 * 8 * 8 * 3;
+
+  TfLiteOpaqueDelegateBuilder opaque_delegate{};
+  opaque_delegate.data = &delegate_state;
+  opaque_delegate.CopyFromBufferHandle =
+      OpaqueTestDelegate::CopyFromBufferHandle;
+  opaque_delegate.FreeBufferHandle = OpaqueTestDelegate::FreeBufferHandle;
+  opaque_delegate.Prepare = OpaqueTestDelegate::Prepare;
+
+  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::InterpreterBuilder builder(*model, resolver);
+  TfLiteDelegate tflite_delegate{};
+  tflite_delegate.opaque_delegate_builder = &opaque_delegate;
+  builder.AddDelegate(&tflite_delegate);
+  std::unique_ptr<tflite::Interpreter> interpreter;
+  builder(&interpreter);
+  ASSERT_NE(interpreter, nullptr);
+
+  // Allocate tensor buffers.
+  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteOk);
+
+  // Fill input buffers
+  float* input = interpreter->typed_input_tensor<float>(0);
+  std::fill(input, input + kNumTensorElements, 1);
+
+  // We set the buffer handle of the output tensor and mark its data as stale.
+  // This will make the interpreter call 'CopyFromBufferHandle' to refresh the
+  // output tensor's data.
+  EXPECT_FALSE(delegate_state.free_buffer_handle_called);
+  int first_buffer_handle = 1;
+  const int kOutputTensorIndex = 2;
+  interpreter->SetBufferHandle(kOutputTensorIndex, first_buffer_handle,
+                               &tflite_delegate);
+  TfLiteTensor* output_t = interpreter->output_tensor(0);
+  output_t->data_is_stale = true;
+
+  // Run inference
+  ASSERT_EQ(interpreter->Invoke(), kTfLiteOk);
+  EXPECT_TRUE(delegate_state.delegate_prepared);
+  EXPECT_TRUE(delegate_state.copy_from_buffer_handle_called);
+  EXPECT_EQ(delegate_state.buffer_handle, first_buffer_handle);
+  EXPECT_FALSE(delegate_state.free_buffer_handle_called);
+  float* outputs = interpreter->typed_output_tensor<float>(0);
+  for (int i = 0; i < kNumTensorElements; ++i) {
+    EXPECT_EQ(outputs[i], OpaqueTestDelegate::kTestDelegateOutput);
+  }
+
+  delegate_state.Reset();
+  // Setting a buffer handle on a tensor that already has a buffer handle
+  // associated with it will free the previously installed buffer handle.
+  int second_buffer_handle = first_buffer_handle + 1;
+  interpreter->SetBufferHandle(kOutputTensorIndex, second_buffer_handle,
+                               &tflite_delegate);
+  EXPECT_FALSE(delegate_state.copy_from_buffer_handle_called);
+  EXPECT_EQ(delegate_state.buffer_handle, first_buffer_handle);
+  EXPECT_TRUE(delegate_state.free_buffer_handle_called);
+
+  // Destroying the interpreter will release any buffer handles that are
+  // associated with the tensors owner by the interpreter.
+  delegate_state.Reset();
+  interpreter.reset();
+  EXPECT_FALSE(delegate_state.copy_from_buffer_handle_called);
+  EXPECT_EQ(delegate_state.buffer_handle, second_buffer_handle);
+  EXPECT_TRUE(delegate_state.free_buffer_handle_called);
+}
+
+TEST(TestDelegateKernel, WithoutName) {
+  std::unique_ptr<tflite::FlatBufferModel> model =
+      tflite::FlatBufferModel::BuildFromFile(
+          "third_party/tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+
+  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::InterpreterBuilder builder(*model, resolver);
+  TfLiteDelegate tflite_delegate{};
+  tflite_delegate.Prepare =
+      [](TfLiteContext* context,
+         struct TfLiteDelegate* delegate) -> TfLiteStatus {
+    TfLiteIntArray* execution_plan;
+    TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &execution_plan));
+    TfLiteRegistration registration{};
+    registration.init = [](TfLiteContext* context, const char* buffer,
+                           size_t length) -> void* { return nullptr; };
+    context->ReplaceNodeSubsetsWithDelegateKernels(context, registration,
+                                                   execution_plan, delegate);
+    return kTfLiteOk;
+  };
+  builder.AddDelegate(&tflite_delegate);
+  std::unique_ptr<tflite::Interpreter> interpreter;
+  builder(&interpreter);
+  ASSERT_NE(interpreter, nullptr);
 }
 
 TEST_F(TestDelegate, DelegateCustomOpResolution) {
@@ -934,7 +1125,82 @@ class TestDelegateWithDynamicTensors : public ::testing::Test {
   TfLiteDelegate delegate_;
 };
 
+TfLiteRegistrationExternal* CreateTfLiteRegistrationExternal() {
+  auto registration = TfLiteRegistrationExternalCreate(
+      kTfLiteBuiltinDelegate, "OpaqueDelegateKernel", 1);
+  TfLiteRegistrationExternalSetPrepare(
+      registration,
+      [](TfLiteOpaqueContext* context,
+         TfLiteOpaqueNode* opaque_node) -> TfLiteStatus {
+        // If tensors are resized, the runtime should propagate shapes
+        // automatically if 'kTfLiteDelegateFlagsRequirePropagatedShapes' flag
+        // is set.
+
+        // Output 0 should be dynamic.
+        TfLiteOpaqueTensor* output0 =
+            TfLiteOpaqueNodeGetOutput(context, opaque_node, 0);
+        EXPECT_EQ(kTfLiteDynamic, TfLiteOpaqueTensorGetAllocationType(output0));
+
+        // Output 1 has the same shape as input.
+        const TfLiteOpaqueTensor* input =
+            TfLiteOpaqueNodeGetInput(context, opaque_node, 0);
+        const TfLiteOpaqueTensor* output1 =
+            TfLiteOpaqueNodeGetOutput(context, opaque_node, 1);
+
+        if (TfLiteOpaqueTensorNumDims(input) !=
+            TfLiteOpaqueTensorNumDims(output1)) {
+          return kTfLiteError;
+        }
+        // When 'kTfLiteDelegateFlagsRequirePropagatedShapes' is *not* set then
+        // changes to the dimensions of the 'input' tensor won't automatically
+        // propagate to the 'output1' tensor dimensions.
+        if (TfLiteOpaqueTensorDim(input, 0) !=
+            TfLiteOpaqueTensorDim(output1, 0)) {
+          return kTfLiteError;
+        }
+
+        return kTfLiteOk;
+      });
+
+  return registration;
+}
+
+class TestOpaqueDelegateBuilderWithDynamicTensors
+    : public TestDelegateWithDynamicTensors {
+ public:
+  void SetUp() override {
+    // Re-use the base class setup in terms of nodes, tensors and registrations.
+    TestDelegateWithDynamicTensors::SetUp();
+    // But with the difference that we'll apply a delegate to the graph that
+    // uses its opaque_delegate_builder field.
+    delegate_.Prepare = nullptr;
+    delegate_.opaque_delegate_builder = &delegate_external_;
+    delegate_external_.Prepare = [](TfLiteOpaqueContext* opaque_context,
+                                    TfLiteOpaqueDelegate* opaque_delegate,
+                                    void* data) -> TfLiteStatus {
+      TfLiteIntArray* execution_plan;
+      TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan);
+      return TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
+          opaque_context, CreateTfLiteRegistrationExternal(), execution_plan,
+          opaque_delegate);
+    };
+    delegate_external_.flags = kTfLiteDelegateFlagsNone;
+  }
+
+ private:
+  TfLiteOpaqueDelegateBuilder delegate_external_{};
+};
+
 TEST_F(TestDelegateWithDynamicTensors, DisallowDynamicTensors) {
+  interpreter_->ModifyGraphWithDelegate(&delegate_);
+
+  ASSERT_EQ(interpreter_->execution_plan().size(), 1);
+  // The interpreter should not call delegate's `Prepare` when dynamic tensors
+  // exist. So the node ID isn't changed.
+  ASSERT_EQ(interpreter_->execution_plan()[0], 0);
+}
+
+TEST_F(TestOpaqueDelegateBuilderWithDynamicTensors, DisallowDynamicTensors) {
   interpreter_->ModifyGraphWithDelegate(&delegate_);
 
   ASSERT_EQ(interpreter_->execution_plan().size(), 1);
@@ -953,11 +1219,36 @@ TEST_F(TestDelegateWithDynamicTensors, AllowDynamicTensors) {
   ASSERT_EQ(interpreter_->execution_plan()[0], 1);
 }
 
+TEST_F(TestOpaqueDelegateBuilderWithDynamicTensors, AllowDynamicTensors) {
+  delegate_.opaque_delegate_builder->flags =
+      kTfLiteDelegateFlagsAllowDynamicTensors;
+  interpreter_->ModifyGraphWithDelegate(&delegate_);
+
+  ASSERT_EQ(interpreter_->execution_plan().size(), 1);
+  // The node should be replaced because dynamic tensors are allowed. Therefore
+  // only node ID in the execution plan is changed from 0 to 1.
+  ASSERT_EQ(interpreter_->execution_plan()[0], 1);
+}
+
 TEST_F(TestDelegateWithDynamicTensors, ModifyGraphAfterAllocate) {
   // Trigger allocation *before* delegate application.
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
 
   delegate_.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
+  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(&delegate_), kTfLiteOk);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 1);
+  ASSERT_EQ(interpreter_->execution_plan()[0], 1);
+
+  // Allocation should still succeed.
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+}
+
+TEST_F(TestOpaqueDelegateBuilderWithDynamicTensors, ModifyGraphAfterAllocate) {
+  // Trigger allocation *before* delegate application.
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  delegate_.opaque_delegate_builder->flags =
+      kTfLiteDelegateFlagsAllowDynamicTensors;
   ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(&delegate_), kTfLiteOk);
   ASSERT_EQ(interpreter_->execution_plan().size(), 1);
   ASSERT_EQ(interpreter_->execution_plan()[0], 1);
@@ -980,11 +1271,44 @@ TEST_F(TestDelegateWithDynamicTensors, ShapePropagation_FlagSet) {
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
 }
 
+TEST_F(TestOpaqueDelegateBuilderWithDynamicTensors, ShapePropagation_FlagSet) {
+  // Trigger allocation *before* delegate application.
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  delegate_.opaque_delegate_builder->flags =
+      kTfLiteDelegateFlagsAllowDynamicTensors |
+      kTfLiteDelegateFlagsRequirePropagatedShapes;
+
+  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(&delegate_), kTfLiteOk);
+
+  // Allocation before & after resizing tensors should work.
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->ResizeInputTensor(0, {4}), kTfLiteOk);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+}
+
 TEST_F(TestDelegateWithDynamicTensors, ShapePropagation_FlagNotSet) {
   // Trigger allocation *before* delegate application.
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
 
   delegate_.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
+  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(&delegate_), kTfLiteOk);
+
+  // Allocation after resizing tensors should NOT work, since runtime won't
+  // propagate shape - causing delegate kernel to fail.
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->ResizeInputTensor(0, {4}), kTfLiteOk);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteError);
+}
+
+TEST_F(TestOpaqueDelegateBuilderWithDynamicTensors,
+       ShapePropagation_FlagNotSet) {
+  // Trigger allocation *before* delegate application.
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  delegate_.opaque_delegate_builder->flags =
+      kTfLiteDelegateFlagsAllowDynamicTensors;
+
   ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(&delegate_), kTfLiteOk);
 
   // Allocation after resizing tensors should NOT work, since runtime won't
@@ -1087,6 +1411,68 @@ TEST_F(TestReleaseDynamicTensorWithDelegate, ShapePropagation_FlagNotSet) {
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   ASSERT_EQ(interpreter_->tensor(1)->data.raw, nullptr);
+}
+
+// Tests for control edges passed in metadata
+// ==========================================
+
+TEST_F(TestDelegateWithControlEdges, NoControlEdges) {
+  // Put {0,2} on a super-node, if possible
+  delegate_ = std::make_unique<SimpleDelegate>(std::vector<int>({0, 2}));
+  interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
+  ASSERT_EQ(interpreter_->execution_plan().size(), 3);     // [ {0, 2}, 1, 3]
+  EXPECT_EQ(interpreter_->execution_plan().data()[0], 4);  // new super-node
+  EXPECT_EQ(interpreter_->execution_plan().data()[1], 1);  // undelegated
+  EXPECT_EQ(interpreter_->execution_plan().data()[2], 3);  // undelegated
+}
+
+TEST_F(TestDelegateWithControlEdges, OverrideControlEdges) {
+  // Execute node 1 before node 2.
+  SetMetadata({{kModelControlDependenciesMetadataKey,
+                SerializeModelControlDependencies({{{1, 2}}})}});
+  // Put {0,2} on a super-node, if possible
+  delegate_ = std::make_unique<SimpleDelegate>(std::vector<int>({0, 2}));
+  interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
+
+  // 1 has to be executed before 2, so original execution order is
+  // preserved. Nodes 0 and 2 both get rewritten into new delegate nodes
+  // 4 and 5.
+  ASSERT_EQ(interpreter_->execution_plan().size(), 4);  // [ 0, 1, 2, 3]
+  EXPECT_EQ(interpreter_->execution_plan().data()[0], 4);
+  EXPECT_EQ(interpreter_->execution_plan().data()[1], 1);
+  EXPECT_EQ(interpreter_->execution_plan().data()[2], 5);
+  EXPECT_EQ(interpreter_->execution_plan().data()[3], 3);
+}
+
+// Test that empty control edge metadata for subgraph 0 don't change anything.
+TEST_F(TestDelegateWithControlEdges, EmptyControlEdges) {
+  SetMetadata({{kModelControlDependenciesMetadataKey,
+                SerializeModelControlDependencies({{}})}});
+  delegate_ = std::make_unique<SimpleDelegate>(std::vector<int>({0, 2}));
+  interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
+  EXPECT_EQ(interpreter_->execution_plan().size(), 3);  // [ {0, 2}, 1, 3]
+}
+
+// Test that control edges that are compatible with execution order
+// [0, 2, 1, 3] don't change anything (case 1).
+TEST_F(TestDelegateWithControlEdges, CompatibleControlEdges1) {
+  // Execute node 0 before node 2 and node 1 before node 3.
+  SetMetadata({{kModelControlDependenciesMetadataKey,
+                SerializeModelControlDependencies({{{0, 2}, {1, 3}}})}});
+  delegate_ = std::make_unique<SimpleDelegate>(std::vector<int>({0, 2}));
+  interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
+  EXPECT_EQ(interpreter_->execution_plan().size(), 3);  // [ {0, 2}, 1, 3]
+}
+
+// Test that control edges that are compatible with execution order
+// [0, 2, 1, 3] don't change anything (case 2).
+TEST_F(TestDelegateWithControlEdges, CompatibleControlEdges2) {
+  // Execute node 0 before node 1 and node 1 before node 3.
+  SetMetadata({{kModelControlDependenciesMetadataKey,
+                SerializeModelControlDependencies({{{0, 1}, {1, 3}}})}});
+  delegate_ = std::make_unique<SimpleDelegate>(std::vector<int>({0, 2}));
+  interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
+  EXPECT_EQ(interpreter_->execution_plan().size(), 3);  // [ {0, 2}, 1, 3]
 }
 
 // Tests for FP16 graphs

@@ -28,10 +28,12 @@ from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import memory_checker
 from tensorflow.python.framework import ops
@@ -39,6 +41,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
@@ -51,11 +54,13 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 from tensorflow.python.training import momentum
 from tensorflow.python.training import saver
 from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
+from tensorflow.python.util import nest
 
 
 def _eager_safe_var_handle_op(*args, **kwargs):
@@ -80,6 +85,23 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.assertEmpty(gc.garbage)
     super(ResourceVariableOpsTest, self).tearDown()
 
+  def testLocalVariables(self):
+    num_traces = 0
+
+    # TODO(b/210930091): Test jit_compile=True when the bridge work is done.
+    @def_function.function(jit_compile=False)
+    def f():
+      nonlocal num_traces
+      num_traces += 1
+      v = variables.Variable(3, experimental_enable_variable_lifting=False)
+      v.assign_add(5)
+      return v.read_value()
+
+    self.assertEqual(num_traces, 0)
+    for _ in range(3):
+      self.assertAllClose(f(), 8)
+      self.assertEqual(num_traces, 1)
+
   @test_util.run_deprecated_v1
   def testHandleDtypeShapeMatch(self):
     with self.cached_session():
@@ -98,18 +120,52 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                                                    dtype=dtypes.int32)).run()
 
   @test_util.run_gpu_only
-  def testGPUInt64(self):
-    with context.eager_mode(), context.device("gpu:0"):
-      v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.int64)
-      self.assertAllEqual(1, v.numpy())
-
-  @test_util.run_gpu_only
   def testGPUBfloat16(self):
     with context.eager_mode(), ops.device("gpu:0"):
       v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.bfloat16)
       self.assertEqual("/job:localhost/replica:0/task:0/device:GPU:0",
                        v.device)
       self.assertAllEqual(1, v.numpy())
+
+  @parameterized.parameters(
+      dtypes.int8, dtypes.uint8, dtypes.int16, dtypes.uint16, dtypes.uint32,
+      dtypes.int64, dtypes.uint64)
+  @test_util.run_gpu_only
+  def testGPUInteger(self, dtype):
+    with context.eager_mode(), ops.device("gpu:0"):
+      v = resource_variable_ops.ResourceVariable(1, dtype=dtype)
+      self.assertEqual("/job:localhost/replica:0/task:0/device:GPU:0", v.device)
+      self.assertAllEqual(1, v.numpy())
+      v.assign_add(1)
+      self.assertAllEqual(2, v.numpy())
+      v.assign_sub(1)
+      self.assertAllEqual(1, v.numpy())
+      v = resource_variable_ops.ResourceVariable([1, 2], dtype=dtype)
+      self.evaluate(
+          v.scatter_add(
+              indexed_slices.IndexedSlices(
+                  indices=[1],
+                  values=constant_op.constant([2], dtype=dtype))))
+      self.assertAllEqual([1, 4], v.numpy())
+      self.evaluate(
+          v.scatter_update(
+              indexed_slices.IndexedSlices(
+                  indices=[1],
+                  values=constant_op.constant([5], dtype=dtype))))
+      self.assertAllEqual([1, 5], v.numpy())
+      self.evaluate(
+          v.scatter_max(
+              indexed_slices.IndexedSlices(
+                  indices=[0, 1],
+                  values=constant_op.constant([2, 2], dtype=dtype))))
+      self.assertAllEqual([2, 5], v.numpy())
+      self.evaluate(v.scatter_nd_add(indices=[[1]], updates=[2]))
+      self.assertAllEqual([2, 7], v.numpy())
+      self.evaluate(v.scatter_nd_update(indices=[[1]], updates=[2]))
+      self.assertAllEqual([2, 2], v.numpy())
+      self.evaluate(v.scatter_nd_max(indices=[[1]], updates=[3]))
+      self.assertAllEqual([2, 3], v.numpy())
+      self.assertAllEqual(v.gather_nd([1]), 3)
 
   def testEagerNameNotIdentity(self):
     with context.eager_mode():
@@ -380,7 +436,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         return 2.0 * v
       return i + 1, control_flow_ops.cond(i > 0, true, false)
 
-    _, x = control_flow_ops.while_loop(cond, body, [0, 0.0])
+    _, x = while_loop.while_loop(cond, body, [0, 0.0])
     # Computing gradients does not produce an exception:
     g = gradients_impl.gradients(x, v)
     self.evaluate(variables.global_variables_initializer())
@@ -584,7 +640,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
     self.assertEqual(self.evaluate(read), [[6]])
 
-  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64)
+  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64,
+                            dtypes.bfloat16)
   @test_util.run_in_graph_and_eager_modes
   def testScatterAddVariableMethod(self, dtype):
     v = resource_variable_ops.ResourceVariable([0.0, 1.5],
@@ -597,7 +654,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                 indices=[1], values=constant_op.constant([2.5], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 4.0], self.evaluate(v))
 
-  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64)
+  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64,
+                            dtypes.bfloat16)
   @test_util.run_in_graph_and_eager_modes
   def testScatterSubVariableMethod(self, dtype):
     v = resource_variable_ops.ResourceVariable([0.0, 2.5],
@@ -610,7 +668,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                 indices=[1], values=constant_op.constant([1.5], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 1.0], self.evaluate(v))
 
-  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64)
+  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64,
+                            dtypes.bfloat16)
   @test_util.run_in_graph_and_eager_modes
   def testScatterMaxVariableMethod(self, dtype):
     v = resource_variable_ops.ResourceVariable([0.0, 4.0],
@@ -633,7 +692,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                 indices=[1], values=constant_op.constant([2.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 3.5], self.evaluate(v))
 
-  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64)
+  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64,
+                            dtypes.bfloat16)
   @test_util.run_in_graph_and_eager_modes
   def testScatterMinVariableMethod(self, dtype):
     v = resource_variable_ops.ResourceVariable([0.0, 4.0],
@@ -656,7 +716,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                 indices=[1], values=constant_op.constant([2.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 2.0], self.evaluate(v))
 
-  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64)
+  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64,
+                            dtypes.bfloat16)
   @test_util.run_in_graph_and_eager_modes
   def testScatterMulVariableMethod(self, dtype):
     v = resource_variable_ops.ResourceVariable([0.0, 4.0],
@@ -669,7 +730,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                 indices=[1], values=constant_op.constant([3.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 12.0], self.evaluate(v))
 
-  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64)
+  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64,
+                            dtypes.bfloat16)
   @test_util.run_in_graph_and_eager_modes
   def testScatterDivVariableMethod(self, dtype):
     v = resource_variable_ops.ResourceVariable([0.0, 6.0],
@@ -682,7 +744,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                 indices=[1], values=constant_op.constant([2.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 3.0], self.evaluate(v))
 
-  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64)
+  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64,
+                            dtypes.bfloat16)
   @test_util.run_in_graph_and_eager_modes
   def testScatterUpdateVariableMethod(self, dtype):
     v = resource_variable_ops.ResourceVariable([0.0, 6.0],
@@ -870,6 +933,26 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       gathered = resource_variable_ops.resource_gather(
           new_handle, indices, dtype=var.dtype)
       gradients_impl.gradients([gathered], [updates])
+
+  def testCustomGradientVariableOutput(self):
+    with context.eager_mode():
+      @custom_gradient.custom_gradient
+      def test_func(x):
+        x.assign_add(3.)
+
+        def gradient_func(*grad):
+          return 2. * grad[0]
+
+        return x, gradient_func
+
+      v = resource_variable_ops.ResourceVariable(2.)
+      with backprop.GradientTape() as tape:
+        out = test_func(v)
+        result = tape.gradient(out, v)
+
+      self.assertAllEqual(out, 5.)
+      self.assertIsInstance(result, ops.Tensor)
+      self.assertAllEqual(result, 2.)
 
   def testToFromProtoCachedValue(self):
     with ops.Graph().as_default():
@@ -1212,7 +1295,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       return (i + 1, v.read_value())
 
     with self.assertRaisesRegex(ValueError, "initial_value"):
-      control_flow_ops.while_loop(cond, body, [0, 0])
+      while_loop.while_loop(cond, body, [0, 0])
 
   def testVariableEager(self):
     with context.eager_mode():
@@ -1391,7 +1474,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       # least 1024 elements. Test that op determinism ensures the op is
       # deterministc.
       v = resource_variable_ops.ResourceVariable(array_ops.zeros([1024]))
-      delta = ops.IndexedSlices(
+      delta = indexed_slices.IndexedSlices(
           values=np.random.normal(size=(1_000_000,)),
           indices=array_ops.zeros((1_000_000,), dtype=np.int32),
           dense_shape=(1024,))
@@ -1613,6 +1696,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       dict(dtype=dtypes.bool),
       dict(dtype=dtypes.int64),
       dict(dtype=dtypes.half),
+      dict(dtype=dtypes.bfloat16),
       dict(dtype=dtypes.float32),
       dict(dtype=dtypes.double),
   ])
@@ -1662,6 +1746,72 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     v = variables.Variable([1., 2.])
     self.assertAllClose([1., 2.], list(iter(v)))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testCompositeTensorTypeSpec(self):
+    v = resource_variable_ops.ResourceVariable([1.])
+    self.evaluate(v.initializer)
+    self.assertIsInstance(v, composite_tensor.CompositeTensor)
+    spec = type_spec.type_spec_from_value(v)
+
+    self.assertIsInstance(spec, resource_variable_ops.VariableSpec)
+    self.assertAllEqual(spec.shape.as_list(), (1,))
+    self.assertEqual(spec.dtype, dtypes.float32)
+    self.assertTrue(spec.trainable)
+    self.assertEqual(spec, v._type_spec)
+    self.assertEqual(spec, v._shape_invariant_to_type_spec((1,)))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testVariableInExtensionType(self):
+    class MaskVariable(extension_type.ExtensionType):
+      variable: resource_variable_ops.ResourceVariable
+      mask: ops.Tensor
+
+    v = resource_variable_ops.ResourceVariable([1., 2.])
+    self.evaluate(v.initializer)
+    mask = constant_op.constant([True, False])
+    mask_variable = MaskVariable(variable=v, mask=mask)
+    self.assertAllEqual(mask_variable.variable, [1., 2.])
+    self.assertAllEqual(mask_variable.mask, [True, False])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInitFromHandle(self):
+    v = resource_variable_ops.ResourceVariable(1.)
+    self.evaluate(v.initializer)
+    v2 = resource_variable_ops.ResourceVariable(
+        trainable=True, shape=(), dtype=dtypes.float32, handle=v.handle)
+    self.assertIs(v2.handle, v.handle)
+    self.assertAllEqual(ops.convert_to_tensor(v2), 1.)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFlattenResourceVariable(self):
+    v = resource_variable_ops.ResourceVariable(1.)
+    self.evaluate(v.initializer)
+    result = nest.flatten(v, expand_composites=True)
+    # TODO(b/246438937): Update this to dt_resource tensor once we expand
+    # ResourceVariables with expand_composites=True.
+    self.assertIsInstance(result[0], resource_variable_ops.ResourceVariable)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testUniqueIdPreservedThroughPackAndUnpack(self):
+    v = resource_variable_ops.ResourceVariable(1.)
+    self.evaluate(v.initializer)
+    expected_unique_id = v._unique_id
+    reconstructed_v = nest.pack_sequence_as(
+        v,
+        nest.flatten(v, expand_composites=True),
+        expand_composites=True)
+    self.assertEqual(reconstructed_v._unique_id, expected_unique_id)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testHandleNamePreservedThroughPackAndUnpack(self):
+    v = resource_variable_ops.ResourceVariable(1.)
+    self.evaluate(v.initializer)
+    expected_handle_name = v._handle_name
+    reconstructed_v = nest.pack_sequence_as(
+        v,
+        nest.flatten(v, expand_composites=True),
+        expand_composites=True)
+    self.assertEqual(reconstructed_v._handle_name, expected_handle_name)
 
 if __name__ == "__main__":
   test.main()

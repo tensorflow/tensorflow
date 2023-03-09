@@ -25,7 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -33,9 +34,8 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/multi_platform_manager.h"
-#include "tensorflow/stream_executor/platform.h"
 
 namespace tensorflow {
 namespace {
@@ -292,27 +292,26 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
 
     const string& Name() const override { return name_; }
 
-    se::port::StatusOr<std::unique_ptr<se::DeviceDescription>>
-    DescriptionForDevice(int ordinal) const override {
+    tsl::StatusOr<std::unique_ptr<se::DeviceDescription>> DescriptionForDevice(
+        int ordinal) const override {
       return std::unique_ptr<se::DeviceDescription>(nullptr);
     }
 
-    se::port::StatusOr<se::StreamExecutor*> ExecutorForDevice(
-        int ordinal) override {
+    tsl::StatusOr<se::StreamExecutor*> ExecutorForDevice(int ordinal) override {
       return nullptr;
     }
 
-    se::port::StatusOr<se::StreamExecutor*> ExecutorForDeviceWithPluginConfig(
+    tsl::StatusOr<se::StreamExecutor*> ExecutorForDeviceWithPluginConfig(
         int ordinal, const se::PluginConfig& config) override {
       return nullptr;
     }
 
-    se::port::StatusOr<se::StreamExecutor*> GetExecutor(
+    tsl::StatusOr<se::StreamExecutor*> GetExecutor(
         const se::StreamExecutorConfig& config) override {
       return nullptr;
     }
 
-    se::port::StatusOr<std::unique_ptr<se::StreamExecutor>> GetUncachedExecutor(
+    tsl::StatusOr<std::unique_ptr<se::StreamExecutor>> GetUncachedExecutor(
         const se::StreamExecutorConfig& config) override {
       return std::unique_ptr<se::StreamExecutor>(nullptr);
     }

@@ -31,6 +31,14 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace tensorflow {
 namespace internal {
 
+template <typename T>
+__global__ void ConjugateKernel(int nthreads, const T* __restrict__ src,
+                                T* __restrict__ dst) {
+  GPU_1D_KERNEL_LOOP(idx, nthreads) {
+    dst[idx] = Eigen::numext::conj(ldg(src + idx));
+  }
+}
+
 template <typename T, bool conjugate>
 __global__ void TransposeKernel(int nthreads, const T* __restrict__ src,
                                 const int32* __restrict__ buf,
@@ -62,6 +70,15 @@ void TransposeSimple(const GPUDevice& d, const Tensor& in,
   CHECK_LT(nelem, kint32max) << "Tensor too large to transpose on GPU";
   // Pack strides and permutation into one buffer.
   const int32 ndims = in.dims();
+  GpuLaunchConfig cfg = GetGpuLaunchConfig(nelem, d);
+  const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
+  T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
+  if (conjugate && ndims < 2) {
+    TF_CHECK_OK(GpuLaunchKernel(ConjugateKernel<T>, cfg.block_count,
+                                cfg.thread_per_block, 0, d.stream(),
+                                cfg.virtual_thread_count, p, q));
+    return;
+  }
   gtl::InlinedVector<int32, 24> host_buf(ndims * 3);
   gtl::InlinedVector<int32, 8> in_strides = ComputeStride<int32>(in.shape());
   gtl::InlinedVector<int32, 8> out_strides = ComputeStride<int32>(out->shape());
@@ -78,9 +95,6 @@ void TransposeSimple(const GPUDevice& d, const Tensor& in,
   // therefore we are doing a sync copy effectively.
   d.memcpyHostToDevice(dev_buf, host_buf.data(), num_bytes);
   // Launch kernel to q[...] = p[...].
-  const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
-  T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
-  GpuLaunchConfig cfg = GetGpuLaunchConfig(nelem, d);
   TF_CHECK_OK(GpuLaunchKernel(
       TransposeKernel<T, conjugate>, cfg.block_count, cfg.thread_per_block, 0,
       d.stream(), cfg.virtual_thread_count, p,
@@ -179,8 +193,8 @@ template <typename T, bool conjugate>
 struct Transpose<GPUDevice, T, conjugate> {
   static void run(const GPUDevice& d, const Tensor& in,
                   const gtl::ArraySlice<int32> perm, Tensor* out) {
-    if (in.dims() < 2) return;
-    if (internal::TransposeUsingTile<T, conjugate>::run(d, in, perm, out)) {
+    if (in.dims() > 1 &&
+        internal::TransposeUsingTile<T, conjugate>::run(d, in, perm, out)) {
       return;
     }
 

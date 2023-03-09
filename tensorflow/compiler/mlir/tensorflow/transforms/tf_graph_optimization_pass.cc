@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 #define DEBUG_TYPE "run-tf-graph-optimization"
 
@@ -107,7 +107,7 @@ void GraphOptPass::runOnOperation() {
         << module_or_status.status().error_message();
     return signalPassFailure();
   }
-  auto module_out = std::move(module_or_status).ValueOrDie();
+  auto module_out = std::move(module_or_status).value();
 
   // We cannot replace the module in a ModulePass. So we simply copy the
   // operation list from module_out to module_in.

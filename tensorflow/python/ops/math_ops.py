@@ -70,16 +70,18 @@ import builtins
 import numbers
 import numpy as np
 
+from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -966,6 +968,12 @@ def cast(x, dtype, name=None):
 
   Note casting nan and inf values to integral types has undefined behavior.
 
+  Note this operation can lead to a loss of precision when converting native
+  Python `float` and `complex` variables to `tf.float64` or `tf.complex128`
+  tensors, since the input is first converted to the `float32` data type and
+  then widened. It is recommended to use `tf.convert_to_tensor` instead of
+  `tf.cast` for any non-tensor inputs.
+
   Args:
     x: A `Tensor` or `SparseTensor` or `IndexedSlices` of numeric type. It could
       be `uint8`, `uint16`, `uint32`, `uint64`, `int8`, `int16`, `int32`,
@@ -981,6 +989,7 @@ def cast(x, dtype, name=None):
 
   Raises:
     TypeError: If `x` cannot be cast to the `dtype`.
+
   """
   base_type = dtypes.as_dtype(dtype).base_dtype
   if isinstance(x,
@@ -999,10 +1008,15 @@ def cast(x, dtype, name=None):
       # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
       x = ops.convert_to_tensor(x, name="x")
+      if x.dtype.is_complex and base_type.is_floating:
+        logging.warn(
+            f"You are casting an input of type {x.dtype.name} to an "
+            f"incompatible dtype {base_type.name}.  This will "
+            "discard the imaginary part and may not be what you "
+            "intended."
+        )
       if x.dtype != base_type:
         x = gen_math_ops.cast(x, base_type, name=name)
-    if x.dtype.is_complex and base_type.is_floating:
-      logging.warn("Casting complex to real discards imaginary part.")
     return x
 
 
@@ -1012,9 +1026,10 @@ def cast(x, dtype, name=None):
 def saturate_cast(value, dtype, name=None):
   """Performs a safe saturating cast of `value` to `dtype`.
 
-  This function casts the input to `dtype` without applying any scaling.  If
+  This function casts the input to `dtype` without overflow.  If
   there is a danger that values would over or underflow in the cast, this op
-  applies the appropriate clamping before the cast.
+  applies the appropriate clamping before the cast.  See `tf.cast` for more
+  details.
 
   Args:
     value: A `Tensor`.
@@ -1029,14 +1044,52 @@ def saturate_cast(value, dtype, name=None):
   with ops.name_scope(name, "saturate_cast", [value]) as name:
     value = ops.convert_to_tensor(value, name="value")
     dtype = dtypes.as_dtype(dtype).base_dtype
-    if value.dtype.min < dtype.min:
-      value = gen_math_ops.maximum(
-          value,
-          ops.convert_to_tensor(dtype.min, dtype=value.dtype, name="min"))
-    if value.dtype.max > dtype.max:
-      value = gen_math_ops.minimum(
-          value,
-          ops.convert_to_tensor(dtype.max, dtype=value.dtype, name="max"))
+
+    in_dtype = value.dtype
+    if in_dtype.is_complex:
+      if dtype.is_complex:
+        # Clamp real and imag components separately, if required.
+        real_in_dtype = in_dtype.real_dtype
+        real_out_dtype = dtype.real_dtype
+        if real_in_dtype.min < real_out_dtype.min or real_in_dtype.max > real_out_dtype.max:
+          value = gen_math_ops._clip_by_value(
+              value,
+              ops.convert_to_tensor(
+                  builtins.complex(real_out_dtype.min, real_out_dtype.min),
+                  dtype=in_dtype),
+              ops.convert_to_tensor(
+                  builtins.complex(real_out_dtype.max, real_out_dtype.max),
+                  dtype=in_dtype),
+              name="clamp")
+        return cast(value, dtype, name=name)
+      else:
+        # Extract real component and fall through to clamp+cast.
+        value = real(value)
+        logging.warn("Casting complex to real discards imaginary part.")
+        in_dtype = in_dtype.real_dtype
+
+    # in_dtype is real, but out_dtype could be complex.
+    out_real_dtype = dtype.real_dtype
+    if in_dtype.min < out_real_dtype.min or in_dtype.max > out_real_dtype.max:
+
+      # Wrap changes to maintain TensorFlow's forward-compatibility window.
+      if not dtype.is_complex and not tf_compat.forward_compatible(2023, 1, 16):
+        # Old behavior using max/min.
+        if in_dtype.min < dtype.min:
+          value = gen_math_ops.maximum(
+              value,
+              ops.convert_to_tensor(dtype.min, dtype=value.dtype, name="min"))
+        if in_dtype.max > dtype.max:
+          value = gen_math_ops.minimum(
+              value,
+              ops.convert_to_tensor(dtype.max, dtype=value.dtype, name="max"))
+      else:
+        # New behavior using clip.
+        value = gen_math_ops._clip_by_value(
+            value,
+            ops.convert_to_tensor(out_real_dtype.min, dtype=in_dtype),
+            ops.convert_to_tensor(out_real_dtype.max, dtype=in_dtype),
+            name="clamp")
     return cast(value, dtype, name=name)
 
 
@@ -2130,8 +2183,8 @@ def _range_tensor_conversion_function(value, dtype=None, name=None,
   return range(value.start, value.stop, value.step, dtype=dtype, name=name)
 
 
-ops.register_tensor_conversion_function(builtins.range,
-                                        _range_tensor_conversion_function)
+tensor_conversion_registry.register_tensor_conversion_function(
+    builtins.range, _range_tensor_conversion_function)
 
 
 # Reduction operations
@@ -3588,7 +3641,7 @@ def matmul(a,
       for some support for `tf.sparse.SparseTensor` multiplication.
     b_is_sparse: If `True`, `b` is treated as a sparse matrix. Notice, this
       **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
-      that assume most values in `a` are zero.
+      that assume most values in `b` are zero.
       See `tf.sparse.sparse_dense_matmul`
       for some support for `tf.sparse.SparseTensor` multiplication.
     output_type: The output datatype if needed. Defaults to None in which case
@@ -3830,40 +3883,6 @@ tf_export(v1=["sparse_matmul"])(sparse_matmul)
 @dispatch.add_dispatch_support
 
 
-@ops.RegisterStatistics("MatMul", "flops")
-def _calc_mat_mul_flops(graph, node):
-  """Calculates the compute resources needed for MatMul."""
-  transpose_a = node.attr["transpose_a"].b
-  a_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
-  a_shape.assert_is_fully_defined()
-  if transpose_a:
-    k = int(a_shape[0])
-  else:
-    k = int(a_shape[1])
-  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
-  output_shape.assert_is_fully_defined()
-  output_count = np.prod(output_shape.as_list())
-  return ops.OpStats("flops", (k * output_count * 2))
-
-
-@ops.RegisterStatistics("BatchMatMul", "flops")
-@ops.RegisterStatistics("BatchMatMulV2", "flops")
-@ops.RegisterStatistics("BatchMatMulV3", "flops")
-def _calc_batch_mat_mul_flops(graph, node):
-  """Calculates the compute resources needed for BatchMatMul."""
-  transpose_a = node.attr["transpose_a"].b
-  a_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
-  a_shape.assert_is_fully_defined()
-  if transpose_a:
-    k = int(a_shape[-2])
-  else:
-    k = int(a_shape[-1])
-  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
-  output_shape.assert_is_fully_defined()
-  output_count = np.prod(output_shape.as_list())
-  return ops.OpStats("flops", (k * output_count * 2))
-
-
 def _as_indexed_slices(x, optimize=True):
   """Convert 'x' to IndexedSlices.
 
@@ -3990,8 +4009,8 @@ def add(x, y, name=None):
 
   Args:
     x: A `tf.Tensor`. Must be one of the following types: bfloat16, half,
-      float32, float64, uint8, int8, int16, int32, int64, complex64, complex128,
-      string.
+      float16, float32, float64, uint8, uint16, uint32, uint64, int8, int16,
+      int32, int64, complex64, complex128, string.
     y: A `tf.Tensor`. Must have the same type as x.
     name: A name for the operation (optional)
   """
@@ -4007,12 +4026,10 @@ def add(x, y, name=None):
 @tf_export("math.add_n", "add_n")
 @dispatch.add_dispatch_support(iterable_parameters=["inputs"])
 def add_n(inputs, name=None):
-  """Adds all input tensors element-wise.
+  """Returns the element-wise sum of a list of tensors.
 
-  `tf.math.add_n` performs the same operation as `tf.math.accumulate_n`.
-
-  This op does not [broadcast](
-  https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html)
+  All inputs in the list must have the same shape. This op does not
+  [broadcast](https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html)
   its inputs. If you need broadcasting, use `tf.math.add` (or the `+` operator)
   instead.
 
@@ -4020,10 +4037,17 @@ def add_n(inputs, name=None):
 
   >>> a = tf.constant([[3, 5], [4, 8]])
   >>> b = tf.constant([[1, 6], [2, 9]])
-  >>> tf.math.add_n([a, b, a])
-  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+  >>> tf.math.add_n([a, b, a]).numpy()
   array([[ 7, 16],
-         [10, 25]], dtype=int32)>
+         [10, 25]], dtype=int32)
+
+  See Also:
+
+  * `tf.reduce_sum(inputs, axis=0)` - This performs the same mathematical
+    operation, but `tf.add_n` may be more efficient because it sums the
+    tensors directly. `reduce_sum` on the other hand calls
+    `tf.convert_to_tensor` on the list of tensors, unnecessarily stacking them
+    into a single tensor before summing.
 
   Args:
     inputs: A list of `tf.Tensor` or `tf.IndexedSlices` objects, each with the
@@ -4041,7 +4065,7 @@ def add_n(inputs, name=None):
   if not inputs or not isinstance(inputs, collections_abc.Iterable):
     raise ValueError("Inputs must be an iterable of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape.")
-  inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
+  inputs = indexed_slices.convert_n_to_tensor_or_indexed_slices(inputs)
   if not all(
       isinstance(x, (ops.Tensor, indexed_slices.IndexedSlices))
       for x in inputs):
@@ -4061,27 +4085,39 @@ def add_n(inputs, name=None):
 
 @tf_export("math.accumulate_n", v1=["math.accumulate_n", "accumulate_n"])
 @dispatch.add_dispatch_support
-@deprecation.deprecated_endpoints("accumulate_n")
+@deprecation.deprecated(None, "Use `tf.math.add_n` Instead")
 def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   """Returns the element-wise sum of a list of tensors.
 
   Optionally, pass `shape` and `tensor_dtype` for shape and type checking,
   otherwise, these are inferred.
 
-  `accumulate_n` performs the same operation as `tf.math.add_n`.
-
   For example:
 
-  ```python
-  a = tf.constant([[1, 2], [3, 4]])
-  b = tf.constant([[5, 0], [0, 6]])
-  tf.math.accumulate_n([a, b, a])  # [[7, 4], [6, 14]]
+  >>> a = tf.constant([[1, 2], [3, 4]])
+  >>> b = tf.constant([[5, 0], [0, 6]])
+  >>> tf.math.accumulate_n([a, b, a]).numpy()
+  array([[ 7, 4],
+         [ 6, 14]], dtype=int32)
 
-  # Explicitly pass shape and type
-  tf.math.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)
-                                                                 # [[7,  4],
-                                                                 #  [6, 14]]
-  ```
+  >>> # Explicitly pass shape and type
+  >>> tf.math.accumulate_n(
+  ...     [a, b, a], shape=[2, 2], tensor_dtype=tf.int32).numpy()
+  array([[ 7,  4],
+         [ 6, 14]], dtype=int32)
+
+  Note: The input must be a list or tuple. This function does not handle
+  `IndexedSlices`
+
+  See Also:
+
+  * `tf.reduce_sum(inputs, axis=0)` - This performe the same mathematical
+    operation, but `tf.add_n` may be more efficient because it sums the
+    tensors directly. `reduce_sum` on the other hand calls
+    `tf.convert_to_tensor` on the list of tensors, unncessairly stacking them
+    into a single tensor before summing.
+  * `tf.add_n` - This is another python wrapper for the same Op. It has
+    nearly identical functionality.
 
   Args:
     inputs: A list of `Tensor` objects, each with same shape and type.
@@ -4106,7 +4142,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
 
   if not inputs or not isinstance(inputs, (list, tuple)):
     raise _input_error()
-  inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
+  inputs = indexed_slices.convert_n_to_tensor_or_indexed_slices(inputs)
   if not all(isinstance(x, ops.Tensor) for x in inputs):
     raise _input_error()
   if not all(x.dtype == inputs[0].dtype for x in inputs):
@@ -5073,10 +5109,10 @@ def tensordot(a, b, axes, name=None):
       prod_axes_dims = reduce_prod(axes_dims)
       if flipped:
         perm = array_ops.concat([axes, free], 0)
-        new_shape = array_ops.stack([prod_axes_dims, prod_free_dims])
+        new_shape = array_ops_stack.stack([prod_axes_dims, prod_free_dims])
       else:
         perm = array_ops.concat([free, axes], 0)
-        new_shape = array_ops.stack([prod_free_dims, prod_axes_dims])
+        new_shape = array_ops_stack.stack([prod_free_dims, prod_axes_dims])
       reshaped_a = array_ops.reshape(array_ops.transpose(a, perm), new_shape)
       return reshaped_a, free_dims, free_dims_static
 
@@ -5246,6 +5282,40 @@ def reciprocal_no_nan(x, name=None):
     return gen_math_ops.div_no_nan(one, x, name=scope)
 
 
+@tf_export("math.xdivy")
+@dispatch.register_binary_elementwise_api
+@dispatch.add_dispatch_support
+def xdivy(x, y, name=None):
+  """Computes `x / y`.
+
+  Given `x` and `y`, computes `x / y`. This function safely returns
+  zero when `x = 0`, no matter what the value of `y` is.
+
+  Example:
+
+  >>> tf.math.xdivy(1., 2.)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.5>
+  >>> tf.math.xdivy(0., 1.)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
+  >>> tf.math.xdivy(0., 0.)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
+  >>> tf.math.xdivy(1., 0.)
+  <tf.Tensor: shape=(), dtype=float32, numpy=inf>
+
+  Args:
+    x: A `tf.Tensor` of type `half`, `float32`, `float64`, `complex64`,
+      `complex128`
+    y: A `tf.Tensor` of type `half`, `float32`, `float64`, `complex64`,
+      `complex128`
+    name: A name for the operation (optional).
+
+  Returns:
+    `x / y`.
+  """
+  with ops.name_scope(name, "xdivy", [x]):
+    return gen_math_ops.xdivy(x, y)
+
+
 @tf_export("math.xlog1py")
 @dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
@@ -5267,10 +5337,10 @@ def xlog1py(x, y, name=None):
   <tf.Tensor: shape=(), dtype=float32, numpy=0.>
 
   Args:
-    x: A `tf.Tensor` of type `bfloat16`, `half`, `float32`, `float64`,
-      `complex64`, `complex128`
-    y: A `tf.Tensor` of type `bfloat16`, `half`, `float32`, `float64`,
-      `complex64`, `complex128`
+    x: A `tf.Tensor` of type `half`, `float32`, `float64`, `complex64`,
+      `complex128`
+    y: A `tf.Tensor` of type `half`, `float32`, `float64`, `complex64`,
+      `complex128`
     name: A name for the operation (optional).
 
   Returns:
@@ -5541,8 +5611,7 @@ def acos(x, name=None):
 
   Args:
     x: A `Tensor`. Must be one of the following types: `bfloat16`, `half`,
-      `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`,
-      `complex64`, `complex128`.
+      `float32`, `float64`, `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -5600,7 +5669,6 @@ dispatch.register_binary_elementwise_api(gen_math_ops.real_div)
 dispatch.register_binary_elementwise_api(gen_math_ops.squared_difference)
 dispatch.register_binary_elementwise_api(gen_math_ops.truncate_div)
 dispatch.register_binary_elementwise_api(gen_math_ops.truncate_mod)
-dispatch.register_binary_elementwise_api(gen_math_ops.xdivy)
 dispatch.register_binary_elementwise_api(gen_math_ops.xlogy)
 dispatch.register_binary_elementwise_api(gen_math_ops.zeta)
 

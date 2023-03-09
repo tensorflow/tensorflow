@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
@@ -674,6 +675,8 @@ void AddSegmentForNode(const grappler::GraphProperties* graph_properties,
                        SimpleNode* node,
                        const DeviceNameUtils::ParsedName& device_name,
                        bool use_implicit_batch) {
+  tensorflow::profiler::TraceMe activity(
+      "AddSegmentForNode", tensorflow::profiler::TraceMeLevel::kInfo);
   ClusterProperty property(
       GetClusterBatchSizeForNode(graph_properties,
                                  node == nullptr ? nullptr : node->tf_node(),
@@ -688,15 +691,20 @@ Status ExportNonConversionReportToCSV(
     string filename,
     std::map<string, std::map<string, int>>& nonconverted_ops_map,
     string sep = "|") {
-  std::fstream csv_file(filename, std::fstream::out | std::fstream::trunc);
+  tensorflow::profiler::TraceMe activity(
+      "ExportNonConversionReportToCSV",
+      tensorflow::profiler::TraceMeLevel::kInfo);
+  std::unique_ptr<WritableFile> csv_file;
+  auto open_status = Env::Default()->NewWritableFile(filename, &csv_file);
 
-  if (!csv_file || !csv_file.good()) {
+  if (!open_status.ok()) {
     return errors::Internal("Failed to open output file: `", filename, "`");
   }
 
   LOG(WARNING) << "TF-TRT Non-Conversion Report saved at: `" << filename << "`";
 
-  csv_file << "OP Name" << sep << "Reason" << sep << "Count" << std::endl;
+  std::ostringstream sstream;
+  sstream << "OP Name" << sep << "Reason" << sep << "Count" << std::endl;
 
   for (auto& op_details : nonconverted_ops_map) {
     auto op_name = op_details.first;
@@ -705,18 +713,24 @@ Status ExportNonConversionReportToCSV(
     for (auto& reject_data : op_data) {
       auto reason = reject_data.first;
       auto count = reject_data.second;
-      csv_file << op_name << sep << reason << sep << count << std::endl;
+      sstream << op_name << sep << reason << sep << count << std::endl;
     }
   }
 
-  csv_file.close();
+  auto append_status = csv_file->Append(sstream.str());
 
-  if (csv_file.bad() || csv_file.fail()) {
+  if (!append_status.ok()) {
+    return errors::Internal("Error writing to output file `", filename, "`.");
+  }
+
+  auto close_status = csv_file->Close();
+
+  if (!close_status.ok()) {
     return errors::Internal("Error closing the file `", filename,
                             "`. The file might be corrupted.");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 string GenerateNonConversionReport(
@@ -732,6 +746,8 @@ string GenerateNonConversionReport(
   //                        Usage: TF_TRT_SHOW_DETAILED_REPORT=/path/to/file.csv
   // - Else:                Print normal (undetailed) non-conversion report on
   //                        stdout.
+  tensorflow::profiler::TraceMe activity(
+      "GenerateNonConversionReport", tensorflow::profiler::TraceMeLevel::kInfo);
 
   string detailed_report_var;
   TF_CHECK_OK(ReadStringFromEnvVar("TF_TRT_SHOW_DETAILED_REPORT",
@@ -843,6 +859,8 @@ Status SegmentGraph(const Graph* tf_graph,
                     const std::function<bool(const Edge*)>& input_candidate_fn,
                     const std::function<bool(const Edge*)>& output_candidate_fn,
                     const SegmentOptions& options, SegmentVector* segments) {
+  tensorflow::profiler::TraceMe activity(
+      "SegmentGraph", tensorflow::profiler::TraceMeLevel::kInfo);
   if (!options.use_implicit_batch && !options.allow_dynamic_non_batch_dim) {
     return errors::Internal(
         "Explicit batch mode should allow dynamic non-batch dimensions");
@@ -1285,7 +1303,7 @@ Status SegmentGraph(const Graph* tf_graph,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace segment

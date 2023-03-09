@@ -57,11 +57,11 @@ class ReverseOpsTest(xla_test.XLATestCase):
             dtype=dtypes.int32)
         rval = array_ops.reverse(p, axis).eval({p: pval})
 
-        slices = [
+        slices = tuple(
             slice(-1, None, -1)
             if d in revdims or d - len(shape) in revdims else slice(None)
             for d in range(len(shape))
-        ]
+        )
       self.assertEqual(pval[slices].flatten().tolist(), rval.flatten().tolist())
 
 

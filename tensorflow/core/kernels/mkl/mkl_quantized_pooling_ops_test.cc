@@ -76,14 +76,14 @@ TEST_F(QuantizedPoolingTest, SmallAveragePooling) {
 
   AddInputFromArray<quint8>(input_quantized.shape(),
                             input_quantized.flat<quint8>());
-  AddInputFromArray<float>(TensorShape({1}), {input_min});
-  AddInputFromArray<float>(TensorShape({1}), {input_max});
+  AddInputFromArray<float>(TensorShape({}), {input_min});
+  AddInputFromArray<float>(TensorShape({}), {input_max});
 
   TF_ASSERT_OK(RunOpKernel());
 
   const Tensor& output = *GetOutput(0);
-  const float output_min = GetOutput(1)->flat<float>()(0);
-  const float output_max = GetOutput(2)->flat<float>()(0);
+  const float output_min = GetOutput(1)->scalar<float>()();
+  const float output_max = GetOutput(2)->scalar<float>()();
   Tensor output_float =
       QuantizedTensorToFloat<quint8>(output, output_min, output_max);
 
@@ -132,14 +132,14 @@ TEST_F(QuantizedPoolingTest, SmallMaxPooling) {
   test::FillValues<float>(&expected_float, {11, 12, 15, 16, 27, 28, 31, 32});
   AddInputFromArray<quint8>(input_quantized.shape(),
                             input_quantized.flat<quint8>());
-  AddInputFromArray<float>(TensorShape({1}), {input_min});
-  AddInputFromArray<float>(TensorShape({1}), {input_max});
+  AddInputFromArray<float>(TensorShape({}), {input_min});
+  AddInputFromArray<float>(TensorShape({}), {input_max});
 
   TF_ASSERT_OK(RunOpKernel());
 
   const Tensor& output = *GetOutput(0);
-  const float output_min = GetOutput(1)->flat<float>()(0);
-  const float output_max = GetOutput(2)->flat<float>()(0);
+  const float output_min = GetOutput(1)->scalar<float>()();
+  const float output_max = GetOutput(2)->scalar<float>()();
   Tensor output_float =
       QuantizedTensorToFloat<quint8>(output, output_min, output_max);
 

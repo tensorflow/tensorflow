@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/tf2xla/kernels/gpu_tf_kernel_custom_call.h"
+#include "tensorflow/compiler/tf2xla/kernels/light_outside_compilation.h"
 #endif
 
 namespace tensorflow {
@@ -62,7 +62,7 @@ class ResizeBilinearGradOp : public XlaOpKernel {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Fallback light outside compilation kernel for the option combination we do
   // not support.
-  std::optional<CallTfKernelOp> fallback_tf_kernel_;
+  std::optional<LightOutsideCompilationOp> fallback_tf_kernel_;
 #endif
 };
 

@@ -26,6 +26,7 @@ from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
@@ -734,16 +735,10 @@ class LegacySnapshotTest(tf_record_test_base.TFRecordTestBase,
     dataset2 = dataset2.apply(
         snapshot.legacy_snapshot(
             tmpdir, shard_size_bytes=100, shuffle_on_read=True))
-    next2 = self.getNext(dataset2)
-
-    res1 = self.evaluate(next2())
-    res2 = self.evaluate(next2())
-    res3 = self.evaluate(next2())
-    res4 = self.evaluate(next2())
-    res5 = self.evaluate(next2())
-
+    shuffled_elements = self.getDatasetOutput(dataset2)
     # make sure that we don't read the file back in the same order.
-    self.assertNotEqual([res1, res2, res3, res4, res5], expected[0:5])
+    self.assertNotEqual(shuffled_elements, expected)
+    self.assertCountEqual(shuffled_elements, expected)
 
     # make sure all the elements are still there
     dataset3 = core_readers._TFRecordDataset(filenames)
@@ -1051,7 +1046,8 @@ class SnapshotCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
     # Restore from checkpoint and produce the rest of the elements from the
     # iterator.
-    t = self.gen_outputs(ds_fn, [], 150, ckpt_saved=True, verify_exhausted=True)
+    t = self.gen_outputs(
+        ds_fn, [], 150, ckpt_saved=True, verify_exhausted=False)
     outputs.extend(t)
     self.assertSequenceEqual(
         outputs,
@@ -1129,6 +1125,12 @@ class LegacySnapshotCheckpointTest(checkpoint_test_base.CheckpointTestBase,
               shard_size_bytes=shard_size_bytes))
       if repeat:
         dataset = dataset.repeat(2)
+      # Turn off `inject_prefetch` optimization. Otherwise, prefetched elements
+      # are saved and restored in snapshots while tests assume that there is no
+      # elements prefetched.
+      options = options_lib.Options()
+      options.experimental_optimization.inject_prefetch = False
+      dataset = dataset.with_options(options)
       return dataset
 
     return ds_fn

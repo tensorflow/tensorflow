@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -34,7 +35,11 @@ namespace xla {
 // structure (number of elements and nesting).
 class Shape {
  public:
-  Shape() = default;
+  Shape();
+  ~Shape();
+  Shape(const Shape&);
+  Shape(Shape&&);
+  Shape& operator=(const Shape&);
 
   // Construct a shape from a ShapeProto.
   explicit Shape(const ShapeProto& shape_proto);
@@ -50,6 +55,10 @@ class Shape {
 
   // Returns a ShapeProto representation of the Shape.
   ShapeProto ToProto() const;
+
+  // Prints a human-readable string that represents the given shape, with or
+  // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
+  void Print(Printer* printer, bool print_layout = false) const;
 
   // Returns a human-readable string that represents the given shape, with or
   // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
@@ -115,16 +124,17 @@ class Shape {
   // Methods for accessing the dimensions array.
   int dimensions_size() const { return dimensions_.size(); }
   int64_t dimensions(int index) const { return dimensions_.at(index); }
+
   int64_t dimensions_minor(int index) const {
     CHECK(has_layout());
-    return dimensions_.at(layout_.minor_to_major(index));
+    return dimensions_.at(layout_->minor_to_major(index));
   }
   void set_dimensions(int index, int64_t value) {
     dimensions_.at(index) = value;
   }
   void set_dimensions_minor(int index, int64_t value) {
     CHECK(has_layout());
-    dimensions_.at(layout_.minor_to_major(index)) = value;
+    dimensions_.at(layout_->minor_to_major(index)) = value;
   }
   void add_dimensions(int64_t value) {
     dimensions_.push_back(value);
@@ -142,25 +152,34 @@ class Shape {
   // Methods for accessing the tuple subshapes. This field only non-empty for
   // tuple shapes.
   int tuple_shapes_size() const { return tuple_shapes_.size(); }
-  const Shape& tuple_shapes(int index) const { return tuple_shapes_.at(index); }
+  const Shape& tuple_shapes(int index) const;
   Shape* mutable_tuple_shapes(int index) { return &tuple_shapes_.at(index); }
-  Shape* add_tuple_shapes() {
-    tuple_shapes_.push_back(Shape());
-    return &tuple_shapes_.back();
-  }
+  Shape* add_tuple_shapes();
   void clear_tuple_shapes() { tuple_shapes_.clear(); }
   const std::vector<Shape>& tuple_shapes() const { return tuple_shapes_; }
   std::vector<Shape>* mutable_tuple_shapes() { return &tuple_shapes_; }
 
   // Methods for accessing the layout field.
-  bool has_layout() const { return layout_.format() != INVALID_FORMAT; }
-  const Layout& layout() const { return layout_; }
-  Layout* mutable_layout() { return &layout_; }
-  void clear_layout() { layout_.Clear(); }
+  bool has_layout() const { return layout_ != std::nullopt; }
+  const Layout& layout() const {
+    CHECK(has_layout()) << ShortDebugString();
+    return *layout_;
+  }
+  Layout* mutable_layout() {
+    CHECK(IsArray()) << ShortDebugString();
+    if (layout_ == std::nullopt) {
+      layout_.emplace();
+    }
+    return &(*layout_);
+  }
+  void clear_layout() { layout_ = std::nullopt; }
 
   // Recursively clear dynamic dimension of a shape.
   void clear_dynamic_dimensions() {
     if (!IsTuple()) {
+      if (is_dynamic()) {
+        mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(0);
+      }
       for (int64_t i = 0; i < dynamic_dimensions_.size(); ++i) {
         dynamic_dimensions_[i] = false;
       }
@@ -296,20 +315,26 @@ class Shape {
   std::vector<Shape> tuple_shapes_;
 
   // The layout of the shape. Only relevant for arrays.
-  Layout layout_;
+  std::optional<Layout> layout_;
 };
 
 // Shape of the parameters and output of an XLA computation. This is analogous
 // to a traditional function signature.
 class ProgramShape {
  public:
-  ProgramShape() = default;
+  ProgramShape();
+  ~ProgramShape();
+  ProgramShape(const ProgramShape&);
+  ProgramShape(ProgramShape&&);
+  ProgramShape& operator=(const ProgramShape&);
 
   // Creates a ProgramShape from a ProgramShapeProto protobuf.
   explicit ProgramShape(const ProgramShapeProto& program_shape_proto);
 
   // Returns a proto representation of the object.
   ProgramShapeProto ToProto() const;
+
+  void Print(Printer* printer) const;
 
   std::string ToString() const;
 

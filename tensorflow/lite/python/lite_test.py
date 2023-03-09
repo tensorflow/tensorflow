@@ -21,8 +21,6 @@ import tempfile
 
 from absl.testing import parameterized
 import numpy as np
-import six
-from six.moves import range
 from tensorflow import keras
 
 from tensorflow.lite.python import conversion_metadata_schema_py_generated as metadata_fb
@@ -1591,7 +1589,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
     # Check the add node in the inlined function is included.
     func = sess.graph.as_graph_def().library.function[0].signature.name
-    self.assertIn(('add@' + six.ensure_str(func)), converter._debug_info.traces)
+    self.assertIn(('add@' + func), converter._debug_info.traces)
 
   def testOutputOnlyModel(self):
     with ops.Graph().as_default():

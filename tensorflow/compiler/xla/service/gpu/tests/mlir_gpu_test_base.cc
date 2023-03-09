@@ -17,24 +17,21 @@ limitations under the License.
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
-#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 
 namespace xla {
 namespace gpu {
 
 MlirGpuTestBase::MlirGpuTestBase() {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName())
-          .value();
+      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()).value();
   BackendOptions options;
   options.set_platform(platform);
   backend_ = xla::Backend::CreateBackend(options).value();
@@ -66,7 +63,7 @@ StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirModule(
       /*mlir_context=*/nullptr, llvm_module.get());
 
   HloModuleConfig module_config;
-  module_config.set_debug_options(GetDebugOptionsFromFlags());
+  module_config.set_debug_options(debug_options_);
   return CompileLmhloToExecutable(
       static_cast<GpuCompiler*>(backend_->compiler()), module, "TestModule",
       module_config, Compiler::CompileOptions(), "main", stream_exec,
@@ -140,10 +137,9 @@ MlirGpuTestBase::RunMlirModuleWithHostBuffers(
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> MlirGpuTestBase::ParseMlirModule(
     absl::string_view module_text, mlir::MLIRContext& context) {
-  context
-      .loadDialect<mlir::arith::ArithmeticDialect, mlir::lmhlo::LmhloDialect,
-                   mlir::mhlo::MhloDialect, mlir::func::FuncDialect,
-                   mlir::gpu::GPUDialect, mlir::lmhlo_gpu::LmhloGpuDialect>();
+  mlir::DialectRegistry registry;
+  xla::gpu::IrEmitterUnnested::GetDependentDialects(registry);
+  context.appendDialectRegistry(registry);
   llvm::SourceMgr source_mgr;
   std::string diagnostic_str;
   llvm::raw_string_ostream os(diagnostic_str);

@@ -21,6 +21,7 @@ from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework import tensor_util as _tensor_util
 from tensorflow.python.ops import array_ops as _array_ops
+from tensorflow.python.ops import array_ops_stack as _array_ops_stack
 from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import math_ops as _math_ops
@@ -48,9 +49,10 @@ def _infer_fft_length_for_irfft(input_tensor, fft_rank):
 
   # If any dim is unknown, fall back to tensor-based math.
   if not fft_shape.is_fully_defined():
-    fft_length = _array_ops.unstack(_array_ops.shape(input_tensor)[-fft_rank:])
+    fft_length = _array_ops_stack.unstack(
+        _array_ops.shape(input_tensor)[-fft_rank:])
     fft_length[-1] = _math_ops.maximum(0, 2 * (fft_length[-1] - 1))
-    return _array_ops.stack(fft_length)
+    return _array_ops_stack.stack(fft_length)
 
   # Otherwise, return a constant.
   fft_length = fft_shape.as_list()
@@ -102,8 +104,8 @@ def _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length, is_reverse=False):
                                     fft_length[-1:] // 2 + 1], 0)
   fft_paddings = _math_ops.maximum(0, fft_length - input_fft_shape)
   paddings = _array_ops.concat([outer_paddings, fft_paddings], 0)
-  paddings = _array_ops.stack([_array_ops.zeros_like(paddings), paddings],
-                              axis=1)
+  paddings = _array_ops_stack.stack(
+      [_array_ops.zeros_like(paddings), paddings], axis=1)
   return _array_ops.pad(input_tensor, paddings)
 
 
@@ -167,7 +169,9 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
       if fft_length_static is not None:
         fft_length = fft_length_static
       return ifft_fn(input_tensor, fft_length, Treal=real_dtype, name=name)
-  _irfft.__doc__ = re.sub("    Treal.*?\n", "", ifft_fn.__doc__)
+
+  _irfft.__doc__ = re.sub("`input`", "`input_tensor`",
+                          re.sub("    Treal.*?\n", "", ifft_fn.__doc__))
   return _irfft
 
 

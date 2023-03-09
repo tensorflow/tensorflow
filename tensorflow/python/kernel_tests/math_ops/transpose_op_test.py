@@ -154,7 +154,10 @@ class TransposeTest(test.TestCase):
         4, 1, 2, 3, 0
     ]] * 6 + [[1, 2, 3, 4, 0]] * 6
 
-    datatypes = [np.int8, np.float16, np.float32, np.float64, np.complex128]
+    datatypes = [
+        np.int8, np.float16, np.float32, np.float64, np.complex128,
+        dtypes.bfloat16.as_numpy_dtype
+    ]
     for datatype in datatypes:
       for input_shape, perm in zip(large_shapes, perms):
         with self.subTest(
@@ -359,6 +362,16 @@ class TransposeTest(test.TestCase):
     self._compare(np.arange(0, 210).reshape([2, 3, 5, 7]).astype(np.float16))
     self._compare(
         np.arange(0, 16).reshape([1, 2, 1, 2, 1, 2, 1, 2]).astype(np.float16))
+
+  def testBfloat16(self):
+    self._compare(
+        np.arange(0, 21).reshape([3, 7]).astype(dtypes.bfloat16.as_numpy_dtype))
+    self._compare(
+        np.arange(0, 210).reshape([2, 3, 5,
+                                   7]).astype(dtypes.bfloat16.as_numpy_dtype))
+    self._compare(
+        np.arange(0, 16).reshape([1, 2, 1, 2, 1, 2, 1,
+                                  2]).astype(dtypes.bfloat16.as_numpy_dtype))
 
   def testFloat(self):
     self._compare_cpu_gpu(np.arange(0, 21).reshape([3, 7]).astype(np.float32))

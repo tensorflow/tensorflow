@@ -31,7 +31,7 @@ _DEPRECATION_INSTRUCTION = (
 
 
 @tf_export(v1=["train.queue_runner.QueueRunner", "train.QueueRunner"])
-class QueueRunner(object):
+class QueueRunner:
   """Holds a list of enqueue operations for a queue, each to be run in a thread.
 
   Queues are a convenient TensorFlow mechanism to compute tensors

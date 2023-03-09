@@ -22,7 +22,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
-from tensorflow.python.eager import function
+from tensorflow.python.eager.polymorphic_function import tracing_compiler
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -185,10 +185,10 @@ def _jvp_helper_wrapper(op_name, attr_tuple, inputs, outputs, tangents,
 # eagerly (infinite recursion), and even if it did it would use extra memory and
 # run unnecessary computation. The function does not create variables, so the
 # two symbols are otherwise equivalent.
-_jvp_relaxed_shapes = function.defun(
-    _jvp_helper_wrapper, reduce_retracing=True)
-_jvp_exact_shapes = function.defun(
-    _jvp_helper_wrapper, reduce_retracing=False)
+_jvp_relaxed_shapes = tracing_compiler.TracingCompiler(
+    _jvp_helper_wrapper, name="_jvp_relaxed_shapes", reduce_retracing=True)
+_jvp_exact_shapes = tracing_compiler.TracingCompiler(
+    _jvp_helper_wrapper, name="_jvp_exact_shapes", reduce_retracing=False)
 
 # The maximum number of exact-shape traces to perform for a single op before
 # switching to shape relaxation.

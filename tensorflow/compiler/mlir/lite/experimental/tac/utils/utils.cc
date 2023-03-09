@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -43,6 +43,7 @@ namespace tac {
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportFlatbufferOrMlir(
     const std::string& input_filename, bool input_mlir,
+    bool experimental_prune_unreachable_nodes_unconditionally,
     llvm::SourceMgr* source_mgr, mlir::MLIRContext* context) {
   std::string error;
   std::unique_ptr<llvm::MemoryBuffer> buffer =
@@ -54,8 +55,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportFlatbufferOrMlir(
 
   if (input_mlir) {
     mlir::DialectRegistry registry;
-    registry.insert<mlir::TFL::TensorFlowLiteDialect,
-                    mlir::arith::ArithmeticDialect, mlir::func::FuncDialect>();
+    registry.insert<mlir::TFL::TensorFlowLiteDialect, mlir::arith::ArithDialect,
+                    mlir::func::FuncDialect>();
     context->appendDialectRegistry(registry);
     source_mgr->AddNewSourceBuffer(std::move(buffer), llvm::SMLoc());
     return mlir::OwningOpRef<mlir::ModuleOp>(
@@ -70,11 +71,12 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportFlatbufferOrMlir(
   return tflite::FlatBufferToMlir(
       absl::string_view(buffer->getBufferStart(), buffer->getBufferSize()),
       context, loc, /*use_external_constant=*/false, inputs, outputs,
-      /*experimental_prune_unreachable_nodes_unconditionally=*/true);
+      experimental_prune_unreachable_nodes_unconditionally);
 }
 
 absl::Status ExportFlatbufferOrMlir(const std::string& output_filename,
-                                    bool output_mlir, mlir::ModuleOp module) {
+                                    bool output_mlir, mlir::ModuleOp module,
+                                    bool enable_select_tf_ops) {
   std::string error_msg;
   auto output = mlir::openOutputFile(output_filename, &error_msg);
   if (output == nullptr) {
@@ -90,8 +92,13 @@ absl::Status ExportFlatbufferOrMlir(const std::string& output_filename,
   } else {
     tflite::FlatbufferExportOptions options;
     options.toco_flags.set_force_select_tf_ops(false);
-    options.toco_flags.set_enable_select_tf_ops(false);
     options.toco_flags.set_allow_custom_ops(true);
+    if (enable_select_tf_ops) {
+      options.toco_flags.set_enable_select_tf_ops(true);
+      options.toco_flags.set_allow_all_select_tf_ops(true);
+    } else {
+      options.toco_flags.set_enable_select_tf_ops(false);
+    }
     if (!tflite::MlirToFlatBufferTranslateFunction(module, options, &result)) {
       return absl::UnknownError("Failed to export tflite file.");
     }

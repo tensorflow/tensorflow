@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/errors.h"
 #define EIGEN_USE_THREADS
 
 // See docs in ../ops/fft_ops.cc.
@@ -32,8 +31,12 @@ limitations under the License.
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if defined(GOOGLE_CUDA) && GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"  // CUDA_VERSION
+#endif
 
 namespace tensorflow {
 
@@ -224,7 +227,7 @@ class FFTCPU : public FFTBase {
     TensorShape temp_shape{input_dims[0]};
     for (int i = 1; i <= FFTRank; ++i) {
       input_slice_sizes[i] = fft_shape[i - 1];
-      temp_shape.AddDim(fft_shape[i - 1]);
+      OP_REQUIRES_OK(ctx, temp_shape.AddDimWithStatus(fft_shape[i - 1]));
     }
     OP_REQUIRES(ctx, temp_shape.num_elements() > 0,
                 errors::InvalidArgument("Obtained a FFT shape of 0 elements: ",
@@ -263,11 +266,11 @@ class FFTCPU : public FFTBase {
     Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> input_slice_sizes;
     input_slice_sizes[0] = input_dims[0];
     TensorShape full_fft_shape;
-    full_fft_shape.AddDim(input_dims[0]);
+    OP_REQUIRES_OK(ctx, full_fft_shape.AddDimWithStatus(input_dims[0]));
     for (auto i = 1; i <= FFTRank; i++) {
       input_slice_sizes[i] =
           i == FFTRank ? fft_shape[i - 1] / 2 + 1 : fft_shape[i - 1];
-      full_fft_shape.AddDim(fft_shape[i - 1]);
+      OP_REQUIRES_OK(ctx, full_fft_shape.AddDimWithStatus(fft_shape[i - 1]));
     }
     OP_REQUIRES(ctx, full_fft_shape.num_elements() > 0,
                 errors::InvalidArgument("Obtained a FFT shape of 0 elements: ",
@@ -351,6 +354,146 @@ REGISTER_KERNEL_BUILDER(Name("IRFFT3D").Device(DEVICE_CPU),
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
 namespace {
+
+// Info required for caching an FFT plan.
+struct FftPlanInfo {
+  int rank = 0;
+  gtl::InlinedVector<uint64_t, 3> shape{};
+  gtl::InlinedVector<uint64_t, 3> input_embed{};
+  uint64_t input_stride = 1;
+  uint64_t input_distance = 0;
+  gtl::InlinedVector<uint64_t, 3> output_embed{};
+  uint64_t output_stride = 1;
+  uint64_t output_distance = 0;
+  se::fft::Type type = se::fft::Type::kInvalid;
+  int batch = 0;
+
+  FftPlanInfo() = default;
+
+  template <typename H>
+  friend inline H AbslHashValue(H h, const FftPlanInfo& key) {
+    return H::combine(std::move(h), key.rank, key.shape, key.input_embed,
+                      key.input_stride, key.input_distance, key.output_embed,
+                      key.output_stride, key.output_distance, key.type,
+                      key.batch);
+  }
+
+  friend inline bool operator==(const FftPlanInfo& lhs,
+                                const FftPlanInfo& rhs) {
+    return lhs.rank == rhs.rank && lhs.shape == rhs.shape &&
+           lhs.input_embed == rhs.input_embed &&
+           lhs.input_stride == rhs.input_stride &&
+           lhs.input_distance == rhs.input_distance &&
+           lhs.output_embed == rhs.output_embed &&
+           lhs.output_stride == rhs.output_stride &&
+           lhs.output_distance == rhs.output_distance && lhs.type == rhs.type &&
+           lhs.batch == rhs.batch;
+  }
+
+  // Create a key to be used for caching plans.
+  static FftPlanInfo Create(int rank, const uint64_t* shape,
+                            const uint64_t* input_embed, uint64_t input_stride,
+                            uint64_t input_distance,
+                            const uint64_t* output_embed,
+                            uint64_t output_stride, uint64_t output_distance,
+                            se::fft::Type type, int batch) {
+    FftPlanInfo info;
+    info.rank = rank;
+    info.shape.reserve(rank);
+    for (int i = 0; i < rank; ++i) {
+      info.shape.push_back(shape[i]);
+    }
+    if (input_embed != nullptr) {
+      info.input_embed.reserve(rank);
+      for (int i = 0; i < rank; ++i) {
+        info.input_embed.push_back(input_embed[i]);
+      }
+      info.input_stride = input_stride;
+      info.input_distance = input_distance;
+    }
+    if (output_embed != nullptr) {
+      info.output_embed.reserve(rank);
+      for (int i = 0; i < rank; ++i) {
+        info.output_embed.push_back(output_embed[i]);
+      }
+      info.output_stride = output_stride;
+      info.output_distance = output_distance;
+    }
+    info.type = type;
+    info.batch = batch;
+    return info;
+  }
+};
+
+// Multimap for storing FFT plans.
+//
+// Plans can be inserted into the cache as long as there is capacity.  They
+// can only be extracted from the cache for use.  The multimap is to allow
+// inserting multiple identical plans, since each can only have one simultaneous
+// user.
+//
+// Thread-safe after initialization.
+class FftPlanCache {
+ public:
+  using Key = FftPlanInfo;
+  using Value = std::unique_ptr<se::fft::Plan>;
+
+  FftPlanCache(size_t capacity)
+      : mutex_(), size_(0), capacity_(capacity), cache_() {}
+
+  // Finds and removes a plan from the cache if it exists.  Otherwise,
+  // returns std::nullopt.
+  std::optional<Value> Extract(const Key& key) {
+    tsl::mutex_lock lock(mutex_);
+    auto it = cache_.find(key);
+    if (it == cache_.end()) {
+      return std::nullopt;
+    }
+    Value value = std::move(it->second.back());
+    it->second.pop_back();
+    if (it->second.empty()) {
+      cache_.erase(it);
+    }
+    --size_;
+    // Explicitly create an optional to avoid a compiler bug with gcc-7.
+    return std::optional<Value>(std::move(value));
+  }
+
+  // Inserts a plan into the cache as long as there is still capacity.
+  void Insert(Key key, Value value) {
+    tsl::mutex_lock lock(mutex_);
+    if (size_ < capacity_) {
+      auto it_inserted = cache_.try_emplace(std::move(key));
+      it_inserted.first->second.push_back(std::move(value));
+      ++size_;
+    } else {
+      static bool already_warned = false;
+      if (!already_warned) {
+        LOG(WARNING) << "The CUDA FFT plan cache capacity of " << capacity_
+                     << " has been exceeded. This may lead to extra time being"
+                     << " spent constantly creating new plans."
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000 && CUDA_VERSION < 12000
+                     << " For CUDA 11.x, there is also a memory leak in cuFFT "
+                     << " plan creation which may cause GPU memory usage to "
+                     << " slowly increase.  If this causes an issue, try"
+                     << " modifying your fft parameters to increase cache hits,"
+                     << " or build TensorFlow with CUDA 10.x or 12.x, or use"
+                     << " explicit device placement to run frequently-changing"
+                     << " FFTs on CPU."
+#endif
+            ;  // NOLINT
+        already_warned = true;
+      }
+    }
+  }
+
+ private:
+  tsl::mutex mutex_;
+  size_t size_ TF_GUARDED_BY(mutex_);
+  size_t capacity_ TF_GUARDED_BY(mutex_);
+  absl::flat_hash_map<Key, std::vector<Value>> cache_ TF_GUARDED_BY(mutex_);
+};
+
 template <typename T>
 se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
   se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory));
@@ -376,11 +519,11 @@ class CufftScratchAllocator : public se::ScratchAllocator {
   CufftScratchAllocator(int64_t memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
   int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
-  se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
+  tsl::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
       int64_t byte_size) override {
     Tensor temporary_memory;
     if (byte_size > memory_limit_) {
-      return se::port::StatusOr<se::DeviceMemory<uint8>>();
+      return tsl::StatusOr<se::DeviceMemory<uint8>>();
     }
     AllocationAttributes allocation_attr;
     allocation_attr.retry_on_failure = false;
@@ -388,13 +531,13 @@ class CufftScratchAllocator : public se::ScratchAllocator {
         DT_UINT8, TensorShape({byte_size}), &temporary_memory,
         AllocatorAttributes(), allocation_attr));
     if (!allocation_status.ok()) {
-      return se::port::StatusOr<se::DeviceMemory<uint8>>();
+      return tsl::StatusOr<se::DeviceMemory<uint8>>();
     }
     // Hold the reference of the allocated tensors until the end of the
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
     total_byte_size_ += byte_size;
-    return se::port::StatusOr<se::DeviceMemory<uint8>>(
+    return tsl::StatusOr<se::DeviceMemory<uint8>>(
         AsDeviceMemory(temporary_memory.flat<uint8>().data(),
                        temporary_memory.flat<uint8>().size()));
   }
@@ -432,7 +575,12 @@ class FFTGPUBase : public FFTBase {
   using FFTBase::FFTBase;
 
  protected:
-  static int64_t CufftScratchSize;
+  static const int64_t kCufftScratchSize;
+  // Capacity is somewhat arbitrary.  Plans don't take up any GPU memory
+  // since the scratch space is provided externally.  We don't anticipate
+  // ever hitting this limit in practice.
+  static constexpr size_t kFftPlanCacheCapacity = 512;
+
   void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
              Tensor* out) override {
     auto* stream = ctx->op_device_context()->stream();
@@ -476,12 +624,39 @@ class FFTGPUBase : public FFTBase {
                            : (is_complex128 ? se::fft::Type::kZ2ZInverse
                                             : se::fft::Type::kC2CInverse));
 
-    CufftScratchAllocator scratch_allocator(CufftScratchSize, ctx);
-    auto plan =
-        stream->parent()->AsFft()->CreateBatchedPlanWithScratchAllocator(
-            stream, fft_rank, fft_shape, input_embed, input_stride,
-            input_distance, output_embed, output_stride, output_distance,
-            kFftType, kInPlaceFft, batch_size, &scratch_allocator);
+    CufftScratchAllocator scratch_allocator(kCufftScratchSize, ctx);
+
+    // Plan cache singleton with safe no-destructor initialization.
+    static FftPlanCache* plan_cache = new FftPlanCache(kFftPlanCacheCapacity);
+
+    // Look for plan in cache.
+    FftPlanInfo plan_info = FftPlanInfo::Create(
+        fft_rank, fft_shape, input_embed, input_stride, input_distance,
+        output_embed, output_stride, output_distance, kFftType, batch_size);
+    std::unique_ptr<se::fft::Plan> plan = nullptr;
+    {
+      auto plan_or = plan_cache->Extract(plan_info);
+      if (plan_or.has_value()) {
+        plan = std::move(*plan_or);
+      }
+    }
+
+    // Create a new plan if one doesn't exist.  Otherwise, we need only set
+    // the scratch allocator.
+    if (plan == nullptr) {
+      plan = stream->parent()->AsFft()->CreateBatchedPlanWithScratchAllocator(
+          stream, fft_rank, fft_shape, input_embed, input_stride,
+          input_distance, output_embed, output_stride, output_distance,
+          kFftType, kInPlaceFft, batch_size, &scratch_allocator);
+    } else {
+      stream->parent()->AsFft()->UpdatePlanWithScratchAllocator(
+          stream, plan.get(), &scratch_allocator);
+    }
+
+    OP_REQUIRES(
+        ctx, plan != nullptr,
+        errors::Internal(
+            "Failed to create cuFFT batched plan with scratch allocator"));
 
     if (IsReal()) {
       if (IsForward()) {
@@ -522,6 +697,8 @@ class FFTGPUBase : public FFTBase {
                                             output_distance, in, out);
       }
     }
+
+    plan_cache->Insert(std::move(plan_info), std::move(plan));
   }
 
  private:
@@ -563,7 +740,7 @@ class FFTGPUBase : public FFTBase {
   }
 };
 
-int64_t FFTGPUBase::CufftScratchSize = GetCufftWorkspaceLimit(
+const int64_t FFTGPUBase::kCufftScratchSize = GetCufftWorkspaceLimit(
     // default value is in bytes despite the name of the environment variable
     "TF_CUFFT_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
 );

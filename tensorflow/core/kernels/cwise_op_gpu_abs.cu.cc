@@ -22,6 +22,8 @@ namespace functor {
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 DEFINE_UNARY6(abs, Eigen::half, float, double, int64, complex64, complex128);
 #endif
+
+DEFINE_UNARY1(abs, bfloat16);
 }  // namespace functor
 }  // namespace tensorflow
 

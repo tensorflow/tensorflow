@@ -1,12 +1,11 @@
-// RUN: tf-tfrt-opt -tf-to-tfrt=enable-native-ops=false %s | FileCheck %s --dump-input=fail --dump-input-filter=all
-// RUN: tf-tfrt-opt -pass-pipeline='tf-to-tfrt{enable-native-ops=false target-tpurt=true tpu-use-core-selector=false}' %s | FileCheck %s --dump-input=fail --dump-input-filter=all
+// RUN: tf-tfrt-opt -tf-to-tfrt %s | FileCheck %s --dump-input=fail --dump-input-filter=all
+// RUN: tf-tfrt-opt -pass-pipeline='builtin.module(tf-to-tfrt{target-tpurt=true tpu-use-core-selector=false})' %s | FileCheck %s --dump-input=fail --dump-input-filter=all
 
 // CHECK-LABEL: func @_tfrt_fallback_init
 // CHECK-SAME: {{.*}} !tfrt.chain
 // CHECK: tfrt_fallback_async.createop(%arg0) key(0) device("/device:CPU:0") "tf.ParseExampleV2"()
 // CHECK-SAME: Tdense = [f32, f32], dense_shapes = [#corert.shape<>, #corert.shape<>]
 // CHECK-SAME: num_sparse = 2 : i64, ragged_split_types = [], ragged_value_types = []
-// CHECK-SAME: result_segment_sizes = dense<[2, 2, 2, 2, 0, 0]> : vector<6xi32>
 // CHECK-SAME: sparse_types = [!corert.string, i64]}
 // CHECK-SAME: num_args(7)
 
@@ -35,13 +34,12 @@ func.func @main(%serialized: tensor<32x!tf_type.string>) -> (tensor<?x2xi64>) at
   // CHECK-SAME: num_sparse = 2 : i64
   // CHECK-SAME: ragged_split_types = []
   // CHECK-SAME: ragged_value_types = []
-  // CHECK-SAME: result_segment_sizes = dense<[2, 2, 2, 2, 0, 0]> : vector<6xi32>
   // CHECK-SAME: sparse_types = [!corert.string, i64]
   %outputs:8 = "tf.ParseExampleV2"(%serialized, %names, %sparse_keys, %dense_keys, %ragged_keys, %dense_default_0, %dense_default_1)
     {
       Tdense = [f32, f32], dense_shapes = [#tf_type.shape<>, #tf_type.shape<>],
       device = "/device:CPU:0", num_sparse = 2 : i64, ragged_split_types = [], ragged_value_types = [],
-      result_segment_sizes = dense<[2, 2, 2, 2, 0, 0]> : vector<6xi32>,
+      result_segment_sizes = array<i32: 2, 2, 2, 2, 0, 0>,
       sparse_types = [!tf_type.string, !tf_type.string]
     } : (tensor<32x!tf_type.string>, tensor<0x!tf_type.string>, tensor<2x!tf_type.string>, tensor<2x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0xf32>, tensor<0xf32>)
     -> (tensor<?x2xi64>, tensor<?x2xi64>, tensor<?x!tf_type.string>, tensor<?xi64>, tensor<2xi64>, tensor<2xi64>, tensor<32xf32>, tensor<32xf32>)

@@ -1,7 +1,8 @@
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 package(
-    default_visibility = ["//tensorflow/core/function:__subpackages__"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//tensorflow/core/function/runtime_client:__subpackages__"],
 )
 
 licenses(["notice"])

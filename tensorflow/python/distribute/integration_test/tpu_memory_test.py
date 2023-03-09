@@ -134,7 +134,7 @@ class TpuMemoryTest(tf.test.TestCase):
           kernel_initializer=tf.random_normal_initializer(stddev=0.01))(
               y)
       model = tf.keras.Model(x, y)
-      optimizer = tf.keras.optimizers.SGD(learning_rate=0.1)
+      optimizer = tf.keras.optimizers.legacy.SGD(learning_rate=0.1)
       loss_obj = tf.keras.losses.CategoricalCrossentropy(
           label_smoothing=0.0, reduction=tf.keras.losses.Reduction.NONE)
       model.compile(optimizer=optimizer, loss=loss_obj)

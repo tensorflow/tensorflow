@@ -171,7 +171,9 @@ StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
 
   // LICM in the presence of domain instructions is complex, bail.
   for (auto* instruction : while_body->MakeInstructionPostOrder()) {
-    if (instruction->opcode() == HloOpcode::kDomain) {
+    if (instruction->opcode() == HloOpcode::kDomain ||
+        instruction->IsCustomCall("SPMDFullToShardShape") ||
+        instruction->IsCustomCall("SPMDShardShapeToFull")) {
       return false;
     }
   }
@@ -332,13 +334,15 @@ StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
   return true;
 }
 
-StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::Run(HloModule* module) {
+StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "HLO module before WhileLoopExpensiveInvariantCodeMotion:";
   XLA_VLOG_LINES(2, module->ToString());
 
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
-  for (auto* comp : module->computations()) {
+  for (auto* comp : module->computations(execution_threads)) {
     absl::c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
                     [](const HloInstruction* instr) {
                       return instr->opcode() == HloOpcode::kWhile;

@@ -20,13 +20,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/hlo_replication_analysis.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -337,8 +337,8 @@ bool ArCrsCombiner::TestInstructionsComputeSameValue(HloInstruction* i1,
                                                      HloInstruction* i2) {
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
-  auto module = i1->parent()->parent();
-  CHECK_EQ(module, i2->parent()->parent());
+  auto module = i1->GetModule();
+  CHECK_EQ(module, i2->GetModule());
   combiner.call_graph_ = CallGraph::Build(module);
   absl::flat_hash_map<int64_t, int64_t> visited_pairs;
   return combiner.InstructionsComputeSameValue(i1, i2, &visited_pairs);
@@ -600,7 +600,9 @@ StatusOr<bool> ArCrsCombiner::RewriteGraph() {
   return true;
 }
 
-StatusOr<bool> ArCrsCombiner::Run(HloModule* module) {
+StatusOr<bool> ArCrsCombiner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   call_graph_ = CallGraph::Build(module);
 
   GroupAllReducesById(module);

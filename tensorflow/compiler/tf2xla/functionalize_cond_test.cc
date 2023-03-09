@@ -99,7 +99,7 @@ TEST_F(FunctionalizeCondTest, JoinCondStates) {
   // Merge between then and else branch.
   auto joined_or = JoinCondStatesMerge(m, then_branch, else_branch);
   TF_EXPECT_OK(joined_or.status());
-  StateMap::CondId joined = joined_or.ValueOrDie();
+  StateMap::CondId joined = joined_or.value();
 
   // Merge between then branch and both branch.
   auto t = JoinCondStatesNonMerge(then_branch, joined);

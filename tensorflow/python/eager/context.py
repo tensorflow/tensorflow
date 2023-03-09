@@ -24,11 +24,9 @@ import threading
 
 from absl import logging
 import numpy as np
-import six
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import coordination_config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python import tf2
@@ -43,6 +41,7 @@ from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tsl.protobuf import coordination_config_pb2
 
 GRAPH_MODE = 0
 EAGER_MODE = 1
@@ -78,41 +77,11 @@ is_tfrt_enabled = tfrt_utils.enabled
 
 # This flag and the associated environment var are transient and will eventually
 # be removed, once this experiment is enabled by default.
-_RUN_EAGER_OP_AS_FUNCTION_ENABLED = os.getenv("TF_RUN_EAGER_OP_AS_FUNCTION",
-                                              "1") == "1"
-
-# This flag and the associated environment var are transient and will eventually
-# be removed, once this experiment is enabled by default.
 _JIT_COMPILE_REWRITE_ENABLED = os.getenv("TF_JIT_COMPILE_REWRITE") == "1"
 
 
-# This method should only be called after the context has beein initialized.
-def enable_run_eager_op_as_function():
-  """Execute elementary eager ops (non-function) wrapped in a call op.
-
-  This should be functionally equivalent to running the eager op's kernel
-  directly (the default) but reduces the number of codepaths for executing
-  TF2 programs in the runtime, thereby improving consistency (in terms of
-  optimizations and rewrites for instance) and maintainability.
-  """
-  global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
-  _RUN_EAGER_OP_AS_FUNCTION_ENABLED = True
-  if context_safe() is not None:
-    context_safe().run_eager_op_as_function = True
-
-
-# This method should only be called after the context has been initialized.
-def disable_run_eager_op_as_function():
-  global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
-  _RUN_EAGER_OP_AS_FUNCTION_ENABLED = False
-  if context_safe() is not None:
-    context_safe().run_eager_op_as_function = False
-
-
 def run_eager_op_as_function_enabled():
-  if context_safe() is not None:
-    return context_safe().run_eager_op_as_function
-  return _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+  return True
 
 
 # This method should only be called after the context has beein initialized.
@@ -172,7 +141,7 @@ class _EagerTensorCache(object):
     self._data.clear()
 
 
-class FunctionCallOptions(object):
+class FunctionCallOptions:
   """Options applied at call sites of eager functions.
 
   Eager functions are functions decorated with tf.contrib.eager.defun.
@@ -236,7 +205,7 @@ class _TensorCaches(threading.local):
   __slots__ = ["_ones_rank_cache", "_zeros_cache"]
 
   def __init__(self):
-    super(_TensorCaches, self).__init__()
+    super().__init__()
     self._ones_rank_cache = None
     self._zeros_cache = None
 
@@ -264,7 +233,7 @@ class _ContextSwitchStack(threading.local):
   """A thread-local stack of context switches."""
 
   def __init__(self, eager):
-    super(_ContextSwitchStack, self).__init__()
+    super().__init__()
     self.stack = []
     if eager:
       # Initialize the stack with a pointer to enter the eager context; this
@@ -353,10 +322,9 @@ class LogicalDeviceConfiguration(
   def __new__(cls,
               memory_limit=None,
               experimental_priority=None,
-              experimental_device_ordinal=0):
-    return super(LogicalDeviceConfiguration,
-                 cls).__new__(cls, memory_limit, experimental_priority,
-                              experimental_device_ordinal)
+              experimental_device_ordinal=None):
+    return super().__new__(cls, memory_limit, experimental_priority,
+                           experimental_device_ordinal)
 
 
 @tf_export("config.PhysicalDevice")
@@ -419,7 +387,7 @@ class _TensorCacheDeleter(object):
 
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
 # TODO(agarwal): consider keeping the corresponding Graph here.
-class Context(object):
+class Context:
   """Environment in which eager operations execute."""
 
   # TODO(agarwal): create and link in some documentation for `execution_mode`.
@@ -494,8 +462,6 @@ class Context(object):
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
     self._use_tfrt = is_tfrt_enabled()
-    self._use_tfrt_distributed_runtime = None
-    self._run_eager_op_as_function = run_eager_op_as_function_enabled()
     self._jit_compile_rewrite = jit_compile_rewrite_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
@@ -537,9 +503,10 @@ class Context(object):
     # to int.
     try:
       hash(seed)
+      self._rng = random.Random(seed)
     except TypeError:
       seed = int(np.array(seed))
-    self._rng = random.Random(seed)
+      self._rng = random.Random(seed)
     # Also clear the kernel cache, to reset any existing seeds
     if self._context_handle is not None:
       pywrap_tfe.TFE_ContextClearCaches(self._context_handle)
@@ -610,13 +577,7 @@ class Context(object):
           pywrap_tfe.TFE_ContextOptionsSetAsync(opts, True)
         if self._use_tfrt is not None:
           pywrap_tfe.TFE_ContextOptionsSetTfrt(opts, self._use_tfrt)
-        # pylint: disable=g-backslash-continuation
-        if self._use_tfrt is not None and \
-            self._use_tfrt_distributed_runtime is not None:
-          pywrap_tfe.TFE_ContextOptionsSetTfrtDistributedRuntime(
-              opts, self._use_tfrt_distributed_runtime)
-        pywrap_tfe.TFE_ContextOptionsSetRunEagerOpAsFunction(
-            opts, self._run_eager_op_as_function)
+        pywrap_tfe.TFE_ContextOptionsSetRunEagerOpAsFunction(opts, True)
         pywrap_tfe.TFE_ContextOptionsSetJitCompileRewrite(
             opts, self._jit_compile_rewrite)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
@@ -639,6 +600,21 @@ class Context(object):
 
       if self._is_global_context:
         pywrap_tfe.TFE_Py_SetCEagerContext(self._context_handle)
+
+  def ensure_uninitialized(self):
+    """Uninitialize handle and devices if not already done so."""
+    with self._initialize_lock:
+      if not self._initialized:
+        return
+      self._context_devices = None
+      self._logical_devices = None
+      self._server_def = None
+      self._initialized = False
+
+      if self._is_global_context:
+        pywrap_tfe.TFE_Py_SetCEagerContext(None)
+
+      self._context_handle = None
 
   def mark_as_global_context(self):
     # If the context was already initialized, publish it. Otherwise wait with
@@ -774,6 +750,7 @@ class Context(object):
                                      enable_health_check=True,
                                      cluster_register_timeout_in_ms=0,
                                      heartbeat_timeout_in_ms=0,
+                                     shutdown_barrier_timeout_in_ms=0,
                                      coordinated_jobs=None):
     """Enable distributed coordination service with specified configs."""
     if self._context_handle:
@@ -786,11 +763,12 @@ class Context(object):
     config.enable_health_check = enable_health_check
     config.cluster_register_timeout_in_ms = cluster_register_timeout_in_ms
     config.heartbeat_timeout_in_ms = heartbeat_timeout_in_ms
+    config.shutdown_barrier_timeout_in_ms = shutdown_barrier_timeout_in_ms
     if coordinated_jobs is not None:
       if isinstance(coordinated_jobs, list):
-        config.coordinated_jobs.extend(coordinated_jobs)
+        config.coordinated_job_list.extend(coordinated_jobs)
       else:
-        raise ValueError("`coordinated_jobs` must be a list of job names or "
+        raise ValueError("`coordinated_jobs` must be list[CoordinatedJob] or "
                          "None, but got: %s" % (coordinated_jobs,))
     self._coordination_service_config = config
 
@@ -802,10 +780,13 @@ class Context(object):
     ensure_initialized()
     pywrap_tfe.TFE_InsertConfigKeyValue(self._context_handle, key, value)
 
-  def get_config_key_value(self, key):
+  # If `timeout_in_ms=0`, this will block until the key-value is set or the
+  # worker shuts down.
+  def get_config_key_value(self, key, timeout_in_ms=0):
     ensure_initialized()
     with c_api_util.tf_buffer() as buffer_:
-      pywrap_tfe.TFE_GetConfigKeyValue(self._context_handle, key, buffer_)
+      pywrap_tfe.TFE_GetConfigKeyValue(self._context_handle, key,
+                                       timeout_in_ms, buffer_)
       value = pywrap_tf_session.TF_GetBuffer(buffer_).decode("utf-8")
     return value
 
@@ -825,6 +806,35 @@ class Context(object):
                                           error_message)
     else:
       raise ValueError("Context is not initialized.")
+
+  def get_task_states(self, job_configs):
+    """Get task states from the Coordination Service.
+
+    Args:
+      job_configs: A list of tuples of job name and task number.
+
+    Returns:
+      A list of TF_Status.
+    """
+    if self._context_handle:
+      job_names, task_nums = zip(*job_configs)
+      return pywrap_tfe.TFE_GetTaskStates(self._context_handle, job_names,
+                                          task_nums)
+    else:
+      raise ValueError("Context is not initialized.")
+
+  def wait_at_barrier(self, barrier_id, timeout_in_ms):
+    """Blocks until all coordinated tasks are at the barrier.
+
+    The barrier may fail if it times out or if one of the tasks is unhealthy.
+
+    Args:
+      barrier_id: Unique string identifying the barrier.
+      timeout_in_ms: Duration before the barrier times out and fails.
+    """
+    ensure_initialized()
+    pywrap_tfe.TFE_WaitAtBarrier(self._context_handle, barrier_id,
+                                 timeout_in_ms)
 
   def clear_kernel_cache(self):
     """Clear kernel cache and reset all stateful kernels."""
@@ -1164,6 +1174,7 @@ class Context(object):
     rewriter_toggle("auto_mixed_precision")
     rewriter_toggle("use_plugin_optimizers")
     rewriter_bool("disable_meta_optimizer")
+    rewriter_toggle("auto_mixed_precision_onednn_bfloat16")
     rewriter_toggle("auto_mixed_precision_mkl")
     nodes = self._optimizer_experimental_options.get("min_graph_nodes", None)
     if nodes is not None:
@@ -1238,7 +1249,8 @@ class Context(object):
         device_limits = []
         priority = []
         for virt_dev in vdevs:
-          device_ordinals.append(virt_dev.experimental_device_ordinal)
+          if virt_dev.experimental_device_ordinal is not None:
+            device_ordinals.append(virt_dev.experimental_device_ordinal)
           device_limits.append(virt_dev.memory_limit)
           if virt_dev.experimental_priority is not None:
             priority.append(virt_dev.experimental_priority)
@@ -1246,6 +1258,11 @@ class Context(object):
         # devices.
         if priority and len(device_limits) != len(priority):
           raise ValueError("priority must be specified for all virtual devices")
+        # If device_ordinals is specified, it must be specified for all virtual
+        # devices.
+        if device_ordinals and len(device_limits) != len(device_ordinals):
+          raise ValueError(
+              "device_ordinals must be specified for all virtual devices")
 
         virtual_devices.append(
             config_pb2.GPUOptions.Experimental.VirtualDevices(
@@ -1342,6 +1359,11 @@ class Context(object):
     function_def.ParseFromString(proto_data)
 
     return function_def
+
+  def is_custom_device(self, device_name):
+    """Calls TFE_IsCustomDevice. See the non-member function."""
+    self.ensure_initialized()
+    return pywrap_tfe.TFE_Py_IsCustomDevice(self._handle, device_name)
 
   def register_custom_device(self, device_capsule, device_name,
                              device_info_capsule):
@@ -1452,7 +1474,7 @@ class Context(object):
       self._physical_device_to_index = {
           p: i for i, p in enumerate(self._physical_devices)
       }
-      # We maintain a seperate list just so we can check whether the device in
+      # We maintain a separate list just so we can check whether the device in
       # _physical_devices is a PluggableDevice.
       pluggable_devs = pywrap_tfe.TF_ListPluggablePhysicalDevices()
       self._pluggable_devices = [
@@ -1691,7 +1713,7 @@ class Context(object):
         if vdev.experimental_priority is not None:
           raise ValueError("Setting experimental_priority on CPU virtual "
                            " devices is currently not supported")
-        if vdev.experimental_device_ordinal != 0:
+        if vdev.experimental_device_ordinal is not None:
           raise ValueError("Setting experimental_device_ordinal on CPU virtual "
                            " devices is currently not supported")
     elif dev.device_type == "GPU":
@@ -1742,9 +1764,22 @@ class Context(object):
     pywrap_tfe.TFE_SetLogicalCpuDevices(self._context_handle, num_cpus, prefix)
     self._initialize_logical_devices()
 
-  def get_compiler_ir(self, device_name, function_name, args, stage="hlo"):
-    return pywrap_tfe.TF_GetCompilerIr(self._context_handle, function_name,
-                                       stage, device_name, args)
+  def get_compiler_ir(
+      self,
+      device_name,
+      function_name,
+      flat_args,
+      captured_inputs,
+      stage="hlo",
+  ):
+    return pywrap_tfe.TF_GetCompilerIr(
+        self._context_handle,
+        function_name,
+        stage,
+        device_name,
+        flat_args,
+        captured_inputs,
+    )
 
   @deprecated(
       None, "XLA:CPU and XLA:GPU devices are deprecated", warn_once=True)
@@ -1815,6 +1850,7 @@ class Context(object):
     rewriter_toggle("auto_mixed_precision")
     rewriter_toggle("use_plugin_optimizers")
     rewriter_bool("disable_meta_optimizer")
+    rewriter_toggle("auto_mixed_precision_onednn_bfloat16")
     rewriter_toggle("auto_mixed_precision_mkl")
 
     if rewrite_options.min_graph_nodes != 0:
@@ -1887,16 +1923,6 @@ class Context(object):
     self._thread_local_data.function_call_options = None
 
   @property
-  def run_eager_op_as_function(self):
-    return self._run_eager_op_as_function
-
-  @run_eager_op_as_function.setter
-  def run_eager_op_as_function(self, enable):
-    if self._context_handle is not None:
-      pywrap_tfe.TFE_ContextSetRunEagerOpAsFunction(self._handle, enable)
-    self._run_eager_op_as_function = enable
-
-  @property
   def jit_compile_rewrite(self):
     return self._jit_compile_rewrite
 
@@ -1941,28 +1967,6 @@ class Context(object):
       if self._initialized:
         raise ValueError("use_tfrt should be set before being initialized.")
       self._use_tfrt = tfrt
-
-  @property
-  def use_tfrt_distributed_runtime(self):
-    return self._use_tfrt_distributed_runtime
-
-  @use_tfrt_distributed_runtime.setter
-  def use_tfrt_distributed_runtime(self, enable):
-    """Sets whether to use TFRT distributed runtime.
-
-    This is only effective when use_tfrt is also true. Note that currently TFRT
-    distributed runtime is not function complete and this config is for testing
-    only.
-    Args:
-      enable: A boolean to set whether to use TFRT distributed runtime.
-    """
-    if not isinstance(enable, bool):
-      raise ValueError("Expecting a boolean but got %s" % type(enable))
-
-    if self._use_tfrt_distributed_runtime != enable:
-      if self._initialized:
-        raise ValueError("use_tfrt should be set before being initialized.")
-      self._use_tfrt_distributed_runtime = enable
 
   @property
   def operation_timeout_in_ms(self):
@@ -2060,7 +2064,7 @@ class _EagerDeviceContext(object):
     except KeyError:
       # Handle a cache miss.
       if new_device_name is not None:
-        if not isinstance(new_device_name, six.string_types):
+        if not isinstance(new_device_name, str):
           raise ValueError("Expecting a string device name. Got %s(%s)" %
                            (type(new_device_name), new_device_name))
         device_spec = pydev.DeviceSpec.from_string(new_device_name)
@@ -2728,9 +2732,9 @@ def async_clear_error():
   context().clear_executor_errors()
 
 
-def add_function(fdef):
-  """Add a function definition to the context."""
-  context().add_function(fdef)
+def add_function(tf_function):
+  """Add a TF_Function to the context."""
+  context().add_function(tf_function)
 
 
 def remove_function(name):
@@ -2740,6 +2744,23 @@ def remove_function(name):
 
 def get_function_def(name):
   return context().get_function_def(name)
+
+
+def is_custom_device(device_name):
+  """Calls TFE_IsCustomDevice.
+
+  Enables using C extensions specifying a custom device from Python. See the
+  experimental eager C API in tensorflow/c/eager/c_api_experimental.h for
+  details.
+
+  Args:
+    device_name: A string indicating the name to check whether it is a
+      registered custom device.
+
+  Returns:
+    A boolean.
+  """
+  return context().is_custom_device(device_name)
 
 
 def register_custom_device(device_capsule, device_name, device_info_capsule):

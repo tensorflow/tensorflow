@@ -1,0 +1,148 @@
+diff '--color=auto' -u -r or-tools-7.3/ortools/linear_solver/BUILD or-tools-7.3-new/ortools/linear_solver/BUILD
+--- or-tools-7.3/ortools/linear_solver/BUILD	2019-08-05 20:37:22.000000000 +0000
++++ or-tools-7.3-new/ortools/linear_solver/BUILD	2022-08-12 18:25:24.910289156 +0000
+@@ -1,35 +1,5 @@
+ package(default_visibility = ["//visibility:public"])
+ 
+-config_setting(
+-    name = "with_glpk",
+-    values = {"define": "USE_GLPK="},
+-)
+-
+-config_setting(
+-    name = "with_bop",
+-    values = {"define": "USE_BOP="},
+-)
+-
+-config_setting(
+-    name = "with_cplex",
+-    values = {"define": "USE_CPLEX="},
+-)
+-
+-config_setting(
+-    name = "with_cbc",
+-    values = {"define": "USE_CBC="},
+-)
+-
+-config_setting(
+-    name = "with_clp",
+-    values = {"define": "USE_CLP="},
+-)
+-
+-config_setting(
+-    name = "with_gurobi",
+-    values = {"define": "USE_GUROBI="},
+-)
+-
+ proto_library(
+     name = "linear_solver_proto",
+     srcs = ["linear_solver.proto"],
+@@ -41,22 +11,6 @@
+     deps = [":linear_solver_proto"],
+ )
+ 
+-# You can include the interfaces to different solvers by invoking '--define'
+-# flags. By default only GLOP interface is included.
+-#
+-# For instance, if you want to use the GLPK solver, build with
+-# '--define USE_GLPK=' (or add it to your bazel.rc file). This will download,
+-# build and link to GLPK.
+-#
+-# Currently compiling with '--define USE_BOP=' flag is broken due to the
+-# circular dependency:
+-# .-> //ortools/linear_solver:linear_solver
+-# |   //ortools/bop:integral_solver
+-# |   //ortools/bop:bop_solver
+-# |   //ortools/bop:complete_optimizer
+-# |   //ortools/sat:optimization
+-# `-- //ortools/linear_solver:linear_solver
+-
+ cc_library(
+     name = "linear_solver",
+     srcs = [
+@@ -66,25 +20,8 @@
+         "model_validator.cc",
+         "glop_interface.cc",
+         "glop_utils.cc",
+-    ] + select({
+-        ":with_bop": ["bop_interface.cc"],
+-        "//conditions:default": [],
+-    }) + select({
+-        ":with_cbc": ["cbc_interface.cc"],
+-        "//conditions:default": [],
+-    }) + select({
+-        ":with_clp": ["clp_interface.cc"],
+-        "//conditions:default": [],
+-    }) + select({
+-        ":with_cplex": ["cplex_interface.cc"],
+-        "//conditions:default": [],
+-    }) + select({
+-        ":with_glpk": ["glpk_interface.cc"],
+-        "//conditions:default": [],
+-    }) + select({
+-        ":with_gurobi": ["gurobi_interface.cc"],
+-        "//conditions:default": [],
+-    }),
++        "glpk_interface.cc",
++    ],
+     hdrs = [
+         "glop_interface.cc",
+         "glop_utils.h",
+@@ -95,6 +32,7 @@
+     ],
+     defines = [
+         "USE_GLOP=",
++        "USE_GLPK=",
+     ],
+     deps = [
+         ":linear_solver_cc_proto",
+@@ -115,14 +53,6 @@
+         "//ortools/port:file",
+         "//ortools/port:proto_utils",
+         "//ortools/util:fp_utils",
+-    ] + select({
+-        ":with_bop": [
+-            "//ortools/bop:bop_parameters_cc_proto",
+-            "//ortools/bop:integral_solver",
+-        ],
+-        "//conditions:default": [],
+-    }) + select({
+-        ":with_glpk": ["@glpk//:glpk"],
+-        "//conditions:default": [],
+-    }),
++        "@glpk//:glpk",
++    ],
+ )
+diff '--color=auto' -u -r or-tools-7.3/ortools/util/file_util.cc or-tools-7.3-new/ortools/util/file_util.cc
+--- or-tools-7.3/ortools/util/file_util.cc	2019-08-05 20:37:22.000000000 +0000
++++ or-tools-7.3-new/ortools/util/file_util.cc	2022-09-30 23:01:03.559353459 +0000
+@@ -69,6 +69,8 @@
+         return false;
+       }
+       break;
++    default:
++      break;
+   }
+   const std::string output_filename = absl::StrCat(filename, file_type_suffix);
+   VLOG(1) << "Writing " << output_string.size() << " bytes to "
+diff --git a/ortools/util/fp_utils.h b/ortools/util/fp_utils.h
+index 569eeddf47..7188abb29a 100644
+--- a/ortools/util/fp_utils.h
++++ b/ortools/util/fp_utils.h
+@@ -78,11 +78,14 @@ class ScopedFloatingPointEnv {
+   void EnableExceptions(int excepts) {
+ #if defined(_MSC_VER)
+     // _controlfp(static_cast<unsigned int>(excepts), _MCW_EM);
+-#elif defined(ARCH_K8)
++#elif (defined(__GNUC__) || defined(__llvm__)) && defined(__x86_64__) && \
++    !defined(__ANDROID__)
+     CHECK_EQ(0, fegetenv(&fenv_));
+     excepts &= FE_ALL_EXCEPT;
+-#ifdef __APPLE__
++#if defined(__APPLE__)
+     fenv_.__control &= ~excepts;
++#elif defined(__FreeBSD__)
++    fenv_.__x87.__control &= ~excepts;
+ #else  // Linux
+     fenv_.__control_word &= ~excepts;
+ #endif

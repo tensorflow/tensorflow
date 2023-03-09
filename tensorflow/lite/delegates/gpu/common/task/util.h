@@ -31,22 +31,6 @@ std::string MemoryTypeToCLType(MemoryType type);
 
 std::string MemoryTypeToMetalType(MemoryType type);
 
-// Calculates correct X coordinate when stride != 1 and batch != 1 for layouts
-// with B after W (for example HWBC4) and WB stored in one axis of GPU
-// resources.
-std::string GetXStrideCorrected(const std::string& src_x,
-                                const std::string& batch_size,
-                                const std::string& stride_x,
-                                const std::string& padding_x);
-
-// Calculates correct X coordinate when stride != 1 and batch != 1 for layouts
-// with B after W (for example HWBC4) and WB stored in one axis of GPU
-// resources.
-std::string GetXStrideCorrectedV2(const std::string& src_x,
-                                  const std::string& batch_size,
-                                  const std::string& stride_x,
-                                  const std::string& padding_x);
-
 // Returns float4 mask for last plane(batch of 4 channels)
 // assumes that plane size is 4;
 // for example we have 7 channels, in our data structures we align it to 8
@@ -70,8 +54,23 @@ std::string GetZeroValue(const GpuInfo& gpu_info, DataType data_type,
 std::string GetOneValue(const GpuInfo& gpu_info, DataType data_type,
                         int vec_size);
 
+// Returns expression that can be substituted for converted value
+// Intended to be used with absl::Substitute
+// Example usage:
+//   auto conversion_function = GetTypeConversion(gpu_info, UINT8, FLOAT32, 4);
+//   auto code = absl::Substitute(conversion_function, "value_name");
 std::string GetTypeConversion(const GpuInfo& gpu_info, DataType src_type,
                               DataType dst_type, int vec_size);
+
+std::string GetNextWord(const std::string& code, size_t first_position);
+
+size_t FindEnclosingBracket(const std::string& text, size_t first_pos,
+                            char bracket);
+
+absl::Status ParseArgsInsideBrackets(const std::string& text,
+                                     size_t open_bracket_pos,
+                                     size_t* close_bracket_pos,
+                                     std::vector<std::string>* args);
 
 }  // namespace gpu
 }  // namespace tflite

@@ -21,16 +21,16 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/service/bfloat16_support.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/service/float_support.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
 // HLO pass which reduces the precision of some HLO instructions to BF16
-// according to the backend-specific BFloat16Support rule provided by the
+// according to the backend-specific FloatSupport rule provided by the
 // caller.
 //
 // This pass can be used to reduce instruction precision without affecting the
@@ -44,10 +44,10 @@ namespace xla {
 // !!! WARNING !!! This pass can introduce mixed precision in individual HLOs,
 // which has two issues:
 //
-// 1) It does not guarantee to respect the passed-in BFloat16Support
+// 1) It does not guarantee to respect the passed-in FloatSupport
 // specification in terms of mixed precision, so the backend may not support an
 // HLO that has mixed precision produced by this pass. To address this issue,
-// run BFloat16Normalization with the same BFloat16Support after this pass.
+// run FloatNormalization with the same FloatSupport after this pass.
 //
 // 2) In general, mixed precision may break the assumptions of some other HLO
 // passes even if the specific backend supports the individual HLOs. Such
@@ -59,7 +59,7 @@ namespace xla {
 // pass.
 class BFloat16Propagation : public HloModulePass {
  public:
-  explicit BFloat16Propagation(const BFloat16Support* bfloat16_support);
+  explicit BFloat16Propagation(const FloatSupport* bfloat16_support);
 
   ~BFloat16Propagation() override = default;
 
@@ -67,7 +67,10 @@ class BFloat16Propagation : public HloModulePass {
 
   // Runs the pass on the given module. Returns whether the module was changed
   // (precision reductions were added).
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Returns whether we should avoid changing the precision of inst regardless
   // of the producers and users.
@@ -132,7 +135,9 @@ class BFloat16Propagation : public HloModulePass {
   // Adjusts the output shapes of HloInstructions such that if two
   // HloInstructions have aliasing buffers in their outputs, they must have the
   // same precision.
-  void ResolveInconsistencyOfAliasingBuffers(HloModule* module);
+  void ResolveInconsistencyOfAliasingBuffers(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Resolves inconsistency of aliasing buffers for the given computation, and
   // recursively runs on a while instruction's condition and body until a fixed
@@ -154,15 +159,21 @@ class BFloat16Propagation : public HloModulePass {
 
   // Resolves inconsistencies introduced by this pass for fusions with
   // tuple-type output.
-  Status ResolveInconsistentFusions(HloModule* module);
+  Status ResolveInconsistentFusions(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Converts the literals in kConstant HLOs which have their types changed to
   // BF16 by this pass.
-  Status ResolveConvertedConstants(HloModule* module);
+  Status ResolveConvertedConstants(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Skips no-op conversions (same source and target shapes) that can be
   // produced this pass, i.e., replaces them in their uses with their operands.
-  Status SkipNoopConversions(HloModule* module);
+  Status SkipNoopConversions(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // ***************************
   // Functions called and state used by two or more passes.
@@ -209,7 +220,7 @@ class BFloat16Propagation : public HloModulePass {
   // Whether the last processed HLO module has been changed by this pass.
   bool changed_ = false;
 
-  const BFloat16Support* bfloat16_support_;
+  const FloatSupport* bfloat16_support_;
   std::unique_ptr<HloDataflowAnalysis> dataflow_;
 };
 

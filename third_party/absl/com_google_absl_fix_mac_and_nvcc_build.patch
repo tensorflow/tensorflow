@@ -1,5 +1,5 @@
 diff --git a/absl/container/internal/compressed_tuple.h b/absl/container/internal/compressed_tuple.h
-index 5ebe164..01db713 100644
+index 5ebe1649..01db7134 100644
 --- a/absl/container/internal/compressed_tuple.h
 +++ b/absl/container/internal/compressed_tuple.h
 @@ -32,7 +32,6 @@
@@ -232,57 +232,8 @@ index 5ebe164..01db713 100644
    }
  };
  
-diff --git a/absl/container/internal/inlined_vector.h b/absl/container/internal/inlined_vector.h
-index 1d7d6cd..bd2eb93 100644
---- a/absl/container/internal/inlined_vector.h
-+++ b/absl/container/internal/inlined_vector.h
-@@ -904,16 +904,16 @@ auto Storage<T, N, A>::Swap(Storage* other_storage_ptr) -> void {
-                            inlined_ptr->GetSize());
-     }
-     ABSL_INTERNAL_CATCH_ANY {
--      allocated_ptr->SetAllocation(
--          {allocated_storage_view.data, allocated_storage_view.capacity});
-+      allocated_ptr->SetAllocation(Allocation<A>{
-+          allocated_storage_view.data, allocated_storage_view.capacity});
-       ABSL_INTERNAL_RETHROW;
-     }
- 
-     DestroyElements<A>(inlined_ptr->GetAllocator(),
-                        inlined_ptr->GetInlinedData(), inlined_ptr->GetSize());
- 
--    inlined_ptr->SetAllocation(
--        {allocated_storage_view.data, allocated_storage_view.capacity});
-+    inlined_ptr->SetAllocation(Allocation<A>{allocated_storage_view.data,
-+                                             allocated_storage_view.capacity});
-   }
- 
-   swap(GetSizeAndIsAllocated(), other_storage_ptr->GetSizeAndIsAllocated());
-diff --git a/absl/strings/internal/string_constant.h b/absl/strings/internal/string_constant.h
-index a11336b..e1596b1 100644
---- a/absl/strings/internal/string_constant.h
-+++ b/absl/strings/internal/string_constant.h
-@@ -35,12 +35,18 @@ namespace strings_internal {
- // below.
- template <typename T>
- struct StringConstant {
-+ private:
-+  static constexpr bool ValidateConstant(absl::string_view view) {
-+    return view.empty() || 2 * view[0] != 1;
-+  }
-+
-+public:
-   static constexpr absl::string_view value = T{}();
-   constexpr absl::string_view operator()() const { return value; }
- 
-   // Check to be sure `view` points to constant data.
-   // Otherwise, it can't be constant evaluated.
--  static_assert(value.empty() || 2 * value[0] != 1,
-+  static_assert(ValidateConstant(value),
-                 "The input string_view must point to constant data.");
- };
- 
 diff --git a/absl/time/internal/cctz/BUILD.bazel b/absl/time/internal/cctz/BUILD.bazel
-index bdc2e30..3a5f5ff 100644
+index 7304d40d..75d8e086 100644
 --- a/absl/time/internal/cctz/BUILD.bazel
 +++ b/absl/time/internal/cctz/BUILD.bazel
 @@ -72,15 +72,6 @@ cc_library(
@@ -301,3 +252,16 @@ index bdc2e30..3a5f5ff 100644
      visibility = ["//visibility:public"],
      deps = [
          ":civil_time",
+diff --git a/absl/base/config.h b/absl/base/config.h
+index 8533aea..07b4e80 100644
+--- a/absl/base/config.h.orig
++++ b/absl/base/config.h
+@@ -906,7 +906,7 @@ static_assert(ABSL_INTERNAL_INLINE_NAMESPACE_STR[0] != 'h' ||
+ // SIMD).
+ #ifdef ABSL_INTERNAL_HAVE_ARM_NEON
+ #error ABSL_INTERNAL_HAVE_ARM_NEON cannot be directly set
+-#elif defined(__ARM_NEON)
++#elif defined(__ARM_NEON) && !defined(__CUDACC__)
+ #define ABSL_INTERNAL_HAVE_ARM_NEON 1
+ #endif
+ 

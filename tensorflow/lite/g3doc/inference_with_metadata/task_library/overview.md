@@ -279,11 +279,11 @@ ImageClassifierOptions options;
 // Load the TFLite model.
 options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
 // Turn on Core ML delegation.
-options.mutable_base_options()->mutable_compute_settings()->mutable_tflite_settings()->set_delegate(Delegate::CORE_ML);
+options.mutable_base_options()->mutable_compute_settings()->mutable_tflite_settings()->set_delegate(::tflite::proto::Delegate::CORE_ML);
 // Set DEVICES_ALL to enable Core ML delegation on any device (in contrast to
 // DEVICES_WITH_NEURAL_ENGINE which creates Core ML delegate only on devices
 // with Apple Neural Engine).
-options.mutable_base_options()->mutable_compute_settings()->mutable_tflite_settings()->mutable_coreml_settings()->set_enabled_devices(CoreMLDelegateSettings::DEVICES_ALL);
+options.mutable_base_options()->mutable_compute_settings()->mutable_tflite_settings()->mutable_coreml_settings()->set_enabled_devices(::tflite::proto::CoreMLSettings::DEVICES_ALL);
 // Create ImageClassifier from options.
 std::unique_ptr<ImageClassifier> image_classifier = ImageClassifier::CreateFromOptions(options).value();
 

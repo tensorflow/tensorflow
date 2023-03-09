@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -70,8 +70,7 @@ void ReplaceCalledComputation(HloInstruction* instruction,
       break;
     }
     default:
-      LOG(FATAL) << "unexpected opcode: "
-                 << HloOpcodeString(instruction->opcode());
+      LOG(FATAL) << "unexpected opcode: " << instruction->opcode();
   }
 }
 
@@ -151,7 +150,9 @@ Status FlattenNode(const CallGraphNode& node) {
 
 }  // namespace
 
-StatusOr<bool> FlattenCallGraph::Run(HloModule* module) {
+StatusOr<bool> FlattenCallGraph::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(3, "Before flatten call graph:\n" + module->ToString());
 
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);

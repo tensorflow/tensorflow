@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_COPY_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_COPY_THUNK_H_
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -34,23 +34,34 @@ class DeviceToDeviceCopyThunk : public Thunk {
   DeviceToDeviceCopyThunk(ThunkInfo thunk_info,
                           const BufferAllocation::Slice& source_buffer,
                           const BufferAllocation::Slice& destination_buffer,
-                          uint64_t mem_size);
+                          uint64_t mem_size, mlir::Value source_value,
+                          mlir::Value destination_value);
 
   DeviceToDeviceCopyThunk(const DeviceToDeviceCopyThunk&) = delete;
   DeviceToDeviceCopyThunk& operator=(const DeviceToDeviceCopyThunk&) = delete;
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  void ClearCompileTimeInfo() override {
+    Thunk::ClearCompileTimeInfo();
+    source_value_ = nullptr;
+    destination_value_ = nullptr;
+  }
+
   const BufferAllocation::Slice& source() const { return source_buffer_; }
   const BufferAllocation::Slice& destination() const {
     return destination_buffer_;
   }
   uint64_t size_bytes() const { return mem_size_; }
+  mlir::Value source_value() const { return source_value_; }
+  mlir::Value destination_value() const { return destination_value_; }
 
  private:
   const BufferAllocation::Slice source_buffer_;
   const BufferAllocation::Slice destination_buffer_;
   const uint64_t mem_size_;
+  mlir::Value source_value_;
+  mlir::Value destination_value_;
 };
 
 }  // namespace gpu

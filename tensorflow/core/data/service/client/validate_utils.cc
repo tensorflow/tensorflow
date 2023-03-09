@@ -66,7 +66,7 @@ Status ValidateCrossTrainerCache(const DataServiceParams& data_service_params) {
     return errors::InvalidArgument(
         "Cross-trainer caching requires named jobs. Got empty `job_name`.");
   }
-  if (data_service_params.metadata.cardinality() != kInfiniteCardinality) {
+  if (data_service_params.metadata.cardinality() >= 0) {
     return errors::InvalidArgument(
         "Cross-trainer caching requires the input dataset to be infinite. "
         "Got input with cardinality ",

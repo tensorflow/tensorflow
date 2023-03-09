@@ -56,7 +56,22 @@ CreateLiftVariablesInvalidSessionTestPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateInitializeVariablesInSessionInitializerTestPass();
 
+// Create a test pass that emits remarks for each analysis result for resources.
+// This pass is only used for lit testing.
+std::unique_ptr<OperationPass<ModuleOp>> CreateResourceAnalyzerTestPass();
+
 #define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_FREEZEVARIABLESTESTPASS
+#define GEN_PASS_DECL_INITTEXTFILETOIMPORTSAVEDMODELTESTPASS
+#define GEN_PASS_DECL_INITTEXTFILETOIMPORTTESTPASS
+#define GEN_PASS_DECL_INITIALIZEVARIABLESINSESSIONINITIALIZERPASS
+#define GEN_PASS_DECL_LIFTVARIABLESINVALIDSESSIONTESTPASS
+#define GEN_PASS_DECL_LIFTVARIABLESTESTPASS
+#define GEN_PASS_DECL_RESOURCEANALYZERTESTPASS
+#define GEN_PASS_DECL_TESTCLUSTERINGPOLICYPASS
+#define GEN_PASS_DECL_TESTRESOURCEALIASANALYSIS
+#define GEN_PASS_DECL_TESTSIDEEFFECTANALYSISPASS
+#define GEN_PASS_DECL_TESTTENSORFLOWLOWERTFPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h.inc"
 
 }  // namespace tf_test

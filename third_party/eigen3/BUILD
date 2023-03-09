@@ -28,8 +28,7 @@ EIGEN3_THIRD_PARTY_HEADERS = [
     "unsupported/Eigen/SpecialFunctions",
     "unsupported/Eigen/CXX11/ThreadPool",
     "unsupported/Eigen/CXX11/Tensor",
-    "unsupported/Eigen/CXX11/FixedPoint",
-] + glob(["unsupported/Eigen/CXX11/src/FixedPoint/*.h"])
+]
 
 cc_library(
     name = "eigen3",
@@ -37,7 +36,7 @@ cc_library(
     includes = if_mkl(["./mkl_include"]),
     visibility = ["//visibility:public"],
     deps = [
-        "@eigen_archive//:eigen3",
+        "@eigen_archive//:eigen3_internal",
     ],
 )
 

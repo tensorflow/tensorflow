@@ -16,7 +16,7 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
-include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
+include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 
@@ -27,8 +27,7 @@ def RemoveRedundantCastOps : Pat<
       (TF_ClipByValueOp:$clip $input, $min_value, $max_value),
       ConstBoolAttrFalse:$truncate2),
     ConstBoolAttrFalse:$truncate1),
-  (CreateOpWithOutputType<"TF::CastOp">
-    (GetValueType $root_cast), $clip, ConstBoolAttrFalse),
+  (TF_CastOp $clip, ConstBoolAttrFalse),
   [(TensorOf<[I8]> $i8_cast),
    (TensorOf<[I32]> $clip),
    (IsIntSplatValueEqual<"int32_t", "-128"> $min_value),
@@ -58,6 +57,6 @@ foreach BinaryOpPair = [[TF_AddV2Op, TF_SubOp],
       (BinaryOpPair[1] $x, (TF_ConstOp:$cst1 $cst1_value)),
       (TF_ConstOp:$cst2 $cst2_value)),
     (BinaryOpPair[0]
-      $x, (TF_SubOp  $cst1, $cst2))>;
+      $x, (TF_SubOp  $cst2, $cst1))>;
 }
 

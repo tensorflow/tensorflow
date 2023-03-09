@@ -5,6 +5,7 @@ load("//tensorflow/lite/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZE
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )
@@ -63,8 +64,8 @@ objc_library(
     tags = TFL_DEFAULT_TAGS,
     visibility = ios_visibility_allowlist(),
     deps = [
-        "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/c:c_api_experimental",
+        "//tensorflow/lite/core/c:c_api",
+        "//tensorflow/lite/core/c:c_api_experimental",
         "//tensorflow/lite/delegates/coreml:coreml_delegate",
         "//tensorflow/lite/delegates/gpu:metal_delegate",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
@@ -118,13 +119,9 @@ ios_application(
     ],
     infoplists = ["apps/TestApp/TestApp/Info.plist"],
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    sdk_frameworks = [
-        "CoreGraphics",
-    ],
+    sdk_frameworks = ["CoreGraphics"],
     tags = TFL_DEFAULT_TAGS,
-    deps = [
-        ":TestAppLibrary",
-    ],
+    deps = [":TestAppLibrary"],
 )
 
 objc_library(

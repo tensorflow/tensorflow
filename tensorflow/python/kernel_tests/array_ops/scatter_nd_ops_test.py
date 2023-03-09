@@ -35,7 +35,8 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
-GRADIENT_TESTS_DTYPES = (dtypes.float16, dtypes.float32, dtypes.float64)
+GRADIENT_TESTS_DTYPES = (dtypes.bfloat16, dtypes.float16, dtypes.float32,
+                         dtypes.float64)
 
 
 def _AsType(v, vtype):
@@ -151,18 +152,20 @@ class StatefulScatterNdTest(test.TestCase):
         self.evaluate(tf_scatter(ref_var, indices, updates))
 
         # Compare
-        self.assertAllClose(new, self.evaluate(ref_var))
+        tol = 1e-6 if vtype != dtypes.bfloat16.as_numpy_dtype else 1e-2
+        self.assertAllClose(new, self.evaluate(ref_var), rtol=tol, atol=tol)
 
   def _VariableRankTests(self, np_scatter, tf_scatter):
     for vtype in (np.int32, np.float16, np.float32, np.float64, np.complex64,
-                  np.complex128):
+                  np.complex128, dtypes.bfloat16.as_numpy_dtype):
       for itype in (np.int32, np.int64):
         self._VariableRankTest(np_scatter, tf_scatter, vtype, itype)
 
   def testSimple(self):
     indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
     for dtype in (dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64,
-                  dtypes.complex64, dtypes.complex128):
+                  dtypes.complex64, dtypes.complex128,
+                  dtypes.bfloat16.as_numpy_dtype):
       updates = constant_op.constant([9, 10, 11, 12], dtype=dtype)
       ref = variables.Variable([0, 0, 0, 0, 0, 0, 0, 0], dtype=dtype)
       expected = np.array([0, 11, 0, 10, 9, 0, 0, 12])
@@ -187,7 +190,7 @@ class StatefulScatterNdTest(test.TestCase):
 
   def testSimpleResource(self):
     indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
-    for dtype in (dtypes.int32, dtypes.float32):
+    for dtype in (dtypes.int32, dtypes.float32, dtypes.bfloat16):
       updates = constant_op.constant([9, 10, 11, 12], dtype=dtype)
       ref = resource_variable_ops.ResourceVariable([0, 0, 0, 0, 0, 0, 0, 0],
                                                    dtype=dtype)
@@ -245,7 +248,8 @@ class StatefulScatterNdTest(test.TestCase):
   #   self._VariableRankTests(_NumpyDiv, state_ops.scatter_nd_div)
 
   def _ScatterRepeatIndicesTest(self, np_scatter, tf_scatter):
-    for vtype in (np.int32, np.float16, np.float32, np.float64):
+    for vtype in (np.int32, np.float16, np.float32, np.float64,
+                  dtypes.bfloat16.as_numpy_dtype):
       for itype in (np.int32, np.int64):
         self._VariableRankTest(
             np_scatter, tf_scatter, vtype, itype, repeat_indices=True)
@@ -661,9 +665,9 @@ class ScatterNdTest(test.TestCase, parameterized.TestCase):
 
         updates_grad, input_grad = tape.gradient([outputs], [updates, input_],
                                                  [grad_vals])
-      expected_updates_grad = np.array([1, 4], dtype=dtype.as_numpy_dtype())
+      expected_updates_grad = np.array([1, 4], dtype=dtype.as_numpy_dtype)
       expected_input_grad = np.array([[1, 2], [3, 4]],
-                                     dtype=dtype.as_numpy_dtype())
+                                     dtype=dtype.as_numpy_dtype)
       self.assertAllEqual(expected_updates_grad, self.evaluate(updates_grad))
       if self.non_aliasing_add_test:
         self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
@@ -684,9 +688,9 @@ class ScatterNdTest(test.TestCase, parameterized.TestCase):
         updates_grad, input_grad = tape.gradient([outputs], [updates, input_],
                                                  [grad_vals])
       expected_updates_grad = np.array([[1, 2], [3, 4]],
-                                       dtype=dtype.as_numpy_dtype())
+                                       dtype=dtype.as_numpy_dtype)
       expected_input_grad = np.array([[3, 4], [1, 2]],
-                                     dtype=dtype.as_numpy_dtype())
+                                     dtype=dtype.as_numpy_dtype)
       self.assertAllEqual(expected_updates_grad, self.evaluate(updates_grad))
       if self.non_aliasing_add_test:
         self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
@@ -710,9 +714,9 @@ class ScatterNdTest(test.TestCase, parameterized.TestCase):
         updates_grad, input_grad = tape.gradient([outputs], [updates, input_],
                                                  [grad_vals])
       expected_updates_grad = np.array([[[3, 4], [5, 6]], [[1, 2], [7, 8]]],
-                                       dtype=dtype.as_numpy_dtype())
+                                       dtype=dtype.as_numpy_dtype)
       expected_input_grad = np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
-                                     dtype=dtype.as_numpy_dtype())
+                                     dtype=dtype.as_numpy_dtype)
       self.assertAllEqual(expected_updates_grad, self.evaluate(updates_grad))
       if self.non_aliasing_add_test:
         self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
@@ -739,10 +743,10 @@ class ScatterNdTest(test.TestCase, parameterized.TestCase):
                                                  [grad_vals])
       expected_updates_grad = np.array(
           [[[[[[[3, 4], [5, 6]]]], [[[[1, 2], [7, 8]]]]]]],
-          dtype=dtype.as_numpy_dtype())
+          dtype=dtype.as_numpy_dtype)
       expected_input_grad = np.array(
           [[[[[[[1, 2], [3, 4]]]], [[[[5, 6], [7, 8]]]]]]],
-          dtype=dtype.as_numpy_dtype())
+          dtype=dtype.as_numpy_dtype)
       self.assertAllEqual(expected_updates_grad, self.evaluate(updates_grad))
       if self.non_aliasing_add_test:
         self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))

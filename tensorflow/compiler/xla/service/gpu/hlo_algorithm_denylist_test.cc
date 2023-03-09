@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/hlo_algorithm_denylist.h"
 
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/resource_loader.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/dnn.h"
+#include <cstdlib>
+#include <string>
+
+#include "tensorflow/compiler/xla/stream_executor/dnn.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/resource_loader.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -28,15 +31,20 @@ namespace {
 class DenylistTest : public testing::Test {
  protected:
   DenylistTest() {
-    tensorflow::setenv(
+    std::string existing_xla_flags;
+    const char* env = std::getenv("XLA_FLAGS");
+    if (env != nullptr) {
+      existing_xla_flags = absl::StrCat(env, " ");
+    }
+
+    tsl::setenv(
         "XLA_FLAGS",
         absl::StrCat(
-            "--xla_gpu_algorithm_denylist_path=",
-            tensorflow::GetDataDependencyFilepath(tensorflow::io::JoinPath(
-                "tensorflow", "compiler", "xla", "service", "gpu", "data",
-                "hlo_algorithm_denylist.pbtxt")))
+            existing_xla_flags, "--xla_gpu_algorithm_denylist_path=",
+            tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
+                              "data", "hlo_algorithm_denylist.pbtxt"))
             .data(),
-        0);
+        /*overwrite=*/true);
   }
 };
 

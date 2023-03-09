@@ -148,6 +148,11 @@ TF_DataType TF_TensorType(const TF_Tensor* t) {
   return static_cast<TF_DataType>(t->tensor->Type());
 }
 
+void TF_SetShape(TF_Tensor* t, const int64_t* dims, int num_dims) {
+  tensorflow::down_cast<tensorflow::TensorInterface*>(t->tensor)->SetShape(
+      dims, num_dims);
+}
+
 int TF_NumDims(const TF_Tensor* t) { return t->tensor->NumDims(); }
 
 int64_t TF_Dim(const TF_Tensor* t, int dim_index) {
@@ -230,11 +235,19 @@ void* TensorInterface::Data() const {
   return tensorflow::TensorCApi::Buffer(tensor_)->data();
 }
 
+void TensorInterface::SetShape(const int64_t* dims, int num_dims) {
+  tensorflow::TensorShape s;
+  for (int i = 0; i < num_dims; ++i) {
+    s.AddDim(dims[i]);
+  }
+  tensor_.set_shape(s);
+}
+
 Status TensorInterface::BitcastFrom(const TensorInterface& from, DataType type,
                                     const int64_t* new_dims, int num_new_dims) {
   tensorflow::TensorShape s;
   for (int i = 0; i < num_new_dims; ++i) {
-    s.AddDim(new_dims[i]);
+    TF_RETURN_IF_ERROR(s.AddDimWithStatus(new_dims[i]));
   }
   return tensor_.BitcastFrom(from.tensor_, type, s);
 }
@@ -292,6 +305,20 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
     return nullptr;
   }
   return new TF_Tensor{new tensorflow::TensorInterface(std::move(tensor))};
+}
+
+TF_Tensor* TF_TensorFromTensorShallow(const tensorflow::Tensor& src,
+                                      Status* status) {
+  *status = OkStatus();
+  if (!src.IsInitialized()) {
+    *status = FailedPrecondition(
+        "attempt to use a tensor with an uninitialized value");
+    return nullptr;
+  }
+  if (src.NumElements() == 0) {
+    return EmptyTensor(static_cast<TF_DataType>(src.dtype()), src.shape());
+  }
+  return new TF_Tensor{new tensorflow::TensorInterface(src)};
 }
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {

@@ -26,10 +26,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/delegates/utils.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -558,6 +558,35 @@ TfLiteRegistration TestFP16Delegation::FP16Delegate::FakeFusedRegistration() {
   }
 
   return reg;
+}
+
+void TestDelegateWithControlEdges::SetUpSubgraph(Subgraph* subgraph) {
+  subgraph->AddTensors(5);
+  subgraph->SetInputs({0});
+  subgraph->SetOutputs({4});
+  std::vector<int> dims({3});
+  const TfLiteQuantization quant{kTfLiteNoQuantization, nullptr};
+  subgraph->SetTensorParametersReadWrite(0, kTfLiteFloat32, "", dims.size(),
+                                         dims.data(), quant, false);
+  subgraph->SetTensorParametersReadWrite(1, kTfLiteFloat32, "", dims.size(),
+                                         dims.data(), quant, false);
+  subgraph->SetTensorParametersReadWrite(2, kTfLiteFloat32, "", dims.size(),
+                                         dims.data(), quant, false);
+  subgraph->SetTensorParametersReadWrite(3, kTfLiteFloat32, "", dims.size(),
+                                         dims.data(), quant, false);
+  subgraph->SetTensorParametersReadWrite(4, kTfLiteFloat32, "", dims.size(),
+                                         dims.data(), quant, false);
+
+  TfLiteRegistration reg = AddOpRegistration();
+  int node_index_ignored;
+  subgraph->AddNodeWithParameters({0, 0}, {1}, {}, nullptr, 0, nullptr, &reg,
+                                  &node_index_ignored);
+  subgraph->AddNodeWithParameters({1, 1}, {2}, {}, nullptr, 0, nullptr, &reg,
+                                  &node_index_ignored);
+  subgraph->AddNodeWithParameters({1, 1}, {3}, {}, nullptr, 0, nullptr, &reg,
+                                  &node_index_ignored);
+  subgraph->AddNodeWithParameters({2, 3}, {4}, {}, nullptr, 0, nullptr, &reg,
+                                  &node_index_ignored);
 }
 
 }  // namespace test_utils

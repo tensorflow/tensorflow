@@ -18,13 +18,13 @@ limitations under the License.
 #include <string>
 
 #include "absl/cleanup/cleanup.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
-#include "tensorflow/stream_executor/tpu/status_helper.h"
 
 using ::tensorflow::tpu::TPUEmbeddingConfiguration;
 
@@ -63,7 +63,7 @@ class ExecuteTPUEmbeddingPartitionerOp : public OpKernel {
 
     char* common_config_output = nullptr;
     auto cleanup = absl::MakeCleanup([&common_config_output]() {
-      tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
+      stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
           common_config_output);
     });
     size_t common_config_output_size;
@@ -73,7 +73,8 @@ class ExecuteTPUEmbeddingPartitionerOp : public OpKernel {
     StatusHelper status;
     params.status = status.c_status;
 
-    tpu::OpsApiFn()->TpuEmbeddingEngine_ExecutePartitionerFn(&params);
+    stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_ExecutePartitionerFn(
+        &params);
     if (!status.ok()) {
       LOG(WARNING) << "ExecuteTPUEmbeddingPartitioner::Compute failed"
                    << status.status().ToString();
@@ -98,7 +99,7 @@ class ExecuteTPUEmbeddingPartitionerOp : public OpKernel {
 };
 
 // Initializes the HBM memory addresses and segments on each host.
-// The Op takes as input the output of the _ExecuteTPUEmbeddingPartitioner Op.
+// The Op takes as input the output of the ExecuteTPUEmbeddingPartitioner Op.
 // It should be run on the CPU device of each host.
 class ConfigureTPUEmbeddingMemoryOp : public OpKernel {
  public:
@@ -116,7 +117,7 @@ class ConfigureTPUEmbeddingMemoryOp : public OpKernel {
 
     char* memory_config_output = nullptr;
     auto cleanup = absl::MakeCleanup([&memory_config_output]() {
-      tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
+      stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
           memory_config_output);
     });
     size_t memory_config_output_size;
@@ -127,7 +128,8 @@ class ConfigureTPUEmbeddingMemoryOp : public OpKernel {
     StatusHelper status;
     params.status = status.c_status;
 
-    tpu::OpsApiFn()->TpuEmbeddingEngine_ConfigureMemoryFn(&params);
+    stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_ConfigureMemoryFn(
+        &params);
     OP_REQUIRES_OK(ctx, status.status());
 
     const std::string memory_config_string =
@@ -151,7 +153,7 @@ class ConfigureTPUEmbeddingMemoryOp : public OpKernel {
 // tpu_embedding::HbmBuffersConfig object. The memory configuration consists of
 // the HBM addresses and sizes for the segments used by TPUEmbedding. The Op
 // takes as input the memory configurations, i.e., the outputs of the
-// _ConfigureTPUEmbeddingMemory Ops on all hosts and produces an output after
+// ConfigureTPUEmbeddingMemory Ops on all hosts and produces an output after
 // merging them. This Op should be run on the CPU device of host:0.
 class CollateTPUEmbeddingMemoryOp : public OpKernel {
  public:
@@ -176,7 +178,7 @@ class CollateTPUEmbeddingMemoryOp : public OpKernel {
 
     char* merged_memory_config_output = nullptr;
     auto cleanup = absl::MakeCleanup([&merged_memory_config_output]() {
-      tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
+      stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
           merged_memory_config_output);
     });
 
@@ -187,7 +189,8 @@ class CollateTPUEmbeddingMemoryOp : public OpKernel {
     StatusHelper status;
     params.status = status.c_status;
 
-    tpu::OpsApiFn()->TpuEmbeddingEngine_CollateMemoryFn(&params);
+    stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_CollateMemoryFn(
+        &params);
     OP_REQUIRES_OK(ctx, status.status());
 
     const std::string merged_memory_config_string = std::string(
@@ -210,7 +213,7 @@ class CollateTPUEmbeddingMemoryOp : public OpKernel {
 // The ConfigureTpuEmbeddingHost op is used to set up the TPUEmbedding host
 // software on a given host. It takes as input a TPUEmbeddingConfiguration
 // proto which describes all the embedding tables as well as the outputs of
-// the _ExecuteTPUEmbeddingPartitioner and _CollateTPUEmbeddingMemory ops. It
+// the ExecuteTPUEmbeddingPartitioner and CollateTPUEmbeddingMemory ops. It
 // should be run on the CPU device of each task.
 class ConfigureTPUEmbeddingHostOp : public OpKernel {
  public:
@@ -247,7 +250,7 @@ class ConfigureTPUEmbeddingHostOp : public OpKernel {
 
     char* network_config_output = nullptr;
     auto cleanup = absl::MakeCleanup([&network_config_output]() {
-      tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
+      stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
           network_config_output);
     });
 
@@ -258,7 +261,8 @@ class ConfigureTPUEmbeddingHostOp : public OpKernel {
     StatusHelper status;
     params.status = status.c_status;
 
-    tpu::OpsApiFn()->TpuEmbeddingEngine_ConfigureHostFn(&params);
+    stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_ConfigureHostFn(
+        &params);
     OP_REQUIRES_OK(ctx, status.status());
 
     const std::string network_config_string =
@@ -314,7 +318,8 @@ class ConnectTPUEmbeddingHostsOp : public OpKernel {
     StatusHelper status;
     params.status = status.c_status;
 
-    tpu::OpsApiFn()->TpuEmbeddingEngine_ConnectHostsFn(&params);
+    stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_ConnectHostsFn(
+        &params);
     OP_REQUIRES_OK(ctx, status.status());
 
     VLOG(1) << "ConnectTPUEmbeddingHostsOp::Compute done";
@@ -364,7 +369,7 @@ class FinalizeTPUEmbeddingOp : public OpKernel {
     core::ScopedUnref mesh_state_unref(mesh_state);
     params.tpu_mesh_state = mesh_state->data();
 
-    tpu::OpsApiFn()->TpuEmbeddingEngine_FinalizeFn(&params);
+    stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_FinalizeFn(&params);
     OP_REQUIRES_OK(ctx, status.status());
     VLOG(1) << "FinalizeTPUEmbeddingOp::Compute done";
   }
@@ -398,7 +403,8 @@ class IsTPUEmbeddingInitializedOp : public OpKernel {
     bool is_initialized = false;
     params.is_tpu_embedding_initialized = &is_initialized;
 
-    tpu::OpsApiFn()->TpuEmbeddingEngine_IsInitializedFn(&params);
+    stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_IsInitializedFn(
+        &params);
 
     OP_REQUIRES_OK(ctx, status.status());
 
@@ -416,31 +422,31 @@ class IsTPUEmbeddingInitializedOp : public OpKernel {
 };
 
 // These ops execute on the CPU devices of TPU worker tasks.
-REGISTER_KERNEL_BUILDER(Name("_ExecuteTPUEmbeddingPartitioner")
+REGISTER_KERNEL_BUILDER(Name("ExecuteTPUEmbeddingPartitioner")
                             .Device(DEVICE_CPU)
                             .HostMemory("common_config"),
                         ExecuteTPUEmbeddingPartitionerOp);
-REGISTER_KERNEL_BUILDER(Name("_ConfigureTPUEmbeddingMemory")
+REGISTER_KERNEL_BUILDER(Name("ConfigureTPUEmbeddingMemory")
                             .Device(DEVICE_CPU)
                             .HostMemory("common_config")
                             .HostMemory("memory_config"),
                         ConfigureTPUEmbeddingMemoryOp);
-REGISTER_KERNEL_BUILDER(Name("_CollateTPUEmbeddingMemory")
+REGISTER_KERNEL_BUILDER(Name("CollateTPUEmbeddingMemory")
                             .Device(DEVICE_CPU)
                             .HostMemory("memory_configs")
                             .HostMemory("merged_memory_config"),
                         CollateTPUEmbeddingMemoryOp);
-REGISTER_KERNEL_BUILDER(Name("_ConfigureTPUEmbeddingHost")
+REGISTER_KERNEL_BUILDER(Name("ConfigureTPUEmbeddingHost")
                             .Device(DEVICE_CPU)
                             .HostMemory("common_config")
                             .HostMemory("memory_config")
                             .HostMemory("network_config"),
                         ConfigureTPUEmbeddingHostOp);
-REGISTER_KERNEL_BUILDER(Name("_ConnectTPUEmbeddingHosts")
+REGISTER_KERNEL_BUILDER(Name("ConnectTPUEmbeddingHosts")
                             .Device(DEVICE_CPU)
                             .HostMemory("network_configs"),
                         ConnectTPUEmbeddingHostsOp);
-REGISTER_KERNEL_BUILDER(Name("_FinalizeTPUEmbedding")
+REGISTER_KERNEL_BUILDER(Name("FinalizeTPUEmbedding")
                             .Device(DEVICE_CPU)
                             .HostMemory("common_config")
                             .HostMemory("memory_config"),

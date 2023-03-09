@@ -44,9 +44,9 @@ StatusOr<Layout> ComputeResultLayout(mlir::Operation* op,
                                  " not yet implemented.");
 
   auto argmax_op = llvm::cast<mlir::TF::ArgMaxOp>(op);
-  const auto input_rank = ValueRank(argmax_op.input());
+  const auto input_rank = ValueRank(argmax_op.getInput());
   TF_ASSIGN_OR_RETURN(int64_t axis,
-                      ExtractConstIntFromValue(argmax_op.dimension()));
+                      ExtractConstIntFromValue(argmax_op.getDimension()));
 
   if (axis < 0) axis += input_rank;
 
@@ -58,22 +58,22 @@ StatusOr<Layout> ComputeResultLayout(mlir::Operation* op,
       output_layout_proto.add_sharding_specs()->set_sharding_spec(
           input_layout.sharding_spec(i));
   }
-  return Layout::FromProto(output_layout_proto).ValueOrDie();
+  return Layout::FromProto(output_layout_proto).value();
 }
 }  // namespace
 
 StatusOr<mlir::Operation*> ArgMaxSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto argmax_op = llvm::cast<mlir::TF::ArgMaxOp>(op);
   TF_ASSIGN_OR_RETURN(int64_t axis,
-                      ExtractConstIntFromValue(argmax_op.dimension()));
+                      ExtractConstIntFromValue(argmax_op.getDimension()));
   TF_ASSIGN_OR_RETURN(auto input_layout,
-                      ExtractLayoutFromOperand(argmax_op.input()));
+                      ExtractLayoutFromOperand(argmax_op.getInput()));
   TF_ASSIGN_OR_RETURN(auto output_layout, ExtractSingleLayoutFromOp(argmax_op));
   if (!input_layout || !output_layout)
     return errors::InvalidArgument(
         OpName(op), " is missing layouts during SPMD Expansion.");
 
-  auto input = argmax_op.input();
+  mlir::Value input = argmax_op.getInput();
   const auto input_rank = ValueRank(input);
 
   TF_ASSIGN_OR_RETURN(auto input_shape, GetShapeOfValue(input));
@@ -102,16 +102,16 @@ StatusOr<mlir::Operation*> ArgMaxSPMDExpander::ExpandOp(mlir::Operation* op) {
 
     if (!Layout::IsUnshardedDimension(input_layout->sharding_spec(axis))) {
       TF_ASSIGN_OR_RETURN(
-          input, EmitAllGather(
-                     builder, input, *input_layout,
-                     Layout::FromProto(tgt_input_layout_proto).ValueOrDie()));
+          input,
+          EmitAllGather(builder, input, *input_layout,
+                        Layout::FromProto(tgt_input_layout_proto).value()));
     }
   }
 
   auto new_argmax = builder.create<mlir::TF::ArgMaxOp>(
       argmax_op.getLoc(), argmax_op.getResult().getType(), input,
-      argmax_op.dimension());
-  op->getResult(0).replaceAllUsesWith(new_argmax.output());
+      argmax_op.getDimension());
+  op->getResult(0).replaceAllUsesWith(new_argmax.getOutput());
   op->erase();
 
   return InferSPMDExpandedLocalShape(new_argmax);
@@ -142,8 +142,8 @@ StatusOr<llvm::DenseMap<int, Layout>> ArgMaxSPMDExpander::ComputeLayoutBackward(
 
   auto argmax_op = llvm::cast<mlir::TF::ArgMaxOp>(op);
   TF_ASSIGN_OR_RETURN(int64_t axis,
-                      ExtractConstIntFromValue(argmax_op.dimension()));
-  auto input = argmax_op.input();
+                      ExtractConstIntFromValue(argmax_op.getDimension()));
+  auto input = argmax_op.getInput();
   const auto input_rank = ValueRank(input);
 
   // Handle the case of negative axis.

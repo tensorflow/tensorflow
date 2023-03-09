@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/strings/string_view.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/util/debug_events_writer.h"
@@ -108,16 +108,16 @@ PYBIND11_MODULE(_pywrap_debug_events_writer, m) {
   m.def("FlushNonExecutionFiles", [](const std::string& dump_root) {
     DebugEventsWriter* writer = nullptr;
     TF_CHECK_OK(DebugEventsWriter::LookUpDebugEventsWriter(dump_root, &writer));
-    writer->FlushNonExecutionFiles();
+    (void)writer->FlushNonExecutionFiles();
   });
   m.def("FlushExecutionFiles", [](const std::string& dump_root) {
     DebugEventsWriter* writer = nullptr;
     TF_CHECK_OK(DebugEventsWriter::LookUpDebugEventsWriter(dump_root, &writer));
-    writer->FlushExecutionFiles();
+    (void)writer->FlushExecutionFiles();
   });
   m.def("Close", [](const std::string& dump_root) {
     DebugEventsWriter* writer = nullptr;
     TF_CHECK_OK(DebugEventsWriter::LookUpDebugEventsWriter(dump_root, &writer));
-    writer->Close();
+    (void)writer->Close();
   });
 };

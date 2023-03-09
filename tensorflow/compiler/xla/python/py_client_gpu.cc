@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <vector>
+
 #include "absl/base/casts.h"
 #include "absl/strings/numbers.h"
 #if TENSORFLOW_USE_ROCM
@@ -21,7 +23,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #endif
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/python/callback.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
 
@@ -59,7 +61,7 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
   std::vector<void*> host_input_buffers(arity);
   // Copy input GPU buffers to host
   for (size_t i = 0; i < arity; ++i) {
-    CpuCallback::Arg arg = callback->args()[i];
+    const CpuCallback::Arg& arg = callback->args()[i];
     if (arg.type == TOKEN) {
       host_input_buffers[i] = nullptr;
       continue;
@@ -119,7 +121,7 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
       if (!plan.ok()) {
         throw xla::XlaRuntimeError(plan.status().ToString());
       }
-      plan.ValueOrDie()->Execute(array.data(), temp);
+      plan.value()->Execute(array.data(), temp);
       gpuMemcpyAsync(buffers[arity + i], temp, result.size_in_bytes,
                      gpuMemcpyHostToDevice, stream);
     }

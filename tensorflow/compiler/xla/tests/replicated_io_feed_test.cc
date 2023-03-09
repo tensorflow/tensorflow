@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 // Tests replicated infeed/outfeed operations.
 
@@ -54,10 +54,10 @@ XLA_TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
   auto config = GetModuleConfigForTest();
   config.set_replica_count(kNumReplicas);
   std::unique_ptr<HloModule> module =
-      ParseAndReturnVerifiedModule(hlo_text, config).ValueOrDie();
+      ParseAndReturnVerifiedModule(hlo_text, config).value();
   auto executable =
       test_runner_.CreateExecutable(std::move(module), /*run_hlo_passes=*/true)
-          .ValueOrDie();
+          .value();
 
   auto device_assn = MakeDeviceAssn(kNumReplicas);
 

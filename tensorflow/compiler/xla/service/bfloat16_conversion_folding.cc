@@ -16,21 +16,21 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/bfloat16_conversion_folding.h"
 
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
 class BFloat16ConversionFoldingVisitor : public DfsHloVisitorWithDefault {
  public:
   explicit BFloat16ConversionFoldingVisitor(
-      HloComputation* computation, const BFloat16Support* bfloat16_support,
+      HloComputation* computation, const FloatSupport* bfloat16_support,
       BFloat16ConversionFolding* bfloat16_conversion_folding)
       : computation_(computation),
         bfloat16_support_(bfloat16_support),
@@ -42,7 +42,7 @@ class BFloat16ConversionFoldingVisitor : public DfsHloVisitorWithDefault {
   Status HandleAllReduce(HloInstruction* crs) override;
 
   static bool Run(HloComputation* computation,
-                  const BFloat16Support* bfloat16_support,
+                  const FloatSupport* bfloat16_support,
                   BFloat16ConversionFolding* bfloat16_conversion_folding) {
     BFloat16ConversionFoldingVisitor visitor(computation, bfloat16_support,
                                              bfloat16_conversion_folding);
@@ -66,7 +66,7 @@ class BFloat16ConversionFoldingVisitor : public DfsHloVisitorWithDefault {
   Status FoldOperandConversion(HloInstruction* hlo, int64_t operand_index);
 
   HloComputation* computation_;
-  const BFloat16Support* bfloat16_support_;
+  const FloatSupport* bfloat16_support_;
   BFloat16ConversionFolding* bfloat16_conversion_folding_;
   bool changed_ = false;
 };
@@ -123,7 +123,7 @@ Status BFloat16ConversionFoldingVisitor::TryFoldBF16Conversions(
     if (operand->shape().element_type() == F32) {
       if (operand->opcode() == HloOpcode::kConvert &&
           operand->operand(0)->shape().element_type() == BF16 &&
-          bfloat16_support_->SupportsBF16Operand(*hlo, i)) {
+          bfloat16_support_->SupportsLowPrecisionOperand(*hlo, i)) {
         // Operand is a convert from BF16 to F32 and we support BF16 input
         // directly in the current HLO at the operand index.
         bf16_to_f32_operands.push_back(i);
@@ -136,7 +136,7 @@ Status BFloat16ConversionFoldingVisitor::TryFoldBF16Conversions(
 
   const bool fold_output_conversion =
       AllUsersAreF32ToBF16Converts(hlo) &&
-      bfloat16_support_->SupportsBF16Output(*hlo);
+      bfloat16_support_->SupportsLowPrecisionOutput(*hlo);
 
   if (!bfloat16_support_->SupportsMixedPrecisions(*hlo)) {
     if (has_other_f32_operands ||
@@ -252,11 +252,13 @@ Status BFloat16ConversionFoldingVisitor::HandleAllReduce(HloInstruction* crs) {
   return OkStatus();
 }
 
-StatusOr<bool> BFloat16ConversionFolding::Run(HloModule* module) {
+StatusOr<bool> BFloat16ConversionFolding::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
       2, "BFloat16ConversionFolding::Run(), before:\n" + module->ToString());
   bool changed = false;
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     if (BFloat16ConversionFoldingVisitor::Run(comp, bfloat16_support_, this)) {
       changed = true;
     }

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/convert_attributes.h"
 
 #include <string>
+#include <vector>
 
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -264,6 +265,7 @@ Status ConvertAttributes(ArrayRef<NamedAttribute> attrs,
     // calls.
     std::vector<std::string> name_tokens =
         absl::StrSplit(name, '.', absl::SkipEmpty());
+    TF_RET_CHECK(!name_tokens.empty());
     TF_RET_CHECK(name_tokens.size() <= 2);
     auto it = func_call_attrs.find(name_tokens[0]);
     if (it == func_call_attrs.end())
@@ -304,9 +306,7 @@ Status SetShapeAttribute(absl::string_view name, ShapedType shaped_type,
 // exclused in this function because the function might be renamed when the
 // function definition is imported.
 StatusOr<Attribute> ConvertNonFuncAttributeValue(const AttrValue& value,
-                                                 Builder& builder,
-                                                 TFGraphDialect* tfgDialect) {
-  assert(tfgDialect == builder.getContext()->getLoadedDialect("tfg"));
+                                                 Builder& builder) {
   switch (value.value_case()) {
     case AttrValue::kI:
       return builder.getI64IntegerAttr(value.i());
@@ -324,7 +324,7 @@ StatusOr<Attribute> ConvertNonFuncAttributeValue(const AttrValue& value,
     case AttrValue::kShape:
       return ConvertTensorShapeProto(value.shape(), builder.getContext());
     case AttrValue::kTensor:
-      return ConvertTensorProto(value.tensor(), builder, tfgDialect);
+      return ConvertTensorProto(value.tensor(), builder);
     case AttrValue::kList: {
       absl::InlinedVector<Attribute, 8> attrs;
       for (const auto& item : value.list().i())
@@ -346,16 +346,14 @@ StatusOr<Attribute> ConvertNonFuncAttributeValue(const AttrValue& value,
         attrs.push_back(attr);
       }
       for (const auto& item : value.list().tensor()) {
-        TF_ASSIGN_OR_RETURN(auto attr,
-                            ConvertTensorProto(item, builder, tfgDialect));
+        TF_ASSIGN_OR_RETURN(auto attr, ConvertTensorProto(item, builder));
         attrs.push_back(attr);
       }
       for (const auto& func_attr : value.list().func()) {
         NamedAttrList subattrs;
         for (const auto& subattr : func_attr.attr()) {
-          TF_ASSIGN_OR_RETURN(
-              auto attr,
-              ConvertAttributeValue(subattr.second, builder, tfgDialect));
+          TF_ASSIGN_OR_RETURN(auto attr,
+                              ConvertAttributeValue(subattr.second, builder));
           if (subattr.first.empty())
             return InvalidArgument("empty func_attr name");
           subattrs.push_back(builder.getNamedAttr(subattr.first, attr));
@@ -363,8 +361,7 @@ StatusOr<Attribute> ConvertNonFuncAttributeValue(const AttrValue& value,
         attrs.push_back(FuncAttr::get(builder.getContext(), func_attr.name(),
                                       builder.getDictionaryAttr(subattrs)));
       }
-      return builder.getArrayAttr(
-          llvm::makeArrayRef(attrs.begin(), attrs.end()));
+      return builder.getArrayAttr(llvm::ArrayRef(attrs.begin(), attrs.end()));
     }
     case AttrValue::VALUE_NOT_SET:
       return builder.getUnitAttr();
@@ -377,16 +374,14 @@ StatusOr<Attribute> ConvertNonFuncAttributeValue(const AttrValue& value,
 }
 
 StatusOr<Attribute> ConvertAttributeValue(const AttrValue& value,
-                                          Builder& builder,
-                                          TFGraphDialect* tfgDialect) {
+                                          Builder& builder) {
   switch (value.value_case()) {
     case AttrValue::kFunc: {
       NamedAttrList attrs;
       for (const auto& func_attr : value.func().attr()) {
         if (func_attr.first.empty()) return InvalidArgument("empty attr name");
-        TF_ASSIGN_OR_RETURN(
-            auto attr,
-            ConvertAttributeValue(func_attr.second, builder, tfgDialect));
+        TF_ASSIGN_OR_RETURN(auto attr,
+                            ConvertAttributeValue(func_attr.second, builder));
         attrs.push_back(builder.getNamedAttr(func_attr.first, attr));
       }
       auto func_attrs = builder.getDictionaryAttr(attrs);
@@ -394,19 +389,17 @@ StatusOr<Attribute> ConvertAttributeValue(const AttrValue& value,
                            func_attrs);
     }
     default:
-      return ConvertNonFuncAttributeValue(value, builder, tfgDialect);
+      return ConvertNonFuncAttributeValue(value, builder);
   }
 }
 
 StatusOr<tf_type::FullTypeAttr> ConvertAttribute(
-    const tensorflow::FullTypeDef& full_type, Builder& builder,
-    TFGraphDialect* tfgDialect) {
+    const tensorflow::FullTypeDef& full_type, Builder& builder) {
   using FullTypeAttr = ::mlir::tf_type::FullTypeAttr;
 
   SmallVector<FullTypeAttr> args;
   for (const tensorflow::FullTypeDef& it : full_type.args()) {
-    TF_ASSIGN_OR_RETURN(FullTypeAttr arg,
-                        ConvertAttribute(it, builder, tfgDialect));
+    TF_ASSIGN_OR_RETURN(FullTypeAttr arg, ConvertAttribute(it, builder));
     args.push_back(arg);
   }
 

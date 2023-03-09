@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <deque>
 
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_isolator.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace {
@@ -136,51 +136,51 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   return visitor.ConsumeInstructionMap();
 }
 
-StatusOr<bool> CallInliner::Run(HloModule* module) {
+StatusOr<bool> CallInliner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   // Because call graph nodes are visited in post-order (callees before callers)
   // we'll always inline kCalls into their callers in the appropriate order.
   bool did_mutate = false;
-  TF_RETURN_IF_ERROR(
-      call_graph->VisitNodes([&](const CallGraphNode& node) -> Status {
-        VLOG(1) << "Visiting node: " << node.ToString();
-        for (HloInstruction* instruction :
-             node.computation()->MakeInstructionPostOrder()) {
-          // Don't inline async called computation since currently it's only
-          // used for parallel device computation.
-          // TODO(b/229887502): update the inliner to ignore only parallel
-          // device type async call instead of all.
-          if (instruction->opcode() == HloOpcode::kCall &&
-              !instruction->parent()->IsAsyncComputation()) {
-            const auto& callees = instruction->called_computations();
-            TF_RET_CHECK(callees.size() == 1);
-            HloInstruction* call_root = callees[0]->root_instruction();
-            if (!single_call_site_ ||
-                call_graph->GetNode(instruction->to_apply())
-                        .caller_callsites()
-                        .size() == 1) {
-              TF_ASSIGN_OR_RETURN(CallInliner::InlinedInstructionMap inline_map,
-                                  Inline(instruction));
-              HloInstruction* inlined_root = inline_map[call_root];
-              if (update_domain_) {
-                HloDomainIsolator isolator(
-                    []() { return ShardingDomainCreator{}; });
-                TF_RETURN_IF_ERROR(
-                    isolator.UpdateDomains(inlined_root).status());
-              }
-              did_mutate = true;
+  TF_RETURN_IF_ERROR(call_graph->VisitNodes([&](const CallGraphNode& node)
+                                                -> Status {
+    VLOG(1) << "Visiting node: " << node.ToString();
+    for (HloInstruction* instruction :
+         node.computation()->MakeInstructionPostOrder()) {
+      // Don't inline async called computation since currently it's only
+      // used for parallel device computation.
+      // TODO(b/229887502): update the inliner to ignore only parallel
+      // device type async call instead of all.
+      if (instruction->opcode() == HloOpcode::kCall &&
+          !instruction->parent()->IsAsyncComputation()) {
+        const auto& callees = instruction->called_computations();
+        TF_RET_CHECK(callees.size() == 1);
+        if (!single_call_site_ || call_graph->GetNode(instruction->to_apply())
+                                          .caller_callsites()
+                                          .size() == 1) {
+          TF_ASSIGN_OR_RETURN(CallInliner::InlinedInstructionMap inline_map,
+                              Inline(instruction));
+          if (update_domain_) {
+            HloDomainIsolator isolator(
+                []() { return ShardingDomainCreator{}; });
+            for (const auto& [call_inst, inlined_inst] : inline_map) {
+              TF_RETURN_IF_ERROR(isolator.UpdateDomains(inlined_inst).status());
             }
           }
+          did_mutate = true;
         }
-        return OkStatus();
-      }));
+      }
+    }
+    return OkStatus();
+  }));
   if (did_mutate) {
     // Run DCE to remove called computations which are now becoming unused.
     // This can result then in problems if within the called computation, there
     // were send/recv instructions, which the module group verifier will flag as
     // error findingthe same channel ID used for multiple send/recv
     // instructions.
-    TF_RETURN_IF_ERROR(HloDCE().Run(module).status());
+    TF_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
   }
   return did_mutate;
 }

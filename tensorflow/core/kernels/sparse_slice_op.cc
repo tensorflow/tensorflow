@@ -56,7 +56,7 @@ struct SparseSliceFunctor<CPUDevice, T> {
     const StatusOr<sparse::SparseTensor> output_or =
         sparse::SparseTensor::Slice<T>(sparse_tensor, start, size);
     OP_REQUIRES_OK(context, output_or.status());
-    auto output = output_or.ValueOrDie();
+    auto output = output_or.value();
 
     context->set_output(0, output.indices());
     context->set_output(1, output.values());

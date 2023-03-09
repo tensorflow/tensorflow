@@ -22,6 +22,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import string_ops
@@ -76,7 +77,7 @@ def string_bytes_split(input, name=None):  # pylint: disable=redefined-builtin
       raise ValueError("input must have a statically-known rank.")
 
     if rank == 0:
-      return string_bytes_split(array_ops.stack([input]))[0]
+      return string_bytes_split(array_ops_stack.stack([input]))[0]
     elif rank == 1:
       indices, values, shape = gen_string_ops.string_split(
           input, delimiter="", skip_empty=False)
@@ -165,7 +166,7 @@ def unicode_encode(input,
         # reshape the output of our processed flattened tensor.
         flat_input_tensor = array_ops.reshape(
             input_tensor,
-            array_ops.stack([-1, array_ops.shape(input_tensor)[-1]]))
+            array_ops_stack.stack([-1, array_ops.shape(input_tensor)[-1]]))
         flat_output_tensor = unicode_encode(flat_input_tensor, output_encoding,
                                             errors, replacement_char)
         return array_ops.reshape(flat_output_tensor, input_tensor.shape[:-1])
@@ -177,7 +178,7 @@ def unicode_encode(input,
         # the additional dimension from the output and return the string scalar.
         ragged_input_tensor = ragged_tensor.RaggedTensor.from_row_splits(
             input_tensor,
-            array_ops.stack(
+            array_ops_stack.stack(
                 [0, array_ops.shape(input_tensor, out_type=dtypes.int32)[0]]),
             validate=False)
         output_tensor = unicode_encode(ragged_input_tensor, output_encoding,
@@ -514,7 +515,7 @@ def string_split_v2(input, sep=None, maxsplit=-1, name=None):  # pylint: disable
 
     rank = input.shape.ndims
     if rank == 0:
-      return string_split_v2(array_ops.stack([input]), sep, maxsplit)[0]
+      return string_split_v2(array_ops_stack.stack([input]), sep, maxsplit)[0]
     elif rank == 1 or rank is None:
       sparse_result = string_ops.string_split_v2(
           input, sep=sep, maxsplit=maxsplit)

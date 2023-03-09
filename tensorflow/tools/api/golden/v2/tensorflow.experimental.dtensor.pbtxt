@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DTensorDataset"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DVariable"
     mtype: "<class \'tensorflow.python.ops.variables.VariableMetaclass\'>"
   }
@@ -18,7 +22,7 @@ tf_module {
   }
   member {
     name: "Mesh"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
   }
   member {
     name: "UNSHARDED"
@@ -26,7 +30,7 @@ tf_module {
   }
   member_method {
     name: "barrier"
-    argspec: "args=[\'mesh\', \'barrier_name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'mesh\', \'barrier_name\', \'timeout_in_ms\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "call_with_layout"
@@ -46,11 +50,19 @@ tf_module {
   }
   member_method {
     name: "create_distributed_mesh"
-    argspec: "args=[\'mesh_dims\', \'mesh_name\', \'num_global_devices\', \'num_clients\', \'client_id\', \'device_type\'], varargs=None, keywords=None, defaults=[\'\', \'None\', \'None\', \'None\', \'CPU\'], "
+    argspec: "args=[\'mesh_dims\', \'mesh_name\', \'local_devices\', \'device_type\', \'use_xla_spmd\'], varargs=None, keywords=None, defaults=[\'\', \'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "create_mesh"
-    argspec: "args=[\'mesh_dims\', \'mesh_name\', \'devices\', \'device_type\'], varargs=None, keywords=None, defaults=[\'None\', \'\', \'None\', \'None\'], "
+    argspec: "args=[\'mesh_dims\', \'mesh_name\', \'devices\', \'device_type\', \'use_xla_spmd\'], varargs=None, keywords=None, defaults=[\'None\', \'\', \'None\', \'None\', \'False\'], "
+  }
+  member_method {
+    name: "create_tpu_mesh"
+    argspec: "args=[\'mesh_dim_names\', \'mesh_shape\', \'mesh_name\', \'ring_dims\', \'ring_axes\', \'ring_bounds\', \'can_split_host_across_rings\', \'build_ring_across_rings\', \'rotate_ring_across_rings\', \'use_xla_spmd\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'False\', \'False\', \'False\'], "
+  }
+  member_method {
+    name: "default_mesh"
+    argspec: "args=[], varargs=args, keywords=kwds, defaults=None"
   }
   member_method {
     name: "device_name"
@@ -73,12 +85,20 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "initialize_accelerator_system"
+    argspec: "args=[\'device_type\', \'enable_coordination_service\', \'experimental_reset_context\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'False\'], "
+  }
+  member_method {
     name: "initialize_multi_client"
-    argspec: "args=[\'enable_coordination_service\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'device_type\', \'enable_coordination_service\', \'experimental_reset_context\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'False\'], "
   }
   member_method {
     name: "initialize_tpu_system"
-    argspec: "args=[\'enable_coordination_service\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'device_type\', \'enable_coordination_service\', \'experimental_reset_context\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'False\'], "
+  }
+  member_method {
+    name: "is_dtensor"
+    argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "job_name"
@@ -117,6 +137,10 @@ tf_module {
     argspec: "args=[\'tensors\', \'layout\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "preferred_device_type"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "relayout"
     argspec: "args=[\'tensor\', \'layout\'], varargs=None, keywords=None, defaults=None"
   }
@@ -127,6 +151,10 @@ tf_module {
   member_method {
     name: "sharded_save"
     argspec: "args=[\'mesh\', \'file_prefix\', \'tensor_names\', \'shape_and_slices\', \'tensors\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "shutdown_accelerator_system"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "shutdown_tpu_system"

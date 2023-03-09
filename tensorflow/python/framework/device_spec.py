@@ -411,6 +411,11 @@ class DeviceSpecV2(object):
   def __hash__(self):
     return self._hash
 
+  def __repr__(self):
+    return (
+        f"<DeviceSpec(job={self.job}, replica={self.replica}, task={self.task}, "
+        f"device_type={self.device_type}, device_index={self.device_index})>")
+
 
 @tf_export(v1=["DeviceSpec"])  # pylint: disable=missing-docstring
 class DeviceSpecV1(DeviceSpecV2):

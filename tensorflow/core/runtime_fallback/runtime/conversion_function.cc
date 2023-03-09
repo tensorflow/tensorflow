@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/conversion_function.h"
 
+#include <utility>
+
 #include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_kernels.h"
@@ -48,7 +50,7 @@ ConvertRuntimeFallbackTensorToDenseHostTensor(
     return tfrt::MakeStringError("error resolving TensorHandle: ",
                                  status.error_message());
 
-  void* data = tensor_interface->Data();
+  void *data = tensor_interface->Data();
   size_t size = tensor_interface->ByteSize();
   // `tensor_interface` holds a reference on underlying Tensorflow buffer and is
   // held alive by HostBuffer deallocator lambda capture (a
@@ -56,7 +58,7 @@ ConvertRuntimeFallbackTensorToDenseHostTensor(
   // called and destroyed.
   auto host_buffer = tfrt::HostBuffer::CreateFromExternal(
       data, size,
-      [tensor_interface = std::move(tensor_interface)](void*, size_t) {});
+      [tensor_interface = std::move(tensor_interface)](void *, size_t) {});
   // Assume HostBuffer::CreateFromExternal never fails.
   return tfrt::DenseHostTensor(tensor.metadata(), std::move(host_buffer));
 }
@@ -72,7 +74,7 @@ ConvertRuntimeFallbackTensorToStringHostTensor(
       tensor.GetTensorHandle()->Resolve(&status)};
   if (!status.ok())
     return tfrt::MakeErrorAsyncValueRef(
-        host_ctx,
+
         tfrt::StrCat("error resolving TensorHandle: ", status.error_message()));
 
   assert(tensor_interface->Type() == DT_STRING);
@@ -83,12 +85,12 @@ ConvertRuntimeFallbackTensorToStringHostTensor(
       CopyTfStringTensorToStringHostTensor(tensor_interface.get(), host_ctx);
   if (!string_host_tensor)
     return tfrt::MakeErrorAsyncValueRef(
-        host_ctx,
+
         tfrt::StrCat(
             "error converting TF string tensor to tfrt::StringHostTensor: ",
             string_host_tensor.takeError()));
   return tfrt::MakeAvailableAsyncValueRef<tfrt::StringHostTensor>(
-      host_ctx, std::move(*string_host_tensor));
+      std::move(*string_host_tensor));
 }
 
 static tfrt::AsyncValueRef<RuntimeFallbackTensor>
@@ -102,11 +104,11 @@ ConvertScalarHostTensorToRuntimeFallbackTensor(
   auto optional_dht =
       tfrt::CopyScalarHostTensorToDenseHostTensor(tensor, exec_ctx);
   if (!optional_dht)
-    return MakeErrorAsyncValueRef(
-        host, "error copying ScalarHostTensor to DenseHostTensor");
+    return tfrt::MakeErrorAsyncValueRef(
+        "error copying ScalarHostTensor to DenseHostTensor");
 
   return tfrt::MakeAvailableAsyncValueRef<RuntimeFallbackTensor>(
-      host, CopyRefDHTToRuntimeFallbackTensor(optional_dht.getValue(), host));
+      CopyRefDHTToRuntimeFallbackTensor(optional_dht.value(), host));
 }
 
 static tfrt::AsyncValueRef<RuntimeFallbackTensor>
@@ -117,7 +119,7 @@ ConvertDenseHostTensorToRuntimeFallbackTensor(
 
   // CopyRef and transfer one HostBuffer reference to RuntimeFallbackTensor.
   return tfrt::MakeAvailableAsyncValueRef<RuntimeFallbackTensor>(
-      host, CopyRefDHTToRuntimeFallbackTensor(tensor, host));
+      CopyRefDHTToRuntimeFallbackTensor(tensor, host));
 }
 
 static tfrt::AsyncValueRef<RuntimeFallbackTensor>
@@ -127,7 +129,7 @@ ConvertStringHostTensorToRuntimeFallbackTensor(
   auto *host = exec_ctx.host();
 
   return tfrt::MakeAvailableAsyncValueRef<RuntimeFallbackTensor>(
-      host, CopySHTToRuntimeFallbackTensor(tensor, host));
+      CopySHTToRuntimeFallbackTensor(tensor, host));
 }
 
 static tfrt::Expected<RuntimeFallbackTensor>
@@ -143,7 +145,7 @@ TransferRuntimeFallbackToAnotherDevice(const RuntimeFallbackTensor &tensor,
     return tfrt::MakeStringError(
         "Cannot get EagerContext from ExecutionContext.");
   auto expected_eager_context =
-      eager_context_resource.getValue()->GetTFEagerContext();
+      eager_context_resource.value()->GetTFEagerContext();
   if (!expected_eager_context) return expected_eager_context.takeError();
   auto *eager_context = expected_eager_context.get();
 

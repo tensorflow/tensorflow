@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_PYTHON_METRICS_WRAPPER_H_
-#define TENSORFLOW_LITE_PYTHON_METRICS_WRAPPER_H_
+#ifndef TENSORFLOW_LITE_PYTHON_METRICS_WRAPPER_METRICS_WRAPPER_H_
+#define TENSORFLOW_LITE_PYTHON_METRICS_WRAPPER_METRICS_WRAPPER_H_
 
 #include <memory>
 #include <string>
@@ -55,4 +55,4 @@ class MetricsWrapper {
 }  // namespace metrics_wrapper
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_PYTHON_METRICS_WRAPPER_H_
+#endif  // TENSORFLOW_LITE_PYTHON_METRICS_WRAPPER_METRICS_WRAPPER_H_

@@ -147,13 +147,10 @@ def _cross_replica_sum_grad(op, grad):
   return [gen_tpu_ops.cross_replica_sum(grad, op.inputs[1]), None]
 
 
-# This extra type checking exists to give a more helpful error message in
-# the common case that uint8 and int64 values are infed. Remove when both
-# types are supported.
-
-_SUPPORTED_INFEED_DTYPES = set([
+# This extra type checking exists to give a more helpful error message.
+_SUPPORTED_INFEED_DTYPES = frozenset([
     dtypes.bool, dtypes.int32, dtypes.int64, dtypes.bfloat16, dtypes.float32,
-    dtypes.complex64, dtypes.uint32
+    dtypes.complex64, dtypes.uint32, dtypes.uint8, dtypes.int8
 ])
 
 

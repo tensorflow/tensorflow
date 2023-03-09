@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/cluster_ops_by_policy.h"
 
+#include <optional>
+
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -97,10 +99,10 @@ void ValuesConstraintSet::Walk(
   for (auto &kv : constraints_) walk(kv.getFirst(), kv.getSecond());
 }
 
-Optional<ValueConstraint> ValuesConstraintSet::GetConstraint(
+std::optional<ValueConstraint> ValuesConstraintSet::GetConstraint(
     Value value) const {
   auto it = constraints_.find(value);
-  if (it == constraints_.end()) return None;
+  if (it == constraints_.end()) return std::nullopt;
   return it->getSecond();
 }
 
@@ -381,15 +383,15 @@ LogicalResult ClusteringState::Union(unsigned a, unsigned b,
 // Returns constraints on the operands specified by the clustering policy if the
 // operation can be clustered (constraints could be empty). Otherwise return
 // empty optional.
-static Optional<ValuesConstraintSet> CanBeClustered(
+static std::optional<ValuesConstraintSet> CanBeClustered(
     Operation *op, const ClusteringPolicySet &policies,
     const std::function<bool(Operation *op)> &filter) {
   // Check that op has no side effects. This guarantees that we will not
   // reorder side-effecting ops during cluster formation.
-  if (!MemoryEffectOpInterface::hasNoEffect(op)) return llvm::None;
+  if (!isMemoryEffectFree(op)) return std::nullopt;
 
   // Operation rejected by the custom filter.
-  if (filter && !filter(op)) return llvm::None;
+  if (filter && !filter(op)) return std::nullopt;
 
   // Initially we do not have any constraints on the operation results.
   ValuesConstraintSet result_constraints;
@@ -401,7 +403,7 @@ static Optional<ValuesConstraintSet> CanBeClustered(
       return operands_constraints.Resolve();
   }
 
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Compute initial clustering state based on the clustering polocy.
@@ -572,7 +574,7 @@ tf_device::ClusterOp CreateClusterOp(Cluster &cluster, StringAttr policy) {
 
   // Create block in cluster_op's region and move 'cluster.operations' into
   // it.
-  auto block = builder.createBlock(&cluster_op.body());
+  auto block = builder.createBlock(&cluster_op.getBody());
   auto block_end = block->end();
   for (auto op : cluster.operations) op->moveBefore(block, block_end);
 

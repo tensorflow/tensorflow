@@ -24,8 +24,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -124,7 +124,7 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
   m.def("TF_ShutdownCluster", [](tensorflow::grappler::Cluster* cluster) {
     // TODO(petebu): Do we need to hold the GIL here?
     py::gil_scoped_acquire acquire;
-    cluster->Shutdown();
+    (void)cluster->Shutdown();
   });
 
   m.def("TF_ListDevices",

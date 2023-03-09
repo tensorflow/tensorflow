@@ -2,9 +2,8 @@
 
 This document describes how to build TensorFlow Lite Android library on your
 own. Normally, you do not need to locally build TensorFlow Lite Android library.
-If you just want to use it, the easiest way is using the
-[TensorFlow Lite AAR hosted at MavenCentral](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite).
-See [Android quickstart](../guide/android.md) for more details on how to use
+If you just want to use it, see the
+[Android quickstart](../android/quickstart.md) for more details on how to use
 them in your Android projects.
 
 ## Use Nightly Snapshots
@@ -45,7 +44,7 @@ by Google from time to time).*
 <!-- mdformat off(devsite fails if there are line-breaks in templates) -->
 {% dynamic if 'tflite-android-tos' in user.acknowledged_walls and request.tld != 'cn' %}
 You can download the Docker file
-<a href="https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/tools/dockerfiles/tflite-android.Dockerfile">here</a>
+<a href="https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/lite/tools/tflite-android.Dockerfile">here</a>
 {% dynamic else %} You must acknowledge the terms of service to download the
 file.
 <a class="button button-blue devsite-acknowledgement-link" data-globally-unique-wall-id="tflite-android-tos">Acknowledge</a>
@@ -97,8 +96,8 @@ have it and the Android NDK and SDK installed on your system.
 
 1.  Install the latest version of the [Bazel build system](https://bazel.build/versions/master/docs/install.html).
 2.  The Android NDK is required to build the native (C/C++) TensorFlow Lite
-    code. The current recommended version is 19c, which may be found
-    [here](https://developer.android.com/ndk/downloads/older_releases.html#ndk-19c-downloads).
+    code. The current recommended version is 21e, which may be found
+    [here](https://developer.android.com/ndk/downloads/older_releases.html#ndk-21e-downloads).
 3.  The Android SDK and build tools may be obtained
     [here](https://developer.android.com/tools/revisions/build-tools.html), or
     alternatively as part of
@@ -123,7 +122,7 @@ prompt. Successful configuration should yield entries similar to the following
 in the `.tf_configure.bazelrc` file in the root folder:
 
 ```shell
-build --action_env ANDROID_NDK_HOME="/usr/local/android/android-ndk-r19c"
+build --action_env ANDROID_NDK_HOME="/usr/local/android/android-ndk-r21e"
 build --action_env ANDROID_NDK_API_LEVEL="21"
 build --action_env ANDROID_BUILD_TOOLS_VERSION="28.0.3"
 build --action_env ANDROID_SDK_API_LEVEL="23"
@@ -138,6 +137,8 @@ the root checkout directory as follows:
 ```sh
 bazel build -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
   --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+  --define=android_dexmerger_tool=d8_dexmerger \
+  --define=android_incremental_dexing_tool=d8_dexbuilder \
   //tensorflow/lite/java:tensorflow-lite
 ```
 

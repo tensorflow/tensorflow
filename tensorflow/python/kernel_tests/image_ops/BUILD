@@ -1,12 +1,9 @@
 # Tests of TensorFlow image kernels written using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -102,7 +99,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "draw_bounding_box_op_test",
     size = "small",
     srcs = ["draw_bounding_box_op_test.py"],
@@ -124,6 +121,7 @@ cuda_py_test(
     srcs = ["extract_image_patches_grad_test.py"],
     shard_count = 15,
     tags = [
+        "no_oss",  # b/241024908
         "no_rocm",
         "nomac",  # b/181799478
         "notap",  # b/31080670

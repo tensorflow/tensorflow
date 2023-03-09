@@ -18,13 +18,14 @@ limitations under the License.
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/stream_executor/tpu/tpu_topology.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
 
 namespace xla {
 
@@ -44,27 +45,27 @@ class PjRtTpuDevice : public PjRtStreamExecutorDevice {
         {"coords", xla::PjRtDeviceAttribute(v_coords)},
         {"core_on_chip", xla::PjRtDeviceAttribute(core_index)},
     };
+    debug_string_ = absl::StrFormat("TPU_%i(process=%i,(%i,%i,%i,%i))",
+                                    core_.Id(), process_index, coords_[0],
+                                    coords_[1], coords_[2], core_.index());
+    to_string_ = absl::StrFormat(
+        "TpuDevice(id=%i, process_index=%i, coords=(%s), core_on_chip=%i)",
+        id(), process_index, absl::StrJoin(coords_, ","), core_on_chip());
   }
 
   const std::array<int, 3>& coords() const { return coords_; }
   int core_on_chip() const { return core_.index(); }
   const tensorflow::tpu::TpuCoreLocationExternal core() const { return core_; }
 
-  std::string ToString() const override {
-    return absl::StrFormat(
-        "TpuDevice(id=%i, process_index=%i, coords=(%s), core_on_chip=%i)",
-        id(), process_index(), absl::StrJoin(coords(), ","), core_on_chip());
-  }
+  absl::string_view ToString() const override { return to_string_; }
 
-  std::string DebugString() const override {
-    return absl::StrFormat("TPU_%i(process=%i,(%i,%i,%i,%i))", id(),
-                           process_index(), coords_[0], coords_[1], coords_[2],
-                           core_.index());
-  }
+  absl::string_view DebugString() const override { return debug_string_; }
 
  private:
   const tensorflow::tpu::TpuCoreLocationExternal core_;
   const std::array<int, 3> coords_;
+  std::string debug_string_;
+  std::string to_string_;
 };
 
 class PjRtTpuClient : public PjRtStreamExecutorClient {
@@ -84,13 +85,17 @@ class PjRtTpuClient : public PjRtStreamExecutorClient {
   bool EnqueueD2DTransfersOnSrcStream() const override { return false; }
 
   StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtExecutable& executable) const override;
+      const PjRtLoadedExecutable& executable) const override;
 
   StatusOr<std::string> SerializeExecutable(
-      const PjRtExecutable& executable) const override;
+      const PjRtLoadedExecutable& executable) const override;
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      absl::string_view serialized, CompileOptions options) override;
+  // For PjRtTpuClient, `options` is mandatory.
+  // This function returns an InvalidArgument error if `std::nullopt` is passed.
+  // TODO(b/237720161): make it actually optional
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override;
 
  private:
   const std::string platform_version_;

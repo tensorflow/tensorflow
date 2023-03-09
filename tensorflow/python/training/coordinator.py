@@ -18,8 +18,6 @@ import sys
 import threading
 import time
 
-import six
-
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
@@ -27,7 +25,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("train.Coordinator")
-class Coordinator(object):
+class Coordinator:
   """A coordinator for threads.
 
   This class implements a simple mechanism to coordinate the termination of a
@@ -202,11 +200,13 @@ class Coordinator(object):
       # coordinator threads.
       if self._joined:
         if isinstance(ex, tuple):
-          six.reraise(*ex)
+          _, ex_instance, _ = ex
+          raise ex_instance
         elif ex is not None:
           # NOTE(touts): This is bogus if request_stop() is not called
           # from the exception handler that raised ex.
-          six.reraise(*sys.exc_info())
+          _, ex_instance, _ = sys.exc_info()
+          raise ex_instance
       if not self._stop_event.is_set():
         if ex and self._exc_info_to_raise is None:
           if isinstance(ex, tuple):
@@ -382,7 +382,8 @@ class Coordinator(object):
       self._joined = True
       self._registered_threads = set()
       if self._exc_info_to_raise:
-        six.reraise(*self._exc_info_to_raise)
+        _, ex_instance, _ = self._exc_info_to_raise
+        raise ex_instance
       elif stragglers:
         if ignore_live_threads:
           logging.info("Coordinator stopped with threads still running: %s",
@@ -400,7 +401,8 @@ class Coordinator(object):
     """If an exception has been passed to `request_stop`, this raises it."""
     with self._lock:
       if self._exc_info_to_raise:
-        six.reraise(*self._exc_info_to_raise)
+        _, ex_instance, _ = self._exc_info_to_raise
+        raise ex_instance
 
 
 # Threads for the standard services.

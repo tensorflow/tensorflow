@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_CONV2D_ACL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_CONV2D_ACL_H_
 
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/types.h"
 
 #ifdef XLA_CPU_USE_ACL
 #include "arm_compute/runtime/NEON/NEFunctions.h"
@@ -73,6 +73,8 @@ extern void __xla_cpu_runtime_ACLConv2DF32(
     int64_t rhs_col_dilation, int64_t feature_group_count);
 }
 #else
+#include <iostream>
+
 extern "C" {
 extern void __xla_cpu_runtime_ACLConv2DF32(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, float* out,

@@ -1,0 +1,21 @@
+path: "tensorflow.train.TrackableView"
+tf_class {
+  is_instance: "<class \'tensorflow.python.checkpoint.trackable_view.TrackableView\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "root"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'root\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "children"
+    argspec: "args=[\'cls\', \'obj\', \'save_type\'], varargs=None, keywords=kwargs, defaults=[\'SaveType.CHECKPOINT\'], "
+  }
+  member_method {
+    name: "descendants"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

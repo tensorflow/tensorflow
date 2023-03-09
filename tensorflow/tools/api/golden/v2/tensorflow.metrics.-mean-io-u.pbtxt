@@ -1,8 +1,8 @@
 path: "tensorflow.metrics.MeanIoU"
 tf_class {
-  is_instance: "<class \'keras.metrics.metrics.MeanIoU\'>"
-  is_instance: "<class \'keras.metrics.metrics.IoU\'>"
-  is_instance: "<class \'keras.metrics.metrics._IoUBase\'>"
+  is_instance: "<class \'keras.metrics.iou_metrics.MeanIoU\'>"
+  is_instance: "<class \'keras.metrics.iou_metrics.IoU\'>"
+  is_instance: "<class \'keras.metrics.iou_metrics._IoUBase\'>"
   is_instance: "<class \'keras.metrics.base_metric.Metric\'>"
   is_instance: "<class \'keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
@@ -132,7 +132,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'num_classes\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'num_classes\', \'name\', \'dtype\', \'ignore_class\', \'sparse_y_true\', \'sparse_y_pred\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'True\', \'-1\'], "
   }
   member_method {
     name: "add_loss"
@@ -157,6 +157,10 @@ tf_class {
   member_method {
     name: "build"
     argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "build_from_config"
+    argspec: "args=[\'self\', \'config\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "call"
@@ -185,6 +189,10 @@ tf_class {
   member_method {
     name: "from_config"
     argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_build_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_config"
@@ -219,6 +227,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "load_own_variables"
+    argspec: "args=[\'self\', \'store\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "merge_state"
     argspec: "args=[\'self\', \'metrics\'], varargs=None, keywords=None, defaults=None"
   }
@@ -233,6 +245,10 @@ tf_class {
   member_method {
     name: "result"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "save_own_variables"
+    argspec: "args=[\'self\', \'store\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "set_weights"

@@ -37,5 +37,4 @@ set(FFT2D_SOURCE_DIR "${fft2d_SOURCE_DIR}" CACHE PATH "fft2d source")
 add_subdirectory(
   "${CMAKE_CURRENT_LIST_DIR}/fft2d"
   "${fft2d_BINARY_DIR}"
-  EXCLUDE_FROM_ALL
 )

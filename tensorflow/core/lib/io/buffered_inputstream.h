@@ -18,109 +18,12 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/inputstream_interface.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/tsl/lib/io/buffered_inputstream.h"
 
 namespace tensorflow {
 namespace io {
-
-// Provides a buffer on top of an InputStreamInterface. A single instance of
-// BufferedInputStream is NOT safe for concurrent use by multiple threads.
-class BufferedInputStream : public InputStreamInterface {
- public:
-  // Does not take ownership of input_stream unless owns_input_stream is set
-  // to true. input_stream must outlive *this then.
-  // TODO(rohanj): Remove owns_input_stream once the constructor below is
-  // removed.
-  BufferedInputStream(InputStreamInterface* input_stream, size_t buffer_bytes,
-                      bool owns_input_stream = false);
-
-  // For backwards compatibility, expose an interface that is similar to what
-  // InputBuffer exposes. Does not take ownership of file. file must outlive
-  // *this. This will be removed once we migrate all uses of this class to the
-  // constructor above.
-  BufferedInputStream(RandomAccessFile* file, size_t buffer_bytes);
-
-  ~BufferedInputStream() override;
-
-  tensorflow::Status ReadNBytes(int64_t bytes_to_read,
-                                tstring* result) override;
-
-  tensorflow::Status SkipNBytes(int64_t bytes_to_skip) override;
-
-  int64_t Tell() const override;
-
-  // Seek to this offset within the file.
-  //
-  // If we seek to somewhere within our pre-buffered data, we will re-use what
-  // data we can.  Otherwise, Seek() throws out the current buffer and the next
-  // read will trigger an underlying read.
-  //
-  // Note: When seeking backwards in a stream, this implementation uses
-  // Reset() + SkipNBytes(), so its performance will be dependent
-  // largely on the performance of SkipNBytes().
-  tensorflow::Status Seek(int64_t position);
-
-  // Read one text line of data into "*result" until end-of-file or a
-  // \n is read.  (The \n is not included in the result.)  Overwrites
-  // any existing data in *result.
-  //
-  // If successful, returns OK.  If we are already at the end of the
-  // file, we return an OUT_OF_RANGE error.  Otherwise, we return
-  // some other non-OK status.
-  tensorflow::Status ReadLine(std::string* result);
-  tensorflow::Status ReadLine(tstring* result);
-
-  // Returns one text line of data until end-of-file or a '\n' is read. The '\n'
-  // is included in the result.
-  // This method is a substitute for ReadLine() when called from Python which is
-  // the expectation in the python File::readline() API.
-  // Also, '\0's are treated like any other character within the line and given
-  // no special treatment.
-  std::string ReadLineAsString();
-
-  // Skip one text line of data.
-  //
-  // If successful, returns OK.  If we are already at the end of the
-  // file, we return an OUT_OF_RANGE error.  Otherwise, we return
-  // some other non-OK status.
-  tensorflow::Status SkipLine();
-
-  // Reads the entire contents of the file into *result.
-  //
-  // Note: the amount of memory used by this function call is unbounded, so only
-  // use in ops that expect that behavior.
-  template <typename T>
-  tensorflow::Status ReadAll(T* result);
-
-  tensorflow::Status Reset() override;
-
- private:
-  tensorflow::Status FillBuffer();
-  template <typename StringType>
-  tensorflow::Status ReadLineHelper(StringType* result, bool include_eol);
-
-  InputStreamInterface* input_stream_;  // not owned.
-  size_t size_;                         // buffer size.
-  tstring buf_;                         // the buffer itself.
-  // buf_[pos_, limit_) holds the valid "read ahead" data in the file.
-  size_t pos_ = 0;    // current position in buf_.
-  size_t limit_ = 0;  // just past the end of valid data in buf_.
-  bool owns_input_stream_ = false;
-  // When EoF is reached, file_status_ contains the status to skip unnecessary
-  // buffer allocations.
-  tensorflow::Status file_status_ = OkStatus();
-
-  TF_DISALLOW_COPY_AND_ASSIGN(BufferedInputStream);
-};
-
-// Explicit instantiations defined in buffered_inputstream.cc.
-#ifndef SWIG
-extern template tensorflow::Status BufferedInputStream::ReadAll<std::string>(
-    std::string* result);
-extern template tensorflow::Status BufferedInputStream::ReadAll<tstring>(
-    tstring* result);
-#endif  // SWIG
-
-}  // namespace io
+using tsl::io::BufferedInputStream;  // NOLINT(misc-unused-using-decls)
+}
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_LIB_IO_BUFFERED_INPUTSTREAM_H_

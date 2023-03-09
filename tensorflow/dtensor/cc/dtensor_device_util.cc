@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "tensorflow/dtensor/cc/dtensor_device_util.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <iterator>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/Support/Casting.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_status.h"
@@ -89,7 +94,7 @@ BroadcastTensorHandleToParallelTensor(TFE_Context* context,
 
 // Broadcast a single non-parallel resource tensor onto `mesh` with a fully
 // replicated sharding spec. Does not take ownership of `tensor`.
-std::unique_ptr<TensorWithLayout> BroadcastResourceTensor(
+std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
     TFE_Context* context, TFE_TensorHandle* tensor,
     const MeshWithParallelDevice& mesh, const std::string& dtensor_device_name,
     TF_Status* status) {
@@ -103,27 +108,23 @@ std::unique_ptr<TensorWithLayout> BroadcastResourceTensor(
   Tensor t;
   Status convert_status = TF_TensorToTensor(tf_tensor.get(), &t);
   if (!convert_status.ok() || t.dtype() != DataType::DT_RESOURCE) {
-    TF_SetStatus(status, TF_INTERNAL, convert_status.error_message().c_str());
+    TF_SetStatus(status, TF_INTERNAL,
+                 absl::StrCat("TF_TensorToTensor() Conversion failed:",
+                              convert_status.error_message())
+                     .c_str());
     return nullptr;
   }
   // Replicate this resource handle to all devices without changing the
   // associated device of the resource itself.
   ResourceHandle r = t.flat<ResourceHandle>()(0);
-  if (r.dtypes_and_shapes().empty()) {
-    TF_SetStatus(status, TF_INTERNAL,
-                 "Expected resource handle to have at least one underlying "
-                 "dtype and shape during broadcasting.");
-    return nullptr;
-  }
-  PartialTensorShape partial_shape = r.dtypes_and_shapes().begin()->shape;
-  int64_t num_elements = partial_shape.num_elements();
 
-  // Only broadcast scalar resource tensors onto a CPU mesh. Copying
+  const Mesh& target_mesh = mesh.mesh_config();
+  // Only broadcast resource tensors onto a CPU mesh. Copying
   // resource tensors to non CPU device is not supported.
-  if (num_elements != 1 || !mesh.mesh_config().is_cpu_mesh()) {
+  if (!target_mesh.is_cpu_mesh()) {
     std::string error_message =
         "Using a non-DTensor variable with DTensor is only supported for "
-        "scalar variables copying to a CPU mesh. If you are using a scope "
+        "copying to a CPU mesh. If you are using a scope "
         "based API, create "
         "variables inside the DTensor scope.\n";
 
@@ -136,13 +137,13 @@ std::unique_ptr<TensorWithLayout> BroadcastResourceTensor(
   }
 
   LOG(INFO) << "Broadcasting resource tensor to a dtensor resource tensor.";
-  if (mesh.mesh_config().is_remote()) {
+  if (target_mesh.is_remote()) {
     TF_DataType dtype = TFE_TensorHandleDataType(tensor);
     std::vector<int64_t> shape(TensorShapeAsVector(tensor, status));
     if (TF_GetCode(status) != TF_OK) return nullptr;
-    auto layout = Layout::ReplicatedOnMesh(mesh.mesh_config(), shape.size());
+    auto layout = Layout::ReplicatedOnMesh(target_mesh, shape.size());
 
-    auto ret = TensorWithLayout::Dummy(shape, dtype, mesh, layout);
+    auto ret = CreateDummyTensorWithLayout(shape, dtype, target_mesh, layout);
     return ret;
   }
 
@@ -150,9 +151,13 @@ std::unique_ptr<TensorWithLayout> BroadcastResourceTensor(
       BroadcastTensorHandleToParallelTensor(context, tensor, mesh, status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
-  StatusOr<std::unique_ptr<TensorWithLayout>> result = TensorWithLayout::Wrap(
-      std::move(parallel_tensor), mesh,
-      Layout::ReplicatedOnMesh(mesh.mesh_config(), partial_shape.dims()));
+  int rank = r.dtypes_and_shapes().empty()
+                 ? 0
+                 : r.dtypes_and_shapes().begin()->shape.dims();
+
+  StatusOr<std::unique_ptr<TensorWithLayoutTf>> result =
+      CreateTensorWithLayout(std::move(parallel_tensor), target_mesh,
+                             Layout::ReplicatedOnMesh(target_mesh, rank));
   if (!result.ok()) {
     TF_SetStatus(
         status, TF_INTERNAL,
@@ -162,10 +167,26 @@ std::unique_ptr<TensorWithLayout> BroadcastResourceTensor(
             .c_str());
     return nullptr;
   }
-  // Set the shape/type of the tensor that the resource points to
-  // so that the graph has correct shape/type information that we can use.
-  (*result)->UpdateShapeAndDType(partial_shape.AsProto(),
-                                 r.dtypes_and_shapes().begin()->dtype, status);
+
+  if (!r.dtypes_and_shapes().empty()) {
+    PartialTensorShape partial_shape = r.dtypes_and_shapes().begin()->shape;
+    // Set the shape/type of the tensor that the resource points to
+    // so that the graph has correct shape/type information that we can use.
+    const Status s =
+        llvm::cast<ResourceHandleWithLayout>((*result).get())
+            ->UpdateShapeAndDType(partial_shape.AsProto(),
+                                  r.dtypes_and_shapes().begin()->dtype);
+    if (!s.ok()) {
+      TF_SetStatus(
+          status, TF_INTERNAL,
+          absl::StrCat(
+              "Error updating shape and dtype of the resource tensor: ",
+              s.error_message())
+              .c_str());
+      return nullptr;
+    }
+  }
+
   if (TF_GetCode(status) != TF_OK) {
     TF_SetStatus(status, TF_INTERNAL,
                  "Error updating shape and dtype for resource tensor during "
@@ -175,8 +196,8 @@ std::unique_ptr<TensorWithLayout> BroadcastResourceTensor(
   return std::move(*result);
 }
 
-bool LayoutsAreCompatible(absl::optional<Layout> first_layout,
-                          absl::optional<Layout> second_layout) {
+bool LayoutsAreCompatible(std::optional<Layout> first_layout,
+                          std::optional<Layout> second_layout) {
   if (!first_layout.has_value() && !second_layout.has_value()) {
     return true;
   }
@@ -208,8 +229,7 @@ Status ParseAttrMap(const Node& node, absl::string_view indices_attr,
     const auto arg_index = indices->int_val(i);
     const auto& arg_layout = layouts[i];
     indices_layout_map->emplace(
-        arg_index,
-        tensorflow::dtensor::Layout::FromString(arg_layout).ValueOrDie());
+        arg_index, tensorflow::dtensor::Layout::FromString(arg_layout).value());
   }
   return OkStatus();
 }
@@ -255,21 +275,24 @@ StatusOr<Layout> GetLayoutThroughIdentityOps(Node* op, int output_index) {
 
 }  // namespace
 
-tensorflow::Fprint128 TensorWithLayout::CacheKey() const {
+char TensorWithLayoutTf::ID = 0;
+
+tensorflow::Fprint128 TensorWithLayoutTf::CacheKey() const {
   tensorflow::Fprint128 f = tensorflow::Fingerprint128(layout_.ToString());
   // Use exact shape to compute the key.
-  for (const int64_t dim : local_shape()) {
+  for (const int64_t dim : local_shape_) {
     f = FingerprintCat128(f, dim);
   }
-  if (const_value_.has_value()) {
+  if (const_value_node_->const_value().has_value()) {
     std::string serialized;
-    SerializeToStringDeterministic(const_value_.value(), &serialized);
+    SerializeToStringDeterministic(const_value_node_->const_value().value(),
+                                   &serialized);
     f = FingerprintCat128(f, tensorflow::Fingerprint128(serialized));
   }
   return f;
 }
 
-std::unique_ptr<TensorWithLayout> TensorWithLayout::Broadcast(
+std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Broadcast(
     TFE_Context* context, TFE_TensorHandle* tensor,
     const MeshWithParallelDevice& mesh, const std::string& dtensor_device_name,
     TF_Status* status) {
@@ -288,18 +311,19 @@ std::unique_ptr<TensorWithLayout> TensorWithLayout::Broadcast(
                                    status);
   }
 
-  if (mesh.mesh_config().is_remote()) {
+  const Mesh& target_mesh = mesh.mesh_config();
+  if (target_mesh.is_remote()) {
     TF_DataType dtype = TFE_TensorHandleDataType(tensor);
     std::vector<int64_t> shape(TensorShapeAsVector(tensor, status));
     if (TF_GetCode(status) != TF_OK) return nullptr;
-    auto layout = Layout::ReplicatedOnMesh(mesh.mesh_config(), shape.size());
+    auto layout = Layout::ReplicatedOnMesh(target_mesh, shape.size());
 
-    auto ret = TensorWithLayout::Dummy(shape, dtype, mesh, layout);
-    absl::optional<NodeDef> const_value =
+    auto ret = CreateDummyTensorWithLayout(shape, dtype, target_mesh, layout);
+    std::optional<NodeDef> const_value =
         ExtractSmallTensorValue(context, tensor, layout, status);
     if (TF_GetCode(status) != TF_OK) return nullptr;
     if (const_value) {
-      ret->set_const_value(const_value.value());
+      ret->const_value_node()->set_const_value(const_value.value());
     }
     return ret;
   }
@@ -316,55 +340,45 @@ std::unique_ptr<TensorWithLayout> TensorWithLayout::Broadcast(
     return nullptr;
   }
   size_t num_dims = shape->size();
-  const Layout layout = Layout::ReplicatedOnMesh(mesh.mesh_config(), num_dims);
+  const Layout layout = Layout::ReplicatedOnMesh(target_mesh, num_dims);
 
-  absl::optional<NodeDef> const_value =
+  std::optional<NodeDef> const_value =
       ExtractSmallTensorValue(context, tensor, layout, status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
-  std::unique_ptr<TensorWithLayout> result(new TensorWithLayout(
-      std::move(parallel_tensor), mesh, std::move(layout), *shape,
-      /*dtype=*/absl::nullopt, std::move(const_value)));
+  std::unique_ptr<TensorWithLayoutTf> result(new TensorWithLayoutTf(
+      std::move(parallel_tensor), target_mesh, std::move(layout), *shape,
+      /*dtype=*/std::nullopt, std::move(const_value)));
   return result;
 }
 
-StatusOr<std::unique_ptr<TensorWithLayout>> TensorWithLayout::Wrap(
-    std::unique_ptr<parallel_device::ParallelTensor> tensor,
-    const MeshWithParallelDevice& mesh, const Layout& layout) {
+StatusOr<std::unique_ptr<TensorWithLayoutTf>> TensorWithLayoutTf::Wrap(
+    std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
+    const Layout& layout) {
   const std::vector<int64_t>* shape;
   TF_RETURN_IF_ERROR(tensor->Shape(&shape));
 
-  if (tensor->dtype() != TF_RESOURCE) {
-    return std::unique_ptr<TensorWithLayout>(
-        new TensorWithLayout(std::move(tensor), mesh, layout, *shape));
-  } else {
-    return std::unique_ptr<TensorWithLayout>(
-        new ResourceHandleWithLayout(std::move(tensor), mesh, layout, *shape));
-  }
+  return absl::WrapUnique(
+      new TensorWithLayoutTf(std::move(tensor), mesh, layout, *shape));
 }
 
-std::unique_ptr<TensorWithLayout> TensorWithLayout::Dummy(
+std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Dummy(
     const std::vector<int64_t>& local_shape, const TF_DataType dtype,
-    const MeshWithParallelDevice& mesh, const Layout& layout) {
-  if (dtype != TF_RESOURCE) {
-    return std::unique_ptr<TensorWithLayout>(new TensorWithLayout(
-        /*tensor=*/nullptr, mesh, layout, local_shape, dtype));
-  } else {
-    return std::unique_ptr<TensorWithLayout>(new ResourceHandleWithLayout(
-        /*tensor=*/nullptr, mesh, layout, local_shape));
-  }
+    const Mesh& mesh, const Layout& layout) {
+  return absl::WrapUnique(new TensorWithLayoutTf(
+      /*tensor=*/nullptr, mesh, layout, local_shape, dtype));
 }
 
-std::string TensorWithLayout::SummarizeValue() const {
+std::string TensorWithLayoutTf::SummarizeValue() const {
   std::string value_summary;
   Status status;
   if (layout().IsFullyReplicated()) {
     status =
-        tensorflow::unwrap(tensor()->tensor(0))->SummarizeValue(value_summary);
+        tensorflow::unwrap(tensor_->tensor(0))->SummarizeValue(value_summary);
   } else {
     // Note that this just prints the local values for sharded tensors. We could
     // instead run a collective here to relayout to replicated.
-    status = tensor()->SummarizeValue(value_summary);
+    status = tensor_->SummarizeValue(value_summary);
   }
   if (!status.ok()) {
     value_summary = "<error computing value>";
@@ -372,13 +386,32 @@ std::string TensorWithLayout::SummarizeValue() const {
   return absl::StrCat(value_summary, ", layout=\"", layout().ToString(), "\"");
 }
 
-std::string TensorWithLayout::DebugString() const {
-  auto dtype = static_cast<DataType>(tensor()->dtype());
+std::string TensorWithLayoutTf::DebugString() const {
+  auto dtype = static_cast<DataType>(tensor_->dtype());
 
   const auto& shape_vector = global_shape();
   return absl::StrCat("DTensor(", SummarizeValue(),
                       ", shape=", ShapeToDebugString(shape_vector),
                       ", type=", DataTypeString(dtype), ")");
+}
+
+char ResourceHandleWithLayout::ID = 0;
+
+StatusOr<std::unique_ptr<ResourceHandleWithLayout>>
+ResourceHandleWithLayout::Wrap(
+    std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
+    const Layout& layout) {
+  const std::vector<int64_t>* shape;
+  TF_RETURN_IF_ERROR(tensor->Shape(&shape));
+  return absl::WrapUnique(
+      new ResourceHandleWithLayout(std::move(tensor), mesh, layout, *shape));
+}
+
+std::unique_ptr<ResourceHandleWithLayout> ResourceHandleWithLayout::Dummy(
+    const std::vector<int64_t>& local_shape, const Mesh& mesh,
+    const Layout& layout) {
+  return absl::WrapUnique(new ResourceHandleWithLayout(
+      /*tensor=*/nullptr, mesh, layout, local_shape));
 }
 
 void ResourceHandleWithLayout::EncodeAttributes(
@@ -389,6 +422,14 @@ void ResourceHandleWithLayout::EncodeAttributes(
   }
   if (dereferenced_dtype().has_value()) {
     builder.Attr("_handle_dtypes", {*dereferenced_dtype()});
+  }
+  if (dereferenced_element_layouts().has_value()) {
+    std::vector<std::string> layout_strs;
+    std::transform(dereferenced_element_layouts()->begin(),
+                   dereferenced_element_layouts()->end(),
+                   std::back_inserter(layout_strs),
+                   [](const Layout& layout) { return layout.ToString(); });
+    builder.Attr("_element_layouts", layout_strs);
   }
 }
 
@@ -405,38 +446,42 @@ tensorflow::Fprint128 ResourceHandleWithLayout::CacheKey() const {
   return f;
 }
 
-void ResourceHandleWithLayout::UpdateLayout(const Layout& new_layout,
-                                            TF_Status* status) {
+tsl::Status ResourceHandleWithLayout::UpdateLayout(const Layout& new_layout) {
   // Only set the value for deferenced layout if the incoming layout is not
   // empty. This is still hacky as we use empty layout as placeholder for
   // eagerly placed VarHandleOp.
-  if (!dereferenced_layout_.has_value() && new_layout.IsEmpty()) return;
+  if (!dereferenced_layout_.has_value() && new_layout.IsEmpty()) {
+    return tsl::errors::InvalidArgument("New layout is empty.");
+  }
   if (dereferenced_layout_.has_value() &&
       !LayoutsAreCompatible(dereferenced_layout_, new_layout)) {
     // TODO(xiejw, allenl): Consider allowing variables to switch layouts.
-    RETURN_STATUS(status, TF_INVALID_ARGUMENT,
-                  "Attempted to overwrite an existing Layout.");
+    return tsl::errors::InvalidArgument(
+        "Attempted to overwrite an existing Layout.");
   }
   dereferenced_layout_.emplace(new_layout);
+  return tsl::OkStatus();
 }
 
-void ResourceHandleWithLayout::UpdateAttrs(const EmbeddingResourceAttrs& attrs,
-                                           TF_Status* status) {
+tsl::Status ResourceHandleWithLayout::UpdateAttrs(
+    const EmbeddingResourceAttrs& attrs) {
   if (attrs_.has_value()) {
-    RETURN_STATUS(status, TF_INVALID_ARGUMENT,
-                  "Attepted to overwrite an existing embedding resource "
-                  "attribute.");
+    return tsl::errors::InvalidArgument(
+        "Attempted to overwrite an existing embedding resource attribute.");
   }
   attrs_.emplace(attrs);
+  return tsl::OkStatus();
 }
 
-StatusOr<std::unique_ptr<TensorWithLayout>> SparseTensorWithLayout::Wrap(
+char SparseTensorWithLayout::ID = 0;
+
+StatusOr<std::unique_ptr<SparseTensorWithLayout>> SparseTensorWithLayout::Wrap(
     std::unique_ptr<parallel_device::ParallelTensor> indices_tensor,
     std::unique_ptr<parallel_device::ParallelTensor> values_tensor,
     std::unique_ptr<parallel_device::ParallelTensor> shapes_tensor,
-    const MeshWithParallelDevice& mesh, const Layout& layout,
-    std::vector<int64_t> local_shape) {
-  return std::unique_ptr<TensorWithLayout>(new SparseTensorWithLayout(
+    const Mesh& mesh, const Layout& layout,
+    const std::vector<int64_t>& local_shape) {
+  return absl::WrapUnique(new SparseTensorWithLayout(
       std::move(indices_tensor), std::move(values_tensor),
       std::move(shapes_tensor), mesh, layout, local_shape));
 }
@@ -496,145 +541,34 @@ TF_DataType SparseTensorWithLayout::dtype() const {
 TFE_TensorHandle* SparseTensorWithLayout::get_tensor(size_t index) const {
   int num_sparse_tensors = num_tensors() / 3;
   if (index < num_sparse_tensors) {
-    return indices()->tensor(index);
+    return indices_->tensor(index);
   } else if (index < 2 * num_sparse_tensors) {
-    return values()->tensor(index % num_sparse_tensors);
+    return values_->tensor(index % num_sparse_tensors);
   } else {
-    return dense_shapes()->tensor(index % num_sparse_tensors);
+    return dense_shapes_->tensor(index % num_sparse_tensors);
   }
 }
 
-absl::flat_hash_map<int, NodeDef> GetConstantFoldableTensors(
-    const std::vector<TensorWithLayout*>& inputs) {
-  absl::flat_hash_map<int, NodeDef> small_tensors;
-  for (auto index = 0; index < inputs.size(); ++index) {
-    if (inputs[index]->const_value().has_value()) {
-      small_tensors.insert({index, inputs[index]->const_value().value()});
-    }
+std::unique_ptr<TensorWithLayoutTf> CreateDummyTensorWithLayout(
+    const std::vector<int64_t>& local_shape, TF_DataType dtype,
+    const Mesh& mesh, const Layout& layout) {
+  switch (dtype) {
+    case TF_RESOURCE:
+      return ResourceHandleWithLayout::Dummy(local_shape, mesh, layout);
+    default:
+      return TensorWithLayoutTf::Dummy(local_shape, dtype, mesh, layout);
   }
-  return small_tensors;
 }
 
-// Thread unsafe method. go/thread-unsafe
-// Cache key computation should consider all features of an op that affects
-// the SPMD lowering. The cache keys of two ops must be different if the
-// translated functions are different.
-// - op name and attr
-// - input shapes and layouts
-// - default layout of outputs.
-// - values of constant foldable inputs.
-tensorflow::Fprint128 FunctionManager::CacheKeyForGraph(
-    const DTensorOperation& doperation, const NameAttrList& attributes,
-    const std::vector<TensorWithLayout*>& inputs,
-    const std::vector<const Layout*>& output_layouts) {
-  tensorflow::Fprint128 cache_key = tensorflow::Fingerprint128(doperation.name);
-  std::string serialized;
-  SerializeToStringDeterministic(attributes, &serialized);
-  cache_key =
-      FingerprintCat128(cache_key, tensorflow::Fingerprint128(serialized));
-  // Higher level cache based on operation name and input shapes.
-  for (auto i = 0; i < inputs.size(); ++i) {
-    if (!IsConstantFoldable(doperation, i)) {
-      inputs[i]->reset_const_value();
-    }
-    cache_key = FingerprintCat128(cache_key, inputs[i]->CacheKey());
+StatusOr<std::unique_ptr<TensorWithLayoutTf>> CreateTensorWithLayout(
+    std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
+    const Layout& layout) {
+  switch (tensor->dtype()) {
+    case TF_RESOURCE:
+      return ResourceHandleWithLayout::Wrap(std::move(tensor), mesh, layout);
+    default:
+      return TensorWithLayoutTf::Wrap(std::move(tensor), mesh, layout);
   }
-  for (int output_index = 0; output_index < output_layouts.size();
-       ++output_index) {
-    if (output_layouts[output_index]) {
-      cache_key = FingerprintCat128(cache_key, output_index);
-      cache_key = FingerprintCat128(
-          cache_key,
-          tensorflow::Fingerprint128(output_layouts[output_index]->ToString()));
-    }
-  }
-  return cache_key;
-}
-
-// Thread-unsafe method go/thread-unsafe.
-std::pair<tensorflow::Fprint128, const ExecutionFunctions*>
-FunctionManager::GetCachedFunction(
-    const DTensorOperation& doperation, const NameAttrList& attributes,
-    const std::vector<TensorWithLayout*>& inputs,
-    const std::vector<const Layout*>& output_layouts) {
-  tensorflow::Fprint128 cache_key =
-      CacheKeyForGraph(doperation, attributes, inputs, output_layouts);
-  auto iter = function_cache_.find(cache_key);
-
-  // Early return if we have a cache hit.
-  if (iter != function_cache_.end()) {
-    return std::pair<Fprint128, ExecutionFunctions*>(cache_key, &iter->second);
-  }
-
-  // For eager ops we early return the cache miss and do not make further
-  // optimizations.
-  if (!doperation.is_func()) {
-    return std::pair<Fprint128, std::nullptr_t>(cache_key, nullptr);
-  }
-
-  const tensorflow::Fprint128 doperation_hash =
-      CacheKeyForDTensorOperation(doperation);
-
-  // Save the constant folded inputs to this doperation if we have not seen this
-  // before. This is needed so that in the next call to this operation, we
-  // can compare these inputs to confirm which one is indeed a constant.
-  auto doperation_iter = dtensor_op_and_small_inputs_.find(doperation_hash);
-  if (doperation_iter == dtensor_op_and_small_inputs_.end()) {
-    dtensor_op_and_small_inputs_.insert(
-        {doperation_hash, GetConstantFoldableTensors(inputs)});
-    return std::pair<Fprint128, std::nullptr_t>(cache_key, nullptr);
-  }
-
-  // If we are here, then we have ran this function before but constant folded
-  // some input(s) when it was not a constant input i.e. one of the small value
-  // to this function input changed. So mark those changed values as
-  // non-constant.
-  absl::flat_hash_map<int, NodeDef>& previous_small_inputs =
-      doperation_iter->second;
-  std::vector<int> non_constant_indices;
-
-  for (auto const& [index, previous_small_input] : previous_small_inputs) {
-    if (inputs[index]->const_value().has_value()) {
-      if (NodeDefsHaveDifferentTensorProto(
-              previous_small_input, inputs[index]->const_value().value())) {
-        inputs[index]->reset_const_value();
-        non_constant_indices.push_back(index);
-      }
-    }
-  }
-  for (int non_constant_index : non_constant_indices) {
-    previous_small_inputs.erase(non_constant_index);
-  }
-  // Generate a new cache key since we updated small const inputs which change
-  // the cache key.
-  cache_key = CacheKeyForGraph(doperation, attributes, inputs, output_layouts);
-  return std::pair<Fprint128, std::nullptr_t>(cache_key, nullptr);
-}
-
-const ExecutionFunctions* FunctionManager::AddCachedFunction(
-    const DTensorOperation& op, tensorflow::Fprint128 cache_key,
-    ExecutionFunctions function) {
-  return &function_cache_.insert({cache_key, std::move(function)})
-              .first->second;
-}
-
-bool FunctionManager::IsConstantFoldable(const DTensorOperation& doperation,
-                                         const int input_index) const {
-  // For eager ops, assume the inputs are constant foldable.
-  if (!doperation.is_func()) return true;
-  const tensorflow::Fprint128 doperation_hash =
-      CacheKeyForDTensorOperation(doperation);
-  // If we didn't see this doperation before then optimisticly assume this is
-  // foldable. The input at `input_index` is foldable only if it is one of the
-  // indices we have saved as the small inputs.
-  auto doperation_iter = dtensor_op_and_small_inputs_.find(doperation_hash);
-  return doperation_iter == dtensor_op_and_small_inputs_.end() ||
-         doperation_iter->second.contains(input_index);
-}
-
-const tensorflow::Fprint128 FunctionManager::CacheKeyForDTensorOperation(
-    const DTensorOperation& doperation) const {
-  return tensorflow::Fingerprint128(doperation.name);
 }
 
 std::vector<int64_t> TensorShapeAsVector(TFE_TensorHandle* tensor,
@@ -649,12 +583,12 @@ std::vector<int64_t> TensorShapeAsVector(TFE_TensorHandle* tensor,
 }
 
 Status PrepareGraphForMlir(
-    const FunctionManager& function_manager,
+    const ExecutableManager<ExecutionFunctions>& function_manager,
     const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation,
     const tensorflow::FunctionLibraryDefinition& flib_def,
-    const NameAttrList& attributes,
-    const absl::optional<Layout>& default_layout, tensorflow::Graph* graph,
+    const NameAttrList& attributes, const std::optional<Layout>& default_layout,
+    tensorflow::Graph* graph,
     std::vector<PartialTensorShape>* global_output_shapes,
     std::vector<const Layout*>* output_layouts) {
   // We run shape inference on the graph to find output shapes, which may
@@ -664,8 +598,8 @@ Status PrepareGraphForMlir(
   tensorflow::Status status;
   {
     // We include an _Arg node for the device ID, but this isn't used by the
-    // initial function. It will be provided a value, though, so it's available
-    // for use in rewrites.
+    // initial function. It will be provided a value, though, so it's
+    // available for use in rewrites.
     tensorflow::NodeDefBuilder builder("device_id", "_Arg");
     tensorflow::PartialTensorShape partial_shape;
     TF_RETURN_IF_ERROR(tensorflow::PartialTensorShape::MakePartialShape(
@@ -687,16 +621,16 @@ Status PrepareGraphForMlir(
     // TODO(allenl): This will block until async execution is complete, which
     // will be slow. We should find a non-blocking way of fetching the shape,
     // at least pre-cache.
-    // The shape passed into MLIR transformation represents the global shape of
-    // the tensor. Ideally, the local shape on each parallel device should not
-    // be consulted at all and we should use the shape on our input tensor
+    // The shape passed into MLIR transformation represents the global shape
+    // of the tensor. Ideally, the local shape on each parallel device should
+    // not be consulted at all and we should use the shape on our input tensor
     // directly.
     const auto& shape = input->global_shape();
     std::vector<tensorflow::int64> cast_shape(shape.begin(), shape.end());
     tensorflow::PartialTensorShape partial_shape;
-    // For resource tensors, `shape` attribute should not be specified as shape
-    // of resource tensors is specified by resource shape subtype -- not the
-    // shape attribute.
+    // For resource tensors, `shape` attribute should not be specified as
+    // shape of resource tensors is specified by resource shape subtype -- not
+    // the shape attribute.
     auto* resource = dynamic_cast<const ResourceHandleWithLayout*>(input);
     if (!resource) {
       TF_RETURN_IF_ERROR(tensorflow::PartialTensorShape::MakePartialShape(
@@ -725,7 +659,7 @@ Status PrepareGraphForMlir(
             .Attr("T", dtype)
             .Attr("index", i + 1)  // Indices are offset by 1 for device_id
             .Attr(kLayoutAttr, input->layout().ToString())
-            .Attr(kMeshAttr, input->mesh().mesh_config().ToString())
+            .Attr(kMeshAttr, input->mesh().ToString())
             .Finalize(&arg_node_def, /*consume=*/true));
     Node* arg_node = graph->AddNode(arg_node_def, &status);
     TF_RETURN_IF_ERROR(status);
@@ -738,18 +672,19 @@ Status PrepareGraphForMlir(
         partial_shape, &shape_handle));
     TF_RETURN_IF_ERROR(shape_refiner.SetShape(arg_node, 0, shape_handle));
 
-    // Small constants are converted into constant graph nodes, instead of being
-    // passed in as input arguments. This provides more information to the SPMD
-    // and layout propagation passes.
-    if (!input->const_value().has_value() ||
-        !function_manager.IsConstantFoldable(doperation, i)) {
+    // Small constants are converted into constant graph nodes, instead of
+    // being passed in as input arguments. This provides more information to
+    // the SPMD and layout propagation passes.
+    if (!input->const_value_node() ||
+        !input->const_value_node()->const_value().has_value() ||
+        !function_manager.ShouldFoldInput(doperation, i)) {
       graph_op_inputs.push_back(FunctionArgument{
           arg_node, NodeDefBuilder::NodeOut{arg_node->name(), i, dtype}});
       graph->AddControlEdge(graph->source_node(), arg_node);
     } else {
       // TODO(xiejw): Refactor the TensorWithLayout representation to avoid
       // special code here.
-      NodeDef const_node = input->const_value().value();
+      NodeDef const_node = input->const_value_node()->const_value().value();
       const_node.set_name(absl::StrCat("input_", i, "_const_value"));
       Node* const_value_n = graph->AddNode(const_node, &status);
       TF_RETURN_IF_ERROR(status);
@@ -991,13 +926,13 @@ void AddDTensorFunctionAttr(FunctionDef& function_def) {
 }
 
 StatusOr<std::vector<parallel_device::ParallelTensor*>> PrepareEmbeddingInputs(
-    const std::vector<TensorWithLayout*>& inputs) {
+    const std::vector<TensorWithLayoutTf*>& inputs) {
   absl::flat_hash_map<int64_t, std::vector<int64_t>> table_vars_input_index;
   for (int64_t i = 0; i < inputs.size(); ++i) {
-    if (inputs[i]->tensor_type() != kResource) continue;
+    if (!llvm::isa<ResourceHandleWithLayout>(inputs[i])) continue;
 
-    const absl::optional<EmbeddingResourceAttrs>& resource_attrs =
-        inputs[i]->attrs();
+    const std::optional<EmbeddingResourceAttrs>& resource_attrs =
+        llvm::cast<ResourceHandleWithLayout>(inputs[i])->attrs();
     if (resource_attrs.has_value()) {
       table_vars_input_index[resource_attrs->table_id].push_back(i);
     }
@@ -1026,7 +961,7 @@ StatusOr<std::map<int64_t, std::vector<Node*>>> GetTPUEmbeddingInputNodes(
   std::vector<TensorWithLayout*> non_sparse_inputs;
   non_sparse_inputs.reserve(inputs.size());
   for (TensorWithLayout* input : inputs) {
-    if (input->tensor_type() != TensorType::kSparse) {
+    if (!llvm::isa<SparseTensorWithLayout>(input)) {
       non_sparse_inputs.push_back(input);
     }
   }
@@ -1056,12 +991,17 @@ StatusOr<std::map<int64_t, std::vector<Node*>>> GetTPUEmbeddingInputNodes(
     table_id_node_map[table_id].push_back(node);
 
     // Arg input offset due to device id.
-    if (non_sparse_inputs[arg_id - 1]->attrs().has_value()) continue;
-    non_sparse_inputs[arg_id - 1]->UpdateAttrs(embedding_input_attrs, s);
-    if (!s->status.ok()) {
+    auto* resource =
+        llvm::dyn_cast<ResourceHandleWithLayout>(non_sparse_inputs[arg_id - 1]);
+    if (!resource || resource->attrs().has_value()) continue;
+    const Status status = resource->UpdateAttrs(embedding_input_attrs);
+    if (!status.ok()) {
+      TF_SetStatus(s, static_cast<TF_Code>(status.code()),
+                   status.error_message().c_str());
+      // TODO(b/256016071): Try finding a way to append source locations.
       return errors::Internal(
           "Failed to set embedding resource attrs. \n Got error: ",
-          s->status.error_message());
+          status.error_message());
     }
   }
   return table_id_node_map;
@@ -1071,8 +1011,8 @@ StatusOr<std::string> ValidateResourceMeshConsistency(
     const std::vector<TensorWithLayout*>& inputs) {
   std::string mesh_str;
   for (TensorWithLayout* inp : inputs) {
-    if ((inp->tensor_type() != kResource) || !inp->attrs().has_value())
-      continue;
+    auto* resource = llvm::dyn_cast<ResourceHandleWithLayout>(inp);
+    if (!resource || !resource->attrs().has_value()) continue;
     const std::string& input_mesh_str = inp->layout().mesh().ToString();
     if (mesh_str.empty()) {
       mesh_str = input_mesh_str;
@@ -1149,6 +1089,27 @@ Status InsertFunctionForTPUEmbeddingCheckpoint(
   }
 
   return OkStatus();
+}
+
+tensorflow::Fprint128 ExecutableManagerImpl::CacheKeyForDTensorOperation(
+    const DTensorOperation& doperation) const {
+  return tensorflow::Fingerprint128(doperation.name);
+}
+
+absl::flat_hash_map<int, NodeDef>
+ExecutableManagerImpl::GetConstantFoldableTensors(
+    const std::vector<TensorWithLayout*>& inputs) {
+  absl::flat_hash_map<int, NodeDef> small_tensors;
+  for (auto index = 0; index < inputs.size(); ++index) {
+    auto* const_value_node = inputs[index]->const_value_node();
+    if (const_value_node == nullptr) {
+      continue;
+    }
+    if (const_value_node->const_value().has_value()) {
+      small_tensors.insert({index, const_value_node->const_value().value()});
+    }
+  }
+  return small_tensors;
 }
 
 }  // namespace dtensor

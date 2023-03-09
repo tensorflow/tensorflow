@@ -175,7 +175,7 @@ class Scope {
 
   /// Update the status on this scope.
   /// Note: The status object is shared between all children of this scope.
-  /// If the resulting status is not Status::OK() and exit_on_error_ is set on
+  /// If the resulting status is not OkStatus() and exit_on_error_ is set on
   /// this scope, this function exits by calling LOG(FATAL).
   void UpdateStatus(const Status& s) const;
 
@@ -206,7 +206,7 @@ class Scope {
 
   // START_SKIP_DOXYGEN
 
-  /// If status() is Status::OK(), construct a Graph object using `opts` as the
+  /// If status() is OkStatus(), construct a Graph object using `opts` as the
   /// GraphConstructorOptions, and return Status::OK if graph construction was
   /// successful. Otherwise, return the error status.
   // TODO(josh11b, keveman): Make this faster; right now it converts
@@ -223,7 +223,7 @@ class Scope {
   Status DoShapeInference(Node* node) const;
 
   // Creates a new root scope that causes all DoShapeInference() calls to return
-  // Status::OK() (on the returned scope and any subscopes). Used for testing.
+  // OkStatus() (on the returned scope and any subscopes). Used for testing.
   // TODO(skyewm): fix tests that still require this and eventually remove, or
   // at least remove from public API
   static Scope DisabledShapeInferenceScope();

@@ -15,15 +15,21 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 
+#include <string>
+#include <tuple>
+#include <vector>
+
 #include "tensorflow/cc/saved_model/metrics.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
 
 constexpr char kTestData[] = "cc/saved_model/testdata";
+// This is the value in testdata/VarsAndArithmeticObjectGraph/fingerprint.pb
+constexpr char kV2ModuleSavedModelChecksum[] = "15788619162413586750";
 
 class BundleV2Test : public ::testing::Test {
  protected:
@@ -98,7 +104,7 @@ TEST_F(BundleV2Test, LoadsCyclicModule) {
 
 TEST_F(BundleV2Test, UpdatesMetrics) {
   const string kCCLoadBundleV2Label = "cc_load_bundle_v2";
-  const int read_count = metrics::SavedModelRead("2").value();
+  const int read_count = metrics::SavedModelReadCount("2").value();
   const int api_count =
       metrics::SavedModelReadApi(kCCLoadBundleV2Label).value();
   const string export_dir = io::JoinPath(
@@ -107,9 +113,13 @@ TEST_F(BundleV2Test, UpdatesMetrics) {
   SavedModelV2Bundle bundle;
   TF_ASSERT_OK(SavedModelV2Bundle::Load(export_dir, &bundle));
 
-  EXPECT_EQ(metrics::SavedModelRead("2").value(), read_count + 1);
+  EXPECT_EQ(metrics::SavedModelReadCount("2").value(), read_count + 1);
   EXPECT_EQ(metrics::SavedModelReadApi(kCCLoadBundleV2Label).value(),
             api_count + 1);
+  // Check that the gauge contains the fingerprint.
+  EXPECT_EQ(metrics::SavedModelReadFingerprint().value(),
+            kV2ModuleSavedModelChecksum);
+  EXPECT_EQ(metrics::SavedModelReadPath().value(), export_dir);
 }
 
 }  // namespace

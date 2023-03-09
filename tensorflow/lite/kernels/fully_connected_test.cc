@@ -33,7 +33,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -143,7 +143,8 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
       FullyConnectedOptionsWeightsFormat weights_format =
           FullyConnectedOptionsWeightsFormat_DEFAULT,
       int input_size = -1, bool weights_per_channel_quantized = false,
-      std::vector<float> per_channel_quantization_scales = {})
+      std::vector<float> per_channel_quantization_scales = {},
+      TfLiteType filter_type = kTfLiteNoType)
       : batches_(batches),
         units_(units),
         input_size_(input_size),
@@ -192,6 +193,11 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
                              {units_, input_size_},
                              /*min=*/-63.5,
                              /*max=*/64});
+      } else if (filter_type == kTfLiteInt4) {
+        weights_ = AddInput({TensorType_INT4,
+                             {units_, input_size_},
+                             /*min=*/input.min,
+                             /*max=*/input.max});
       } else {
         weights_ =
             AddInput({input.type, {units_, input_size_}, input.min, input.max});
@@ -287,11 +293,11 @@ class QuantizedFullyConnectedOpModel : public BaseFullyConnectedOpModel {
       ActivationFunctionType activation_func = ActivationFunctionType_RELU,
       FullyConnectedOptionsWeightsFormat weights_format =
           FullyConnectedOptionsWeightsFormat_DEFAULT,
-      int input_size = -1)
-      : BaseFullyConnectedOpModel(registration, units, batches, input, output,
-                                  bias_type, keep_num_dims,
-                                  bias_tensor_optional, activation_func,
-                                  weights_format, input_size) {}
+      int input_size = -1, TfLiteType filter_type = kTfLiteNoType)
+      : BaseFullyConnectedOpModel(
+            registration, units, batches, input, output, bias_type,
+            keep_num_dims, bias_tensor_optional, activation_func,
+            weights_format, input_size, false, {}, filter_type) {}
 
   void SetBias(const std::vector<float>& data) {
     if (bias_type_ == TensorType_INT32) {
@@ -304,6 +310,10 @@ class QuantizedFullyConnectedOpModel : public BaseFullyConnectedOpModel {
   template <typename T>
   void SetWeights(const std::vector<float>& data) {
     QuantizeAndPopulate<T>(weights_, data);
+  }
+
+  void SetWeights4bit(const std::vector<float>& data) {
+    QuantizeAndPopulate4bit(weights_, data);
   }
 
   template <typename T>
@@ -698,6 +708,35 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedUint8NoBias) {
               })));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
               ElementsAre(150, 150, 150, 184, 184, 184));
+}
+
+// The expected values for this test were obtained by running the test with the
+// same parameters but by setting filter type to INT8.
+TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt4) {
+  QuantizedFullyConnectedOpModel m(
+      GetRegistration(), /*units=*/3, /*batches*/ 2,
+      /*input=*/{TensorType_INT8, {2, 10}, -63.5, 64},
+      /*output=*/{TensorType_INT8, {}, -127, 128}, TensorType_INT32, false,
+      false, ActivationFunctionType_RELU,
+      FullyConnectedOptionsWeightsFormat_DEFAULT, -1, kTfLiteInt4);
+
+  // input_product_scale < output_scale was not true.
+  m.SetWeights4bit({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+  });
+  m.SetBias({1, 2, 3});
+
+  m.SetInput<int8_t>({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              testing::Pointwise(testing::FloatEq(), {64, 64, 68, 82, 82, 87}));
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAre(63, 63, 67, 81, 81, 86));
 }
 
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt8) {
@@ -1393,7 +1432,7 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInput4DOutput) {
                              }));
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInputInvalidShape) {
   // Note that it is not required that the first dimension be the number of
   // batches. But it is required that the last dimension is the 'input_dim'.

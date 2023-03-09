@@ -111,12 +111,12 @@ for more options to configure the `TextSearcher`.
 ```c++
 // Initialization
 TextSearcherOptions options;
-options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
+options.mutable_base_options()->mutable_model_file()->set_file_name(model_path);
 options.mutable_embedding_options()->set_l2_normalize(true);
 std::unique_ptr<TextSearcher> text_searcher = TextSearcher::CreateFromOptions(options).value();
 
-// Run inference
-const SearchResult result = text_searcher->Search(text).value();
+// Run inference with your input, `input_text`.
+const SearchResult result = text_searcher->Search(input_text).value();
 ```
 
 See the
@@ -140,7 +140,7 @@ pip install tflite-support
 from tflite_support.task import text
 
 # Initialization
-text_searcher = text.TextSearcher.create_from_file(model_file)
+text_searcher = text.TextSearcher.create_from_file(model_path)
 
 # Run inference
 result = text_searcher.search(text)

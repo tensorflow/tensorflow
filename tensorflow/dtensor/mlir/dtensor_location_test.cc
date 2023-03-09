@@ -97,4 +97,17 @@ TEST(DTensorLocationTest, HandlesNameLoc) {
   EXPECT_EQ(tensorflow::dtensor::DTensorLocationToString(test_loc), stack);
 }
 
+TEST(DTensorLocationTest, HandlesNameLocWithName) {
+  mlir::MLIRContext ctx;
+  mlir::Location test_loc =
+      mlir::NameLoc::get(mlir::StringAttr::get(&ctx, "op@"),
+                         mlir::FileLineColLoc::get(&ctx, "test.cc", 10, 20));
+  test_loc =
+      tensorflow::dtensor::DTensorLocation(test_loc, "test.cc", 21, "nested");
+  EXPECT_EQ(mlir::GetNameFromLoc(test_loc), "op/nested");
+  constexpr char stack[] = R"stack(>> test.cc:10:20
+>> test.cc:21:0)stack";
+  EXPECT_EQ(tensorflow::dtensor::DTensorLocationToString(test_loc), stack);
+}
+
 }  // namespace

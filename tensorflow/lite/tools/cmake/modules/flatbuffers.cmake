@@ -17,7 +17,7 @@ if(TARGET flatbuffers OR flatbuffers_POPULATED)
   return()
 endif()
 
-include(FetchContent)
+include(OverridableFetchContent)
 
 OverridableFetchContent_Declare(
   flatbuffers
@@ -41,7 +41,6 @@ add_definitions(-DNOMINMAX=1)
 add_subdirectory(
   "${flatbuffers_SOURCE_DIR}"
   "${flatbuffers_BINARY_DIR}"
-  EXCLUDE_FROM_ALL
 )
 remove_definitions(-DNOMINMAX)
 

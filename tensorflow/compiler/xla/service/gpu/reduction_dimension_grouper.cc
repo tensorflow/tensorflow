@@ -16,20 +16,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/reduction_dimension_grouper.h"
 
 #include <algorithm>
+#include <memory>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -91,7 +88,8 @@ class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
       Shape grouped_shape =
           ShapeUtil::MakeShape(shape.element_type(), new_grouped_dims);
       reduce_inputs_grouped.push_back(reduce->parent()->AddInstruction(
-          HloInstruction::CreateBitcast(grouped_shape, operand)));
+          HloInstruction::CreateBitcast(grouped_shape, operand),
+          &operand->metadata()));
       VLOG(5) << "Adding bitcast: " << reduce_inputs_grouped.back()->ToString();
     }
 
@@ -103,9 +101,11 @@ class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-StatusOr<bool> ReductionDimensionGrouper::Run(HloModule *module) {
-  TF_ASSIGN_OR_RETURN(bool changed,
-                      ReduceDimensionGroupVisitor().RunOnModule(module));
+StatusOr<bool> ReductionDimensionGrouper::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+  TF_ASSIGN_OR_RETURN(bool changed, ReduceDimensionGroupVisitor().RunOnModule(
+                                        module, execution_threads));
   return changed;
 }
 

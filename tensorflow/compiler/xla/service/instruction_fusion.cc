@@ -28,16 +28,16 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -54,9 +54,10 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
   // We are always willing to duplicate a widening type-conversion instruction
   // if it means we can fuse the convert into a consumer.  This allows the
   // consumer to read less memory, which is almost always a performance win.
-  return instruction.opcode() == HloOpcode::kConvert &&
-         ShapeUtil::ByteSizeOf(instruction.operand(0)->shape()) <
-             ShapeUtil::ByteSizeOf(instruction.shape());
+  return (instruction.opcode() == HloOpcode::kConvert &&
+          ShapeUtil::ByteSizeOf(instruction.operand(0)->shape()) <
+              ShapeUtil::ByteSizeOf(instruction.shape())) ||
+         instruction.opcode() == HloOpcode::kBroadcast;
 }
 }  // namespace
 
@@ -115,6 +116,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kSlice:
+    case HloOpcode::kStochasticConvert:
     case HloOpcode::kSubtract:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
@@ -125,6 +127,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kCos:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kTan:
       return ShapeUtil::ElementIsComplex(instruction.shape());
 
     // We say that integer div/mod by a constant is cheap because it gets
@@ -482,9 +485,10 @@ class ReversePostOrderFusionQueue : public FusionQueue {
 }  // namespace
 
 std::vector<HloComputation*> InstructionFusion::GetFusionComputations(
-    HloModule* module) {
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Use sorted computations because fusion configuration is order-sensitive.
-  return module->MakeNonfusionComputationsSorted();
+  return module->MakeNonfusionComputationsSorted(execution_threads);
 }
 
 std::unique_ptr<FusionQueue> InstructionFusion::GetFusionQueue(
@@ -492,7 +496,9 @@ std::unique_ptr<FusionQueue> InstructionFusion::GetFusionQueue(
   return std::make_unique<ReversePostOrderFusionQueue>(computation);
 }
 
-StatusOr<bool> InstructionFusion::Run(HloModule* module) {
+StatusOr<bool> InstructionFusion::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   int64_t fuse_count = 0;
   std::vector<std::vector<bool>>* fusion_config = nullptr;
@@ -506,7 +512,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   bool dump_fusion =
       module->config().debug_options().xla_dump_fusion_visualization();
 
-  for (auto* computation : GetFusionComputations(module)) {
+  for (auto* computation : GetFusionComputations(module, execution_threads)) {
     CHECK(!computation->IsFusionComputation());
     std::unique_ptr<HloReachabilityMap> reachability =
         HloReachabilityMap::Build(computation);
@@ -714,6 +720,9 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
         HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
     TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
   }
+  fusion_instruction->set_called_computations_execution_thread(
+      computation->execution_thread(),
+      /*skip_async_execution_thread_overwrite=*/false);
   return fusion_instruction;
 }
 

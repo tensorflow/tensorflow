@@ -23,7 +23,7 @@ OverridableFetchContent_Declare(
   cpuinfo
   GIT_REPOSITORY https://github.com/pytorch/cpuinfo
   # Sync with tensorflow/third_party/cpuinfo/workspace.bzl
-  GIT_TAG 082deffc80ce517f81dc2f3aebe6ba671fcd09c9
+  GIT_TAG 3dc310302210c1891ffcfb12ae67b11a3ad3a150
   GIT_PROGRESS TRUE
   SOURCE_DIR "${CMAKE_BINARY_DIR}/cpuinfo"
 )
@@ -41,5 +41,4 @@ set(CPUINFO_BUILD_BENCHMARKS OFF CACHE BOOL "Disable cpuinfo micro-benchmarks")
 add_subdirectory(
   "${cpuinfo_SOURCE_DIR}"
   "${cpuinfo_BINARY_DIR}"
-  EXCLUDE_FROM_ALL
 )

@@ -11,7 +11,7 @@ Note: If any of the changes raise concerns, please file a
     *   Support integer (previously, only float) input/output type for integer
         quantized models using the new `inference_input_type` and
         `inference_output_type` attributes. Refer to this
-        [example usage](../performance/post_training_quantization.md#integer_only).
+        [example usage](../../performance/post_training_quantization.md#integer_only).
     *   Support conversion and resizing of models with dynamic dimensions.
     *   Added a new experimental quantization mode with 16-bit activations and
         8-bit weights.
@@ -33,7 +33,7 @@ Note: If any of the changes raise concerns, please file a
             `get_input_arrays()`. Instead,
             [quantize aware training](https://www.tensorflow.org/model_optimization/guide/quantization/training)
             is supported through the `tf.keras` API and
-            [post training quantization](../performance/post_training_quantization.md)
+            [post training quantization](../../performance/post_training_quantization.md)
             uses fewer attributes.
         *   _visualization_: `output_format`, `dump_graphviz_dir`,
             `dump_graphviz_video`. Instead, the recommended approach for

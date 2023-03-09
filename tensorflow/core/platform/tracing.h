@@ -24,126 +24,30 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/tracing.h"
 
 namespace tensorflow {
 namespace tracing {
-
-// This enumeration contains the identifiers of all TensorFlow CPU profiler
-// events. It must be kept in sync with the code in GetEventCategoryName().
-enum struct EventCategory : unsigned {
-  kScheduleClosure = 0,
-  kRunClosure = 1,
-  kCompute = 2,
-  kNumCategories = 3  // sentinel - keep last
-};
-constexpr unsigned GetNumEventCategories() {
-  return static_cast<unsigned>(EventCategory::kNumCategories);
-}
-const char* GetEventCategoryName(EventCategory);
-
-// Interface for CPU profiler events.
-class EventCollector {
- public:
-  virtual ~EventCollector() {}
-  virtual void RecordEvent(uint64 arg) const = 0;
-  virtual void StartRegion(uint64 arg) const = 0;
-  virtual void StopRegion() const = 0;
-
-  // Annotates the current thread with a name.
-  static void SetCurrentThreadName(const char* name);
-  // Returns whether event collection is enabled.
-  static bool IsEnabled();
-
- private:
-  friend void SetEventCollector(EventCategory, const EventCollector*);
-  friend const EventCollector* GetEventCollector(EventCategory);
-
-  static std::array<const EventCollector*, GetNumEventCategories()> instances_;
-};
-// Set the callback for RecordEvent and ScopedRegion of category.
-// Not thread safe. Only call while EventCollector::IsEnabled returns false.
-void SetEventCollector(EventCategory category, const EventCollector* collector);
-
-// Returns the callback for RecordEvent and ScopedRegion of category if
-// EventCollector::IsEnabled(), otherwise returns null.
-inline const EventCollector* GetEventCollector(EventCategory category) {
-  if (EventCollector::IsEnabled()) {
-    return EventCollector::instances_[static_cast<unsigned>(category)];
-  }
-  return nullptr;
-}
-
-// Returns a unique id to pass to RecordEvent/ScopedRegion. Never returns zero.
-uint64 GetUniqueArg();
-
-// Returns an id for name to pass to RecordEvent/ScopedRegion.
-uint64 GetArgForName(StringPiece name);
-
-// Records an atomic event through the currently registered EventCollector.
-inline void RecordEvent(EventCategory category, uint64 arg) {
-  if (auto collector = GetEventCollector(category)) {
-    collector->RecordEvent(arg);
-  }
-}
-
-// Records an event for the duration of the instance lifetime through the
-// currently registered EventCollector.
-class ScopedRegion {
- public:
-  ScopedRegion(ScopedRegion&& other) noexcept  // Move-constructible.
-      : collector_(other.collector_) {
-    other.collector_ = nullptr;
-  }
-
-  ScopedRegion(EventCategory category, uint64 arg)
-      : collector_(GetEventCollector(category)) {
-    if (collector_) {
-      collector_->StartRegion(arg);
-    }
-  }
-
-  // Same as ScopedRegion(category, GetUniqueArg()), but faster if
-  // EventCollector::IsEnabled() returns false.
-  explicit ScopedRegion(EventCategory category)
-      : collector_(GetEventCollector(category)) {
-    if (collector_) {
-      collector_->StartRegion(GetUniqueArg());
-    }
-  }
-
-  // Same as ScopedRegion(category, GetArgForName(name)), but faster if
-  // EventCollector::IsEnabled() returns false.
-  ScopedRegion(EventCategory category, StringPiece name)
-      : collector_(GetEventCollector(category)) {
-    if (collector_) {
-      collector_->StartRegion(GetArgForName(name));
-    }
-  }
-
-  ~ScopedRegion() {
-    if (collector_) {
-      collector_->StopRegion();
-    }
-  }
-
-  bool IsEnabled() const { return collector_ != nullptr; }
-
- private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedRegion);
-
-  const EventCollector* collector_;
-};
-
-// Return the pathname of the directory where we are writing log files.
-const char* GetLogDir();
-
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::tracing::EventCategory;
+using tsl::tracing::EventCollector;
+using tsl::tracing::GetArgForName;
+using tsl::tracing::GetEventCategoryName;
+using tsl::tracing::GetEventCollector;
+using tsl::tracing::GetLogDir;
+using tsl::tracing::GetNumEventCategories;
+using tsl::tracing::GetUniqueArg;
+using tsl::tracing::RecordEvent;
+using tsl::tracing::ScopedRegion;
+using tsl::tracing::SetEventCollector;
+// NOLINTEND(misc-unused-using-decls)
 }  // namespace tracing
 }  // namespace tensorflow
 
 #if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/tracing_impl.h"
+#include "tensorflow/tsl/platform/google/tracing_impl.h"
 #else
-#include "tensorflow/core/platform/default/tracing_impl.h"
+#include "tensorflow/tsl/platform/default/tracing_impl.h"
 #endif
 
 #endif  // TENSORFLOW_CORE_PLATFORM_TRACING_H_

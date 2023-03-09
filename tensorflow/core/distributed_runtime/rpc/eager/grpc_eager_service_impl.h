@@ -20,25 +20,26 @@ limitations under the License.
 #include "grpcpp/completion_queue.h"
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
-#include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/grpc_call.h"
 
 namespace tensorflow {
 namespace eager {
 
 // This class is a wrapper that handles communication for gRPC.
-class GrpcEagerServiceImpl : public AsyncServiceInterface {
+class GrpcEagerServiceImpl : public tsl::AsyncServiceInterface {
  public:
   template <class RequestMessage, class ResponseMessage>
-  using EagerCall = Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService,
-                         RequestMessage, ResponseMessage>;
+  using EagerCall =
+      tsl::Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService,
+                RequestMessage, ResponseMessage>;
   template <class RequestMessage, class ResponseMessage>
   using StreamingCall =
-      ServerBidirectionalStreamingCall<GrpcEagerServiceImpl,
-                                       grpc::EagerService::AsyncService,
-                                       RequestMessage, ResponseMessage>;
+      tsl::ServerBidirectionalStreamingCall<GrpcEagerServiceImpl,
+                                            grpc::EagerService::AsyncService,
+                                            RequestMessage, ResponseMessage>;
 
   GrpcEagerServiceImpl(const WorkerEnv* env,
                        ::grpc::ServerBuilder* server_builder);
@@ -58,8 +59,8 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
       call->SendResponse(                                                     \
           ToGrpcStatus(local_impl_.method(&call->request, &call->response))); \
     });                                                                       \
-    Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService,              \
-         method##Request, method##Response>::                                 \
+    tsl::Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService,         \
+              method##Request, method##Response>::                            \
         EnqueueRequest(&service_, cq_.get(),                                  \
                        &grpc::EagerService::AsyncService::Request##method,    \
                        &GrpcEagerServiceImpl::method##Handler, false);        \
@@ -78,8 +79,8 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
       call->SendResponse(ToGrpcStatus(local_impl_.Enqueue(
           call_opts.get(), &call->request, &call->response)));
     });
-    Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService, EnqueueRequest,
-         EnqueueResponse>::
+    tsl::Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService,
+              EnqueueRequest, EnqueueResponse>::
         EnqueueRequest(&service_, cq_.get(),
                        &grpc::EagerService::AsyncService::RequestEnqueue,
                        &GrpcEagerServiceImpl::EnqueueHandler,
@@ -99,8 +100,8 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
                                          call->SendResponse(ToGrpcStatus(s));
                                        });
     });
-    Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService,
-         RunComponentFunctionRequest, RunComponentFunctionResponse>::
+    tsl::Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService,
+              RunComponentFunctionRequest, RunComponentFunctionResponse>::
         EnqueueRequest(
             &service_, cq_.get(),
             &grpc::EagerService::AsyncService::RequestRunComponentFunction,

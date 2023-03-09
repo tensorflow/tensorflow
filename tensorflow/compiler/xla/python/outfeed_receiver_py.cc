@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/outfeed_receiver_py.h"
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/algorithm/container.h"
 #include "absl/synchronization/mutex.h"
-#include "pybind11/functional.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/functional.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/outfeed_receiver.h"
@@ -80,9 +82,10 @@ class OutfeedReceiverForPython {
   void Start() { outfeed_receiver_->Start(); }
 
   StatusOr<XlaOp> AddOutfeed(XlaBuilder* builder, XlaOp token,
-                             uint32_t consumer_id, std::vector<XlaOp> arrays) {
+                             uint32_t consumer_id, std::vector<XlaOp> arrays,
+                             uint32_t device_idx) {
     return outfeed_receiver_->AddOutfeedToBuilder(builder, token, consumer_id,
-                                                  arrays);
+                                                  arrays, device_idx);
   }
 
   void Callback(PjRtDevice* device, uint32_t consumer_id,
@@ -101,8 +104,7 @@ class OutfeedReceiverForPython {
         });
     CHECK(it != clients_.end());
     py::gil_scoped_acquire gil_acquire;  // Need GIL also for LiteralToPython
-    py::object literal_python =
-        LiteralToPython(std::move(literal)).ValueOrDie();
+    py::object literal_python = LiteralToPython(std::move(literal)).value();
     // The callback_ should handle all exceptions in user-code. If we get
     // an exception here, it is a bug in the callback and we should stop.
     callback_python_(WrapWithClient<PjRtDevice>(*it, device), consumer_id,
@@ -158,6 +160,7 @@ void BuildOutfeedReceiverSubmodule(py::module* m) {
   outfeed_receiver_class.def(
       "add_outfeed", &OutfeedReceiverForPython::AddOutfeed, py::arg("builder"),
       py::arg("token"), py::arg("consumer_id"), py::arg("arrays"),
+      py::arg("device_idx"),
       R"(Adds an outfeed into the given computation builder.
 
       Has the side-effect of registering the sent shape along with the consumer

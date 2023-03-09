@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 
+#include <algorithm>
+#include <utility>
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -70,6 +73,7 @@ void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst,
   dst->set_self_time_ps(src.self_time_ps() + dst->self_time_ps());
   dst->set_flops(src.flops() + dst->flops());
   dst->set_bytes_accessed(src.bytes_accessed() + dst->bytes_accessed());
+  dst->set_autotuned(dst->autotuned() || src.autotuned());
   if (update_num_cores) {
     dst->set_num_cores(src.num_cores() + dst->num_cores());
   }

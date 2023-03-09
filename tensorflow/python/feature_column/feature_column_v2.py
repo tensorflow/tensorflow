@@ -141,6 +141,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
@@ -163,12 +164,25 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
-
+from tensorflow.tools.docs import doc_controls
 
 _FEATURE_COLUMN_DEPRECATION_DATE = None
 _FEATURE_COLUMN_DEPRECATION = ('The old _FeatureColumn APIs are being '
                                'deprecated. Please use the new FeatureColumn '
                                'APIs instead.')
+_FEATURE_COLUMN_DEPRECATION_WARNING = """\
+    Warning: tf.feature_column is not recommended for new code. Instead,
+    feature preprocessing can be done directly using either [Keras preprocessing
+    layers](https://www.tensorflow.org/guide/migrate/migrating_feature_columns)
+    or through the one-stop utility [`tf.keras.utils.FeatureSpace`](https://www.tensorflow.org/api_docs/python/tf/keras/utils/FeatureSpace)
+    built on top of them. See the [migration guide](https://tensorflow.org/guide/migrate)
+    for details.
+    """
+_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING = (
+    'Use Keras preprocessing layers instead, either directly or via the '
+    '`tf.keras.utils.FeatureSpace` utility. Each of `tf.feature_column.*` has '
+    'a functional equivalent in `tf.keras.layers` for feature preprocessing '
+    'when training a Keras model.')
 
 
 class StateManager(object):
@@ -449,7 +463,11 @@ def _transform_features_v2(features, feature_columns, state_manager):
   return outputs
 
 
-@tf_export('feature_column.make_parse_example_spec', v1=[])
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
+@tf_export(
+    'feature_column.make_parse_example_spec',
+    v1=[])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def make_parse_example_spec_v2(feature_columns):
   """Creates parsing spec dictionary from input feature_columns.
 
@@ -504,14 +522,15 @@ def make_parse_example_spec_v2(feature_columns):
     config = column.parse_example_spec
     for key, value in six.iteritems(config):
       if key in result and value != result[key]:
-        raise ValueError(
-            'feature_columns contain different parse_spec for key '
-            '{}. Given {} and {}'.format(key, value, result[key]))
+        raise ValueError('feature_columns contain different parse_spec for key '
+                         '{}. Given {} and {}'.format(key, value, result[key]))
     result.update(config)
   return result
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.embedding_column')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def embedding_column(categorical_column,
                      dimension,
                      combiner='mean',
@@ -572,8 +591,8 @@ def embedding_column(categorical_column,
       `tf.embedding_lookup_sparse`.
     initializer: A variable initializer function to be used in embedding
       variable initialization. If not specified, defaults to
-      `truncated_normal_initializer` with mean `0.0` and
-      standard deviation `1/sqrt(dimension)`.
+      `truncated_normal_initializer` with mean `0.0` and standard deviation
+      `1/sqrt(dimension)`.
     ckpt_to_load_from: String representing checkpoint name/pattern from which to
       restore column weights. Required if `tensor_name_in_ckpt` is not `None`.
     tensor_name_in_ckpt: Name of the `Tensor` in `ckpt_to_load_from` from which
@@ -625,7 +644,9 @@ def embedding_column(categorical_column,
       use_safe_embedding_lookup=use_safe_embedding_lookup)
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export(v1=['feature_column.shared_embedding_columns'])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def shared_embedding_columns(categorical_columns,
                              dimension,
                              combiner='mean',
@@ -704,8 +725,8 @@ def shared_embedding_columns(categorical_columns,
       `tf.embedding_lookup_sparse`.
     initializer: A variable initializer function to be used in embedding
       variable initialization. If not specified, defaults to
-      `truncated_normal_initializer` with mean `0.0` and
-      standard deviation `1/sqrt(dimension)`.
+      `truncated_normal_initializer` with mean `0.0` and standard deviation
+      `1/sqrt(dimension)`.
     shared_embedding_collection_name: Optional name of the collection where
       shared embedding weights are added. If not given, a reasonable name will
       be chosen based on the names of `categorical_columns`. This is also used
@@ -766,13 +787,21 @@ def shared_embedding_columns(categorical_columns,
         'All categorical_columns must be subclasses of _CategoricalColumn. '
         'Given: {}, of type: {}'.format(c0, type(c0)))
   while isinstance(
-      c0, (fc_old._WeightedCategoricalColumn, WeightedCategoricalColumn,  # pylint: disable=protected-access
-           fc_old._SequenceCategoricalColumn, SequenceCategoricalColumn)):  # pylint: disable=protected-access
+      c0,
+      (
+          fc_old._WeightedCategoricalColumn,  # pylint: disable=protected-access
+          WeightedCategoricalColumn,
+          fc_old._SequenceCategoricalColumn,  # pylint: disable=protected-access
+          SequenceCategoricalColumn)):
     c0 = c0.categorical_column
   for c in sorted_columns[1:]:
     while isinstance(
-        c, (fc_old._WeightedCategoricalColumn, WeightedCategoricalColumn,  # pylint: disable=protected-access
-            fc_old._SequenceCategoricalColumn, SequenceCategoricalColumn)):  # pylint: disable=protected-access
+        c,
+        (
+            fc_old._WeightedCategoricalColumn,  # pylint: disable=protected-access
+            WeightedCategoricalColumn,
+            fc_old._SequenceCategoricalColumn,  # pylint: disable=protected-access
+            SequenceCategoricalColumn)):
       c = c.categorical_column
     if not isinstance(c, type(c0)):
       raise ValueError(
@@ -809,7 +838,11 @@ def shared_embedding_columns(categorical_columns,
   return result
 
 
-@tf_export('feature_column.shared_embeddings', v1=[])
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
+@tf_export(
+    'feature_column.shared_embeddings',
+    v1=[])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def shared_embedding_columns_v2(categorical_columns,
                                 dimension,
                                 combiner='mean',
@@ -880,26 +913,26 @@ def shared_embedding_columns_v2(categorical_columns,
       categorical_column_with_vocabulary_file with the same vocabulary_file.
       Some or all columns could also be weighted_categorical_column.
     dimension: An integer specifying dimension of the embedding, must be > 0.
-    combiner: A string specifying how to reduce if there are multiple entries
-      in a single row. Currently 'mean', 'sqrtn' and 'sum' are supported, with
+    combiner: A string specifying how to reduce if there are multiple entries in
+      a single row. Currently 'mean', 'sqrtn' and 'sum' are supported, with
       'mean' the default. 'sqrtn' often achieves good accuracy, in particular
       with bag-of-words columns. Each of this can be thought as example level
       normalizations on the column. For more information, see
       `tf.embedding_lookup_sparse`.
     initializer: A variable initializer function to be used in embedding
       variable initialization. If not specified, defaults to
-      `truncated_normal_initializer` with mean `0.0` and standard
-      deviation `1/sqrt(dimension)`.
+      `truncated_normal_initializer` with mean `0.0` and standard deviation
+      `1/sqrt(dimension)`.
     shared_embedding_collection_name: Optional collective name of these columns.
       If not given, a reasonable name will be chosen based on the names of
       `categorical_columns`.
     ckpt_to_load_from: String representing checkpoint name/pattern from which to
       restore column weights. Required if `tensor_name_in_ckpt` is not `None`.
-    tensor_name_in_ckpt: Name of the `Tensor` in `ckpt_to_load_from` from
-      which to restore the column weights. Required if `ckpt_to_load_from` is
-      not `None`.
-    max_norm: If not `None`, each embedding is clipped if its l2-norm is
-      larger than this value, before combining.
+    tensor_name_in_ckpt: Name of the `Tensor` in `ckpt_to_load_from` from which
+      to restore the column weights. Required if `ckpt_to_load_from` is not
+      `None`.
+    max_norm: If not `None`, each embedding is clipped if its l2-norm is larger
+      than this value, before combining.
     trainable: Whether or not the embedding is trainable. Default is True.
     use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
       instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
@@ -984,7 +1017,9 @@ def shared_embedding_columns_v2(categorical_columns,
   return result
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.numeric_column')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def numeric_column(key,
                    shape=(1,),
                    default_value=None,
@@ -1030,9 +1065,9 @@ def numeric_column(key,
    [ 0.   0.   0.   0.   0.   1.   0. ]], shape=(8, 7), dtype=float32)
 
   Args:
-    key: A unique string identifying the input feature. It is used as the
-      column name and the dictionary key for feature parsing configs, feature
-      `Tensor` objects, and feature columns.
+    key: A unique string identifying the input feature. It is used as the column
+      name and the dictionary key for feature parsing configs, feature `Tensor`
+      objects, and feature columns.
     shape: An iterable of integers specifies the shape of the `Tensor`. An
       integer can be given which means a single dimension `Tensor` with given
       width. The `Tensor` representing the column will have the shape of
@@ -1067,8 +1102,7 @@ def numeric_column(key,
   if not (dtype.is_integer or dtype.is_floating):
     raise ValueError('dtype must be convertible to float. '
                      'dtype: {}, key: {}'.format(dtype, key))
-  default_value = fc_utils.check_default_value(
-      shape, default_value, dtype, key)
+  default_value = fc_utils.check_default_value(shape, default_value, dtype, key)
 
   if normalizer_fn is not None and not callable(normalizer_fn):
     raise TypeError(
@@ -1083,7 +1117,9 @@ def numeric_column(key,
       normalizer_fn=normalizer_fn)
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.bucketized_column')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def bucketized_column(source_column, boundaries):
   """Represents discretized dense input bucketed by `boundaries`.
 
@@ -1156,9 +1192,8 @@ def bucketized_column(source_column, boundaries):
         'source_column must be a column generated with numeric_column(). '
         'Given: {}'.format(source_column))
   if len(source_column.shape) > 1:
-    raise ValueError(
-        'source_column must be one-dimensional column. '
-        'Given: {}'.format(source_column))
+    raise ValueError('source_column must be one-dimensional column. '
+                     'Given: {}'.format(source_column))
   if not boundaries:
     raise ValueError('boundaries must not be empty.')
   if not (isinstance(boundaries, list) or isinstance(boundaries, tuple)):
@@ -1169,7 +1204,9 @@ def bucketized_column(source_column, boundaries):
   return BucketizedColumn(source_column, tuple(boundaries))
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.categorical_column_with_hash_bucket')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def categorical_column_with_hash_bucket(key,
                                         hash_bucket_size,
                                         dtype=dtypes.string):
@@ -1212,9 +1249,9 @@ def categorical_column_with_hash_bucket(key,
   ```
 
   Args:
-    key: A unique string identifying the input feature. It is used as the
-      column name and the dictionary key for feature parsing configs, feature
-      `Tensor` objects, and feature columns.
+    key: A unique string identifying the input feature. It is used as the column
+      name and the dictionary key for feature parsing configs, feature `Tensor`
+      objects, and feature columns.
     hash_bucket_size: An int > 1. The number of buckets.
     dtype: The type of features. Only string and integer types are supported.
 
@@ -1239,7 +1276,9 @@ def categorical_column_with_hash_bucket(key,
   return HashedCategoricalColumn(key, hash_bucket_size, dtype)
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export(v1=['feature_column.categorical_column_with_vocabulary_file'])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def categorical_column_with_vocabulary_file(key,
                                             vocabulary_file,
                                             vocabulary_size=None,
@@ -1312,9 +1351,9 @@ def categorical_column_with_vocabulary_file(key,
   ```
 
   Args:
-    key: A unique string identifying the input feature. It is used as the
-      column name and the dictionary key for feature parsing configs, feature
-      `Tensor` objects, and feature columns.
+    key: A unique string identifying the input feature. It is used as the column
+      name and the dictionary key for feature parsing configs, feature `Tensor`
+      objects, and feature columns.
     vocabulary_file: The vocabulary file name.
     vocabulary_size: Number of the elements in the vocabulary. This must be no
       greater than length of `vocabulary_file`, if less than length, later
@@ -1339,13 +1378,17 @@ def categorical_column_with_vocabulary_file(key,
     ValueError: `num_oov_buckets` and `default_value` are both specified.
     ValueError: `dtype` is neither string nor integer.
   """
-  return categorical_column_with_vocabulary_file_v2(
-      key, vocabulary_file, vocabulary_size,
-      dtype, default_value,
-      num_oov_buckets)
+  return categorical_column_with_vocabulary_file_v2(key, vocabulary_file,
+                                                    vocabulary_size, dtype,
+                                                    default_value,
+                                                    num_oov_buckets)
 
 
-@tf_export('feature_column.categorical_column_with_vocabulary_file', v1=[])
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
+@tf_export(
+    'feature_column.categorical_column_with_vocabulary_file',
+    v1=[])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def categorical_column_with_vocabulary_file_v2(key,
                                                vocabulary_file,
                                                vocabulary_size=None,
@@ -1404,9 +1447,9 @@ def categorical_column_with_vocabulary_file_v2(key,
   ```
 
   Args:
-    key: A unique string identifying the input feature. It is used as the
-      column name and the dictionary key for feature parsing configs, feature
-      `Tensor` objects, and feature columns.
+    key: A unique string identifying the input feature. It is used as the column
+      name and the dictionary key for feature parsing configs, feature `Tensor`
+      objects, and feature columns.
     vocabulary_file: The vocabulary file name.
     vocabulary_size: Number of the elements in the vocabulary. This must be no
       greater than length of `vocabulary_file`, if less than length, later
@@ -1479,7 +1522,9 @@ def categorical_column_with_vocabulary_file_v2(key,
       file_format=file_format)
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.categorical_column_with_vocabulary_list')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def categorical_column_with_vocabulary_list(key,
                                             vocabulary_list,
                                             dtype=None,
@@ -1596,7 +1641,9 @@ def categorical_column_with_vocabulary_list(key,
       num_oov_buckets=num_oov_buckets)
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.categorical_column_with_identity')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def categorical_column_with_identity(key, num_buckets, default_value=None):
   """A `CategoricalColumn` that returns identity values.
 
@@ -1644,13 +1691,13 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
   ```
 
   Args:
-    key: A unique string identifying the input feature. It is used as the
-      column name and the dictionary key for feature parsing configs, feature
-      `Tensor` objects, and feature columns.
+    key: A unique string identifying the input feature. It is used as the column
+      name and the dictionary key for feature parsing configs, feature `Tensor`
+      objects, and feature columns.
     num_buckets: Range of inputs and outputs is `[0, num_buckets)`.
-    default_value: If set, values outside of range `[0, num_buckets)` will
-      be replaced with this value. If not set, values >= num_buckets will
-      cause a failure while values < 0 will be dropped.
+    default_value: If set, values outside of range `[0, num_buckets)` will be
+      replaced with this value. If not set, values >= num_buckets will cause a
+      failure while values < 0 will be dropped.
 
   Returns:
     A `CategoricalColumn` that returns identity values.
@@ -1660,10 +1707,10 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
     ValueError: if `default_value` is not in range `[0, num_buckets)`.
   """
   if num_buckets < 1:
-    raise ValueError(
-        'num_buckets {} < 1, column_name {}'.format(num_buckets, key))
-  if (default_value is not None) and (
-      (default_value < 0) or (default_value >= num_buckets)):
+    raise ValueError('num_buckets {} < 1, column_name {}'.format(
+        num_buckets, key))
+  if (default_value is not None) and ((default_value < 0) or
+                                      (default_value >= num_buckets)):
     raise ValueError(
         'default_value {} not in range [0, {}), column_name {}'.format(
             default_value, num_buckets, key))
@@ -1672,7 +1719,9 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
       key=key, number_buckets=num_buckets, default_value=default_value)
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.indicator_column')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def indicator_column(categorical_column):
   """Represents multi-hot representation of given categorical column.
 
@@ -1715,7 +1764,9 @@ def indicator_column(categorical_column):
   return IndicatorColumn(categorical_column)
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.weighted_categorical_column')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def weighted_categorical_column(categorical_column,
                                 weight_feature_key,
                                 dtype=dtypes.float32):
@@ -1791,7 +1842,13 @@ def weighted_categorical_column(categorical_column,
       dtype=dtype)
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.crossed_column')
+@deprecation.deprecated(
+    None,
+    'Use `tf.keras.layers.experimental.preprocessing.HashedCrossing` '
+    'instead for feature crossing when preprocessing data to train a '
+    'Keras model.')
 def crossed_column(keys, hash_bucket_size, hash_key=None):
   """Returns a column for performing crosses of categorical features.
 
@@ -1917,6 +1974,8 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
           'Instead, use the feature name as a string. Given: {}'.format(key))
   return CrossedColumn(
       keys=tuple(keys), hash_bucket_size=hash_bucket_size, hash_key=hash_key)
+
+
 
 
 # TODO(b/181853833): Add a tf.type for instance type checking.
@@ -2290,8 +2349,9 @@ class CategoricalColumn(FeatureColumn):
     pass
 
 
-def _create_categorical_column_weighted_sum(
-    column, transformation_cache, state_manager, sparse_combiner, weight_var):
+def _create_categorical_column_weighted_sum(column, transformation_cache,
+                                            state_manager, sparse_combiner,
+                                            weight_var):
   # pylint: disable=g-doc-return-or-yield,g-doc-args
   """Create a weighted sum of a categorical column for linear_model.
 
@@ -2322,9 +2382,9 @@ def _create_categorical_column_weighted_sum(
 
   sparse_tensors = column.get_sparse_tensors(transformation_cache,
                                              state_manager)
-  id_tensor = sparse_ops.sparse_reshape(sparse_tensors.id_tensor, [
-      array_ops.shape(sparse_tensors.id_tensor)[0], -1
-  ])
+  id_tensor = sparse_ops.sparse_reshape(
+      sparse_tensors.id_tensor,
+      [array_ops.shape(sparse_tensors.id_tensor)[0], -1])
   weight_tensor = sparse_tensors.weight_tensor
   if weight_tensor is not None:
     weight_tensor = sparse_ops.sparse_reshape(
@@ -2396,9 +2456,9 @@ class FeatureTransformationCache(object):
       features: A mapping from feature column to objects that are `Tensor` or
         `SparseTensor`, or can be converted to same via
         `sparse_tensor.convert_to_tensor_or_sparse_tensor`. A `string` key
-        signifies a base feature (not-transformed). A `FeatureColumn` key
-        means that this `Tensor` is the output of an existing `FeatureColumn`
-        which can be reused.
+        signifies a base feature (not-transformed). A `FeatureColumn` key means
+        that this `Tensor` is the output of an existing `FeatureColumn` which
+        can be reused.
     """
     self._features = features.copy()
     self._feature_tensors = {}
@@ -2484,8 +2544,8 @@ class FeatureTransformationCache(object):
     def expand_dims(input_tensor):
       # Input_tensor must have rank 1.
       if isinstance(input_tensor, sparse_tensor_lib.SparseTensor):
-        return sparse_ops.sparse_reshape(
-            input_tensor, [array_ops.shape(input_tensor)[0], 1])
+        return sparse_ops.sparse_reshape(input_tensor,
+                                         [array_ops.shape(input_tensor)[0], 1])
       else:
         return array_ops.expand_dims(input_tensor, -1)
 
@@ -2502,11 +2562,11 @@ class FeatureTransformationCache(object):
         check_ops.assert_positive(
             array_ops.rank(feature_tensor),
             message='Feature (key: {}) cannot have rank 0. Given: {}'.format(
-                key, feature_tensor))]):
+                key, feature_tensor))
+    ]):
       return control_flow_ops.cond(
           math_ops.equal(1, array_ops.rank(feature_tensor)),
-          lambda: expand_dims(feature_tensor),
-          lambda: feature_tensor)
+          lambda: expand_dims(feature_tensor), lambda: feature_tensor)
 
 
 # TODO(ptucker): Move to third_party/tensorflow/python/ops/sparse_ops.py
@@ -2517,8 +2577,8 @@ def _to_sparse_input_and_drop_ignore_values(input_tensor, ignore_value=None):
 
   Args:
     input_tensor: A string or integer `Tensor`.
-    ignore_value: Entries in `dense_tensor` equal to this value will be
-      absent from the resulting `SparseTensor`. If `None`, default value of
+    ignore_value: Entries in `dense_tensor` equal to this value will be absent
+      from the resulting `SparseTensor`. If `None`, default value of
       `dense_tensor`'s dtype will be used ('' for `str`, -1 for `int`).
 
   Returns:
@@ -2531,7 +2591,10 @@ def _to_sparse_input_and_drop_ignore_values(input_tensor, ignore_value=None):
       input_tensor)
   if isinstance(input_tensor, sparse_tensor_lib.SparseTensor):
     return input_tensor
-  with ops.name_scope(None, 'to_sparse_input', (input_tensor, ignore_value,)):
+  with ops.name_scope(None, 'to_sparse_input', (
+      input_tensor,
+      ignore_value,
+  )):
     if ignore_value is None:
       if input_tensor.dtype == dtypes.string:
         # Exception due to TF strings are converted to numpy objects by default.
@@ -2720,7 +2783,8 @@ class NumericColumn(
     from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
     kwargs = _standardize_and_copy_config(config)
     kwargs['normalizer_fn'] = serialization._deserialize_keras_object(  # pylint: disable=protected-access
-        config['normalizer_fn'], custom_objects=custom_objects)
+        config['normalizer_fn'],
+        custom_objects=custom_objects)
     kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
 
     return cls(**kwargs)
@@ -2824,23 +2888,20 @@ class BucketizedColumn(
     i1 = array_ops.reshape(
         array_ops.tile(
             array_ops.expand_dims(math_ops.range(0, batch_size), 1),
-            [1, source_dimension]),
-        (-1,))
+            [1, source_dimension]), (-1,))
     i2 = array_ops.tile(math_ops.range(0, source_dimension), [batch_size])
     # Flatten the bucket indices and unique them across dimensions
     # E.g. 2nd dimension indices will range from k to 2*k-1 with k buckets
     bucket_indices = (
-        array_ops.reshape(input_tensor, (-1,)) +
-        (len(self.boundaries) + 1) * i2)
+        array_ops.reshape(input_tensor,
+                          (-1,)) + (len(self.boundaries) + 1) * i2)
 
     indices = math_ops.cast(
-        array_ops.transpose(array_ops.stack((i1, i2))), dtypes.int64)
+        array_ops.transpose(array_ops_stack.stack((i1, i2))), dtypes.int64)
     dense_shape = math_ops.cast(
-        array_ops.stack([batch_size, source_dimension]), dtypes.int64)
+        array_ops_stack.stack([batch_size, source_dimension]), dtypes.int64)
     sparse_tensor = sparse_tensor_lib.SparseTensor(
-        indices=indices,
-        values=bucket_indices,
-        dense_shape=dense_shape)
+        indices=indices, values=bucket_indices, dense_shape=dense_shape)
     return CategoricalColumn.IdWeightPair(sparse_tensor, None)
 
   def get_sparse_tensors(self, transformation_cache, state_manager):
@@ -2850,7 +2911,9 @@ class BucketizedColumn(
 
   @deprecation.deprecated(_FEATURE_COLUMN_DEPRECATION_DATE,
                           _FEATURE_COLUMN_DEPRECATION)
-  def _get_sparse_tensors(self, inputs, weight_collections=None,
+  def _get_sparse_tensors(self,
+                          inputs,
+                          weight_collections=None,
                           trainable=None):
     """Converts dense inputs to SparseTensor so downstream code can use it."""
     del weight_collections
@@ -2958,9 +3021,9 @@ class EmbeddingColumn(
 
   def create_state(self, state_manager):
     """Creates the embedding lookup variable."""
-    default_num_buckets = (self.categorical_column.num_buckets
-                           if self._is_v2_column
-                           else self.categorical_column._num_buckets)   # pylint: disable=protected-access
+    default_num_buckets = (
+        self.categorical_column.num_buckets
+        if self._is_v2_column else self.categorical_column._num_buckets)  # pylint: disable=protected-access
     num_buckets = getattr(self.categorical_column, 'num_buckets',
                           default_num_buckets)
     embedding_shape = (num_buckets, self.dimension)
@@ -2982,9 +3045,8 @@ class EmbeddingColumn(
       to_restore = embedding_weights
       if isinstance(to_restore, variables.PartitionedVariable):
         to_restore = to_restore._get_variable_list()  # pylint: disable=protected-access
-      checkpoint_utils.init_from_checkpoint(self.ckpt_to_load_from, {
-          self.tensor_name_in_ckpt: to_restore
-      })
+      checkpoint_utils.init_from_checkpoint(
+          self.ckpt_to_load_from, {self.tensor_name_in_ckpt: to_restore})
 
     sparse_id_rank = tensor_shape.dimension_value(
         sparse_ids.dense_shape.get_shape()[0])
@@ -3414,8 +3476,9 @@ class HashedCategoricalColumn(
 
     sparse_id_values = string_ops.string_to_hash_bucket_fast(
         sparse_values, self.hash_bucket_size, name='lookup')
-    return sparse_tensor_lib.SparseTensor(
-        input_tensor.indices, sparse_id_values, input_tensor.dense_shape)
+    return sparse_tensor_lib.SparseTensor(input_tensor.indices,
+                                          sparse_id_values,
+                                          input_tensor.dense_shape)
 
   def transform_feature(self, transformation_cache, state_manager):
     """Hashes the values in the feature_column."""
@@ -3447,7 +3510,9 @@ class HashedCategoricalColumn(
 
   @deprecation.deprecated(_FEATURE_COLUMN_DEPRECATION_DATE,
                           _FEATURE_COLUMN_DEPRECATION)
-  def _get_sparse_tensors(self, inputs, weight_collections=None,
+  def _get_sparse_tensors(self,
+                          inputs,
+                          weight_collections=None,
                           trainable=None):
     del weight_collections
     del trainable
@@ -3606,7 +3671,9 @@ class VocabularyFileCategoricalColumn(
 
   @deprecation.deprecated(_FEATURE_COLUMN_DEPRECATION_DATE,
                           _FEATURE_COLUMN_DEPRECATION)
-  def _get_sparse_tensors(self, inputs, weight_collections=None,
+  def _get_sparse_tensors(self,
+                          inputs,
+                          weight_collections=None,
                           trainable=None):
     del weight_collections
     del trainable
@@ -3725,7 +3792,9 @@ class VocabularyListCategoricalColumn(
 
   @deprecation.deprecated(_FEATURE_COLUMN_DEPRECATION_DATE,
                           _FEATURE_COLUMN_DEPRECATION)
-  def _get_sparse_tensors(self, inputs, weight_collections=None,
+  def _get_sparse_tensors(self,
+                          inputs,
+                          weight_collections=None,
                           trainable=None):
     del weight_collections
     del trainable
@@ -3756,7 +3825,6 @@ class IdentityCategoricalColumn(
     fc_old._CategoricalColumn,  # pylint: disable=protected-access
     collections.namedtuple('IdentityCategoricalColumn',
                            ('key', 'number_buckets', 'default_value'))):
-
   """See `categorical_column_with_identity`."""
 
   @property
@@ -3782,9 +3850,8 @@ class IdentityCategoricalColumn(
   def _transform_input_tensor(self, input_tensor):
     """Returns a SparseTensor with identity values."""
     if not input_tensor.dtype.is_integer:
-      raise ValueError(
-          'Invalid input, not integer. key: {} dtype: {}'.format(
-              self.key, input_tensor.dtype))
+      raise ValueError('Invalid input, not integer. key: {} dtype: {}'.format(
+          self.key, input_tensor.dtype))
     values = input_tensor.values
     if input_tensor.values.dtype != dtypes.int64:
       values = math_ops.cast(values, dtypes.int64, name='values')
@@ -3837,7 +3904,9 @@ class IdentityCategoricalColumn(
 
   @deprecation.deprecated(_FEATURE_COLUMN_DEPRECATION_DATE,
                           _FEATURE_COLUMN_DEPRECATION)
-  def _get_sparse_tensors(self, inputs, weight_collections=None,
+  def _get_sparse_tensors(self,
+                          inputs,
+                          weight_collections=None,
                           trainable=None):
     del weight_collections
     del trainable
@@ -3876,8 +3945,8 @@ class WeightedCategoricalColumn(
   @property
   def name(self):
     """See `FeatureColumn` base class."""
-    return '{}_weighted_by_{}'.format(
-        self.categorical_column.name, self.weight_feature_key)
+    return '{}_weighted_by_{}'.format(self.categorical_column.name,
+                                      self.weight_feature_key)
 
   @property
   def parse_example_spec(self):
@@ -3951,7 +4020,9 @@ class WeightedCategoricalColumn(
 
   @deprecation.deprecated(_FEATURE_COLUMN_DEPRECATION_DATE,
                           _FEATURE_COLUMN_DEPRECATION)
-  def _get_sparse_tensors(self, inputs, weight_collections=None,
+  def _get_sparse_tensors(self,
+                          inputs,
+                          weight_collections=None,
                           trainable=None):
     del weight_collections
     del trainable
@@ -4095,7 +4166,9 @@ class CrossedColumn(
 
   @deprecation.deprecated(_FEATURE_COLUMN_DEPRECATION_DATE,
                           _FEATURE_COLUMN_DEPRECATION)
-  def _get_sparse_tensors(self, inputs, weight_collections=None,
+  def _get_sparse_tensors(self,
+                          inputs,
+                          weight_collections=None,
                           trainable=None):
     """See `CategoricalColumn` base class."""
     del weight_collections
@@ -4406,8 +4479,8 @@ def _verify_static_batch_size_equality(tensors, columns):
   # bath_size is a Dimension object.
   expected_batch_size = None
   for i in range(0, len(tensors)):
-    batch_size = tensor_shape.Dimension(tensor_shape.dimension_value(
-        tensors[i].shape[0]))
+    batch_size = tensor_shape.Dimension(
+        tensor_shape.dimension_value(tensors[i].shape[0]))
     if batch_size.value is not None:
       if expected_batch_size is None:
         bath_size_column_index = i
@@ -4510,7 +4583,9 @@ class SequenceCategoricalColumn(
 
   @deprecation.deprecated(_FEATURE_COLUMN_DEPRECATION_DATE,
                           _FEATURE_COLUMN_DEPRECATION)
-  def _get_sparse_tensors(self, inputs, weight_collections=None,
+  def _get_sparse_tensors(self,
+                          inputs,
+                          weight_collections=None,
                           trainable=None):
     sparse_tensors = self.categorical_column._get_sparse_tensors(inputs)  # pylint: disable=protected-access
     return self._get_sparse_tensors_helper(sparse_tensors)

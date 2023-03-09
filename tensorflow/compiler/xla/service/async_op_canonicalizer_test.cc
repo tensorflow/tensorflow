@@ -59,7 +59,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   AsyncOpCanonicalizer canonicalizer;
-  EXPECT_TRUE(canonicalizer.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(canonicalizer.Run(module.get()).value());
 
   HloInstruction* async_start = FindInstruction(module.get(), "async-start");
   HloInstruction* async_update = FindInstruction(module.get(), "async-update");
@@ -120,9 +120,9 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   AsyncOpCanonicalizer canonicalizer;
-  EXPECT_TRUE(canonicalizer.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(canonicalizer.Run(module.get()).value());
   HloDCE dce;
-  dce.Run(module.get()).ValueOrDie();
+  dce.Run(module.get()).value();
 
   HloInstruction* async_start = FindInstruction(module.get(), "async-start");
   HloInstruction* async_update = FindInstruction(module.get(), "async-update");

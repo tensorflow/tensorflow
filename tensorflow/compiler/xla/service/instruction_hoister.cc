@@ -22,11 +22,14 @@ namespace {
 // computations. Hoisting entry parameters increases the opportunities to
 // prefetch entry parameters. Hoisting non-entry parameters is required for
 // correctness.
-bool HoistParameters(HloModule& module) {
+bool HoistParameters(
+    HloModule& module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   CHECK(module.has_schedule());
   HloSchedule& schedule = module.schedule();
   bool modified = false;
-  for (const HloComputation* computation : module.MakeNonfusionComputations()) {
+  for (const HloComputation* computation :
+       module.MakeNonfusionComputations(execution_threads)) {
     CHECK(schedule.is_computation_scheduled(computation));
     if (computation->num_parameters() == 0) {
       continue;
@@ -73,11 +76,14 @@ bool HoistParameters(HloModule& module) {
 
 // Modifies the schedules in the given module to hoist (move earlier) constant
 // operations. This increases the opportunities to prefetch constant ops.
-bool HoistConstantOperations(HloModule& module) {
+bool HoistConstantOperations(
+    HloModule& module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   CHECK(module.has_schedule());
   HloSchedule& schedule = module.schedule();
   bool modified = false;
-  for (const HloComputation* computation : module.MakeNonfusionComputations()) {
+  for (const HloComputation* computation :
+       module.MakeNonfusionComputations(execution_threads)) {
     CHECK(schedule.is_computation_scheduled(computation));
     const HloInstructionSequence& sequence = schedule.sequence(computation);
     // Conservatively don't modify the schedule if any instruction has a control
@@ -125,13 +131,15 @@ bool HoistConstantOperations(HloModule& module) {
 }
 }  // namespace
 
-StatusOr<bool> InstructionHoister::Run(HloModule* module) {
+StatusOr<bool> InstructionHoister::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool modified = false;
   if (hoist_parameters_) {
-    modified |= HoistParameters(*module);
+    modified |= HoistParameters(*module, execution_threads);
   }
   if (host_constants_) {
-    modified |= HoistConstantOperations(*module);
+    modified |= HoistConstantOperations(*module, execution_threads);
   }
   return modified;
 }

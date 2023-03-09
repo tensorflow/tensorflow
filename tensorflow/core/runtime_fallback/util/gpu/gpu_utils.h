@@ -15,8 +15,8 @@ limitations under the License.
 
 // This file declares gpu related utility functions.
 
-#ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_GPU_GPU_UTILS_H_
-#define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_GPU_GPU_UTILS_H_
+#ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_UTIL_GPU_GPU_UTILS_H_
+#define TENSORFLOW_CORE_RUNTIME_FALLBACK_UTIL_GPU_GPU_UTILS_H_
 
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
@@ -41,4 +41,4 @@ tfrt::Expected<tensorflow::Tensor> MoveGpuBufferToTFTensor(
 }  // namespace tfd
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_GPU_GPU_UTILS_H_
+#endif  // TENSORFLOW_CORE_RUNTIME_FALLBACK_UTIL_GPU_GPU_UTILS_H_

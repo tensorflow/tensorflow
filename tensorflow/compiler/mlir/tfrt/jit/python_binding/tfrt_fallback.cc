@@ -19,12 +19,13 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/SmallVector.h"
-#include "pybind11/numpy.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
+#include "pybind11/numpy.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/compiler/mlir/tfrt/jit/python_binding/conversion_utils.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt.h"
 #include "tensorflow/compiler/mlir/tfrt/runtime_fallback/runtime_fallback_executor.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/refcount.h"
@@ -35,7 +36,7 @@ namespace tensorflow {
 
 namespace py = pybind11;
 
-using ::tfrt::jitrt::MemrefDesc;
+using ::xla::runtime::MemrefDesc;
 
 static py::array ConvertTensorToPyArray(const Tensor& tensor) {
   auto tensor_sizes = tensor.shape().dim_sizes();
@@ -68,7 +69,7 @@ std::vector<py::array> RunTfrtFallback(
   llvm::SmallVector<Tensor> tensor_arguments;
   tensor_arguments.reserve(arguments.size());
   for (const auto& memref : memrefs) {
-    size_t size = tfrt::GetHostSize(memref.dtype());
+    size_t size = xla::primitive_util::ByteWidth(memref.dtype());
     // memref.data is still owned by the py::array. Therefore we pass nullptr as
     // base_ptr, because we don't need to keep track of it for deallocation.
     // The tensor will take ownership of the buffer from the reference counted
@@ -79,8 +80,42 @@ std::vector<py::array> RunTfrtFallback(
     TensorShape shape;
     auto st = TensorShapeUtils::MakeShape(memref.sizes(), &shape);
     (void)st;
-    tensor_arguments.emplace_back(tfd::GetTfDataType(memref.dtype()),
-                                  std::move(shape), std::move(ptr));
+
+    DataType dtype = [&]() {
+      switch (memref.dtype()) {
+        case xla::PrimitiveType::PRED:
+          return DT_BOOL;
+        case xla::PrimitiveType::F32:
+          return DT_FLOAT;
+        case xla::PrimitiveType::F64:
+          return DT_DOUBLE;
+        case xla::PrimitiveType::S8:
+          return DT_INT8;
+        case xla::PrimitiveType::S16:
+          return DT_INT16;
+        case xla::PrimitiveType::S32:
+          return DT_INT32;
+        case xla::PrimitiveType::S64:
+          return DT_INT64;
+        case xla::PrimitiveType::U8:
+          return DT_UINT8;
+        case xla::PrimitiveType::U16:
+          return DT_UINT16;
+        case xla::PrimitiveType::U32:
+          return DT_UINT32;
+        case xla::PrimitiveType::U64:
+          return DT_UINT64;
+        case xla::PrimitiveType::C64:
+          return DT_COMPLEX64;
+        case xla::PrimitiveType::C128:
+          return DT_COMPLEX128;
+        default:
+          LOG(FATAL) << "Unsupported data type: "  // Crash OK
+                     << memref.dtype();
+      }
+    }();
+
+    tensor_arguments.emplace_back(dtype, std::move(shape), std::move(ptr));
   }
 
   RuntimeFallbackExecutor executor(/*num_threads=*/4);

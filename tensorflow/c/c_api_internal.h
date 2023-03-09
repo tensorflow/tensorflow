@@ -115,6 +115,9 @@ struct TF_OperationDescription {
 
 struct TF_Operation {
   tensorflow::Node node;
+
+ private:
+  ~TF_Operation() = default;
 };
 
 struct TF_Session {
@@ -187,12 +190,6 @@ struct TF_Server {
 
 namespace tensorflow {
 
-Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
-                       TF_Buffer* out);
-
-Status BufferToMessage(const TF_Buffer* in,
-                       tensorflow::protobuf::MessageLite* out);
-
 // Set the shapes and types of the output's handle.
 //
 // The lengths of the arrays pointed to by `shapes`, `ranks`, and `types` must
@@ -216,6 +213,14 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status)
     TF_LOCKS_EXCLUDED(session->graph->mu, session->mu);
 
 std::string getTF_OutputDebugString(TF_Output node);
+
+// Set whether to propagate assigned device information when constructing a new
+// Graph from a GraphDef. By default assigned device information is not copied
+// and is re-computed by the runtime.
+inline void TF_ImportGraphDefOptionsSetPropagateDeviceSpec(
+    TF_ImportGraphDefOptions* opts, unsigned char propagate_device_spec) {
+  opts->opts.propagate_device_spec = propagate_device_spec;
+}
 
 }  // end namespace tensorflow
 

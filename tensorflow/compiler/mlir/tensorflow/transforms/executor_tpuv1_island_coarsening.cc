@@ -18,12 +18,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <optional>
 #include <queue>
 #include <tuple>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -45,7 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -59,18 +57,21 @@ namespace {
 constexpr llvm::StringRef kTpuStatusAttr = "_tpu_compilation_status";
 constexpr llvm::StringRef kNoReplicationCluster = "__no_replication_cluster";
 
+#define GEN_PASS_DEF_TPUV1BRIDGEEXECUTORISLANDCOARSENINGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // This pass is a variant of the island coarsening that is limited to
 // TPU-annotated operations and intended to preserve backward compatibility with
 // TFv1.
 struct TpuV1BridgeExecutorIslandCoarsening
-    : public TF::TpuV1BridgeExecutorIslandCoarseningPassBase<
+    : public impl::TpuV1BridgeExecutorIslandCoarseningPassBase<
           TpuV1BridgeExecutorIslandCoarsening> {
   void runOnOperation() override;
 };
 
 // Returns name of TPU cluster, if op belongs to a TPU cluster. Otherwise,
-// returns `llvm::None`.
-llvm::Optional<llvm::StringRef> GetTpuClusterName(Operation* op) {
+// returns `std::nullopt`.
+std::optional<llvm::StringRef> GetTpuClusterName(Operation* op) {
   if (auto tpu_status = op->getAttrOfType<StringAttr>(kTpuStatusAttr)) {
     // Borrow cluster name from TPU status (for `TPUCompilationResult` op).
     return tpu_status.getValue();
@@ -78,7 +79,7 @@ llvm::Optional<llvm::StringRef> GetTpuClusterName(Operation* op) {
   auto device_type = op->getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr);
   if (!device_type || device_type.getValue() != TF::kTpuDevice) {
     // Op does not belong to a TPU cluster.
-    return llvm::None;
+    return std::nullopt;
   }
   // Op belongs to a TPU cluster.
   if (auto replication_info =
@@ -114,7 +115,7 @@ bool HasControlDependencyWithUnscheduledOp(
   if (!island_op) {
     return false;
   }
-  for (Value input : island_op.controlInputs()) {
+  for (Value input : island_op.getControlInputs()) {
     Operation* defining_op = input.getDefiningOp();
     if (!defining_op) continue;
     Operation* producer_in_block = block->findAncestorOpInBlock(*defining_op);
@@ -190,11 +191,11 @@ void CollectCandidateIslands(
       continue;
     }
 
-    llvm::Optional<llvm::StringRef> result =
+    std::optional<llvm::StringRef> result =
         GetTpuClusterName(&candidate_wrapped_op);
     llvm::StringRef candidate_cluster_name;
     if (result.has_value()) {
-      candidate_cluster_name = result.getValue();
+      candidate_cluster_name = result.value();
     } else if (is_op_calling_func_for_cluster(cluster_name,
                                               &candidate_wrapped_op)) {
       candidate_cluster_name = cluster_name;
@@ -215,7 +216,7 @@ IslandOp CreateMergedIsland(IslandOp island, SmallVector<IslandOp, 16>& islands,
   // i.e. a value that escapes.
   llvm::SmallVector<Type, 4> result_types;
   for (IslandOp new_op : islands) {
-    for (Value result : new_op.outputs()) {
+    for (Value result : new_op.getOutputs()) {
       if (llvm::any_of(result.getUsers(), [&](OpOperand user) {
             return !wrapped_ops.count(user.getOwner());
           }))
@@ -227,7 +228,7 @@ IslandOp CreateMergedIsland(IslandOp island, SmallVector<IslandOp, 16>& islands,
       island.getLoc(), result_types,
       /*control=*/ControlType::get(island.getContext()),
       /*controlInputs=*/island.getOperands());
-  new_island.body().push_back(new Block);
+  new_island.getBody().push_back(new Block);
 
   // Move the operations in the new island, gather the results of the new yield.
   Block& island_body = new_island.GetBody();
@@ -238,7 +239,8 @@ IslandOp CreateMergedIsland(IslandOp island, SmallVector<IslandOp, 16>& islands,
 
     // For every result of the wrapped_op, it needs to get passed to the yield
     // operation, only if it escapes the island.
-    for (auto result : llvm::zip(island.outputs(), wrapped_op.getResults())) {
+    for (auto result :
+         llvm::zip(island.getOutputs(), wrapped_op.getResults())) {
       if (llvm::any_of(std::get<0>(result).getUsers(), [&](OpOperand user) {
             return !wrapped_ops.count(user.getOwner());
           }))
@@ -250,10 +252,10 @@ IslandOp CreateMergedIsland(IslandOp island, SmallVector<IslandOp, 16>& islands,
 
   // remap results of the new islands to the user outside of the island.
   int current_result = 0;
-  Value control = new_island.control();
+  Value control = new_island.getControl();
   for (IslandOp island : islands) {
     YieldOp yield_op = island.GetYield();
-    for (const auto& idx_result : llvm::enumerate(island.outputs())) {
+    for (const auto& idx_result : llvm::enumerate(island.getOutputs())) {
       Value result = idx_result.value();
 
       bool has_external_use = false;
@@ -268,7 +270,7 @@ IslandOp CreateMergedIsland(IslandOp island, SmallVector<IslandOp, 16>& islands,
         ++current_result;
       }
     }
-    island.control().replaceAllUsesWith(control);
+    island.getControl().replaceAllUsesWith(control);
     island.erase();
   }
   return new_island;
@@ -293,9 +295,9 @@ LogicalResult MergeIsland(
   if (!island || !island.WrapsSingleOp()) return success();
   Operation& wrapped_op = island.GetBody().front();
 
-  llvm::Optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);
+  std::optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);
   if (!result.has_value()) return success();
-  llvm::StringRef cluster_name = result.getValue();
+  llvm::StringRef cluster_name = result.value();
 
   // We found a _replication_info, let's build an island for the full cluster!
   LLVM_DEBUG(llvm::dbgs() << "Processing candidate island: "
@@ -388,18 +390,38 @@ bool is_valid_special_tpu_op(
         cluster_to_tpu_op_map) {
   for (IslandOp op : ops) {
     Operation* wrapped_op = &op.GetBody().front();
-    llvm::Optional<llvm::StringRef> wrapped_op_cluster_name =
+    std::optional<llvm::StringRef> wrapped_op_cluster_name =
         GetTpuClusterName(wrapped_op);
 
     bool op_has_inconsistent_cluster_name =
         wrapped_op_cluster_name.has_value() &&
-        !wrapped_op_cluster_name.getValue().equals(cluster_name);
+        !wrapped_op_cluster_name.value().equals(cluster_name);
 
     if (op_has_inconsistent_cluster_name) {
       return false;
     }
   }
   return true;
+}
+
+void collect_input_defining_islands(IslandOp op, std::vector<IslandOp>& ops) {
+  Operation* wrapped_op = &op.GetBody().front();
+  for (Value operand : wrapped_op->getOperands()) {
+    IslandOp wrapper = dyn_cast_or_null<IslandOp>(operand.getDefiningOp());
+    if (!wrapper || !wrapper.WrapsSingleOp()) continue;
+    ops.push_back(wrapper);
+  }
+}
+
+void collect_output_users_islands(IslandOp op, std::vector<IslandOp>& ops) {
+  for (Value result : op->getResults()) {
+    for (OpOperand use : result.getUsers()) {
+      IslandOp wrapper =
+          dyn_cast_or_null<IslandOp>(use.getOwner()->getParentOp());
+      if (!wrapper || !wrapper.WrapsSingleOp()) continue;
+      ops.push_back(wrapper);
+    }
+  }
 }
 
 bool AddSpecialTpuOps(
@@ -409,28 +431,6 @@ bool AddSpecialTpuOps(
     SmallPtrSetImpl<Operation*>& visited_wrapped_ops, bool incoming) {
   std::queue<IslandOp> op_worklist;
   std::vector<IslandOp> ops;
-
-  auto collect_input_defining_islands = [](IslandOp op,
-                                           std::vector<IslandOp>& ops) {
-    Operation* wrapped_op = &op.GetBody().front();
-    for (Value operand : wrapped_op->getOperands()) {
-      IslandOp wrapper = dyn_cast_or_null<IslandOp>(operand.getDefiningOp());
-      if (!wrapper || !wrapper.WrapsSingleOp()) continue;
-      ops.push_back(wrapper);
-    }
-  };
-
-  auto collect_output_users_islands = [](IslandOp op,
-                                         std::vector<IslandOp>& ops) {
-    for (Value result : op->getResults()) {
-      for (OpOperand use : result.getUsers()) {
-        IslandOp wrapper =
-            dyn_cast_or_null<IslandOp>(use.getOwner()->getParentOp());
-        if (!wrapper || !wrapper.WrapsSingleOp()) continue;
-        ops.push_back(wrapper);
-      }
-    }
-  };
 
   op_worklist.push(candidate_island);
 
@@ -452,8 +452,15 @@ bool AddSpecialTpuOps(
         // the island as well. These ops are brought in only if they do not
         // already have a cluster assigned to them (via `_replication_info`
         // attribute value).
-        if (!isa<TF::TPUReplicatedInputOp, TF::TPUPartitionedInputOp>(
-                wrapped_op))
+        // `tf.Identity` op is also treated as special tpu ops since it can play
+        // a role as connection between `tf.TPUReplicatedInput` or
+        // `tf.TPUPartitionedInput`. For example, we have the follow pseudocode:
+        // %0 = tf_executor.island wraps "tf.OpA" (){_replication_info = 'c'}
+        // %1 = tf_executor.island wraps "tf.Identity(%0)
+        // %2 = tf_executor.island wraps "tf.TPUReplicatedInput"(%1)
+
+        if (!isa<TF::TPUReplicatedInputOp, TF::TPUPartitionedInputOp,
+                 TF::IdentityOp>(wrapped_op))
           continue;
         collect_output_users_islands(wrapper, child_ops);
       } else {
@@ -461,8 +468,11 @@ bool AddSpecialTpuOps(
         // ops such as tf.TPUReplicatedOutput and tf.TPUPartitionedOutput into
         // the island as well. These ops are brought in only if they do not
         // already have cluster (`_tpu_replicate` attribute) assigned to them.
-        if (!isa<TF::TPUReplicatedOutputOp, TF::TPUPartitionedOutputOp>(
-                wrapped_op))
+        // `tf.Identity` op is also treated as special tpu ops since it can play
+        // a role as connection between `tf.TPUReplicatedOutput` or
+        // `tf.TPUPartitionedInput`.
+        if (!isa<TF::TPUReplicatedOutputOp, TF::TPUPartitionedOutputOp,
+                 TF::IdentityOp>(wrapped_op))
           continue;
         collect_input_defining_islands(wrapper, child_ops);
       }
@@ -498,9 +508,9 @@ LogicalResult CollectSpecialTpuOps(
 
   if (visited_wrapped_ops.contains(&wrapped_op)) return success();
 
-  llvm::Optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);
+  std::optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);
   if (!result.has_value()) return success();
-  llvm::StringRef cluster_name = result.getValue();
+  llvm::StringRef cluster_name = result.value();
 
   visited_wrapped_ops.insert(&wrapped_op);
 
@@ -515,6 +525,81 @@ LogicalResult CollectSpecialTpuOps(
   return success();
 }
 
+// Whenever we find an Identity op that is unqualified, we remove this Identity
+// op from the list `tpu_ops`. An unqualified Identity op indicates either its
+// inputs or its outputs do not belong to the same cluster.
+bool ExcludeIdentityOp(llvm::SmallDenseSet<Operation*>& tpu_ops,
+                       llvm::StringRef& target_cluster_name, bool incoming) {
+  for (auto iter = tpu_ops.begin(); iter != tpu_ops.end(); iter++) {
+    auto island_op = llvm::dyn_cast<IslandOp>(*iter);
+    if (llvm::dyn_cast_or_null<TF::IdentityOp>(island_op.GetBody().front())) {
+      if (island_op.getOutputs().use_empty()) {
+        tpu_ops.erase(iter);
+        return true;
+      }
+      std::vector<IslandOp> ops;
+      if (incoming) {
+        collect_output_users_islands(island_op, ops);
+      } else {
+        collect_input_defining_islands(island_op, ops);
+      }
+      for (IslandOp wrapper : ops) {
+        Operation* wrapped_op = &wrapper.GetBody().front();
+        auto cluster_name = GetTpuClusterName(wrapped_op);
+        if (cluster_name.has_value() &&
+            cluster_name.value() != target_cluster_name) {
+          tpu_ops.erase(iter);
+          return true;
+        }
+        if (!cluster_name.has_value() &&
+            !tpu_ops.count(wrapper.getOperation())) {
+          tpu_ops.erase(iter);
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+void ExcludeUnqualifiedIdentityOp(
+    llvm::SmallDenseMap<llvm::StringRef, llvm::SmallDenseSet<Operation*>>&
+        cluster_to_tpu_ops_map,
+    bool incoming) {
+  for (auto& [target_cluster_name, tpu_ops] : cluster_to_tpu_ops_map) {
+    bool changed = true;
+    while (changed) {
+      changed = ExcludeIdentityOp(tpu_ops, target_cluster_name, incoming);
+    }
+  }
+}
+
+void ExcludeUnqualifiedIdentityOp(
+    llvm::SmallDenseMap<llvm::StringRef, llvm::SmallDenseSet<Operation*>>&
+        cluster_to_tpu_ops_map) {
+  ExcludeUnqualifiedIdentityOp(cluster_to_tpu_ops_map, /*incoming=*/true);
+  ExcludeUnqualifiedIdentityOp(cluster_to_tpu_ops_map, /*incoming=*/false);
+}
+
+// Erase Identity op which does not contain `_replication_info` in the merged
+// island.
+void EraseIdentityWithNoReplicationInfo(Block& graph_body) {
+  for (Operation& island_op : graph_body) {
+    IslandOp island = dyn_cast<IslandOp>(island_op);
+    if (!island || island.WrapsSingleOp()) continue;
+    for (Operation& op : llvm::make_early_inc_range(island.GetBody())) {
+      std::optional<llvm::StringRef> cluster_name = GetTpuClusterName(&op);
+      if (cluster_name.has_value()) continue;
+      if (auto identity_op = llvm::dyn_cast_or_null<TF::IdentityOp>(op)) {
+        auto identity_input = identity_op.getInput();
+        auto output = identity_op.getOutput();
+        output.replaceAllUsesWith(identity_input);
+        identity_op.erase();
+      }
+    }
+  }
+}
+
 void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
   SymbolTable symbol_table(getOperation());
 
@@ -523,9 +608,9 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
   DenseMap<StringRef, DenseSet<func::FuncOp>> tpu_funcs;
   for (func::FuncOp func_op : getOperation().getOps<func::FuncOp>()) {
     func_op.walk([&](Operation* op) {
-      llvm::Optional<llvm::StringRef> cluster_name_opt = GetTpuClusterName(op);
+      std::optional<llvm::StringRef> cluster_name_opt = GetTpuClusterName(op);
       if (cluster_name_opt.has_value()) {
-        tpu_funcs[cluster_name_opt.getValue()].insert(func_op);
+        tpu_funcs[cluster_name_opt.value()].insert(func_op);
       }
     });
   }
@@ -576,6 +661,9 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
           return WalkResult::interrupt();
         }
       }
+
+      ExcludeUnqualifiedIdentityOp(cluster_to_tpu_ops_map);
+
       // Iterate until fixed point on the block, as it may contain multiple
       // clusters.
       bool changed = true;
@@ -596,6 +684,12 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
           if (changed) break;
         }
       }
+
+      // Need to remove the redundant `Identity` ops in the same cluster.
+      // Redundant `Identity` op indicates that no `_replicatation_info`
+      // attribute is attached.
+      EraseIdentityWithNoReplicationInfo(graph_body);
+
       return WalkResult::advance();
     });
   }

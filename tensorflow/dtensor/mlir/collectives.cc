@@ -51,7 +51,7 @@ StatusOr<mlir::Value> EmitAllGather(
     mlir::OpBuilder& builder, mlir::Value input,
     const dtensor::Layout& src_layout, const dtensor::Layout& tgt_layout,
     llvm::SmallPtrSet<mlir::Operation*, 4>* newly_created_ops) {
-  if (src_layout == tgt_layout) return input;
+  if (src_layout.IsEquivalent(tgt_layout)) return input;
 
   if (src_layout.rank() != tgt_layout.rank()) {
     return errors::InvalidArgument(
@@ -89,23 +89,24 @@ StatusOr<mlir::Value> EmitAllGather(
   TF_ASSIGN_OR_RETURN(mlir::TensorType output_type,
                       LocalTypeFromGlobalType(tgt_layout, global_type));
 
+  mlir::Location loc = DT_LOC2(input.getLoc(), "DTensorAllGatherOp");
   mlir::TF::DTensorAllGatherOp all_gather =
       builder.create<mlir::TF::DTensorAllGatherOp>(
-          input.getLoc(), output_type, input,
+          loc, output_type, input,
           mlir::dtensor::LayoutAttr::get(builder.getContext(), src_layout),
           mlir::dtensor::LayoutAttr::get(builder.getContext(), tgt_layout));
   SetSingleLayoutOnOp(all_gather, tgt_layout);
 
   if (newly_created_ops != nullptr) newly_created_ops->insert(all_gather);
 
-  return all_gather.output();
+  return all_gather.getOutput();
 }
 
 StatusOr<const mlir::Value> EmitAllScatter(
     mlir::OpBuilder& builder, const mlir::Value& original_value,
     const Layout& original_layout, const Layout& desired_layout,
     llvm::SmallPtrSet<mlir::Operation*, 4>* newly_created_ops) {
-  if (original_layout == desired_layout) return original_value;
+  if (original_layout.IsEquivalent(desired_layout)) return original_value;
 
   // Have an early return if desired layout is not more sharded then the
   // original_layout.
@@ -132,16 +133,17 @@ StatusOr<const mlir::Value> EmitAllScatter(
   TF_ASSIGN_OR_RETURN(const mlir::TensorType output_type,
                       LocalTypeFromGlobalType(desired_layout, global_type));
 
+  mlir::Location loc = DT_LOC2(original_value.getLoc(), "DTensorAllScatterOp");
   mlir::TF::DTensorAllScatterOp all_scatter =
       builder.create<mlir::TF::DTensorAllScatterOp>(
-          original_value.getLoc(), output_type, original_value,
+          loc, output_type, original_value,
           mlir::dtensor::LayoutAttr::get(builder.getContext(), original_layout),
           mlir::dtensor::LayoutAttr::get(builder.getContext(), desired_layout));
   SetSingleLayoutOnOp(all_scatter, desired_layout);
 
   if (newly_created_ops != nullptr) newly_created_ops->insert(all_scatter);
 
-  return all_scatter.output();
+  return all_scatter.getOutput();
 }
 
 StatusOr<mlir::Value> EmitDenseToSparseToDense(
@@ -161,7 +163,7 @@ StatusOr<mlir::Value> EmitDenseToSparseToDense(
 
   mlir::TF::WhereOp indices = builder.create<mlir::TF::WhereOp>(
       not_equal.getLoc(),
-      mlir::RankedTensorType::get(GetShapeOfValue(not_equal).ValueOrDie(),
+      mlir::RankedTensorType::get(GetShapeOfValue(not_equal).value(),
                                   builder.getI64Type()),
       not_equal);
 
@@ -172,15 +174,15 @@ StatusOr<mlir::Value> EmitDenseToSparseToDense(
 
   // Emit a SparseToDenseOp and replace the SparseTensor with the result of
   // this new op.
-  auto zero_scalar = CreateZeroScalarConst(
-      builder, input.getLoc(),
-      input.getType().cast<mlir::TensorType>().getElementType());
-  if (!zero_scalar.has_value())
-    return errors::Internal("Failure in creating a zero scalar const");
+  TF_ASSIGN_OR_RETURN(
+      mlir::Value zero_scalar,
+      CreateZeroScalarConst(
+          builder, input.getLoc(),
+          input.getType().cast<mlir::TensorType>().getElementType()));
 
   auto dense = builder.create<mlir::TF::SparseToDenseOp>(
       input.getLoc(), input.getType(),
-      mlir::ValueRange({indices, shape, values, zero_scalar.value()}));
+      mlir::ValueRange({indices, shape, values, zero_scalar}));
 
   if (newly_created_ops != nullptr) {
     for (auto new_op : {dense.getOperation(), shape.getOperation(),
@@ -208,6 +210,8 @@ StatusOr<mlir::Value> EmitRelayout(
   // that does not agree with the sharding on the output axis.
   // This produces intermediate layout 2.
   // A split is performed from intermediate layout 2 to the tgt layout.
+
+  if (src_layout.IsEquivalent(tgt_layout)) return input;
 
   // Save whether the input is from a SparseToDenseOp. If it is, then we will
   // emit a DenseToSparse and a SparseToDense op.
@@ -273,8 +277,22 @@ StatusOr<mlir::Value> EmitRelayout(
 
   if (!is_sparse) return all_scatter;
   if (!all_scatter.ok()) return all_scatter;
-  return EmitDenseToSparseToDense(builder, all_scatter.ValueOrDie(),
+  return EmitDenseToSparseToDense(builder, all_scatter.value(),
                                   newly_created_ops);
+}
+
+StatusOr<mlir::Operation*> EmitBarrierWithConstValue(mlir::OpBuilder& builder,
+                                                     mlir::Location loc,
+                                                     const Mesh& mesh,
+                                                     int32 value) {
+  absl::flat_hash_set<std::string> reduce_dims;
+  for (const MeshDimension& mesh_dim : mesh.dims()) {
+    reduce_dims.insert(mesh_dim.name);
+  }
+  return EmitAllReduce(
+      builder, Layout::ReplicatedOnMesh(mesh, /*rank=*/1), reduce_dims,
+      IntConst(builder, loc, std::vector<int32>{value}).getDefiningOp(),
+      kReduceOpAdd);
 }
 
 StatusOr<mlir::Operation*> EmitAllReduce(
@@ -314,10 +332,11 @@ StatusOr<mlir::Operation*> EmitAllReduce(
   TF_ASSIGN_OR_RETURN(std::string device_type,
                       DeviceTypeFromMesh(output_layout.mesh()));
 
-  mlir::Location loc = DT_LOC(input);
+  mlir::Location loc = DT_LOC2(input->getLoc(), "DTensorAllReduceOp");
   auto all_reduce = builder.create<mlir::TF::DTensorAllReduceOp>(
       loc, input->getResultTypes()[0], input->getOpResult(0),
-      builder.create<mlir::TF::ConstOp>(loc, group_assignment),
+      builder.create<mlir::TF::ConstOp>(DT_LOC2(loc, "group_assignment"),
+                                        group_assignment),
       builder.getStringAttr(std::string(reduce_op)),
       builder.getStringAttr(device_type));
   SetSingleLayoutOnOp(all_reduce, output_layout);
@@ -439,7 +458,7 @@ StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
     return errors::InvalidArgument(
         "Requested halo exchange on unknown mesh dim");
 
-  // TODO(hongjunchoi): Add support fof halo exchange for GPU/CPU.
+  // TODO(b/261485237): Add support for halo exchange for GPU/CPU.
   if (!mesh.is_tpu_mesh())
     return errors::InvalidArgument("Halo exchange is only supported on TPU.");
 

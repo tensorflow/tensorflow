@@ -56,12 +56,18 @@ def _interleave(lists, cycle_length, block_length, num_parallel_calls=None):
   open_iterators = []
   if cycle_length is None:
     # The logic here needs to match interleave C++ kernels.
+    cpu_count = multiprocessing.cpu_count()
+    if hasattr(os, "sched_getaffinity"):
+      try:
+        cpu_count = len(os.sched_getaffinity(0))
+      except NotImplementedError:
+        pass
     if num_parallel_calls is None:
-      cycle_length = multiprocessing.cpu_count()
+      cycle_length = cpu_count
     elif num_parallel_calls == dataset_ops.AUTOTUNE:
-      cycle_length = (multiprocessing.cpu_count() + 2) // 3
+      cycle_length = (cpu_count + 2) // 3
     else:
-      cycle_length = min(num_parallel_calls, multiprocessing.cpu_count())
+      cycle_length = min(num_parallel_calls, cpu_count)
 
   for i in range(cycle_length):
     if all_iterators:
@@ -387,19 +393,27 @@ class InterleaveDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
           combinations.combine(
+              symbolic_checkpoint=[False, True],
               cycle_length=2,
               block_length=[1, 3],
               num_parallel_calls=[None, 1, 2])))
-  def test(self, verify_fn, cycle_length, block_length, num_parallel_calls):
+  def test(self, verify_fn, symbolic_checkpoint, cycle_length, block_length,
+           num_parallel_calls):
 
     num_repeats = 2
     input_values = np.array([2, 3], dtype=np.int64)
 
     def _build_dataset():
-      return dataset_ops.Dataset.from_tensor_slices(input_values).repeat(
-          num_repeats).interleave(
-              lambda x: dataset_ops.Dataset.from_tensors(x).repeat(x),
-              cycle_length, block_length, num_parallel_calls)
+      dataset = dataset_ops.Dataset.from_tensor_slices(input_values)
+      dataset = dataset.repeat(num_repeats)
+      dataset = dataset.interleave(
+          lambda x: dataset_ops.Dataset.from_tensors(x).repeat(x), cycle_length,
+          block_length, num_parallel_calls)
+      if num_parallel_calls is None:
+        options = options_lib.Options()
+        options.experimental_symbolic_checkpoint = symbolic_checkpoint
+        dataset = dataset.with_options(options)
+      return dataset
 
     num_outputs = np.sum(input_values) * num_repeats
     verify_fn(self, _build_dataset, num_outputs)

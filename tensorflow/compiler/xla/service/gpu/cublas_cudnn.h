@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUBLAS_CUDNN_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUBLAS_CUDNN_H_
 
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -54,13 +55,28 @@ std::string CudnnConvKindToString(CudnnConvKind kind);
 // after a GemmRewriter lowering pass.
 bool IsCublasGemm(const HloInstruction& hlo);
 
+// Matrix multiplication that calls into legacy cublas.
+bool IsLegacyCublasMatmul(const HloInstruction& hlo);
+
+// Matrix multiplication that calls into cublasLt.
+bool IsCublasLtMatmul(const HloInstruction& hlo);
+
+// Scaled matrix multiplication in FP8. Calls into cublasLt.
+bool IsCublasLtMatmulF8(const HloInstruction& hlo);
+
 // A call to cuBLAS general matrix multiplication API.
-extern const char* const kGemmCallTarget;
+extern const absl::string_view kGemmCallTarget;
+
+// A call to cuBLAS Lt API matrix multiplication.
+extern const absl::string_view kCublasLtMatmulCallTarget;
+
+// A call to cuBLASLt for scaled matrix multiplication in FP8.
+extern const absl::string_view kCublasLtMatmulF8CallTarget;
 
 // A call to cuBLAS for a triangular solve.
 //
 // Like cudnn convolutions, this op returns a tuple (result, scratch_memory).
-extern const char* const kTriangularSolveCallTarget;
+extern const absl::string_view kTriangularSolveCallTarget;
 
 // A call to cuDNN for convolution (forward, backward filter, or backward input)
 // is represented as a CustomCall HLO with a call target equal to one of these
@@ -88,10 +104,15 @@ extern const char* const kTriangularSolveCallTarget;
 // location in memory that the conv can write into, but which it can't legally
 // read from, at least until it's written something first.  But that's exactly
 // the definition of an output buffer.)
-extern const char* const kCudnnConvForwardCallTarget;
-extern const char* const kCudnnConvBackwardInputCallTarget;
-extern const char* const kCudnnConvBackwardFilterCallTarget;
-extern const char* const kCudnnConvBiasActivationForwardCallTarget;
+extern const absl::string_view kCudnnConvForwardCallTarget;
+extern const absl::string_view kCudnnConvBackwardInputCallTarget;
+extern const absl::string_view kCudnnConvBackwardFilterCallTarget;
+extern const absl::string_view kCudnnConvBiasActivationForwardCallTarget;
+
+// cuDNN specific convolution helper (emitted together with a int8x32
+// convolution, if reordering is required).
+extern const absl::string_view kCudnnConvReorderFilterCallTarget;
+extern const absl::string_view kCudnnConvReorderFilterAndBiasCallTarget;
 
 // Returns true if `hlo` will be implemented as a call to a cuDNN convolution
 // routine.
@@ -100,6 +121,10 @@ extern const char* const kCudnnConvBiasActivationForwardCallTarget;
 // one of the kCudnnConvFoo constants above, but returns *false* for HLOs with a
 // kConvolution opcode.
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
+
+// Returns true if `hlo` will be implemented as a call to cuDNN convolution
+// reordering helper (required for int8x32 convolutions).
+bool IsCudnnConvolutionReorder(const HloInstruction& hlo);
 
 }  // namespace gpu
 }  // namespace xla

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
@@ -46,16 +47,21 @@ namespace gpu {
 class CudnnVectorizeConvolutions : public HloModulePass {
  public:
   explicit CudnnVectorizeConvolutions(
-      se::CudaComputeCapability compute_capability)
+      se::CudaComputeCapability compute_capability,
+      se::dnn::VersionInfo cudnn_version)
       : compute_capability_(compute_capability) {}
 
   absl::string_view name() const override {
     return "cudnn_vectorize_convolutions";
   }
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  se::CudaComputeCapability compute_capability_;
+  const se::CudaComputeCapability compute_capability_;
+  const se::dnn::VersionInfo cudnn_version_;
 };
 
 }  // namespace gpu

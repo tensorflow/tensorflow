@@ -132,6 +132,11 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "LSTMBlockCell",
         "LSTMBlockCellGrad",
         "MatMul",
+        "Mha",
+        "MhaV2",
+        "Tmlp",
+        "TmlpV2",
+        "TmlpV3",
     };
 #if TENSORFLOW_USE_ROCM
     if (true) {
@@ -373,7 +378,8 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "DepthwiseConv2dNativeBackpropInput",
                                      "MatMul",
                                      "BatchMatMul",
-                                     "BatchMatMulV2"};
+                                     "BatchMatMulV2",
+                                     "Einsum"};
 
     UpdateList("ALLOWLIST", &list);
     // For backwards compatibility, keeping the original env variable here.
@@ -393,12 +399,14 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "BiasAdd",
                                      "BiasAddGrad",
                                      "BiasAddV1",
+                                     "Erf",
                                      "FusedBatchNormV2",
                                      "FusedBatchNormGradV2",
                                      "FusedBatchNormV3",
                                      "FusedBatchNormGradV3",
                                      "LeakyRelu",
                                      "LeakyReluGrad",
+                                     "Mean",
                                      "Mul",
                                      "Sub",
                                      "Elu",
@@ -411,6 +419,7 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "Prod",
                                      "RealDiv",
                                      "Reciprocal",
+                                     "Rsqrt",
                                      "Selu",
                                      "SeluGrad",
                                      "Sigmoid",
@@ -421,6 +430,9 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "Softsign",
                                      "SoftsignGrad",
                                      "Sqrt",
+                                     "Square",
+                                     "SquaredDifference",
+                                     "Sum"
                                      "Tanh",
                                      "TanhGrad"};
     UpdateList("INFERLIST", &list);
@@ -435,12 +447,10 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
         "Exp",
         "Expm1",
         "L2Loss",
-        "Mean",
         "Pow",
         "SaveV2",
         "SoftmaxCrossEntropyWithLogits",
         "SparseSoftmaxCrossEntropyWithLogits",
-        "Sum",
     };
     UpdateList("DENYLIST", &list);
     // For backwards compatibility, keeping the original env variable here.
@@ -514,10 +524,12 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
         "Reshape",
         "ResizeNearestNeighbor",
         "ResizeNearestNeighborGrad",
+        "ResizeBilinear",
         "Reverse",
         "ReverseSequence",
         "ReverseV2",
         "Round",
+        "ScatterNd",
         "Select",
         "SelectV2",
         "Shape",

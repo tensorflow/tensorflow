@@ -1,0 +1,62 @@
+# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+
+name: Close inactive issues
+on:
+  schedule:
+    - cron: "30 1 * * *"
+
+jobs:
+  close-issues:
+    # Don't do this in forks
+    if: github.repository == 'tensorflow/tensorflow'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Awaiting response issues
+        uses: actions/stale@v5
+        with:
+          days-before-issue-stale: 7
+          days-before-issue-close: 7
+          stale-issue-label: "stale"
+          only-issue-labels: 
+           - stat:awaiting response
+          stale-issue-message: > 
+            This issue is stale because it has been open for 7 days with no activity.
+            It will be closed if no further activity occurs. Thank you.
+          close-issue-message: >
+            This issue was closed because it has been inactive for 7 days since being marked as stale.
+            Please reopen if you'd like to work on this further.
+          days-before-pr-stale: 14
+          days-before-pr-close: 14
+          stale-pr-message: "This PR is stale because it has been open for 28 days with no activity."
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Contribution issues
+        uses: actions/stale@v5
+        with:
+          days-before-issue-stale: 180
+          days-before-issue-close: 365
+          stale-issue-label: "stale"
+          any-of-labels: 
+           - stat:contribution welcome
+           - stat:good first issue
+          stale-issue-message: > 
+            This issue is stale because it has been open for 180 days with no activity.
+            It will be closed if no further activity occurs. Thank you.
+          close-issue-message: >
+            This issue was closed because it has been inactive for 1 year.
+          repo-token: ${{ secrets.GITHUB_TOKEN }}

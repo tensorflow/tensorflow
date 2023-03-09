@@ -21,7 +21,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -37,8 +37,7 @@ mlir::LogicalResult ExtractTfVersions(mlir::ModuleOp module,
 
 // Returns TensorFlow GraphDef producer version for the given module. Returns an
 // error if the version information is missing for the module or is not valid.
-::stream_executor::port::StatusOr<int64_t> GetTfGraphProducerVersion(
-    mlir::ModuleOp module);
+::tsl::StatusOr<int64_t> GetTfGraphProducerVersion(mlir::ModuleOp module);
 
 }  // namespace tensorflow
 

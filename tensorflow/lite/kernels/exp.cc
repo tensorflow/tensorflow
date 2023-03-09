@@ -12,7 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/c/common.h"
+#include <cmath>
+
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/lut.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -37,30 +41,75 @@ struct ExpContext {
   TfLiteTensor* output;
 };
 
+struct OpData {
+  union {
+    int8_t lut_int8[LUTSize<int8_t>()];
+    int16_t lut_int16[LUTSize<int16_t>()];
+  };
+};
+
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  return new OpData;
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<OpData*>(buffer);
+}
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  OpData* data = static_cast<OpData*>(node->user_data);
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   ExpContext op_context(context, node);
-  TfLiteIntArray* output_dims = TfLiteIntArrayCopy(op_context.input->dims);
-  op_context.output->type = op_context.input->type;
+  const TfLiteTensor* input = op_context.input;
+  TfLiteTensor* output = op_context.output;
+
+  TfLiteIntArray* output_dims = TfLiteIntArrayCopy(input->dims);
+  output->type = input->type;
+
+  if (input->type == kTfLiteInt8) {
+    LUTPopulate<int8_t>(
+        input->params.scale, input->params.zero_point, output->params.scale,
+        output->params.zero_point, [](float value) { return std::exp(value); },
+        data->lut_int8);
+  } else if (input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+
+    LUTPopulate<int16_t>(
+        input->params.scale, input->params.zero_point, output->params.scale,
+        output->params.zero_point, [](float value) { return std::exp(value); },
+        data->lut_int16);
+  }
+
   return context->ResizeTensor(context, op_context.output, output_dims);
 }
 
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
   ExpContext op_context(context, node);
-
-#define TF_LITE_EXP(kernel_type, data_type)                               \
-  kernel_type::Exp<data_type>(GetTensorData<data_type>(op_context.input), \
-                              NumElements(op_context.input),              \
-                              GetTensorData<data_type>(op_context.output))
 
   // TODO(kanlig): supports half, bfloat16, float64, complex64, and complex128.
   if (kernel_type == kReference) {
     switch (op_context.input->type) {
       case kTfLiteFloat32:
-        TF_LITE_EXP(reference_ops, float);
+        reference_ops::Exp(GetTensorData<float>(op_context.input),
+                           NumElements(op_context.input),
+                           GetTensorData<float>(op_context.output));
+        break;
+      case kTfLiteInt8:
+        reference_integer_ops::LookupTable(
+            GetTensorData<int8_t>(op_context.input),
+            NumElements(op_context.input), data->lut_int8,
+            GetTensorData<int8_t>(op_context.output));
+        break;
+      case kTfLiteInt16:
+        reference_integer_ops::LookupTable(
+            GetTensorData<int16_t>(op_context.input),
+            NumElements(op_context.input), data->lut_int16,
+            GetTensorData<int16_t>(op_context.output));
         break;
       default:
         TF_LITE_KERNEL_LOG(context,
@@ -69,14 +118,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return kTfLiteError;
     }
   }
-#undef TF_LITE_EXP
+
   return kTfLiteOk;
 }
 
 }  // namespace exp
 
 TfLiteRegistration* Register_EXP_REF() {
-  static TfLiteRegistration r = {nullptr, nullptr, exp::Prepare,
+  static TfLiteRegistration r = {exp::Init, exp::Free, exp::Prepare,
                                  exp::Eval<exp::kReference>};
   return &r;
 }

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <limits>
 #include <map>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_model.h"
@@ -271,7 +273,6 @@ absl::Status InferenceContext::InitFromGpuModel(
   for (const auto& external_tensor : create_info.external_mutable_tensors) {
     RETURN_IF_ERROR(
         CreateTensor(env->context(),
-                     gpu_model->tensors[external_tensor.first].GetBHWDCShape(),
                      gpu_model->tensors[external_tensor.first],
                      &temp_external_tensors[external_tensor.first]));
     external_mutable_tensors_[external_tensor.first] =
@@ -369,7 +370,6 @@ absl::Status InferenceContext::RestoreDeserialized(
     for (const auto& external_tensor : create_info->external_mutable_tensors) {
       RETURN_IF_ERROR(
           CreateTensor(env->context(),
-                       gpu_model.tensors[external_tensor.first].GetBHWDCShape(),
                        gpu_model.tensors[external_tensor.first],
                        &temp_external_tensors[external_tensor.first]));
       external_mutable_tensors_[external_tensor.first] =
@@ -470,12 +470,8 @@ absl::Status InferenceContext::AllocateVariableTensors(
       if (it == gpu_model.tensors.end()) {
         return absl::InternalError("No variable tensor with this id.");
       }
-      const auto& t = it->second;
-      const auto& shape = t.GetBHWDCShape();
-      const auto& descriptor = t;
-
       RETURN_IF_ERROR(
-          CreateTensor(*context, shape, descriptor,
+          CreateTensor(*context, it->second,
                        &variable_tensors_[value_and_ref_value.second]));
     }
   }
@@ -590,14 +586,12 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
             width_pixel_alignment % bytes_per_pixel == 0) {
           width_pixel_alignment /= bytes_per_pixel;
         }
-        RETURN_IF_ERROR(CreateSharedImage2DBufferTensor(
-            *context, shared_buffers_[buffer_index].GetMemoryPtr(),
-            tensor_desc.GetBHWCShape(), tensor_desc, width_pixel_alignment,
-            &shared_buffer_tensors_[tensor_index]));
+        RETURN_IF_ERROR(CreateTensorSharedImage2DBuffer(
+            *context, shared_buffers_[buffer_index].GetMemoryPtr(), tensor_desc,
+            width_pixel_alignment, &shared_buffer_tensors_[tensor_index]));
       } else {
-        RETURN_IF_ERROR(CreateSharedTensor(
-            *context, shared_buffers_[buffer_index].GetMemoryPtr(),
-            tensor_desc.GetBHWCShape(), tensor_desc,
+        RETURN_IF_ERROR(CreateTensorShared(
+            *context, shared_buffers_[buffer_index].GetMemoryPtr(), tensor_desc,
             &shared_buffer_tensors_[tensor_index]));
       }
       created_tensors[tensor_index] = true;
@@ -659,8 +653,8 @@ absl::Status InferenceContext::AllocateStrongShapesTensors(
       graph_ids_to_strong_shape_tensors_[tensor_id] = id;
       const auto& it = strong_shape_tensors_.find(id);
       if (it == strong_shape_tensors_.end()) {
-        RETURN_IF_ERROR(CreateTensor(*context, tensor_desc.GetBHWCShape(),
-                                     tensor_desc, &strong_shape_tensors_[id]));
+        RETURN_IF_ERROR(
+            CreateTensor(*context, tensor_desc, &strong_shape_tensors_[id]));
       }
     }
   }
@@ -689,9 +683,35 @@ absl::Status InferenceContext::Compile(
 absl::Status InferenceContext::Tune(TuningType tuning_type,
                                     const GpuInfo& gpu_info,
                                     ProfilingCommandQueue* profiling_queue) {
+  // Cache tuned CL operations. Multiple CL operations might share the
+  // same kernel but use different inputs, which might require different working
+  // group setups. Therefore, we store a vector of tuned cl operations for each
+  // kernel and match in a second stage based on equal CL arguments.
+  typedef std::reference_wrapper<const ClOperation> ClOperationRef;
+  absl::flat_hash_map<uint64_t, std::vector<ClOperationRef>> tuned_ops;
+
   for (auto& node : nodes_) {
+    uint64_t fingerprint = node.cl_operation.GetKernelFingerprint();
+    auto cl_ops_it = tuned_ops.find(fingerprint);
+    bool found_cached_cl_op = false;
+    if (cl_ops_it != tuned_ops.end()) {
+      for (const auto& cl_op : cl_ops_it->second) {
+        if (!node.cl_operation.HasEqualScalarArguments(cl_op)) {
+          continue;
+        }
+        // Fingerprint and CLArguments match, so we reuse the work group size.
+        node.cl_operation.GetGpuOperation().work_group_size_ =
+            cl_op.get().GetGpuOperation().work_group_size_;
+        node.cl_operation.GetGpuOperation().RecalculateWorkGroupsCount();
+        found_cached_cl_op = true;
+      }
+    }
+    if (found_cached_cl_op) {
+      continue;
+    }
     RETURN_IF_ERROR(
         node.cl_operation.Tune(tuning_type, gpu_info, profiling_queue));
+    tuned_ops[fingerprint].emplace_back(std::cref(node.cl_operation));
   }
   return absl::OkStatus();
 }
@@ -909,19 +929,26 @@ Tensor* InferenceContext::GetTensor(ValueId id) {
 absl::Status InferenceContext::SetInputTensor(ValueId id,
                                               const TensorFloat32& tensor,
                                               CLCommandQueue* queue) {
-  return GetTensor(id)->WriteData(queue, tensor);
+  Tensor* gpu_tensor = GetTensor(id);
+  TensorDescriptor descriptor_with_data = gpu_tensor->GetDescriptor();
+  descriptor_with_data.UploadData(tensor);
+  return gpu_tensor->UploadDescriptorData(descriptor_with_data, queue);
 }
 
 absl::Status InferenceContext::GetOutputTensor(ValueId id,
                                                CLCommandQueue* queue,
                                                TensorFloat32* result) {
-  const auto& gpu_tensor = *GetTensor(id);
-  const auto dst_shape = BHWC(gpu_tensor.Batch(), gpu_tensor.Height(),
-                              gpu_tensor.Width(), gpu_tensor.Channels());
+  const Tensor* gpu_tensor = GetTensor(id);
+  const auto dst_shape = BHWC(gpu_tensor->Batch(), gpu_tensor->Height(),
+                              gpu_tensor->Width(), gpu_tensor->Channels());
   result->id = id;
   result->shape = dst_shape;
   result->data.resize(dst_shape.DimensionsProduct());
-  return gpu_tensor.ReadData(queue, result);
+
+  TensorDescriptor desc;
+  RETURN_IF_ERROR(gpu_tensor->ToDescriptor(&desc, queue));
+  desc.DownloadData(result);
+  return absl::OkStatus();
 }
 
 flatbuffers::Offset<data::InferenceContext> InferenceContext::Encode(

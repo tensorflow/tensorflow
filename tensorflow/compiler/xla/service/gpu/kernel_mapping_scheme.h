@@ -16,18 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_KERNEL_MAPPING_SCHEME_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_KERNEL_MAPPING_SCHEME_H_
 
+#include <string>
+
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Value.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 namespace gpu {
-
-using Vector3 = std::array<int64_t, 3>;
 
 // Describes tiling used by the kernel.
 //
@@ -50,14 +50,17 @@ class TilingScheme {
 
   TilingScheme(Vector3 dims_in_elems, Vector3 tile_sizes, Vector3 num_threads,
                IndexingOrder indexing_order, int vector_size,
-               int scaling_factor)
+               int scaling_factor, Vector2 tiling_dimensions = Vector2{1, 2})
       : dims_in_elems_(dims_in_elems),
         tile_sizes_(tile_sizes),
+        tiling_dimensions_(tiling_dimensions),
         num_threads_(num_threads),
         indexing_order_(indexing_order),
         vector_size_(vector_size),
         thread_id_virtual_scaling_(scaling_factor) {
-    CHECK_EQ(tile_sizes[2] % vector_size_, 0);
+    CHECK_EQ(tile_sizes[2] % vector_size_, 0)
+        << "tile sizes = " << absl::StrJoin(tile_sizes, ", ")
+        << "; vector size = " << vector_size_;
   }
 
   static std::string IndexingOrderToString(IndexingOrder order) {
@@ -78,7 +81,11 @@ class TilingScheme {
                          absl::StrJoin(num_threads_, ", ")),
          absl::StrFormat("indexing_order = %s",
                          IndexingOrderToString(indexing_order_)),
-         absl::StrFormat("vector_size = %d", vector_size_)},
+         absl::StrFormat("vector_size = %d", vector_size_),
+         absl::StrFormat("thread_id_virtual_scaling = %d",
+                         thread_id_virtual_scaling_),
+         absl::StrFormat("tiling_dimensions = {%s}",
+                         absl::StrJoin(tiling_dimensions_, ", "))},
         ", ");
   }
 
@@ -98,6 +105,9 @@ class TilingScheme {
   //
   // Equals to the number of iterations in the loop each tile will make.
   int64_t GetTileSizeFor(int d) const { return tile_sizes_.at(d); }
+
+  // The tiling dimension for dimension 'd' of the shared memory tile.
+  int64_t GetTilingDimension(int d) const { return tiling_dimensions_.at(d); }
 
   // Tile size for a given dimension per entire thread block.
   int64_t GetBlockTileSizeFor(int d) const {
@@ -139,6 +149,9 @@ class TilingScheme {
 
   // The number of elements for each dimension of a tile.
   const Vector3 tile_sizes_;
+
+  // The dimensions which are used for the shared memory tile.
+  const Vector2 tiling_dimensions_;
 
   // Number of threads implicitly assigned to each dimension.
   const Vector3 num_threads_;

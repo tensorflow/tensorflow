@@ -31,9 +31,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "pybind11/stl.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 
 namespace xla {
 
@@ -170,6 +170,14 @@ class PyTreeDef {
 
   std::string ToString() const;
 
+  // Transforms the PyTreeDef into a pickleable object. Used to implement
+  // `PyTreeDef.__getstate__`.
+  pybind11::object ToPickleable() const;
+
+  // Transforms the object returned by `ToPickleable()` back to PyTreeDef. Used
+  // to implement `PyTreeDef.__setstate__`.
+  static PyTreeDef FromPickleable(pybind11::object pickleable);
+
  private:
   struct Node {
     PyTreeKind kind = PyTreeKind::kLeaf;
@@ -178,9 +186,16 @@ class PyTreeDef {
     int arity = 0;
 
     // Kind-specific auxiliary data. For a kNamedTuple, contains the tuple type
-    // object. For a kDict, contains a sorted list of keys. For a kCustom type,
-    // contains the auxiliary data returned by the `to_iterable` function.
+    // object. For a kDict, use `sorted_dict_keys` field below. For a kCustom
+    // type, contains the auxiliary data returned by the `to_iterable` function.
     pybind11::object node_data;
+
+    // Kind-specific auxiliary data specialized for kDict. Use a c++ vector
+    // to hold the sorted dict keys instead of a py::list to avoid creating
+    // a new python list object when flattening kDict. For deeply nested dict,
+    // using c++ vector instead of py::list avoids creating too many python
+    // objects that make python gc sweep slow.
+    std::vector<pybind11::object> sorted_dict_keys;
 
     // Custom type registration. Must be null for non-custom types.
     const PyTreeTypeRegistry::Registration* custom = nullptr;

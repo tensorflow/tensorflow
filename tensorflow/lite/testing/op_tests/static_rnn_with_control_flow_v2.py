@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for static_rnn_with_control_flow_v2."""
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -46,12 +46,12 @@ def make_static_rnn_with_control_flow_v2_tests(options):
     num_cells = parameters["num_cells"]
     inputs_after_split = []
     for i in range(time_step_size):
-      one_timestamp_input = tf.placeholder(
+      one_timestamp_input = tf.compat.v1.placeholder(
           dtype=parameters["dtype"],
           name="split_{}".format(i),
           shape=[num_batches, input_vec_size])
       inputs_after_split.append(one_timestamp_input)
-    lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(
+    lstm_cell = tf.compat.v1.nn.rnn_cell.BasicLSTMCell(
         num_cells, activation=tf.nn.relu, state_is_tuple=True)
     sequence_length = None
 
@@ -71,9 +71,9 @@ def make_static_rnn_with_control_flow_v2_tests(options):
   def build_inputs(parameters, sess, inputs, outputs):
     """Feed inputs, assign variables, and freeze graph."""
 
-    with tf.variable_scope("", reuse=True):
-      kernel = tf.get_variable("rnn/basic_lstm_cell/kernel")
-      bias = tf.get_variable("rnn/basic_lstm_cell/bias")
+    with tf.compat.v1.variable_scope("", reuse=True):
+      kernel = tf.compat.v1.get_variable("rnn/basic_lstm_cell/kernel")
+      bias = tf.compat.v1.get_variable("rnn/basic_lstm_cell/bias")
       kernel_values = create_tensor_data(parameters["dtype"],
                                          [kernel.shape[0], kernel.shape[1]], -1,
                                          1)

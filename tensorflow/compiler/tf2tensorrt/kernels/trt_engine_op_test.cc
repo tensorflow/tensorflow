@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/math_ops.h"
@@ -50,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/tsl/framework/fixedpoint/FixedPoint.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
@@ -77,7 +77,7 @@ class TRTEngineOpTestBase : public OpsTestBase {
     Scope s = Scope::NewRootScope();
     auto feed = ops::_Arg(s.WithOpName("TensorRTInputPH_0"), dtype, 0);
     auto add = ops::Add(s.WithOpName("add"), feed, feed);
-    ops::_Retval(s.WithOpName("TensorRTOutputPH_0"), add, 0);
+    ops::_Retval give_me_a_name(s.WithOpName("TensorRTOutputPH_0"), add, 0);
 
     // Serialize the graph. TRTEngineOp will convert it using dynamic mode.
     GraphDef graph_def;
@@ -99,9 +99,12 @@ class TRTEngineOpTestBase : public OpsTestBase {
       params.trt_logger_name = "DefaultLogger";
 
       TrtShapeOptimizationProfile profile;
-      TensorShape my_shape;
+      // We set the input mask to true (no resource inputs)
+      std::vector<bool> input_mask = {true};
+      profile.SetInputMask(input_mask);
       // We set profile 0 to be incompatible with the input used in the test.
       // This way we ensure that profile selection is tested.
+      TensorShape my_shape;
       TF_CHECK_OK(
           TensorShapeUtils::MakeShape(std::vector<int32>{4, 2}, &my_shape));
       profile.AddShape({my_shape, {}});

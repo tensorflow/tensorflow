@@ -16,14 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 
+#include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -89,6 +95,14 @@ class AlgebraicSimplifierOptions {
 
   bool enable_dot_to_multiply_rewrite() const {
     return enable_dot_to_multiply_rewrite_;
+  }
+
+  // This platform will not run the DotDecomposer to canonicalize dots.
+  void set_supports_non_canonical_dots(bool supports_non_canonical_dots) {
+    supports_non_canonical_dots_ = supports_non_canonical_dots;
+  }
+  bool supports_non_canonical_dots() const {
+    return supports_non_canonical_dots_;
   }
 
   // Enable convolution simplification on platforms where it is profitable.
@@ -179,6 +193,12 @@ class AlgebraicSimplifierOptions {
   bool minmax_propagate_nan() const { return minmax_propagate_nan_; }
   void set_minmax_propagate_nan(bool val) { minmax_propagate_nan_ = val; }
 
+  // If true, enables rewrites that push concatenates towards consumers.
+  bool push_concat_to_consumers() const { return push_concat_to_consumers_; }
+  void set_push_concat_to_consumers(bool val) {
+    push_concat_to_consumers_ = val;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplierOptions that can be later used in an
@@ -196,6 +216,7 @@ class AlgebraicSimplifierOptions {
   ConvIsLowerableCallback conv_is_lowerable_callback_;
   bool is_layout_sensitive_{false};
   bool enable_dot_strength_reduction_{true};
+  bool supports_non_canonical_dots_{true};
   bool enable_dot_to_multiply_rewrite_{true};
   bool enable_conv_simplification_{true};
   bool enable_conv_operand_swap_{true};
@@ -207,6 +228,7 @@ class AlgebraicSimplifierOptions {
   bool enable_sink_broadcast_{true};
   int64_t very_small_gather_size_{4};
   bool minmax_propagate_nan_{true};
+  bool push_concat_to_consumers_{true};
   Metadata metadata_;
 };
 
@@ -222,7 +244,10 @@ class AlgebraicSimplifier : public HloModulePass {
 
   // Run algebraic simplification on the given computation. Returns whether the
   // computation was changed.
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Create constant from literal with tiles and element size updated in the
   // constant's layout.
@@ -368,6 +393,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   // Allow backend constraints on tiling etc. to invalidate optimizations.
   virtual bool IsValidLayout(const Shape& shape) { return true; }
+  // Allow backend targets to determine whether a layout is inefficient.
+  virtual bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo) {
+    return true;
+  }
 
  protected:
   // The backend-specific options selected for the algebraic simplifier.
@@ -492,6 +521,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   // Tries to use a kDot in place of the given convolution.
   StatusOr<bool> SimplifyConvToDot(HloInstruction* convolution);
+  // Tries to use a multiplication in place of the given convolution.
+  StatusOr<bool> SimplifyConvToMultiply(HloInstruction* convolution);
 
   // Tries to simplify a slice where the result of the slice is a scalar.
   StatusOr<bool> TrySimplifyScalarSlice(HloInstruction* slice);

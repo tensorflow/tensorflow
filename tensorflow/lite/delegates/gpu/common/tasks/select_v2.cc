@@ -64,15 +64,15 @@ std::string GetSelectV2Code(const OperationDef& op_def,
   }
   c += "  FLT4 res;\n";
   c += "  if (should_gather_rows) {\n";
-  c += "    FLT cond = args.cond_tensor.Read(X, 0, 0).x;\n";
-  c += "    res = cond > 0 ? true_val : else_val;\n";
+  c += "    bool cond = args.cond_tensor.Read<bool>(X, 0, 0).x;\n";
+  c += "    res = cond ? true_val : else_val;\n";
   c += "  } else {\n";
-  c += "    FLT4 cond = args.cond_tensor.Read(0, Y, Z);\n";
+  c += "    bool4 cond = args.cond_tensor.Read<bool>(0, Y, Z);\n";
   c += "    res = true_val;\n";
-  c += "    res.x = cond.x > 0 ? true_val.x : else_val.x;\n";
-  c += "    res.y = cond.y > 0 ? true_val.y : else_val.y;\n";
-  c += "    res.z = cond.z > 0 ? true_val.z : else_val.z;\n";
-  c += "    res.w = cond.w > 0 ? true_val.w : else_val.w;\n";
+  c += "    res.x = cond.x ? true_val.x : else_val.x;\n";
+  c += "    res.y = cond.y ? true_val.y : else_val.y;\n";
+  c += "    res.z = cond.z ? true_val.z : else_val.z;\n";
+  c += "    res.w = cond.w ? true_val.w : else_val.w;\n";
   c += "  }\n;";
   c += "  args.dst_tensor.Write(res, X, Y, Z);\n";
   c += "}\n";

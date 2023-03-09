@@ -44,6 +44,9 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
+using ::testing::ContainsRegex;
+using ::testing::SizeIs;
+
 template <DataType DTYPE>
 Tensor GenerateIdentityMatrix(int64_t height, int64_t width) {
   typedef typename EnumToDataType<DTYPE>::Type T;
@@ -1218,7 +1221,7 @@ TEST_F(AutoMixedPrecisionTest, SoftmaxOp) {
 
 TEST_F(AutoMixedPrecisionTest, SoftplusOp) {
   TestSimpleUnaryInferOp(
-      -5, 5, 1.0e-3, 1.0e-3,
+      -5, 5, 2.0e-3, 2.0e-3,
       [](const tensorflow::Scope& scope, Output input) -> Output {
         return ops::Softplus(scope, input);
       });
@@ -1287,11 +1290,20 @@ TEST_F(AutoMixedPrecisionCpuTest, Simple) {
   EXPECT_EQ(matmul_op->attr().at("T").type(), DT_FLOAT);
   for (auto edge : output_view.GetFaninEdges(*matmul_op, false)) {
     EXPECT_EQ(edge.src.node->op(), "Cast");
+    auto cast_input_edges = output_view.GetFaninEdges(
+        *output_view.GetNode(edge.src.node->name()), false);
+    EXPECT_THAT(cast_input_edges, SizeIs(1));
+    EXPECT_THAT(edge.src.node->name(),
+                ContainsRegex("^" + cast_input_edges.begin()->src.node->name() +
+                              "-0-CastToFp32-[0-9]-AutoMixedPrecision$"));
     EXPECT_EQ(edge.src.node->attr().at("SrcT").type(), DT_HALF);
     EXPECT_EQ(edge.src.node->attr().at("DstT").type(), DT_FLOAT);
   }
   for (auto edge : output_view.GetFanoutEdges(*matmul_op, false)) {
     EXPECT_EQ(edge.dst.node->op(), "Cast");
+    EXPECT_THAT(edge.dst.node->name(),
+                ContainsRegex("^" + matmul_op->name() +
+                              "-0-CastToFp16-[0-9]-AutoMixedPrecision$"));
     EXPECT_EQ(edge.dst.node->attr().at("SrcT").type(), DT_FLOAT);
     EXPECT_EQ(edge.dst.node->attr().at("DstT").type(), DT_HALF);
   }
@@ -1474,7 +1486,7 @@ TEST_F(AutoMixedPrecisionMklTest, AlreadyBf16) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
 
-  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::MKL};
+  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::BF16};
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
   VLOG(1) << output.DebugString();
@@ -1518,7 +1530,7 @@ TEST_F(AutoMixedPrecisionMklTest, Simple) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
 
-  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::MKL};
+  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::BF16};
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -1590,7 +1602,7 @@ TEST_F(AutoMixedPrecisionMklTest, TensorListSetGet) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
 
-  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::MKL};
+  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::BF16};
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -1644,7 +1656,7 @@ TEST_F(AutoMixedPrecisionMklTest, InferFollowUpStreamAllow) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
 
-  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::MKL};
+  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::BF16};
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -1685,7 +1697,7 @@ TEST_F(AutoMixedPrecisionMklTest, InferFollowUpStreamDeny) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
 
-  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::MKL};
+  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::BF16};
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 

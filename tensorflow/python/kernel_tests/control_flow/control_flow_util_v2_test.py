@@ -15,12 +15,13 @@
 
 """Tests for tensorflow.python.ops.control_flow_util_v2."""
 
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 
 
@@ -41,14 +42,15 @@ class ControlFlowUtilV2Test(test.TestCase):
         return i + 1
       return control_flow_ops.cond(constant_op.constant(True),
                                    branch, lambda: 0)
-    return control_flow_ops.while_loop(lambda i: i < 4, body,
-                                       [constant_op.constant(0)])
+
+    return while_loop.while_loop(lambda i: i < 4, body,
+                                 [constant_op.constant(0)])
 
   @test_util.run_in_graph_and_eager_modes
   def testInDefun(self):
     self._create_control_flow(False)
 
-    @function.defun
+    @def_function.function
     def defun():
       self._create_control_flow(True)
 

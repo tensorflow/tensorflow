@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -51,6 +52,11 @@ class CustomDevice {
   // one of which is on this custom device.
   virtual Status Pack(absl::Span<ImmediateExecutionTensorHandle*> handles,
                       ImmediateExecutionTensorHandle** result) = 0;
+
+  // Returns true signifying to pin to the current custom device.
+  // Returns false to pin to the physical device.
+  virtual StatusOr<bool> ShallPinToThisDevice(
+      const ImmediateExecutionOperation* op) = 0;
 };
 
 // Custom devices do many of the same things as physical Devices, but have a
@@ -69,6 +75,12 @@ const VariantDevice kVariantDeviceNull = static_cast<Device*>(nullptr);
 // TODO(allenl): Currently custom devices are tied to the eager C API. They
 // should be renamed op handlers and subclass AbstractTensorHandle instead so
 // they are eager/graph agnostic.
+//
+// full_type_ is not set by the constructor (because it is not currently
+// needed). If full type information is needed in the future, the constructor
+// could use map_dtype_to_child_of_tensor() from core/framework/types.h to set
+// it based on dtype. Update test CustomDevice.TestTensorHandle in
+// custom_device_test.cc if this changes.
 class CustomDeviceTensorHandle : public ImmediateExecutionTensorHandle {
  public:
   CustomDeviceTensorHandle(ImmediateExecutionContext* context,
@@ -83,6 +95,7 @@ class CustomDeviceTensorHandle : public ImmediateExecutionTensorHandle {
   virtual void* DevicePointer() const = 0;
 
   tensorflow::DataType DataType() const override { return dtype_; }
+  tensorflow::FullTypeDef FullType() const override { return full_type_; }
   Status Shape(PartialTensorShape* shape) const override;
   Status NumElements(int64_t* num_elements) const override;
 
@@ -115,6 +128,7 @@ class CustomDeviceTensorHandle : public ImmediateExecutionTensorHandle {
   ImmediateExecutionContext* const context_;
   CustomDevice* const device_;
   const tensorflow::DataType dtype_;
+  tensorflow::FullTypeDef full_type_;
 
   mutable absl::optional<DeviceNameUtils::ParsedName> parsed_name_;
 };

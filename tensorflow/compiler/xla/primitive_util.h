@@ -19,13 +19,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PRIMITIVE_UTIL_H_
 
 #include <string>
+#include <tuple>
 #include <type_traits>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 namespace xla {
 namespace primitive_util {
@@ -65,6 +67,11 @@ inline PrimitiveType NativeToPrimitiveType<bool>() {
 
 // Unsigned integer
 template <>
+inline PrimitiveType NativeToPrimitiveType<u4>() {
+  return U4;
+}
+
+template <>
 inline PrimitiveType NativeToPrimitiveType<uint8_t>() {
   return U8;
 }
@@ -85,6 +92,11 @@ inline PrimitiveType NativeToPrimitiveType<uint64_t>() {
 }
 
 // Signed integer
+template <>
+inline PrimitiveType NativeToPrimitiveType<s4>() {
+  return S4;
+}
+
 template <>
 inline PrimitiveType NativeToPrimitiveType<int8_t>() {
   return S8;
@@ -126,6 +138,16 @@ inline PrimitiveType NativeToPrimitiveType<bfloat16>() {
   return BF16;
 }
 
+template <>
+inline PrimitiveType NativeToPrimitiveType<tsl::float8_e5m2>() {
+  return F8E5M2;
+}
+
+template <>
+inline PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fn>() {
+  return F8E4M3FN;
+}
+
 // Complex
 template <>
 inline PrimitiveType NativeToPrimitiveType<complex64>() {
@@ -154,10 +176,98 @@ inline constexpr bool IsArrayType(PrimitiveType primitive_type) {
 }
 
 // Returns the number of bits in the representation for a given type.
-int BitWidth(PrimitiveType type);
+ABSL_ATTRIBUTE_ALWAYS_INLINE inline int BitWidth(PrimitiveType type) {
+  switch (type) {
+    case PRED:
+      return 1;
+
+    case S4:
+    case U4:
+      return 4;
+
+    case S8:
+    case U8:
+    case F8E5M2:
+    case F8E4M3FN:
+      return 8;
+
+    case S16:
+    case U16:
+    case F16:
+    case BF16:
+      return 16;
+
+    case U32:
+    case S32:
+    case F32:
+      return 32;
+
+    case U64:
+    case S64:
+    case F64:
+    case C64:
+      return 64;
+
+    case C128:
+      return 128;
+
+    case TUPLE:
+      LOG(FATAL) << "TUPLE is an invalid type for BitWidth";
+
+    case OPAQUE_TYPE:
+      LOG(FATAL) << "OPAQUE_TYPE is an invalid type for BitWidth";
+
+    default:
+      LOG(FATAL) << "Unhandled primitive type " << type;
+  }
+}
 
 // Returns the number of bytes in the representation for a given type.
-int ByteWidth(PrimitiveType type);
+ABSL_ATTRIBUTE_ALWAYS_INLINE inline int ByteWidth(PrimitiveType type) {
+  switch (type) {
+    case PRED:
+      return 1;
+
+    case S4:
+    case U4:
+      return 1;
+
+    case S8:
+    case U8:
+    case F8E5M2:
+    case F8E4M3FN:
+      return 1;
+
+    case S16:
+    case U16:
+    case F16:
+    case BF16:
+      return 2;
+
+    case U32:
+    case S32:
+    case F32:
+      return 4;
+
+    case U64:
+    case S64:
+    case F64:
+    case C64:
+      return 8;
+
+    case C128:
+      return 16;
+
+    case TUPLE:
+      LOG(FATAL) << "TUPLE is an invalid type for ByteWidth";
+
+    case OPAQUE_TYPE:
+      LOG(FATAL) << "OPAQUE_TYPE is an invalid type for ByteWidth";
+
+    default:
+      LOG(FATAL) << "Unhandled primitive type " << type;
+  }
+}
 
 PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth);
 
@@ -290,6 +400,11 @@ struct PrimitiveTypeToNative<PRED> {
 
 // Unsigned integer
 template <>
+struct PrimitiveTypeToNative<U4> {
+  using type = u4;
+};
+
+template <>
 struct PrimitiveTypeToNative<U8> {
   using type = uint8_t;
 };
@@ -310,6 +425,11 @@ struct PrimitiveTypeToNative<U64> {
 };
 
 // Signed integer
+template <>
+struct PrimitiveTypeToNative<S4> {
+  using type = s4;
+};
+
 template <>
 struct PrimitiveTypeToNative<S8> {
   using type = int8_t;
@@ -349,6 +469,16 @@ struct PrimitiveTypeToNative<BF16> {
   using type = bfloat16;
 };
 
+template <>
+struct PrimitiveTypeToNative<F8E5M2> {
+  using type = tsl::float8_e5m2;
+};
+
+template <>
+struct PrimitiveTypeToNative<F8E4M3FN> {
+  using type = tsl::float8_e4m3fn;
+};
+
 // Complex
 template <>
 struct PrimitiveTypeToNative<C64> {
@@ -374,8 +504,8 @@ bool IsPrimitiveTypeName(absl::string_view name);
 // For example,
 //  IsCanonicalRepresentation<float>(F32)          // true
 //  IsCanonicalRepresentation<xla::bfloat16>(BF16) // true
-//  IsCanonicalRepresentation<uint32_t>(S8)        // true, 8 <= 32
-//  IsCanonicalRepresentation<uint8_t>(S16)        // false, 16 > 8
+//  IsCanonicalRepresentation<int32_t>(S8)         // true, 8 <= 32
+//  IsCanonicalRepresentation<uint16_t>(S16)       // false, unsigned.
 template <typename T>
 bool IsCanonicalRepresentation(PrimitiveType type) {
   switch (type) {
@@ -383,9 +513,12 @@ bool IsCanonicalRepresentation(PrimitiveType type) {
     case F32:
     case BF16:
     case F64:
+    case F8E5M2:
+    case F8E4M3FN:
     case C64:
     case C128:
       return NativeToPrimitiveType<T>() == type;
+    case S4:
     case S8:
     case S16:
     case S32:
@@ -393,6 +526,7 @@ bool IsCanonicalRepresentation(PrimitiveType type) {
       return std::is_integral<T>::value && std::is_signed<T>::value &&
              ByteWidth(type) <= sizeof(T);
     case PRED:
+    case U4:
     case U8:
     case U16:
     case U32:

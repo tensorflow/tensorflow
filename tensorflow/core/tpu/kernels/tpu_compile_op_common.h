@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_IMPL_COMMON_H_
-#define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_IMPL_COMMON_H_
+#ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_COMMON_H_
+#define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_COMMON_H_
 
 #include <memory>
 #include <vector>
@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/strcat.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -45,12 +45,10 @@ class CompileOpImplFactory {
  public:
   virtual ~CompileOpImplFactory() = default;
 
-  virtual stream_executor::port::StatusOr<
-      std::unique_ptr<TpuCompileOpKernelCommon>>
+  virtual tsl::StatusOr<std::unique_ptr<TpuCompileOpKernelCommon>>
   CreateNonMlirImpl(OpKernelConstruction* ctx) = 0;
 
-  virtual stream_executor::port::StatusOr<
-      std::unique_ptr<TpuCompileOpKernelCommon>>
+  virtual tsl::StatusOr<std::unique_ptr<TpuCompileOpKernelCommon>>
   CreateMlirImpl(OpKernelConstruction* ctx) = 0;
 
   static CompileOpImplFactory* Get();
@@ -196,4 +194,4 @@ class TpuCompileOpKernelCommon {
 }  // namespace tpu
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_IMPL_COMMON_H_
+#endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_COMMON_H_

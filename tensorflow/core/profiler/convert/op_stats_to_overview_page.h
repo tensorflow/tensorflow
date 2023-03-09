@@ -62,9 +62,6 @@ OverviewPageRunEnvironment ComputeRunEnvironment(
 
 OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats);
 
-OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
-                                          const XSpace& xspace);
-
 // Returns a html which provides tf-function related recommendation.
 std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db);
 

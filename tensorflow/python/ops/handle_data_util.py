@@ -15,11 +15,29 @@
 """Decorator to overrides the gradient for a function."""
 
 from tensorflow.python.client import pywrap_tf_session
+from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.types import core
+from tensorflow.python.util import compat
 
 
-get_resource_handle_data = ops.get_resource_handle_data
+def get_resource_handle_data(graph_op):
+  assert (isinstance(graph_op, core.Symbol)
+          and not isinstance(graph_op, core.Value))
+
+  with graph_op.graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
+    handle_data = pywrap_tf_session.GetHandleShapeAndType(
+        c_graph, graph_op._as_tf_output())  # pylint: disable=protected-access
+
+  return cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData.FromString(
+      compat.as_bytes(handle_data))
+
+
+def get_handle_data(source_t):
+  """Obtains HandleData from a tensor."""
+  if isinstance(source_t, core.Value):
+    return source_t._handle_data  # pylint: disable=protected-access
+  return get_resource_handle_data(source_t)
 
 
 def copy_handle_data(source_t, target_t):
@@ -39,10 +57,7 @@ def copy_handle_data(source_t, target_t):
   """
   if (target_t.dtype == dtypes.resource or
       target_t.dtype == dtypes.variant):
-    if isinstance(source_t, ops.EagerTensor):
-      handle_data = source_t._handle_data  # pylint: disable=protected-access
-    else:
-      handle_data = get_resource_handle_data(source_t)
+    handle_data = get_handle_data(source_t)
     if (handle_data is not None
         and handle_data.is_set
         and handle_data.shape_and_type):
@@ -51,10 +66,19 @@ def copy_handle_data(source_t, target_t):
 
 def set_handle_data(target_t, handle_data):
   # pylint: disable=protected-access
-  if isinstance(target_t, ops.EagerTensor):
+  if isinstance(target_t, core.Value):
     target_t._handle_data = handle_data
     return
   with target_t.graph._c_graph.get() as c_graph:
     pywrap_tf_session.SetHandleShapeAndType(c_graph, target_t._as_tf_output(),
                                             handle_data.SerializeToString())
   # pylint: enable=protected-access
+
+
+def create_handle_data(shape, dtype):
+  handle_data = cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData()
+  handle_data.is_set = True
+  handle_data.shape_and_type.append(
+      cpp_shape_inference_pb2.CppShapeInferenceResult.HandleShapeAndType(
+          shape=shape.as_proto(), dtype=dtype.as_datatype_enum))
+  return handle_data

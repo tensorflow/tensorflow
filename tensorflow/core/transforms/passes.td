@@ -302,12 +302,15 @@ def Remapper : Pass<"tfg-remapper"> {
               x
   }];
   let options = [
-    Option<"enable_mkl_patterns_", "enable-mkl-patterns", "bool",
+    Option<"enable_onednn_patterns_", "enable-onednn-patterns", "bool",
     /*default=*/"false",
-    "Enable the MKL related patterns.">,
+    "Enable the oneDNN related patterns.">,
     Option<"verify_pdll_patterns_only_", "verify-pdll-patterns-only", "bool",
     /*default=*/"false",
     "Only enable PDLL patterns.">,
+    Option<"xla_auto_clustering_", "xla-auto-clustering", "bool",
+    /*default=*/"false",
+    "Sets XLA auto clustering flag.">,
   ];
   let constructor = "CreateRemapperPass()";
 }
@@ -443,9 +446,6 @@ def ConstantFoldingPass : Pass<"tfg-constant-folding", "GraphFuncOp"> {
 
   let constructor = "CreateConstantFoldingPass()";
   let options = [
-   ListOption<"nodes_to_preserve_", "nodes-to-preserve", "std::string",
-              "Comma separated list of ops that won't be optimized.",
-              "llvm::cl::ZeroOrMore">,
    ListOption<"feeds_", "feeds", "std::string",
               "Comma separated list of feed ops.", "llvm::cl::ZeroOrMore">,
    ListOption<"fetches_", "fetches", "std::string",

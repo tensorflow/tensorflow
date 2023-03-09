@@ -26,14 +26,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
-using ::stream_executor::port::StatusOr;
+using ::tsl::StatusOr;
 
 // Creates a TensorRT execution context.
 ExecutionContext CreateExecutionContext(nvinfer1::ICudaEngine* cuda_engine);

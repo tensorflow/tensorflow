@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/linalg/linalg_ops_common.h"
 
+#include <initializer_list>
 #include <utility>
 
 #include "third_party/eigen3/Eigen/Core"
@@ -22,7 +23,9 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -130,7 +133,8 @@ void LinearAlgebraOp<InputScalar, OutputScalar>::AnalyzeInputs(
       // dimensions as matrices, and loop over all the other outer ("batch")
       // dimensions to compute the results.
       for (int dim = 0; dim < input_rank - 2; ++dim) {
-        batch_shape->AddDim(in.dim_size(dim));
+        OP_REQUIRES_OK(context,
+                       batch_shape->AddDimWithStatus(in.dim_size(dim)));
       }
     } else {
       // Make sure that all inputs have the same rank and outer dimensions.
@@ -152,6 +156,10 @@ void LinearAlgebraOp<InputScalar, OutputScalar>::AnalyzeInputs(
     input_matrix_shapes->emplace_back(
         std::initializer_list<int64_t>({num_rows, num_cols}));
     inputs->emplace_back(&in);
+    OP_REQUIRES(
+        context, in.dtype() == DataTypeToEnum<InputScalar>::v(),
+        errors::InvalidArgument("Invalid input dtype ", in.dtype(), " vs ",
+                                DataTypeToEnum<InputScalar>::v()));
   }
   // Have the derived class validate that the inputs are as expected.
   ValidateInputMatrixShapes(context, *input_matrix_shapes);
@@ -212,6 +220,11 @@ void LinearAlgebraOp<InputScalar, OutputScalar>::PrepareOutputs(
       OP_REQUIRES_OK(context, context->allocate_output(
                                   output_idx, output_tensor_shape, &out));
     }
+    OP_REQUIRES(
+        context, out->dtype() == DataTypeToEnum<OutputScalar>::v(),
+        errors::InvalidArgument("Invalid output dtype ", out->dtype(), " vs ",
+                                DataTypeToEnum<OutputScalar>::v()));
+
     outputs->emplace_back(out);
   }
 }

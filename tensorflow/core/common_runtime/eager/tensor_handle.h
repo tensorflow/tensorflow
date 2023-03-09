@@ -25,6 +25,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/platform.h"
@@ -271,6 +272,8 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
     return ptr->getKind() == kEager;
   }
 
+  tensorflow::FullTypeDef FullType() const override { return full_type_; }
+
  private:
   friend class PackedTensorHandleTest;
 
@@ -390,6 +393,8 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
 #endif
 
   PartialTensorShape inference_shape_;
+
+  FullTypeDef full_type_;
 };
 
 // Returns the device backing the resource. Else, returns nullptr.

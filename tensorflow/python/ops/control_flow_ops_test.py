@@ -39,7 +39,10 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_assert
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_toggles
@@ -56,7 +59,6 @@ from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.ops import while_v2
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import momentum
@@ -595,9 +597,9 @@ class DataTypesTest(test_util.TensorFlowTestCase):
         _raw_nested_shape(_get_nested_shape(output_cond)),
         _raw_nested_shape(expected_shape))
 
-    output_case = control_flow_ops.case([(condition, fn_true)],
-                                        fn_false,
-                                        strict=strict)
+    output_case = control_flow_case.case([(condition, fn_true)],
+                                         fn_false,
+                                         strict=strict)
     self.assertEqual(
         _raw_nested_shape(_get_nested_shape(output_case)),
         _raw_nested_shape(expected_shape))
@@ -616,9 +618,9 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     condition = array_ops.placeholder(dtypes.bool)
     output_cond = control_flow_ops.cond(
         condition, fn_true, fn_false, strict=strict)
-    output_case = control_flow_ops.case([(condition, fn_true)],
-                                        fn_false,
-                                        strict=strict)
+    output_case = control_flow_case.case([(condition, fn_true)],
+                                         fn_false,
+                                         strict=strict)
 
     with self.cached_session() as sess:
       self.evaluate(variables.global_variables_initializer())
@@ -760,7 +762,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
   def test_sparse_tensors(self):
-    shape = tensor_shape.TensorShape([None, None])
+    shape = tensor_shape.TensorShape([3, 4])
 
     def true_fn():
       return [
@@ -876,14 +878,14 @@ class DataTypesTest(test_util.TensorFlowTestCase):
           constant_op.constant(True), fn_list, fn_tuple, strict=True)
 
     with self.assertRaises(ValueError):
-      control_flow_ops.case([(constant_op.constant(True), fn_tensor)],
-                            fn_list,
-                            strict=True)
+      control_flow_case.case([(constant_op.constant(True), fn_tensor)],
+                             fn_list,
+                             strict=True)
 
     with self.assertRaises(TypeError):
-      control_flow_ops.case([(constant_op.constant(True), fn_list)],
-                            fn_tuple,
-                            strict=True)
+      control_flow_case.case([(constant_op.constant(True), fn_list)],
+                             fn_tuple,
+                             strict=True)
 
   @test_util.run_deprecated_v1
   def test_singleton_list(self):
@@ -1158,7 +1160,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     with ops.Graph().as_default() as g:
       nbranches = 7
-      matrices = array_ops.unstack(  # Ensure all are ready before while.
+      matrices = array_ops_stack.unstack(  # Ensure all are ready before while.
           array_ops.matrix_diag(
               random_ops.random_uniform([nbranches, 8, 512]) + 1e-3))
 
@@ -1382,7 +1384,7 @@ class CaseTest(test_util.TensorFlowTestCase):
     conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
                   (math_ops.equal(x, 2), lambda: constant_op.constant(4))]
     default = lambda: constant_op.constant(6)
-    output = control_flow_ops.case(conditions, default, exclusive=True)
+    output = control_flow_case.case(conditions, default, exclusive=True)
     with self.cached_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
@@ -1395,7 +1397,7 @@ class CaseTest(test_util.TensorFlowTestCase):
                   (math_ops.equal(x, 2), lambda: constant_op.constant(4)),
                   (math_ops.equal(x, 2), lambda: constant_op.constant(6))]
     default = lambda: constant_op.constant(8)
-    output = control_flow_ops.case(conditions, default, exclusive=True)
+    output = control_flow_case.case(conditions, default, exclusive=True)
     with self.cached_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       self.assertEqual(sess.run(output, feed_dict={x: 3}), 8)
@@ -1409,7 +1411,7 @@ class CaseTest(test_util.TensorFlowTestCase):
                   (math_ops.equal(x, 2), lambda: constant_op.constant(4)),
                   (math_ops.equal(x, 2), lambda: constant_op.constant(6))]
     default = lambda: constant_op.constant(8)
-    output = control_flow_ops.case(conditions, default, exclusive=False)
+    output = control_flow_case.case(conditions, default, exclusive=False)
     with self.cached_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
@@ -1421,7 +1423,7 @@ class CaseTest(test_util.TensorFlowTestCase):
     conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
                   (math_ops.equal(x, 2), lambda: constant_op.constant(4)),
                   (math_ops.equal(x, 3), lambda: constant_op.constant(6))]
-    output = control_flow_ops.case(conditions, exclusive=True)
+    output = control_flow_case.case(conditions, exclusive=True)
     with self.cached_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
@@ -1433,7 +1435,7 @@ class CaseTest(test_util.TensorFlowTestCase):
   def testCase_withoutDefault_oneCondition(self):
     x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
     conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2))]
-    output = control_flow_ops.case(conditions, exclusive=True)
+    output = control_flow_case.case(conditions, exclusive=True)
     with self.cached_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       with self.assertRaisesRegex(errors.InvalidArgumentError, "Input error:"):
@@ -1444,7 +1446,7 @@ class CaseTest(test_util.TensorFlowTestCase):
     x = constant_op.constant(2)
     conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
                   (math_ops.equal(x, 2), lambda: constant_op.constant(4))]
-    output = control_flow_ops.case(conditions, exclusive=True)
+    output = control_flow_case.case(conditions, exclusive=True)
     self.assertEqual(4, self.evaluate(output))
 
 
@@ -1566,14 +1568,6 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
 class WhileLoopParallelismTest(test_util.TensorFlowTestCase,
                                parameterized.TestCase):
 
-  def setUp(self):
-    super().setUp()
-    self._while_paralelism = while_v2.glob_stateful_parallelism
-
-  def tearDown(self):
-    while_v2.glob_stateful_parallelism = self._while_paralelism
-    super().tearDown()
-
   @parameterized.parameters(*itertools.product(
       (False, True),
       (False, True),
@@ -1586,8 +1580,6 @@ class WhileLoopParallelismTest(test_util.TensorFlowTestCase,
 
     if not tf2.enabled():
       self.skipTest("V2-only test.")
-
-    while_v2.glob_stateful_parallelism = True
 
     ticker = variables.Variable(0)
 
@@ -1607,7 +1599,6 @@ class WhileLoopParallelismTest(test_util.TensorFlowTestCase,
 
       while i < n:
         directives.set_loop_options(parallel_iterations=10)
-
         if modify_in_loop:
           ticker.assign_add(1)
         t_acc = t_acc.write(i, ticker.read_value())
@@ -1645,164 +1636,10 @@ class WhileLoopParallelismTest(test_util.TensorFlowTestCase,
         self.evaluate(ticker.read_value()),
         int(modify_before) + 3 * int(modify_in_loop) + int(modify_after))
 
-  def testMultiReadsBeforeWrite(self):
-
-    if not tf2.enabled():
-      self.skipTest("V2-only test.")
-
-    while_v2.glob_stateful_parallelism = True
-
-    ticker = variables.Variable(0)
-
-    @def_function.function
-    def run_loop(n):
-      ticker.assign(0)
-      i = constant_op.constant(0)
-      t_acc = tensor_array_ops.TensorArray(
-          dtypes.int32, size=0, dynamic_size=True)
-
-      while i < n:
-        directives.set_loop_options(parallel_iterations=10)
-
-        a = ticker.read_value()
-        b = ticker.read_value()
-        t_acc = t_acc.write(2 * i, a)
-        t_acc = t_acc.write(2 * i + 1, b)
-
-        # Slow write forces reads to sprint ahead if they can.
-        # This test verifies that they don't.
-        ticker.assign_add(
-            math_ops.cast(
-                math_ops.reduce_max(
-                    random_ops.random_uniform(
-                        shape=(1000,), minval=1.0, maxval=1.001)),
-                dtypes.int32))
-
-        i += 1
-
-      a = ticker.read_value()
-      b = ticker.read_value()
-      t_acc = t_acc.write(2 * i, a)
-      t_acc = t_acc.write(2 * i + 1, b)
-
-      return t_acc.stack()
-
-    # Warm-up.
-    self.evaluate(run_loop(1))
-
-    acc = run_loop(3)
-    self.assertAllEqual(acc, [0, 0, 1, 1, 2, 2, 3, 3])
-
-  def testCondDependenceOnMutatedResource(self):
-
-    if not tf2.enabled():
-      self.skipTest("V2-only test.")
-
-    # TODO(b/187340669): Switch to True. Current status is: not yet supported.
-    while_v2.glob_stateful_parallelism = "stateless_cond"
-
-    ticker = variables.Variable(0)
-    counter = variables.Variable(1)
-
-    @def_function.function
-    def run_loop(n):
-      ticker.assign(0)
-      counter.assign(0)
-
-      while ticker.read_value() < n:
-        directives.set_loop_options(parallel_iterations=10)
-
-        # Run a slow assign, to make sure counter sprints ahead.
-        ticker.assign_add(
-            math_ops.cast(
-                math_ops.reduce_max(
-                    random_ops.random_uniform(
-                        shape=(1000,), minval=1.0, maxval=1.001)),
-                dtypes.int32))
-        counter.assign_add(1)
-
-      return ticker.read_value(), counter.read_value()
-
-    # Warm-up.
-    self.evaluate(run_loop(1))
-
-    t, c = run_loop(3)
-    self.assertEqual(self.evaluate(t), 3)
-    self.assertEqual(self.evaluate(c), 3)
-
-  def testIndependentSideEffectsInCond(self):
-
-    if not tf2.enabled():
-      self.skipTest("V2-only test.")
-
-    # TODO(b/187340669): Switch to True. Current status is: not yet supported.
-    while_v2.glob_stateful_parallelism = "stateless_cond"
-
-    state = []
-
-    def record_side_effect(c):
-
-      def side_effect_py_fn():
-        state.append(c)
-        return 0
-
-      script_ops.eager_py_func(side_effect_py_fn, [], [dtypes.int32])
-
-    @def_function.function
-    def run_loop(n):
-
-      def complex_cond(i):
-        record_side_effect("A")
-        return i < n
-
-      i = constant_op.constant(0)
-
-      while complex_cond(i):
-        directives.set_loop_options(parallel_iterations=10)
-
-        record_side_effect("B")
-        i += 1
-
-      return i
-
-    # Warm-up.
-    self.evaluate(run_loop(1))
-
-    state.clear()
-    i = run_loop(3)
-    self.assertEqual(self.evaluate(i), 3)
-    self.assertListEqual(state, ["A", "B", "A", "B", "A", "B", "A"])
-
-  def testStatelessLoop(self):
-
-    while_v2.glob_stateful_parallelism = True
-
-    @def_function.function
-    def run_loop(n):
-
-      a = 0
-      b = 1
-
-      i = constant_op.constant(0)
-      while i < n:
-        directives.set_loop_options(parallel_iterations=10)
-        i += 1
-        a += 2
-        b *= 3
-
-      return i, a, b
-
-    i, a, b = run_loop(3)
-    self.assertEqual(self.evaluate(i), 3)
-    self.assertEqual(self.evaluate(a), 6)
-    self.assertEqual(self.evaluate(b), 27)
-
   def testStatefulParallelism(self):
 
     if not tf2.enabled():
       self.skipTest("V2-only test.")
-
-    while_v2.glob_stateful_parallelism = True
 
     ticker = variables.Variable(0)
     # Secondary state for the pyfunc that lets us verify that things ran in
@@ -1831,7 +1668,6 @@ class WhileLoopParallelismTest(test_util.TensorFlowTestCase,
 
       while i < n:
         directives.set_loop_options(parallel_iterations=10)
-
         wait_then_tick(i + 1)
         # The read is expected to run in much less than `wait_then_tick`,
         # which sleeps for 1s. Hence all reads should complete before the first
@@ -1850,11 +1686,9 @@ class WhileLoopParallelismTest(test_util.TensorFlowTestCase,
     self.evaluate(ticker.assign(123))
     ticker_state.clear()
     acc = run_loop(3)
-    # Because the loop iterations are allowed to run in parallel, reads from
-    # different iterations may proceed ahead of pyfuncs from other iterations.
-    # Because reads are much faster, they should all complete before a single
-    # pyfunc does.
-    self.assertEqual(self.evaluate(math_ops.reduce_max(acc)), 0)
+    # Because the loop runs entirely sequentially, the reads in each iteration
+    # see the effects of the pyfunc from the previous iteration.
+    self.assertEqual(self.evaluate(math_ops.reduce_max(acc)), 2)
 
     # Double-check that the loop ran completely.
     self.assertEqual(self.evaluate(ticker.read_value()), 3)
@@ -1867,11 +1701,11 @@ class AssertTest(test_util.TensorFlowTestCase):
   @test_util.run_deprecated_v1
   def testAssert(self):
     i = constant_op.constant(0)
-    c = control_flow_ops.Assert(i < 10, [i, [10], [i + 1]])
+    c = control_flow_assert.Assert(i < 10, [i, [10], [i + 1]])
     self.evaluate(c)
 
     i = constant_op.constant(10)
-    c = control_flow_ops.Assert(i < 10, [i, [10], [i + 1]])
+    c = control_flow_assert.Assert(i < 10, [i, [10], [i + 1]])
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(c)
 
@@ -1886,7 +1720,7 @@ class AssertTest(test_util.TensorFlowTestCase):
 
     @def_function.function
     def whiny(value):
-      control_flow_ops.Assert(value, ["Raised false"])
+      control_flow_assert.Assert(value, ["Raised false"])
       return constant_op.constant(5)
 
     with self.assertRaises(errors.InvalidArgumentError):

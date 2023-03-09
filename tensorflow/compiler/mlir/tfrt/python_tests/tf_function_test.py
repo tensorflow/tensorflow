@@ -76,7 +76,7 @@ class TfFunction(test.TestCase):
   def test_func_1(self):
     for vectorize in vectorization:
       mlir_function = """
-        func.func @test(%arg0: tensor<*xf32> {jitrt.constraint = "rank"})
+        func.func @test(%arg0: tensor<*xf32> {rt.constraint = "rank"})
             -> (tensor<*xf32>, tensor<*xf32>) {
           %c = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
                : () -> tensor<f32>
@@ -105,7 +105,7 @@ class TfFunction(test.TestCase):
   def test_func_2(self):
     for vectorize in vectorization:
       mlir_function = """
-        func.func @test(%arg0: tensor<*xf32> {jitrt.constraint = "rank"},
+        func.func @test(%arg0: tensor<*xf32> {rt.constraint = "rank"},
                    %arg1: tensor<?x?xf32>,
                    %arg2: tensor<?x?xf32>,
                    %arg3: tensor<?x?xf32>) -> tensor<*xf32> {

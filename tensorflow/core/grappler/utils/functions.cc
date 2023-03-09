@@ -291,6 +291,11 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
 
   std::vector<const FunctionDef::ArgAttrs*> arg_attr(inputs.size(), nullptr);
   for (const auto& attr : func.arg_attr()) {
+    if (attr.first >= inputs.size()) {
+      return errors::InvalidArgument("Invalid attribute index, got ",
+                                     attr.first, " but expected less than ",
+                                     inputs.size());
+    }
     arg_attr.at(attr.first) = &attr.second;
   }
 

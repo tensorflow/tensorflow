@@ -15,9 +15,10 @@
 
 # A list of assignees
 assignees:
+   - synandi
+   - tiruk007
    - tilakrayal
-   - sushreebarsa
-   - Mohantym
+   - pjpratik
 # A list of assignees for compiler folder
 compiler_assignees:
    - joker-eph

@@ -38,6 +38,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
@@ -46,6 +47,7 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
@@ -233,6 +235,13 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     self.assertEqual(expected, repr(mt))
     self.assertEqual(expected, repr(mt))
+
+  def testAsDict(self):
+    values = constant_op.constant([1, 2, 3, 4])
+    mask = constant_op.constant([True, True, False, True])
+    mt = MaskedTensorV1(values, mask)
+    mt_dict = extension_type.as_dict(mt)
+    self.assertEqual({'values': values, 'mask': mask}, mt_dict)
 
   def testConstructorSignature(self):
 
@@ -622,7 +631,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     cond = lambda i, x: i < 10
     body = lambda i, x: (i + 1, MaskedTensorV1(x.values * 2, x.mask))
-    _, y = control_flow_ops.while_loop_v2(cond, body, [0, x])
+    _, y = while_loop.while_loop_v2(cond, body, [0, x])
 
     self.assertIsInstance(y, MaskedTensorV1)
     self.assertAllEqual(y.values, [1024, 2048, 3072, 4096])
@@ -654,7 +663,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(
         ValueError, "The two structures don't have the same nested structure"):
-      control_flow_ops.while_loop_v2(cond, body, [0, x])
+      while_loop.while_loop_v2(cond, body, [0, x])
 
   def testWhileLoopPacked(self):
     x = MaskedTensorV2([1, 2, 3, 4], [True, False, True, False])
@@ -664,7 +673,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     def body(i, x):
       return i + 1, extension_type.pack(MaskedTensorV2(x.values * 2, x.mask))
 
-    _, y = control_flow_ops.while_loop_v2(cond, body, [0, x])
+    _, y = while_loop.while_loop_v2(cond, body, [0, x])
     self.assertIsInstance(y, MaskedTensorV2)
     self.assertAllEqual(y.values, [1024, 2048, 3072, 4096])
     self.assertAllEqual(y.mask, [True, False, True, False])
@@ -1400,7 +1409,7 @@ class AnonymousExtensionTypeTest(test_util.TensorFlowTestCase,
       [
           lambda: extension_type.AnonymousExtensionType(
               values=(1, 2, 3), mask=None), MaskedTensorV2,
-          'mask: expected a Tensor, got None'
+          "mask: expected a Tensor, got 'NoneType'"
       ],
       [
           lambda: extension_type.AnonymousExtensionType(
@@ -1454,7 +1463,7 @@ class AnonymousExtensionTypeTest(test_util.TensorFlowTestCase,
     loaded_model = load.load(path)
 
     with self.assertRaises(ValueError):
-      type_spec.lookup('tf.test.MaskedTensorV1')
+      type_spec_registry.lookup('tf.test.MaskedTensorV1')
 
     t = constant_op.constant([10, 20, 30])
     v1 = loaded_model.f(t, t)
@@ -1524,10 +1533,10 @@ def temporarily_add_dispatch(op, typ, fn):
 @contextlib.contextmanager
 def temporarily_register_type_spec(name, cls):
   """Context manager for making temporary changes to the TypeSpec registry."""
-  type_spec.register(name)(cls)
+  type_spec_registry.register(name)(cls)
   yield
-  assert type_spec._TYPE_SPEC_TO_NAME.pop(cls) == name
-  assert type_spec._NAME_TO_TYPE_SPEC.pop(name) is cls
+  assert type_spec_registry._TYPE_SPEC_TO_NAME.pop(cls) == name
+  assert type_spec_registry._NAME_TO_TYPE_SPEC.pop(name) is cls
 
 
 if __name__ == '__main__':

@@ -8,6 +8,7 @@
     files.
   * `TF_CUDA_PATHS`: The base paths to look for CUDA and cuDNN. Default is
     `/usr/local/cuda,usr/`.
+  * `TF_CUDA_CLANG`: "1" if using Clang, "0" if using NVCC.
 
 """
 
@@ -29,6 +30,8 @@ _NCCL_INSTALL_PATH = "NCCL_INSTALL_PATH"
 _TF_CUDA_COMPUTE_CAPABILITIES = "TF_CUDA_COMPUTE_CAPABILITIES"
 _TF_NCCL_VERSION = "TF_NCCL_VERSION"
 _TF_NEED_CUDA = "TF_NEED_CUDA"
+_TF_CUDA_PATHS = "TF_CUDA_PATHS"
+_TF_CUDA_CLANG = "TF_CUDA_CLANG"
 
 _DEFINE_NCCL_MAJOR = "#define NCCL_MAJOR"
 _DEFINE_NCCL_MINOR = "#define NCCL_MINOR"
@@ -84,7 +87,10 @@ def _create_local_nccl_repository(repository_ctx):
         repository_ctx.template(
             "build_defs.bzl",
             _label("build_defs.bzl.tpl"),
-            {"%{cuda_version}": "(%s, %s)" % tuple(cuda_version)},
+            {
+                "%{cuda_version}": "(%s, %s)" % tuple(cuda_version),
+                "%{cuda_clang}": repr(get_host_environ(repository_ctx, _TF_CUDA_CLANG)),
+            },
         )
     else:
         # Create target for locally installed NCCL.
@@ -128,7 +134,8 @@ _ENVIRONS = [
     _TF_NCCL_VERSION,
     _TF_CUDA_COMPUTE_CAPABILITIES,
     _TF_NEED_CUDA,
-    "TF_CUDA_PATHS",
+    _TF_CUDA_PATHS,
+    _TF_CUDA_CLANG,
 ]
 
 remote_nccl_configure = repository_rule(

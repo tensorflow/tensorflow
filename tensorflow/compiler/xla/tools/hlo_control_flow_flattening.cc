@@ -20,14 +20,14 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
 
 namespace xla {
@@ -258,12 +258,13 @@ Status HloControlFlowFlattening::RemoveInfeed(
   HloInstruction* custom_call = computation->AddInstruction(
       HloInstruction::CreateCustomCall(infeed_shape, {}, kNopCustomCallTarget));
 
-  // Create a new tuple consisting op the constant and the token that was
+  // Create a new tuple consisting of the constant and the token that was
   // originally the operand of infeed, and replace the infeed operation.
   auto new_tuple = HloInstruction::CreateTuple(
       {custom_call, infeed_hlo->mutable_operand(0)});
   TF_RETURN_IF_ERROR(
       computation->ReplaceWithNewInstruction(infeed_hlo, std::move(new_tuple)));
+  custom_call->SetAndSanitizeName(infeed_hlo->name());
 
   return OkStatus();
 }
@@ -278,19 +279,32 @@ Status HloControlFlowFlattening::RemoveRecvDone(
 
   HloComputation* computation = recv_done->parent();
   CHECK_EQ(recv_done->shape().tuple_shapes_size(), 2);
-  const Shape& recv_shape = ShapeUtil::GetSubshape(recv_done->shape(), {0});
+  HloModule* module = computation->parent();
 
-  HloInstruction* custom_call = computation->AddInstruction(
-      HloInstruction::CreateCustomCall(recv_shape, {}, kNopCustomCallTarget));
+  HloInstruction* custom_call_recv =
+      computation->AddInstruction(HloInstruction::CreateCustomCall(
+          recv->shape(), recv->operands(), kNopCustomCallTarget));
+  std::string original_recv_name = recv->name();
+  if (module->has_schedule() &&
+      module->schedule().is_computation_scheduled(computation)) {
+    module->schedule().replace_instruction(computation, recv, custom_call_recv);
+  }
+  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(recv, custom_call_recv));
+  custom_call_recv->SetAndSanitizeName(original_recv_name);
 
-  // Create a new tuple consisting op the constant and the token that was
-  // originally the operand of recv, and replace the recv operation.
-  auto new_tuple =
-      HloInstruction::CreateTuple({custom_call, recv->mutable_operand(0)});
+  std::string original_recv_done_name = recv_done->name();
+  HloInstruction* custom_call_recv_done = computation->AddInstruction(
+      HloInstruction::CreateCustomCall(
+          recv_done->shape(), recv_done->operands(), kNopCustomCallTarget),
+      recv_done->name());
+  if (module->has_schedule() &&
+      module->schedule().is_computation_scheduled(computation)) {
+    module->schedule().replace_instruction(computation, recv_done,
+                                           custom_call_recv_done);
+  }
   TF_RETURN_IF_ERROR(
-      computation->ReplaceWithNewInstruction(recv_done, std::move(new_tuple)));
-  additional_removed->insert(recv);
-  TF_RETURN_IF_ERROR(computation->RemoveInstruction(recv));
+      computation->ReplaceInstruction(recv_done, custom_call_recv_done));
+  custom_call_recv_done->SetAndSanitizeName(original_recv_done_name);
 
   return OkStatus();
 }
@@ -307,6 +321,7 @@ Status HloControlFlowFlattening::RemoveOutfeed(
   Cast<HloCustomCallInstruction>(custom_call)
       ->set_custom_call_has_side_effect(true);
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(outfeed_hlo, custom_call));
+  custom_call->SetAndSanitizeName(outfeed_hlo->name());
 
   return OkStatus();
 }
@@ -320,16 +335,33 @@ Status HloControlFlowFlattening::RemoveSendDone(
   CHECK_EQ(send->opcode(), HloOpcode::kSend);
 
   HloComputation* computation = send_done->parent();
-  HloInstruction* custom_call =
-      computation->AddInstruction(HloInstruction::CreateCustomCall(
-          send_done->shape(), send_done->operand(0)->operands(),
-          "NopReturnToken"));
-  Cast<HloCustomCallInstruction>(custom_call)
-      ->set_custom_call_has_side_effect(true);
+  HloModule* module = computation->parent();
 
-  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(send_done, custom_call));
-  additional_removed->insert(send);
-  TF_RETURN_IF_ERROR(computation->RemoveInstruction(send));
+  HloInstruction* custom_call_send =
+      computation->AddInstruction(HloInstruction::CreateCustomCall(
+          send->shape(), send->operands(), kNopCustomCallTarget));
+  std::string original_send_name = send->name();
+  if (module->has_schedule() &&
+      module->schedule().is_computation_scheduled(computation)) {
+    module->schedule().replace_instruction(computation, send, custom_call_send);
+  }
+  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(send, custom_call_send));
+  custom_call_send->SetAndSanitizeName(original_send_name);
+
+  HloInstruction* custom_call_send_done =
+      computation->AddInstruction(HloInstruction::CreateCustomCall(
+          send_done->shape(), send_done->operands(), "NopReturnToken"));
+  std::string original_send_done_name = send_done->name();
+  Cast<HloCustomCallInstruction>(custom_call_send_done)
+      ->set_custom_call_has_side_effect(true);
+  if (module->has_schedule() &&
+      module->schedule().is_computation_scheduled(computation)) {
+    module->schedule().replace_instruction(computation, send_done,
+                                           custom_call_send_done);
+  }
+  TF_RETURN_IF_ERROR(
+      computation->ReplaceInstruction(send_done, custom_call_send_done));
+  custom_call_send_done->SetAndSanitizeName(original_send_done_name);
 
   return OkStatus();
 }
@@ -342,10 +374,14 @@ Status HloControlFlowFlattening::RemoveCollective(HloInstruction* hlo) const {
   // Copy backend config. This is necessary for a collective op in megacore
   // fusion.
   custom_call->CopyBackendConfigFrom(hlo);
-  auto replaced_collective_op_str =
-      hlo->ToString(HloPrintOptions().Canonical());
+  HloModule* module = computation->parent();
+  if (module->has_schedule() &&
+      module->schedule().is_computation_scheduled(computation)) {
+    module->schedule().replace_instruction(computation, hlo, custom_call);
+  }
+  std::string original_op_name = hlo->name();
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, custom_call));
-  custom_call->set_metadata_replaced_op(replaced_collective_op_str);
+  custom_call->SetAndSanitizeName(original_op_name);
   return OkStatus();
 }
 
@@ -357,11 +393,13 @@ Status HloControlFlowFlattening::RemovePartitionOrReplicaId(
   return OkStatus();
 }
 
-StatusOr<bool> HloControlFlowFlattening::Run(HloModule* module) {
+StatusOr<bool> HloControlFlowFlattening::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto call_graph = CallGraph::Build(module);
   bool changed = false;
   absl::flat_hash_set<HloInstruction*> removed;
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (removed.contains(instruction)) {
@@ -417,7 +455,7 @@ StatusOr<bool> HloControlFlowFlattening::Run(HloModule* module) {
   }
 
   HloDCE hlo_dce;
-  TF_ASSIGN_OR_RETURN(bool dce_changed, hlo_dce.Run(module));
+  TF_ASSIGN_OR_RETURN(bool dce_changed, hlo_dce.Run(module, execution_threads));
   changed |= dce_changed;
 
   // Fix the schedule if the module was scheduled.

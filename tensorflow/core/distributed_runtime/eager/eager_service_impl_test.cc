@@ -155,7 +155,8 @@ class EagerServiceImplTest : public ::testing::Test {
                WorkerCacheInterface** worker_cache) {
               *worker_cache = new FakeCache;
               return OkStatus();
-            })) {
+            },
+            /*coordination_handler=*/nullptr)) {
     worker_env_.env = Env::Default();
 
     worker_env_.rendezvous_mgr = &rendezvous_mgr_;
@@ -965,7 +966,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       /*allow_control_flow_sync_execution=*/false,
       /*shape_inference_on_tfe_dialect_import=*/true,
       /*int_args_and_retvals_on_device=*/false,
-      /*xla_compile_device_type=*/std::nullopt, ctx->RendezvousCreator(),
+      /*xla_compile_device_type=*/std::nullopt, ctx->RendezvousFactory(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.
@@ -1019,7 +1020,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
       /*allow_control_flow_sync_execution=*/false,
       /*shape_inference_on_tfe_dialect_import=*/true,
       /*int_args_and_retvals_on_device=*/false,
-      /*xla_compile_device_type=*/std::nullopt, ctx->RendezvousCreator(),
+      /*xla_compile_device_type=*/std::nullopt, ctx->RendezvousFactory(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.
@@ -1235,16 +1236,17 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      /*async=*/false, device_mgr_.get(), false, rendezvous);
+      /*async=*/false, device_mgr_.get(), false, rendezvous, nullptr, nullptr,
+      /*run_eager_op_as_function=*/true);
   const uint64 context_id = random::New64();
 
   // Set RemoteMgr to ctx.
   auto remote_mgr =
       std::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/true, ctx);
   TF_ASSERT_OK(ctx->InitializeRemoteWorker(
+      /*worker_env=*/nullptr, /*worker_session=*/nullptr,
       /*remote_eager_workers=*/nullptr, /*remote_device_mgr=*/nullptr,
       /*remote_contexts=*/{}, context_id, /*context_view_id=*/0,
-      /*rendezvous_creator=*/nullptr,
       /*cluster_flr=*/nullptr, std::move(remote_mgr),
       /*resource_deallocator=*/nullptr));
 

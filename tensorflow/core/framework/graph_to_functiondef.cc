@@ -306,8 +306,11 @@ Status GraphToFunctionDefHelper(
     if ((*args_or_retvals)[index].node == nullptr) {
       (*args_or_retvals)[index].node = node;
     } else {
-      return errors::InvalidArgument("Multiple '", node->type_string(),
-                                     "' nodes found with index ", index);
+      return errors::InvalidArgument(
+          "Multiple '", node->type_string(), "' nodes found with index ", index,
+          "; originally we already have:\n",
+          (*args_or_retvals)[index].node->DebugString(), "\nNow we have:\n",
+          node->DebugString());
     }
     return OkStatus();
   };

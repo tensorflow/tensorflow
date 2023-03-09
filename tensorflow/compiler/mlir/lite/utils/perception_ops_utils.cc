@@ -35,13 +35,10 @@ constexpr char kTFImplements[] = "tf._implements";
 constexpr char kMaxUnpooling[] = "MaxUnpooling2D";
 constexpr char kImageWarping[] = "DenseImageWarp";
 
-inline OpaqueElementsAttr CustomOption(OpBuilder* builder,
-                                       const std::string& content) {
-  ShapedType type = RankedTensorType::get(
-      {static_cast<int64_t>(content.size())}, builder->getIntegerType(8));
-  return OpaqueElementsAttr::get(builder->getContext()->getLoadedDialect("tfl"),
-                                 type,
-                                 StringRef(content.data(), content.size()));
+inline ConstBytesAttr CustomOption(OpBuilder* builder,
+                                   const std::string& content) {
+  return ConstBytesAttr::get(builder->getContext(),
+                             StringRef(content.data(), content.size()));
 }
 
 inline LogicalResult HasIntegerArrayWithSize(func::FuncOp* func,
@@ -185,6 +182,12 @@ LogicalResult ConvertMaxUnpoolingFunc::CreateCustomOptions(
 
   pool_params.activation = kTfLiteActNone;
   pool_params.computed.padding = TfLitePaddingValues{0, 0, 0, 0};
+
+#if FLATBUFFERS_LITTLEENDIAN == 0
+  int32_t* p = reinterpret_cast<int32_t*>(&pool_params);
+  for (size_t i = 0; i < sizeof(TfLitePoolParams) / 4; i++, p++)
+    *p = flatbuffers::EndianSwap(*p);
+#endif
 
   custom_option_buffer.assign(reinterpret_cast<char*>(&pool_params),
                               sizeof(TfLitePoolParams));

@@ -35,7 +35,8 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
-from tensorflow.python.distribute.coordinator import values as values_lib
+from tensorflow.python.distribute.coordinator import coordinator_context
+from tensorflow.python.distribute.coordinator import remote_value
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -167,6 +168,19 @@ class CoordinatedClosureQueueTest(test.TestCase):
     self.assertTrue(first_fn_done.is_set())
     second_fn_done.set()
 
+    coord.join([t])
+
+  def _run_two_fns_in_parallel(self, first_fn, second_fn):
+    coord = coordinator.Coordinator(clean_stop_exception_types=[])
+
+    def wrapped_first_fn():
+      with coord.stop_on_exception():
+        first_fn()
+
+    t = threading.Thread(target=wrapped_first_fn)
+    t.start()
+
+    second_fn()
     coord.join([t])
 
   def testWaitRaiseErrorAfterMarkFailure(self):
@@ -344,7 +358,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
 
     # Closure2 was an inflight closure when it got cancelled.
     self.assertEqual(closure2.output_remote_value._status,
-                     values_lib.RemoteValueStatus.READY)
+                     remote_value.RemoteValueStatus.READY)
     with self.assertRaisesRegex(ValueError, 'Fake cancellation error.'):
       closure2.output_remote_value.fetch()
 
@@ -397,6 +411,32 @@ class CoordinatedClosureQueueTest(test.TestCase):
       queue.put(self._create_closure(queue._cancellation_mgr))
     queue.wait()
     self.assertTrue(queue.done())
+
+  def testPutGetWithTag(self):
+    queue = coordinator_lib._CoordinatedClosureQueue()
+
+    closure1 = self._create_closure(queue._cancellation_mgr)
+    closure2 = self._create_closure(queue._cancellation_mgr)
+    closure3 = self._create_closure(queue._cancellation_mgr)
+
+    def put_fn():
+      queue.put(closure3, tag=1)
+      queue.put(closure2, tag=2)
+      queue.put(closure1)
+
+    def get_fn():
+      # The get should only return the closure with tag 2.
+      self.assertIs(closure2, queue.get(tag=2))
+
+    self._run_two_fns_in_parallel(put_fn, get_fn)
+
+    self.assertFalse(queue.done())
+    self.assertEqual(closure1, queue.get())
+    queue.mark_finished()
+
+    # It will not wait for closure3
+    self.assertTrue(queue.done())
+    queue.wait()
 
 
 class ErrorReportingThread(threading.Thread):
@@ -456,8 +496,64 @@ def make_coordinator(num_workers, num_ps):
   return coordinator_lib.ClusterCoordinator(strategy)
 
 
-class ClusterCoordinatorTest(TestCaseWithErrorReportingThread,
-                             parameterized.TestCase):
+class CoordinatorContextTest(test.TestCase, parameterized.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    super(CoordinatorContextTest, cls).setUpClass()
+    cls.coordinator = make_coordinator(num_workers=5, num_ps=2)
+    cls.strategy = cls.coordinator.strategy
+
+  def testWorkerIndexDatasetFn(self):
+    def dataset_fn(context):
+      del context
+      dataset = dataset_ops.DatasetV2.range(10)
+      worker_index = coordinator_context.get_current_worker_index()
+      dataset = dataset.shard(
+          num_shards=self.strategy._extended._num_workers,
+          index=worker_index,
+      )
+      return dataset
+
+    @def_function.function
+    def per_worker_dataset_fn():
+      return self.strategy.distribute_datasets_from_function(dataset_fn)
+
+    @def_function.function
+    def train_fn(iterator):
+      total = constant_op.constant(0, dtype=dtypes.int64)
+      for batch in iterator:
+        total += math_ops.reduce_sum(batch)
+      return total
+
+    per_worker_dataset = self.coordinator.create_per_worker_dataset(
+        per_worker_dataset_fn)
+    with self.strategy.scope():
+      iterator = iter(per_worker_dataset)
+      ret_vals = []
+      # Use private APIs to schedule in tagged queues to ensure each worker
+      # executes only one closure.
+      for ix in range(5):
+        closure = coordinator_lib.Closure(
+            train_fn,
+            self.coordinator._cluster.closure_queue._cancellation_mgr,
+            args=(iterator,))
+        ret = closure.build_output_remote_value()
+        # The queue doesn't keep track of tagged closures as inflight by
+        # default, so hack around this for the test.
+        self.coordinator._cluster.closure_queue._inflight_closure_count += 1
+        self.coordinator._cluster.closure_queue.put(closure, tag=ix)
+        ret_vals.append(ret)
+    self.coordinator.join()
+
+    fetched_vals = [rv.fetch() for rv in ret_vals]
+    expected_results = [5, 7, 9, 11, 13]
+    self.assertAllClose(sorted(fetched_vals), expected_results)
+
+
+class ClusterCoordinatorTest(
+    TestCaseWithErrorReportingThread, parameterized.TestCase
+):
 
   @classmethod
   def setUpClass(cls):
@@ -622,14 +718,12 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread,
     distributed_iterator = iter(distributed_dataset)
     # Get elements from the first two iterators.
     iterator_1 = distributed_iterator._values[0]
-    iterator_1._rebuild_on(self.coordinator._cluster.workers[0])
     iterator_1 = iterator_1.fetch()
     elements_in_iterator_1 = [
         self.strategy.experimental_local_results(e)
         for e in iterator_1
     ]
     iterator_2 = distributed_iterator._values[1]
-    iterator_2._rebuild_on(self.coordinator._cluster.workers[1])
     iterator_2 = iterator_2.fetch()
     elements_in_iterator_2 = [
         self.strategy.experimental_local_results(e)
@@ -714,7 +808,7 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread,
     self.coordinator.schedule(worker_fn, args=(iter(per_worker_dataset),))
 
     with self.assertRaisesRegexp(
-        coordinator_lib.InputError,
+        coordinator_lib.ClosureInputError,
         'error message is Failed copying input tensor from'):
       self.coordinator.join()
 
@@ -926,11 +1020,28 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
       return x + 1
 
     result = self.coordinator.schedule(func, args=(worker_local_val,))
-    with self.assertRaises(coordinator_lib.InputError):
+    with self.assertRaises(coordinator_lib.ClosureInputError):
       self.coordinator.join()
 
-    with self.assertRaises(coordinator_lib.InputError):
+    with self.assertRaises(coordinator_lib.ClosureInputError):
       result.fetch()
+
+  def testErroredInputNotUsed(self):
+    input_0 = self.coordinator._create_per_worker_resources(
+        self._normal_function)
+
+    self.coordinator._create_per_worker_resources(
+        self._error_function)
+
+    @def_function.function
+    def func(x):
+      return x + 1
+
+    result = self.coordinator.schedule(func, args=(input_0,))
+
+    # It should not raise.
+    self.coordinator.join()
+    result.fetch()
 
   def testCancellation(self):
     for _ in range(3):
@@ -946,6 +1057,27 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
 
     for _ in range(3):
       self.coordinator.schedule(self._normal_function)
+    self.coordinator.join()
+
+  def testResourceCanStillbeUsedAfterCancellation(self):
+
+    def input_fn():
+      return dataset_ops.DatasetV2.range(0, 5)
+
+    per_worker_dataset = self.coordinator.create_per_worker_dataset(input_fn)
+    per_worker_iterator = iter(per_worker_dataset)
+
+    @def_function.function
+    def worker_fn(iterator):
+      return next(iterator)
+
+    self.coordinator.schedule(worker_fn, args=(per_worker_iterator,))
+    self.coordinator.schedule(self._error_function)
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.coordinator.join()
+
+    self.coordinator.schedule(worker_fn, args=(per_worker_iterator,))
     self.coordinator.join()
 
 
@@ -1420,6 +1552,26 @@ class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
 
     self.coordinator.schedule(worker_fn, args=(distributed_iterator,))
     self.assertEqual(self._tracing_count, 1)
+
+  def testPerWorkerDatasetBuild(self):
+    # Test that we can use Dataset type as input to worker_fn.
+    @def_function.function
+    def worker_fn(dataset):
+      return next(iter(dataset))
+
+    dataset_vals = [1, 2]
+    dataset = dataset_ops.DatasetV2.from_tensor_slices(dataset_vals)
+    per_worker_dataset = self.coordinator.create_per_worker_dataset(dataset)
+    per_worker_dataset = per_worker_dataset.build()
+
+    result = self.coordinator.schedule(worker_fn, args=(per_worker_dataset,))
+    self.coordinator.join()
+    result = result.fetch()
+    self.assertEqual(result, dataset_vals[0])
+
+    # Test that the build() output type specs match the input Dataset spec.
+    for value in per_worker_dataset._values:
+      self.assertEqual(value._type_spec, dataset._type_spec)
 
 
 if __name__ == '__main__':

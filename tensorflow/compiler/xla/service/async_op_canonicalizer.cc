@@ -24,14 +24,16 @@ struct AsyncGroup {
   std::vector<HloInstruction*> instructions;
 };
 
-StatusOr<bool> CreateAsyncGroups(HloModule* module,
-                                 std::vector<AsyncGroup>& async_groups) {
+StatusOr<bool> CreateAsyncGroups(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    std::vector<AsyncGroup>& async_groups) {
   absl::flat_hash_map<int64_t, AsyncGroup*> async_groups_by_id;
   absl::flat_hash_map<const HloInstruction*, AsyncGroup*>
       async_groups_by_instruction;
 
   for (const HloComputation* computation :
-       module->MakeNonfusionComputations()) {
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() == HloOpcode::kAsyncStart) {
@@ -88,12 +90,16 @@ StatusOr<bool> CreateAsyncGroups(HloModule* module,
 
 }  // namespace
 
-StatusOr<bool> AsyncOpCanonicalizer::Run(HloModule* module) {
+StatusOr<bool> AsyncOpCanonicalizer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
       1, module->ToString(HloPrintOptions().set_syntax_sugar_async_ops(false)));
 
   std::vector<AsyncGroup> async_groups;
-  TF_ASSIGN_OR_RETURN(bool modified, CreateAsyncGroups(module, async_groups));
+  TF_ASSIGN_OR_RETURN(
+      bool modified,
+      CreateAsyncGroups(module, execution_threads, async_groups));
 
   for (const AsyncGroup& async_group : async_groups) {
     HloComputation* computation =

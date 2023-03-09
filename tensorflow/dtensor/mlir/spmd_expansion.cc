@@ -44,7 +44,6 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
@@ -53,7 +52,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORSPMDEXPANSION
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr char kMainFunctionName[] = "main";
 
@@ -145,7 +147,7 @@ mlir::LogicalResult UpdateResourceArgumentType(
     if (!layout_or_status.ok())
       return function.emitOpError(layout_or_status.status().error_message());
 
-    const auto& layout = layout_or_status.ValueOrDie();
+    const auto& layout = layout_or_status.value();
     if (!layout) return mlir::success();
 
     std::vector<int64_t> local_arg_shape_vec =
@@ -179,7 +181,7 @@ bool IsValueUsedByAssignVariableOp(
             llvm::dyn_cast_or_null<mlir::TF::AssignVariableOp>(
                 NextTFOp(user))) {
       *resource_argument_index_for_assign_variable =
-          GetForwardedDTensorLayoutInput(assign_variable_op.resource())
+          GetForwardedDTensorLayoutInput(assign_variable_op.getResource())
               .cast<mlir::BlockArgument>()
               .getArgNumber();
       return true;
@@ -201,6 +203,11 @@ mlir::LogicalResult UpdateFunctionArgsUsingLayout(mlir::func::FuncOp function) {
       return function.emitOpError(llvm::formatv(
           "Invalid layout attribute found during SPMD expansion: {0}",
           arg_layout.status().error_message()));
+
+    // XLA SPMD will handle argument shape updating for us.
+    if (arg_layout->mesh().use_xla_spmd()) {
+      continue;
+    }
 
     mlir::Type arg_type = mlir::getElementTypeOrSelf(
         function.getFunctionType().getInput(argument_index));
@@ -327,7 +334,7 @@ mlir::LogicalResult ConductSPMDExpansion(mlir::ModuleOp module) {
     const bool is_terminator_op =
         llvm::isa<mlir::func::ReturnOp, mlir::tf_device::ReturnOp>(op);
     if (auto layout_op = llvm::dyn_cast<mlir::TF::DTensorLayout>(op))
-      layout_op.output().setType(layout_op.input().getType());
+      layout_op.getOutput().setType(layout_op.getInput().getType());
 
     mlir::Operation* expanded_op = nullptr;
     auto status = RunSPMDExpansion(op, &expanded_op);
@@ -351,17 +358,6 @@ mlir::LogicalResult ConductSPMDExpansion(mlir::ModuleOp module) {
   return mlir::success();
 }
 
-// DTensorLayout only conveys layout information of tensors which is no
-// longer needed after SPMD expansion. As so, remove all layouts from
-// graph.
-void RemoveDTensorLayoutOps(mlir::ModuleOp module) {
-  llvm::SmallVector<mlir::TF::DTensorLayout, 4> layout_ops;
-  module.walk(
-      [&](mlir::TF::DTensorLayout layout) { layout_ops.emplace_back(layout); });
-
-  for (auto layout_op : layout_ops) RemoveDTensorLayoutOp(layout_op);
-}
-
 // Removes temporary attrs created during SPMD expansion.
 void RemoveTemporarySPMDAttrs(mlir::ModuleOp module) {
   module.walk([&](mlir::Operation* op) {
@@ -376,7 +372,7 @@ void RemoveTemporarySPMDAttrs(mlir::ModuleOp module) {
 // all DTensorLayout ops after the expansion is done. Temporary nodes and
 // attributes are also removed after the pass is done.
 struct DTensorSPMDExpansion
-    : public DTensorSPMDExpansionBase<DTensorSPMDExpansion> {
+    : public impl::DTensorSPMDExpansionBase<DTensorSPMDExpansion> {
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     registry.insert<mlir::dtensor::DTensorDialect>();
   }
@@ -385,7 +381,7 @@ struct DTensorSPMDExpansion
     auto module = getOperation();
     if (failed(ConductSPMDExpansion(module))) return signalPassFailure();
 
-    RemoveDTensorLayoutOps(module);
+    RemoveDTensorLayoutOps(module, /*remove_xla_spmd_layouts=*/false);
 
     RemoveTemporarySPMDAttrs(module);
   };

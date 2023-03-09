@@ -60,7 +60,7 @@ class AliasedFloatInt {
 // that the compiler-rt definitions "win", but that isn't essential.
 
 // Algorithm copied from Eigen.
-uint16_t ABSL_ATTRIBUTE_WEAK __gnu_f2h_ieee(float float_value) {
+XlaF16ABIType ABSL_ATTRIBUTE_WEAK __gnu_f2h_ieee(float float_value) {
   AliasedFloatInt f = AliasedFloatInt::FromFloat(float_value);
 
   const AliasedFloatInt f32infty = AliasedFloatInt::FromUInt(255 << 23);
@@ -106,15 +106,22 @@ uint16_t ABSL_ATTRIBUTE_WEAK __gnu_f2h_ieee(float float_value) {
   }
 
   o |= static_cast<uint16_t>(sign >> 16);
-  return o;
+  // The output can be a float type, bitcast it from uint16_t.
+  auto ho = static_cast<uint16_t>(o);
+  XlaF16ABIType ret = 0;
+  std::memcpy(&ret, &ho, sizeof(ho));
+  return ret;
 }
 
 // Algorithm copied from Eigen.
-float ABSL_ATTRIBUTE_WEAK __gnu_h2f_ieee(uint16_t h) {
+float ABSL_ATTRIBUTE_WEAK __gnu_h2f_ieee(XlaF16ABIType hf) {
   const AliasedFloatInt magic = AliasedFloatInt::FromUInt(113 << 23);
   const unsigned int shifted_exp = 0x7c00 << 13;  // exponent mask after shift
   AliasedFloatInt o;
 
+  // The input can be a float type, bitcast it to uint16_t.
+  uint16_t h;
+  std::memcpy(&h, &hf, sizeof(h));
   o.set_uint((h & 0x7fff) << 13);                // exponent/mantissa bits
   unsigned int exp = shifted_exp & o.as_uint();  // just the exponent
   o.set_uint(o.as_uint() + ((127 - 15) << 23));  // exponent adjust
@@ -131,7 +138,7 @@ float ABSL_ATTRIBUTE_WEAK __gnu_h2f_ieee(uint16_t h) {
   return o.as_float();
 }
 
-uint16_t ABSL_ATTRIBUTE_WEAK __truncdfhf2(double d) {
+XlaF16ABIType ABSL_ATTRIBUTE_WEAK __truncdfhf2(double d) {
   // This does a double rounding step, but it's precise enough for our use
   // cases.
   return __gnu_f2h_ieee(static_cast<float>(d));

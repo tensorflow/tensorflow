@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/python/lib/core/py_func.h"
-
-#include <Python.h>
-
 // clang-format: off
 // Must be included first.
-#include "tensorflow/python/lib/core/numpy.h"
+#include "tensorflow/python/lib/core/py_func.h"
+
+#include "tensorflow/tsl/python/lib/core/numpy.h"
 // clang-format: on
+
+#include <Python.h>
 
 #include <array>
 
@@ -83,8 +83,8 @@ bool IsCPUDevice(const Device* d) {
   return d == nullptr || d->tensorflow_accelerator_device_info() == nullptr;
 }
 
-// Givens the 'call', prepares the token and inputs as a python tuple
-// that is appropriate for calling the trampoline.
+// Given the 'call', prepares the token and inputs as a python tuple that is
+// appropriate for calling the trampoline.
 Status MakeArgTuple(const PyCall* call, TFE_Context* ctx, PyObject** tuple) {
   int64_t n = call->ins.size();
   PyObject* lst = PyList_New(n);
@@ -119,7 +119,11 @@ Status MakeArgTuple(const PyCall* call, TFE_Context* ctx, PyObject** tuple) {
     PyList_SetItem(lst, i, arg);
   }
   *tuple = Py_BuildValue("(ssN)", call->token.c_str(), device_name, lst);
-  CHECK(*tuple);
+  if (*tuple == nullptr) {
+    return errors::Internal(
+        "Failed to create python tuple. Please make sure `token` is a "
+        "well-formed UTF-8 string.");
+  }
   return OkStatus();
 }
 
@@ -338,6 +342,8 @@ class PyFuncOp : public OpKernel {
       }
       call.eager_async = eager_async_;
     }
+
+    VLOG(1) << "PyFuncOp of token " << call.token << "is called.";
 
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       call.ins.push_back(ctx->input(i));

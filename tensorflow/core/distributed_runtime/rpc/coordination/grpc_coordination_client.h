@@ -16,17 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_COORDINATION_GRPC_COORDINATION_CLIENT_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_COORDINATION_GRPC_COORDINATION_CLIENT_H_
 
-#include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
+#include <memory>
+
+#include "tensorflow/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 
 namespace tensorflow {
-class CoordinationClient;
-class CoordinationClientCache;
-
-CoordinationClientCache* NewGrpcCoordinationClientCache(
-    std::shared_ptr<tensorflow::GrpcChannelCache> channel);
-
-CoordinationClient* NewGrpcCoordinationClient(
-    std::shared_ptr<::grpc::Channel> channel);
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::NewGrpcCoordinationClient;
+using tsl::NewGrpcCoordinationClientCache;
+// NOLINTEND(misc-unused-using-decls)
 
 }  // namespace tensorflow
 

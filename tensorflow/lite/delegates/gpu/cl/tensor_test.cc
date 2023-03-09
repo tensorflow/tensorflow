@@ -42,30 +42,32 @@ absl::Status TensorBHWCTest(const BHWC& shape,
     const double val = static_cast<double>(i) /
                        static_cast<double>(tensor_cpu.data.size() - 1);
     double transformed_val = sin(val * 2.0 * M_PI) * 256.0;
-    if (descriptor.data_type == DataType::INT16 ||
-        descriptor.data_type == DataType::UINT16) {
+    if (descriptor.GetDataType() == DataType::INT16 ||
+        descriptor.GetDataType() == DataType::UINT16) {
       transformed_val *= 256.0;
     }
-    if (descriptor.data_type == DataType::INT32 ||
-        descriptor.data_type == DataType::UINT32) {
+    if (descriptor.GetDataType() == DataType::INT32 ||
+        descriptor.GetDataType() == DataType::UINT32) {
       transformed_val *= 256.0 * 256.0 * 256.0 * 256.0;
     }
-    if (descriptor.data_type == DataType::FLOAT16) {
+    if (descriptor.GetDataType() == DataType::FLOAT16) {
       transformed_val = half(transformed_val);
+    }
+    if (descriptor.GetDataType() == DataType::BOOL) {
+      transformed_val = i % 7;
     }
     tensor_cpu.data[i] = transformed_val;
   }
-  tflite::gpu::Tensor<BHWC, T> tensor_gpu;
-  tensor_gpu.shape = shape;
-  tensor_gpu.data.resize(shape.DimensionsProduct());
-  for (int i = 0; i < tensor_gpu.data.size(); ++i) {
-    tensor_gpu.data[i] = 0;
-  }
 
   Tensor tensor;
-  RETURN_IF_ERROR(CreateTensor(env->context(), shape, descriptor, &tensor));
-  RETURN_IF_ERROR(tensor.WriteData(env->queue(), tensor_cpu));
-  RETURN_IF_ERROR(tensor.ReadData(env->queue(), &tensor_gpu));
+  TensorDescriptor descriptor_with_data = descriptor;
+  descriptor_with_data.UploadData(tensor_cpu);
+  RETURN_IF_ERROR(
+      tensor.CreateFromDescriptor(descriptor_with_data, &env->context()));
+  TensorDescriptor output_descriptor;
+  RETURN_IF_ERROR(tensor.ToDescriptor(&output_descriptor, env->queue()));
+  tflite::gpu::Tensor<BHWC, T> tensor_gpu;
+  output_descriptor.DownloadData(&tensor_gpu);
 
   for (int i = 0; i < tensor_gpu.data.size(); ++i) {
     if (tensor_gpu.data[i] != tensor_cpu.data[i]) {
@@ -74,25 +76,6 @@ absl::Status TensorBHWCTest(const BHWC& shape,
   }
   return absl::OkStatus();
 }
-
-template absl::Status TensorBHWCTest<DataType::FLOAT32>(
-    const BHWC& shape, const TensorDescriptor& descriptor, Environment* env);
-template absl::Status TensorBHWCTest<DataType::INT32>(
-    const BHWC& shape, const TensorDescriptor& descriptor, Environment* env);
-
-template absl::Status TensorBHWCTest<DataType::INT16>(
-    const BHWC& shape, const TensorDescriptor& descriptor, Environment* env);
-
-template absl::Status TensorBHWCTest<DataType::INT8>(
-    const BHWC& shape, const TensorDescriptor& descriptor, Environment* env);
-template absl::Status TensorBHWCTest<DataType::UINT32>(
-    const BHWC& shape, const TensorDescriptor& descriptor, Environment* env);
-
-template absl::Status TensorBHWCTest<DataType::UINT16>(
-    const BHWC& shape, const TensorDescriptor& descriptor, Environment* env);
-
-template absl::Status TensorBHWCTest<DataType::UINT8>(
-    const BHWC& shape, const TensorDescriptor& descriptor, Environment* env);
 
 template <DataType T>
 absl::Status TensorBHWDCTest(const BHWDC& shape,
@@ -106,30 +89,32 @@ absl::Status TensorBHWDCTest(const BHWDC& shape,
     const double val = static_cast<double>(i) /
                        static_cast<double>(tensor_cpu.data.size() - 1);
     double transformed_val = sin(val * 2.0 * M_PI) * 256.0;
-    if (descriptor.data_type == DataType::INT16 ||
-        descriptor.data_type == DataType::UINT16) {
+    if (descriptor.GetDataType() == DataType::INT16 ||
+        descriptor.GetDataType() == DataType::UINT16) {
       transformed_val *= 256.0;
     }
-    if (descriptor.data_type == DataType::INT32 ||
-        descriptor.data_type == DataType::UINT32) {
+    if (descriptor.GetDataType() == DataType::INT32 ||
+        descriptor.GetDataType() == DataType::UINT32) {
       transformed_val *= 256.0 * 256.0 * 256.0 * 256.0;
     }
-    if (descriptor.data_type == DataType::FLOAT16) {
+    if (descriptor.GetDataType() == DataType::FLOAT16) {
       transformed_val = half(transformed_val);
+    }
+    if (descriptor.GetDataType() == DataType::BOOL) {
+      transformed_val = i % 7;
     }
     tensor_cpu.data[i] = transformed_val;
   }
-  tflite::gpu::Tensor<BHWDC, T> tensor_gpu;
-  tensor_gpu.shape = shape;
-  tensor_gpu.data.resize(shape.DimensionsProduct());
-  for (int i = 0; i < tensor_gpu.data.size(); ++i) {
-    tensor_gpu.data[i] = 0;
-  }
 
   Tensor tensor;
-  RETURN_IF_ERROR(CreateTensor(env->context(), shape, descriptor, &tensor));
-  RETURN_IF_ERROR(tensor.WriteData(env->queue(), tensor_cpu));
-  RETURN_IF_ERROR(tensor.ReadData(env->queue(), &tensor_gpu));
+  TensorDescriptor descriptor_with_data = descriptor;
+  descriptor_with_data.UploadData(tensor_cpu);
+  RETURN_IF_ERROR(
+      tensor.CreateFromDescriptor(descriptor_with_data, &env->context()));
+  TensorDescriptor output_descriptor;
+  RETURN_IF_ERROR(tensor.ToDescriptor(&output_descriptor, env->queue()));
+  tflite::gpu::Tensor<BHWDC, T> tensor_gpu;
+  output_descriptor.DownloadData(&tensor_gpu);
 
   for (int i = 0; i < tensor_gpu.data.size(); ++i) {
     if (tensor_gpu.data[i] != tensor_cpu.data[i]) {
@@ -138,25 +123,6 @@ absl::Status TensorBHWDCTest(const BHWDC& shape,
   }
   return absl::OkStatus();
 }
-
-template absl::Status TensorBHWDCTest<DataType::FLOAT32>(
-    const BHWDC& shape, const TensorDescriptor& descriptor, Environment* env);
-template absl::Status TensorBHWDCTest<DataType::INT32>(
-    const BHWDC& shape, const TensorDescriptor& descriptor, Environment* env);
-
-template absl::Status TensorBHWDCTest<DataType::INT16>(
-    const BHWDC& shape, const TensorDescriptor& descriptor, Environment* env);
-
-template absl::Status TensorBHWDCTest<DataType::INT8>(
-    const BHWDC& shape, const TensorDescriptor& descriptor, Environment* env);
-template absl::Status TensorBHWDCTest<DataType::UINT32>(
-    const BHWDC& shape, const TensorDescriptor& descriptor, Environment* env);
-
-template absl::Status TensorBHWDCTest<DataType::UINT16>(
-    const BHWDC& shape, const TensorDescriptor& descriptor, Environment* env);
-
-template absl::Status TensorBHWDCTest<DataType::UINT8>(
-    const BHWDC& shape, const TensorDescriptor& descriptor, Environment* env);
 
 template <DataType T>
 absl::Status TensorTests(DataType data_type, TensorStorageType storage_type,
@@ -197,21 +163,6 @@ absl::Status TensorTests(DataType data_type, TensorStorageType storage_type,
       BHWDC(13, 7, 3, 4, 3), {data_type, storage_type, Layout::BHWDC}, env));
   return absl::OkStatus();
 }
-
-template absl::Status TensorTests<DataType::FLOAT32>(
-    DataType data_type, TensorStorageType storage_type, Environment* env);
-template absl::Status TensorTests<DataType::INT32>(
-    DataType data_type, TensorStorageType storage_type, Environment* env);
-template absl::Status TensorTests<DataType::INT16>(
-    DataType data_type, TensorStorageType storage_type, Environment* env);
-template absl::Status TensorTests<DataType::INT8>(
-    DataType data_type, TensorStorageType storage_type, Environment* env);
-template absl::Status TensorTests<DataType::UINT32>(
-    DataType data_type, TensorStorageType storage_type, Environment* env);
-template absl::Status TensorTests<DataType::UINT16>(
-    DataType data_type, TensorStorageType storage_type, Environment* env);
-template absl::Status TensorTests<DataType::UINT8>(
-    DataType data_type, TensorStorageType storage_type, Environment* env);
 
 TEST_F(OpenCLTest, BufferF32) {
   ASSERT_OK(TensorTests<DataType::FLOAT32>(DataType::FLOAT32,

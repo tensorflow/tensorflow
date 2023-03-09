@@ -158,8 +158,18 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
         // Pass min, max from input to output.
         const Tensor& min_input_t = MklGetInput(context, 1);
         const Tensor& max_input_t = MklGetInput(context, 2);
-        const float min_input = min_input_t.flat<float>()(0);
-        const float max_input = max_input_t.flat<float>()(0);
+        OP_REQUIRES(
+            context, TensorShapeUtils::IsScalar(min_input_t.shape()),
+            errors::InvalidArgument(
+                "min_input shape must be rank 0 but is rank ",
+                min_input_t.dims(), ", received shape: ", min_input_t.shape()));
+        OP_REQUIRES(
+            context, TensorShapeUtils::IsScalar(max_input_t.shape()),
+            errors::InvalidArgument(
+                "max_input shape must be rank 0 but is rank ",
+                max_input_t.dims(), ", received shape: ", max_input_t.shape()));
+        const float min_input = min_input_t.scalar<float>()();
+        const float max_input = max_input_t.scalar<float>()();
 
         Tensor* output_min = nullptr;
         Tensor* output_max = nullptr;
@@ -170,8 +180,8 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
                                   output_min_mkl_shape, this->native_format_);
         AllocateOutputSetMklShape(context, 2, &output_max, {},
                                   output_max_mkl_shape, this->native_format_);
-        output_min->flat<float>()(0) = min_input;
-        output_max->flat<float>()(0) = max_input;
+        output_min->scalar<float>()() = min_input;
+        output_max->scalar<float>()() = max_input;
       } else {
         MklDnnData<uint8> dnn_data_wksp(&cpu_engine_);
         AllocateWorkspaceTensor(context, *(pooling_fwd->GetPoolingFwdPd()),
@@ -249,6 +259,19 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       MklPoolParameters pool_params;
       TensorShape orig_input_shape = orig_input_tensor.shape();
 
+      if (orig_input_tensor.NumElements() == 0 ||
+          grad_tensor.NumElements() == 0) {
+        Tensor* output = nullptr;
+        TensorShape output_shape;
+        auto shape_vec = orig_input_tensor.vec<int32>();
+        for (int64_t i = 0; i < orig_input_tensor.NumElements(); ++i) {
+          OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
+        }
+        OP_REQUIRES_OK(context,
+                       context->allocate_output(0, output_shape, &output));
+        output->flat<T>().setZero();
+        return;
+      }
       bool is_pool2d = (this->ksize_.size() == 4);
       this->InitMklPoolParameters(context, &pool_params, orig_input_mkl_shape,
                                   orig_input_shape);

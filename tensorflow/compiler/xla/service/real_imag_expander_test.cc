@@ -18,9 +18,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -73,7 +75,7 @@ TEST_F(RealImagExpanderTest, ImagWithNonComplexInput) {
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Broadcast()));
 
-  std::cerr << module->ToString();
+  XLA_VLOG_LINES(1, module->ToString());
 }
 
 TEST_F(RealImagExpanderTest, RealImagWithComplexInput) {
@@ -94,6 +96,40 @@ TEST_F(RealImagExpanderTest, RealImagWithComplexInput) {
 
   // If inputs are complex, the pass should not change anything.
   EXPECT_FALSE(result);
+}
+
+TEST_F(RealImagExpanderTest, MultipleImagWithNonComplexInput) {
+  const char* kModuleStr = R"(
+    HloModule imag_float
+    ENTRY main {
+      input = f32[4,2,8] parameter(0)
+      imag1 = imag(input)
+      ROOT imag2 = imag(imag1)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  // Replace imag1 with an identical instruction, changing the iteration order
+  // of computation->instructions(). Previously OpExpanderPass could crash if
+  // the instructions were not in post-order, and this tests that the crash does
+  // not reoccur.
+  auto param = module->entry_computation()->parameter_instruction(0);
+  HloInstruction* imag1 =
+      module->entry_computation()->root_instruction()->mutable_operand(0);
+  TF_ASSERT_OK_AND_ASSIGN(HloInstruction * new_imag,
+                          MakeUnaryHlo(HloOpcode::kImag, param));
+  TF_ASSERT_OK(
+      module->entry_computation()->ReplaceInstruction(imag1, new_imag));
+
+  RealImagExpander expander;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&expander, module.get()));
+  EXPECT_TRUE(result);
+
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Broadcast()));
+
+  XLA_VLOG_LINES(1, module->ToString());
 }
 
 }  // namespace

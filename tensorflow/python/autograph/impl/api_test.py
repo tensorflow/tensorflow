@@ -21,6 +21,7 @@ import functools
 import gc
 import imp
 import inspect
+import io
 import os
 import re
 import sys
@@ -28,7 +29,6 @@ import textwrap
 import types
 
 import numpy as np
-import six
 
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
@@ -41,7 +41,6 @@ from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import _errors_test_helper
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors as tf_errors
@@ -59,7 +58,7 @@ global_n = 2
 DEFAULT_RECURSIVE = converter.ConversionOptions(recursive=True)
 
 
-class TestResource(object):
+class TestResource:
 
   def __init__(self):
     self.x = 3
@@ -70,7 +69,7 @@ class ApiTest(test.TestCase):
   @contextlib.contextmanager
   def assertPrints(self, expected, not_expected):
     try:
-      out_capturer = six.StringIO()
+      out_capturer = io.StringIO()
       sys.stdout = out_capturer
       yield
       self.assertIn(expected, out_capturer.getvalue())
@@ -136,7 +135,7 @@ class ApiTest(test.TestCase):
   @test_util.run_deprecated_v1
   def test_decorator_recursive(self):
 
-    class TestClass(object):
+    class TestClass:
 
       def called_member(self, a):
         if a < 0:
@@ -158,7 +157,7 @@ class ApiTest(test.TestCase):
   @test_util.run_deprecated_v1
   def test_decorator_not_recursive(self):
 
-    class TestClass(object):
+    class TestClass:
 
       def called_member(self, a):
         return math_ops.negative(a)
@@ -178,7 +177,7 @@ class ApiTest(test.TestCase):
   @test_util.run_deprecated_v1
   def test_convert_then_do_not_convert(self):
 
-    class TestClass(object):
+    class TestClass:
 
       @api.do_not_convert
       def called_member(self, a):
@@ -199,7 +198,7 @@ class ApiTest(test.TestCase):
   @test_util.run_deprecated_v1
   def test_decorator_calls_decorated(self):
 
-    class TestClass(object):
+    class TestClass:
 
       @api.convert()
       def called_member(self, a):
@@ -221,7 +220,7 @@ class ApiTest(test.TestCase):
 
   def test_decorator_preserves_argspec(self):
 
-    class TestClass(object):
+    class TestClass:
 
       def test_method(self, a):
         if a < 0:
@@ -237,7 +236,7 @@ class ApiTest(test.TestCase):
 
   def test_do_not_convert_argspec(self):
 
-    class TestClass(object):
+    class TestClass:
 
       def test_method(self, x, y):
         z = x + y
@@ -254,7 +253,7 @@ class ApiTest(test.TestCase):
 
   def test_do_not_convert_callable_object(self):
 
-    class TestClass(object):
+    class TestClass:
 
       def __call__(self):
         return 1
@@ -265,7 +264,7 @@ class ApiTest(test.TestCase):
   @test_util.run_deprecated_v1
   def test_convert_call_site_decorator(self):
 
-    class TestClass(object):
+    class TestClass:
 
       def called_member(self, a):
         if a < 0:
@@ -358,7 +357,7 @@ class ApiTest(test.TestCase):
 
   def test_converted_call_method(self):
 
-    class TestClass(object):
+    class TestClass:
 
       def __init__(self, x):
         self.x = x
@@ -374,7 +373,7 @@ class ApiTest(test.TestCase):
 
   def test_converted_call_synthetic_method(self):
 
-    class TestClass(object):
+    class TestClass:
 
       def __init__(self, x):
         self.x = x
@@ -392,7 +391,7 @@ class ApiTest(test.TestCase):
 
   def test_converted_call_method_wrapper(self):
 
-    class TestClass(object):
+    class TestClass:
 
       def foo(self):
         pass
@@ -406,7 +405,7 @@ class ApiTest(test.TestCase):
 
   def test_converted_call_method_as_object_attribute(self):
 
-    class AnotherClass(object):
+    class AnotherClass:
 
       def __init__(self):
         self.another_class_attr = constant_op.constant(1)
@@ -416,7 +415,7 @@ class ApiTest(test.TestCase):
           return self.another_class_attr + 1
         return self.another_class_attr + 10
 
-    class TestClass(object):
+    class TestClass:
 
       def __init__(self, another_obj_method):
         self.another_obj_method = another_obj_method
@@ -430,7 +429,7 @@ class ApiTest(test.TestCase):
 
   def test_converted_call_method_converts_recursively(self):
 
-    class TestClass(object):
+    class TestClass:
 
       def __init__(self, x):
         self.x = x
@@ -449,7 +448,7 @@ class ApiTest(test.TestCase):
 
   def test_converted_call_method_by_class(self):
 
-    class TestClass(object):
+    class TestClass:
 
       def __init__(self, x):
         self.x = x
@@ -466,7 +465,7 @@ class ApiTest(test.TestCase):
 
   def test_converted_call_callable_object(self):
 
-    class TestClass(object):
+    class TestClass:
 
       def __init__(self, x):
         self.x = x
@@ -507,8 +506,7 @@ class ApiTest(test.TestCase):
 
     test_self = self
 
-    @six.add_metaclass(abc.ABCMeta)
-    class TestBase(object):
+    class TestBase(metaclass=abc.ABCMeta):
 
       @abc.abstractmethod
       def __call__(self):
@@ -531,7 +529,7 @@ class ApiTest(test.TestCase):
 
     test_self = self
 
-    class TestClass(object):
+    class TestClass:
 
       def __init__(self):
         test_self.assertFalse(converter_testing.is_inside_generated_code())
@@ -541,7 +539,7 @@ class ApiTest(test.TestCase):
 
   def test_converted_call_mangled_properties(self):
 
-    class TestClass(object):
+    class TestClass:
 
       def __init__(self):
         self.__private = constant_op.constant(-1)
@@ -649,7 +647,7 @@ class ApiTest(test.TestCase):
 
   def test_converted_call_allowlisted_method(self):
 
-    class TestClass(object):
+    class TestClass:
 
       def method(self):
         return converter_testing.is_inside_generated_code()
@@ -662,7 +660,7 @@ class ApiTest(test.TestCase):
 
   def test_converted_call_allowlisted_method_via_owner(self):
 
-    class TestClass(object):
+    class TestClass:
 
       def method(self):
         return converter_testing.is_inside_generated_code()
@@ -776,16 +774,16 @@ class ApiTest(test.TestCase):
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual(True, self.evaluate(x))
 
-  def test_converted_call_defun_object_method(self):
+  def test_converted_call_function_object_method(self):
 
     # pylint:disable=method-hidden
-    class TestClass(object):
+    class TestClass:
 
       def method(self):
         return 1
 
       def prepare(self):
-        self.method = function.defun(self.method)
+        self.method = def_function.function(self.method)
 
     # pylint:enable=method-hidden
 
@@ -802,7 +800,7 @@ class ApiTest(test.TestCase):
 
   def test_converted_call_native_binding_errorneous(self):
 
-    class FaultyBinding(object):
+    class FaultyBinding:
 
       def __array__(self):
         raise ValueError('fault')
@@ -895,7 +893,7 @@ class ApiTest(test.TestCase):
 
   def test_converted_call_caching_of_allowlisted_bound_methods(self):
 
-    class TestClass(object):
+    class TestClass:
 
       def __init__(self):
         self.__private = constant_op.constant(-1)
@@ -1142,7 +1140,7 @@ class ApiTest(test.TestCase):
 
   def test_tf_convert_allowlisted_method(self):
 
-    class TestClass(object):
+    class TestClass:
 
       def method(self):
         return converter_testing.is_inside_generated_code()
@@ -1196,7 +1194,7 @@ class ApiTest(test.TestCase):
 
       return tf_decorator.make_decorator(f, wrapper)
 
-    class TestClass(object):
+    class TestClass:
 
       @wrap
       def method(self):
@@ -1215,7 +1213,7 @@ class ApiTest(test.TestCase):
   def test_super_with_one_arg(self):
     test_case_self = self
 
-    class TestBase(object):
+    class TestBase:
 
       def plus_three(self, x):
         return x + 3
@@ -1237,7 +1235,7 @@ class ApiTest(test.TestCase):
   def test_super_with_two_args(self):
     test_case_self = self
 
-    class TestBase(object):
+    class TestBase:
 
       def plus_three(self, x):
         return x + 3

@@ -51,32 +51,6 @@ void TensorList::Encode(VariantTensorData* data) const {
   data->set_metadata(metadata);
 }
 
-static Status TensorListDeviceCopy(
-    const TensorList& from, TensorList* to,
-    const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
-  to->element_shape = from.element_shape;
-  to->element_dtype = from.element_dtype;
-  to->max_num_elements = from.max_num_elements;
-  to->tensors().reserve(from.tensors().size());
-  for (const Tensor& t : from.tensors()) {
-    to->tensors().emplace_back(t.dtype());
-    if (t.dtype() != DT_INVALID) {
-      TF_RETURN_IF_ERROR(copy(t, &to->tensors().back()));
-    }
-  }
-  return OkStatus();
-}
-
-#define REGISTER_LIST_COPY(DIRECTION)                                         \
-  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(TensorList, DIRECTION, \
-                                                       TensorListDeviceCopy)
-
-REGISTER_LIST_COPY(VariantDeviceCopyDirection::HOST_TO_DEVICE);
-REGISTER_LIST_COPY(VariantDeviceCopyDirection::DEVICE_TO_HOST);
-REGISTER_LIST_COPY(VariantDeviceCopyDirection::DEVICE_TO_DEVICE);
-
-REGISTER_UNARY_VARIANT_DECODE_FUNCTION(TensorList, TensorList::kTypeName);
-
 bool TensorList::Decode(const VariantTensorData& data) {
   // TODO(srbs): Change the signature to Decode(VariantTensorData data) so
   // that we do not have to copy each tensor individually below. This would

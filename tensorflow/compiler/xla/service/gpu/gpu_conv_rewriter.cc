@@ -16,28 +16,32 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 
 #include <cstdlib>
+#include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
 
-namespace conv_matchers {
+namespace {
+using ConvolutionMatch = std::optional<
+    std::tuple<Window, ConvolutionDimensionNumbers, HloInstruction*>>;
 
 bool CanImplementAsGpuForwardConv(HloInstruction* conv) {
   const ConvolutionDimensionNumbers& dnums =
@@ -64,11 +68,8 @@ bool CanImplementAsGpuForwardConv(HloInstruction* conv) {
 
 // Try to match a backward filter pattern that contains "conv".
 // Precondition: "conv" is a kConvolution.
-std::tuple<bool, Window, ConvolutionDimensionNumbers, HloInstruction*>
-MatchBackwardFilter(HloInstruction* conv) {
+ConvolutionMatch MatchBackwardFilter(HloInstruction* conv) {
   VLOG(2) << "Trying to match convolution backward filter.";
-  const auto no_match_result =
-      std::make_tuple(false, Window(), ConvolutionDimensionNumbers(), nullptr);
 
   if (conv->feature_group_count() > 1) {
     VLOG(1) << conv->ToString()
@@ -77,7 +78,7 @@ MatchBackwardFilter(HloInstruction* conv) {
                "backward filter "
                "convolutions cannot have feature groups greater than 1 at this "
                "point. No need to fold to backward filter.";
-    return no_match_result;
+    return std::nullopt;
   }
 
   // Step 1: match the instruction pattern without considering the paddings and
@@ -113,21 +114,21 @@ MatchBackwardFilter(HloInstruction* conv) {
       VLOG(1) << "Forward convolution's window "
               << conv->window().ShortDebugString()
               << " should have stride of 1.";
-      return no_match_result;
+      return std::nullopt;
     }
     if (window_dim.base_dilation() != 1) {
       VLOG(1) << "Forward convolution's window "
               << conv->window().ShortDebugString()
               << " should have no base (LHS) dilation.";
-      return no_match_result;
+      return std::nullopt;
     }
     if (window_dim.padding_low() < 0) {
       VLOG(1) << "Padding low should be non-negative.";
-      return no_match_result;
+      return std::nullopt;
     }
     if (window_dim.window_reversal()) {
       VLOG(1) << "Window reversal field not supported";
-      return no_match_result;
+      return std::nullopt;
     }
     // Padding high will be checked in Step 3.
   }
@@ -152,7 +153,7 @@ MatchBackwardFilter(HloInstruction* conv) {
     VLOG(1) << conv->ToString()
             << " is a regular forward convolution. No need "
                "to fold it to a backward filter convolution....";
-    return no_match_result;
+    return std::nullopt;
   }
 
   // Step 3: fuse the matched HLOs into a backward convolution instruction.
@@ -218,7 +219,7 @@ MatchBackwardFilter(HloInstruction* conv) {
              "Falling back to "
              "unfused convolution for instruction: "
           << conv->ToString();
-      return no_match_result;
+      return std::nullopt;
     }
   }
 
@@ -248,16 +249,13 @@ MatchBackwardFilter(HloInstruction* conv) {
   }
 
   HloInstruction* lhs = conv->mutable_operand(0);
-  return std::make_tuple(true, backward_conv_window, backward_conv_dnums, lhs);
+  return std::make_tuple(backward_conv_window, backward_conv_dnums, lhs);
 }
 
 // Try to match a backward input pattern that contains "conv".
 // Precondition: "conv" is a kConvolution.
-std::tuple<bool, Window, ConvolutionDimensionNumbers, HloInstruction*>
-MatchBackwardInput(HloInstruction* conv) {
+ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
   VLOG(2) << "Trying to match convolution backward input.";
-  const auto no_match_result =
-      std::make_tuple(false, Window(), ConvolutionDimensionNumbers(), nullptr);
 
   // TODO(timshen) Theoretically cuDNN supports grouped convolutions also
   // for the backward input convolution, but based on the cudnn's current state
@@ -267,7 +265,7 @@ MatchBackwardInput(HloInstruction* conv) {
   // Note that we already have the necessary code down below, the only thing to
   // enable it is to remove the following early return.
   if (conv->feature_group_count() > 1) {
-    return no_match_result;
+    return std::nullopt;
   }
 
   // Match instruction pattern.
@@ -288,7 +286,7 @@ MatchBackwardInput(HloInstruction* conv) {
   // convolution and thunk it to forward conv
   if (conv->feature_group_count() > 1 &&
       kernel_out_features == conv->feature_group_count()) {
-    return no_match_result;
+    return std::nullopt;
   }
 
   // We pattern-match to a backwards input conv if:
@@ -320,7 +318,7 @@ MatchBackwardInput(HloInstruction* conv) {
     VLOG(1) << "Can't match to backwards convolution. Either filter is not "
                "kReverse, or it's not a base-dilated conv with a 1x1 or "
                "constant filter.";
-    return no_match_result;
+    return std::nullopt;
   }
 
   // Match padding and dilation of the forward convolution.
@@ -329,17 +327,17 @@ MatchBackwardInput(HloInstruction* conv) {
       VLOG(1) << "Forward convolution's window "
               << conv->window().ShortDebugString()
               << " should have stride of 1.";
-      return no_match_result;
+      return std::nullopt;
     }
     if (window_dim.window_dilation() != 1) {
       VLOG(1) << "Forward convolution's window "
               << conv->window().ShortDebugString()
               << " should have no window dilation.";
-      return no_match_result;
+      return std::nullopt;
     }
     if (window_dim.window_reversal()) {
       VLOG(1) << "Window reversal field not supported";
-      return no_match_result;
+      return std::nullopt;
     }
   }
 
@@ -372,7 +370,7 @@ MatchBackwardInput(HloInstruction* conv) {
           << backward_padding_low
           << "), which isn't supported by GpuConvPaddingLegalization "
              "for now (b/32744257).";
-      return no_match_result;
+      return std::nullopt;
     }
     dim->set_padding_low(backward_padding_low);
 
@@ -442,7 +440,7 @@ MatchBackwardInput(HloInstruction* conv) {
                       "supported by GpuConvPaddingLegalization (b/32744257). "
                       "Falling back to unfused convolution for instruction: "
                    << conv->ToString();
-      return no_match_result;
+      return std::nullopt;
     }
   }
 
@@ -488,7 +486,7 @@ MatchBackwardInput(HloInstruction* conv) {
     rhs = rhs->mutable_operand(0);
   }
   if (conv->feature_group_count() == 1) {
-    return std::make_tuple(true, new_window, dnums, rhs);
+    return std::make_tuple(new_window, dnums, rhs);
   }
 
   // Handle grouped convolutions. Because we swapped the input feature dimension
@@ -504,7 +502,7 @@ MatchBackwardInput(HloInstruction* conv) {
   // The following code assumes that input_feature_dimension and
   // output_feature_dimension are adjacent.
   if (std::abs(input_feature_dimension - output_feature_dimension) != 1) {
-    return no_match_result;
+    return std::nullopt;
   }
 
   int64_t input_features = rhs->shape().dimensions(input_feature_dimension);
@@ -550,10 +548,10 @@ MatchBackwardInput(HloInstruction* conv) {
   new_shape.set_dimensions(output_feature_dimension,
                            output_features * num_groups);
   rhs = c->AddInstruction(HloInstruction::CreateReshape(new_shape, rhs));
-  return std::make_tuple(true, new_window, dnums, rhs);
+  return std::make_tuple(new_window, dnums, rhs);
 }
 
-}  // namespace conv_matchers
+}  // namespace
 
 namespace {
 
@@ -663,29 +661,22 @@ CudnnConvBackendConfig GetDefaultBackendConfig() {
 // Helper function to create a custom_call instruction to replace the given
 // conv instruction
 static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
-  bool match;
-  Window window;
-  ConvolutionDimensionNumbers dnums;
-  HloInstruction* rhs;
-  HloInstruction* lhs;
-
-  std::tie(match, window, dnums, rhs) = conv_matchers::MatchBackwardInput(conv);
-  if (match) {
+  if (ConvolutionMatch m = MatchBackwardInput(conv)) {
+    auto& [window, dnums, rhs] = *m;
     return CreateGpuConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
                          conv->mutable_operand(0), rhs, window, dnums,
                          conv->feature_group_count(), conv->metadata());
   }
 
-  std::tie(match, window, dnums, lhs) =
-      conv_matchers::MatchBackwardFilter(conv);
-  if (match) {
+  if (ConvolutionMatch m = MatchBackwardFilter(conv)) {
+    auto& [window, dnums, lhs] = *m;
     return CreateGpuConv(kCudnnConvBackwardFilterCallTarget, conv->shape(), lhs,
                          conv->mutable_operand(1), window, dnums,
                          conv->batch_group_count(), conv->metadata());
   }
 
   // If all else fails, try a forward convolution.
-  if (conv_matchers::CanImplementAsGpuForwardConv(conv)) {
+  if (CanImplementAsGpuForwardConv(conv)) {
     if (conv->batch_group_count() > 1) {
       conv = ConvertBatchGroupedToFeatureGroupedConvolution(conv);
     }
@@ -743,15 +734,23 @@ StatusOr<bool> RunOnComputation(HloComputation* computation) {
 }
 }  // namespace
 
-StatusOr<bool> GpuConvRewriter::Run(HloModule* module) {
+StatusOr<bool> GpuConvRewriter::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(2, "GpuConvRewriter::Run(), before:\n" + module->ToString());
   bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }
   XLA_VLOG_LINES(2, "GpuConvRewriter::Run(), after:\n" + module->ToString());
   return changed;
+}
+
+/*static*/ bool GpuConvRewriter::ConvIsLowerable(HloInstruction* conv) {
+  return CanImplementAsGpuForwardConv(conv) || MatchBackwardFilter(conv) ||
+         MatchBackwardInput(conv);
 }
 
 }  // namespace gpu

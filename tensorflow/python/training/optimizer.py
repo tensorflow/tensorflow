@@ -18,8 +18,6 @@
 
 import abc
 
-import six
-
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
@@ -81,8 +79,7 @@ def _deduplicate_indexed_slices(values, indices):
 def _var_key(var):
   """Returns slot key for `var`."""
   # pylint: disable=protected-access
-  if hasattr(var, "_distributed_container"):
-    var = var._distributed_container()
+  var = distribute_utils.value_container(var)
   if (distribute_utils.is_distributed_variable(var) and
       not ops.executing_eagerly_outside_functions()):
     return (var.graph, var._shared_name)
@@ -92,8 +89,7 @@ def _var_key(var):
   # pylint: enable=protected-access
 
 
-@six.add_metaclass(abc.ABCMeta)
-class _OptimizableVariable(object):
+class _OptimizableVariable(metaclass=abc.ABCMeta):
   """Interface for abstracting over variables in the optimizers."""
 
   @abc.abstractmethod
@@ -623,7 +619,13 @@ class Optimizer(
         ops.get_default_graph()._is_loss_scaled_by_optimizer = True  # pylint: disable=protected-access
     return loss_value
 
-  def apply_gradients(self, grads_and_vars, global_step=None, name=None):
+  def apply_gradients(
+      self,
+      grads_and_vars,
+      global_step=None,
+      name=None,
+      skip_gradients_aggregation=False,
+  ):
     """Apply gradients to variables.
 
     This is the second part of `minimize()`. It returns an `Operation` that
@@ -641,10 +643,13 @@ class Optimizer(
     Args:
       grads_and_vars: List of (gradient, variable) pairs as returned by
         `compute_gradients()`.
-      global_step: Optional `Variable` to increment by one after the
-        variables have been updated.
-      name: Optional name for the returned operation.  Default to the
-        name passed to the `Optimizer` constructor.
+      global_step: Optional `Variable` to increment by one after the variables
+        have been updated.
+      name: Optional name for the returned operation.  Default to the name
+        passed to the `Optimizer` constructor.
+      skip_gradients_aggregation: If true, gradients aggregation will not be
+        performed inside optimizer. Usually this arg is set to True when you
+        write custom code aggregating gradients outside the optimizer.
 
     Returns:
       An `Operation` that applies the specified gradients. If `global_step`
@@ -662,7 +667,7 @@ class Optimizer(
     # TODO(isaprykin): Get rid of `has_strategy()` check by
     # always calling _distributed_apply(), using the default distribution
     # as needed.
-    if distribute_ctx.has_strategy():
+    if distribute_ctx.has_strategy() and not skip_gradients_aggregation:
       # Handle DistributionStrategy case.
       if distribute_ctx.in_cross_replica_context():
         raise RuntimeError("Use `_distributed_apply()` instead of "
@@ -681,7 +686,7 @@ class Optimizer(
       if g is not None:
         try:
           # Convert the grad to Tensor or IndexedSlices if necessary.
-          g = ops.convert_to_tensor_or_indexed_slices(g)
+          g = indexed_slices.convert_to_tensor_or_indexed_slices(g)
         except TypeError:
           raise TypeError(
               "Gradient must be convertible to a Tensor"
@@ -783,7 +788,7 @@ class Optimizer(
 
       try:
         # Convert the grad to Tensor or IndexedSlices if necessary.
-        g = ops.convert_to_tensor_or_indexed_slices(g)
+        g = indexed_slices.convert_to_tensor_or_indexed_slices(g)
       except TypeError:
         raise TypeError("Gradient must be convertible to a Tensor"
                         " or IndexedSlices, or None: %s" % g)
@@ -945,15 +950,21 @@ class Optimizer(
     for (name, _), variable_object in sorted(self._non_slot_dict.items(),
                                              # Avoid comparing graphs
                                              key=lambda item: item[0][0]):
-      if variable_object._graph_key == current_graph_key:  # pylint: disable=protected-access
+      # Skip checking for graph key for eager mode since there's only one graph.
+      # This is necessary because there are cases where _trackable_children() is
+      # called in a differenr thread from the main thread (e.g., async
+      # checkpoint) and hence the default graph key would be different.
+      if (context.executing_eagerly()
+          or variable_object._graph_key == current_graph_key):  # pylint: disable=protected-access
         current_graph_non_slot_variables[name] = variable_object
     current_graph_non_slot_variables.update(
-        super(Optimizer, self)._trackable_children(save_type, **kwargs))
+        super()._trackable_children(save_type, **kwargs)
+    )
     return current_graph_non_slot_variables
 
   def _lookup_dependency(self, name):
     """From Trackable. Find a non-slot variable in the current graph."""
-    unconditional = super(Optimizer, self)._lookup_dependency(name)
+    unconditional = super()._lookup_dependency(name)
     if unconditional is not None:
       return unconditional
     graph = None if context.executing_eagerly() else ops.get_default_graph()
@@ -961,7 +972,7 @@ class Optimizer(
 
   def _get_non_slot_variable(self, name, graph=None):
     non_slot = self._non_slot_dict.get((name, graph), None)
-    if hasattr(non_slot, "_distributed_container"):
+    if distribute_utils.value_container(non_slot) is not non_slot:
       # This is a mirrored non-slot.  In order to enable code like `_finish`
       # to assign to a non-slot, return the current context replica.
       return non_slot.get()
@@ -1202,7 +1213,8 @@ class Optimizer(
     """
     named_slots = self._slot_dict(slot_name)
     if _var_key(var) not in named_slots:
-      new_slot_variable = slot_creator.create_slot(var, val, op_name)
+      new_slot_variable = slot_creator.create_slot(
+          var, val, op_name, copy_xla_sharding=True)
       self._restore_slot_variable(
           slot_name=slot_name, variable=var,
           slot_variable=new_slot_variable)
@@ -1228,7 +1240,7 @@ class Optimizer(
     named_slots = self._slot_dict(slot_name)
     if _var_key(var) not in named_slots:
       new_slot_variable = slot_creator.create_slot_with_initializer(
-          var, initializer, shape, dtype, op_name)
+          var, initializer, shape, dtype, op_name, copy_xla_sharding=True)
       self._restore_slot_variable(
           slot_name=slot_name, variable=var,
           slot_variable=new_slot_variable)

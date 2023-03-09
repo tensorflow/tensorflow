@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <map>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -27,22 +29,20 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/device_utils.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORMOVECOMPILATIONTOHOST
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // Prefix for send/recv key used for transferring compilation program key.
 constexpr char kSendRecvKeyPrefix[] = "compilation_send_recv_key_";
@@ -90,7 +90,7 @@ mlir::LogicalResult CreateSendRecvOpsToTransferProgramKey(
     mlir::tf_device::LaunchOp compile_op_launch, int* num_send_recv,
     mlir::Value* program_key_output) {
   mlir::OpBuilder builder(module.getContext());
-  mlir::Value compilation_key = *compile_op.program().begin();
+  mlir::Value compilation_key = *compile_op.getProgram().begin();
   absl::Span<const std::string> local_devices = mesh.local_devices();
 
   // Create tensor name mapping for each send/recv pair.
@@ -110,9 +110,9 @@ mlir::LogicalResult CreateSendRecvOpsToTransferProgramKey(
     const std::string& tensor_name = device_key_map[i];
     auto send = builder.create<mlir::TF::_HostSendOp>(
         compile_op->getLoc(), compilation_key, tensor_name,
-        compile_op_launch.device(),
+        compile_op_launch.getDevice(),
         /*send_device_incarnation=*/0, local_devices[i]);
-    send->setAttr("device", compile_op_launch.deviceAttr());
+    send->setAttr("device", compile_op_launch.getDeviceAttr());
   }
 
   // Create Recv ops to receive program key from host to each xla device
@@ -142,12 +142,12 @@ mlir::LogicalResult CreateSendRecvOpsToTransferProgramKey(
     auto recv = fn_builder.create<mlir::TF::_HostRecvOp>(
         compile_op->getLoc(),
         compilation_key.getType().cast<mlir::TensorType>(), device_key_map[i],
-        compile_op_launch.device(), /*send_device_incarnation=*/0,
+        compile_op_launch.getDevice(), /*send_device_incarnation=*/0,
         local_devices[i]);
     recv->setAttr("device", builder.getStringAttr(local_devices[i]));
 
     fn_builder.create<mlir::func::ReturnOp>(recv_select_fn.getLoc(),
-                                            recv.tensor());
+                                            recv.getTensor());
 
     compilation_key_functions.emplace_back(recv_select_fn);
   }
@@ -230,7 +230,7 @@ mlir::LogicalResult HandleCompilationOps(
     if (!host_function) {
       host_function = parent_function;
       auto mesh_it = llvm::find_if(computation_map, [&](auto& it) {
-        return it.second.f() == host_function.getSymName();
+        return it.second.getF() == host_function.getSymName();
       });
       if (mesh_it == computation_map.end())
         return compilation_key.emitOpError(
@@ -293,7 +293,7 @@ mlir::LogicalResult HandleCompilationOps(
         GetUniqueControlflowFnName("compilation_host_else", builder));
 
     // Create empty else branch region.
-    auto& host_else_branch = if_host.else_branch();
+    auto& host_else_branch = if_host.getElseBranch();
     host_else_branch.push_back(new mlir::Block);
     builder.setInsertionPointToEnd(&host_else_branch.front());
     builder.create<mlir::TF::YieldOp>(
@@ -302,7 +302,7 @@ mlir::LogicalResult HandleCompilationOps(
 
     // Create then branch region with logic to compile TPU program and send
     // program key to all TPU devices.
-    auto& host_then_branch = if_host.then_branch();
+    auto& host_then_branch = if_host.getThenBranch();
     host_then_branch.push_back(new mlir::Block);
     builder.setInsertionPointToEnd(&host_then_branch.front());
     auto yield = builder.create<mlir::TF::YieldOp>(
@@ -361,7 +361,8 @@ mlir::LogicalResult HandleCompilationOps(
 // and add necessary send/recv ops to transfer TPU program key to TPU device
 // computation.
 struct DTensorMoveCompilationToHost
-    : public DTensorMoveCompilationToHostBase<DTensorMoveCompilationToHost> {
+    : public impl::DTensorMoveCompilationToHostBase<
+          DTensorMoveCompilationToHost> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();
     mlir::OpBuilder builder(&context);

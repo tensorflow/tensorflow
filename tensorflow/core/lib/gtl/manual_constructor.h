@@ -22,8 +22,8 @@ limitations under the License.
 // (When I say ManualConstructor statically allocates space, I mean that
 // the ManualConstructor object itself is forced to be the right size.)
 
-#ifndef TENSORFLOW_LIB_GTL_MANUAL_CONSTRUCTOR_H_
-#define TENSORFLOW_LIB_GTL_MANUAL_CONSTRUCTOR_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_MANUAL_CONSTRUCTOR_H_
+#define TENSORFLOW_CORE_LIB_GTL_MANUAL_CONSTRUCTOR_H_
 
 #include <stddef.h>
 #include <new>
@@ -243,4 +243,4 @@ class ManualConstructor {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_GTL_MANUAL_CONSTRUCTOR_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_MANUAL_CONSTRUCTOR_H_

@@ -18,25 +18,22 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_USE_CUDNN_H_
 #define TENSORFLOW_CORE_UTIL_USE_CUDNN_H_
 
-#include "tensorflow/core/platform/types.h"
+#include <cstdint>
+
+#include "tensorflow/tsl/util/use_cudnn.h"
 
 namespace tensorflow {
 
-bool CudnnUseAutotune();
-bool CudnnUseFrontend();
-bool CudnnRnnUseAutotune();
-bool CudnnDisableConv1x1Optimization();
-bool DebugCudnnRnn();
-bool DebugCudnnRnnUseTensorOps();
-int64_t DebugCudnnRnnAlgo();
+using tsl::CudnnDisableConv1x1Optimization;
+using tsl::CudnnRnnUseAutotune;
+using tsl::CudnnUseAutotune;
+using tsl::CudnnUseFrontend;
+using tsl::CudnnUseRuntimeFusion;
+using tsl::DebugCudnnRnn;
+using tsl::DebugCudnnRnnAlgo;
+using tsl::DebugCudnnRnnUseTensorOps;
+using tsl::ShouldCudnnGroupedConvolutionBeUsed;
 
-// Returns true if the CuDNN depthwise convolution can be used. See cudnn
-// release note 7.6.3.
-// (https://docs.nvidia.com/deeplearning/sdk/cudnn-release-notes/rel_763.html)
-bool ShouldCudnnGroupedConvolutionBeUsed(const int32_t filter_rows,
-                                         const int32_t filter_cols,
-                                         const int32_t in_depth,
-                                         const int32_t out_depth);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_USE_CUDNN_H_

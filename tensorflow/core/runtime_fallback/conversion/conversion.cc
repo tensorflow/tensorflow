@@ -41,7 +41,7 @@ static RuntimeFallbackTensor ConvertKernelFallbackToRuntimeFallbackTensor(
               tensorflow::tfd::kEagerContextResourceName);
   assert(optional_eager_resource.has_value());
   auto expected_eager_context =
-      optional_eager_resource.getValue()->GetTFEagerContext();
+      optional_eager_resource.value()->GetTFEagerContext();
   assert(expected_eager_context);
   Device *d;
   Status s =

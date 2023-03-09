@@ -52,7 +52,10 @@ class TfrtGraphExecutionState {
 
   struct Options {
     bool run_placer_grappler_on_functions = false;
+    // TODO(b/262826012): Remove the flag after we switch to using bridge.
     bool enable_tfrt_gpu = false;
+    // TODO(b/260915352): Remove the flag and default to using bridge.
+    bool use_bridge_for_gpu = false;
   };
 
   // Creates a `GraphExecutionState` given `graph_def` and `fallback_state`.
@@ -133,6 +136,12 @@ Status EliminateRefVariablesFromV1ControlFlow(GraphDef& graph_def);
 
 // Removes the "_input_shapes" attribute of functions in the graph.
 void RemoveInputShapesInFunctions(tensorflow::GraphDef& graph_def);
+
+// Replaces partitioned calls in the graph that have _XlaMustCompile attribute
+// set to true with XlaLaunch op.
+// TODO(b/239089915): Clean this up after the logic is implemented in TFXLA
+// bridge.
+Status BuildXlaLaunchOps(Graph* graph);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

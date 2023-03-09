@@ -25,58 +25,9 @@ from tensorflow.dtensor.python import mesh_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.util.tf_export import tf_export
-
-
-def sharded_prefix(
-    mesh: layout_lib.Mesh,
-    prefix: List[str],
-    tensor_names: List[str],
-    shape_and_slices: List[str],
-    tensors: List[ops.Tensor],
-):
-  """Generates all sharded prefix in distributed Save.
-
-  DTensor SaveV2 SPMD would generate multiple SaveV2 ops on saving devices,
-  and it is desired to not save with same shard_prefix so that content will
-  not be overwritten.
-
-  (prefix, tensor_names, tensors(with layouts)) and saving mesh collectively
-  defines a unique set of shard prefix that is generated for all the Save ops.
-  Usually, (prefix, tensor_names, shape_and_slices, tensors) should match what
-  is used in save.
-
-  Args:
-    mesh: The mesh that is used in save op. Usually a CPU mesh, and matches what
-      is used in Save op.
-    prefix: The prefix of saving files.
-    tensor_names: a list of tensor names used in save op.
-    shape_and_slices: a list of shape and slice specification used in save op.
-      The only supported value is "" as we don't support distributed saving with
-      slices yet.
-    tensors: a list of tensors used in save op. The order should match
-      tensor_names.
-
-  Returns:
-    A one d string tensor that represents all shard_prefix generated.
-  """
-  layout_str = array_ops.stack(
-      [api.fetch_layout(tensor).to_string() for tensor in tensors], axis=0)
-  layouts = api.pack([layout_str] * mesh.num_local_devices(),
-                     layout_lib.Layout.replicated(mesh, rank=1))
-
-  mesh_str_tensor = api.pack([mesh.to_string()] * mesh.num_local_devices(),
-                             layout_lib.Layout.replicated(mesh, rank=0))
-  return gen_dtensor_ops.d_tensor_sharded_prefix(
-      prefix,
-      tensor_names,
-      shape_and_slices,
-      mesh_str_tensor,
-      layouts=layouts,
-      tensors=tensors)
 
 
 @tf_export('experimental.dtensor.sharded_save', v1=[])
@@ -113,16 +64,12 @@ def sharded_save(
   with ops.device(api.device_name()):
     io_ops.save_v2(file_prefix, tensor_names, shape_and_slices, tensors)
 
-  # Query generated shards and generate MergeV2.
-  generated_shards = sharded_prefix(mesh.host_mesh(), [file_prefix],
-                                    tensor_names, shape_and_slices, tensors)
-
   # Make sure all clients have written the files
   mesh_util.barrier(mesh.host_mesh(), 'SaveV2')  # pylint: disable=protected-access
 
-  with ops.device(api.device_name()):
+  with api.default_mesh(mesh.host_mesh()):
     merge_op = io_ops.MergeV2Checkpoints(
-        checkpoint_prefixes=generated_shards,
+        checkpoint_prefixes=[file_prefix],
         destination_prefix=file_prefix,
         delete_old_dirs=True)
 

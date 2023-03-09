@@ -2,9 +2,7 @@
 #   Doc generator
 
 load("//tensorflow:tensorflow.bzl", "py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -12,6 +10,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],
 )
@@ -57,8 +56,6 @@ py_test(
         "no_rocm",  # No need to rerun this test for ROCm config.
         "no_windows",  # numpy prints differently on windows.
         "noasan",
-        "nomsan",
-        "notsan",
     ],
     deps = [
         ":tf_doctest_lib",
@@ -80,12 +77,7 @@ tpu_py_test(
     disable_v3 = True,
     main = "tf_doctest.py",
     python_version = "PY3",
-    tags = [
-        "no_oss",
-        "noasan",
-        "nomsan",
-        "notsan",
-    ],
+    tags = ["no_oss"],
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
@@ -126,12 +118,7 @@ py_test(
     name = "tf_doctest_test",
     srcs = ["tf_doctest_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_pip",
-        "noasan",
-        "nomsan",
-        "notsan",
-    ],
+    tags = ["no_pip"],
     deps = [
         ":tf_doctest_lib",
         "@absl_py//absl/testing:absltest",
@@ -151,13 +138,9 @@ py_library(
 py_test(
     name = "fenced_doctest_test",
     srcs = ["fenced_doctest_test.py"],
-    data = glob(["**/create_model.md"]),
     tags = [
         "no_oss",
         "no_pip",
-        "noasan",
-        "nomsan",
-        "notsan",
     ],
     deps = [
         ":fenced_doctest_lib",
@@ -182,10 +165,6 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "manual",
-        # No reason to run sanitizers or fastbuild for this test.
-        "noasan",
-        "nomsan",
-        "notsan",
         "optonly",
     ],
     deps = [

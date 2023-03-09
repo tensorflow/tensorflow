@@ -25,31 +25,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/constant_fold.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/framework/logging.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace mlir {
 namespace {
-
-// Since this method is passed to MLIR as decode hook it has to conform
-// to LLVM style used by MLIR.
-LogicalResult DecodeOpaqueTensorHook(const OpaqueElementsAttr input,
-                                     ElementsAttr& output) {  // NOLINT
-  Builder builder(input.getType().getContext());
-  auto decoded_attr_or = tensorflow::DecodeOpaqueTensor(input, builder);
-  if (!decoded_attr_or.ok()) {
-    VLOG(2) << decoded_attr_or.status().error_message();
-    return failure();
-  }
-
-  output = decoded_attr_or.ValueOrDie();
-  return success();
-}
-
-static bool init_hooks = ([] () {
-  TF::TensorFlowDialect::RegisterDecodeConstantHook(DecodeOpaqueTensorHook);
-}(), true);
 
 }  // anonymous namespace
 }  // namespace mlir

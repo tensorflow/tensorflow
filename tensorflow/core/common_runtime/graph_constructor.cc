@@ -95,6 +95,10 @@ class GraphConstructor {
     Options(const GraphConstructorOptions& in)  // NOLINT(runtime/explicit)
         : allow_internal_ops(in.allow_internal_ops),
           expect_device_spec(in.expect_device_spec),
+          propagate_device_spec(false),
+          uniquify_names(false),
+          uniquify_prefix(false),
+          skip_mapped_nodes(false),
           importing(false),
           validate_nodes(in.validate_nodes),
           validate_colocation_constraints(false),
@@ -102,6 +106,7 @@ class GraphConstructor {
     Options(const ImportGraphDefOptions& in)  // NOLINT(runtime/explicit)
         : allow_internal_ops(false),
           expect_device_spec(false),
+          propagate_device_spec(in.propagate_device_spec),
           prefix(in.prefix.empty() || str_util::EndsWith(in.prefix, "/")
                      ? in.prefix
                      : in.prefix + "/"),
@@ -120,6 +125,7 @@ class GraphConstructor {
 
     bool allow_internal_ops;
     bool expect_device_spec;
+    bool propagate_device_spec;
 
     string prefix;
     bool uniquify_names;
@@ -773,7 +779,8 @@ Status GraphConstructor::MakeNode(NodeDef&& node_def, Node** node) {
   Status status;
   *node = g_->AddNode(std::move(node_def), &status);
   if (!status.ok()) return status;
-  if (opts_.expect_device_spec) {
+  if (opts_.expect_device_spec ||
+      (opts_.propagate_device_spec && !(*node)->def().device().empty())) {
     (*node)->set_assigned_device_name((*node)->def().device());
   }
   return OkStatus();

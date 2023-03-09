@@ -20,15 +20,14 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/kernels/shim/op_kernel.h"
 #include "tensorflow/lite/kernels/shim/shape.h"
-#include "tensorflow/lite/kernels/shim/tf_tensor_view.h"
 
 // This file contains the TF adapter. That is, it takes a `OpKernelShim`
 // class and provides a TF kernel out of it.
@@ -87,42 +86,37 @@ class TfShapeInferenceContext
   ::tensorflow::shape_inference::InferenceContext* context_;
 };
 
-// Converts absl::Status to tensorflow::Status
-::tensorflow::Status FromAbslStatus(const ::absl::Status& s);
-// Converts to tensorflow::Status to absl::Status
-::absl::Status ToAbslStatus(const ::tensorflow::Status& s);
-
 // The adaptor between an op implementation (OpKernelShim subclass) and TF
 // runtime
-template <template <Runtime> typename Impl>
+template <template <Runtime, typename...> typename Impl, typename... Ts>
 class TfOpKernel : public ::tensorflow::OpKernel {
  public:
-  using ImplType = Impl<Runtime::kTf>;
+  using ImplType = Impl<Runtime::kTf, Ts...>;
 
   explicit TfOpKernel(::tensorflow::OpKernelConstruction* c)
       : OpKernel(c), impl_(std::make_unique<ImplType>()) {
     TfInitContext ctx(c);
-    c->SetStatus(FromAbslStatus(impl_->Init(&ctx)));
+    c->SetStatus(::tensorflow::FromAbslStatus(impl_->Init(&ctx)));
   }
 
   // The main computation of the op
   void Compute(::tensorflow::OpKernelContext* c) override {
     TfInvokeContext ctx(c);
-    OP_REQUIRES_OK(c, FromAbslStatus(impl_->Invoke(&ctx)));
+    OP_REQUIRES_OK(c, ::tensorflow::FromAbslStatus(impl_->Invoke(&ctx)));
   }
 
   // Shape inference for the op.
   static tensorflow::Status ShapeInference(
       ::tensorflow::shape_inference::InferenceContext* c) {
     TfShapeInferenceContext ctx(c);
-    return FromAbslStatus(ImplType::ShapeInference(&ctx));
+    return ::tensorflow::FromAbslStatus(ImplType::ShapeInference(&ctx));
   }
 
   // The operation name
-  static const char* OpName() { return ImplType::kOpName; }
+  static const char* OpName() { return ImplType::OpName(); }
 
  protected:
-  std::unique_ptr<OpKernelShim<Impl, Runtime::kTf>> impl_;
+  std::unique_ptr<OpKernelShim<Impl, Runtime::kTf, Ts...>> impl_;
 };
 
 static_assert(::tensorflow::shape_inference::InferenceContext::kUnknownDim ==
@@ -132,11 +126,11 @@ static_assert(::tensorflow::shape_inference::InferenceContext::kUnknownRank ==
                   Shape::kUnknownRank,
               "The values must match.");
 
-// Builds the OpDef to register theop with the TF runtime
+// Builds the OpDef to register the op with the TF runtime
 template <typename Kernel>
 ::tensorflow::register_op::OpDefBuilderWrapper CreateOpDefBuilderWrapper() {
-  auto ret =
-      ::tensorflow::register_op::OpDefBuilderWrapper(Kernel::ImplType::kOpName);
+  auto ret = ::tensorflow::register_op::OpDefBuilderWrapper(
+      Kernel::ImplType::OpName());
   for (const auto& input : Kernel::ImplType::Inputs()) ret = ret.Input(input);
   for (const auto& output : Kernel::ImplType::Outputs())
     ret = ret.Output(output);
@@ -160,9 +154,9 @@ struct ContextTypeForRuntime<Runtime::kTf> {
           TF_INIT_ON_STARTUP_IF(SHOULD_REGISTER_OP(op_kernel_cls::OpName())) \
           << ::tflite::shim::CreateOpDefBuilderWrapper<op_kernel_cls>()
 
-#define REGISTER_TF_OP_SHIM(op_kernel_cls) \
-  TF_ATTRIBUTE_ANNOTATE("tf:op")           \
-  TF_NEW_ID_FOR_INIT(REGISTER_OP_SHIM_IMPL, op_kernel_cls)
+#define REGISTER_TF_OP_SHIM(...) \
+  TF_ATTRIBUTE_ANNOTATE("tf:op") \
+  TF_NEW_ID_FOR_INIT(REGISTER_OP_SHIM_IMPL, __VA_ARGS__)
 
 }  // namespace shim
 }  // namespace tflite

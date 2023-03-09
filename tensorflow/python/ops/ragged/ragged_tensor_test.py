@@ -34,6 +34,7 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_ragged_conversion_ops
 from tensorflow.python.ops import gradients_impl
@@ -1468,6 +1469,21 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         for i in range(3):
           self.assertAllEqual(sess.run(rt[i]), out)
 
+  def testToVariantInvalidParams(self):
+    self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                           r'be rank 1 but is rank 0',
+                           gen_ragged_conversion_ops.ragged_tensor_to_variant,
+                           rt_nested_splits=[0, 1, 2],
+                           rt_dense_values=[0, 1, 2],
+                           batched_input=True)
+
+    self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                           r'be rank 1 but is rank 2',
+                           gen_ragged_conversion_ops.ragged_tensor_to_variant,
+                           rt_nested_splits=[[[0]], [[1]], [[2]]],
+                           rt_dense_values=[0, 1, 2],
+                           batched_input=True)
+
   def testFromVariantInvalidParams(self):
     rt = ragged_factory_ops.constant([[0], [1], [2], [3]])
     batched_variant = rt._to_variant(batched_input=True)
@@ -1490,7 +1506,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     unbatched_spec = batched_spec._unbatch()
     batched_tensor_list = batched_spec._to_batched_tensor_list(batched)
     unbatched_tensor_lists = zip(
-        *[array_ops.unstack(tensor) for tensor in batched_tensor_list])
+        *[array_ops_stack.unstack(tensor) for tensor in batched_tensor_list])
     actual_unbatched = [
         batched_spec._unbatch()._from_tensor_list(tensor_list)
         for tensor_list in unbatched_tensor_lists]
@@ -1529,7 +1545,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     unbatched_spec = batched_spec._unbatch()
     unbatched_tensor_lists = [unbatched_spec._to_tensor_list(x)
                               for x in unbatched]
-    batched_tensor_list = [array_ops.stack(tensors)
+    batched_tensor_list = [array_ops_stack.stack(tensors)
                            for tensors in zip(*unbatched_tensor_lists)]
     actual_batched = unbatched_spec._batch(4)._from_tensor_list(
         batched_tensor_list)
@@ -1566,7 +1582,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           expected=[2., 1.]),
       dict(
           testcase_name='RaggedInputAndOutput',
-          func=lambda x: array_ops.stack([x, x * x]),
+          func=lambda x: array_ops_stack.stack([x, x * x]),
           x=[[1., 2.], [3.]],
           expected=[[3., 5.], [7.]]),
       dict(
@@ -1577,7 +1593,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           expected=[2., 1.]),
       dict(
           testcase_name='RaggedInputAndOutputWithGradYs',
-          func=lambda x: array_ops.stack([x, x * x]),
+          func=lambda x: array_ops_stack.stack([x, x * x]),
           x=[[1., 2.], [3.]],
           grad_ys=[[[1., 1.], [1.]], [[1., 1.], [1.]]],
           expected=[[3., 5.], [7.]]),
@@ -1865,7 +1881,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     rt = RaggedTensor.from_row_splits([1.0, 2.0], row_splits=[0, 2, 2])
     v1 = rt._to_variant()
-    v2 = array_ops.stack([array_ops.stack([v1])])
+    v2 = array_ops_stack.stack([array_ops_stack.stack([v1])])
     y = RaggedTensor._from_variant(v2, rt.dtype, output_ragged_rank=3)
 
     with self.assertRaisesRegex(
@@ -1897,18 +1913,19 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @parameterized.named_parameters([
       ('Shape_2_R',
        [[1, 2], [3, 4, 5]],
-       np.array([int32array([1, 2]), int32array([3, 4, 5])])),
+       np.array([int32array([1, 2]), int32array([3, 4, 5])], dtype=object)),
       ('Shape_2_2',
        [[1, 2], [3, 4]],
        np.array([[1, 2], [3, 4]])),
       ('Shape_2_R_2',
        [[[1, 2], [3, 4]], [[5, 6]]],
-       np.array([int32array([[1, 2], [3, 4]]), int32array([[5, 6]])])),
+       np.array([int32array([[1, 2], [3, 4]]), int32array([[5, 6]])],
+                dtype=object)),
       ('Shape_3_2_R',
        [[[1], []], [[2, 3], [4]], [[], [5, 6, 7]]],
        np.array([[int32array([1]), int32array([])],
                  [int32array([2, 3]), int32array([4])],
-                 [int32array([]), int32array([5, 6, 7])]])),
+                 [int32array([]), int32array([5, 6, 7])]], dtype=object)),
       ('Shape_0_R',
        ragged_factory_ops.constant_value([], ragged_rank=1, dtype=np.int32),
        np.zeros([0, 0], dtype=np.int32)),

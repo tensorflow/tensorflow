@@ -31,6 +31,9 @@ StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp lower_diagonal,
 StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp diagonals,
                                   XlaOp rhs);
 
+StatusOr<XlaOp> TridiagonalMatMul(XlaOp upper_diagonal, XlaOp main_diagonal,
+                                  XlaOp lower_diagonal, XlaOp rhs);
+
 }  // namespace tridiagonal
 }  // namespace xla
 

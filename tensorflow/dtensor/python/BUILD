@@ -1,32 +1,33 @@
 # DTensor Python API and libraries.
 
-load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 default_visibility = [
     "//tensorflow/dtensor:dtensor-internal",
+    "//third_party/py/jax_tpu_embedding:__subpackages__",
 ]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = default_visibility,
     licenses = ["notice"],
 )
 
 # -----------------------------------------------------------------------------
-# Public API.
+# A list of all modules linked into TensorFlow.
 
-pytype_strict_library(
+py_library(
     name = "core",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
-    visibility = default_visibility + [
-        "//tensorflow/dtensor:dtensor-users",
-    ],
+    visibility = ["//tensorflow/python:__pkg__"],
     deps = [
+        ":accelerator_util",
         ":api",
+        ":config",
         ":d_checkpoint",
         ":d_variable",
-        ":gen_dtensor_ops",
+        ":input_util",
         ":layout",
         ":mesh_util",
         ":save_restore",
@@ -45,10 +46,21 @@ pytype_strict_library(
         ":dtensor_device",
         ":gen_dtensor_ops",
         ":layout",
-        "//tensorflow/python:config",
-        "//tensorflow/python:device",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+pytype_strict_library(
+    name = "config",
+    srcs = ["config.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:device",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -66,9 +78,9 @@ pytype_strict_library(
     name = "layout",
     srcs = ["layout.py"],
     deps = [
-        ":gen_dtensor_ops",
+        ":config",
         "//tensorflow/dtensor/proto:layout_proto_py_pb2",
-        "//tensorflow/python:config",
+        "//tensorflow/python:_pywrap_dtensor_device",
         "//tensorflow/python:device",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/util:tf_export",
@@ -112,7 +124,6 @@ pytype_strict_library(
         "//tensorflow/python:util",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:checkpoint_options",
-        "//tensorflow/python/checkpoint:functional_saver",
         "//tensorflow/python/checkpoint:graph_view",
         "//tensorflow/python/checkpoint:restore",
         "//tensorflow/python/eager:context",
@@ -124,6 +135,22 @@ pytype_strict_library(
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/util:tf_export",
+    ],
+)
+
+pytype_strict_library(
+    name = "numpy_util",
+    srcs = ["numpy_util.py"],
+    deps = [
+        ":api",
+        ":layout",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/types",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -154,17 +181,20 @@ pytype_strict_library(
     name = "dtensor_device",
     srcs = ["dtensor_device.py"],
     deps = [
+        ":config",
         ":gen_dtensor_ops",
         ":layout",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:_pywrap_dtensor_device",
         "//tensorflow/python:device",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor_util",
         "//third_party/py/numpy",
     ],
 )
@@ -179,36 +209,44 @@ pytype_strict_library(
         "//tensorflow/dtensor:dtensor-users",
     ],
     deps = [
+        ":accelerator_util",
         ":api",
+        ":config",
         ":layout",
-        ":multi_client_util",
         ":tpu_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:config",
         "//tensorflow/python:device",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tfrt_utils",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
+        "@absl_py//absl/flags",
         "@absl_py//absl/logging",
     ],
 )
 
+# TODO(b/245589661): Split accelerator_util to its module after
+# The circular dependence is removed with dtensor_initialize_tpu_system.
 pytype_strict_library(
     name = "tpu_util",
-    srcs = ["tpu_util.py"],
+    srcs = [
+        "accelerator_util.py",
+        "tpu_util.py",
+    ],
     visibility = default_visibility + [
         "//tensorflow/dtensor:dtensor-users",
     ],
     deps = [
         ":api",
+        ":config",
         ":dtensor_device",
         ":gen_dtensor_ops",
         ":heartbeat",
         ":layout",
-        ":multi_client_util",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:device",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
@@ -216,12 +254,12 @@ pytype_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:tfrt_utils",
         "//tensorflow/python/tpu:topology",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -230,6 +268,7 @@ pytype_strict_library(
     srcs = ["heartbeat.py"],
     deps = [
         ":api",
+        ":config",
         "//tensorflow/python:collective_ops",
         "//tensorflow/python:device",
         "//tensorflow/python:framework_ops",
@@ -240,13 +279,34 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
-    name = "multi_client_util",
-    srcs = ["multi_client_util.py"],
+    name = "accelerator_util",
+    srcs = [],
+    deps = [
+        ":tpu_util",
+    ],
+)
+
+pytype_strict_library(
+    name = "input_util",
+    srcs = ["input_util.py"],
     deps = [
         ":api",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform",
+        ":config",
+        ":layout",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/eager:context",
-        "@absl_py//absl/logging",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/types",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
     ],
 )

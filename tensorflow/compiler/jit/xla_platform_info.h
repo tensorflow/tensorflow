@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_PLATFORM_INFO_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_PLATFORM_INFO_H_
 
-#include "tensorflow/compiler/jit/xla_compilation_cache.h"
+#include <memory>
+#include <optional>
+
+#include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/xla_device.h"
-#include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
 
 namespace tensorflow {
 
@@ -88,9 +91,11 @@ StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
     absl::string_view visible_device_list);
 
 // Returns created XLA compilation cache.
-Status BuildXlaCompilationCache(DeviceBase* dev, FunctionLibraryRuntime* flr,
-                                const XlaPlatformInfo& platform_info,
-                                XlaCompilationCache** cache);
+Status BuildXlaDeviceCompiler(
+    DeviceBase* dev, FunctionLibraryRuntime* flr,
+    const XlaPlatformInfo& platform_info,
+    DeviceCompiler<xla::LocalExecutable, xla::LocalClient>**
+        xla_device_compiler);
 
 // Returns information about the platform from kernel context.
 XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device);
@@ -109,10 +114,17 @@ std::shared_ptr<se::DeviceMemoryAllocator> GetAllocator(
 // Returns created options for the XLA compiler, and writes the used allocator
 // into `tf_allocator_adapter`.
 XlaCompiler::Options GenerateCompilerOptions(
-    const XlaCompilationCache& cache,
+    const DeviceCompiler<xla::LocalExecutable, xla::LocalClient>&
+        xla_device_compiler,
     const FunctionLibraryRuntime& function_library, DeviceBase* device,
     se::Stream* stream, const XlaPlatformInfo& platform_info,
     bool has_ref_vars);
+
+// Returns created options for XLA compiler when TFRT-TPU is used.
+XlaCompiler::Options GenerateTfrtTpuCompilerOptions(
+    const DeviceCompiler<xla::LocalExecutable, xla::LocalClient>&
+        xla_device_compiler,
+    const FunctionLibraryRuntime& function_library);
 
 }  // namespace tensorflow
 

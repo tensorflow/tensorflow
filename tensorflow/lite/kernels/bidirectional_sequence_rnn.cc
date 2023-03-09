@@ -16,8 +16,8 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -299,6 +299,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         context,
         GetTemporarySafe(context, node, /*index=*/kFwRowSums, &fw_row_sums));
     fw_row_sums->type = kTfLiteInt32;
+    fw_row_sums->name = "Lstm_fw_row_sums";
     fw_row_sums->allocation_type = kTfLiteArenaRwPersistent;
     int fw_row_sums_dims[2] = {num_row_sums, fw_num_units};
     if (!TfLiteIntArrayEqualsArray(fw_row_sums->dims, 2, fw_row_sums_dims)) {
@@ -315,6 +316,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         context,
         GetTemporarySafe(context, node, /*index=*/kBwRowSums, &bw_row_sums));
     bw_row_sums->type = kTfLiteInt32;
+    bw_row_sums->name = "Lstm_bw_row_sums";
     bw_row_sums->allocation_type = kTfLiteArenaRwPersistent;
     int bw_row_sums_dims[2] = {num_row_sums, bw_num_units};
     if (!TfLiteIntArrayEqualsArray(bw_row_sums->dims, 2, bw_row_sums_dims)) {
@@ -359,8 +361,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(
         context, GetOutputSafe(context, node, kBwOutputTensor, &bw_output));
     TfLiteIntArray* bw_output_size_array = TfLiteIntArrayCreate(3);
-    bw_output_size_array->data[0] = batch_size;
-    bw_output_size_array->data[1] = max_time;
+    bw_output_size_array->data[0] = (time_major) ? max_time : batch_size;
+    bw_output_size_array->data[1] = (time_major) ? batch_size : max_time;
     bw_output_size_array->data[2] = bw_num_units;
     TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, bw_output,
                                                      bw_output_size_array));

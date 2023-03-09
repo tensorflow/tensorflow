@@ -339,6 +339,8 @@ recognizes.
 
 #### Variables closed over by lambda functions
 
+### This limit will be deprecated after 2023-09-23
+
 AutoGraph assumes that variables that local functions close over may be used
 anywhere in the parent function, because in general it is possible to hide a
 function call in almost any Python statement). For this reason, these variables

@@ -29,6 +29,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
@@ -43,10 +44,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bitmap.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/lib/core/bitmap.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -77,7 +78,7 @@ class LiteralUtil {
   static Literal CreateR0(NativeT value);
   template <typename NativeT>
   static Literal CreateR1(absl::Span<const NativeT> values);
-  static Literal CreateR1(const tensorflow::core::Bitmap& values);
+  static Literal CreateR1(const tsl::core::Bitmap& values);
   template <typename NativeT>
   static Literal CreateR2(
       std::initializer_list<std::initializer_list<NativeT>> values);
@@ -112,10 +113,10 @@ class LiteralUtil {
   // Creates a scalar literal value one of the given primitive type.
   static Literal One(PrimitiveType primitive_type);
   // Creates a scalar literal value containing the minimum value of the given
-  // primitive type. For floating-point types, returns -inf.
+  // primitive type. For floating-point types supporting inf, returns -inf.
   static Literal MinValue(PrimitiveType primitive_type);
   // Creates a scalar literal value containing the maximum value of the given
-  // primitive type. For floating-point types, returns inf.
+  // primitive type. For floating-point types supporting inf, returns inf.
   static Literal MaxValue(PrimitiveType primitive_type);
   // Creates a scalar literal value containing the NaN value of the given
   // primitive type. Fail for non-inexact types. For complex types, returns a
@@ -219,39 +220,21 @@ class LiteralUtil {
   static Literal CreateFromDimensions(PrimitiveType primitive_type,
                                       absl::Span<const int64_t> dimensions);
 
-  // If the given literal's data type is bfloat16, converts it to a float
+  // Convert<SrcType>To<DstType> family of functions:
+  // If the given literal's data type is <SrcType>, converts it to a <DstType>
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
   // recursively converts its elements.
   static Literal ConvertBF16ToF32(const LiteralSlice& bf16_literal);
-
-  // If the given literal's data type is bfloat16, converts it to a double
-  // literal; otherwise, returns a copy of it. If the literal is a tuple,
-  // recursively converts its elements.
   static Literal ConvertBF16ToF64(const LiteralSlice& bf16_literal);
-
-  // If the given literal's data type is float, converts it to a bfloat16
-  // literal; otherwise, returns a copy of it. If the literal is a tuple,
-  // recursively converts its elements.
   static Literal ConvertF32ToBF16(const LiteralSlice& f32_literal);
-
-  // If the given literal's data type is float, converts it to a double
-  // literal; otherwise, returns a copy of it. If the literal is a tuple,
-  // recursively converts its elements.
   static Literal ConvertF32ToF64(const LiteralSlice& f32_literal);
-
-  // If the given literal's data type is double, converts it to a bfloat16
-  // literal; otherwise, returns a copy of it. If the literal is a tuple,
-  // recursively converts its elements.
   static Literal ConvertF64ToBF16(const LiteralSlice& f64_literal);
+  static Literal ConvertF64ToF32(const LiteralSlice& f64_literal);
+  static Literal ConvertS32ToF32(const LiteralSlice& s32_literal);
 
   // Creates a scalar literal whose value is the maximum value of a given
   // literal slice.
   static Literal MaxElement(const LiteralSlice& literal);
-
-  // If the given literal's data type is double, converts it to a bfloat16
-  // literal; otherwise, returns a copy of it. If the literal is a tuple,
-  // recursively converts its elements.
-  static Literal ConvertF64ToF32(const LiteralSlice& f64_literal);
 
   // Creates a literal with a new shape with the given new dimensions using the
   // data in the given input literal. For reshaping purposes the (flat) data
@@ -269,7 +252,7 @@ class LiteralUtil {
       typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
   static StatusOr<Literal> CreateLiteralWithGenerator(
       const Shape& shape,
-      const std::function<T(absl::Span<const int64_t>)>& generator);
+      absl::FunctionRef<T(absl::Span<const int64_t>)> generator);
 
   // Creates a literal with the supplied shape, and initializes the literal
   // values using a normal distribution with given mean and stddev standard
@@ -323,7 +306,7 @@ template <typename NativeT>
 /* static */ Literal LiteralUtil::CreateR2WithLayout(
     std::initializer_list<std::initializer_list<NativeT>> values,
     const Layout& layout) {
-  Literal literal(ShapeUtil::MakeShapeWithLayout(
+  Literal literal(ShapeUtil::MakeShapeWithDenseLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(),
       {static_cast<int64_t>(values.size()),
        static_cast<int64_t>(values.begin()->size())},
@@ -412,7 +395,7 @@ template <typename NativeT>
 template <typename NativeT>
 /* static */ Literal LiteralUtil::CreateFromArrayWithLayout(
     const Array<NativeT>& values, const Layout& layout) {
-  Literal literal(ShapeUtil::MakeShapeWithLayout(
+  Literal literal(ShapeUtil::MakeShapeWithDenseLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(), values.dimensions(),
       layout.minor_to_major()));
   literal.PopulateFromArray(values);
@@ -537,12 +520,12 @@ template <typename NativeT>
 template <PrimitiveType type, typename T>
 /* static */ StatusOr<Literal> LiteralUtil::CreateLiteralWithGenerator(
     const Shape& shape,
-    const std::function<T(absl::Span<const int64_t>)>& generator) {
+    absl::FunctionRef<T(absl::Span<const int64_t>)> generator) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
   TF_RET_CHECK(shape.element_type() == type);
   Literal literal(shape);
   TF_RETURN_IF_ERROR(literal.Populate<NativeT>(
-      [&](absl::Span<const int64_t> indexes) { return generator(indexes); }));
+      [=](absl::Span<const int64_t> indexes) { return generator(indexes); }));
   return std::move(literal);
 }
 

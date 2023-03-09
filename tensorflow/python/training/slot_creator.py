@@ -35,7 +35,7 @@ update_mavg = mavg.assign_sub((mavg - var) * (1 - decay))
 """
 # pylint: disable=g-bad-name
 
-from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
+from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -103,8 +103,13 @@ def _create_slot_var(primary,
               slice_info.var_shape[:n]))
   # pylint: enable=protected-access
 
-  # Copy XLA sharding attributes from primary.
-  if copy_xla_sharding:
+  # Copy XLA sharding attributes from the primary if the slot variable has the
+  # same rank as the primary.
+  def _has_same_rank(primary_shape, slot_shape):
+    return (primary_shape.rank is not None and slot_shape.rank is not None and
+            primary_shape.rank == slot_shape.rank)
+
+  if copy_xla_sharding and _has_same_rank(primary.shape, slot.shape):
     slot = xla_sharding.copy_sharding(primary, slot, use_sharding_op=False)
   return slot
 

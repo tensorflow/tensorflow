@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <cstdint>
 #include <memory>
 #include <queue>
 #include <sstream>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
@@ -28,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 // Implementation notes:
 //
@@ -166,7 +168,8 @@ class OutfeedReceiverImpl {
 
   StatusOr<XlaOp> AddOutfeedToBuilder(XlaBuilder* builder, XlaOp token,
                                       uint32_t consumer_id,
-                                      std::vector<XlaOp> arrays);
+                                      std::vector<XlaOp> arrays,
+                                      uint32_t device_idx);
 
  private:
   bool CallbackQueueHasSpace() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -220,7 +223,7 @@ class OutfeedReceiverImpl {
       ABSL_GUARDED_BY(mu_);
   // The threadpool must come last to ensure the queue exists
   // when the pool destructor is called.
-  std::unique_ptr<tensorflow::thread::ThreadPool> threads_;
+  std::unique_ptr<tsl::thread::ThreadPool> threads_;
 };
 
 OutfeedReceiverImpl::OutfeedReceiverImpl(
@@ -250,8 +253,8 @@ void OutfeedReceiverImpl::Start() {
   }
 
   int num_threads = 2 * devices_.size();
-  threads_ = std::make_unique<tensorflow::thread::ThreadPool>(
-      tensorflow::Env::Default(), "outfeed_receiver", num_threads);
+  threads_ = std::make_unique<tsl::thread::ThreadPool>(
+      tsl::Env::Default(), "outfeed_receiver", num_threads);
   for (int device_idx = 0; device_idx < devices_.size(); ++device_idx) {
     threads_->Schedule(
         [this, device_idx]() { DeviceListenerThreadLoop(device_idx); });
@@ -290,7 +293,7 @@ void OutfeedReceiverImpl::DeviceListenerThreadLoop(int device_idx) {
   while (true) {
     Shape header_shape = ShapeUtil::MakeShape(U32, {kOutfeedHeaderWords});
     std::unique_ptr<Literal> header =
-        ReceiveRawFromOutfeed(device, header_shape).ValueOrDie();
+        ReceiveRawFromOutfeed(device, header_shape).value();
     absl::Span<uint32_t> header_data = header->data<uint32_t>();
     CHECK_EQ(header_data.size(), kOutfeedHeaderWords);
     CHECK_EQ(header_data[0], kOutfeedHeaderStart);
@@ -320,7 +323,7 @@ void OutfeedReceiverImpl::DeviceListenerThreadLoop(int device_idx) {
       return;
     }
     std::unique_ptr<Literal> data =
-        ReceiveRawFromOutfeed(device, shape).ValueOrDie();
+        ReceiveRawFromOutfeed(device, shape).value();
     received->SetLiteral(std::move(data));
     absl::MutexLock lock(&mu_);
     EnqueueReceivedData(device_idx, std::move(received));
@@ -384,7 +387,7 @@ void OutfeedReceiverImpl::CallbackThreadLoop(int device_idx) {
       return;
     }
     {
-      tensorflow::profiler::TraceMe traceme("OutfeedReceiver::Callback");
+      tsl::profiler::TraceMe traceme("OutfeedReceiver::Callback");
       callback_(received->device(), received->consumer_id(),
                 received->literal());
     }
@@ -398,10 +401,17 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
           << "] SendSpecialHeader cons=" << consumer_id;
   XlaBuilder builder(
       absl::StrFormat("special_outfeed_header_%d_%d", consumer_id, device_idx));
-  XlaOp send =
-      AddOutfeedToBuilder(&builder, CreateToken(&builder), consumer_id, {})
-          .ValueOrDie();
-  XlaComputation computation = builder.Build(send).ValueOrDie();
+
+  // XLA Next doesn't support returning tokens from computations, so we use
+  // add-dependency to return a constant while ensuring the side-effect is still
+  // executed.
+  XlaOp cst_operand = xla::ConstantR0<int32_t>(&builder, 0);
+  XlaOp outfeed =
+      AddOutfeedToBuilder(&builder, CreateToken(&builder), consumer_id, {}, 0)
+          .value();
+  XlaOp add_dep = xla::internal::XlaBuilderFriend::BuildAddDependency(
+      &builder, cst_operand, outfeed, ShapeUtil::MakeScalarShape(S32));
+  XlaComputation computation = builder.Build(add_dep).value();
 
   CompileOptions compile_options;
   compile_options.executable_build_options.set_num_replicas(1);
@@ -411,7 +421,7 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
   compile_options.executable_build_options.set_device_assignment(
       device_assignment);
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                       devices_[device_idx]->client()->Compile(
                           computation, std::move(compile_options)));
   ExecuteOptions execute_options;
@@ -423,9 +433,9 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
 
 StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
     XlaBuilder* builder, XlaOp token, uint32_t consumer_id,
-    std::vector<XlaOp> arrays) {
+    std::vector<XlaOp> arrays, uint32_t device_idx) {
   XlaOp data = Tuple(builder, std::move(arrays));
-  Shape shape_with_layout = builder->GetShape(data).ValueOrDie();
+  Shape shape_with_layout = builder->GetShape(data).value();
   ShapeUtil::ForEachMutableSubshape(
       &shape_with_layout, [](Shape* subshape, const ShapeIndex&) {
         if (!subshape->has_layout()) {
@@ -452,9 +462,9 @@ StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
 
   std::vector<uint32_t> header{kOutfeedHeaderStart, consumer_id};
   XlaOp header_op = ConstantR1<uint32_t>(builder, header);
-  // We assign the outfeed to the first device. This must match the sharding
-  // for the paired infeed.
-  builder->SetSharding(sharding_builder::AssignDevice(0));
+  // We assign the outfeed to the device specified by device_idx (first device
+  // by default). This must match the sharding for the paired infeed.
+  builder->SetSharding(sharding_builder::AssignDevice(device_idx));
   token = OutfeedWithToken(
       header_op, token, ShapeUtil::MakeShape(U32, {kOutfeedHeaderWords}), "");
   if (consumer_id != kOutfeedCidShutdown) {
@@ -475,14 +485,17 @@ OutfeedReceiver::~OutfeedReceiver() {}
 
 void OutfeedReceiver::Start() { p_impl_->Start(); }
 
-StatusOr<XlaOp> OutfeedReceiver::AddOutfeedToBuilder(
-    XlaBuilder* builder, XlaOp token, uint32_t consumer_id,
-    std::vector<XlaOp> arrays) {
+StatusOr<XlaOp> OutfeedReceiver::AddOutfeedToBuilder(XlaBuilder* builder,
+                                                     XlaOp token,
+                                                     uint32_t consumer_id,
+                                                     std::vector<XlaOp> arrays,
+                                                     uint32_t device_idx) {
   if (consumer_id == kOutfeedCidShutdown) {
     return InvalidArgument("Consumer ID cannot be a reserved value: %d",
                            consumer_id);
   }
-  return p_impl_->AddOutfeedToBuilder(builder, token, consumer_id, arrays);
+  return p_impl_->AddOutfeedToBuilder(builder, token, consumer_id, arrays,
+                                      device_idx);
 }
 
 }  // namespace xla

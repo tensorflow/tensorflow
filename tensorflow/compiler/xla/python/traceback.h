@@ -21,27 +21,39 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 
 namespace xla {
+
+// The representation of frame->f_lasti changed from bytes to words in Python
+// 3.10, see https://docs.python.org/3/whatsnew/3.10.html#changes-in-the-c-api
+// This should match sizeof(_Py_CODEUNIT) which is unfortunately private.
+static constexpr int kLastiWordBytes = (PY_VERSION_HEX < 0x030a0000) ? 1 : 2;
 
 // Represents a Python traceback.
 class Traceback {
  public:
-  // Require GIL.
+  // Require GIL. Creates a Traceback object that requires destructor to be
+  // invoked with GIL held as well.
   static std::shared_ptr<Traceback> Get();
+
+  // Safely destroy the traceback object regardless of whether GIL is held or
+  // not.
+  static void SafeDestroy(Traceback traceback);
 
   // Require GIL.
   static bool enabled() { return enabled_; }
   // Require GIL.
   static void SetEnabled(bool enabled);
 
-  Traceback() = default;
+  // Require GIL.
+  Traceback();
+  // Require GIL.
   ~Traceback();
 
   Traceback(const Traceback&) = delete;
-  Traceback(Traceback&&) = delete;
+  Traceback(Traceback&& other);
   Traceback& operator=(const Traceback&) = delete;
   Traceback& operator=(Traceback&&) = delete;
 

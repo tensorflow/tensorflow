@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/utils/utils.h"
 
+#include <optional>
 #include <string>
 
 #include "absl/strings/match.h"
@@ -35,11 +36,11 @@ namespace mlir {
 namespace tfg {
 namespace util {
 
-bool NodeIsOnCpu(Operation *op) {
+bool OpHasDevice(Operation *op, const char *device_name) {
   std::string task, device;
   return tensorflow::DeviceNameUtils::SplitDeviceName(TFOp(op).device().data(),
                                                       &task, &device) &&
-         absl::StartsWith(device, tensorflow::DEVICE_CPU);
+         absl::StartsWith(device, device_name);
 }
 
 void EraseRegularNodeAttributes(NamedAttrList &attr_list) {
@@ -56,7 +57,8 @@ void ForwardNonIntrinsicAttributes(Operation *src, Operation *dst) {
 
   // Forward all non-intrinsic attributes. If the source op is unregistered,
   // forward all attributes.
-  if (Optional<RegisteredOperationName> src_name = src->getRegisteredInfo()) {
+  if (std::optional<RegisteredOperationName> src_name =
+          src->getRegisteredInfo()) {
     ArrayRef<StringAttr> src_attr_names = src_name->getAttributeNames();
     name_set.insert(src_attr_names.begin(), src_attr_names.end());
   }
@@ -115,9 +117,9 @@ void LoopRegionEraseArgument(Region &region, unsigned index) {
   assert(index < args.size());
 
   // Erase the arguments.
-  SmallVector<unsigned, 2> indices;
-  indices.push_back(args[index].getArgNumber());
-  indices.push_back(GetLoopRegionControlOf(args[index]).getArgNumber());
+  BitVector indices(region.front().getNumArguments());
+  indices.set(args[index].getArgNumber());
+  indices.set(GetLoopRegionControlOf(args[index]).getArgNumber());
   region.front().eraseArguments(indices);
 
   UpdateArgAttrsIfPresent(region, [&](SmallVectorImpl<Attribute> &arg_attrs) {
@@ -152,9 +154,9 @@ void SizedOperandSegmentsEraseOperands(Operation *op,
   Builder b(op->getContext());
   StringAttr attr_name = b.getStringAttr(
       OpTrait::AttrSizedOperandSegments<void>::getOperandSegmentSizeAttr());
-  auto segment_sizes = op->getAttrOfType<DenseIntElementsAttr>(attr_name);
+  auto segment_sizes = op->getAttrOfType<DenseI32ArrayAttr>(attr_name);
   if (segment_sizes) {
-    auto values = segment_sizes.getValues<int32_t>();
+    auto values = segment_sizes.asArrayRef();
     SmallVector<int32_t> new_sizes = llvm::to_vector(values);
 
     unsigned base = 0;
@@ -168,7 +170,7 @@ void SizedOperandSegmentsEraseOperands(Operation *op,
     assert(llvm::all_of(new_sizes, [](int32_t size) { return size >= 0; }));
     assert(std::accumulate(new_sizes.begin(), new_sizes.end(), 0) ==
            op->getNumOperands() - erase.count());
-    segment_sizes = b.getI32TensorAttr(new_sizes);
+    segment_sizes = b.getDenseI32ArrayAttr(new_sizes);
   }
 
   op->eraseOperands(erase);

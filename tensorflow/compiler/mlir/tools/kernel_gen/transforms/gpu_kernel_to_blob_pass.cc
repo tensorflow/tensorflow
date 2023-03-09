@@ -17,24 +17,25 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/core/platform/cuda_libdevice_path.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/cuda_libdevice_path.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
 #elif TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/core/platform/rocm_rocdl_path.h"
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
 #endif
 
 namespace mlir {
@@ -42,11 +43,11 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_GPUKERNELTOBLOBPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 class GpuKernelToBlobPass
-    : public GpuKernelToBlobPassBase<GpuKernelToBlobPass> {
+    : public impl::GpuKernelToBlobPassBase<GpuKernelToBlobPass> {
  public:
   GpuKernelToBlobPass(StringRef blob_annotation,
                       llvm::ArrayRef<std::string> architectures, bool print_ptx,
@@ -62,7 +63,7 @@ class GpuKernelToBlobPass
     gpu::GPUModuleOp gpu_module = getOperation();
     auto blob_or = GetGpuBinaryBlob(gpu_module);
     if (blob_or.ok()) {
-      const auto& blob = blob_or.ValueOrDie();
+      const auto& blob = blob_or.value();
       std::string blob_string(blob.begin(), blob.end());
       gpu_module->setAttr(blob_annotation_,
                           StringAttr::get(&getContext(), blob_string));
@@ -115,7 +116,7 @@ class GpuKernelToBlobPass
       if (!hsaco_or.ok()) {
         return tensorflow::errors::Internal("Failure when generating HSACO");
       }
-      auto hsaco = hsaco_or.ValueOrDie();
+      auto hsaco = hsaco_or.value();
       images.push_back({arch_str, std::move(hsaco)});
     }
 
@@ -142,7 +143,6 @@ class GpuKernelToBlobPass
 
     // Compile and collect requested cubin and PTX images.
     std::vector<tensorflow::se::CubinOrPTXImage> images;
-    TF_ASSIGN_OR_RETURN(std::string libdevice_dir, GetLibdeviceDir(config));
     auto gpu_asm_opts =
         xla::gpu::PtxOptsFromDebugOptions(config.debug_options());
     for (const std::string& arch_str : architectures_) {
@@ -164,7 +164,7 @@ class GpuKernelToBlobPass
           xla::gpu::nvptx::CompileToPtx(
               llvm_module_copy.get(),
               tensorflow::se::CudaComputeCapability{cc_major, cc_minor}, config,
-              libdevice_dir, enable_fusion));
+              enable_fusion));
       if (print_ptx_) {
         llvm::dbgs() << "Generated PTX code for module '"
                      << gpu_module.getName() << "' on architecture sm_" << arch
@@ -179,7 +179,7 @@ class GpuKernelToBlobPass
                                                      ptx.c_str(), gpu_asm_opts);
         if (gpu_asm.ok()) {
           images.push_back(
-              {absl::StrCat("sm_", arch), std::move(gpu_asm.ValueOrDie())});
+              {absl::StrCat("sm_", arch), std::move(gpu_asm.value())});
         } else {
 #ifdef PLATFORM_GOOGLE
           // Require compilation with ptxas.
@@ -236,21 +236,6 @@ class GpuKernelToBlobPass
     return std::pair<bool, int>(is_compute_profile, arch);
   }
 
-  tensorflow::StatusOr<std::string> GetLibdeviceDir(
-      const xla::HloModuleConfig& hlo_module_config) {
-    for (const std::string& cuda_root : tensorflow::CandidateCudaRoots(
-             hlo_module_config.debug_options().xla_gpu_cuda_data_dir())) {
-      std::string libdevice_dir =
-          tensorflow::io::JoinPath(cuda_root, "nvvm", "libdevice");
-      VLOG(2) << "Looking for libdevice at " << libdevice_dir;
-      if (tensorflow::Env::Default()->IsDirectory(libdevice_dir).ok()) {
-        VLOG(2) << "Found libdevice dir " << libdevice_dir;
-        return libdevice_dir;
-      }
-    }
-    return tensorflow::errors::Internal(
-        "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice");
-  }
   bool enable_ftz_;
 };
 

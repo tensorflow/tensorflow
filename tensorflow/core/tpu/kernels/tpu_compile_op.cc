@@ -17,19 +17,19 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
 #include "tensorflow/core/protobuf/tpu/compilation_result.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_options.h"
-#include "tensorflow/stream_executor/tpu/tpu_node_context.h"
 
 namespace tensorflow {
 namespace tpu {
-using ::stream_executor::port::StatusOr;
+using ::tsl::StatusOr;
 
 TpuCompileOp::TpuCompileOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   StatusOr<std::unique_ptr<TpuCompileOpKernelCommon>> compile_op_impl =
       CompileOpImplFactory::Get()->CreateNonMlirImpl(ctx);
   OP_REQUIRES_OK(ctx, compile_op_impl.status());
-  impl_ = std::move(compile_op_impl.ValueOrDie());
+  impl_ = std::move(compile_op_impl.value());
 }
 
 void TpuCompileOp::Compute(OpKernelContext* ctx) { impl_->Compute(ctx); }
@@ -38,7 +38,7 @@ TpuCompileMlirOp::TpuCompileMlirOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   StatusOr<std::unique_ptr<TpuCompileOpKernelCommon>> compile_op_impl =
       CompileOpImplFactory::Get()->CreateMlirImpl(ctx);
   OP_REQUIRES_OK(ctx, compile_op_impl.status());
-  impl_ = std::move(compile_op_impl.ValueOrDie());
+  impl_ = std::move(compile_op_impl.value());
 }
 
 void TpuCompileMlirOp::Compute(OpKernelContext* ctx) { impl_->Compute(ctx); }

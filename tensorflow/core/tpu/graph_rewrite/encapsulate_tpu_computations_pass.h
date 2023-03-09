@@ -23,8 +23,8 @@ limitations under the License.
 //    replicated inputs. These nodes are not marked with the _tpu_replicate
 //    attribute.
 
-#ifndef TENSORFLOW_CORE_TPU_GRAPH_REWRITES_ENCAPSULATE_TPU_COMPUTATIONS_PASS_H_
-#define TENSORFLOW_CORE_TPU_GRAPH_REWRITES_ENCAPSULATE_TPU_COMPUTATIONS_PASS_H_
+#ifndef TENSORFLOW_CORE_TPU_GRAPH_REWRITE_ENCAPSULATE_TPU_COMPUTATIONS_PASS_H_
+#define TENSORFLOW_CORE_TPU_GRAPH_REWRITE_ENCAPSULATE_TPU_COMPUTATIONS_PASS_H_
 
 #include "tensorflow/compiler/jit/encapsulate_util.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
@@ -70,4 +70,4 @@ class ExtractOutsideCompilationPass : public GraphOptimizationPass {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_TPU_GRAPH_REWRITES_ENCAPSULATE_TPU_COMPUTATIONS_PASS_H_
+#endif  // TENSORFLOW_CORE_TPU_GRAPH_REWRITE_ENCAPSULATE_TPU_COMPUTATIONS_PASS_H_

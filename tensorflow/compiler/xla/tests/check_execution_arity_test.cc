@@ -59,16 +59,14 @@ TEST_F(CheckExecutionArityTest, TwoParamComputationNumArguments) {
   auto result_one_arg =
       client_->Execute(computation, {param0_data.get()}, &execution_options_);
   ASSERT_FALSE(result_one_arg.ok());
-  ASSERT_EQ(result_one_arg.status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+  ASSERT_EQ(result_one_arg.status().code(), tsl::error::INVALID_ARGUMENT);
   ASSERT_THAT(result_one_arg.status().error_message(),
               ContainsRegex("takes 2"));
 
   auto result_zero_args =
       client_->Execute(computation, {}, &execution_options_);
   ASSERT_FALSE(result_zero_args.ok());
-  ASSERT_EQ(result_zero_args.status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+  ASSERT_EQ(result_zero_args.status().code(), tsl::error::INVALID_ARGUMENT);
   ASSERT_THAT(result_zero_args.status().error_message(),
               ContainsRegex("takes 2"));
 }
@@ -100,7 +98,7 @@ XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
   status = client_->Execute(computation, {f32_4_data.get(), f32_4_data.get()},
                             &execution_options_);
   ASSERT_FALSE(status.ok());
-  ASSERT_EQ(status.status().code(), tensorflow::error::INVALID_ARGUMENT);
+  ASSERT_EQ(status.status().code(), tsl::error::INVALID_ARGUMENT);
   ASSERT_THAT(status.status().error_message(),
               ContainsRegex(
                   "Argument does not match shape of computation parameter 0"));
@@ -109,7 +107,7 @@ XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
   status = client_->Execute(computation, {f32_data.get(), f32_data.get()},
                             &execution_options_);
   ASSERT_FALSE(status.ok());
-  ASSERT_EQ(status.status().code(), tensorflow::error::INVALID_ARGUMENT);
+  ASSERT_EQ(status.status().code(), tsl::error::INVALID_ARGUMENT);
   ASSERT_THAT(status.status().error_message(),
               ContainsRegex(
                   "Argument does not match shape of computation parameter 1"));
@@ -118,7 +116,7 @@ XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
   status = client_->Execute(computation, {f32_data.get(), u8_4_data.get()},
                             &execution_options_);
   ASSERT_FALSE(status.ok());
-  ASSERT_EQ(status.status().code(), tensorflow::error::INVALID_ARGUMENT);
+  ASSERT_EQ(status.status().code(), tsl::error::INVALID_ARGUMENT);
   ASSERT_THAT(status.status().error_message(),
               ContainsRegex(
                   "Argument does not match shape of computation parameter 1"));

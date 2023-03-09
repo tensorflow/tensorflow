@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
@@ -126,8 +127,10 @@ bool CheckCanonical(HloDotInstruction* dot) {
           dot->operand(0)->shape().rank() ||
       dimension_numbers.rhs_batch_dimensions_size() + 2 !=
           dot->operand(1)->shape().rank()) {
-    LOG(ERROR) << "Dot is not canonical: Expected all dimensions but 2 to be "
-                  "batch_dimensions.";
+    VLOG(2)
+        << dot->ToString()
+        << " is not canonical: Expected all dimensions but 2 to be "
+           "batch_dimensions. Hence, this dot is not a candidate for padding.";
     return false;
   }
 
@@ -138,8 +141,11 @@ bool CheckCanonical(HloDotInstruction* dot) {
                      canonical_batch_dims) ||
       !absl::c_equal(dimension_numbers.rhs_batch_dimensions(),
                      canonical_batch_dims)) {
-    LOG(ERROR) << "Dot is not canonical: Expected batch dimensions to be all "
-                  "dimensions except for the last 2 ones.";
+    VLOG(2)
+        << dot->ToString()
+        << " is not canonical: Expected batch dimensions to be all "
+           "dimensions except for the last 2 ones. Hence, this dot is not a "
+           "candidate for padding.";
     return false;
   }
 
@@ -148,15 +154,21 @@ bool CheckCanonical(HloDotInstruction* dot) {
 
 }  // namespace
 
-static std::vector<HloDotInstruction*> GetRelevantDots(HloComputation* comp,
-                                                       PrimitiveType datatype) {
+static std::vector<HloDotInstruction*> GetRelevantDots(
+    const se::CudaComputeCapability cuda_compute_capability,
+    HloComputation* comp, PrimitiveType datatype) {
   std::vector<HloDotInstruction*> gemms;
 
   for (HloInstruction* instr : comp->instructions()) {
     if (IsMatrixMultiplication(*instr)) {
       HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
       if (instr->operand(0)->shape().element_type() == datatype &&
-          CheckCanonical(dot)) {
+          CheckCanonical(dot) &&
+          !(instr->GetModule()
+                ->config()
+                .debug_options()
+                .xla_gpu_enable_triton_gemm() &&
+            IsTritonHandledGEMM(*dot, cuda_compute_capability))) {
         gemms.push_back(dot);
       }
     }
@@ -164,10 +176,14 @@ static std::vector<HloDotInstruction*> GetRelevantDots(HloComputation* comp,
   return gemms;
 }
 
-StatusOr<bool> CublasPadForGemms::Run(HloModule* module) {
+StatusOr<bool> CublasPadForGemms::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
-    for (HloDotInstruction* dot : GetRelevantDots(comp, datatype_)) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
+    for (HloDotInstruction* dot :
+         GetRelevantDots(cuda_compute_capability_, comp, datatype_)) {
       TF_ASSIGN_OR_RETURN(bool result,
                           PadForGemm(dot, datatype_, pad_to_multiple_of_));
       changed |= result;

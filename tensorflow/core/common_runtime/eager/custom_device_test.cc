@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/placement_utils.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -58,6 +59,12 @@ class TestCustomDevice : public CustomDevice {
   Status Pack(absl::Span<ImmediateExecutionTensorHandle*> handles,
               ImmediateExecutionTensorHandle** result) override {
     return errors::Unimplemented("Packing is not implemented");
+  }
+
+  // Pins `op` to `device`.
+  StatusOr<bool> ShallPinToThisDevice(
+      const ImmediateExecutionOperation* op) override {
+    return errors::Unimplemented("No preference in custom device pinning.");
   }
 
  private:
@@ -100,7 +107,8 @@ TEST(CustomDevice, TestTensorHandle) {
   core::RefCountPtr<EagerContext> ctx(new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      &device_mgr, false, nullptr, nullptr));
+      &device_mgr, false, nullptr, nullptr, nullptr,
+      /*run_eager_op_as_function=*/true));
   std::string device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:15";
   TestCustomDevice device(device_name);
   core::RefCountPtr<TestCustomDeviceTensorHandle> tensor(
@@ -121,6 +129,8 @@ TEST(CustomDevice, TestTensorHandle) {
       tensor->DebugString(),
       ContainsRegex(
           R"re(TensorHandle\(TestValue, shape=\[3\], dtype=DT_FLOAT, device=.*\))re"));
+  const FullTypeDef& ft = tensor->FullType();
+  EXPECT_EQ(ft.type_id(), TFT_UNSET);
 }
 
 TEST(CustomDevice, TestTensorHandleUnknownDimNumElements) {
@@ -129,7 +139,8 @@ TEST(CustomDevice, TestTensorHandleUnknownDimNumElements) {
   core::RefCountPtr<EagerContext> ctx(new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      &device_mgr, false, nullptr, nullptr));
+      &device_mgr, false, nullptr, nullptr, nullptr,
+      /*run_eager_op_as_function=*/true));
   std::string device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:15";
   TestCustomDevice device(device_name);
   core::RefCountPtr<TestCustomDeviceTensorHandle> tensor(
@@ -147,7 +158,8 @@ TEST(CustomDevice, TestResourcePlacement) {
   core::RefCountPtr<EagerContext> ctx(new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      &device_mgr, false, nullptr, nullptr));
+      &device_mgr, false, nullptr, nullptr, nullptr,
+      /*run_eager_op_as_function=*/true));
   std::string custom_device_name =
       "/job:localhost/replica:0/task:0/device:CUSTOM:15";
   TestCustomDevice custom_device(custom_device_name);

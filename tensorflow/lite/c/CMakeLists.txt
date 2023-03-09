@@ -28,8 +28,10 @@ if (NOT TENSORFLOW_SOURCE_DIR)
   )
 endif()
 
+set(TFLITE_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/tensorflow/lite")
+
 add_subdirectory(
-  "${TENSORFLOW_SOURCE_DIR}/tensorflow/lite"
+  "${TFLITE_SOURCE_DIR}"
   "${CMAKE_CURRENT_BINARY_DIR}/tensorflow-lite"
   EXCLUDE_FROM_ALL
 )
@@ -61,24 +63,24 @@ if (TFLITE_C_BUILD_SHARED_LIBS)
 endif()
 
 add_library(tensorflowlite_c ${TFLITE_C_LIBTYPE}
+  ${TFLITE_SOURCE_DIR}/core/c/c_api.cc
+  ${TFLITE_SOURCE_DIR}/core/c/c_api_experimental.cc
+  ${TFLITE_SOURCE_DIR}/core/c/common.cc
   builtin_op_data.h
-  common.h
-  common.c
-  c_api_types.h
   c_api.h
-  c_api.cc
   c_api_experimental.h
-  c_api_experimental.cc
   c_api_internal.h
+  c_api_types.h
+  common.h
 )
 
 if (TFLITE_C_BUILD_SHARED_LIBS)
   if (WIN32)
     target_compile_definitions(tensorflowlite_c PRIVATE TFL_COMPILE_LIBRARY)
   elseif (APPLE)
-    target_link_options(tensorflowlite_c PRIVATE "-Wl,-exported_symbols_list,${TENSORFLOW_SOURCE_DIR}/tensorflow/lite/c/exported_symbols.lds")
+    target_link_options(tensorflowlite_c PRIVATE "-Wl,-exported_symbols_list,${TFLITE_SOURCE_DIR}/c/exported_symbols.lds")
   else ()
-    target_link_options(tensorflowlite_c PRIVATE "-Wl,--version-script,${TENSORFLOW_SOURCE_DIR}/tensorflow/lite/c/version_script.lds")
+    target_link_options(tensorflowlite_c PRIVATE "-Wl,--version-script,${TFLITE_SOURCE_DIR}/c/version_script.lds")
   endif()
 endif()
 

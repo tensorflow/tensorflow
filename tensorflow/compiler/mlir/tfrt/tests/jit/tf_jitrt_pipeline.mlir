@@ -38,8 +38,8 @@ func.func @sigmoid_dynamic_dim(%arg0: tensor<?x1xf32>) -> tensor<?x1xf32> {
 
 // -----
 
-// CHECK: #map0 = affine_map<(d0) -> ()>
-// CHECK: #map1 = affine_map<(d0) -> (d0)>
+// CHECK-DAG: #map{{[0-9]*}} = affine_map<(d0) -> ()>
+// CHECK-DAG: #map{{[0-9]*}} = affine_map<(d0) -> (d0)>
 
 // CHECK-LABEL: @add_scalar_with_vec
 func.func @add_scalar_with_vec(%arg0: tensor<f32>,
@@ -56,8 +56,8 @@ func.func @add_scalar_with_vec(%arg0: tensor<f32>,
 
 // CHECK-LABEL: @add_vec_vec
 func.func @add_vec_vec(
-  %arg0: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>},
-  %arg1: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>}
+  %arg0: tensor<?xf32> {rt.symbolic_shape = dense<-2>: tensor<1xi64>},
+  %arg1: tensor<?xf32> {rt.symbolic_shape = dense<-2>: tensor<1xi64>}
 ) -> tensor<?xf32> {
   // CHECK-NOT: memref.reinterpret_cast
   // CHECK: linalg.generic
@@ -72,9 +72,9 @@ func.func @add_vec_vec(
 
 // CHECK-LABEL: @add_vec_vec_vec
 func.func @add_vec_vec_vec(
-  %arg0: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>},
-  %arg1: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>},
-  %arg2: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>}
+  %arg0: tensor<?xf32> {rt.symbolic_shape = dense<-2>: tensor<1xi64>},
+  %arg1: tensor<?xf32> {rt.symbolic_shape = dense<-2>: tensor<1xi64>},
+  %arg2: tensor<?xf32> {rt.symbolic_shape = dense<-2>: tensor<1xi64>}
 ) -> tensor<?xf32> {
   // CHECK-NOT: memref.reinterpret_cast
   // CHECK: linalg.generic
@@ -99,12 +99,12 @@ func.func @add_vec_vec_vec(
 // CHECK: compute_with_bcast
 func.func @compute_with_bcast(
   %arg0: tensor<1x?x1xf32>
-    {jitrt.symbolic_shape = dense<[1, -2, 1]> : tensor<3xi64>},
+    {rt.symbolic_shape = dense<[1, -2, 1]> : tensor<3xi64>},
   %arg1: tensor<512xf32>,
   %arg2: tensor<1x?x512xf32>
-    {jitrt.symbolic_shape = dense<[1, -2, 512]> : tensor<3xi64>},
+    {rt.symbolic_shape = dense<[1, -2, 512]> : tensor<3xi64>},
   %arg3: tensor<1x?x1xf32>
-    {jitrt.symbolic_shape = dense<[1, -2, 1]> : tensor<3xi64>},
+    {rt.symbolic_shape = dense<[1, -2, 1]> : tensor<3xi64>},
   %arg4: tensor<512xf32>
 ) -> tensor<?x?x512xf32> {
   // CHECK-NOT: memref.reinterpret_cast
@@ -141,10 +141,10 @@ func.func @compute_with_bcast(
 
 // CHECK: add_vec_vec_vec_vec
 func.func @add_vec_vec_vec_vec(
-  %arg0: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>},
-  %arg1: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>},
-  %arg2: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>},
-  %arg3: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>}
+  %arg0: tensor<?xf32> {rt.symbolic_shape = dense<-2>: tensor<1xi64>},
+  %arg1: tensor<?xf32> {rt.symbolic_shape = dense<-2>: tensor<1xi64>},
+  %arg2: tensor<?xf32> {rt.symbolic_shape = dense<-2>: tensor<1xi64>},
+  %arg3: tensor<?xf32> {rt.symbolic_shape = dense<-2>: tensor<1xi64>}
 ) -> tensor<?xf32> {
   // CHECK-NOT: memref.reinterpret_cast
   // CHECK: linalg.generic
@@ -164,9 +164,9 @@ func.func @add_vec_vec_vec_vec(
 func.func @add_vec_tensor_tensor(
   %arg0: tensor<512xf32>,
   %arg1: tensor<1x?x512xf32>
-    {jitrt.symbolic_shape = dense<[1, -2, 512]> : tensor<3xi64>},
+    {rt.symbolic_shape = dense<[1, -2, 512]> : tensor<3xi64>},
   %arg2: tensor<1x?x512xf32>
-    {jitrt.symbolic_shape = dense<[1, -2, 512]> : tensor<3xi64>}
+    {rt.symbolic_shape = dense<[1, -2, 512]> : tensor<3xi64>}
 ) -> tensor<1x?x512xf32> {
   // CHECK-NOT: memref.reinterpret_cast
   // CHECK: linalg.generic
@@ -226,10 +226,10 @@ func.func @tf_binary_with_bcast_and_fusion(%arg0: tensor<?x4xf32>,
 
 // CHECK: tf_binary_with_bcast_symbolic_shapes
 func.func @tf_binary_with_bcast_symbolic_shapes(
-  %arg0: tensor<?xf32>   {jitrt.symbolic_shape = dense<[   -3]>: tensor<1xi64>},
-  %arg1: tensor<?x?xf32> {jitrt.symbolic_shape = dense<[-2,-3]>: tensor<2xi64>},
-  %arg2: tensor<?x?xf32> {jitrt.symbolic_shape = dense<[-2,-3]>: tensor<2xi64>},
-  %arg3: tensor<?x?xf32> {jitrt.symbolic_shape = dense<[-2,-3]>: tensor<2xi64>}
+  %arg0: tensor<?xf32>   {rt.symbolic_shape = dense<[   -3]>: tensor<1xi64>},
+  %arg1: tensor<?x?xf32> {rt.symbolic_shape = dense<[-2,-3]>: tensor<2xi64>},
+  %arg2: tensor<?x?xf32> {rt.symbolic_shape = dense<[-2,-3]>: tensor<2xi64>},
+  %arg3: tensor<?x?xf32> {rt.symbolic_shape = dense<[-2,-3]>: tensor<2xi64>}
 ) -> tensor<?x?xf32> {
   // CHECK-NOT: memref.reinterpret_cast
   // CHECK: linalg.generic
@@ -271,13 +271,13 @@ func.func @cast_sub(%arg0: tensor<?x32xi16>, %arg1: tensor<?x?x32xf16>)
 
 // -----
 
-// CHECK: #map0 = affine_map<(d0, d1) -> (d1, d0)>
-// CHECK: #map1 = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-DAG: #map{{[0-9]*}} = affine_map<(d0, d1) -> (d1, d0)>
+// CHECK-DAG: #map{{[0-9]*}} = affine_map<(d0, d1) -> (d0, d1)>
 
 // CHECK-LABEL: @tf_transpose_const_perm
 func.func @tf_transpose_const_perm(%arg0: tensor<2x3xf32>) -> tensor<3x2xf32> {
   // CHECK: %[[OUT:.*]] = memref.alloc() {{.*}} : memref<3x2xf32>
-  // CHECK: linalg.generic {indexing_maps = [#map0, #map1]
+  // CHECK: linalg.generic {indexing_maps = [#map{{[0-9]*}}, #map{{[0-9]*}}]
   // CHECK-SAME: ins(%arg0 : memref<2x3xf32>)
   // CHECK-SAME: outs(%[[OUT]] : memref<3x2xf32>)
   %0 = "tf.Const"() { value = dense<[1, 0]> : tensor<2xi32> }
@@ -289,14 +289,14 @@ func.func @tf_transpose_const_perm(%arg0: tensor<2x3xf32>) -> tensor<3x2xf32> {
 
 // -----
 
-// CHECK: #map0 = affine_map<(d0, d1, d2) -> (d2, d0, d1)>
-// CHECK: #map1 = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+// CHECK-DAG: #map{{[0-9]*}} = affine_map<(d0, d1, d2) -> (d2, d0, d1)>
+// CHECK-DAG: #map{{[0-9]*}} = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 
 // CHECK-LABEL: @tf_transpose_after_transpose
 func.func @tf_transpose_after_transpose(%arg0: tensor<?x?x?xf32>)
                                   -> tensor<?x?x?xf32> {
   // CHECK: %[[OUT:.*]] = memref.alloc
-  // CHECK: linalg.generic {indexing_maps = [#map0, #map1]
+  // CHECK: linalg.generic {indexing_maps = [#map{{[0-9]*}}, #map{{[0-9]*}}]
   // CHECK-SAME: ins(%arg0 :  memref<?x?x?xf32>)
   // CHECK-SAME: outs(%[[OUT]] :  memref<?x?x?xf32>)
   // CHECK-NOT: linalg.generic
@@ -353,7 +353,7 @@ func.func @strided_slice_1d_to_0d(%arg0: tensor<3xi32>) -> tensor<i32> {
   %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
   %cst_1 = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
   // CHECK:      %[[SUBVIEW:.*]] = memref.subview %arg0[0] [1] [1]
-  // CHECK-SAME:                 : memref<3xi32> to memref<1xi32>
+  // CHECK-SAME:                 : memref<3xi32> to memref<1xi32, strided<[1]>>
   // CHECK:      %[[RET:.*]] = memref.collapse_shape %[[SUBVIEW]]
   // CHECK:      return %[[RET]]
   %0 = "tf.StridedSlice"(%arg0, %cst_1, %cst_0, %cst_0)

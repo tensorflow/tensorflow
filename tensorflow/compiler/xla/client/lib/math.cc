@@ -330,8 +330,10 @@ XlaOp Erf(XlaOp x) {
     }
     // Erf(c)Impl don't have enough precision when run with bf16 intermediates
     // (not surprising!), so upcast to f32 in this case.
-    return DoWithUpcastToF32(x, {BF16, F16},
-                             [](XlaOp x) { return ErfImpl32(x); });
+    return DoWithUpcastToF32(x, {BF16, F16}, [](XlaOp x) {
+      return Select(Lt(Abs(x), ScalarLike(x, 1)), ErfImpl32(x),
+                    ScalarLike(x, 1) - ErfcImpl32(x));
+    });
   });
 }
 
@@ -1123,16 +1125,7 @@ XlaOp RoundToEven(XlaOp x) {
     // just ask for that explicitly.)
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("RoundToEven", x));
 
-    auto half = ScalarLike(x, 0.5);
-    auto one = ScalarLike(x, 1.0);
-    auto two = ScalarLike(x, 2.0);
-
-    auto round_val = Floor(x);
-    auto fraction = x - round_val;
-    auto nearest_even_int = round_val - two * Floor(half * x);
-    auto is_odd = Eq(nearest_even_int, one);
-    return Select(Or(Gt(fraction, half), And(Eq(fraction, half), is_odd)),
-                  round_val + one, round_val);
+    return RoundNearestEven(x);
   });
 }
 
@@ -1171,10 +1164,6 @@ XlaOp Asin(XlaOp x) {
 }
 
 XlaOp Atan(XlaOp x) { return Atan2(x, ScalarLike(x, 1.0)); }
-
-XlaOp Tan(XlaOp x) {
-  return DoWithUpcastToF32(x, {F16}, [](XlaOp x) { return Sin(x) / Cos(x); });
-}
 
 // Hyperbolic trigonometric functions.
 

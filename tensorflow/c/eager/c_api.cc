@@ -33,6 +33,8 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tf_buffer_internal.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -63,10 +65,10 @@ limitations under the License.
 
 // "tensorflow/core/platform/platform.h" must be included first before using
 // PLATFORM_GOOGLE, IS_MOBILE_PLATFORM, etc.
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE) && \
+    !defined(PLATFORM_FUCHSIA)
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
-#include "tensorflow/core/tfrt/eager/c_api_tfrt_distributed_impl.h"
-#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE
+#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE && !PLATFORM_FUCHSIA
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
@@ -114,22 +116,18 @@ void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   if (opts->use_tfrt) {
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE) && \
+    !defined(PLATFORM_FUCHSIA)
     tfrt::tf::ContextInterface* tfrt_context = new tfrt::tf::ContextInterface(
         opts->session_options.options,
         static_cast<tensorflow::ContextDevicePlacementPolicy>(
             opts->device_placement_policy),
-        opts->async, opts->use_tfrt_distributed_runtime);
-#if !defined(IS_MOBILE_PLATFORM)
-    tfrt_context->SetDistributedManager(
-        tfrt::tf::CreateDistributedManagerContext(
-            tfrt_context->GetCoreRuntime()->GetHostContext()));
-#endif  // !IS_MOBILE_PLATFORM
+        opts->async);
     return tensorflow::wrap(tfrt_context);
 #else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
     return nullptr;
-#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE
+#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE && !PLATFORM_FUCHSIA
   }
   std::vector<std::unique_ptr<tensorflow::Device>> devices;
   status->status = tensorflow::DeviceFactory::AddDevices(
@@ -246,7 +244,7 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
 TF_CAPI_EXPORT extern void TFE_ContextAsyncWait(TFE_Context* ctx,
                                                 TF_Status* status) {
 #if defined(IS_MOBILE_PLATFORM)
-  status->status = tensorflow::Status::OK();
+  status->status = tensorflow::OkStatus();
 #else   // !defined(IS_MOBILE_PLATFORM)
   status->status = tensorflow::unwrap(ctx)->AsyncWait();
 #endif  // !IS_MOBILE_PLATFORM
@@ -476,6 +474,17 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
                                               tensorflow::wrap(handles.data()),
                                               handles.size(), &status, info_));
     return status.status;
+  }
+
+  tensorflow::StatusOr<bool> ShallPinToThisDevice(
+      const ImmediateExecutionOperation* op) override {
+    TF_Status status;
+    // Let this custom device choose the device to pin this op on if it
+    // implements the pinning function.
+    if (device_.shall_pin_to_this_device != nullptr) {
+      return device_.shall_pin_to_this_device(tensorflow::wrap(op), &status);
+    }
+    return errors::Unimplemented("No custom device pinning implementation.");
   }
 
  private:
@@ -1133,6 +1142,10 @@ TFE_TensorHandle* DefaultCustomDevicePack(TFE_Context* context,
 }  // namespace
 
 extern "C" {
+
+bool TFE_IsCustomDevice(TFE_Context* ctx, const char* device_name) {
+  return tensorflow::unwrap(ctx)->IsCustomDevice(device_name);
+}
 
 void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
                               const char* device_name, void* device_info,

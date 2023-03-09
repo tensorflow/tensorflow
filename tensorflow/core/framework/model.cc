@@ -46,50 +46,81 @@ constexpr uint64_t kGapDurationThresholdUsec = 10000000;  // 10 seconds
 // In outlier computation, points that are larger than `kOutlierSigmas` standard
 // deviations are considered outliers.
 constexpr double kOutlierSigmas = 2.0;
+// In target time computation, compute the target time as `kTargetTimeSigmas`
+// from the mean of the gap time distribution to account for variance in
+// processing time. For example, a value of 1 would mean that the target time is
+// faster than 84% of the gap times.
+constexpr double kTargetTimeSigmas = 1.0;
+
+constexpr char kFlatMap[] = "FlatMap";
+constexpr char kInterleave[] = "Interleave";
+constexpr char kParallelInterleave[] = "ParallelInterleave";
 
 // A class to prune outliers given a set of points. To use it, instantiate an
 // object and call the `GetCleanPoints()` method.
-class OutlierPruner {
+class TargetTimeCalculator {
  public:
-  explicit OutlierPruner(const std::vector<uint64_t>& points)
-      : points_(points.begin(), points.end()) {}
+  explicit TargetTimeCalculator(const std::vector<uint64_t>& points_usec,
+                                double outlier_sigmas,
+                                double target_time_sigmas)
+      : points_usec_(points_usec.begin(), points_usec.end()),
+        outlier_sigmas_(outlier_sigmas),
+        target_time_sigmas_(target_time_sigmas) {}
 
-  // Returns the remaining points after removing outliers from the original set
-  // of points.
-  std::vector<uint64_t> GetCleanPoints() {
-    if (points_.empty()) {
-      return points_;
+  double GetTargetTimeUsec() const {
+    if (points_usec_.empty()) {
+      return 0.0;
     }
-    // Compute the outlier threshold
     double mean;
     double standard_deviation;
-    ComputeMeanAndStandardDeviation(&mean, &standard_deviation);
-    double threshold = mean + standard_deviation * kOutlierSigmas;
-    std::vector<uint64_t> clean_points;
-    for (auto point : points_) {
-      if (static_cast<double>(point) > threshold) {
-        continue;
-      }
-      clean_points.push_back(point);
+    ComputeMeanAndStandardDeviation(points_usec_, &mean, &standard_deviation);
+    // Remove outliers.
+    std::vector<uint64_t> clean_points_usec =
+        GetCleanPoints(points_usec_, mean, standard_deviation);
+    if (clean_points_usec.empty()) {
+      return 0.0;
     }
-    return clean_points;
+    // Compute mean and standard deviation after outliers are removed.
+    ComputeMeanAndStandardDeviation(clean_points_usec, &mean,
+                                    &standard_deviation);
+    // Compute target time.
+    return mean - standard_deviation * target_time_sigmas_;
   }
 
  private:
-  void ComputeMeanAndStandardDeviation(double* mean,
-                                       double* standard_deviation) {
-    uint64_t sum = std::accumulate(points_.begin(), points_.end(), 0);
-    *mean = static_cast<double>(sum) / static_cast<double>(points_.size());
+  // Returns the remaining points after removing outliers from the original set
+  // of points.
+  std::vector<uint64_t> GetCleanPoints(const std::vector<uint64_t>& points_usec,
+                                       double mean,
+                                       double standard_deviation) const {
+    double threshold = mean + standard_deviation * outlier_sigmas_;
+    std::vector<uint64_t> clean_points_usec;
+    for (auto point : points_usec) {
+      if (static_cast<double>(point) > threshold) {
+        continue;
+      }
+      clean_points_usec.push_back(point);
+    }
+    return clean_points_usec;
+  }
+
+  void ComputeMeanAndStandardDeviation(const std::vector<uint64_t>& points_usec,
+                                       double* mean,
+                                       double* standard_deviation) const {
+    uint64_t sum = std::accumulate(points_usec.begin(), points_usec.end(), 0);
+    *mean = static_cast<double>(sum) / static_cast<double>(points_usec.size());
     double accum = 0.0;
-    for (auto point : points_) {
+    for (auto point : points_usec) {
       accum += (static_cast<double>(point) - *mean) *
                (static_cast<double>(point) - *mean);
     }
-    *standard_deviation = std::sqrt(accum / (points_.size() - 1));
+    *standard_deviation = std::sqrt(accum / (points_usec.size() - 1));
   }
 
   // Points to cluster.
-  std::vector<uint64_t> points_;
+  std::vector<uint64_t> points_usec_;
+  double outlier_sigmas_;
+  double target_time_sigmas_;
 };
 
 // A priority queue that holds stage roots where the top of the priority queue
@@ -106,9 +137,7 @@ class ModelTimingPriorityQueue {
       DCHECK(model_timing.GetTiming(root.get()) != nullptr);
       const ModelTiming::NodeTiming* root_timing =
           model_timing.GetTiming(root.get());
-      stage_roots_queue_.emplace(
-          root_timing->total_time_nsec * root_timing->pipeline_ratio,
-          root.get());
+      Push(root.get(), *root_timing);
     }
   }
 
@@ -162,6 +191,29 @@ class NodeParallelismParameters {
  private:
   absl::flat_hash_map<const Node*, Parameter*> node_parallelism_;
 };
+
+// Replaces `\[[0-9].+\]` with `\[\]`.
+std::string RemoveArrayIndices(absl::string_view s) {
+  absl::string_view::size_type start_pos = 0;
+  absl::string_view::size_type pos;
+  std::string res;
+  do {
+    pos = s.find("[", start_pos);
+    if (pos == absl::string_view::npos) {
+      break;
+    }
+    res.append(s.data() + start_pos, pos - start_pos + 1);
+    start_pos = pos + 1;
+    pos = s.find("]", start_pos);
+    if (pos == absl::string_view::npos) {
+      break;
+    }
+    res.append(s.data() + pos, 1);
+    start_pos = pos + 1;
+  } while (true);
+  res.append(s.data() + start_pos, s.length() - start_pos);
+  return res;
+}
 
 // Returns true if all parameters have reached their max values.
 bool AreAllParametersMax(const Model::ModelParameters& parameters) {
@@ -553,8 +605,10 @@ class AsyncInterleaveMany : public Node {
     if (num_elements_ == 0) {
       return 0;
     }
-    return static_cast<double>(processing_time_) /
-           (static_cast<double>(num_elements_) * parallelism);
+    {
+      tf_shared_lock l(mu_);
+      return processing_time_ema_ / parallelism;
+    }
   }
 
  protected:
@@ -831,8 +885,10 @@ class AsyncRatio : public Node {
     if (num_elements_ == 0) {
       return 0;
     }
-    return static_cast<double>(processing_time_) /
-           (static_cast<double>(num_elements_) * parallelism);
+    {
+      tf_shared_lock l(mu_);
+      return processing_time_ema_ / parallelism;
+    }
   }
 
  protected:
@@ -1583,7 +1639,13 @@ double Node::OutputTime(Node::NodeValues* input_times,
   return output_times[long_name()];
 }
 
-double Node::ComputeSelfTime() const { return SelfProcessingTime(); }
+double Node::ComputeSelfTime() const {
+  if (num_elements_ == 0) {
+    return 0;
+  }
+  tf_shared_lock l(mu_);
+  return processing_time_ema_;
+}
 
 std::shared_ptr<Node> Node::Snapshot() const {
   NodePairList node_pairs;
@@ -1762,21 +1824,29 @@ Node::NodeVector Node::CollectNodes(
   return CollectNodesLocked(order, collect_node);
 }
 
-void Node::TryDownsizeBuffer() {
-  Node::ModelParameters buffer_size_parameters;
+bool Node::TryDownsizeBuffer() {
+  if (!IsAsync()) {
+    return false;
+  }
+  Node::ModelParameters tunable_parameters;
   {
     tf_shared_lock l(mu_);
     if (buffered_elements_low_ > buffered_elements_high_) {
       // No element is stored in the buffer yet. Do nothing.
-      return;
+      return false;
     }
-    CollectTunableParametersHelper(&buffer_size_parameters);
+    CollectTunableParametersHelper(&tunable_parameters);
   }
-  // Sync buffer state values to parameter values
-  for (auto& [node_name, parameter] : buffer_size_parameters) {
-    if (parameter->name != kBufferSize) {
+  Node::ModelParameters buffer_size_parameters;
+  for (auto& parameter : tunable_parameters) {
+    if (parameter.second->name != kBufferSize) {
       continue;
     }
+    buffer_size_parameters.push_back(std::move(parameter));
+  }
+  bool downsized = false;
+  // Sync buffer state values to parameter values
+  for (auto& [node_name, parameter] : buffer_size_parameters) {
     tf_shared_lock l(*parameter->state->mu);
     parameter->value = parameter->state->value;
   }
@@ -1784,22 +1854,31 @@ void Node::TryDownsizeBuffer() {
     // Downsize buffers
     tf_shared_lock l(mu_);
     for (auto& [node_name, parameter] : buffer_size_parameters) {
-      if (parameter->name != kBufferSize) {
-        continue;
-      }
       if (buffered_elements_low_ > 0 &&
-          buffered_elements_high_ <= parameter->value) {
+          (buffered_elements_high_ - buffered_elements_low_ + 1) <
+              parameter->value) {
         double old_value = parameter->value;
-        parameter->value = buffered_elements_high_ - buffered_elements_low_ + 1;
-        VLOG(2) << "Downsize buffer " << long_name() << "::" << parameter->name
-                << " from " << old_value << " to " << parameter->value;
-        ResetBufferWatermarks();
+        // By default, we double buffer sizes if there is enough RAM in
+        // upsize. We cap the downsize by 1/4 of the current size to avoid
+        // undoing the previous upsize.
+        parameter->value =
+            std::max(buffered_elements_high_ - buffered_elements_low_ + 1,
+                     static_cast<int64_t>(old_value * 0.75));
+        if (old_value != parameter->value) {
+          VLOG(2) << "Downsize buffer " << long_name()
+                  << "::" << parameter->name << " from " << old_value << " to "
+                  << parameter->value;
+          downsized = true;
+        }
       }
     }
   }
   // Since SharedState locks are the same as the Ops iterator locks, locking of
   // the SharedState locks should be minimized in the optimization thread.
-  UpdateStateValues(&buffer_size_parameters);
+  if (downsized) {
+    UpdateStateValues(&buffer_size_parameters);
+  }
+  return downsized;
 }
 
 void Node::CollectBufferParametersToUpsize(
@@ -1908,13 +1987,19 @@ std::shared_ptr<Node> Node::SnapshotHelper(
     cloned_current->autotune_.store(autotune_);
     cloned_current->buffered_bytes_.store(buffered_bytes_);
     cloned_current->buffered_elements_.store(buffered_elements_);
+    cloned_current->buffered_elements_low_.store(buffered_elements_low_);
+    cloned_current->buffered_elements_high_.store(buffered_elements_high_);
     cloned_current->bytes_consumed_.store(bytes_consumed_);
     cloned_current->bytes_produced_.store(bytes_produced_);
     cloned_current->num_elements_.store(num_elements_);
     cloned_current->record_metrics_.store(false);
     cloned_current->processing_time_.store(processing_time_);
-    mutex_lock l2(cloned_current->mu_);
-    cloned_current->parameters_ = parameters_;
+    {
+      mutex_lock l2(cloned_current->mu_);
+      cloned_current->parameters_ = parameters_;
+      cloned_current->previous_processing_time_ = previous_processing_time_;
+      cloned_current->processing_time_ema_ = processing_time_ema_;
+    }
   }
 
   for (auto& input : inputs_) {
@@ -1997,44 +2082,50 @@ Status Node::ToProto(ModelProto::Node* node_proto) const {
 
 Status Node::FromProtoHelper(ModelProto::Node node_proto,
                              std::shared_ptr<Node> node) {
-  tf_shared_lock l(node->mu_);
-  node->autotune_.store(node_proto.autotune());
-  node->buffered_bytes_.store(node_proto.buffered_bytes());
-  node->buffered_elements_.store(node_proto.buffered_elements());
-  if (node_proto.buffered_elements() == 0) {
-    node->buffered_elements_low_.store(std::numeric_limits<int64_t>::max());
-    node->buffered_elements_high_.store(std::numeric_limits<int64_t>::min());
-  } else {
-    node->buffered_elements_low_.store(node_proto.buffered_elements());
-    node->buffered_elements_high_.store(node_proto.buffered_elements());
-  }
-  node->bytes_consumed_.store(node_proto.bytes_consumed());
-  node->bytes_produced_.store(node_proto.bytes_produced());
-  node->num_elements_.store(node_proto.num_elements());
-  node->processing_time_.store(node_proto.processing_time());
-  node->record_metrics_.store(node_proto.record_metrics());
-
-  // Restore parameters.
-  int64_t num_parameters = node_proto.parameters_size();
-  for (int i = 0; i < num_parameters; i++) {
-    const ModelProto::Node::Parameter& parameter_proto =
-        node_proto.parameters(i);
-    std::shared_ptr<SharedState> state;
-    if (parameter_proto.tunable()) {
-      state =
-          std::make_shared<SharedState>(kAutotune, std::make_shared<mutex>(),
-                                        std::make_shared<condition_variable>());
-      state->value = parameter_proto.state_value();
+  {
+    tf_shared_lock l(node->mu_);
+    node->autotune_.store(node_proto.autotune());
+    node->buffered_bytes_.store(node_proto.buffered_bytes());
+    node->buffered_elements_.store(node_proto.buffered_elements());
+    if (node_proto.buffered_elements() == 0) {
+      node->buffered_elements_low_.store(std::numeric_limits<int64_t>::max());
+      node->buffered_elements_high_.store(std::numeric_limits<int64_t>::min());
     } else {
-      state = std::make_shared<SharedState>(
-          parameter_proto.state_value(), std::make_shared<mutex>(),
-          std::make_shared<condition_variable>());
+      node->buffered_elements_low_.store(node_proto.buffered_elements());
+      node->buffered_elements_high_.store(node_proto.buffered_elements());
     }
-    node->parameters_[parameter_proto.name()] =
-        MakeParameter(parameter_proto.name(), state, parameter_proto.min(),
-                      parameter_proto.max());
-    node->parameters_[parameter_proto.name()]->value =
-        std::max(parameter_proto.min(), parameter_proto.value());
+    node->bytes_consumed_.store(node_proto.bytes_consumed());
+    node->bytes_produced_.store(node_proto.bytes_produced());
+    node->num_elements_.store(node_proto.num_elements());
+    node->processing_time_.store(node_proto.processing_time());
+    node->record_metrics_.store(node_proto.record_metrics());
+
+    // Restore parameters.
+    int64_t num_parameters = node_proto.parameters_size();
+    for (int i = 0; i < num_parameters; i++) {
+      const ModelProto::Node::Parameter& parameter_proto =
+          node_proto.parameters(i);
+      std::shared_ptr<SharedState> state;
+      if (parameter_proto.tunable()) {
+        state = std::make_shared<SharedState>(
+            kAutotune, std::make_shared<mutex>(),
+            std::make_shared<condition_variable>());
+        state->value = parameter_proto.state_value();
+      } else {
+        state = std::make_shared<SharedState>(
+            parameter_proto.state_value(), std::make_shared<mutex>(),
+            std::make_shared<condition_variable>());
+      }
+      node->parameters_[parameter_proto.name()] =
+          MakeParameter(parameter_proto.name(), state, parameter_proto.min(),
+                        parameter_proto.max());
+      node->parameters_[parameter_proto.name()]->value =
+          std::max(parameter_proto.min(), parameter_proto.value());
+    }
+  }
+  {
+    mutex_lock l(node->mu_);
+    node->UpdateProcessingTimeEma();
   }
   return OkStatus();
 }
@@ -2073,17 +2164,41 @@ Status Node::FromProto(ModelProto::Node node_proto,
   return FromProtoHelper(node_proto, *node);
 }
 
-Model::Model() : optimization_period_ms_(kOptimizationPeriodMinMs) {
+Model::Model()
+    : optimization_period_ms_(kOptimizationPeriodMinMs),
+      safe_to_collect_metrics_(std::make_shared<GuardedBool>(true)) {
   model_gauge_cell_ = metrics::GetTFDataModelGauge(
       strings::StrCat(reinterpret_cast<uint64>(this)));
-  model_gauge_cell_->Set([&]() { return DebugString(); });
+  // Capture `safe_to_collect_metrics_` by value to avoid use-after-free issues
+  // when the callback is invoked after the model has been destroyed.
+  model_gauge_cell_->Set(
+      [this, my_safe_to_collect_metrics = this->safe_to_collect_metrics_]() {
+        mutex_lock l(my_safe_to_collect_metrics->mu);
+        if (!my_safe_to_collect_metrics->val) {
+          return std::string();
+        }
+        {
+          tf_shared_lock snapshot_lock(mu_);
+          if (snapshot_ != nullptr) {
+            ModelProto model_proto;
+            Status s = ModelToProtoHelper(snapshot_, &model_proto);
+            if (s.ok()) {
+              *model_proto.mutable_optimization_params() = optimization_params_;
+              tf_shared_lock l(gap_mu_);
+              *model_proto.mutable_gap_times() = {gap_times_usec_.begin(),
+                                                  gap_times_usec_.end()};
+              return model_proto.DebugString();
+            }
+            LOG(WARNING) << s.error_message();
+          }
+        }
+        return DebugString();
+      });
 }
 
 Model::~Model() {
-  // Before the model is destroyed, we record an empty string in the gauge to
-  // prevent race condition where the gauge callback is called after the Model
-  // is destroyed.
-  model_gauge_cell_->Set([]() { return std::string(); });
+  mutex_lock l(safe_to_collect_metrics_->mu);
+  safe_to_collect_metrics_->val = false;
 }
 
 void Model::AddNode(Node::Factory factory, const string& name,
@@ -2163,8 +2278,15 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
                  "optimization.";
       return;
   }
-  if (experiment_ == "autotune_buffer_optimization") {
+  if (experiments_.contains("autotune_buffer_optimization")) {
     OptimizeBuffers(snapshot, optimization_params.ram_budget());
+  }
+  {
+    // Save the snapshot of the model proto including the parameters used by
+    // autotune. This will be used as the model proto returned in `tfstreamz`.
+    mutex_lock l(mu_);
+    snapshot_ = snapshot;
+    optimization_params_ = optimization_params;
   }
 }
 
@@ -2183,15 +2305,17 @@ Model::ModelParameters Model::CollectTunableParameters(
   return node->CollectTunableParameters();
 }
 
-void Model::DownsizeBuffers(std::shared_ptr<Node> snapshot) {
+bool Model::DownsizeBuffers(std::shared_ptr<Node> snapshot) {
   Node::NodeVector nodes =
       snapshot->CollectNodes(TraversalOrder::BFS, IsAsyncNode);
-  if (snapshot->IsAsync()) {
-    snapshot->TryDownsizeBuffer();
-  }
+  nodes.push_back(snapshot);
+  bool downsized = false;
   for (auto& node : nodes) {
-    node->TryDownsizeBuffer();
+    if (node->TryDownsizeBuffer()) {
+      downsized = true;
+    }
   }
+  return downsized;
 }
 
 absl::flat_hash_map<Node*, Parameter*> Model::CollectBufferParametersToUpsize(
@@ -2376,7 +2500,8 @@ void Model::OptimizeHillClimbHelper(
 
   // Skip buffer size optimization if we are running the new buffering
   // algorithm.
-  bool skip_buffer_sizes = (experiment_ == "autotune_buffer_optimization");
+  bool skip_buffer_sizes =
+      (experiments_.contains("autotune_buffer_optimization"));
   if (skip_buffer_sizes) {
     constexpr float TEN_MINUTES = 60.0 * 10.0;
     LOG_EVERY_N_SEC(INFO, TEN_MINUTES)
@@ -2448,17 +2573,13 @@ double Model::ComputeTargetTimeNsec() {
   if (gap_times_usec_.empty()) {
     return 0.0;
   }
-  // Remove outliers.
-  std::vector<uint64_t> clean_gap_times_usec =
-      OutlierPruner({gap_times_usec_.begin(), gap_times_usec_.end()})
-          .GetCleanPoints();
-  if (clean_gap_times_usec.empty()) {
-    return 0.0;
+  double target_time_sigmas = 0.0;
+  if (experiments_.contains("stage_based_autotune_v2")) {
+    target_time_sigmas = kTargetTimeSigmas;
   }
-  // Compute mean after outliers are removed.
-  double sum_gap_time_usec = std::accumulate(clean_gap_times_usec.begin(),
-                                             clean_gap_times_usec.end(), 0);
-  return sum_gap_time_usec / static_cast<double>(clean_gap_times_usec.size()) *
+  return TargetTimeCalculator({gap_times_usec_.begin(), gap_times_usec_.end()},
+                              kOutlierSigmas, target_time_sigmas)
+             .GetTargetTimeUsec() *
          1.0e3;
 }
 
@@ -2491,18 +2612,28 @@ void Model::OptimizeStageBasedParallelism(
   StatusOr<std::pair<double, Node*>> critical_root_status =
       priority_queue.PopSlowestStageRoot();
   if (!critical_root_status.ok()) {
+    metrics::RecordTFDataAutotuneStoppingCriteria("empty_critical_queue");
     return;
   }
   NodeParallelismParameters node_parallelism;
-  std::pair<double, Node*> critical_root = critical_root_status.ValueOrDie();
+  std::pair<double, Node*> critical_root = critical_root_status.value();
   while (critical_root.first > target_time_nsec) {
     Parameter* parallelism_parameter =
         node_parallelism.Get(critical_root.second);
     // Stop optimization if the critical stage has no `parallelism` parameter or
     // it has reached the max parallelism value.
-    if (parallelism_parameter == nullptr ||
-        parallelism_parameter->value >= parallelism_parameter->max ||
-        parallelism_parameter->value >= optimization_params.cpu_budget()) {
+    if (parallelism_parameter == nullptr) {
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "no_optimizable_parameter:",
+          RemoveArrayIndices(critical_root.second->long_name())));
+      break;
+    }
+    if (parallelism_parameter->value >= parallelism_parameter->max) {
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "parameter_max_exceeded:",
+          RemoveArrayIndices(critical_root.second->long_name())));
       break;
     }
     parallelism_parameter->value += 1.0;
@@ -2510,20 +2641,40 @@ void Model::OptimizeStageBasedParallelism(
         optimization_params.ram_budget()) {
       // Increasing the parallelism by 1 exceeded ram budget. Reduce it back and
       // stop optimization because we cannot improve the most critical stage.
+      // There is also a decent chance that the current optimization iteration
+      // is under-optimized. For that reason, return immediately without
+      // updating the parameter state values.
       parallelism_parameter->value -= 1.0;
-      break;
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "ram_budget_exceeded:",
+          RemoveArrayIndices(critical_root.second->long_name())));
+      return;
     }
     // Compute the new total time and put the node back in the queue after its
     // parallelism value has been increased by 1.
     model_timing.ComputeNodeTotalTime(*critical_root.second);
-    priority_queue.Push(critical_root.second,
-                        *model_timing.GetTiming(critical_root.second));
+    const ModelTiming::NodeTiming* root_timing =
+        model_timing.GetTiming(critical_root.second);
+    // If timing has not improved, stop optimizing.
+    if (critical_root.first <=
+        (root_timing->total_time_nsec * root_timing->pipeline_ratio)) {
+      parallelism_parameter->value -= 1.0;
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "total_time_not_improved:",
+          RemoveArrayIndices(critical_root.second->long_name())));
+      break;
+    }
+    // Push it back to the priority queue.
+    priority_queue.Push(critical_root.second, *root_timing);
     // Get the next critical stage root.
     critical_root_status = priority_queue.PopSlowestStageRoot();
     if (!critical_root_status.ok()) {
+      metrics::RecordTFDataAutotuneStoppingCriteria("empty_critical_queue");
       break;
     }
-    critical_root = critical_root_status.ValueOrDie();
+    critical_root = critical_root_status.value();
   }
   UpdateStateValues(&tunable_parameters);
 }
@@ -2535,11 +2686,19 @@ void Model::OptimizeBuffers(std::shared_ptr<Node> snapshot,
   LOG_EVERY_N_SEC(INFO, TEN_MINUTES)
       << "Starting optimization of buffer_size parameters (message logged "
          "every 10 minutes).";
-  DownsizeBuffers(snapshot);
-  UpsizeBuffers(snapshot, ram_budget);
+  // Reset node watermarks if any node's buffer is upsized or downsized. We
+  // reset the watermarks of not only those nodes whose sizes change but all
+  // nodes. The reason is that the optimization algorithm works on a snapshot of
+  // nodes. There is no back references from snapshot of nodes to nodes. We
+  // could add these back references but it is probably not necessary.
+  bool downsized = DownsizeBuffers(snapshot);
+  bool upsized = UpsizeBuffers(snapshot, ram_budget);
+  if (downsized || upsized) {
+    ResetBufferWatermarks();
+  }
 }
 
-void Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
+bool Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
   // Find buffers that should be up-sized.
   absl::flat_hash_map<Node*, Parameter*> node_parameters =
       CollectBufferParametersToUpsize(snapshot);
@@ -2548,7 +2707,7 @@ void Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
   double available_ram_bytes =
       static_cast<double>(ram_budget) - TotalMaximumBufferedBytes(snapshot);
 
-  // Compute memory used by all buffers that should be upsized.
+  // Compute the max memory used by all buffers that should be upsized.
   double max_buffered_bytes = 0;
   for (auto& [node, parameter] : node_parameters) {
     if (node->buffered_elements() == 0) {
@@ -2566,6 +2725,7 @@ void Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
         1.0 + std::min(1.0, available_ram_bytes / max_buffered_bytes);
   }
 
+  bool upsized = false;
   // Up-size all buffers by the scaling factor.
   for (auto& [node, parameter] : node_parameters) {
     double old_value = parameter->value;
@@ -2582,9 +2742,18 @@ void Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
         parameter->state->value = parameter->value;
         parameter->state->cond_var->notify_all();
       }
-      // Reset node buffer watermarks
-      node->ResetBufferWatermarks();
+      upsized = true;
     }
+  }
+  return upsized;
+}
+
+void Model::ResetBufferWatermarks() {
+  Node::NodeVector nodes =
+      output()->CollectNodes(TraversalOrder::BFS, IsAsyncNode);
+  nodes.push_back(output());
+  for (auto& node : nodes) {
+    node->ResetBufferWatermarks();
   }
 }
 
@@ -2778,7 +2947,27 @@ void ModelTiming::ComputePipelineRatios(const Node::NodeVector& bfs_nodes) {
     if (node->output() != nullptr || timing_nodes_.contains(node->output())) {
       const auto& output_timing = timing_nodes_[node->output()];
       parent_pipeline_ratio = output_timing.pipeline_ratio;
-      parent_ratio = node->output()->Ratio();
+      auto should_estimate_first_input_ratio = [node]() {
+        // Elements of the first input of some transformations like `Interleave`
+        // are used to produce "derived" inputs whose elements are then produced
+        // as the output of the transformation. For this reason, the ratio of
+        // such inputs is not known statically and is instead estimated as the
+        // ratio of `num_elements` it produces and `num_elements` its output
+        // produces.
+        return (absl::StartsWith(node->output()->name(), kFlatMap) ||
+                absl::StartsWith(node->output()->name(), kInterleave) ||
+                absl::StartsWith(node->output()->name(),
+                                 kParallelInterleave)) &&
+               node.get() == node->output()->inputs().begin()->get() &&
+               node->num_elements() > 0 && node->output()->num_elements() > 0;
+      };
+      if (should_estimate_first_input_ratio()) {
+        parent_ratio = static_cast<double>(node->num_elements()) /
+                       static_cast<double>(node->output()->num_elements() +
+                                           node->output()->buffered_elements());
+      } else {
+        parent_ratio = node->output()->Ratio();
+      }
       if (parent_ratio <= 0.0) {
         // Parent ratio is unknown, we use 1.0 as a guess.
         parent_ratio = 1.0;
@@ -2790,39 +2979,68 @@ void ModelTiming::ComputePipelineRatios(const Node::NodeVector& bfs_nodes) {
 
 void ModelTiming::ComputeNonAsyncInterleaveManyTotalTime(const Node& node) {
   DCHECK(timing_nodes_.contains(&node));
-  auto& node_timing = timing_nodes_[&node];
-  double input_total_time_nsec = 0.0;
-  for (auto input : node.inputs()) {
-    if (input->IsAsync()) {
-      continue;
+  auto inputs = node.inputs();
+  auto input = inputs.begin();
+  double first_input_total_time = 0.0;
+  // The total time of a node is scaled by its ratio to account for how many
+  // elements it needs to produce for its output node to produce an element. If
+  // this is an interleave node or a flat map node, then the ratio is not known
+  // statically and is instead estimated using empirical data.
+  if (absl::StartsWith(node.name(), kFlatMap) ||
+      absl::StartsWith(node.name(), kInterleave)) {
+    first_input_total_time = ComputeInterleaveManyFirstInputTotalTime(node);
+    if (input != inputs.end()) {
+      ++input;
     }
-    if (!input->autotune() || input->num_elements() <= 0) {
-      continue;
-    }
-    DCHECK(timing_nodes_.contains(input.get()))
-        << "Input " << input->long_name() << " of node " << node.long_name()
-        << " has no timing node.";
-
-    input_total_time_nsec += timing_nodes_[input.get()].total_time_nsec;
   }
+  double input_total_time_nsec = first_input_total_time;
+  for (; input != inputs.end(); ++input) {
+    if ((*input)->IsAsync()) {
+      continue;
+    }
+    if (!(*input)->autotune() || (*input)->num_elements() <= 0) {
+      continue;
+    }
+    DCHECK(timing_nodes_.contains((*input).get()))
+        << "Input " << (*input)->long_name() << " of node " << node.long_name()
+        << " has no timing node.";
+    input_total_time_nsec +=
+        timing_nodes_[(*input).get()].total_time_nsec * node.Ratio();
+  }
+  auto& node_timing = timing_nodes_[&node];
   node_timing.total_time_nsec =
-      node_timing.self_time_nsec + input_total_time_nsec * node.Ratio();
+      node_timing.self_time_nsec + input_total_time_nsec;
 }
 
 void ModelTiming::ComputeAsyncInterleaveManyTotalTime(const Node& node) {
   DCHECK(timing_nodes_.contains(&node));
   auto& node_timing = timing_nodes_[&node];
+  node_timing.total_time_nsec =
+      node_timing.self_time_nsec +
+      ComputeInterleaveManyFirstInputTotalTime(node) +
+      ComputeAsyncInterleaveManyInterleavedInputsTotalTime(node);
+}
+
+double ModelTiming::ComputeAsyncInterleaveManyInterleavedInputsTotalTime(
+    const Node& node) {
+  DCHECK(timing_nodes_.contains(&node));
   double max_input_total_time_nsec = 0.0;
   double sum_input_throughput = 0.0;
   auto inputs = node.inputs();
   // `ParallelInterleave` is often used to interleave processing of datasets
   // generated from the first input, e.g. reading from IO where the first input
-  // has the list of all filenames. The first input is typically not the
-  // bottleneck. We exclude the timing of the first input in the throughput
-  // computation of the remaining input. It also excluded from the total time
-  // computation of the async interleave node.
-  auto input = inputs.begin();
-  while ((input = std::next(input)) != inputs.end()) {
+  // has the list of all filenames. We skip it here to compute the total time of
+  // the other inputs.
+  auto input = std::next(inputs.begin());
+  // `num_active_inputs` holds the number of inputs that the
+  // `ParallelInterleave` is reading from, not including those that are warm
+  // starting, which can be detected by checking the value of `autotune()`. It
+  // also does not count async inputs because they would be in their own
+  // stages. This number is typically the same as `cycle_length`. It will be
+  // used below to scale the throughput of inputs if `cycle_length` is smaller
+  // than `num_active_inputs`.
+  int num_active_inputs = 0;
+  for (; input != inputs.end(); ++input) {
     if ((*input)->IsAsync()) {
       continue;
     }
@@ -2838,23 +3056,67 @@ void ModelTiming::ComputeAsyncInterleaveManyTotalTime(const Node& node) {
     if (input_total_time_nsec > 0.0) {
       sum_input_throughput += 1.0 / input_total_time_nsec;
     }
+    ++num_active_inputs;
   }
-  double input_total_time_nsec = 0.0;
-  auto deterministic = node.ParameterValue(kDeterministic);
+  auto parallelism_param = node.ParameterValue(kParallelism);
+  double parallelism = 1.0;
+  if (parallelism_param.ok()) {
+    parallelism = parallelism_param.value();
+  }
   // After cl/445005635, there should always be `deterministic` parameter for an
   // ASYNC_INTERLEAVE_MANY node. The "not-ok" check is to allow the code to work
-  // with protos saved and restored before that CL.
-  if (!deterministic.ok() || deterministic.ValueOrDie() == 1.0) {
-    // If deterministic = true, then the total time is `1/worst input throughput
-    // * cycle_length`, or `max input total time / cycle_length`.
-    input_total_time_nsec = max_input_total_time_nsec * node.Ratio();
+  // with protos saved and restored before that CL. Similarly for `cycle_length`
+  // with cl/436244658.
+  auto deterministic_param = node.ParameterValue(kDeterministic);
+  bool deterministic = false;
+  if (deterministic_param.ok()) {
+    deterministic = deterministic_param.value() == 1.0;
+  }
+  auto cycle_length_param = node.ParameterValue(kCycleLength);
+  double cycle_length = num_active_inputs;
+  if (cycle_length_param.ok()) {
+    cycle_length = cycle_length_param.value();
+  }
+  double input_total_time_nsec = 0.0;
+  if (deterministic) {
+    // If deterministic = true, then the total time is `max input total time /
+    // min(parallelism, cycle_length)`.
+    input_total_time_nsec =
+        max_input_total_time_nsec / std::min(parallelism, cycle_length);
   } else if (sum_input_throughput > 0.0) {
     // If deterministic = false, then the total time is
-    // `1/sum_input_throughput`.
+    // `1/sum_input_throughput`. Scale the throughput according to `parallelism`
+    // and `cycle_length` if `cycle_length` or `parallelism` is smaller than
+    // active inputs. `cycle_length` and `parallelism` could theoretically be
+    // larger than active inputs when some inputs are async and some are sync.
+    if (std::min(cycle_length, parallelism) < num_active_inputs) {
+      sum_input_throughput *=
+          std::min(parallelism, cycle_length) / num_active_inputs;
+    }
     input_total_time_nsec = 1.0 / sum_input_throughput;
   }
-  node_timing.total_time_nsec =
-      node_timing.self_time_nsec + input_total_time_nsec;
+  return input_total_time_nsec;
+}
+
+double ModelTiming::ComputeInterleaveManyFirstInputTotalTime(const Node& node) {
+  DCHECK(timing_nodes_.contains(&node));
+  // An interleave node is often used to interleave processing of datasets
+  // generated from the first input, e.g. reading from IO where the first input
+  // has the list of all filenames. The contribution of the first input total
+  // time is proportional to the number of elements it produces over the number
+  // elements the parallel interleave node produces.
+  auto inputs = node.inputs();
+  auto first_input = inputs.begin();
+  if (first_input == inputs.end() || (*first_input)->IsAsync() ||
+      !(*first_input)->autotune() || (*first_input)->num_elements() <= 0) {
+    return 0.0;
+  }
+  DCHECK(timing_nodes_.contains((*first_input).get()))
+      << "Input " << (*first_input)->long_name() << " of node "
+      << node.long_name() << " has no timing node.";
+  return timing_nodes_[(*first_input).get()].total_time_nsec *
+         (*first_input)->num_elements() /
+         (node.num_elements() + node.buffered_elements());
 }
 
 void ModelTiming::ComputeTotalTimes(const Node::NodeVector& reverse_bfs_nodes) {
@@ -2869,17 +3131,11 @@ void ModelTiming::ComputeNodeTotalTime(const Node& node) {
   if (!node.autotune() || node.num_elements() <= 0) {
     return;
   }
-#if !defined(IS_MOBILE_PLATFORM)
-  // This block of code is defined only for non-mobile platform because mobile
-  // platform lacks RTTI, i.e. the use of `dynamic_cast`.
-  if (dynamic_cast<const AsyncInterleaveMany*>(&node) != nullptr) {
+  if (absl::StartsWith(node.name(), kParallelInterleave)) {
     ComputeAsyncInterleaveManyTotalTime(node);
-  } else {
-    ComputeNonAsyncInterleaveManyTotalTime(node);
+    return;
   }
-#else   // !IS_MOBILE_PLATFORM
   ComputeNonAsyncInterleaveManyTotalTime(node);
-#endif  // !IS_MOBILE_PLATFORM
 }
 
 std::vector<std::shared_ptr<Node>> ModelTiming::GetStageRoots() const {

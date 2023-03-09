@@ -74,11 +74,17 @@ uint8* Decode(const void* srcdata, int datasize,
                                  GifErrorStringNonNull(error_code));
     return nullptr;
   }
+
   if (DGifSlurp(gif_file) != GIF_OK) {
     *error_string = absl::StrCat("failed to slurp gif file: ",
                                  GifErrorStringNonNull(gif_file->Error));
-    return nullptr;
+    // Only stop load if no images are detected.
+    if (gif_file->ImageCount <= 0) {
+      return nullptr;
+    }
+    LOG(WARNING) << *error_string;
   }
+
   if (gif_file->ImageCount <= 0) {
     *error_string = "gif file does not contain any image";
     return nullptr;
@@ -105,7 +111,7 @@ uint8* Decode(const void* srcdata, int datasize,
   uint8* const dstdata =
       allocate_output(target_num_frames, width, height, channel);
   if (!dstdata) return nullptr;
-  for (int k = 0; k < target_num_frames; k++) {
+  for (int64_t k = 0; k < target_num_frames; k++) {
     uint8* this_dst = dstdata + k * width * channel * height;
 
     SavedImage* this_image = &gif_file->SavedImages[k];
@@ -125,10 +131,10 @@ uint8* Decode(const void* srcdata, int datasize,
 
     if (k > 0) {
       uint8* last_dst = dstdata + (k - 1) * width * channel * height;
-      for (int i = 0; i < height; ++i) {
+      for (int64_t i = 0; i < height; ++i) {
         uint8* p_dst = this_dst + i * width * channel;
         uint8* l_dst = last_dst + i * width * channel;
-        for (int j = 0; j < width; ++j) {
+        for (int64_t j = 0; j < width; ++j) {
           p_dst[j * channel + 0] = l_dst[j * channel + 0];
           p_dst[j * channel + 1] = l_dst[j * channel + 1];
           p_dst[j * channel + 2] = l_dst[j * channel + 2];
@@ -141,9 +147,9 @@ uint8* Decode(const void* srcdata, int datasize,
       // If the first frame does not fill the entire canvas then fill the
       // unoccupied canvas with zeros (black).
       if (k == 0) {
-        for (int i = 0; i < height; ++i) {
+        for (int64_t i = 0; i < height; ++i) {
           uint8* p_dst = this_dst + i * width * channel;
-          for (int j = 0; j < width; ++j) {
+          for (int64_t j = 0; j < width; ++j) {
             p_dst[j * channel + 0] = 0;
             p_dst[j * channel + 1] = 0;
             p_dst[j * channel + 2] = 0;
@@ -165,9 +171,9 @@ uint8* Decode(const void* srcdata, int datasize,
       return nullptr;
     }
 
-    for (int i = imgTop; i < imgBottom; ++i) {
+    for (int64_t i = imgTop; i < imgBottom; ++i) {
       uint8* p_dst = this_dst + i * width * channel;
-      for (int j = imgLeft; j < imgRight; ++j) {
+      for (int64_t j = imgLeft; j < imgRight; ++j) {
         GifByteType color_index =
             this_image->RasterBits[(i - img_desc->Top) * (img_desc->Width) +
                                    (j - img_desc->Left)];

@@ -15,7 +15,7 @@
 """Util for converting a Python object to a Trackable."""
 
 
-from tensorflow.python.eager import function_saved_model_utils
+from tensorflow.python.eager.polymorphic_function import saved_model_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import resource_variable_ops
@@ -31,7 +31,7 @@ def convert_to_trackable(obj, parent=None):
   if (tensor_util.is_tf_type(obj) and
       obj.dtype not in (dtypes.variant, dtypes.resource) and
       not resource_variable_ops.is_resource_variable(obj)):
-    return function_saved_model_utils.TrackableConstant(obj, parent)
+    return saved_model_utils.TrackableConstant(obj, parent)
   if not isinstance(obj, base.Trackable):
     raise ValueError(f"Cannot convert {obj} to Trackable.")
   return obj

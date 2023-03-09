@@ -17,6 +17,7 @@
 This is currently under development and the API is subject to change.
 """
 
+import collections
 import contextlib
 import os
 import re
@@ -29,6 +30,7 @@ from six.moves import queue
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.coordinator import coordinator_context
 from tensorflow.python.distribute.coordinator import metric_utils
+from tensorflow.python.distribute.coordinator import remote_value
 from tensorflow.python.distribute.coordinator import values as values_lib
 from tensorflow.python.distribute.coordinator import watchdog
 from tensorflow.python.eager import cancellation
@@ -63,39 +65,69 @@ _RPC_ERROR_FROM_PS = "GRPC error information from remote target /job:ps"
 _JOB_WORKER_STRING_IDENTIFIER = "/job:worker"
 
 
-RemoteValueStatus = values_lib.RemoteValueStatus
-RemoteValue = values_lib.RemoteValue
+RemoteValueStatus = remote_value.RemoteValueStatus
+RemoteValue = remote_value.RemoteValue
 RemoteValueImpl = values_lib.RemoteValueImpl
 PerWorkerValues = values_lib.PerWorkerValues
 
 
-class InputError(Exception):
+class ClosureInputError(Exception):
+  """Wrapper for errors from resource building.
+
+  When a closure starts, it first checks for errors in any of its inputs, which
+  are RemoteValues from resource closures. If there were any errors, it wraps
+  the exception in this class and raises so it can be handled by the worker
+  failure handler.
+
+  Attributes:
+    original_exception:
+  """
 
   def __init__(self, original_exception):
-    self.original_exception = original_exception
+    # Avoid doubly-nested errors
+    if isinstance(original_exception,
+                  (ClosureInputError, ClosureAbortedError)):
+      self.original_exception = original_exception.original_exception
+    else:
+      self.original_exception = original_exception
     message = ("Input has an error, the original exception is %r, "
                "error message is %s." %
-               (original_exception, str(original_exception)))
+               (self.original_exception, str(self.original_exception)))
     super().__init__(message)
     self.with_traceback(original_exception.__traceback__)
 
 
-def _maybe_rebuild_remote_values(worker, structure):
+class ClosureAbortedError(Exception):
+  """Wrapper for errors from training closures, to attach to resource closures.
+
+  This wrapper is used when a dependent training closure fails to set errors on
+  its required resource closures.
+
+  Attributes:
+    original_exception: The Exception to wrap
+  """
+
+  def __init__(self, original_exception):
+    # Avoid doubly-nested errors
+    if isinstance(original_exception,
+                  (ClosureInputError, ClosureAbortedError)):
+      self.original_exception = original_exception.original_exception
+    else:
+      self.original_exception = original_exception
+    message = ("Other function has an execution error, as a result, the "
+               "current value is not available. The original exception is %r, "
+               "error message is %s." %
+               (self.original_exception, str(self.original_exception)))
+    super().__init__(message)
+    self.with_traceback(original_exception.__traceback__)
+
+
+def _get_error_from_remote_values(structure):
   """Attempts to return errors from `RemoteValue`s. Rebuilds them if needed."""
   errors_in_structure = []
 
   def _get_error(val):
     if isinstance(val, RemoteValue):
-      if val._status is RemoteValueStatus.ABORTED:  # pylint: disable=protected-access
-        try:
-          # This attempts to rebuild the resource on the worker, which may fail
-          # if the worker or PS is unavailable. If it fails, the original
-          # RemoteValue that requests a result will receive an `InputError`,
-          # which gets handled by `wait_on_failure` in `process_closure`.
-          val._rebuild_on(worker)  # pylint: disable=protected-access
-        except Exception as e:  # pylint: disable=broad-except
-          val._set_error(e)  # pylint: disable=protected-access
-
       error = val._get_error()  # pylint: disable=protected-access
       if error:
         errors_in_structure.append(error)
@@ -105,19 +137,6 @@ def _maybe_rebuild_remote_values(worker, structure):
     return errors_in_structure[0]
   else:
     return None
-
-
-def _maybe_get_remote_value(val):
-  """Gets the value of `val` if it is a `RemoteValue`."""
-  if isinstance(val, RemoteValue):
-    error = val._get_error()  # pylint: disable=protected-access
-    if error:
-      raise AssertionError(
-          "RemoteValue doesn't have a value because it has errors.")
-    else:
-      return val._get_values()  # pylint: disable=protected-access
-  else:
-    return val
 
 
 def _maybe_as_type_spec(val):
@@ -234,11 +253,11 @@ class Closure(object):
     replica_kwargs = _select_worker_slice(worker.worker_index, self._kwargs)
 
     e = (
-        _maybe_rebuild_remote_values(worker, replica_args) or
-        _maybe_rebuild_remote_values(worker, replica_kwargs))
+        _get_error_from_remote_values(replica_args) or
+        _get_error_from_remote_values(replica_kwargs))
     if e:
-      if not isinstance(e, InputError):
-        e = InputError(e)
+      if not isinstance(e, ClosureInputError):
+        e = ClosureInputError(e)
       raise e
 
     with ops.device(worker.device_name):
@@ -246,8 +265,10 @@ class Closure(object):
         with coordinator_context.with_dispatch_context(worker):
           with metric_utils.monitored_timer("closure_execution"):
             output_values = self._function(
-                *nest.map_structure(_maybe_get_remote_value, replica_args),
-                **nest.map_structure(_maybe_get_remote_value, replica_kwargs))
+                *nest.map_structure(coordinator_context.maybe_get_remote_value,
+                                    replica_args),
+                **nest.map_structure(coordinator_context.maybe_get_remote_value,
+                                     replica_kwargs))
     self.maybe_call_with_output_remote_value(
         lambda r: r._set_values(output_values))  # pylint: disable=protected-access
 
@@ -304,6 +325,7 @@ class _CoordinatedClosureQueue(object):
           "In a `ClusterCoordinator`, creating an infinite closure queue can "
           "consume a significant amount of memory and even lead to OOM.")
     self._queue = queue.Queue(maxsize=_CLOSURE_QUEUE_MAX_SIZE)
+    self._tagged_queue = collections.defaultdict(queue.Queue)
     self._error = None
 
     # The following is a lock to make sure when `wait` is called and before it
@@ -328,6 +350,7 @@ class _CoordinatedClosureQueue(object):
   def stop(self):
     with self._queue_lock:
       self._should_process_closures = False
+      self._cancellation_mgr.start_cancel()
       self._closures_queued_condition.notify_all()
     self._watchdog.stop()
 
@@ -337,8 +360,12 @@ class _CoordinatedClosureQueue(object):
     This method expects self._queue_lock to be held prior to entry.
     """
     self._cancellation_mgr.start_cancel()
+    logging.info("Canceling all closures: waiting for inflight closures to "
+                 "finish")
     while self._inflight_closure_count > 0:
       self._no_inflight_closure_condition.wait()
+    logging.info("Canceling all closures: canceling remaining closures on the "
+                 "queue")
     while True:
       try:
         closure = self._queue.get(block=False)
@@ -372,7 +399,7 @@ class _CoordinatedClosureQueue(object):
       finally:
         self._error = None
 
-  def put(self, closure):
+  def put(self, closure, tag=None):
     """Put a closure into the queue for later execution.
 
     If `mark_failed` was called before `put`, the error from the first
@@ -380,22 +407,47 @@ class _CoordinatedClosureQueue(object):
 
     Args:
       closure: The `Closure` to put into the queue.
+      tag: if not None, put into a queue with the given tag.
     """
-    with self._put_wait_lock, self._queue_lock:
-      self._queue_free_slot_condition.wait_for(lambda: not self._queue.full())
-      self._queue.put(closure, block=False)
-      self._raise_if_error()
-      self._closures_queued_condition.notify()
+    closure.tag = tag
+    if tag is not None:
+      with self._queue_lock:
+        self._tagged_queue[tag].put(closure, block=False)
+        self._closures_queued_condition.notifyAll()
+    else:
+      with self._put_wait_lock, self._queue_lock:
+        self._queue_free_slot_condition.wait_for(lambda: not self._queue.full())
+        self._queue.put(closure, block=False)
+        self._raise_if_error()
+        self._closures_queued_condition.notify()
 
-  def get(self, timeout=None):
-    """Return a closure from the queue to be executed."""
+  def get(self, timeout=None, tag=None):
+    """Return a closure from the queue to be executed.
+
+    It will try to fetch an item from the queue with the given tag. If this
+    queue is empty, it will then check the global queue.
+
+    Args:
+      timeout: timeout when waiting for a closure to be put.
+      tag: optional tag to specify which queue to query first before querying
+        the global queue.
+
+    Returns:
+      a closure or None after timeout.
+    """
     with self._queue_lock:
-      while self._queue.empty() and self._should_process_closures:
+      while (self._should_process_closures and self._queue.empty() and
+             (tag is None or self._tagged_queue[tag].empty())):
         if not self._closures_queued_condition.wait(timeout=timeout):
           return None
       if not self._should_process_closures:
         return None
+      if tag is not None and not self._tagged_queue[tag].empty():
+        closure = self._tagged_queue[tag].get(block=False)
+        return closure
       closure = self._queue.get(block=False)
+      assert closure.tag is None
+      assert tag is None or self._tagged_queue[tag].empty()
       self._queue_free_slot_condition.notify()
       self._inflight_closure_count += 1
       return closure
@@ -414,6 +466,7 @@ class _CoordinatedClosureQueue(object):
 
   def put_back(self, closure):
     """Put the closure back into the queue as it was not properly executed."""
+    assert closure.tag is None
     with self._queue_lock:
       if self._inflight_closure_count < 1:
         raise AssertionError("There is no inflight closures to put_back.")
@@ -440,6 +493,7 @@ class _CoordinatedClosureQueue(object):
       True unless the given timeout expired, in which case it returns False.
     """
     with self._put_wait_lock, self._queue_lock:
+      logging.info("Waiting for all global closures to be finished.")
       while (not self._error and
              (not self._queue.empty() or self._inflight_closure_count > 0)):
         if not self._stop_waiting_condition.wait(timeout=timeout):
@@ -470,6 +524,9 @@ class _CoordinatedClosureQueue(object):
     with self._queue_lock:
       self._raise_if_error()
       return self._queue.empty() and self._inflight_closure_count == 0
+
+  def clear_tag_unlocked(self, tag):
+    self._tagged_queue[tag] = queue.Queue()
 
 
 class WorkerPreemptionHandler(object):
@@ -531,7 +588,8 @@ class WorkerPreemptionHandler(object):
     assert self._should_preemption_thread_run
     try:
       yield
-    except (errors.OpError, InputError) as e:
+    except (errors.OpError, ClosureInputError,
+            ClosureAbortedError) as e:
       # If the error is due to temporary connectivity issues between worker and
       # ps, put back closure, ignore error and do not mark worker as failure.
       if self._cluster._record_and_ignore_transient_ps_failure(e):  # pylint: disable=protected-access
@@ -580,7 +638,7 @@ class WorkerPreemptionHandler(object):
 
       logging.error("Worker %s failed with %r:%s", worker_device_name, e, e)
       if on_failure_fn:
-        on_failure_fn()
+        on_failure_fn(e)
 
       with self._cluster_update_lock:
         self._cluster_due_for_update_or_finish.set()
@@ -596,6 +654,7 @@ class WorkerPreemptionHandler(object):
         logging.info("Worker %s has been recovered.", worker_device_name)
 
       if on_recovery_fn:
+        logging.info("Worker %s calling on_recovery_fn", worker_device_name)
         with self.wait_on_failure(
             on_recovery_fn=on_recovery_fn,
             on_transient_failure_fn=on_transient_failure_fn,
@@ -620,7 +679,8 @@ class WorkerPreemptionHandler(object):
         try:
           # TODO(haoyuzhang): support partial cluster recovery
           logging.info("Cluster now being recovered.")
-          context.context().update_server_def(self._server_def)
+          with metric_utils.monitored_timer("server_def_update"):
+            context.context().update_server_def(self._server_def)
 
           # Cluster updated successfully, clear the update signal, and notify
           # all workers that they are recovered from failure.
@@ -631,9 +691,12 @@ class WorkerPreemptionHandler(object):
           if self._should_preemption_thread_run:
             self._cluster_due_for_update_or_finish.clear()
         except Exception as e:  # pylint: disable=broad-except
+          logging.info("Error occurred while updating server def: %s", e)
           try:
             self._validate_preemption_failure(e)
           except Exception as ps_e:  # pylint: disable=broad-except
+            logging.info("Error that occurred while updating server def is not "
+                         "a worker failure. So set it as _error_from_recovery")
             # In this case, a parameter server fails. So we raise this error to
             # the caller of `wait_on_failure`.
             self._error_from_recovery = ps_e
@@ -668,7 +731,9 @@ class Worker(object):
     self.executor = executor.new_executor(enable_async=False)
     self.failure_handler = cluster.failure_handler
     self._cluster = cluster
+    self._resource_tracking_lock = threading.Lock()
     self._resource_remote_value_refs = []
+    self._is_dead_with_error = None
     self._should_worker_thread_run = True
 
     # Worker threads need to start after `Worker`'s initialization.
@@ -680,26 +745,67 @@ class Worker(object):
     """Ensure the worker thread is closed."""
     self._should_worker_thread_run = False
 
-  def _set_resources_aborted(self):
+  def _schedule_resource(self, closure):
+    self._cluster.closure_queue.put(closure, tag=self.worker_index)
+
+  def _set_resources_aborted(self, e):
+    """Set the resource ABORTED and add an error to it."""
     # TODO(yuefengz): maybe we can query whether a tensor is valid or not
     # instead of marking a tensor aborted?
+    logging.info("[Worker %d] Clearing all resources.", self.worker_index)
     for weakref_resource in self._resource_remote_value_refs:
       resource = weakref_resource()
       if resource:
-        resource._set_aborted()  # pylint: disable=protected-access
+        # It is important to set an error on an aborted RemoteValue from a
+        # ResourceClosure because its failure will not trigger the worker thread
+        # to raise error immediately and the worker may continue executing
+        # closures taking it as an input. The error will then be correctly
+        # reported to users.
+        resource._set_aborted(ClosureAbortedError(e))  # pylint: disable=protected-access
 
-  def _set_dead(self):
-    raise NotImplementedError("_set_dead is not implemented.")
+  def _on_closure_failure(self, closure, e):
+    logging.info("[Worker %d] Putting back a closure after it failed.",
+                 self.worker_index)
+    self._cluster.closure_queue.put_back(closure)
+
+    with self._resource_tracking_lock:
+      self._is_dead_with_error = e
+      self._set_resources_aborted(e)
+
+  def _on_resource_closure_failure(self, e):
+    """Clear tagged queue to ensure resource closures are rebuilt.
+
+    Args:
+      e: The exception arisen from the resource closure.
+    """
+    logging.info("[Worker %d] Clearing tagged queue after resource closure "
+                 "failure.", self.worker_index)
+    with self._resource_tracking_lock:
+      self._is_dead_with_error = e
+      # No locking on queue is needed since
+      #  * get will not happen concurrently here.
+      #  * put to the specific tagged queue will be guarded by
+      #    `self._resource_tracking_lock`.
+      self._cluster.closure_queue.clear_tag_unlocked(self.worker_index)
+      self._set_resources_aborted(e)
+
+  def _on_worker_recovery(self):
+    logging.info("[Worker %d] calling _on_worker_recovery", self.worker_index)
+    with self._resource_tracking_lock:
+      for weakref_resource in self._resource_remote_value_refs:
+        resource = weakref_resource()
+        if resource:
+          self._schedule_resource(resource._closure)  # pylint: disable=protected-access
+      self._is_dead_with_error = False
 
   def _process_closure(self, closure):
     """Runs a closure with preemption handling."""
-    assert closure is not None
     try:
       with self.failure_handler.wait_on_failure(
-          on_failure_fn=lambda: self._cluster.closure_queue.put_back(closure),
-          on_transient_failure_fn=lambda: self._cluster.closure_queue.put_back(
-              closure),
-          on_recovery_fn=self._set_resources_aborted,
+          on_failure_fn=lambda e: self._on_closure_failure(closure, e),
+          on_transient_failure_fn=(
+              lambda: self._cluster.closure_queue.put_back(closure)),
+          on_recovery_fn=self._on_worker_recovery,
           worker_device_name=self.device_name):
         closure.execute_on(self)
         with metric_utils.monitored_timer("remote_value_fetch"):
@@ -711,10 +817,31 @@ class Worker(object):
       # Avoid logging the derived cancellation error
       if not isinstance(e, errors.CancelledError):
         logging.error(
-            "/job:worker/task:%d encountered the following error when "
+            " /job:worker/task:%d encountered the following error when "
             "processing closure: %r:%s", self.worker_index, e, e)
       closure.maybe_call_with_output_remote_value(lambda r: r._set_error(e))  # pylint: disable=protected-access
       self._cluster.closure_queue.mark_failed(e)
+
+  def _process_resource_closure(self, closure):
+    """Run the given resource closure with preemption handling."""
+    assert closure.tag == self.worker_index
+    try:
+      with self.failure_handler.wait_on_failure(
+          on_failure_fn=self._on_resource_closure_failure,
+          on_transient_failure_fn=(
+              lambda: self._process_resource_closure(closure)),
+          on_recovery_fn=self._on_worker_recovery,
+          worker_device_name=self.device_name):
+        closure.execute_on(self)
+    except Exception as e:  # pylint: disable=broad-except
+      # Avoid logging the derived cancellation error
+      logging.info("[Worker %d] got an exception when processing resource "
+                   "closure", self.worker_index)
+      if not isinstance(e, errors.CancelledError):
+        logging.error(
+            " /job:worker/task:%d encountered the following error when "
+            "processing resource closure: %r:%s", self.worker_index, e, e)
+      closure.maybe_call_with_output_remote_value(lambda r: r._set_error(e))  # pylint: disable=protected-access
 
   def _maybe_delay(self):
     """Delay if corresponding env vars are set."""
@@ -723,12 +850,13 @@ class Worker(object):
     # `TF_COORDINATOR_SCHEDULE_START_DELAY` * i seconds, not exceeding
     # `TF_COORDINATOR_SCHEDULE_START_DELAY_MAX`.
     delay_secs = int(os.environ.get("TF_COORDINATOR_SCHEDULE_START_DELAY", "0"))
+    delay_secs *= self.worker_index
     delay_cap = int(
         os.environ.get("TF_COORDINATOR_SCHEDULE_START_DELAY_MAX", "0"))
     if delay_cap:
-      delay_secs = min(delay_secs * self.worker_index, delay_cap)
+      delay_secs = min(delay_secs, delay_cap)
     if delay_secs > 0:
-      logging.info("Worker %d sleeping for %d seconds before running function",
+      logging.info(" Worker %d sleeping for %d seconds before running function",
                    self.worker_index, delay_secs)
     time.sleep(delay_secs)
 
@@ -736,10 +864,15 @@ class Worker(object):
     """Function running in a worker thread to process closure queues."""
     self._maybe_delay()
     while self._should_worker_thread_run:
-      closure = self._cluster.closure_queue.get()
+      closure = self._cluster.closure_queue.get(tag=self.worker_index)
       if not self._should_worker_thread_run or closure is None:
+        if closure is not None:
+          closure.mark_cancelled()
         return
-      self._process_closure(closure)
+      if isinstance(closure, ResourceClosure):
+        self._process_resource_closure(closure)
+      else:
+        self._process_closure(closure)
       # To properly stop the worker and preemption threads, it is important that
       # `ClusterCoordinator` object is not held onto so its `__del__` can be
       # called. By removing the reference to the `closure` that has already been
@@ -765,19 +898,20 @@ class Worker(object):
     # the same worker such as creating resources, setting resources' aborted
     # status, and executing closures happen on the same thread. This allows us
     # to have simpler logic of concurrency.
+
     closure = ResourceClosure(
         function,
-        self._cluster.closure_queue._cancellation_mgr,  # pylint: disable=protected-access
+        self._cluster.resource_cancellation_mgr,
         args=args,
         kwargs=kwargs)
     resource_remote_value = closure.build_output_remote_value()
-    self._register_resource(resource_remote_value)
-
-    # The following is a short-term solution to lazily create resources in
-    # parallel.
-    # TODO(b/160343165): we should create resources eagerly, i.e. schedule the
-    # resource creation function as soon as users call this method.
-    resource_remote_value._set_aborted()  # pylint: disable=protected-access
+    with self._resource_tracking_lock:
+      self._register_resource(resource_remote_value)
+      if self._is_dead_with_error:
+        resource_remote_value._set_aborted(  # pylint: disable=protected-access
+            ClosureAbortedError(self._is_dead_with_error))
+      else:
+        self._schedule_resource(closure)
     return resource_remote_value
 
   def _register_resource(self, resource_remote_value):
@@ -806,6 +940,8 @@ class Cluster(object):
       failure.
     workers: a list of `Worker` objects in the cluster.
     closure_queue: the global Closure queue.
+    resource_cancellation_mgr: the cancellation manager used to cancel resource
+      closures.
   """
 
   def __init__(self, strategy):
@@ -852,13 +988,21 @@ class Cluster(object):
         Worker(i, w, self) for i, w in enumerate(worker_device_strings)
     ]
 
+    # Cancellation manager for all resource closures.
+    self.resource_cancellation_mgr = cancellation.CancellationManager()
+
   def stop(self):
     """Stop worker, worker preemption threads, and the closure queue."""
+    logging.info("Stopping cluster, starting with failure handler")
     self.failure_handler.stop()
 
+    logging.info("Stopping workers")
     for worker in self.workers:
       worker.stop()
+    logging.info("Stopping queue")
     self.closure_queue.stop()
+    logging.info("Start cancelling remote resource-building functions")
+    self.resource_cancellation_mgr.start_cancel()
 
   def _record_and_ignore_transient_ps_failure(self, e):
     """Records potential PS failures and return if failure should be ignored."""
@@ -1007,6 +1151,7 @@ class ClusterCoordinator(object):
       self._has_initialized = True
 
   def __del__(self):
+    logging.info("ClusterCoordinator destructor: stopping cluster")
     self._cluster.stop()
 
   @property
@@ -1081,9 +1226,10 @@ class ClusterCoordinator(object):
     # `schedule` needs to be called within the `strategy.scope()`.
     with self.strategy.scope():
       self.strategy.extended._being_scheduled = True  # pylint: disable=protected-access
-      remote_value = self._cluster.schedule(fn, args=args, kwargs=kwargs)
+      schedule_remote_value = self._cluster.schedule(
+          fn, args=args, kwargs=kwargs)
       self.strategy.extended._being_scheduled = False  # pylint: disable=protected-access
-      return remote_value
+      return schedule_remote_value
 
   def join(self):
     """Blocks until all the scheduled functions have finished execution.
@@ -1205,7 +1351,7 @@ class ClusterCoordinator(object):
     """
     results = []
     for w in self._cluster.workers:
-      results.append(w.create_resource(fn, args=args, kwargs=kwargs))  # pylint: disable=protected-access
+      results.append(w.create_resource(fn, args=args, kwargs=kwargs))
     return PerWorkerValues(tuple(results))
 
   def fetch(self, val):
@@ -1276,8 +1422,9 @@ def _extract_failed_ps_instances(err_msg):
 def _is_ps_failure(error):
   """Whether the error is considered a parameter server failure."""
 
-  # For an `InputError`, extract the original error and assess it accordingly.
-  if isinstance(error, InputError):
+  # For an `ClosureInputError` or `ClosureAbortedError`, extract
+  # the original error and assess it accordingly.
+  if isinstance(error, (ClosureInputError, ClosureAbortedError)):
     error = error.original_exception
 
   if _RPC_ERROR_FROM_PS not in str(error):
@@ -1313,8 +1460,9 @@ def _is_worker_failure(error):
     logging.info(f"Handling {type(error)}: {str(error)} as worker failure.")
     return True
 
-  # For an `InputError`, extract the original error and assess it accordingly.
-  if isinstance(error, InputError):
+  # For an `ClosureInputError` or `ClosureAbortedError`, extract
+  # the original error and assess it accordingly.
+  if isinstance(error, (ClosureInputError, ClosureAbortedError)):
     error = error.original_exception
 
   if _JOB_WORKER_STRING_IDENTIFIER not in str(error):

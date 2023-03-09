@@ -22,12 +22,12 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
@@ -1336,7 +1336,9 @@ static StatusOr<HloInstruction*> TryMergeInductionVariables(
   return new_while;
 }
 
-StatusOr<bool> WhileLoopSimplifier::Run(HloModule* module) {
+StatusOr<bool> WhileLoopSimplifier::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(3,
                  "WhileLoopSimplifier::Run(), before:\n" + module->ToString());
   bool changed = false;
@@ -1345,7 +1347,7 @@ StatusOr<bool> WhileLoopSimplifier::Run(HloModule* module) {
   // don't have to worry about mutating the lists of computations or
   // instructions while we iterate.
   std::vector<HloInstruction*> while_ops;
-  for (auto* comp : module->computations()) {
+  for (auto* comp : module->computations(execution_threads)) {
     for (auto* instr : comp->instructions()) {
       if (instr->opcode() == HloOpcode::kWhile) {
         while_ops.push_back(instr);

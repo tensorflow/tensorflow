@@ -19,10 +19,12 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -57,21 +59,19 @@ class ResourceOpKernel : public OpKernel {
   // to kernel. Ideally the resource should be deleted when it is no longer held
   // by anyone, but it would break backward compatibility.
   ~ResourceOpKernel() override {
-    if (resource_ != nullptr) {
-      resource_->Unref();
-      if (cinfo_.resource_is_private_to_kernel()) {
-        if (!cinfo_.resource_manager()
-                 ->template Delete<T>(cinfo_.container(), cinfo_.name())
-                 .ok()) {
-          // Do nothing; the resource can have been deleted by session resets.
-        }
+    if (cinfo_.resource_is_private_to_kernel()) {
+      if (!cinfo_.resource_manager()
+               ->template Delete<T>(cinfo_.container(), cinfo_.name())
+               .ok()) {
+        // Do nothing; the resource can have been deleted by session resets.
       }
     }
   }
 
   void Compute(OpKernelContext* context) override TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
-    if (resource_ == nullptr) {
+    core::RefCountPtr<T> resource_ref_ptr = weak_resource_.GetNewRef();
+    if (resource_ref_ptr == nullptr) {
       ResourceMgr* mgr = context->resource_manager();
       OP_REQUIRES_OK(context, cinfo_.Init(mgr, def()));
 
@@ -86,20 +86,23 @@ class ResourceOpKernel : public OpKernel {
                            }
                            return s;
                          }));
-
-      Status s = VerifyResource(resource);
-      if (TF_PREDICT_FALSE(!s.ok())) {
-        resource->Unref();
-        context->SetStatus(s);
-        return;
-      }
+      // Here the code releases the reference to the resource created by this op
+      // and only holds a WeakPtr to the resource. This way the lifetime of the
+      // resource is owned by the container; otherwise the container may be
+      // cleared (e.g. a Session::Reset()) but the resource lives on inside this
+      // op, causing later lookups in the container by handle to fail.
+      core::ScopedUnref resource_unref(resource);
+      OP_REQUIRES_OK(context, VerifyResource(resource));
+      weak_resource_ = core::WeakPtr<T>(resource);
+      // TODO(b/243544755): delete after scam migrates ResourceKernelOp
+      // subclasses to get_resource() in TF 2.11.
+      resource_ = resource;
 
       if (!has_resource_type_) {
         auto h = tensor_.template flat<tstring>();
         h(0) = cinfo_.container();
         h(1) = cinfo_.name();
       }
-      resource_ = resource;
     }
     if (has_resource_type_) {
       OP_REQUIRES_OK(context, MakeResourceHandleToOutput(
@@ -114,9 +117,20 @@ class ResourceOpKernel : public OpKernel {
   // Variables accessible from subclasses.
   mutex mu_;
   ContainerInfo cinfo_ TF_GUARDED_BY(mu_);
+  // TODO(b/243544755): delete after scam migrates ResourceKernelOp subclasses
+  // to get_resource() in TF 2.11.
+  ABSL_DEPRECATED("Use get_resource() instead.")
   T* resource_ TF_GUARDED_BY(mu_) = nullptr;
 
+  core::RefCountPtr<T> get_resource() TF_LOCKS_EXCLUDED(mu_) {
+    mutex_lock lock(mu_);
+    return weak_resource_.GetNewRef();
+  }
+
  private:
+  core::WeakPtr<T> weak_resource_ TF_GUARDED_BY(mu_) =
+      core::WeakPtr<T>(nullptr);
+
   // Must return a T descendant allocated with new that ResourceOpKernel will
   // take ownership of.
   virtual Status CreateResource(T** resource)

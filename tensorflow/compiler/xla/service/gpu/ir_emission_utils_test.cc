@@ -18,14 +18,16 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/xla/tests/test_utils.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
 
-TEST(IrEmissionUtilsTest, TestOperandPartitionNoAlias) {
+class IrEmissionUtilsTest : public HloTestBase {};
+
+TEST_F(IrEmissionUtilsTest, TestOperandPartitionNoAlias) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::lmhlo::LmhloDialect>();
   registry.insert<mlir::func::FuncDialect>();
@@ -44,7 +46,7 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionNoAlias) {
   EXPECT_EQ(2, PartitionLmhloOperandsAndOutputs(op));
 }
 
-TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias0) {
+TEST_F(IrEmissionUtilsTest, TestOperandPartitionWithAlias0) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::lmhlo::LmhloDialect>();
   registry.insert<mlir::func::FuncDialect>();
@@ -63,7 +65,7 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias0) {
   EXPECT_EQ(2, PartitionLmhloOperandsAndOutputs(op));
 }
 
-TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias1) {
+TEST_F(IrEmissionUtilsTest, TestOperandPartitionWithAlias1) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::lmhlo::LmhloDialect>();
   registry.insert<mlir::func::FuncDialect>();
@@ -80,6 +82,44 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias1) {
       mlir::cast<mlir::func::FuncOp>(module->lookupSymbol("foo"));
   mlir::Operation* op = &func.getBody().front().front();
   EXPECT_EQ(2, PartitionLmhloOperandsAndOutputs(op));
+}
+
+TEST_F(IrEmissionUtilsTest, FindTiledLogicalTranspose) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[32,48,64]{2,1,0} parameter(0)
+  ROOT t = f32[64,32,48]{2,1,0} transpose(p), dimensions={2,0,1}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+  Vector3 permutation;
+  EXPECT_EQ(FindTiledLogicalTranspose(*tr, permutation),
+            std::make_optional(Vector3{1, 64, 1536}));
+  Vector3 expected_permutation{0, 2, 1};
+  EXPECT_EQ(permutation, expected_permutation);
+}
+
+TEST_F(IrEmissionUtilsTest, FindAnyTiledTranspose) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[32,48,64]{2,1,0} parameter(0)
+  ROOT t = f32[64,48,32]{2,1,0} transpose(p), dimensions={2,1,0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+  EXPECT_EQ(FindAnyTiledTranspose(*tr),
+            std::make_optional(
+                std::make_pair(Vector3{64, 48, 32}, Vector3{2, 1, 0})));
 }
 
 }  // namespace gpu

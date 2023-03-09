@@ -44,6 +44,25 @@ extern const char kXlaComputeTypeAttr[];
 // XLA frontend attribute values for kXlaComputeTypeAttr
 extern const char kXlaComputeTypeSparse[];
 extern const char kXlaComputeTypeDense[];
+extern const char kXlaComputeTypeHost[];
+
+// XLA frontend attribute name for the maximum number of ids expected per
+// partition *before* an input batch is partitioned.
+extern const char kXlaMaxIdsPerPartitionAttr[];
+
+// XLA frontend attribute name for the maximum number of unique ids expected per
+// partition *after* an input batch is partitioned.
+extern const char kXlaMaxUniqueIdsPerPartitionAttr[];
+
+// XLA frontend attribute for how to assign ids to partitions.
+extern const char kXlaShardingStrategyAttr[];
+
+// XLA frontend attribute values for kXlaShardingStrategyAttr.
+extern const char kXlaShardingStrategyMod[];
+extern const char kXlaShardingStrategyDiv[];
+
+// XLA frontend attribute for pad value.
+extern const char kXlaPadValueAttr[];
 
 }  // namespace xla
 

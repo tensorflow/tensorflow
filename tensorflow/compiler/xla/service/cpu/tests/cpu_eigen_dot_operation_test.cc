@@ -19,12 +19,12 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/test_target_triple_helper.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace cpu {
@@ -95,8 +95,10 @@ TEST_P(CpuEigenDotOperationTest, DotTransposeOp) {
 
 std::vector<DotTestSpec> GetDotTestCases() {
   std::vector<DotTestSpec> result;
+  // The fp16 test runs a 32-bit matmul because we promote fp16 gemms to fp32
+  // (they run much faster).
   result.push_back(
-      {F16, R"(CHECK: call void @__xla_cpu_runtime_EigenMatMulF16)"});
+      {F16, R"(CHECK: call void @__xla_cpu_runtime_EigenMatMulF32)"});
   result.push_back(
       {F32, R"(CHECK: call void @__xla_cpu_runtime_EigenMatMulF32)"});
   result.push_back(
