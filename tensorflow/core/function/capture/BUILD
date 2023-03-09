@@ -58,7 +58,9 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core/function/trace_type",
+        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/types",

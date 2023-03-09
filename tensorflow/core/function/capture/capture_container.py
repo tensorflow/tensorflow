@@ -16,16 +16,22 @@
 
 import collections as py_collections
 import dataclasses
+import functools
 import inspect
 from typing import Any, Callable, Hashable, Mapping, Union
 
 from tensorflow.core.function import trace_type
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import type_spec
 from tensorflow.python.types import core
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
+
+
+_EAGER_CONST_THRESHOLD = 128
 
 
 @dataclasses.dataclass(frozen=True)
@@ -100,15 +106,67 @@ class FunctionCaptures(object):
     # Set of external ops on which the graph has a control dependency
     self.control = object_identity.ObjectIdentitySet()
 
-  def capture_by_val(
+  def capture_by_value(
       self,
-      value: Any,
-      placeholder: core.Tensor = None,
-      idf: Hashable = None
+      graph: "FuncGraph",
+      tensor: core.Tensor,
+      name: str = None
   ) -> core.Tensor:
-    assert idf == id(value), "By value captures must use id(tensor) as idf."
-    capture = self.add_or_replace(value, placeholder, idf, is_by_ref=False)
-    return capture.internal
+    """Captures `tensor` if it's external to this graph.
+
+    If `tensor` is from a different graph, returns a placeholder for it.
+    `tensor` and the placeholder will appear in self.captures, and the
+    placeholder will appear in self.inputs.  Multiple calls to this method with
+    the same `tensor` argument will return the same placeholder. If `tensor` is
+    from this graph, returns `tensor`.
+
+    Args:
+      graph: The FuncGraph that captures this tensor.
+      tensor: Tensor. May be from this FuncGraph or a different graph.
+      name: Optional name if a placeholder is created.
+
+    Returns:
+      Tensor from this FuncGraph.
+
+    Raises:
+      InaccessibleTensorError: if any tensors are accessed in a manner that
+      bypasses the mechanisms required for the data dependencies to be correctly
+      wired.
+    """
+    if isinstance(tensor, core.Value):
+      if name is None:
+        # A unique (within the program execution) integer.
+        name = str(pywrap_tfe.TFE_Py_UID())
+
+      # Small EagerTensors are captured with Const ops
+      if (tensor.dtype in dtypes.TF_VALUE_DTYPES and
+          functools.reduce(lambda a, b: a*b, tensor.shape, 1) <=
+          _EAGER_CONST_THRESHOLD):
+        capture = self.by_val_captures.get(id(tensor))
+        if capture is None:
+          graph_const = tensor._capture_as_const(name)  # pylint: disable=protected-access
+          if graph_const is None:
+            # Some eager tensors, e.g. parallel tensors, are not convertible to
+            # a single constant. We'll use a placeholder for this case.
+            graph_const = self._create_placeholder_helper(graph, tensor, name)
+          self.add_or_replace(tensor, graph_const, id(tensor), False)
+          graph.inputs.append(graph_const)
+        else:
+          graph_const = capture.internal
+        graph_const._record_tape(tensor)  # pylint: disable=protected-access
+        return graph_const
+
+      # Large EagerTensors and resources are captured with Placeholder ops
+      return self._create_placeholder_helper(graph, tensor, name)
+
+    if tensor.graph is not graph:
+      graph._validate_in_scope(tensor)  # pylint: disable=protected-access
+      if name is None:
+        name = tensor.op.name
+      # cond/while graphs override _capture_helper() so cannot call
+      # self.create_placeholder_helper() here directly.
+      return graph._capture_helper(tensor, name)  # pylint: disable=protected-access
+    return tensor
 
   def add_or_replace(
       self,
@@ -173,8 +231,11 @@ class FunctionCaptures(object):
       snapshot[key] = func()
     return snapshot
 
-  # TODO(panzf): make this method private after moving FuncGraph.capture() here.
-  def create_placeholder_helper(self, tensor, name, graph):
+  def _create_placeholder_helper(
+      self,
+      graph: "FuncGraph",
+      tensor: core.Tensor,
+      name: str):
     """A helper function to create capture placeholder."""
     capture = self._by_val.get(id(tensor))
     if capture is None:

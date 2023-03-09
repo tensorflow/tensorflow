@@ -19,8 +19,6 @@ import traceback
 from typing import Any, Callable, Hashable
 import weakref
 
-import numpy as np
-
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.capture import capture_container
 from tensorflow.python.eager import context
@@ -56,8 +54,6 @@ ALLOWLIST_COLLECTIONS = [
     variable_scope._VARSTORE_KEY,  # pylint: disable=protected-access
     variable_scope._VARSCOPESTORE_KEY  # pylint: disable=protected-access
 ]
-
-_EAGER_CONST_THRESHOLD = 128
 
 
 class UnknownArgument(object):
@@ -674,55 +670,7 @@ class FuncGraph(ops.Graph):
         compute_device)
 
   def capture(self, tensor, name=None, shape=None):
-    """Captures `tensor` if it's external to this graph.
-
-    If `tensor` is from a different graph, returns a placeholder for it.
-    `tensor` and the placeholder will appear in self.captures, and the
-    placeholder will appear in self.inputs.  Multiple calls to this method with
-    the same `tensor` argument will return the same placeholder. If `tensor` is
-    from this graph, returns `tensor`.
-
-    Args:
-      tensor: Tensor. May be from this FuncGraph or a different graph.
-      name: Optional name if a placeholder is created.
-      shape: Optional shape if a placeholder is created.
-
-    Returns:
-      Tensor from this FuncGraph.
-
-    Raises:
-      InaccessibleTensorError: if any tensors are accessed in a manner that
-      bypasses the mechanisms required for the data dependencies to be correctly
-      wired.
-    """
-    if isinstance(tensor, ops.EagerTensor):
-      if name is None:
-        name = str(ops.uid())
-
-      # Small EagerTensors are captured with Const ops
-      if (tensor.dtype in dtypes.TF_VALUE_DTYPES and
-          np.prod(tensor.shape) <= _EAGER_CONST_THRESHOLD):
-        capture = self._function_captures.by_val_captures.get(id(tensor))
-        if capture is None:
-          graph_const = tensor._capture_as_const(name)  # pylint: disable=protected-access
-          if graph_const is None:
-            # Some eager tensors, e.g. parallel tensors, are not convertible to
-            # a single constant. We'll use a placeholder for this case.
-            graph_const = self._capture_helper(tensor, name)  # pylint: disable=protected-access
-          self.add_capture(tensor, graph_const)
-        else:
-          graph_const = capture.internal
-        graph_const._record_tape(tensor)  # pylint: disable=protected-access
-        return graph_const
-
-      # Large EagerTensors and resources are captured with Placeholder ops
-      return self._capture_helper(tensor, name)
-    if tensor.graph is not self:
-      self._validate_in_scope(tensor)
-      if name is None:
-        name = tensor.op.name
-      return self._capture_helper(tensor, name)
-    return tensor
+    return self._function_captures.capture_by_value(self, tensor, name)
 
   def _validate_in_scope(self, tensor):
     inner_graph = tensor.graph
@@ -753,8 +701,8 @@ class FuncGraph(ops.Graph):
 
   # TODO(panzf): Rename this method along with usages in cond/while graph.
   def _capture_helper(self, tensor, name):
-    return self._function_captures.create_placeholder_helper(
-        tensor, name, self)
+    return self._function_captures._create_placeholder_helper(  # pylint: disable=protected-access
+        self, tensor, name)
 
   def _experimental_capture_side_input_by_ref(self, identifier: Hashable,
                                               func: Callable[[], Any]) ->...:
