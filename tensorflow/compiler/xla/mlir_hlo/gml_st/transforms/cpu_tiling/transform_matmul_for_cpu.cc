@@ -521,9 +521,6 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     if (hasLabel(matmulOp, kMatmulTransformedLabel))
       return rewriter.notifyMatchFailure(matmulOp,
                                          "has already been transformed.");
-    if (isa<scf::ForallOp, scf::ForOp>(matmulOp->getParentOp()))
-      return rewriter.notifyMatchFailure(
-          matmulOp, "has already been tiled by another pass.");
 
     auto cluster = findMapFusionCluster(matmulOp);
     auto fusionCluster = cluster.operations;

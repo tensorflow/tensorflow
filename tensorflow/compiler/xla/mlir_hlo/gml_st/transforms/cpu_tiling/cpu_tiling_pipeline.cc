@@ -121,6 +121,7 @@ void addCPUTilingPipeline(OpPassManager& pm,
     pm.addPass(func::createDuplicateFunctionEliminationPass());
   }
 
+  pm.addNestedPass<FuncOp>(createTransformConvForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformScatterForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformReduceForCpuPass(
       options.vectorSize, options.reduction1DTileSize,
