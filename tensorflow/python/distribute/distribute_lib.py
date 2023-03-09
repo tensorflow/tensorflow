@@ -222,7 +222,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.util import deprecation
@@ -263,32 +262,6 @@ class UpdateContext(object):
   def __exit__(self, exception_type, exception_value, traceback):
     del exception_type, exception_value, traceback
     _update_replica_id.current = self._old_replica_id
-
-
-# ------------------------------------------------------------------------------
-# Public utility functions.
-
-
-@tf_export(v1=["distribute.get_loss_reduction"])
-def get_loss_reduction():
-  """`tf.distribute.ReduceOp` corresponding to the last loss reduction.
-
-  This is used to decide whether loss should be scaled in optimizer (used only
-  for estimator + v1 optimizer use case).
-
-  Returns:
-    `tf.distribute.ReduceOp` corresponding to the last loss reduction for
-    estimator and v1 optimizer use case. `tf.distribute.ReduceOp.SUM` otherwise.
-  """
-  if not distribution_strategy_context.get_strategy()._scale_loss_for_estimator:  # pylint: disable=protected-access
-    # If we are not in Estimator context then return 'SUM'. We do not need to
-    # scale loss in the optimizer.
-    return reduce_util.ReduceOp.SUM
-  last_reduction = ops.get_default_graph()._last_loss_reduction  # pylint: disable=protected-access
-  if (last_reduction == losses_impl.Reduction.SUM or
-      last_reduction == "sum"):  # Check for tf.keras.losses.Reduction.SUM
-    return reduce_util.ReduceOp.SUM
-  return reduce_util.ReduceOp.MEAN
 
 
 # ------------------------------------------------------------------------------

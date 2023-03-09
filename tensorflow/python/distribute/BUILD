@@ -158,7 +158,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/ops/losses",
         "//tensorflow/tools/docs:doc_controls",
     ],
 )
@@ -306,6 +305,7 @@ py_library(
         "//tensorflow/python/autograph/impl",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/ops/losses:losses_impl",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -749,8 +749,8 @@ py_library(
     srcs = ["reduce_util.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
