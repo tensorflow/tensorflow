@@ -506,6 +506,7 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "iOS")
   list(APPEND TFLITE_PROFILER_SRCS
     ${TFLITE_SOURCE_DIR}/profiling/signpost_profiler.mm
   )
+  set_source_files_properties(${TFLITE_SOURCE_DIR}/profiling/signpost_profiler.mm PROPERTIES COMPILE_FLAGS -fno-objc-arc)
 endif()
 
 # TFLite library
