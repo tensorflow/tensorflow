@@ -555,7 +555,7 @@ bool simplifyLoopDeallocs(Block& block) {
 
 void promoteBuffers(Block& block) {
   // TODO(jreiffers): Use byte sizes instead.
-  int64_t remainingAllowedStackUse = 1 << 20;
+  int64_t remainingAllowedStackUse = 1 << 12;
   for (auto* op = &block.front(); op;) {
     auto alloc = llvm::dyn_cast<memref::AllocOp>(op);
     op = op->getNextNode();
