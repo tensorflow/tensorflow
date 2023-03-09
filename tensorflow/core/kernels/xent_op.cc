@@ -170,8 +170,6 @@ struct XentFunctorBase {
 
         d.parallelFor(shape[0], cost, reductionWorker);
       }
-    //XentEigenImpl<Device, T>::Compute(d, shape, logits_bcast, labels_bcast,
-    //                                  logits, labels, scratch, loss, backprop);
   }
 };
 
