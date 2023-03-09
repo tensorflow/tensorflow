@@ -348,6 +348,20 @@ TransformResult Deallocator::transformOp(
   if (auto func = llvm::dyn_cast<func::FuncOp>(op)) {
     return {{}, transformBlock(func.getBody().front(), /*ownsInputs=*/false)};
   }
+
+  // Deallocate ops inside unknown op regions.
+  // Also assert that unknown ops with regions return no memrefs. There is no
+  // way to generically transform such ops, if they exist. Eventually we'll need
+  // an interface for this.
+  if (op->getNumRegions() > 0) {
+    assert(llvm::none_of(op->getResults(), isMemref));
+    for (auto& region : op->getRegions()) {
+      for (auto& block : region.getBlocks()) {
+        transformBlock(block, /*ownsInputs=*/false);
+      }
+    }
+  }
+
   // Assume any memref operand may alias any memref result.
   for (auto result : llvm::make_filter_range(op->getResults(), isMemref)) {
     for (auto arg : llvm::make_filter_range(op->getOperands(), isMemref)) {
