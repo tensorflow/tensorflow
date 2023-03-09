@@ -567,7 +567,7 @@ StatusOr<Mesh> GenerateMeshDevicesForTests(
 }  // namespace
 
 // static
-StatusOr<Mesh> Mesh::FromString(const std::string& str) {
+StatusOr<Mesh> Mesh::FromString(std::string_view str) {
   if (str == kEmptyMeshString) return Mesh::Empty();
 
   std::vector<std::string> mesh_parts = absl::StrSplit(str, '|');

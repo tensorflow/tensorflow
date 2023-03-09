@@ -19,6 +19,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/dtensor/cc/dtensor_device.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -87,6 +88,7 @@ void ConvertToTensor(TFE_Context* ctx, PyObject* input,
 }
 
 PYBIND11_MODULE(_pywrap_dtensor_device, m) {
+  pybind11_protobuf::ImportNativeProtoCasters();
   m.def("Allocate", [](const std::string& name) {
     TFE_CustomDevice* device = new TFE_CustomDevice;
     std::unique_ptr<PyObject, decltype(&PyXDecref)> device_capsule(
@@ -384,14 +386,41 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
         });
   py::class_<Mesh>(m, "Mesh")
       .def(py::init(&Mesh::CreateMesh))
+      .def(py::init([](const tensorflow::dtensor::MeshProto& proto) {
+             auto mesh = Mesh::ParseFromProto(proto);
+             if (!mesh.ok()) {
+               throw py::value_error(mesh.status().error_message());
+             }
+             return *mesh;
+           }),
+           "Returns a Mesh from a MeshProto.")
+      .def(py::init([](std::string_view mesh_str) {
+             auto mesh = Mesh::FromString(mesh_str);
+             if (!mesh.ok()) {
+               throw py::value_error(mesh.status().error_message());
+             }
+             return *mesh;
+           }),
+           "Returns a Mesh from a string.")
       .def_property_readonly("name", &Mesh::name)
       .def_property_readonly("dim_names", &Mesh::MeshDimNames)
       .def_property_readonly("size", &Mesh::num_devices)
       .def("__contains__", &Mesh::IsMeshDim, py::arg("dim_name"))
+      .def("__eq__", &Mesh::operator==)
       .def("to_string", &Mesh::ToString,
            "Returns string representation of Mesh.")
       .def("contains_dim", &Mesh::IsMeshDim, py::arg("dim_name"),
            "Returns True if a Mesh contains the given dimension name.")
+      .def(
+          "dim_size",
+          [](const Mesh& mesh, std::string_view name) {
+            auto dim_size = mesh.dim_size(name);
+            if (!dim_size.ok()) {
+              throw py::value_error(dim_size.status().error_message());
+            }
+            return *dim_size;
+          },
+          py::arg("dim_name"), "Returns the size of mesh dimension.")
       .def("device_type", &Mesh::device_type,
            "Returns the device_type of a Mesh.")
       .def("num_local_devices", &Mesh::num_local_devices,
@@ -403,9 +432,17 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def("local_device_ids", &Mesh::local_device_ids,
            "Returns a list of local device IDs.")
       .def("local_devices", &Mesh::local_devices,
-           "Returns a list of local device specs represented as strings.")
+           "Returns a list of local device specs "
+           "represented as strings.")
+      .def("global_device_ids", &Mesh::global_device_ids,
+           "Returns a list of global device IDs.")
+      .def("global_devices", &Mesh::global_devices,
+           "Returns a list of global device specs "
+           "represented as strings.")
       .def("shape", &Mesh::dim_sizes, "Returns the shape of the mesh.")
       .def("use_xla_spmd", &Mesh::use_xla_spmd,
-           "Returns True if Mesh will use XLA for SPMD instead of DTensor "
-           "SPMD.");
+           "Returns True if Mesh will use XLA for SPMD "
+           "instead of DTensor SPMD.")
+      .def("as_proto", &Mesh::ToProto,
+           "Returns the MeshProto protobuf message.");
 }
