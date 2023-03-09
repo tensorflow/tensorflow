@@ -76,7 +76,7 @@ Status ReadSavedModel(absl::string_view export_dir,
     return result;
   }
   return Status(
-      error::Code::NOT_FOUND,
+      absl::StatusCode::kNotFound,
       strings::StrCat("Could not find SavedModel .pb or .pbtxt at supplied "
                       "export directory path: ",
                       export_dir,
@@ -107,7 +107,7 @@ Status FindMetaGraphDef(const std::unordered_set<string>& tags,
     }
   }
   return Status(
-      error::Code::NOT_FOUND,
+      absl::StatusCode::kNotFound,
       strings::StrCat(
           "Could not find meta graph def matching supplied tags: { ",
           absl::StrJoin(tags, " "),

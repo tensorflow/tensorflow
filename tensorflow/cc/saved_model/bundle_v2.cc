@@ -83,7 +83,7 @@ Status ReadSavedModelProto(const string& export_dir,
     // found_pb and found_pbtxt both errored, w/ different codes, neither being
     // NOT_FOUND.
     err = Status(
-        error::Code::INTERNAL,
+        absl::StatusCode::kInternal,
         StrCat("Different errors encountered while looking for saved_model.pb "
                "and saved_model.pbtxt in the export directory path \"",
                export_dir, "\": \n", found_pb.ToString(), "\n",
@@ -103,7 +103,7 @@ Status ReadCheckpointObjectGraph(BundleReader* bundle_reader,
       object_graph_tensor.dims() != 0 ||
       object_graph_tensor.NumElements() != 1) {
     return Status(
-        error::Code::FAILED_PRECONDITION,
+        absl::StatusCode::kFailedPrecondition,
         "SavedModel checkpoint object graph was not the correct type.");
   }
 
@@ -111,7 +111,7 @@ Status ReadCheckpointObjectGraph(BundleReader* bundle_reader,
       object_graph_tensor.tensor_data().data());
   if (!object_graph->ParseFromString(*object_graph_string)) {
     return Status(
-        error::Code::FAILED_PRECONDITION,
+        absl::StatusCode::kFailedPrecondition,
         "SavedModel checkpoint object graph could not be deserialized.");
   }
   return OkStatus();
@@ -130,7 +130,7 @@ Status SavedModelV2Bundle::Load(const std::string& export_dir,
   // In version 2 SavedModels, there is only one MetaGraphDef.
   if (saved_model_proto.meta_graphs_size() != 1) {
     return Status(
-        error::Code::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         strings::StrCat(
             "SavedModelV2 should have exactly one MetaGraphDef but actually ",
             "contains ", saved_model_proto.meta_graphs_size()));
@@ -257,7 +257,7 @@ Status SavedModelV2Bundle::RecurseObjectsToRestore(
 
     if (!saved_child) {
       return Status(
-          errors::Code::FAILED_PRECONDITION,
+          absl::StatusCode::kFailedPrecondition,
           strings::StrCat("Could not find saved object to restore for ",
                           child_name));
     }
