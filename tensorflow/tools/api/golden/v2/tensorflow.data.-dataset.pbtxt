@@ -196,6 +196,6 @@ tf_class {
   }
   member_method {
     name: "zip"
-    argspec: "args=[], varargs=args, keywords=None, defaults=None"
+    argspec: "args=[\'datasets\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
 }

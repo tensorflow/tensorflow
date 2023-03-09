@@ -85,11 +85,6 @@
         `tf.nn.safe_embedding_lookup_sparse`, which enables a simplified and
         typically faster lookup procedure.
 
-*   `tf.data`
-    
-    *   `tf.data.Dataset.zip` now supports Python-style zipping, i.e.
-        `Dataset.zip(a, b, c)`.
-
 *   `tf.SavedModel`
 
     *   Introduce class method
