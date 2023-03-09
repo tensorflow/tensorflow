@@ -4967,6 +4967,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
 
   std::array<std::array<absl::string_view, 7>, 32> combinations;
   int i = 0;
+
   for (bool d_is_col : {false, true}) {
     for (bool a_is_col : {false, true}) {
       for (bool b_is_col : {false, true}) {
@@ -4991,6 +4992,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
       }
     }
   }
+
   const char* hlo_template = R"(
       HloModule test
     ENTRY test {
@@ -5107,6 +5109,41 @@ ENTRY f {
     ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
           )");
   }
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[16,32] parameter(0)
+      y = f8e5m2[32,16] parameter(1)
+      x_f32 = f32[16,32] convert(x)
+      y_f32 = f32[32,16] convert(y)
+      x_scale = f32[] parameter(2)
+      y_scale = f32[] parameter(3)
+      x_scale_bcast = f32[16,32] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      x_unscaled = f32[16,32] multiply(x_f32, x_scale_bcast)
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+          }
+
+)";
+  bool tf32_state_ = tsl::tensor_float_32_execution_enabled();
+  tsl::enable_tensor_float_32_execution(true);
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 0.}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+    ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+          )");
+  tsl::enable_tensor_float_32_execution(tf32_state_);
 }
 
 TEST_F(GemmRewriteTest, NoFuseBiasBroadcast) {

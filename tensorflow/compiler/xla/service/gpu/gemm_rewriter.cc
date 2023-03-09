@@ -1273,20 +1273,19 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
   StatusOr<bool> TypesAreSupportedByCublasLt(
       const HloInstruction *instr) const {
+    // Figure out the Atype/Btype.
+    const PrimitiveType a_dtype = instr->operand(0)->shape().element_type();
+    const PrimitiveType b_dtype = instr->operand(1)->shape().element_type();
     // cublasLt has a defined set of combinations of types that it supports.
     // Figure out the computeType and scaleType.
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
                         AsBlasDataType(instr->shape().element_type()));
     TF_ASSIGN_OR_RETURN(const se::blas::ComputationType compute_type,
                         GetBlasComputationType(
-                            instr->shape().element_type(),
+                            a_dtype, instr->shape().element_type(),
                             stream_executor::blas::kDefaultComputePrecision));
     se::blas::DataType scale_type =
         cublas_lt::GetScaleType(output_dtype, compute_type);
-
-    // Figure out the Atype/Btype.
-    const PrimitiveType a_dtype = instr->operand(0)->shape().element_type();
-    const PrimitiveType b_dtype = instr->operand(1)->shape().element_type();
 
     using se::blas::ComputationType;
     using se::blas::DataType;
