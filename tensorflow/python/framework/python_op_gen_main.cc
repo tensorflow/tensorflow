@@ -106,13 +106,12 @@ std::vector<string> GetSourceFileListFromOpRegOffsets(
 //
 // If `source_file_name` is not empty, a comment block will be generated
 // to show the source file name that the generated file is generated from.
-Status PrintAllPythonOps(
-    absl::Span<const string> api_def_dirs,
-    absl::Span<const string> source_file_list, const string& out_path,
-    const OpRegOffsets& op_reg_offsets,
-    absl::Span<const string> op_allowlist = {},
-    absl::Span<const string> hidden_op_list = {},
-    const std::unordered_set<string>& type_annotate_ops = {}) {
+Status PrintAllPythonOps(absl::Span<const string> api_def_dirs,
+                         absl::Span<const string> source_file_list,
+                         const string& out_path,
+                         const OpRegOffsets& op_reg_offsets,
+                         absl::Span<const string> op_allowlist = {},
+                         absl::Span<const string> hidden_op_list = {}) {
   OpList ops;
   OpRegistry::Global()->Export(false, &ops);
 
@@ -142,9 +141,8 @@ Status PrintAllPythonOps(
     pruned_ops = ops;
   }
 
-  string result =
-      GetPythonOps(pruned_ops, api_def_map, op_reg_offsets, hidden_op_list,
-                   source_file_list, type_annotate_ops);
+  string result = GetPythonOps(pruned_ops, api_def_map, op_reg_offsets,
+                               hidden_op_list, source_file_list);
 
   if (out_path.empty()) {
     printf("%s", result.c_str());
@@ -235,13 +233,9 @@ int main(int argc, char* argv[]) {
   std::vector<std::string> api_def_dirs =
       tsl::str_util::Split(api_def_dirs_raw, ",", tsl::str_util::SkipEmpty());
 
-  // Add op name here to generate type annotations for it
-  const std::unordered_set<std::string> type_annotate_ops{
-      "FusedBatchNorm", "Add", "DynamicStitch"};
-
-  TF_CHECK_OK(tensorflow::PrintAllPythonOps(
-      api_def_dirs, source_file_list, out_path, op_reg_offsets, op_allowlist,
-      hidden_op_list, type_annotate_ops));
+  TF_CHECK_OK(tensorflow::PrintAllPythonOps(api_def_dirs, source_file_list,
+                                            out_path, op_reg_offsets,
+                                            op_allowlist, hidden_op_list));
 
   return 0;
 }

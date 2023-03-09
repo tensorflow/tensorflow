@@ -208,12 +208,10 @@ class GenPythonOp {
  public:
   GenPythonOp(
       const OpDef& op_def, const ApiDef& api_def, const string& function_name,
-      bool add_type_annotations,
       python_op_gen_internal::GeneratedCodeAnnotator* annotator = nullptr)
       : op_def_(op_def),
         api_def_(api_def),
         function_name_(function_name),
-        add_type_annotations_(add_type_annotations),
         num_outs_(op_def.output_arg_size()),
         annotator_(annotator) {
     op_name_ = function_name_;
@@ -304,7 +302,6 @@ class GenPythonOp {
   const OpDef& op_def_;
   const ApiDef& api_def_;
   const string function_name_;
-  bool add_type_annotations_;
   const int num_outs_;
   python_op_gen_internal::GeneratedCodeAnnotator* annotator_ = nullptr;
 
@@ -336,11 +333,8 @@ class GenPythonOp {
 
 string GetEagerPythonOp(
     const OpDef& op_def, const ApiDef& api_def, const string& function_name,
-    bool add_type_annotations,
     python_op_gen_internal::GeneratedCodeAnnotator* annotator = nullptr) {
-  return GenPythonOp(op_def, api_def, function_name, add_type_annotations,
-                     annotator)
-      .Code();
+  return GenPythonOp(op_def, api_def, function_name, annotator).Code();
 }
 
 bool IsPythonReserved(const string& s) {
@@ -1166,11 +1160,7 @@ string GenPythonOp::Code() {
     param_names_.push_back(param_and_default.first);
   }
 
-  std::unordered_map<string, string> type_annotations;
-  // Only populate map for allowlisted ops
-  if (add_type_annotations_) {
-    type_annotations = GetTypeAnnotations();
-  }
+  std::unordered_map<string, string> type_annotations = GetTypeAnnotations();
 
   string parameters;
   // Param can be an input or an attr
@@ -1255,7 +1245,8 @@ std::unordered_map<string, string> GenPythonOp::GetTypeAnnotations() {
   // Map attrs to TypeVars
   for (const auto& attr : op_def_.attr()) {
     if (attr.type() == "type") {
-      const string type_var_name = "TV_" + op_def_.name() + "_" + attr.name();
+      const string type_var_name =
+          AvoidPythonReserved("TV_" + op_def_.name() + "_" + attr.name());
       type_annotations[attr.name()] = type_var_name;
     } else if (attr.type() == "bool" || attr.type() == "float" ||
                attr.type() == "int" || attr.type() == "bytes") {
@@ -1671,9 +1662,7 @@ bool GenPythonOp::AddEagerFastPathAndGraphCode(
     const string& parameters, const std::vector<string>& output_sizes,
     const string& eager_not_allowed_error,
     const std::unordered_map<string, string>& type_annotations) {
-  if (add_type_annotations_) {
-    GenerateTypeVars(type_annotations);
-  }
+  GenerateTypeVars(type_annotations);
   if (api_def_.visibility() == ApiDef::VISIBLE) {
     strings::StrAppend(&result_, "@_dispatch.add_fallback_dispatch_list\n");
     strings::StrAppend(&result_, "@_dispatch.add_type_based_api_dispatcher\n");
@@ -1687,9 +1676,7 @@ bool GenPythonOp::AddEagerFastPathAndGraphCode(
                               /*offset_start =*/result_.length() + 5);
   }
   AddDefLine(function_name_, parameters);
-  if (add_type_annotations_) {
-    AddReturnTypeAnnotation(type_annotations);
-  }
+  AddReturnTypeAnnotation(type_annotations);
   AddDocStringDescription();
   AddDocStringArgs();
   AddDocStringInputs();
@@ -1730,9 +1717,7 @@ bool GenPythonOp::AddEagerFallbackCode(
   AddDefLine(
       strings::StrCat(function_name_, kEagerFallbackSuffix),
       strings::StrCat(parameters, parameters.empty() ? "" : ", ", "ctx"));
-  if (add_type_annotations_) {
-    AddReturnTypeAnnotation(type_annotations);
-  }
+  AddReturnTypeAnnotation(type_annotations);
   if (!eager_not_allowed_error.empty()) {
     strings::StrAppend(&result_, "  ", eager_not_allowed_error);
     return true;
@@ -2010,11 +1995,10 @@ void GenPythonOp::AddRawOpExport(const string& parameters) {
                      function_name_, "))\n");
 }
 
-string GetPythonOpsImpl(
-    const OpList& ops, const ApiDefMap& api_defs,
-    const OpRegOffsets& op_reg_offsets, absl::Span<const string> hidden_ops,
-    absl::Span<const string> source_file_list,
-    const std::unordered_set<string>& type_annotate_ops = {}) {
+string GetPythonOpsImpl(const OpList& ops, const ApiDefMap& api_defs,
+                        const OpRegOffsets& op_reg_offsets,
+                        absl::Span<const string> hidden_ops,
+                        absl::Span<const string> source_file_list) {
   python_op_gen_internal::GeneratedCodeAnnotator annotator;
   bool annotate = !op_reg_offsets.offsets().empty();
 
@@ -2098,13 +2082,9 @@ from typing import TypeVar, List
       continue;
     }
 
-    auto iter = type_annotate_ops.find(op_def.name());
-    bool add_type_annotations = iter != type_annotate_ops.end();
-
-    strings::StrAppend(
-        &result,
-        GetEagerPythonOp(op_def, *api_def, function_name, add_type_annotations,
-                         annotate ? &annotator : nullptr));
+    strings::StrAppend(&result,
+                       GetEagerPythonOp(op_def, *api_def, function_name,
+                                        annotate ? &annotator : nullptr));
     if (annotate) {
       annotator.SetBase(result.length());
     }
@@ -2123,19 +2103,17 @@ from typing import TypeVar, List
 string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
                     const OpRegOffsets& op_reg_offsets,
                     absl::Span<const string> hidden_ops,
-                    absl::Span<const string> source_file_list,
-                    const std::unordered_set<string>& type_annotate_ops) {
+                    absl::Span<const string> source_file_list) {
   return GetPythonOpsImpl(ops, api_defs, op_reg_offsets, hidden_ops,
-                          source_file_list, type_annotate_ops);
+                          source_file_list);
 }
 
 void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
                     const OpRegOffsets& op_reg_offsets,
                     absl::Span<const string> hidden_ops,
-                    absl::Span<const string> source_file_list,
-                    const std::unordered_set<string>& type_annotate_ops) {
+                    absl::Span<const string> source_file_list) {
   printf("%s", GetPythonOpsImpl(ops, api_defs, op_reg_offsets, hidden_ops,
-                                source_file_list, type_annotate_ops)
+                                source_file_list)
                    .c_str());
 }
 

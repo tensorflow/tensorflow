@@ -52,14 +52,9 @@ TEST(PythonOpGen, TypeAnnotateAllOps) {
 
   ApiDefMap api_def_map(ops);
 
-  std::unordered_set<string> type_annotate_ops;
-  for (const auto& op : ops.op()) {
-    type_annotate_ops.insert(op.name());
-  }
-
   string code =
       GetPythonOps(ops, api_def_map, OpRegOffsets(), /* hidden_ops= */ {},
-                   /* source_file_list= */ {}, type_annotate_ops);
+                   /* source_file_list= */ {});
 
   const string all_types =
       ", _atypes.BFloat16, _atypes.Bool, _atypes.Complex128, "
@@ -123,8 +118,6 @@ TEST(PythonOpGen, TypeAnnotateSingleTypeTensor) {
   }
   )";
 
-  std::unordered_set<string> type_annotate_ops{"Bar"};
-
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
@@ -132,7 +125,7 @@ TEST(PythonOpGen, TypeAnnotateSingleTypeTensor) {
 
   string code =
       GetPythonOps(op_defs, api_def_map, OpRegOffsets(), /* hidden_ops= */ {},
-                   /* source_file_list= */ {}, type_annotate_ops);
+                   /* source_file_list= */ {});
 
   const string typed_bar =
       "def bar(x: _atypes.TensorFuzzingAnnotation[_atypes.String], y: "
@@ -186,10 +179,6 @@ TEST(PythonOpGen, TypeAnnotateMultiTypeTensor) {
   }
   )";
 
-  std::unordered_set<string> type_annotate_ops{
-      "Foo",
-  };
-
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
@@ -197,7 +186,7 @@ TEST(PythonOpGen, TypeAnnotateMultiTypeTensor) {
 
   string code =
       GetPythonOps(op_defs, api_def_map, OpRegOffsets(), /* hidden_ops= */ {},
-                   /* source_file_list= */ {}, type_annotate_ops);
+                   /* source_file_list= */ {});
 
   const string typed_foo =
       "def foo(x: _atypes.TensorFuzzingAnnotation[TV_Foo_T], y: "
@@ -248,10 +237,6 @@ TEST(PythonOpGen, GenerateCorrectTypeVars) {
   }
   )";
 
-  std::unordered_set<string> type_annotate_ops{
-      "Foo",
-  };
-
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
@@ -259,7 +244,7 @@ TEST(PythonOpGen, GenerateCorrectTypeVars) {
 
   string code =
       GetPythonOps(op_defs, api_def_map, OpRegOffsets(), /* hidden_ops= */ {},
-                   /* source_file_list= */ {}, type_annotate_ops);
+                   /* source_file_list= */ {});
 
   const string typevars_foo = R"(
 TV_Foo_T = TypeVar("TV_Foo_T", _atypes.Int8, _atypes.UInt8)
@@ -311,10 +296,6 @@ TEST(PythonOpGen, TypeAnnotateFallback) {
   }
   )";
 
-  std::unordered_set<string> type_annotate_ops{
-      "Foo",
-  };
-
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
@@ -322,7 +303,7 @@ TEST(PythonOpGen, TypeAnnotateFallback) {
 
   string code =
       GetPythonOps(op_defs, api_def_map, OpRegOffsets(), /* hidden_ops= */ {},
-                   /* source_file_list= */ {}, type_annotate_ops);
+                   /* source_file_list= */ {});
 
   const string typed_foo_fallback =
       "def foo_eager_fallback(x: _atypes.TensorFuzzingAnnotation[TV_Foo_T], y: "
@@ -373,10 +354,6 @@ TEST(PythonOpGen, GenerateTypeVarAboveOp) {
   }
   )";
 
-  std::unordered_set<string> type_annotate_ops{
-      "Foo",
-  };
-
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
@@ -384,7 +361,7 @@ TEST(PythonOpGen, GenerateTypeVarAboveOp) {
 
   string code =
       GetPythonOps(op_defs, api_def_map, OpRegOffsets(), /* hidden_ops= */ {},
-                   /* source_file_list= */ {}, type_annotate_ops);
+                   /* source_file_list= */ {});
 
   const string typevar_foo = "TV_Foo_";
   const string def_foo = "def foo";
@@ -432,10 +409,6 @@ TEST(PythonOpGen, TypeAnnotateDefaultParams) {
   }
   )";
 
-  std::unordered_set<string> type_annotate_ops{
-      "FooBar",
-  };
-
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
@@ -443,7 +416,7 @@ TEST(PythonOpGen, TypeAnnotateDefaultParams) {
 
   string code =
       GetPythonOps(op_defs, api_def_map, OpRegOffsets(), /* hidden_ops= */ {},
-                   /* source_file_list= */ {}, type_annotate_ops);
+                   /* source_file_list= */ {});
 
   const string params =
       "def foo_bar(x: _atypes.TensorFuzzingAnnotation[_atypes.Float32], t: "
@@ -487,8 +460,6 @@ TEST(PythonOpGen, NoTypingSequenceTensors) {
   }
   )";
 
-  std::unordered_set<string> type_annotate_ops{"Baz"};
-
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
@@ -496,7 +467,7 @@ TEST(PythonOpGen, NoTypingSequenceTensors) {
 
   string code =
       GetPythonOps(op_defs, api_def_map, OpRegOffsets(), /* hidden_ops= */ {},
-                   /* source_file_list= */ {}, type_annotate_ops);
+                   /* source_file_list= */ {});
 
   const string baz_def_line = "def baz(inputs, name=None):";
 
@@ -504,13 +475,11 @@ TEST(PythonOpGen, NoTypingSequenceTensors) {
 }
 
 TEST(PythonOpGen, InsertCommentsForSourceFileLocation) {
-  std::unordered_set<string> type_annotate_ops{};
   std::vector<string> source_file_list{"some_ops.cc", "another_ops.cc"};
   OpList op_defs;
   ApiDefMap api_def_map(op_defs);
-  string code =
-      GetPythonOps(op_defs, api_def_map, OpRegOffsets(), /* hidden_ops= */ {},
-                   source_file_list, type_annotate_ops);
+  string code = GetPythonOps(op_defs, api_def_map, OpRegOffsets(),
+                             /* hidden_ops= */ {}, source_file_list);
 
   ExpectHasSubstr(code,
                   "Original C++ source file: some_ops.cc, another_ops.cc");
@@ -522,8 +491,6 @@ TEST(PythonOpGen, GenerateMetadataWhenOpRegOffsetsIsPresent) {
     name: "Baz"
   }
   )";
-
-  std::unordered_set<string> type_annotate_ops{"Baz"};
 
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
@@ -537,18 +504,15 @@ TEST(PythonOpGen, GenerateMetadataWhenOpRegOffsetsIsPresent) {
   offset->set_start(0);
   offset->set_end(0);
 
-  string code =
-      GetPythonOps(op_defs, api_def_map, offsets, {}, {}, type_annotate_ops);
+  string code = GetPythonOps(op_defs, api_def_map, offsets, {}, {});
 
   ExpectHasSubstr(code, "# kythe.proto.metadata.GeneratedCodeInfo:");
 }
 
 TEST(PythonOpGen, NotGenerateMetadataWhenOpRegOffsetsIsEmpty) {
-  std::unordered_set<string> type_annotate_ops{};
   OpList op_defs;
   ApiDefMap api_def_map(op_defs);
-  string code = GetPythonOps(op_defs, api_def_map, OpRegOffsets(), {}, {},
-                             type_annotate_ops);
+  string code = GetPythonOps(op_defs, api_def_map, OpRegOffsets(), {}, {});
 
   ExpectDoesNotHaveSubstr(code, "# kythe.proto.metadata.GeneratedCodeInfo:");
 }
