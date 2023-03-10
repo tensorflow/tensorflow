@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/data/service/common.h"
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -47,7 +48,11 @@ class DataServiceWorkerClient : public DataServiceClientBase {
   // Makes a best effort to cancel all outstanding calls in progress for the
   // client, and causes further calls to return Cancelled status.
   void TryCancel();
-
+  // Returns an error if the client is incompatible with a server which has the
+  // properties described in `compatibility_info`.
+  Status CheckCompatibility(const std::string& compatibility_info) const {
+    return client_->CheckCompatibility(compatibility_info);
+  }
   // Returns the data transfer protocol, preferring to use the local transfer
   // protocol if a local tf.data worker exists.
   std::string GetDataTransferProtocol() const;
@@ -63,11 +68,11 @@ class DataServiceWorkerClient : public DataServiceClientBase {
   std::unique_ptr<DataTransferClient> client_;
 };
 
-// Creates and initializes a new tf.data service worker client.
+// Creates and initializes a new tf.data service worker client and checks its
+// compatibility with the worker server described `info`.
 StatusOr<std::unique_ptr<DataServiceWorkerClient>>
-CreateDataServiceWorkerClient(const std::string& address,
-                              const std::string& protocol,
-                              const std::string& transfer_protocol);
+CreateDataServiceWorkerClient(const std::string& dispatcher_protocol,
+                              const DataTransferServerInfo& info);
 
 }  // namespace data
 }  // namespace tensorflow
