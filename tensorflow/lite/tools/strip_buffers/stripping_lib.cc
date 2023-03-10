@@ -286,11 +286,11 @@ TfLiteStatus ReconstituteConstantTensorsIntoFlatbuffer(
             sizeof(int8_t) * data.size());
         output_buffers.push_back(CreateBuffer(*new_model_builder, data_buffer));
       } else if (type == kTfLiteFloat32) {
-        std::vector<float_t> data;
+        std::vector<float> data;
         GenerateRandomGaussianData(num_elements, -1, 1, &data);
         auto data_buffer = new_model_builder->CreateVector(
             reinterpret_cast<const uint8_t*>(data.data()),
-            sizeof(float_t) * data.size());
+            sizeof(float) * data.size());
         output_buffers.push_back(CreateBuffer(*new_model_builder, data_buffer));
       } else if (type == kTfLiteInt32) {
         std::vector<int32_t> data;

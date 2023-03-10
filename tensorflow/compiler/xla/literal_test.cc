@@ -2384,9 +2384,9 @@ TEST_F(LiteralUtilTest, PopulateR2DynamicDim1) {
 TEST_F(LiteralUtilTest, PopulateFrom1DArray) {
   auto literal = Literal(ShapeUtil::MakeShape(F32, {20}));
   literal.SetDynamicSize(0, 10);
-  xla::Array<float_t> array({10});
+  xla::Array<float> array({10});
   for (int i = 0; i < 10; i++) {
-    array(i) = static_cast<float_t>(i);
+    array(i) = static_cast<float>(i);
   }
   literal.PopulateFromArray(array);
   std::string expected = "f32[<=20](10) {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}";
@@ -2398,10 +2398,10 @@ TEST_F(LiteralUtilTest, PopulateFromArrayDynamicDim0) {
   const uint32_t rows = 3;
   const uint32_t cols = 5;
   literal.SetDynamicSize(0, rows);
-  xla::Array<float_t> array({rows, cols});
+  xla::Array<float> array({rows, cols});
   for (int i = 0; i < rows; i++) {
     for (int j = 0; j < cols; j++) {
-      array(i, j) = static_cast<float_t>(j);
+      array(i, j) = static_cast<float>(j);
     }
   }
   literal.PopulateFromArray(array);
@@ -2418,10 +2418,10 @@ TEST_F(LiteralUtilTest, PopulateFromArrayDynamicDim1) {
   const uint32_t rows = 5;
   const uint32_t cols = 3;
   literal.SetDynamicSize(1, cols);
-  xla::Array<float_t> array({rows, cols});
+  xla::Array<float> array({rows, cols});
   for (int i = 0; i < rows; i++) {
     for (int j = 0; j < cols; j++) {
-      array(i, j) = static_cast<float_t>(j);
+      array(i, j) = static_cast<float>(j);
     }
   }
   literal.PopulateFromArray(array);
@@ -2440,10 +2440,10 @@ TEST_F(LiteralUtilTest, PopulateR2FromArray2DDynamicDim0) {
   const uint32_t rows = 3;
   const uint32_t cols = 5;
   literal.SetDynamicSize(0, rows);
-  xla::Array2D<float_t> array({rows, cols});
+  xla::Array2D<float> array({rows, cols});
   for (int i = 0; i < rows; i++) {
     for (int j = 0; j < cols; j++) {
-      array(i, j) = static_cast<float_t>(j);
+      array(i, j) = static_cast<float>(j);
     }
   }
   literal.PopulateR2FromArray2D(array);
@@ -2460,10 +2460,10 @@ TEST_F(LiteralUtilTest, PopulateR2FromArray2DDynamicDim1) {
   const uint32_t rows = 5;
   const uint32_t cols = 3;
   literal.SetDynamicSize(1, cols);
-  xla::Array2D<float_t> array({rows, cols});
+  xla::Array2D<float> array({rows, cols});
   for (int i = 0; i < rows; i++) {
     for (int j = 0; j < cols; j++) {
-      array(i, j) = static_cast<float_t>(j);
+      array(i, j) = static_cast<float>(j);
     }
   }
   literal.PopulateR2FromArray2D(array);
@@ -2483,10 +2483,10 @@ TEST_F(LiteralUtilTest, PopulateR2FromArray2DDynamicDim0Dim1) {
   const uint32_t cols = 2;
   literal.SetDynamicSize(0, rows);
   literal.SetDynamicSize(1, cols);
-  xla::Array2D<float_t> array({rows, cols});
+  xla::Array2D<float> array({rows, cols});
   for (int i = 0; i < rows; i++) {
     for (int j = 0; j < cols; j++) {
-      array(i, j) = static_cast<float_t>(j);
+      array(i, j) = static_cast<float>(j);
     }
   }
   literal.PopulateR2FromArray2D(array);
