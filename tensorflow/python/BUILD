@@ -1098,7 +1098,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":bitwise_ops_gen",
-        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/util",
     ],
 )
@@ -1355,6 +1355,7 @@ py_library(
         ":while_loop",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager/polymorphic_function:eager_function_run",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -1743,7 +1744,6 @@ py_library(
         ":resource_variable_ops",
         ":unconnected_gradients",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:backprop_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework",
@@ -2368,6 +2368,7 @@ py_library(
         ":array_ops",
         ":script_ops_gen",
         "//tensorflow/python/autograph/operators",
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:backprop_util",
         "//tensorflow/python/eager:tape",
         "//tensorflow/python/framework:for_generated_wrappers",

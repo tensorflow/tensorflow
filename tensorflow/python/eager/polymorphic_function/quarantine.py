@@ -15,7 +15,7 @@
 """Internal APIs to be removed in the future."""
 
 from tensorflow.python.eager.polymorphic_function import atomic_function
-from tensorflow.python.eager.polymorphic_function import polymorphic_function
+from tensorflow.python.eager.polymorphic_function import eager_function_run
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_decorator
@@ -165,7 +165,7 @@ def experimental_run_functions_eagerly(run_eagerly):
   Returns:
     None
   """
-  return polymorphic_function.run_functions_eagerly(run_eagerly)
+  return eager_function_run.run_functions_eagerly(run_eagerly)
 
 
 @deprecation.deprecated(
@@ -174,4 +174,4 @@ def experimental_run_functions_eagerly(run_eagerly):
 @tf_export("config.experimental_functions_run_eagerly")
 def experimental_functions_run_eagerly():
   """Returns the value of the `experimental_run_functions_eagerly` setting."""
-  return polymorphic_function.functions_run_eagerly()
+  return eager_function_run.functions_run_eagerly()

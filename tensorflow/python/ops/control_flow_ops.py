@@ -22,6 +22,7 @@ import abc
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import control_flow_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.eager.polymorphic_function import eager_function_run
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -58,11 +59,6 @@ from tensorflow.python.util.tf_export import tf_export
 # cond_v2 -> gradients_util -> control_flow_ops
 cond_v2 = LazyLoader("cond_v2", globals(),
                      "tensorflow.python.ops.cond_v2")
-
-# def_function also uses cond
-def_function = LazyLoader(
-    "def_function", globals(),
-    "tensorflow.python.eager.def_function")
 
 # TODO(b/269483538): needed for references while refactors are in progress
 case = control_flow_case.case
@@ -967,11 +963,11 @@ def _eager_cond_implementation(pred, true_fn, false_fn, strict, name):
     # Eager tensors from a parallel device may not have a constant
     # value. Running the cond op itself would work, but we don't have logic to
     # build cond ops without wrapping in a function first.
-    if (not isinstance(true_fn, def_function.Function)
-        or not isinstance(false_fn, def_function.Function)):
+    if (not isinstance(true_fn, core.GenericFunction)
+        or not isinstance(false_fn, core.GenericFunction)):
       raise TypeError("When running tf.cond on a parallel device, 'true_fn' "
                       "and 'false_fn' must be decorated with `tf.function`.")
-    functions_run_eagerly = def_function.functions_run_eagerly()
+    functions_run_eagerly = eager_function_run.functions_run_eagerly()
     if functions_run_eagerly:
       # We need to use tf.function to deal with variable creation inside the
       # cond, and skipping it because of run_functions_eagerly would just
@@ -980,12 +976,12 @@ def _eager_cond_implementation(pred, true_fn, false_fn, strict, name):
           "It looks like tf.function behavior was disabled, perhaps using "
           "tf.config.run_functions_eagerly. Parallelized tf.cond requires "
           "tf.function to work. This primitive will override the disable.")
-    def_function.run_functions_eagerly(False)
+    eager_function_run.run_functions_eagerly(False)
     try:
       return cond_v2.cond_v2(pred, true_fn, false_fn, name)
     finally:
       if functions_run_eagerly is not None:
-        def_function.run_functions_eagerly(functions_run_eagerly)
+        eager_function_run.run_functions_eagerly(functions_run_eagerly)
   else:
     # For conditions which are eager tensors with a constant value (most of
     # them), we only call the relevant branch function and execute it eagerly.

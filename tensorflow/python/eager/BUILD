@@ -758,6 +758,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/eager/polymorphic_function:eager_function_run",
     ],
 )
 

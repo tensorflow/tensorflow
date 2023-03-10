@@ -96,6 +96,7 @@ py_library(
     deps = [
         ":attributes",
         ":compiler_ir",
+        ":eager_function_run",
         ":function_spec",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",
@@ -259,6 +260,7 @@ py_library(
     visibility = ["//tensorflow/python/eager:__pkg__"],
     deps = [
         ":atomic_function",
+        ":eager_function_run",
         ":tracing_compiler",
     ],
 )
@@ -341,6 +343,13 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
     ],
+)
+
+py_library(
+    name = "eager_function_run",
+    srcs = ["eager_function_run.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = ["//tensorflow/python/util:tf_export"],
 )
 
 py_library(
