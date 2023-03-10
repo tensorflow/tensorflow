@@ -1660,7 +1660,7 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
 
 bool FindMulAndMaximum(RemapperContext* ctx, int node_index,
                        std::map<string, int>* matched_nodes_map,
-                       std::set<int>* remove_node_indices) {
+                       std::set<int>* remove_node_indices, float* alpha) {
   using utils::MatchingDirection;
   using utils::NodeStatus;
 
@@ -1709,37 +1709,32 @@ bool FindMulAndMaximum(RemapperContext* ctx, int node_index,
         ctx->graph_view.GetNode(matched_nodes_map->at("alpha"));
     const auto* alpha_node_def = alpha_node_view->node();
 
-    float alpha_val;
-    Tensor alpha_tensor;
-    if (alpha_node_def->op() == "Cast") {
+    if (alpha_node_def != nullptr && alpha_node_def->op() == "Cast") {
       const auto& regular_fanin_0 = alpha_node_view->GetRegularFanin(0);
       const auto* regular_node_view = regular_fanin_0.node_view();
-      const auto* const_node = regular_node_view->node();
-      if (const_node != nullptr && const_node->op() == "Const" &&
-          alpha_tensor.FromProto(const_node->attr().at("value").tensor())) {
-        // Only fusing if the const is a scalar value
-        if (alpha_tensor.shape().dims() > 0) {
-          return false;
-        }
-        alpha_val = alpha_tensor.flat<float>()(0);
-      } else {
-        return false;
-      }
-    } else if (alpha_node_def->op() == "Const" &&
-               alpha_tensor.FromProto(
-                   alpha_node_def->attr().at("value").tensor())) {
-      // Only fusing if the const is a scalar value
-      if (alpha_tensor.shape().dims() > 0) {
-        return false;
-      }
+      alpha_node_def = regular_node_view->node();
+    }
+
+    Tensor alpha_tensor;
+    // Only fusing if the node is a const scalar
+    if (alpha_node_def == nullptr || alpha_node_def->op() != "Const" ||
+        !alpha_tensor.FromProto(alpha_node_def->attr().at("value").tensor()) ||
+        alpha_tensor.NumElements() != 1) {
+      return false;
+    }
+
+    DataType dtype = alpha_tensor.dtype();
+    float alpha_val;
+    if (dtype == DT_FLOAT) {
       alpha_val = alpha_tensor.flat<float>()(0);
+    } else if (dtype == DT_BFLOAT16) {
+      alpha_val = static_cast<float>(alpha_tensor.flat<bfloat16>()(0));
     } else {
       return false;
     }
 
-    if (alpha_val < 0) {
-      return false;
-    }
+    if (alpha_val < 0) return false;
+    *alpha = alpha_val;
   }
   return found_op_type_match;
 }
@@ -3083,7 +3078,8 @@ Status AddMklLayerNorm(RemapperContext* ctx,
 Status ReplaceMulMaximumWithLeakyRelu(
     RemapperContext* ctx, const std::map<string, int>& matched_nodes_map,
     const std::set<int>& remove_node_indices,
-    std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete) {
+    std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete,
+    float alpha) {
   const NodeDef* maximum =
       ctx->graph_view.GetNode(matched_nodes_map.at("max_to_leakyrelu"))->node();
   const NodeDef* input =
@@ -3101,25 +3097,7 @@ Status ReplaceMulMaximumWithLeakyRelu(
   auto* attr = fused_op.mutable_attr();
   (*attr)["T"] = maximum->attr().at("T");
 
-  // BF16 adds a cast before the const alpha, so accessing the const node
-  // using the cast node to retrieve the value of alpha.
-  float alpha_val;
-  Tensor alpha_tensor;
-  if (alpha_node_def->op() == "Cast") {
-    const auto& regular_fanin_0 = alpha_node_view->GetRegularFanin(0);
-    const auto* regular_node_view = regular_fanin_0.node_view();
-    const auto* const_node = regular_node_view->node();
-    if (const_node != nullptr && const_node->op() == "Const" &&
-        alpha_tensor.FromProto(const_node->attr().at("value").tensor())) {
-      alpha_val = alpha_tensor.flat<float>()(0);
-      SetAttrValue(alpha_val, &(*attr)["alpha"]);
-    }
-  } else if (alpha_node_def->op() == "Const" &&
-             alpha_tensor.FromProto(
-                 alpha_node_def->attr().at("value").tensor())) {
-    alpha_val = alpha_tensor.flat<float>()(0);
-    SetAttrValue(alpha_val, &(*attr)["alpha"]);
-  }
+  SetAttrValue(alpha, &(*attr)["alpha"]);
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
   Status status;
@@ -4009,11 +3987,12 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       // Remap Maximum(x, alpha * x) pattern, fuse them into the LeakyRelu(x).
       std::map<string, int> mulmax_matched_nodes_map;
       std::set<int> mulmax_remove_node_indices;
+      float alpha;
       if (FindMulAndMaximum(&ctx, i, &mulmax_matched_nodes_map,
-                            &mulmax_remove_node_indices)) {
+                            &mulmax_remove_node_indices, &alpha)) {
         TF_RETURN_IF_ERROR(ReplaceMulMaximumWithLeakyRelu(
             &ctx, mulmax_matched_nodes_map, mulmax_remove_node_indices,
-            &invalidated_nodes, &nodes_to_delete));
+            &invalidated_nodes, &nodes_to_delete, alpha));
         continue;
       }
 
