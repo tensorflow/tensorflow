@@ -128,6 +128,8 @@ class Status {
     return ok() ? tensorflow::error::OK : state_->code;
   }
 
+  int raw_code() const { return static_cast<int>(code()); }
+
   const std::string& error_message() const {
     return ok() ? empty_string() : state_->msg;
   }
