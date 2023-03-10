@@ -770,11 +770,6 @@ int64_t DatasetBase::Cardinality() const {
     CardinalityOptions options;
     cardinality_ = CardinalityInternal(options);
   }
-  if (cardinality_ == kUnknownCardinality) {
-    // Some subclasses may only implement this deprecated signature.
-    // TODO(yuxinw) remove this branch after all subclasses are migrated.
-    cardinality_ = CardinalityInternal();
-  }
   return cardinality_;
 }
 

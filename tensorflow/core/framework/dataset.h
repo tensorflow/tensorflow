@@ -1342,15 +1342,6 @@ class DatasetBase : public core::RefCounted {
   // Returns the cardinality of this dataset based on the options.
   int64_t Cardinality(CardinalityOptions options) const;
 
-  // Internal implementation of cardinality for a dataset.
-  // TODO(yuxinw): Remove this overload once all callers are migrated
-  // to the API which passes in the options parameter.
-  ABSL_DEPRECATED("Use the overload that passes in the options parameter.")
-  virtual int64_t CardinalityInternal() const
-      TF_EXCLUSIVE_LOCKS_REQUIRED(cardinality_mu_) {
-    return kUnknownCardinality;
-  }
-
   // Internal implementation of cardinality for a dataset based on the options.
   virtual int64_t CardinalityInternal(CardinalityOptions options) const
       TF_EXCLUSIVE_LOCKS_REQUIRED(cardinality_mu_) {
