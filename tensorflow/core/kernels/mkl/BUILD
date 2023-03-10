@@ -361,7 +361,10 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_deprecated_ops",
     prefix = "mkl_deprecated_ops",
-    deps = MKL_DEPS,
+    deps = [
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/graph:mkl_graph_util",
+    ] + MKL_DEPS,
 )
 
 tf_mkl_kernel_library(
