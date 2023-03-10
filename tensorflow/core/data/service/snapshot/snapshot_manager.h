@@ -112,10 +112,10 @@ class SnapshotManager {
   tsl::StatusOr<std::optional<int64_t>> MaybeGetOrCreateStreamAssignment(
       absl::string_view worker_address,
       const SnapshotTaskProgress* snapshot_progress);
+  tsl::Status ReassignPreviouslyAssignedStream(
+      int64_t stream_index, absl::string_view worker_address);
   tsl::Status HandleStreamCompletion(int64_t stream_index,
                                      absl::string_view worker_address);
-  void ReassignPreviouslyAssignedStream(int64_t stream_index,
-                                        absl::string_view worker_address);
   std::optional<int64_t> MaybeAssignOrphanStream(
       absl::string_view worker_address);
   tsl::StatusOr<int64_t> CreateAndAssignNewStream(

@@ -280,13 +280,18 @@ StatusOr<int64_t> SnapshotManager::CreateAndAssignNewStream(
   return new_stream_index;
 }
 
-void SnapshotManager::ReassignPreviouslyAssignedStream(
+Status SnapshotManager::ReassignPreviouslyAssignedStream(
     int64_t stream_index, absl::string_view worker_address) {
+  if (!stream_available(stream_index)) {
+    return errors::Internal("worker ", worker_address,
+                            " has no known assignment and its desired stream, ",
+                            stream_index, ", is unavailable");
+  }
   VLOG(1) << "reassigning a previous assignment of stream " << stream_index
           << " to worker " << worker_address;
   assignments_[worker_address] = stream_index;
-  orphans_.erase(stream_index);
   unknowns_.erase(stream_index);
+  return OkStatus();
 }
 
 StatusOr<std::optional<int64_t>>
@@ -307,13 +312,12 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
                               " but it's actually assigned assigned stream ",
                               *assigned_stream_index);
     }
-    if (!assigned_stream_index &&
-        stream_available(snapshot_progress->snapshot_task().stream_index())) {
-      ReassignPreviouslyAssignedStream(
-          snapshot_progress->snapshot_task().stream_index(), worker_address);
+    if (!assigned_stream_index) {
+      TF_RETURN_IF_ERROR(ReassignPreviouslyAssignedStream(
+          snapshot_progress->snapshot_task().stream_index(), worker_address));
       assigned_stream_index = snapshot_progress->snapshot_task().stream_index();
     }
-    if (assigned_stream_index.has_value() && snapshot_progress->completed()) {
+    if (snapshot_progress->completed()) {
       TF_RETURN_IF_ERROR(HandleStreamCompletion(
           snapshot_progress->snapshot_task().stream_index(), worker_address));
       assigned_stream_index.reset();
@@ -362,14 +366,14 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
                                          GetSnapshotSplitResponse& response) {
   auto it = assignments_.find(request.worker_address());
   if (it == assignments_.end()) {
-    if (!stream_available(request.stream_index())) {
-      return errors::FailedPrecondition(
+    if (!unknowns_.contains(request.stream_index())) {
+      return errors::Internal(
           "worker ", request.worker_address(),
           " has no known assignment and its desired stream, ",
           request.stream_index(), ", is unavailable");
     }
-    ReassignPreviouslyAssignedStream(request.stream_index(),
-                                     request.worker_address());
+    TF_RETURN_IF_ERROR(ReassignPreviouslyAssignedStream(
+        request.stream_index(), request.worker_address()));
   } else if (it->second != request.stream_index()) {
     return errors::Internal("worker ", request.worker_address(),
                             " think it's assigned stream ",

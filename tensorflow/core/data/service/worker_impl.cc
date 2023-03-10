@@ -192,20 +192,13 @@ Status DataServiceWorkerImpl::Start(
 
 void DataServiceWorkerImpl::Stop() {
   absl::flat_hash_map<int64_t, std::shared_ptr<Task>> tasks;
-  absl::flat_hash_map<SnapshotTask, std::unique_ptr<SnapshotStreamWriter>,
-                      absl::Hash<SnapshotTask>>
-      snapshot_writers;
   {
     mutex_lock l(mu_);
     cancelled_ = true;
     tasks.swap(tasks_);
-    snapshot_writers.swap(snapshot_writers_);
   }
   for (const auto& [task_id, task] : tasks) {
     StopTask(*task);
-  }
-  for (const auto& [unused, snapshot_writer] : snapshot_writers) {
-    snapshot_writer->Cancel();
   }
   // At this point there are no outstanding requests in this RPC handler.
   // However, requests successfully returned from this RPC handler may still be

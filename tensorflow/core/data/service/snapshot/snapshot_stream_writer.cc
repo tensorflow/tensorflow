@@ -84,11 +84,6 @@ void SnapshotStreamWriter::WriteSnapshotAndLog() TF_LOCKS_EXCLUDED(mu_) {
   LOG(INFO) << "Writing distributed tf.data snapshot stream: "
             << params_.DebugString();
   Status status = WriteSnapshot();
-  if (errors::IsFailedPrecondition(status)) {
-    LOG(INFO) << "Stopping writing distributed tf.data snapshot stream: "
-              << status.error_message();
-    return;
-  }
   status = FinalizeStream(status);
   mutex_lock l(mu_);
   if (!status.ok()) {
