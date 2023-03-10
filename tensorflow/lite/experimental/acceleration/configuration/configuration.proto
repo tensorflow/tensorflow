@@ -570,6 +570,11 @@ message CPUSettings {
   optional int32 num_threads = 1 [default = -1];
 }
 
+// Arm NN delegate option
+message ArmNNSettings {
+  optional string delegate_options = 1;
+}
+
 // How to configure TFLite.
 message TFLiteSettings {
   // Which delegate to use.
@@ -624,6 +629,9 @@ message TFLiteSettings {
 
   // Compilation caching settings.
   optional CompilationCachingSettings compilation_caching_settings = 15;
+
+  // For configuring the Arm NN delegate.
+  optional ArmNNSettings armnn_settings = 16;
 }
 
 // Whether to automatically fallback to TFLite CPU path on delegation errors.
