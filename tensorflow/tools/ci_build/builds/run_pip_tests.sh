@@ -100,7 +100,7 @@ if [[ ${IS_ROCM} == "1" ]]; then
 fi
 if [[ ${IS_MAC} == "1" ]]; then
   # TODO(b/122370901): Fix nomac, no_mac inconsistency.
-  PIP_TEST_FILTER_TAG="-nomac,-no_mac,${PIP_TEST_FILTER_TAG}"
+  PIP_TEST_FILTER_TAG="-nomac,-no_mac,-mac_excluded,${PIP_TEST_FILTER_TAG}"
 fi
 
 # Bazel flags we need for all tests:

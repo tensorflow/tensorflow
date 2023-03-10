@@ -984,7 +984,7 @@ def system_specific_test_config(environ_cp):
     else:
       test_and_build_filters.append('-gpu')
   elif is_macos():
-    test_and_build_filters += ['-gpu', '-nomac', '-no_mac']
+    test_and_build_filters += ['-gpu', '-nomac', '-no_mac', '-mac_excluded']
   elif is_linux():
     if ((environ_cp.get('TF_NEED_CUDA', None) == '1') or
         (environ_cp.get('TF_NEED_ROCM', None) == '1')):
