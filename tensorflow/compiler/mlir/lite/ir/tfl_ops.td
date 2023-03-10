@@ -1186,7 +1186,7 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [
 
   let arguments = (ins
     TFL_TensorOf<[F32, I8, I16, I64, I32, UI8, TFL_Str]>:$params,
-    TFL_I32OrI64Tensor:$indices
+    TFL_TensorOf<[I16, I32, I64]>:$indices
   );
 
   let results = (outs

@@ -907,6 +907,13 @@ TEST(OpVersionTest, VersioningGatherNdOperatorTest) {
           std::vector<TfLiteType>{kTfLiteInt16, kTfLiteInt32}),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_GATHER_ND,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteInt32, kTfLiteInt16}),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
 TEST(OpVersionTest, VersioningDivTest) {
   OpSignature fake_op_sig = {

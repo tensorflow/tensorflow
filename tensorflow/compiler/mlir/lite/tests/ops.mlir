@@ -97,6 +97,22 @@ func.func @testGatherWithBatchDims(%arg0 : tensor<2xf32>, %arg1 : tensor<2xi32>)
 
 // -----
 
+// CHECK-LABEL: testGatherNd
+func.func @testGatherNd(%arg0 : tensor<?xf32>, %arg1 : tensor<?xi32>) -> tensor<?xf32> {
+  %0 = "tfl.gather_nd"(%arg0, %arg1) {axis = 1 : i32}: (tensor<?xf32>,tensor<?xi32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testGatherNdI16Indices
+func.func @testGatherNdI16Indices(%arg0 : tensor<?xf32>, %arg1 : tensor<?xi16>) -> tensor<?xf32> {
+  %0 = "tfl.gather_nd"(%arg0, %arg1) {axis = 1 : i32}: (tensor<?xf32>,tensor<?xi16>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// -----
+
 // CHECK-LABEL: testAbs
 func.func @testAbs(tensor<? x f32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<? x f32>):

@@ -666,6 +666,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_GATHER_ND:
+      if (op_sig.inputs.at(1).type == kTfLiteInt16) {
+        return 4;
+      }
       if (!op_sig.inputs.empty() &&
           (op_sig.inputs.at(0).type == kTfLiteInt16)) {
         return 3;
