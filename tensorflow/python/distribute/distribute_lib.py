@@ -205,7 +205,6 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
-from tensorflow.python.distribute import values
 from tensorflow.python.eager import context as eager_context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
@@ -224,6 +223,7 @@ from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.trackable import base as trackable
+from tensorflow.python.types import distribute as ds_types
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
@@ -2615,14 +2615,14 @@ class StrategyExtendedV2(object):
 
   def _local_results(self, val):
     """Returns local results per replica as a tuple."""
-    if isinstance(val, values.DistributedValues):
+    if isinstance(val, ds_types.DistributedValues):
       return val._values  # pylint: disable=protected-access
 
     if nest.is_nested(val):
       replica_values = []
 
       def get_values(x, index):
-        if isinstance(x, values.DistributedValues):
+        if isinstance(x, ds_types.DistributedValues):
           return x._values[index]  # pylint: disable=protected-access
         return x
 
