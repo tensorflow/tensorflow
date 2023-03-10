@@ -317,7 +317,9 @@ DataServiceClient::CreateWorkerClient(const std::string& protocol,
                                       const TaskInfo& task_info) {
   for (const auto& transfer_server : task_info.transfer_servers()) {
     if (transfer_server.protocol() == protocol) {
-      return CreateDataServiceWorkerClient(params_.protocol, transfer_server);
+      return CreateDataServiceWorkerClient(transfer_server.address(),
+                                           params_.protocol,
+                                           transfer_server.protocol());
     }
   }
   return errors::NotFound("protocol ", protocol,
@@ -328,10 +330,8 @@ DataServiceClient::CreateWorkerClient(const std::string& protocol,
 StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
   if (params_.data_transfer_protocol == kLocalTransferProtocol) {
-    DataTransferServerInfo info;
-    info.set_protocol(kLocalTransferProtocol);
-    info.set_address(task_info.worker_address());
-    return CreateDataServiceWorkerClient(params_.protocol, info);
+    return CreateDataServiceWorkerClient(
+        task_info.worker_address(), params_.protocol, kLocalTransferProtocol);
   }
   if (!params_.data_transfer_protocol.empty()) {
     return CreateWorkerClient(params_.data_transfer_protocol, task_info);
@@ -343,8 +343,9 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
     StatusOr<std::unique_ptr<DataServiceWorkerClient>> worker =
         CreateWorkerClient(default_protocol, task_info);
     if (worker.ok()) {
-      LOG(INFO) << "Client " << params_.address
-                << " is participating in the \"data_transfer\" experiment.";
+      LOG(INFO)
+          << "successfully started client for default data transfer protocol '"
+          << default_protocol << "'";
       return worker;
     }
     LOG(ERROR) << "failed to start client for default data transfer protocol '"

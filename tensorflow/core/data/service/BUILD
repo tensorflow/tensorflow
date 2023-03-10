@@ -28,10 +28,6 @@ tf_proto_library(
     cc_api_version = 2,
     create_java_proto = False,
     protodeps = tf_additional_all_protos(),
-    visibility = [
-        ":data_transfer_visibility",
-        "//tensorflow:internal",
-    ],
 )
 
 tf_proto_library(
@@ -262,7 +258,6 @@ cc_library(
         ":data_transfer_visibility",
     ],
     deps = [
-        ":common_proto_cc",
         ":worker_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:dataset_proto_cc",
@@ -989,7 +984,6 @@ cc_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common",
-        ":common_proto_cc",
         ":credentials_factory",
         ":data_transfer",
         ":grpc_util",
@@ -1006,7 +1000,6 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/tsl/platform:errors",
     ] + tf_grpc_cc_dependencies(),
 )
 

@@ -87,13 +87,6 @@ class DataTransferClient {
   // Builds a DataTransferClient from the factory registered under `name`.
   static Status Build(std::string name, Config config,
                       std::unique_ptr<DataTransferClient>* out);
-
-  // Returns an error if the client is incompatible with a server which has the
-  // properties described in `compatibility_info`.
-  virtual Status CheckCompatibility(
-      const std::string& compatibility_info) const {
-    return OkStatus();
-  }
 };
 
 // Server for communicating with the tf.data service transfer client.
@@ -120,12 +113,6 @@ class DataTransferServer {
   // Builds a DataTransferServer from the factory registered with `name`.
   static Status Build(std::string name, GetElementT get_element,
                       std::shared_ptr<DataTransferServer>* out);
-
-  // Returns a string describing properties of the server relevant for checking
-  // compatibility with a client for a given protocol.
-  virtual StatusOr<std::string> GetCompatibilityInfo() const {
-    return std::string();
-  }
 };
 
 }  // namespace data

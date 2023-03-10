@@ -132,7 +132,4 @@ enum TargetWorkers {
 message DataTransferServerInfo {
   string protocol = 1;
   string address = 2;
-  // If provided, properties of the server used to determine compatibility with
-  // a client.
-  bytes compatibility_info = 3;
 }
