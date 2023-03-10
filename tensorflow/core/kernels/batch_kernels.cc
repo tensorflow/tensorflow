@@ -278,7 +278,7 @@ BatchFunctionKernel::BatchFunctionKernel(OpKernelConstruction* c)
     // `batcher_queue_` is the key to find queue for this batch-op in the
     // graph.
     // Use `shared_name_` and name() as prefix for `batcher_queue_`.
-    // Note name() is unique per session (from session metadata).
+    // Note name() is node_def.name so unique per graph def.
     batcher_queue_ = name() + "/" + shared_name_ + batcher_queue_;
   }
 
