@@ -1322,6 +1322,9 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":training",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python:math_ops",
     ] + TRAINING_TEST_DEPS,
 )
 
