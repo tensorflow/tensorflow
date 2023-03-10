@@ -1564,11 +1564,11 @@ Status GcsFileSystem::StatForObject(const string& fname, const string& bucket,
 
 Status GcsFileSystem::BucketExists(const string& bucket, bool* result) {
   const Status status = GetBucketMetadata(bucket, nullptr);
-  switch (status.code()) {
-    case errors::Code::OK:
+  switch (static_cast<absl::StatusCode>(status.code())) {
+    case absl::StatusCode::kOk:
       *result = true;
       return OkStatus();
-    case errors::Code::NOT_FOUND:
+    case absl::StatusCode::kNotFound:
       *result = false;
       return OkStatus();
     default:
