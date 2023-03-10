@@ -189,12 +189,11 @@ class OpKernelRunnerTable {
   const OpKernelRunner* Get(int64_t index) const {
     // Out of bounds vector access will throw an exception and anyway will crash
     // the binary, prefer a more readable error message.
-    CHECK_GT(runners_.size(), index)  // Crash OK
+    DCHECK_GT(runners_.size(), index)
         << "runner index is out of bounds: index=" << index
         << " size=" << runners_.size();
     auto& result = runners_.at(index);
-    CHECK(result.has_value())  // Crash OK
-        << "runner is not available: index=" << index;
+    DCHECK(result.has_value()) << "runner is not available: index=" << index;
     return &(*result);
   }
 
