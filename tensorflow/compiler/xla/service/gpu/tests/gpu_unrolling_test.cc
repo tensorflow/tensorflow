@@ -133,7 +133,8 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedSine) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK: load float
-; CHECK-NOT: load float }
+; CHECK-NOT: load float
+; CHECK: }
       )",
                      /*match_optimized_ir=*/true);
 }
@@ -156,7 +157,8 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedCosine) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK: load float
-; CHECK-NOT: load float }
+; CHECK-NOT: load float
+; CHECK: }
       )",
                      /*match_optimized_ir=*/true);
 }
@@ -176,11 +178,14 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedPower) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
+  // There are 2 loads, because the 2 parameters are read separately - the
+  // kernel is not aware that they are the same.
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK: load float
+; CHECK: load float
 ; CHECK-NOT: load float
-}
+; CHECK: }
       )",
                      /*match_optimized_ir=*/true);
 }
@@ -200,11 +205,14 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedAtan2) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
+  // There are 2 loads, because the 2 parameters are read separately - the
+  // kernel is not aware that they are the same.
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK: load float
+; CHECK: load float
 ; CHECK-NOT: load float
-}
+; CHECK: }
       )",
                      /*match_optimized_ir=*/true);
 }

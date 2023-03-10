@@ -9,68 +9,62 @@
 
 
 // CHECK-LABEL: entry:
-// CHECK:         %[[VAL_0:.*]] = getelementptr inbounds i8, ptr %[[VAL_1:.*]], i64 0
-// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, ptr %[[VAL_3:.*]], i64 0
-// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, ptr %[[VAL_5:.*]], i64 0
-// CHECK:         %[[VAL_6:.*]] = getelementptr inbounds i8, ptr %[[VAL_7:.*]], i64 0
-// CHECK:         %[[VAL_8:.*]] = getelementptr inbounds i8, ptr %[[VAL_9:.*]], i64 0
-// CHECK:         %[[VAL_10:.*]] = getelementptr inbounds i8, ptr %[[VAL_11:.*]], i64 0
-// CHECK:         %[[VAL_12:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
-// CHECK:         %[[VAL_13:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
-// CHECK:         %[[VAL_14:.*]] = mul nuw nsw i32 %[[VAL_12]], 1024
-// CHECK:         %[[VAL_15:.*]] = add nuw nsw i32 %[[VAL_14]], %[[VAL_13]]
-// CHECK:         %[[VAL_16:.*]] = icmp ult i32 %[[VAL_15]], 1024
-// CHECK:         call void @llvm.assume(i1 %[[VAL_16]])
-// CHECK:         %[[VAL_17:.*]] = udiv i32 %[[VAL_15]], 1
-// CHECK:         %[[VAL_18:.*]] = icmp ult i32 %[[VAL_15]], 1024
-// CHECK:         br i1 %[[VAL_18]], label %[[VAL_19:.*]], label %[[VAL_20:.*]]
-// CHECK:       fusion.in_bounds-after:                           ; preds = %[[VAL_21:.*]], %[[VAL_22:.*]]
+// CHECK:         %[[VAL_0:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
+// CHECK:         %[[VAL_1:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
+// CHECK:         %[[VAL_2:.*]] = mul nuw nsw i32 %[[VAL_0]], 1024
+// CHECK:         %[[VAL_3:.*]] = add nuw nsw i32 %[[VAL_2]], %[[VAL_1]]
+// CHECK:         %[[VAL_4:.*]] = icmp ult i32 %[[VAL_3]], 1024
+// CHECK:         call void @llvm.assume(i1 %[[VAL_4]])
+// CHECK:         %[[VAL_5:.*]] = udiv i32 %[[VAL_3]], 1
+// CHECK:         %[[VAL_6:.*]] = icmp ult i32 %[[VAL_3]], 1024
+// CHECK:         br i1 %[[VAL_6]], label %[[VAL_7:.*]], label %[[VAL_8:.*]]
+// CHECK:       fusion.in_bounds-after:                           ; preds = %[[VAL_9:.*]], %[[VAL_10:.*]]
 // CHECK:         ret void
-// CHECK:       fusion.in_bounds-true:                            ; preds = %[[VAL_22]]
-// CHECK:         %[[VAL_23:.*]] = add i32 %[[VAL_17]], 0
-// CHECK:         br label %[[VAL_24:.*]]
-// CHECK:       concat_index_from_operand_id0:                    ; preds = %[[VAL_25:.*]]
-// CHECK:         %[[VAL_26:.*]] = phi i32 [ 0, %[[VAL_25]] ]
-// CHECK:         %[[VAL_27:.*]] = sub nsw i32 %[[VAL_23]], %[[VAL_26]]
-// CHECK:         %[[VAL_28:.*]] = getelementptr inbounds [1024 x half], ptr %[[VAL_0]], i32 0, i32 %[[VAL_27]]
-// CHECK:         %[[VAL_29:.*]] = load half, ptr %[[VAL_28]], align 2, !invariant.load !4
-// CHECK:         %[[VAL_30:.*]] = getelementptr inbounds [1024 x half], ptr %[[VAL_2]], i32 0, i32 %[[VAL_27]]
-// CHECK:         %[[VAL_31:.*]] = load half, ptr %[[VAL_30]], align 2, !invariant.load !4
-// CHECK:         %[[VAL_32:.*]] = fmul half %[[VAL_29]], %[[VAL_31]]
-// CHECK:         br label %[[VAL_21]]
-// CHECK:       concat_index_from_operand_id1:                    ; preds = %[[VAL_33:.*]]
-// CHECK:         %[[VAL_34:.*]] = phi i32 [ 1024, %[[VAL_33]] ]
-// CHECK:         %[[VAL_35:.*]] = sub nsw i32 %[[VAL_23]], %[[VAL_34]]
-// CHECK:         %[[VAL_36:.*]] = getelementptr inbounds [1023 x half], ptr %[[VAL_4]], i32 0, i32 %[[VAL_35]]
-// CHECK:         %[[VAL_37:.*]] = load half, ptr %[[VAL_36]], align 2, !invariant.load !4
-// CHECK:         %[[VAL_38:.*]] = getelementptr inbounds [1023 x half], ptr %[[VAL_6]], i32 0, i32 %[[VAL_35]]
-// CHECK:         %[[VAL_39:.*]] = load half, ptr %[[VAL_38]], align 2, !invariant.load !4
-// CHECK:         %[[VAL_40:.*]] = fadd half %[[VAL_37]], %[[VAL_39]]
-// CHECK:         br label %[[VAL_21]]
-// CHECK:       concatenate.pivot.1024.:                          ; preds = %[[VAL_19]]
-// CHECK:         %[[VAL_41:.*]] = icmp ult i32 %[[VAL_23]], 1024
-// CHECK:         br i1 %[[VAL_41]], label %[[VAL_25]], label %[[VAL_33]]
-// CHECK:       concatenate.pivot.0.:                             ; preds = %[[VAL_24]]
-// CHECK:         br label %[[VAL_42:.*]]
-// CHECK:       concatenate.pivot.1024.1:                         ; preds = %[[VAL_24]]
-// CHECK:         br label %[[VAL_43:.*]]
-// CHECK:       concatenate.7.merge:                              ; preds = %[[VAL_43]], %[[VAL_42]]
-// CHECK:         %[[VAL_44:.*]] = phi half [ %[[VAL_32]], %[[VAL_42]] ], [ %[[VAL_40]], %[[VAL_43]] ]
-// CHECK:         %[[VAL_45:.*]] = insertvalue { half, half } undef, half %[[VAL_44]], 0
-// CHECK:         %[[VAL_46:.*]] = add i32 %[[VAL_17]], 0
-// CHECK:         %[[VAL_47:.*]] = getelementptr inbounds [1024 x half], ptr %[[VAL_0]], i32 0, i32 %[[VAL_46]]
-// CHECK:         %[[VAL_48:.*]] = load half, ptr %[[VAL_47]], align 2, !invariant.load !4
-// CHECK:         %[[VAL_49:.*]] = getelementptr inbounds [1024 x half], ptr %[[VAL_2]], i32 0, i32 %[[VAL_46]]
-// CHECK:         %[[VAL_50:.*]] = load half, ptr %[[VAL_49]], align 2, !invariant.load !4
-// CHECK:         %[[VAL_51:.*]] = fmul half %[[VAL_48]], %[[VAL_50]]
-// CHECK:         %[[VAL_52:.*]] = insertvalue { half, half } %[[VAL_45]], half %[[VAL_51]], 1
-// CHECK:         %[[VAL_53:.*]] = extractvalue { half, half } %[[VAL_52]], 0
-// CHECK:         %[[VAL_54:.*]] = getelementptr inbounds half, ptr %[[VAL_8]], i32 %[[VAL_15]]
-// CHECK:         store half %[[VAL_53]], ptr %[[VAL_54]], align 2
-// CHECK:         %[[VAL_55:.*]] = extractvalue { half, half } %[[VAL_52]], 1
-// CHECK:         %[[VAL_56:.*]] = getelementptr inbounds half, ptr %[[VAL_10]], i32 %[[VAL_15]]
-// CHECK:         store half %[[VAL_55]], ptr %[[VAL_56]], align 2
-// CHECK:         br label %[[VAL_20]]
+// CHECK:       fusion.in_bounds-true:                            ; preds = %[[VAL_10]]
+// CHECK:         %[[VAL_11:.*]] = add i32 %[[VAL_5]], 0
+// CHECK:         br label %[[VAL_12:.*]]
+// CHECK:       concat_index_from_operand_id0:                    ; preds = %[[VAL_13:.*]]
+// CHECK:         %[[VAL_14:.*]] = phi i32 [ 0, %[[VAL_13]] ]
+// CHECK:         %[[VAL_15:.*]] = sub nsw i32 %[[VAL_11]], %[[VAL_14]]
+// CHECK:         %[[VAL_16:.*]] = getelementptr inbounds [1024 x half], ptr %[[VAL_17:.*]], i32 0, i32 %[[VAL_15]]
+// CHECK:         %[[VAL_18:.*]] = load half, ptr %[[VAL_16]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_19:.*]] = getelementptr inbounds [1024 x half], ptr %[[VAL_20:.*]], i32 0, i32 %[[VAL_15]]
+// CHECK:         %[[VAL_21:.*]] = load half, ptr %[[VAL_19]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_22:.*]] = fmul half %[[VAL_18]], %[[VAL_21]]
+// CHECK:         br label %[[VAL_9]]
+// CHECK:       concat_index_from_operand_id1:                    ; preds = %[[VAL_23:.*]]
+// CHECK:         %[[VAL_24:.*]] = phi i32 [ 1024, %[[VAL_23]] ]
+// CHECK:         %[[VAL_25:.*]] = sub nsw i32 %[[VAL_11]], %[[VAL_24]]
+// CHECK:         %[[VAL_26:.*]] = getelementptr inbounds [1023 x half], ptr %[[VAL_27:.*]], i32 0, i32 %[[VAL_25]]
+// CHECK:         %[[VAL_28:.*]] = load half, ptr %[[VAL_26]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_29:.*]] = getelementptr inbounds [1023 x half], ptr %[[VAL_30:.*]], i32 0, i32 %[[VAL_25]]
+// CHECK:         %[[VAL_31:.*]] = load half, ptr %[[VAL_29]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_32:.*]] = fadd half %[[VAL_28]], %[[VAL_31]]
+// CHECK:         br label %[[VAL_9]]
+// CHECK:       concatenate.pivot.1024.:                          ; preds = %[[VAL_7]]
+// CHECK:         %[[VAL_33:.*]] = icmp ult i32 %[[VAL_11]], 1024
+// CHECK:         br i1 %[[VAL_33]], label %[[VAL_13]], label %[[VAL_23]]
+// CHECK:       concatenate.pivot.0.:                             ; preds = %[[VAL_12]]
+// CHECK:         br label %[[VAL_34:.*]]
+// CHECK:       concatenate.pivot.1024.1:                         ; preds = %[[VAL_12]]
+// CHECK:         br label %[[VAL_35:.*]]
+// CHECK:       concatenate.7.merge:                              ; preds = %[[VAL_35]], %[[VAL_34]]
+// CHECK:         %[[VAL_36:.*]] = phi half [ %[[VAL_22]], %[[VAL_34]] ], [ %[[VAL_32]], %[[VAL_35]] ]
+// CHECK:         %[[VAL_37:.*]] = insertvalue { half, half } undef, half %[[VAL_36]], 0
+// CHECK:         %[[VAL_38:.*]] = add i32 %[[VAL_5]], 0
+// CHECK:         %[[VAL_39:.*]] = getelementptr inbounds [1024 x half], ptr %[[VAL_17]], i32 0, i32 %[[VAL_38]]
+// CHECK:         %[[VAL_40:.*]] = load half, ptr %[[VAL_39]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_41:.*]] = getelementptr inbounds [1024 x half], ptr %[[VAL_20]], i32 0, i32 %[[VAL_38]]
+// CHECK:         %[[VAL_42:.*]] = load half, ptr %[[VAL_41]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_43:.*]] = fmul half %[[VAL_40]], %[[VAL_42]]
+// CHECK:         %[[VAL_44:.*]] = insertvalue { half, half } %[[VAL_37]], half %[[VAL_43]], 1
+// CHECK:         %[[VAL_45:.*]] = extractvalue { half, half } %[[VAL_44]], 0
+// CHECK:         %[[VAL_46:.*]] = getelementptr inbounds half, ptr %[[VAL_47:.*]], i32 %[[VAL_3]]
+// CHECK:         store half %[[VAL_45]], ptr %[[VAL_46]], align 2
+// CHECK:         %[[VAL_48:.*]] = extractvalue { half, half } %[[VAL_44]], 1
+// CHECK:         %[[VAL_49:.*]] = getelementptr inbounds half, ptr %[[VAL_50:.*]], i32 %[[VAL_3]]
+// CHECK:         store half %[[VAL_48]], ptr %[[VAL_49]], align 2
+// CHECK:         br label %[[VAL_8]]
 
 HloModule input_fusion_with_a_tuple_of_slices
 

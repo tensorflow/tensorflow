@@ -64,6 +64,7 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kGemm);
     CASE(kInfeed);
     CASE(kKernel);
+    CASE(kReusableKernel);
     CASE(kMemset32BitValue);
     CASE(kMemzero);
     CASE(kOutfeed);

@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/memset_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/reusable_kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
 
@@ -203,9 +204,9 @@ static absl::StatusOr<std::unique_ptr<ThunkSequence>> Match(
 
   // Check if we know how to lower a Thunk to Gpu operation(s).
   auto is_supported = [](const std::unique_ptr<Thunk>& thunk) -> bool {
-    Thunk::Kind kinds[] = {Thunk::kKernel, Thunk::kCopy,
-                           Thunk::kMemset32BitValue, Thunk::kMemzero,
-                           Thunk::kSequential};
+    Thunk::Kind kinds[] = {Thunk::kKernel,  Thunk::kReusableKernel,
+                           Thunk::kCopy,    Thunk::kMemset32BitValue,
+                           Thunk::kMemzero, Thunk::kSequential};
     return llvm::any_of(
         kinds, [&](Thunk::Kind kind) { return thunk->kind() == kind; });
   };
@@ -319,6 +320,18 @@ static void LowerThunkToGpuOp(Operation* op, OpBuilder& b,
 
   if (thunk->kind() == Thunk::kKernel) {
     const auto* kernel_thunk = static_cast<const KernelThunk*>(thunk);
+    SmallVector<Value> kernel_args;
+    for (auto kernel_arg : kernel_thunk->values())
+      kernel_args.push_back(kernel_arg);
+
+    LowerKernelThunkToGpuOp(op, b, gpu_module, kernel_thunk->kernel_name(),
+                            kernel_args, kernel_thunk->launch_dimensions());
+    return;
+  }
+
+  if (thunk->kind() == Thunk::kReusableKernel) {
+    const auto* kernel_thunk = static_cast<const ReusableKernelThunk*>(thunk);
+
     SmallVector<Value> kernel_args;
     for (auto kernel_arg : kernel_thunk->values())
       kernel_args.push_back(kernel_arg);
