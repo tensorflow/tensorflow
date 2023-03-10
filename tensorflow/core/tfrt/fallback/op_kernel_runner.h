@@ -81,7 +81,16 @@ class OpKernelRunner {
 
   explicit operator bool() const { return op_kernel_ != nullptr; }
 
-  void Run(OpKernelContext* context) const;
+  void Run(OpKernelContext* context) const {
+    DVLOG(1) << "KernelFallbackExecuteCompat Running Op: "
+             << op_kernel_->def().DebugString()
+             << ", on Device: " << context->device()->name();
+
+    // For TFRT GPU or TPU, we currently only run xla clusters on GPU or TPU,
+    // and all other ops are run on CPU.
+
+    op_kernel_->Compute(context);
+  }
 
   void RunAsync(OpKernelContext* context,
                 AsyncOpKernel::DoneCallback done_callback) const;
