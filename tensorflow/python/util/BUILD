@@ -296,6 +296,17 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "vlog_test",
+    srcs = ["vlog_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:random_ops",
+    ],
+)
+
 # Leaf library: may not depend on anything else inside TensorFlow.
 # TODO(mdan): Move this utility outside of TF.
 py_strict_library(
