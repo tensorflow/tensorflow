@@ -1915,6 +1915,7 @@ struct EdgeTpuSettingsT : public flatbuffers::NativeTable {
   tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type = tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED;
   tflite::EdgeTpuSettings_::QosClass qos_class = tflite::EdgeTpuSettings_::QosClass_QOS_UNDEFINED;
   std::vector<int32_t> hardware_cluster_ids{};
+  std::string public_model_id{};
   EdgeTpuSettingsT() = default;
   EdgeTpuSettingsT(const EdgeTpuSettingsT &o);
   EdgeTpuSettingsT(EdgeTpuSettingsT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -1932,7 +1933,8 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_MODEL_TOKEN = 12,
     VT_FLOAT_TRUNCATION_TYPE = 14,
     VT_QOS_CLASS = 16,
-    VT_HARDWARE_CLUSTER_IDS = 18
+    VT_HARDWARE_CLUSTER_IDS = 18,
+    VT_PUBLIC_MODEL_ID = 20
   };
   tflite::EdgeTpuPowerState inference_power_state() const {
     return static_cast<tflite::EdgeTpuPowerState>(GetField<int32_t>(VT_INFERENCE_POWER_STATE, 0));
@@ -1958,6 +1960,9 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<int32_t> *hardware_cluster_ids() const {
     return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_HARDWARE_CLUSTER_IDS);
   }
+  const flatbuffers::String *public_model_id() const {
+    return GetPointer<const flatbuffers::String *>(VT_PUBLIC_MODEL_ID);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_INFERENCE_POWER_STATE, 4) &&
@@ -1973,6 +1978,8 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<int32_t>(verifier, VT_QOS_CLASS, 4) &&
            VerifyOffset(verifier, VT_HARDWARE_CLUSTER_IDS) &&
            verifier.VerifyVector(hardware_cluster_ids()) &&
+           VerifyOffset(verifier, VT_PUBLIC_MODEL_ID) &&
+           verifier.VerifyString(public_model_id()) &&
            verifier.EndTable();
   }
   EdgeTpuSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2008,6 +2015,9 @@ struct EdgeTpuSettingsBuilder {
   void add_hardware_cluster_ids(flatbuffers::Offset<flatbuffers::Vector<int32_t>> hardware_cluster_ids) {
     fbb_.AddOffset(EdgeTpuSettings::VT_HARDWARE_CLUSTER_IDS, hardware_cluster_ids);
   }
+  void add_public_model_id(flatbuffers::Offset<flatbuffers::String> public_model_id) {
+    fbb_.AddOffset(EdgeTpuSettings::VT_PUBLIC_MODEL_ID, public_model_id);
+  }
   explicit EdgeTpuSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2028,8 +2038,10 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(
     flatbuffers::Offset<flatbuffers::String> model_token = 0,
     tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type = tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED,
     tflite::EdgeTpuSettings_::QosClass qos_class = tflite::EdgeTpuSettings_::QosClass_QOS_UNDEFINED,
-    flatbuffers::Offset<flatbuffers::Vector<int32_t>> hardware_cluster_ids = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<int32_t>> hardware_cluster_ids = 0,
+    flatbuffers::Offset<flatbuffers::String> public_model_id = 0) {
   EdgeTpuSettingsBuilder builder_(_fbb);
+  builder_.add_public_model_id(public_model_id);
   builder_.add_hardware_cluster_ids(hardware_cluster_ids);
   builder_.add_qos_class(qos_class);
   builder_.add_float_truncation_type(float_truncation_type);
@@ -2050,10 +2062,12 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettingsDirect(
     const char *model_token = nullptr,
     tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type = tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED,
     tflite::EdgeTpuSettings_::QosClass qos_class = tflite::EdgeTpuSettings_::QosClass_QOS_UNDEFINED,
-    const std::vector<int32_t> *hardware_cluster_ids = nullptr) {
+    const std::vector<int32_t> *hardware_cluster_ids = nullptr,
+    const char *public_model_id = nullptr) {
   auto inactive_power_configs__ = inactive_power_configs ? _fbb.CreateVector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>(*inactive_power_configs) : 0;
   auto model_token__ = model_token ? _fbb.CreateString(model_token) : 0;
   auto hardware_cluster_ids__ = hardware_cluster_ids ? _fbb.CreateVector<int32_t>(*hardware_cluster_ids) : 0;
+  auto public_model_id__ = public_model_id ? _fbb.CreateString(public_model_id) : 0;
   return tflite::CreateEdgeTpuSettings(
       _fbb,
       inference_power_state,
@@ -2063,7 +2077,8 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettingsDirect(
       model_token__,
       float_truncation_type,
       qos_class,
-      hardware_cluster_ids__);
+      hardware_cluster_ids__,
+      public_model_id__);
 }
 
 flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -4503,7 +4518,8 @@ inline bool operator==(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs)
       (lhs.model_token == rhs.model_token) &&
       (lhs.float_truncation_type == rhs.float_truncation_type) &&
       (lhs.qos_class == rhs.qos_class) &&
-      (lhs.hardware_cluster_ids == rhs.hardware_cluster_ids);
+      (lhs.hardware_cluster_ids == rhs.hardware_cluster_ids) &&
+      (lhs.public_model_id == rhs.public_model_id);
 }
 
 inline bool operator!=(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs) {
@@ -4518,7 +4534,8 @@ inline EdgeTpuSettingsT::EdgeTpuSettingsT(const EdgeTpuSettingsT &o)
         model_token(o.model_token),
         float_truncation_type(o.float_truncation_type),
         qos_class(o.qos_class),
-        hardware_cluster_ids(o.hardware_cluster_ids) {
+        hardware_cluster_ids(o.hardware_cluster_ids),
+        public_model_id(o.public_model_id) {
   inactive_power_configs.reserve(o.inactive_power_configs.size());
   for (const auto &v : o.inactive_power_configs) { inactive_power_configs.emplace_back((v) ? new tflite::EdgeTpuInactivePowerConfigT(*v) : nullptr); }
 }
@@ -4532,6 +4549,7 @@ inline EdgeTpuSettingsT &EdgeTpuSettingsT::operator=(EdgeTpuSettingsT o) FLATBUF
   std::swap(float_truncation_type, o.float_truncation_type);
   std::swap(qos_class, o.qos_class);
   std::swap(hardware_cluster_ids, o.hardware_cluster_ids);
+  std::swap(public_model_id, o.public_model_id);
   return *this;
 }
 
@@ -4552,6 +4570,7 @@ inline void EdgeTpuSettings::UnPackTo(EdgeTpuSettingsT *_o, const flatbuffers::r
   { auto _e = float_truncation_type(); _o->float_truncation_type = _e; }
   { auto _e = qos_class(); _o->qos_class = _e; }
   { auto _e = hardware_cluster_ids(); if (_e) { _o->hardware_cluster_ids.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->hardware_cluster_ids[_i] = _e->Get(_i); } } }
+  { auto _e = public_model_id(); if (_e) _o->public_model_id = _e->str(); }
 }
 
 inline flatbuffers::Offset<EdgeTpuSettings> EdgeTpuSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -4570,6 +4589,7 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::F
   auto _float_truncation_type = _o->float_truncation_type;
   auto _qos_class = _o->qos_class;
   auto _hardware_cluster_ids = _o->hardware_cluster_ids.size() ? _fbb.CreateVector(_o->hardware_cluster_ids) : 0;
+  auto _public_model_id = _o->public_model_id.empty() ? 0 : _fbb.CreateString(_o->public_model_id);
   return tflite::CreateEdgeTpuSettings(
       _fbb,
       _inference_power_state,
@@ -4579,7 +4599,8 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::F
       _model_token,
       _float_truncation_type,
       _qos_class,
-      _hardware_cluster_ids);
+      _hardware_cluster_ids,
+      _public_model_id);
 }
 
 
