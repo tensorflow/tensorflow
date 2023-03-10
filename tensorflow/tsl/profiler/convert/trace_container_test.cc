@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,31 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PROFILER_CONVERT_XPLANE_TO_TRACE_EVENTS_H_
-#define TENSORFLOW_TSL_PROFILER_CONVERT_XPLANE_TO_TRACE_EVENTS_H_
-
-#include <string>
-#include <vector>
-
-#include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/profiler/convert/trace_container.h"
+
+#include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/profiler/protobuf/trace_events.pb.h"
-#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
 namespace profiler {
+namespace {
 
-TraceContainer ConvertXSpaceToTraceEvents(
-    const tensorflow::profiler::XSpace& xspace);
+TEST(TraceContainer, TraceEventAllocation) {
+  TraceContainer container;
 
-void ConvertXSpaceToTraceEventsString(
-    const tensorflow::profiler::XSpace& xspace, std::string* content);
+  TraceEvent* event = container.CreateEvent();
+  event->set_device_id(1);
+  event->set_resource_id(2);
+  event->set_name("A");
+  event->set_timestamp_ps(3);
+  event->set_duration_ps(4);
+}
 
-// Not Public API, Testing only.
-void MaybeDropEventsForTraceViewer(std::vector<TraceEvent*>& events,
-                                   uint32 limit);
-
+}  // namespace
 }  // namespace profiler
 }  // namespace tsl
-
-#endif  // TENSORFLOW_TSL_PROFILER_CONVERT_XPLANE_TO_TRACE_EVENTS_H_
