@@ -24,9 +24,9 @@ limitations under the License.
 #include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/service/custom_call_sharding_helper.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner_util.h"
 
 namespace xla {

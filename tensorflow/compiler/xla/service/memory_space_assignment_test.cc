@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/memory_space_assignment.h"
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/instruction_hoister.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_HLO_UTILS_HLO_MATCHERS_H_
+#define TENSORFLOW_COMPILER_XLA_HLO_UTILS_HLO_MATCHERS_H_
 
 #include <optional>
 #include <string>
@@ -551,4 +551,4 @@ void PrintTo(const HloInstruction* inst, ::std::ostream* os);
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_HLO_UTILS_HLO_MATCHERS_H_

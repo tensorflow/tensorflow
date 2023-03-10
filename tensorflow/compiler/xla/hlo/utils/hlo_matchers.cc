@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
