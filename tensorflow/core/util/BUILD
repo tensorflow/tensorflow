@@ -105,7 +105,6 @@ filegroup(
         "port.cc",
         "port.h",
         "presized_cuckoo_map.h",
-        "ptr_util.h",
         "ragged_to_dense_util.cc",
         "ragged_to_dense_util.h",
         "ragged_to_dense_util_common.h",
@@ -170,7 +169,6 @@ filegroup(
         "permutation_input_iterator.h",
         "permutation_output_iterator.h",
         "presized_cuckoo_map.h",
-        "ptr_util.h",
         "reffed_status_callback.h",
         "saved_tensor_slice_util.h",
         "stat_summarizer.h",
@@ -354,7 +352,6 @@ filegroup(
         "mirror_pad_mode.h",
         "padding.h",
         "port.h",
-        "ptr_util.h",
         "reffed_status_callback.h",
         "saved_tensor_slice_util.h",
         "stat_summarizer.h",
@@ -589,14 +586,6 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:mutex",
-    ],
-)
-
-cc_library(
-    name = "ptr_util",
-    hdrs = ["ptr_util.h"],
-    deps = [
-        "//tensorflow/tsl/util:ptr_util",
     ],
 )
 

@@ -435,11 +435,6 @@ tf_cuda_library(
     ],
 )
 
-alias(
-    name = "ptr_util",
-    actual = "//tensorflow/core/util:ptr_util",
-)
-
 # TODO(gonnet): Remove this alias once all users have been moved to the actual target.
 alias(
     name = "reader_base",
