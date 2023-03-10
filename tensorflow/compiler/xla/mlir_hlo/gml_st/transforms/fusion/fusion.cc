@@ -559,12 +559,12 @@ LogicalResult tilePeeledOpsToScalars(
 
     assert(yieldedTensors.size() == 1 &&
            "expected to have a single result in scf.forall loop");
-    auto* definingOp = yieldedTensors.front().getDefiningOp();
+    auto definingOp = yieldedTensors.front().getDefiningOp<TilingInterface>();
     if (!definingOp) return failure();
 
     mlir::gml_st::TilingOptions opts;
-    opts.setTileSizeComputationFn(SmallVector<int64_t>(
-        cast<linalg::LinalgOp>(definingOp).getNumLoops(), 1));
+    opts.setTileSizeComputationFn(
+        SmallVector<int64_t>(definingOp.getLoopIteratorTypes().size(), 1));
 
     if (failed(tileUsingGmlStParallelAndFuseGreedily(rewriter, definingOp, opts,
                                                      label, fuseFilterFn))) {

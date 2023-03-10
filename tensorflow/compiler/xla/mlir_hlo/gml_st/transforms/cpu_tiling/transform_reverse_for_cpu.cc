@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
+#include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "thlo/IR/thlo_ops.h"
 
@@ -92,20 +94,23 @@ struct ReverseTransformPattern : public OpRewritePattern<thlo::ReverseOp> {
     // Peel parallel loop.
     auto peelingResult = peelAllLoops(tilingResult->loop, rewriter);
 
-    // If last dim is to be reversed.
-    if (llvm::is_contained(reverseOp.getReverseDimensions(), rank - 1)) {
-      // If we have a remaining loop, we tile this to sizes of 1.
-      for (scf::ForallOp remParLoop : peelingResult.tailLoops) {
-        remParLoop->walk([&](Operation *childOp) {
-          if (isa<thlo::ReverseOp>(childOp)) {
-            auto innerReverseOp = dyn_cast<thlo::ReverseOp>(*childOp);
-            auto secondTiling = tileReverseAndUpdateResultIfTiled(
-                rewriter, innerReverseOp, getTileSizes(rank, vectorSize, true));
-            setLabel(innerReverseOp, kReverseTransformedLabel);
-          }
-        });
-      }
+    // Fold operations in the remainder loops before scalarization. thlo.reverse
+    // will be folded if the last dim is not reversed.
+    for (scf::ForallOp remParLoop : peelingResult.tailLoops) {
+      remParLoop->walk([&](Operation *childOp) {
+        SmallVector<Value> foldValue;
+        if (succeeded(rewriter.tryFold(childOp, foldValue))) {
+          childOp->replaceAllUsesWith(foldValue);
+        }
+      });
     }
+
+    // Tile ops in the peeled loop again, to size 1, so they can be
+    // scalarized.
+    if (failed(tilePeeledOpsToScalars(rewriter, peelingResult,
+                                      kReverseTransformedLabel,
+                                      /*fuseFilterFn=*/nullptr)))
+      return failure();
 
     setLabel(reverseOp, kReverseTransformedLabel);
     return success();
