@@ -63,6 +63,7 @@ tensorflow/lite/async/interop/c/types.h:
 tensorflow/lite/c/builtin_op_data.h:
 tensorflow/lite/c/c_api.h:
 tensorflow/lite/c/c_api_experimental.h:
+tensorflow/lite/c/c_api_opaque.h:
 tensorflow/lite/c/c_api_types.h:
 tensorflow/lite/c/common.h:
 tensorflow/lite/c/test_util.cc:
