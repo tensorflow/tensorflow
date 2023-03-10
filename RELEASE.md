@@ -67,6 +67,10 @@
         learning rate scheduler. You can now specify an initial and target
         learning rate, and our scheduler will perform a linear interpolation
         between the two after which it will begin a decay phase.
+    *   Added experimental support for an exactly-once visitation guarantee for
+        evaluating Keras models trained with
+        `tf.distribute.ParameterServerStrategy`, via the
+        `exact_evaluation_shards` argument in `Model.fit` and `Model.evaluate`.
 
 *   `tf.function`:
 
