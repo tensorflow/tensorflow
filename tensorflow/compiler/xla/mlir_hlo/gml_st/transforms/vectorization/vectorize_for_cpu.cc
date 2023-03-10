@@ -282,17 +282,17 @@ struct ThloReverseVectorizationPattern
       return rewriter.notifyMatchFailure(op, "did not match filter");
 
     auto inputType = op.getInput().getType();
+    if (!VectorType::isValidElementType(inputType.getElementType())) {
+      return rewriter.notifyMatchFailure(op, "cannot be vectorized");
+    }
     auto vecTargetType =
-        RankedTensorType::get(inputType.getShape()[inputType.getRank() - 1],
-                              inputType.getElementType());
+        VectorType::get(inputType.getShape()[inputType.getRank() - 1],
+                        inputType.getElementType());
     Value zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
     SmallVector<Value> indices(op.getInit().getType().getRank(), zero);
 
     auto readInput = rewriter.create<vector::TransferReadOp>(
-        op.getLoc(),
-        VectorType::get(vecTargetType.getShape(),
-                        vecTargetType.getElementType()),
-        op.getInput(), indices);
+        op.getLoc(), vecTargetType, op.getInput(), indices);
 
     SmallVector<int64_t> mask;
     int64_t maskSize = inputType.getShape()[inputType.getRank() - 1];
