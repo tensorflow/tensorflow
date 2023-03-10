@@ -33,7 +33,6 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 export TF_TEST_FILTER_TAGS='gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py38,-no_cuda11'
 export TF_BUILD_FLAGS="--config=release_gpu_linux "
 export TF_TEST_FLAGS="--test_tag_filters=${TF_TEST_FILTER_TAGS} --build_tag_filters=${TF_TEST_FILTER_TAGS} \
---distinct_host_configuration=false \
 --action_env=TF_CUDA_VERSION=11.8 --action_env=TF_CUDNN_VERSION=8.6 --test_env=TF2_BEHAVIOR=1 \
 --config=cuda --test_output=errors --local_test_jobs=4 --test_lang_filters=py \
 --verbose_failures=true --keep_going --define=no_tensorflow_py_deps=true \
