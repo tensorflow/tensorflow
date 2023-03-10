@@ -351,8 +351,6 @@ class TensorHandleInterface
   explicit TensorHandleInterface(tensorflow::DataType dtype, Value&& v,
                                  TfrtContext* context);
 
-  void Release() override { Unref(); }
-
   tensorflow::DataType DataType() const override;
   tensorflow::Status TensorHandleStatus() const override;
   tensorflow::Status Shape(
@@ -379,13 +377,6 @@ class TensorHandleInterface
 
   tensorflow::AbstractTensorInterface* Resolve(
       tensorflow::Status* status) override;
-
-  // TODO(b/161897666): Figure out if we can get rid of returning a new
-  // pointer here and just use Ref().
-  tensorflow::ImmediateExecutionTensorHandle* Copy() override {
-    Ref();
-    return this;
-  }
 
   TensorHandle Handle() { return value_.get<TensorHandle>().CopyRef(); }
 
