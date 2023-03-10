@@ -53,6 +53,8 @@ tensorflow/go/tsl/protobuf/BUILD:
 tensorflow/java/README.md:
 tensorflow/java/src/main/native/BUILD:
 tensorflow/lite/async/c/BUILD:
+tensorflow/lite/async/c/async_kernel.h:
+tensorflow/lite/async/c/async_signature_runner.h:
 tensorflow/lite/async/c/task.h:
 tensorflow/lite/async/c/types.h:
 tensorflow/lite/async/interop/c/BUILD:

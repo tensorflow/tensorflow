@@ -16,3 +16,10 @@ cc_library(
     copts = tflite_copts() + tflite_copts_warnings(),
     deps = ["//tensorflow/lite/core/async/c:types"],
 )
+
+cc_library(
+    name = "async_signature_runner",
+    hdrs = ["async_signature_runner.h"],
+    copts = tflite_copts() + tflite_copts_warnings(),
+    deps = ["//tensorflow/lite/core/async/c:async_signature_runner"],
+)
