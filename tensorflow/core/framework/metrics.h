@@ -243,7 +243,8 @@ void UpdateTfMlirBridgeGraphAnalysisPerOp(
     const std::string& unsupported_reason, bool has_unsupported_features);
 
 // Records whether a graph contains any of the TF1 features
-void RecordTFVersionByGraphFeatures(const std::string& device_name,
+void RecordTFVersionByGraphFeatures(const std::string& device,
+                                    const std::string& context,
                                     bool hasControlFlowV1,
                                     bool hasReferenceVariables,
                                     bool hasManualControlDeps);
