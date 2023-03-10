@@ -50,6 +50,7 @@ cuda_py_test(
         "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_case",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:data_flow_ops_gen",
         "//tensorflow/python:distributed_framework_test_lib",

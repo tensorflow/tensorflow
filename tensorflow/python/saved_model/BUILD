@@ -409,6 +409,7 @@ tf_py_test(
         ":signature_constants",
         ":tag_constants",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:error_interpolation",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",

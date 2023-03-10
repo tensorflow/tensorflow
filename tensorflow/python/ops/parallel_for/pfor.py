@@ -40,6 +40,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_image_ops
@@ -4659,7 +4660,7 @@ def _convert_stateless_case(pfor_input):
       new_branches.append(new_function)
 
     outputs = []
-    outputs = control_flow_ops.switch_case(branch_idx, new_branches)
+    outputs = control_flow_switch_case.switch_case(branch_idx, new_branches)
     return [wrap(t, True) for t in outputs]
 
 

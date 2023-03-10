@@ -87,6 +87,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.util import nest
+from tensorflow.python.ops import control_flow_switch_case
 
 
 def check_consumers(graph):
@@ -898,10 +899,11 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       def other_fn():
         return array_ops.identity(c)
 
-      return control_flow_ops.switch_case(
-          constant_op.constant(2),
-          [other_fn, lambda: br1_fn(inputs), other_fn, other_fn,
-           lambda: br4_fn(inputs)])
+      return control_flow_switch_case.switch_case(
+          constant_op.constant(2), [
+              other_fn, lambda: br1_fn(inputs), other_fn, other_fn,
+              lambda: br4_fn(inputs)
+          ])
 
     # This was needed for backwards compatibility with TF2 Estimators which
     # rely on variable names.

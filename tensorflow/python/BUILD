@@ -1389,6 +1389,20 @@ py_library(
 )
 
 py_library(
+    name = "control_flow_switch_case",
+    srcs = ["ops/control_flow_switch_case.py"],
+    deps = [
+        ":array_ops",
+        ":control_flow_util",
+        ":functional_ops_gen",
+        ":math_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_library(
     name = "while_loop",
     srcs = ["ops/while_loop.py"],
     srcs_version = "PY3",

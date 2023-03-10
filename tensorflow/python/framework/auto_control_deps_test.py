@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gen_sendrecv_ops
@@ -354,7 +355,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       def branch1():
         return array_ops.zeros([], v.dtype)
 
-      return control_flow_ops.switch_case(
+      return control_flow_switch_case.switch_case(
           constant_op.constant(0), [branch0, branch1])
 
     self._testVariableReadInFunctionalOp(build_functional_op, "Case")
@@ -369,7 +370,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       def branch1():
         return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
 
-      return control_flow_ops.switch_case(
+      return control_flow_switch_case.switch_case(
           constant_op.constant(0), [branch0, branch1])
 
     self._testVariableReadInFunctionalOp(build_functional_op, "Case")
@@ -547,7 +548,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       def branch1():
         return array_ops.zeros([], v.dtype)
 
-      return control_flow_ops.switch_case(
+      return control_flow_switch_case.switch_case(
           constant_op.constant(0), [branch0, branch1])
 
     self._testVariableWriteInFunctionalOp(build_functional_op, "Case")
@@ -563,7 +564,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
         return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
 
-      return control_flow_ops.switch_case(
+      return control_flow_switch_case.switch_case(
           constant_op.constant(0), [branch0, branch1])
 
     self._testVariableWriteInFunctionalOp(build_functional_op, "Case")

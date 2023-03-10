@@ -44,6 +44,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import custom_gradient
@@ -1014,7 +1015,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     branches = [(i, make_func(i)) for i in range(nbranches)]
     for bi in range(nbranches):
       branch_index = array_ops.placeholder_with_default(bi, [])
-      case_out = control_flow_ops.switch_case(branch_index, branches)
+      case_out = control_flow_switch_case.switch_case(branch_index, branches)
       self.assertEqual(bi * 10, self.evaluate(case_out))
 
   @parameterized.parameters((0,), (2,), (3,))
@@ -1026,7 +1027,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     branches = [(i, make_func(i)) for i in range(nbranches)]
     branch_index = array_ops.placeholder_with_default(bi, [])
-    case_out = control_flow_ops.switch_case(
+    case_out = control_flow_switch_case.switch_case(
         branch_index, branches, name=self.make_name())
     self.assertEqual(bi * 10., self.evaluate(case_out))
 
@@ -1039,7 +1040,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     branches = [(i, make_func(i)) for i in range(nbranches)]
     branch_index = array_ops.placeholder_with_default(bi, [])
-    case_out = control_flow_ops.switch_case(
+    case_out = control_flow_switch_case.switch_case(
         branch_index, branches, default=make_func(6), name=self.make_name())
     if bi < 0 or bi >= nbranches:
       expected = 60.
@@ -1056,7 +1057,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     branches = {i: make_func(i) for i in range(nbranches)}
     branch_index = array_ops.placeholder_with_default(bi, [])
-    case_out = control_flow_ops.switch_case(
+    case_out = control_flow_switch_case.switch_case(
         branch_index, branches, default=make_func(6), name=self.make_name())
     if bi < 0 or bi >= nbranches:
       expected = 60.
@@ -1090,7 +1091,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with backprop.GradientTape() as tape:
       for x in inputs:
         tape.watch(x)
-      case_out = control_flow_ops.switch_case(branch_index, branches)
+      case_out = control_flow_switch_case.switch_case(branch_index, branches)
     out_grad = 3.
     actual_grads = tape.gradient(case_out, inputs, output_gradients=out_grad)
     expected_grads = [None if context.executing_eagerly() else 0.] * nbranches
@@ -1125,7 +1126,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with backprop.GradientTape() as tape:
       for x in inputs:
         tape.watch(x)
-      case_out = control_flow_ops.switch_case(
+      case_out = control_flow_switch_case.switch_case(
           branch_index, branches, name=self.make_name())
     out_grad = 3.
     actual_grads = tape.gradient(case_out, inputs, output_gradients=out_grad)
@@ -1185,7 +1186,8 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
       def body(i, result):
         with ops.device("cpu:0"):
-          next_i, branch_out = control_flow_ops.switch_case(i, make_branches(i))
+          next_i, branch_out = control_flow_switch_case.switch_case(
+              i, make_branches(i))
         return next_i, result + branch_out
 
       _, result = while_loop.while_loop(cond, body, [0, 0.])
@@ -1234,7 +1236,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     branches = {i: make_func(i) for i in range(0, 6, 2)}
     with self.assertRaisesRegex(ValueError, "must form contiguous"):
-      control_flow_ops.switch_case(array_ops.constant(0), branches)
+      control_flow_switch_case.switch_case(array_ops.constant(0), branches)
 
   def testCase_validateIndicesDup(self):
 
@@ -1244,7 +1246,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     branches = [(i, make_func(i)) for i in range(0, 6, 2)]
     branches.append((0, make_func(7)))
     with self.assertRaisesRegex(ValueError, "must form contiguous"):
-      control_flow_ops.switch_case(array_ops.constant(0), branches)
+      control_flow_switch_case.switch_case(array_ops.constant(0), branches)
 
   def testCase_validateBranchIndex(self):
 
@@ -1253,7 +1255,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     branches = {i: make_func(i) for i in range(5)}
     with self.assertRaisesRegex(TypeError, "branch_index.*Tensor"):
-      control_flow_ops.switch_case(1, branches)
+      control_flow_switch_case.switch_case(1, branches)
 
   def testCase_validateNonIntKeys(self):
 
@@ -1262,7 +1264,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     branches = [(array_ops.constant(i), make_func(i)) for i in range(5)]
     with self.assertRaisesRegex(TypeError, "must be a Python `int`"):
-      control_flow_ops.switch_case(array_ops.constant(1), branches)
+      control_flow_switch_case.switch_case(array_ops.constant(1), branches)
 
 
 class ExecuteFnForDeviceTest(test_util.TensorFlowTestCase):
@@ -1282,7 +1284,8 @@ class ExecuteFnForDeviceTest(test_util.TensorFlowTestCase):
 
     def flexible_fn(a):
       branches = {"CPU": lambda: cpu_fn(a), "GPU": lambda: gpu_fn(a)}
-      return control_flow_ops.execute_fn_for_device(branches, lambda: cpu_fn(a))
+      return control_flow_switch_case.execute_fn_for_device(
+          branches, lambda: cpu_fn(a))
 
     @def_function.function
     def flexible_defun(a):
@@ -1334,7 +1337,8 @@ class ExecuteFnForDeviceTest(test_util.TensorFlowTestCase):
     @def_function.function(jit_compile=True)
     def flexible_defun(a):
       branches = {"CPU": lambda: cpu_fn(a), "GPU": lambda: gpu_fn(a)}
-      return control_flow_ops.execute_fn_for_device(branches, lambda: cpu_fn(a))
+      return control_flow_switch_case.execute_fn_for_device(
+          branches, lambda: cpu_fn(a))
 
     # Always execute the default branch in xla compilation case.
     a = array_ops.constant(3.)
@@ -1351,7 +1355,7 @@ class ExecuteFnForDeviceTest(test_util.TensorFlowTestCase):
 
     def flexible_fn(a):
       branches = {"TPU": lambda: tpu_fn(a)}
-      return control_flow_ops.execute_fn_for_device(
+      return control_flow_switch_case.execute_fn_for_device(
           branches, default_fn=lambda: default_fn(a))
 
     @def_function.function

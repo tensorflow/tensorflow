@@ -1181,6 +1181,7 @@ tf_py_test(
     deps = [
         ":auto_control_deps",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:sendrecv_ops_gen",
         "//tensorflow/python:while_loop",
     ],
@@ -2385,6 +2386,7 @@ tf_py_test(
         ":convert_to_constants",
         ":test_lib",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:while_loop",
