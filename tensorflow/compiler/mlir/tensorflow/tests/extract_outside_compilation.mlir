@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-tpu-extract-outside-compilation | FILECHECK_OPTS="" FileCheck %s
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-extract-outside-compilation | FILECHECK_OPTS="" FileCheck %s
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   // Tests that TPU cluster with no outside compilation does not generate parallel_execute.
@@ -2036,5 +2036,34 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
     func.return
+  }
+}
+
+// -----
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0"]} {
+  // CHECK-LABEL: func @single_outside_compiled_output_single_outside_compilation_not_replicated_in_generic_pipeline
+  func.func @single_outside_compiled_output_single_outside_compilation_not_replicated_in_generic_pipeline(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
+    // CHECK-NEXT:     "tf_device.launch"
+    // CHECK:            %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf.Const"() {value = dense<""> : tensor<3x!tf_type.string>} : () -> tensor<3x!tf_type.string>
+    // CHECK-NOT:        "tf._TPUDeviceOrdinalPlaceholder"
+    // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"()
+    // CHECK:            "tf._XlaSendFromHost"(%[[B_OUTPUT]], %[[PROGRAM_OUTPUT]])
+    // CHECK-SAME:       device_ordinal = 0
+    // CHECK-SAME:       key = "host_compute_channel_0_retvals"
+    // CHECK:          "tf_device.cluster"
+    // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
+    // CHECK:            %[[HOST_OUTPUT:[0-9]*]] = "tf._XlaHostComputeMlir"()
+    // CHECK-SAME:       recv_key = "host_compute_channel_0_retvals"
+    // CHECK-SAME:       send_key = "host_compute_channel_0_args"
+    // CHECK:            "tf.C"(%[[HOST_OUTPUT]])
+    %0 = "tf_device.cluster"() ({
+      %1 = "tf.A"() : () -> (tensor<2xi32>)
+      %2 = "tf.B"() {_xla_outside_compilation = "cluster1"} : () -> (tensor<2xi32>)
+      %3 = "tf.C"(%2) : (tensor<2xi32>) -> tensor<2xi32>
+      tf_device.return %3 : tensor<2xi32>
+    }) : () -> tensor<2xi32>
+
+    func.return %0 : tensor<2xi32>
   }
 }
