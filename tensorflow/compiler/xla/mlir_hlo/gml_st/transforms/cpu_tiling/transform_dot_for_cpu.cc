@@ -177,6 +177,48 @@ struct DotTransformPattern : public OpRewritePattern<DotTy> {
   std::function<SmallVector<int64_t>(MatmulSizes)> reductionDimTileSizeFn;
 };
 
+Value transposeMatrixConstant(ImplicitLocOpBuilder &builder, Value input) {
+  ElementsAttr inputValues;
+  matchPattern(input, m_Constant(&inputValues));
+
+  auto inputType = input.getType().cast<ShapedType>();
+  ArrayRef<int64_t> inputShape = inputType.getShape();
+  assert(inputShape.size() == 2);
+
+  auto outputType = RankedTensorType::get({inputShape[1], inputShape[0]},
+                                          inputType.getElementType());
+
+  SmallVector<Attribute, 4> outputValues(inputType.getNumElements());
+  for (const auto &it : llvm::enumerate(inputValues.getValues<Attribute>())) {
+    auto row = it.index() / inputShape[1];
+    auto col = it.index() % inputShape[1];
+    outputValues[col * inputShape[0] + row] = it.value();
+  }
+  return builder.create<arith::ConstantOp>(
+      outputType, DenseElementsAttr::get(outputType, outputValues));
+}
+
+// If we have a matvec with a constant matrix it's profitable to transpose the
+// matrix at compile time and use vecmat instead. This has a friendlier memory
+// access pattern.
+struct MatVecToVecMatPattern : public OpRewritePattern<linalg::MatvecOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(linalg::MatvecOp matvecOp,
+                                PatternRewriter &rewriter) const override {
+    auto constantMatrix =
+        matvecOp.getOperand(0).getDefiningOp<arith::ConstantOp>();
+    if (!constantMatrix) return failure();
+
+    ImplicitLocOpBuilder builder(constantMatrix.getLoc(), rewriter);
+    Value transposed = transposeMatrixConstant(builder, constantMatrix);
+    rewriter.replaceOpWithNewOp<linalg::VecmatOp>(
+        matvecOp, ValueRange{matvecOp.getOperand(1), transposed},
+        matvecOp.getOutputs());
+    return success();
+  }
+};
+
 struct TransformDotForCpuPass
     : public impl::TransformDotForCpuPassBase<TransformDotForCpuPass> {
   TransformDotForCpuPass() = default;
@@ -209,6 +251,7 @@ struct TransformDotForCpuPass
     // - for linalg.dot: only the last element of tileSizes is used.
 
     RewritePatternSet patterns(ctx);
+    patterns.add<MatVecToVecMatPattern>(ctx, 2);
     patterns.add<DotTransformPattern<linalg::MatvecOp>>(
         ctx, tileSizeFn,
         [&](MatmulSizes sizes) -> SmallVector<int64_t> {

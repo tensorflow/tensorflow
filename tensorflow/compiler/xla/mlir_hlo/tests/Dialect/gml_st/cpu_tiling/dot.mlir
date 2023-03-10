@@ -66,3 +66,17 @@ func.func @dot(%lhs: tensor<19xf32>, %rhs: tensor<19xf32>,
 // CHECK-NEXT:      scf.yield %{{.*}} : {{.*}}, vector<f32>
 // CHECK:         arith.mulf
 // CHECK:         arith.addf
+
+// -----
+
+func.func @matvec_to_vecmat(%rhs: tensor<2xi32>,
+                            %output: tensor<3xi32>) -> tensor<3xi32> {
+  %cst = arith.constant dense<[[0, 1], [2, 3], [4, 5]]> : tensor<3x2xi32>
+  %2 = linalg.matvec ins(%cst, %rhs : tensor<3x2xi32>, tensor<2xi32>)
+                     outs(%output : tensor<3xi32>) -> tensor<3xi32>
+  return %2 : tensor<3xi32>
+}
+
+// CHECK-LABEL: @matvec_to_vecmat
+// CHECK: arith.constant dense<{{\[}}[0, 2, 4], [1, 3, 5]]> : tensor<2x3xi32>
+// CHECK: vector.contract {{.*}} : vector<2xi32>, vector<2x3xi32> into vector<3xi32>
