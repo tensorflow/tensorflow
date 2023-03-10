@@ -977,7 +977,7 @@ def system_specific_test_config(environ_cp):
   # test_and_build_filters
   test_only_filters = ['-oss_serial']
   if is_windows():
-    test_and_build_filters.append('-no_windows')
+    test_and_build_filters += ['-no_windows', '-windows_excluded']
     if ((environ_cp.get('TF_NEED_CUDA', None) == '1') or
         (environ_cp.get('TF_NEED_ROCM', None) == '1')):
       test_and_build_filters += ['-no_windows_gpu', '-no_gpu']
