@@ -388,7 +388,7 @@ class Client:
   def buffer_from_pyval(
       self,
       argument: Any,
-      device: Device = ...,
+      device: Optional[Device] = ...,
       force_copy: bool = ...,
       host_buffer_semantics: HostBufferSemantics = ...) -> Buffer: ...
   def make_cross_host_receive_buffers(
@@ -477,23 +477,28 @@ class DeviceArray(DeviceArrayBase):
 PyLocalBuffer = DeviceArray
 Buffer = DeviceArray
 
-class ArrayImpl:
-  def __init__(self,
-               aval: Any,
-               sharding: Any,
-               arrays: Sequence[DeviceArray],
-               committed: bool,
-               _skip_checks: bool = ...): ...
-  def block_until_ready(self) -> ArrayImpl: ...
-  def is_deleted(self) -> bool: ...
-  # TODO(yashkatariya): remove this once the transition completes.
-  def _init_with_fastpath_disabled(self) -> None: ...
-  def is_ready(self) -> bool: ...
-  dtype: np.dtype
-  shape: Tuple[int, ...]
-  _arrays: Any
-  _npy_value: Any
-  traceback: Traceback
+ArrayImpl = Any
+
+# TODO(phawkins): this type is problematic because it is not a subtype of
+# jax.Array, and pytype notices.
+# class ArrayImpl:
+#   def __init__(self,
+#                aval: Any,
+#                sharding: Any,
+#                arrays: Sequence[DeviceArray],
+#                committed: bool,
+#                _skip_checks: bool = ...): ...
+#   def block_until_ready(self) -> ArrayImpl: ...
+#   def is_deleted(self) -> bool: ...
+#   # TODO(yashkatariya): remove this once the transition completes.
+#   def _init_with_fastpath_disabled(self) -> None: ...
+#   def is_ready(self) -> bool: ...
+#   dtype: np.dtype
+#   shape: Tuple[int, ...]
+#   _arrays: Any
+#   _npy_value: Any
+#   traceback: Traceback
+#   _HAS_DYNAMIC_ATTRIBUTES: bool = ...
 
 
 def copy_array_to_devices_with_sharding(self: ArrayImpl, devices: List[Device], sharding: Any) -> ArrayImpl: ...
