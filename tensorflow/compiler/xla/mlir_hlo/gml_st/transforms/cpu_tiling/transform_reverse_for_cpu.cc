@@ -90,6 +90,7 @@ struct ReverseTransformPattern : public OpRewritePattern<thlo::ReverseOp> {
     int64_t rank = reverseOp.getInput().getType().getRank();
     auto tilingResult = tileReverseAndUpdateResultIfTiled(
         rewriter, reverseOp, getTileSizes(rank, vectorSize, false));
+    setLabel(reverseOp, kReverseTransformedLabel);
 
     // Peel parallel loop.
     auto peelingResult = peelAllLoops(tilingResult->loop, rewriter);
@@ -112,7 +113,6 @@ struct ReverseTransformPattern : public OpRewritePattern<thlo::ReverseOp> {
                                       /*fuseFilterFn=*/nullptr)))
       return failure();
 
-    setLabel(reverseOp, kReverseTransformedLabel);
     return success();
   }
 
