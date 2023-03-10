@@ -385,6 +385,8 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:NVVMDialect",
+        "@llvm-project//mlir:ArithToLLVM",
+        "@llvm-project//mlir:IndexToLLVM",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFToControlFlow",
