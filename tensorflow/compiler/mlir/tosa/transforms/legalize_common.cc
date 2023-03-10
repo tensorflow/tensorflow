@@ -158,10 +158,10 @@ std::optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   ArrayRef<int64_t> input0_tensor_shape = input_type.getShape();
   int input_tensor_rank = input0_tensor_shape.size();
 
-  if (axis < 0 || axis >= input_tensor_rank) {
+  if (axis < 0 || axis > input_tensor_rank) {
     (void)rewriter.notifyMatchFailure(
         op, llvm::formatv("reduce axis {} is not in valid range "
-                          "[-rank(input), rank(input))",
+                          "[-rank(input), rank(input)]",
                           axis));
     return std::nullopt;
   }

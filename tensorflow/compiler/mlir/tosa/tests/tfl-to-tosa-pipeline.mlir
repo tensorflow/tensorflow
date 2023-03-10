@@ -1167,6 +1167,18 @@ func.func @test_stack(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %a
 
 // -----
 
+// CHECK-LABEL: test_stack_end
+// CHECK-DAG: %[[PERM:.*]] = "tosa.const"() {value = dense<[1, 2, 3, 0]> : tensor<4xi32>}
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.concat"(%arg0, %arg1) {axis = 0 : i64}
+// CHECK: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = array<i64: 2, 13, 21, 3>}
+// CHECK: %[[TRANSPOSE:.*]] = "tosa.transpose"(%[[VAR1]], %[[PERM]])
+func.func @test_stack_end(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<13x21x3x2xf32> {
+  %0 = "tfl.pack"(%arg0, %arg1)  {axis = 3 : i32, values_count = 2 : i32}  : (tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3x2xf32>
+  func.return %0 : tensor<13x21x3x2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_unstack
 // CHECK: %[[VAR1:.*]] = "tosa.reshape"(%arg0) {new_shape = array<i64: 32, 32, 8>}
 func.func @test_unstack(%arg0: tensor<1x32x32x8xf32>) -> tensor<*xf32> {
