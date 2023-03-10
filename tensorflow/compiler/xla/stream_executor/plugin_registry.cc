@@ -96,7 +96,7 @@ tsl::StatusOr<FACTORY_TYPE> PluginRegistry::GetFactoryInternal(
     iter = generic_factories.find(plugin_id);
     if (iter == generic_factories.end()) {
       return tsl::Status(
-          tsl::error::NOT_FOUND,
+          absl::StatusCode::kNotFound,
           absl::StrFormat("Plugin ID %p not registered.", plugin_id));
     }
   }
@@ -217,7 +217,7 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
                                                                               \
       if (plugin_id == kNullPlugin) {                                         \
         return tsl::Status(                                                   \
-            tsl::error::FAILED_PRECONDITION,                                  \
+            absl::StatusCode::kFailedPrecondition,                            \
             "No suitable " PLUGIN_STRING                                      \
             " plugin registered. Have you linked in a " PLUGIN_STRING         \
             "-providing plugin?");                                            \
@@ -236,7 +236,7 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
       PlatformKind platform_kind, PluginId plugin_id) {                       \
     auto iter = platform_id_by_kind_.find(platform_kind);                     \
     if (iter == platform_id_by_kind_.end()) {                                 \
-      return tsl::Status(tsl::error::FAILED_PRECONDITION,                     \
+      return tsl::Status(absl::StatusCode::kFailedPrecondition,               \
                          absl::StrFormat("Platform kind %d not registered.",  \
                                          static_cast<int>(platform_kind)));   \
     }                                                                         \
