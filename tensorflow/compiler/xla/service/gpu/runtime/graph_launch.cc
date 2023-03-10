@@ -101,6 +101,14 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
   // accidentally record any concurrent kernel launches from other XLA
   // executables.
   se::StreamExecutor* executor = run_options->stream()->parent();
+
+  // Initialize (with memoization) BlasSupport here because cublasCreate fails
+  // during cuda graph capturing.
+  // TODO(b/272559361): The initialization should be conditional.
+  if (!executor->AsBlas()) {
+    return absl::InternalError("Failed to initialize BLAS support");
+  }
+
   StatusOr<StreamPool::Ptr> capture_stream =
       run_options->BorrowStream(executor->device_ordinal());
 
