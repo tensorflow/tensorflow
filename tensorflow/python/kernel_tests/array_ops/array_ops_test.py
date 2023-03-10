@@ -1258,13 +1258,6 @@ class StridedSliceAssignChecker(object):
 
 class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  def setUp(self):
-    super().setUp()
-    # Clear the current device scope to avoid polluting other test cases.
-    ops.device(None).__enter__()
-    # Reset the context to avoid polluting other test cases.
-    context._reset_context()
-
   def testInvalidSlice(self):
     foo = constant_op.constant([1, 2, 3])
     with self.assertRaisesRegex(AttributeError, "no attribute 'assign'"):

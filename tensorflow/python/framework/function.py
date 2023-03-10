@@ -352,7 +352,7 @@ class _DefinedFunction(object):
           fdef.ParseFromString(compat.as_bytes(proto_data))
           with ops.init_scope():
             if context.executing_eagerly():
-              context.add_c_function(func)
+              context.add_function(func)
               self._function_deleter = _DefinedFunctionDeleter(
                   fdef.signature.name)
       return fdef

@@ -2317,9 +2317,6 @@ class MetaGraphTest(test.TestCase):
         self.evaluate(init_op)
         expected_grad_value = self.evaluate(grad)
 
-    # To avoid graph name collisions between original and loaded code.
-    context._reset_context()   # pylint: disable=protected-access
-
     # Restore the MetaGraphDef into a new Graph.
     with ops_lib.Graph().as_default():
       with session.Session() as sess:
