@@ -83,6 +83,7 @@ bool IsCudaComputeCompatible(HloInstruction* instr, se::CudaComputeCapability cc
       !cc.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
     return false;
   }
+  
   return true;
 }
 // Can instr be converted to type `dst_ty` without losing any precision?  For
