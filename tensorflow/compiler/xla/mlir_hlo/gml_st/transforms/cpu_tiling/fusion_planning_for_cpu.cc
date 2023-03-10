@@ -50,6 +50,14 @@ bool isReducingOp(Operation* op) {
              linalg::VecmatOp, linalg::DotOp>(op);
 }
 
+// Returns true if the op is either a map (linalg.map or linalg.fill) or the op
+// has only parallel tiling dimensions and doesn't perform any computations
+// (linalg.broadcast, linalg.transpose, thlo.reverse).
+bool isElementwiseOp(Operation* op) {
+  return isa<linalg::MapOp, linalg::BroadcastOp, linalg::TransposeOp,
+             thlo::ReverseOp, linalg::FillOp>(op);
+}
+
 // Returns true is consumer and producer should be fused and tiled together.
 bool allowedToFuse(Operation* consumerOp, Operation* producerOp) {
   if (isa<thlo::ScatterOp, thlo::SortOp>(producerOp)) return false;
@@ -63,6 +71,8 @@ bool allowedToFuse(Operation* consumerOp, Operation* producerOp) {
         }))
       return true;
   }
+
+  if (isElementwiseOp(consumerOp) && isElementwiseOp(producerOp)) return true;
 
   if (isa<linalg::MapOp, thlo::ReverseOp>(consumerOp)) return true;
   if (isa<linalg::BroadcastOp>(consumerOp)) return false;
