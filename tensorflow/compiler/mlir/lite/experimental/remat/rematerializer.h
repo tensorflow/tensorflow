@@ -72,6 +72,18 @@ class Rematerializer {
     return std::tie(a.op_index, a.size) < std::tie(b.op_index, b.size);
   }
 
+  // Specifies an elementary rematerialization operation: The operations in
+  // operations [`begin`, `end`) will be rescheduled before operation `insert`.
+  // A valid `RematSpec` requires begin <= end <= insert <= number of
+  // operations. Note that (1) `end` is exclusive -- begin == end signifies a
+  // trivial RematSpec (no operation will be rescheduled), (2) the
+  // zero-initialized RematSpec {} is trivial and always valid.
+  struct RematSpec {
+    int begin;
+    int end;
+    int insert;
+  };
+
   // Gives the peak memory location and size. Ties are broken towards
   // later locations.
   MemSpec GetPeakMemory() const;
@@ -80,7 +92,14 @@ class Rematerializer {
   MemProfile GetMemProfile() const;
 
  protected:
-  // The next protected methods are to be used by derived classes to create the
+  // Rematerializes the outputs of the operations [`remat.begin`, `remat.end`)
+  // before operation remat.insert by copying that operation range before
+  // remat.insert and updating tensor references so that any operation that can
+  // will make use of the rematerialized outputs rather than the original ones.
+  // `remat` must be valid (see above).
+  void Remat(const RematSpec& remat);
+
+  // The protected methods below are to be used by derived classes to create the
   // low-level (this class) representation from a high-level one.
 
   // Creates a new tensor-like object that takes `size` bytes. Returns a
@@ -102,6 +121,7 @@ class Rematerializer {
   // `AddOperation`/`AddTensor`).
   void DelUse(int ioperation, int itensor);
 
+ private:
   // The memory objects.
   struct Tensor {
     SizeT size;                   // The size of the object (in bytes.)
