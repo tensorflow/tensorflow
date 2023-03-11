@@ -608,6 +608,7 @@ TEST(XplaneutilsTest, TestIsHostPlane) {
       FindOrAddMutablePlaneWithName(&xspace, "/device:CUSTOM:123");
   auto xplane_legacy_custom =
       FindOrAddMutablePlaneWithName(&xspace, "/custom:456");
+  auto xplane_cupti = FindOrAddMutablePlaneWithName(&xspace, "/host:CUPTI");
   EXPECT_TRUE(IsHostPlane(*xplane_host_thread));
   EXPECT_TRUE(IsHostPlane(*xplane_host_cpu));
   EXPECT_TRUE(IsHostPlane(*xplane_tfstreamz));
@@ -616,6 +617,7 @@ TEST(XplaneutilsTest, TestIsHostPlane) {
   EXPECT_TRUE(IsHostPlane(*xplane_python_tracer));
   EXPECT_TRUE(IsHostPlane(*xplane_custom_prefix));
   EXPECT_TRUE(IsHostPlane(*xplane_legacy_custom));
+  EXPECT_TRUE(IsHostPlane(*xplane_cupti));
 }
 
 TEST(XplaneutilsTest, TestIsDevicePlane) {

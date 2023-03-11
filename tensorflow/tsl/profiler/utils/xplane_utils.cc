@@ -598,6 +598,7 @@ bool IsHostPlane(const XPlane& plane) {
          plane.name() == kMetadataPlaneName ||
          plane.name() == kSyscallsPlaneName ||
          plane.name() == kPythonTracerPlaneName ||
+         plane.name() == kCuptiDriverApiPlaneName ||
          absl::StartsWith(plane.name(), kCustomPlanePrefix) ||
          absl::StartsWith(plane.name(), kLegacyCustomPlanePrefix);
 }
