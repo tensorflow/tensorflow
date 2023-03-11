@@ -111,15 +111,108 @@ void Rematerializer::AddUse(const int ioperation, const int itensor) {
   Insert(itensor, operation.tensors);
 }
 
-Rematerializer::MemProfile Rematerializer::GetMemProfile() const {
-  std::vector<SizeT> profile(operations_.size());
-  MapMem([&](const MemSpec& m) { profile[m.op_index] = m.size; });
+std::vector<Rematerializer::MemSpec> Rematerializer::GetDeltas(
+    const RematSpec& remat) const {
+  // We're cloning operations [remat.begin, remat.end) at position
+  // remat.insert. We store changes to the alloc/dealloc sizes due to the
+  // insertion in a vector `delta`: A change `c_alloc` of `operations_[i].alloc`
+  // as `delta[i] += c_alloc`, and a change `c_dealloc` of
+  // `operations_[i].dealloc` as `delta[i+1] -= c_dealloc`.
+  std::vector<MemSpec> deltas;
+
+  if (remat.begin == remat.end) {
+    return deltas;
+  }
+
+  // Helper lambda: converts an operation index in the original range to its
+  // equivalent in the cloned range.
+  const auto source_to_target = [&](int i) {
+    return i + (remat.insert - remat.begin);
+  };
+
+  // Helper struct: bundles first and last use of a tensor within
+  // a contiguous range of operations.
+  struct TensorUse {
+    int first_use;
+    int last_use;
+  };
+
+  // For all tensors in the operation range to be cloned, store their first and
+  // last use within that range. This will be needed below to decide whether a
+  // tensor's life will be extended, or if it is to be rematerialized.
+  std::map<int, TensorUse> source_uses;
+  for (int ioperation = remat.begin; ioperation < remat.end; ++ioperation) {
+    const auto& operation = operations_[ioperation];
+    for (const int itensor : operation.tensors) {
+      // insertion will only happen for the first use.
+      const auto [iter, inserted] = source_uses.emplace(
+          itensor,
+          TensorUse{/*first_use=*/ioperation, /*last_use=*/ioperation});
+      if (!inserted) {
+        // Otherwise, update last_use.
+        iter->second.last_use = ioperation;
+      }
+    }
+  }
+
+  deltas.reserve(2 * source_uses.size());
+
+  for (const auto& [itensor, source] : source_uses) {
+    auto& tensor = tensors_[itensor];
+    const TensorUse global = {tensor.first_use(), tensor.last_use()};
+
+    auto add_alloc = [&](int pos) { deltas.emplace_back(pos, tensor.size); };
+    auto add_dealloc = [&](int pos) {
+      deltas.emplace_back(pos + 1, -tensor.size);
+    };
+    auto del_dealloc = [&](int pos) {
+      deltas.emplace_back(pos + 1, tensor.size);
+    };
+
+    if (global.first_use < remat.begin) {
+      // The tensor is created before the source range.
+      if (global.last_use < remat.insert) {
+        // It currently gets deallocated before the newly inserted range, so we
+        // need to extend its lifetime: It will now be deallocated at its last
+        // use in the inserted range.
+        del_dealloc(global.last_use);
+        add_dealloc(source_to_target(source.last_use));
+      }
+    } else {
+      // Tensor is created in the source range. It will be rematerialized in the
+      // cloned range.
+      add_alloc(source_to_target(source.first_use));
+      if (global.last_use < remat.insert) {
+        // The last use of the original tensor is before the target range, so
+        // the lifetime of the rematerialized tensor ends with the target range.
+        add_dealloc(source_to_target(source.last_use));
+      } else {
+        // There are uses of the original tensor after the cloned range. They
+        // can be replaced with uses of the rematerialized tensor, and the
+        // original tensor can be deallocated after its last use before the
+        // rematerialization.
+        add_dealloc(*std::partition_point(
+            tensor.operations.rbegin(), tensor.operations.rend(),
+            [&](int i) { return i >= remat.insert; }));
+      }
+    }
+  }
+  std::sort(deltas.begin(), deltas.end(), ByOpIndex);
+  return deltas;
+}
+
+Rematerializer::MemProfile Rematerializer::GetMemProfile(
+    const RematSpec& remat) const {
+  const auto num_inserted = remat.end - remat.begin;
+  std::vector<SizeT> profile(operations_.size() + num_inserted);
+  MapMem([&](const MemSpec& m) { profile[m.op_index] = m.size; }, remat);
   return profile;
 }
 
-Rematerializer::MemSpec Rematerializer::GetPeakMemory() const {
+Rematerializer::MemSpec Rematerializer::GetPeakMemory(
+    const RematSpec& remat) const {
   MemSpec peak;
-  MapMem([&](const MemSpec& m) { peak = std::max(m, peak, BySize); });
+  MapMem([&](const MemSpec& m) { peak = std::max(m, peak, BySize); }, remat);
   return peak;
 }
 

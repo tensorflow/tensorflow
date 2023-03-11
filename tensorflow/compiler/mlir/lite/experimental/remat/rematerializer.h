@@ -84,12 +84,14 @@ class Rematerializer {
     int insert;
   };
 
-  // Gives the peak memory location and size. Ties are broken towards
-  // later locations.
-  MemSpec GetPeakMemory() const;
+  // Gives the peak memory location and size after inserting operations
+  // according to `remat` (but doesn't actually insert them.)  Ties are broken
+  // towards later locations. `remat` must be valid (see above).
+  MemSpec GetPeakMemory(const RematSpec& remat = {}) const;
 
-  // Gives memory profile. Mostly used for tests.
-  MemProfile GetMemProfile() const;
+  // Gives memory profile after inserting operations according to `remat` (but
+  // doesn't actually insert them). `remat` must be valid (see above).
+  MemProfile GetMemProfile(const RematSpec& remat = {}) const;
 
  protected:
   // Rematerializes the outputs of the operations [`remat.begin`, `remat.end`)
@@ -150,17 +152,63 @@ class Rematerializer {
                         // this operation.
   };
 
+  // Given the current state of `operations_` and `tensors_`, return a vector of
+  // corrections that transform the current memory profile into the one that we
+  // would get after applying `remat`.
+  //
+  // The memory profile of a sequence of operations is the partial sum of the
+  // sizes of the allocations that are necessary before an operation and the
+  // negative sizes of the deallocations that are possible after the previous
+  // operation.
+  //
+  // If we modify the operation sequence by cloning an operation range, that
+  // memory profile will change--cloning makes it necessary to extend the
+  // lifetime of some tensors, while other tensors can be deallocated early and
+  // rematerialized later.
+  //
+  // This method represents these changes in compact form: It returns a vector
+  // of (position of operation, delta) pairs in lexicographic order; one
+  // obtains the memory profile after `remat` by adding the deltas from any
+  // entries (i, delta) to the i-th entry of the partial sum.
+  //
+  // This allows us to efficiently compute the change to the peak of a memory
+  // profile due to cloning an operation range without having to actually clone
+  // that range and without having to build a profile vector.
+  //
+  // The returned vector has at most 2 entries for each tensor referenced in
+  // [remat.begin, remat.end). There may be multiple entries for a single
+  // operation position; operation positions refer to the sequence *after*
+  // cloning [`remat.begin`, `remat.end`) before `remat.insert`.
+  std::vector<MemSpec> GetDeltas(const RematSpec& remat) const;
+
   // Helper template: Iterates through all `MemSpec`s (i.e., operation
   // index/memory usage pairs) for the current graph in operation order and
   // calls `mapper` on them. This is an optimization -- by instantiating with an
   // appropriate `Mapper`, it allows us to e.g. compute the peak memory without
   // having to instantiate an actual memory profile vector.
   template <class Mapper>
-  void MapMem(const Mapper& mapper) const {
-    for (MemSpec m; m.op_index < operations_.size(); ++m.op_index) {
-      m.size += operations_[m.op_index].alloc;
+  void MapMem(const Mapper& mapper, const RematSpec& remat) const {
+    const auto deltas = GetDeltas(remat);
+    const auto len = (remat.end - remat.begin);
+    auto idelta = deltas.begin();
+
+    for (MemSpec m; m.op_index < operations_.size() + len; ++m.op_index) {
+      // Are we in the cloned portion of the new operation sequence?
+      // Then all alloc/dealloc information must come from deltas.
+      const bool patch =
+          (m.op_index >= remat.insert) && (m.op_index < remat.insert + len);
+      // Are we past the insertion portion of the new operation sequence?
+      // Then we need to convert indices back to the original sequence.
+      const int shift = (m.op_index >= remat.insert + len) ? len : 0;
+      m.size += patch ? 0 : operations_[m.op_index - shift].alloc;
+      // deltas is sorted by location; apply any corrections to the current
+      // operator.
+      for (; idelta != deltas.end() && idelta->op_index == m.op_index;
+           ++idelta) {
+        m.size += idelta->size;
+      }
       mapper(m);
-      m.size -= operations_[m.op_index].dealloc;
+      m.size -= patch ? 0 : operations_[m.op_index - shift].dealloc;
     }
   }
 
