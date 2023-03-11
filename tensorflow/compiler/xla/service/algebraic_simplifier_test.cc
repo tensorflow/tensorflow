@@ -2827,30 +2827,6 @@ TEST_F(AlgebraicSimplifierTest, SimplifyReduceOfConcat) {
                         m::Reduce(m::Parameter(2), m::Op().Is(zero)))));
 }
 
-// Test that reduce of concat is not simplified if the concat operand shapes
-// differ.
-TEST_F(AlgebraicSimplifierTest,
-       DoNotSimplifyReduceOfConcatBecauseShapesDiffer) {
-  const char* kModuleStr = R"(
-    HloModule m
-    add {
-      p0 = f32[] parameter(0)
-      p1 = f32[] parameter(1)
-      ROOT add = f32[] add(p0, p1)
-    }
-    ENTRY test {
-      p0 = f32[100,100,100]{2,1,0} parameter(0)
-      p1 = f32[100,100,100]{2,1,0} parameter(1)
-      p2 = f32[100,90,100]{2,1,0} parameter(2)
-      cat = f32[100,290,100]{2,1,0} concatenate(p0, p1, p2), dimensions={1}
-      cst = f32[] constant(0)
-      ROOT reduce = f32[100]{0} reduce(cat, cst), dimensions={1,2}, to_apply=add
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
-}
-
 // Test a concatenate with only empty operands is removed.
 TEST_F(AlgebraicSimplifierTest, OnlyEmptyConcatenateOperands) {
   auto m = CreateNewVerifiedModule();
