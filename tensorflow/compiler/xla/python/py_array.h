@@ -182,6 +182,7 @@ class PyArray : public pybind11::object {
   const std::vector<PyBuffer::object>& py_buffers() const {
     return GetStorage().py_buffers;
   }
+  const std::vector<PyBuffer::object>& py_buffers_cached();
 
   pybind11::object arrays();
   Status set_arrays(pybind11::object obj);
@@ -208,7 +209,16 @@ class PyArray : public pybind11::object {
 
   Status BlockUntilReady() const;
 
+  StatusOr<size_t> GetOnDeviceSizeInBytes();
+  StatusOr<pybind11::object> SingleDeviceArrayToNumpyArray();
+  Status CopySingleDeviceArrayToHostAsync();
+  StatusOr<pybind11::dict> CudaArrayInterface();
+
+  Status Delete();
+
   bool IsDeleted() const;
+
+  PyArray Clone() const;
 
   StatusOr<PyArray> CopyToDeviceWithSharding(ifrt::DeviceList devices,
                                              pybind11::object dst_sharding);
