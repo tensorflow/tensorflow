@@ -541,10 +541,11 @@ std::optional<Value> convertMultiplyOp(PatternRewriter& rewriter, Operation* op,
     // 32bits can be rescaled with 32bits quantize multiplier back to 16bits
     bool scale32 = true;
 
-    Value op1_rescale_lhs = buildRescaleToInt32(
-        rewriter, op, input_lhs_val, 1.0f, input_lhs_qtype.getZeroPoint());
-    Value op2_rescale_rhs = buildRescaleToInt32(
-        rewriter, op, input_rhs_val, 1.0f, input_rhs_qtype.getZeroPoint());
+    Value op1_rescale_lhs = removeZeroPointAndCastToInt32(
+        rewriter, op, input_lhs_val, input_lhs_qtype.getZeroPoint());
+    Value op2_rescale_rhs = removeZeroPointAndCastToInt32(
+        rewriter, op, input_rhs_val, input_rhs_qtype.getZeroPoint());
+
     auto op3_mul_op1_op2 =
         CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), rescale_type,
                                       op1_rescale_lhs, op2_rescale_rhs, 0);
