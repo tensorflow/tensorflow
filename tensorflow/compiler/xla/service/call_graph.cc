@@ -391,6 +391,9 @@ CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
   auto next_caller = [this](HloInstruction* instruction) -> HloInstruction* {
     const CallGraphNode& node = GetNode(instruction->parent());
     if (node.caller_callsites().size() != 1) {
+      if (instruction->parent()->IsAsyncComputation()) {
+        return node.caller_callsites()[0].instruction();
+      }
       return nullptr;
     }
     return node.caller_callsites()[0].instruction();
