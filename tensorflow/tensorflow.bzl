@@ -2142,8 +2142,10 @@ def _check_deps_impl(ctx):
         for disallowed_dep in disallowed_deps:
             if sets.contains(collected_deps, disallowed_dep.label):
                 fail(
-                    _dep_label(input_dep) + " cannot depend on " +
-                    _dep_label(disallowed_dep),
+                    "{src} cannot depend on {dep}. See: bazel query 'somepath(//{src}, //{dep})'".format(
+                        src = _dep_label(input_dep),
+                        dep = _dep_label(disallowed_dep),
+                    ),
                 )
         for required_dep in required_deps:
             if not sets.contains(collected_deps, required_dep.label):
