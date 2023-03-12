@@ -283,7 +283,8 @@ FailureOr<TilingResult> tileUsingGmlSt(const TilingOptions &options,
     tileSizeVector.append(numLoops - tileSizeVector.size(), zero);
   }
 
-  if (llvm::all_of(tileSizeVector, mlir::gml_st::isZero)) {
+  if (llvm::all_of(tileSizeVector,
+                   [](Value v) { return matchPattern(v, m_Zero()); })) {
     return TilingResult{{op}, nullptr};
   }
 

@@ -24,20 +24,11 @@ namespace gml_st {
 constexpr llvm::StringRef kPerfectlyTiledLoopLabel =
     "__perfectly_tiled_loop_label__";
 
-bool isZero(Value v);
-bool isOne(Value v);
-
 template <typename ShapedTy>
 bool hasSingleElement(ShapedTy type) {
   return type.hasStaticShape() && type.getNumElements() == 1;
 }
 bool hasSingleElementOperandsAndResults(Operation *op);
-
-/// Returns true if `candidate`'s offsets are all 0s and strides are all 1s.
-bool isIdentitySlice(ValueRange offsets, ValueRange strides);
-
-/// Returns true if `lhs` and `rhs` are of same static shape.
-bool haveSameStaticShape(Value lhs, Value rhs);
 
 // Sets the attribute to the `op` that indicates that the op was transformed.
 void setLabel(Operation *op, StringRef name);
