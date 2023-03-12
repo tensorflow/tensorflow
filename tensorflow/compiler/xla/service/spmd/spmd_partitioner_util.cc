@@ -217,8 +217,6 @@ Shape GetPaddedShapeForUnevenPartitioning(const Shape& base_shape,
   return padded_base_shape;
 }
 
-namespace {
-
 HloInstruction* GetInGroupPartitionId(
     HloInstruction* partition_id,
     const std::vector<std::vector<int64_t>>& device_groups, SpmdBuilder* b) {
@@ -236,6 +234,8 @@ HloInstruction* GetInGroupPartitionId(
       b->AddInstruction(HloInstruction::CreateDynamicSlice(
           ShapeUtil::MakeShape(U32, {1}), id_table, {partition_id}, {1}))));
 }
+
+namespace {
 
 SPMDCollectiveOpsCreator GetPerGroupCollectiveOpsCreator(
     const SPMDCollectiveOpsCreator& creator,

@@ -2062,6 +2062,20 @@ std::string GroupedSharding::ToString() const {
   return result;
 }
 
+GroupedSharding GroupShardingOnAllDimsExcept(
+    const HloSharding& sharding, absl::Span<const int64_t> non_group_dims,
+    bool subgroup_manual) {
+  std::vector<int64_t> group_dims(sharding.tile_assignment().num_dimensions());
+  absl::c_iota(group_dims, 0);
+
+  group_dims.erase(
+      std::remove_if(
+          group_dims.begin(), group_dims.end(),
+          [&](int64_t i) { return absl::c_linear_search(non_group_dims, i); }),
+      group_dims.end());
+  return GroupShardingOnDims(sharding, group_dims, subgroup_manual);
+}
+
 GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
                                     absl::Span<const int64_t> group_dims,
                                     bool subgroup_manual) {

@@ -402,6 +402,11 @@ Shape GetPerGroupBaseShape(
     const hlo_sharding_util::GroupedSharding& grouped_sharding,
     const Shape& original_base_shape);
 
+// Returns the partition id within a group.
+HloInstruction* GetInGroupPartitionId(
+    HloInstruction* partition_id,
+    const std::vector<std::vector<int64_t>>& device_groups, SpmdBuilder* b);
+
 // Creates the nested partitioner state for in-group patitioning.
 PartitionedHlo::PartitioningState CreatePerGroupPartitioningState(
     const PartitionedHlo::PartitioningState& state,

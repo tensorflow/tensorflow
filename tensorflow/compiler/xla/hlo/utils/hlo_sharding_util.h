@@ -363,6 +363,11 @@ GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
                                     absl::Span<const int64_t> group_dims,
                                     bool subgroup_manual = false);
 
+// Same as above, but exclude group dims instead.
+GroupedSharding GroupShardingOnAllDimsExcept(
+    const HloSharding& sharding, absl::Span<const int64_t> non_group_dims,
+    bool subgroup_manual = false);
+
 // Creates a GroupedSharding by trying to group on partially replicated
 // dimensions, otherwise replicate it.
 GroupedSharding GroupShardingOnReplicatedDim(const HloSharding& sharding,
