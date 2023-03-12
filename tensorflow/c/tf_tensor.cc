@@ -298,8 +298,11 @@ AbstractTensorInterface* TensorInterfaceFromTensor(const Tensor& src,
     return nullptr;
   }
   if (src.NumElements() == 0) {
-    return EmptyTensor(static_cast<TF_DataType>(src.dtype()), src.shape())
-        ->tensor;
+    auto* emptyTensor =
+        EmptyTensor(static_cast<TF_DataType>(src.dtype()), src.shape());
+    auto* ret = emptyTensor->tensor;
+    delete emptyTensor;
+    return ret;
   }
 
   Tensor tensor;
