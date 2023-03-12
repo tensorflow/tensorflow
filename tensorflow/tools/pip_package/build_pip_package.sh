@@ -193,7 +193,9 @@ function prepare_src() {
       chmod +rw ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
       install_name_tool -change "@loader_path/../../../../../_solib_darwin_x86_64//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so" "@loader_path/libbfloat16.so.so" ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
+      install_name_tool -change "@loader_path/../../../../../_solib_darwin_arm64//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so" "@loader_path/libbfloat16.so.so" ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
       install_name_tool -change "@loader_path/../../_solib_darwin_x86_64//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so" "@loader_path/../tsl/python/lib/core/libbfloat16.so.so" ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      install_name_tool -change "@loader_path/../../_solib_darwin_arm64//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so" "@loader_path/../tsl/python/lib/core/libbfloat16.so.so" ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
     else
       chmod +rw ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
