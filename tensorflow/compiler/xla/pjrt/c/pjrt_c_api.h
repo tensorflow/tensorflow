@@ -756,8 +756,14 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_LoadedExecutable_IsDeleted_Args, is_deleted);
 typedef PJRT_Error* PJRT_LoadedExecutable_IsDeleted(
     PJRT_LoadedExecutable_IsDeleted_Args* args);
 
-// TODO(b/263390038) implement C API to access PJRT_Chunk data and to destroy.
-typedef struct PJRT_Chunk PJRT_Chunk;
+struct PJRT_Chunk {
+  void* data;
+  size_t size;
+  void (*deleter)(void* data, void* deleter_arg);
+  // `deleter_arg` will be passed to `deleter` as `deleter_arg` argument.
+  void* deleter_arg;
+};
+
 // TODO(b/263390934) implement C API that calls `AddChunk` and other
 // `xla::CopyToDeviceStream`.
 typedef struct PJRT_CopyToDeviceStream PJRT_CopyToDeviceStream;
@@ -765,7 +771,9 @@ typedef struct PJRT_CopyToDeviceStream PJRT_CopyToDeviceStream;
 struct PJRT_TransferMetadata;
 
 // Returns bool because the caller can't create PJRT_Error, which should be
-// returned by C API only. False indicates an error.
+// returned by C API only. False indicates an error. The callback must call
+// `chunk->deleter(chunk->data, chunk->deleter_arg)` when it's finished with
+// `chunk`.
 // TODO(b/267255088) need to bubble up the callback error message to the caller.
 typedef bool (*PJRT_SendCallback)(PJRT_TransferMetadata* metadata,
                                   PJRT_Chunk* chunk, size_t total_size_in_bytes,
