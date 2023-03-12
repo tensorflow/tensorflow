@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <assert.h>
 #include <math.h>
+#include <cstdint>
 
 #include "third_party/fft2d/fft.h"
 
