@@ -27,7 +27,7 @@ func.func @map_matmul(%arg0: tensor<?x?xf32>,
 
 // CHECK-LABEL: @map_matmul
 
-// CHECK:      scf.forall
+// CHECK:      scf.for
 // CHECK:        scf.for
 // CHECK-COUNT-2:     vector.transfer_read
 // CHECK:             vector.contract
@@ -35,12 +35,12 @@ func.func @map_matmul(%arg0: tensor<?x?xf32>,
 // CHECK:        scf.for
 // CHECK:          linalg.matmul
 // CHECK:          scf.yield
-// CHECK:      scf.forall
+// CHECK:      scf.for
 // CHECK:        scf.for
 // CHECK:          linalg.matmul
 // CHECK:          scf.yield
 
-// CHECK:      scf.forall
+// CHECK:      scf.for
 // CHECK:        scf.for
 // CHECK-COUNT-2:     vector.transfer_read
 // CHECK:             vector.contract
@@ -50,9 +50,9 @@ func.func @map_matmul(%arg0: tensor<?x?xf32>,
 // CHECK:          scf.yield
 // CHECK:        math.absf %{{.*}} : vector<4x4xf32>
 // CHECK:        arith.addf %{{.*}} : vector<4x4xf32>
-// CHECK:        tensor.parallel_insert_slice
+// CHECK:        vector.transfer_write
 
-// CHECK:      scf.forall
+// CHECK:      scf.for
 // CHECK:        scf.for
 // CHECK:          linalg.matmul
 // CHECK:          scf.yield
@@ -62,9 +62,9 @@ func.func @map_matmul(%arg0: tensor<?x?xf32>,
 // CHECK:        scf.for
 // CHECK:          scf.for
 // CHECK:            arith.addf
-// CHECK:        tensor.parallel_insert_slice
+// CHECK:        tensor.insert
 
-// CHECK:      scf.forall
+// CHECK:      scf.for
 // CHECK:        scf.for
 // CHECK:          linalg.matmul
 // CHECK:          scf.yield
@@ -74,4 +74,4 @@ func.func @map_matmul(%arg0: tensor<?x?xf32>,
 // CHECK:        scf.for
 // CHECK:          scf.for
 // CHECK:            arith.addf
-// CHECK:        tensor.parallel_insert_slice
+// CHECK:        tensor.insert

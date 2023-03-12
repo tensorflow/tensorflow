@@ -261,6 +261,12 @@ def RewriteFromElementsOpPass
   let constructor = "createRewriteFromElementsOpPass()";
 }
 
+def RewriteForallOpPass
+    : Pass<"gml-st-rewrite-forall-ops", "mlir::func::FuncOp"> {
+  let summary = "Pass to rewrite scf.forall to scf.for.";
+  let constructor = "createRewriteForallOpPass()";
+}
+
 def FusionOutliningPass : Pass<"gml-fusion-outlining", "mlir::ModuleOp"> {
   let summary = "Pass to outline fusion regions into functions.";
   let constructor = "createFusionOutliningPass()";

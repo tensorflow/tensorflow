@@ -48,6 +48,7 @@ add_mlir_library(GmlStPasses
   passes.cc
   peeling/peeling.cc
   rewrite_from_elements_op/rewrite_from_elements_op.cc
+  rewrite_scf_forall/rewrite_scf_forall.cc
   scalarization/scalarization.cc
   tiling/tile_by_one.cc
   tiling/tiling.cc

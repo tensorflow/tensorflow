@@ -150,6 +150,10 @@ createInlineFusionClustersPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createRewriteFromElementsOpPass();
 
+/// Pass to rewrite scf.forall to scf.for.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createRewriteForallOpPass();
+
 /// Pass to add debug info to be propagated into LLVM backend.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAddDebugInfoPass();
 

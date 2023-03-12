@@ -11,12 +11,12 @@ func.func @col_reduce_static(%input: tensor<100x10xf32>,
 }
 // CHECK-LABEL: @col_reduce_static
 
-//       CHECK: scf.forall
+//       CHECK: scf.for
 //       CHECK:   scf.for
 //       CHECK:     vector.multi_reduction
 //  CHECK-SAME:       : vector<4x4xf32> to vector<4xf32>
 //  CHECK-NEXT:     scf.yield %{{.*}} : {{.*}}, vector<4xf32>
-//       CHECK:   tensor.parallel_insert_slice
+//       CHECK:   vector.transfer_write
 
 // -----
 
@@ -35,7 +35,7 @@ func.func @row_reduce_dynamic(%input: tensor<?x?xf32>,
 }
 // CHECK-LABEL: @row_reduce_dynamic
 
-// CHECK:      scf.forall
+// CHECK:      scf.for
 // CHECK:        scf.for
 // CHECK:          vector.multi_reduction
 // CHECK-SAME:       : vector<4x4xf32> to vector<4xf32>
@@ -45,15 +45,15 @@ func.func @row_reduce_dynamic(%input: tensor<?x?xf32>,
 // CHECK:          vector.multi_reduction
 // CHECK-SAME:       : vector<4x1xf32> to vector<4xf32>
 // CHECK-NEXT:     scf.yield %{{.*}} : {{.*}}, vector<4xf32>
-// CHECK:        tensor.parallel_insert_slice
+// CHECK:        vector.transfer_write
 
-// CHECK:      scf.forall
-// CHECK:        scf.forall
+// CHECK:      scf.for
+// CHECK:        scf.for
 // CHECK:          scf.for
 // CHECK:            arith.mulf %{{.*}} : f32
 // CHECK:            scf.yield %{{.*}} : f32
-// CHECK:          tensor.parallel_insert_slice
-// CHECK:        tensor.parallel_insert_slice
+// CHECK:          tensor.insert
+// CHECK:        tensor.insert_slice
 
 // -----
 
@@ -72,7 +72,7 @@ func.func @col_reduce_dynamic(%input: tensor<?x?xf32>,
 }
 // CHECK-LABEL: @col_reduce_dynamic
 
-// CHECK:      scf.forall
+// CHECK:      scf.for
 // CHECK:        scf.for
 // CHECK:          vector.multi_reduction
 // CHECK-SAME:       : vector<4x4xf32> to vector<4xf32>
@@ -81,12 +81,12 @@ func.func @col_reduce_dynamic(%input: tensor<?x?xf32>,
 // CHECK:        scf.for
 // CHECK:          arith.mulf %{{.*}} : f32
 // CHECK-NEXT:     scf.yield %{{.*}} : f32
-// CHECK:        tensor.parallel_insert_slice
+// CHECK:        tensor.insert
 
-// CHECK:      scf.forall
-// CHECK:        scf.forall
+// CHECK:      scf.for
+// CHECK:        scf.for
 // CHECK:            scf.for
 // CHECK:              arith.mulf %{{.*}} : f32
 // CHECK:              scf.yield %{{.*}} : f32
-// CHECK:          tensor.parallel_insert_slice
-// CHECK:        tensor.parallel_insert_slice
+// CHECK:          tensor.insert
+// CHECK:        tensor.insert_slice

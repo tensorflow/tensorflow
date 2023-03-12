@@ -47,14 +47,14 @@ func.func @fuse_fibonacci(%init : tensor<?xi64>) -> tensor<?xi64> {
   func.return %39 : tensor<?xi64>
 }
 // CHECK-LABEL: @fuse_fibonacci
-// CHECK-DAG: %[[TENSOR_RESULT:.*]] = arith.constant dense<63245986> : tensor<1xi64>
+// CHECK-DAG: %[[SCALAR_RESULT:.*]] = arith.constant 63245986 : i64
 // CHECK-DAG: %[[VECTOR_RESULT:.*]] = arith.constant dense<63245986> : vector<8xi64>
 
-// CHECK:     scf.forall
+// CHECK:     scf.for
 // CHECK:       %[[VEC:.*]] = vector.transfer_write %[[VECTOR_RESULT]]
-// CHECK:       tensor.parallel_insert_slice %[[VEC]]
+// CHECK:       scf.yield %[[VEC]]
 
-// CHECK:     scf.forall
-// CHECK:       scf.forall
-// CHECK:         tensor.parallel_insert_slice %[[TENSOR_RESULT]]
-// CHECK:       tensor.parallel_insert_slice
+// CHECK:     scf.for
+// CHECK:       scf.for
+// CHECK:         tensor.insert %[[SCALAR_RESULT]]
+// CHECK:       tensor.insert_slice

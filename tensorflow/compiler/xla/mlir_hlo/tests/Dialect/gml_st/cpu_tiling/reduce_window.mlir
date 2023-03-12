@@ -42,7 +42,7 @@ func.func @reduce_window(%input: tensor<1xf32>, %window: tensor<32xf32>,
 }
 // CHECK-LABEL: @reduce_window
 
-// CHECK:       scf.forall
+// CHECK:       scf.for
 // CHECK:         scf.for
 // CHECK:           arith.addf {{.*}} : f32
 // CHECK:           scf.yield %{{.*}} : f32

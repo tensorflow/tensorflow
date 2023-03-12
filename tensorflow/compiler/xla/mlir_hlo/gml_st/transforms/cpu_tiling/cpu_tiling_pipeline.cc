@@ -153,6 +153,7 @@ void addCPUTilingPipeline(OpPassManager& pm,
   pm.addPass(createCSEPass());
   pm.addPass(createCanonicalizerPass());
 
+  pm.addNestedPass<FuncOp>(createRewriteForallOpPass());
   pm.addNestedPass<FuncOp>(createComposeExtractInsertSlicePass());
   pm.addNestedPass<FuncOp>(createVectorizeForCPUPass());
 

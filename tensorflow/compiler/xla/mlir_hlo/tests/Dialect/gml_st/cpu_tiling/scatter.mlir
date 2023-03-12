@@ -29,9 +29,9 @@ func.func @scatter_fusion(%indices: tensor<?x2xindex>,
 
 // CHECK:         scf.for
 // CHECK:           scf.if
-// CHECK:             scf.forall
+// CHECK:             scf.for
 // CHECK:               math.absf
-// CHECK:             scf.forall
+// CHECK:             scf.for
 // CHECK:               math.absf
 // CHECK:             linalg.reduce
 // CHECK:             scf.yield {{.*}} : tensor<?x?xf32>
@@ -64,8 +64,8 @@ func.func @scatter_fusion_overwrite(%indices: tensor<?x2xindex>,
 
 // CHECK:         scf.for
 // CHECK:           scf.if
-// CHECK:             scf.forall
+// CHECK:             scf.for
 // CHECK:               math.absf
-// CHECK:             scf.forall
+// CHECK:             scf.for
 // CHECK:               math.absf
 // CHECK:             scf.yield {{.*}} : tensor<?x?xf32>

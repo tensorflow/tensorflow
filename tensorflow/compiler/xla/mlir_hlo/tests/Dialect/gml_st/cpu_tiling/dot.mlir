@@ -10,16 +10,17 @@ func.func @matvec(%lhs: tensor<33x17xf32>, %rhs: tensor<17xf32>,
 
 // CHECK-LABEL: @matvec
 // CHECK-DAG:     %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:     %[[C4:.*]] = arith.constant 4 : index
 // CHECK-DAG:     %[[C6:.*]] = arith.constant 6 : index
 // CHECK-DAG:     %[[C12:.*]] = arith.constant 12 : index
 // CHECK-DAG:     %[[C17:.*]] = arith.constant 17 : index
-// CHECK:         scf.forall {{.*}} (0) to (32) step (4)
+// CHECK-DAG:     %[[C32:.*]] = arith.constant 32 : index
+// CHECK:         scf.for {{.*}} %[[C0]] to %[[C32]] step %[[C4]]
 // CHECK:           scf.for {{.*}} %[[C0]] to %[[C12]] step %[[C6]]
 // CHECK:             vector.contract {{.*}} vector<4x6xf32>
 // CHECK-NEXT:        scf.yield %{{.*}} : {{.*}}, vector<4xf32>
 // CHECK:           vector.contract
 // CHECK:           vector.transfer_write
-// CHECK:           tensor.parallel_insert_slice
 // CHECK:         scf.for {{.*}} %[[C0]] to %[[C17]] step %[[C6]]
 // CHECK:           linalg.matvec
 
@@ -34,16 +35,17 @@ func.func @vecmat(%lhs: tensor<17xf32>, %rhs: tensor<17x33xf32>,
 
 // CHECK-LABEL: @vecmat
 // CHECK-DAG:     %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:     %[[C5:.*]] = arith.constant 5 : index
 // CHECK-DAG:     %[[C6:.*]] = arith.constant 6 : index
 // CHECK-DAG:     %[[C12:.*]] = arith.constant 12 : index
 // CHECK-DAG:     %[[C17:.*]] = arith.constant 17 : index
-// CHECK:         scf.forall {{.*}} (0) to (30) step (5)
+// CHECK-DAG:     %[[C30:.*]] = arith.constant 30 : index
+// CHECK:         scf.for {{.*}} %[[C0]] to %[[C30]] step %[[C5]]
 // CHECK:           scf.for {{.*}} %[[C0]] to %[[C12]] step %[[C6]]
 // CHECK:             vector.contract {{.*}} vector<6x5xf32>
 // CHECK-NEXT:        scf.yield %{{.*}} : {{.*}}, vector<5xf32>
 // CHECK:           vector.contract
 // CHECK:           vector.transfer_write
-// CHECK:           tensor.parallel_insert_slice
 // CHECK:         scf.for {{.*}} %[[C0]] to %[[C17]] step %[[C6]]
 // CHECK:           linalg.vecmat
 
