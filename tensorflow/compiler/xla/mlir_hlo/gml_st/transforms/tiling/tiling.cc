@@ -53,9 +53,6 @@ void TilingOptions::setTileSizeComputationFn(ArrayRef<int64_t> ts) {
 
 namespace {
 
-#define GEN_PASS_DEF_TILINGPASS
-#include "gml_st/transforms/passes.h.inc"
-
 constexpr llvm::StringRef kTileAppliedLabel = "__tile_applied_label__";
 
 // Compute tile size for the tile that starts at `offset`, has size `tileSize`
@@ -186,54 +183,6 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
   bool distribute;
 };
 
-struct TilingPass : public impl::TilingPassBase<TilingPass> {
-  TilingPass() = default;
-  TilingPass(StringRef name, StringRef label, bool distributeFlag,
-             llvm::ArrayRef<int64_t> sizes) {
-    opName = name.str();
-    opLabel = label.str();
-    distribute = distributeFlag;
-    tileSizes = sizes;
-  }
-
-  void getDependentDialects(DialectRegistry &registry) const final {
-    registry.insert<GmlStDialect, tensor::TensorDialect, linalg::LinalgDialect,
-                    scf::SCFDialect>();
-    linalg::registerTilingInterfaceExternalModels(registry);
-  }
-
-  void runOnOperation() override {
-    func::FuncOp f = getOperation();
-    MLIRContext *ctx = &getContext();
-
-    TilingOptions opts;
-    SmallVector<int64_t> ts(tileSizes.begin(), tileSizes.end());
-    opts.tileSizeComputationFn = [ts](OpBuilder &b, Operation *op) {
-      OpBuilder::InsertionGuard guard(b);
-      b.setInsertionPointToStart(
-          &op->getParentOfType<func::FuncOp>().getBody().front());
-      return llvm::to_vector<4>(llvm::map_range(ts, [&](int64_t s) {
-        Value v = b.create<arith::ConstantIndexOp>(op->getLoc(), s);
-        return v;
-      }));
-    };
-
-    auto filterFn = [&](TilingInterface op) {
-      if (!opName.empty() && op->getName().getStringRef() != opName)
-        return failure();
-      if (!opLabel.empty() && !hasMatchingLabel(op, opLabel)) return failure();
-      return success();
-    };
-    RewritePatternSet patterns(ctx);
-    patterns.add<TilingPattern>(ctx, filterFn, opts, distribute);
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
-      return signalPassFailure();
-
-    // Clean up by removing temporary attributes.
-    removeTilingLabels(f);
-  }
-};
-
 void updateOutputs(const TilingResult &tilingResult, ValueRange dstOperands) {
   scf::ForallOp parallelLoop = tilingResult.loop;
 
@@ -333,19 +282,8 @@ FailureOr<TilingResult> tileUsingGmlSt(const TilingOptions &options,
   return tilingResult;
 }
 
-void populateTilingPatterns(
-    MLIRContext *context,
-    llvm::function_ref<LogicalResult(TilingInterface)> filterFn,
-    const TilingOptions &opts, RewritePatternSet *patterns) {}
-
 void removeTilingLabels(Operation *op) {
   op->walk([](Operation *op) { removeLabel(op, kTileAppliedLabel); });
-}
-
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
-    StringRef opName, StringRef opLabel, bool distribute,
-    ArrayRef<int64_t> tileSizes) {
-  return std::make_unique<TilingPass>(opName, opLabel, distribute, tileSizes);
 }
 
 SmallVector<Value> getYieldedValues(scf::InParallelOp inParallelOp) {

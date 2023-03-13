@@ -15,21 +15,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def TilingPass : Pass<"gml-tiling", "mlir::func::FuncOp"> {
-  let summary = "Tile operations using TilingInterface to produce gml_st.for";
-  let constructor = "::mlir::gml_st::createTilingPass()";
-  let options = [
-    Option<"opName", "op-name", "std::string", /*default=*/"",
-           "Operation with this name is the anchor to latch on.">,
-    Option<"opLabel", "op-label", "std::string", /*default=*/"",
-           "Operation with this label is the anchor to latch on.">,
-    Option<"distribute", "distribute", "bool", /*default=*/"true",
-           "Generate gml_st.parallel or scf.for">,
-    ListOption<"tileSizes", "tile-sizes", "int64_t", "Tile sizes",
-               "llvm::cl::ZeroOrMore">,
-  ];
-}
-
 def FusionPass : Pass<"gml-fusion", "mlir::func::FuncOp"> {
   let summary = "Fuse producers in into `gml_st.materialize` operations";
   let constructor = "::mlir::gml_st::createFusionPass()";

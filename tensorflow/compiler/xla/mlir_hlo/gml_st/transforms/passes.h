@@ -41,11 +41,6 @@ struct MatmulSizes {
 
 using MatmulTileSizeComputationFn = std::function<MatmulSizes(MatmulSizes)>;
 
-/// Pass to tile ops using TilingInterface.
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
-    StringRef opName = "", StringRef opLabel = "", bool distribute = true,
-    ArrayRef<int64_t> tileSizes = {});
-
 /// Pass to fuse producers into a tiled consumer.
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
     StringRef producer = "", StringRef consumer = "");
