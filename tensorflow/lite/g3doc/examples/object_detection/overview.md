@@ -4,7 +4,7 @@ Given an image or a video stream, an object detection model can identify which
 of a known set of objects might be present and provide information about their
 positions within the image.
 
-For example, this screenshot of the <a href="#get_started">example
+For example, this screenshot of the <a href="#get-started">example
 application</a> shows how two objects have been recognized and their positions
 annotated:
 
@@ -52,10 +52,10 @@ started.
 #### Android
 
 You can leverage the out-of-box API from
-[TensorFlow Lite Task Library](../../inference_with_metadata/task_library/object_detector)
+[TensorFlow Lite Task Library](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/inference_with_metadata/task_library/object_detector.md)
 to integrate object detection models in just a few lines of code. You can also
 build your own custom inference pipeline using the
-[TensorFlow Lite Interpreter Java API](../../guide/inference#load_and_run_a_model_in_java).
+[TensorFlow Lite Interpreter Java API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/guide/inference.md#load-and-run-a-model-in-java).
 
 The Android example below demonstrates the implementation for both methods as
 [lib_task_api](https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android/lib_task_api)
@@ -69,7 +69,7 @@ Android example</a>
 #### iOS
 
 You can integrate the model using the
-[TensorFlow Lite Interpreter Swift API](../../guide/inference#load_and_run_a_model_in_swift).
+[TensorFlow Lite Interpreter Swift API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/guide/inference.md#load-and-run-a-model-in-swift).
 See the iOS example below.
 
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/ios">View
