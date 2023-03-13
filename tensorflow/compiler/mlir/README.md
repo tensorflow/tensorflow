@@ -30,6 +30,6 @@ touch ${LLVM_SRC}/BUILD.bazel ${LLVM_SRC}/WORKSPACE
 You can then use this overlay to build TensorFlow:
 
 ```
-bazel build --override_repository=llvm-raw=$LLVM_BAZEL_OVERLAY \
+bazel build --override_repository="llvm-raw=${LLVM_SRC}" \
   -c opt tensorflow/compiler/mlir:tf-opt
 ```
