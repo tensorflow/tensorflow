@@ -564,6 +564,18 @@ class PjRtCApiDeviceTopology : public PjRtDeviceTopology {
       c_topology_;
 };
 
+class CApiCopyToDeviceStream : public CopyToDeviceStream {
+ public:
+  CApiCopyToDeviceStream(PJRT_CopyToDeviceStream* c_stream,
+                         const PJRT_Api* c_api);
+
+  PjRtFuture<Status> AddChunk(PjRtChunk chunk) override;
+
+ private:
+  PJRT_CopyToDeviceStream* c_stream_;
+  const PJRT_Api* c_api_;
+};
+
 StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     absl::string_view device_type,
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {});

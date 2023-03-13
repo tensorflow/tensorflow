@@ -147,6 +147,13 @@ xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
 
 absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api);
 
+// Releases `chunk`.
+PJRT_Chunk ConvertFromCppChunk(xla::PjRtChunk chunk);
+
+// Returned PjRtChunk takes ownership of data in PJRT_Chunk (i.e. chunk.deleter
+// should not be called).
+xla::PjRtChunk ConvertToCppChunk(const PJRT_Chunk& chunk);
+
 }  // namespace pjrt
 
 #endif  // TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_HELPERS_H_

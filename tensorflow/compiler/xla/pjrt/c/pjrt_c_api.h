@@ -1129,6 +1129,68 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_UnsafePointer_Args, buffer_pointer);
 typedef PJRT_Error* PJRT_Buffer_UnsafePointer(
     PJRT_Buffer_UnsafePointer_Args* args);
 
+// ---------------------------- CopyToDeviceStream -----------------------------
+
+struct PJRT_CopyToDeviceStream_AddChunk_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_CopyToDeviceStream* stream;
+  // Takes ownership of `chunk` (i.e. implementation will call chunk.deleter).
+  PJRT_Chunk* chunk;
+  PJRT_Event* transfer_complete;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_CopyToDeviceStream_AddChunk_Args, chunk);
+
+// Emplaces a new chunk of data to copy to the device. The transfer is started
+// immediately, and the returned event is triggered when the transfer completes
+// or fails.
+//
+// The returned event will indicate an error if the chunk's size causes the
+// amount of transferred data to exceed the total bytes, if the stream is
+// already complete, or if the chunk is not a multiple of the granule size.
+typedef PJRT_Error* PJRT_CopyToDeviceStream_AddChunk(
+    PJRT_CopyToDeviceStream_AddChunk_Args* args);
+
+struct PJRT_CopyToDeviceStream_TotalBytes_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_CopyToDeviceStream* stream;
+  int64_t total_bytes;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_CopyToDeviceStream_TotalBytes_Args, total_bytes);
+
+// Returns the total amount of data the stream expects to be transferred.
+typedef PJRT_Error* PJRT_CopyToDeviceStream_TotalBytes(
+    PJRT_CopyToDeviceStream_TotalBytes_Args* args);
+
+struct PJRT_CopyToDeviceStream_GranuleSize_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_CopyToDeviceStream* stream;
+  int64_t granule_size_in_bytes;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_CopyToDeviceStream_GranuleSize_Args,
+                          granule_size_in_bytes);
+
+// Returns the granule size in bytes. The size of the chunk added to this stream
+// must be a multiple of this number.
+typedef PJRT_Error* PJRT_CopyToDeviceStream_GranuleSize(
+    PJRT_CopyToDeviceStream_GranuleSize_Args* args);
+
+struct PJRT_CopyToDeviceStream_CurrentBytes_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_CopyToDeviceStream* stream;
+  int64_t current_bytes;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_CopyToDeviceStream_CurrentBytes_Args,
+                          current_bytes);
+
+// Returns the amount of data the stream currently has either transferred or has
+// buffered to transfer.
+typedef PJRT_Error* PJRT_CopyToDeviceStream_CurrentBytes(
+    PJRT_CopyToDeviceStream_CurrentBytes_Args* args);
+
 // ------------------------------ Device Topology ------------------------------
 
 typedef struct PJRT_DeviceTopology PJRT_DeviceTopology;
@@ -1284,6 +1346,11 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsOnCpu);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ReadyEvent);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnsafePointer);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_AddChunk);
+  _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_TotalBytes);
+  _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_GranuleSize);
+  _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_CurrentBytes);
 
   _PJRT_API_STRUCT_FIELD(PJRT_DeviceTopology_Create);
   _PJRT_API_STRUCT_FIELD(PJRT_DeviceTopology_Destroy);
