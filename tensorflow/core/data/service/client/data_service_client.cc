@@ -314,7 +314,8 @@ void DataServiceClient::UpdateIterationFinished(bool iteration_finished)
 
 StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 DataServiceClient::CreateWorkerClient(const std::string& protocol,
-                                      const TaskInfo& task_info) {
+                                      const TaskInfo& task_info,
+                                      bool check_compatibility) {
   for (const auto& transfer_server : task_info.transfer_servers()) {
     if (transfer_server.protocol() == protocol) {
       return CreateDataServiceWorkerClient(params_.protocol, transfer_server);
@@ -341,7 +342,8 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
     LOG(INFO)
         << "this task is participating in the \"data_transfer\" experiment.";
     StatusOr<std::unique_ptr<DataServiceWorkerClient>> worker =
-        CreateWorkerClient(default_protocol, task_info);
+        CreateWorkerClient(default_protocol, task_info,
+                           /*check_compatibility=*/true);
     if (worker.ok()) {
       LOG(INFO) << "Client " << params_.address
                 << " is participating in the \"data_transfer\" experiment.";

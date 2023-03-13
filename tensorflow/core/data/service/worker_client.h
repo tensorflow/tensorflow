@@ -68,11 +68,15 @@ class DataServiceWorkerClient : public DataServiceClientBase {
   std::unique_ptr<DataTransferClient> client_;
 };
 
-// Creates and initializes a new tf.data service worker client and checks its
-// compatibility with the worker server described `info`.
+// Creates and initializes a new tf.data service worker client and optionally
+// checks its compatibility with the worker server described `info`.
+// TODO(b/271858393): Always check compatibility (currently, the incompatibility
+//   check may return intentional false positives for safe early fallback in
+//   the alternative experimental default protocol case).
 StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 CreateDataServiceWorkerClient(const std::string& dispatcher_protocol,
-                              const DataTransferServerInfo& info);
+                              const DataTransferServerInfo& info,
+                              bool check_compatibility = false);
 
 }  // namespace data
 }  // namespace tensorflow
