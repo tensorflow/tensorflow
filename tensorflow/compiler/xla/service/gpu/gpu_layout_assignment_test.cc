@@ -174,7 +174,7 @@ TEST_F(LayoutAssignmentTest, DotOperandLayoutSetToBatchRowsColsOtherwise) {
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Dot(op::ShapeWithLayout("f32[2,3,5]{1,0,2}"),
+              op::Dot(op::ShapeWithLayout("f32[2,3,5]{0,1,2}"),
                       op::ShapeWithLayout("f32[3,4,5]{1,0,2}")));
 }
 
