@@ -33,6 +33,7 @@ limitations under the License.
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/minimal_logging.h"
 #endif  // TFLITE_KERNEL_USE_XNNPACK
 
 namespace tflite {
@@ -201,8 +202,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
               GetTensorData<float>(op_context.output),
               /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
           if (status != xnn_status_success) {
-            TF_LITE_KERNEL_LOG(context, "Failed to run xnn_run_maximum_nd_f32");
-            return kTfLiteError;
+            TFLITE_LOG(TFLITE_LOG_INFO,
+                       "Failed to run xnn_run_maximum_nd_f32. Error code: %d",
+                       status);
+            TFLiteOperation<kernel_type, float, OpType>(context, node,
+                                                        op_context);
           }
         } else if (std::is_same<OpType, MinimumOp>::value) {
           status = xnn_run_minimum_nd_f32(
@@ -212,8 +216,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
               GetTensorData<float>(op_context.output),
               /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
           if (status != xnn_status_success) {
-            TF_LITE_KERNEL_LOG(context, "Failed to run xnn_run_minimum_nd_f32");
-            return kTfLiteError;
+            TFLITE_LOG(TFLITE_LOG_INFO,
+                       "Failed to run xnn_run_minimum_nd_f32. Error code: %d",
+                       status);
+            TFLiteOperation<kernel_type, float, OpType>(context, node,
+                                                        op_context);
           }
         }
         break;

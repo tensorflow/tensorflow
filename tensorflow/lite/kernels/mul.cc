@@ -42,6 +42,7 @@ limitations under the License.
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/minimal_logging.h"
 #endif  // TFLITE_KERNEL_USE_XNNPACK
 
 namespace tflite {
@@ -215,7 +216,14 @@ void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
             output_min, output_max,
             /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
         if (status != xnn_status_success) {
-          TF_LITE_KERNEL_LOG(context, "Failed to run xnn_run_multiply_nd_f32");
+          TFLITE_LOG(TFLITE_LOG_INFO,
+                     "Failed to run xnn_run_multiply_nd_f32. Error code: %d",
+                     status);
+          if (need_broadcast) {
+            TF_LITE_MUL(reference_ops, BroadcastMul4DSlow, float);
+          } else {
+            TF_LITE_MUL(reference_ops, Mul, float);
+          }
         }
         return;
       }
