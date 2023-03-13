@@ -753,6 +753,7 @@ cc_library(
         "mhlo/transforms/passes.h",
         "mhlo/transforms/rewriters.h",
         "mhlo/utils/legalize_to_linalg_utils.h",
+        "mhlo/utils/mhlo_rng_utils.h",
     ],
     strip_include_prefix = ".",
     deps = [
@@ -766,6 +767,7 @@ cc_library(
         ":map_hlo_to_lhlo_op",
         ":map_mhlo_to_scalar_op",
         ":mhlo_pass_inc_gen",
+        ":mhlo_rng_utils",
         ":mhlo_scatter_gather_utils",
         ":mlir_hlo",
         ":shape_component_analysis",
@@ -1005,6 +1007,25 @@ cc_library(
         "@llvm-project//mlir:TensorUtils",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:chlo_ops",
+    ],
+)
+
+cc_library(
+    name = "mhlo_rng_utils",
+    srcs = ["mhlo/utils/mhlo_rng_utils.cc"],
+    hdrs = ["mhlo/utils/mhlo_rng_utils.h"],
+    strip_include_prefix = ".",
+    deps = [
+        ":mlir_hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:DialectUtils",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgDialect",
+        "@llvm-project//mlir:MathDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 

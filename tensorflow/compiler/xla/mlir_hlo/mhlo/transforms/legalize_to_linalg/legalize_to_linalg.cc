@@ -24,17 +24,13 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/BitVector.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SetVector.h"
-#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/iterator_range.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "mhlo/transforms/passes.h"
 #include "mhlo/transforms/rewriters.h"
 #include "mhlo/utils/legalize_to_linalg_utils.h"
+#include "mhlo/utils/mhlo_rng_utils.h"
 #include "mhlo/utils/type_conversion.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
@@ -49,7 +45,6 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
@@ -2274,6 +2269,32 @@ struct ReduceOpToReduceConverter : public OpConversionPattern<mhlo::ReduceOp> {
   }
 };
 
+class RngBitGeneratorConverter
+    : public OpConversionPattern<mhlo::RngBitGeneratorOp> {
+  using OpConversionPattern<mhlo::RngBitGeneratorOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      RngBitGeneratorOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    Location loc = op.getLoc();
+    Value state = adaptor.getInitialState();
+    ShapedType resultTy =
+        this->typeConverter->convertType(op.getResult(1).getType())
+            .cast<ShapedType>();
+
+    if (op.getRngAlgorithm() == mhlo::RngAlgorithm::THREE_FRY) {
+      Value random;
+      if (generateLinalgThreeFry(rewriter, loc, resultTy, state, random)
+              .failed())
+        return failure();
+      rewriter.replaceOp(op, {state, random});
+      return success();
+    }
+
+    return failure();
+  }
+};
+
 /// Converts xla-hlo.select_and_scatter op to a sequence of linalg.generics ops.
 /// The current version computes the scattered index and populates the correct
 /// value for each tile. It does not currently handle overlapping tiles.
@@ -4392,6 +4413,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PadOpNegativePaddingConversion,
       ReduceWindowOpOnTensorsGenericConversion,
       ReduceWindowOpConversion,
+      RngBitGeneratorConverter,
       RngUniformConversion,
       TorchIndexSelectOpConversion,
       SelectAndScatterNoOverlapConverter,
