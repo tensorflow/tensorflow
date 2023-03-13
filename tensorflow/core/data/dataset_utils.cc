@@ -966,7 +966,7 @@ REGISTER_DATASET_EXPERIMENT("stage_based_autotune",
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune_v2",
                             RandomJobSamplePercentage<10>,
                             IndependentHostTasks);
-REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<0>,
+REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<1>,
                             IndependentHostTasks);
 }  // namespace
 }  // namespace data
