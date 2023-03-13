@@ -1795,15 +1795,18 @@ std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota,
     // If it traces back to the argument from a non-entry computation,
     // check if the argument in the caller's computation could be a iota.
     const HloComputation* called_computation = maybe_iota->parent();
-    const HloInstruction* gte = maybe_iota;
-    const int64_t gte_index = gte->tuple_index();
     if (!called_computation->IsEntryComputation()) {
-      // Support tracing only caller that's either a conditional or while
-      // (other types of non-entry computations are not partitioned).
+      const HloInstruction* gte = maybe_iota;
+      const int64_t gte_index = gte->tuple_index();
       std::vector<HloInstruction*> callers =
           call_graph.GetComputationCallers(called_computation);
+      // FlattenCallGraph pass should have ensured that this call site is
+      // associated with an unique computation.
+      CHECK_EQ(callers.size(), 1);
       HloInstruction* caller =
           call_graph.GetComputationCallers(called_computation)[0];
+      // Support tracing only caller that's either a conditional or while
+      // (other types of non-entry computations are not partitioned).
       if (caller->opcode() == HloOpcode::kWhile &&
           caller->operand(0)->opcode() == HloOpcode::kTuple) {
         // Check tuple parameter of the while body is invariant at tuple index
@@ -1816,7 +1819,14 @@ std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota,
         }
       }
       if (caller->opcode() == HloOpcode::kConditional) {
-        return GetDimensionForIota(caller->operand(0)->operand(gte_index),
+        int64_t cond_comp_idx =
+            absl::c_find(caller->branch_computations(), called_computation) -
+            caller->branch_computations().begin();
+        CHECK(cond_comp_idx < caller->branch_computations().size());
+        const HloInstruction* branch_comp_arg =
+            caller->operand(cond_comp_idx + 1);
+        CHECK(branch_comp_arg->shape().IsTuple());
+        return GetDimensionForIota(branch_comp_arg->operand(gte_index),
                                    call_graph);
       }
     }
