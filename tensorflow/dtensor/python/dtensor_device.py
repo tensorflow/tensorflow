@@ -307,7 +307,12 @@ class DTensorDevice(object):
 
     Returns:
       bool, True if the given tensor is a DTensor.
+
+    Raises:
+      RuntimeError: When not called eagerly.
     """
+    if not context.executing_eagerly():
+      raise RuntimeError("is_dtensor must be called eagerly.")
     if not tensor_util.is_tensor(tensor):
       return False
     if isinstance(tensor, variables.Variable):
