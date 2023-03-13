@@ -1624,11 +1624,10 @@ void DTensorDevice::ModuleToExecutionFunctions(
   // After MLIR transformations, exactly one StatefulPartitionedCall op is
   // returned for mesh cluster in computation. Identity all functions to execute
   // for each mesh and relevant input and output information.
-  ASSIGN_OR_RETURN_C_STATUS(
-      ExecutionFunctions functions,
-      IdentifyAllFunctionsToExecute(*lowering_context.graph,
-                                    lowering_context.global_output_shapes),
-      status);
+  ASSIGN_OR_RETURN_C_STATUS(ExecutionFunctions functions,
+                            IdentifyAllFunctionsToExecute(
+                                *graph, lowering_context.global_output_shapes),
+                            status);
 
   // In order to ensure that all resource assign operations as well as side
   // effecting ops are executed, we add identity ops before function outputs
@@ -1636,14 +1635,13 @@ void DTensorDevice::ModuleToExecutionFunctions(
   RETURN_C_STATUS_IF_NOT_OK(MaybeInsertIdentityNodes(function_def, graph),
                             status);
 
-  VLOG(4) << tensorflow::DumpGraphToFile("after_post_processing_graph",
-                                         *lowering_context.graph, flib_def);
+  VLOG(4) << tensorflow::DumpGraphToFile("after_post_processing_graph", *graph,
+                                         flib_def);
 
-  RETURN_C_STATUS_IF_NOT_OK(
-      AddExecutionFunctionDefsToFunctionDefLibrary(
-          doperation.name, doperation.stack_traces, control_ret_nodes, context,
-          *lowering_context.graph, &functions),
-      status);
+  RETURN_C_STATUS_IF_NOT_OK(AddExecutionFunctionDefsToFunctionDefLibrary(
+                                doperation.name, doperation.stack_traces,
+                                control_ret_nodes, context, *graph, &functions),
+                            status);
   functions.num_device_ids = 1;
   if (function_def) {
     for (TranslatedFunction& function : functions.function_list) {
