@@ -472,7 +472,7 @@ genrule(
         "$(location gen_while_v1) --saved_model_path=$(RULEDIR)/while_v1",
         "touch $(OUTS)",  # TODO(b/188517768): fix model gen.
     ),
-    exec_tools = ["gen_while_v1"],
+    tools = ["gen_while_v1"],
 )
 
 genrule(
@@ -486,7 +486,7 @@ genrule(
         "$(location gen_hash_table_asset_v1) --saved_model_path=$(RULEDIR)/hash_table_asset_v1",
         "touch $(OUTS)",  # TODO(b/188517768): fix model gen.
     ),
-    exec_tools = ["gen_hash_table_asset_v1"],
+    tools = ["gen_hash_table_asset_v1"],
 )
 
 genrule(
@@ -499,7 +499,7 @@ genrule(
         "$(location gen_error_v1) --saved_model_path=$(RULEDIR)/error_v1",
         "touch $(OUTS)",  # TODO(b/188517768): fix model gen.
     ),
-    exec_tools = ["gen_error_v1"],
+    tools = ["gen_error_v1"],
 )
 
 genrule(
@@ -512,7 +512,7 @@ genrule(
         "$(location gen_control_flow_v1) --saved_model_path=$(RULEDIR)/control_flow_v1",
         "touch $(OUTS)",  # TODO(b/188517768): fix model gen.
     ),
-    exec_tools = ["gen_control_flow_v1"],
+    tools = ["gen_control_flow_v1"],
 )
 
 genrule(
@@ -525,7 +525,7 @@ genrule(
         "$(location gen_pow) --saved_model_path=$(RULEDIR)/pow",
         "touch $(OUTS)",  # TODO(b/188517768): fix model gen.
     ),
-    exec_tools = ["gen_pow"],
+    tools = ["gen_pow"],
 )
 
 genrule(
@@ -538,7 +538,7 @@ genrule(
         "$(location gen_sparse_tensor_input) --saved_model_path=$(RULEDIR)/sparse_tensor_input",
         "touch $(OUTS)",  # TODO(b/188517768): fix model gen.
     ),
-    exec_tools = ["gen_sparse_tensor_input"],
+    tools = ["gen_sparse_tensor_input"],
 )
 
 genrule(
@@ -548,7 +548,7 @@ genrule(
         "pow_v2/saved_model.pb",
     ],
     cmd = "$(location gen_pow_v2) --saved_model_path=$(RULEDIR)/pow_v2",
-    exec_tools = ["gen_pow_v2"],
+    tools = ["gen_pow_v2"],
 )
 
 genrule(
@@ -558,7 +558,7 @@ genrule(
         "data/saved_model.pb",
     ],
     cmd = "$(location gen_data) --saved_model_path=$(RULEDIR)/data",
-    exec_tools = ["gen_data"],
+    tools = ["gen_data"],
 )
 
 cc_library(
