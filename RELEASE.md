@@ -71,6 +71,11 @@
         evaluating Keras models trained with
         `tf.distribute.ParameterServerStrategy`, via the
         `exact_evaluation_shards` argument in `Model.fit` and `Model.evaluate`.
+    *   Added `tf.keras.__internal__.KerasTensor`,
+        `tf.keras.__internal__.SparseKerasTensor`, and
+        `tf.keras.__internal__.RaggedKerasTensor` classes. You can use these
+        classes to do instance type checking and type annotations for
+        layer/model inputs and outputs.
 
 *   `tf.function`:
 
