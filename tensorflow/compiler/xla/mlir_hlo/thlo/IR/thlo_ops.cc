@@ -112,7 +112,7 @@ ParseResult parseKeywordOperandListWithTypes(
     if (parser.parseCommaSeparatedList(
             AsmParser::Delimiter::Paren, [&]() -> ParseResult {
               if (parser.parseOperand(operands.emplace_back(),
-                                      /*allowResultNumber=*/false) ||
+                                      /*allowResultNumber=*/true) ||
                   parser.parseColon() ||
                   parser.parseType(operandTypes->emplace_back())) {
                 return failure();
