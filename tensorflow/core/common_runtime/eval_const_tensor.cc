@@ -212,7 +212,7 @@ bool IsSupportedForEvaluation(const Node& node) {
   // During graph construction, back edges may not be filled in. In addition,
   // control flow constructs may depend on control edges which get erased by
   // the subgraph extraction logic.
-  if (node.IsControlFlow()) {
+  if (node.IsEnter() || node.IsExit() || node.IsMerge()) {
     return false;
   }
 
