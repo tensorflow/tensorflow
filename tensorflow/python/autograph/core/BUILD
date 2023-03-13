@@ -34,7 +34,7 @@ py_library(
         "//tensorflow/python/autograph/operators",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
-        "//tensorflow/python/autograph/utils",
+        "//tensorflow/python/autograph/utils:ag_logging",
         "@gast_archive//:gast",
     ],
 )
@@ -52,7 +52,6 @@ py_library(
         "//tensorflow/python/autograph/operators",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
-        "//tensorflow/python/autograph/utils",
         "@gast_archive//:gast",
     ],
 )

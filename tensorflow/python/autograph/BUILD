@@ -30,6 +30,7 @@ py_strict_library(
         "//tensorflow/python/autograph/impl",
         "//tensorflow/python/autograph/lang",
         "//tensorflow/python/autograph/operators",
-        "//tensorflow/python/autograph/utils",
+        "//tensorflow/python/autograph/utils:__init__",
+        "//tensorflow/python/autograph/utils:ag_logging",
     ],
 )

@@ -35,7 +35,7 @@ py_library(
         "//tensorflow/python/autograph/operators",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
-        "//tensorflow/python/autograph/utils",
+        "//tensorflow/python/autograph/utils:ag_logging",
         "@gast_archive//:gast",
     ],
 )
@@ -49,7 +49,8 @@ tf_py_test(
         ":impl",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/utils",
+        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/utils:ag_logging",
         "//third_party/py/numpy",
     ],
 )
