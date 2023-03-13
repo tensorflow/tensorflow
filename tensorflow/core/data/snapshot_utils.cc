@@ -738,11 +738,17 @@ Status TFRecordReader::ReadTensors(std::vector<Tensor>* read_tensors) {
     TF_RETURN_IF_ERROR(record_reader_->ReadRecord(&offset_, &record));
 
     TensorProto proto;
-    proto.ParseFromArray(record.data(), record.size());
+    if (!proto.ParseFromArray(record.data(), record.size())) {
+      return errors::DataLoss(
+          "Unable to parse tensor from stored proto in file: ", filename_,
+          ", record ", offset_, ". Serialized proto: ", record);
+    }
 
     Tensor tensor;
     if (!tensor.FromProto(proto)) {
-      return errors::DataLoss("Unable to parse tensor from stored proto.");
+      return errors::DataLoss(
+          "Unable to parse tensor from stored proto in file: ", filename_,
+          ", record ", offset_, ". TensorProto: ", proto.ShortDebugString());
     }
 
     read_tensors->push_back(std::move(tensor));
