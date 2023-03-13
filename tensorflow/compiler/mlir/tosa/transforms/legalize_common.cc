@@ -208,7 +208,7 @@ std::optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   // Negative values are also allowed up to -(rank(input)+1)
   // where the axis "wraps around".
   if (axis < 0) axis += input_tensor_rank;
-  if ((axis < 0) || (axis > (input_tensor_rank + 1))) {
+  if ((axis < 0) || (axis > input_tensor_rank)) {
     (void)rewriter.notifyMatchFailure(op, "axis out of valid range");
     return std::nullopt;
   }
