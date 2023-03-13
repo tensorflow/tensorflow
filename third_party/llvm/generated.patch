@@ -95,15 +95,14 @@ diff -ruN --strip-trailing-cr a/clang/test/Modules/pr61065.cppm b/clang/test/Mod
 -void d() {
 -    c _;
 -}
-diff -ruN --strip-trailing-cr a/libcxx/include/optional b/libcxx/include/optional
---- a/libcxx/include/optional
-+++ b/libcxx/include/optional
-@@ -172,6 +172,8 @@
- #include <__type_traits/is_trivially_destructible.h>
- #include <__type_traits/is_trivially_move_assignable.h>
- #include <__type_traits/is_trivially_move_constructible.h>
-+#include <__type_traits/conjunction.h>
-+#include <__type_traits/disjunction.h>
- #include <__type_traits/negation.h>
- #include <__utility/declval.h>
- #include <__utility/forward.h>
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -209,6 +209,7 @@
+     hdrs = ["src/__support/CPP/atomic.h"],
+     deps = [
+         ":__support_cpp_type_traits",
++        ":__support_macros_attributes",
+         ":libc_root",
+     ],
+ )
