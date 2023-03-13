@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -47,8 +48,10 @@ static constexpr ResourceId kUnknownResourceId =
     TF::detail::ResourceAliasAnalysisInfo::kUnknownResourceId;
 static constexpr ResourceId kInvalidResourceId =
     TF::detail::ResourceAliasAnalysisInfo::kInvalidResourceId;
-using OperationSetTy = SmallPtrSet<Operation*, 4>;
-using ResourceToOpsMapTy = DenseMap<ResourceId, OperationSetTy>;
+using OperationSetTy = llvm::SmallPtrSet<Operation*, 4>;
+using ResourceToOpsMapTy = llvm::DenseMap<ResourceId, OperationSetTy>;
+using OpToResourcesMapTy =
+    llvm::DenseMap<Operation*, llvm::SmallVector<ResourceId>>;
 
 #define GEN_PASS_DEF_EXECUTORCONVERTCONTROLTODATAOUTPUTSPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
@@ -83,6 +86,116 @@ SmallVector<TF::WhileOp> GetWhileCallers(func::FuncOp func,
   return while_callers;
 }
 
+Operation& GetWrappedOp(IslandOp island) {
+  // This pass assumes that all functions are suitable for export i.e., each
+  // function has a single tf_executor.graph op and all islands wrap the
+  // internal op perfectly. Hence the body will only have a single op.
+  return island.GetBody().front();
+}
+
+llvm::SmallVector<Operation*> FindAllPrecedessors(IslandOp op) {
+  std::queue<IslandOp> worklist;
+  worklist.push(op);
+  llvm::SmallVector<Operation*> wrapped_ops;
+  while (!worklist.empty()) {
+    IslandOp curr_island = worklist.front();
+    worklist.pop();
+    Operation& wrapped_op = GetWrappedOp(curr_island);
+
+    // Add data predecessor ops to worklist.
+    for (Value operand : wrapped_op.getOperands()) {
+      auto defining_op = operand.getDefiningOp();
+      if (!defining_op) continue;
+      auto defining_island = dyn_cast<IslandOp>(defining_op);
+      if (!defining_island) continue;
+      worklist.push(defining_island);
+    }
+    // Add wrapped op to return set.
+    wrapped_ops.push_back(&wrapped_op);
+  }
+  return wrapped_ops;
+}
+
+llvm::SmallVector<ResourceId> OpSetToResources(
+    llvm::SmallVector<Operation*> ops,
+    const OpToResourcesMapTy& op_to_chain_resources_map) {
+  llvm::SmallVector<ResourceId> result;
+  for (auto wrapped_op : ops) {
+    auto iter = op_to_chain_resources_map.find(wrapped_op);
+    if (iter != op_to_chain_resources_map.end()) {
+      for (auto resource_id : iter->second) {
+        result.push_back(resource_id);
+      }
+    }
+  }
+  return result;
+}
+
+// Merges all resources that are device-related into the same equivalence class.
+// More exactly, we do the following:
+// 1) Collect device computation ops (`TPUExecuteOp` etc.).
+// 2) Traverse all ops on which device computation depends (data dependency).
+// 3) Merge all equivalence classes of resources used by such ops, so we have
+//    one equivalence class per TPUExecute-like op.
+// 4) Merge all equivalence classes of resources not in any TPUExecuteOp.
+void MergeDeviceRelatedResources(
+    GraphOp graph_op, const ResourceToOpsMapTy& chain_resource_to_ops_map,
+    const OpToResourcesMapTy& op_to_chain_resources_map,
+    llvm::EquivalenceClasses<ResourceId>& resource_equivalence_classes) {
+  // Collect islands that wrap TPU execute ops.
+  llvm::SmallVector<IslandOp> tpu_ops;
+  graph_op.walk([&](IslandOp island) {
+    if (isa<TF::TPUExecuteAndUpdateVariablesOp, TF::TPUExecuteOp>(
+            GetWrappedOp(island))) {
+      tpu_ops.push_back(island);
+    }
+  });
+
+  if (tpu_ops.empty()) {
+    // If we don't have any TPU code, leave things as is.
+    return;
+  }
+
+  llvm::DenseSet<ResourceId> tpu_resources;
+  for (auto op : tpu_ops) {
+    auto predecessors = FindAllPrecedessors(op);
+    ResourceId prev_resource_id = kInvalidResourceId;
+    for (auto resource_id :
+         OpSetToResources(predecessors, op_to_chain_resources_map)) {
+      if (prev_resource_id != kInvalidResourceId) {
+        resource_equivalence_classes.unionSets(prev_resource_id, resource_id);
+      }
+      prev_resource_id = resource_id;
+    }
+    if (prev_resource_id != kInvalidResourceId) {
+      tpu_resources.insert(prev_resource_id);
+    }
+  }
+
+  // Merge all non-tpu resources into one.
+  ResourceId prev_resource_id = kInvalidResourceId;
+  for (auto [resource_id, ops] : chain_resource_to_ops_map) {
+    // We have multiple TPU classes, one for each TPU op. So to check whether
+    // an op is non-TPU, we have to check them all.
+    bool is_tpu = false;
+    for (auto device_related_resource_id : tpu_resources) {
+      if (resource_equivalence_classes.isEquivalent(
+              resource_id, device_related_resource_id)) {
+        is_tpu = true;
+        break;
+      }
+    }
+    if (is_tpu) continue;
+
+    if (prev_resource_id != kInvalidResourceId) {
+      // Merge class of current ID with class of previous ID since both
+      // resources are device-related.
+      resource_equivalence_classes.unionSets(prev_resource_id, resource_id);
+    }
+    prev_resource_id = resource_id;
+  }
+}
+
 // Populates `chain_resource_to_ops_map`, the map from all resources that need
 // to be chained to the set of operations that access the resource, and
 // `resource_equivalence_classes`. Resources are equivalent if they are accessed
@@ -90,17 +203,15 @@ SmallVector<TF::WhileOp> GetWhileCallers(func::FuncOp func,
 void CollectChainResources(
     func::FuncOp func, ResourceToOpsMapTy& chain_resource_to_ops_map,
     llvm::EquivalenceClasses<ResourceId>& resource_equivalence_classes,
-    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+    const TF::SideEffectAnalysis::Info& side_effect_analysis,
+    bool coarse_tpu_tokens) {
   auto graph_op = cast<GraphOp>(func.front().front());
 
   // For each op in the graph, get the resources it uses and update the access
   // information for them.
+  OpToResourcesMapTy op_to_chain_resources_map;
   graph_op.walk([&](IslandOp island) {
-    // This pass assumes that all functions are suitable for export i.e., each
-    // function has a single tf_executor.graph op and all islands wrap the
-    // internal op perfectly. Hence this assertion should never fail.
-    assert(island.WrapsSingleOp());
-    Operation& op = island.GetBody().front();
+    Operation& op = GetWrappedOp(island);
 
     ResourceId prev_resource_id = kInvalidResourceId;
     for (auto resource_id_read_only_pair :
@@ -112,6 +223,7 @@ void CollectChainResources(
       // resource. This enables more parallelism across iterations.
       if (!side_effect_analysis.IsUniqueResourceAllocationId(resource_id)) {
         chain_resource_to_ops_map[resource_id].insert(&op);
+        op_to_chain_resources_map[&op].push_back(resource_id);
         if (prev_resource_id != kInvalidResourceId) {
           // Merge class of current ID with class of previous ID since both
           // resources are accessed by `op`.
@@ -123,6 +235,12 @@ void CollectChainResources(
       }
     }
   });
+
+  if (coarse_tpu_tokens) {
+    MergeDeviceRelatedResources(graph_op, chain_resource_to_ops_map,
+                                op_to_chain_resources_map,
+                                resource_equivalence_classes);
+  }
 }
 
 // tf.NoOp islands are used to combine multiple control dependencies into one.
@@ -150,7 +268,7 @@ bool IsNoOpControlBarrier(Value control) {
   // is checked at the very beginning of the pass.
   assert(control_island.WrapsSingleOp());
   return control_island.getOutputs().empty() &&
-         isa<TF::NoOp>(control_island.GetBody().front());
+         isa<TF::NoOp>(GetWrappedOp(control_island));
 }
 
 // Remove all control outputs of the function. Traverses NoOp control barrier
@@ -386,7 +504,8 @@ TF::WhileOp RewriteWhileOp(TF::WhileOp while_op, int num_resource_inputs,
 void ConvertControlToDataOutputs(
     func::FuncOp while_body, SmallVectorImpl<TF::WhileOp>& while_callers,
     OperationSetTy& recompute_analysis_for_funcs,
-    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+    const TF::SideEffectAnalysis::Info& side_effect_analysis,
+    bool coarse_tpu_tokens) {
   if (while_callers.empty()) return;
 
   // Collect access information for each resource in the while body that needs
@@ -395,7 +514,8 @@ void ConvertControlToDataOutputs(
   ResourceToOpsMapTy chain_resource_to_ops_map;
   llvm::EquivalenceClasses<ResourceId> resource_equivalence_classes;
   CollectChainResources(while_body, chain_resource_to_ops_map,
-                        resource_equivalence_classes, side_effect_analysis);
+                        resource_equivalence_classes, side_effect_analysis,
+                        coarse_tpu_tokens);
 
   // Check for presence of unknown side-effecting ops within the while loop
   // body. These ops act as barriers and the optimization would not yield much
@@ -457,8 +577,8 @@ void ConvertControlToDataOutputs(
 void ConvertControlToDataOutputsPass::runOnOperation() {
   ModuleOp module = getOperation();
   // This pass assumes that all functions are suitable for export i.e., each
-  // function has a single tf_executor.graph op and all islands wrap the
-  // internal op perfectly. Verify that in the beginning once.
+  // function has a single tf_executor.graph op and all islands wrap exactly
+  // one op. Verify that in the beginning once.
   if (failed(tensorflow::VerifyExportSuitable(module))) {
     signalPassFailure();
     return;
@@ -495,7 +615,8 @@ void ConvertControlToDataOutputsPass::runOnOperation() {
     }
     ConvertControlToDataOutputs(
         while_body, while_callers, recompute_analysis_for_funcs,
-        side_effect_analysis.GetAnalysisForFunc(while_body));
+        side_effect_analysis.GetAnalysisForFunc(while_body),
+        coarse_tpu_tokens_);
   }
 }
 
