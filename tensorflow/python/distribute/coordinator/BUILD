@@ -25,7 +25,6 @@ py_library(
         "//tensorflow/python:training_server_lib",
         "//tensorflow/python:util",
         "//tensorflow/python/distribute:input_lib",
-        "//tensorflow/python/distribute:parameter_server_strategy_v2",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:cancellation",
         "//tensorflow/python/eager:context",

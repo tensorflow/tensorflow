@@ -2257,6 +2257,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tf_decorator",
         "//tensorflow/python:util",
+        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/training:server_lib",

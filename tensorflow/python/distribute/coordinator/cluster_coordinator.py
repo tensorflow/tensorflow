@@ -27,7 +27,6 @@ import weakref
 
 from six.moves import queue
 
-from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.coordinator import coordinator_context
 from tensorflow.python.distribute.coordinator import metric_utils
 from tensorflow.python.distribute.coordinator import remote_value
@@ -1138,8 +1137,7 @@ class ClusterCoordinator(object):
       ValueError: if the strategy being used is not supported.
     """
     if not getattr(self, "_has_initialized", False):
-      if not isinstance(strategy,
-                        parameter_server_strategy_v2.ParameterServerStrategyV2):
+      if not hasattr(strategy, "_is_parameter_server_strategy_v2"):
         raise ValueError(
             "Only `tf.distribute.experimental.ParameterServerStrategy` "
             "is supported to work with "
