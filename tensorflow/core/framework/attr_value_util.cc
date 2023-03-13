@@ -39,7 +39,13 @@ namespace attr_value_util_internal {
 // not fully defined return -1.
 int64_t TensorByteSize(const TensorProto& t) {
   // num_elements returns -1 if shape is not fully defined.
-  int64_t num_elems = PartialTensorShape(t.tensor_shape()).num_elements();
+  auto result = PartialTensorShape::BuildPartialTensorShape(t.tensor_shape());
+  if (!result.ok()) {
+    VLOG(1) << "Error encounted while computing computing tensor byte size: "
+            << result.status();
+    return -1;
+  }
+  int64_t num_elems = result.value().num_elements();
   if (num_elems < 0) {
     return -1;
   }
