@@ -76,6 +76,36 @@ class Fingerprint(object):
         proto.checkpoint_hash,
         proto.version)
 
+  def singleprint(self):
+    """Canonical fingerprinting ID for a SavedModel.
+
+    Uniquely identifies a SavedModel based on the regularized fingerprint
+    attributes. (saved_model_checksum is sensitive to immaterial changes and
+    thus non-deterministic.)
+
+    Returns:
+      The string concatenation of `graph_def_program_hash`,
+      `signature_def_hash`, and `saved_object_graph_hash`
+      fingerprint attributes (separated by '/').
+
+    Raises:
+      ValueError: If the fingerprint fields cannot be used to construct the
+      singleprint.
+    """
+    try:
+      return fingerprinting_pywrap.Singleprint(self.graph_def_program_hash,
+                                               self.signature_def_hash,
+                                               self.saved_object_graph_hash,
+                                               self.checkpoint_hash)
+    except (TypeError, fingerprinting_pywrap.FingerprintException) as e:
+      raise ValueError(
+          f"Encounted invalid fingerprint values when constructing singleprint."
+          f"graph_def_program_hash: {self.graph_def_program_hash}"
+          f"signature_def_hash: {self.signature_def_hash}"
+          f"saved_object_graph_hash: {self.saved_object_graph_hash}"
+          f"checkpoint_hash: {self.checkpoint_hash}"
+          f"{e}") from None
+
 
 @tf_export("saved_model.experimental.read_fingerprint", v1=[])
 def read_fingerprint(export_dir):
@@ -95,7 +125,7 @@ def read_fingerprint(export_dir):
     A `tf.saved_model.experimental.Fingerprint`.
 
   Raises:
-    FingerprintException: If no or an invalid fingerprint is found.
+    FileNotFoundError: If no or an invalid fingerprint is found.
   """
   try:
     fingerprint = fingerprinting_pywrap.ReadSavedModelFingerprint(export_dir)

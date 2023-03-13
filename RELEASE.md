@@ -99,6 +99,9 @@
     *   Introduce class method
         `tf.saved_model.experimental.Fingerprint.from_proto(proto)`, which can
         be used to construct a `Fingerprint` object directly from a protobuf.
+    *   Introduce member method
+        `tf.saved_model.experimental.Fingerprint.singleprint()`, which provides
+        a convenient way to uniquely identify a SavedModel.
 
 ## Bug Fixes and Other Changes
 

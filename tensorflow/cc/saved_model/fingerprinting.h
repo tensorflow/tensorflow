@@ -36,6 +36,13 @@ StatusOr<FingerprintDef> CreateFingerprintDef(const SavedModel& saved_model,
 StatusOr<FingerprintDef> ReadSavedModelFingerprint(
     absl::string_view export_dir);
 
+// Canonical fingerprinting ID for a SavedModel.
+std::string Singleprint(uint64 graph_def_program_hash,
+                        uint64 signature_def_hash,
+                        uint64 saved_object_graph_hash, uint64 checkpoint_hash);
+std::string Singleprint(const FingerprintDef& fingerprint);
+std::string Singleprint(absl::string_view export_dir);
+
 }  // namespace tensorflow::saved_model::fingerprinting
 
 #endif  // TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
