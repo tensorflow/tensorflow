@@ -32,7 +32,9 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "stablehlo/transforms/Passes.h"  // from @stablehlo
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -52,11 +54,13 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// Version 1 used MHLO, not supported anymore.
-// Version 2 supports StableHLO. From 10/2022. Minimum from 03/2023.
+// Version 1 used MHLO & CHLO, not supported anymore.
+// Version 2 supports StableHLO & CHLO. From 10/2022. Minimum from 03/2023.
 const int VERSION_START_STABLE_HLO = 2;
 // Version 3 supports platform checking and multiple platforms. From 02/2023.
 const int VERSION_START_PLATFORMS = 3;
+// Version 4 supports StableHLO with compatibility guarantees. From 03/2023
+const int VERSION_START_STABLE_HLO_COMPATIBILITY = 4;
 const int VERSION_MINIMUM_SUPPORTED = VERSION_START_STABLE_HLO;
 
 // Computes a dimension value from the dim_arg specification.
@@ -351,9 +355,14 @@ Status LoadAndPreprocessModule(int version,
   context->loadDialect<mlir::stablehlo::StablehloDialect>();
   context->loadDialect<mlir::mhlo::MhloDialect>();
   context->loadDialect<mlir::chlo::ChloDialect>();
+  context->loadDialect<mlir::vhlo::VhloDialect>();
   // Parses both IR text and bytecode.
-  *module = mlir::parseSourceString<mlir::ModuleOp>(llvm::StringRef(module_str),
-                                                    context);
+  if (version >= VERSION_START_STABLE_HLO_COMPATIBILITY) {
+    *module = mlir::stablehlo::deserializePortableArtifact(module_str, context);
+  } else {
+    *module = mlir::parseSourceString<mlir::ModuleOp>(module_str, context);
+  }
+
   if (!*module) {
     return errors::InvalidArgument("Cannot deserialize computation");
   }
