@@ -217,7 +217,6 @@ static Status CreateHloXlaPipeline(
   // Handle framework specific requirements for buffers and then insert
   // deallocations for temporary buffers.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertLinalgToLoopsPass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::gml_st::createGmlStToScfPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
   mlir::bufferization::BufferResultsToOutParamsOptions out_params_options;

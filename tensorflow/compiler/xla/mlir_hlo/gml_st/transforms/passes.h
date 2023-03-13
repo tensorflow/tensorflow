@@ -72,10 +72,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTileByOnePass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createComposeExtractInsertSlicePass();
 
-/// Create a pass to convert `gml_st.loop` to `scf.for` and `scf.parallel`
-/// loops and memref.load/memref.store accesses.
-std::unique_ptr<OperationPass<func::FuncOp>> createGmlStToScfPass();
-
 /// Pass to vectorize compute ops and scf.for loops that are tiled perfectly.
 std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeForCPUPass();
 

@@ -44,7 +44,6 @@ add_mlir_library(GmlStPasses
   cpu_tiling/transform_sort_for_cpu.cc
   cpu_tiling/transform_transpose_for_cpu.cc
   fusion/fusion.cc
-  gml_st_to_scf/gml_st_to_scf.cc
   passes.cc
   peeling/peeling.cc
   rewrite_from_elements_op/rewrite_from_elements_op.cc

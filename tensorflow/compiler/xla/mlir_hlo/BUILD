@@ -1473,7 +1473,6 @@ cc_library(
         "gml_st/transforms/cpu_tiling/transform_sort_for_cpu.cc",
         "gml_st/transforms/cpu_tiling/transform_transpose_for_cpu.cc",
         "gml_st/transforms/fusion/fusion.cc",
-        "gml_st/transforms/gml_st_to_scf/gml_st_to_scf.cc",
         "gml_st/transforms/passes.cc",
         "gml_st/transforms/passes.h.inc",
         "gml_st/transforms/peeling/peeling.cc",

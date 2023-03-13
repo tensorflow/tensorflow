@@ -202,9 +202,6 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // Remove trivial copy operations.
   pm.addNestedPass<FuncOp>(CreateLinalgTrivialCopyRemovalPass());
 
-  if (options.vectorize)
-    pm.addNestedPass<FuncOp>(mlir::gml_st::createGmlStToScfPass());
-
   pm.addPass(mlir::createBufferizationToMemRefPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());

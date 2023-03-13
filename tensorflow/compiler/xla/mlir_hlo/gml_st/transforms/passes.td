@@ -82,12 +82,6 @@ def ComposeExtractInsertSlicePass : Pass<"gml-compose-extract-insert-slice",
   let constructor = "::mlir::gml_st::createComposeExtractInsertSlicePass()";
 }
 
-def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {
-  let summary = "Lower `gml_st.loop` to SCF loops and parallel loops";
-  let constructor = "::mlir::gml_st::createGmlStToScfPass()";
-  let dependentDialects = ["::mlir::scf::SCFDialect"];
-}
-
 def VectorizeForCPUPass : Pass<"vectorize-for-cpu", "mlir::func::FuncOp"> {
   let summary = "Pass to vectorize gml_st.for loops that are tiled perfectly.";
   let constructor = "::mlir::gml_st::createVectorizeForCPUPass()";
