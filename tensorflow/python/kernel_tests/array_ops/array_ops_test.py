@@ -1240,6 +1240,7 @@ class StridedSliceAssignChecker(object):
     if self.tensor_type.is_complex:
       value -= 1j * value
 
+    config.set_soft_device_placement(True)
     with test_util.device(use_gpu=True):
       if self._use_resource:
         var = resource_variable_ops.ResourceVariable(self.x)
