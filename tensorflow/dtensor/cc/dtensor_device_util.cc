@@ -98,8 +98,7 @@ BroadcastTensorHandleToParallelTensor(TFE_Context* context,
 // replicated sharding spec. Does not take ownership of `tensor`.
 std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
     TFE_Context* context, TFE_TensorHandle* tensor,
-    const MeshWithParallelDevice& mesh, const std::string& dtensor_device_name,
-    TF_Status* status) {
+    const MeshWithParallelDevice& mesh, TF_Status* status) {
   // Only broadcast resource tensors that point to scalars since they are
   // always replicated. We also still want to catch honest user errors so
   // error out on non-scalars.
@@ -296,21 +295,10 @@ tensorflow::Fprint128 TensorWithLayoutTf::CacheKey() const {
 
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Broadcast(
     TFE_Context* context, TFE_TensorHandle* tensor,
-    const MeshWithParallelDevice& mesh, const std::string& dtensor_device_name,
-    TF_Status* status) {
-  const char* input_device = TFE_TensorHandleDeviceName(tensor, status);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-
-  if (dtensor_device_name == input_device) {
-    TF_SetStatus(status, TF_INVALID_ARGUMENT,
-                 "Input to Broadcast must be eager tensor.");
-    return nullptr;
-  }
-
+    const MeshWithParallelDevice& mesh, TF_Status* status) {
   // Handle resource tensor broadcasting to the mesh.
   if (TFE_TensorHandleDataType(tensor) == TF_RESOURCE) {
-    return BroadcastResourceTensor(context, tensor, mesh, dtensor_device_name,
-                                   status);
+    return BroadcastResourceTensor(context, tensor, mesh, status);
   }
 
   const Mesh& target_mesh = mesh.mesh_config();

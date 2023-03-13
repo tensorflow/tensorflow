@@ -176,11 +176,11 @@ class TensorWithLayoutTf
     : public llvm::RTTIExtends<TensorWithLayoutTf, TensorWithLayout> {
  public:
   // Broadcast a single non-parallel tensor onto `mesh` with a fully replicated
-  // sharding spec. Does not take ownership of `tensor`.
+  // sharding spec. Does not take ownership of `tensor`. The tensor must not
+  // already be on a DTensorDevice.
   static std::unique_ptr<TensorWithLayoutTf> Broadcast(
       TFE_Context* context, TFE_TensorHandle* tensor,
-      const MeshWithParallelDevice& mesh,
-      const std::string& dtensor_device_name, TF_Status* status);
+      const MeshWithParallelDevice& mesh, TF_Status* status);
 
   // Given an already-parallel tensor, wraps it with a mesh and a layout.
   static StatusOr<std::unique_ptr<TensorWithLayoutTf>> Wrap(

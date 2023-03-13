@@ -107,8 +107,12 @@ class DTensorDevice {
 
   bool use_parallel_executor() const { return parallel_executor_ != nullptr; }
 
-  void AddMesh(std::unique_ptr<MeshWithParallelDevice> mesh,
-               bool is_host_mesh) {
+  void AddMesh(
+      Mesh mesh_config,
+      std::unique_ptr<tensorflow::parallel_device::ParallelDevice> parallel,
+      bool is_host_mesh) {
+    auto mesh = std::make_unique<MeshWithParallelDevice>(std::move(mesh_config),
+                                                         std::move(parallel));
     if (is_host_mesh) {
       std::string& tpu_host_mesh = Mesh::tpu_host_mesh();
       const std::string new_tpu_host_mesh = mesh->mesh_config().ToString();
@@ -125,7 +129,7 @@ class DTensorDevice {
              .second)
       return;
     if (!default_mesh_) {
-      global_default_mesh_ = mesh_to_device_map_.begin()->second.get();
+      global_default_mesh_ = mesh_to_device_map_.begin()->first;
       default_mesh_ = global_default_mesh_;
     }
   }
@@ -142,9 +146,7 @@ class DTensorDevice {
 
   void SetDefaultLayout(Layout layout) { default_layout_.emplace(layout); }
   void ClearDefaultLayout() { default_layout_.reset(); }
-  void SetDefaultMesh(Mesh mesh) {
-    default_mesh_ = mesh_to_device_map_.at(mesh).get();
-  }
+  void SetDefaultMesh(Mesh mesh) { default_mesh_ = mesh; }
   void ClearDefaultMesh() { default_mesh_ = global_default_mesh_; }
   void SetSameShapePolicy(bool enabled) {
     same_shape_policy_enabled_ = enabled;
@@ -406,7 +408,7 @@ class DTensorDevice {
 
   // Choose a mesh to broadcast a non-dtensor to a dtensor based on the
   // operation, other input meshes, default mesh, and dtypes.
-  const MeshWithParallelDevice* ChooseBroadcastingMesh(
+  std::optional<Mesh> ChooseBroadcastingMesh(
       const absl::flat_hash_set<Mesh>& input_meshes,
       const std::vector<TF_DataType>& dtypes);
 
@@ -432,10 +434,10 @@ class DTensorDevice {
   // TODO(hthu): Consider whether we want to preserve the default_mesh semantic.
   // Current default mesh consistent to default_layout_. If default_layout_ is
   // not set, it equals to global_default_mesh_.
-  const MeshWithParallelDevice* default_mesh_ = nullptr;
+  std::optional<Mesh> default_mesh_;
   // The default mesh of a DTensorDevice, which cannot be modified once being
   // set.
-  const MeshWithParallelDevice* global_default_mesh_ = nullptr;
+  std::optional<Mesh> global_default_mesh_;
   // If the user has specified a default output layout.
   std::optional<Layout> default_layout_;
 
@@ -566,7 +568,7 @@ TF_Buffer* TensorWithLayoutSummarize(void* data, TF_Status* status) {
   return TF_NewBufferFromString(summary.data(), summary.size());
 }
 
-const MeshWithParallelDevice* DTensorDevice::ChooseBroadcastingMesh(
+std::optional<Mesh> DTensorDevice::ChooseBroadcastingMesh(
     const absl::flat_hash_set<Mesh>& input_meshes,
     const std::vector<TF_DataType>& dtypes) {
   bool has_string_dtype = std::find(dtypes.begin(), dtypes.end(),
@@ -578,18 +580,16 @@ const MeshWithParallelDevice* DTensorDevice::ChooseBroadcastingMesh(
     // mesh if it exists.
     for (const Mesh& mesh : input_meshes) {
       if (mesh.is_cpu_mesh()) {
-        return mesh_to_device_map_[mesh].get();
+        return mesh;
       }
     }
   }
 
   // If a unique mesh is identified across all inputs, we use that mesh as the
   // mesh to broadcast to. Otherwise we fallback to default mesh.
-  const MeshWithParallelDevice* broadcast_mesh =
-      input_meshes.size() == 1
-          ? mesh_to_device_map_[*input_meshes.begin()].get()
-          : default_mesh_;
-  return broadcast_mesh;
+  if (input_meshes.size() == 1) return *input_meshes.begin();
+
+  return default_mesh_;
 }
 
 TFE_TensorHandle* DTensorDevice::MakeLayoutTensorHandle(
@@ -624,8 +624,7 @@ bool DTensorDevice::is_remote_mesh(const Mesh& mesh) const {
   // An empty mesh might be assigned to VarHandleOp during DTensor MLIR lowering
   // pass. Decide whether the empty mesh is remote based on the current default
   // mesh.
-  return mesh.is_remote() ||
-         (mesh.IsEmpty() && default_mesh_->mesh_config().is_remote());
+  return mesh.is_remote() || (mesh.IsEmpty() && default_mesh_->is_remote());
 }
 
 std::unique_ptr<TensorWithLayout> DTensorDevice::Broadcast(
@@ -643,6 +642,11 @@ std::unique_ptr<TensorWithLayout> DTensorDevice::Broadcast(
     return nullptr;
   }
 
+  if (!parallel_executor_) {
+    return TensorWithLayoutTf::Broadcast(context, input,
+                                         *mesh_to_device_map_[mesh], status);
+  }
+
   TF_Tensor* tf_tensor = TFE_TensorHandleResolve(input, status);
   if (TF_GetCode(status) != TF_OK) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
@@ -657,10 +661,6 @@ std::unique_ptr<TensorWithLayout> DTensorDevice::Broadcast(
   if (!tf_tensor_to_tensor_status.ok()) {
     TF_SetStatus(status, TF_INTERNAL,
                  tf_tensor_to_tensor_status.ToString().c_str());
-    return nullptr;
-  }
-  if (!parallel_executor_) {
-    TF_SetStatus(status, TF_INTERNAL, "Parallel executor is null.");
     return nullptr;
   }
   const Layout layout = Layout::ReplicatedOnMesh(mesh, tensor.dims());
@@ -1235,12 +1235,11 @@ Status DTensorDevice::UpdateOutputLayoutsWithSameShapePolicy(
           VLOG(3) << op_name << ": found a cached layout for shape "
                   << global_output_shape.DebugString() << ": \""
                   << layout->ToString() << "\"";
-          if (input_meshes.empty() &&
-              layout->mesh() != default_mesh_->mesh_config()) {
+          if (input_meshes.empty() && layout->mesh() != *default_mesh_) {
             VLOG(3) << "But we can't infer a input mesh and cached layout: "
                     << "mesh \"" << (layout->mesh().ToString()) << " "
                     << "is different than the default mesh : \""
-                    << default_mesh_->mesh_config().ToString() << "\"\n"
+                    << default_mesh_->ToString() << "\"\n"
                     << "Not applying the cached layout.";
           } else if (!input_meshes.empty() &&
                      layout->mesh() != *input_meshes.begin()) {
@@ -1839,8 +1838,9 @@ void DTensorDevice::ExecuteRegularOperation(
     }
     const Mesh& mesh = *maybe_converted_mesh;
     const MeshWithParallelDevice* parallel_device_mesh =
-        mesh_to_device_map_.contains(mesh) ? mesh_to_device_map_[mesh].get()
-                                           : default_mesh_;
+        mesh_to_device_map_.contains(mesh)
+            ? mesh_to_device_map_[mesh].get()
+            : mesh_to_device_map_[*default_mesh_].get();
     if (parallel_device_mesh == nullptr) {
       RETURN_STATUS(status, TF_INTERNAL,
                     "required mesh is not registered with DTensor device");
@@ -2156,7 +2156,7 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
       /*name*/ operation_name,
       /*function_def*/
       tensorflow::unwrap(context)->FindFunctionDef(operation_name),
-      /*default_mesh*/ default_mesh_->mesh_config(),
+      /*default_mesh*/ *default_mesh_,
       /*stack_traces*/
       flib_def->GetStackTraces(operation_name),
   };
@@ -2211,15 +2211,13 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     typed_inputs[j] = t;
   }
 
-  const MeshWithParallelDevice* broadcast_mesh =
-      ChooseBroadcastingMesh(input_meshes, dtypes);
-
-  if (!broadcast_mesh) {
+  const std::optional<Mesh> mesh = ChooseBroadcastingMesh(input_meshes, dtypes);
+  if (!mesh) {
     RETURN_STATUS(status, TF_INVALID_ARGUMENT,
                   "No mesh has been registered to DTensor. Use copy_to_mesh to "
                   "explicit specify a mesh instead.");
   }
-  const Mesh& mesh = broadcast_mesh->mesh_config();
+
   for (int not_on_device_input_index : not_on_device_input_indices) {
     TFE_TensorHandle* input = inputs[not_on_device_input_index];
     // DTensor creation should be explicit, with some exceptions for usability
@@ -2256,26 +2254,18 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     // vector, whereas the input `TFE_TensorHandle`s maintain ownership for
     // inputs that already had layouts (and therefor had TensorWithLayout
     // objects).
-    std::unique_ptr<TensorWithLayout> wrapper;
-    if (parallel_executor_) {
-      std::unique_ptr<TensorWithLayout> tensor_with_layout =
-          Broadcast(context, input, mesh, status);
-      if (TF_GetCode(status) != TF_OK) {
-        return;
-      }
-      wrapper = std::move(tensor_with_layout);
-    } else {
-      wrapper = TensorWithLayoutTf::Broadcast(context, input, *broadcast_mesh,
-                                              name_, status);
+    std::unique_ptr<TensorWithLayout> tensor_with_layout =
+        Broadcast(context, input, *mesh, status);
+    if (TF_GetCode(status) != TF_OK) {
+      return;
     }
-    if (TF_GetCode(status) != TF_OK) return;
     if (!ShouldFoldInputArgument(dtensor_operation.name,
                                  /*input_index=*/not_on_device_input_index) &&
-        wrapper->const_value_node() != nullptr) {
-      wrapper->const_value_node()->reset_const_value();
+        tensor_with_layout->const_value_node() != nullptr) {
+      tensor_with_layout->const_value_node()->reset_const_value();
     }
-    typed_inputs[not_on_device_input_index] = wrapper.get();
-    inputs_with_no_layout.emplace_back(wrapper.release());
+    typed_inputs[not_on_device_input_index] = tensor_with_layout.get();
+    inputs_with_no_layout.emplace_back(tensor_with_layout.release());
   }
 
   ExecuteRegularOperation(context, typed_inputs, dtensor_operation, attributes,
@@ -2459,10 +2449,8 @@ void AddMesh(const std::string& serialized_mesh, void* device_info,
       new tensorflow::parallel_device::ParallelDevice(
           underlying_devices, is_async, in_flight_nodes_limit));
 
-  auto mesh = std::make_unique<MeshWithParallelDevice>(std::move(mesh_config),
-                                                       std::move(parallel));
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
-  device->AddMesh(std::move(mesh), is_host_mesh);
+  device->AddMesh(std::move(mesh_config), std::move(parallel), is_host_mesh);
 }
 
 void ExperimentalSetDefaultLayout(const std::string& serialized_layout,
