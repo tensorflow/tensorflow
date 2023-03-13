@@ -371,3 +371,71 @@ module attributes {gpu.container_module} {
 
   func.func private @external()
 }
+
+// -----
+// Check that convolution with runtime autotuning is not captured by a CUDA
+// graph.
+
+#map0 = affine_map<(d0, d1, d2, d3) -> (d0 * 3 + d1 + d2 * 9 + d3 * 9)>
+#map1 = affine_map<(d0, d1, d2, d3) -> (d0 * 16384 + d1 * 4 + d2 + d3 * 16)>
+#map2 = affine_map<(d0, d1, d2, d3) -> (d0 * 4096 + d1 * 2 + d2 + d3 * 4)>
+
+module attributes {gpu.container_module} {
+
+  gpu.module @gpu_module attributes {binary = "kernel binary"} {
+    gpu.func @fn0(%arg0: memref<16xi8>) kernel { gpu.return }
+  }
+
+
+  // CHECK: @func(%[[ARG0:.*]]: memref<8x5x5x1xf32, #map>
+  // CHECK-SAME: %[[ARG1:.*]]: memref<3x3x1x32xf32, #map1>
+  // CHECK-SAME: %[[ARG2:.*]]: memref<32xf32>
+  // CHECK-SAME: %[[ARG3:.*]]: memref<8x5x5x32xf32, #map2>
+  // CHECK-SAME: %[[ARG4:.*]]: memref<0xui8>
+  // CHECK-SAME: %[[ARG5:.*]]: memref<16xi8>
+  func.func @func(%input: memref<8x5x5x1xf32, #map1>,
+                                %filter: memref<3x3x1x32xf32, #map0>,
+                                %bias: memref<32xf32>,
+                                %output: memref<8x5x5x32xf32, #map2>,
+                                %scratch: memref<0xui8>,
+                                %raw_arg0: memref<16xi8> {lmhlo.params = 0 : index}
+                                ) {
+    %c0 = arith.constant 0 : index
+
+    // CHECK-NOT: call @xla.g.cuda.graph.launch
+    // CHECK: lmhlo_gpu.conv_forward_fused
+    lmhlo_gpu.conv_forward_fused(%input, %filter, %bias, %output, %scratch)
+      dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+      window = { stride = [1, 1],
+                lhs_dilate = [1, 1],
+                rhs_dilate = [1, 1],
+                reverse = [0, 0]
+              }
+      { activation_mode = #lmhlo_gpu<activation Relu>,
+        backend_config = #lmhlo_gpu.convolution_backend_config<
+          algorithm = -1,
+          is_cudnn_frontend = true,
+          is_cudnn_reordered_int8 = false,
+          knob_ids = [2, 3],
+          knob_values = [4, 0],
+          operand_0_layout = [2, 1, 3, 0],
+          operand_1_layout = [1, 0, 2, 3],
+          result_layout = [2, 1, 3, 0],
+          tensor_ops_enabled = false,
+          workspace_size = 0
+        >,
+        batch_group_count = 1 : i64,
+        feature_group_count = 1 : i64,
+        precision_config = [],
+        result_scale = 1.000000e+00 : f64
+      } : (memref<8x5x5x1xf32, #map1>,
+          memref<3x3x1x32xf32, #map0>,
+          memref<32xf32>,
+          memref<8x5x5x32xf32, #map2>,
+          memref<0xui8>) -> ()
+    gpu.launch_func  @gpu_module::@fn0 blocks in (%c0, %c0, %c0)
+      threads in (%c0, %c0, %c0) args(%raw_arg0 : memref<16xi8>)
+    return
+  }
+  func.func private @external()
+}

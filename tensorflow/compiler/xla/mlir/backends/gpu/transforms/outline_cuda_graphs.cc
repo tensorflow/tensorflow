@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 
 namespace xla {
@@ -100,7 +101,25 @@ using CloneOp = OpCapture<kClone, T, Ts...>;
 
 // Capture gpu operations by moving them into graph capture function.
 struct LaunchFuncOpCapture : public MoveOp<LaunchFuncOp> {};
-struct ConvOpCapture : public MoveOp<lmhlo_gpu::ConvForwardFusedOp> {};
+
+// TODO(b/270426911): Right now GEMM/Convolution with runtime autotuning can't
+// be captured by a cuda graph. However, longer term the proper fix is to make
+// autotuning "cuda-graph-aware", and run autotuning on a separate stream that
+// is not in capture mode.
+struct ConvOpCapture : public OpCapturePattern {
+  FailureOr<OpCapturePattern::Capture> match(Operation* op) final {
+    if (auto conv = llvm::dyn_cast<lmhlo_gpu::ConvForwardFusedOp>(op)) {
+      // GEMM that does runtime autotuning should not be captured, since CUDA
+      // graphs do not support operations that allocate memory.
+      lmhlo_gpu::ConvolutionBackendConfigAttr backend_config =
+          conv.getBackendConfig();
+      if (backend_config.getAlgorithm() != -1) {
+        return kMove;
+      }
+    }
+    return failure();
+  }
+};
 
 struct GemmOpCapture : public OpCapturePattern {
   FailureOr<OpCapturePattern::Capture> match(Operation* op) final {
