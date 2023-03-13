@@ -26,10 +26,10 @@ If you are new to TensorFlow Lite and are working with Android, we recommend
 exploring the following example applications that can help you get started.
 
 You can leverage the out-of-box API from
-[TensorFlow Lite Task Library](../../inference_with_metadata/task_library/audio_classifier)
+[TensorFlow Lite Task Library](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/inference_with_metadata/task_library/audio_classifier.md)
 to integrate audio classification models in just a few lines of code. You can
 also build your own custom inference pipeline using the
-[TensorFlow Lite Support Library](../../inference_with_metadata/lite_support).
+[TensorFlow Lite Support Library](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/inference_with_metadata/lite_support.md).
 
 The Android example below demonstrates the implementation using the
 [TFLite Task Library](https://github.com/tensorflow/examples/tree/master/lite/examples/audio_classification/android)
