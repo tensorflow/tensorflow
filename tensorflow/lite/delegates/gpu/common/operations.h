@@ -124,6 +124,8 @@ using TensorOrScalarBase = std::variant<std::monostate, Tensor<HWC, DataTypeT>,
 using TensorOrScalar = TensorOrScalarBase<DataType::FLOAT32, float>;
 
 struct Padding2D {
+  Padding2D() = default;
+  Padding2D(const Padding2D& value) = default;
   Padding2D& operator=(const Padding2D& value);
   bool operator==(const Padding2D& value) const;
   bool operator!=(const Padding2D& value) const;
@@ -138,6 +140,7 @@ struct Padding2D {
 
 struct Padding3D {
   Padding3D() = default;
+  Padding3D(const Padding3D& value) = default;
   Padding3D& operator=(const Padding3D& value);
   bool operator==(const Padding3D& value);
   bool operator!=(const Padding3D& value);
