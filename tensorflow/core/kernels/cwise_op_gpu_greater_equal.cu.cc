@@ -23,6 +23,7 @@ namespace functor {
 DEFINE_BINARY10(greater_equal, Eigen::half, float, double, int64, uint8, uint16,
                 uint32, uint64, int8, int16);
 #endif
+DEFINE_BINARY1(greater_equal, bfloat16);
 }  // namespace functor
 }  // namespace tensorflow
 
