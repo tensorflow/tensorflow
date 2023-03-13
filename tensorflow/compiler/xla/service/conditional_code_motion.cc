@@ -235,11 +235,18 @@ bool WorthHoisting(HloOpcode op, HloOpcode child_op) {
         default:
           return true;
       }
+      // Returning false here for op will disallow it from being moved by all
+      // conditional code motion attempts, including moving common code at the
+      // end of all conditional branches to go after the conditional.
+      // This is why all-reduce is allowed to be moved here. Additional checks
+      // specific to different types of conditional code motion are done before
+      // this function is invoked.
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
     case HloOpcode::kReduce:
     case HloOpcode::kConstant:
     case HloOpcode::kReshape:
+    case HloOpcode::kBroadcast:
       return true;
     default:
       if (HloInstruction::IsOpElementwise(op)) {
@@ -1244,6 +1251,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveOperandInstructionsIn(
 class GroupConnectedBoundaries {
  private:
   std::vector<Boundary> connected_boundaries_, new_boundaries_;
+  int64_t connected_boundaries_memory_increase_ = 0;
   HloInstruction* conditional_;
   HloComputation* conditional_parent_;
   bool is_layout_sensitive_;
@@ -1377,30 +1385,35 @@ class GroupConnectedBoundaries {
     }
   }
   // Returns true if `instruction` is worth hoisting.
-  bool WorthHoisting(HloInstruction* instruction, Boundary::Position pos) {
+  bool WorthHoisting(HloInstruction* instruction, Boundary::Position pos,
+                     int64_t index) {
     // This is needed for the "moving-in" transformation, to prevent the root
     // of the parent computation (which contains the conditional) to be moved
     // inside the conditional.
+    VLOG(1) << "Check Worth hoisting\n";
     HloOpcode opcode = instruction->opcode();
     if (opcode == HloOpcode::kTuple &&
         instruction == conditional_parent_->root_instruction()) {
-      return false;
-    }
-    // Do not move reduce operands into branches to save memory space.
-    if (opcode == HloOpcode::kReduce &&
-        pos == Boundary::Position::kOutsideBranchOperand) {
+      VLOG(1) << "Do not move conditional parent.";
       return false;
     }
     // Currently the optimization for moving operands inside branches changes
     // the shapes of tuples but does not modify their sharding annotations.
     if (pos == Boundary::Position::kOutsideBranchOperand) {
       if (opcode == HloOpcode::kTuple && instruction->has_sharding()) {
+        VLOG(1) << "Not moving operand because of sharding annotations.";
         return false;
       }
       if (instruction->user_count() > 1) {
+        VLOG(1) << "Not moving operand b/c it has >1 users.";
         return false;
       }
       if (instruction->HasSideEffect()) {
+        VLOG(1) << "Not moving operand b/c it has side effects.";
+        return false;
+      }
+      if (opcode == HloOpcode::kGetTupleElement) {
+        VLOG(1) << "Do not move GetTupleElement.";
         return false;
       }
     }
@@ -1410,6 +1423,7 @@ class GroupConnectedBoundaries {
     // when different layouts are assigned to different branches.
     if (DynCast<HloChannelInstruction>(instruction) &&
         pos != Boundary::Position::kInsideBranch) {
+      VLOG(1) << "It is not safe to move collectives inside branches.";
       return false;
     }
 
@@ -1678,6 +1692,7 @@ class GroupConnectedBoundaries {
   // Checking whether it is safe to move a boundary when visited through a
   // dependent already considered for moving.
   bool IsSafeToMoveBoundary(const Boundary& next_boundary) {
+    VLOG(1) << "Check is safe to move boundary.\n";
     int64_t next_boundary_count =
         (next_boundary.IsInsideBranch() ||
          next_boundary.IsOutsideBranchOperand())
@@ -1688,7 +1703,7 @@ class GroupConnectedBoundaries {
       return true;
     } else {
       if (!ContainsKey(visited_count_, next_boundary.operands()[0])) {
-        VLOG(2) << "Skip next boundary " << next_boundary.ToString() << "\n"
+        VLOG(1) << "Skip next boundary " << next_boundary.ToString() << "\n"
                 << " because it has multiple dependents: "
                 << next_boundary_count << "\n";
         visited_count_[next_boundary.operands()[0]] = 1;
@@ -1711,7 +1726,7 @@ class GroupConnectedBoundaries {
             return true;
           }
         } else {
-          VLOG(2) << "Skip incompatible multi-dependent boundary: "
+          VLOG(1) << "Skip incompatible multi-dependent boundary: "
                   << next_boundary.ToString() << ":" << next_boundary_count
                   << "\n";
         }
@@ -1725,36 +1740,56 @@ class GroupConnectedBoundaries {
   // considerations into separate function pointer parameters to improve
   // readability.
   void AddBoundaries(const Boundary& boundary) {
+    auto calc_memory_size = [](const HloInstruction* hlo) -> int64_t {
+      if (hlo->shape().IsTuple()) {
+        return 0;
+      }
+      if (hlo->opcode() == HloOpcode::kGetTupleElement) {
+        return 0;
+      }
+      return ShapeUtil::ByteSizeOf(hlo->shape(), 1) >> 9;
+    };
     BoundaryVisitor visitor;
     visitor.AddToWorkList(boundary);
+    int64_t boundary_index = 0;
     while (visitor.HasNextBoundary()) {
       Boundary b = visitor.PopNextBoundary();
-      VLOG(2) << "visiting boundary " << b.ToString() << "\n";
+      VLOG(1) << "visiting boundary " << b.ToString() << "\n";
+      VLOG(1) << "boundary index=" << boundary_index << "\n";
       if ((b.IsOutsideBranchUser() || b.IsOutsideBranchOperand() ||
            InstructionWithinBranchIdentical(b.operands(),
                                             is_layout_sensitive_)) &&
           IsSafeToMoveBoundary(b) &&
-          WorthHoisting(b.operands()[0], b.GetPosition())) {
+          WorthHoisting(b.operands()[0], b.GetPosition(), boundary_index++)) {
         connected_boundaries_.push_back(b);
-        VLOG(2) << "boundary can be moved\n";
+        auto output_size = calc_memory_size(b.operands()[0]);
+        connected_boundaries_memory_increase_ -= output_size;
+        VLOG(1) << "memory incr = " << connected_boundaries_memory_increase_;
+        VLOG(1) << "boundary can be moved.";
         int64_t operand_count =
             (b.IsInsideBranch() || b.IsOutsideBranchOperand())
                 ? b.operands()[0]->operand_count()
                 : b.operands()[0]->users().size();
         for (int i = 0; i < operand_count; i++) {
           Boundary next_boundary = GetNextBoundary(b, i);
-          VLOG(2) << "Add operand/user " << i << " to visit later\n";
+          VLOG(1) << "Add operand/user " << i << " to visit later\n";
           visitor.AddToWorkList(next_boundary);
+          if (output_size > 0) {
+            connected_boundaries_memory_increase_ +=
+                calc_memory_size(next_boundary.operands()[0]);
+            VLOG(1) << "memory incr = "
+                    << connected_boundaries_memory_increase_;
+          }
         }
       } else {
-        VLOG(2) << "boundary cannot be moved\n";
+        VLOG(1) << "boundary cannot be moved\n";
         visited_count_[b.operands()[0]] = 1;
         new_boundaries_.push_back(b);
       }
     }
   }
-  std::vector<Boundary> BoundariesToMoveInOrOut(HloInstruction* conditional,
-                                                const Boundary& b) {
+  std::pair<std::vector<Boundary>, int64_t> BoundariesToMoveInOrOut(
+      HloInstruction* conditional, const Boundary& b) {
     // At the beginning of optimization, a conditional itself is added to a
     // worklist. Here the conditional is expanded into two sets of boundaries:
     // the first set contains the boundary that is inside branches and
@@ -1788,7 +1823,8 @@ class GroupConnectedBoundaries {
     } else {
       AddBoundaries(b);
     }
-    return connected_boundaries_;
+    return std::pair<std::vector<Boundary>, int64_t>(
+        connected_boundaries_, connected_boundaries_memory_increase_);
   }
   void AddNewBoundaries(std::vector<Boundary>& b) {
     b.insert(b.end(), new_boundaries_.begin(), new_boundaries_.end());
@@ -1804,11 +1840,26 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
                                    search_config_);
   auto move_in_or_out =
       connect.BoundariesToMoveInOrOut(conditional, cur_boundary);
-  if (!move_in_or_out.empty()) {
+  if (!move_in_or_out.first.empty()) {
     auto benefit = connect.BenefitForMovingBoundaries(
-        move_in_or_out, search_config_map_.empty());
+        move_in_or_out.first, search_config_map_.empty());
     VLOG(2) << "benefit of moving in or out "
             << cur_boundary.operands()[0]->ToString() << ":" << benefit << "\n";
+    if (benefit >= 0) {
+      // Stop move instruction if the memory pressure is too high.
+      if (move_in_or_out.second > 0 &&
+          move_in_or_out.second / move_in_or_out.first.size() >
+              kMemoryAllowance) {
+        VLOG(1) << "Stop moving operands because of memory pressure: "
+                << move_in_or_out.second << " / " << move_in_or_out.first.size()
+                << " > " << kMemoryAllowance << "\n";
+        benefit = -1;
+      } else {
+        VLOG(1) << "Increase memory pressure by  " << move_in_or_out.second
+                << "\n";
+        memory_increase_ += move_in_or_out.second;
+      }
+    }
     if (benefit >= 0) {
       new_boundaries.clear();
       connect.AddNewBoundaries(new_boundaries);
@@ -1816,7 +1867,7 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
       // conditional, or all moving out of a conditional. So looking only
       // at the first entry of the sequence is sufficient to know which
       // direction the move is intended.
-      to_move = move_in_or_out;
+      to_move = move_in_or_out.first;
       return Decision(to_move[0].IsInsideBranch()
                           ? Decision::Direction::kMoveOutOfBranch
                           : Decision::Direction::kMoveIntoBranch,

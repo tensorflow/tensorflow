@@ -113,6 +113,7 @@ cuda_py_test(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:critical_section_ops",
@@ -122,6 +123,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/data/experimental/ops:prefetching_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
@@ -178,6 +180,7 @@ cuda_py_test(
     srcs = ["logging_ops_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
@@ -220,6 +223,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:numerics",
+        "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
     ],
 )

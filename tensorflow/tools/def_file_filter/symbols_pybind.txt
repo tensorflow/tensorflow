@@ -459,7 +459,6 @@ tensorflow::metrics::CheckpointSize
 [//tensorflow/cc/saved_model:fingerprinting_impl] # SavedModel Fingerprinting
 tensorflow::saved_model::fingerprinting::CreateFingerprintDef
 tensorflow::saved_model::fingerprinting::ReadSavedModelFingerprint
-tensorflow::saved_model::fingerprinting::MakeFingerprintMap
 
 
 [//tensorflow/compiler/jit:flags] # tfe

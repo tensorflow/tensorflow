@@ -360,7 +360,7 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:op_def_registry",
         "//tensorflow/python/platform",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_inspect",
         "@gast_archive//:gast",
     ],
 )

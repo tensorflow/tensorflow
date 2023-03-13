@@ -134,7 +134,7 @@ struct DotTransformPattern : public OpRewritePattern<DotTy> {
       return rewriter.notifyMatchFailure(dotOp,
                                          "has already been transformed.");
     }
-    if (isa<gml_st::ParallelOp, scf::ForOp>(dotOp->getParentOp())) {
+    if (isa<scf::ForallOp, scf::ForOp>(dotOp->getParentOp())) {
       return rewriter.notifyMatchFailure(
           dotOp, "has already been tiled by another pass.");
     }
@@ -144,8 +144,8 @@ struct DotTransformPattern : public OpRewritePattern<DotTy> {
         rewriter, dotOp.getOperation(), parallelDimTileSizeFn(tileSizes));
     if (failed(tilingParallelDimsResult)) return failure();
 
-    gml_st::ParallelOp parallelLoop = tilingParallelDimsResult->loop;
-    if (parallelLoop != nullptr) {
+    scf::ForallOp forallOp = tilingParallelDimsResult->loop;
+    if (forallOp != nullptr) {
       dotOp = cast<DotTy>(tilingParallelDimsResult->tiledOps.back());
     }
 
@@ -157,10 +157,9 @@ struct DotTransformPattern : public OpRewritePattern<DotTy> {
     if (!tilingReductionDimResult->loops.empty()) {
       dotOp = cast<DotTy>(tilingReductionDimResult->tiledOps.back());
     }
-
     // Peel parallel loops.
-    if (parallelLoop != nullptr) {
-      (void)peelAllLoops(parallelLoop, rewriter);
+    if (forallOp != nullptr) {
+      (void)peelAllLoops(forallOp, rewriter);
     }
 
     // Peel reduction loop inside the main parallel loop, label the main loop as
@@ -176,6 +175,48 @@ struct DotTransformPattern : public OpRewritePattern<DotTy> {
   MatmulTileSizeComputationFn tileSizeFn;
   std::function<SmallVector<int64_t>(MatmulSizes)> parallelDimTileSizeFn;
   std::function<SmallVector<int64_t>(MatmulSizes)> reductionDimTileSizeFn;
+};
+
+Value transposeMatrixConstant(ImplicitLocOpBuilder &builder, Value input) {
+  ElementsAttr inputValues;
+  matchPattern(input, m_Constant(&inputValues));
+
+  auto inputType = input.getType().cast<ShapedType>();
+  ArrayRef<int64_t> inputShape = inputType.getShape();
+  assert(inputShape.size() == 2);
+
+  auto outputType = RankedTensorType::get({inputShape[1], inputShape[0]},
+                                          inputType.getElementType());
+
+  SmallVector<Attribute, 4> outputValues(inputType.getNumElements());
+  for (const auto &it : llvm::enumerate(inputValues.getValues<Attribute>())) {
+    auto row = it.index() / inputShape[1];
+    auto col = it.index() % inputShape[1];
+    outputValues[col * inputShape[0] + row] = it.value();
+  }
+  return builder.create<arith::ConstantOp>(
+      outputType, DenseElementsAttr::get(outputType, outputValues));
+}
+
+// If we have a matvec with a constant matrix it's profitable to transpose the
+// matrix at compile time and use vecmat instead. This has a friendlier memory
+// access pattern.
+struct MatVecToVecMatPattern : public OpRewritePattern<linalg::MatvecOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(linalg::MatvecOp matvecOp,
+                                PatternRewriter &rewriter) const override {
+    auto constantMatrix =
+        matvecOp.getOperand(0).getDefiningOp<arith::ConstantOp>();
+    if (!constantMatrix) return failure();
+
+    ImplicitLocOpBuilder builder(constantMatrix.getLoc(), rewriter);
+    Value transposed = transposeMatrixConstant(builder, constantMatrix);
+    rewriter.replaceOpWithNewOp<linalg::VecmatOp>(
+        matvecOp, ValueRange{matvecOp.getOperand(1), transposed},
+        matvecOp.getOutputs());
+    return success();
+  }
 };
 
 struct TransformDotForCpuPass
@@ -210,6 +251,7 @@ struct TransformDotForCpuPass
     // - for linalg.dot: only the last element of tileSizes is used.
 
     RewritePatternSet patterns(ctx);
+    patterns.add<MatVecToVecMatPattern>(ctx, 2);
     patterns.add<DotTransformPattern<linalg::MatvecOp>>(
         ctx, tileSizeFn,
         [&](MatmulSizes sizes) -> SmallVector<int64_t> {
@@ -231,6 +273,7 @@ struct TransformDotForCpuPass
         [&](MatmulSizes) -> SmallVector<int64_t> { return {}; },
         [&](MatmulSizes sizes) -> SmallVector<int64_t> { return {sizes.k}; });
 
+    populateCollapseForallOpDimensionsPattern(patterns);
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();
     }

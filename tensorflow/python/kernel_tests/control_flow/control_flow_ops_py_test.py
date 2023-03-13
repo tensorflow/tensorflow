@@ -46,6 +46,9 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import control_flow_assert
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import data_flow_ops
@@ -73,6 +76,7 @@ from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-im
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop as while_loop_tf
 from tensorflow.python.ops import while_v2  # pylint: disable=unused-import
 # pylint: disable=unused-import
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -83,7 +87,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.util import nest
-from tensorflow.python.ops import control_flow_case
+from tensorflow.python.ops import control_flow_switch_case
 
 
 def check_consumers(graph):
@@ -134,7 +138,7 @@ def isum(s, maximum_iterations=None):
   i = constant_op.constant(0, name="i")
   c = lambda i, s: math_ops.less(i, 10)
   b = lambda i, s: [math_ops.add(i, 1), math_ops.add(i, s)]
-  _, r_s = control_flow_ops.while_loop(
+  _, r_s = while_loop_tf.while_loop(
       c, b, [i, s], maximum_iterations=maximum_iterations)
   return r_s
 
@@ -426,8 +430,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     with self.cached_session() as sess:
       c = constant_op.constant(2)
       i0 = constant_op.constant(0)
-      r = control_flow_ops.while_loop(lambda i: i < 1000,
-                                      lambda i: math_ops.square(c) + i, [i0])
+      r = while_loop_tf.while_loop(
+          lambda i: i < 1000, lambda i: math_ops.square(c) + i, [i0])
       self.assertEqual(1000, r.eval(feed_dict={i0: 0}))
       feedable_tensors = all_feedables()
       for t in feedable_tensors:
@@ -895,10 +899,11 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       def other_fn():
         return array_ops.identity(c)
 
-      return control_flow_ops.switch_case(
-          constant_op.constant(2),
-          [other_fn, lambda: br1_fn(inputs), other_fn, other_fn,
-           lambda: br4_fn(inputs)])
+      return control_flow_switch_case.switch_case(
+          constant_op.constant(2), [
+              other_fn, lambda: br1_fn(inputs), other_fn, other_fn,
+              lambda: br4_fn(inputs)
+          ])
 
     # This was needed for backwards compatibility with TF2 Estimators which
     # rely on variable names.
@@ -1044,7 +1049,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         return control_flow_ops.no_op()
 
       def fn2():
-        return control_flow_ops.Assert(False, ["Wrong branch!!!"])
+        return control_flow_assert.Assert(False, ["Wrong branch!!!"])
 
       r = control_flow_ops.cond(pred, fn1, fn2)
       self.evaluate(r)
@@ -1060,7 +1065,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
       def fn2():
         with ops.device("/cpu:0"):
-          return control_flow_ops.Assert(False, ["Wrong branch!!!"])
+          return control_flow_assert.Assert(False, ["Wrong branch!!!"])
 
       r = control_flow_ops.cond(pred, fn1, fn2)
       self.evaluate(r)
@@ -1493,8 +1498,9 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         return i + 1, x
 
     def build_while():
-      return control_flow_ops.while_loop(
-          cond, body, [constant_op.constant(0), constant_op.constant(0)])
+      return while_loop_tf.while_loop(
+          cond, body, [constant_op.constant(0),
+                       constant_op.constant(0)])
 
     def build_nested_while():
       return control_flow_ops.cond(
@@ -1553,7 +1559,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       n = constant_op.constant(0)
       c = lambda x: math_ops.less(x, 10000)
       b = lambda x: math_ops.add(x, 1)
-      r = control_flow_ops.while_loop(c, b, [n], parallel_iterations=20)
+      r = while_loop_tf.while_loop(c, b, [n], parallel_iterations=20)
       self.assertEqual(10000, self.evaluate(r))
 
   @test_util.run_v1_only("b/120545219")
@@ -1567,8 +1573,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         with ops.control_dependencies([increment]):
           return i + 1
 
-      result = control_flow_ops.while_loop(cond=lambda i: i < 2,
-                                           body=body_fn, loop_vars=[1])
+      result = while_loop_tf.while_loop(
+          cond=lambda i: i < 2, body=body_fn, loop_vars=[1])
       self.assertAllEqual(result, 2)
       self.assertAllEqual(v.read_value(), 1.0)
 
@@ -1584,8 +1590,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         with ops.control_dependencies([increment]):
           return constant_op.constant(5, name="five")
 
-      result = control_flow_ops.while_loop(cond=lambda i: i < 5,
-                                           body=body_fn, loop_vars=[0])
+      result = while_loop_tf.while_loop(
+          cond=lambda i: i < 5, body=body_fn, loop_vars=[0])
       self.evaluate(result)
       self.assertAllEqual(self.evaluate(v), 1.0)
 
@@ -1603,7 +1609,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(x.dtype, dtypes.int32_ref)
         return (i + 1, gen_array_ops.ref_identity(x))
 
-      r = control_flow_ops.while_loop(c, b, [i, x], parallel_iterations=5)
+      r = while_loop_tf.while_loop(c, b, [i, x], parallel_iterations=5)
 
       self.evaluate(variables.global_variables_initializer())
 
@@ -1630,7 +1636,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v1_only("b/120545219")
   def testWhileWithMaximumIterationsAndSingleArgument(self):
     with self.cached_session():
-      r = control_flow_ops.while_loop(
+      r = while_loop_tf.while_loop(
           lambda i: i < 3, lambda i: i + 1, [0], maximum_iterations=1)
       self.assertEqual(1, self.evaluate(r))
 
@@ -1652,7 +1658,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     xla_context = control_flow_ops.XLAControlFlowContext()
     xla_context.Enter()
 
-    out1, _ = control_flow_ops.while_loop(
+    out1, _ = while_loop_tf.while_loop(
         cond, body, (input1, input2), maximum_iterations=2)
     g = gradients_impl.gradients(out1, [input1])
 
@@ -1671,7 +1677,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     v = constant_op.constant(1.0)
 
     def training_loop_with_gradient(i):
-      out = control_flow_ops.while_loop(
+      out = while_loop_tf.while_loop(
           lambda i_, _: i_ < 3,
           lambda i_, j: [i_ + 1, j * v], [0, 1.0],
           maximum_iterations=i)
@@ -1683,8 +1689,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     xla_context.Enter()
     # Create training loop, ensure we can call gradient() of
     # while_loop inside the training loop.
-    loop = control_flow_ops.while_loop(lambda i: i < 3,
-                                       training_loop_with_gradient, [0])
+    loop = while_loop_tf.while_loop(
+        lambda i: i < 3, training_loop_with_gradient, [0])
     xla_context.Exit()
 
     loop_execute = array_ops.identity(loop)  # Because loop is not fetchable.
@@ -1699,14 +1705,14 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     v = constant_op.constant(1.0)
 
     def inner_body(i, x):
-      out = control_flow_ops.while_loop(
+      out = while_loop_tf.while_loop(
           lambda i, _: i < 3,
           lambda i, j: [i + 1, j * v], [0, x],
           maximum_iterations=i)
       return out
 
     def create_while_loop(maximum_iterations=None):
-      return control_flow_ops.while_loop(
+      return while_loop_tf.while_loop(
           lambda i, _: i < 3,
           inner_body, [0, 1.0],
           maximum_iterations=maximum_iterations)
@@ -1752,7 +1758,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       _ = control_flow_ops.cond(
           constant_op.constant(True), create_mi, create_mi)
 
-      return control_flow_ops.while_loop(
+      return while_loop_tf.while_loop(
           lambda i, _: i < 3,
           lambda i, x: (i + 1, v * x), (0, 1.0),
           maximum_iterations=max_iter_holder[0])
@@ -1789,7 +1795,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     def mid_body_builder(iterations):
 
       def mid_body(i, x):
-        r = control_flow_ops.while_loop(
+        r = while_loop_tf.while_loop(
             lambda *_: True,
             lambda i, x: (i + 1, v * x), (0, x),
             maximum_iterations=iterations,
@@ -1800,7 +1806,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     def outer_body(i, x):
       iterations = array_ops.size(p, name="iterations")
-      return (i + 1, x + control_flow_ops.while_loop(
+      return (i + 1, x + while_loop_tf.while_loop(
           lambda *_: True,
           mid_body_builder(iterations), (0, x),
           maximum_iterations=iterations,
@@ -1808,7 +1814,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     def create_while_loop():
       with ops.device("/cpu:0"):
-        r = control_flow_ops.while_loop(
+        r = while_loop_tf.while_loop(
             lambda *_: True,
             outer_body, (0, 1.0),
             maximum_iterations=5,
@@ -1882,8 +1888,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       c = ops.convert_to_tensor(0)
       o = ops.convert_to_tensor(0)
       d = ops.convert_to_tensor(100)
-      r = control_flow_ops.while_loop(lambda i, m, c, o: math_ops.less(i, d),
-                                      compute, [i, m, c, o])
+      r = while_loop_tf.while_loop(
+          lambda i, m, c, o: math_ops.less(i, d), compute, [i, m, c, o])
       result = r[3]
     self.assertAllEqual(10100, result)
 
@@ -1904,8 +1910,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       o = ops.convert_to_tensor(0)
       x = ops.convert_to_tensor([1, 2, 3, 4, 5, 6])
       s = array_ops.size(x)
-      r = control_flow_ops.while_loop(lambda i, m, c, o: math_ops.less(i, s),
-                                      compute, [i, m, c, o])
+      r = while_loop_tf.while_loop(
+          lambda i, m, c, o: math_ops.less(i, s), compute, [i, m, c, o])
       result = r[3]
     self.assertAllEqual(42, result)
 
@@ -1925,12 +1931,16 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       o = ops.convert_to_tensor([0])
       x = ops.convert_to_tensor([1, 2, 3, 4, 5, 6])
       s = array_ops.size(x)
-      r = control_flow_ops.while_loop(lambda i, c, o: math_ops.less(i, s),
-                                      compute, [i, c, o], [
-                                          i.get_shape(),
-                                          tensor_shape.unknown_shape(),
-                                          tensor_shape.unknown_shape()
-                                      ])
+      r = while_loop_tf.while_loop(
+          lambda i, c, o: math_ops.less(i, s),
+          compute,
+          [i, c, o],
+          [
+              i.get_shape(),
+              tensor_shape.unknown_shape(),
+              tensor_shape.unknown_shape(),
+          ],
+      )
       result = r[2]
     self.assertAllEqual(np.array([0, 1, 2, 3, 4, 5, 6]), result)
 
@@ -1943,8 +1953,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       return math_ops.exp(x)
 
     with ops.device("CPU:0"):
-      r = control_flow_ops.while_loop(
-          lambda x: x < 10, body, [constant_op.constant(-10.)])
+      r = while_loop_tf.while_loop(
+          lambda x: x < 10, body, [constant_op.constant(-10.0)])
       self.assertIn("cpu", r.device.lower())
 
     with session.Session() as sess:
@@ -1965,8 +1975,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       with ops.device("/cpu:0"):
         c = constant_op.constant(2)
         i0 = constant_op.constant(0)
-        r = control_flow_ops.while_loop(lambda i: i < 1000,
-                                        lambda i: math_ops.square(c) + i, [i0])
+        r = while_loop_tf.while_loop(
+            lambda i: i < 1000, lambda i: math_ops.square(c) + i, [i0])
       r_val = sess.run(r, options=run_options, run_metadata=run_metadata)
       self.assertEqual(1000, r_val)
       self.assertTrue(run_metadata.HasField("step_stats"))
@@ -1983,7 +1993,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       n = constant_op.constant(1.0)
       c = lambda x: math_ops.less(x, 10.0)
       b = lambda x: math_ops.add(x, 1.0)
-      r = control_flow_ops.while_loop(c, b, [n])
+      r = while_loop_tf.while_loop(c, b, [n])
       self.assertAllClose(10.0, self.evaluate(r))
 
   def testWhile_Gpu_1(self):
@@ -1999,7 +2009,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         with ops.device("/cpu:0"):
           return math_ops.add(x, 1.0)
 
-      r = control_flow_ops.while_loop(c, b, [n])
+      r = while_loop_tf.while_loop(c, b, [n])
       self.assertAllClose(10.0, self.evaluate(r))
 
   def testWhile_Gpu_2(self):
@@ -2017,7 +2027,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         new_j = array_ops.tile(j, [2, 2])
         return [new_i, new_j]
 
-      r = control_flow_ops.while_loop(
+      r = while_loop_tf.while_loop(
           c, _b, [i, m],
           [i.get_shape(), tensor_shape.unknown_shape()])
       r = r[1] * array_ops.ones([8, 8])
@@ -2032,7 +2042,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     b = lambda i, x: [i + 1, x + 1]
     with self.assertRaisesRegex(ValueError, "is not compatible with"):
       # Shape of x is [2], but we specify a shape of [5].
-      control_flow_ops.while_loop(
+      while_loop_tf.while_loop(
           c, b, [i, x], [i.shape, tensor_shape.TensorShape([5])])
 
   @test_util.run_in_graph_and_eager_modes
@@ -2046,7 +2056,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(
         ValueError, "The two structures don't have the same nested structure."):
-      control_flow_ops.while_loop(c, b, [i, x])
+      while_loop_tf.while_loop(c, b, [i, x])
 
   @test_util.run_deprecated_v1
   def testWhileWithNonTensorInput_Scalar(self):
@@ -2054,15 +2064,15 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       n = 0
       c = lambda x: x < 10000
       b = lambda x: x + 1
-      r = control_flow_ops.while_loop(c, b, [n], parallel_iterations=20)
+      r = while_loop_tf.while_loop(c, b, [n], parallel_iterations=20)
       self.assertEqual(10000, self.evaluate(r))
 
   def testWhileWithNonTensorInput_Vector(self):
     with self.cached_session():
       n = np.array([0])  # Note, [0] would not work here; that is a list
       c = lambda x: x[0] < 10000
-      b = lambda x: array_ops.stack([x[0] + 1])
-      r = control_flow_ops.while_loop(c, b, [n], parallel_iterations=20)
+      b = lambda x: array_ops_stack.stack([x[0] + 1])
+      r = while_loop_tf.while_loop(c, b, [n], parallel_iterations=20)
       self.assertEqual([10000], self.evaluate(r))
 
   def testWhileShapeInference(self):
@@ -2076,7 +2086,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         new_j = array_ops.concat([j, j], 0)
         return [new_i, new_j]
 
-      r = control_flow_ops.while_loop(
+      r = while_loop_tf.while_loop(
           c, b, [i, m],
           [i.get_shape(), tensor_shape.TensorShape([None, 2])])
       self.assertTrue(r[1].shape.is_compatible_with([8, 2]))
@@ -2093,7 +2103,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           r".*\(2, 2\).*\(4, 2\) after one iteration\. To allow the shape to "
           r"vary across iterations, use the `shape_invariants` argument of "
           r"tf.while_loop to specify a less-specific shape\."):
-        control_flow_ops.while_loop(c, b, [i, m])
+        while_loop_tf.while_loop(c, b, [i, m])
 
   def testWhileShapeInferenceSparseTensor(self):
     values = constant_op.constant([2.0, 4.0], name="values")
@@ -2139,32 +2149,32 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       self.assertTrue(r.dense_shape.shape.is_compatible_with(dense_shape))
 
     # Default shape invariant; b1 only modifies values.
-    _, r = control_flow_ops.while_loop(c, b1, [i, x])
+    _, r = while_loop_tf.while_loop(c, b1, [i, x])
     check_shapes(r, indices=[None, 1], values=[None], dense_shape=[1])
 
     # Default shape invariant; b2 adds new values
-    _, r = control_flow_ops.while_loop(c, b2, [i, x])
+    _, r = while_loop_tf.while_loop(c, b2, [i, x])
     check_shapes(r, indices=[None, 1], values=[None], dense_shape=[1])
 
     # Explicit shape invariant, allowing any rank; b1 only modifies values.
-    _, r = control_flow_ops.while_loop(
+    _, r = while_loop_tf.while_loop(
         c, b1, [i, x],
         [i.get_shape(), tensor_shape.TensorShape([None])])
     check_shapes(r, indices=[None, None], values=[None], dense_shape=[None])
 
     # Explicit shape invariant, allowing any rank; b3 modifies rank.
-    _, r = control_flow_ops.while_loop(
+    _, r = while_loop_tf.while_loop(
         c, b3, [i, x],
         [i.get_shape(), tensor_shape.TensorShape([None])])
     check_shapes(r, indices=[None, None], values=[None], dense_shape=[None])
 
     # Shape invariant with ndims=None.  Technically, this isn't supported
     # according to the docs, but we support it for backwards compatibility.
-    _, r = control_flow_ops.while_loop(
+    _, r = while_loop_tf.while_loop(
         c, b1, [i, x],
         [i.get_shape(), tensor_shape.TensorShape(None)])
     check_shapes(r, indices=[None, None], values=[None], dense_shape=[None])
-    _, r = control_flow_ops.while_loop(
+    _, r = while_loop_tf.while_loop(
         c, b3, [i, x],
         [i.get_shape(), tensor_shape.TensorShape(None)])
     check_shapes(r, indices=[None, None], values=[None], dense_shape=[None])
@@ -2191,13 +2201,13 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     # Explicit shape invariant, with a specific (incompatible) rank.
     with self.assertRaisesRegex(ValueError, "is not compatible with"):
-      control_flow_ops.while_loop(
+      while_loop_tf.while_loop(
           c, b1, [i, x],
           [i.get_shape(), tensor_shape.TensorShape([5])])
 
     # Default shape invariant, but b2 modifies rank (which is not allowed).
     with self.assertRaises(ValueError):
-      control_flow_ops.while_loop(c, b2, [i, x])
+      while_loop_tf.while_loop(c, b2, [i, x])
 
   def testWhileShapeInferenceIndexedSlices(self):
     with self.cached_session():
@@ -2217,11 +2227,11 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
                                          x.dense_shape)
         ]
 
-      _, r = control_flow_ops.while_loop(c, b, [i, x])
+      _, r = while_loop_tf.while_loop(c, b, [i, x])
       self.assertEqual(r.dense_shape.get_shape()[0], 2)
       self.assertEqual(r.values.get_shape(), tensor_shape.TensorShape([2, 2]))
 
-      _, r = control_flow_ops.while_loop(
+      _, r = while_loop_tf.while_loop(
           c, b, [i, x],
           [i.get_shape(), tensor_shape.TensorShape([None, 2])])
       self.assertEqual(r.dense_shape.get_shape()[0], 2)
@@ -2242,7 +2252,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     # Explicit shape invariant, with a specific (incompatible) rank.
     with self.assertRaisesRegex(ValueError, "is not compatible with"):
-      control_flow_ops.while_loop(
+      while_loop_tf.while_loop(
           c, b, [i, x],
           [i.get_shape(), tensor_shape.TensorShape([5])])
 
@@ -2268,33 +2278,33 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       self.assertTrue(r.row_splits.shape.is_compatible_with(splits))
 
     # Default shape invariant; b1 adds new values to rows.
-    _, r = control_flow_ops.while_loop(c, b1, [i, x])
+    _, r = while_loop_tf.while_loop(c, b1, [i, x])
     check_shapes(r, values=[None], splits=[4])
 
     # Default shape invariant; b2 adds new rows (not allowed).
     if not context.executing_eagerly():
       with self.assertRaises(ValueError):
-        _, r = control_flow_ops.while_loop(c, b2, [i, x])
+        _, r = while_loop_tf.while_loop(c, b2, [i, x])
 
     # Explicit shape invariant; b1 adds new values to rows.
     # (deprecated: use TensorShape instead of RaggedTensorSpec)
-    _, r = control_flow_ops.while_loop(
+    _, r = while_loop_tf.while_loop(
         c, b1, [i, x],
         [i.get_shape(), tensor_shape.TensorShape([None, None])])
     check_shapes(r, values=[None], splits=[None])
 
     # Explicit shape invariant; b1 adds new values to rows.
-    _, r = control_flow_ops.while_loop(
-        c, b1, [i, x],
-        [i.get_shape(), ragged_tensor.RaggedTensorSpec([None, None],
-                                                       dtypes.int32)])
+    _, r = while_loop_tf.while_loop(c, b1, [i, x], [
+        i.get_shape(),
+        ragged_tensor.RaggedTensorSpec([None, None], dtypes.int32)
+    ])
     check_shapes(r, values=[None], splits=[None])
 
     # Explicit shape invariant; b2 adds new rows.
-    _, r = control_flow_ops.while_loop(
-        c, b2, [i, x],
-        [i.get_shape(), ragged_tensor.RaggedTensorSpec([None, None],
-                                                       dtypes.int32)])
+    _, r = while_loop_tf.while_loop(c, b2, [i, x], [
+        i.get_shape(),
+        ragged_tensor.RaggedTensorSpec([None, None], dtypes.int32)
+    ])
     check_shapes(r, values=[None], splits=[None])
 
   def testWhileShapeInferenceRaggedTensorRaggedRank2(self):
@@ -2307,7 +2317,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           i + 1,
           array_ops.concat([x, x[..., i:i+1]], axis=-1)
       ]
-    _, r = control_flow_ops.while_loop(c, b, [i, x])
+
+    _, r = while_loop_tf.while_loop(c, b, [i, x])
     self.assertEqual(r.row_splits.shape.as_list(), [3])
     self.assertIn(r.values.row_splits.shape.as_list(), ([6], [None]))
     self.assertIn(r.values.values.shape.as_list(), ([49], [None]))
@@ -2316,11 +2327,11 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     i = constant_op.constant(0)
     x = constant_op.constant([1])
     c = lambda i, _: i < 10
-    b = lambda i, x: (i + 1, array_ops.stack([x, x]))
+    b = lambda i, x: (i + 1, array_ops_stack.stack([x, x]))
     shape_invariants = [
         tensor_spec.TensorSpec([], dtype=dtypes.int32),
         tensor_spec.TensorSpec(None, dtype=dtypes.int32)]
-    control_flow_ops.while_loop(c, b, [i, x], shape_invariants)
+    while_loop_tf.while_loop(c, b, [i, x], shape_invariants)
 
   # TODO(b/131265085) Remove this decorator when bug is fixed.
   @test_util.build_as_function_and_v1_graph
@@ -2332,19 +2343,19 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     shape_invariants = [
         tensor_spec.TensorSpec([], dtype=dtypes.int32),
         sparse_tensor.SparseTensorSpec([None])]
-    control_flow_ops.while_loop(c, b, [i, x], shape_invariants)
+    while_loop_tf.while_loop(c, b, [i, x], shape_invariants)
 
     x2 = constant_op.constant([1])
     with self.assertRaises(TypeError):
-      control_flow_ops.while_loop(c, b, [i, x2], shape_invariants)
+      while_loop_tf.while_loop(c, b, [i, x2], shape_invariants)
 
     x3 = ragged_factory_ops.constant([[1, 2], [3]])
     with self.assertRaises(TypeError):
-      control_flow_ops.while_loop(c, b, [i, x3], shape_invariants)
+      while_loop_tf.while_loop(c, b, [i, x3], shape_invariants)
 
     i2 = constant_op.constant(0.0)
     with self.assertRaises(TypeError):
-      control_flow_ops.while_loop(c, b, [i2, x], shape_invariants)
+      while_loop_tf.while_loop(c, b, [i2, x], shape_invariants)
 
   # TODO(b/131265085) Remove this decorator when bug is fixed.
   @test_util.build_as_function_and_v1_graph
@@ -2354,7 +2365,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     c = lambda i, _: i < 10
     b = lambda i, x: (i + 1, x)
     with self.assertRaises((ValueError, TypeError)):
-      control_flow_ops.while_loop(c, b, [i, x], ["foo", "bar"])
+      while_loop_tf.while_loop(c, b, [i, x], ["foo", "bar"])
 
   def _testNestedWhile_1(self, use_gpu):
     with self.cached_session(use_gpu=use_gpu):
@@ -2369,12 +2380,12 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
             s1 = math_ops.add(i, s)
           return i1, s1
 
-        _, r_s = control_flow_ops.while_loop(c, b, [n, s])
+        _, r_s = while_loop_tf.while_loop(c, b, [n, s])
         return r_s
 
       c = lambda x: math_ops.less(x, 200)
       b = lambda x: math_ops.add(x, cpu_sum(n))
-      r = control_flow_ops.while_loop(c, b, [n])
+      r = while_loop_tf.while_loop(c, b, [n])
       self.assertEqual(225, self.evaluate(r))
 
   def testNestedWhile_1(self):
@@ -2393,7 +2404,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           s1 = math_ops.add(s, s)
           return s1
 
-        r_s = control_flow_ops.while_loop(c, b, [s], parallel_iterations=1)
+        r_s = while_loop_tf.while_loop(c, b, [s], parallel_iterations=1)
         return r_s
 
       outer_c = lambda x: math_ops.less(x, 3000.0)
@@ -2405,7 +2416,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           x = math_ops.square(x)  # Edge "Exit -> Square" is partitioned
         return x
 
-      r = control_flow_ops.while_loop(
+      r = while_loop_tf.while_loop(
           outer_c, outer_b, [s0], parallel_iterations=1)
       self.assertEqual(1048576.0, self.evaluate(r))
 
@@ -2426,7 +2437,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           r_ = constant_op.constant(12)
         return [n_, r_]
 
-      res = control_flow_ops.while_loop(
+      res = while_loop_tf.while_loop(
           condition, body, [n, r], parallel_iterations=1)
       self.assertAllEqual(12, res[1])
 
@@ -2441,7 +2452,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           r_ = constant_op.constant(12)
         return [r_]
 
-      res = control_flow_ops.while_loop(
+      res = while_loop_tf.while_loop(
           condition, body, [r], parallel_iterations=1)
       self.assertAllEqual(12, self.evaluate(res))
 
@@ -2452,7 +2463,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       c = constant_op.constant(1)
       x0 = constant_op.constant(0)
       with ops.control_dependencies([b]):
-        r = control_flow_ops.while_loop(lambda x: x < 10, lambda x: x + c, [x0])
+        r = while_loop_tf.while_loop(lambda x: x < 10, lambda x: x + c, [x0])
       self.assertEqual(10, sess.run(r, {b: True}))
 
   @test_util.run_v1_only("b/120545219")
@@ -2462,7 +2473,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       c = constant_op.constant(1)
       x0 = constant_op.constant(0)
       with ops.control_dependencies([b]):
-        r = control_flow_ops.while_loop(
+        r = while_loop_tf.while_loop(
             lambda x: x < 10, lambda x: x + array_ops.identity(c), [x0])
       self.assertEqual(10, sess.run(r, {b: True}))
 
@@ -2477,7 +2488,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         with ops.control_dependencies([b]):
           return x + c
 
-      r = control_flow_ops.while_loop(lambda x: x < 10, body, [x0])
+      r = while_loop_tf.while_loop(lambda x: x < 10, body, [x0])
       self.assertEqual(10, sess.run(r, {b: True}))
 
   def testWhileCondWithControl(self):
@@ -2490,8 +2501,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       body = lambda i: control_flow_ops.cond(i > 0, lambda: i - 1, lambda: i)
 
       with ops.control_dependencies([control_flow_ops.no_op()]):
-        loop = control_flow_ops.while_loop(cond, body,
-                                           (constant_op.constant(5),))
+        loop = while_loop_tf.while_loop(cond, body, (constant_op.constant(5),))
       self.assertEqual(0, self.evaluate(loop))
 
   @test_util.disable_control_flow_v2("b/113324949 (ref vars)")
@@ -2513,7 +2523,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           with ops.control_dependencies([some_cond]):
             return i + 1
 
-      r = control_flow_ops.while_loop(loop_condition, loop_body, (i0,))
+      r = while_loop_tf.while_loop(loop_condition, loop_body, (i0,))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(4, self.evaluate(r))
       self.assertAllClose(65536.0, self.evaluate(v))
@@ -2532,7 +2542,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           x = state_ops.assign(v, i)
           return x + 1
 
-        loop = control_flow_ops.while_loop(cond, body, [0])
+        loop = while_loop_tf.while_loop(cond, body, [0])
         # Make sure to handle correctly control edge from Exit to a node.
         with ops.control_dependencies([loop]):
           return constant_op.constant(6.0)
@@ -2551,7 +2561,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       c = lambda x: math_ops.less(x, 10)
       b = lambda x: math_ops.add(x, 1)
       r = control_flow_ops.cond(
-          math_ops.less(0, 1), lambda: control_flow_ops.while_loop(c, b, [n]),
+          math_ops.less(0, 1), lambda: while_loop_tf.while_loop(c, b, [n]),
           lambda: n)
       self.assertAllEqual(10, self.evaluate(r))
 
@@ -2563,7 +2573,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       b = lambda x: math_ops.add(x, 1)
       r = control_flow_ops.cond(
           math_ops.less(1, 0), lambda: math_ops.add(n, 1),
-          lambda: control_flow_ops.while_loop(c, b, [n]))
+          lambda: while_loop_tf.while_loop(c, b, [n]))
       self.assertAllEqual(10, self.evaluate(r))
 
   def _testCondWhile_3(self, use_gpu):
@@ -2579,9 +2589,11 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           x1 = math_ops.add(x, 1.0)
         return x1
 
-      r = control_flow_ops.cond(p,
-                                lambda: control_flow_ops.while_loop(c, b, [n]),
-                                lambda: math_ops.multiply(n, 2.0))
+      r = control_flow_ops.cond(
+          p,
+          lambda: while_loop_tf.while_loop(c, b, [n]),
+          lambda: math_ops.multiply(n, 2.0),
+      )
       r1 = gradients_impl.gradients(r, [n])
       self.assertEqual(10., sess.run(r, {p: True}))
       self.assertEqual([1.0], sess.run(r1, {p: True}))
@@ -2606,7 +2618,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           constant_op.constant(True),
           lambda: math_ops.add(x, one), lambda: math_ops.subtract(x, one))
       # pylint: enable=undefined-variable
-      r = control_flow_ops.while_loop(c, b, [i])
+      r = while_loop_tf.while_loop(c, b, [i])
       self.assertAllEqual(10, self.evaluate(r))
 
   def testWhileCond_2(self):
@@ -2615,7 +2627,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       n = ops.convert_to_tensor(0, name="n")
       c = lambda x: math_ops.less(x, 10)
       b = lambda x: control_flow_ops.cond(constant_op.constant(True), lambda: math_ops.add(x, 1), lambda: n)
-      r = control_flow_ops.while_loop(c, b, [n])
+      r = while_loop_tf.while_loop(c, b, [n])
       self.assertAllEqual(10, self.evaluate(r))
 
   def testWhileCond_3(self):
@@ -2629,7 +2641,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
                                           lambda: math_ops.add(x, 1),
                                           lambda: math_ops.subtract(x, 1))
       # pylint: enable=undefined-variable
-      r = control_flow_ops.while_loop(c, b, [n])
+      r = while_loop_tf.while_loop(c, b, [n])
       self.assertAllEqual(10, self.evaluate(r))
 
   @test_util.run_deprecated_v1
@@ -2641,10 +2653,9 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       x_init = constant_op.constant(1.0)
 
       with ops.device("/cpu:0"):
-        z = control_flow_ops.while_loop(
-            lambda i, _: i < 3,
-            lambda i, x: (i + 1, control_flow_ops.cond(
-                pred, lambda: x * 2.0, lambda: 10.0)),
+        z = while_loop_tf.while_loop(
+            lambda i, _: i < 3, lambda i, x:
+            (i + 1, control_flow_ops.cond(pred, lambda: x * 2.0, lambda: 10.0)),
             [0, x_init])
 
       with ops.device("/cpu:1"):
@@ -2680,7 +2691,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         nj = control_flow_ops.with_dependencies([op], nj)
         return [nj]
 
-      r = control_flow_ops.while_loop(
+      r = while_loop_tf.while_loop(
           loop_iterator, loop_body, [n], parallel_iterations=1)
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(3, self.evaluate(r))
@@ -2706,7 +2717,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         nj = control_flow_ops.with_dependencies([op], nj)
         return [nj]
 
-      r = control_flow_ops.while_loop(
+      r = while_loop_tf.while_loop(
           loop_iterator, loop_body, [n], parallel_iterations=1)
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(3, self.evaluate(r))
@@ -2730,7 +2741,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         nj = math_ops.add(j, 1)
         return [nj, ns]
 
-      r = control_flow_ops.while_loop(
+      r = while_loop_tf.while_loop(
           loop_iterator,
           loop_body, [n, array_ops.identity(select)],
           parallel_iterations=1)
@@ -2760,7 +2771,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           ni = math_ops.add(i, 1, name="i_add")
         return ni
 
-      lpa = control_flow_ops.while_loop(
+      lpa = while_loop_tf.while_loop(
           pred, loop_body, [c], parallel_iterations=1)
 
       self.assertEqual(0, self.evaluate(var_b))
@@ -2790,7 +2801,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           inc_b = array_ops.identity(var_b)
         return inc_b
 
-      lpa = control_flow_ops.while_loop(
+      lpa = while_loop_tf.while_loop(
           pred, loop_body, [var_b], parallel_iterations=1, name="loop")
 
       self.assertEqual(0, self.evaluate(var_b))
@@ -2821,7 +2832,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           ni = math_ops.add(i, 1, name="i_add")
           return ni
 
-      lpa = control_flow_ops.while_loop(
+      lpa = while_loop_tf.while_loop(
           pred, loop_body, [c], parallel_iterations=1, name="loop")
 
       self.assertEqual(0, self.evaluate(var_b))
@@ -2843,7 +2854,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         ni = control_flow_ops.with_dependencies([q.enqueue((i,))], ni)
         return ni
 
-      r = control_flow_ops.while_loop(c, b, [i], parallel_iterations=1)
+      r = while_loop_tf.while_loop(c, b, [i], parallel_iterations=1)
       self.assertEqual([10], self.evaluate(r))
       for i in range(10):
         self.assertEqual([i], self.evaluate(q.dequeue()))
@@ -2855,7 +2866,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       n = constant_op.constant(0)
       c = lambda x: True
       b = lambda x: math_ops.add(x, 1)
-      r = control_flow_ops.while_loop(c, b, [n])
+      r = while_loop_tf.while_loop(c, b, [n])
       with self.assertRaises(errors_impl.DeadlineExceededError):
         sess.run(r, options=run_options)
 
@@ -2875,7 +2886,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
             [gen_data_flow_ops.stack_push_v2(s, i)], ni)
         return ni
 
-      r = control_flow_ops.while_loop(c, b, [i], parallel_iterations=1)
+      r = while_loop_tf.while_loop(c, b, [i], parallel_iterations=1)
 
       x = constant_op.constant(0)
 
@@ -2887,7 +2898,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         nx = x + gen_data_flow_ops.stack_pop_v2(s, dtypes.int32)
         return [ni, nx]
 
-      _, rx = control_flow_ops.while_loop(
+      _, rx = while_loop_tf.while_loop(
           c1,
           b1, [r, x],
           [r.get_shape(), tensor_shape.unknown_shape()],
@@ -2907,7 +2918,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         with ops.device(gpu_dev_name):
           return math_ops.square(x)
 
-      loop = control_flow_ops.while_loop(c, b, [v], parallel_iterations=1)
+      loop = while_loop_tf.while_loop(c, b, [v], parallel_iterations=1)
       r = gradients_impl.gradients(
           loop, v, colocate_gradients_with_ops=colocate)[0]
 
@@ -2941,7 +2952,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       v = constant_op.constant(2.0, name="v")
       c = lambda v: math_ops.less(v, 100.0)
       b = math_ops.square
-      r = control_flow_ops.while_loop(c, b, [v], parallel_iterations=1)
+      r = while_loop_tf.while_loop(c, b, [v], parallel_iterations=1)
       r = control_flow_ops.cond(math_ops.less(1, 2), lambda: r, lambda: v)
 
       r = gradients_impl.gradients(r, v)[0]
@@ -2955,7 +2966,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       n = constant_op.constant(0, name="n")
       c = lambda i, v: math_ops.less(i, 5)
       b = lambda i, v: [i + 1, math_ops.multiply(x, v)]
-      r = control_flow_ops.while_loop(
+      r = while_loop_tf.while_loop(
           c,
           b, [n, v],
           [n.get_shape(), tensor_shape.unknown_shape()],
@@ -2972,7 +2983,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       v0 = constant_op.constant([2.0, 2.0], name="v")
       c = lambda v: constant_op.constant(False)
       b = lambda v: math_ops.multiply(v, x)
-      r = control_flow_ops.while_loop(c, b, [v0])
+      r = while_loop_tf.while_loop(c, b, [v0])
       y = math_ops.square(x)
 
       r = gradients_impl.gradients([r, y], x)[0]
@@ -2982,7 +2993,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   @test_util.enable_output_all_intermediates
   def testWhileGradAfterSessionRun(self):
     v0 = constant_op.constant(2.)
-    r = control_flow_ops.while_loop(
+    r = while_loop_tf.while_loop(
         lambda _: True, lambda v: v * v, [v0], maximum_iterations=3)
 
     self.assertAllEqual(r, 256.)
@@ -2996,10 +3007,10 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     def body(v):
       inner_v0 = constant_op.constant(1.)
-      return control_flow_ops.while_loop(
+      return while_loop_tf.while_loop(
           lambda _: True, lambda x: x * v, [inner_v0], maximum_iterations=2)
 
-    r = control_flow_ops.while_loop(
+    r = while_loop_tf.while_loop(
         lambda _: True, body, [v0], maximum_iterations=3)
 
     self.assertAllEqual(r, 256.)
@@ -3012,7 +3023,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       v = constant_op.constant(2.0, name="v")
       c = lambda v: math_ops.less(v, 100.0)
       b = math_ops.square
-      r = control_flow_ops.while_loop(c, b, [v], parallel_iterations=1)
+      r = while_loop_tf.while_loop(c, b, [v], parallel_iterations=1)
       r = math_ops.multiply(r, r)
 
       r = gradients_impl.gradients(r, v)[0]
@@ -3024,7 +3035,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       v = constant_op.constant(2.0, name="v")
       c = lambda v: math_ops.less(v, 100.0)
       b = math_ops.square
-      r = control_flow_ops.while_loop(c, b, [v], parallel_iterations=1)
+      r = while_loop_tf.while_loop(c, b, [v], parallel_iterations=1)
       r = math_ops.add(r, r)
 
       r = gradients_impl.gradients(r, v)[0]
@@ -3036,7 +3047,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       v = constant_op.constant(2.0, name="v")
       c = lambda v: math_ops.less(v, 100.0)
       b = lambda v: math_ops.multiply(v, a)
-      r = control_flow_ops.while_loop(c, b, [v], parallel_iterations=p_iters)
+      r = while_loop_tf.while_loop(c, b, [v], parallel_iterations=p_iters)
 
       grad_a, grad_v = gradients_impl.gradients(r, [a, v])
       grad_a_val, grad_v_val = self.evaluate([grad_a, grad_v])
@@ -3057,7 +3068,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       x_init = constant_op.constant(2.)
       loop_cond = lambda i, x: math_ops.less(i, 2)
       loop_body = lambda i, x: [i + 1, x**2]
-      _, x = control_flow_ops.while_loop(loop_cond, loop_body, [0, x_init])
+      _, x = while_loop_tf.while_loop(loop_cond, loop_body, [0, x_init])
       with ops.control_dependencies([x]):
         (grad,) = gradients_impl.gradients(x, x_init)
         return grad
@@ -3079,7 +3090,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         return i + 1.
 
       loop_cond = lambda i: True
-      x = control_flow_ops.while_loop(
+      x = while_loop_tf.while_loop(
           loop_cond, loop_body, [0.], maximum_iterations=5)
       self.assertAllEqual(x, 5.)
 
@@ -3092,7 +3103,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         z = constant_op.constant(0)
         c = lambda i, x: math_ops.less(i, 4)
         b = lambda i, x: [math_ops.add(i, 1), math_ops.multiply(x, 2.0)]
-        return control_flow_ops.while_loop(c, b, [z, s])
+        return while_loop_tf.while_loop(c, b, [z, s])
 
       c = lambda x: math_ops.less(x, 128.0)
 
@@ -3102,7 +3113,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
             lambda: math_ops.square(inner_loop(x)[1]),
             lambda: math_ops.multiply(x, 2.0))
 
-      r = control_flow_ops.while_loop(c, b, [v])
+      r = while_loop_tf.while_loop(c, b, [v])
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(512.0, self.evaluate(r))
 
@@ -3121,7 +3132,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       v = constant_op.constant(2.0, name="v")
       c = lambda v: math_ops.less(v, 100.0)
       b = lambda v: math_ops.multiply(v, a)
-      r = control_flow_ops.while_loop(c, b, [v], parallel_iterations=1)
+      r = while_loop_tf.while_loop(c, b, [v], parallel_iterations=1)
 
       r = gradients_impl.gradients(r, a)
       self.evaluate(variables.global_variables_initializer())
@@ -3134,7 +3145,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       v = constant_op.constant(2.0, name="v")
       c = lambda v: math_ops.less(v, 100.0)
       b = lambda v: math_ops.multiply(v, a)
-      r = control_flow_ops.while_loop(c, b, [v], parallel_iterations=1)
+      r = while_loop_tf.while_loop(c, b, [v], parallel_iterations=1)
 
       g = gradients_impl.gradients(r, a)
       self.evaluate(variables.global_variables_initializer())
@@ -3148,10 +3159,9 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
       @eager_def_function.function
       def fn():
-        r = control_flow_ops.while_loop(
-            lambda i, _: i < 2,
-            lambda i, x: (i + 1, x * math_ops.reduce_sum(a) * v),
-            [0, 1.0])[1]
+        r = while_loop_tf.while_loop(
+            lambda i, _: i < 2, lambda i, x:
+            (i + 1, x * math_ops.reduce_sum(a) * v), [0, 1.0])[1]
         return gradients_impl.gradients(r, [v])[0]
 
       self.assertEqual(self.evaluate(fn()), 32.)
@@ -3164,10 +3174,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     @eager_def_function.function
     def bar(var):
-      r = control_flow_ops.while_loop(
-          lambda i, _: i < 2,
-          lambda i, x: (i + 1, foo(x, var)),
-          [0, 0.0])[1]
+      r = while_loop_tf.while_loop(
+          lambda i, _: i < 2, lambda i, x: (i + 1, foo(x, var)), [0, 0.0])[1]
       return gradients_impl.gradients(r, var)[0]
 
     var = resource_variable_ops.ResourceVariable([1., 2., 3., 4.])
@@ -3187,10 +3195,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     @eager_def_function.function
     def bar(var):
-      r = control_flow_ops.while_loop(
-          lambda i, _: i < 2,
-          lambda i, x: (i + 1, foo2(x, var)),
-          [0, 0.0])[1]
+      r = while_loop_tf.while_loop(
+          lambda i, _: i < 2, lambda i, x: (i + 1, foo2(x, var)), [0, 0.0])[1]
       return gradients_impl.gradients(r, var)[0]
 
     var = resource_variable_ops.ResourceVariable([1., 1., 1., 1.])
@@ -3204,7 +3210,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     @eager_def_function.function
     def foo(x, var):
-      return control_flow_ops.while_loop(
+      return while_loop_tf.while_loop(
           lambda j, _: j < 3,
           lambda j, y: (j + 1,
                         y + math_ops.reduce_sum(var.sparse_read([1, 2]))),
@@ -3212,7 +3218,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     @eager_def_function.function
     def bar(var):
-      r = control_flow_ops.while_loop(
+      r = while_loop_tf.while_loop(
           lambda i, _: i < 2,
           lambda i, x: (i + 1, foo(x, var)),
           [0, 0.0])[1]
@@ -3237,8 +3243,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     @eager_def_function.function
     def bar(var1, var2):
-      r = control_flow_ops.while_loop(
-          lambda i, _: i < 4, body, [0, 0.0])
+      r = while_loop_tf.while_loop(lambda i, _: i < 4, body, [0, 0.0])
       return gradients_impl.gradients(r, [var1, var2])
 
     var1 = resource_variable_ops.ResourceVariable([1., 2., 3.])
@@ -3254,9 +3259,9 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     # aggregation result of IndexedSlices and Tensors.
     var = resource_variable_ops.ResourceVariable(np.ones(5),
                                                  dtype=dtypes.float32)
-    r = control_flow_ops.while_loop(
-        lambda i, _: i < 3,
-        lambda i, x: (i + 1, x * math_ops.reduce_sum(var.sparse_read([1, 3]))),
+    r = while_loop_tf.while_loop(
+        lambda i, _: i < 3, lambda i, x:
+        (i + 1, x * math_ops.reduce_sum(var.sparse_read([1, 3]))),
         [0, constant_op.constant(1.0)])[1]
     grad = gradients_impl.gradients(r, var)[0]
 
@@ -3283,7 +3288,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       y3 = x3 * math_ops.reduce_sum(var2.sparse_read([0]))
       return i + 1, y1, y2, y3
 
-    r = control_flow_ops.while_loop(
+    r = while_loop_tf.while_loop(
         lambda i, x1, x2, x3: i < 3, body,
         [0, x1_init, x2_init, x3_init])[1:]
     var1_grad, var2_grad = gradients_impl.gradients(r, [var1, var2])
@@ -3302,10 +3307,9 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     @tf_function_in_tf2
     def fn():
       x = constant_op.constant([1., 1., 1., 1., 1.])
-      y = control_flow_ops.while_loop(
-          lambda i, _: i < 3,
-          lambda i, x: (i + 1, x + array_ops.gather(x, [0])),
-          [0, x[:1]])[1]
+      y = while_loop_tf.while_loop(
+          lambda i, _: i < 3, lambda i, x:
+          (i + 1, x + array_ops.gather(x, [0])), [0, x[:1]])[1]
       z = y * 3.0
       grad = gradients_impl.gradients(z, x)[0]
       return y, grad
@@ -3319,7 +3323,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     @tf_function_in_tf2
     def fn():
       x = constant_op.constant([1., 1., 1., 1., 1.])
-      y = control_flow_ops.while_loop(
+      y = while_loop_tf.while_loop(
           lambda i, _: i < 3,
           lambda i, x: (i + 1, array_ops.gather(x, [0])),
           [0, x[:1]])[1]
@@ -3340,8 +3344,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       b = lambda n: math_ops.add(n, x)
 
       def fn1():
-        r = control_flow_ops.while_loop(c, b, [n],
-                                        [tensor_shape.unknown_shape()])
+        r = while_loop_tf.while_loop(c, b, [n], [tensor_shape.unknown_shape()])
         return gradients_impl.gradients(r, x)[0]
 
       r = control_flow_ops.cond(math_ops.less(1, 2), fn1, lambda: x)
@@ -3364,7 +3367,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           "We do not support taking the gradient wrt or through the initial "
           "value of a loop variable. Gradients can be computed through "
           "loop invariants or wrt the input parameters to the loop body."):
-        control_flow_ops.while_loop(lambda i, x: i < 3, body, [0, y])
+        while_loop_tf.while_loop(lambda i, x: i < 3, body, [0, y])
 
   @test_util.run_v1_only("b/120545219")
   def testWhileGradInWhile(self):
@@ -3375,27 +3378,25 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       b = lambda n: math_ops.add(n, x)
 
       def b1(n):
-        r = control_flow_ops.while_loop(c, b, [n],
-                                        [tensor_shape.unknown_shape()])
+        r = while_loop_tf.while_loop(c, b, [n], [tensor_shape.unknown_shape()])
         return gradients_impl.gradients(r, x)
 
-      r = control_flow_ops.while_loop(lambda n: n < 6.0, b1, [n],
-                                      [tensor_shape.unknown_shape()])
+      r = while_loop_tf.while_loop(
+          lambda n: n < 6.0, b1, [n], [tensor_shape.unknown_shape()])
       self.assertAllClose(9.0, r.eval(feed_dict={x: 1.0}))
 
   @test_util.run_v1_only("b/120545219")
   def testCondGradInNestedWhiles(self):
 
     def outer_body(i, x):
-      _, x = control_flow_ops.while_loop(
-          lambda j, x: j < 3, inner_body, [0, 0.0])
+      _, x = while_loop_tf.while_loop(lambda j, x: j < 3, inner_body, [0, 0.0])
       return i + 1, x
 
     def inner_body(j, x):
       y = control_flow_ops.cond(math_ops.less(x, 1), lambda: 2 * x, lambda: x)
       return j + 1, gradients_impl.gradients(y, x)[0]
 
-    i, x = control_flow_ops.while_loop(lambda i, x: i < 3, outer_body, [0, 0.0])
+    i, x = while_loop_tf.while_loop(lambda i, x: i < 3, outer_body, [0, 0.0])
 
     with self.cached_session() as sess:
       i_val, x_val = self.evaluate([i, x])
@@ -3409,12 +3410,11 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     @eager_def_function.function
     def foo():
-      return control_flow_ops.while_loop(
-          lambda i, _: i < 3,
-          lambda i, x: (i + 1, control_flow_ops.cond(
-              constant_op.constant(True),
-              lambda: x + var,
-              lambda: x)),
+      return while_loop_tf.while_loop(
+          lambda i, _: i < 3, lambda i, x:
+          (i + 1,
+           control_flow_ops.cond(
+               constant_op.constant(True), lambda: x + var, lambda: x)),
           [0, 0.0])[1]
 
     self.evaluate(variables.global_variables_initializer())
@@ -3426,22 +3426,24 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     @eager_def_function.function
     def test_fn():
       x = constant_op.constant(0.0)
-      r = control_flow_ops.while_loop(
+      r = while_loop_tf.while_loop(
           # Outer loop condition
           lambda i, y: i < 2,
           # Outer loop body
-          lambda i, y: (i + 1, y + control_flow_ops.cond(
-              constant_op.constant(True),
-              # True branch
-              lambda: control_flow_ops.while_loop(
-                  # Inner loop condition
-                  lambda j, z: j < 3,
-                  # Inner loop body
-                  lambda j, z: (j + 1, z + math_ops.square(var)),
-                  # Inner initial loop value
-                  [0, y])[1],
-              # False branch
-              lambda: (0.0))),
+          lambda i, y: (
+              i + 1,
+              y + control_flow_ops.cond(
+                  constant_op.constant(True),
+                  # True branch
+                  lambda: while_loop_tf.while_loop(
+                      # Inner loop condition
+                      lambda j, z: j < 3,
+                      # Inner loop body
+                      lambda j, z: (j + 1, z + math_ops.square(var)),
+                      # Inner initial loop value
+                      [0, y])[1],
+                  # False branch
+                  lambda: (0.0))),
           # Outer initial loop value
           [0, x])[1]
 
@@ -3479,7 +3481,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         lv2 += 2
         return [lv0, lv1, lv2]
 
-      r = control_flow_ops.while_loop(c, b, loop_vars)
+      r = while_loop_tf.while_loop(c, b, loop_vars)
 
       self.assertTrue(isinstance(r, list))
       self.assertTrue(isinstance(r[0], named))
@@ -3505,7 +3507,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         return [lv0, lv1]
 
       with self.assertRaisesRegex(ValueError, "the same number of elements"):
-        control_flow_ops.while_loop(c, b, loop_vars)
+        while_loop_tf.while_loop(c, b, loop_vars)
 
   @test_util.run_v1_only("b/120545219")
   def testWhileGrad_ys_xs(self):
@@ -3520,7 +3522,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         x1 = math_ops.multiply(x, y1)
         return x1, y1
 
-      rx, ry = control_flow_ops.while_loop(c, b, [x, y], parallel_iterations=1)
+      rx, ry = while_loop_tf.while_loop(c, b, [x, y], parallel_iterations=1)
 
       r = gradients_impl.gradients([rx, ry], x)
       self.assertAllClose(304.0, r[0])
@@ -3544,7 +3546,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         i = math_ops.add(i, 1)
         return i, x
 
-      ri, rx = control_flow_ops.while_loop(c, b, [i, x], parallel_iterations=1)
+      ri, rx = while_loop_tf.while_loop(c, b, [i, x], parallel_iterations=1)
 
       r = gradients_impl.gradients([ri, rx], x)
       self.assertAllClose(1024.0, r[0])
@@ -3557,7 +3559,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       v = constant_op.constant(2.0, name="v")
       c = lambda v: math_ops.less(v, 100.0)
       b = math_ops.square
-      r = control_flow_ops.while_loop(c, b, [v], back_prop=False)
+      r = while_loop_tf.while_loop(c, b, [v], back_prop=False)
       r = math_ops.add(r, v)
       r = gradients_impl.gradients(r, v)
       self.assertAllClose(1.0, r[0])
@@ -3577,7 +3579,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         return (duration + 1, tensor, tensor)
 
       loop_vars = [duration, variable, variable]
-      tensors = control_flow_ops.while_loop(
+      tensors = while_loop_tf.while_loop(
           cond=cond, body=body, loop_vars=loop_vars)
       cost = math_ops.reduce_sum(tensors[2])
       grad = gradients_impl.gradients(cost, [variable])
@@ -3598,7 +3600,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         return duration + 1, c1
 
       loop_vars = [duration, c0]
-      tensors = control_flow_ops.while_loop(
+      tensors = while_loop_tf.while_loop(
           cond=cond, body=body, loop_vars=loop_vars)
       cost = math_ops.reduce_sum(tensors[1])
       grad = gradients_impl.gradients(cost, [c0])
@@ -3617,8 +3619,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         i = math_ops.add(i, 1)
         return i, x
 
-      _, rx = control_flow_ops.while_loop(c, b, [i, x], parallel_iterations=1)
-      _, rx = control_flow_ops.while_loop(c, b, [i, rx], parallel_iterations=1)
+      _, rx = while_loop_tf.while_loop(c, b, [i, x], parallel_iterations=1)
+      _, rx = while_loop_tf.while_loop(c, b, [i, rx], parallel_iterations=1)
 
       r = gradients_impl.gradients([rx], x)
       self.assertAllClose(1024.0, r[0])
@@ -3636,8 +3638,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         i = math_ops.add(i, 1)
         return i, x
 
-      _, r1 = control_flow_ops.while_loop(c, b, [i, x], parallel_iterations=1)
-      _, r2 = control_flow_ops.while_loop(c, b, [i, x], parallel_iterations=1)
+      _, r1 = while_loop_tf.while_loop(c, b, [i, x], parallel_iterations=1)
+      _, r2 = while_loop_tf.while_loop(c, b, [i, x], parallel_iterations=1)
       rx = math_ops.add(r1, r2)
 
       r = gradients_impl.gradients([rx], x)
@@ -3656,7 +3658,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         return (math_ops.add(i, 1, name="inc"), array_ops.identity(
             xi, name="xi"), math_ops.add(xi, yi, name="xi_plus_yi"))
 
-      _, x_f, y_f = control_flow_ops.while_loop(c, b, [i, x, y])
+      _, x_f, y_f = while_loop_tf.while_loop(c, b, [i, x, y])
       with ops.control_dependencies([x_f]):
         y_f_d = array_ops.identity(y_f, name="y_f_d")
 
@@ -3673,11 +3675,11 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       def inner_loop(s):
         c = lambda x: math_ops.less(x, 4.0)
         b = lambda x: math_ops.multiply(x, 2.0)
-        return control_flow_ops.while_loop(c, b, [s])
+        return while_loop_tf.while_loop(c, b, [s])
 
       c = lambda x: math_ops.less(x, 2.0)
       b = lambda x: math_ops.multiply(inner_loop(x), 2.0)
-      r = control_flow_ops.while_loop(c, b, [v])
+      r = while_loop_tf.while_loop(c, b, [v])
 
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(8.0, self.evaluate(r))
@@ -3696,17 +3698,17 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         z = constant_op.constant(0)
         c = lambda i, x: math_ops.less(i, 4)
         b = lambda i, x: [math_ops.add(i, 1), math_ops.multiply(x, 2.0)]
-        return control_flow_ops.while_loop(c, b, [z, s])
+        return while_loop_tf.while_loop(c, b, [z, s])
 
       def inner_loop2(s):
         z = constant_op.constant(0)
         c = lambda i, x: math_ops.less(i, 4)
         b = lambda i, x: [math_ops.add(i, 1), math_ops.multiply(x, 2.0)]
-        return control_flow_ops.while_loop(c, b, [z, s])
+        return while_loop_tf.while_loop(c, b, [z, s])
 
       c = lambda x: math_ops.less(x, 128.0)
       b = lambda x: inner_loop2(inner_loop1(x)[1])[1]
-      r = control_flow_ops.while_loop(c, b, [v])
+      r = while_loop_tf.while_loop(c, b, [v])
 
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(256.0, self.evaluate(r))
@@ -3720,17 +3722,17 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         z = constant_op.constant(0)
         c = lambda i, x: math_ops.less(i, 4)
         b = lambda i, x: [math_ops.add(i, 1), math_ops.multiply(x, 2.0)]
-        return control_flow_ops.while_loop(c, b, [z, s])
+        return while_loop_tf.while_loop(c, b, [z, s])
 
       def inner_loop2(s):
         z = constant_op.constant(0)
         c = lambda i, x: math_ops.less(i, 4)
         b = lambda i, x: [math_ops.add(i, 1), math_ops.multiply(x, 2.0)]
-        return control_flow_ops.while_loop(c, b, [z, s])
+        return while_loop_tf.while_loop(c, b, [z, s])
 
       c = lambda x: math_ops.less(x, 128.0)
       b = lambda x: math_ops.multiply(inner_loop1(x)[1], inner_loop2(x)[1])
-      r = control_flow_ops.while_loop(c, b, [v])
+      r = while_loop_tf.while_loop(c, b, [v])
 
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(512.0, self.evaluate(r))
@@ -3770,7 +3772,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
                                           lambda: math_ops.square(x),
                                           lambda: math_ops.subtract(x, one))
       # pylint: enable=undefined-variable
-      r = control_flow_ops.while_loop(c, b, [v])
+      r = while_loop_tf.while_loop(c, b, [v])
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(1024.0, self.evaluate(r))
 
@@ -3792,7 +3794,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
                                           lambda: math_ops.square(x),
                                           lambda: math_ops.subtract(x, one))
       # pylint: enable=undefined-variable
-      r = control_flow_ops.while_loop(c, b, [v])
+      r = while_loop_tf.while_loop(c, b, [v])
       r = gradients_impl.gradients(r, v)[0]
       r = sess.run(r, feed_dict={v: 2.0})
       self.assertAllClose(1024.0, r)
@@ -3810,7 +3812,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       def body(i, h):
         return i + 1, array_ops.concat([h, x], 0)
 
-      _, h = control_flow_ops.while_loop(
+      _, h = while_loop_tf.while_loop(
           condition, body, [i0, h0],
           [i0.get_shape(), tensor_shape.TensorShape([None, 2])])
       s = math_ops.reduce_sum(h)
@@ -3836,7 +3838,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(x.dtype, dtypes.float32_ref)
         return [i + 1, gen_array_ops.ref_identity(x)]
 
-      r = control_flow_ops.while_loop(c, body, [i, x], parallel_iterations=5)
+      r = while_loop_tf.while_loop(c, body, [i, x], parallel_iterations=5)
 
       grad_ys = [variables.VariableV1(73)._ref()]  # pylint: disable=protected-access
       grad = gradients_impl.gradients([r[1]], [x], grad_ys=grad_ys)
@@ -3871,7 +3873,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
                                          x.dense_shape)
         ]
 
-      _, r = control_flow_ops.while_loop(c, b, [i, x])
+      _, r = while_loop_tf.while_loop(c, b, [i, x])
       r = gradients_impl.gradients(r.values, values)[0]
       self.assertAllClose(np.array([1024.0, 1024.0]), self.evaluate(r))
 
@@ -3894,7 +3896,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
             sparse_tensor.SparseTensor(x.indices, x.values * 2.0, x.dense_shape)
         ]
 
-      _, r = control_flow_ops.while_loop(c, b, [i, x])
+      _, r = while_loop_tf.while_loop(c, b, [i, x])
       r = gradients_impl.gradients(r.values, values)[0]
       self.assertAllClose(np.array([1024.0, 1024.0]), self.evaluate(r))
 
@@ -3914,7 +3916,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         x1 = x + gradients_impl.gradients(data, params)[0]
         return i + 1, x1
 
-      output_grad = control_flow_ops.while_loop(
+      output_grad = while_loop_tf.while_loop(
           c, b, [i0, constant_op.constant(0.0)])
       self.assertAllClose(600.0, self.evaluate(output_grad)[1])
 
@@ -3934,7 +3936,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
             map_fn.map_fn(lambda x: math_ops.multiply(x, param), y)
         ]
 
-      r = control_flow_ops.while_loop(c, b, [n0, y0], parallel_iterations=1)
+      r = while_loop_tf.while_loop(c, b, [n0, y0], parallel_iterations=1)
       r = gradients_impl.gradients(r, param)[0]
       self.assertAllClose(107520.0, self.evaluate(r))
 
@@ -3950,14 +3952,14 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
             math_ops.cast(n * (row - 1.) + col - 1., dtypes.int32), row * col)
         return row, col + 1., ta
 
-      ta = control_flow_ops.while_loop(
+      ta = while_loop_tf.while_loop(
           lambda _, col, _1: col <= n,
           InnerBody, [row, constant_op.constant(1.), ta],
           return_same_structure=False)[2]
       return row + 1., ta
 
     ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=9)
-    ta = control_flow_ops.while_loop(
+    ta = while_loop_tf.while_loop(
         lambda row, _: row <= n,
         Body, [constant_op.constant(1.), ta],
         return_same_structure=False)[1]
@@ -3982,7 +3984,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         x1 = math_ops.add(math_ops.square(x), y1)
         return x1, y1
 
-      rx, ry = control_flow_ops.while_loop(c, b, [x, y])
+      rx, ry = while_loop_tf.while_loop(c, b, [x, y])
 
       r = gradients_impl.gradients(rx, y)[0]
       self.assertEqual(136.0, self.evaluate(r))
@@ -4026,7 +4028,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         x1 = math_ops.add(math_ops.square(x), y1)
         return x1, y1
 
-      rx, _ = control_flow_ops.while_loop(c, b, [x, y])
+      rx, _ = while_loop_tf.while_loop(c, b, [x, y])
 
       r = gradients_impl.gradients(rx, y)[0]
       self.assertAllClose(0.0, self.evaluate(r))
@@ -4046,7 +4048,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         x1 = math_ops.add(math_ops.square(x), y1)
         return x1, y1
 
-      rx, _ = control_flow_ops.while_loop(c, b, [x, y])
+      rx, _ = while_loop_tf.while_loop(c, b, [x, y])
 
       grad_y = gradients_impl.gradients(rx, y)[0]
       grad_x = gradients_impl.gradients(rx, x)[0]
@@ -4080,7 +4082,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
       c = lambda x: math_ops.less(x, 100.0)
       b = lambda x: math_ops.multiply(x, y)
-      rx = control_flow_ops.while_loop(c, b, [x])
+      rx = while_loop_tf.while_loop(c, b, [x])
 
       rg = gradients_impl.gradients(rx, y)[0]
       rg = array_ops.stop_gradient(rg)
@@ -4101,7 +4103,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     def body(x, _):
       return x, math_ops.cast(x, dtypes.float32) + math_ops.reduce_sum(q)
 
-    _, y = control_flow_ops.while_loop(cond, body, (math_ops.argmin(q), 0.))
+    _, y = while_loop_tf.while_loop(cond, body, (math_ops.argmin(q), 0.))
     dy_dq, = gradients_impl.gradients(y, q)
     self.assertIsNotNone(dy_dq)
     with self.cached_session() as sess:
@@ -4120,7 +4122,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       zero = constant_op.constant(0, dtype=dtypes.int64)
       return zero, math_ops.cast(x, dtypes.float32) + math_ops.reduce_sum(q)
 
-    _, y = control_flow_ops.while_loop(cond, body, (math_ops.argmin(q), 0.))
+    _, y = while_loop_tf.while_loop(cond, body, (math_ops.argmin(q), 0.))
     dy_dq, = gradients_impl.gradients(y, q)
     self.assertIsNotNone(dy_dq)
     with self.cached_session() as sess:
@@ -4147,7 +4149,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
               math_ops.abs(w)))
       return k + 1, w_n, chg_w
 
-    _, w, _ = control_flow_ops.while_loop(cond, body, [k, w, chg_w])
+    _, w, _ = while_loop_tf.while_loop(cond, body, [k, w, chg_w])
     grad, = gradients_impl.gradients(w, c)
     self.assertIsNotNone(grad)
 
@@ -4168,7 +4170,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       y0 = array_ops.ones(5)
       r0 = constant_op.constant(0.0)
       cond = lambda i, y, r: i < 1
-      _, _, r = control_flow_ops.while_loop(
+      _, _, r = while_loop_tf.while_loop(
           cond, body, [i0, y0, r0], back_prop=True)
 
       vars_ = variables.global_variables()
@@ -4561,8 +4563,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         tensor_list.append(constant_op.constant(5))
         return constant_op.constant(10)
 
-      result = control_flow_ops.while_loop(condition, body,
-                                           [constant_op.constant(4)])
+      result = while_loop_tf.while_loop(
+          condition, body, [constant_op.constant(4)])
       self.assertEqual(10, self.evaluate(result))
 
       # Ensure that we cannot run a tensor that escapes the loop body
@@ -4577,11 +4579,13 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       return np.square(x)
 
     with self.cached_session():
-      r = control_flow_ops.while_loop(
-          lambda i, v: i < 4,
-          lambda i, v: [i + 1, script_ops.py_func(func, [v], [dtypes.float32])[0]],
-          [constant_op.constant(0), constant_op.constant(2.0, dtypes.float32)],
-          [tensor_shape.unknown_shape(), tensor_shape.unknown_shape()])
+      r = while_loop_tf.while_loop(
+          lambda i, v: i < 4, lambda i, v:
+          [i + 1, script_ops.py_func(func, [v], [dtypes.float32])[0]],
+          [constant_op.constant(0),
+           constant_op.constant(2.0, dtypes.float32)],
+          [tensor_shape.unknown_shape(),
+           tensor_shape.unknown_shape()])
       self.assertEqual(self.evaluate(r[1]), 65536.0)
 
   @test_util.run_v1_only("b/120545219")
@@ -4593,7 +4597,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     with self.cached_session():
       x = constant_op.constant(2.0, dtypes.float32)
-      r = control_flow_ops.while_loop(
+      r = while_loop_tf.while_loop(
           lambda i, v: i < 2, lambda i, v: [i + 1, func(v)],
           [constant_op.constant(0), x],
           [tensor_shape.unknown_shape(),
@@ -4684,7 +4688,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     def body(_):
       return constant_op.constant([1])
 
-    return control_flow_ops.while_loop(
+    return while_loop_tf.while_loop(
         cond, body, [r], shape_invariants=shape_invariants)
 
   def testWhileOutputShapeWithShapeInvariantsUnknownRank(self):
@@ -4709,7 +4713,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     def body(x):
       return x + 1
 
-    r = control_flow_ops.while_loop(lambda x: x < 5, body, [0])
+    r = while_loop_tf.while_loop(lambda x: x < 5, body, [0])
     self.assertAllEqual(r, 5.)
 
 
@@ -4724,7 +4728,7 @@ class ControlFlowContextCheckTest(test.TestCase):
         tensor.append(constant_op.constant(1))
       return i + tensor[0]
 
-    control_flow_ops.while_loop(lambda i: i < 10, body, [0])
+    while_loop_tf.while_loop(lambda i: i < 10, body, [0])
     return tensor[0]
 
   def _getCondTensor(self):
@@ -4770,15 +4774,15 @@ class ControlFlowContextCheckTest(test.TestCase):
         ValueError,
         "Cannot use 'while/Const_1' as input to 'while_1/Add' because they are "
         "in different while loops. See info log for more details."):
-      control_flow_ops.while_loop(lambda i: i < 10,
-                                  lambda x: math_ops.add(1, while_tensor), [0])
+      while_loop_tf.while_loop(
+          lambda i: i < 10, lambda x: math_ops.add(1, while_tensor), [0])
 
     with self.assertRaisesRegex(
         ValueError,
         "Cannot use 'while/Const_1' as input to 'while_2/NextIteration' "
         "because they are in different while loops. See info log for more "
         "details."):
-      control_flow_ops.while_loop(lambda i: i < 10, lambda i: while_tensor, [0])
+      while_loop_tf.while_loop(lambda i: i < 10, lambda i: while_tensor, [0])
 
   def testValidCondContext(self):
     # Accessing a tensor from a cond context is OK (although dangerous).
@@ -4802,9 +4806,9 @@ class ControlFlowContextCheckTest(test.TestCase):
     # Accessing a tensor in a nested while is OK.
     def body(_):
       c = constant_op.constant(1)
-      return control_flow_ops.while_loop(lambda i: i < 3, lambda i: i + c, [0])
+      return while_loop_tf.while_loop(lambda i: i < 3, lambda i: i + c, [0])
 
-    control_flow_ops.while_loop(lambda i: i < 5, body, [0])
+    while_loop_tf.while_loop(lambda i: i < 5, body, [0])
 
   @test_util.run_v1_only("b/120545219")
   def testValidNestedContexts(self):
@@ -4815,11 +4819,11 @@ class ControlFlowContextCheckTest(test.TestCase):
       # Create another cond containing the while loop for good measure
       return control_flow_ops.cond(
           math_ops.less(1, 2),
-          lambda: control_flow_ops.while_loop(lambda i: i < 3,
-                                              lambda i: i + cond_tensor, [0]),
+          lambda: while_loop_tf.while_loop(lambda i: i < 3,
+                                           lambda i: i + cond_tensor, [0]),
           lambda: constant_op.constant(0))
 
-    control_flow_ops.while_loop(lambda i: i < 5, body, [0])
+    while_loop_tf.while_loop(lambda i: i < 5, body, [0])
 
   @test_util.run_v1_only("b/120545219")
   def testInvalidNestedContexts(self):
@@ -4827,8 +4831,8 @@ class ControlFlowContextCheckTest(test.TestCase):
     # inside a cond context, is illegal.
     def true_fn():
       while_tensor = self._getWhileTensor()
-      return control_flow_ops.while_loop(lambda i: i < 3,
-                                         lambda i: i + while_tensor, [0])
+      return while_loop_tf.while_loop(
+          lambda i: i < 3, lambda i: i + while_tensor, [0])
 
     with self.assertRaisesRegex(
         ValueError,
@@ -4937,7 +4941,8 @@ class AssertTest(test.TestCase):
         value = constant_op.constant(1.0)
       with ops.device("/cpu:0"):
         true = constant_op.constant(True)
-        guarded_assert = control_flow_ops.Assert(true, [value], name="guarded")
+        guarded_assert = control_flow_assert.Assert(
+            true, [value], name="guarded")
         unguarded_assert = gen_logging_ops._assert(
             true, [value], name="unguarded")
       opts = config_pb2.RunOptions(trace_level=config_pb2.RunOptions.FULL_TRACE)
@@ -5034,7 +5039,7 @@ class WhileOpBenchmark(test.Benchmark):
         for _ in range(steps):
           i, x = loop_body(i, x)
       else:
-        i, x = control_flow_ops.while_loop(
+        i, x = while_loop_tf.while_loop(
             lambda i, _: i < steps,
             loop_body, [i, x],
             parallel_iterations=steps,
@@ -5131,7 +5136,7 @@ class EagerTest(test.TestCase):
   def testWhileWithMaximumIterationsAndSingleArgument(self):
     with context.eager_mode():
       tensor = constant_op.constant(0)
-      r = control_flow_ops.while_loop(
+      r = while_loop_tf.while_loop(
           lambda i: i < 3, lambda i: i + 1, [tensor], maximum_iterations=1)
       self.assertEqual(1, r.numpy())
 

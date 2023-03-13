@@ -953,7 +953,7 @@ jni_binary_with_tflite(
 # client code, using System.LoadLibrary, before TensorFlowLite.init() is called.
 jni_binary_with_tflite(
     name = "libtensorflowlite_gpu_jni.so",
-    linkopts = tflite_jni_linkopts(),
+    linkopts = tflite_jni_linkopts() + tflite_linkopts_no_undefined(),
     linkscript = ":gpu_version_script.lds",
     tflite_deps = [
         "//tensorflow/lite/delegates/gpu/java/src/main/native",

@@ -1,6 +1,6 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN:     --gml-tiling="tile-sizes=8 distribute=false op-label=sum" \
-// RUN:     --gml-fusion="producer-label=mul consumer-label=sum" | \
+// RUN: --test-hlo-transform-dialect-interpreter -cse \
+// RUN: --gml-fusion="producer-label=mul consumer-label=sum" | \
 // RUN: FileCheck %s
 
 #id_2d = affine_map<(d0, d1) -> (d0, d1)>
@@ -35,16 +35,25 @@ func.func @reduce_cwise(%lhs: tensor<32x16xf32>, %rhs: tensor<32x16xf32>)
   } -> tensor<32xf32>
   return %sum: tensor<32xf32>
 }
+transform.sequence failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = transform.structured.match ops{["linalg.generic"]}
+                                    attributes{op_label="sum"} in %arg1
+      : (!pdl.operation) -> !pdl.operation
+    %1, %loops = transform.structured.tile %0 [8]
+      : (!pdl.operation) -> (!pdl.operation, !pdl.operation)
+}
+
 
 // CHECK-LABEL: @reduce_cwise
 // CHECK-SAME:  %[[ARG0:.*]]: tensor<32x16xf32>, %[[ARG1:.*]]: tensor<32x16xf32>
 
-// CHECK:       %[[C8:.*]] = arith.constant 8
-// CHECK:       %[[C0:.*]] = arith.constant 0
-// CHECK:       %[[C32:.*]] = arith.constant 32
-// CHECK:       %[[CST:.*]] = arith.constant 0.000000e+00
-// CHECK:       %[[INIT:.*]] = tensor.empty()
-// CHECK:       %[[INIT_0:.*]] = tensor.empty()
+// CHECK-DAG:   %[[C8:.*]] = arith.constant 8
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0
+// CHECK-DAG:   %[[C32:.*]] = arith.constant 32
+// CHECK-DAG:   %[[CST:.*]] = arith.constant 0.000000e+00
+// CHECK-DAG:   %[[INIT:.*]] = tensor.empty()
+// CHECK-DAG:   %[[INIT_0:.*]] = tensor.empty()
 // CHECK:       %[[FILL:.*]] = linalg.fill
 // CHECK-SAME:      ins(%[[CST]] : f32)
 // CHECK-SAME:      outs(%[[INIT_0]] : tensor<32xf32>)

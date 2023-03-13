@@ -93,7 +93,7 @@ class TestCoordinationClient : public CoordinationClient {
                               ReportErrorToTaskResponse* response,
                               StatusCallback done) override {
     mutex_lock l(mu_);
-    status_ = Status(static_cast<errors::Code>(request->error_code()),
+    status_ = Status(static_cast<absl::StatusCode>(request->error_code()),
                      request->error_message());
     done(OkStatus());
   }

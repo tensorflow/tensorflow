@@ -402,12 +402,12 @@ pytype_strict_binary(
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/saved_model:builder",
@@ -615,6 +615,7 @@ cc_library(
         "@tf_runtime//backends/cpu:core_runtime_alwayslink",
         "@tf_runtime//backends/cpu:tf_ops_alwayslink",
     ],
+    alwayslink = 1,
 )
 
 tf_cc_test(

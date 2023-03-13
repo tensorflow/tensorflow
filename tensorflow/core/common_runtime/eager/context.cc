@@ -1031,8 +1031,40 @@ std::vector<string> EagerContext::ListFunctionNames() {
   return func_lib_def_.ListFunctionNames();
 }
 
+Status EagerContext::AddRemoveFunctionNotifier(const string& func,
+                                               std::function<void()> notifier) {
+  mutex_lock l(remove_function_notifiers_mu_);
+  auto iter = remove_function_notifiers_.find(func);
+  if (iter != remove_function_notifiers_.end()) {
+    iter->second.push_back(notifier);
+  } else {
+    std::vector<std::function<void()>> notifiers = {notifier};
+    remove_function_notifiers_.insert({func, notifiers});
+  }
+  return OkStatus();
+}
+
+tensorflow::ImmediateExecutionContext::CacheStats
+EagerContext::GetCacheStats() {
+  CacheStats stats;
+  {
+    mutex_lock l(cache_mu_);
+    stats.kernel_cache_size = kernel_cache_.size();
+    for (const auto& iter : registered_functions_) {
+      stats.func_kernel_cache_entries[iter.first] =
+          iter.second->cached_kernel_keys->size();
+    }
+  }
+  {
+    mutex_lock dl(device_cache_mu_);
+    stats.device_cache_size = device_cache_.size();
+  }
+  return stats;
+}
+
 Status EagerContext::RemoveFunction(const string& func) {
   // TODO(mdan): The context owns these functions. Why check refcount then?
+  std::vector<std::function<void()>> notifiers;
   bool is_last_ref = false;
   {
     mutex_lock l(cache_mu_);
@@ -1051,11 +1083,21 @@ Status EagerContext::RemoveFunction(const string& func) {
     registered_function->Unref();
     if (is_last_ref) {
       TF_RETURN_IF_ERROR(func_lib_def_.RemoveFunction(func));
+
+      mutex_lock l(remove_function_notifiers_mu_);
+      auto iter = remove_function_notifiers_.find(func);
+      if (iter != remove_function_notifiers_.end()) {
+        notifiers = std::move(iter->second);
+      }
+      remove_function_notifiers_.erase(func);
     }
   }
   // MaybeRemoveFunctionRemotely contains rpc calls. Including it to mutex lock
   // will cause error.
   if (is_last_ref) {
+    for (const auto& notifier : notifiers) {
+      notifier();
+    }
     return MaybeRemoveFunctionRemotely(func);
   }
   return OkStatus();
@@ -1142,9 +1184,12 @@ void EagerContext::AddKernelToCache(Fprint128 cache_key,
   kernel_cache_[cache_key] = std::move(new_ref);
   auto* registered_function =
       gtl::FindPtrOrNull(registered_functions_, kernel->name());
+
   // The kernel name can be either a primitive op or a function.
   if (registered_function != nullptr) {
     registered_function->cached_kernel_keys->emplace_back(cache_key);
+    VLOG(5) << "Cached key size of kernel " << kernel->name()
+            << " is: " << registered_function->cached_kernel_keys->size();
   }
 }
 

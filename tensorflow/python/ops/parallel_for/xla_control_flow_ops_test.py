@@ -23,11 +23,11 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.parallel_for import control_flow_ops as pfor_control_flow_ops
 from tensorflow.python.ops.parallel_for.test_util import PForTestCase
 from tensorflow.python.platform import test
@@ -96,7 +96,7 @@ class PForTest(PForTestCase):
       return output
 
     def while_compute(x):
-      return control_flow_ops.while_loop_v2(
+      return while_loop.while_loop_v2(
           lambda i, _: i < 10,
           lambda i, y: (i + 1, y + vectorized_compute(x, i)),
           (0, array_ops.zeros([5, 1])))[1]
@@ -181,7 +181,7 @@ class WhileV2Test(PForTestCase):
       x_i = array_ops.gather(x, i)
       lengths_i = array_ops.gather(lengths, i)
 
-      return control_flow_ops.while_loop(
+      return while_loop.while_loop(
           lambda j, _: j < lengths_i,
           lambda j, t: (j + 1, t + array_ops.gather(x_i, j)),
           [0, 0.])
@@ -195,7 +195,7 @@ class WhileV2Test(PForTestCase):
     v = resource_variable_ops.ResourceVariable(5.)
 
     def loop_fn(_):
-      _, output = control_flow_ops.while_loop(
+      _, output = while_loop.while_loop(
           lambda j, x: j < 4,
           lambda j, x: (j + 1, x + v),
           [0, 0.])
@@ -206,7 +206,7 @@ class WhileV2Test(PForTestCase):
   def test_while_unstacked_condition(self):
 
     def loop_fn(i):
-      return control_flow_ops.while_loop(
+      return while_loop.while_loop(
           lambda j, x: j < 4,
           lambda j, x: (j + 1, x + i), [0, 0])
 
@@ -232,7 +232,7 @@ class WhileV2Test(PForTestCase):
         return (j + 1, t + array_ops.gather(x_i, j))
 
       cond, body = _make_unstacked(_cond, _body, pfor_config)
-      return control_flow_ops.while_loop(
+      return while_loop.while_loop(
           cond,
           body,
           [True, 0, 0.])

@@ -116,8 +116,8 @@ class CastOpTest(test.TestCase):
     for float8 in (dtypes.float8_e4m3fn, dtypes.float8_e5m2):
       # Including float8_e4m3fn should cover the float8 combinations without
       # loss of precision.
-      for dtype in (dtypes.float32, dtypes.bfloat16, dtypes.float16,
-                    dtypes.float8_e4m3fn):
+      for dtype in (dtypes.float64, dtypes.float32, dtypes.bfloat16,
+                    dtypes.float16, dtypes.float8_e4m3fn):
         with self.cached_session(use_gpu=True):
           b = ops.convert_to_tensor(a, float8)
           c = math_ops.cast(math_ops.cast(b, dtype), float8)

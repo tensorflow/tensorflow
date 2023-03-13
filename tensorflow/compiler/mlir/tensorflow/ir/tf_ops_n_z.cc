@@ -441,7 +441,8 @@ LogicalResult PadOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
     return failure();
 
   SmallVector<int32_t, 8> shuffled_paddings(paddings_value.getNumElements());
-  for (auto index_pair : llvm::enumerate(paddings_value.getValues<APInt>())) {
+  for (const auto &index_pair :
+       llvm::enumerate(paddings_value.getValues<APInt>())) {
     size_t outer_idx = index_pair.index() / 2;
     size_t inner_idx = index_pair.index() % 2;
 
@@ -1206,7 +1207,7 @@ class ShapeNPartialStaticInputShape : public OpRewritePattern<ShapeNOp> {
     SmallVector<int64_t, 4> dynamic_indices;
     SmallVector<Value, 4> dynamic_inputs;
     SmallVector<Type, 4> result_types;
-    for (auto e : llvm::enumerate(op.getOperands())) {
+    for (const auto &e : llvm::enumerate(op.getOperands())) {
       if (Attribute result = ConvertShapeToAttr(e.value().getType(), width)) {
         results[e.index()] = rewriter.create<TF::ConstOp>(op.getLoc(), result);
       } else {
@@ -1673,7 +1674,7 @@ LogicalResult SplitVOp::verify() {
   split_sizes.reserve(
       split_sizes_attr.getType().cast<ShapedType>().getNumElements());
 
-  for (auto dim : llvm::enumerate(split_sizes_attr)) {
+  for (const auto &dim : llvm::enumerate(split_sizes_attr)) {
     int64_t dim_val = dim.value().getSExtValue();
     split_sizes.push_back(dim_val);
     if (dim_val == tensorflow::kTFDynamicSize) {
@@ -2339,7 +2340,7 @@ LogicalResult TPUExecuteAndUpdateVariablesOp::verify() {
                 "("
              << num_resource_args << "), but got " << indices.size();
 
-    for (auto entry : llvm::enumerate(indices.getValue())) {
+    for (const auto &entry : llvm::enumerate(indices.getValue())) {
       auto int_attr = entry.value().cast<IntegerAttr>();
       if (int_attr.getInt() < min)
         return op.emitOpError()
@@ -2729,7 +2730,7 @@ LogicalResult TransposeOp::verify() {
   if (matchPattern(op.getPerm(), m_Constant(&attr_perm))) {
     // y.shape[i] should be equal to x.shape[perm[i]]
     // for i = [0, 1, ..., rank(x) - 1]
-    for (auto e : llvm::enumerate(attr_perm)) {
+    for (const auto &e : llvm::enumerate(attr_perm)) {
       const int64_t y_idx = e.index();
       const int64_t y_dim = y_type.getDimSize(y_idx);
       const int64_t x_idx = e.value().getSExtValue();
@@ -2788,7 +2789,7 @@ OpFoldResult FoldIdentityTranspose(TransposeOp op) {
   if (!matchPattern(op.getPerm(), m_Constant(&perm))) return {};
   const auto elements = perm.getValues<APInt>();
 
-  for (auto it : llvm::enumerate(elements)) {
+  for (const auto &it : llvm::enumerate(elements)) {
     if (it.index() != it.value()) return {};
   }
 
@@ -3482,7 +3483,7 @@ LogicalResult XlaBroadcastHelperOp::inferReturnTypeComponents(
   int64_t output_rank = max_rank_ty.getRank();
   llvm::SmallVector<int64_t, 4> broadcast_shape(output_rank, 1LL);
   llvm::SmallVector<bool, 4> is_broadcasted(output_rank, false);
-  for (auto item : llvm::enumerate(dims)) {
+  for (const auto &item : llvm::enumerate(dims)) {
     int64_t index = item.index();
     int64_t dim = item.value().getSExtValue();
     if (dim < 0 || dim > output_rank) {

@@ -253,8 +253,8 @@ TEST(FloatAddOpModel, Float32MultiDimBroadcast) {
 template <typename T>
 class IntegerAddOpTest : public ::testing::Test {};
 
-using Int32Or64Types = ::testing::Types<int32_t, int64_t>;
-TYPED_TEST_SUITE(IntegerAddOpTest, Int32Or64Types);
+using Int16OrInt32Or64Types = ::testing::Types<int16_t, int32_t, int64_t>;
+TYPED_TEST_SUITE(IntegerAddOpTest, Int16OrInt32Or64Types);
 
 TYPED_TEST(IntegerAddOpTest, NoActivation) {
   IntegerAddOpModel m(GetTensorType<TypeParam>(), {1, 2, 2, 1}, {1, 2, 2, 1},

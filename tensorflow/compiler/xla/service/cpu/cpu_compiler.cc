@@ -51,12 +51,12 @@ limitations under the License.
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -189,7 +189,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace {
 
@@ -336,6 +335,7 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
     HloXlaRuntimePipelineOptions options;
     options.enable_tiling_and_fusion =
         GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
+    options.cpu_name = llvm::sys::getHostCPUName();
     Status status = CreateHloXlaRuntimePipeline(passes, options);
     if (!status.ok()) {
       LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
@@ -612,11 +612,15 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   const std::pair<PrimitiveType, PrimitiveType> ar_promoted_types[] = {
       {BF16, F32}};
   pipeline.AddPass<AllReducePromotion>(ar_promoted_types);
-  // Convert BF16 operations to F32 operations so that the CPU backend can
-  // support BF16 operations without directly implementing a BF16 lowering for
-  // most ops.
+  // Convert BF16 and F8 operations to F32 and F16 respectively so that the CPU
+  // backend can support BF16/F8 operations without directly implementing a
+  // BF16/F8 lowering for most ops.
   FloatSupport bf16_support(BF16);
   pipeline.AddPass<FloatNormalization>(&bf16_support);
+  FloatSupport f8e5m2_support(F8E5M2);
+  pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
+  FloatSupport f8e4m3fn_support(F8E4M3FN);
+  pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
   // After canonicalization, there may be more batch dots that can be
   // simplified.
   pipeline.AddPass<BatchDotSimplification>();
@@ -675,7 +679,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   // Run the following passes to a fixed point.
   [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification"),
-   this] {
+   is_mlir_compile, this] {
     AddHloVerifier(&pipeline, allow_sparse_shapes_, HloVerifierOpts{},
                    /*debug_only=*/true);
 
@@ -690,8 +694,13 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
 
-    // Needs to happen after algebraic simplifier.
-    pipeline.AddPass<TreeReductionRewriter>();
+    // Disable TreeReductionRewriter for MLIR compiles. Reduce window is quite
+    // slow, and reduce is supposed to have similar numerics using a tree-like
+    // tiling pattern.
+    if (!is_mlir_compile) {
+      // Needs to happen after algebraic simplifier.
+      pipeline.AddPass<TreeReductionRewriter>();
+    }
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
     // elimination has to come after that pass.
@@ -1030,7 +1039,8 @@ void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
 }
 
 Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
-                       mlir::MLIRContext& mlir_context) {
+                       mlir::MLIRContext& mlir_context,
+                       const llvm::TargetMachine& target) {
   LoadMLIRDialects(mlir_context);
   mlir::PassManager pm(&mlir_context);
   if (VLOG_IS_ON(5)) {
@@ -1055,6 +1065,7 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
       GetDebugOptionsFromFlags().xla_cpu_enable_experimental_deallocation();
   // TODO(b/271126383): The flag should depend on the lowering target.
   options.enable_avx2 = true;
+  options.cpu_name = target.getTargetCPU();
   TF_RETURN_IF_ERROR(CreateHloXlaRuntimePipeline(xla_pm, options));
 
   runtime::CpuPipelineOptions cpu_pipeline_opts;
@@ -1616,7 +1627,8 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       TF_ASSIGN_OR_RETURN(
           auto mlir_module,
           createMLIRModule(module, mlir_context, assignment.get()));
-      TF_RETURN_IF_ERROR(LowerMLIRModule(module, *mlir_module, mlir_context));
+      TF_RETURN_IF_ERROR(
+          LowerMLIRModule(module, *mlir_module, mlir_context, *target_machine));
 
       llvm::cast<mlir::LLVM::LLVMFuncOp>(
           mlir_module->lookupSymbol("main_xla_framework"))

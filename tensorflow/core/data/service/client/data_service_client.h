@@ -87,7 +87,7 @@ class DataServiceClient {
 
     const TaskInfo info;
     // Client for fetching task elements from the tf.data service worker.
-    const std::unique_ptr<DataServiceWorkerClient> worker;
+    std::unique_ptr<DataServiceWorkerClient> worker;
     // The next round to read from the task.
     int64_t round = 0;
     // Whether the task has been removed. The task will eventually be
@@ -139,7 +139,8 @@ class DataServiceClient {
   StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateWorkerClient(
       const TaskInfo& task_info);
   StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateWorkerClient(
-      const std::string& protocol, const TaskInfo& task_info);
+      const std::string& protocol, const TaskInfo& task_info,
+      bool check_compatibility = false);
   void Heartbeat();
   void UpdateTasks(const ClientHeartbeatResponse& resp);
   bool ShouldReadFromTask(const TaskInfo& task) const;

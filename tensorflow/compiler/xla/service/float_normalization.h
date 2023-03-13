@@ -29,8 +29,8 @@ namespace xla {
 // to the passed-in backend-specific FloatSupport instance.
 class FloatNormalization : public HloModulePass {
  public:
-  explicit FloatNormalization(const FloatSupport* bfloat16_support)
-      : float_support_(bfloat16_support),
+  explicit FloatNormalization(const FloatSupport* float_support)
+      : float_support_(float_support),
         name_("float-normalization-" +
               primitive_util::LowercasePrimitiveTypeName(
                   float_support_->LowPrecisionType())) {}

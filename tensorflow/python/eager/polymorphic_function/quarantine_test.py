@@ -22,6 +22,7 @@ import weakref
 from absl.testing import parameterized
 import numpy
 
+from tensorflow.core.function.capture import capture_container
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import backprop
@@ -33,7 +34,6 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
@@ -41,7 +41,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gradients_impl
@@ -52,6 +51,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
@@ -322,7 +322,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       def loop_body(_):
         return variable_scope.get_variable('a', shape=())
 
-      return control_flow_ops.while_loop(loop_test, loop_body, [0.0])
+      return while_loop.while_loop(loop_test, loop_body, [0.0])
 
     self.assertEqual(test_function().shape, [])
 
@@ -1101,10 +1101,10 @@ class DefunTest(test.TestCase, parameterized.TestCase):
   def testEagerCaptures(self):
     with context.eager_mode():
       large_tensor = array_ops.ones(shape=(256,))
-      self.assertGreater(256, func_graph._EAGER_CONST_THRESHOLD)
+      self.assertGreater(256, capture_container._EAGER_CONST_THRESHOLD)
 
       small_tensor = array_ops.ones(shape=(4,))
-      self.assertLessEqual(4, func_graph._EAGER_CONST_THRESHOLD)
+      self.assertLessEqual(4, capture_container._EAGER_CONST_THRESHOLD)
 
       v = resource_variable_ops.ResourceVariable(0.0)
 
@@ -2321,7 +2321,7 @@ class DevicePlacementTest(test.TestCase, parameterized.TestCase):
     self.assertIn(compat.as_bytes('CPU:0'), outputs[3])
 
 
-if __name__ == '__main__':
+def setUpModule():
   ops.enable_eager_execution()
   cpus = config.list_physical_devices('CPU')
   # Set 4 virtual CPUs
@@ -2331,4 +2331,7 @@ if __name__ == '__main__':
       context.LogicalDeviceConfiguration(),
       context.LogicalDeviceConfiguration()
   ])
+
+
+if __name__ == '__main__':
   test.main()

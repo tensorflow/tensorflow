@@ -985,7 +985,8 @@ class DynamicBroadcastInDimOpToBroadcastConverter
     SmallVector<int64_t> broadcastDimensions =
         llvm::to_vector(op.getBroadcastDimensions().getValues<int64_t>());
 
-    SmallVector<Optional<bool>> expansionBehavior(broadcastDimensions.size());
+    SmallVector<std::optional<bool>> expansionBehavior(
+        broadcastDimensions.size());
 
     // Use static type info.
     for (const auto& [idx, dim] : llvm::enumerate(operandTy.getShape())) {
@@ -1375,7 +1376,7 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
     // Compute the reassociation maps for the linalg operation. This will
     // succeed if the reshape can be done with a single expand_shape or
     // collapse_shape.
-    if (Optional<SmallVector<ReassociationIndices>> reassociationMap =
+    if (std::optional<SmallVector<ReassociationIndices>> reassociationMap =
             getReassociationIndicesForReshape(operandType, resultType)) {
       if (resultType.getRank() < operandType.getRank()) {
         // We have found a working reassociation map. If the operand is dynamic,
@@ -4214,7 +4215,7 @@ class PointwiseToLinalgMapConverter : public OpConversionPattern<OpTy> {
     }
 
     // Find result type, if on tensors.
-    Optional<ShapedType> resultTy;
+    std::optional<ShapedType> resultTy;
     resultTy = this->typeConverter->convertType(op->getResultTypes().front())
                    .template dyn_cast<ShapedType>();
 

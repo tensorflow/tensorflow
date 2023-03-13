@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -546,7 +547,9 @@ DotFusionAnalysis::DotFusionAnalysis(const HloInstruction* root) {
 bool IsTritonHandledGEMM(
     const HloInstruction& dot,
     const se::CudaComputeCapability cuda_compute_capability) {
-  if (dot.opcode() != HloOpcode::kDot) {
+  if (dot.opcode() != HloOpcode::kDot ||
+      absl::c_any_of(dot.precision_config().operand_precision(),
+                     [](int x) { return x != PrecisionConfig::DEFAULT; })) {
     return false;
   }
   const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();

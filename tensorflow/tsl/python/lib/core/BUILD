@@ -52,19 +52,23 @@ cc_shared_library(
     # and we will generate "bfloat16.so.dll", for some reason
     shared_lib_name = if_windows("bfloat16.so", None),
     static_deps = [
+        # TODO(ddunleavy): If cc_shared_library is ever not a noop in g3, change
+        # this to be more specific.
+        "//:__subpackages__",
         "@//:__subpackages__",
         "@com_google_absl//:__subpackages__",
         # TODO(tlongeri): Ugly work-around to avoid reverse copybara check breaking. Change to
-        # "//third_party/eigen3" after OSS TF removes //third_party/eigen3 in favor of
+        # just "//third_party/eigen3" after OSS TF removes //third_party/eigen3 in favor of
         # @eigen_archive
         "@" + "eigen_archive//:__subpackages__",
+        "//third_party/" + "eigen3:__subpackages__",
         "@local_config_python//:__subpackages__",
         "@nsync//:__subpackages__",
     ],
 )
 
 tsl_pybind_extension(
-    name = "_pywrap_bfloat16",
+    name = "pywrap_bfloat16",
     srcs = ["bfloat16_wrapper.cc"],
     dynamic_deps = [":bfloat16.so"],
     static_deps = [

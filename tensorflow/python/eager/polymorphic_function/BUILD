@@ -96,6 +96,7 @@ py_library(
     deps = [
         ":attributes",
         ":compiler_ir",
+        ":eager_function_run",
         ":function_spec",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",
@@ -125,9 +126,12 @@ cuda_py_test(
     ],
     # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
     deps = [
+        ":monomorphic_function",
+        ":polymorphic_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -152,8 +156,6 @@ cuda_py_test(
         "//tensorflow/python/eager:cancellation",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/eager/polymorphic_function",
-        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/saved_model:save_options",
         "@absl_py//absl/testing:parameterized",
@@ -202,8 +204,10 @@ tf_xla_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:collective_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/eager:backprop",
     ],
 )
@@ -241,6 +245,7 @@ cuda_py_test(
         ":polymorphic_function",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
@@ -255,6 +260,7 @@ py_library(
     visibility = ["//tensorflow/python/eager:__pkg__"],
     deps = [
         ":atomic_function",
+        ":eager_function_run",
         ":tracing_compiler",
     ],
 )
@@ -276,6 +282,9 @@ tf_py_test(
     srcs = ["quarantine_test.py"],
     python_version = "PY3",
     deps = [
+        ":monomorphic_function",
+        ":polymorphic_function",
+        ":quarantine",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:constant_op",
@@ -302,9 +311,6 @@ tf_py_test(
         "//tensorflow/python/eager:cancellation",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/eager/polymorphic_function",
-        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
-        "//tensorflow/python/eager/polymorphic_function:quarantine",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -337,6 +343,13 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
     ],
+)
+
+py_library(
+    name = "eager_function_run",
+    srcs = ["eager_function_run.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = ["//tensorflow/python/util:tf_export"],
 )
 
 py_library(

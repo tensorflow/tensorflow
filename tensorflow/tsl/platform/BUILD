@@ -1331,6 +1331,7 @@ tsl_cc_test(
     srcs = ["status_test.cc"],
     deps = [
         ":errors",
+        ":stack_frame",
         ":status",
         ":test",
         ":test_main",

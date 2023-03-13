@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 
 namespace mlir {
 namespace mhlo {
@@ -36,6 +37,12 @@ namespace {
 
 #define GEN_PASS_DEF_VERIFYTFXLALEGALIZATION
 #include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_tf_passes.h.inc"
+
+auto* mlir_failed_legalization_op_count =
+    tensorflow::monitoring::Counter<1>::New(
+        "/tensorflow/core/tf2xla/"
+        "mlir_second_phase_failed_legalization_op_count",
+        "Counts which op fails to legalize", "op_name");
 
 class VerifyTFXLALegalization
     : public impl::VerifyTFXLALegalizationBase<VerifyTFXLALegalization> {
@@ -58,7 +65,9 @@ void VerifyTFXLALegalization::runOnOperation() {
     }
 
     emitError(op->getLoc()) << "Could not legalize op: " << op->getName();
-
+    mlir_failed_legalization_op_count
+        ->GetCell(op->getName().getStringRef().str())
+        ->IncrementBy(1);
     return WalkResult::interrupt();
   });
 

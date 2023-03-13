@@ -345,7 +345,7 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
 
     # pylint: disable=protected-access
     replicated_dims = [
-        x for x in layout.mesh._dim_names if x not in layout.sharding_specs
+        x for x in layout.mesh.dim_names if x not in layout.sharding_specs
     ]
     # pylint: enable=protected-access
 

@@ -93,7 +93,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_ADD, Register_ADD(),
              /* min_version */ 1,
-             /* max_version */ 4);
+             /* max_version */ 5);
   AddBuiltin(BuiltinOperator_SPACE_TO_BATCH_ND, Register_SPACE_TO_BATCH_ND(),
              /* min_version = */ 1,
              /* max_version = */ 3);
@@ -161,7 +161,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_STRIDED_SLICE, Register_STRIDED_SLICE(),
              /* min_version = */ 1,
              /* max_version = */ 6);
-  AddBuiltin(BuiltinOperator_EXP, Register_EXP());
+  AddBuiltin(BuiltinOperator_EXP, Register_EXP(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_TOPK_V2, Register_TOPK_V2(),
              /* min_version = */ 1,
              /* max_version = */ 2);
@@ -263,10 +265,12 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_FLOOR_DIV, Register_FLOOR_DIV(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_SQUARE, Register_SQUARE());
   AddBuiltin(BuiltinOperator_ZEROS_LIKE, Register_ZEROS_LIKE());
-  AddBuiltin(BuiltinOperator_FLOOR_MOD, Register_FLOOR_MOD());
+  AddBuiltin(BuiltinOperator_FLOOR_MOD, Register_FLOOR_MOD(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_RANGE, Register_RANGE());
   AddBuiltin(BuiltinOperator_LEAKY_RELU, Register_LEAKY_RELU(),
              /* min_version = */ 1,
@@ -287,7 +291,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_ADD_N, Register_ADD_N());
   AddBuiltin(BuiltinOperator_GATHER_ND, Register_GATHER_ND(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_WHERE, Register_WHERE(),
              /* min_version = */ 1,
              /* max_version = */ 2);
@@ -370,16 +374,19 @@ BuiltinOpResolver::BuiltinOpResolver() {
   // Populate the list of TF Lite delegate creators. The created delegates could
   // be applied to the model graph by default at runtime.
   delegate_creators_.push_back([](TfLiteContext* context) {
-    return tflite::MaybeCreateXNNPACKDelegate(
-        context, /*enable_xnnpack_unsigned_quantized=*/false);
+    return tflite::MaybeCreateXNNPACKDelegate(context,
+                                              XNNPackQS8Options::default_value);
   });
 }
 
-BuiltinOpResolverWithXNNPACK::BuiltinOpResolverWithXNNPACK() {
+BuiltinOpResolverWithXNNPACK::BuiltinOpResolverWithXNNPACK(
+    bool enable_xnnpack_unsigned_quantized) {
   delegate_creators_.clear();
-  delegate_creators_.push_back([](TfLiteContext* context) {
-    return tflite::MaybeCreateXNNPACKDelegate(
-        context, /*enable_xnnpack_unsigned_quantized=*/true);
+  XNNPackQS8Options xnnpack_qs8_options = enable_xnnpack_unsigned_quantized
+                                              ? XNNPackQS8Options::enabled
+                                              : XNNPackQS8Options::disabled;
+  delegate_creators_.push_back([xnnpack_qs8_options](TfLiteContext* context) {
+    return tflite::MaybeCreateXNNPACKDelegate(context, xnnpack_qs8_options);
   });
 }
 

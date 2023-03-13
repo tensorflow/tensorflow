@@ -249,7 +249,7 @@ class AsyncCheckpointHelper:
     3). Trigger the async save thread to check and fail the while-predicate.
     4). Join the async save thread. (The thread may finish before joining.)
     """
-    if self._writer_sem.acquire(timeout=3600):  # Step-1.
+    if self._writer_sem.acquire(timeout=300):  # Step-1.
       self._async_save_thread_shutdown = True  # Step-2.
       self._reader_sem.release()  # Step-3.
       logging.info("Joining the async save thread.")

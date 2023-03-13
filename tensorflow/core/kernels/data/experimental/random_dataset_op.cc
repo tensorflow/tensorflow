@@ -114,7 +114,9 @@ class RandomDatasetOp::Dataset : public DatasetBase {
                                           params);
   }
 
-  int64_t CardinalityInternal() const override { return kInfiniteCardinality; }
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return kInfiniteCardinality;
+  }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     return OkStatus();

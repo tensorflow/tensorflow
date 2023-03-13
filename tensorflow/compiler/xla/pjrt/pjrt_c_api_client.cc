@@ -750,11 +750,14 @@ PJRT_SendCallbackInfo CppSendCallbackToC(
                                 bool done) -> bool {
     // TODO(b/238999986) use `shape` with full information when available.
     xla::Shape shape = metadata->device_shape;
-    xla::Status status = send_callback(
-        xla::PjRtTransferMetadata{shape},
-        // TODO(b/263390038) use PJRT_Chunk C API
-        // instead of accessing the opaque type's field directly.
-        xla::PjRtChunk(std::move(chunk->chunk)), total_size_in_bytes, done);
+    xla::Status status =
+        send_callback(xla::PjRtTransferMetadata{shape},
+                      xla::PjRtChunk(chunk->data, chunk->size,
+                                     [deleter_arg = chunk->deleter_arg,
+                                      deleter = chunk->deleter](void* data) {
+                                       deleter(data, deleter_arg);
+                                     }),
+                      total_size_in_bytes, done);
     if (!status.ok()) {
       return false;
     }

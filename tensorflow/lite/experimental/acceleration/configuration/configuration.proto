@@ -491,6 +491,19 @@ message EdgeTpuSettings {
 
   // Cluster IDs the model will be compiled for.
   repeated int32 hardware_cluster_ids = 8 [packed = true];
+
+  // Public model ID to be logged in logs, traces and metrics for identifying
+  // the model to help debugging.
+  // The configured string must obey the following rules:
+  // 1. Must not contain any confidential information, because public_model_id
+  // will be logged in android logs and traces which are publicly visible.
+  // 2. Must not contain any private user data or PII (Personally Identifiable
+  // Information), such as age, language, geography, religion, etc.
+  // 3. Should be <=30 chars, otherwise EdgeTpu software might truncate the
+  // string due to logging size constraints.
+  // 4. Please try to use a unique name so that it's easier to identify the
+  // model during debugging.
+  optional string public_model_id = 9;
 }
 
 // Google EdgeTPU delegate settings.

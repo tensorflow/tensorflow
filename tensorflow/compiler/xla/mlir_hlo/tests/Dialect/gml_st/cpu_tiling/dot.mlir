@@ -15,13 +15,12 @@ func.func @matvec(%lhs: tensor<33x17xf32>, %rhs: tensor<17xf32>,
 // CHECK-DAG:     %[[C12:.*]] = arith.constant 12 : index
 // CHECK-DAG:     %[[C17:.*]] = arith.constant 17 : index
 // CHECK-DAG:     %[[C32:.*]] = arith.constant 32 : index
-// CHECK:         gml_st.parallel {{.*}} (%[[C0]]) to (%[[C32]]) step (%[[C4]])
+// CHECK:         scf.for {{.*}} %[[C0]] to %[[C32]] step %[[C4]]
 // CHECK:           scf.for {{.*}} %[[C0]] to %[[C12]] step %[[C6]]
 // CHECK:             vector.contract {{.*}} vector<4x6xf32>
 // CHECK-NEXT:        scf.yield %{{.*}} : {{.*}}, vector<4xf32>
 // CHECK:           vector.contract
 // CHECK:           vector.transfer_write
-// CHECK:           gml_st.set_yield
 // CHECK:         scf.for {{.*}} %[[C0]] to %[[C17]] step %[[C6]]
 // CHECK:           linalg.matvec
 
@@ -41,13 +40,12 @@ func.func @vecmat(%lhs: tensor<17xf32>, %rhs: tensor<17x33xf32>,
 // CHECK-DAG:     %[[C12:.*]] = arith.constant 12 : index
 // CHECK-DAG:     %[[C17:.*]] = arith.constant 17 : index
 // CHECK-DAG:     %[[C30:.*]] = arith.constant 30 : index
-// CHECK:         gml_st.parallel {{.*}} (%[[C0]]) to (%[[C30]]) step (%[[C5]])
+// CHECK:         scf.for {{.*}} %[[C0]] to %[[C30]] step %[[C5]]
 // CHECK:           scf.for {{.*}} %[[C0]] to %[[C12]] step %[[C6]]
 // CHECK:             vector.contract {{.*}} vector<6x5xf32>
 // CHECK-NEXT:        scf.yield %{{.*}} : {{.*}}, vector<5xf32>
 // CHECK:           vector.contract
 // CHECK:           vector.transfer_write
-// CHECK:           gml_st.set_yield
 // CHECK:         scf.for {{.*}} %[[C0]] to %[[C17]] step %[[C6]]
 // CHECK:           linalg.vecmat
 
@@ -70,3 +68,17 @@ func.func @dot(%lhs: tensor<19xf32>, %rhs: tensor<19xf32>,
 // CHECK-NEXT:      scf.yield %{{.*}} : {{.*}}, vector<f32>
 // CHECK:         arith.mulf
 // CHECK:         arith.addf
+
+// -----
+
+func.func @matvec_to_vecmat(%rhs: tensor<2xi32>,
+                            %output: tensor<3xi32>) -> tensor<3xi32> {
+  %cst = arith.constant dense<[[0, 1], [2, 3], [4, 5]]> : tensor<3x2xi32>
+  %2 = linalg.matvec ins(%cst, %rhs : tensor<3x2xi32>, tensor<2xi32>)
+                     outs(%output : tensor<3xi32>) -> tensor<3xi32>
+  return %2 : tensor<3xi32>
+}
+
+// CHECK-LABEL: @matvec_to_vecmat
+// CHECK: arith.constant dense<{{\[}}[0, 2, 4], [1, 3, 5]]> : tensor<2x3xi32>
+// CHECK: vector.contract {{.*}} : vector<2xi32>, vector<2x3xi32> into vector<3xi32>

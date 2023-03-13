@@ -49,6 +49,7 @@ tf_cuda_library(
     ],
     hdrs = [
         "conversion_function.h",
+        "fallback_batch_kernel.h",
         "runtime_fallback_kernels.h",
         "runtime_fallback_op_handler.h",
         "runtime_fallback_tensor.h",
@@ -170,7 +171,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt/eager:__subpackages__",
-        "//tensorflow/core/tfrt/saved_model:__subpackages__",
     ],
     deps = [
         "@com_google_absl//absl/strings",

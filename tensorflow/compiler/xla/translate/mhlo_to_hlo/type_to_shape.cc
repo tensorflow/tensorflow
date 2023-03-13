@@ -205,10 +205,9 @@ Shape TypeToShape(mlir::Type type) {
       // neither does the shape_util MakeShape API.
       if (!t.hasStaticShape()) return {};
 
-      // TODO(atondwal): Handle $pointerBitWidth, $indexBitWidth after they're
+      // TODO(atondwal): Handle $posWidth, $crdWidth after they're
       // added to xla
-      if (sparse.getPointerBitWidth() != 32 || sparse.getIndexBitWidth() != 32)
-        return {};
+      if (sparse.getPosWidth() != 32 || sparse.getCrdWidth() != 32) return {};
 
       llvm::SmallVector<DimLevelType, 3> dim_level_types;
       llvm::SmallVector<bool, 3> level_unique;

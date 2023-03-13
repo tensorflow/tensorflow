@@ -222,7 +222,7 @@ tensorflow::StatusOr<tensorflow::Tensor> CreateTfTensorFromTfLiteTensor(
     const TfLiteTensor* tflite_tensor) {
   if (IsResourceOrVariant(tflite_tensor)) {
     // Returns error if the input tflite tensor has variant or resource type.
-    return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+    return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                               "Input tensor has resource or variant type.");
   }
 
@@ -245,11 +245,11 @@ tensorflow::StatusOr<tensorflow::Tensor> CreateTfTensorFromTfLiteTensor(
   } else {
     if (tf_tensor.tensor_data().size() != tflite_tensor->bytes) {
       return tensorflow::Status(
-          tensorflow::error::INTERNAL,
+          absl::StatusCode::kInternal,
           "TfLiteTensor's size doesn't match the TF tensor's size.");
     }
     if (!tflite_tensor->data.raw) {
-      return tensorflow::Status(tensorflow::error::INTERNAL,
+      return tensorflow::Status(absl::StatusCode::kInternal,
                                 "TfLiteTensor's data field is null.");
     }
     std::memcpy(tf_tensor.data(), tflite_tensor->data.raw,

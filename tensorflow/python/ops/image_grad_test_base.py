@@ -24,7 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import image_ops
@@ -622,7 +622,7 @@ class RGBToHSVOpTestBase(test.TestCase):
       s = 1 - math_ops.div_no_nan(b, r)
       h = 60 * math_ops.div_no_nan(g - b, r - b)
       h = h / 360
-      return array_ops.stack([h, s, v], axis=-1)
+      return array_ops_stack.stack([h, s, v], axis=-1)
 
     # Building a custom input tensor where R>G>B
     x_reds = np.ones((in_shape[0], in_shape[1], in_shape[2])).astype(np.float32)

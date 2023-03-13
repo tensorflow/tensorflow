@@ -53,6 +53,8 @@ tensorflow/go/tsl/protobuf/BUILD:
 tensorflow/java/README.md:
 tensorflow/java/src/main/native/BUILD:
 tensorflow/lite/async/c/BUILD:
+tensorflow/lite/async/c/async_kernel.h:
+tensorflow/lite/async/c/async_signature_runner.h:
 tensorflow/lite/async/c/task.h:
 tensorflow/lite/async/c/types.h:
 tensorflow/lite/async/interop/c/BUILD:
@@ -61,6 +63,7 @@ tensorflow/lite/async/interop/c/types.h:
 tensorflow/lite/c/builtin_op_data.h:
 tensorflow/lite/c/c_api.h:
 tensorflow/lite/c/c_api_experimental.h:
+tensorflow/lite/c/c_api_opaque.h:
 tensorflow/lite/c/c_api_types.h:
 tensorflow/lite/c/common.h:
 tensorflow/lite/c/test_util.cc:
@@ -304,7 +307,6 @@ third_party/llvm_openmp/BUILD:
 third_party/llvm_openmp/cmake_vars.bzl:
 third_party/llvm_openmp/expand_cmake_vars:.py
 third_party/llvm_openmp/openmp.bzl:
-third_party/lmdb.BUILD:
 third_party/mkl/BUILD:
 third_party/mkl/build_defs.bzl:
 third_party/mkl_dnn/LICENSE:

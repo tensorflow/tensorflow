@@ -57,9 +57,6 @@ void EncapsulatePartitionedCall(Operation *call_op) {
 
   builder.setInsertionPointToEnd(&cluster.GetBody());
   builder.create<tf_device::ReturnOp>(call_op->getLoc(), call_op->getResults());
-  // Propagate necessary attributes to the cluster so that when it's outlined,
-  // the function will have correct attributes.
-  TF::CopyDeviceAndUnderscoredAttributes(call_op, cluster);
 }
 
 void XlaClusterFormationPass::runOnOperation() {

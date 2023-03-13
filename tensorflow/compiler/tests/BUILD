@@ -235,6 +235,7 @@ tf_xla_py_test(
     enabled_backends = [
         "cpu",
         "gpu",
+        "gpu_a100",
     ],
     python_version = "PY3",
     shard_count = 2,
@@ -325,6 +326,7 @@ tf_xla_py_test(
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:tensor_array_ops",
@@ -588,6 +590,7 @@ tf_xla_py_test(
     enabled_backends = [
         "cpu",
         "gpu",
+        "gpu_a100",
     ],
     python_version = "PY3",
     tags = [
@@ -671,6 +674,7 @@ tf_xla_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/eager:function",
     ],
 )
@@ -801,6 +805,7 @@ tf_xla_py_test(
     enabled_backends = [
         "cpu",
         "gpu",
+        "gpu_a100",
     ],
     python_version = "PY3",
     shard_count = 10,
@@ -1537,6 +1542,7 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
+        "//tensorflow/python:while_loop",
     ],
 )
 
@@ -1555,6 +1561,7 @@ tf_xla_py_test(
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:framework",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:platform_test",
@@ -1735,6 +1742,7 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/compiler/xla:compiler_py",
     ],
 )
@@ -2044,6 +2052,7 @@ tf_xla_py_test(
     srcs = ["xla_custom_call_ops_test.py"],
     disabled_backends = [
         "gpu",
+        "gpu_a100",
     ],
     enable_mlir_bridge = False,
     python_version = "PY3",
@@ -2228,6 +2237,7 @@ tf_xla_py_test(
     enabled_backends = [
         "cpu",
         "gpu",
+        "gpu_a100",
     ],
     tags = [
         "no_pip",
@@ -2253,6 +2263,7 @@ tf_xla_py_test(
         "cpu",
         "cpu_ondemand",
         "gpu",
+        "gpu_a100",
     ],
     enable_mlir_bridge = False,
     main = "where_op_test.py",
@@ -2348,6 +2359,7 @@ tf_xla_py_test(
         "cpu",
         "cpu_ondemand",
         "gpu",
+        "gpu_a100",
     ],
     enable_mlir_bridge = False,
     python_version = "PY3",
@@ -2433,6 +2445,7 @@ tf_xla_py_test(
     enabled_backends = [
         "cpu",
         "gpu",
+        "gpu_a100",
     ],
     python_version = "PY3",
     tags = [

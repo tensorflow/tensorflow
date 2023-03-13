@@ -29,6 +29,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
@@ -156,7 +157,7 @@ class ReconstructNonDebugGraphTest(test_util.TensorFlowTestCase):
       loop_body = lambda i: math_ops.add(i, 2)
       loop_cond = lambda i: math_ops.less(i, 16)
       i = constant_op.constant(10, name="i")
-      loop = control_flow_ops.while_loop(loop_cond, loop_body, [i])
+      loop = while_loop.while_loop(loop_cond, loop_body, [i])
 
       self._compareOriginalAndReconstructedGraphDefs(sess, loop)
 

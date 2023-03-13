@@ -142,10 +142,13 @@ class FingerprintingTest(test.TestCase):
     self.assertEqual(
         fingerprint.checkpoint_hash, fingerprint_def.checkpoint_hash
     )
-    self.assertEqual(fingerprint.version, fingerprint_def.version.producer)
+    self.assertEqual(
+        fingerprint.version.producer, fingerprint_def.version.producer
+    )
 
   def test_read_fingerprint_api_invalid(self):
-    with self.assertRaisesRegex(ValueError, "No or invalid fingerprint"):
+    with self.assertRaisesRegex(FileNotFoundError,
+                                "SavedModel Fingerprint Error"):
       read_fingerprint("foo")
 
 

@@ -31,6 +31,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
@@ -95,8 +97,9 @@ bool IsTpuUsed(int64_t pid) {
   std::string tpu_dev_path = "/dev/accel0";
   line.resize(tpu_dev_path.size());
   while ((ent = readdir(raw_fd_dir))) {
-    if (!isdigit(*ent->d_name)) continue;
-    int64_t fd = strtol(ent->d_name, nullptr, 10);
+    if (!absl::ascii_isdigit(*ent->d_name)) continue;
+    int64_t fd;
+    if (!absl::SimpleAtoi(ent->d_name, &fd)) continue;
     path = absl::StrCat("/proc/", pid, "/fd/", fd);
     if (!readlink(path.c_str(), &line[0], line.size())) continue;
     if (line != tpu_dev_path) continue;
@@ -118,11 +121,11 @@ tsl::StatusOr<int64_t> FindLibtpuProcess() {
   }
   std::unique_ptr<DIR, int (*)(DIR*)> proc_dir(proc, closedir);
   struct dirent* ent;
-  int64_t pid;
   while ((ent = readdir(proc))) {
-    if (!isdigit(*ent->d_name)) continue;
+    if (!absl::ascii_isdigit(*ent->d_name)) continue;
 
-    pid = strtol(ent->d_name, nullptr, 10);
+    int64_t pid;
+    if (!absl::SimpleAtoi(ent->d_name, &pid)) continue;
     if (IsTpuUsed(pid)) {
       return pid;
     }

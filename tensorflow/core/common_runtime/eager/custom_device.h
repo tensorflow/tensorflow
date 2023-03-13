@@ -111,12 +111,6 @@ class CustomDeviceTensorHandle : public ImmediateExecutionTensorHandle {
 
   AbstractTensorInterface* Resolve(Status* status) override;
 
-  ImmediateExecutionTensorHandle* Copy() override {
-    Ref();
-    return this;
-  }
-  void Release() override { Unref(); }
-
   // For LLVM style RTTI.
   static bool classof(const AbstractTensorHandle* ptr) {
     return ptr->getKind() == kCustomDevice;

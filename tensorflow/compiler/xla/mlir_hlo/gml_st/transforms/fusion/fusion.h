@@ -60,15 +60,15 @@ struct FusionCluster {
 // First element of the cluster is always the root for tiling.
 FusionCluster findMapFusionCluster(Operation *op);
 
-// Fuses linalg.fill that is used in output argument of the ParallelOp.
-LogicalResult fuseFillOpsIntoParallelOp(PatternRewriter &rewriter,
-                                        ParallelOp parallelOp);
+// Fuses linalg.fill that is used in output argument of the scf::ForallOp.
+LogicalResult fuseFillOpsIntoForallOp(PatternRewriter &rewriter,
+                                      scf::ForallOp parallelOp);
 
 // Creates gml_st::TilingOptions from the list of tile sizes.
 gml_st::TilingOptions getGmlStTilingOptions(ArrayRef<int64_t> tileSizes);
 
 // Tiles the op to gml_st.parallel and fuses greedily according to the filter.
-FailureOr<ParallelOp> tileUsingGmlStParallelAndFuseGreedily(
+FailureOr<scf::ForallOp> tileUsingGmlStParallelAndFuseGreedily(
     PatternRewriter &rewriter, Operation *op,
     const mlir::gml_st::TilingOptions &opts, StringRef label,
     llvm::function_ref<bool(Operation *)> fuseFilterFn);

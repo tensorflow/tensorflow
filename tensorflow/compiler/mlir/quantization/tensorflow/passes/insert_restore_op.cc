@@ -36,11 +36,8 @@ namespace quant {
 namespace {
 
 using ::mlir::tf_saved_model::GetInitializerFunction;
-using ::mlir::tf_saved_model::GetSessionInitializerOp;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
-using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
-using ::mlir::tf_saved_model::SessionInitializerOp;
 
 // This pass creates a RestoreV2 op in the initializer function with
 // type "restore_op" that initializes variables from checkpoint. It finds

@@ -221,3 +221,22 @@ func.func @yield_derived(%lb: index, %ub: index, %step: index) {
 // CHECK-CANON-LABEL: @yield_derived
 // CHECK-CANON:       test.use
 // CHECK-CANON-NEXT:  dealloc
+
+func.func @unknown_op() {
+  %c0 = arith.constant 0 : index
+  %c512 = arith.constant 512 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : index
+  scf.parallel (%arg3, %arg4) = (%c0, %c0) to (%c512, %c512) step (%c1, %c8) {
+    %alloc_14 = memref.alloc() {alignment = 64 : i64} : memref<512x512xf32>
+    "test.use"(%alloc_14) : (memref<512x512xf32>) -> ()
+    scf.yield
+  }
+  return
+}
+
+// CHECK-LABEL: @unknown_op
+// CHECK: scf.parallel
+// CHECK-NEXT: alloc
+// CHECK-NEXT: test.use
+// CHECK-NEXT: dealloc

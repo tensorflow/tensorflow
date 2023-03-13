@@ -23,6 +23,7 @@ import six
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -879,11 +880,8 @@ class UnaryOpsTest(xla_test.XLATestCase):
       # NaN on Mac
       self.skipTest("Casts to FP8 sometimes result in NaN on Mac")
     fp8_types = {dtypes.float8_e5m2, dtypes.float8_e4m3fn}
-    # TODO(b/259609697): Test casting to bool. Casting from float8 to bool is
-    # currently not supported since the cast is lowered to an Ne (not-equal) op,
-    # and FP8 is currently not supported with Ne.
     other_types = {
-        dtypes.float32, dtypes.float64, dtypes.complex64,
+        dtypes.bool, dtypes.float32, dtypes.float64, dtypes.complex64,
         dtypes.int32, dtypes.int64, dtypes.uint32, dtypes.uint64
     }
     for fp8_type in fp8_types:
@@ -1051,7 +1049,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
   def testUnpack(self):
     self._assertOpOutputMatchesExpected(
-        array_ops.unstack,
+        array_ops_stack.unstack,
         np.array([[1., 2.], [3., 4.], [5., 6.]], dtype=np.float32),
         expected=[
             np.array([1., 2.], dtype=np.float32),
@@ -1061,7 +1059,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
         equality_test=self.ListsAreClose)
 
     self._assertOpOutputMatchesExpected(
-        lambda x: array_ops.unstack(x, axis=1),
+        lambda x: array_ops_stack.unstack(x, axis=1),
         np.array([[1., 2.], [3., 4.], [5., 6.]], dtype=np.float32),
         expected=[
             np.array([1., 3., 5.], dtype=np.float32),

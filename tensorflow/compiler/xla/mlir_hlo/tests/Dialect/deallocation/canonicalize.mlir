@@ -25,6 +25,19 @@ func.func @retain_is_noop(%arg: memref<*xf32>) -> memref<*xf32> {
 
 // -----
 
+func.func @retain_is_cast(%arg: memref<2xf32>) -> memref<*xf32> {
+  %ret = deallocation.retain(%arg) of(%arg) :
+     (memref<2xf32>, memref<2xf32>) -> (memref<*xf32>)
+  return %ret : memref<*xf32>
+}
+
+// CHECK-LABEL: @retain_is_cast
+// CHECK-SAME: (%[[ARG:.*]]: memref<2xf32>)
+// CHECK-NEXT: %[[CAST:.*]] = memref.cast %[[ARG]]
+// CHECK-NEXT: return %[[CAST]] : memref<*xf32>
+
+// -----
+
 func.func @retain_of_nothing(%arg: memref<2xf32>) -> memref<*xf32> {
   %ret = deallocation.retain(%arg) of() : (memref<2xf32>) -> (memref<*xf32>)
   return %ret : memref<*xf32>
@@ -135,15 +148,6 @@ func.func @retain_is_dealloc_while_permute() {
 // CHECK: memref.dealloc %[[WHILE]]
 // CHECK: memref.dealloc %[[WHILE]]
 // CHECK: memref.dealloc %[[WHILE]]
-
-func.func @split_retain(%arg0: memref<*xi32>, %arg1: memref<*xf32>) {
-  deallocation.retain() of(%arg0, %arg1) : (memref<*xi32>, memref<*xf32>) -> ()
-  return
-}
-
-// CHECK-LABEL: @split_retain
-// CHECK-DAG: deallocation.retain() of(%{{.*}}) : (memref<*xi32>) -> ()
-// CHECK-DAG: deallocation.retain() of(%{{.*}}) : (memref<*xf32>) -> ()
 
 func.func @retain_of_null(%arg0: memref<4xi32>, %arg1: memref<4xi32>,
                           %arg2: index, %arg3: index, %arg4: index) {

@@ -53,6 +53,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:location_exporter",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",

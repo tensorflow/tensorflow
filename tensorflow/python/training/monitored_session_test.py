@@ -35,7 +35,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -779,7 +779,7 @@ class CoordinatedSessionTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def test_propagates_exception_trace(self):
-    assertion = control_flow_ops.Assert(False, ['This should fail.'])
+    assertion = control_flow_assert.Assert(False, ['This should fail.'])
     with self.cached_session() as sess:
       coord = coordinator.Coordinator(clean_stop_exception_types=())
       coord_sess = monitored_session._CoordinatedSession(sess, coord)

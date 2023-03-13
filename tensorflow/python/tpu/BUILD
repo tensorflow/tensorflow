@@ -2,7 +2,7 @@
 load("//tensorflow:pytype.default.bzl", "pytype_library", "pytype_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
-load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
+load("//tensorflow/python/tpu:tpu.bzl", "internal_create_sanitizer_settings", "tpu_py_test")
 
 # Do not add anymore paths here. You do not need to be in the visibility list
 # to use TPU symbols. They are accessible from tf.contrib.tpu in TF 1.x and
@@ -322,6 +322,7 @@ pytype_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/compiler/xla",
         "//tensorflow/python/compiler/xla/experimental:xla_sharding",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
@@ -345,6 +346,7 @@ pytype_library(
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_py",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:auto_control_deps",
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:composite_tensor",
@@ -725,6 +727,7 @@ pytype_strict_library(
         ":tpu_embedding_base",
         ":tpu_embedding_v2_utils",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_ops",
@@ -808,6 +811,7 @@ tpu_py_test(
     deps = [
         ":tpu_lib",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
@@ -840,3 +844,5 @@ tf_proto_library(
 #     deps = [":tensor_tracer_proto"],
 # )
 # copybara:uncomment_end
+
+internal_create_sanitizer_settings()

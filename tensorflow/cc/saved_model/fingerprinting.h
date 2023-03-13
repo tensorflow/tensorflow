@@ -28,17 +28,13 @@ namespace tensorflow::saved_model::fingerprinting {
 
 // Creates a FingerprintDef proto from a SavedModel and the checkpoint meta file
 // (.index) in `export_dir`.
-FingerprintDef CreateFingerprintDef(const SavedModel& saved_model,
-                                    absl::string_view export_dir);
+StatusOr<FingerprintDef> CreateFingerprintDef(const SavedModel& saved_model,
+                                              absl::string_view export_dir);
 
 // Loads the `fingerprint.pb` from `export_dir`, returns an error if there is
 // none.
 StatusOr<FingerprintDef> ReadSavedModelFingerprint(
     absl::string_view export_dir);
-
-// Converts the fingerprint into a dictionary mapping field names to values.
-std::unordered_map<std::string, uint64_t> MakeFingerprintMap(
-    const FingerprintDef& fingerprint);
 
 }  // namespace tensorflow::saved_model::fingerprinting
 

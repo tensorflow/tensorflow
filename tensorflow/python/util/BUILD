@@ -297,6 +297,17 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "vlog_test",
+    srcs = ["vlog_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:random_ops",
+    ],
+)
+
 # Leaf library: may not depend on anything else inside TensorFlow.
 # TODO(mdan): Move this utility outside of TF.
 py_strict_library(
@@ -313,6 +324,7 @@ py_strict_library(
         # TODO(mdan): Remove these dependencies.
         "//third_party/py/tf_slim:__subpackages__",
         "//learning/deepmind/research/language/translation/lm:__subpackages__",
+        "//learning/brain/analytics:__subpackages__",
     ],
     deps = [
         "@six_archive//:six",

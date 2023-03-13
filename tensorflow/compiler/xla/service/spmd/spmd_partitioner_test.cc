@@ -24,15 +24,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
-#include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace spmd {
@@ -3654,18 +3652,9 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/8));
   VLOG(1) << module->ToString();
-  // Left halo size should be 3 with 3 collective-permute.
-  auto reshape =
-      AllOf(op::Reshape(op::AllReduce(op::Select(
-                _,
-                op::DynamicSlice(
-                    op::Concatenate(op::CollectivePermute(op::Parameter()),
-                                    op::CollectivePermute(op::Parameter()),
-                                    op::CollectivePermute(op::Parameter()),
-                                    op::Parameter()),
-                    _, _),
-                _))),
-            op::Shape("f32[1,1,123]"));
+  auto reshape = AllOf(op::Reshape(op::AllReduce(op::Select(
+                           _, op::CollectivePermute(op::Parameter()), _))),
+                       op::Shape("f32[1,1,123]"));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, reshape);
 }
@@ -10049,7 +10038,7 @@ ENTRY %module {
                           PartitionComputation(hlo_string, /*num_devices=*/8));
   const auto root = module->entry_computation()->root_instruction();
   VLOG(1) << module->ToString();
-  auto operand = AllOf(op::Shape("s32[2,2,2,2]"), op::DynamicSlice());
+  auto operand = AllOf(op::Shape("s32[2,2,2,2]"), op::Reshape());
   auto indices = AllOf(op::Shape("s32[2,2,2]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[2,2,2,2]"), op::Gather(operand, indices));
   EXPECT_THAT(root, op::AllReduce(op::AllReduce(
@@ -12696,8 +12685,8 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Copy(op::CollectivePermute(
-                  op::Reshape(op::Reshape(op::Transpose(op::AllToAll(_)))))));
+              op::Copy(op::Reshape(op::CollectivePermute(
+                  op::Reshape(op::Transpose(op::AllToAll(_)))))));
 }
 
 TEST_F(SpmdPartitioningTest, PaddedConvReshard) {
@@ -13117,6 +13106,69 @@ ENTRY %main.21 {
   EXPECT_NE(scatter, nullptr);
   auto* updates = scatter->operand(2);
   EXPECT_THAT(updates, op::Shape("bf16[4096,128]"));
+}
+
+TEST_F(SpmdPartitioningTest, ComplexReshardUnmergeToRight) {
+  const char* const hlo_string = R"(
+HloModule Test
+
+ENTRY main.4 {
+  Arg_0.1 = f32[8,32]{1,0} parameter(0), sharding={devices=[8,1]0,2,4,6,1,3,5,7}
+  tuple.2 = (f32[8,32]{1,0}) tuple(Arg_0.1), sharding={{devices=[2,4]0,2,4,6,1,3,5,7}}
+  ROOT get-tuple-element.3 = f32[8,32]{1,0} get-tuple-element(tuple.2), index=0, sharding={devices=[2,4]0,2,4,6,1,3,5,7}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
+  EXPECT_EQ(allreduce, nullptr);
+  auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
+  EXPECT_NE(alltoall, nullptr);
+}
+
+TEST_F(SpmdPartitioningTest, ComplexReshardUnmergeToLeft) {
+  const char* const hlo_string = R"(
+HloModule Test
+
+ENTRY main.4 {
+  Arg_0.1 = f32[8,32]{1,0} parameter(0), sharding={devices=[1,8]0,2,4,6,1,3,5,7}
+  tuple.2 = (f32[8,32]{1,0}) tuple(Arg_0.1), sharding={{devices=[2,4]0,2,4,6,1,3,5,7}}
+  ROOT get-tuple-element.3 = f32[8,32]{1,0} get-tuple-element(tuple.2), index=0, sharding={devices=[2,4]0,2,4,6,1,3,5,7}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
+  EXPECT_EQ(allreduce, nullptr);
+  auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
+  EXPECT_NE(alltoall, nullptr);
+}
+
+TEST_F(SpmdPartitioningTest, NoComplexReshardUnmergeToLeft) {
+  const char* const hlo_string = R"(
+HloModule Test
+
+ENTRY main.4 {
+  Arg_0.1 = f32[8,33]{1,0} parameter(0), sharding={devices=[1,8]0,2,4,6,1,3,5,7}
+  tuple.2 = (f32[8,33]{1,0}) tuple(Arg_0.1), sharding={{devices=[2,4]0,2,4,6,1,3,5,7}}
+  ROOT get-tuple-element.3 = f32[8,33]{1,0} get-tuple-element(tuple.2), index=0, sharding={devices=[2,4]0,2,4,6,1,3,5,7}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
+  EXPECT_NE(allreduce, nullptr);
+  auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
+  EXPECT_EQ(alltoall, nullptr);
 }
 
 }  // namespace

@@ -50,7 +50,6 @@ filegroup(
         "device_name_utils.h",
         "env_var.cc",
         "env_var.h",
-        "ptr_util.h",
         "use_cudnn.cc",
         "use_cudnn.h",
     ],
@@ -75,7 +74,6 @@ filegroup(
         "command_line_flags.h",
         "device_name_utils.h",
         "env_var.h",
-        "ptr_util.h",
         "stat_summarizer_options.h",
         "stats_calculator.h",
         "use_cudnn.h",
@@ -118,7 +116,6 @@ filegroup(
     name = "framework_srcs",
     srcs = [
         "device_name_utils.h",
-        "ptr_util.h",
         "stat_summarizer_options.h",
         "use_cudnn.h",
     ],
@@ -210,11 +207,6 @@ cc_library(
         "//tensorflow/tsl/platform:stringpiece",
         "//tensorflow/tsl/platform:types",
     ],
-)
-
-cc_library(
-    name = "ptr_util",
-    hdrs = ["ptr_util.h"],
 )
 
 cc_library(

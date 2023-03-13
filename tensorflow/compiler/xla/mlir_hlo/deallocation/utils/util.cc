@@ -94,6 +94,7 @@ RegionBranchOpInterface moveRegionsToNewOpButKeepOldOp(
     llvm_unreachable("unsupported");
   }
 
+  newOp->setAttrs(op->getAttrs());
   for (auto [oldRegion, newRegion] :
        llvm::zip(op->getRegions(), newOp->getRegions())) {
     newRegion.takeBody(oldRegion);
@@ -103,6 +104,9 @@ RegionBranchOpInterface moveRegionsToNewOpButKeepOldOp(
 }
 
 Type getUnrankedMemrefType(Type ty) {
+  if (ty.isa<UnrankedMemRefType>()) {
+    return ty;
+  }
   MemRefType memRefTy = llvm::cast<MemRefType>(ty);
   return UnrankedMemRefType::get(memRefTy.getElementType(),
                                  memRefTy.getMemorySpace());

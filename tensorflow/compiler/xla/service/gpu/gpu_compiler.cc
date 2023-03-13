@@ -166,6 +166,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/stable_sort_expander.h"
 #include "tensorflow/compiler/xla/service/stochastic_convert_decomposer.h"
+#include "tensorflow/compiler/xla/service/topk_rewriter.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_all_reduce_code_motion.h"
@@ -233,6 +234,9 @@ class GpuFloatSupport : public FloatSupport {
       case HloOpcode::kAllToAll:
       case HloOpcode::kCollectivePermute:
       case HloOpcode::kReduceScatter:
+      // Handled by Triton GEMM.
+      case HloOpcode::kDot:
+        return LowPrecisionType() == BF16;
       // Data movement only ops.
       case HloOpcode::kBroadcast:
       case HloOpcode::kConcatenate:
@@ -249,9 +253,12 @@ class GpuFloatSupport : public FloatSupport {
       case HloOpcode::kSlice:
       case HloOpcode::kTranspose:
       // Other special ops.
+<<<<<<< HEAD
 #if GOOGLE_CUDA
       case HloOpcode::kDot:  // Handled by Triton GEMM.
 #endif
+=======
+>>>>>>> upstream/master
       case HloOpcode::kBitcast:
         return true;
       default:
@@ -401,6 +408,10 @@ Status GpuCompiler::OptimizeHloModule(
     spmd_pipeline.AddPass<CallInliner>();
     spmd_pipeline.AddPass<ZeroSizedHloElimination>();
     spmd_pipeline.AddPass<ConditionalCanonicalizer>();
+    spmd_pipeline.AddPass<TopkRewriter>(
+        // We're only rewriting TopK to prevent SPMD partitioning from blowing
+        // it up. Always allow it.
+        [](const HloSortInstruction*, int64_t) { return true; });
 
     HloPassPipeline& spmd_simplify =
         spmd_pipeline.AddPass<HloPassFix<HloPassPipeline>>("spmd-simplify");
@@ -442,6 +453,7 @@ Status GpuCompiler::OptimizeHloModule(
   {
     HloPassPipeline pipeline("optimization");
     AddHloVerifier(&pipeline);
+    pipeline.AddPass<TopkDecomposer>();
     pipeline.AddPass<AllToAllDecomposer>();
 
     HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
@@ -876,6 +888,10 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   GpuFloatSupport bf16_support(BF16);
   pipeline.AddPass<FloatNormalization>(&bf16_support);
+  GpuFloatSupport f8e5m2_support(F8E5M2);
+  pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
+  GpuFloatSupport f8e4m3fn_support(F8E4M3FN);
+  pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
 
   // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
   if (debug_options.xla_gpu_simplify_all_fp_conversions()) {

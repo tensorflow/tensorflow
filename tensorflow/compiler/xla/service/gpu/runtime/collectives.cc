@@ -759,9 +759,10 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // ReplicaId.
 //===----------------------------------------------------------------------===//
 
-static absl::Status ReplicaIdImpl(
-    const ServiceExecutableRunOptions* run_options, FlatMemrefView result) {
-  VLOG(3) << "Running ReplicaId";
+static absl::Status ReplicaPartitionIdImpl(
+    const ServiceExecutableRunOptions* run_options, FlatMemrefView result,
+    bool is_replica_id) {
+  VLOG(3) << "Running " << (is_replica_id ? "ReplicaId" : "PartitionId");
   se::Stream* stream = run_options->stream();
   NcclExecuteParams params(*run_options, stream->parent());
 
@@ -773,10 +774,15 @@ static absl::Status ReplicaIdImpl(
   if (!logical_id.ok()) return ToAbslStatus(logical_id.status());
 
   se::DeviceMemoryBase result_data = GetDeviceAddress(result);
-  stream->ThenMemset32(&result_data, logical_id.value().replica_id,
-                       /*size=*/4);
-
+  const uint32_t id =
+      is_replica_id ? logical_id->replica_id : logical_id->computation_id;
+  stream->ThenMemset32(&result_data, id, /*size=*/4);
   return absl::OkStatus();
+}
+
+static absl::Status ReplicaIdImpl(
+    const ServiceExecutableRunOptions* run_options, FlatMemrefView result) {
+  return ReplicaPartitionIdImpl(run_options, result, /*is_replica_id=*/true);
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
@@ -791,22 +797,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 
 static absl::Status PartitionIdImpl(
     const ServiceExecutableRunOptions* run_options, FlatMemrefView result) {
-  VLOG(3) << "Running PartitionId";
-  se::Stream* stream = run_options->stream();
-  NcclExecuteParams params(*run_options, stream->parent());
-
-  StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
-  if (!global_device_id.ok()) return ToAbslStatus(global_device_id.status());
-
-  StatusOr<DeviceAssignment::LogicalID> logical_id =
-      params.device_assn->LogicalIdForDevice(global_device_id.value());
-  if (!logical_id.ok()) return ToAbslStatus(logical_id.status());
-
-  se::DeviceMemoryBase result_data = GetDeviceAddress(result);
-  stream->ThenMemset32(&result_data, logical_id.value().computation_id,
-                       /*size=*/4);
-
-  return absl::OkStatus();
+  return ReplicaPartitionIdImpl(run_options, result, /*is_replica_id=*/false);
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(

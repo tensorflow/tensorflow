@@ -34,6 +34,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 
 
@@ -283,9 +284,9 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
     @polymorphic_function.function
     def f(x):
-      return control_flow_ops.while_loop(lambda _, i: i < 2,
-                                         lambda x, i: (2*x, i + 1),
-                                         [x, 0])[0]
+      return while_loop.while_loop(
+          lambda _, i: i < 2, lambda x, i: (2 * x, i + 1), [x, 0]
+      )[0]
 
     with backprop.GradientTape() as t:
       x = constant_op.constant(1.0)
@@ -302,8 +303,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
       def f():
         c = lambda n: n < 10
         b = lambda n: n * x
-        return control_flow_ops.while_loop(c, b, [n],
-                                           [tensor_shape.unknown_shape()])
+        return while_loop.while_loop(c, b, [n], [tensor_shape.unknown_shape()])
 
       l = f()
       dx = gradients_impl.gradients(l, [x])[0]

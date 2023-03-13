@@ -105,6 +105,27 @@ InterpreterValue intCast(InterpreterState&, Op op,
       });
 }
 
+template <typename Op>
+InterpreterValue floatCast(InterpreterState&, Op op,
+                           const InterpreterValue& arg) {
+  if (arg.isTensor()) {
+    return dispatchScalarType(
+        op->getResultTypes()[0], [&](auto dummy) -> InterpreterValue {
+          auto result = TensorOrMemref<decltype(dummy)>::emptyLike(arg.view());
+          for (const auto& index : result.view.indices()) {
+            result.at(index) = static_cast<decltype(dummy)>(
+                arg.extractElement(index).asDouble());
+          }
+          return {result};
+        });
+  }
+
+  return dispatchScalarType(
+      op->getResultTypes()[0], [&](auto dummy) -> InterpreterValue {
+        return {static_cast<decltype(dummy)>(arg.asDouble())};
+      });
+}
+
 llvm::SmallVector<InterpreterValue> uiToFP(
     MutableArrayRef<InterpreterValue> args, mlir::Operation* op,
     InterpreterState&) {
@@ -271,10 +292,11 @@ REGISTER_MLIR_INTERPRETER_OP(cmpF);
 REGISTER_MLIR_INTERPRETER_OP(cmpI);
 REGISTER_MLIR_INTERPRETER_OP(constant);
 REGISTER_MLIR_INTERPRETER_OP(extF);
-REGISTER_MLIR_INTERPRETER_OP(intCast<arith::IndexCastOp>);
-REGISTER_MLIR_INTERPRETER_OP(intCast<arith::TruncIOp>);
-REGISTER_MLIR_INTERPRETER_OP(intCast<arith::SIToFPOp>);
+REGISTER_MLIR_INTERPRETER_OP(floatCast<arith::FPToSIOp>);
 REGISTER_MLIR_INTERPRETER_OP(intCast<arith::ExtSIOp>);
+REGISTER_MLIR_INTERPRETER_OP(intCast<arith::IndexCastOp>);
+REGISTER_MLIR_INTERPRETER_OP(intCast<arith::SIToFPOp>);
+REGISTER_MLIR_INTERPRETER_OP(intCast<arith::TruncIOp>);
 REGISTER_MLIR_INTERPRETER_OP(select);
 
 }  // namespace

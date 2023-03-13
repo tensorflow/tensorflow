@@ -65,7 +65,7 @@ tsl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
 
       attr = mlir::TF::TensorProtoAttr::get(scalar_type, mangled);
     } else {
-      return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+      return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                                 "Unsupported type");
     }
   } else if (auto itype = element_type.dyn_cast<mlir::IntegerType>()) {
@@ -88,7 +88,7 @@ tsl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
                                                  static_cast<int64_t>(value));
           break;
         default:
-          return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+          return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                                     "Unsupported type");
       }
     } else {
@@ -110,12 +110,12 @@ tsl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
                                                   static_cast<uint64_t>(value));
           break;
         default:
-          return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+          return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                                     "Unsupported type");
       }
     }
   } else {
-    return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+    return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                               "Unsupported type");
   }
   return rewriter->create<arith::ConstantOp>(loc, scalar_type, attr);

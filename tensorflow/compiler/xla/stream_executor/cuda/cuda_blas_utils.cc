@@ -33,7 +33,7 @@ const char* ToString(cublasStatus_t status) {
 
 tsl::Status ToStatus(cublasStatus_t status, const char* prefix) {
   if (status != CUBLAS_STATUS_SUCCESS) {
-    return tsl::Status(tsl::error::INTERNAL,
+    return tsl::Status(absl::StatusCode::kInternal,
                        absl::StrCat(prefix, ": ", ToString(status)));
   }
   return tsl::OkStatus();

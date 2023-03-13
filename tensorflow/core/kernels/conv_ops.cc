@@ -26,57 +26,15 @@ limitations under the License.
 
 #include <string.h>
 
-#include <atomic>
-#include <map>
-#include <utility>
-#include <vector>
-
-#include "absl/synchronization/blocking_counter.h"
-#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
-#include "tensorflow/core/framework/numeric_op.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/conv_2d.h"
-#include "tensorflow/core/kernels/deep_conv2d.h"
-#include "tensorflow/core/kernels/fill_functor.h"
-#include "tensorflow/core/kernels/ops_util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/profiler/lib/scoped_annotation.h"
-#include "tensorflow/core/util/padding.h"
-#include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/core/util/use_cudnn.h"
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/core/kernels/cast_op.h"
-#include "tensorflow/core/kernels/conv_ops_gpu.h"
-#include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/core/protobuf/autotuning.pb.h"
-#include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"
-#include "tensorflow/core/util/autotune_maps/conv_parameters.h"
-#include "tensorflow/core/util/proto/proto_utils.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
-#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
+<<<<<<< HEAD
 bool UseNhwcLayoutForConvOnRocm(se::Stream* stream) {
 #if TENSORFLOW_USE_ROCM
    bool is_enabled = se::gpu::UseNhwcLayoutForRocm();
@@ -423,6 +381,8 @@ class LaunchDeepConvOp<CPUDevice, float> {
   }
 };
 
+=======
+>>>>>>> upstream/master
 #define TF_REQUIRES(EXP, STATUS)                \
   do {                                          \
     if (!TF_PREDICT_TRUE(EXP)) return (STATUS); \
@@ -604,114 +564,6 @@ Status ComputeConv2DDimension(const Conv2DParameters& params,
 
 #undef TF_REQUIRES
 
-template <typename Device, typename T>
-class Conv2DOp : public BinaryOp<T> {
- public:
-  explicit Conv2DOp(OpKernelConstruction* context) : BinaryOp<T>(context) {
-    OP_REQUIRES_OK(context, InitConv2DParameters(context, &params_));
-
-    OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
-    cudnn_use_autotune_ = CudnnUseAutotune();
-  }
-
-  void Compute(OpKernelContext* context) override {
-    // Input tensor is of the following dimensions:
-    // [ batch, in_rows, in_cols, in_depth ]
-    const Tensor& input = context->input(0);
-
-    // Input filter is of the following dimensions:
-    // [ filter_rows, filter_cols, in_depth, out_depth]
-    const Tensor& filter = context->input(1);
-
-    Conv2DDimensions dimensions;
-    OP_REQUIRES_OK(context,
-                   ComputeConv2DDimension(params_, input, filter, &dimensions));
-
-    TensorShape out_shape;
-    OP_REQUIRES_OK(
-        context, ShapeFromFormatWithStatus(
-                     params_.data_format, dimensions.batch, dimensions.out_rows,
-                     dimensions.out_cols, dimensions.out_depth, &out_shape));
-
-    // Output tensor is of the following dimensions:
-    // [ in_batch, out_rows, out_cols, out_depth ]
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
-
-    VLOG(2) << "Conv2D: in_depth = " << dimensions.in_depth
-            << ", patch_depth = " << dimensions.patch_depth
-            << ", input_cols = " << dimensions.input_cols
-            << ", filter_cols = " << dimensions.filter_cols
-            << ", input_rows = " << dimensions.input_rows
-            << ", filter_rows = " << dimensions.filter_rows
-            << ", stride_rows = " << dimensions.stride_rows
-            << ", stride_cols = " << dimensions.stride_cols
-            << ", dilation_rows = " << dimensions.dilation_rows
-            << ", dilation_cols = " << dimensions.dilation_cols
-            << ", out_depth = " << dimensions.out_depth;
-
-    // If there is nothing to compute, return.
-    if (out_shape.num_elements() == 0) {
-      return;
-    }
-
-    // If the input is empty, result can only be due to padding.
-    if (input.NumElements() == 0) {
-      // Zero-out output and return.
-      functor::SetZeroFunctor<Device, T>()(context->eigen_device<Device>(),
-                                           output->template flat<T>());
-
-      return;
-    }
-
-    if (params_.padding != EXPLICIT &&
-        LaunchDeepConvOp<Device, T>::Run(
-            context, input, filter, dimensions.batch, dimensions.input_rows,
-            dimensions.input_cols, dimensions.in_depth, dimensions.filter_rows,
-            dimensions.filter_cols, dimensions.pad_rows_before,
-            dimensions.pad_cols_before, dimensions.out_rows,
-            dimensions.out_cols, dimensions.out_depth, dimensions.dilation_rows,
-            dimensions.dilation_cols, dimensions.stride_rows,
-            dimensions.stride_cols, output, params_.data_format)) {
-      return;
-    }
-
-    launcher_(context, use_cudnn_, cudnn_use_autotune_, input, filter,
-              dimensions.dilation_rows, dimensions.dilation_cols,
-              dimensions.stride_rows, dimensions.stride_cols, params_.padding,
-              params_.explicit_paddings, output, params_.data_format);
-  }
-
- private:
-  Conv2DParameters params_;
-  bool use_cudnn_;
-  bool cudnn_use_autotune_;
-
-  LaunchConv2DOp<Device, T> launcher_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(Conv2DOp);
-};
-
-#define REGISTER_CPU(T)                                         \
-  REGISTER_KERNEL_BUILDER(                                      \
-      Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      Conv2DOp<CPUDevice, T>);
-
-// If we're using the alternative GEMM-based implementation of Conv2D for the
-// CPU implementation, don't register this EigenTensor-based version.
-#if !defined(USE_GEMM_FOR_CONV)
-TF_CALL_bfloat16(REGISTER_CPU);
-TF_CALL_half(REGISTER_CPU);
-TF_CALL_float(REGISTER_CPU);
-TF_CALL_double(REGISTER_CPU);
-TF_CALL_int32(REGISTER_CPU);
-#endif  // USE_GEMM_FOR_CONV
-
-// To be used inside depthwise_conv_op.cc.
-template struct LaunchConv2DOp<CPUDevice, Eigen::bfloat16>;
-template struct LaunchConv2DOp<CPUDevice, Eigen::half>;
-template struct LaunchConv2DOp<CPUDevice, float>;
-template struct LaunchConv2DOp<CPUDevice, double>;
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -737,6 +589,7 @@ int64_t GetDnnWorkspaceLimitOrDefault() {
                               1LL << 33);  // 8GB by default
 }
 
+<<<<<<< HEAD
 template <typename T>
 void LaunchConv2DOpImpl(OpKernelContext* ctx, bool use_cudnn,
                         bool cudnn_use_autotune, const Tensor& input_param,
@@ -1241,6 +1094,8 @@ template struct LaunchConv2DOp<GPUDevice, float>;
 template struct LaunchConv2DOp<GPUDevice, Eigen::half>;
 template struct LaunchConv2DOp<GPUDevice, double>;
 
+=======
+>>>>>>> upstream/master
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

@@ -42,10 +42,12 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -582,8 +584,17 @@ std::vector<int64_t> TensorShapeAsVector(TFE_TensorHandle* tensor,
   return shape;
 }
 
+template <>
+StatusOr<bool> ExecutableManager<ExecutionFunctions>::ShouldFoldInput(
+    const DTensorOperation& doperation, const int input_index) const {
+  return tsl::errors::Unavailable(
+      "ExecutionFunctions manager can not check if the input is foldable, as "
+      "the information is maintained by other types of managers (e.g. ModuleOp "
+      "manager)");
+}
+
 Status PrepareGraphForMlir(
-    const ExecutableManager<ExecutionFunctions>& function_manager,
+    const ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>& module_manager,
     const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation,
     const tensorflow::FunctionLibraryDefinition& flib_def,
@@ -675,9 +686,11 @@ Status PrepareGraphForMlir(
     // Small constants are converted into constant graph nodes, instead of
     // being passed in as input arguments. This provides more information to
     // the SPMD and layout propagation passes.
+    TF_ASSIGN_OR_RETURN(bool should_fold_input,
+                        module_manager.ShouldFoldInput(doperation, i));
     if (!input->const_value_node() ||
         !input->const_value_node()->const_value().has_value() ||
-        !function_manager.ShouldFoldInput(doperation, i)) {
+        !should_fold_input) {
       graph_op_inputs.push_back(FunctionArgument{
           arg_node, NodeDefBuilder::NodeOut{arg_node->name(), i, dtype}});
       graph->AddControlEdge(graph->source_node(), arg_node);

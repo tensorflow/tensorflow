@@ -112,3 +112,20 @@ func.func @cast_bf16_gather_v2_to_fp32(%arg0: tensor<1xi64>) -> (tensor<1x3x4x3x
 // CHECK: %[[gather:.*]] = "tf.GatherV2"(%[[cst]], %arg0, %[[cst_0]]) {batch_dims = 0 : i64} : (tensor<1024x3x4x3xf32>, tensor<1xi64>, tensor<i32>) -> tensor<1x3x4x3xf32>
 // CHECK: %[[identity:.*]] = "tf.IdentityN"(%[[gather]])
 // CHECK: return %[[identity]] : tensor<1x3x4x3xf32>
+
+// Tests that an AddV2 op accepting two bf16 operands is transformed into
+// an AddV2 op that accepts two fp32 operands.
+func.func @cast_bf16_add_v2_to_fp32(%arg0: tensor<2xbf16>, %arg1: tensor<2xbf16>) -> tensor<2xbf16> {
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<2xbf16>, tensor<2xbf16>) -> tensor<2xbf16>
+  return %0 : tensor<2xbf16>
+}
+// The signature of the function is not changed.
+// CHECK: func @cast_bf16_add_v2_to_fp32(%[[ARG_0:.*]]: tensor<2xbf16>, %[[ARG_1:.*]]: tensor<2xbf16>) -> tensor<2xbf16>
+
+// bfloat16 operands are cast to f32 operands.
+// CHECK-DAG: %[[CAST_0:.*]] = "tf.Cast"(%[[ARG_0]]) {Truncate = false} : (tensor<2xbf16>) -> tensor<2xf32>
+// CHECK-DAG: %[[CAST_1:.*]] = "tf.Cast"(%[[ARG_1]]) {Truncate = false} : (tensor<2xbf16>) -> tensor<2xf32>
+// CHECK: %[[ADD:.*]] = "tf.AddV2"(%[[CAST_0]], %[[CAST_1]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+// f32 outputs are cast back to bfloat16.
+// CHECK: %[[CAST_2:.*]] = "tf.Cast"(%[[ADD]]) {Truncate = false} : (tensor<2xf32>) -> tensor<2xbf16>
+// CHECK: return %[[CAST_2]] : tensor<2xbf16>

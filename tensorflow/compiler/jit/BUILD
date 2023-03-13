@@ -1365,9 +1365,10 @@ cc_library(
     hdrs = ["device_compilation_cache.h"],
     deps = [
         ":device_compilation_cluster_signature",
-        ":device_compiler_client",
         ":xla_compile_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:framework_lite",
         "@com_google_absl//absl/strings",
     ],

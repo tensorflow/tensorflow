@@ -109,10 +109,6 @@ struct PJRT_DeviceTopology {
   std::unique_ptr<xla::PjRtDeviceTopology> topology;
 };
 
-struct PJRT_Chunk {
-  xla::PjRtChunk chunk;
-};
-
 struct PJRT_TransferMetadata {
   // Decompose xla::Shape into C API type fields, without any Tuple information.
   // TODO(b/238999986) support other `xla::Shape` fields when they are fully

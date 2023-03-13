@@ -1837,6 +1837,9 @@ TfrtCpuExecutable::Execute(
     const int replica = addressable_device_logical_ids_[0].replica;
     const int partition = addressable_device_logical_ids_[0].partition;
 
+    // Dump once before running, in case there's a crash.
+    MaybeDumpHloSnapshot(cpu_executable_->module(), run_id, argument_handles[0],
+                         {});
     auto statusor = ExecuteHelper(
         argument_handles[0], replica, partition, run_id, options,
         /*last_collective_launch_event=*/tfrt::AsyncValueRef<CpuEvent>(),

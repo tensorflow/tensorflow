@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "tensorflow/lite/core/async/c/types.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 
@@ -44,7 +45,8 @@ struct TfLiteAsyncKernel {
   // `handle` is the buffer handle assigned by TfLite runtime to recognize
   // this piece of buffer.
   TfLiteStatus (*register_buffer)(TfLiteAsyncKernel* async_kernel,
-                                  TfLiteOpaqueContext* context, int32_t io_type,
+                                  TfLiteOpaqueContext* context,
+                                  TfLiteIoType io_type,
                                   const TfLiteBackendBuffer* buffer,
                                   const TfLiteAttributeMap* attrs,
                                   TfLiteBufferHandle handle) = nullptr;
@@ -77,7 +79,8 @@ struct TfLiteAsyncKernel {
   // of the backend delegate.
   // Caller DOES NOT own returned types array.
   void (*supported_buffer_types)(const TfLiteAsyncKernel* async_kernel,
-                                 int32_t io_type, const char* const** types,
+                                 TfLiteIoType io_type,
+                                 const char* const** types,
                                  size_t* n_types) = nullptr;
 
   // Inspects the sync object types supported by the backend.
@@ -87,7 +90,8 @@ struct TfLiteAsyncKernel {
   // of the backend delegate.
   // Caller DOES NOT own returned types array.
   void (*supported_synchronizations)(const TfLiteAsyncKernel* async_kernel,
-                                     int32_t io_type, const char* const** types,
+                                     TfLiteIoType io_type,
+                                     const char* const** types,
                                      size_t* n_types) = nullptr;
 
   // Reconciles buffer or sync attributes for tensor at tensor_index.
@@ -95,8 +99,8 @@ struct TfLiteAsyncKernel {
   // If `conflict` is provided, conflicting attributes will be provided there.
   // Returns true if there's no conflict.
   bool (*reconcile_restrictions)(
-      const TfLiteAsyncKernel* async_kernel, TfLiteOpaqueContext* context,
-      TfLiteOpaqueNode* node, int tensor_index,
+      const TfLiteAsyncKernel* async_kernel, const TfLiteOpaqueContext* context,
+      const TfLiteOpaqueNode* node, int tensor_index,
       const TfLiteAttributeMap* user_provided_attributes,
       TfLiteAttributeMap* merged, TfLiteAttributeMap* conflict) = nullptr;
 

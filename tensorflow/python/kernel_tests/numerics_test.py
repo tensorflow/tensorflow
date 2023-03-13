@@ -24,6 +24,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import numerics
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 
 
@@ -114,9 +115,9 @@ class NumericsTest(test.TestCase):
 
   def testControlFlowWhile(self):
     predicate = array_ops.placeholder(dtypes.bool, shape=[])
-    _ = control_flow_ops.while_loop(lambda _: predicate,
-                                    lambda _: constant_op.constant([37.]),
-                                    [constant_op.constant([42.])])
+    _ = while_loop.while_loop(lambda _: predicate,
+                              lambda _: constant_op.constant([37.]),
+                              [constant_op.constant([42.])])
     with self.assertRaisesRegex(
         ValueError, r"`tf\.add_check_numerics_ops\(\) is not compatible with "
         r"TensorFlow control flow operations such as `tf\.cond\(\)` "

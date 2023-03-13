@@ -15,21 +15,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def TilingPass : Pass<"gml-tiling", "mlir::func::FuncOp"> {
-  let summary = "Tile operations using TilingInterface to produce gml_st.for";
-  let constructor = "::mlir::gml_st::createTilingPass()";
-  let options = [
-    Option<"opName", "op-name", "std::string", /*default=*/"",
-           "Operation with this name is the anchor to latch on.">,
-    Option<"opLabel", "op-label", "std::string", /*default=*/"",
-           "Operation with this label is the anchor to latch on.">,
-    Option<"distribute", "distribute", "bool", /*default=*/"true",
-           "Generate gml_st.parallel or scf.for">,
-    ListOption<"tileSizes", "tile-sizes", "int64_t", "Tile sizes",
-               "llvm::cl::ZeroOrMore">,
-  ];
-}
-
 def FusionPass : Pass<"gml-fusion", "mlir::func::FuncOp"> {
   let summary = "Fuse producers in into `gml_st.materialize` operations";
   let constructor = "::mlir::gml_st::createFusionPass()";
@@ -82,12 +67,6 @@ def ComposeExtractInsertSlicePass : Pass<"gml-compose-extract-insert-slice",
   let constructor = "::mlir::gml_st::createComposeExtractInsertSlicePass()";
 }
 
-def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {
-  let summary = "Lower `gml_st.loop` to SCF loops and parallel loops";
-  let constructor = "::mlir::gml_st::createGmlStToScfPass()";
-  let dependentDialects = ["::mlir::scf::SCFDialect"];
-}
-
 def VectorizeForCPUPass : Pass<"vectorize-for-cpu", "mlir::func::FuncOp"> {
   let summary = "Pass to vectorize gml_st.for loops that are tiled perfectly.";
   let constructor = "::mlir::gml_st::createVectorizeForCPUPass()";
@@ -129,7 +108,6 @@ def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
   let summary = "Converts ops on tensors with 1 element to scalar ops.";
   let dependentDialects = [
     "arith::ArithDialect",
-    "gml_st::GmlStDialect",
     "scf::SCFDialect",
     "tensor::TensorDialect"
   ];
@@ -160,6 +138,12 @@ def TransformMatmulForCpuPass :
     Option<"lowerToMmt4D", "lower-to-mmt4d", "bool", "false",
            "If true, lower linalg.matmul into linalg.mmt4d">,
   ];
+}
+
+def TransformConvForCpuPass :
+    Pass<"xla-cpu-transform-conv", "mlir::func::FuncOp"> {
+  let summary = "Transform conv ops for running on CPU";
+  let constructor = "createTransformConvForCpuPass()";
 }
 
 def TransformMapForCpuPass :
@@ -243,6 +227,23 @@ def FusionPlanningForCpuPass :
     "::mlir::linalg::LinalgDialect",
     "::mlir::tensor::TensorDialect"
   ];
+
+  let options = [
+    Option<"vectorSize", "vector-size", "int64_t", "8",
+           "Tile size for the innermost dimension of `linalg.map`">,
+  ];
+}
+
+def RewriteFromElementsOpPass
+    : Pass<"gml-st-rewrite-from-elements-ops", "mlir::func::FuncOp"> {
+  let summary = "Pass to rewrite tensor.from_elements into tensor.insert.";
+  let constructor = "createRewriteFromElementsOpPass()";
+}
+
+def RewriteForallOpPass
+    : Pass<"gml-st-rewrite-forall-ops", "mlir::func::FuncOp"> {
+  let summary = "Pass to rewrite scf.forall to scf.for.";
+  let constructor = "createRewriteForallOpPass()";
 }
 
 def FusionOutliningPass : Pass<"gml-fusion-outlining", "mlir::ModuleOp"> {

@@ -1705,6 +1705,16 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
                           Compare<int64_t>(compare->shape(), direction,
                                            lhs_literal, rhs_literal));
     } break;
+    case F8E5M2: {
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<tsl::float8_e5m2>(compare->shape(), direction,
+                                                    lhs_literal, rhs_literal));
+    } break;
+    case F8E4M3FN: {
+      TF_ASSIGN_OR_RETURN(evaluated_[compare], Compare<tsl::float8_e4m3fn>(
+                                                   compare->shape(), direction,
+                                                   lhs_literal, rhs_literal));
+    } break;
     case F16: {
       TF_ASSIGN_OR_RETURN(
           evaluated_[compare],

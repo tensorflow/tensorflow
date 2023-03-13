@@ -767,7 +767,8 @@ Status DatasetBase::MakeSplitProviders(
 int64_t DatasetBase::Cardinality() const {
   mutex_lock l(cardinality_mu_);
   if (cardinality_ == kUnknownCardinality) {
-    cardinality_ = CardinalityInternal();
+    CardinalityOptions options;
+    cardinality_ = CardinalityInternal(options);
   }
   return cardinality_;
 }

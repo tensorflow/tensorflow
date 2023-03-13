@@ -95,6 +95,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":next_pluggable_device",
         ":next_pluggable_device_api",
         ":utils",
         "//tensorflow/c:tf_status_helper",

@@ -23,6 +23,7 @@ limitations under the License.
 #include <queue>
 #include <stack>
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/PointerUnion.h"
@@ -304,6 +305,15 @@ bool CanInferTensorListElementType(Value tensorlist,
   std::stack<Value> worklist;
   worklist.emplace(tensorlist);
 
+  // Track the set of values we've already visited to avoid exponential blowup.
+  absl::flat_hash_set<void*> visited;
+  auto add_to_worklist = [&worklist, &visited](Value v) {
+    if (visited.find(v.getAsOpaquePointer()) == visited.end()) {
+      worklist.emplace(v);
+      visited.emplace(v.getAsOpaquePointer());
+    }
+  };
+
   while (!worklist.empty()) {
     tensorlist = worklist.top();
     worklist.pop();
@@ -320,7 +330,7 @@ bool CanInferTensorListElementType(Value tensorlist,
             push.getTensor().getType().dyn_cast<RankedTensorType>();
         if (!verify_and_update_potential_element_type(element_type))
           return false;
-        worklist.emplace(push.getOutputHandle());
+        add_to_worklist(push.getOutputHandle());
         continue;
       }
       if (auto scatter = llvm::dyn_cast<TensorListScatterIntoExistingListOp>(
@@ -331,7 +341,7 @@ bool CanInferTensorListElementType(Value tensorlist,
             DropFirstDimension(scatter.getTensor().getType());
         if (!verify_and_update_potential_element_type(element_type))
           return false;
-        worklist.emplace(scatter.getOutputHandle());
+        add_to_worklist(scatter.getOutputHandle());
         continue;
       }
       if (auto set_item = llvm::dyn_cast<TensorListSetItemOp>(use.getOwner())) {
@@ -340,15 +350,15 @@ bool CanInferTensorListElementType(Value tensorlist,
         DCOMMENT("\tTensorListSetItemOp " << element_type);
         if (!verify_and_update_potential_element_type(element_type))
           return false;
-        worklist.emplace(set_item.getOutputHandle());
+        add_to_worklist(set_item.getOutputHandle());
         continue;
       }
       if (auto pop = llvm::dyn_cast<TensorListPopBackOp>(use.getOwner())) {
-        worklist.emplace(pop.getOutputHandle());
+        add_to_worklist(pop.getOutputHandle());
         continue;
       }
       if (auto resize = llvm::dyn_cast<TensorListResizeOp>(use.getOwner())) {
-        worklist.emplace(resize.getOutputHandle());
+        add_to_worklist(resize.getOutputHandle());
         continue;
       }
       // WhileRegionOp can explicitly capture TensorList value to be used inside
@@ -357,17 +367,17 @@ bool CanInferTensorListElementType(Value tensorlist,
       if (auto while_region = llvm::dyn_cast<WhileRegionOp>(use.getOwner())) {
         DCOMMENT("\tTL WhileRegion");
         for (auto branch : while_region.getRegions())
-          worklist.emplace(branch->getArgument(use.getOperandNumber()));
+          add_to_worklist(branch->getArgument(use.getOperandNumber()));
         continue;
       }
       if (auto yield = llvm::dyn_cast<YieldOp>(use.getOwner())) {
         Operation* parent = yield->getParentOp();
-        worklist.emplace(parent->getResult(use.getOperandNumber()));
+        add_to_worklist(parent->getResult(use.getOperandNumber()));
         continue;
       }
       // TODO(jpienaar): This can be generalized.
       if (isa<IdentityOp, IdentityNOp, StopGradientOp>(use.getOwner())) {
-        worklist.emplace(use.getOwner()->getResult(use.getOperandNumber()));
+        add_to_worklist(use.getOwner()->getResult(use.getOperandNumber()));
         continue;
       }
       // Refining the tensor list element type might change the output of

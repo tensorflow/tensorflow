@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -49,6 +50,18 @@ TfLiteStatus CreateNewTensorWithDifferentType(TfLiteContext* context,
     return kTfLiteError;
   }
   return kTfLiteOk;
+}
+
+TfLiteContext* GetSubgraphContext(const struct TfLiteContext* context,
+                                  int subgraph_index) {
+  return static_cast<::tflite::Subgraph*>(context->impl_)
+      ->GetSubgraphContext(subgraph_index);
+}
+
+TfLiteStatus MarkSubgraphAsDelegationSkippable(const TfLiteContext* context,
+                                               int subgraph_index) {
+  return static_cast<::tflite::Subgraph*>(context->impl_)
+      ->MarkSubgraphAsDelegationSkippable(subgraph_index);
 }
 
 TfLiteStatus GraphPartitionHelper::PartitionImpl(

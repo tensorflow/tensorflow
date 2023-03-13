@@ -21,6 +21,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
@@ -592,7 +593,7 @@ def tridiagonal_solve(diagonals,
     subdiag = pad_if_necessary(subdiag, 'subdiagonal', [1, 0])
     superdiag = pad_if_necessary(superdiag, 'superdiagonal', [0, 1])
 
-    diagonals = array_ops.stack((superdiag, maindiag, subdiag), axis=-2)
+    diagonals = array_ops_stack.stack((superdiag, maindiag, subdiag), axis=-2)
     return _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
                                              conjugate_rhs, partial_pivoting,
                                              perturb_singular, name)
@@ -1013,7 +1014,7 @@ def lu_solve(lower_upper, perm, rhs, validate_args=False, name=None):
       broadcast_batch_indices = array_ops.broadcast_to(
           math_ops.range(broadcast_batch_size)[:, array_ops.newaxis],
           [broadcast_batch_size, d])
-      broadcast_perm = array_ops.stack(
+      broadcast_perm = array_ops_stack.stack(
           [broadcast_batch_indices, broadcast_perm], axis=-1)
 
       permuted_rhs = array_ops.gather_nd(broadcast_rhs, broadcast_perm)
@@ -1158,8 +1159,8 @@ def lu_reconstruct(lower_upper, perm, validate_args=False, name=None):
       perm = map_fn.map_fn(array_ops.invert_permutation, perm)
       batch_indices = array_ops.broadcast_to(
           math_ops.range(batch_size)[:, array_ops.newaxis], [batch_size, d])
-      x = array_ops.gather_nd(x, array_ops.stack([batch_indices, perm],
-                                                 axis=-1))
+      x = array_ops.gather_nd(
+          x, array_ops_stack.stack([batch_indices, perm], axis=-1))
       x = array_ops.reshape(x, shape)
     else:
       x = array_ops.gather(x, array_ops.invert_permutation(perm))

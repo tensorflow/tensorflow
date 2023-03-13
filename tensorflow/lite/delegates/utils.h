@@ -41,6 +41,25 @@ TfLiteStatus CreateNewTensorWithDifferentType(TfLiteContext* context,
                                               TfLiteTensor** new_tensor,
                                               int* new_tensor_index);
 
+// Retrieves the corresponding TfLiteContext of a subgraph given a subgraph
+// index. If an invalid subgraph index is given, then returns nullptr.
+// NOTE: Entry point for C node plugin API.
+TfLiteContext* GetSubgraphContext(const TfLiteContext* context,
+                                  int subgraph_index);
+
+// Marks the subgraph with the given index as delegation-skippable. Returns
+// kTfLiteOk if the given subgraph index is valid and is successfully marked
+// as delegation-skippable.
+// See the documentation on the private is_delegation_skippable_ field for
+// more details.
+// NOTE: This function is expected to be called only when the subgraph will be
+// skipped by the interpreter::ModifyGraphWithDelegate (e.g. the subgraph is
+// part of the list of callee subgraphs of the same control flow node, and all
+// of those callees are supported by the same delegate at once).
+// NOTE: Entry point for C node plugin API.
+TfLiteStatus MarkSubgraphAsDelegationSkippable(const TfLiteContext* context,
+                                               int subgraph_index);
+
 using IsNodeSupportedFn =
     std::function<bool(TfLiteContext*, TfLiteNode*, TfLiteRegistration*,
                        std::string* unsupported_details)>;

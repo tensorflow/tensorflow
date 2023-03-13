@@ -58,7 +58,8 @@ int64_t TensorByteSize(const TensorProto& t) {
 
 namespace {
 
-// Do not construct large tensors to compute their hash or compare for equality.
+// Do not construct large tensors to compute their hash, compare for equality,
+// or construct long DebugString.
 constexpr int kMaxAttrValueTensorByteSize = 32 * 1024 * 1024;  // 32mb
 
 // Limit nesting of tensors to 100 deep to prevent memory overflow.
@@ -191,7 +192,16 @@ string SummarizeString(const string& str) {
 
 string SummarizeTensor(const TensorProto& tensor_proto) {
   Tensor t;
-  if (!t.FromProto(tensor_proto)) {
+  int64_t tensor_byte_size =
+      attr_value_util_internal::TensorByteSize(tensor_proto);
+  if (tensor_byte_size > kMaxAttrValueTensorByteSize ||
+      tensor_byte_size == -1  // Unknown shape
+  ) {
+    // Do not load large or unknown-shape Tensor to compute detailed
+    // DebugString()
+    return strings::StrCat("<TensorProto: ", tensor_proto.ShortDebugString(),
+                           ">");
+  } else if (!t.FromProto(tensor_proto)) {
     return strings::StrCat(
         "<Invalid TensorProto: ", tensor_proto.ShortDebugString(), ">");
   }

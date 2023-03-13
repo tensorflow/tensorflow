@@ -45,7 +45,6 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
   // The default unrolling factor is 4.
   HloModuleConfig config;
   auto debug_options = GetDebugOptionsFromFlags();
-  debug_options.set_xla_gpu_enable_softmax_fusion(false);
   debug_options.set_xla_gpu_enable_mlir_lowering(false);
   config.set_debug_options(debug_options);
   auto hlo_module = ParseAndReturnVerifiedModule(kAddModule, config).value();
@@ -78,7 +77,6 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
 TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
   HloModuleConfig config;
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_enable_softmax_fusion(false);
   debug_options.set_xla_gpu_enable_mlir_lowering(false);
   config.set_debug_options(debug_options);
 
@@ -135,7 +133,8 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedSine) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK: load float
-; CHECK-NOT: load float }
+; CHECK-NOT: load float
+; CHECK: }
       )",
                      /*match_optimized_ir=*/true);
 }
@@ -158,7 +157,8 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedCosine) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK: load float
-; CHECK-NOT: load float }
+; CHECK-NOT: load float
+; CHECK: }
       )",
                      /*match_optimized_ir=*/true);
 }
@@ -178,11 +178,14 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedPower) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
+  // There are 2 loads, because the 2 parameters are read separately - the
+  // kernel is not aware that they are the same.
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK: load float
+; CHECK: load float
 ; CHECK-NOT: load float
-}
+; CHECK: }
       )",
                      /*match_optimized_ir=*/true);
 }
@@ -203,6 +206,7 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedAtan2) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
+<<<<<<< HEAD
   // Note: On ROCm side, we do bare minimal to make the test pass.
   // "atan2" function is in different code generation path from nvptx: on
   // ROCm platform, it get pulled in from ROCm-Device-Libs, whereas in
@@ -211,12 +215,24 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedAtan2) {
 ; CHECK: tail call float @llvm.fmuladd.f32(float %{{.*}}, float 0x3F65A54B00000000, float 0xBF8F4B2180000000)
 )"
                                          : R"(
+=======
+  // There are 2 loads, because the 2 parameters are read separately - the
+  // kernel is not aware that they are the same.
+  CompileAndVerifyIr(std::move(hlo_module),
+                     R"(
+>>>>>>> upstream/master
+; CHECK: load float
 ; CHECK: load float
 ; CHECK-NOT: load float
+<<<<<<< HEAD
 }
 )";
 
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
+=======
+; CHECK: }
+      )",
+>>>>>>> upstream/master
                      /*match_optimized_ir=*/true);
 }
 

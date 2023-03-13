@@ -448,10 +448,14 @@ CreateAnnotateParameterReplicationPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateMarkOpsForOutsideCompilationPass();
 
-// Creates a pass that extracts outside compilation (Host ops inside Device
+// Creates a pass that extracts outside compilation (Host ops inside device
 // cluster) at head/tail of Device cluster to run before/after XLA computation.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateExtractHeadTailOutsideCompilationPass();
+
+// Creates a pass that extract outside compilation (Host ops inside cevice
+// cluster) ops to a separate parallel_execute region to run on CPU.
+std::unique_ptr<OperationPass<ModuleOp>> CreateExtractOutsideCompilationPass();
 
 // Creates a pass that merges control flow with similar predicates.
 std::unique_ptr<OperationPass<ModuleOp>> CreateMergeControlFlowPass();
@@ -571,11 +575,6 @@ CreateTPUHostComputationExpansionPass();
 // correct ops are invoked during training and evaluation.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUUpdateEmbeddingEnqueueOpInputsPass();
-
-// Creates a pass that extract outside compilation (CPU ops inside TPU cluster)
-// ops to a separate parallel_execute region to run on CPU.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateTPUExtractOutsideCompilationPass();
 
 // Creates a pass that propagates TPU devices to users.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTPUDevicePropagationPass();

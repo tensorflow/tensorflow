@@ -55,6 +55,16 @@ class ParallelExecutor {
       TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
       mlir::ModuleOp module, llvm::StringRef entry_function_name,
       const TFE_OpAttrs* attributes) const = 0;
+
+  // Disassembles `t` into multiple TensorWithLayouts. `t` may or may not be
+  // valid to use afterwards.
+  virtual tsl::StatusOr<
+      std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>>
+  Disassemble(TensorWithLayout* t) = 0;
+
+  // Returns a tensor copied from `t` when `t` contains only a single device.
+  virtual Future<tsl::StatusOr<tensorflow::Tensor>> ToHostBuffer(
+      TensorWithLayout* t) = 0;
 };
 
 // Factory method for Default ParallelExecutor instance.

@@ -1200,6 +1200,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
       if (operand_type == BF16) {
         lhs_value = EmitBF16ToF32(lhs_value, b_);
         rhs_value = EmitBF16ToF32(rhs_value, b_);
+      } else if (operand_type == F8E5M2) {
+        lhs_value = EmitF8e5m2ToF16(lhs_value, b_);
+        rhs_value = EmitF8e5m2ToF16(rhs_value, b_);
+      } else if (operand_type == F8E4M3FN) {
+        lhs_value = EmitF8e4m3fnToF16(lhs_value, b_);
+        rhs_value = EmitF8e4m3fnToF16(rhs_value, b_);
       }
       switch (op->comparison_direction()) {
         case ComparisonDirection::kEq:

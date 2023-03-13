@@ -145,6 +145,7 @@ struct TransformTransposeForCpuPass
     auto func = getOperation();
     RewritePatternSet patterns(func.getContext());
     patterns.add<TileTransposePattern>(patterns.getContext(), tilingOptions);
+    populateCollapseForallOpDimensionsPattern(patterns);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
       return signalPassFailure();
     }

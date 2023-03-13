@@ -119,6 +119,7 @@ cuda_py_test(
         "//tensorflow/python:list_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//third_party/py/numpy",
@@ -230,6 +231,7 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
     ],
 )
@@ -273,6 +275,7 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python:while_v2",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:backprop",

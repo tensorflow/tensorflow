@@ -41,7 +41,7 @@ cc_library(
 
 alias(
     name = "_pywrap_bfloat16",
-    actual = "//tensorflow/tsl/python/lib/core:_pywrap_bfloat16",
+    actual = "//tensorflow/tsl/python/lib/core:pywrap_bfloat16",
 )
 
 tf_python_pybind_extension(

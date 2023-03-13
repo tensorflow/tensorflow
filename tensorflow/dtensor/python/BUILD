@@ -48,6 +48,7 @@ pytype_strict_library(
         ":layout",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
     ],
 )

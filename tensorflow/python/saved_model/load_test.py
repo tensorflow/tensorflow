@@ -55,7 +55,6 @@ from tensorflow.python.lib.io import tf_record
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -63,6 +62,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
@@ -959,7 +959,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       s_0 = constant_op.constant([0.0, 0.0])
       cond = lambda i, _: i < array_ops.shape(x)[1]
       body = lambda i, s: (i + 1, s + weight * x[:, i])
-      i_end, s_end = control_flow_ops.while_loop(cond, body, (i_0, s_0))
+      i_end, s_end = while_loop.while_loop(cond, body, (i_0, s_0))
       del i_end
       return s_end
 

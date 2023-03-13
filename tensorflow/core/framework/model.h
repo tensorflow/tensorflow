@@ -1056,13 +1056,14 @@ class ModelTiming {
   // to be a vector of model nodes in reversed BFS manner.
   void ComputeTotalTimes(const Node::NodeVector& reverse_bfs_nodes);
 
-  // Computes the total time of a node that is not an async interleave node.
+  // Computes the first input total time of an interleave node.
+  double ComputeInterleaveManyFirstInputTotalTime(const Node& node);
+
+  // Computes the total time of a node of any type other than async interleave.
   void ComputeNonAsyncInterleaveManyTotalTime(const Node& node);
 
   // Computes the total time of an async interleave node.
   void ComputeAsyncInterleaveManyTotalTime(const Node& node);
-  // Computes the first input total time of an async interleave node.
-  double ComputeAsyncInterleaveManyFirstInputTotalTime(const Node& node);
   // Computes the interleaved inputs' total time of an async interleave node.
   double ComputeAsyncInterleaveManyInterleavedInputsTotalTime(const Node& node);
 

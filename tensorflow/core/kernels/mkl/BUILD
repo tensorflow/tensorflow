@@ -43,7 +43,6 @@ MKL_DEPS = MKL_SHORT_DEPS + [
 ]
 
 MKL_TEST_DEPS = [
-    ":mkl_input_conversion_op",
     "//tensorflow/cc:cc_ops",
     "//tensorflow/core:core_cpu",
     "//tensorflow/core:framework",
@@ -56,7 +55,7 @@ MKL_TEST_DEPS = [
     "//tensorflow/core/kernels:ops_testutil",
     "//tensorflow/core/kernels:ops_util",
     "//tensorflow/core/util:onednn_env_vars",
-]
+] + mkl_deps()
 
 tf_mkl_kernel_library(
     name = "mkl_batch_matmul_op",
@@ -268,13 +267,6 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
-    name = "mkl_input_conversion_op",
-    hdrs = ["mkl_tfconv_op.h"],
-    prefix = "mkl_input_conversion",
-    deps = MKL_SHORT_DEPS,
-)
-
-tf_mkl_kernel_library(
     name = "mkl_pooling_ops",
     srcs = [
         "mkl_avgpooling_op.cc",
@@ -367,6 +359,15 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
+    name = "mkl_deprecated_ops",
+    prefix = "mkl_deprecated_ops",
+    deps = [
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/graph:mkl_graph_util",
+    ] + MKL_DEPS,
+)
+
+tf_mkl_kernel_library(
     name = "mkl_fused_batch_norm_op",
     srcs = ["mkl_fused_batch_norm_op.cc"],
     deps = [
@@ -400,48 +401,12 @@ tf_cc_test_mkl(
 )
 
 tf_mkl_kernel_library(
-    name = "mkl_aggregate_ops",
-    prefix = "mkl_aggregate_ops",
-    deps = MKL_DEPS,
-)
-
-tf_mkl_kernel_library(
     name = "mkl_concat_op",
     prefix = "mkl_concat_op",
     deps = [
         "//tensorflow/core/kernels:no_op",
         "//tensorflow/core/kernels:quantization_utils",
     ] + MKL_DEPS,
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_reshape_op",
-    prefix = "mkl_reshape_op",
-    deps = MKL_DEPS,
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_slice_op",
-    prefix = "mkl_slice_op",
-    deps = MKL_DEPS,
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_identity_op",
-    prefix = "mkl_identity_op",
-    deps = MKL_DEPS,
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_lrn_op",
-    prefix = "mkl_lrn_op",
-    deps = MKL_DEPS,
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_cwise_ops_common",
-    prefix = "mkl_cwise_ops_common",
-    deps = MKL_DEPS + ["//tensorflow/core/kernels:cwise_op"],
 )
 
 tf_mkl_kernel_library(

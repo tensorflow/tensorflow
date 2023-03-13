@@ -22,6 +22,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -278,7 +279,7 @@ class VariableOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testString(self):
-    data = array_ops.stack([b"data"])
+    data = array_ops_stack.stack([b"data"])
     buffer_var = variables.VariableV1(
         initial_value=array_ops.zeros(shape=(), dtype=dtypes.string),
         trainable=False,

@@ -19,8 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "tensorflow/lite/core/shims/c/c_api_opaque.h"
-#include "tensorflow/lite/core/shims/c/c_api_types.h"
+#include "tensorflow/lite/c/c_api_opaque.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/delegates/utils/ret_macros.h"
 
 namespace tflite::delegates::utils {

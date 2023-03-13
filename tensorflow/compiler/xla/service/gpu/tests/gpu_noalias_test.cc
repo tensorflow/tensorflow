@@ -49,9 +49,15 @@ TEST_F(GpuNoAliasTest, Concat) {
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
+  // After optimizations we have "concatenate(x, y, x)".
+  //
+  // The kernel has these parameters (with different names): (x, y, x, output).
+  //
+  // This means that the 1st and 3rd parameters will be aliased and the others
+  // will be "noalias".
   CompileAndVerifyIr(
       std::move(hlo_module),
-      R"(CHECK: define{{.*}}void @{{[a-zA-Z0-9_]+}}(ptr noalias align {{[0-9]*}} dereferenceable({{[0-9]*}}) %{{.*}}, ptr noalias align {{[0-9]*}} dereferenceable({{[0-9]*}}) %{{.*}}, ptr noalias align {{[0-9]*}} dereferenceable({{[0-9]*}}) %{{.*}}))",
+      R"(CHECK: define{{.*}}void @{{[a-zA-Z0-9_]+}}(ptr align {{[0-9]*}} dereferenceable({{[0-9]*}}) %{{.*}}, ptr noalias align {{[0-9]*}} dereferenceable({{[0-9]*}}) %{{.*}}, ptr align {{[0-9]*}} dereferenceable({{[0-9]*}}) %{{.*}}, ptr noalias align {{[0-9]*}} dereferenceable({{[0-9]*}}) %{{.*}}))",
       /*match_optimized_ir=*/false);
 }
 

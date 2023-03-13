@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
 
+#include <map>
 #include <vector>
 
 #include "absl/strings/match.h"
@@ -82,8 +83,9 @@ class GraphHelper {
 
  private:
   const Graph& graph_;
-  // Maps from a node name to a Node* in the graph.
-  absl::flat_hash_map<string, Node*> nodes_by_name_;
+  // Maps from a node name to a Node* in the graph. We use an ordered map here
+  // to ensure stability of GetNodeByName().
+  std::map<string, Node*> nodes_by_name_;
 };
 
 TEST(ReplicatePerReplicaNodesTest, SingleCompositeDevice) {

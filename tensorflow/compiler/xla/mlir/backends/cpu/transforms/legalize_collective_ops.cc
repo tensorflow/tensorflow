@@ -48,7 +48,8 @@ class LegalizeCollectiveOpsPass
   void runOnOperation() override;
 };
 
-Optional<xla_cpu::ReductionKind> MatchReductionComputation(Region& region) {
+std::optional<xla_cpu::ReductionKind> MatchReductionComputation(
+    Region& region) {
   if (!region.hasOneBlock()) {
     return std::nullopt;
   }

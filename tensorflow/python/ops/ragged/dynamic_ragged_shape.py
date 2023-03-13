@@ -30,6 +30,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -779,8 +780,8 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
       new_dims = [first_dimension] + [
           x.uniform_row_length() for x in self.row_partitions[-new_dimensions:]
       ]
-      return array_ops.concat([array_ops.stack(new_dims), self.inner_shape[1:]],
-                              axis=0)
+      return array_ops.concat(
+          [array_ops_stack.stack(new_dims), self.inner_shape[1:]], axis=0)
 
   def _inner_shape_dim(self, dimension):
     """Returns an int or a tensor representing _inner_shape[dimension]."""

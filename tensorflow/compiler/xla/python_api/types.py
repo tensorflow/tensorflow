@@ -19,7 +19,7 @@ import collections
 import numpy as _np  # Avoids becoming a part of public Tensorflow API.
 
 from tensorflow.compiler.xla import xla_data_pb2
-from tensorflow.tsl.python.lib.core import _pywrap_bfloat16
+from tensorflow.tsl.python.lib.core import pywrap_bfloat16
 
 # Records correspondence between a XLA primitive type and Python/Numpy types.
 #
@@ -40,7 +40,7 @@ MAP_XLA_TYPE_TO_RECORD = {
     xla_data_pb2.BF16:
         TypeConversionRecord(
             primitive_type=xla_data_pb2.BF16,
-            numpy_dtype=_pywrap_bfloat16.TF_bfloat16_type(),
+            numpy_dtype=pywrap_bfloat16.bfloat16_type(),
             literal_field_name='bf16s',
             literal_field_type=float),
     xla_data_pb2.F16:
