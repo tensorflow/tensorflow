@@ -2733,7 +2733,12 @@ LogicalResult TransposeOp::verify() {
     for (const auto &e : llvm::enumerate(attr_perm)) {
       const int64_t y_idx = e.index();
       const int64_t y_dim = y_type.getDimSize(y_idx);
-      const int64_t x_idx = e.value().getSExtValue();
+      int64_t x_idx = e.value().getSExtValue();
+      if (x_idx < 0) x_idx += x_type.getRank();
+      if (x_idx < 0) {
+        return op.emitOpError(
+            llvm::formatv("perm[{0}] must be in [-rank, rank)", x_idx));
+      }
       const int64_t x_dim = x_type.getDimSize(x_idx);
       if (!ShapedType::isDynamic(y_dim) && !ShapedType::isDynamic(x_dim) &&
           y_dim != x_dim) {

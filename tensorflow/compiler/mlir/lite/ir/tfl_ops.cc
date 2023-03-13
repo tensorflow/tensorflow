@@ -3414,10 +3414,13 @@ mlir::LogicalResult TransposeOp::verify() {
   int index = 0;
   llvm::SmallVector<int64_t, 4> axes;
   for (const auto& axis_int : perm.getValues<APInt>()) {
-    const int64_t axis = axis_int.getSExtValue();
+    int64_t axis = axis_int.getSExtValue();
+    if (axis < 0) {
+      axis += input_type.getRank();
+    }
     if (axis < 0 || (input_type.hasRank() && axis >= input_type.getRank())) {
       return op.emitOpError(
-          llvm::formatv("perm[{0}] must be in [0, rank)", index));
+          llvm::formatv("perm[{0}] must be in [-rank, rank)", index));
     }
     if (std::count(axes.begin(), axes.end(), axis) > 0) {
       return op.emitOpError(

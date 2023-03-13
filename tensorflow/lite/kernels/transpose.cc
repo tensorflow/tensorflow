@@ -16,6 +16,7 @@ limitations under the License.
 
 #ifdef TFLITE_KERNEL_USE_XNNPACK
 #include <array>
+#include <vector>
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
@@ -53,20 +54,24 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 TransposeContext* op_context) {
   int dims = NumDimensions(op_context->input);
   const int* perm_data = GetTensorData<int32_t>(op_context->perm);
+  std::vector<int> new_perm_data(dims);
 
   // Ensure validity of the permutations tensor as a 1D tensor.
   TF_LITE_ENSURE_EQ(context, NumDimensions(op_context->perm), 1);
   TF_LITE_ENSURE_EQ(context, op_context->perm->dims->data[0], dims);
   for (int idx = 0; idx < dims; ++idx) {
-    TF_LITE_ENSURE_MSG(context, (perm_data[idx] >= 0 && perm_data[idx] < dims),
+    TF_LITE_ENSURE_MSG(context,
+                       (perm_data[idx] >= -dims && perm_data[idx] < dims),
                        "Transpose op permutations array is out of bounds.");
+    new_perm_data[idx] = perm_data[idx];
+    if (new_perm_data[idx] < 0) new_perm_data[idx] += dims;
   }
 
   // Determine size of output tensor.
   TfLiteIntArray* input_size = op_context->input->dims;
   TfLiteIntArray* output_size = TfLiteIntArrayCopy(input_size);
   for (int idx = 0; idx < dims; ++idx) {
-    output_size->data[idx] = input_size->data[perm_data[idx]];
+    output_size->data[idx] = input_size->data[new_perm_data[idx]];
   }
 
   return context->ResizeTensor(context, op_context->output, output_size);
@@ -115,14 +120,18 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   std::array<size_t, kTransposeMaxDimensions> xnn_perm;
   TfLiteIntArray* input_shape = op_context.input->dims;
   for (int i = 0; i < size; ++i) {
-    params.perm[i] = perm_data[i];
-    xnn_perm[i] = perm_data[i];
+    int perm = perm_data[i];
+    if (perm < 0) perm += size;
+    params.perm[i] = perm;
+    xnn_perm[i] = perm;
     xnn_input_shape[i] = input_shape->data[i];
   }
 
 #else   // TFLITE_KERNEL_USE_XNNPACK
   for (int i = 0; i < size; ++i) {
-    params.perm[i] = perm_data[i];
+    int perm = perm_data[i];
+    if (perm < 0) perm += size;
+    params.perm[i] = perm;
   }
 #endif  // TFLITE_KERNEL_USE_XNNPACK
 #define TF_LITE_TRANSPOSE(type, scalar)                     \

@@ -445,6 +445,7 @@ tf_xla_py_test(
     srcs = ["compiler_ir_test.py"],
     disabled_backends = [
         "cpu_ondemand",
+        "gpu_a100",
     ],
     enable_mlir_bridge = True,
     python_version = "PY3",
