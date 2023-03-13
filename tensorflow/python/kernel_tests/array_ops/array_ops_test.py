@@ -37,6 +37,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import init_ops
@@ -1569,7 +1570,7 @@ class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
   def testConcatSlice(self):
     r1 = test_ops.stub_resource_handle_op(container="a", shared_name="b")
     r2 = test_ops.stub_resource_handle_op(container="a", shared_name="c")
-    c = array_ops.stack([r1, r2])
+    c = array_ops_stack.stack([r1, r2])
     s = array_ops.strided_slice(c, [1], [2])
     self.evaluate(test_ops.resource_create_op(s))
     with self.assertRaises(errors.AlreadyExistsError):
@@ -1584,7 +1585,7 @@ class IdentityTest(test_util.TensorFlowTestCase):
 
       def _test(x, y, device):
         self.assertAllEqual(x.numpy(), y.numpy())
-        self.assertTrue(device in y.device.lower())
+        self.assertIn(device, y.device.lower())
 
       with test_util.force_gpu():
         a = constant_op.constant([[2], [3]], dtype=dtypes.float32)

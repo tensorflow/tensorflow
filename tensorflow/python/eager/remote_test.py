@@ -38,6 +38,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
@@ -633,7 +634,7 @@ class MultiJobsTest(test.TestCase, parameterized.TestCase):
         # parent device scope should be picked.
         x = test_ops.device_placement_op()
         y = string_ops.string_upper(x)
-        packed_var_0 = array_ops.stack([x, y], 0)
+        packed_var_0 = array_ops_stack.stack([x, y], 0)
         return packed_var_0
 
     with ops.device('/job:my_worker/task:1'):

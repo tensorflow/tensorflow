@@ -38,6 +38,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_switch_case
@@ -2419,7 +2420,7 @@ def _convert_pack(pfor_input):
   if axis >= 0:
     axis += 1
   return wrap(
-      array_ops.stack([x.t for x in pfor_input.inputs], axis=axis), True)
+      array_ops_stack.stack([x.t for x in pfor_input.inputs], axis=axis), True)
 
 
 @RegisterPFor("Unpack")
@@ -2429,7 +2430,8 @@ def _convert_unpack(pfor_input):
   if axis >= 0:
     axis += 1
   num = pfor_input.get_attr("num")
-  return [wrap(x, True) for x in array_ops.unstack(value, axis=axis, num=num)]
+  return [wrap(x, True) for x
+          in array_ops_stack.unstack(value, axis=axis, num=num)]
 
 
 @RegisterPFor("Pad")
@@ -2759,7 +2761,7 @@ def _convert_matmul(pfor_input):
       min_dim = math_ops.minimum(b_shape[0], b_shape[1])
       perm = array_ops.where(
           math_ops.equal(min_dim, 1), [0, 1, 2], [1, 0, 2])
-      new_shape = array_ops.stack([b_shape[1], b_shape[0], b_shape[2]])
+      new_shape = array_ops_stack.stack([b_shape[1], b_shape[0], b_shape[2]])
       b = array_ops.transpose(b, perm)
       b = array_ops.reshape(b, new_shape)
 
@@ -4245,7 +4247,7 @@ def _convert_tensor_list_scatter(pfor_input):
 
     unique_indices_loop_idx = array_ops.reshape(array_ops.tile(
         loop_idx[None, :], [scatters_per_op, 1]), [-1])
-    scatter_indices = array_ops.stack(
+    scatter_indices = array_ops_stack.stack(
         [unique_indices.idx, unique_indices_loop_idx],
         axis=1)
     # This op does *not* guarantee last-update-wins on GPU, so semantics may not
