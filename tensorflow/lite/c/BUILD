@@ -177,6 +177,7 @@ cc_library_with_tflite_with_c_headers_test(
     hdrs = ["c_api_types.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     deps = ["//tensorflow/lite/core/c:c_api_types"],
 )
 
@@ -269,6 +270,7 @@ cc_library_with_tflite_with_c_headers_test(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     tflite_deps = [
         ":c_api_types",
     ],
