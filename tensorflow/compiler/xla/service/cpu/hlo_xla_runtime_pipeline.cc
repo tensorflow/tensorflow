@@ -135,8 +135,6 @@ static Status CreateHloXlaPipeline(
       mlir::mhlo::createMhloExpandOpsSimplifierPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createHloCanonicalizeScatterPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createHloCanonicalizeGatherPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createHloCanonicalizeDotPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createGroupReductionDimensionsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
