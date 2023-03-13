@@ -51,6 +51,8 @@ constexpr char kMinInflightBatchesAttr[] = "_min_inflight_batches";
 constexpr char kInitialInflightBatchesAttr[] = "_initial_inflight_batches";
 constexpr char kMaxInflightBatchesAttr[] = "_max_inflight_batches";
 constexpr char kBatchesToAverageOverAttr[] = "_batches_to_average_over";
+constexpr char kFullBatchSchedulingBoostMicros[] =
+    "_full_batch_scheduling_boost_micros";
 
 // Default thread count in the per-process batching thread pool.
 constexpr int64_t kBatchThreadPoolSize = 128;
@@ -335,7 +337,16 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
           adaptive_batch_scheduler_options_->initial_in_flight_batches_limit;
       adaptive_shared_batch_scheduler_options.batches_to_average_over =
           adaptive_batch_scheduler_options_->batches_to_average_over;
-      adaptive_shared_batch_scheduler_options.fifo_scheduling = true;
+      if (adaptive_batch_scheduler_options_
+              ->full_batch_scheduling_boost_micros != -1) {
+        adaptive_shared_batch_scheduler_options
+            .full_batch_scheduling_boost_micros =
+            adaptive_batch_scheduler_options_
+                ->full_batch_scheduling_boost_micros;
+        adaptive_shared_batch_scheduler_options.fifo_scheduling = false;
+      } else {
+        adaptive_shared_batch_scheduler_options.fifo_scheduling = true;
+      }
       std::unique_ptr<BatchResource> new_resource;
       TF_RETURN_IF_ERROR(BatchResource::Create(
           /*has_process_batch_function=*/true,
@@ -519,6 +530,11 @@ void BatchFunctionKernel::SetAdaptiveBatchSchedulerOptions(
   if (c->HasAttr(kMaxInflightBatchesAttr)) {
     OP_REQUIRES_OK(c, c->GetAttr(kMaxInflightBatchesAttr,
                                  &options.max_in_flight_batches_limit));
+  }
+
+  if (c->HasAttr(kFullBatchSchedulingBoostMicros)) {
+    OP_REQUIRES_OK(c, c->GetAttr(kFullBatchSchedulingBoostMicros,
+                                 &options.full_batch_scheduling_boost_micros));
   }
 
   // At this point, the batch kernel is configured to use adaptive scheduling.
