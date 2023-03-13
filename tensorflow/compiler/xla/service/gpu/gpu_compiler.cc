@@ -253,12 +253,7 @@ class GpuFloatSupport : public FloatSupport {
       case HloOpcode::kSlice:
       case HloOpcode::kTranspose:
       // Other special ops.
-<<<<<<< HEAD
-#if GOOGLE_CUDA
       case HloOpcode::kDot:  // Handled by Triton GEMM.
-#endif
-=======
->>>>>>> upstream/master
       case HloOpcode::kBitcast:
         return true;
       default:
