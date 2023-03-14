@@ -702,7 +702,7 @@ StatusOr<Layout> FetchLayoutFromAttributes(const TFE_OpAttrs* attributes,
 
   // This would probably be slow at the moment without caching.
   // We should consider making this faster in the future.
-  return Layout::FromString(string(layout_str));
+  return Layout::FromString(layout_str);
 }
 
 std::string DTensorDevice::FetchLayout(TFE_Context* context,

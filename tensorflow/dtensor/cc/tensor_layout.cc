@@ -22,7 +22,6 @@ limitations under the License.
 #include <numeric>
 #include <set>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -567,7 +566,7 @@ StatusOr<Mesh> GenerateMeshDevicesForTests(
 }  // namespace
 
 // static
-StatusOr<Mesh> Mesh::FromString(std::string_view str) {
+StatusOr<Mesh> Mesh::FromString(absl::string_view str) {
   if (str == kEmptyMeshString) return Mesh::Empty();
 
   std::vector<std::string> mesh_parts = absl::StrSplit(str, '|');
@@ -1135,7 +1134,7 @@ StatusOr<Layout> Layout::Transposed2D(const Layout& layout) {
 }
 
 // static
-StatusOr<Layout> Layout::FromString(std::string layout_str) {
+StatusOr<Layout> Layout::FromString(absl::string_view layout_str) {
   if (layout_str == kEmptyLayoutString) return Layout::Empty();
 
   // Print sharding specs.
@@ -1158,7 +1157,7 @@ StatusOr<Layout> Layout::FromString(std::string layout_str) {
   sharding_spec_strs.pop_back();
 
   // Add mesh.
-  TF_ASSIGN_OR_RETURN(Mesh mesh, Mesh::FromString(string(mesh_str)));
+  TF_ASSIGN_OR_RETURN(Mesh mesh, Mesh::FromString(mesh_str));
   // Try to create layout.
   TF_ASSIGN_OR_RETURN(Layout layout,
                       Layout::GetLayout(sharding_spec_strs, mesh));

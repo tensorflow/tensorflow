@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <iostream>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -126,7 +125,7 @@ class Mesh {
   // Example:
   //  mesh =
   //  <name|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1,/job:localhost/task:0/device:CPU:2,/job:localhost/task:0/device:CPU:3>
-  static StatusOr<Mesh> FromString(std::string_view str);
+  static StatusOr<Mesh> FromString(absl::string_view str);
   std::string ToString() const;
   MeshProto ToProto() const;
 
@@ -283,7 +282,7 @@ class Layout {
   //  layout = <sharding_specs:x,not_sharded mesh:name|x=2,y=2|0,1,2,3|0,1,2,3|
   //  /job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1,
   //  /job:localhost/task:0/device:CPU:2,/job:localhost/task:0/device:CPU:3>
-  static StatusOr<Layout> FromString(std::string layout_str);
+  static StatusOr<Layout> FromString(absl::string_view layout_str);
   // Creates human readable string version of a layout.
   std::string ToString() const;
   LayoutProto ToProto() const;
