@@ -969,6 +969,10 @@ size_t Layout::num_shards_for_dim(const ShardingSpec& dim) const {
   return mesh().dim_size(name).value();
 }
 
+size_t Layout::num_shards_for_dim(int dim) const {
+  return num_shards_for_dim(sharding_specs_[dim]);
+}
+
 bool Layout::IsFullyReplicated() const {
   for (const auto& sharding_spec : sharding_specs_) {
     if (num_shards_for_dim(sharding_spec) > 1) {

@@ -353,6 +353,7 @@ class Layout {
 
   int64 rank() const { return sharding_specs_.size(); }
   size_t num_shards_for_dim(const ShardingSpec& dim) const;
+  size_t num_shards_for_dim(int) const;
   std::vector<int32> num_shards() const;
 
   const ShardingSpec& dim(int64 idx) const { return sharding_specs_[idx]; }
@@ -367,9 +368,7 @@ class Layout {
   std::vector<std::string> sharding_spec_strs() const;
 
   int64 num_devices() const { return mesh_.num_devices(); }
-  StatusOr<const DeviceLocation> device_location(int64 device_id) const {
-    return mesh_.device_location(device_id);
-  }
+
   // Map hosts to shards.
   std::map<std::string, ShardVector> HostShardMap() const;
 

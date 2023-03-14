@@ -199,17 +199,17 @@ TEST_F(LayoutTest, IsReplicated) {
   EXPECT_FALSE(BatchLayout().IsFullyReplicated());
 }
 
-TEST_F(LayoutTest, LayoutDimLocations) {
+TEST_F(LayoutTest, MeshDeviceLocations) {
   Layout layout = BatchLayout();
   absl::InlinedVector<int64, 4> offset = {1, 2};
-  EXPECT_THAT(layout.device_location(10), IsOkAndHolds(offset));
+  EXPECT_THAT(layout.mesh().device_location(10), IsOkAndHolds(offset));
   offset = {2, 2};
-  EXPECT_THAT(layout.device_location(18), IsOkAndHolds(offset));
+  EXPECT_THAT(layout.mesh().device_location(18), IsOkAndHolds(offset));
   offset = {3, 7};
-  EXPECT_THAT(layout.device_location(31), IsOkAndHolds(offset));
+  EXPECT_THAT(layout.mesh().device_location(31), IsOkAndHolds(offset));
 
-  EXPECT_FALSE(layout.device_location(32).ok());
-  EXPECT_FALSE(layout.device_location(-1).ok());
+  EXPECT_FALSE(layout.mesh().device_location(32).ok());
+  EXPECT_FALSE(layout.mesh().device_location(-1).ok());
 }
 
 TEST_F(LayoutTest, ScalarLayout) {
