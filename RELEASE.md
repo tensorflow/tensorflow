@@ -29,6 +29,8 @@
 
 ## Major Features and Improvements
 
+*   Support for Python3.11 has been added.
+
 *   `tf.lite`:
 
     *   Add 16-bit float type support for built-in op `fill`.
