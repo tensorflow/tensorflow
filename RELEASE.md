@@ -29,6 +29,8 @@
 
 ## Major Features and Improvements
 
+*   Python 3.11 wheels are released.
+
 *   `tf.lite`:
 
     *   Add 16-bit float type support for built-in op `fill`.
