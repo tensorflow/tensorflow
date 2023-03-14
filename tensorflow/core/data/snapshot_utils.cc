@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <queue>
 #include <string>
