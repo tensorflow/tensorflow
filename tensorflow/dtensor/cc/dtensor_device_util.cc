@@ -574,11 +574,45 @@ std::vector<int64_t> TensorShapeAsVector(TFE_TensorHandle* tensor,
 
 template <>
 StatusOr<bool> ExecutableManager<ExecutionFunctions>::ShouldFoldInput(
-    const DTensorOperation& doperation, const int input_index) const {
+    const DTensorOperation& doperation,
+    const std::vector<TensorWithLayout*>& inputs, const int input_index) const {
   return tsl::errors::Unavailable(
       "ExecutionFunctions manager can not check if the input is foldable, as "
       "the information is maintained by other types of managers (e.g. ModuleOp "
       "manager)");
+}
+
+Status InferOutputLayouts(const DTensorOperation& doperation,
+                          const NameAttrList& attributes,
+                          const std::optional<Layout>& default_layout,
+                          tensorflow::Graph* graph,
+                          std::vector<const Layout*>* output_layouts) {
+  tensorflow::Status status;
+  tensorflow::NodeDef op_node_def;
+  op_node_def.set_op(doperation.name);
+  op_node_def.set_name("eager_operation");
+
+  op_node_def.mutable_attr()->insert(attributes.attr().begin(),
+                                     attributes.attr().end());
+
+  tensorflow::Node* op_node = graph->AddNode(op_node_def, &status);
+  TF_RETURN_IF_ERROR(status);
+
+  output_layouts->clear();
+  output_layouts->reserve(op_node->num_outputs());
+  for (int output_index = 0; output_index < op_node->num_outputs();
+       ++output_index) {
+    const Layout* layout = nullptr;
+    if (!doperation.is_func() && default_layout.has_value() &&
+        output_index == 0) {
+      // Record the user's requested output layout. The scope currently only
+      // covers the first output of an op.
+      layout = &default_layout.value();
+    }
+    output_layouts->push_back(layout);
+  }
+  graph->RemoveNode(op_node);
+  return OkStatus();
 }
 
 Status PrepareGraphForMlir(
@@ -586,10 +620,11 @@ Status PrepareGraphForMlir(
     const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation,
     const tensorflow::FunctionLibraryDefinition& flib_def,
-    const NameAttrList& attributes, const std::optional<Layout>& default_layout,
-    tensorflow::Graph* graph,
-    std::vector<PartialTensorShape>* global_output_shapes,
-    std::vector<const Layout*>* output_layouts) {
+    const NameAttrList& attributes,
+    const std::vector<const Layout*>& output_layouts, tensorflow::Graph* graph,
+    std::vector<PartialTensorShape>* global_output_shapes
+
+) {
   // We run shape inference on the graph to find output shapes, which may
   // determine default layouts.
   ShapeRefiner shape_refiner(TF_GRAPH_DEF_VERSION, &flib_def);
@@ -675,10 +710,8 @@ Status PrepareGraphForMlir(
     // being passed in as input arguments. This provides more information to
     // the SPMD and layout propagation passes.
     TF_ASSIGN_OR_RETURN(bool should_fold_input,
-                        module_manager.ShouldFoldInput(doperation, i));
-    if (!input->const_value_node() ||
-        !input->const_value_node()->const_value().has_value() ||
-        !should_fold_input) {
+                        module_manager.ShouldFoldInput(doperation, inputs, i));
+    if (!should_fold_input) {
       graph_op_inputs.push_back(FunctionArgument{
           arg_node, NodeDefBuilder::NodeOut{arg_node->name(), i, dtype}});
       graph->AddControlEdge(graph->source_node(), arg_node);
@@ -735,8 +768,6 @@ Status PrepareGraphForMlir(
   }
   TF_RETURN_IF_ERROR(shape_refiner.AddNode(op_node));
 
-  output_layouts->clear();
-  output_layouts->reserve(op_node->num_outputs());
   global_output_shapes->reserve(op_node->num_outputs());
   for (int output_index = 0; output_index < op_node->num_outputs();
        ++output_index) {
@@ -766,14 +797,10 @@ Status PrepareGraphForMlir(
             << "':" << global_output_shape.DebugString();
     global_output_shapes->push_back(global_output_shape);
 
-    const Layout* layout = nullptr;
-    if (default_layout.has_value() && output_index == 0) {
-      // Record the user's requested output layout. The scope currently only
-      // covers the first output of an op.
-      layout = &default_layout.value();
+    auto layout = output_layouts[output_index];
+    if (layout != nullptr) {
       ret_node->AddAttr(kDefaultLayoutAttr, layout->ToString());
     }
-    output_layouts->push_back(layout);
   }
   return OkStatus();
 }

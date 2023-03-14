@@ -553,7 +553,6 @@ tensorflow::dtensor::ExperimentalSetDefaultLayout
 tensorflow::dtensor::ExperimentalClearDefaultLayout
 tensorflow::dtensor::ExperimentalSetDefaultMesh
 tensorflow::dtensor::ExperimentalClearDefaultMesh
-tensorflow::dtensor::SetSameShapePolicy
 tensorflow::dtensor::SetTPUCoreIDs
 tensorflow::dtensor::ClearTPUCoreIDs
 tensorflow::dtensor::TPUCoreIDsToLocations

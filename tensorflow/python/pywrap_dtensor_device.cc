@@ -45,7 +45,6 @@ using tensorflow::dtensor::IsSparseDTensor;
 using tensorflow::dtensor::Mesh;
 using tensorflow::dtensor::Pack;
 using tensorflow::dtensor::SetIteratorElementLayouts;
-using tensorflow::dtensor::SetSameShapePolicy;
 using tensorflow::dtensor::SetTPUCoreIDs;
 using tensorflow::dtensor::SparsePack;
 using tensorflow::dtensor::TPUCoreIDsToLocations;
@@ -177,11 +176,6 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       PyErr_SetString(PyExc_ValueError, TF_Message(status.get()));
       throw py::error_already_set();
     }
-  });
-  m.def("SetSameShapePolicy", [](const py::capsule& device_info, bool enabled) {
-    SetSameShapePolicy(
-        PyCapsule_GetPointer(device_info.ptr(), "TFE_CustomDevice_DeviceInfo"),
-        enabled);
   });
   m.def("SetTPUCoreIDs", [](const py::capsule& device_info,
                             const std::string& mesh_name,

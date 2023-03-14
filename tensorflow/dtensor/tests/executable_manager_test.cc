@@ -44,7 +44,7 @@ class ExecutableManagerTest : public ::testing::Test {
 
 TEST_F(ExecutableManagerTest, ShouldFoldInputUnavailable) {
   auto result =
-      function_manager_->ShouldFoldInput(CreateTestDTensorOperation(), 0);
+      function_manager_->ShouldFoldInput(CreateTestDTensorOperation(), {}, 0);
   EXPECT_THAT(result, StatusIs(UNAVAILABLE,
                                HasSubstr("ExecutionFunctions manager can not "
                                          "check if the input is foldable")));

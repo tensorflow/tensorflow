@@ -324,17 +324,6 @@ class DTensorDevice(object):
         self._device_info,
     )
 
-  def set_same_shape_policy(self, enabled):
-    """Guess layouts using the layouts of other tensors with the same shape.
-
-    This is the default behavior, and is quite safe. The `default_layout` scope
-    overrides shape-based guesses.
-
-    Args:
-      enabled: A boolean indicating whether to use the policy.
-    """
-    _pywrap_dtensor_device.SetSameShapePolicy(self._device_info, enabled)
-
   def set_tpu_core_ids(self, mesh_name, tpu_core_ids):
     """Sets the singleton global device ID-to-physical core ID map.
 
