@@ -129,7 +129,7 @@ class MlirGraphOptimizationPassTest : public Test {
                                                  std::move(optimization_pass));
     }
 
-    flib_.reset(new FunctionLibraryDefinition(graph_->flib_def()));
+    flib_ = std::make_unique<FunctionLibraryDefinition>(graph_->flib_def());
   }
 
   void AddModuleModificationPass(MlirOptimizationPassState pass_state,
