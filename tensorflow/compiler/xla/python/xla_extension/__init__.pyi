@@ -173,7 +173,7 @@ class HloModule:
   @staticmethod
   def from_serialized_hlo_module_proto(
     serialized_hlo_module_proto: bytes) -> HloModule: ...
-  
+
 class HloModuleGroup:
   def __init__(self, name: str, modules: List[HloModule]) -> None: ...
   @property
@@ -510,7 +510,13 @@ ArrayImpl = Any
 
 def copy_array_to_devices_with_sharding(self: ArrayImpl, devices: List[Device], sharding: Any) -> ArrayImpl: ...
 
-def batched_device_put(aval: Any, sharding: Any, shards: Sequence[Any], devices: List[Device]) -> ArrayImpl: ...
+
+def batched_device_put(
+    aval: Any, sharding: Any, shards: Sequence[Any], devices: List[Device],
+    committed: bool = True,
+) -> ArrayImpl:
+  ...
+
 
 def array_result_handler(
                aval: Any,
