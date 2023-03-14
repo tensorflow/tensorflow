@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/full_type.pb.h"
@@ -39,6 +40,17 @@ namespace full_type {
 // error.
 
 TypeInferenceFn KeepExisting() { return nullptr; }
+
+TypeInferenceFn Tensor(FullTypeId t) {
+  return [t](const TypeRefVector& input_types,
+             const FunctionTypeInferrer& infer_function_rets) {
+    FullTypeDef ret_type;
+    ret_type.set_type_id(TFT_PRODUCT);
+    ret_type.add_args()->set_type_id(TFT_TENSOR);
+    ret_type.mutable_args(0)->add_args()->set_type_id(t);
+    return ret_type;
+  };
+}
 
 TypeInferenceFn ReplicateInput(int i, int n) {
   return [i, n](const TypeRefVector& input_types,
@@ -333,6 +345,44 @@ TypeInferenceFn FunctionCall(const string& func_attr_name) {
     // TODO(b/224776031): Is there a cleaner way to represent these
     // function-dependent types?
     return infer_function_rets(func_attr_name, input_types);
+  };
+}
+
+TypeInferenceFn Tuple(const std::vector<TypeInferenceFn>& func_list) {
+  return [func_list](const TypeRefVector& input_types,
+                     const FunctionTypeInferrer& infer_function_rets)
+             -> StatusOr<FullTypeDef> {
+    FullTypeDef ret_type;
+    ret_type.set_type_id(TFT_PRODUCT);
+    for (const auto& func : func_list) {
+      const auto& status_or_t = func(input_types, infer_function_rets);
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          status_or_t.status(),
+          absl::StrCat("for Tuple type infernce function ",
+                       ret_type.args_size()));
+      const FullTypeDef& t = status_or_t.value();
+      if (t.type_id() == TFT_UNSET) {
+        VLOG(1) << "For Tuple type inference function, function "
+                << ret_type.args_size() << " is unset.";
+        FullTypeDef unset_type;
+        return unset_type;
+      }
+      if (t.type_id() != TFT_PRODUCT) {
+        return Status(
+            error::INVALID_ARGUMENT,
+            absl::StrCat("for Tuple type inference function, expected result "
+                         "of type inference function ",
+                         ret_type.args_size(),
+                         " to start with TFT_PRODUCT not ", t.DebugString()));
+      }
+      // If a type inferenence function describes a op with more than one
+      // output, the default is to concatenate them. The is not needed for the
+      // initial use case of the Merge op.
+      for (int i = 0; i < t.args_size(); i++) {
+        *(ret_type.add_args()) = t.args(i);
+      }
+    }
+    return ret_type;
   };
 }
 
