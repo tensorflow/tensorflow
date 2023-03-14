@@ -384,6 +384,9 @@ class IrEmitterUnnested : public IrEmitter {
     bool aliased = true;
     int64_t alignment = 1;
     bool written = true;
+    // Holds the index of the first argument which has the same slice as this,
+    // if this is not the first such argument.
+    std::optional<int> first_with_same_slice;
   };
 
   // The return type of BuildReusableKernelPrototype.
@@ -614,11 +617,11 @@ class IrEmitterUnnested : public IrEmitter {
   //   }
   // }
   //
-  void EmitTile(
-      const TilingScheme& tiling_scheme,
-      const llvm_ir::IrArray::Index& tile_origin_index,
-      const ThreadIdInfo& thread_id_info, ValueVector2 tile_dimensions,
-      const IrEmitterUnnested::EmitElementFunction& emit_elem_function);
+  void EmitTile(const TilingScheme& tiling_scheme,
+                const llvm_ir::IrArray::Index& tile_origin_index,
+                const ThreadIdInfo& thread_id_info,
+                ValueVector2 tile_dimensions,
+                const EmitElementFunction& emit_elem_function);
 
   // Creates accumulator alloca's, populates them with initial values, generates
   // __shared__ caches and returns the populated object.
@@ -641,7 +644,7 @@ class IrEmitterUnnested : public IrEmitter {
       int partial_result_idx, llvm::Type* index_ty,
       const ReductionCodegenState& reduction_codegen_state,
       const TilingKernelInfo& tiling_kernel_info,
-      const IrEmitterUnnested::ReductionOutputMap& output_arrays,
+      const ReductionOutputMap& output_arrays,
       const HloReduceInstruction* reduction, int output_idx);
 
   // Performs the actual write of the reduction result.
@@ -728,14 +731,21 @@ class IrEmitterUnnested : public IrEmitter {
       mlir::Operation* op, const LaunchDimensions& launch_dimensions);
 
   // Generates the argument descriptors for a "reusable kernel".
-  StatusOr<std::vector<IrEmitterUnnested::ReusableKernelArgument>>
-  GetReusableKernelArguments(mlir::lmhlo::FusionOp fusion_op);
+  StatusOr<std::vector<ReusableKernelArgument>> GetReusableKernelArguments(
+      mlir::lmhlo::FusionOp fusion_op);
 
   // Calculates a fingerprint of the kernel arguments, which can be used for
   // checking reusability.
   //
   // For example 2 arguments that are aligned to 16 bytes, aliased and also
   // written by the kernel will be represented as "16aw,16aw".
+  //
+  // Overlapping arguments are only marked aliased, if at least one of them is
+  // written and their buffers are not exactly the same. If 2 arguments' buffers
+  // are exactly the same, then they are not marked aliased, but marked as
+  // duplicates, for example like this: "16,=0,16w,=2". The example means that
+  // the 1st argument is the same as the 0th and the 3rd is the same as the 2nd.
+  // These duplicated parameters are passed to the kernel only once.
   static std::string GetArgumentFingerprint(
       absl::Span<const ReusableKernelArgument> kernel_arguments);
 
