@@ -140,11 +140,8 @@ void addCPUTilingPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(createTransformDotForCpuPass(tilingHeuristic));
   pm.addNestedPass<FuncOp>(
       createTransformMatmulForCpuPass(tilingHeuristic, options.lowerToMmt4d));
-  // TODO(b/270534416): Re-enable.
-  // pm.addNestedPass<FuncOp>(createTransformGenericForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformTransposeForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformMapForCpuPass(options.vectorSize));
-  pm.addNestedPass<FuncOp>(createTransformSortForCpuPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::gml_st::createTransformReverseForCpuPass());
 

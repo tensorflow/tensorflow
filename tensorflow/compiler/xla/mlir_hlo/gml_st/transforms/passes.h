@@ -118,14 +118,6 @@ createTransformReverseForCpuPass(int64_t vectorSize = 8);
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformTransposeForCpuPass(ArrayRef<int64_t> tileSizes = std::nullopt);
 
-/// Pass to transform a thlo.sort op for CPU backend.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createTransformSortForCpuPass();
-
-/// Pass to transform a linalg.generic op for CPU backend.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createTransformGenericForCpuPass();
-
 /// Pass to create fusion clusters.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createFusionPlanningForCpuPass(int64_t vectorSize = 8);

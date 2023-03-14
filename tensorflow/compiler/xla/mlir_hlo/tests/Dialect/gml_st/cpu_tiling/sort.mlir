@@ -1,4 +1,5 @@
-// RUN: mlir-hlo-opt %s --gml-st-cpu-tiling-pipeline | FileCheck %s
+// RUN: mlir-hlo-opt %s --gml-st-cpu-tiling-pipeline --canonicalize \
+// RUN: | FileCheck %s
 
 func.func @sort(%input1: tensor<64x8x4xf32>, %input2: tensor<64x8x4xf32>,
                 %init1: tensor<64x8x4xf32>, %init2: tensor<64x8x4xf32>)
