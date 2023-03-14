@@ -83,12 +83,10 @@ def VectorizeCopyPass :
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
 
-def SimplifyDeadCopyPass :
-    Pass<"simplify-dead-copy", "mlir::func::FuncOp"> {
-  let summary = "Pass to simplify dead `memref.copy`.";
-  let constructor = "::mlir::gml_st::createSimplifyDeadCopyPass()";
-  let dependentDialects = ["::mlir::vector::VectorDialect",
-                           "::mlir::memref::MemRefDialect"];
+def NaiveCopyRemovalPass : Pass<"naive-copy-removal", "mlir::func::FuncOp"> {
+  let summary = "Pass to remove redundant `memref.copy` ops.";
+  let constructor = "::mlir::gml_st::createNaiveCopyRemovalPass()";
+  let dependentDialects = ["::mlir::memref::MemRefDialect"];
 }
 
 def LowerVectorsPass : Pass<"lower-vectors", "mlir::func::FuncOp"> {

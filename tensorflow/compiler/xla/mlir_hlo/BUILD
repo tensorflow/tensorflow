@@ -1478,6 +1478,7 @@ cc_library(
         "gml_st/transforms/add_debug_info/add_debug_info.cc",
         "gml_st/transforms/collapse_shape/collapse_shape.cc",
         "gml_st/transforms/compose_extract_insert_slice/compose_extract_insert_slice.cc",
+        "gml_st/transforms/copy_removal/copy_removal.cc",
         "gml_st/transforms/cpu_tiling/cpu_tiling_pipeline.cc",
         "gml_st/transforms/cpu_tiling/fusion_outlining.cc",
         "gml_st/transforms/cpu_tiling/fusion_planning_for_cpu.cc",

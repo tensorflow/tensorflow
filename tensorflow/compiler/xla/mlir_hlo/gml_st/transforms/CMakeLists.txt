@@ -30,6 +30,7 @@ add_mlir_library(GmlStPasses
   add_debug_info/add_debug_info.cc
   collapse_shape/collapse_shape.cc
   compose_extract_insert_slice/compose_extract_insert_slice.cc
+  copy_removal/copy_removal.cc
   cpu_tiling/cpu_tiling_pipeline.cc
   cpu_tiling/fusion_outlining.cc
   cpu_tiling/fusion_planning_for_cpu.cc

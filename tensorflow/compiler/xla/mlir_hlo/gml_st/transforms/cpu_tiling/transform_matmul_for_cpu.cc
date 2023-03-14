@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/peeling/peeling.h"
@@ -35,7 +34,6 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -49,7 +47,6 @@ namespace mlir::gml_st {
 namespace {
 
 #define GEN_PASS_DEF_TRANSFORMMATMULFORCPUPASS
-#define GEN_PASS_DEF_SIMPLIFYDEADCOPYPASS
 #include "gml_st/transforms/passes.h.inc"
 
 static constexpr llvm::StringRef kMatmulTransformedLabel =
@@ -698,67 +695,6 @@ struct TransformMatmulForCpuPass
   MatmulTileSizeComputationFn tileSizeFn;
 };
 
-/// Remove memref::CopyOp whose target (can be either a memref::SubViewOp or
-/// memref::AllocOp) has no other users.
-struct SimplifyDeadCopyPattern : public OpRewritePattern<memref::CopyOp> {
-  using OpRewritePattern<memref::CopyOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(memref::CopyOp op,
-                                PatternRewriter &rewriter) const override {
-    auto valueIt = op.getTarget();
-    Operation *onlyNonStoreLikeUser = op;
-    for (auto subviewOp = valueIt.getDefiningOp<memref::SubViewOp>(); subviewOp;
-         onlyNonStoreLikeUser = subviewOp, valueIt = subviewOp.getSource(),
-              subviewOp = valueIt.getDefiningOp<memref::SubViewOp>()) {
-      // TODO(vuson) simplify if other uses are also memref.copy writing to
-      // subview
-      //    %alloc_4 = memref.alloc()
-      //    %subview_5 = memref.subview %alloc_4
-      //    %subview_6 = memref.subview %alloc_4
-      //    memref.copy %arg0, %subview_6
-      //    memref.copy %arg1, %subview_5
-      if (!subviewOp->hasOneUse()) return failure();
-    }
-
-    auto hasOnlyStoreLikeUsers = [&](Value alloc) {
-      return !llvm::any_of(alloc.getUsers(), [&](Operation *op) {
-        if (op == onlyNonStoreLikeUser) return false;
-        // TODO(vuson) remove this exception when MemoryEffectOpInterface gets
-        // corrected for linalg::FillOp. Right now it has MemoryEffects::Read
-        // while the only thing it ever reads is metadata such as dynamic sizes.
-        if (isa<linalg::FillOp>(op)) return false;
-        if (auto effect = dyn_cast<MemoryEffectOpInterface>(op)) {
-          return effect.getEffectOnValue<MemoryEffects::Read>(alloc)
-                     .has_value() ||
-                 !effect.getEffectOnValue<MemoryEffects::Write>(alloc)
-                      .has_value();
-        }
-        return true;
-      });
-    };
-    if (!valueIt.getDefiningOp<memref::AllocOp>() ||
-        !hasOnlyStoreLikeUsers(valueIt))
-      return failure();
-
-    rewriter.eraseOp(op);
-    return success();
-  }
-};
-
-struct SimplifyDeadCopyPass
-    : public impl::SimplifyDeadCopyPassBase<SimplifyDeadCopyPass> {
-  void runOnOperation() override {
-    auto func = getOperation();
-    auto *ctx = func.getContext();
-
-    RewritePatternSet patterns(ctx);
-    patterns.add<SimplifyDeadCopyPattern>(ctx);
-    memref::AllocOp::getCanonicalizationPatterns(patterns, ctx);
-    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
-      return signalPassFailure();
-    }
-  }
-};
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
@@ -771,10 +707,6 @@ createTransformMatmulForCpuPass(MatmulTileSizeComputationFn tileSizeFn,
                                 bool lowerToMmt4DOp) {
   return std::make_unique<mlir::gml_st::TransformMatmulForCpuPass>(
       std::move(tileSizeFn), lowerToMmt4DOp);
-}
-
-std::unique_ptr<OperationPass<func::FuncOp>> createSimplifyDeadCopyPass() {
-  return std::make_unique<SimplifyDeadCopyPass>();
 }
 
 }  // namespace mlir::gml_st

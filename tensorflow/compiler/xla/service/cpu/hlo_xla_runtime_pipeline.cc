@@ -210,7 +210,7 @@ static Status CreateHloXlaPipeline(
 
   if (options.enable_tiling_and_fusion) {
     pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeCopyPass());
-    pm.addNestedPass<FuncOp>(mlir::gml_st::createSimplifyDeadCopyPass());
+    pm.addNestedPass<FuncOp>(mlir::gml_st::createNaiveCopyRemovalPass());
   }
   // Handle framework specific requirements for buffers and then insert
   // deallocations for temporary buffers.
