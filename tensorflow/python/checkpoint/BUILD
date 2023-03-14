@@ -51,6 +51,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        ":checkpoint_context",
         ":checkpoint_options",
         ":checkpoint_view",
         ":functional_saver",
@@ -127,6 +128,14 @@ tf_py_test(
         "//tensorflow/python/trackable:base",
         "@absl_py//absl/testing:parameterized",
     ],
+)
+
+py_library(
+    name = "checkpoint_context",
+    srcs = [
+        "checkpoint_context.py",
+    ],
+    srcs_version = "PY3",
 )
 
 tf_py_test(

@@ -29,6 +29,7 @@ import time
 
 from tensorflow.core.distributed_runtime.preemption import gen_check_preemption_op
 from tensorflow.python.checkpoint import checkpoint as checkpoint_lib
+from tensorflow.python.checkpoint import checkpoint_context
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_util
@@ -1061,10 +1062,11 @@ class PreemptionCheckpointHandler(object):
 
     start_time = time.monotonic()
 
-    if self._save_fn:
-      self._save_fn(*args, **kwargs)
-    else:
-      self._write_checkpoint_manager.save(*args, **kwargs)
+    with checkpoint_context.preemption_save_context():
+      if self._save_fn:
+        self._save_fn(*args, **kwargs)
+      else:
+        self._write_checkpoint_manager.save(*args, **kwargs)
 
     end_time = time.monotonic()
 

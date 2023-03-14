@@ -268,6 +268,12 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
       rpc_layer = 'grpc+loas'
 
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt')
+    def exit_fn_checking_metric():
+      self.assertGreater(tracking_util._preemption_checkpoint_saved_time_usecs.get_cell().value(), 0)  # pylint: disable=line-too-long
+      sys.exit(42)
+
+    termination_config = failure_handling.TerminationConfig(
+        exit_fn=exit_fn_checking_metric)
 
     if strategy_option == 'MWMS_multi_worker':
       cluster_spec = multi_worker_test_base.create_cluster_spec(
@@ -281,8 +287,8 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
           self.worker_fn,
           cluster_spec,
           args=(checkpoint_dir, cluster_spec, input_arg, strategy_option,
-                [training_started_event
-                ], None, training_restarted, training_finished),
+                [training_started_event], None, training_restarted,
+                training_finished, termination_config),
           kwargs={'api_wrapping_train': api_wrapping_train},
           rpc_layer=rpc_layer,
           return_output=True,

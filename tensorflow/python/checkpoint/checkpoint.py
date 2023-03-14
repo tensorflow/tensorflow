@@ -24,6 +24,7 @@ import time
 import weakref
 
 from tensorflow.core.protobuf import trackable_object_graph_pb2
+from tensorflow.python.checkpoint import checkpoint_context
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import functional_saver
@@ -35,6 +36,7 @@ from tensorflow.python.checkpoint import util
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -65,6 +67,7 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
+
 
 # The callable that provide Keras default session that is needed for saving.
 _SESSION_PROVIDER = None
@@ -1787,6 +1790,12 @@ class CheckpointV1(autotrackable.AutoTrackable):
           api_label=_CHECKPOINT_V1,
           microseconds=_get_duration_microseconds(_END_TIME_OF_LAST_WRITE,
                                                   end_time))
+
+      if checkpoint_context.in_preemption_save_context():
+        _preemption_checkpoint_saved_time_usecs.get_cell().increase_by(
+            _get_duration_microseconds(_END_TIME_OF_LAST_WRITE, end_time)
+        )
+
       _END_TIME_OF_LAST_WRITE = end_time
 
     if tensor_util.is_tf_type(output):
@@ -2311,18 +2320,26 @@ class Checkpoint(autotrackable.AutoTrackable):
     # This records the time checkpoint._write() blocks on the main thread.
     metrics.AddCheckpointWriteDuration(
         api_label=_CHECKPOINT_V2,
-        microseconds=_get_duration_microseconds(start_time, end_time))
+        microseconds=_get_duration_microseconds(start_time, end_time),
+    )
 
     global _END_TIME_OF_LAST_WRITE
     with _END_TIME_OF_LAST_WRITE_LOCK:
       metrics.AddTrainingTimeSaved(
           api_label=_CHECKPOINT_V2,
-          microseconds=_get_duration_microseconds(_END_TIME_OF_LAST_WRITE,
-                                                  end_time))
+          microseconds=_get_duration_microseconds(
+              _END_TIME_OF_LAST_WRITE, end_time
+          ),
+      )
+      if checkpoint_context.in_preemption_save_context():
+        _preemption_checkpoint_saved_time_usecs.get_cell().increase_by(
+            _get_duration_microseconds(_END_TIME_OF_LAST_WRITE, end_time)
+        )
       _END_TIME_OF_LAST_WRITE = end_time
 
     metrics.RecordCheckpointSize(
-        api_label=_CHECKPOINT_V2, filesize=_get_checkpoint_size(output))
+        api_label=_CHECKPOINT_V2, filesize=_get_checkpoint_size(output)
+    )
     return output
 
   @property
@@ -2613,3 +2630,8 @@ class Checkpoint(autotrackable.AutoTrackable):
     if isinstance(status, NameBasedSaverStatus):
       status.add_to_optionally_restored(self.save_counter)
     return status
+
+
+_preemption_checkpoint_saved_time_usecs = monitoring.Counter(
+    "/tensorflow/api/distribution_strategy/preemption_checkpoint_saved_time_usecs",
+    "Training time saved by PreemptionCheckpointHandler (us).")
