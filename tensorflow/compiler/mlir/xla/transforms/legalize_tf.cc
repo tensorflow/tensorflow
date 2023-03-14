@@ -5819,11 +5819,11 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
   LogicalResult matchAndRewrite(TF::RandomShuffleOp op,
                                 PatternRewriter &rewriter) const override {
     auto no_op = [&]() {
-      rewriter.replaceOp(op, op.getValue());
+      rewriter.replaceOp(op, op.value());
       return success();
     };
 
-    auto input_type = op.getValue().getType().dyn_cast<RankedTensorType>();
+    auto input_type = op.value().getType().dyn_cast<RankedTensorType>();
     if (!input_type) return failure();
     if (input_type.hasStaticShape() && input_type.getNumElements() <= 1)
       // No shuffling is required, so copy input directly to output.
