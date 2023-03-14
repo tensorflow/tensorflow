@@ -92,6 +92,8 @@ struct ConvertXlaCpuMemRefElementCastToLLVMPass
     const auto &data_layout_analysis = getAnalysis<DataLayoutAnalysis>();
     LowerToLLVMOptions options(&getContext(),
                                data_layout_analysis.getAtOrAbove(op));
+    // TODO(b/267828330): Migrate to opaque pointers.
+    options.useOpaquePointers = false;
 
     LLVMTypeConverter type_converter(&getContext(), options,
                                      &data_layout_analysis);

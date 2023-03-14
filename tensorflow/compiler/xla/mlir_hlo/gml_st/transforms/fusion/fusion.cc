@@ -249,20 +249,18 @@ void eliminateTriviallyDeadUsers(PatternRewriter& rewriter, Operation* op) {
 void reifyDimOp(PatternRewriter& rewriter, tensor::DimOp dimOp) {
   auto dimValue = dimOp.getSource().template dyn_cast<OpResult>();
   if (!dimValue) return;
-  auto rankedShapeTypeOp =
-      dyn_cast<ReifyRankedShapedTypeOpInterface>(dimValue.getOwner());
-  if (!rankedShapeTypeOp) return;
 
   std::optional<int64_t> dimIndex = dimOp.getConstantIndex();
   if (!dimIndex) return;
 
   ReifiedRankedShapedTypeDims reifiedResultShapes;
-  if (failed(
-          rankedShapeTypeOp.reifyResultShapes(rewriter, reifiedResultShapes))) {
+  if (failed(reifyResultShapes(rewriter, dimValue.getOwner(),
+                               reifiedResultShapes))) {
     return;
   }
 
-  if (reifiedResultShapes.size() != rankedShapeTypeOp->getNumResults()) return;
+  if (reifiedResultShapes.size() != dimValue.getOwner()->getNumResults())
+    return;
 
   unsigned resultNumber = dimValue.getResultNumber();
   auto sourceType = dimValue.getType().dyn_cast<RankedTensorType>();

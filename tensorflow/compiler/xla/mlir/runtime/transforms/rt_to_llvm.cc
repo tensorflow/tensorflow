@@ -689,7 +689,10 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   RewritePatternSet patterns(ctx);
 
   // We use conversion to LLVM type to lower all runtime operands to LLVM types.
-  LLVMTypeConverter llvm_converter(ctx);
+  // TODO(b/267828330): Migrate to opaque pointers.
+  LowerToLLVMOptions options(&getContext());
+  options.useOpaquePointers = false;
+  LLVMTypeConverter llvm_converter(ctx, options);
   llvm_converter.addConversion(
       RuntimeTypeConverter::ConvertExecutionContextType);
   llvm_converter.addConversion(RuntimeTypeConverter::ConvertStatusType);
