@@ -7,18 +7,17 @@
 
 *  `tf.keras`
 
-    *  Remove the Keras scikit-learn API wrappers (`KerasClassifier` and
+    *  Removed the Keras scikit-learn API wrappers (`KerasClassifier` and
        `KerasRegressor`), which had been deprecated in August 2021.
        We recommend using [SciKeras](https://github.com/adriangb/scikeras)
        instead.
-
-*   The default Keras model saving format is now the Keras v3 format:
-    calling `model.save("xyz.keras")` will no longer create a H5 file,
-    it will create a native Keras model file.
-    This will only be breaking for you if you were manually inspecting or
-    modifying H5 files saved by Keras under a `.keras` extension.
-    If this breaks you, simply add `save_format="h5"` to your `.save()` call
-    to revert back to the prior behavior.
+    *  The default Keras model saving format is now the Keras v3 format:
+       calling `model.save("xyz.keras")` will no longer create a H5 file,
+       it will create a native Keras model file.
+       This will only be breaking for you if you were manually inspecting or
+       modifying H5 files saved by Keras under a `.keras` extension.
+       If this breaks you, simply add `save_format="h5"` to your `.save()` call
+       to revert back to the prior behavior.
 
 * The LMDB kernels have been changed to return an error. This is in preparation
   for completely removing them from TensorFlow. The LMDB dependency that these
@@ -57,6 +56,7 @@
         graph). This can be used for integrating metrics from external Python
         libraries (like sklearn or pycocotools) into Keras as first-class Keras
         metrics.
+    *   Added `tf.keras.optimizers.Lion` optimizer.
     *   The `SidecarEvaluatorModelExport` callback has been added to Keras as
         `keras.callbacks.SidecarEvaluatorModelExport`. This callback allows for
         exporting the model the best-scoring model as evaluated by a
