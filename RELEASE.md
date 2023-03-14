@@ -4,7 +4,25 @@
 
 This release also introduces several vulnerability fixes:
 
-* TODO (in another PR)
+*   Fixes an FPE in TFLite in conv kernel [CVE-2023-27579] (https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-27579)
+*   Fixes a double free in Fractional(Max/Avg)Pool [CVE-2023-25801] (https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25801)
+*   Fixes a null dereference on ParallelConcat with XLA [CVE-2023-25676] (https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25676)
+*   Fixes a segfault in Bincount with XLA [CVE-2023-25675] (https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25675)
+*   Fixes an NPE in RandomShuffle with XLA enable [CVE-2023-25674] (https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25674)
+*   Fixes an FPE in TensorListSplit with XLA [CVE-2023-25673] (https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25673)
+*   Fixes segmentation fault in tfg-translate [CVE-2023-25671] (https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25671)
+*   Fixes an NPE in QuantizedMatMulWithBiasAndDequantize [CVE-2023-25670] (https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25670)
+*   Fixes an FPE in AvgPoolGrad with XLA [CVE-2023-25669] (https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25669)
+*   Fixes a heap out-of-buffer read vulnerability in the QuantizeAndDequantize operation [CVE-2023-25668] (https://cve.mitre.org/cgi-bin/cvename.cgi?       name=CVE-2023-25668)
+*   Fixes a segfault when opening multiframe gif [CVE-2023-25667] (https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25667)
+*   Fixes an NPE in SparseSparseMaximum [CVE-2023-25665] (https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25665)
+*   Fixes an FPE in AudioSpectrogram [CVE-2023-25666] (https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25666)
+*   Fixes a heap-buffer-overflow in AvgPoolGrad  [CVE-2023-25664] (https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25664)
+*   Fixes a NPE in TensorArrayConcatV2  [CVE-2023-25663] (https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25663)
+*   Fixes a Integer overflow in EditDistance  [CVE-2023-25662] (https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25662)
+*   Fixes a Seg fault in `tf.raw_ops.Print` [CVE-2023-25660] (https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25660)
+*   Fixes a OOB read in DynamicStitch [CVE-2023-25659] (https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25659)
+*   Fixes a OOB Read in GRUBlockCellGrad [CVE-2023-25658] (https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25658)
 
 # Release 2.11.0
 
