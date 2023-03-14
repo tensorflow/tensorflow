@@ -31,7 +31,6 @@ export TF_NEED_CUDA=1
 export TF_CUDA_COMPUTE_CAPABILITIES=3.7
 
 yes "" | $PYTHON_BIN_PATH configure.py
-echo "build --distinct_host_configuration=false" >> .tf_configure.bazelrc
 
 bazel clean
 # Run bazel test command. Double test timeouts to avoid flakes.
