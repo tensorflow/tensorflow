@@ -28,7 +28,6 @@ add_mlir_library(MLIRBufferTransforms
   bufferize.cc
   bufferize_pass.cc
   collapse_parallel_loops_to_1d_pass.cc
-  copy_removal.cc
   detensorize_scf_ops.cc
   generic_host_to_llvm.cc
   lower_index_cast_pass.cc

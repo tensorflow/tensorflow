@@ -18,13 +18,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def CopyRemoval : Pass<"copy-removal", "func::FuncOp"> {
-  let summary = "Removes redundant operations that implement a "
-                "CopyOpInterface, if the intersection of the useranges from"
-                "copy source and target only contains the CopyOp.";
-  let constructor = "createCopyRemovalPass()";
-}
-
 def BufferPacking : Pass<"buffer-packing", "func::FuncOp"> {
   let summary = "Pass to pack allocated buffer to reduce memory consumption.";
   let description = [{The pass tries to pack smaller buffers into larger buffers.

@@ -1223,7 +1223,6 @@ cc_library(
         "transforms/bufferize.cc",
         "transforms/bufferize_pass.cc",
         "transforms/collapse_parallel_loops_to_1d_pass.cc",
-        "transforms/copy_removal.cc",
         "transforms/detensorize_scf_ops.cc",
         "transforms/generic_host_to_llvm.cc",
         "transforms/lower_index_cast_pass.cc",

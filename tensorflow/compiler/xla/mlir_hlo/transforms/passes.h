@@ -62,10 +62,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTestUserangePass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createTestShapeComponentAnalysisPass();
 
-/// Creates a pass that removes redundant operations that implement a
-/// CopyOpInterface.
-std::unique_ptr<OperationPass<func::FuncOp>> createCopyRemovalPass();
-
 /// Creates a pass that computes the allocated memory.
 std::unique_ptr<OperationPass<func::FuncOp>> createMemoryCountPass();
 
