@@ -355,7 +355,8 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
       return gpu_host_allocators_[0][stream_id].recording_allocator.get();
     }
     if (static_cast<int>(gpu_host_allocators_.size()) > numa_node &&
-        static_cast<int>(gpu_host_allocators_[0].size()) > stream_id) {
+        static_cast<int>(gpu_host_allocators_[0].size()) > stream_id &&
+        gpu_host_allocators_[0][stream_id].allocator != nullptr) {
       return gpu_host_allocators_[0][stream_id].allocator.get();
     }
   }
@@ -415,14 +416,15 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
       gpu_host_free_visitors_[n].push_back({});
     }
   }
-  int numa_idx = 0;
-  while (numa_idx < numa_node ||
-         static_cast<int>(gpu_host_allocators_[numa_node].size()) <=
-             stream_id ||
-         gpu_host_allocators_[numa_node][stream_id].allocator == nullptr) {
+  // Create one allocator for every numa node at the given stream
+  for (int numa_idx = 0; numa_idx <= numa_node; ++numa_idx) {
+    if (static_cast<int>(gpu_host_allocators_[numa_idx].size()) > stream_id &&
+        gpu_host_allocators_[numa_idx][stream_id].allocator != nullptr) {
+      continue;
+    }
     SubAllocator* sub_allocator = new DeviceHostAllocator(
-        se, numa_node, gpu_host_alloc_visitors_[numa_node][stream_id],
-        gpu_host_free_visitors_[numa_node][stream_id]);
+        se, numa_idx, gpu_host_alloc_visitors_[numa_idx][stream_id],
+        gpu_host_free_visitors_[numa_idx][stream_id]);
 
     tsl::BFCAllocator::Options allocator_opts;
     allocator_opts.allow_growth =
@@ -441,12 +443,11 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
            stream_id) {
       gpu_host_allocators_[numa_idx].push_back({});
     }
+    gpu_host_allocators_[numa_idx][stream_id] = {
+        std::unique_ptr<Allocator>(allocator),
+        std::unique_ptr<SharedCounter>(nullptr), nullptr, sub_allocator,
+        std::unique_ptr<Allocator>(nullptr)};
     AllocatorParts& allocator_parts = gpu_host_allocators_[numa_idx][stream_id];
-    if (allocator_parts.allocator == nullptr) {
-      allocator_parts = {std::unique_ptr<Allocator>(allocator),
-                         std::unique_ptr<SharedCounter>(nullptr), nullptr,
-                         sub_allocator, std::unique_ptr<Allocator>(nullptr)};
-    }
     if (process_state_->ProcessState::FLAGS_brain_gpu_record_mem_types) {
       ProcessState::MemDesc md;
       md.loc = ProcessState::MemDesc::CPU;
@@ -458,7 +459,6 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
                                            allocator_parts.allocator.get(), md,
                                            &mu_));
     }
-    ++numa_idx;
   }
   if (process_state_->ProcessState::FLAGS_brain_gpu_record_mem_types) {
     return gpu_host_allocators_[0][stream_id].recording_allocator.get();
