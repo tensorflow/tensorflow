@@ -193,7 +193,7 @@ class DTensorDevice(object):
       RuntimeError: When not called eagerly.
     """
     if not context.executing_eagerly():
-      raise RuntimeError("Pack must be called eagerly.")
+      raise RuntimeError("`pack` must be called eagerly.")
     if any(
         issubclass(type(t), resource_variable_ops.BaseResourceVariable)
         for t in tensors):
@@ -244,7 +244,7 @@ class DTensorDevice(object):
       RuntimeError: When not called eagerly.
     """
     if not context.executing_eagerly():
-      raise RuntimeError("Unpack must be called eagerly.")
+      raise RuntimeError("`unpack` must be called eagerly.")
     if issubclass(type(dtensor), resource_variable_ops.BaseResourceVariable):
       raise TypeError(
           "Received Variable input to unpack, Variable is not supported.")
@@ -284,7 +284,7 @@ class DTensorDevice(object):
       RuntimeError: When not called eagerly.
     """
     if not context.executing_eagerly():
-      raise RuntimeError("FetchLayout must be called eagerly.")
+      raise RuntimeError("`fetch_layout` must be called eagerly.")
     if issubclass(type(dtensor), resource_variable_ops.BaseResourceVariable):
       dtensor = dtensor.read_value()
     try:
@@ -312,7 +312,7 @@ class DTensorDevice(object):
       RuntimeError: When not called eagerly.
     """
     if not context.executing_eagerly():
-      raise RuntimeError("is_dtensor must be called eagerly.")
+      raise RuntimeError("`is_dtensor` must be called eagerly.")
     if not tensor_util.is_tensor(tensor):
       return False
     if isinstance(tensor, variables.Variable):
