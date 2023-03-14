@@ -1868,9 +1868,14 @@ class DistributedIteratorTfDataServiceTest(DistributedIteratorTestBase,
           num_replicas_in_sync=num_workers))
 
     dataset = dataset_ops.Dataset.range(1, 50)
-    dataset_id = data_service_ops.register_dataset(
+    dataset_id = "dataset_id"
+    # The body of this test is run on both the chief and the workers, so
+    # `register_dataset` will be called multiple times. We use a pre-defined
+    # `dataset_id` so that the tf.data service will understand that the
+    # registered datasets are the same.
+    data_service_ops.register_dataset(
         service=combinations.env().tf_data_service_dispatcher,
-        dataset=dataset)
+        dataset=dataset, dataset_id=dataset_id)
 
     def dataset_fn(input_context):
       del input_context
