@@ -1345,6 +1345,7 @@ py_library(
     deps = [
         ":array_ops",
         ":array_ops_gen",
+        ":cond",
         ":control_flow_assert",
         ":control_flow_case",
         ":control_flow_ops_gen",
@@ -1399,6 +1400,29 @@ py_library(
         ":math_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_library(
+    name = "cond",
+    srcs = ["ops/cond.py"],
+    deps = [
+        ":array_ops",
+        ":control_flow_util",
+        ":math_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager/polymorphic_function:eager_function_run",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:indexed_slices",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/types",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:lazy_loader",
+        "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],
 )
