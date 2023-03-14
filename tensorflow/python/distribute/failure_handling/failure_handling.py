@@ -718,27 +718,31 @@ class PreemptionCheckpointHandler(object):
     # config key again, which causes this error. This can be safely ignored
     # since checkpoint should be saved as early as the earliest call is made.
     except errors.AlreadyExistsError:
-      logging.info('Member %s has received termination notice. But some other '
-                   'worker has received it as well! Leaving'
-                   ' it to them to decide when to checkpoint. ',
-                   self._id_in_cluster)
+      logging.info(
+          (
+              'Member %s has received termination notice. But some other '
+              'worker has received it as well! Leaving'
+              ' it to them to decide when to checkpoint. '
+          ),
+          self._id_in_cluster,
+      )
       return
 
   def _stop_poll_termination_signal_thread(self):
-    if self._poll_termination_signal_thread:
-
+    if getattr(self, '_poll_termination_signal_thread', None):
       self._poll_termination_signal_thread_should_stop.set()
       self._poll_termination_signal_thread.join()
 
       self._poll_termination_signal_thread = None
-      logging.info('Shut down watcher for one\'s own termination signal')
+      logging.info("Shut down watcher for one's own termination signal")
 
   def _stop_cluster_wise_termination_watcher_thread(self):
     """Stop the thread that is _watch_step_to_save_key."""
-    if self._cluster_wise_termination_watcher_thread:
+    if getattr(self, '_cluster_wise_termination_watcher_thread', None):
       try:
-        context.context().set_config_key_value(_INITIAL_RUN_COUNT_KEY,
-                                               _STOP_WATCHING_CLUSTER_VALUE)
+        context.context().set_config_key_value(
+            _INITIAL_RUN_COUNT_KEY, _STOP_WATCHING_CLUSTER_VALUE
+        )
       except (errors.AlreadyExistsError, errors.UnavailableError):
         # We'll ignore any error in the process of setting this key. There
         # certainly will be a AlreadyExistError since all workers are trying to
