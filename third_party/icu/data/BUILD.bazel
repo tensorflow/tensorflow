@@ -43,7 +43,10 @@ exports_files(["LICENSE"])
 # Please make sure to keep this updated if you change the data files.
 filegroup(
     name = "conversion_files",
-    srcs = glob(["icu_conversion_data.c.gz.*"]),
+    srcs = select({
+        "@org_tensorflow//tensorflow:linux_s390x": glob(["icu_conversion_data_big_endian.c.gz.*"]),
+        "//conditions:default": glob(["icu_conversion_data.c.gz.*"]),
+    }),
 )
 
 # Data files are compressed and split to work around git performance degradation
