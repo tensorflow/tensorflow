@@ -46,7 +46,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/tfrt/common:pjrt_state",
-        "tensorflow/core/tfrt/common:async_value_tensor",
+        "//tensorflow/core/tfrt/common:async_value_tensor",
         "@com_google_absl//absl/flags:flag",
     ],
 )
