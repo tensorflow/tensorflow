@@ -858,3 +858,12 @@ message ScheduleProto {
   HloModuleProto hlo_module = 3;
   int64 cycles_per_microsecond = 4;
 }
+
+message ProfiledInstructionsProto {
+  message Instruction {
+    string name = 1;
+    double timestamp_us = 2;
+    double duration_us = 3;
+  }
+  repeated Instruction instructions = 1;
+}
