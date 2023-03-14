@@ -142,8 +142,8 @@ absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
   }
 }
 
-PJRT_Error_Code StatusCodeToPjrtErrorCode(tsl::error::Code code) {
-  switch (code) {
+PJRT_Error_Code StatusCodeToPjrtErrorCode(absl::StatusCode code) {
+  switch (static_cast<tsl::error::Code>(code)) {
     case tsl::error::CANCELLED:
     case tsl::error::UNKNOWN:
     case tsl::error::INVALID_ARGUMENT:

@@ -589,7 +589,8 @@ DataServiceWorkerImpl::GetSnapshotTaskProgress() const {
     if (completed.ok()) {
       progress.set_completed(*completed);
     } else {
-      progress.set_error_code(completed.status().code());
+      progress.set_error_code(
+          static_cast<error::Code>(completed.status().code()));
       progress.set_error_message(completed.status().error_message());
     }
     snapshot_task_progress.push_back(std::move(progress));

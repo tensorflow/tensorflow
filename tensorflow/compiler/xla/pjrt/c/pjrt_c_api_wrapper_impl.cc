@@ -148,7 +148,8 @@ PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Error_GetCode_Args", PJRT_Error_GetCode_Args_STRUCT_SIZE,
       args->struct_size));
-  args->code = StatusCodeToPjrtErrorCode(args->error->status.code());
+  args->code = StatusCodeToPjrtErrorCode(
+      static_cast<absl::StatusCode>(args->error->status.code()));
   return nullptr;
 }
 
