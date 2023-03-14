@@ -189,15 +189,16 @@ class float8_base {
   }
 
  private:
-  static std::pair<uint8_t, uint8_t> SignAndMagnitude(Derived x) {
+  static EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC std::pair<uint8_t, uint8_t>
+  SignAndMagnitude(Derived x) {
     const uint8_t x_abs_bits =
         Eigen::numext::bit_cast<uint8_t>(Eigen::numext::abs(x));
     const uint8_t x_bits = Eigen::numext::bit_cast<uint8_t>(x);
     const uint8_t x_sign = x_bits ^ x_abs_bits;
     return {x_sign, x_abs_bits};
   }
-  static int8_t SignAndMagnitudeToTwosComplement(uint8_t sign,
-                                                 uint8_t magnitude) {
+  static EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC int8_t
+  SignAndMagnitudeToTwosComplement(uint8_t sign, uint8_t magnitude) {
     return magnitude ^ (static_cast<int8_t>(sign) < 0 ? -1 : 0);
   }
   uint8_t rep_;
