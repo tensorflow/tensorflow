@@ -21425,7 +21425,7 @@ Sorts a tensor. Currently only sorts in ascending order are supported.
   TF_DerivedOperandTypeAttr V = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_XlaLaunchOp : TF_Op<"XlaLaunch", [AttrSizedOperandSegments]> {
+def TF_XlaLaunchOp : TF_Op<"XlaLaunch", [AttrSizedOperandSegments, DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
   let summary = "XLA Launch Op. For use by the XLA JIT only.";
 
   let arguments = (ins
