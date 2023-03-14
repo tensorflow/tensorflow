@@ -112,6 +112,11 @@ def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
   let constructor = "createScalarizationPass()";
 }
 
+def PackMatmulPass : Pass<"xla-cpu-pack-matmul", "mlir::func::FuncOp"> {
+  let summary = "Pack linalg.matmul as linalg.mmt4d";
+  let constructor = "createPackMatmulPass()";
+}
+
 def TransformScatterForCpuPass :
     Pass<"xla-cpu-transform-scatter", "mlir::func::FuncOp"> {
   let summary = "Transform scatter ops for running on CPU";
@@ -129,13 +134,19 @@ def TransformDotForCpuPass :
 def TransformMatmulForCpuPass :
     Pass<"xla-cpu-transform-matmul", "mlir::func::FuncOp"> {
   let summary = "Transform matmul ops for running on CPU";
-
   let constructor = "createTransformMatmulForCpuPass()";
+}
 
-  let options = [
-    Option<"lowerToMmt4D", "lower-to-mmt4d", "bool", "false",
-           "If true, lower linalg.matmul into linalg.mmt4d">,
-  ];
+def TransformPackForCpuPass :
+    Pass<"xla-cpu-transform-pack", "mlir::func::FuncOp"> {
+  let summary = "Transform tensor.pack/unpack ops for running on CPU";
+  let constructor = "createTransformPackForCpuPass()";
+}
+
+def TransformMmt4DForCpuPass :
+    Pass<"xla-cpu-transform-mmt4d", "mlir::func::FuncOp"> {
+  let summary = "Transform linalg.mmt4d ops for running on CPU";
+  let constructor = "createTransformMmt4DForCpuPass()";
 }
 
 def TransformConvForCpuPass :

@@ -24,6 +24,8 @@ namespace gml_st {
 constexpr llvm::StringRef kPerfectlyTiledLoopLabel =
     "__perfectly_tiled_loop_label__";
 
+static constexpr llvm::StringRef kTransformedLabel = "__transformed_label__";
+
 template <typename ShapedTy>
 bool hasSingleElement(ShapedTy type) {
   return type.hasStaticShape() && type.getNumElements() == 1;

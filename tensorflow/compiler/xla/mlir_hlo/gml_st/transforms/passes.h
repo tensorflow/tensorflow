@@ -80,6 +80,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createNaiveCopyRemovalPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorsPass(
     bool enableAVX2 = true);
 
+/// Pass to pack linalg.matmul as linalg.mmt4d.
+std::unique_ptr<OperationPass<func::FuncOp>> createPackMatmulPass();
+
 /// Pass to transform a conv op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformConvForCpuPass();
 
@@ -92,8 +95,13 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTransformDotForCpuPass(
 
 /// Pass to transform a linalg.matmul op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForCpuPass(
-    MatmulTileSizeComputationFn tileSizeFn = nullptr,
-    bool lowerToMmt4DOp = false);
+    MatmulTileSizeComputationFn tileSizeFn = nullptr);
+
+/// Pass to transform tensor.pack/unpack ops for CPU backend.
+std::unique_ptr<OperationPass<func::FuncOp>> createTransformPackForCpuPass();
+
+/// Pass to transform a linalg.mmt4d op for CPU backend.
+std::unique_ptr<OperationPass<func::FuncOp>> createTransformMmt4DForCpuPass();
 
 /// Pass to fuse linalg on tensor operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionOfTensorOpsPass();
