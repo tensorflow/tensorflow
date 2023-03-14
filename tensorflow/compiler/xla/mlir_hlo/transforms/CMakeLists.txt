@@ -25,7 +25,6 @@ add_public_tablegen_target(LMHLOGPUTransformsPassIncGen)
 add_mlir_library(MLIRBufferTransforms
   alloc_to_arg_pass.cc
   buffer_packing.cc
-  buffer_reuse.cc
   bufferize.cc
   bufferize_pass.cc
   collapse_parallel_loops_to_1d_pass.cc

@@ -50,9 +50,6 @@ using BufferizePatternsCallback = std::function<void(
 #define GEN_PASS_DECL_TILELOOPSPASS
 #include "transforms/passes.h.inc"
 
-/// Creates a pass that reuses buffers which are already allocated.
-std::unique_ptr<OperationPass<func::FuncOp>> createBufferReusePass();
-
 /// Creates a pass that merges smaller buffer into bigger buffer to optimize
 /// memory consumption.
 std::unique_ptr<OperationPass<func::FuncOp>> createBufferPackingPass(
