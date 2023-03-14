@@ -68,7 +68,7 @@ export TF_TEST_FLAGS="${TF_BUILD_FLAGS} --test_env=TF_ENABLE_ONEDNN_OPTS=1 \
     --test_env=TF2_BEHAVIOR=1 --define=tf_api_version=2 --distinct_host_configuration=false \
     --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium"
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} ${ARM_SKIP_TESTS}"
-export TF_FILTER_TAGS="-no_oss,-oss_serial,-v1only,-benchmark-test,-no_aarch64,-gpu,-tpu,-requires-gpu"
+export TF_FILTER_TAGS="-no_oss,-oss_excluded,-oss_serial,-v1only,-benchmark-test,-no_aarch64,-gpu,-tpu,-requires-gpu"
 
 bazel test ${TF_TEST_FLAGS} \
     --repo_env=PYTHON_BIN_PATH="$(which python)" \

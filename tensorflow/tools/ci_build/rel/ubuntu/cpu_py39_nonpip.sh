@@ -24,7 +24,7 @@ install_bazelisk
 # Setup virtual environment and install dependencies
 setup_venv_ubuntu python3.9
 
-tag_filters="-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-no_oss_py39,-v1only"
+tag_filters="-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-no_oss_py39,-v1only"
 
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh

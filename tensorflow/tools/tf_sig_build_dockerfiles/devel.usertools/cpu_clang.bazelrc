@@ -57,8 +57,8 @@ test --test_summary=short
 # Pass --config=nonpip to run the same suite of tests. If you want to run just
 # one test for investigation, you don't need --config=nonpip; just run the
 # bazel test invocation as normal.
-test:nonpip_filters --test_tag_filters=-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
-test:nonpip_filters --build_tag_filters=-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+test:nonpip_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+test:nonpip_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
 test:nonpip_filters --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
 test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
@@ -81,8 +81,8 @@ test:pip_venv --python_path="/bazel_pip/bin/python3"
 test:pip_venv --define=no_tensorflow_py_deps=true
 test:pip --config=pip_venv
 # Yes, we don't exclude the gpu tests on pip for some reason.
-test:pip_filters --test_tag_filters=-nopip,-no_pip,-no_oss,-oss_serial,-v1only
-test:pip_filters --build_tag_filters=-nopip,-no_pip,-no_oss,-oss_serial,-v1only
+test:pip_filters --test_tag_filters=-nopip,-no_pip,-no_oss,-oss_excluded,-oss_serial,-v1only
+test:pip_filters --build_tag_filters=-nopip,-no_pip,-no_oss,-oss_excluded,-oss_serial,-v1only
 test:pip_filters --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
 test:pip --config=pip_filters -- //bazel_pip/tensorflow/... -//bazel_pip/tensorflow/python/integration_testing/... -//bazel_pip/tensorflow/compiler/tf2tensorrt/... -//bazel_pip/tensorflow/compiler/xrt/... -//bazel_pip/tensorflow/core/tpu/... -//bazel_pip/tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
@@ -117,7 +117,7 @@ build:rbe --remote_instance_name=projects/tensorflow-testing/instances/default_i
 build:rbe --project_id="tensorflow-testing"
 
 # For continuous builds
-test:pycpp_filters --test_tag_filters=-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
-test:pycpp_filters --build_tag_filters=-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+test:pycpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+test:pycpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
 test:pycpp_filters --test_lang_filters=cc,py --flaky_test_attempts=3 --test_size_filters=small,medium
 test:pycpp --config=pycpp_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
