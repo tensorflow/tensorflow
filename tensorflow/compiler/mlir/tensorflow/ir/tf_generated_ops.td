@@ -1148,6 +1148,20 @@ to be batched.}]>:$captured_tensors,
     func::FuncOp func() {
       return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getF());
     }
+
+    // Erases variable arguments from `batch_func_op`. `erase_indices` contains
+    // the indices of the arguments to erase.
+    void eraseArguments(const BitVector& erase_indices);
+
+    // Gets the argument operands to the called function.
+    operand_range getArgOperands() {
+      // Merge `in_tensors` and `captured_tensors`. `operand_segment_sizes`
+      // has two elements, so it will be merging two operand ranges (the two
+      // variadic arguments). Attributes like `batch_timeout_micros` will not
+      // make it to the return array.
+      auto segment_sizes = getOperation()->getAttrOfType<DenseI32ArrayAttr>(getOperandSegmentSizeAttr());
+      return OperandRangeRange(getOperands(), segment_sizes).join();
+    }
   }];
 }
 
