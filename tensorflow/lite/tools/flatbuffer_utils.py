@@ -282,8 +282,7 @@ def xxd_output_to_object(input_cc_file):
 
 
 def byte_swap_buffer_content(buffer, chunksize, from_endiness, to_endiness):
-  """"Helper function for byte-swapping the buffers field.
-  """
+  """Helper function for byte-swapping the buffers field."""
   to_swap = [buffer.data[i:i+chunksize] for i in range(
     0, len(buffer.data), chunksize)]
   buffer.data = b''.join([int.from_bytes(
@@ -292,11 +291,12 @@ def byte_swap_buffer_content(buffer, chunksize, from_endiness, to_endiness):
 
 
 def byte_swap_tflite_model_obj(model, from_endiness, to_endiness):
-  """"Byte swaps the buffers field in a TFLite model.
+  """Byte swaps the buffers field in a TFLite model.
 
   Args:
     model: TFLite model object of from_endiness format.
-  
+    from_endiness: The original endianness format of the buffers in model.
+    to_endiness: The destined endianness format of the buffers in model.
   """
   if model is None:
     return
@@ -330,15 +330,18 @@ def byte_swap_tflite_model_obj(model, from_endiness, to_endiness):
 
 
 def byte_swap_tflite_buffer(tflite_model, from_endiness, to_endiness):
-  """"Generates a new model byte array after byte swapping its buffers field.
+  """Generates a new model byte array after byte swapping its buffers field.
 
   Args:
-    tflite_model: TFLite flatbuffer in a byte array of from_endiness format.
+    tflite_model: TFLite flatbuffer in a byte array.
+    from_endiness: The original endianness format of the buffers in 
+    tflite_model.
+    to_endiness: The destined endianness format of the buffers in 
+    tflite_model.
 
   Returns:
-    TFLite flatbuffer in a bytes array, after being byte swapped to to_endiness
+    TFLite flatbuffer in a byte array, after being byte swapped to to_endiness
     format.
-
   """
   if tflite_model is None:
     return None
