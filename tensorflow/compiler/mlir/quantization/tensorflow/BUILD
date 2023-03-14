@@ -56,7 +56,7 @@ genrule(
     ],
     cmd = "$(location gen_quantized_function_library) --output_file $(RULEDIR)/passes/quantized_function_library.h --src '$(SRCS)'",
     compatible_with = get_compatible_with_cloud(),
-    exec_tools = ["gen_quantized_function_library"],
+    tools = ["gen_quantized_function_library"],
 )
 
 cc_library(
