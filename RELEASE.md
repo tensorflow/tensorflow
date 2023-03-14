@@ -29,7 +29,7 @@
 
 ## Major Features and Improvements
 
-*   Python 3.11 wheels are released.
+*   Support for Python3.11 has been added.
 
 *   `tf.lite`:
 
