@@ -37,6 +37,8 @@ using ::mlir::ModuleOp;
 using ::mlir::OwningOpRef;
 using ::tensorflow::monitoring::testing::CellReader;
 
+// Using a string constant here instead of testdata to make this compatible
+// with open source.
 static constexpr char kMlirModuleStr[] = R"(
   module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
     func.func @main() -> tensor<1xi32> {
@@ -76,6 +78,33 @@ TEST(VerifyTfxlaLegalizationTest, RecordsStreamzFailedVerification) {
 
   EXPECT_TRUE(pm.run(module.get()).failed());
   EXPECT_EQ(error.Delta("tf.BadValue"), 1);
+}
+
+TEST(VerifyTfxlaLegalizationTest, RecordsMultipleFailures) {
+  // Using a string constant here instead of testdata to make this compatible
+  // with open source.
+  static constexpr char kMultipleFailures[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+    func.func @main() -> tensor<1xi32> {
+      %0 = "tf.BadValue"() {value = dense<1000> : tensor<1xi32>} : () -> tensor<1xi32>
+      %1 = "tf.AlsoBad"() {value = dense<10> : tensor<1xi32>} : () -> tensor<1xi32>
+      func.return %0 : tensor<1xi32>
+    }
+  })";
+
+  MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(OwningOpRef<ModuleOp> module,
+                          GetMlirModuleFromString(kMultipleFailures, &context));
+
+  mlir::PassManager pm(&context);
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::CreateVerifyTFXLALegalizationPass(/*legalize_chlo=*/false));
+
+  CellReader<int64_t> error(kFailedLegalizationStreamz);
+
+  EXPECT_TRUE(pm.run(module.get()).failed());
+  EXPECT_EQ(error.Delta("tf.BadValue"), 1);
+  EXPECT_EQ(error.Delta("tf.AlsoBad"), 1);
 }
 
 }  // namespace

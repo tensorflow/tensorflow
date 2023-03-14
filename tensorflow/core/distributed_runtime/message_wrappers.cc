@@ -641,7 +641,7 @@ CostGraphDef* InMemoryRunGraphResponse::mutable_cost_graph() {
 Status InMemoryRunGraphResponse::status() const { return status_; }
 
 errors::Code InMemoryRunGraphResponse::status_code() const {
-  return status_.code();
+  return static_cast<errors::Code>(status_.code());
 }
 
 const string& InMemoryRunGraphResponse::status_error_message() const {
@@ -721,7 +721,7 @@ const string& OwnedProtoRunGraphResponse::status_error_message() const {
 }
 
 void OwnedProtoRunGraphResponse::set_status(const Status& status) {
-  response_.set_status_code(status.code());
+  response_.set_status_code(static_cast<tsl::error::Code>(status.code()));
   response_.set_status_error_message(status.error_message());
 }
 
@@ -796,7 +796,7 @@ const string& NonOwnedProtoRunGraphResponse::status_error_message() const {
 }
 
 void NonOwnedProtoRunGraphResponse::set_status(const Status& status) {
-  response_->set_status_code(status.code());
+  response_->set_status_code(static_cast<tsl::error::Code>(status.code()));
   response_->set_status_error_message(status.error_message());
 }
 
@@ -849,7 +849,7 @@ RunMetadata* InMemoryRunStepResponse::mutable_metadata() { return &metadata_; }
 Status InMemoryRunStepResponse::status() const { return status_; }
 
 errors::Code InMemoryRunStepResponse::status_code() const {
-  return status_.code();
+  return static_cast<errors::Code>(status_.code());
 }
 
 const string& InMemoryRunStepResponse::status_error_message() const {
@@ -911,7 +911,7 @@ const string& OwnedProtoRunStepResponse::status_error_message() const {
 }
 
 void OwnedProtoRunStepResponse::set_status(const Status& status) {
-  response_.set_status_code(status.code());
+  response_.set_status_code(static_cast<tsl::error::Code>(status.code()));
   response_.set_status_error_message(status.error_message());
 }
 
@@ -967,7 +967,7 @@ const string& NonOwnedProtoRunStepResponse::status_error_message() const {
 }
 
 void NonOwnedProtoRunStepResponse::set_status(const Status& status) {
-  response_->set_status_code(status.code());
+  response_->set_status_code(static_cast<tsl::error::Code>(status.code()));
   response_->set_status_error_message(status.error_message());
 }
 

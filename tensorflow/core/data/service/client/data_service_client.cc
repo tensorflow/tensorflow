@@ -776,7 +776,8 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
                  << DefaultDataTransferProtocol() << "'; falling back to grpc. "
                  << "Original error: " << s;
       metrics::RecordTFDataServiceDataTransferProtocolError(
-          DefaultDataTransferProtocol(), s.code(), s.error_message());
+          DefaultDataTransferProtocol(), static_cast<error::Code>(s.raw_code()),
+          s.error_message());
       continue;
     }
     if (!IsCoordinatedRead()) {

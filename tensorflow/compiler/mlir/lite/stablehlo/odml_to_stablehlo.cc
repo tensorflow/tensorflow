@@ -383,7 +383,7 @@ int main(int argc, char* argv[]) {
 
   if (!status.ok()) {
     LOG(ERROR) << status;
-    return status.code();
+    return status.raw_code();
   }
   return 0;
 }
