@@ -59,7 +59,8 @@ TEST(BuiltinOpResolverTest, HasXNNPACKDelegate_QS8) {
   const void *delegate_data = TfLiteOpaqueDelegateGetData(delegate.get());
   TfLiteXNNPackDelegateOptions options = GetOptions(delegate_data);
 
-  CHECK_EQ(options.flags & TFLITE_XNNPACK_DELEGATE_FLAG_QU8, 0);
+  CHECK_EQ(options.flags & TFLITE_XNNPACK_DELEGATE_FLAG_QU8,
+           TFLITE_XNNPACK_DELEGATE_FLAG_QU8);
 
   CHECK_EQ(options.flags & TFLITE_XNNPACK_DELEGATE_FLAG_QS8,
            TFLITE_XNNPACK_DELEGATE_FLAG_QS8);
