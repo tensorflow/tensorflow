@@ -827,7 +827,7 @@ class ReadySetLt {
     }
     return true;
   }
-  // Compute and cache memory pressure change computation for candidiate.
+  // Compute and cache memory pressure change computation for candidate.
   std::pair<int64_t, int64_t> GetMemoryPressureChanges(
       DefaultSchedulerCore::ScheduleCandidate& cand) const {
     if (cand.pressure_change) {
