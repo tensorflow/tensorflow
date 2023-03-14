@@ -3565,13 +3565,14 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType input_type,
   std::vector<int64_t> filter_strides = filter_descriptor.vectorized_strides(
       dnn::FilterLayout::kOutputInputYX, vector_size, vector_dim);
 
+  bool is_reordered_nchw_vect =
+      filter_descriptor.layout() ==
+      dnn::FilterLayout::kOutputInputYX32_CudnnReordered;
   TF_ASSIGN_OR_RETURN(
       auto tensor_w,
-      CreateCudnnTensor(
-          filter_dims, filter_strides, 'w', input_type, vector_size, vector_dim,
-          /*is_virtual=*/false,
-          /*is_reordered_nchw_vect=*/filter_descriptor.layout() ==
-              dnn::FilterLayout::kOutputInputYX32_CudnnReordered));
+      CreateCudnnTensor(filter_dims, filter_strides, 'w', input_type,
+                        vector_size, vector_dim,
+                        /*is_virtual=*/false, is_reordered_nchw_vect));
 
   // conv_desc.
   auto mode = convolution_descriptor.convolution_not_crosscorr()
@@ -3699,13 +3700,15 @@ GetCudnnFusedOperationGraph(
       dnn::FilterLayout::kOutputInputYX, vector_size, vector_dim);
   std::vector<int64_t> filter_strides = filter_descriptor.vectorized_strides(
       dnn::FilterLayout::kOutputInputYX, vector_size, vector_dim);
+
+  bool is_reordered_nchw_vect =
+      filter_descriptor.layout() ==
+      dnn::FilterLayout::kOutputInputYX32_CudnnReordered;
   TF_ASSIGN_OR_RETURN(
       auto tensor_w,
-      CreateCudnnTensor(
-          filter_dims, filter_strides, 'w', input_type, vector_size, vector_dim,
-          /*is_virtual=*/false,
-          /*is_reordered_nchw_vect=*/filter_descriptor.layout() ==
-              dnn::FilterLayout::kOutputInputYX32_CudnnReordered));
+      CreateCudnnTensor(filter_dims, filter_strides, 'w', input_type,
+                        vector_size, vector_dim,
+                        /*is_virtual=*/false, is_reordered_nchw_vect));
 
   // For the purposes of the cudnn graph, say that the bias tensor has the same
   // layout as the output tensor.  It doesn't actually matter, because bias is a
@@ -3725,9 +3728,28 @@ GetCudnnFusedOperationGraph(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
   std::vector<int64_t> bias_strides = bias_descriptor.vectorized_strides(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
-  TF_ASSIGN_OR_RETURN(auto tensor_b,
-                      CreateCudnnTensor(bias_dims, bias_strides, 'b', bias_type,
-                                        vector_size, vector_dim));
+
+  // Experimental cuDNN versions handle int8x32 convolutions with a bias
+  // differently from stable versions. Which versions exactly are affected is
+  // unknown, but fortunately we can write code that works for both flavors.
+  //
+  // cuDNN version *8.3* expects the bias tensor to have the reordering set to
+  // CUDNN_TENSOR_REORDERING_NONE, and fails with CUDNN_STATUS_BAD_PARAM if
+  // it's set to something else.
+  //
+  // cuDNN version *8.7* expects the bias tensor to have the reordering set to
+  // CUDNN_TENSOR_REORDERING_INT8x32 (which is weird, as the bias_type is
+  // kFloat). If it's not, then cuDNN silently does the reordering under the
+  // hood, which yields incorrect results as we already do the reordering
+  // ourselves.
+  auto maybe_tensor_b = CreateCudnnTensor(
+      bias_dims, bias_strides, 'b', bias_type, vector_size, vector_dim,
+      /*is_virtual=*/false, is_reordered_nchw_vect);  // cuDNN 8.3 fails here
+  if (!maybe_tensor_b.ok()) {
+    maybe_tensor_b = CreateCudnnTensor(bias_dims, bias_strides, 'b', bias_type,
+                                       vector_size, vector_dim);
+  }
+  TF_ASSIGN_OR_RETURN(auto tensor_b, std::move(maybe_tensor_b));
 
   std::tie(vector_size, vector_dim) =
       GetTensorVectorSizeAndDim(output_descriptor, output_type);
