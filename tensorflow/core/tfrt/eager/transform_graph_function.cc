@@ -96,8 +96,8 @@ Status TransformGraphFunction(const std::string& func_name,
   ConfigProto config;
   bool control_rets_updated = false;
   TF_RETURN_IF_ERROR(FunctionOptimizationPassRegistry::Global().Run(
-      device_set, config, &graph, func_lib_def, &control_ret_node_names,
-      &control_rets_updated));
+      func_name, device_set, config, &graph, func_lib_def,
+      &control_ret_node_names, &control_rets_updated));
 
   if (control_rets_updated) {
     // Function graph pass may have resulted in different nodes/node names for
