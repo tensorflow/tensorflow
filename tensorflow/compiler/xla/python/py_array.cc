@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <new>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -25,6 +26,7 @@ limitations under the License.
 
 #include "llvm/Support/Casting.h"
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "tensorflow/compiler/xla/pjrt/lru_cache.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
@@ -197,6 +199,55 @@ PyArray::Storage* Construct(PyArrayObject* self, Args&&... args) {
       PyArray::Storage(std::forward<Args>(args)...);
 }
 
+struct ShapedArrayCacheKey {
+  std::vector<int64_t> dims;
+  PrimitiveType dtype;
+  bool weak_type;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const ShapedArrayCacheKey& value) {
+    return H::combine(std::move(h), value.dims, value.dtype, value.weak_type);
+  }
+  bool operator==(const ShapedArrayCacheKey& other) const {
+    return dims == other.dims && dtype == other.dtype &&
+           weak_type == other.weak_type;
+  }
+};
+
+// Constucting ShapedArrays has gotten slow. Cache it.
+py::object MakeShapedArrayCached(const ShapedArrayCacheKey& key) {
+  using CacheT =
+      LRUCache<ShapedArrayCacheKey, std::shared_ptr<std::optional<py::object>>>;
+  static auto* lru_list = new CacheT::LRUList(4096);
+  static auto* cache = new CacheT(lru_list);
+
+  static const py::handle* shaped_array = nullptr;
+  if (shaped_array == nullptr) {
+    auto* jax_core = PyImport_ImportModule("jax.core");
+    if (jax_core != nullptr) {
+      shaped_array = new py::handle(
+          py::reinterpret_steal<py::module>(jax_core).attr("ShapedArray"));
+    } else {
+      PyErr_Clear();
+      return py::none();
+    }
+  }
+
+  auto value =
+      cache->GetOrCreateIfAbsent(key, [](const ShapedArrayCacheKey& key) {
+        return std::make_shared<std::optional<py::object>>();
+      });
+
+  if (!value->has_value()) {
+    auto dtype = PrimitiveTypeToDtype(key.dtype).value();
+    py::object aval = (*shaped_array)(
+        SpanToTuple(absl::Span<const int64_t>(key.dims)), dtype, key.weak_type);
+    *value = aval;
+    return aval;
+  }
+  return **value;
+}
+
 }  // namespace
 
 PyArray_Storage::PyArray_Storage(pybind11::object aval, bool weak_type,
@@ -278,30 +329,16 @@ PyArray PyArray::MakeFromSingleDeviceArray(
         InvalidArgument("Constructing single device jax.Array from non-single "
                         "device ifrt array."));
   }
-  static const py::handle* shaped_array = nullptr;
-  if (shaped_array == nullptr) {
-    auto* jax_core = PyImport_ImportModule("jax.core");
-    if (jax_core != nullptr) {
-      shaped_array = new py::handle(
-          py::reinterpret_steal<py::module>(jax_core).attr("ShapedArray"));
-    } else {
-      PyErr_Clear();
-    }
-  }
-  PrimitiveType primitive = ifrt::ToPrimitiveType(ifrt_array->dtype()).value();
-  auto dtype = PrimitiveTypeToDtype(primitive).value();
-  py::object aval;
-  if (shaped_array != nullptr) {
-    aval = (*shaped_array)(SpanToTuple(ifrt_array->shape().dims()), dtype,
-                           weak_type);
-  } else {
-    aval = py::none();
-  }
   auto shape_span = ifrt_array->shape().dims();
-  auto shape = std::vector<int64_t>(shape_span.begin(), shape_span.end());
+  ShapedArrayCacheKey key;
+  key.dims = std::vector<int64_t>(shape_span.begin(), shape_span.end());
+  key.dtype = ifrt::ToPrimitiveType(ifrt_array->dtype()).value();
+  key.weak_type = weak_type;
+  auto aval = MakeShapedArrayCached(key);
+  auto dtype = PrimitiveTypeToDtype(key.dtype).value();
   auto sharding = py::cast(std::make_unique<jax::SingleDeviceSharding>(py::cast(
       WrapWithClient(py_client, ifrt_array->sharding().devices().front()))));
-  return PyArray(std::move(aval), weak_type, dtype, std::move(shape),
+  return PyArray(std::move(aval), weak_type, dtype, std::move(key.dims),
                  std::move(sharding), std::move(py_client),
                  std::move(traceback), std::move(ifrt_array), committed);
 }
