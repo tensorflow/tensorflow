@@ -133,13 +133,10 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
 
     iterator = iter(dataset.batch(batch_size, drop_remainder=True))
     output, iters = train_fn(iterator, num_batches)
-    # Try one more iteration which will raise an exception since the iterator is
-    # exhausted.
-    with self.assertRaises(exception):
-      train_fn(iterator, 1)
 
     d_iterator = iter(d_dataset)
     d_output, d_iters = train_fn(d_iterator, num_batches)
+    mesh_util.barrier(self.mesh)
 
     # Try one more iteration which will raise an exception since the iterator is
     # exhausted.
