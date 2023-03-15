@@ -35,6 +35,7 @@ using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 using ::testing::SizeIs;
 using ::tsl::testing::IsOkAndHolds;
+using ::tsl::testing::StatusIs;
 
 // Simple implementation of a proto matcher comparing string representations.
 // Only works as ShapeProto's textual representation is deterministic.
@@ -135,6 +136,12 @@ TEST(MeshTest, ToStringMeshWithXLASPMD) {
   EXPECT_THAT(mesh.ToString(), ContainsRegex(Mesh::kUseXLASPMDString));
 }
 
+TEST(MeshTest, FromStringSingleDeviceMesh) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Mesh mesh, Mesh::FromString("/job:localhost/task:0/device:CPU:0"));
+  EXPECT_EQ(mesh.ToString(), "/job:localhost/task:0/device:CPU:0");
+}
+
 TEST_F(LayoutTest, FromStringEmptyLayout) {
   Layout layout = Layout::Empty();
   std::string layout_str = layout.ToString();
@@ -160,6 +167,12 @@ TEST_F(LayoutTest, LayoutToFromStringNotSharded) {
 TEST_F(LayoutTest, LayoutToFromStringAny) {
   std::string layout_str =
       "sharding_specs:any, mesh:|x=1|0|0|/job:localhost/task:0/device:CPU:0";
+  EXPECT_EQ(layout_str, Layout::FromString(layout_str)->ToString());
+}
+
+TEST_F(LayoutTest, LayoutToFromStringSingleDevice) {
+  std::string layout_str =
+      "maximal:true, mesh:/job:localhost/task:0/device:CPU:0";
   EXPECT_EQ(layout_str, Layout::FromString(layout_str)->ToString());
 }
 
@@ -646,6 +659,34 @@ TEST_F(LayoutTest, EquivalentLayout) {
   EXPECT_TRUE(x_sharded.IsEquivalent(fully_sharded));
   EXPECT_FALSE(fully_sharded.IsEquivalent(y_sharded));
   EXPECT_FALSE(y_sharded.IsEquivalent(fully_sharded));
+}
+
+TEST_F(LayoutTest, GetSingleDeviceMeshEmptyDeviceString) {
+  EXPECT_THAT(Mesh::GetSingleDeviceMesh(""),
+              StatusIs(tsl::error::INVALID_ARGUMENT));
+}
+
+TEST_F(LayoutTest, GetSingleDeviceMeshSuccess) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto mesh, Mesh::FromString("/job:localhost/task:1/device:CPU:0"));
+  EXPECT_THAT(Mesh::GetSingleDeviceMesh("/job:localhost/task:1/device:CPU:0"),
+              IsOkAndHolds(mesh));
+}
+
+TEST_F(LayoutTest, GetSingleDeviceLayoutInvalidMesh) {
+  auto mesh = Mesh::Empty();
+  EXPECT_THAT(Layout::GetSingleDeviceLayout(mesh),
+              StatusIs(tsl::error::INVALID_ARGUMENT));
+}
+
+TEST_F(LayoutTest, GetSingleDeviceLayoutSuccess) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto mesh, Mesh::FromString("/job:localhost/task:1/device:CPU:0"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto layout,
+      Layout::FromString(
+          "maximal:true, mesh:/job:localhost/task:1/device:CPU:0"));
+  EXPECT_THAT(Layout::GetSingleDeviceLayout(mesh), IsOkAndHolds(layout));
 }
 
 TEST(DynamicSizeTest, IsDynamicSize) {
