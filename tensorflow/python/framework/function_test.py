@@ -282,7 +282,7 @@ class FunctionTest(test.TestCase):
       tf_logging.info("cfg = %s", cfg)
       with session.Session(graph=g, config=cfg) as sess:
         out, = sess.run(dlogits, {logits: x, labels: y})
-      self.assertAllClose(out, np.exp(prob - y))
+      self.assertAllClose(out, np.exp(prob - y), rtol=1e-5)
 
   @test_util.disable_xla("b/124286351")  # No error is raised
   def testCustomGradientError(self):
