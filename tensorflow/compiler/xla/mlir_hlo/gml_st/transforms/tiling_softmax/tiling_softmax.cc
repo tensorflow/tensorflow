@@ -44,10 +44,9 @@ Operation *fuseIthOperandInPlace(PatternRewriter &rewriter, Operation *op,
                                  int64_t i) {
   auto matOp =
       llvm::cast<tensor::ExtractSliceOp>(op->getOperand(i).getDefiningOp());
-  FailureOr<Value> fused = createFusedOp(rewriter, matOp);
+  FailureOr<Operation *> fused = fuse(rewriter, matOp);
   assert(succeeded(fused) && "expect success after matching");
-  rewriter.replaceOp(matOp, *fused);
-  return fused->getDefiningOp();
+  return *fused;
 }
 
 LogicalResult tilePartialSoftmax(
@@ -239,11 +238,7 @@ struct FuseUnaryCwisePattern : public OpRewritePattern<tensor::ExtractSliceOp> {
     auto mapOp = dyn_cast_or_null<linalg::MapOp>(source);
     if (!mapOp || mapOp.getNumDpsInputs() != 1) return failure();
     // Fuse.
-    FailureOr<Value> fused = createFusedOp(rewriter, op);
-    if (failed(fused)) return failure();
-
-    rewriter.replaceOp(op, *fused);
-    return success();
+    return fuse(rewriter, op);
   }
 };
 

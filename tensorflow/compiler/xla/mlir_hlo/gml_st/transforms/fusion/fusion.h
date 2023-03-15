@@ -26,11 +26,6 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 
-// Create fused operation based on the specificed subset. The result is
-// equivalent to the given `tensor.extract_slice` op.
-FailureOr<Value> createFusedOp(PatternRewriter &rewriter,
-                               tensor::ExtractSliceOp materializeOp);
-
 // Fuses an op into `tensor.extract_slice` and performs the necessary updates to
 // the surrounding loop if any.
 FailureOr<Operation *> fuse(PatternRewriter &rewriter,
