@@ -4,6 +4,10 @@ load("//tensorflow/tsl:tsl.bzl", "if_cuda_or_rocm")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -15,6 +19,7 @@ build_test(
     name = "hlo_runner_main_build_test",
     tags = [
         "gpu",
+        "no_rocm"
     ],
     targets = [
         ":hlo_runner_main",
