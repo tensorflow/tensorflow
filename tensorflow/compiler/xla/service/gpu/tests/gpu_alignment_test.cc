@@ -44,9 +44,15 @@ ENTRY main {
 }
 )";
 
+#if TENSORFLOW_USE_ROCM
+  CompileAndVerifyIr(hlo_string, R"(
+CHECK: @fusion(ptr noalias align 128 dereferenceable(800) %arg0, ptr noalias align 16 dereferenceable(400) %arg1, ptr noalias align 128 dereferenceable(600) %arg2)
+)");
+#else
   CompileAndVerifyIr(hlo_string, R"(
 CHECK: define void @fusion(ptr noalias align 128 dereferenceable(800) %arg0, ptr noalias align 16 dereferenceable(400) %arg1, ptr noalias align 128 dereferenceable(600) %arg2)
 )");
+#endif
 }
 
 }  // namespace
