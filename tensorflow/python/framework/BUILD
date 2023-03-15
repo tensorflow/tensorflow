@@ -25,6 +25,7 @@ visibility = [
     "//third_party/py/tensorflow_numerics:__subpackages__",
     "//tensorflow_models/google:__subpackages__",
     "//learning/brain/google/data:__subpackages__",
+    "//learning/brain/experimental/tfq:__subpackages__",
 ]
 
 package(
