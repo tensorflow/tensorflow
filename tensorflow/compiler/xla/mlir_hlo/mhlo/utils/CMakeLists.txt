@@ -26,9 +26,9 @@ add_mlir_library(MhloRngUtils
 
   LINK_COMPONENTS
   Core
+  Support
 
   LINK_LIBS PUBLIC
-  LLVMSupport
   MhloDialect
   MLIRArithDialect
   MLIRIR
