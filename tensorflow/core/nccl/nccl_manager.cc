@@ -879,9 +879,9 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         VLOG(2) << "call Nccl All to All collective_key "
                 << collective->collective_key << " participant " << p_idx
                 << " num_participants " << collective->participants.size()
-                << " sendbuff " << static_cast<const char*>(sendbuff)
-                << " recvbuff " << static_cast<char*>(recvbuff) << " nccl_comm "
-                << nccl_comm << " comm_stream " << comm_stream
+                << " sendbuff " << static_cast<const void*>(sendbuff)
+                << " recvbuff " << static_cast<void*>(recvbuff)
+                << " nccl_comm " << nccl_comm << " comm_stream " << comm_stream
                 << " cuda_stream " << cu_stream;
         profiler::AnnotatedTraceMe traceme([&] {
           return profiler::TraceMeEncode(
@@ -890,11 +890,13 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
                {"collective_type", "all_to_all"}});
         });
         ncclGroupStart();
-        for (int r = 0; r < collective->participants.size(); ++r) {
-          ncclSend(sendbuff + r * rank_offset, count, data_type, r, nccl_comm,
-                   *cu_stream);
-          ncclRecv(recvbuff + r * rank_offset, count, data_type, r, nccl_comm,
-                   *cu_stream);
+        for (int i = 0; i < collective->participants.size(); ++i) {
+          ncclSend(
+              sendbuff + i * rank_offset, count, data_type,
+              collective->participants[i]->global_rank, nccl_comm, *cu_stream);
+          ncclRecv(
+              recvbuff + i * rank_offset, count, data_type,
+              collective->participants[i]->global_rank, nccl_comm, *cu_stream);
         }
         nccl_result = ncclGroupEnd();
         break;
