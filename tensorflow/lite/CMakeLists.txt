@@ -554,6 +554,7 @@ set(_ALL_TFLITE_HDRS ${_ALL_TFLITE_SRCS})
 list(FILTER _ALL_TFLITE_HDRS INCLUDE REGEX ".*\\.h$")
 target_include_directories(tensorflow-lite
   PUBLIC $<BUILD_INTERFACE:${TENSORFLOW_SOURCE_DIR}> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+  ${CMAKE_BINARY_DIR}/gemmlowp
 )
 target_link_libraries(tensorflow-lite
   PUBLIC
@@ -568,7 +569,6 @@ target_link_libraries(tensorflow-lite
     farmhash
     fft2d_fftsg2d
     flatbuffers::flatbuffers
-    gemmlowp
     ruy::ruy
     pthreadpool
     ${CMAKE_DL_LIBS}
