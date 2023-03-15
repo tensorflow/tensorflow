@@ -30,8 +30,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-namespace mlir {
-namespace gml_st {
+namespace mlir::gml_st {
 namespace {
 
 #define GEN_PASS_DEF_TILINGSOFTMAXPASS
@@ -172,7 +171,7 @@ struct TilePartialSoftmaxPattern
               });
           // Tile.
           FailureOr<TilingResult> tilingResult =
-              tileUsingSCFForallOp(tilingOptions, rewriter, op);
+              tileUsingSCFForallOp(rewriter, op, tilingOptions);
           if (failed(tilingResult)) return failure();
 
           rewriter.replaceOp(op, tilingResult->loop->getResults());
@@ -285,5 +284,4 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass(
   return std::make_unique<TilingSoftmaxPass>(tileSizes);
 }
 
-}  // namespace gml_st
-}  // namespace mlir
+}  // namespace mlir::gml_st

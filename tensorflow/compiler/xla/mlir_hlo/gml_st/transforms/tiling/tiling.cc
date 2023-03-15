@@ -27,8 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 
-namespace mlir {
-namespace gml_st {
+namespace mlir::gml_st {
 namespace {
 
 // Compute tile size for the tile that starts at `offset`, has size `tileSize`
@@ -141,8 +140,8 @@ scf::SCFTilingOptions getSCFTilingOptions(ArrayRef<int64_t> tileSizes) {
 }
 
 FailureOr<TilingResult> tileUsingSCFForallOp(
-    const scf::SCFTilingOptions &options, PatternRewriter &rewriter,
-    TilingInterface op) {
+    PatternRewriter &rewriter, TilingInterface op,
+    const scf::SCFTilingOptions &options) {
   rewriter.setInsertionPoint(op);
   if (!options.tileSizeComputationFunction) {
     return rewriter.notifyMatchFailure(
@@ -228,5 +227,4 @@ SmallVector<Value> getYieldedValues(scf::InParallelOp inParallelOp) {
       }));
 }
 
-}  // namespace gml_st
-}  // namespace mlir
+}  // namespace mlir::gml_st

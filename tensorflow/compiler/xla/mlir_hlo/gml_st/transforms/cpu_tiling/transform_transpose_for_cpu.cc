@@ -39,9 +39,6 @@ namespace {
 
 using mlir::arith::ConstantIndexOp;
 
-static constexpr llvm::StringRef kTransposeTransformedLabel =
-    "__transpose_transformed_label__";
-
 struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
   TileTransposePattern(MLIRContext *context, scf::SCFTilingOptions options,
                        PatternBenefit benefit = 1)
@@ -50,14 +47,14 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
 
   LogicalResult matchAndRewrite(linalg::TransposeOp op,
                                 PatternRewriter &rewriter) const override {
-    if (hasLabel(op, kTransposeTransformedLabel)) return failure();
+    if (hasLabel(op, kTransformedLabel)) return failure();
 
     if (isa<LoopLikeOpInterface>(op->getParentOp()))
       return rewriter.notifyMatchFailure(
           op, "has already been tiled by another pass.");
 
     auto tilingResult = tileUsingSCFForallOp(
-        options, rewriter, cast<TilingInterface>(op.getOperation()));
+        rewriter, cast<TilingInterface>(op.getOperation()), options);
     if (failed(tilingResult)) return failure();
 
     // If we did not tile (e.g. when all tile sizes are 0), do not replace
@@ -65,7 +62,7 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
     if (tilingResult->loop != nullptr) {
       rewriter.replaceOp(op, tilingResult->loop->getResults());
     }
-    setLabel(tilingResult->tiledOps.front(), kTransposeTransformedLabel);
+    setLabel(tilingResult->tiledOps.front(), kTransformedLabel);
 
     // Peel parallel loops, label the main loop as "perfectly tiled" one, to
     // enable vectorization after canonicalization.
@@ -75,7 +72,6 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
     // Tile ops in the peeled loop again, to size 1, so they can be
     // scalarized.
     return tilePeeledOpsToScalars(rewriter, peelingResult,
-                                  kTransposeTransformedLabel,
                                   /*fuseFilterFn=*/nullptr);
   }
 
@@ -151,9 +147,8 @@ struct TransformTransposeForCpuPass
     }
 
     // Ensure we drop the marker in the end.
-    func.walk([](linalg::TransposeOp op) {
-      removeLabel(op, kTransposeTransformedLabel);
-    });
+    func.walk(
+        [](linalg::TransposeOp op) { removeLabel(op, kTransformedLabel); });
   }
 };
 

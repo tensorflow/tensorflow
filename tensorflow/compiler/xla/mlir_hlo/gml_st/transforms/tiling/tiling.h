@@ -23,27 +23,27 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/TilingInterface.h"
 
-namespace mlir {
-namespace gml_st {
+namespace mlir::gml_st {
 
 // Creates SCFTilingOptions from the list of tile sizes.
 scf::SCFTilingOptions getSCFTilingOptions(ArrayRef<int64_t> tileSizes);
 
-/// Create tiled operation based on the specified tiling options. The result is
-/// equivalent to original op.
+/// Returns `failure`, when there occurs a problem during tiling. If the tile
+/// sizes are smaller then the iteration domain of the op, it will still create
+/// an `scf.forall` op. This is matches the behavior of tiling to `scf.for`
+/// upstream.
 struct TilingResult {
   SmallVector<Operation *> tiledOps;
   scf::ForallOp loop = nullptr;
 };
 FailureOr<TilingResult> tileUsingSCFForallOp(
-    const scf::SCFTilingOptions &options, PatternRewriter &rewriter,
-    TilingInterface op);
+    PatternRewriter &rewriter, TilingInterface op,
+    const scf::SCFTilingOptions &options);
 
 /// Extracts all yielded values from scf.in_parallel terminator. It should be
 /// upstreamed.
 SmallVector<Value> getYieldedValues(scf::InParallelOp inParallelOp);
 
-}  // namespace gml_st
-}  // namespace mlir
+}  // namespace mlir::gml_st
 
 #endif  // MLIR_HLO_GML_ST_TRANSFORMS_TILING_TILING_H
