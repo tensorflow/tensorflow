@@ -1528,43 +1528,6 @@ void BuildJaxjitSubmodule(py::module& m) {
       py::arg("donate_argnums") = std::vector<int>(),
       py::arg("has_explicit_device") = false, py::arg("cache") = nullptr);
 
-  // This function is not yet a full replacement for the Python one, because:
-  // (a) it does not support abstract types,
-  // (b) it does not set the device stickiness yet.
-  // TODO(jblespiau): Finish the replacement of the Python feature.
-  jitlib.def(
-      "device_put",
-      [](py::handle obj, bool jax_enable_x64,
-         xla::ClientAndPtr<xla::PjRtDevice> to_device)
-          -> xla::StatusOr<py::object> {
-        std::shared_ptr<xla::PyClient>& pyclient = to_device.client;
-        xla::DevicePutOptions options;
-        options.squash_64bit_types = !jax_enable_x64;
-        options.allow_zero_copy = true;
-        xla::StatusOr<xla::DevicePutResult> results = DevicePut(
-            obj, pyclient->ifrt_client(), to_device.contents, options);
-        if (!results.ok()) {
-          throw xla::XlaRuntimeError(results.status().error_message());
-        }
-        if (results->ifrt_array) {
-          auto buffer = xla::PyBuffer::Make(
-              pyclient, std::move(results->ifrt_array), xla::Traceback::Get());
-
-          static const auto* jax_core =
-              new py::module(py::module::import("jax.core"));
-          static const auto* shaped_array =
-              new py::handle(jax_core->attr("ShapedArray"));
-          buffer.buf()->SetAval((*shaped_array)(buffer.buf()->python_shape(),
-                                                buffer.buf()->python_dtype(),
-                                                results->weak_type));
-          TF_RETURN_IF_ERROR(buffer.buf()->set_sticky_device(nullptr));
-
-          return std::move(buffer);
-        } else {
-          return py::cast<py::object>(obj);
-        }
-      });
-
   py::class_<xla::PyArgSignature> arg_signature(jitlib, "PyArgSignature");
   arg_signature
       .def_property_readonly("dtype",
