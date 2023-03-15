@@ -61,7 +61,6 @@ tf_cuda_library(
             "//tensorflow/core/common_runtime/eager:attr_builder",
             "//tensorflow/core/common_runtime/eager:context",
             "//tensorflow/core/common_runtime/eager:context_distributed_manager",
-            "//tensorflow/core/common_runtime/eager:context_registry",
             "//tensorflow/core/common_runtime/eager:core",
             "//tensorflow/core/common_runtime/eager:custom_device",
             "//tensorflow/core/common_runtime/eager:eager_executor",
@@ -135,16 +134,6 @@ filegroup(
 )
 
 cc_library(
-    name = "c_api_headers",
-    hdrs = [
-        "c_api.h",
-    ],
-    deps = [
-        "//tensorflow/c:c_api_headers",
-    ],
-)
-
-cc_library(
     name = "c_api_internal",
     hdrs = [
         "c_api_experimental.h",
@@ -152,7 +141,7 @@ cc_library(
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":c_api_headers",
+        ":c_api",
         ":tfe_cancellation_manager_internal",
         ":tfe_executor_internal",
         ":tfe_monitoring_internal",
