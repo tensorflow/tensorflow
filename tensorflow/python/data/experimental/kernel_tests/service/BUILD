@@ -232,12 +232,11 @@ tf_py_test(
     name = "distributed_save_ft_test",
     size = "medium",
     srcs = ["distributed_save_ft_test.py"],
-    shard_count = 8,
+    shard_count = 17,
     # TODO(b/250921378): Fix sanitizers.
     tags = [
         "noasan",
         "nomsan",
-        "notsan",
     ],
     deps = [
         ":test_base",

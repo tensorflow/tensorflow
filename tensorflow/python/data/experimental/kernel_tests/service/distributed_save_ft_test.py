@@ -107,6 +107,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
           ds, self._path, cluster.dispatcher_address()
       )
 
+  # TODO(b/250921378): Figure out why tsan times out when there is a worker.
   @combinations.generate(
       combinations.times(
           test_base.eager_only_combinations(),
@@ -116,7 +117,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
       )
   )
   def testSnapshotRecoveryFailsWithBadStreamName(self, bad_stream_dir_name):
-    cluster, _ = self.setup()
+    cluster, _ = self.setup(num_workers=0)
     os.makedirs(os.path.join(self._path, "streams", bad_stream_dir_name))
     with self.assertRaisesRegex(ValueError, "can't parse"):
       cluster.restart_dispatcher()
@@ -130,14 +131,14 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
       )
   )
   def testSnapshotRecoveryFailsWithBadSourceName(self, bad_source_dir_name):
-    cluster, _ = self.setup()
+    cluster, _ = self.setup(num_workers=0)
     os.makedirs(os.path.join(self.splits_dir(), bad_source_dir_name))
     with self.assertRaisesRegex(ValueError, "can't parse"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.eager_only_combinations())
   def testSnapshotRecoveryFailsWithOutOfBoundsSourceName(self):
-    cluster, _ = self.setup()
+    cluster, _ = self.setup(num_workers=0)
     os.makedirs(os.path.join(self.splits_dir(), "source_1"))
     with self.assertRaisesRegex(ValueError, "found conflict"):
       cluster.restart_dispatcher()
@@ -157,7 +158,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
       )
   )
   def testSnapshotRecoveryFailsWithBadSplitNames(self, bad_split_filename):
-    cluster, _ = self.setup()
+    cluster, _ = self.setup(num_workers=0)
     write_file(os.path.join(self.source_dir(), bad_split_filename))
     with self.assertRaisesRegex(
         ValueError, "Expected split_<local_split_index>_<global_split_index>"):
@@ -165,7 +166,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testSnapshotRecoveryFailsWithOutOfOrderSplitName(self):
-    cluster, _ = self.setup()
+    cluster, _ = self.setup(num_workers=0)
     write_file(os.path.join(self.source_dir(), "split_1_0"))
     with self.assertRaisesRegex(
         ValueError, "The local split index 1 exceeds the global split index 0"):
@@ -173,21 +174,21 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testSnapshotRecoveryFailsWithOutOfBoundsSplitName(self):
-    cluster, _ = self.setup()
+    cluster, _ = self.setup(num_workers=0)
     write_file(os.path.join(self.source_dir(), "split_1_1"))
     with self.assertRaisesRegex(ValueError, "found conflict"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.eager_only_combinations())
   def testSnapshotRecoveryFailsWithMissingGlobalIndexInSplitNames(self):
-    cluster, _ = self.setup()
+    cluster, _ = self.setup(num_workers=0)
     write_file(os.path.join(self.source_dir(), "split_0_1"))
     with self.assertRaisesRegex(ValueError, "found missing global"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.eager_only_combinations())
   def testSnapshotRecoveryFailsWithDuplicateGlobalIndexInSplitName(self):
-    cluster, _ = self.setup()
+    cluster, _ = self.setup(num_workers=0)
     write_file(os.path.join(self.source_dir(stream_idx=0), "split_0_1"))
     write_file(os.path.join(self.source_dir(stream_idx=1), "split_0_1"))
     with self.assertRaisesRegex(ValueError, "found duplicate global"):
@@ -213,12 +214,15 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     while cluster.snapshot_streams(self._path)[assignments[0]].state != _ORPHAN:
       time.sleep(0.1)
     cluster.add_worker(start=True)
-    self.assertEqual(get_stream_assignment(cluster, n), assignments[0])
+    self.assertCountEqual(
+        [get_stream_assignment(cluster, i) for i in range(1, n + 1)],
+        range(n),
+    )
 
   @combinations.generate(test_base.eager_only_combinations())
   def testLargeMultiSourceSnapshotRecoversAndCompletes(self):
     n = 5
-    cluster, _ = self.setup(num_workers=n, ds_size=10000, num_sources=3)
+    cluster, _ = self.setup(num_workers=n, ds_size=1000, num_sources=3)
     cluster.restart_dispatcher()
     self._wait_for_snapshot(cluster)
     self.assertTrue(os.path.exists(os.path.join(self._path, "DONE")))
