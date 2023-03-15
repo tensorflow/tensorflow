@@ -681,6 +681,80 @@ StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(
                  std::move(out_array), committed(), true);
 }
 
+StatusOr<PyArray> PyArray::BatchedDevicePut(
+    py::object aval, py::object sharding, std::vector<py::object> xs,
+    std::vector<ClientAndPtr<PjRtDevice>> dst_devices, bool committed,
+    bool force_copy, PjRtClient::HostBufferSemantics host_buffer_semantics,
+    bool jax_enable_x64) {
+  if (dst_devices.size() != xs.size() || xs.empty()) {
+    throw py::value_error(
+        absl::StrCat("Argument sizes (xs and devices) must match %zu vs "
+                     "%zu and be nonzero",
+                     dst_devices.size(), xs.size()));
+  }
+  auto transfer_guard_formatter = [&aval, &sharding] {
+    return absl::StrCat(
+        "aval=", py::cast<std::string>(py::repr(aval)),
+        ", dst_sharding=", py::cast<std::string>(py::repr(sharding)));
+  };
+
+  GlobalPyRefManager()->CollectGarbage();
+
+  auto n_devices = dst_devices.size();
+
+  DevicePutOptions options;
+  options.squash_64bit_types = !jax_enable_x64;
+  options.allow_zero_copy =
+      (!force_copy &&
+       (host_buffer_semantics == ifrt::Client::HostBufferSemantics::kZeroCopy));
+
+  py::list owning_pylist(dst_devices.size());
+  std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
+
+  xla::ifrt::DeviceList::Devices devices;
+  devices.reserve(n_devices);
+  std::vector<xla::ifrt::Shape> shapes;
+  shapes.reserve(n_devices);
+  size_t i = 0;
+  for (auto& x : xs) {
+    if (PyArray::IsPyArray(x)) {
+      TF_RETURN_IF_ERROR(
+          jax::ApplyTransferGuardToDeviceToDevice(transfer_guard_formatter));
+    } else {
+      TF_RETURN_IF_ERROR(
+          jax::ApplyTransferGuardToHostToDevice(transfer_guard_formatter));
+    }
+    TF_ASSIGN_OR_RETURN(DevicePutResult on_device,
+                        DevicePut(x, dst_devices[i].client->ifrt_client(),
+                                  dst_devices[i].get(), options));
+    ifrt_arrays.push_back(std::move(on_device.ifrt_array));
+    devices.push_back(ifrt_arrays.back()->sharding().devices().front());
+    shapes.push_back(ifrt_arrays.back()->shape());
+    if (on_device.owning_pybuffer) {
+      owning_pylist.append(on_device.owning_pybuffer);
+    }
+    ++i;
+  }
+
+  auto weak_type = pybind11::cast<bool>(aval.attr("weak_type"));
+  auto dtype = aval.attr("dtype");
+  auto shape = pybind11::cast<std::vector<int64_t>>(aval.attr("shape"));
+  TF_ASSIGN_OR_RETURN(
+      auto ifrt_array,
+      ifrt_arrays.front()->client()->AssembleArrayFromSingleDeviceArrays(
+          ifrt::Shape(shape),
+          xla::ifrt::OpaqueSharding::Create(
+              xla::ifrt::DeviceList(std::move(devices)),
+              xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
+                  std::move(shapes))),
+          absl::MakeSpan(ifrt_arrays),
+          xla::ifrt::ArrayCopySemantics::kReuseInput));
+
+  return PyArray(aval, weak_type, dtype, std::move(shape), sharding,
+                 dst_devices[0].client, Traceback::Get(), ifrt_array,
+                 committed);
+}
+
 std::vector<py::object> PyClient::LiveArrays() {
   std::vector<py::object> result;
   for (PyArray::Storage* array = arrays_; array; array = array->next) {
@@ -821,84 +895,6 @@ Status PyArray::RegisterTypes(py::module& m) {
       },
       py::arg("aval"), py::arg("sharding"), py::arg("committed"),
       py::arg("_skip_checks") = false);
-
-  m.attr("batched_device_put") = py::cpp_function(
-      [](py::object aval, py::object sharding, std::vector<py::object> xs,
-         std::vector<ClientAndPtr<PjRtDevice>> dst_devices, bool committed,
-         bool force_copy, PjRtClient::HostBufferSemantics host_buffer_semantics)
-          -> StatusOr<PyArray> {
-        if (dst_devices.size() != xs.size() || xs.empty()) {
-          throw py::value_error(
-              absl::StrCat("Argument sizes (xs and devices) must match %zu vs "
-                           "%zu and be nonzero",
-                           dst_devices.size(), xs.size()));
-        }
-        auto transfer_guard_formatter = [&aval, &sharding] {
-          return absl::StrCat(
-              "aval=", py::cast<std::string>(py::repr(aval)),
-              ", dst_sharding=", py::cast<std::string>(py::repr(sharding)));
-        };
-
-        GlobalPyRefManager()->CollectGarbage();
-
-        auto n_devices = dst_devices.size();
-
-        DevicePutOptions options;
-        options.squash_64bit_types = false;
-        options.allow_zero_copy =
-            (!force_copy && (host_buffer_semantics ==
-                             ifrt::Client::HostBufferSemantics::kZeroCopy));
-
-        py::list owning_pylist(dst_devices.size());
-        std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
-
-        xla::ifrt::DeviceList::Devices devices;
-        devices.reserve(n_devices);
-        std::vector<xla::ifrt::Shape> shapes;
-        shapes.reserve(n_devices);
-        size_t i = 0;
-        for (auto& x : xs) {
-          if (PyArray::IsPyArray(x)) {
-            TF_RETURN_IF_ERROR(jax::ApplyTransferGuardToDeviceToDevice(
-                transfer_guard_formatter));
-          } else {
-            TF_RETURN_IF_ERROR(jax::ApplyTransferGuardToHostToDevice(
-                transfer_guard_formatter));
-          }
-          TF_ASSIGN_OR_RETURN(DevicePutResult on_device,
-                              DevicePut(x, dst_devices[i].client->ifrt_client(),
-                                        dst_devices[i].get(), options));
-          ifrt_arrays.push_back(std::move(on_device.ifrt_array));
-          devices.push_back(ifrt_arrays.back()->sharding().devices().front());
-          shapes.push_back(ifrt_arrays.back()->shape());
-          if (on_device.owning_pybuffer) {
-            owning_pylist.append(on_device.owning_pybuffer);
-          }
-          ++i;
-        }
-
-        auto weak_type = pybind11::cast<bool>(aval.attr("weak_type"));
-        auto dtype = aval.attr("dtype");
-        auto shape = pybind11::cast<std::vector<int64_t>>(aval.attr("shape"));
-        TF_ASSIGN_OR_RETURN(
-            auto ifrt_array,
-            ifrt_arrays.front()->client()->AssembleArrayFromSingleDeviceArrays(
-                ifrt::Shape(shape),
-                xla::ifrt::OpaqueSharding::Create(
-                    xla::ifrt::DeviceList(std::move(devices)),
-                    xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
-                        std::move(shapes))),
-                absl::MakeSpan(ifrt_arrays),
-                xla::ifrt::ArrayCopySemantics::kReuseInput));
-
-        return PyArray(aval, weak_type, dtype, std::move(shape), sharding,
-                       dst_devices[0].client, Traceback::Get(), ifrt_array,
-                       committed);
-      },
-      py::arg("aval"), py::arg("sharding"), py::arg("xs"), py::arg("devices"),
-      py::arg("committed") = true, py::arg("force_copy") = false,
-      py::arg("host_buffer_semantics") =
-          PjRtClient::HostBufferSemantics::kZeroCopy);
 
   py::class_<PyArrayResultHandler>(m, "ResultHandler")
       .def("__call__", [](const PyArrayResultHandler& self,

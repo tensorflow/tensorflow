@@ -808,6 +808,21 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def("is_msan", IsMsan);
   m.def("is_tsan", IsTsan);
   m.def("is_sanitized", IsSanitized);
+
+  m.attr("batched_device_put") = py::cpp_function(
+      [](py::object aval, py::object sharding, std::vector<py::object> xs,
+         std::vector<ClientAndPtr<PjRtDevice>> dst_devices, bool committed,
+         bool force_copy, PjRtClient::HostBufferSemantics host_buffer_semantics)
+          -> StatusOr<PyArray> {
+        return PyArray::BatchedDevicePut(
+            std::move(aval), std::move(sharding), std::move(xs),
+            std::move(dst_devices), committed, force_copy,
+            host_buffer_semantics, jax::GetEnableX64());
+      },
+      py::arg("aval"), py::arg("sharding"), py::arg("xs"), py::arg("devices"),
+      py::arg("committed") = true, py::arg("force_copy") = false,
+      py::arg("host_buffer_semantics") =
+          PjRtClient::HostBufferSemantics::kZeroCopy);
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla
