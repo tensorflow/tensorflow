@@ -465,8 +465,10 @@ MeshProto Mesh::ToProto() const {
         mesh_proto.add_global_device_ids(i);
       }
 
+      auto& mesh_dimensions = *mesh_proto.mutable_mesh_dimensions();
+      mesh_dimensions.Reserve(mesh_dims_.size());
       for (const auto& dim : mesh_dims_) {
-        MeshDimensionProto* mesh_dim_proto = mesh_proto.add_mesh_dimensions();
+        MeshDimensionProto* mesh_dim_proto = mesh_dimensions.Add();
         mesh_dim_proto->set_name(dim.name);
         mesh_dim_proto->set_size(dim.size);
       }
@@ -500,6 +502,7 @@ std::string Mesh::ToString() const {
 
   // Add mesh dimensions
   absl::InlinedVector<std::string, 4> mesh_dim_lst;
+  mesh_dim_lst.reserve(mesh_dims_.size());
   for (const auto& dim : mesh_dims_)
     mesh_dim_lst.push_back(absl::StrCat(dim.name, "=", dim.size));
   mesh_str += absl::StrJoin(mesh_dim_lst, ",") + "|";
