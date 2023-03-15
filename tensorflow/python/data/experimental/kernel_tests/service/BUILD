@@ -214,6 +214,7 @@ tf_py_test(
     size = "small",
     srcs = ["distributed_save_test.py"],
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_combinations",
         "//tensorflow/python/data/experimental/kernel_tests/service:test_base",
         "//tensorflow/python/data/experimental/ops:data_service_ops",
@@ -222,6 +223,7 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

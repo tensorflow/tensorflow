@@ -1091,6 +1091,8 @@ cc_library(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/protobuf:protos_all_cc",
+        "//tensorflow/tsl/platform:status_to_from_proto",
     ] + tf_grpc_cc_dependencies(),
 )
 

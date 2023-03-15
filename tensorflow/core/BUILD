@@ -177,6 +177,7 @@ tf_proto_library(
         "//tensorflow/tsl/profiler/protobuf:xplane_proto",
         "//tensorflow/tsl/protobuf:coordination_config_proto",
         "//tensorflow/tsl/protobuf:distributed_runtime_payloads_proto",
+        "//tensorflow/tsl/protobuf:status_proto",
     ],
     visibility = ["//visibility:public"],
 )
