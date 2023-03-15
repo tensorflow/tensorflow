@@ -1150,9 +1150,10 @@ ENTRY %entry {
   auto* tuple = module->entry_computation()->root_instruction()->operand(0);
   ASSERT_NE(tuple, nullptr);
   // Check that the sharding on param1 is not replicated on tuple element[1].
-  EXPECT_THAT(tuple, op::Sharding("{{replicated}, {manual}, {manual}}"));
+  EXPECT_THAT(tuple, op::Sharding("{{manual}, {manual}, {manual}}"));
   if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
-    EXPECT_THAT(tuple->sharding().tuple_elements()[0], ShardingMetadata({}));
+    EXPECT_THAT(tuple->sharding().tuple_elements()[0],
+                ShardingMetadata({CreateMetadata("a")}));
     EXPECT_THAT(tuple->sharding().tuple_elements()[1],
                 ShardingMetadata({CreateMetadata("a")}));
     EXPECT_THAT(tuple->sharding().tuple_elements()[2],
@@ -8322,36 +8323,6 @@ ENTRY %entry {
   auto spmd_shard_to_full = module->entry_computation()->root_instruction();
   CHECK(spmd_shard_to_full->IsCustomCall("SPMDShardToFullShape"));
   EXPECT_FALSE(spmd_shard_to_full->sharding().IsManual());
-}
-
-TEST_F(ShardingPropagationTest, DoNotPassManualShardingThroughConstant) {
-  const char* const hlo_string = R"(
-HloModule module
-
-ENTRY %entry {
-  p.0 = f32[2,3]{1,0} parameter(0), sharding={replicated}
-  p.1 = f32[2,3]{1,0} parameter(1), sharding={replicated}
-  constant = f32[2,3]{1,0} constant({{0,1,2},{3,4,5}})
-  custom-call.0 = f32[2,3]{1,0} custom-call(p.0), custom_call_target="Sharding", sharding={replicated}
-  custom-call.1 = f32[2,3]{1,0} custom-call(custom-call.0), custom_call_target="SPMDFullToShardShape", sharding={manual}
-  add.0 = f32[2,3]{1,0} add(constant, custom-call.1)
-  custom-call.2 = f32[2,3]{1,0} custom-call(add.0), custom_call_target="SPMDShardToFullShape", sharding={replicated}
-  add.1 = f32[2,3]{1,0} add(constant, p.1)
-  ROOT tuple = (f32[2,3]{1,0}, f32[2,3]{1,0}) tuple(custom-call.2, add.1)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
-          .Run(module.get()));
-  XLA_VLOG_LINES(1, module->ToString());
-  // Sharding op is changed to a copy.
-  EXPECT_TRUE(changed);
-  HloInstruction* constant = FindInstruction(module.get(), "constant");
-  EXPECT_FALSE(constant->sharding().IsManual());
-  HloInstruction* add1 = FindInstruction(module.get(), "add.1");
-  EXPECT_FALSE(add1->sharding().IsManual());
 }
 
 TEST_F(ShardingPropagationTest, ReshapeNoMatchSubgroupManual) {

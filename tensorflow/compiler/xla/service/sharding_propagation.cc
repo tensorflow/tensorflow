@@ -2403,9 +2403,7 @@ bool ShardingPropagation::InferShardingFromUsers(
     return false;
   }
   // Propagate manual sharding.
-  if (instruction->opcode() != HloOpcode::kConstant &&
-      (!instruction->has_sharding() ||
-       instruction->sharding().IsTileMaximal())) {
+  if (!instruction->has_sharding() || instruction->sharding().IsTileMaximal()) {
     for (const HloInstruction* user : instruction->users()) {
       if (!user->has_sharding() || user->IsCustomCall("SPMDFullToShardShape"))
         continue;
@@ -2437,11 +2435,6 @@ bool ShardingPropagation::InferShardingFromUsers(
     std::optional<HloSharding> user_sharding =
         ShardingPropagation::GetShardingFromUser(
             *instruction, *user, aggressiveness, is_spmd, call_graph);
-    // Do not propagate manual sharding to constant.
-    if (instruction->opcode() == HloOpcode::kConstant && user_sharding &&
-        user_sharding->IsManual()) {
-      continue;
-    }
     if (user_sharding && instruction->opcode() == HloOpcode::kCustomCall) {
       if (auto* partitioner =
               GetCustomCallPartitioner(instruction->custom_call_target())) {

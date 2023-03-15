@@ -389,11 +389,6 @@ PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target,
   if (sharding() == target) {
     return *this;
   }
-  // Do not reshard constants from tile maximal sharding to manual sharding.
-  if (hlo()->opcode() == HloOpcode::kConstant && sharding().IsTileMaximal() &&
-      target.IsManual()) {
-    return *this;
-  }
   auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].reshard_cache;
   // Replace existing reshard cache for target if we are sharding with new
   // padding value.
