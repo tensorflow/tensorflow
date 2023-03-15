@@ -588,7 +588,7 @@ class WorkerPreemptionHandler(object):
     try:
       yield
     except (errors.OpError, ClosureInputError,
-            ClosureAbortedError) as e:
+            ClosureAbortedError, TypeError) as e:
       # If the error is due to temporary connectivity issues between worker and
       # ps, put back closure, ignore error and do not mark worker as failure.
       if self._cluster._record_and_ignore_transient_ps_failure(e):  # pylint: disable=protected-access
@@ -1497,6 +1497,14 @@ def _is_worker_failure(error):
   # CancelledError can be returned due to chief/PS cancelling outstanding RPCs
   # to the failing workers.
   if isinstance(error, errors.CancelledError):
+    return True
+
+  # This can occur when preparing closures for execution when doing exact
+  # evaluation, because the iterator creation, which occurs within the
+  # tf.function, needs to access the worker device, so it fails if the worker is
+  # down.
+  if isinstance(error, TypeError) and "Binding inputs to tf.function" in str(
+      error):
     return True
 
   return False

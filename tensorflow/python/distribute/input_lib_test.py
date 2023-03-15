@@ -30,6 +30,7 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import input_ops
 from tensorflow.python.distribute import input_util
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
@@ -332,6 +333,58 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
     self._test_input_iteration(input_type, api_type, iteration_type,
                                dataset_or_input_fn, worker_device_pairs,
                                expected_values, distribution)
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          input_type=["input_fn", "dataset"],
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_one_gpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+      )
+  )
+  def testAutoShardExplicit(self, input_type, distribution):
+    worker_device_pairs = [(
+        "/device:CPU:0",
+        distribution.extended.worker_devices,
+    )]
+    dataset_fn = lambda _: dataset_ops.Dataset.range(10).batch(1)
+    dataset_or_input_fn = self._create_dataset_or_input_fn(
+        input_type, dataset_fn
+    )
+    input_workers = input_lib.InputWorkers(worker_device_pairs)
+    distribution.extended.experimental_enable_get_next_as_optional = True
+    dataset = self._wrap_dataset(
+        input_type,
+        dataset_or_input_fn,
+        input_workers,
+        num_replicas_in_sync=None,
+        strategy=distribution)
+
+    dataset1 = input_ops.auto_shard_dataset(dataset, 2, 0)
+    iterator = iter(dataset1)
+
+    if len(distribution.extended.worker_devices) == 2:
+      expected_values = [[0, 2], [4, 6], [8]]
+    else:
+      expected_values = [[0], [2], [4], [6], [8]]
+    for element, expected in zip(iterator, expected_values):
+      local = distribution.experimental_local_results(element)
+      local_list = array_ops.concat(local, axis=0).numpy().tolist()
+      self.assertAllEqual(local_list, expected)
+
+    if len(distribution.extended.worker_devices) == 2:
+      expected_values = [[1, 3], [5, 7], [9]]
+    else:
+      expected_values = [[1], [3], [5], [7], [9]]
+    dataset2 = input_ops.auto_shard_dataset(dataset, 2, 1)
+    iterator = iter(dataset2)
+    for element, expected in zip(iterator, expected_values):
+      local = distribution.experimental_local_results(element)
+      local_list = array_ops.concat(local, axis=0).numpy().tolist()
+      self.assertAllEqual(local_list, expected)
 
   @combinations.generate(
       combinations.combine(

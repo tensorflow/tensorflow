@@ -46,6 +46,7 @@ cc_test(
     deps = [
         ":verifier",
         "//tensorflow/core:framework_lite",
+        "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:util",

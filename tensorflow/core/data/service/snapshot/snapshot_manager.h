@@ -82,7 +82,7 @@ class SnapshotManager {
 
   // Checks for a stream that should move from `assignments_` to `orphans_` due
   // to its assigned worker having stopped heartbeating.
-  void HandleMissingWorker(absl::string_view worker_address);
+  void HandleMissingWorker(const std::string& worker_address);
   // Checks for streams that should move from `unknowns_` to `orphans_` due to
   // the dispatcher not having gotten a heartbeat from an assigned worker.
   void UpdateStreams();
@@ -131,6 +131,10 @@ class SnapshotManager {
   experimental::DistributedSnapshotMetadata metadata_;
   // If `Resume`d, the timestamp of the resumption of the snapshot.
   std::optional<absl::Duration> resume_time_micros_;
+
+  // The addresses of all workers considered to be dead based on heartbeat
+  // timeout.
+  absl::flat_hash_set<std::string> dead_workers_;
 
   // A split provider for each input source of the dataset being snapshotted.
   std::vector<std::unique_ptr<SplitProvider>> split_providers_;

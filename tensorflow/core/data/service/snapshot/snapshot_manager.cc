@@ -365,6 +365,8 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
 
 Status SnapshotManager::WorkerHeartbeat(const WorkerHeartbeatRequest& request,
                                         WorkerHeartbeatResponse& response) {
+  dead_workers_.erase(request.worker_address());
+
   if (mode_ == Mode::kDone || mode_ == Mode::kError) {
     // When the snapshot manager is done or in an error state, it returns an
     // empty response to inform the workers to cancel the ongoing tasks.
@@ -400,6 +402,12 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
           "worker ", request.worker_address(),
           " has no known assignment and its desired stream, ",
           request.stream_index(), ", is unavailable");
+    }
+    if (dead_workers_.contains(request.worker_address())) {
+      return errors::FailedPrecondition(
+          "worker ", request.worker_address(),
+          " is considered to have timed out and must heartbeat to retain its "
+          "stream assignment before requesting more splits");
     }
     ReassignPreviouslyAssignedStream(request.stream_index(),
                                      request.worker_address());
@@ -457,12 +465,13 @@ Status SnapshotManager::GetSnapshotStreams(
   return OkStatus();
 }
 
-void SnapshotManager::HandleMissingWorker(absl::string_view worker_address) {
+void SnapshotManager::HandleMissingWorker(const std::string& worker_address) {
   if (auto it = assignments_.find(worker_address); it != assignments_.end()) {
     LOG(INFO) << "deleting assignment for stream " << it->second
               << " due to lost worker " << worker_address;
     orphans_.insert(it->second);
     assignments_.erase(it);
+    dead_workers_.insert(worker_address);
   }
 }
 

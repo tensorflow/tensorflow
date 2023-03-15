@@ -94,20 +94,6 @@ tf_cc_test(
 )
 
 tf_cuda_library(
-    name = "context_registry",
-    srcs = ["context_registry.cc"],
-    hdrs = ["context_registry.h"],
-    deps = [
-        ":context",
-        "//tensorflow/c/eager:c_api_internal",
-        "//tensorflow/c/eager:immediate_execution_context",
-        "//tensorflow/core/framework/registration",
-        "//tensorflow/tsl/platform:mutex",
-        "//tensorflow/tsl/platform:thread_annotations",
-    ],
-)
-
-tf_cuda_library(
     name = "context",
     srcs = [
         "context.cc",

@@ -587,14 +587,18 @@ class DefaultSchedulerCore : public SchedulerCore {
     return std::nullopt;
   }
 
-  DefaultSchedulerCore(HloCostAnalysis::ShapeSizeFunction shape_size_bytes,
-                       const AsyncTracker* async_tracker,
-                       const LatencyEstimator* latency_estimator,
-                       const SchedulerConfig& config)
+  DefaultSchedulerCore(
+      HloCostAnalysis::ShapeSizeFunction shape_size_bytes,
+      const AsyncTracker* async_tracker,
+      const LatencyEstimator* latency_estimator, const SchedulerConfig& config,
+      TargetSchedulingRule target_scheduling_rule = nullptr,
+      TargetSchedulingRule early_target_scheduling_rule = nullptr)
       : shape_size_bytes_(shape_size_bytes),
         async_tracker_(async_tracker),
         latency_estimator_(latency_estimator),
-        config_(config) {}
+        config_(config),
+        target_scheduling_rule_(target_scheduling_rule),
+        early_target_scheduling_rule_(early_target_scheduling_rule) {}
   Status InitializeScheduler(const HloModule* module) override;
   StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation) override;
@@ -649,8 +653,7 @@ class DefaultSchedulerCore : public SchedulerCore {
           latency_estimator(latency_estimator),
           async_tracker(async_tracker),
           memory_pressure_tracker(memory_pressure_tracker),
-          config(config) {
-    }
+          config(config) {}
   };
 
  protected:
@@ -673,10 +676,11 @@ class DefaultSchedulerCore : public SchedulerCore {
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes_;
   std::unique_ptr<ModulePressureState> module_pressure_state_;
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
-  TargetSchedulingRule target_scheduling_rule_ = nullptr;
   const AsyncTracker* async_tracker_;
   const LatencyEstimator* latency_estimator_;
   SchedulerConfig config_;
+  TargetSchedulingRule target_scheduling_rule_ = nullptr;
+  TargetSchedulingRule early_target_scheduling_rule_ = nullptr;
 };
 
 // A scheduler oriented to hiding latencies of operations that can run in

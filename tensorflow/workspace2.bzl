@@ -59,6 +59,7 @@ def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
     FP16()
     absl()
+    bazel_skylib_workspace()
     benchmark()
     dlpack()
     eigen3()
@@ -83,7 +84,6 @@ def _initialize_third_party():
     vulkan_headers()
     tensorrt()
     triton()
-    bazel_skylib_workspace()
 
     # copybara: tsl vendor
 

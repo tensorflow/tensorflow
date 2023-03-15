@@ -1027,6 +1027,7 @@ py_library(
         ":op_def_registry",
         ":registry",
         ":stack",
+        ":tensor_conversion",
         ":tensor_conversion_registry",
         ":tensor_shape",
         ":tensor_util",
@@ -1100,6 +1101,18 @@ tf_py_test(
         ":composite_tensor_gradient",
         "//tensorflow/python:ops",
         "//tensorflow/python/platform:test",
+    ],
+)
+
+py_library(
+    name = "tensor_conversion",
+    srcs = ["tensor_conversion.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":tensor_conversion_registry",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

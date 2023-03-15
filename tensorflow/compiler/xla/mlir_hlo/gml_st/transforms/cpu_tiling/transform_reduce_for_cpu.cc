@@ -46,13 +46,6 @@ namespace {
 constexpr llvm::StringRef kReduceTransformedLabel =
     "__reduce_transformed_label__";
 
-FailureOr<TilingResult> tileReduce(PatternRewriter &rewriter,
-                                   linalg::ReduceOp reduceOp,
-                                   ArrayRef<int64_t> tileSizes) {
-  return tileUsingSCFForallOp(getSCFTilingOptions(tileSizes), rewriter,
-                              cast<TilingInterface>(reduceOp.getOperation()));
-}
-
 SmallVector<int64_t> getParallelDimTileSizes(int64_t reductionDim,
                                              int64_t parallelDimTileSize) {
   return reductionDim ? SmallVector<int64_t>{parallelDimTileSize, 0}
@@ -462,10 +455,10 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       Operation *tilingRoot, PatternRewriter &rewriter) const {
     FailureOr<TilingResult> tilingParallelDimsResult;
     if (auto reduceOp = dyn_cast<linalg::ReduceOp>(tilingRoot)) {
-      tilingParallelDimsResult =
-          tileReduce(rewriter, reduceOp,
-                     getParallelDimTileSizes(reduceOp.getDimensions()[0],
-                                             parallelDimTileSize));
+      tilingParallelDimsResult = tileUsingSCFForallOp(
+          getSCFTilingOptions(getParallelDimTileSizes(
+              reduceOp.getDimensions()[0], parallelDimTileSize)),
+          rewriter, cast<TilingInterface>(reduceOp.getOperation()));
     } else if (isa<linalg::MapOp>(tilingRoot)) {
       tilingParallelDimsResult =
           tileUsingSCFForallOp(getSCFTilingOptions(parallelDimTileSize),
@@ -475,62 +468,6 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     }
 
     return tilingParallelDimsResult;
-  }
-
-  FailureOr<scf::SCFTilingResult> tileReductionDims(
-      PatternRewriter &rewriter, linalg::ReduceOp reduceOp) const {
-    scf::SCFTilingOptions tilingOptions;
-    tilingOptions.setTileSizes(getReductionDimTileSizes(
-        reduceOp.getDimensions()[0], reductionDimTileSize));
-    return scf::tileUsingSCFForOp(rewriter, reduceOp.getOperation(),
-                                  tilingOptions);
-  }
-
-  LogicalResult peelReduction(
-      PatternRewriter &rewriter, const TilingResult &tilingParallelDimsResult,
-      const scf::SCFTilingResult &tilingReductionDimsResult) const {
-    // Peel parallel loops.
-    auto peelingResult = peelAllLoops(tilingParallelDimsResult.loop, rewriter);
-
-    // Peel reduction loop inside the main parallel loop, label the main loop
-    // as "perfectly tiled" one, to enable vectorization after
-    // canonicalization.
-    if (!tilingReductionDimsResult.loops.empty()) {
-      scf::ForOp forLoop = tilingReductionDimsResult.loops.front();
-      SCFForPeelingResult peelingResult = peelSCFForOp(rewriter, forLoop);
-      if (peelingResult.mainLoop) {
-        setLabel(peelingResult.mainLoop, kPerfectlyTiledLoopLabel);
-      }
-
-      if (!peelingResult.tailLoop) return success();
-      // Tile ops in the peeled loop again, to size 1, so they can be
-      // scalarized.
-      scf::ForOp peeledLoop = peelingResult.tailLoop;
-      auto yieldOp = cast<scf::YieldOp>(peeledLoop.getBody()->getTerminator());
-      auto reduceOp = getRootReduce(yieldOp);
-      if (!reduceOp) return failure();
-
-      scf::SCFTilingOptions opts;
-      opts.setTileSizes(
-          getReductionDimTileSizes(reduceOp.getDimensions()[0], 1));
-
-      if (failed(tileUsingSCFForOpAndFuseGreedily(
-              rewriter, reduceOp, opts, kReduceTransformedLabel,
-              [&](Operation *op) { return isa<linalg::MapOp>(op); })))
-        return failure();
-    }
-    return success();
-  }
-
-  linalg::ReduceOp getRootReduce(scf::YieldOp yieldOp) const {
-    if (yieldOp.getResults().size() != 1) return nullptr;
-
-    Value reduceResult = yieldOp.getResults().front();
-    if (auto insertSliceOp =
-            reduceResult.getDefiningOp<tensor::InsertSliceOp>()) {
-      reduceResult = insertSliceOp.getSource();
-    }
-    return reduceResult.getDefiningOp<linalg::ReduceOp>();
   }
 
   int64_t parallelDimTileSize;
