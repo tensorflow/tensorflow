@@ -1975,5 +1975,18 @@ void OperationInterface::MaybeInferInputAttrs() {
   }
 }
 
+tensorflow::ImmediateExecutionContext* CreateTfrtEagerContext(
+    const TFE_ContextOptions* opts) {
+  auto* tfrt_context = new tfrt::tf::ContextInterface(
+      opts->session_options.options,
+      static_cast<tensorflow::ContextDevicePlacementPolicy>(
+          opts->device_placement_policy),
+      opts->async);
+  return tfrt_context;
+}
+
+REGISTER_EAGER_CONTEXT_CREATOR(TfrtEagerContext, "tfrt",
+                               CreateTfrtEagerContext);
+
 }  // namespace tf
 }  // namespace tfrt
