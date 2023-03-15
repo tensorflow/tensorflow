@@ -698,12 +698,16 @@ StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype) {
       return se::blas::DataType::kF8E5M2;
     case F8E4M3FN:
       return se::blas::DataType::kF8E4M3FN;
+    case S8:
+      return se::blas::DataType::kInt8;
     case F16:
       return se::blas::DataType::kHalf;
     case BF16:
       return se::blas::DataType::kBF16;
     case F32:
       return se::blas::DataType::kFloat;
+    case S32:
+      return se::blas::DataType::kInt32;
     case F64:
       return se::blas::DataType::kDouble;
     case C64:

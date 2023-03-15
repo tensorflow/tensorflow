@@ -4176,13 +4176,11 @@ ENTRY main {
       )");
 }
 
-// This class can be replaced with CublasLtGemmRewriteTest once runtime supports
-// FP8.
-class CublasLtF8GemmRewriteTest : public CublasLtGemmRewriteTest {
+class ParameterizedFp8GemmRewriteTest : public ParameterizedGemmRewriteTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options =
-        CublasLtGemmRewriteTest::GetDebugOptionsForTest();
+        ParameterizedGemmRewriteTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_xla_runtime_executable(false);
     return debug_options;
   }
@@ -4208,7 +4206,7 @@ class CublasLtF8GemmRewriteTest : public CublasLtGemmRewriteTest {
   }
 };
 
-TEST_F(CublasLtF8GemmRewriteTest, DoNotRewriteToF8OnPreHopper) {
+TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreHopper) {
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::HOPPER)) {
     GTEST_SKIP() << "Test requires a pre-Hopper GPU.";
   }
@@ -4231,7 +4229,7 @@ TEST_F(CublasLtF8GemmRewriteTest, DoNotRewriteToF8OnPreHopper) {
           )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, UnscaledABUnscaledDF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4275,7 +4273,7 @@ TEST_F(CublasLtF8GemmRewriteTest, UnscaledABUnscaledDF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4329,7 +4327,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, BitcastScaledABUnscaledDF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, BitcastScaledABUnscaledDF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4363,7 +4361,7 @@ TEST_F(CublasLtF8GemmRewriteTest, BitcastScaledABUnscaledDF8) {
           m::CustomCall({"__cublas$lt$matmul$f8"}).WithShape(F32, {16, 16})));
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4417,7 +4415,7 @@ TEST_F(CublasLtF8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABAlphaDF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABAlphaDF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4475,7 +4473,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABAlphaDF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4533,7 +4531,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, InvScaledABUnscaledDF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, InvScaledABUnscaledDF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4562,7 +4560,7 @@ TEST_F(CublasLtF8GemmRewriteTest, InvScaledABUnscaledDF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
 #if CUDA_VERSION < 12000
   GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
 #endif
@@ -4621,7 +4619,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4687,7 +4685,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABInvScaledDF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABInvScaledDF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4729,7 +4727,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABInvScaledDF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
   const char* hlo_text = R"(
     HloModule test
     ENTRY test {
@@ -4796,7 +4794,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
 #if CUDA_VERSION < 12000
   GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
 #endif
@@ -4865,7 +4863,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4941,7 +4939,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
   std::array<std::array<absl::string_view, 7>, 32> combinations;
   int i = 0;
 
@@ -5007,7 +5005,8 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
   }
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ParameterizedBatched) {
+TEST_P(ParameterizedFp8GemmRewriteTest,
+       ScaledABUnscaledDF8ParameterizedBatched) {
   // TODO(wenscarl): For batched matmaul, not all combinations of A, B and
   // output layouts get pattern matched successfully to FP8 custom call. Only
   // a handful of cases are tested here.
@@ -5072,7 +5071,7 @@ ENTRY f {
   }
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -5103,6 +5102,9 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
           )");
   tsl::enable_tensor_float_32_execution(tf32_state_);
 }
+
+INSTANTIATE_TEST_SUITE_P(Fp8CublasTestsBothLegacyAndLt,
+                         ParameterizedFp8GemmRewriteTest, ::testing::Bool());
 
 TEST_F(GemmRewriteTest, NoFuseBiasBroadcast) {
   const char* hlo = R"(
