@@ -69,9 +69,8 @@ FailureOr<scf::SCFTilingResult> tileReductionDim(PatternRewriter &rewriter,
 FailureOr<TilingResult> tileParallelDims(PatternRewriter &rewriter,
                                          Operation *op,
                                          ArrayRef<int64_t> tileSizes) {
-  TilingOptions opts;
-  opts.setTileSizeComputationFn(tileSizes);
-  auto tilingResult = tileUsingGmlSt(opts, rewriter, cast<TilingInterface>(op));
+  auto tilingResult = tileUsingSCFForallOp(getSCFTilingOptions(tileSizes),
+                                           rewriter, cast<TilingInterface>(op));
   if (failed(tilingResult)) return failure();
 
   // Update the results if tiling occurred.

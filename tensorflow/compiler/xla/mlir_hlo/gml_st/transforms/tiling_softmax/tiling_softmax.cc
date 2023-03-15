@@ -155,25 +155,25 @@ struct TilePartialSoftmaxPattern
         [&](Operation *op,
             int64_t commonReductionDim) -> FailureOr<Operation *> {
           // Populate tiling options.
-          TilingOptions tilingOptions;
-          tilingOptions.tileSizeComputationFn =
+          scf::SCFTilingOptions tilingOptions;
+          tilingOptions.setTileSizeComputationFunction(
               [&](OpBuilder &b, Operation *op) -> SmallVector<Value> {
-            Location loc = op->getLoc();
-            SmallVector<Value> tileSizeValues;
-            for (int64_t i = 0; i < static_cast<int64_t>(tileSizes.size());
-                 i++) {
-              // Skip tiling the reduction dimension. By convention, this is a
-              // tile size of 0.
-              int64_t tileSizeInDim =
-                  i == commonReductionDim ? 0 : tileSizes[i];
-              tileSizeValues.push_back(
-                  b.create<arith::ConstantIndexOp>(loc, tileSizeInDim));
-            }
-            return tileSizeValues;
-          };
+                Location loc = op->getLoc();
+                SmallVector<Value> tileSizeValues;
+                for (int64_t i = 0; i < static_cast<int64_t>(tileSizes.size());
+                     i++) {
+                  // Skip tiling the reduction dimension. By convention, this is
+                  // a tile size of 0.
+                  int64_t tileSizeInDim =
+                      i == commonReductionDim ? 0 : tileSizes[i];
+                  tileSizeValues.push_back(
+                      b.create<arith::ConstantIndexOp>(loc, tileSizeInDim));
+                }
+                return tileSizeValues;
+              });
           // Tile.
           FailureOr<TilingResult> tilingResult =
-              tileUsingGmlSt(tilingOptions, rewriter, op);
+              tileUsingSCFForallOp(tilingOptions, rewriter, op);
           if (failed(tilingResult)) return failure();
 
           rewriter.replaceOp(op, tilingResult->loop->getResults());

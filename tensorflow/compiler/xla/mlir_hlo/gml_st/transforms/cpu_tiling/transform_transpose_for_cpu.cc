@@ -43,7 +43,7 @@ static constexpr llvm::StringRef kTransposeTransformedLabel =
     "__transpose_transformed_label__";
 
 struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
-  TileTransposePattern(MLIRContext *context, TilingOptions options,
+  TileTransposePattern(MLIRContext *context, scf::SCFTilingOptions options,
                        PatternBenefit benefit = 1)
       : OpRewritePattern<linalg::TransposeOp>(context, benefit),
         options(std::move(options)) {}
@@ -56,7 +56,7 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
       return rewriter.notifyMatchFailure(
           op, "has already been tiled by another pass.");
 
-    auto tilingResult = tileUsingGmlSt(
+    auto tilingResult = tileUsingSCFForallOp(
         options, rewriter, cast<TilingInterface>(op.getOperation()));
     if (failed(tilingResult)) return failure();
 
@@ -80,7 +80,7 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
   }
 
  private:
-  TilingOptions options;
+  scf::SCFTilingOptions options;
 };
 
 struct TransformTransposeForCpuPass
@@ -139,8 +139,8 @@ struct TransformTransposeForCpuPass
       return tiles;
     };
 
-    TilingOptions tilingOptions;
-    tilingOptions.tileSizeComputationFn = getTileSize;
+    scf::SCFTilingOptions tilingOptions;
+    tilingOptions.setTileSizeComputationFunction(getTileSize);
 
     auto func = getOperation();
     RewritePatternSet patterns(func.getContext());

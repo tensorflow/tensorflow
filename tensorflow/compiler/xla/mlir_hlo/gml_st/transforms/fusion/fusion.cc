@@ -15,16 +15,12 @@ limitations under the License.
 
 #include "gml_st/transforms/fusion/fusion.h"
 
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
-#include "gml_st/transforms/passes.h"
-#include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/transforms.h"
-#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -34,189 +30,15 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/InliningUtils.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "mlir/Transforms/TopologicalSortUtils.h"
-#include "thlo/IR/thlo_ops.h"
 
 namespace mlir {
 namespace gml_st {
 namespace {
-
-#define GEN_PASS_DEF_FUSIONPASS
-#include "gml_st/transforms/passes.h.inc"
-
-// TODO(frgossen): Move this to the shape reification pass.
-struct DimOpFissionPattern : public OpRewritePattern<tensor::ExtractOp> {
-  using OpRewritePattern<tensor::ExtractOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(tensor::ExtractOp extract,
-                                PatternRewriter& rewriter) const override {
-    auto shapeDef = llvm::dyn_cast_or_null<shape::ShapeOfOp>(
-        extract.getTensor().getDefiningOp());
-    if (!shapeDef || extract.getIndices().size() != 1) return failure();
-    rewriter.replaceOpWithNewOp<tensor::DimOp>(extract, shapeDef.getArg(),
-                                               extract.getIndices().front());
-    return success();
-  }
-};
-
-// TODO(frgossen): Implement this through the shape reification interface and
-// move this pattern to the shape reification pass.
-struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
-  using OpRewritePattern<tensor::DimOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(tensor::DimOp op,
-                                PatternRewriter& rewriter) const override {
-    Operation* def = op.getSource().getDefiningOp();
-    if (!def) return failure();
-
-    // TODO(pifon): Split this pattern into many.
-    // Case tensor::ExtractSliceOp.
-    if (auto extractSliceOp = llvm::dyn_cast<tensor::ExtractSliceOp>(def)) {
-      assert(extractSliceOp->getNumResults() == 1 && "assume single result");
-      auto dimConstantIndex = op.getConstantIndex();
-      if (!dimConstantIndex.has_value()) return failure();
-
-      rewriter.replaceOp(op, extractSliceOp.getSizes()[*dimConstantIndex]);
-      return success();
-    }
-    // Case LinalgOp.
-    if (auto linalgOp = llvm::dyn_cast<linalg::LinalgOp>(def)) {
-      if (linalgOp->getNumResults() != 1 || !linalgOp.hasTensorSemantics()) {
-        return failure();
-      }
-      Value outputOperand = linalgOp.getDpsInitOperand(0)->get();
-      rewriter.replaceOpWithNewOp<tensor::DimOp>(op, outputOperand,
-                                                 op.getIndex());
-      return success();
-    }
-
-    // Case EmptyOp.
-    if (auto emptyTensorOp = llvm::dyn_cast<tensor::EmptyOp>(def)) {
-      if (auto indexConstantOp = llvm::dyn_cast_or_null<arith::ConstantOp>(
-              op.getIndex().getDefiningOp())) {
-        int64_t idx =
-            indexConstantOp.getValue().dyn_cast<IntegerAttr>().getInt();
-        OpFoldResult dim = emptyTensorOp.getMixedSizes()[idx];
-        Value dimValue;
-        if (dim.is<Value>()) {
-          dimValue = dim.get<Value>();
-        } else {
-          assert(dim.is<Attribute>() && "expected Value or Attribute");
-          int64_t dimInt = dim.get<Attribute>().cast<IntegerAttr>().getInt();
-          dimValue =
-              rewriter.create<arith::ConstantIndexOp>(op.getLoc(), dimInt);
-        }
-        assert(dimValue);
-        rewriter.replaceOp(op, ValueRange{dimValue});
-        return success();
-      }
-    }
-
-    // Case ConcatenateOp.
-    if (auto concat = llvm::dyn_cast<thlo::ConcatenateOp>(def)) {
-      rewriter.replaceOpWithNewOp<tensor::DimOp>(op, concat.getInit(),
-                                                 op.getIndex());
-      return success();
-    }
-
-    // Case DynamicBroadcastInDimOp.
-    if (auto bcast = llvm::dyn_cast<thlo::DynamicBroadcastInDimOp>(def)) {
-      rewriter.replaceOpWithNewOp<tensor::DimOp>(op, bcast.getInit(),
-                                                 op.getIndex());
-      return success();
-    }
-
-    return failure();
-  }
-};
-
-class FusionPattern : public OpRewritePattern<tensor::ExtractSliceOp> {
- public:
-  FusionPattern(MLIRContext* context,
-                function_ref<LogicalResult(tensor::ExtractSliceOp)> filterFn,
-                mlir::PatternBenefit benefit = 1)
-      : OpRewritePattern<tensor::ExtractSliceOp>(context, benefit),
-        filterFn(filterFn) {}
-
-  LogicalResult matchAndRewrite(tensor::ExtractSliceOp extractSliceOp,
-                                PatternRewriter& rewriter) const override {
-    assert(filterFn && "expect filter function");
-    if (failed(filterFn(extractSliceOp)))
-      return rewriter.notifyMatchFailure(extractSliceOp, "filtered");
-
-    // If there is an output argument produced by `linalg.fill`, then we can
-    // also fuse it into the parallel loop. To check that, we verify that the
-    // `src` of `extract_slice` is the bbArg of `gml_st.parallel` and that the
-    // corresponding operand of `gml_st.parallel` is defined by `linalg.fill`.
-    if (auto bbArg = dyn_cast<BlockArgument>(extractSliceOp.getSource())) {
-      if (auto parallelOp = dyn_cast_or_null<scf::ForallOp>(
-              bbArg.getOwner()->getParentOp())) {
-        Value loopOperand = parallelOp.getTiedOpOperand(bbArg)->get();
-        if (loopOperand.getDefiningOp<linalg::FillOp>())
-          return fuseFillOpsIntoForallOp(rewriter, parallelOp);
-      }
-    }
-    return fuse(rewriter, extractSliceOp);
-  }
-
- private:
-  function_ref<LogicalResult(tensor::ExtractSliceOp)> filterFn;
-};
-
-struct FusionPass : public impl::FusionPassBase<FusionPass> {
-  FusionPass(StringRef producer, StringRef consumer) {
-    this->producerLabel = producer.str();
-    this->consumerLabel = consumer.str();
-  }
-
-  void getDependentDialects(DialectRegistry& registry) const final {
-    registry.insert<GmlStDialect, scf::SCFDialect, tensor::TensorDialect>();
-  }
-
-  void runOnOperation() final {
-    MLIRContext* ctx = &getContext();
-
-    auto filterFn = [&](tensor::ExtractSliceOp op) {
-      Operation* producerOp = op.getSource().getDefiningOp();
-      if (auto bbArg = dyn_cast<BlockArgument>(op.getSource())) {
-        if (isa<scf::ForallOp>(bbArg.getOwner()->getParentOp()))
-          return success();
-      }
-      if (!producerOp || (!producerLabel.empty() &&
-                          !hasMatchingLabel(producerOp, producerLabel))) {
-        return failure();
-      }
-
-      Operation* consumerOp = nullptr;
-      if (!consumerLabel.empty()) {
-        for (Operation* user : op.getResult().getUsers()) {
-          if (hasMatchingLabel(user, consumerLabel)) {
-            consumerOp = user;
-            break;
-          }
-        }
-        return success(consumerOp != nullptr);
-      }
-
-      return success();
-    };
-
-    // Populate patterns.
-    RewritePatternSet patterns(ctx);
-    populateFusionPatterns(ctx, filterFn, &patterns);
-
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
-      return signalPassFailure();
-    }
-  }
-};
 
 bool isEqualOp(const Operation* lhsC, const Operation* rhsC) {
   return OperationEquivalence::isEquivalentTo(
@@ -497,17 +319,11 @@ LogicalResult fuseFillOpsIntoForallOp(PatternRewriter& rewriter,
   return success(fillOpsWereFused);
 }
 
-gml_st::TilingOptions getGmlStTilingOptions(ArrayRef<int64_t> tileSizes) {
-  gml_st::TilingOptions opts;
-  opts.setTileSizeComputationFn(tileSizes);
-  return opts;
-}
-
-FailureOr<scf::ForallOp> tileUsingGmlStParallelAndFuseGreedily(
-    PatternRewriter& rewriter, Operation* op,
-    const mlir::gml_st::TilingOptions& opts, StringRef label,
-    llvm::function_ref<bool(Operation*)> fuseFilterFn) {
-  auto tilingResult = tileUsingGmlSt(opts, rewriter, cast<TilingInterface>(op));
+FailureOr<scf::ForallOp> tileUsingSCFForallOpAndFuseGreedily(
+    PatternRewriter& rewriter, Operation* op, const scf::SCFTilingOptions& opts,
+    StringRef label, llvm::function_ref<bool(Operation*)> fuseFilterFn) {
+  auto tilingResult =
+      tileUsingSCFForallOp(opts, rewriter, cast<TilingInterface>(op));
   if (failed(tilingResult)) return failure();
 
   // If we did not tile (e.g. when all tile sizes are 0), do not replace
@@ -521,12 +337,6 @@ FailureOr<scf::ForallOp> tileUsingGmlStParallelAndFuseGreedily(
   }
   setLabel(tilingResult->tiledOps.front(), label);
   return tilingResult->loop;
-}
-
-scf::SCFTilingOptions getSCFTilingOptions(ArrayRef<int64_t> tileSizes) {
-  scf::SCFTilingOptions opts;
-  opts.setTileSizes(tileSizes);
-  return opts;
 }
 
 FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
@@ -560,12 +370,10 @@ LogicalResult tilePeeledOpsToScalars(
     auto definingOp = yieldedTensors.front().getDefiningOp<TilingInterface>();
     if (!definingOp) return failure();
 
-    mlir::gml_st::TilingOptions opts;
-    opts.setTileSizeComputationFn(
+    auto opts = getSCFTilingOptions(
         SmallVector<int64_t>(definingOp.getLoopIteratorTypes().size(), 1));
-
-    if (failed(tileUsingGmlStParallelAndFuseGreedily(rewriter, definingOp, opts,
-                                                     label, fuseFilterFn))) {
+    if (failed(tileUsingSCFForallOpAndFuseGreedily(rewriter, definingOp, opts,
+                                                   label, fuseFilterFn))) {
       return failure();
     }
   }
@@ -746,23 +554,6 @@ FailureOr<Value> createFusedOp(PatternRewriter& rewriter,
   }
 
   return tiledProducer;
-}
-
-void populateFusionPatterns(
-    MLIRContext* ctx,
-    function_ref<LogicalResult(tensor::ExtractSliceOp)> filterFn,
-    RewritePatternSet* patterns) {
-  patterns->insert<FusionPattern>(ctx, filterFn);
-  // clang-format off
-  patterns->insert<
-      DimOpFissionPattern,
-      DimOpReificationPattern>(ctx);
-  // clang-format on
-}
-
-std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
-    StringRef producer, StringRef consumer) {
-  return std::make_unique<FusionPass>(producer, consumer);
 }
 
 }  // namespace gml_st
