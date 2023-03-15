@@ -911,7 +911,7 @@ def _dynamic_range_quantize(
   # please also update default value in tflite converter:
   # tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.cc;l=201
   if quantization_options.min_num_elements_for_weights == 0:
-    (quantization_options.min_num_elements_for_weights) = (
+    quantization_options.min_num_elements_for_weights = (
         _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS
     )
     logging.warn(
@@ -941,9 +941,14 @@ def _dynamic_range_quantize(
       exported_model.graph_def,
       output_directory,
       signature_def_map,
-      tags=tags,
+      tags,
       init_op_name=exported_model.init_node_name,
+      saver_def=_get_saver_def_or_none(exported_model),
+      checkpoint_dir=exported_model.checkpoint_dir,
+      function_aliases=exported_model.function_aliases,
+      asset_file_defs=exported_model.asset_file_defs,
   )
+  _copy_assets(saved_model_path, output_directory)
 
   return saved_model_load(output_directory)
 

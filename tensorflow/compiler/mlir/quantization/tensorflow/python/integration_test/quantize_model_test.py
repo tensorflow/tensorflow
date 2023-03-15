@@ -4392,6 +4392,61 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
       self.assertAllClose(lookup_val, [1.0, 2.0, 0.0])
 
+  @test_util.deprecated_graph_mode_only
+  def test_file_init_hash_table_lookup_model(self):
+    tags = {tag_constants.SERVING}
+    signature_def_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+
+    # Create and save a simple model that involves a hash table.
+    inputs, outputs = self._create_and_save_file_init_hash_table_model_tf1(
+        self._input_saved_model_path, tags, signature_def_key
+    )
+    # Make sure that the desired input key and output key is present.
+    self.assertIn('input_vocabs', inputs.keys())
+    self.assertIn('lookup', outputs.keys())
+
+    signature_def_keys = [signature_def_key]
+    quantize_model.quantize(
+        self._input_saved_model_path,
+        signature_def_keys,
+        tags,
+        self._output_saved_model_path,
+        quantization_options=quant_opts_pb2.QuantizationOptions(
+            quantization_method=quant_opts_pb2.QuantizationMethod(
+                experimental_method=_ExperimentalMethod.DYNAMIC_RANGE
+            ),
+        ),
+    )
+
+    # Tests table lookup to make sure the table has been initialized
+    # successfully.
+    with session.Session(graph=ops.Graph()) as sess:
+      output_meta_graph_def = saved_model_loader.load(
+          sess, tags=tags, export_dir=self._output_saved_model_path
+      )
+
+      self.assertCountEqual(
+          output_meta_graph_def.signature_def.keys(), signature_def_keys
+      )
+
+      signature_def = output_meta_graph_def.signature_def[signature_def_key]
+
+      input_tensor_name = signature_def.inputs['input_vocabs'].name
+      input_tensor = sess.graph.get_tensor_by_name(input_tensor_name)
+
+      lookup_tensor_name = signature_def.outputs['lookup'].name
+      lookup_tensor = sess.graph.get_tensor_by_name(lookup_tensor_name)
+
+      lookup_val = sess.run(
+          lookup_tensor,
+          feed_dict={
+              input_tensor: np.array([b'dynamic', b'quantization', b'range'])
+          },
+      )
+
+      # "dynamic" is not in the table: -1 (default value)
+      self.assertAllClose(lookup_val, [-1.0, 2.0, 1.0])
+
 
 class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   """Test cases for weight-only quantization.
