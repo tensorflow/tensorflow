@@ -401,20 +401,11 @@ cc_test(
     ],
 )
 
-package_group(
-    name = "tflite_test_util_visibility",
-    packages = [
-        "//tensorflow/lite/...",
-        "//tensorflow_lite_support/...",
-    ],
-)
-
 cc_library_with_tflite_with_c_headers_test(
     name = "test_util",
     testonly = True,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
-    visibility = [":tflite_test_util_visibility"],
 )
 
 tflite_self_contained_libs_test_suite(name = "self_contained_libs_test_suite")
