@@ -2927,7 +2927,7 @@ void XlaLaunchOp::getEffects(
         &effects) {
   effects.reserve(getArgs().size() + 1);
   effects.emplace_back(MemoryEffects::Write::get(),
-                       ResourceEffects::TPUExecute::get());
+                       ResourceEffects::XlaLaunch::get());
 
   for (Value value : getArgs()) {
     if (value.getType()
