@@ -75,11 +75,10 @@ class PyExecuteResults {
                    std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays,
                    int num_computations, PyShardedToken token);
 
-  std::vector<std::vector<PyBuffer::object>>
-  DisassembleIntoSingleDeviceArrays();
+  std::vector<std::vector<PyArray>> DisassembleIntoSingleDeviceArrays();
 
-  std::vector<std::vector<PyBuffer::object>>
-  DisassemblePrefixIntoSingleDeviceArrays(size_t n);
+  std::vector<std::vector<PyArray>> DisassemblePrefixIntoSingleDeviceArrays(
+      size_t n);
 
   std::vector<pybind11::object> ConsumeWithHandlers(
       std::vector<std::variant<const PyArrayResultHandler*, pybind11::object>>
@@ -159,11 +158,10 @@ class PyLoadedExecutable
   // PjRtExecutable::Execute. The result is similarly transposed back into the
   // argid,deviceid format.
   // args is [num_args x num_devices].
-  StatusOr<std::vector<std::vector<PyBuffer::object>>>
-  ExecuteShardedOnLocalDevices(absl::Span<const ExecuteShardedArg> args);
+  StatusOr<std::vector<std::vector<PyArray>>> ExecuteShardedOnLocalDevices(
+      absl::Span<const ExecuteShardedArg> args);
 
-  StatusOr<
-      std::pair<std::vector<std::vector<PyBuffer::object>>, PyShardedToken>>
+  StatusOr<std::pair<std::vector<std::vector<PyArray>>, PyShardedToken>>
   ExecuteShardedOnLocalDevicesWithTokens(
       absl::Span<const ExecuteShardedArg> args);
 
