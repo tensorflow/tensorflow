@@ -221,6 +221,7 @@ tf_cc_test(
 
 py_library(
     name = "for_generated_wrappers",
+    deprecation = "Depending on this target can cause build dependency cycles. Depend on the fine-grained sub-targets instead.",
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
@@ -243,6 +244,7 @@ py_library(
 # circular dependencies, as "function" uses generated op wrappers.
 py_library(
     name = "for_generated_wrappers_v2",
+    deprecation = "Depending on this target can cause build dependency cycles. Depend on the fine-grained sub-targets instead.",
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [

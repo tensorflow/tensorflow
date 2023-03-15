@@ -490,6 +490,7 @@ cuda_py_test(
 
 py_library(
     name = "framework_for_generated_wrappers",
+    deprecation = "Depending on this target can cause build dependency cycles. Depend on the fine-grained sub-targets instead.",
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
