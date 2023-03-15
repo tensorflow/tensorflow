@@ -777,6 +777,7 @@ cc_library(
         ":shape_inference",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -1541,6 +1542,7 @@ tf_cuda_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":flags",
+        ":test_util",
         ":xla_device_no_jit_rewrite_registration",
         ":xla_gpu_device",
         ":xla_gpu_jit",
@@ -1550,6 +1552,26 @@ tf_cuda_cc_test(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core/tpu:tpu_defs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "xla_platform_info_test",
+    srcs = ["xla_platform_info_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":flags_headers",
+        ":test_util",
+        ":xla_device_no_jit_rewrite_registration",
+        ":xla_gpu_device",
+        ":xla_gpu_jit",
+        "//tensorflow/compiler/tf2xla:layout_util",
+        "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:refcount",
         "//tensorflow/core/tpu:tpu_defs",
         "@com_google_googletest//:gtest_main",
     ],
