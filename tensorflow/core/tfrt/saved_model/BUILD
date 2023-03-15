@@ -35,6 +35,7 @@ cc_library(
     tags = ["no_oss"],
     deps = [
         "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel",
+        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel:batch_kernel",
         "//learning/brain/experimental/tfrt/native_lowering/kernels",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
