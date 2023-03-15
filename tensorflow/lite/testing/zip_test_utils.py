@@ -20,6 +20,7 @@ import operator
 import os
 import re
 import string
+import sys
 import tempfile
 import traceback
 import zipfile
@@ -30,6 +31,7 @@ import tensorflow as tf
 from google.protobuf import text_format
 from tensorflow.lite.testing import _pywrap_string_util
 from tensorflow.lite.testing import generate_examples_report as report_lib
+from tensorflow.lite.tools import flatbuffer_utils
 from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.saved_model import signature_constants
 
@@ -623,6 +625,10 @@ def make_zip_of_tests(options,
             baseline_input_map, baseline_output_map = generate_inputs_outputs(
                 tflite_model_binary, min_value=0, max_value=255)
           zipinfo = zipfile.ZipInfo(zip_path_label + ".bin")
+          if sys.byteorder == "big":
+            tflite_model_binary = flatbuffer_utils.byte_swap_tflite_buffer(
+                tflite_model_binary, "big", "little"
+            )
           archive.writestr(zipinfo, tflite_model_binary, zipfile.ZIP_DEFLATED)
 
           example = {

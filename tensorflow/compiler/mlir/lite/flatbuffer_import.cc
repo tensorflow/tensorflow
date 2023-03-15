@@ -337,11 +337,11 @@ std::string GetMlirOpName(const tflite::OperatorT& op,
 }
 
 // The buffers in TFLite flatbuffers have their contents stored as a vector of
-// bytes that represent little-endian values.
+// bytes that represent host endianness values.
 // The read_size parameter is present to allow reading both float16 and float32s
 // without a case split.
 template <typename T>
-std::vector<T> ReadAsLittleEndian(ArrayRef<uint8_t> bytes) {
+std::vector<T> ReadAsHostEndian(ArrayRef<uint8_t> bytes) {
   std::vector<T> ret;
   size_t read_size = sizeof(T);
   int bytes_len = bytes.size();
@@ -352,9 +352,9 @@ std::vector<T> ReadAsLittleEndian(ArrayRef<uint8_t> bytes) {
 
   const char* data_ptr = reinterpret_cast<const char*>(bytes.data());
   for (int i = 0; i < elem_count; i++) {
-    ret.push_back(
-        llvm::support::endian::readNext<T, llvm::support::little,
-                                        llvm::support::unaligned>(data_ptr));
+    ret.push_back(llvm::support::endian::readNext<
+                  T, llvm::support::endian::system_endianness(),
+                  llvm::support::unaligned>(data_ptr));
   }
   return ret;
 }
@@ -400,9 +400,9 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
       auto& semantics = elem_type.getFloatSemantics();
 
       for (int i = 0; i < elem_count; i++) {
-        uint16_t bit_repr =
-            llvm::support::endian::readNext<uint16_t, llvm::support::little,
-                                            llvm::support::unaligned>(data);
+        uint16_t bit_repr = llvm::support::endian::readNext<
+            uint16_t, llvm::support::endian::system_endianness(),
+            llvm::support::unaligned>(data);
         llvm::APInt int_repr(16, bit_repr);
         values.emplace_back(semantics, int_repr);
       }
@@ -418,9 +418,9 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
       const char* data = reinterpret_cast<const char*>(buffer.data());
 
       for (int i = 0; i < elem_count; i++) {
-        uint32_t bit_repr =
-            llvm::support::endian::readNext<uint32_t, llvm::support::little,
-                                            llvm::support::unaligned>(data);
+        uint32_t bit_repr = llvm::support::endian::readNext<
+            uint32_t, llvm::support::endian::system_endianness(),
+            llvm::support::unaligned>(data);
         values.push_back(absl::bit_cast<float>(bit_repr));
       }
       return mlir::ElementsAttr(
@@ -435,9 +435,9 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
       const char* data = reinterpret_cast<const char*>(buffer.data());
 
       for (int i = 0; i < elem_count; i++) {
-        uint64_t bit_repr =
-            llvm::support::endian::readNext<uint64_t, llvm::support::little,
-                                            llvm::support::unaligned>(data);
+        uint64_t bit_repr = llvm::support::endian::readNext<
+            uint64_t, llvm::support::endian::system_endianness(),
+            llvm::support::unaligned>(data);
         values.push_back(absl::bit_cast<double>(bit_repr));
       }
       return mlir::ElementsAttr(
@@ -485,17 +485,17 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
           DenseElementsAttr::get(shaped_type, ArrayRef<uint8_t>(buffer)));
     }
     case 16: {
-      auto values = ReadAsLittleEndian<uint16_t>(buffer);
+      auto values = ReadAsHostEndian<uint16_t>(buffer);
       return mlir::ElementsAttr(
           DenseElementsAttr::get(shaped_type, ArrayRef<uint16_t>(values)));
     }
     case 32: {
-      auto values = ReadAsLittleEndian<uint32_t>(buffer);
+      auto values = ReadAsHostEndian<uint32_t>(buffer);
       return mlir::ElementsAttr(
           DenseElementsAttr::get(shaped_type, ArrayRef<uint32_t>(values)));
     }
     case 64: {
-      auto values = ReadAsLittleEndian<uint64_t>(buffer);
+      auto values = ReadAsHostEndian<uint64_t>(buffer);
       return mlir::ElementsAttr(
           DenseElementsAttr::get(shaped_type, ArrayRef<uint64_t>(values)));
     }
