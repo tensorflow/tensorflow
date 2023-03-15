@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/attribute/attribute.h"
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/fuse_await_pass.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/parallelization.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/tf_to_mlrt.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/context.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
@@ -664,11 +666,19 @@ StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
       options, module,
       [&bytecode_buffer](mlir::PassManager& pm, mlir::ModuleOp module,
                          const TfrtPipelineOptions& options) {
+        // TODO(chky): Refactor this function to compiler directory.
         mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
         pm.addPass(mlrt_compiler::CreateParallelizationPass(
             options.cost_threshold, options.merge_inter_dependent_streams));
         pm.addPass(mlrt_compiler::CreateTfToMlrtConversionPass(options));
+
+        // Perform optimizations in the lowered MLIR.
+        pm.addNestedPass<mlir::func::FuncOp>(
+            mlrt_compiler::CreateFuseAwaitPass());
+        pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+        pm.addPass(mlir::createInlinerPass());
+        pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
 
         if (mlir::failed(pm.run(module)))
           return diag_handler.Combine(tensorflow::errors::Internal(

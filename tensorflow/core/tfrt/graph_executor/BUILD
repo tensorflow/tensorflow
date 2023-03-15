@@ -37,6 +37,7 @@ cc_library(
     deps = [
         ":graph_execution_options",
         "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/attribute",
+        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms:fuse_await_pass",
         "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms:parallelization",
         "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms:tf_to_mlrt",
         "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel",
@@ -82,6 +83,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Transforms",
         "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:bef",
         "@tf_runtime//:befexecutor",
