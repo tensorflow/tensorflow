@@ -33,7 +33,9 @@ from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.distribute.experimental import dtensor_util
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
@@ -398,22 +400,39 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
 
 def _convert_inputs_to_dtensor(inputs, mesh):
   """Convert any input types to DTensor instance."""
-  if d_api.is_dtensor(inputs):
-    return inputs
-  elif isinstance(inputs, dtensor_util.DTensorDistributedValue):
+  if isinstance(inputs, dtensor_util.DTensorDistributedValue):
     return inputs.get_dtensor()
   elif isinstance(inputs, values_lib.DistributedValues):
     return _convert_per_replica_to_dtensor(inputs, mesh)
   elif isinstance(inputs, input_util._DTensorIterator):   # pylint: disable=protected-access
     return inputs
+  elif tensor_util.is_tensor(inputs):
+    if context.executing_eagerly():
+      if d_api.is_dtensor(inputs):
+        return inputs
+      else:
+        # For a non-dtensor input in eager context, we could choose to replica
+        # them into per-replica and then pack them into dtensor. However, this
+        # will cause an eager/graph discrepancy since we can't do this check in
+        # the graph context. For now, we will ask user to provide a distributed
+        # value for inputs.
+        _raise_unsupported_input_type_error(inputs)
+    else:
+      # For graph context, since we can't check if they are dtensor or not. We
+      # will assume the value is already distributed. This is a critical use
+      # case for keras, where all the inputs are pre-distributed via strategy,
+      # and the train function execute within graph context.
+      return inputs
   else:
-    # For the rest of the types, we will convert it to dtensor.
-    # Any of the inputs will be replicate to all the devices.
-    # we infer the num_replica_in_sync from the mesh size, and this is only
-    # going to apply for the data parallel training
-    num_replica_in_sync = mesh.dim_size(_DEFAULT_BATCH_MESH_DIM_NAME)
-    values = [inputs for _ in range(num_replica_in_sync)]
-    return _convert_per_replica_to_dtensor(values_lib.PerReplica(values), mesh)
+    # For any other types.
+    _raise_unsupported_input_type_error(inputs)
+
+
+def _raise_unsupported_input_type_error(inputs):
+  raise ValueError('Unsupported input types for MirroredStrategy. '
+                   'Please use `strategy.distribute_dataset` or '
+                   '`strategy.distribute_values_from_function` to '
+                   f'distribute inputs. Received input type: {type(inputs)}')
 
 
 def _is_distributed_value(value):

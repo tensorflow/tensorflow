@@ -141,11 +141,21 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     def replica_fn(inputs):
       return inputs * 2.0
 
-    result = strategy.run(replica_fn, args=(tensor_input,))
-    self.assertIsInstance(result, dtensor_util.DTensorDistributedValue)
-    self.assertLen(result.values, 2)
-    self.assertAllClose(result.values[0], constant_op.constant([6.0]))
-    self.assertAllClose(result.values[1], constant_op.constant([6.0]))
+    with self.assertRaisesRegex(
+        ValueError, 'Unsupported input types for MirroredStrategy.'):
+      strategy.run(replica_fn, args=(tensor_input,))
+
+  def test_run_with_unsupported_input_types(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    random_inputs = [123, '456']
+
+    @def_function.function
+    def replica_fn(inputs):
+      return inputs * 2.0
+
+    with self.assertRaisesRegex(
+        ValueError, 'Unsupported input types for MirroredStrategy.'):
+      strategy.run(replica_fn, args=(random_inputs,))
 
   def test_run_with_distribute_value_input(self):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
@@ -211,8 +221,10 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
 
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
     tensor_input = constant_op.constant(3.0)
+    d_tensor_input = strategy.experimental_distribute_values_from_function(
+        lambda _: tensor_input)
 
-    result_1 = strategy.run(replica_fn_1, args=(tensor_input,))
+    result_1 = strategy.run(replica_fn_1, args=(d_tensor_input,))
     self.assertIsInstance(result_1, dtensor_util.DTensorDistributedValue)
     self.assertLen(result_1.values, 2)
     self.assertAllClose(result_1.values[0], constant_op.constant([6.0]))
@@ -241,6 +253,8 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
 
     tensor_input = constant_op.constant(3)
+    d_tensor_input = strategy.experimental_distribute_values_from_function(
+        lambda _: tensor_input)
 
     @def_function.function
     def replica_fn(inputs):
@@ -253,7 +267,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     with strategy.scope():
       self.assertIsNone(distribution_strategy_context.get_replica_context())
 
-      result = strategy.run(replica_fn, args=(tensor_input,))
+      result = strategy.run(replica_fn, args=(d_tensor_input,))
 
     self.assertLen(result.values, 2)
     self.assertAllClose(result.values[0], constant_op.constant([6]))
@@ -291,28 +305,17 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
     tensor_input = constant_op.constant([[3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
 
-    result = strategy.reduce(reduce_util.ReduceOp.MEAN, tensor_input, axis=None)
-    self.assertAllClose(result, tensor_input)
-
-    result = strategy.reduce(reduce_util.ReduceOp.MEAN, tensor_input, axis=0)
-    self.assertAllClose(result, constant_op.constant([5.0, 6.0]))
-
-    result = strategy.reduce(reduce_util.ReduceOp.MEAN, tensor_input, axis=1)
-    self.assertAllClose(result, constant_op.constant([3.5, 5.5, 7.5]))
+    with self.assertRaisesRegex(
+        ValueError, 'Unsupported input types for MirroredStrategy.'):
+      strategy.reduce(reduce_util.ReduceOp.MEAN, tensor_input, axis=0)
 
   def test_reduce_sum_non_dtensor_value(self):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
     tensor_input = constant_op.constant([[3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
 
     with self.assertRaisesRegex(
-        ValueError, 'cannot be reduced with the given reduce op ReduceOp.SUM'):
-      strategy.reduce(reduce_util.ReduceOp.SUM, tensor_input, axis=None)
-
-    result = strategy.reduce(reduce_util.ReduceOp.SUM, tensor_input, axis=0)
-    self.assertAllClose(result, constant_op.constant([30.0, 36.0]))
-
-    result = strategy.reduce(reduce_util.ReduceOp.SUM, tensor_input, axis=1)
-    self.assertAllClose(result, constant_op.constant([14.0, 22.0, 30.0]))
+        ValueError, 'Unsupported input types for MirroredStrategy.'):
+      strategy.reduce(reduce_util.ReduceOp.SUM, tensor_input, axis=0)
 
   def test_reduce_mean_distribute_value(self):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
