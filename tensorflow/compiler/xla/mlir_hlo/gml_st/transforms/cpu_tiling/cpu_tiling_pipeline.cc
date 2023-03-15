@@ -119,6 +119,7 @@ void addCPUTilingPipeline(OpPassManager& pm,
   if (options.enableFusionClusterOutlining) {
     pm.addPass(createFusionOutliningPass());
     pm.addPass(func::createDuplicateFunctionEliminationPass());
+    pm.addPass(createCSEPass());
   }
 
   if (options.lowerToMmt4d) {
