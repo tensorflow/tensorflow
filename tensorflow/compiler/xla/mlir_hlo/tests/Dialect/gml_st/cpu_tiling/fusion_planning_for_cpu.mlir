@@ -461,3 +461,20 @@ func.func @map_for_matmuls(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
 // CHECK:         gml_st.fusion
 // CHECK:           linalg.matmul
 // CHECK:           linalg.map
+
+// -----
+
+func.func @do_not_fuse_unsupported_op(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  %init = tensor.empty() : tensor<10xf32>
+  %negated = "mhlo.negate"(%arg0) : (tensor<10xf32>) -> tensor<10xf32>
+  %mapped = linalg.map { math.exp }
+              ins(%negated : tensor<10xf32>)
+              outs(%init : tensor<10xf32>)
+  return %mapped : tensor<10xf32>
+}
+
+// CHECK-LABEL: func @do_not_fuse_unsupported_op
+// CHECK:         tensor.empty
+// CHECK:         mhlo.negate
+// CHECK:         gml_st.fusion
+// CHECK:           linalg.map

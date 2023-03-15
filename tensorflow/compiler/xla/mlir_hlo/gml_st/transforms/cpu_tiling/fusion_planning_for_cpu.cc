@@ -60,6 +60,11 @@ bool isElementwiseOp(Operation* op) {
 
 // Returns true is consumer and producer should be fused and tiled together.
 bool allowedToFuse(Operation* consumerOp, Operation* producerOp) {
+  // Verify that only known ops are fused.
+  if (!isa<linalg::LinalgDialect, tensor::TensorDialect, thlo::THLODialect>(
+          producerOp->getDialect()))
+    return false;
+
   if (isa<thlo::ScatterOp, thlo::SortOp>(producerOp)) return false;
 
   if (isa<linalg::FillOp, tensor::EmptyOp>(producerOp)) {
@@ -96,7 +101,7 @@ LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
 
   for (auto& use : op->getUses()) {
     auto* useOp = use.getOwner();
-    // This op can be potentially fused into one of the consumens. Wait until
+    // This op can be potentially fused into one of the consumers. Wait until
     // that other op is processed.
     if (useOp && allowedToFuse(useOp, op.getOperation())) return failure();
   }
