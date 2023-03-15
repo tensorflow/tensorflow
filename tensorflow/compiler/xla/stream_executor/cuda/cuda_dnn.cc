@@ -4622,51 +4622,6 @@ GetCudnnFusedMHAOperationGraph(
 
 }  // namespace
 
-// // This method uses cudnn_frontend::cudnnException which is currently not
-// // recommended for use by Google. Hence commenting out this function until
-// this
-// // gets resolved.
-// static tsl::StatusOr<cudnn_frontend::ExecutionPlan>
-// GetExecPlanFromHeuristics( cudnn_frontend::OperationGraph&& opGraph, const
-// CudnnHandle& cudnn) {
-// #if (CUDNN_VERSION >= 8700)
-//   {
-//     auto heuristics = cudnn_frontend::EngineHeuristicsBuilder()
-//                           .setOperationGraph(opGraph)
-//                           .setHeurMode(CUDNN_HEUR_MODE_INSTANT)
-//                           .build();
-//     if (VLOG_IS_ON(4)) {
-//       VLOG(4) << "Heuristic has " << heuristics.getEngineConfigCount()
-//               << " configurations ";
-//     }
-//     if (heuristics.getEngineConfigCount() == 0) {
-//       return tsl::errors::Internal(
-//           "No engine configurations found for this opGraph and heuristics.");
-//     }
-//     auto& engine_config =
-//         heuristics.getEngineConfig(heuristics.getEngineConfigCount());
-
-//     // Try engine configs returned by the heuristics and pick up the first
-//     one
-//     // that works.
-//     for (auto& ecfg : engine_config) {
-//       try {
-//         auto plan = cudnn_frontend::ExecutionPlanBuilder()
-//                         .setHandle(cudnn.handle())
-//                         .setEngineConfig(ecfg, opGraph.getTag())
-//                         .build();
-//         return plan;
-//       } catch (cudnn_frontend::cudnnException& e) {
-//         continue;
-//       }
-//     }
-//     return tsl::errors::Internal("No Plan found.");
-//   }
-// #else
-//   return tsl::errors::Unimplemented("Supported only for cuDNN >= 8.7.0");
-// #endif
-// }
-
 static tsl::StatusOr<cudnn_frontend::ExecutionPlan> RebuildExecutionPlan(
     const CudnnHandle& cudnn, const dnn::AlgorithmDesc& desc,
     const cudnn_frontend::OperationGraph& op_graph) {
@@ -6126,13 +6081,6 @@ CudnnSupport::FusedMHASoftmaxRunnerFromDesc(
                           bmm2_rhs_descriptor, intermediate_bmm2_lhs_descriptor,
                           empty_mask_desc, empty_bias_desc, output_descriptor,
                           kind, dropout_rate, seed, cudnn, 1.0f, use_dropout));
-  // The function  GetExecPlanFromHeuristics uses cudnn_frontend::cudnnException
-  // which is currently not
-  // recommended for use by Google. Hence commenting out the call.
-  // TODO - Create a status wrapper to wrap the exception to avoid it being
-  // exposed to the runtime. TF_ASSIGN_OR_RETURN(auto execution_plan,
-  //                       GetExecPlanFromHeuristics(std::move(*op_graph),
-  //                       cudnn));
 
   TF_ASSIGN_OR_RETURN(auto execution_plan,
                       RebuildExecutionPlan(cudnn, algorithm_desc, *op_graph));
@@ -6175,13 +6123,6 @@ CudnnSupport::FusedMHAScaleMaskSoftmaxRunnerFromDesc(
                           mask_descriptor, empty_bias_desc, output_descriptor,
                           kind, dropout_rate, seed, cudnn, scale, use_dropout,
                           /*use_mask*/ true));
-  // The function  GetExecPlanFromHeuristics uses cudnn_frontend::cudnnException
-  // which is currently not
-  // recommended for use by Google. Hence commenting out the call.
-  // TODO - Create a status wrapper to wrap the exception to avoid it being
-  // exposed to the runtime. TF_ASSIGN_OR_RETURN(auto execution_plan,
-  //                       GetExecPlanFromHeuristics(std::move(*op_graph),
-  //                       cudnn));
 
   TF_ASSIGN_OR_RETURN(auto execution_plan,
                       RebuildExecutionPlan(cudnn, algorithm_desc, *op_graph));
@@ -6220,13 +6161,6 @@ CudnnSupport::FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
                           mask_descriptor, bias_descriptor, output_descriptor,
                           kind, dropout_rate, seed, cudnn, scale, use_dropout,
                           /*use_mask*/ true, /*use_bias*/ true));
-  // The function  GetExecPlanFromHeuristics uses cudnn_frontend::cudnnException
-  // which is currently not
-  // recommended for use by Google. Hence commenting out the call.
-  // TODO - Create a status wrapper to wrap the exception to avoid it being
-  // exposed to the runtime. TF_ASSIGN_OR_RETURN(auto execution_plan,
-  //                       GetExecPlanFromHeuristics(std::move(*op_graph),
-  //                       cudnn));
 
   TF_ASSIGN_OR_RETURN(auto execution_plan,
                       RebuildExecutionPlan(cudnn, algorithm_desc, *op_graph));
@@ -6268,13 +6202,6 @@ CudnnSupport::FusedMHAScaleBiasSoftmaxRunnerFromDesc(
                           empty_mask_desc, bias_descriptor, output_descriptor,
                           kind, dropout_rate, seed, cudnn, scale, use_dropout,
                           /*use_mask*/ false, /*use_bias*/ true));
-  // The function  GetExecPlanFromHeuristics uses cudnn_frontend::cudnnException
-  // which is currently not
-  // recommended for use by Google. Hence commenting out the call.
-  // TODO - Create a status wrapper to wrap the exception to avoid it being
-  // exposed to the runtime. TF_ASSIGN_OR_RETURN(auto execution_plan,
-  //                       GetExecPlanFromHeuristics(std::move(*op_graph),
-  //                       cudnn));
 
   TF_ASSIGN_OR_RETURN(auto execution_plan,
                       RebuildExecutionPlan(cudnn, algorithm_desc, *op_graph));
