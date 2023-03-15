@@ -201,6 +201,7 @@ py_library(
     deps = [
         ":executor",
         ":monitoring",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:device",
         "//tensorflow/python:device_spec",
