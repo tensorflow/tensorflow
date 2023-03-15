@@ -830,6 +830,11 @@ HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
   typed_visitors_[C128] =
       std::make_unique<HloEvaluatorTypedVisitor<complex128>>(this);
 
+  typed_visitors_[U4] =
+      std::make_unique<HloEvaluatorTypedVisitor<u4, uint64_t>>(this);
+  typed_visitors_[S4] =
+      std::make_unique<HloEvaluatorTypedVisitor<s4, int64_t>>(this);
+
   // Most of the evaluator computations we use don't support BF16 and F8 (e.g.,
   // std::ceil, std::tanh). To make evaluator work with these dtypes, we set all
   // elementwise computations to be done in F32 and do BF16<->F32 or F8<->F32

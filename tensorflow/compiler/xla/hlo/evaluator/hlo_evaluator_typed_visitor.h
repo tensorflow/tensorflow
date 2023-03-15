@@ -103,6 +103,38 @@ auto ToArithmeticSafeType(T t) {
   }
 }
 
+// std::make_signed_t is “behavior undefined” for custom types, so provide a
+// general util to make signed/unsigned for both primitive and custom types.
+template <typename T>
+struct MakeSigned {
+  using type = std::make_signed_t<T>;
+};
+
+template <>
+struct MakeSigned<u4> {
+  using type = s4;
+};
+
+template <>
+struct MakeSigned<s4> {
+  using type = s4;
+};
+
+template <typename T>
+struct MakeUnsigned {
+  using type = std::make_unsigned_t<T>;
+};
+
+template <>
+struct MakeUnsigned<u4> {
+  using type = u4;
+};
+
+template <>
+struct MakeUnsigned<s4> {
+  using type = u4;
+};
+
 // Templated DfsHloVisitor for use by HloEvaluator.
 //
 // Typically ReturnT here indicates the resulting literal type of each evaluated
@@ -396,7 +428,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   Status HandleSign(HloInstruction* sign) override {
-    using NativeT = ReturnT;
+    using NativeT = ElementwiseT;
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[sign],
         ElementWiseUnaryOp(sign, [](ElementwiseT elem_operand) {
@@ -672,16 +704,16 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   Status HandleShiftRightArithmetic(HloInstruction* shr) override {
     if constexpr (std::is_integral_v<ElementwiseT> &&
                   !std::is_same_v<ElementwiseT, bool>) {
-      using SignedT = std::make_signed_t<ReturnT>;
+      using SignedT = typename MakeSigned<ReturnT>::type;
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[shr],
           ElementWiseBinaryOp(
               shr, [](ElementwiseT lhs_elem, ElementwiseT rhs_elem) {
                 SignedT lhs_signed = static_cast<SignedT>(lhs_elem);
                 if (IsShiftOutOfBounds<ReturnT>(rhs_elem)) {
-                  return lhs_signed < 0 ? static_cast<SignedT>(-1) : 0;
+                  return lhs_signed < 0 ? static_cast<ElementwiseT>(-1) : 0;
                 } else {
-                  return lhs_signed >> rhs_elem;
+                  return static_cast<ElementwiseT>(lhs_signed >> rhs_elem);
                 }
               }));
       return OkStatus();
@@ -692,7 +724,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   Status HandleShiftRightLogical(HloInstruction* shr) override {
     if constexpr (std::is_integral_v<ElementwiseT> &&
                   !std::is_same_v<ElementwiseT, bool>) {
-      using UnsignedT = std::make_unsigned_t<ReturnT>;
+      using UnsignedT = typename MakeUnsigned<ReturnT>::type;
       TF_ASSIGN_OR_RETURN(parent_->evaluated_[shr],
                           ElementWiseBinaryOp(shr, [](ElementwiseT lhs_elem,
                                                       ElementwiseT rhs_elem) {
@@ -1731,9 +1763,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[clz],
           ElementWiseUnaryOp(clz, [](ElementwiseT elem_operand) {
-            using UnsignedT = std::make_unsigned_t<ReturnT>;
-            return (std::numeric_limits<UnsignedT>::digits - 1) -
-                   Log2Floor<UnsignedT>(elem_operand);
+            int64_t unsigned_digits = std::numeric_limits<ReturnT>::digits +
+                                      std::numeric_limits<ReturnT>::is_signed;
+            return (unsigned_digits - 1) - Log2Floor<uint64_t>(elem_operand);
           }));
       return OkStatus();
     }
@@ -1993,7 +2025,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           // i.e., [low, high], but we want [low, high) instead. Hence high-1 is
           // used as the upper range.
           std::uniform_int_distribution<int64_t> generator(
-              low.Get<ReturnT>({}), high.Get<ReturnT>({}) - 1);
+              static_cast<int64_t>(low.Get<ReturnT>({})),
+              static_cast<int64_t>(high.Get<ReturnT>({})) - 1);
 
           TF_RETURN_IF_ERROR(result.Populate<ReturnT>(
               [&](absl::Span<const int64_t> /*indexes*/) {
@@ -2288,9 +2321,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   template <typename NativeT>
-  static bool IsShiftOutOfBounds(NativeT rhs) {
-    using UnsignedT = std::make_unsigned_t<NativeT>;
-    UnsignedT lhs_bits_unsigned = std::numeric_limits<UnsignedT>::digits;
+  static bool IsShiftOutOfBounds(ElementwiseT rhs) {
+    using UnsignedT = typename MakeUnsigned<NativeT>::type;
+    UnsignedT lhs_bits_unsigned =
+        static_cast<UnsignedT>(std::numeric_limits<UnsignedT>::digits);
     UnsignedT rhs_unsigned = static_cast<UnsignedT>(rhs);
     return rhs_unsigned >= lhs_bits_unsigned;
   }
@@ -2302,10 +2336,12 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 // instantiating it.  We explicitly instantiate this class in the various
 // hlo_evaluator_typed_visitor*.cc files.
 extern template class HloEvaluatorTypedVisitor<bool>;
+extern template class HloEvaluatorTypedVisitor<u4, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<uint8_t, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<uint16_t, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<uint32_t, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<uint64_t>;
+extern template class HloEvaluatorTypedVisitor<s4, int64_t>;
 extern template class HloEvaluatorTypedVisitor<int8_t, int64_t>;
 extern template class HloEvaluatorTypedVisitor<int16_t, int64_t>;
 extern template class HloEvaluatorTypedVisitor<int32_t, int64_t>;
