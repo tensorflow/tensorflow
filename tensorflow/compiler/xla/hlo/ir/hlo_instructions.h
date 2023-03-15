@@ -1789,16 +1789,10 @@ class HloSelectAndScatterInstruction : public HloInstruction {
   }
 
   void set_select(HloComputation* computation) {
-    // Don't allow changing the computation for fused instructions so we don't
-    // have to recompute called_instructions for the entire fusion instruction.
-    CHECK(!IsFused());
     set_called_computation(kSelectComputationIndex, computation);
   }
 
   void set_scatter(HloComputation* computation) {
-    // Don't allow changing the computation for fused instructions so we don't
-    // have to recompute called_instructions for the entire fusion instruction.
-    CHECK(!IsFused());
     set_called_computation(kScatterComputationIndex, computation);
   }
   // Returns a serialized representation of this instruction.

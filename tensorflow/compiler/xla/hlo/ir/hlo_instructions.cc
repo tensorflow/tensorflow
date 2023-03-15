@@ -2114,7 +2114,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
 }
 
 HloComputation* HloFusionInstruction::fused_instructions_computation() const {
-  CHECK(!called_computations().empty());
+  CHECK_EQ(called_computations().size(), 1);
   auto* fused_instructions_computation = called_computations().front();
   CHECK(fused_instructions_computation->IsFusionComputation())
       << "Computation " << fused_instructions_computation->name()
