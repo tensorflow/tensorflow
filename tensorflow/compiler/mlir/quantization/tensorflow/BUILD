@@ -240,6 +240,20 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
+    name = "convert_tpu_model_to_cpu_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/convert_tpu_model_to_cpu.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/convert_tpu_model_to_cpu.td",
+    deps = [":quant_td_files"],
+)
+
+gentbl_cc_library(
     name = "post_quantize_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
@@ -353,6 +367,7 @@ cc_library(
         "passes/convert_fake_quant_to_qdq.cc",
         "passes/convert_tf_quant_ops_to_mhlo.cc",
         "passes/convert_tpu_model_to_cpu.cc",
+        "passes/convert_tpu_model_to_cpu.inc",
         "passes/duplicate_shape_determining_constants.cc",
         "passes/insert_custom_aggregation_ops.cc",
         "passes/insert_main_function.cc",

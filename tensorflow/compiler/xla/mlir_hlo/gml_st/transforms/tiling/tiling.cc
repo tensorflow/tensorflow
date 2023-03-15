@@ -18,42 +18,18 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
-#include <sstream>
-#include <string>
 #include <utility>
 
-#include "gml_st/IR/gml_st_ops.h"
-#include "gml_st/transforms/passes.h"
-#include "gml_st/transforms/transforms.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Linalg/IR/Linalg.h"
-#include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 namespace gml_st {
-
-void TilingOptions::setTileSizeComputationFn(ArrayRef<int64_t> ts) {
-  SmallVector<int64_t, 4> tileSizes(ts.begin(), ts.end());
-  tileSizeComputationFn = [tileSizes](OpBuilder &b, Operation *op) {
-    return llvm::to_vector<4>(map_range(tileSizes, [&](int64_t s) {
-      return b.create<arith::ConstantIndexOp>(op->getLoc(), s).getResult();
-    }));
-  };
-}
-
 namespace {
-
-constexpr llvm::StringRef kTileAppliedLabel = "__tile_applied_label__";
 
 // Compute tile size for the tile that starts at `offset`, has size `tileSize`
 // for the tensor with the dimension size `dimSize`.
@@ -139,50 +115,6 @@ scf::ForallOp generateTileLoopNest(OpBuilder &builder, Location loc,
   return loop;
 }
 
-/// Pattern to tile an op that implements the `TilingInterface` using
-/// `gml_st.for` for iterating over the tiles.
-struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
-  TilingPattern(MLIRContext *context,
-                llvm::function_ref<LogicalResult(TilingInterface)> filterFn,
-                TilingOptions options, bool distribute,
-                PatternBenefit benefit = 1)
-      : OpInterfaceRewritePattern<TilingInterface>(context, benefit),
-        filterFn(filterFn),
-        options(std::move(options)),
-        distribute(distribute) {}
-
-  LogicalResult matchAndRewrite(TilingInterface op,
-                                PatternRewriter &rewriter) const override {
-    if (!filterFn || failed(filterFn(op)) || hasLabel(op, kTileAppliedLabel))
-      return failure();
-
-    if (distribute) {
-      auto tilingResult = tileUsingGmlSt(options, rewriter, op);
-      if (failed(tilingResult)) return failure();
-
-      if (tilingResult->loop != nullptr) {
-        rewriter.replaceOp(op, tilingResult->loop->getResults());
-      }
-      setLabel(tilingResult->tiledOps.front(), kTileAppliedLabel);
-    } else {
-      scf::SCFTilingOptions opts;
-      opts.setTileSizeComputationFunction(options.tileSizeComputationFn);
-      auto tilingResult = scf::tileUsingSCFForOp(rewriter, op, opts);
-      if (failed(tilingResult)) return failure();
-      if (!tilingResult->loops.empty()) {
-        rewriter.replaceOp(op, tilingResult->replacements);
-      }
-      setLabel(tilingResult->tiledOps.front(), kTileAppliedLabel);
-    }
-    return success();
-  }
-
- private:
-  llvm::function_ref<LogicalResult(TilingInterface)> filterFn;
-  TilingOptions options;
-  bool distribute;
-};
-
 void updateOutputs(const TilingResult &tilingResult, ValueRange dstOperands) {
   scf::ForallOp parallelLoop = tilingResult.loop;
 
@@ -202,11 +134,17 @@ void updateOutputs(const TilingResult &tilingResult, ValueRange dstOperands) {
 
 }  // namespace
 
-FailureOr<TilingResult> tileUsingGmlSt(const TilingOptions &options,
-                                       PatternRewriter &rewriter,
-                                       TilingInterface op) {
+scf::SCFTilingOptions getSCFTilingOptions(ArrayRef<int64_t> tileSizes) {
+  scf::SCFTilingOptions opts;
+  opts.setTileSizes(tileSizes);
+  return opts;
+}
+
+FailureOr<TilingResult> tileUsingSCFForallOp(
+    const scf::SCFTilingOptions &options, PatternRewriter &rewriter,
+    TilingInterface op) {
   rewriter.setInsertionPoint(op);
-  if (!options.tileSizeComputationFn) {
+  if (!options.tileSizeComputationFunction) {
     return rewriter.notifyMatchFailure(
         op, "missing tile size computation function");
   }
@@ -224,7 +162,7 @@ FailureOr<TilingResult> tileUsingGmlSt(const TilingOptions &options,
   SmallVector<Value> tileSizeVector;
   {
     OpBuilder::InsertionGuard guard(rewriter);
-    tileSizeVector = options.tileSizeComputationFn(rewriter, op);
+    tileSizeVector = options.tileSizeComputationFunction(rewriter, op);
   }
 
   if (tileSizeVector.size() < iterationDomain.size()) {
@@ -280,10 +218,6 @@ FailureOr<TilingResult> tileUsingGmlSt(const TilingOptions &options,
   // 6. Update the uses of `outputs` with the output bbArgs.
   updateOutputs(tilingResult, dstOperands);
   return tilingResult;
-}
-
-void removeTilingLabels(Operation *op) {
-  op->walk([](Operation *op) { removeLabel(op, kTileAppliedLabel); });
 }
 
 SmallVector<Value> getYieldedValues(scf::InParallelOp inParallelOp) {

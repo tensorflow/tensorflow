@@ -568,3 +568,4 @@ tensorflow::dtensor::SetIteratorElementLayouts
 
 [//tensorflow/dtensor/cc:tensor_layout] # DTensor
 tensorflow::dtensor::Mesh
+tensorflow::dtensor::Layout

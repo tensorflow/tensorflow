@@ -311,6 +311,9 @@ class DTensorDevice {
                                  const std::vector<std::string>& string_layouts,
                                  TF_Status* status);
 
+  std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>
+  Disassemble(TensorWithLayout* t, TF_Status* status);
+
  private:
   DTensorDevice(absl::string_view name,
                 std::unique_ptr<ParallelExecutor> parallel_executor)
@@ -635,8 +638,6 @@ std::unique_ptr<TensorWithLayout> DTensorDevice::Broadcast(
 
   TF_Tensor* tf_tensor = TFE_TensorHandleResolve(input, status);
   if (TF_GetCode(status) != TF_OK) {
-    TF_SetStatus(status, TF_INVALID_ARGUMENT,
-                 "Failed to resolve the input to tensor.");
     return nullptr;
   }
   std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> resolved_tensor(
@@ -1216,6 +1217,83 @@ void DTensorDevice::SetIteratorElementLayouts(
                    return Layout::FromString(layout_str).value();
                  });
   RETURN_C_STATUS_IF_NOT_OK(t->UpdateElementLayouts(layouts), status);
+}
+
+std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>
+DTensorDevice::Disassemble(TensorWithLayout* t, TF_Status* status) {
+  if (parallel_executor_) {
+    StatusOr<
+        std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>>
+        tensor_with_layouts = parallel_executor_->Disassemble(t);
+    if (tensor_with_layouts.ok()) {
+      TF_SetStatus(status, TF_INTERNAL,
+                   absl::StrCat("Failed in Disassemble of parallel executor ",
+                                tensor_with_layouts.status().ToString())
+                       .c_str());
+      return {};
+    }
+    return *std::move(tensor_with_layouts);
+  }
+  std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>
+      tensor_with_layouts;
+  const MeshWithParallelDevice* mesh_with_parallel_device =
+      mesh_to_device_map_[t->mesh()].get();
+  if (mesh_with_parallel_device == nullptr) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 absl::StrCat("Mesh in Unpack: ", t->mesh().ToString(),
+                              "is not registered with DTensor")
+                     .c_str());
+    return tensor_with_layouts;
+  }
+  const int output_size = t->num_tensors();
+  const parallel_device::ParallelDevice& parallel_device =
+      mesh_with_parallel_device->parallel_device();
+  if (output_size != parallel_device.num_underlying_devices()) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 absl::StrCat("The output size is ", output_size,
+                              " but the number of underlying devices is ",
+                              parallel_device.num_underlying_devices())
+                     .c_str());
+    return tensor_with_layouts;
+  }
+
+  tensor_with_layouts.reserve(output_size);
+  for (int output_index = 0; output_index < output_size; ++output_index) {
+    const std::string& underlying_device =
+        parallel_device.underlying_devices()[output_index];
+    TFE_TensorHandle* copied_tensor =
+        TFE_TensorHandleCopySharingTensor(t->get_tensor(output_index), status);
+    if (TF_GetCode(status) != TF_OK) {
+      return tensor_with_layouts;
+    }
+    StatusOr<Mesh> single_device_mesh =
+        Mesh::GetSingleDeviceMesh(underlying_device);
+    if (!single_device_mesh.ok()) {
+      TF_SetStatus(status, TF_INTERNAL,
+                   absl::StrCat("Failed to create single device mesh ",
+                                single_device_mesh.status().ToString())
+                       .c_str());
+      return tensor_with_layouts;
+    }
+    StatusOr<Layout> single_device_layout =
+        Layout::GetSingleDeviceLayout(*single_device_mesh);
+    if (!single_device_layout.ok()) {
+      TF_SetStatus(status, TF_INTERNAL,
+                   absl::StrCat("Failed to create single device layout ",
+                                single_device_layout.status().ToString())
+                       .c_str());
+      return tensor_with_layouts;
+    }
+    parallel_device::TensorHandlePtr single_tensor(copied_tensor);
+    std::unique_ptr<TensorWithLayoutTf> tensor_with_layout =
+        TensorWithLayoutTf::Wrap(std::move(single_tensor), *single_device_mesh,
+                                 *single_device_layout, status);
+    if (TF_GetCode(status) != TF_OK) {
+      return tensor_with_layouts;
+    }
+    tensor_with_layouts.push_back(std::move(tensor_with_layout));
+  }
+  return tensor_with_layouts;
 }
 
 // From `graph` containing computation for all meshes, extract/select
@@ -2029,10 +2107,10 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
   }
   TFE_TensorHandle** inputs = inputs_vector.data();
   if (!default_mesh_) {
-    RETURN_STATUS(
-        status, TF_INVALID_ARGUMENT,
-        "No default mesh has been registered to DTensor. Use dtensor.run_on to "
-        "explicit specify a mesh.");
+    RETURN_STATUS(status, TF_INVALID_ARGUMENT,
+                  "No default mesh has been registered to DTensor. Use "
+                  "dtensor.default_mesh to "
+                  "explicit specify a mesh.");
   }
   FunctionLibraryDefinition* flib_def =
       tensorflow::unwrap(context)->FuncLibDef();

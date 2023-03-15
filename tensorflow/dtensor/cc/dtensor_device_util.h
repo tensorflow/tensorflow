@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -187,6 +188,12 @@ class TensorWithLayoutTf
       std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
       const Layout& layout);
 
+  // Given a single tensor, wraps it with a single device mesh and a single
+  // device layout.
+  static std::unique_ptr<TensorWithLayoutTf> Wrap(
+      parallel_device::TensorHandlePtr single_tensor, const Mesh& mesh,
+      const Layout& layout, TF_Status* status);
+
   // Creates a dummy TensorWithLayoutTf without holding a ParallelTensor.
   static std::unique_ptr<TensorWithLayoutTf> Dummy(
       const std::vector<int64_t>& local_shape, TF_DataType dtype,
@@ -246,7 +253,25 @@ class TensorWithLayoutTf
     const_value_node_ = std::make_unique<ConstValueNode>(const_value);
   }
 
+  TensorWithLayoutTf(parallel_device::TensorHandlePtr single_tensor,
+                     const Mesh& mesh, const Layout& layout,
+                     const std::vector<int64_t>& local_shape,
+                     std::optional<TF_DataType> dtype = std::nullopt,
+                     std::optional<NodeDef> const_value = std::nullopt)
+      : single_tensor_(std::move(single_tensor)),
+        layout_(layout),
+        mesh_(mesh),
+        local_shape_(local_shape),
+        dtype_(dtype) {
+    const_value_node_ = std::make_unique<ConstValueNode>(const_value);
+  }
+
   std::unique_ptr<parallel_device::ParallelTensor> tensor_;
+
+  // Holds the tensor but not the underlying device. This is only used when the
+  // `layout_` is a single device layout and the `mesh_` is a single device
+  // mesh.
+  parallel_device::TensorHandlePtr single_tensor_;
 
   Layout layout_;
 
@@ -438,7 +463,8 @@ class SparseTensorWithLayout
       std::optional<TF_DataType> dtype = std::nullopt,
       std::optional<NodeDef> const_value = std::nullopt)
       : llvm::RTTIExtends<SparseTensorWithLayout, TensorWithLayoutTf>(
-            nullptr, mesh, layout, local_shape),
+            std::unique_ptr<parallel_device::ParallelTensor>(), mesh, layout,
+            local_shape),
         indices_(std::move(indices)),
         values_(std::move(values)),
         dense_shapes_(std::move(dense_shapes)) {}

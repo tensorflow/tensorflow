@@ -42,6 +42,7 @@ using tensorflow::dtensor::FetchLayout;
 using tensorflow::dtensor::GetFunctionCacheStats;
 using tensorflow::dtensor::IsDTensor;
 using tensorflow::dtensor::IsSparseDTensor;
+using tensorflow::dtensor::Layout;
 using tensorflow::dtensor::Mesh;
 using tensorflow::dtensor::Pack;
 using tensorflow::dtensor::SetIteratorElementLayouts;
@@ -438,5 +439,59 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
            "Returns True if Mesh will use XLA for SPMD "
            "instead of DTensor SPMD.")
       .def("as_proto", &Mesh::ToProto,
-           "Returns the MeshProto protobuf message.");
+           "Returns the MeshProto protobuf message.")
+      .def("device_location", [](const Mesh& mesh, int device_id) {
+        auto location = mesh.device_location(device_id);
+        if (!location.ok()) {
+          throw py::value_error(location.status().error_message());
+        }
+        return std::vector<int64_t>(location->begin(), location->end());
+      });
+  py::class_<Layout>(m, "Layout")
+      .def(py::init(
+          [](const std::vector<std::string>& sharding_specs, const Mesh& mesh) {
+            auto layout = Layout::GetLayout(sharding_specs, mesh);
+            if (!layout.ok()) {
+              throw py::value_error(layout.status().error_message());
+            }
+            return *layout;
+          }))
+      .def(py::init([](const tensorflow::dtensor::LayoutProto& proto) {
+             auto layout = Layout::FromProto(proto);
+             if (!layout.ok()) {
+               throw py::value_error(layout.status().error_message());
+             }
+             return *layout;
+           }),
+           "Returns a Layout from a LayoutProto.")
+      .def(py::init([](std::string_view layout_str) {
+             auto layout = Layout::FromString(layout_str);
+             if (!layout.ok()) {
+               throw py::value_error(layout.status().error_message());
+             }
+             return *layout;
+           }),
+           "Returns a Layout from a string.")
+      .def(py::init(&Layout::ReplicatedOnMesh), py::arg("mesh"),
+           py::arg("rank"), "Returns a replicated layout.")
+      .def(py::init(&Layout::BatchShardedOnMesh), py::arg("mesh"),
+           py::arg("rank"), py::arg("batch_dim"), py::arg("axis"),
+           "Returns a batch sharded layout.")
+      .def("__eq__", &Layout::operator==)
+      .def("as_proto", &Layout::ToProto)
+      .def("to_string", &Layout::ToString)
+      .def_property_readonly("sharding_specs", &Layout::sharding_spec_strs)
+      .def_property_readonly("rank", &Layout::rank)
+      .def_property_readonly("mesh", &Layout::mesh)
+      .def("is_fully_replicated", &Layout::IsFullyReplicated,
+           "Returns True if all tensor axes are replicated.")
+      .def("is_batch_parallel",
+           [](const Layout& layout) { return layout.IsBatchParallel(); })
+      .def(
+          "num_shards",
+          [](const Layout& layout, int dim) {
+            return layout.num_shards_for_dim(dim);
+          },
+          py::arg("idx"),
+          "Returns the number of shards for tensor dimension `idx`.");
 }

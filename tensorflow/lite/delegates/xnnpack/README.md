@@ -443,6 +443,10 @@ Below is the list of currently supported floating-point operators:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+#### `TANH`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 #### `TRANSPOSE`
 
 * The first input and the output must be in 32-bit floating-point format.
@@ -689,6 +693,10 @@ Below is the list of currently supported quantized operators:
 * Inputs and outputs must be in 8-bit quantized format.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `TANH`
+
+* Inputs and outputs must be in 8-bit quantized format.
 
 #### `TRANSPOSE`
 

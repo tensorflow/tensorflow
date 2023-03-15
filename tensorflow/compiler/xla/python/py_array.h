@@ -224,6 +224,13 @@ class PyArray : public pybind11::object {
   StatusOr<PyArray> CopyToDeviceWithSharding(ifrt::DeviceList devices,
                                              pybind11::object dst_sharding);
 
+  static StatusOr<PyArray> BatchedDevicePut(
+      pybind11::object aval, pybind11::object sharding,
+      std::vector<pybind11::object> xs,
+      std::vector<ClientAndPtr<PjRtDevice>> dst_devices, bool committed,
+      bool force_copy, PjRtClient::HostBufferSemantics host_buffer_semantics,
+      bool jax_enable_x64);
+
  private:
   StatusOr<PyBuffer::object> FetchSingleShard(std::string_view api);
 

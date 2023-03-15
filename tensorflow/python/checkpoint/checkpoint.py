@@ -2298,10 +2298,18 @@ class Checkpoint(autotrackable.AutoTrackable):
     Returns:
       The full path to the checkpoint (i.e. `file_prefix`).
     """
+    # Triggers TF2 async checkpoint handling if:
+    # 1. async checkpoint is enabled in CheckpointOptions
+    # 2. running in eager mode
     if options and options.experimental_enable_async_checkpoint:
       self._checkpoint_options = options
-      return self._async_checkpointer()._write(  # pylint: disable=protected-access
-          file_prefix, options, write_done_callback)
+      if context.executing_eagerly():
+        return self._async_checkpointer()._write(  # pylint: disable=protected-access
+            file_prefix, options, write_done_callback)
+      else:
+        logging.warning(
+            "Saving async checkpoint in graph mode is currently not supported;"
+            " switching to regular sync checkpoint instead.")
 
     start_time = time.time()
     options = options or checkpoint_options.CheckpointOptions()
@@ -2395,9 +2403,17 @@ class Checkpoint(autotrackable.AutoTrackable):
     Returns:
       The full path to the checkpoint.
     """
+    # Triggers TF2 async checkpoint handling if:
+    # 1. async checkpoint is enabled in CheckpointOptions
+    # 2. running in eager mode
     if options and options.experimental_enable_async_checkpoint:
       self._checkpoint_options = options
-      return self._async_checkpointer().save(file_prefix, options)
+      if context.executing_eagerly():
+        return self._async_checkpointer().save(file_prefix, options)
+      else:
+        logging.warning(
+            "Saving async checkpoint in graph mode is currently not supported;"
+            " switching to regular sync checkpoint instead.")
 
     if isinstance(file_prefix, os.PathLike):
       file_prefix = os.fspath(file_prefix)
@@ -2477,9 +2493,18 @@ class Checkpoint(autotrackable.AutoTrackable):
     """
     if options and options.experimental_enable_async_checkpoint:
       self._checkpoint_options = options
+    # Triggers TF2 async checkpoint handling if:
+    # 1. async checkpoint is enabled in CheckpointOptions
+    # 2. there's a preceeding async save/write
+    # 3. running in eager mode
     if (self._checkpoint_options and
         self._checkpoint_options.experimental_enable_async_checkpoint):
-      return self._async_checkpointer().read(save_path, options)
+      if context.executing_eagerly():
+        return self._async_checkpointer().read(save_path, options)
+      else:
+        logging.warning(
+            "Saving async checkpoint in graph mode is currently not supported;"
+            " switching to regular sync checkpoint instead.")
 
     start_time = time.time()
     if isinstance(save_path, os.PathLike):
@@ -2599,9 +2624,18 @@ class Checkpoint(autotrackable.AutoTrackable):
     """
     if options and options.experimental_enable_async_checkpoint:
       self._checkpoint_options = options
+    # Triggers TF2 async checkpoint handling if:
+    # 1. async checkpoint is enabled in CheckpointOptions
+    # 2. there's a preceeding async save/write
+    # 3. running in eager mode
     if (self._checkpoint_options and
         self._checkpoint_options.experimental_enable_async_checkpoint):
-      return self._async_checkpointer().restore(save_path, options)
+      if context.executing_eagerly():
+        return self._async_checkpointer().restore(save_path, options)
+      else:
+        logging.warning(
+            "Saving async checkpoint in graph mode is currently not supported;"
+            " switching to regular sync checkpoint instead.")
 
     orig_save_path = save_path
     if isinstance(save_path, os.PathLike):

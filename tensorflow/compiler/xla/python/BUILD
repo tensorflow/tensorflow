@@ -310,6 +310,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":exceptions",
+        "//tensorflow/compiler/xla/pjrt:lru_cache",
         "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/python/lib/core:numpy",
         ":pprof_profile_builder",

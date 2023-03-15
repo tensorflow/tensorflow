@@ -98,8 +98,8 @@ TEST(FileUtilsTest, AtomicallyWriteTFRecord) {
   TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
   std::string test_file = tsl::io::JoinPath(directory, "test_file");
   Tensor out = CreateTensor<int64_t>(TensorShape({2}), {1, 2});
-  TF_ASSERT_OK(AtomicallyWriteTFRecord(
-      test_file, out, tsl::io::compression::kSnappy, tsl::Env::Default()));
+  TF_ASSERT_OK(AtomicallyWriteTFRecords(
+      test_file, {out}, tsl::io::compression::kSnappy, tsl::Env::Default()));
 
   std::vector<Tensor> in;
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));

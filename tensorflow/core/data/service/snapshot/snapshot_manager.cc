@@ -32,7 +32,10 @@ limitations under the License.
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/status_to_from_proto.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -97,6 +100,14 @@ Status SnapshotManager::Resume() {
     mode_ = Mode::kDone;
     LOG(INFO) << "attempted to recover snapshot at " << path_
               << " but it's already done";
+    return OkStatus();
+  }
+  if (env_->FileExists(SnapshotErrorFilePath(path_)).ok()) {
+    mode_ = Mode::kError;
+    StatusProto status_proto;
+    TF_RETURN_IF_ERROR(
+        ReadTextProto(env_, SnapshotErrorFilePath(path_), &status_proto));
+    status_ = tsl::StatusFromProto(status_proto);
     return OkStatus();
   }
   TF_RETURN_IF_ERROR(ReadOnDiskMetadata());
@@ -253,6 +264,23 @@ Status SnapshotManager::HandleStreamCompletion(
   return OkStatus();
 }
 
+Status SnapshotManager::HandleStreamError(const StatusProto& status_proto) {
+  // This method returns an OkStatus as the RPC status if the worker reports an
+  // error. The errors are communicated back to the workers with a proper RPC
+  // response, instead of with a error status.
+  if (!status_.ok()) {
+    return OkStatus();
+  }
+
+  mode_ = Mode::kError;
+  status_ = tsl::StatusFromProto(status_proto);
+  TF_RETURN_IF_ERROR(AtomicallyWriteTextProto(SnapshotErrorFilePath(path_),
+                                              status_proto, env_));
+  LOG(ERROR) << "Failed to write tf.data distributed snapshot at " << path_
+             << ". Status: " << status_.ToString();
+  return OkStatus();
+}
+
 std::optional<int64_t> SnapshotManager::MaybeAssignOrphanStream(
     absl::string_view worker_address) {
   if (!orphans_.empty()) {
@@ -298,7 +326,6 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
     assigned_stream_index = it->second;
   }
   if (snapshot_progress) {
-    // TODO(b/258691097): Handle worker errors if any.
     if (assigned_stream_index.has_value() &&
         *assigned_stream_index !=
             snapshot_progress->snapshot_task().stream_index()) {
@@ -318,6 +345,10 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
           snapshot_progress->snapshot_task().stream_index(), worker_address));
       assigned_stream_index.reset();
     }
+    if (snapshot_progress->status().code() != error::OK) {
+      TF_RETURN_IF_ERROR(HandleStreamError(snapshot_progress->status()));
+      return std::optional<int64_t>();
+    }
   }
   if (!assigned_stream_index) {
     assigned_stream_index = MaybeAssignOrphanStream(worker_address);
@@ -334,7 +365,9 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
 
 Status SnapshotManager::WorkerHeartbeat(const WorkerHeartbeatRequest& request,
                                         WorkerHeartbeatResponse& response) {
-  if (mode_ == Mode::kDone) {
+  if (mode_ == Mode::kDone || mode_ == Mode::kError) {
+    // When the snapshot manager is done or in an error state, it returns an
+    // empty response to inform the workers to cancel the ongoing tasks.
     return OkStatus();
   }
 
@@ -398,8 +431,8 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
   std::string split_path =
       SplitPath(path_, request.stream_index(), request.source_index(),
                 local_split_index, global_split_index);
-  TF_RETURN_IF_ERROR(AtomicallyWriteTFRecord(
-      split_path, split, tsl::io::compression::kNone, env_));
+  TF_RETURN_IF_ERROR(AtomicallyWriteTFRecords(
+      split_path, {split}, tsl::io::compression::kNone, env_));
   split.AsProtoTensorContent(response.mutable_split());
 
   ++stream.num_assigned_splits[request.source_index()];

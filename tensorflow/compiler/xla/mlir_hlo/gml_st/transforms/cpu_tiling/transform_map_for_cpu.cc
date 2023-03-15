@@ -65,8 +65,8 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
 
     if (hasLabel(op, kMapTransformedLabel)) return failure();
 
-    mlir::gml_st::TilingOptions opts;
-    opts.tileSizeComputationFn = [&](OpBuilder &b, Operation *op) {
+    scf::SCFTilingOptions opts;
+    opts.setTileSizeComputationFunction([&](OpBuilder &b, Operation *op) {
       auto numLoops = cast<linalg::MapOp>(op).getNumLoops();
       SmallVector<Value> tiles(
           numLoops, b.create<arith::ConstantIndexOp>(op->getLoc(), 1));
@@ -74,9 +74,9 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
         tiles.back() =
             b.create<arith::ConstantIndexOp>(op->getLoc(), innerDimTileSize);
       return tiles;
-    };
+    });
 
-    auto tiledLoop = tileUsingGmlStParallelAndFuseGreedily(
+    auto tiledLoop = tileUsingSCFForallOpAndFuseGreedily(
         rewriter, op, opts, kMapTransformedLabel, fuseFilterFn);
     if (failed(tiledLoop)) return failure();
 

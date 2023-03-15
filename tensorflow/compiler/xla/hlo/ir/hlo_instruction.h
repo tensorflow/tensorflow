@@ -1859,6 +1859,9 @@ class HloInstruction {
   void set_logical_creation_pass_id(int64_t pass_id) {
     metadata_.set_logical_creation_pass_id(pass_id);
   }
+  void set_metadata_deduplicated_name(const std::string& deduplicated_name) {
+    metadata_.set_deduplicated_name(deduplicated_name);
+  }
   const OpMetadata& metadata() const { return metadata_; }
 
   // Set/get the computation containing this instruction. set_parent should only

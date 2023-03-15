@@ -260,8 +260,9 @@ Status SnapshotStreamWriter::Save() {
             << ", chunk size in bytes: " << chunk_size_bytes_ << ".";
   std::string checkpoint_path = CheckpointPath(chunk_index_);
   TF_ASSIGN_OR_RETURN(Tensor serialized_iterator, iterator_->Save());
-  TF_RETURN_IF_ERROR(AtomicallyWriteTFRecord(
-      checkpoint_path, serialized_iterator, params_.compression, params_.env));
+  TF_RETURN_IF_ERROR(
+      AtomicallyWriteTFRecords(checkpoint_path, {serialized_iterator},
+                               params_.compression, params_.env));
   return DeleteOutdatedCheckpoints();
 }
 

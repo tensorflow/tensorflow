@@ -49,10 +49,8 @@ constexpr llvm::StringRef kReduceTransformedLabel =
 FailureOr<TilingResult> tileReduce(PatternRewriter &rewriter,
                                    linalg::ReduceOp reduceOp,
                                    ArrayRef<int64_t> tileSizes) {
-  TilingOptions opts;
-  opts.setTileSizeComputationFn(tileSizes);
-  return tileUsingGmlSt(opts, rewriter,
-                        cast<TilingInterface>(reduceOp.getOperation()));
+  return tileUsingSCFForallOp(getSCFTilingOptions(tileSizes), rewriter,
+                              cast<TilingInterface>(reduceOp.getOperation()));
 }
 
 SmallVector<int64_t> getParallelDimTileSizes(int64_t reductionDim,
@@ -391,15 +389,14 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       auto *definingOp = yieldedTensor.getDefiningOp();
       if (!definingOp) return failure();
 
-      mlir::gml_st::TilingOptions opts;
-      opts.setTileSizeComputationFn(SmallVector<int64_t>(
+      auto opts = getSCFTilingOptions(SmallVector<int64_t>(
           definingOp->getResult(0).getType().cast<RankedTensorType>().getRank(),
           1));
       auto parallelDimTilingOpts =
           isa<linalg::ReduceOp>(definingOp)
-              ? getGmlStTilingOptions(getParallelDimTileSizes(reductionDim, 1))
-              : getGmlStTilingOptions({1});
-      auto parallelDimTilingResult = tileUsingGmlStParallelAndFuseGreedily(
+              ? getSCFTilingOptions(getParallelDimTileSizes(reductionDim, 1))
+              : getSCFTilingOptions({1});
+      auto parallelDimTilingResult = tileUsingSCFForallOpAndFuseGreedily(
           rewriter, definingOp, parallelDimTilingOpts, kReduceTransformedLabel,
           fusionClusterFn);
       if (failed(parallelDimTilingResult)) return failure();
@@ -470,11 +467,9 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
                      getParallelDimTileSizes(reduceOp.getDimensions()[0],
                                              parallelDimTileSize));
     } else if (isa<linalg::MapOp>(tilingRoot)) {
-      TilingOptions opts;
-      opts.setTileSizeComputationFn({parallelDimTileSize});
-
       tilingParallelDimsResult =
-          tileUsingGmlSt(opts, rewriter, cast<TilingInterface>(tilingRoot));
+          tileUsingSCFForallOp(getSCFTilingOptions(parallelDimTileSize),
+                               rewriter, cast<TilingInterface>(tilingRoot));
     } else {
       return failure();
     }

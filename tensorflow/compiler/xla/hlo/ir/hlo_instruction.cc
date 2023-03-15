@@ -2867,9 +2867,6 @@ HloComputation* HloInstruction::to_apply() const {
 }
 
 void HloInstruction::set_to_apply(HloComputation* computation) {
-  // Don't allow changing the computation for fused instructions so we don't
-  // have to recompute called_instructions for the entire fusion instruction.
-  CHECK(!IsFused());
   if (has_to_apply()) {
     CHECK_EQ(called_computations_.size(), 1)
         << "Expected a to_apply computation for " << opcode();
@@ -2911,17 +2908,11 @@ HloComputation* HloInstruction::while_body() const {
 }
 
 void HloInstruction::set_while_condition(HloComputation* computation) {
-  // Don't allow changing the computation for fused instructions so we don't
-  // have to recompute called_instructions for the entire fusion instruction.
-  CHECK(!IsFused());
   CHECK_EQ(HloOpcode::kWhile, opcode_);
   called_computations_[kConditionComputationIndex] = computation;
 }
 
 void HloInstruction::set_while_body(HloComputation* computation) {
-  // Don't allow changing the computation for fused instructions so we don't
-  // have to recompute called_instructions for the entire fusion instruction.
-  CHECK(!IsFused());
   CHECK_EQ(HloOpcode::kWhile, opcode_);
   called_computations_[kBodyComputationIndex] = computation;
 }
@@ -2963,9 +2954,6 @@ HloComputation* HloInstruction::branch_computation(int b) const {
 
 void HloInstruction::set_branch_computation(int b,
                                             HloComputation* computation) {
-  // Don't allow changing the computation for fused instructions so we don't
-  // have to recompute called_instructions for the entire fusion instruction.
-  CHECK(!IsFused());
   CHECK_EQ(HloOpcode::kConditional, opcode_);
   called_computations_[b] = computation;
 }

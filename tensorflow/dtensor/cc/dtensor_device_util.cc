@@ -352,11 +352,29 @@ StatusOr<std::unique_ptr<TensorWithLayoutTf>> TensorWithLayoutTf::Wrap(
       new TensorWithLayoutTf(std::move(tensor), mesh, layout, *shape));
 }
 
+std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Wrap(
+    parallel_device::TensorHandlePtr single_tensor, const Mesh& mesh,
+    const Layout& layout, TF_Status* status) {
+  if (!mesh.IsSingleDevice() || !layout.IsSingleDevice()) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Input mesh or layout is not for single device.");
+    return nullptr;
+  }
+  std::vector<int64_t> shape = TensorShapeAsVector(single_tensor.get(), status);
+  if (TF_GetCode(status) != TF_OK) {
+    return nullptr;
+  }
+
+  return absl::WrapUnique(
+      new TensorWithLayoutTf(std::move(single_tensor), mesh, layout, shape));
+}
+
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Dummy(
     const std::vector<int64_t>& local_shape, const TF_DataType dtype,
     const Mesh& mesh, const Layout& layout) {
-  return absl::WrapUnique(new TensorWithLayoutTf(
-      /*tensor=*/nullptr, mesh, layout, local_shape, dtype));
+  return absl::WrapUnique(
+      new TensorWithLayoutTf(std::unique_ptr<parallel_device::ParallelTensor>(),
+                             mesh, layout, local_shape, dtype));
 }
 
 std::string TensorWithLayoutTf::SummarizeValue() const {

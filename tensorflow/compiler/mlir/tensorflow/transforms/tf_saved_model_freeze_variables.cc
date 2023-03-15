@@ -16,13 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
 
 #include <iterator>
+#include <tuple>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_value_typed_analyzer.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -138,6 +138,12 @@ void PropagateUsage(
     for (auto callee : {&while_op.getCond(), &while_op.getBody()}) {
       work_list->push_back(std::make_pair(callee, argument_index));
     }
+  } else if (auto batch_func_op = dyn_cast<TF::BatchFunctionOp>(user_op)) {
+    (*arguments_to_erase)[batch_func_op].push_back(argument_index);
+    // Add the called function to the work list.
+    func::FuncOp func_op = batch_func_op.func();
+    (*arguments_to_erase)[func_op].push_back(argument_index);
+    work_list->push_back({&func_op.getRegion(), argument_index});
   }
 }
 
@@ -448,6 +454,12 @@ LogicalResult FreezeVariables(ModuleOp module, tensorflow::Session* session) {
       for (auto i : args_to_erase) cond_bit_vector.set(i);
       new_while_op.getCond().front().eraseArguments(cond_bit_vector);
       while_op->erase();
+    } else if (auto batch_func_op = dyn_cast<TF::BatchFunctionOp>(user_op)) {
+      llvm::BitVector erase_indices(user_op->getNumOperands());
+      for (auto operand_index : args_to_erase) {
+        erase_indices.set(operand_index);
+      }
+      batch_func_op.eraseArguments(erase_indices);
     } else {
       llvm::BitVector erase_indices(user_op->getNumOperands());
       for (auto operand_index : args_to_erase) {

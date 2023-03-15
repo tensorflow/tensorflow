@@ -42,9 +42,6 @@ from tensorflow.python.saved_model.load import load as saved_model_load
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.types import core
 
-# The signature key of the saved model init op.
-_INIT_OP_SIGNATURE_KEY = '__saved_model_init_op'
-
 # Type aliases for quant_opts_pb2 messages.
 _Method = quant_opts_pb2.QuantizationMethod.Method
 _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod

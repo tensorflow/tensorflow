@@ -31,27 +31,27 @@ TEST(BuiltinOpResolverTest, SupportsAdd) {
   BuiltinOpResolver builtin_op_resolver;
   const TfLiteRegistration *add =
       builtin_op_resolver.FindOp(::tflite::BuiltinOperator_ADD, 1);
-  CHECK_NE(add, nullptr);
-  CHECK_NE(add->init, nullptr);
-  CHECK_NE(add->free, nullptr);
-  CHECK_NE(add->prepare, nullptr);
-  CHECK_NE(add->invoke, nullptr);
+  ASSERT_NE(add, nullptr);
+  ASSERT_NE(add->init, nullptr);
+  ASSERT_NE(add->free, nullptr);
+  ASSERT_NE(add->prepare, nullptr);
+  ASSERT_NE(add->invoke, nullptr);
 }
 
 TEST(BuiltinOpResolverTest, CopySupportsAdd) {
   BuiltinOpResolver builtin_op_resolver;
   MutableOpResolver copy = builtin_op_resolver;
   const TfLiteRegistration *add = copy.FindOp(::tflite::BuiltinOperator_ADD, 1);
-  CHECK_NE(add, nullptr);
-  CHECK_NE(add->init, nullptr);
-  CHECK_NE(add->free, nullptr);
-  CHECK_NE(add->prepare, nullptr);
-  CHECK_NE(add->invoke, nullptr);
+  ASSERT_NE(add, nullptr);
+  ASSERT_NE(add->init, nullptr);
+  ASSERT_NE(add->free, nullptr);
+  ASSERT_NE(add->prepare, nullptr);
+  ASSERT_NE(add->invoke, nullptr);
 }
 
 TEST(BuiltinOpResolverTest, HasXNNPACKDelegate_QS8) {
   BuiltinOpResolver builtin_op_resolver;
-  CHECK_EQ(builtin_op_resolver.GetDelegateCreators().size(), 1);
+  ASSERT_EQ(builtin_op_resolver.GetDelegateCreators().size(), 1);
   BuiltinOpResolver::TfLiteDelegateCreator delegate_creator =
       builtin_op_resolver.GetDelegateCreators()[0];
   std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate *)> delegate =
@@ -59,16 +59,16 @@ TEST(BuiltinOpResolverTest, HasXNNPACKDelegate_QS8) {
   const void *delegate_data = TfLiteOpaqueDelegateGetData(delegate.get());
   TfLiteXNNPackDelegateOptions options = GetOptions(delegate_data);
 
-  CHECK_EQ(options.flags & TFLITE_XNNPACK_DELEGATE_FLAG_QU8,
-           TFLITE_XNNPACK_DELEGATE_FLAG_QU8);
+  ASSERT_EQ(options.flags & TFLITE_XNNPACK_DELEGATE_FLAG_QU8,
+            TFLITE_XNNPACK_DELEGATE_FLAG_QU8);
 
-  CHECK_EQ(options.flags & TFLITE_XNNPACK_DELEGATE_FLAG_QS8,
-           TFLITE_XNNPACK_DELEGATE_FLAG_QS8);
+  ASSERT_EQ(options.flags & TFLITE_XNNPACK_DELEGATE_FLAG_QS8,
+            TFLITE_XNNPACK_DELEGATE_FLAG_QS8);
 }
 
 TEST(BuiltinOpResolverTest, HasXNNPACKDelegate_QS8_QU8) {
   BuiltinOpResolverWithXNNPACK builtin_op_resolver(true);
-  CHECK_EQ(builtin_op_resolver.GetDelegateCreators().size(), 1);
+  ASSERT_EQ(builtin_op_resolver.GetDelegateCreators().size(), 1);
   BuiltinOpResolver::TfLiteDelegateCreator delegate_creator =
       builtin_op_resolver.GetDelegateCreators()[0];
   std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate *)> delegate =
@@ -76,16 +76,16 @@ TEST(BuiltinOpResolverTest, HasXNNPACKDelegate_QS8_QU8) {
   const void *delegate_data = TfLiteOpaqueDelegateGetData(delegate.get());
   TfLiteXNNPackDelegateOptions options = GetOptions(delegate_data);
 
-  CHECK_EQ(options.flags & TFLITE_XNNPACK_DELEGATE_FLAG_QU8,
-           TFLITE_XNNPACK_DELEGATE_FLAG_QU8);
+  ASSERT_EQ(options.flags & TFLITE_XNNPACK_DELEGATE_FLAG_QU8,
+            TFLITE_XNNPACK_DELEGATE_FLAG_QU8);
 
-  CHECK_EQ(options.flags & TFLITE_XNNPACK_DELEGATE_FLAG_QS8,
-           TFLITE_XNNPACK_DELEGATE_FLAG_QS8);
+  ASSERT_EQ(options.flags & TFLITE_XNNPACK_DELEGATE_FLAG_QS8,
+            TFLITE_XNNPACK_DELEGATE_FLAG_QS8);
 }
 
 TEST(BuiltinOpResolverTest, Disable_QU8) {
   BuiltinOpResolverWithXNNPACK builtin_op_resolver(false);
-  CHECK_EQ(builtin_op_resolver.GetDelegateCreators().size(), 1);
+  ASSERT_EQ(builtin_op_resolver.GetDelegateCreators().size(), 1);
   BuiltinOpResolver::TfLiteDelegateCreator delegate_creator =
       builtin_op_resolver.GetDelegateCreators()[0];
   std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate *)> delegate =
@@ -93,10 +93,10 @@ TEST(BuiltinOpResolverTest, Disable_QU8) {
   const void *delegate_data = TfLiteOpaqueDelegateGetData(delegate.get());
   TfLiteXNNPackDelegateOptions options = GetOptions(delegate_data);
 
-  CHECK_EQ(options.flags & TFLITE_XNNPACK_DELEGATE_FLAG_QU8, 0);
+  ASSERT_EQ(options.flags & TFLITE_XNNPACK_DELEGATE_FLAG_QU8, 0);
 
-  CHECK_EQ(options.flags & TFLITE_XNNPACK_DELEGATE_FLAG_QS8,
-           TFLITE_XNNPACK_DELEGATE_FLAG_QS8);
+  ASSERT_EQ(options.flags & TFLITE_XNNPACK_DELEGATE_FLAG_QS8,
+            TFLITE_XNNPACK_DELEGATE_FLAG_QS8);
 }
 }  // namespace
 }  // namespace tflite::ops::builtin

@@ -38,9 +38,8 @@ namespace {
 
 FailureOr<TilingResult> tileMatmul(PatternRewriter &rewriter, Operation *op,
                                    ArrayRef<int64_t> tileSizes) {
-  TilingOptions opts;
-  opts.setTileSizeComputationFn(tileSizes);
-  return tileUsingGmlSt(opts, rewriter, cast<TilingInterface>(op));
+  return tileUsingSCFForallOp(getSCFTilingOptions(tileSizes), rewriter,
+                              cast<TilingInterface>(op));
 }
 
 /// Pattern to tile `linalg.matmul`, fuse `linalg.fill` into generated

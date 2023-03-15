@@ -44,9 +44,8 @@ constexpr llvm::StringRef kReverseTransformedLabel =
 FailureOr<TilingResult> tileReverseAndUpdateResultIfTiled(
     PatternRewriter &rewriter, thlo::ReverseOp &reverseOp,
     ArrayRef<int64_t> tileSizes) {
-  TilingOptions opts;
-  opts.setTileSizeComputationFn(tileSizes);
-  auto tilingResult = tileUsingGmlSt(
+  auto opts = getSCFTilingOptions(tileSizes);
+  auto tilingResult = tileUsingSCFForallOp(
       opts, rewriter, cast<TilingInterface>(reverseOp.getOperation()));
 
   if (failed(tilingResult)) return failure();

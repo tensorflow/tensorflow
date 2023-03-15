@@ -121,7 +121,9 @@
     *   Deprecated `dtensor.run_on` in favor of `dtensor.default_mesh` to
         correctly indicate that the context does not override the mesh that the
         ops and functions will run on, it only sets a fallback default mesh.
-
+    *   List of members of dtensor.Layout and dtensor.Mesh have slightly changed
+        as part of efforts to consolidate the C++ and Python source
+        code with pybind11. Most notably, Layout.serialized_string is removed.
 
 ## Thanks to our Contributors
 

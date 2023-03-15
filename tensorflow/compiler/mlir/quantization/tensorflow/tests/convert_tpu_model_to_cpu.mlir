@@ -1,4 +1,5 @@
-// RUN: tf-quant-opt %s -quant-convert-tpu-model-to-cpu | FileCheck %s
+// RUN: tf-quant-opt %s -quant-convert-tpu-model-to-cpu -split-input-file \
+// RUN:     | FileCheck %s
 
 // Remove TPU related ops.
 func.func @tpu_conv(%arg0: tensor<1x3x4x3xf32>) -> tensor<1x3x2x2xf32> {
@@ -7,6 +8,7 @@ func.func @tpu_conv(%arg0: tensor<1x3x4x3xf32>) -> tensor<1x3x2x2xf32> {
   %2 = "tf.IdentityN"(%1) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
   func.return %2 : tensor<1x3x2x2xf32>
 }
+
 func.func private @tpu_func_0_optim0(%arg0: tensor<1x3x4x3xf32>) -> tensor<1x3x2x2xf32> attributes {tf._original_func_name = "tpu_func_0_optim"} {
   %cst = "tf.Const"() {device = "", value = dense_resource<__elided__> : tensor<2x3x3x2xbf16>} : () -> tensor<2x3x3x2xbf16>
   %cst_0 = "tf.Const"() {device = "", value = dense<[0, 3, 1, 2]> : tensor<4xi32>} : () -> tensor<4xi32>
@@ -23,9 +25,34 @@ func.func private @tpu_func_0_optim0(%arg0: tensor<1x3x4x3xf32>) -> tensor<1x3x2
   func.return %7 : tensor<1x3x2x2xf32>
 }
 
-// CHECK: func @tpu_conv
+// CHECK: func @tpu_conv(%[[ARG0:.*]]: tensor<1x3x4x3xf32>)
 // CHECK-DAG: %[[cst:.*]] = "tf.Const"() {device = "", value = dense_resource<__elided__> : tensor<2x3x3x2xbf16>} : () -> tensor<2x3x3x2xbf16>
 // CHECK: %[[cast:.*]] = "tf.Cast"(%[[cst]]) {Truncate = false} : (tensor<2x3x3x2xbf16>) -> tensor<2x3x3x2xf32>
-// CHECK: %[[conv:.*]] = "tf.Conv2D"(%arg0, %[[cast]])
+// CHECK: %[[conv:.*]] = "tf.Conv2D"(%[[ARG0]], %[[cast]])
 // CHECK: %[[identity:.*]] = "tf.IdentityN"(%[[conv]]) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
 // CHECK: return %[[identity]] : tensor<1x3x2x2xf32>
+
+// -----
+
+// Tests that `tf.BatchFunction` is inlined.
+
+func.func @serving_default(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  %0 = "tf.BatchFunction"(%arg0, %arg1) {f = @batched_func, num_batch_threads = 1 : i64, max_batch_size = 2 : i64, batch_timeout_micros = 10000 : i64, operand_segment_sizes = array<i32: 1, 1>} : (tensor<1xf32>, tensor<1xf32>) -> (tensor<1xf32>)
+  return %0 : tensor<1xf32>
+}
+// The contents of `@serving_default` should have been inlined to `@batch_func`.
+// CHECK: func.func @serving_default(%[[ARG0:.*]]: tensor<1xf32>, %[[ARG1:.*]]: tensor<1xf32>) -> tensor<1xf32>
+// CHECK-NOT: tf.BatchFunction
+// CHECK: %[[IDENTITY0:.*]] = "tf.Identity"(%[[ARG0]])
+// CHECK: %[[IDENTITY1:.*]] = "tf.Identity"(%[[ARG1]])
+// CHECK: %[[ADD0:.*]] = "tf.AddV2"(%[[IDENTITY0]], %[[IDENTITY1]])
+// CHECK: return %[[ADD0]] : tensor<1xf32>
+
+func.func private @batched_func(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  %0 = "tf.Identity"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
+  %1 = "tf.Identity"(%arg1) : (tensor<1xf32>) -> tensor<1xf32>
+  %2 = "tf.AddV2"(%0, %1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  return %2: tensor<1xf32>
+}
+// The called function should be removed.
+// CHECK-NOT: batched_func

@@ -15,17 +15,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def FusionPass : Pass<"gml-fusion", "mlir::func::FuncOp"> {
-  let summary = "Fuse producers in into `gml_st.materialize` operations";
-  let constructor = "::mlir::gml_st::createFusionPass()";
-  let options = [
-    Option<"producerLabel", "producer-label", "std::string", /*default=*/"",
-           "Producer label.">,
-    Option<"consumerLabel", "consumer-label", "std::string", /*default=*/"",
-           "Consumer label.">,
-  ];
-}
-
 def TilingSoftmaxPass : Pass<"gml-tiling-softmax", "mlir::func::FuncOp"> {
   let summary = "Match, tile, and fuse softmax implementations";
   let constructor = "::mlir::gml_st::createTilingSoftmaxPass()";
