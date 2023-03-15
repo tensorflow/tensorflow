@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("//tensorflow/lite/core:special_rules.bzl", "delegate_registry_visibility_allowlist")
 load("//tensorflow/lite/core/c:special_rules.bzl", "experimental_acceleration_api_allowlist")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
@@ -39,6 +40,7 @@ cc_library(
 cc_test(
     name = "stable_delegate_registry_test",
     srcs = ["stable_delegate_registry_test.cc"],
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":stable_delegate_registry",
         "@com_google_googletest//:gtest_main",

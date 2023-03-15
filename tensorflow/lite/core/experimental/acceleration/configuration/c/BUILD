@@ -14,7 +14,7 @@
 # ==============================================================================
 
 # C API for delegate plugins.
-
+load("//tensorflow/core/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_library_with_c_headers_test")
 load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
@@ -71,6 +71,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": ["gpu_plugin_test.cc"],
         "//conditions:default": [],
     }),
+    tags = tf_gpu_tests_tags(),
     linkopts = gpu_delegate_linkopts(),
     deps = select({
         "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": [":gpu_plugin"],
@@ -98,6 +99,7 @@ tflite_cc_library_with_c_headers_test(
 cc_test(
     name = "nnapi_plugin_test",
     srcs = ["nnapi_plugin_test.cc"],
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":nnapi_plugin",
         "//tensorflow/lite/core/c:common",
@@ -124,6 +126,7 @@ tflite_cc_library_with_c_headers_test(
 cc_test(
     name = "xnnpack_plugin_test",
     srcs = ["xnnpack_plugin_test.cc"],
+    tags = tf_gpu_tests_tags(),
     deps = [
         ":xnnpack_plugin",
         "//tensorflow/lite/core/c:common",
