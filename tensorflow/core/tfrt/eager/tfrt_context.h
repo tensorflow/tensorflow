@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_EAGER_TFRT_CONTEXT_H_
 
 #include <functional>
+#include <memory>
 #include <utility>
 
 #include "tensorflow/c/eager/immediate_execution_context.h"
