@@ -41,9 +41,6 @@ void removeLabel(Operation *op, StringRef name);
 // Checks if `op` has the attribute that indicates that it was transformed.
 bool hasLabel(Operation *op, StringRef name);
 
-// Checks if `op` has the matching label attribute.
-bool hasMatchingLabel(Operation *op, StringRef label);
-
 }  // namespace gml_st
 }  // namespace mlir
 
