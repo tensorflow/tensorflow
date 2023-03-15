@@ -398,8 +398,8 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
   std::string split_path =
       SplitPath(path_, request.stream_index(), request.source_index(),
                 local_split_index, global_split_index);
-  TF_RETURN_IF_ERROR(AtomicallyWriteTFRecord(
-      split_path, split, tsl::io::compression::kNone, env_));
+  TF_RETURN_IF_ERROR(AtomicallyWriteTFRecords(
+      split_path, {split}, tsl::io::compression::kNone, env_));
   split.AsProtoTensorContent(response.mutable_split());
 
   ++stream.num_assigned_splits[request.source_index()];
