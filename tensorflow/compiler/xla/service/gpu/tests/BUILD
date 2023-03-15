@@ -837,6 +837,7 @@ glob_lit_tests(
         "fused_slice.hlo": ["no_rocm"],
         "fused_slice_different_operands.hlo": ["no_rocm"],
         "fusion.hlo": ["no_rocm"],
+        "kernel_reuse.hlo": ["no_rocm"],
         "launch_dimensions.hlo": ["no_rocm"],
         "pad_to_static.hlo": ["no_rocm"],
         "reduce_unnested.hlo": ["no_rocm"],
