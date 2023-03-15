@@ -215,6 +215,33 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
   return failure();
 }
 
+FailureOr<Value> createFusedOp(PatternRewriter& rewriter,
+                               tensor::ExtractSliceOp extractSliceOp) {
+  Value src = extractSliceOp.getSource();
+  if (!src) return failure();
+  auto tileableOp = src.getDefiningOp<TilingInterface>();
+  if (!tileableOp) {
+    return rewriter.notifyMatchFailure(
+        extractSliceOp,
+        "expected source to be defined by tiling interface op ");
+  }
+
+  SmallVector<OpFoldResult> offsets = extractSliceOp.getMixedOffsets();
+  SmallVector<OpFoldResult> sizes = extractSliceOp.getMixedSizes();
+
+  // Tile the producer.
+  OpBuilder::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPoint(extractSliceOp);
+  FailureOr<Value> tiledProducer = tileableOp.generateResultTileValue(
+      rewriter, /*resultNumber=*/0, offsets, sizes);
+  if (failed(tiledProducer)) {
+    return rewriter.notifyMatchFailure(tileableOp,
+                                       "failed to tile the producer");
+  }
+
+  return tiledProducer;
+}
+
 }  // namespace
 
 FailureOr<Operation*> fuse(PatternRewriter& rewriter,
@@ -527,33 +554,6 @@ LogicalResult inlineFusionCluster(FusionOp fusionOp,
   rewriter.replaceOp(fusionOp, yieldOpOperands);
 
   return success();
-}
-
-FailureOr<Value> createFusedOp(PatternRewriter& rewriter,
-                               tensor::ExtractSliceOp extractSliceOp) {
-  Value src = extractSliceOp.getSource();
-  if (!src) return failure();
-  auto tileableOp = src.getDefiningOp<TilingInterface>();
-  if (!tileableOp) {
-    return rewriter.notifyMatchFailure(
-        extractSliceOp,
-        "expected source to be defined by tiling interface op ");
-  }
-
-  SmallVector<OpFoldResult> offsets = extractSliceOp.getMixedOffsets();
-  SmallVector<OpFoldResult> sizes = extractSliceOp.getMixedSizes();
-
-  // Tile the producer.
-  OpBuilder::InsertionGuard guard(rewriter);
-  rewriter.setInsertionPoint(extractSliceOp);
-  FailureOr<Value> tiledProducer = tileableOp.generateResultTileValue(
-      rewriter, /*resultNumber=*/0, offsets, sizes);
-  if (failed(tiledProducer)) {
-    return rewriter.notifyMatchFailure(tileableOp,
-                                       "failed to tile the producer");
-  }
-
-  return tiledProducer;
 }
 
 }  // namespace gml_st
