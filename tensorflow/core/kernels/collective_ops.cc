@@ -1266,12 +1266,14 @@ class CollectiveAllToAllV2OpKernel : public CollectiveOpV2Kernel {
             << col_params->group.group_size << " group_key "
             << col_params->group.group_key << " instance_key "
             << col_params->instance.instance_key;
-    // Allocate the output tensor.
+    // Allocate the output tensor. NCCL does not support in-place all-to-all, so
+    // don't reuse the input tensor. We could potentially use
+    // forward_input_or_allocate_output and allocate a temporary buffer inside
+    // the NCCL backend only when the input is reused.
     Tensor* output = nullptr;
-    OP_REQUIRES_OK_ASYNC(c,
-                         c->forward_input_or_allocate_output(
-                             {0}, 0, col_params->instance.shape, &output),
-                         done_with_cleanup);
+    OP_REQUIRES_OK_ASYNC(
+        c, c->allocate_output(0, col_params->instance.shape, &output),
+        done_with_cleanup);
     Run(c, col_params, std::move(done_with_cleanup));
   }
 };
