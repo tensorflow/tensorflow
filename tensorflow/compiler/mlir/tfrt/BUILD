@@ -300,7 +300,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:threadpool_interface",
-        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat_eager",
         "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/tfrt/utils:fallback_tensor",

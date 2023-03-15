@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat_eager.h"
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
 
 namespace tfrt {

@@ -51,7 +51,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat_eager.h"
 #include "tensorflow/core/runtime_fallback/runtime/op_logger.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_op_handler.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_tensor.h"

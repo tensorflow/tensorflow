@@ -33,13 +33,14 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat_eager.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
+#include "tfrt/host_context/chain.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
