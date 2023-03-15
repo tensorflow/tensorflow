@@ -60,7 +60,7 @@ Status ConvertStridedSliceHelper(
     const SliceDims& stride, const SliceDims& end,
     std::optional<nvinfer1::Dims> final_shape = std::nullopt,
     std::optional<int> op_instance = std::nullopt,
-    std::optional<StridedSliceShapeSpec> strided_slice_spec = std::nullopt);
+    const std::optional<StridedSliceShapeSpec>& strided_slice_spec = std::nullopt);
 
 }  // namespace convert
 }  // namespace tensorrt

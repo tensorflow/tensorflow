@@ -2602,6 +2602,157 @@ Status ConvertSqueeze(const OpConverterParams* params) {
   return OkStatus();
 }
 
+Status out_of_range_error(const std::string& opName, int begin, int size,
+                          int dimIdx, int dimSize) {
+  return errors::InvalidArgument("\"begin\" (", begin, ") + \"size\" (", size,
+                                 ") for dimension ", dimIdx, " in ", opName,
+                                 " is out of range [0-", dimSize, "]");
+}
+
+Status ConvertDynamicSliceHelper(
+    const OpConverterParams* params, const TRT_TensorOrWeights& input,
+    const PartialTensorShape& input_shape,
+    const std::vector<const Tensor*>* tensors = nullptr,
+    const std::vector<int32>* masks = nullptr,
+    const std::vector<int>* begin = nullptr,
+    const std::vector<int>* size = nullptr,
+    int instance_idx = 0,
+    std::optional<nvinfer1::Dims> final_shape_for_unpack = std::nullopt) {
+
+  const int mask_size = masks ? masks->size() : 0;
+  const int32 shrink_axis_mask = mask_size > 0 ? masks->at(0) : 0;
+  const int32 begin_mask = mask_size > 1 ? masks->at(1) : 0;
+  const int32 end_mask_in = mask_size > 2 ? masks->at(2) : 0;
+  const int32 ellipsis_mask = mask_size > 3 ? masks->at(3) : 0;
+  const int32 new_axis_mask = mask_size > 4 ? masks->at(4) : 0;
+  std::bitset<32> end_mask(end_mask_in);
+
+  const nvinfer1::Dims& dims = input.GetTrtDims();
+  const auto nbDims = input_shape.dims();
+  Tensor strides_tensor(DataType::DT_INT32, TensorShape({nbDims}));
+  Tensor begin_tensor(DataType::DT_INT32, TensorShape({nbDims}));
+  Tensor end_tensor(DataType::DT_INT32, TensorShape({nbDims}));
+  auto strides_vec = strides_tensor.flat<int32>();
+
+  const Tensor* p_tensor[3];  // begin, end, stride
+  for (int i = 0; i < 3; i++) {
+    p_tensor[i] = tensors && tensors->size() >= i ? (*tensors)[i] : nullptr;
+  }
+
+  const auto& node_def = params->node_def;
+  const bool adjust_final_shape = tensors && masks;
+  if (!adjust_final_shape) {
+    // for ConvUnpack and ConvSlice
+    // Use the content in begin_weights and size_tensor to setup begin_mask,
+    // end_mask, end_tensor, strides_tensor, and end_tensor.
+    auto end_vec = end_tensor.flat<int32>();
+    auto begin_vec = begin_tensor.flat<int32>();
+
+    for (int i = 0; i < nbDims; i++) {
+      strides_vec(i) = 1;
+      begin_vec(i) = begin->at(i);
+
+      const auto size_i = size->at(i);
+      if (end_mask[i] = ((p_tensor[0] ? size_i : dims.d[i]) == -1)) {
+        end_vec(i) = 0;
+      } else {
+        end_vec(i) = begin_vec(i) + size_i;
+        const auto dim_size = input_shape.dim_size(i);
+        if (end_vec(i) > dim_size && dim_size > 0) {
+          const auto& op = node_def.op();
+          return out_of_range_error(op, begin->at(i), size_i, i, dim_size);
+        }
+      }
+    }
+  }
+
+  const Tensor* p_local[] = {&begin_tensor, &end_tensor, &strides_tensor};
+  for (int i = 0; i < 3; i++) {
+    if (!p_tensor[i]) p_tensor[i] = p_local[i];
+  }
+
+  auto bitset_to_int32 = [](const std::bitset<32>& bs) {
+    return static_cast<int32_t>(bs.to_ulong());
+  };
+
+  PartialTensorShape processing_shape;
+  PartialTensorShape final_shape;
+  bool is_identity;
+  bool is_simple_slice;
+  bool slice_dim0;
+  StridedSliceShapeSpec slice_spec;
+
+  absl::InlinedVector<int64, 4> stride_v;
+  absl::InlinedVector<int64, 4> begin_v;
+  absl::InlinedVector<int64, 4> end_v;
+
+  TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
+      p_tensor[0], p_tensor[1], *p_tensor[2], input_shape, begin_mask,
+      bitset_to_int32(end_mask), ellipsis_mask, new_axis_mask, shrink_axis_mask,
+      &processing_shape, &final_shape, &is_identity, &is_simple_slice,
+      &slice_dim0, &begin_v, &end_v, &stride_v, &slice_spec));
+
+  if (!params->validation_only) {
+    VLOG(2) << "\n ConvertOperation: " << node_def.op()
+            << "\n for node: " << node_def.name()
+            << "\n input_shape: " << input_shape
+            << "\n procesing_shape: " << processing_shape
+            << "\n final_shape: " << final_shape
+            << "\n  begin: " << DebugString(begin_v)
+            << "\n  stride: " << DebugString(stride_v)
+            << "\n  end: " << DebugString(end_v)
+            << "\n is identity: " << is_identity
+            << "\n is simple_slice: " << is_simple_slice
+            << "\n slice dim0: " << slice_dim0 << " StridedSliceShapeSpec:"
+            << "\n   begin_dense_mask: "
+            << std::bitset<32>(slice_spec.begin_dense_mask)
+            << "\n   end_dense_mask: "
+            << std::bitset<32>(slice_spec.end_dense_mask)
+            << "\n   shrink_dense_mask: "
+            << std::bitset<32>(slice_spec.shrink_axis_dense_mask);
+  }
+
+  if (adjust_final_shape) {
+    // If the first dimension of the ellepsis_mask is set, and fewer dimensions
+    // are specified than the number of input dimensions, then the batch
+    // dimension is not modified Otherwise we must check whether the batch
+    // dimension is modified.
+    if (params->use_implicit_batch &&
+        !((ellipsis_mask & 1) &&
+          p_tensor[0]->shape().dims() < input_shape.dims())) {
+      // Check that batch dimension is unmodified. We need to use the expanded
+      // begin/end/strides array since the original array may be incorrect when
+      // (ellipsis_mask&1)==1.
+      const bool begin_is_modified = !(begin_mask & 1) && (begin_v[0] != 0);
+      const bool stride_is_modified = (stride_v[0] != 1);
+      // If the batch size is -1 and the end mask is not set, we can only know
+      // if the batch dimension is unmodified when the batch size is defined.
+      // When the batch size is undefined, we don't convert to be safe.
+      const bool batch_size_is_defined = (input_shape.dim_size(0) > 0);
+      const bool end_is_modified =
+          !end_mask[0] &&
+          (!batch_size_is_defined || (end_v[0] != input_shape.dim_size(0)));
+      if (begin_is_modified || stride_is_modified || end_is_modified) {
+        return errors::Unimplemented(
+            "TensorRT does not allow modifications to the batch dimension");
+      }
+    }
+
+    // shrink_axis_mask requires a reshape after the slice.
+    if (shrink_axis_mask) {
+      final_shape_for_unpack.emplace();
+      auto dims_adap =
+          DimsAdapter::Create(final_shape, params->use_implicit_batch);
+      TRT_ENSURE_OK(dims_adap);
+      *final_shape_for_unpack = dims_adap->AsTrtDims();
+    }
+  }
+
+  return ConvertStridedSliceHelper(params, input, input_shape, begin_v,
+                                   stride_v, end_v, final_shape_for_unpack,
+                                   instance_idx, slice_spec);
+}
+
 Status ConvertSlice(const OpConverterParams* params) {
   const auto& inputs = params->inputs;
   TF_RETURN_IF_ERROR(CheckInputsWeights(
@@ -2634,10 +2785,9 @@ Status ConvertSlice(const OpConverterParams* params) {
                                 ? std::optional<int>(inputs.at(0).batch_size())
                                 : std::nullopt));
 
-  if (static_cast<int64>(input_shape.dims()) !=
-          begin_weights.GetTensor().NumElements() ||
-      static_cast<int64>(input_shape.dims()) !=
-          size_weights.GetTensor().NumElements()) {
+  const auto nDims = input_shape.dims();
+  if (static_cast<int64>(nDims) != begin_weights.GetTensor().NumElements() ||
+      static_cast<int64>(nDims) != size_weights.GetTensor().NumElements()) {
     return errors::InvalidArgument(
         "Length of begin and size arguments must equal rank of input for "
         "Slice");
@@ -2645,8 +2795,8 @@ Status ConvertSlice(const OpConverterParams* params) {
 
   // Check that batch dimension is unmodified.
   if (params->use_implicit_batch) {
-    auto begin_v = begin_weights.GetSpan<int32>();
-    auto size_v = size_weights.GetSpan<int32>();
+    const auto& begin_v = begin_weights.GetSpan<int32>();
+    const auto& size_v = size_weights.GetSpan<int32>();
 
     // The batch dimension is modified if begin doesn't start from 0 or slice
     // size on d0 is not equal to input size on d0. Slice size -1 means slices
@@ -2659,80 +2809,18 @@ Status ConvertSlice(const OpConverterParams* params) {
     }
   }
 
-  PartialTensorShape processing_shape;
-  PartialTensorShape final_shape;
-  bool is_identity;
-  bool is_simple_slice;
-  bool slice_dim0;
-  absl::InlinedVector<int64, 4> begin;
-  absl::InlinedVector<int64, 4> end;
-  absl::InlinedVector<int64, 4> strides;
-  StridedSliceShapeSpec strided_slice_spec;
-  std::bitset<32> begin_mask(0);
-  std::bitset<32> end_mask(0);
-  std::bitset<32> ellipsis_mask(0);
-  std::bitset<32> new_axis_mask(0);
-  std::bitset<32> shrink_axis_mask(0);
-  Tensor strides_tensor = tensor::DeepCopy(begin_weights.GetTensor());
-  Tensor end_tensor = tensor::DeepCopy(size_weights.GetTensor());
-  Tensor size_tensor = tensor::DeepCopy(size_weights.GetTensor());
-
-  // Use the content in begin_weights and size_tensor to setup begin_mask,
-  // end_mask, end_tensor, strides_tensor, and end_tensor.
-  auto strides_vec = strides_tensor.flat<int32>();
-  auto end_vec = end_tensor.flat<int32>();
-  auto size_vec = size_tensor.flat<int32>();
-  auto begin_vec = begin_weights.GetTensor().flat<int32>();
-
-  for (int i = 0; i < input_shape.dims(); i++) {
-    strides_vec(i) = 1;
-    begin_mask[i] = false;
-    if (size_vec(i) == -1) {
-      end_mask[i] = true;
-      end_vec(i) = 0;
-      size_vec(i) = 0;
-    } else {
-      end_mask[i] = false;
-      end_vec(i) = begin_vec(i) + size_vec(i);
-      if (end_vec(i) > input_shape.dim_size(i) && input_shape.dim_size(i) > 0) {
-        return errors::InvalidArgument("\"begin\" + \"size\" for dimension ", i,
-                                       " in Slice is out of range");
-      }
-    }
+  const auto& begin_vec = begin_weights.GetTensor().flat<int32>();
+  const auto& size_vec = size_weights.GetTensor().flat<int32>();
+  std::vector<int> begin_s(nDims);
+  std::vector<int> size_s(nDims);
+  for (int i = 0; i < nDims; ++i) {
+    begin_s[i] = begin_vec(i);
+    size_s[i] = size_vec(i);
   }
 
-  auto bitset_to_int32 = [](const std::bitset<32>& bs) {
-    return static_cast<int32_t>(bs.to_ulong());
-  };
-
-  TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
-      &begin_weights.GetTensor(), &end_tensor, strides_tensor, input_shape,
-      bitset_to_int32(begin_mask), bitset_to_int32(end_mask),
-      bitset_to_int32(ellipsis_mask), bitset_to_int32(new_axis_mask),
-      bitset_to_int32(shrink_axis_mask), &processing_shape, &final_shape,
-      &is_identity, &is_simple_slice, &slice_dim0, &begin, &end, &strides,
-      &strided_slice_spec));
-
-  VLOG(2) << "ConvertSlice: "
-          << "\n input_shape: " << input_shape
-          << "\n procesing_shape: " << processing_shape
-          << "\n final_shape: " << final_shape
-          << "\n  begin: " << DebugString(begin)
-          << "\n  stride: " << DebugString(strides)
-          << "\n  end: " << DebugString(end)
-          << "\n is identity: " << is_identity
-          << "\n is simple_slice: " << is_simple_slice
-          << "\n slice dim0: " << slice_dim0 << " StridedSliceShapeSpec:"
-          << "\n   begin_dense_mask: "
-          << std::bitset<32>(strided_slice_spec.begin_dense_mask)
-          << "\n   end_dense_mask: "
-          << std::bitset<32>(strided_slice_spec.end_dense_mask)
-          << "\n   shrink_dense_mask: "
-          << std::bitset<32>(strided_slice_spec.shrink_axis_dense_mask);
-
-  return ConvertStridedSliceHelper(params, inputs.at(0), input_shape, begin,
-                                   strides, end, std::nullopt, std::nullopt,
-                                   strided_slice_spec);
+  const std::vector<const Tensor*> tensors = {&begin_weights.GetTensor()};
+  return ConvertDynamicSliceHelper(params, inputs.at(0), input_shape,
+                                   &tensors, nullptr, &begin_s, &size_s);
 }
 
 Status ConvertStridedSlice(const OpConverterParams* params) {
@@ -2786,80 +2874,13 @@ Status ConvertStridedSlice(const OpConverterParams* params) {
         "Length of begin, end, and stride must be equal");
   }
 
-  PartialTensorShape processing_shape;
-  PartialTensorShape final_shape;
-  bool is_identity;
-  bool is_simple_slice;
-  bool slice_dim0;
-  absl::InlinedVector<int64, 4> begin;
-  absl::InlinedVector<int64, 4> end;
-  absl::InlinedVector<int64, 4> strides;
-  StridedSliceShapeSpec strided_slice_spec;
-
-  TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
-      &begin_weights.GetTensor(), &end_weights.GetTensor(),
-      stride_weights.GetTensor(), input_shape, begin_mask, end_mask,
-      ellipsis_mask, new_axis_mask, shrink_axis_mask, &processing_shape,
-      &final_shape, &is_identity, &is_simple_slice, &slice_dim0, &begin, &end,
-      &strides, &strided_slice_spec));
-
-  if (!params->validation_only) {
-    VLOG(2) << "After ValidateStridedSliceOp:"
-            << "\n input_shape: " << input_shape
-            << "\n procesing_shape: " << processing_shape
-            << "\n final_shape: " << final_shape
-            << "\n  begin: " << DebugString(begin)
-            << "\n  stride: " << DebugString(strides)
-            << "\n  end: " << DebugString(end)
-            << " is identity: " << is_identity
-            << "\n is simple_slice: " << is_simple_slice
-            << "\n slice dim0: " << slice_dim0 << " StridedSliceShapeSpec:"
-            << "\n   begin_dense_mask: "
-            << std::bitset<32>(strided_slice_spec.begin_dense_mask)
-            << "\n   end_dense_mask: "
-            << std::bitset<32>(strided_slice_spec.end_dense_mask)
-            << "\n   shrink_dense_mask: "
-            << std::bitset<32>(strided_slice_spec.shrink_axis_dense_mask);
-  }
-
-  // If the first dimension of the ellepsis_mask is set, and fewer dimensions
-  // are specified than the number of input dimensions, then the batch dimension
-  // is not modified Otherwise we must check whether the batch dimension is
-  // modified.
-  if (params->use_implicit_batch &&
-      !((ellipsis_mask & 1) &&
-        begin_weights.Shape().NumDims() < input_shape.dims())) {
-    // Check that batch dimension is unmodified. We need to use the expanded
-    // begin/end/strides array since the original array may be incorrect when
-    // (ellipsis_mask&1)==1.
-    const bool begin_is_modified = !(begin_mask & 1) && (begin[0] != 0);
-    const bool stride_is_modified = (strides[0] != 1);
-    // If the batch size is -1 and the end mask is not set, we can only know if
-    // the batch dimension is unmodified when the batch size is defined. When
-    // the batch size is undefined, we don't convert to be safe.
-    const bool batch_size_is_defined = (input_shape.dim_size(0) > 0);
-    const bool end_is_modified =
-        !(end_mask & 1) &&
-        (!batch_size_is_defined || (end[0] != input_shape.dim_size(0)));
-    if (begin_is_modified || stride_is_modified || end_is_modified) {
-      return errors::Unimplemented(
-          "TensorRT does not allow modifications to the batch dimension");
-    }
-  }
-
-  // shrink_axis_mask requires a reshape after the slice.
-  std::optional<nvinfer1::Dims> final_shape_dims = std::nullopt;
-  if (shrink_axis_mask) {
-    final_shape_dims.emplace();
-    auto dims_adap =
-        DimsAdapter::Create(final_shape, params->use_implicit_batch);
-    TRT_ENSURE_OK(dims_adap);
-    *final_shape_dims = dims_adap->AsTrtDims();
-  }
-
-  return ConvertStridedSliceHelper(params, inputs.at(0), input_shape, begin,
-                                   strides, end, final_shape_dims, 0,
-                                   strided_slice_spec);
+  const std::vector<const Tensor*> tensors = {&begin_weights.GetTensor(),
+                                              &end_weights.GetTensor(),
+                                              &stride_weights.GetTensor()};
+  const std::vector<int32> masks = {shrink_axis_mask, begin_mask, end_mask,
+                                    ellipsis_mask, new_axis_mask};
+  return ConvertDynamicSliceHelper(params, inputs.at(0), input_shape,
+                                   &tensors, &masks);
 }
 
 Status ConvertConv2D(const OpConverterParams* params) {
@@ -4020,28 +4041,28 @@ Status ConvertSplitHelper(const OpConverterParams* params,
                           const TRT_TensorOrWeights& input, int tf_axis,
                           int num_splits, bool squeeze_after) {
   const auto& node_def = params->node_def;
-  const nvinfer1::Dims dims = input.GetTrtDims();
+  const nvinfer1::Dims& dims = input.GetTrtDims();
   // Convert axis.
   int trt_axis;
   TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims, node_def.name(),
                                  params->use_implicit_batch, &trt_axis));
-
-  if (dims.d[trt_axis] < 0) {
+  const auto size_axis = dims.d[trt_axis];
+  if (size_axis < 0) {
     return errors::InvalidArgument("Dimension ", tf_axis,
                                    " must have statically defined dimensions");
   }
 
   // Dimension must equal num_splits for Unstack (when squeeze_after is true)
-  if (squeeze_after && dims.d[trt_axis] != num_splits) {
-    return errors::InvalidArgument(
-        "Dimension ", tf_axis, " has size ", dims.d[trt_axis],
-        " which is not equal to num of ", num_splits);
+  if (squeeze_after && size_axis != num_splits) {
+    return errors::InvalidArgument("Dimension ", tf_axis, " has size ",
+                                   size_axis, " which is not equal to num of ",
+                                   num_splits);
   }
   // Dimension must be evenly divisible by num_splits.
-  if (dims.d[trt_axis] % num_splits != 0) {
+  if (size_axis % num_splits != 0) {
     return errors::InvalidArgument("Dimension ", tf_axis, " of size ",
-                                   dims.d[trt_axis],
-                                   " is not evenly divisible by ", num_splits);
+                                   size_axis, " is not evenly divisible by ",
+                                   num_splits);
   }
 
   // Create parameters for StridedSliceHelper.
@@ -4054,8 +4075,7 @@ Status ConvertSplitHelper(const OpConverterParams* params,
   // the one being split. Undefined dims (-1) will translate to a size of -1
   // which will tell StridedSlice to take full length of that dim.
   std::vector<int> size(dims.d, dims.d + dims.nbDims);
-  const int split_size_on_axis = dims.d[trt_axis] / num_splits;
-  size[trt_axis] = split_size_on_axis;
+  const int split_size_on_axis = size[trt_axis] = size_axis / num_splits;
   // Stride will always be 1
   std::vector<int> stride(dims.nbDims, 1);
   // Add dummy batch dimension
@@ -4072,10 +4092,9 @@ Status ConvertSplitHelper(const OpConverterParams* params,
 
   // We can't use final_shape_for_unpack_ptr when input dimensions are not
   // fully defined.
-  const bool is_dynamic_shape = !HasStaticShape(dims);
-  if (squeeze_after && !is_dynamic_shape) {
+  tf_axis = trt_axis + (params->use_implicit_batch ? 1 : 0);
+  if (squeeze_after) {
     std::vector<int> size_after_squeeze(size);
-    const int tf_axis = trt_axis + (params->use_implicit_batch ? 1 : 0);
     size_after_squeeze.erase(size_after_squeeze.begin() + tf_axis);
     DimsAdapter adap(size_after_squeeze);
     if (params->use_implicit_batch)
@@ -4083,43 +4102,34 @@ Status ConvertSplitHelper(const OpConverterParams* params,
     final_shape_for_unpack = adap.AsTrtDims();
   }
 
-  // Slice the input. ConvertStridedSliceHelper will push the outputs onto
-  // params->outputs.
-  for (int i = 0; i < num_splits; ++i) {
-    const int tf_axis = trt_axis + (params->use_implicit_batch ? 1 : 0);
-    begin[tf_axis] = i * split_size_on_axis;
-
+  if (HasStaticShape(dims)) {
+    // Slice the input. ConvertStridedSliceHelper will push the outputs onto
+    // params->outputs.
     // Stride is 1 for all dims.
-    absl::InlinedVector<int64, 4> stride_v(begin.size(), 1);
-    absl::InlinedVector<int64, 4> begin_v;
-    absl::InlinedVector<int64, 4> end_v;
-    for (int i = 0; i < begin.size(); i++) {
-      end_v.push_back(begin[i] + size[i]);
-      begin_v.push_back(begin[i]);
+    const absl::InlinedVector<int64, 4> stride_v(begin.size(), 1);
+    for (int i = 0; i < num_splits; ++i) {
+      begin[tf_axis] = i * split_size_on_axis;
+      absl::InlinedVector<int64, 4> begin_v;
+      absl::InlinedVector<int64, 4> end_v;
+
+      for (int j = 0; j < begin.size(); j++) {
+        end_v.push_back(begin[j] + size[j]);
+        begin_v.push_back(begin[j]);
+      }
+      TF_RETURN_IF_ERROR(ConvertStridedSliceHelper(
+          params, input, input_shape, begin_v, stride_v, end_v,
+          final_shape_for_unpack, /*op_instance=*/i));
     }
-
-    TF_RETURN_IF_ERROR(ConvertStridedSliceHelper(
-        params, input, input_shape, begin_v, stride_v, end_v,
-        final_shape_for_unpack,
-        /*op_instance=*/i, /*strided_slice_spec=*/std::nullopt));
-  }
-  if (params->validation_only) return OkStatus();
-
-  // Squeeze for dynamic shapes
-  if (squeeze_after && is_dynamic_shape) {
-    for (int i = 0; i < params->outputs->size(); i++) {
-      ITensorProxyPtr output_tensor = nullptr;
-      std::vector<int> in_dims(dims.d, dims.d + dims.nbDims);
-      input_dims[trt_axis] = 0;
-      TF_RETURN_IF_ERROR(params->converter->SqueezeTensor(
-          /*input=*/params->outputs->at(i).tensor(),
-          /*input_dims=*/&in_dims,
-          /*params=*/params,
-          /*output=*/&output_tensor,
-          /*op_instance=*/i));
-      (*params->outputs)[i] = TRT_TensorOrWeights(output_tensor);
+  } else {
+    const std::vector<int32> shrink_axis_mask = {1 << trt_axis};
+    for (int i = 0; i < num_splits; ++i) {
+      begin[tf_axis] = i * split_size_on_axis;
+      TF_RETURN_IF_ERROR(ConvertDynamicSliceHelper(
+          params, input, input_shape, nullptr, &shrink_axis_mask,
+          &begin, &size, i, final_shape_for_unpack));
     }
   }
+
   return OkStatus();
 }
 

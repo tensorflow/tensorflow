@@ -53,7 +53,7 @@ Status ConvertStridedSliceHelper(
     const PartialTensorShape& input_dims, const SliceDims& begin,
     const SliceDims& stride, const SliceDims& end,
     std::optional<nvinfer1::Dims> final_shape, std::optional<int> op_instance,
-    std::optional<StridedSliceShapeSpec> strided_slice_spec) {
+    const std::optional<StridedSliceShapeSpec>& strided_slice_spec) {
   const auto& node_def = params->node_def;
 
   auto begin_dims = DimsAdapter::Create(begin, params->use_implicit_batch);
@@ -126,23 +126,22 @@ Status ConvertStridedSliceHelper(
                                   op_instance);
   ITensorProxyPtr tensor = (*slice)->getOutput(0);
 
-  // Reshape for shrink axis, ellipsis masks based on the shape computed by
-  // ValidateStridedSliceOp or HandleDynamicStridedSliceInput.
-  nvinfer1::Dims dims = tensor->trt_tensor()->getDimensions();
-  std::vector<int> slice_input_dims(dims.d, dims.d + dims.nbDims);
-  StridedSliceShapeSpec empty_spec;
-  empty_spec.shrink_axis_dense_mask = 0;
-  auto shrink_axis_mask =
-      strided_slice_spec.value_or(empty_spec).shrink_axis_dense_mask;
   if (final_shape) {
+    // Reshape for shrink axis, ellipsis masks based on the shape computed by
+    // ValidateStridedSliceOp or HandleDynamicStridedSliceInput.
+    const auto& dims = tensor->trt_tensor()->getDimensions();
+    std::vector<int> slice_input_dims(dims.d, dims.d + dims.nbDims);
+
+    StridedSliceShapeSpec empty_spec;
+    empty_spec.shrink_axis_dense_mask = 0;
+    const auto shrink_axis_mask =
+        strided_slice_spec.value_or(empty_spec).shrink_axis_dense_mask;
     if (shrink_axis_mask) {
-      int shrink_idx = params->use_implicit_batch ? 1 : 0;
+      const int shrink_adj = params->use_implicit_batch ? 1 : 0;
       const auto bShrink_axis_mask = std::bitset<32>(shrink_axis_mask);
-      for (int idx = 0; idx < slice_input_dims.size(); ++idx, ++shrink_idx) {
-        const bool shrink_axis = bShrink_axis_mask[shrink_idx];
-        if (shrink_axis) {
+      for (int idx = 0; idx < slice_input_dims.size(); ++idx) {
+        if (bShrink_axis_mask[idx + shrink_adj])
           slice_input_dims[idx] = 0;
-        }
       }
       TF_RETURN_IF_ERROR(params->converter->SqueezeTensor(
           tensor, &slice_input_dims, params, &tensor, op_instance));
@@ -181,12 +180,11 @@ Status HandleDynamicStridedSliceInput(
   const auto end_mask = std::bitset<32>(strided_slice_spec.end_dense_mask);
   const auto shrink_axis_mask =
       std::bitset<32>(strided_slice_spec.shrink_axis_dense_mask);
-  nvinfer1::Dims dims = input_tensor->getDimensions();
+  const auto& dims = input_tensor->getDimensions();
 
+  VLOG(3)
+      << "idx:  begin_mask:   end_mask:  shrink_mask:  begin_dims:   end_dims:";
   for (int idx = 0; idx < dims.nbDims; ++idx) {
-    VLOG(3) << "begin_mask[" << idx << "]: " << begin_mask[idx];
-    VLOG(3) << "end_mask[" << idx << "]: " << end_mask[idx];
-    VLOG(3) << "shrink_mask[" << idx << "]: " << shrink_axis_mask[idx];
     if (begin_mask[idx]) {
       begin_dims.d[idx] = 0;
     }
@@ -196,6 +194,10 @@ Status HandleDynamicStridedSliceInput(
     if (shrink_axis_mask[idx]) {
       end_dims.d[idx] = begin_dims.d[idx] + 1;
     }
+    VLOG(3) << " " << idx << "         " << begin_mask[idx] << "           "
+            << end_mask[idx] << "            "<< shrink_axis_mask[idx]
+            << "            " << begin_dims.d[idx] << "            "
+            << end_dims.d[idx];
   }
 
   VLOG(2) << "begin_dims after shrink_axis_mask correction: "
