@@ -151,7 +151,8 @@ cuda_py_test(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:test_ops",
-        "//tensorflow/python/autograph/core",
+        "//tensorflow/python/autograph/core:ag_ctx",
+        "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:cancellation",
         "//tensorflow/python/eager:context",
@@ -178,7 +179,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python/autograph/core",
         "@absl_py//absl/testing:parameterized",
     ],
 )
