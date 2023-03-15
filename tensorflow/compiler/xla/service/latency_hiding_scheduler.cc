@@ -584,9 +584,11 @@ class ReadySetLt {
   // It needs to outlive the comparator object.
   explicit ReadySetLt(
       const DefaultSchedulerCore::SchedulingState* sched_state,
-      DefaultSchedulerCore::TargetSchedulingRule target_scheduling_rule)
+      DefaultSchedulerCore::TargetSchedulingRule target_scheduling_rule,
+      DefaultSchedulerCore::TargetSchedulingRule early_target_scheduling_rule)
       : sched_state_(*sched_state),
-        target_scheduling_rule_(target_scheduling_rule) {}
+        target_scheduling_rule_(target_scheduling_rule),
+        early_target_scheduling_rule_(early_target_scheduling_rule) {}
   // The comparison here implements the priority for the nodes in the ready set.
   DefaultSchedulerCore::CandidateResult operator()(
       DefaultSchedulerCore::ScheduleCandidate& a,
@@ -596,6 +598,11 @@ class ReadySetLt {
             !a.node->GetForceDelay(), a, !b.node->GetForceDelay(), b,
             "kForceDelay")) {
       return *value;
+    }
+    if (early_target_scheduling_rule_) {
+      if (auto value = early_target_scheduling_rule_(a, b)) {
+        return *value;
+      }
     }
     // Prioritize instructions that are NOPs as they have no memory pressure
     // issue and unlock different operations for being scheduled.
@@ -766,6 +773,7 @@ class ReadySetLt {
  private:
   const DefaultSchedulerCore::SchedulingState& sched_state_;
   DefaultSchedulerCore::TargetSchedulingRule target_scheduling_rule_;
+  DefaultSchedulerCore::TargetSchedulingRule early_target_scheduling_rule_;
 
   int ReadyIfScheduled(const HloGraphNode& gn) const {
     int ready_nodes_if_scheduled = 0;
@@ -868,7 +876,8 @@ HloGraphNode* DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
         return false;
       };
   VLOG(6) << "Current time: " << sched_state.current_time;
-  ReadySetLt ready_lt{&sched_state, target_scheduling_rule_};
+  ReadySetLt ready_lt{&sched_state, target_scheduling_rule_,
+                      early_target_scheduling_rule_};
   // Construct a schedule candidate for caching.
   ScheduleCandidate ready_chosen;
   auto chosen_it = sched_state.ready_set.end();
