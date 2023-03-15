@@ -20,7 +20,7 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/lang",
+        "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/pyct",
         "@gast_archive//:gast",
     ],
@@ -99,7 +99,7 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/lang",
+        "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
         "@gast_archive//:gast",
@@ -112,7 +112,7 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/lang",
+        "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/util:tf_inspect",
         "@gast_archive//:gast",
@@ -136,7 +136,7 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/lang",
+        "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
         "@gast_archive//:gast",
@@ -161,7 +161,7 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/lang",
+        "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
         "@gast_archive//:gast",
@@ -289,7 +289,7 @@ py_strict_test(
         ":directives",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/lang",
+        "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/pyct",
     ],
 )
@@ -334,7 +334,8 @@ py_strict_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:list_ops",
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/lang",
+        "//tensorflow/python/autograph/lang:directives",
+        "//tensorflow/python/autograph/lang:special_functions",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
     ],
@@ -379,7 +380,7 @@ py_strict_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:list_ops",
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/lang",
+        "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
     ],
