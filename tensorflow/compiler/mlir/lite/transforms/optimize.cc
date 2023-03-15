@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -491,6 +492,32 @@ bool IsOneHotIndexAttribute(Attribute attr) {
     }
   }
   return true;
+}
+
+Value Get1DShapeValue(OpBuilder &builder, Value value) {
+  auto type = value.getType().cast<ShapedType>();
+  if (!type.hasStaticShape()) {
+    return nullptr;
+  }
+  auto output_type = RankedTensorType::get({1}, builder.getI32Type());
+  const int num_elements = type.getNumElements();
+  return builder.create<ConstOp>(
+      value.getLoc(), output_type,
+      DenseIntElementsAttr::get(output_type, num_elements));
+}
+
+Type GetEmbeddingLookupShape(Value lookup, Value value) {
+  auto lookup_type = lookup.getType().cast<ShapedType>();
+  if (!lookup_type.hasStaticShape()) {
+    return nullptr;
+  }
+  auto value_type = value.getType().cast<ShapedType>();
+  if (!value_type.hasStaticShape() || value_type.getRank() != 2) {
+    return nullptr;
+  }
+  SmallVector<int64_t> new_shape = {lookup_type.getNumElements(),
+                                    value_type.getDimSize(0)};
+  return value_type.clone(new_shape);
 }
 
 // Creates FullyConnected op from params and returns the output.

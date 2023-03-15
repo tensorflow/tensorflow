@@ -975,6 +975,12 @@ def FuseOneHotAndCastToFloat : Pat<
                 $axis),
   [(F32ElementsVal $output)]>;
 
+def Get1DShapeValue: NativeCodeCall<"Get1DShapeValue($_builder, $0)">;
+
+class GetIthValue<int index> : NativeCodeCall<"$0[" # index # "]">;
+
+def GetEmbeddingLookupShape: NativeCodeCall<"GetEmbeddingLookupShape($0, $1)">;
+
 // Replace
 //   OneHot(index, depth, on=1.0f, off=0.0f, axis=-1) * filter
 // With
@@ -996,26 +1002,29 @@ def FuseOneHotAndCastToFloat : Pat<
 // This is exactly what the EmbeddedLookup operator is doing, on the transposed
 // matrix, without doing any arithmetic but only memcpy.
 def ReplaceOneHotFullyConnectedWithLookup : Pat<
-  (TFL_FullyConnectedOp
+  (TFL_FullyConnectedOp:$outputs
     (TFL_OneHotOp
-      $indices,
+      AnyStaticShapeTensor:$indices,
       (Arith_ConstantOp $depth),
       (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
       (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.0f">),
       ConstantAttr<I32Attr, "-1">),
-    $filter,
+    AnyStaticShapeTensor:$filter,
     $bias,
     TFL_AF_None,
     TFL_FCWO_Default,
-    ConstBoolAttrFalse,
+    $keep_num_dims,
     $asymmetric_quantize_inputs),
-  (TFL_EmbeddingLookupOp
-    $indices,
-    (TFL_TransposeOp
-      $filter,
-      (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[2]>, "{1,0}"> ))),
+  (TFL_ReshapeOp
+    (TFL_EmbeddingLookupOp
+      (TFL_ReshapeOp $indices, (Get1DShapeValue $indices)),
+      (TFL_TransposeOp
+        $filter,
+        (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[2]>, "{1,0}">)),
+      (returnType (GetEmbeddingLookupShape $indices, $filter))
+    ),
+    (Arith_ConstantOp (GetShape (GetIthValue<0> $outputs)))),
   [(I32ElementsVal $indices),     // lookup is not implemented for i64
-   (HasRank<1> $indices),  // lookup isn't implemented for any other rank
    (IsNoneType $bias)]>;          // Maybe folded into the lookup matrix later
 
 def AreInputDimensionsOneInAxes : Constraint<CPred<
