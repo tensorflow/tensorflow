@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/jit/device_compiler_client.h"
 #include "tensorflow/compiler/jit/device_executable_persistor.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_device_compiler_client.h"
@@ -196,46 +195,6 @@ std::shared_ptr<se::DeviceMemoryAllocator> GetAllocator(
     return std::make_shared<se::TfAllocatorAdapter>(alloc, platform);
   }
   return std::make_shared<se::TfAllocatorAdapter>(alloc, stream);
-}
-
-XlaCompiler::Options GenerateCompilerOptions(
-    const XlaDeviceCompiler& xla_device_compiler,
-    const FunctionLibraryRuntime& function_library, DeviceBase* device,
-    se::Stream* stream, const XlaPlatformInfo& platform_info,
-    bool has_ref_vars) {
-  XlaCompiler::Options options;
-  options.client = static_cast<xla::LocalClient*>(xla_device_compiler.client());
-  if (stream != nullptr) {
-    options.device_ordinal = stream->parent()->device_ordinal();
-  }
-  options.device_type = xla_device_compiler.device_type();
-  options.flib_def = function_library.GetFunctionLibraryDefinition();
-  options.graph_def_version = function_library.graph_def_version();
-  options.allow_cpu_custom_calls =
-      (platform_info.platform_id() == se::host::kHostPlatformId);
-  options.device_allocator = GetAllocator(device, stream, platform_info);
-  if (platform_info.xla_device_metadata()) {
-    options.shape_determination_fns =
-        platform_info.xla_device_metadata()->default_shape_determination_fns();
-  }
-  // If reference variables are not present in the graph, we can safely alias
-  // passthrough parameters without performing a copy.
-  options.alias_passthrough_params =
-      !has_ref_vars && !platform_info.is_on_xla_device();
-  return options;
-}
-
-XlaCompiler::Options GenerateTfrtTpuCompilerOptions(
-    const XlaDeviceCompiler& xla_device_compiler,
-    const FunctionLibraryRuntime& function_library) {
-  XlaCompiler::Options options;
-  // TODO(b/238830423): consider device_ordinal and shape_determination_fns.
-  options.device_type = xla_device_compiler.device_type();
-  options.flib_def = function_library.GetFunctionLibraryDefinition();
-  options.graph_def_version = function_library.graph_def_version();
-  options.allow_cpu_custom_calls = false;
-  options.alias_passthrough_params = false;
-  return options;
 }
 
 }  // namespace tensorflow

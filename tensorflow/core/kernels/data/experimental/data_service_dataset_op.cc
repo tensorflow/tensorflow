@@ -176,7 +176,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override {
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
     return EstimateCardinality(processing_mode_, metadata_,
                                is_coordinated_read_);
   }
@@ -342,8 +342,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
-      return model::MakeKnownRatioNode(std::move(args),
-                                       /*ratio=*/1);
+      return model::MakeAsyncKnownRatioNode(std::move(args),
+                                            /*ratio=*/1, {});
     }
 
     Status SaveInternal(SerializationContext* ctx,

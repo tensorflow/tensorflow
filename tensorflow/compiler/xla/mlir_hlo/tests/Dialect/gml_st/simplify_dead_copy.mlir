@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s --split-input-file --simplify-dead-copy | FileCheck %s
+// RUN: mlir-hlo-opt %s --split-input-file --naive-copy-removal | FileCheck %s
 
 func.func @target_is_alloc(%arg0: memref<8x8xf32>) -> memref<8x8xf32> {
   %c4 = arith.constant 4 : index

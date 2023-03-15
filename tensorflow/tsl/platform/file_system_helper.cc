@@ -125,7 +125,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
                         std::vector<string>* results) {
   // Check that `fs`, `env` and `results` are non-null.
   if (fs == nullptr || env == nullptr || results == nullptr) {
-    return Status(tsl::error::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   "Filesystem calls GetMatchingPaths with nullptr arguments");
   }
 

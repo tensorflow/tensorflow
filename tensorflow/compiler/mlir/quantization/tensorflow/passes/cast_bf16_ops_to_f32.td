@@ -55,6 +55,27 @@ def CastBFloat16ConvToFloat32 : Pat<
    (IsBF16ElementType $filter)],
   (addBenefit 1)>;
 
+// Casts BF16 BiasAdd ops to F32 to optimize quantizable ops followed by
+// BiasAdd ops. This cast will cover Conv + BiasAdd, MatMul + BiasAdd,
+// etc.
+def CastBFloat16BiasAddToFloat32 : Pat<
+  (TF_BiasAddOp:$res
+    $input, $bias, IsDataFormatNHWC:$bias_data_format),
+  (TF_CastOp
+    (TF_BiasAddOp
+      (TF_CastOp
+        $input, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $input))),
+      (TF_CastOp
+        $bias, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $bias))),
+      IsDataFormatNHWC:$bias_data_format,
+      (returnType (CloneTypeWithF32ElementType $res))),
+    /*truncate=*/ConstBoolAttrFalse),
+  [(IsBF16ElementType $input),
+   (IsBF16ElementType $bias)],
+  (addBenefit 1)>;
+
 def CastBFloat16AvgPoolToFloat32 : Pat<
   (TF_AvgPoolOp:$res
     $input, $ksize, $strides, $padding,
@@ -88,3 +109,71 @@ def CastBFloat16MatMulToFloat32 : Pat<
   [(IsBF16ElementType $input),
    (IsBF16ElementType $filter)],
   (addBenefit 1)>;
+
+def CastBFloat16BatchMatMulV2ToFloat32 : Pat<
+  (TF_BatchMatMulV2Op:$res
+    $input, $filter, $adj_x, $adj_y),
+  (TF_CastOp
+    (TF_BatchMatMulV2Op
+      (TF_CastOp
+        $input, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $input))),
+      (TF_CastOp
+        $filter, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $filter))),
+      $adj_x, $adj_y,
+      (returnType (CloneTypeWithF32ElementType $res))),
+    /*truncate=*/ConstBoolAttrFalse),
+  [(IsBF16ElementType $input),
+   (IsBF16ElementType $filter)],
+  (addBenefit 1)>;
+
+def CastBFloat16DepthwiseConvToFloat32 : Pat<
+  (TF_DepthwiseConv2dNativeOp:$res
+    $input, $filter, $strides, $padding,
+    $explicit_paddings, IsDataFormatNHWC:$data_format, $dilations),
+  (TF_CastOp
+    (TF_DepthwiseConv2dNativeOp
+      (TF_CastOp
+        $input, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $input))),
+      (TF_CastOp
+        $filter, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $filter))),
+      $strides, $padding, $explicit_paddings,
+      IsDataFormatNHWC:$data_format, $dilations,
+      (returnType (CloneTypeWithF32ElementType $res))),
+    /*truncate=*/ConstBoolAttrFalse),
+  [(IsBF16ElementType $input),
+   (IsBF16ElementType $filter)],
+  (addBenefit 1)>;
+
+def CastBFloat16GatherToFloat32 : Pat<
+  (TF_GatherV2Op:$res
+    $params, $indices, $axis, $batch_dims),
+  (TF_CastOp
+    (TF_GatherV2Op
+      (TF_CastOp
+        $params, /*truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $params))),
+      $indices, $axis, $batch_dims,
+      (returnType (CloneTypeWithF32ElementType $res))),
+    /*truncate=*/ConstBoolAttrFalse),
+  [(IsBF16ElementType $params),
+    (IsConstTensor $params)],
+  (addBenefit 1)>;
+
+// Converts an AddV2 op accepting two bfloat16 operands into the one taking two
+// float32 operands.
+def CastBFloat16AddV2ToFloat32 : Pat<
+  (TF_AddV2Op:$res $x, $y),
+  (TF_CastOp
+    (TF_AddV2Op
+      (TF_CastOp $x, /*Truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $x))),
+      (TF_CastOp $y, /*Truncate=*/ConstBoolAttrFalse,
+        (returnType (CloneTypeWithF32ElementType $y)))),
+    /*Truncate=*/ConstBoolAttrFalse),
+  [(IsBF16ElementType $x),
+   (IsBF16ElementType $y),
+   (IsBF16ElementType $res)]>;

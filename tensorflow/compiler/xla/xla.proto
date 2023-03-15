@@ -217,9 +217,7 @@ message DebugOptions {
   // supported lmhlo.fusion ops. See xla::gpu::RewriteFusionOps() for details.
   bool xla_gpu_enable_mlir_lowering = 173;
 
-  // If true, generate softmax fusion nodes which are used in the MLIR lowering
-  // to generate device code for softmax.
-  bool xla_gpu_enable_softmax_fusion = 179;
+  reserved 179;  // Was xla_gpu_enable_softmax_fusion
 
   // Enable fast math with eigen in the HLO evaluator.
   bool xla_hlo_evaluator_use_fast_path = 106;
@@ -422,7 +420,7 @@ message DebugOptions {
   int64 xla_gpu_redzone_scratch_max_megabytes = 167;
 
   // Allows all floating-point conversions to be simplified, including those
-  // that affect the numerics. The `BFloat16Normalization` pass inserts many
+  // that affect the numerics. The `FloatNormalization` pass inserts many
   // `f32 -> bf16 -> f32` conversion pairs. These are not removed by the
   // `AlgebraicSimplifier`, as that will only simplify conversions that are
   // no-ops, e.g. `bf16 -> f32 -> bf16`. Removing these improves accuracy.
@@ -459,6 +457,9 @@ message DebugOptions {
 
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;
+    PARTITIONING_ALGORITHM_EXP0 = 1;
+    PARTITIONING_ALGORITHM_EXP1 = 2;
+    PARTITIONING_ALGORITHM_EXP2 = 3;
   }
   // The partitioning algorithm to be used in the PartitionAssignment pass.
   PartitioningAlgorithm xla_partitioning_algorithm = 187;
@@ -856,4 +857,13 @@ message ScheduleProto {
   int64 computation_id = 2;
   HloModuleProto hlo_module = 3;
   int64 cycles_per_microsecond = 4;
+}
+
+message ProfiledInstructionsProto {
+  message Instruction {
+    string name = 1;
+    double timestamp_us = 2;
+    double duration_us = 3;
+  }
+  repeated Instruction instructions = 1;
 }

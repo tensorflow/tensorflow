@@ -165,7 +165,7 @@ static bool OperatorWritersMain(raw_ostream& os, RecordKeeper& records) {
   // pass hints / configuration options.
   os << "  xla::XlaScopedFrontendAttributesAssignment "
         "frontend_attributes(lowering_context.builder, "
-        "CreateOpFrontendAttributesFromAttribute(op));\n\n";
+        "CreateXlaFrontendAttributesFromOp(op));\n\n";
 
   // Create a scoped object to assign op metadata to generated XLA ops.
   os << "  xla::XlaScopedOpMetadataAssignment "

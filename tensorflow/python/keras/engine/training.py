@@ -24,7 +24,6 @@ import weakref
 from tensorflow.python.autograph.lang import directives
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -75,6 +74,7 @@ from tensorflow.python.saved_model import constants as sm_constants
 from tensorflow.python.saved_model import loader_impl as sm_loader
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training import py_checkpoint_reader
+from tensorflow.python.types import data as data_types
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import keras_export
@@ -1694,7 +1694,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     outputs = None
     with self.distribute_strategy.scope():
       # Creates a `tf.data.Dataset` and handles batch and epoch iteration.
-      dataset_types = (dataset_ops.DatasetV1, dataset_ops.DatasetV2)
+      dataset_types = (data_types.DatasetV1, data_types.DatasetV2)
       if (self._in_multi_worker_mode() or _is_tpu_multi_host(
           self.distribute_strategy)) and isinstance(x, dataset_types):
         try:

@@ -7,6 +7,7 @@ package(
     default_visibility = [
         "//learning/brain/experimental/dtensor:__subpackages__",
         "//learning/brain/google/xla/kernels:__subpackages__",
+        "//learning/brain/research/pjrt:__subpackages__",
         "//learning/brain/tfrc/executor:__subpackages__",
         "//learning/brain/tfrc/runtime/tpu_driver:__subpackages__",
         "//learning/brain/tfrt/tpu_plugin:__subpackages__",

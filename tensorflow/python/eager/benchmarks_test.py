@@ -15,17 +15,17 @@
 r"""Benchmarks for low-level eager execution primitives.
 
 To run CPU benchmarks:
-  bazel run -c opt benchmarks_test -- --benchmarks=.
+  bazel run -c opt benchmarks_test -- --benchmark_filter=.
 
 To run GPU benchmarks:
   bazel run --config=cuda -c opt --copt="-mavx" benchmarks_test -- \
-    --benchmarks=.
+    --benchmark_filter=.
 
 To run a subset of benchmarks using --benchmarks flag.
 --benchmarks: the list of benchmarks to run. The specified value is interpreted
 as a regular expression and any benchmark whose name contains a partial match
 to the regular expression is executed.
-e.g. --benchmarks=".*matmul*." will run all matmul related benchmarks.
+e.g. --benchmark_filter=".*matmul*." will run all matmul related benchmarks.
 
 """
 import time
@@ -48,6 +48,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -55,6 +56,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
@@ -114,6 +116,9 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     # used for conv2d benchmarks
     self._m_8_28_28_3 = random_ops.random_uniform((8, 28, 28, 3))
     self._m_1_3_3_1 = random_ops.random_uniform((1, 3, 3, 1))
+
+    # used for embedding benchmarks
+    self._m_10000_by_16 = random_ops.random_uniform((10000, 16))
 
   def _get_benchmark_name(self):
     """Mostly copied from benchmark.py _get_name()."""
@@ -1618,6 +1623,68 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
   def benchmark_tf_range_return_int64_GPU(self):
     self._benchmark_tf_range_return(dtype=dtypes.int64, device=GPU)
+
+  def _benchmark_embedding_lookup_sparse_with_sparse_input(
+      self, allow_fast_lookup=True, batch_size=32000, device=GPU
+  ):
+    def func(sp_ids):
+      return embedding_ops.embedding_lookup_sparse(
+          self._m_10000_by_16, sp_ids, None, allow_fast_lookup=allow_fast_lookup
+      )
+
+    with context.device(device):
+      values = random_ops.random_uniform(
+          shape=(batch_size,), minval=1, maxval=10000, dtype=dtypes.int64
+      )
+      value_rowids = ops.EagerTensor(np.arange(batch_size), device=device)
+
+      ragged_input = ragged_tensor.RaggedTensor.from_value_rowids(
+          values, value_rowids
+      )
+      sparse_input = ragged_input.to_sparse()
+      func(sparse_input)
+      self._run(lambda: func(sparse_input), num_iters=2000)
+
+  def benchmark_tf_embedding_lookup_sparse_with_sparse_input_sparse_grads(self):
+    self._benchmark_embedding_lookup_sparse_with_sparse_input(
+        allow_fast_lookup=False
+    )
+
+  def benchmark_tf_embedding_lookup_sparse_with_sparse_input_dense_grads(self):
+    self._benchmark_embedding_lookup_sparse_with_sparse_input(
+        allow_fast_lookup=True
+    )
+
+  def _benchmark_embedding_lookup_sparse_with_ragged_input(
+      self, allow_fast_lookup=True, batch_size=32000, device=GPU
+  ):
+    def func(sp_ids):
+      return embedding_ops.embedding_lookup_sparse(
+          self._m_10000_by_16, sp_ids, None, allow_fast_lookup=allow_fast_lookup
+      )
+
+    with context.device(device):
+      values = random_ops.random_uniform(
+          shape=(batch_size,), minval=1, maxval=10000, dtype=dtypes.int64
+      )
+      value_rowids = ops.EagerTensor(np.arange(batch_size), device=device)
+
+      ragged_input = ragged_tensor.RaggedTensor.from_value_rowids(
+          values, value_rowids
+      )
+      func(ragged_input)
+      self._run(lambda: func(ragged_input), num_iters=2000)
+
+  def benchmark_embedding_lookup_sparse_with_ragged_input_sparse_grads(self):
+    self._benchmark_embedding_lookup_sparse_with_ragged_input(
+        allow_fast_lookup=False
+    )
+
+  def benchmark_embedding_lookup_sparse_with_ragged_input_dense_grads(self):
+    self._benchmark_embedding_lookup_sparse_with_ragged_input(
+        allow_fast_lookup=True
+    )
+
 
 if __name__ == "__main__":
   test.main()

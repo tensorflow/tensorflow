@@ -35,6 +35,7 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
         "//tensorflow/python:dtypes",
@@ -44,7 +45,9 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
-        "//tensorflow/python/autograph/utils",
+        "//tensorflow/python/autograph/utils:ag_logging",
+        "//tensorflow/python/autograph/utils:misc",
+        "//tensorflow/python/autograph/utils:tensors",
         "//tensorflow/python/autograph/utils:type_registry",
         "//tensorflow/python/data/experimental/ops:cardinality",
         "//tensorflow/python/data/experimental/ops:scan_ops",
@@ -86,6 +89,7 @@ py_test(
     deps = [
         ":operators",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/utils:testing",
         # TODO(b/145618471): Remove this transitive dependency.
         "//tensorflow/python/distribute:input_lib",
     ],

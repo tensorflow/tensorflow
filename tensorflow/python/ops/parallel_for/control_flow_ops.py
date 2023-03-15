@@ -32,6 +32,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.parallel_for.pfor import PFor
 from tensorflow.python.ops.parallel_for.pfor import PForConfig
 from tensorflow.python.platform import tf_logging as logging
@@ -90,12 +91,10 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
     extra_args = {"parallel_iterations": parallel_iterations}
   else:
     extra_args = {}
-  ta_list = control_flow_ops.while_loop(
-      lambda i, *ta: i < iters,
-      while_body,
-      [0] + [tensor_array_ops.TensorArray(dtype.base_dtype, iters)
-             for dtype in flat_loop_fn_dtypes],
-      **extra_args)[1:]
+  ta_list = while_loop.while_loop(lambda i, *ta: i < iters, while_body, [0] + [
+      tensor_array_ops.TensorArray(dtype.base_dtype, iters)
+      for dtype in flat_loop_fn_dtypes
+  ], **extra_args)[1:]
 
   # TODO(rachelim): enable this for sparse tensors
 
@@ -106,9 +105,21 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
   assert len(output) in (0, len(flat_loop_fn_dtypes))
   if not output:
     # This may happen for the case where iters == 0.
-    return None
-  else:
-    return nest.pack_sequence_as(loop_fn_dtypes, output)
+    # Pack a list of empty tensors with the proper ranks to match pfor output on 0 iters
+    loop_var = array_ops.placeholder_with_default(0, shape=[])
+    try:
+      loop_fn_out = loop_fn(loop_var)
+      out_shapes = [
+          [0] + ops.convert_to_tensor(x).shape
+          for x in nest.flatten(loop_fn_out)
+      ]
+      output = [
+          array_ops.zeros(out_shapes[i], dt)
+          for i, dt in enumerate(flat_loop_fn_dtypes)
+      ]
+    except Exception:
+      output = [array_ops.zeros([0])]
+  return nest.pack_sequence_as(loop_fn_dtypes, output)
 
 
 def _flatten_first_two_dims(x):

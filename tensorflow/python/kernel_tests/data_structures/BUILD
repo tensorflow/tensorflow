@@ -14,8 +14,6 @@ tf_py_test(
     shard_count = 20,
     tags = [
         "no_mac",  # TODO(b/129706424): Re-enable this test on Mac.
-        "nomsan",  # TODO(b/161902335): Re-enable.
-        "notsan",  # TODO(b/161829717): Re-enable.
     ],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -111,9 +109,6 @@ cuda_py_test(
     size = "small",
     srcs = ["list_ops_test.py"],
     grpc_enabled = True,
-    tags = [
-        "noasan",  # TODO(b/155406705): flaky
-    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -124,6 +119,7 @@ cuda_py_test(
         "//tensorflow/python:list_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//third_party/py/numpy",
@@ -235,6 +231,7 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
     ],
 )
@@ -278,6 +275,7 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python:while_v2",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:backprop",

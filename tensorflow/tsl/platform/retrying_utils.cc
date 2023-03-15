@@ -61,7 +61,7 @@ Status RetryingUtils::CallWithRetries(
       // Return AbortedError, so that it doesn't get retried again somewhere
       // at a higher level.
       return Status(
-          error::ABORTED,
+          absl::StatusCode::kAborted,
           strings::StrCat("All ", config.max_retries,
                           " retry attempts failed. The last failure: ",
                           status.error_message()));

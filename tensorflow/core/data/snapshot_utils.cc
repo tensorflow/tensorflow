@@ -16,17 +16,22 @@ limitations under the License.
 #include "tensorflow/core/data/snapshot_utils.h"
 
 #include <algorithm>
+#include <climits>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <queue>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
@@ -58,6 +63,18 @@ constexpr const char* const kVersion = "version";
 constexpr const char* const kCurrentCheckpointID = "current_checkpoint_id";
 constexpr const char* const kIndex = "index";
 constexpr const char* const kStartIndex = "start_index";
+
+std::string ProtoSerializationErrorMessage(const TensorProto& proto,
+                                           const std::string& output_file) {
+  const auto proto_byte_size = proto.ByteSizeLong();
+  std::string error_message =
+      absl::StrCat("Failed to serialize tensor proto of ", proto_byte_size,
+                   " bytes to file: ", output_file);
+  if (proto_byte_size > INT_MAX) {
+    absl::StrAppend(&error_message, ": exceeded maximum protobuf size of 2GB.");
+  }
+  return error_message;
+}
 
 }  // namespace
 
@@ -138,14 +155,21 @@ Status TFRecordWriter::WriteTensors(const std::vector<Tensor>& tensors) {
     // Creating raw pointer here because std::move() in a releases in OSS TF
     // will result in a smart pointer being moved upon function creation, which
     // will result in proto_buffer == nullptr when WriteRecord happens.
-    auto proto_buffer = new std::string();
-    proto.SerializeToString(proto_buffer);
+    auto* proto_buffer = new std::string();
+    if (!proto.SerializeToString(proto_buffer)) {
+      delete proto_buffer;
+      return errors::DataLoss(ProtoSerializationErrorMessage(proto, filename_));
+    }
     absl::Cord proto_serialized = absl::MakeCordFromExternal(
         *proto_buffer,
         [proto_buffer](absl::string_view) { delete proto_buffer; });
     TF_RETURN_IF_ERROR(record_writer_->WriteRecord(proto_serialized));
 #else   // TF_CORD_SUPPORT
-    TF_RETURN_IF_ERROR(record_writer_->WriteRecord(proto.SerializeAsString()));
+    std::string proto_serialized;
+    if (!proto.SerializeToString(&proto_serialized)) {
+      return errors::DataLoss(ProtoSerializationErrorMessage(proto, filename_));
+    }
+    TF_RETURN_IF_ERROR(record_writer_->WriteRecord(proto_serialized));
 #endif  // TF_CORD_SUPPORT
   }
   return OkStatus();
@@ -738,11 +762,17 @@ Status TFRecordReader::ReadTensors(std::vector<Tensor>* read_tensors) {
     TF_RETURN_IF_ERROR(record_reader_->ReadRecord(&offset_, &record));
 
     TensorProto proto;
-    proto.ParseFromArray(record.data(), record.size());
+    if (!proto.ParseFromArray(record.data(), record.size())) {
+      return errors::DataLoss(
+          "Unable to parse tensor from stored proto in file: ", filename_,
+          ", record ", offset_, ". Serialized proto: ", record);
+    }
 
     Tensor tensor;
     if (!tensor.FromProto(proto)) {
-      return errors::DataLoss("Unable to parse tensor from stored proto.");
+      return errors::DataLoss(
+          "Unable to parse tensor from stored proto in file: ", filename_,
+          ", record ", offset_, ". TensorProto: ", proto.ShortDebugString());
     }
 
     read_tensors->push_back(std::move(tensor));

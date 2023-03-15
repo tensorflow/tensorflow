@@ -60,7 +60,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
 namespace tensorflow {

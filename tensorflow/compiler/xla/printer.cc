@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -31,21 +32,27 @@ void StringPrinter::Append(const absl::AlphaNum& a) {
 std::string StringPrinter::ToString() && { return std::move(result_); }
 
 void CordPrinter::AppendImpl(const absl::AlphaNum& a) {
-  if (buffer_.capacity() <= a.size()) {
-    AppendBuffer();
+  // CordBuffer methods all contain branches so not cheap, caching the values.
+  const size_t capacity = buffer_.capacity();
+  size_t length = buffer_.length();
+  if (capacity <= a.size()) {
+    if (length > 0) AppendBuffer();
     result_.Append(a.Piece());
     return;
   }
-  if (buffer_.capacity() < a.size() + buffer_.length()) {
+  if (capacity < a.size() + length) {
+    // Because capacity > a.size(), length > 0.
     AppendBuffer();
+    DCHECK_EQ(buffer_.length(), 0);
+    length = 0;
   }
-  auto dst = buffer_.available_up_to(a.size());
-  std::memcpy(dst.data(), a.data(), a.size());
+  DCHECK_LE(a.size(), buffer_.available().size());
+  std::memcpy(buffer_.data() + length, a.data(), a.size());
   buffer_.IncreaseLengthBy(a.size());
 }
 
 void CordPrinter::AppendBuffer() {
-  if (buffer_.length() == 0) return;
+  DCHECK_GT(buffer_.length(), 0);
   result_.Append(std::move(buffer_));
   constexpr size_t kCordBufferSize = 64 << 10;
   buffer_ =

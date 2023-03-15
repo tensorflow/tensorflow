@@ -22101,8 +22101,8 @@ func Lgamma(scope *Scope, x tf.Output) (y tf.Output) {
 // Generates values in an interval.
 //
 // A sequence of `num` evenly-spaced values are generated beginning at `start`.
-// If `num > 1`, the values in the sequence increase by `stop - start / num - 1`,
-// so that the last one is exactly `stop`.
+// If `num > 1`, the values in the sequence increase by
+// `(stop - start) / (num - 1)`, so that the last one is exactly `stop`.
 //
 // For example:
 //
@@ -42610,6 +42610,76 @@ func SegmentMax(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.
 	return op.Output(0)
 }
 
+// Computes the maximum along segments of a tensor.
+//
+// Read
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+// for an explanation of segments.
+//
+// Computes a tensor such that
+// \\(output_i = \max_j(data_j)\\) where `max` is over `j` such
+// that `segment_ids[j] == i`.
+//
+// If the maximum is empty for a given segment ID `i`, it outputs the smallest
+// possible value for the specific numeric type,
+// `output[i] = numeric_limits<T>::lowest()`.
+//
+// Note: That this op is currently only supported with jit_compile=True.
+//
+// Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+// and an error is thrown for indices that are not increasing. On GPU, this
+// does not throw an error for unsorted indices. On GPU, out-of-order indices
+// result in safe but unspecified behavior, which may include treating
+// out-of-order indices as the same as a smaller following index.
+//
+// The only difference with SegmentMax is the additional input  `num_segments`.
+// This helps in evaluating the output shape in compile time.
+// `num_segments` should be consistent with segment_ids.
+// e.g. Max(segment_ids) should be equal to `num_segments` - 1 for a 1-d segment_ids
+// With inconsistent num_segments, the op still runs. only difference is,
+// the output takes the size of num_segments irrespective of size of segment_ids and data.
+// for num_segments less than expected output size, the last elements are ignored
+// for num_segments more than the expected output size, last elements are assigned
+// smallest possible value for the specific numeric type.
+//
+// For example:
+//
+// >>> @tf.function(jit_compile=True)
+// ... def test(c):
+// ...   return tf.raw_ops.SegmentMaxV2(data=c, segment_ids=tf.constant([0, 0, 1]), num_segments=2)
+// >>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+// >>> test(c).numpy()
+// array([[4, 3, 3, 4],
+//
+//	[5, 6, 7, 8]], dtype=int32)
+//
+// Arguments:
+//
+//	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
+//
+// first dimension.  Values should be sorted and can be repeated.
+// The values must be less than `num_segments`.
+//
+// Caution: The values are always validated to be sorted on CPU, never validated
+// on GPU.
+//
+// Returns Has same shape as data, except for the first `segment_ids.rank`
+// dimensions, which are replaced with a single dimensionw which has size
+// `num_segments`.
+func SegmentMaxV2(scope *Scope, data tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SegmentMaxV2",
+		Input: []tf.Input{
+			data, segment_ids, num_segments,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes the mean along segments of a tensor.
 //
 // Read
@@ -42716,6 +42786,76 @@ func SegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.
 		Type: "SegmentMin",
 		Input: []tf.Input{
 			data, segment_ids,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the minimum along segments of a tensor.
+//
+// Read
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+// for an explanation of segments.
+//
+// Computes a tensor such that
+// \\(output_i = \min_j(data_j)\\) where `min` is over `j` such
+// that `segment_ids[j] == i`.
+//
+// If the minimum is empty for a given segment ID `i`, it outputs the largest
+// possible value for the specific numeric type,
+// `output[i] = numeric_limits<T>::max()`.
+//
+// Note: That this op is currently only supported with jit_compile=True.
+//
+// Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+// and an error is thrown for indices that are not increasing. On GPU, this
+// does not throw an error for unsorted indices. On GPU, out-of-order indices
+// result in safe but unspecified behavior, which may include treating
+// out-of-order indices as the same as a smaller following index.
+//
+// The only difference with SegmentMin is the additional input  `num_segments`.
+// This helps in evaluating the output shape in compile time.
+// `num_segments` should be consistent with segment_ids.
+// e.g. Max(segment_ids) should be equal to `num_segments` - 1 for a 1-d segment_ids
+// With inconsistent num_segments, the op still runs. only difference is,
+// the output takes the size of num_segments irrespective of size of segment_ids and data.
+// for num_segments less than expected output size, the last elements are ignored
+// for num_segments more than the expected output size, last elements are assigned
+// the largest possible value for the specific numeric type.
+//
+// For example:
+//
+// >>> @tf.function(jit_compile=True)
+// ... def test(c):
+// ...   return tf.raw_ops.SegmentMinV2(data=c, segment_ids=tf.constant([0, 0, 1]), num_segments=2)
+// >>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+// >>> test(c).numpy()
+// array([[1, 2, 2, 1],
+//
+//	[5, 6, 7, 8]], dtype=int32)
+//
+// Arguments:
+//
+//	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
+//
+// first dimension.  Values should be sorted and can be repeated.
+// The values must be less than `num_segments`.
+//
+// Caution: The values are always validated to be sorted on CPU, never validated
+// on GPU.
+//
+// Returns Has same shape as data, except for the first `segment_ids.rank`
+// dimensions, which are replaced with a single dimensionw which has size
+// `num_segments`.
+func SegmentMinV2(scope *Scope, data tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SegmentMinV2",
+		Input: []tf.Input{
+			data, segment_ids, num_segments,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -57373,7 +57513,8 @@ func XlaCallModuleDimArgsSpec(value []string) XlaCallModuleAttr {
 //
 // value: the list of platforms supported by `module`. If the list is empty,
 // the `module` is platform independent or there should be no platform checking
-// or preprocessing. The list can contain the strings "CPU", "GPU", or "TPU".
+// or preprocessing. The list can contain the strings "CPU", "CUDA", "ROCM",
+// or "TPU".
 // If the list is not empty then it is an error to compile this op for a
 // platform that does not appear in the list. If the list contains more than
 // one platform, then the `module` takes one additional 0-dimensional
@@ -57401,7 +57542,7 @@ func XlaCallModulePlatforms(value []string) XlaCallModuleAttr {
 //
 //	version: Tracks changes the semantics of the op, to support backwards
 //
-// compatibility. Version 1 carries an MHLO text or bytecode `module`. From
+// compatibility. Minimum supported version is 2. From
 // version 2, the op carries a StableHLO text or bytecode `module`. From
 // version 3, the op also supports the `platforms` attribute.
 //

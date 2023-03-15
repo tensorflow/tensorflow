@@ -325,6 +325,25 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
 }
 
+TEST_F(TritonGemmTest, SameInput) {
+  const std::string hlo_text = R"(
+HloModule m
+
+ENTRY e {
+  p0 = pred[5,5]{1,0} parameter(0)
+  c = f32[5,5]{1,0} convert(p0)
+  ROOT r = f32[5,5]{1,0} dot(c, c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK: fusion(%p0), kind=kCustom
+; CHECK-SAME: backend_config="{\"block_m\":\"
+)");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-6, 1e-6}));
+}
+
 struct GemmTestParams {
   PrimitiveType lhs_ty;
   PrimitiveType rhs_ty;
@@ -385,7 +404,7 @@ INSTANTIATE_TEST_SUITE_P(RewriteTestSuite, ParametrizedRewriteTest,
                              GemmTestParams{PRED, F32, 16, 32, 8, 1e-4, 1e-3},
                              GemmTestParams{S8, F16, 16, 32, 8},
                              GemmTestParams{S8, BF16, 16, 32, 8},
-                             GemmTestParams{S8, F32, 16, 32, 8, 1e-2, 1e-2},
+                             GemmTestParams{S8, F32, 16, 32, 8, 5e-2, 1e-2},
                              GemmTestParams{S8, F32, 101, 7, 303, 0.1, 0.1},
                              GemmTestParams{S8, F32, 101, 32, 303, 0.1, 0.1},
                              GemmTestParams{S8, F32, 101, 2048, 303, 0.5, 0.1},

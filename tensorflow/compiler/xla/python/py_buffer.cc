@@ -25,8 +25,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
@@ -62,7 +62,10 @@ struct PyBufferPyObject {
   PyObject* weakrefs;
 };
 static_assert(std::is_standard_layout<PyBufferPyObject>::value,
-              "PyBufferPyObject must be standard layout");
+              "PyBufferPyObject must be standard layout. This error "
+              "can occur if the target is compiled with the Clang compiler and "
+              "the GCC standard library. In that case either switch to the GCC "
+              "toolchain or use -stdlib=libc++.");
 
 PyObject* PyBuffer_tp_new(PyTypeObject* subtype, PyObject* args,
                           PyObject* kwds) {

@@ -244,8 +244,11 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   const FunctionDef* GetFunctionDef(const string& function_name);
 
   std::vector<string> ListFunctionNames() override;
+  tensorflow::ImmediateExecutionContext::CacheStats GetCacheStats() override;
 
   Status RemoveFunction(const string& func) override;
+  Status AddRemoveFunctionNotifier(const string& func,
+                                   std::function<void()> notifier) override;
 
   // Wait for pending nodes to be finished in local executors (including context
   // default executor and thread executors) and executors on remote workers.
@@ -315,29 +318,27 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // The caller of the returned function owns a reference to the resulting
   // Rendezvous.
   Rendezvous::Factory RendezvousFactory() {
-    // There is an implicit assumption that the global_rendezvous_for_functions_
-    // is always an IntraProcessRendezvous to match the behaviour of the
-    // EagerContext's rendezvous.
-    // Ref: tensorflow/c/eager/c_api.cc;l=143;rcl=396387348
-    // If a cross process kernel needs a rendezvous a new InterProcessRendezvous
-    // should be created.
-    if (reuse_rendezvous_for_functions_ && rendezvous_creator_ == nullptr &&
-#if !defined(IS_MOBILE_PLATFORM)
-        worker_env_ == nullptr &&
-#endif
-        remote_device_mgr() == nullptr) {
-      return Rendezvous::Factory{[this](const int64_t step_id,
-                                        const DeviceMgr* device_mgr,
-                                        Rendezvous** r) {
+    Rendezvous::Factory factory = CreateRendezvousFactory();
+
+    if (!factory && reuse_rendezvous_for_functions_) {
+      // There is an implicit assumption that the
+      // global_rendezvous_for_functions_ is always an IntraProcessRendezvous to
+      // match the behaviour of the EagerContext's rendezvous. Ref:
+      // tensorflow/c/eager/c_api.cc;l=143;rcl=396387348 If a cross process
+      // kernel needs a rendezvous a new InterProcessRendezvous should be
+      // created.
+      factory = Rendezvous::Factory{[this](const int64_t step_id,
+                                           const DeviceMgr* device_mgr,
+                                           Rendezvous** r) {
         mutex_lock l(global_rendezvous_mu_);
         // Increase the ref that owned by the caller.
         global_rendezvous_for_functions_->Ref();
         *r = global_rendezvous_for_functions_.get();
         return OkStatus();
       }};
-    } else {
-      return CreateRendezvousFactory();
     }
+
+    return factory;
   }
 
   CollectiveExecutorMgrInterface* collective_executor_mgr() {
@@ -443,12 +444,12 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // Similar with InitializeRemoteMaster but this context will not kill remote
   // contexts in shutdown.
   Status InitializeRemoteWorker(
+      const WorkerEnv* worker_env,
+      std::shared_ptr<WorkerSession> worker_session,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       DynamicDeviceMgr* remote_device_mgr,
       const std::vector<string>& remote_contexts, uint64 context_id,
-      uint64 context_view_id,
-      std::function<Rendezvous*(const int64_t)> rendezvous_creator,
-      DistributedFunctionLibraryRuntime* cluster_flr,
+      uint64 context_view_id, DistributedFunctionLibraryRuntime* cluster_flr,
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
           remote_mgr,
       std::function<void()> resource_deallocator);
@@ -588,16 +589,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   };
 
   Rendezvous::Factory CreateRendezvousFactory() const {
-    if (rendezvous_creator_ != nullptr) {
-      return Rendezvous::Factory{[this](const int64_t step_id,
-                                        const DeviceMgr* device_mgr,
-                                        Rendezvous** r) {
-        VLOG(6) << "Creating rendezvous using the rendezvous_creator_.";
-        *r = rendezvous_creator_(step_id);
-        return OkStatus();
-      }};
-    }
-
 #if !defined(IS_MOBILE_PLATFORM)
     if (worker_env_ != nullptr && worker_env_->rendezvous_mgr != nullptr) {
       return Rendezvous::Factory{
@@ -717,7 +708,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   std::shared_ptr<std::vector<DeviceType>> prioritized_device_type_list_
       TF_GUARDED_BY(device_type_list_mu_);
   Rendezvous* rendezvous_;
-  std::function<Rendezvous*(const int64_t)> rendezvous_creator_;
   CustomDeviceOpHandler custom_device_op_handler_;
 
   mutable mutex composite_devices_mu_;
@@ -744,6 +734,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   mutex cache_mu_;
   mutex device_cache_mu_;
+  mutex remove_function_notifiers_mu_;
   struct RegisteredFunction : public core::RefCounted {
     ~RegisteredFunction() override {}
 
@@ -756,6 +747,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       TF_GUARDED_BY(cache_mu_);
   absl::flat_hash_map<Fprint128, Device*, Fprint128Hasher> device_cache_
       TF_GUARDED_BY(device_cache_mu_);
+  std::unordered_map<std::string, std::vector<std::function<void()>>>
+      remove_function_notifiers_ TF_GUARDED_BY(remove_function_notifiers_mu_);
 
   // Whether we should compute RunMetadata.
   std::atomic<bool> should_store_graphs_{false};
@@ -818,7 +811,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // Therefore the server_ object is not marked as const (even though it should
   // be).
   std::unique_ptr<ServerInterface> server_;
-  WorkerEnv* worker_env_ = nullptr;
+  const WorkerEnv* worker_env_ = nullptr;
   std::shared_ptr<WorkerSession> worker_session_;
 
   mutable mutex remote_state_mu_;

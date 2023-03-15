@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/context_registry.h"
 #include "tensorflow/core/common_runtime/eager/custom_device.h"
 #include "tensorflow/core/common_runtime/eager/custom_device_op_handler.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"
@@ -62,13 +63,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/version.h"
-
-// "tensorflow/core/platform/platform.h" must be included first before using
-// PLATFORM_GOOGLE, IS_MOBILE_PLATFORM, etc.
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE) && \
-    !defined(PLATFORM_FUCHSIA)
-#include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
-#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE && !PLATFORM_FUCHSIA
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
@@ -118,41 +112,31 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   if (opts->use_tfrt) {
 #if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE) && \
     !defined(PLATFORM_FUCHSIA)
-    tfrt::tf::ContextInterface* tfrt_context = new tfrt::tf::ContextInterface(
-        opts->session_options.options,
-        static_cast<tensorflow::ContextDevicePlacementPolicy>(
-            opts->device_placement_policy),
-        opts->async);
+    auto* global_registry = tensorflow::GlobalContextRegistry();
+    auto tfrt_eager_context_creator = global_registry->Lookup("tfrt");
+    if (!tfrt_eager_context_creator.ok()) {
+      status->status = tfrt_eager_context_creator.status();
+      return nullptr;
+    }
+    auto* tfrt_context = (*tfrt_eager_context_creator)(opts);
     return tensorflow::wrap(tfrt_context);
 #else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
     return nullptr;
 #endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE && !PLATFORM_FUCHSIA
   }
-  std::vector<std::unique_ptr<tensorflow::Device>> devices;
-  status->status = tensorflow::DeviceFactory::AddDevices(
-      opts->session_options.options, "/job:localhost/replica:0/task:0",
-      &devices);
-  if (!status->status.ok()) return nullptr;
-  std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
-      new tensorflow::DynamicDeviceMgr(std::move(devices)));
+  auto* global_registry = tensorflow::GlobalContextRegistry();
+  auto eager_context_creator = global_registry->Lookup("eager");
+  if (!eager_context_creator.ok()) {
+    status->status = eager_context_creator.status();
+    return nullptr;
+  }
+  auto* eager_context = (*eager_context_creator)(opts);
 
-  tensorflow::Rendezvous* r =
-      new tensorflow::IntraProcessRendezvous(device_mgr.get());
-  tensorflow::EagerContext* eager_context = new tensorflow::EagerContext(
-      opts->session_options.options,
-      static_cast<tensorflow::ContextDevicePlacementPolicy>(
-          opts->device_placement_policy),
-      opts->async, device_mgr.release(),
-      /*device_mgr_owned*/ true, r,
-      /*cluster_flr=*/nullptr,
-      /*collective_executor_mgr=*/nullptr,
-      /*run_eager_op_as_function=*/opts->run_eager_op_as_function,
-      /*jit_compile_rewrite=*/opts->jit_compile_rewrite);
 #if !defined(IS_MOBILE_PLATFORM)
   eager_context->SetDistributedManager(
       std::make_unique<tensorflow::EagerContextDistributedManager>(
-          eager_context));
+          reinterpret_cast<tensorflow::EagerContext*>(eager_context)));
 #endif  // !IS_MOBILE_PLATFORM
   return tensorflow::wrap(eager_context);
 }
@@ -279,7 +263,7 @@ void TFE_DeleteTensorHandle(TFE_TensorHandle* h) {
   tensorflow::profiler::TraceMe activity(
       "TFE_DeleteTensorHandle", tensorflow::profiler::TraceMeLevel::kInfo);
   if (h) {
-    tensorflow::unwrap(h)->Release();
+    tensorflow::unwrap(h)->Unref();
   }
 }
 
@@ -345,7 +329,8 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_TensorHandleCopySharingTensor(
     return nullptr;
   }
 
-  return tensorflow::wrap(tensorflow::unwrap(h)->Copy());
+  tensorflow::unwrap(h)->Ref();
+  return h;
 }
 
 TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
@@ -425,7 +410,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     TF_Status status;
     TFE_TensorHandle* result_handle = device_.copy_tensor_to_device(
         context_, tensorflow::wrap(handle), &status, info_);
-    handle->Release();
+    handle->Unref();
     if (!status.status.ok()) return status.status;
     *result = tensorflow::unwrap(result_handle);
     (*result)->Ref();
@@ -442,7 +427,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     TFE_TensorHandle* result_handle = device_.copy_tensor_from_device(
         context_, tensorflow::wrap(handle), target_device_name.c_str(), &status,
         info_);
-    handle->Release();
+    handle->Unref();
     if (!status.status.ok()) return status.status;
     *result = tensorflow::unwrap(result_handle);
     (*result)->Ref();

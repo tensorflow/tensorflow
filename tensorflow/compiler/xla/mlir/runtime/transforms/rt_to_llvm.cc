@@ -147,16 +147,16 @@ class RuntimeTypeConverter : public TypeConverter {
     addConversion(ConvertOpaqueType);
   }
 
-  static llvm::Optional<Type> ConvertExecutionContextType(
+  static std::optional<Type> ConvertExecutionContextType(
       ExecutionContextType type) {
     return LLVM::LLVMPointerType::get(type.getContext());
   }
 
-  static llvm::Optional<Type> ConvertStatusType(StatusType type) {
+  static std::optional<Type> ConvertStatusType(StatusType type) {
     return IntegerType::get(type.getContext(), 1);
   }
 
-  static llvm::Optional<Type> ConvertOpaqueType(OpaqueType type) {
+  static std::optional<Type> ConvertOpaqueType(OpaqueType type) {
     return LLVM::LLVMPointerType::get(type.getContext());
   }
 };
@@ -636,7 +636,7 @@ class TraceOpLowering : public OpConversionPattern<TraceOp> {
     // Replace trace operation with inlined region.
     b.setInsertionPointAfter(op);
     auto terminator = cast<YieldOp>(op.getBody().front().getTerminator());
-    rewriter.mergeBlockBefore(terminator->getBlock(), op);
+    rewriter.inlineBlockBefore(terminator->getBlock(), op);
     rewriter.replaceOp(op, terminator->getOperands());
     rewriter.eraseOp(terminator);
 
@@ -689,7 +689,10 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   RewritePatternSet patterns(ctx);
 
   // We use conversion to LLVM type to lower all runtime operands to LLVM types.
-  LLVMTypeConverter llvm_converter(ctx);
+  // TODO(b/267828330): Migrate to opaque pointers.
+  LowerToLLVMOptions options(&getContext());
+  options.useOpaquePointers = false;
+  LLVMTypeConverter llvm_converter(ctx, options);
   llvm_converter.addConversion(
       RuntimeTypeConverter::ConvertExecutionContextType);
   llvm_converter.addConversion(RuntimeTypeConverter::ConvertStatusType);
@@ -700,12 +703,10 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   // rewriter function into the CFG and they interact badly.
 
   // Convert all async types to opaque pointers.
-  llvm_converter.addConversion([](Type type) -> Optional<Type> {
+  llvm_converter.addConversion([&](Type type) -> std::optional<Type> {
     if (type.isa<async::TokenType, async::GroupType, async::ValueType>())
-      // TODO(yijiagu): We should change the asyncRuntime function type with
-      // opaque pointer
-      return LLVM::LLVMPointerType::get(IntegerType::get(type.getContext(), 8));
-
+      return llvm_converter.getPointerType(
+          IntegerType::get(type.getContext(), 8));
     return std::nullopt;
   });
 
@@ -714,7 +715,7 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   auto add_unrealized_cast = [](OpBuilder &builder, Type type,
                                 ValueRange inputs, Location loc) {
     auto cast = builder.create<UnrealizedConversionCastOp>(loc, type, inputs);
-    return Optional<Value>(cast.getResult(0));
+    return std::optional<Value>(cast.getResult(0));
   };
   converter.addSourceMaterialization(add_unrealized_cast);
 

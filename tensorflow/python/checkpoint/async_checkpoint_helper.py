@@ -177,7 +177,8 @@ class AsyncCheckpointHelper:
       if isinstance(current_trackable, TPUEmbedding):
         self._handle_tpu_embedding(current_trackable)
 
-      for child in current_trackable._trackable_children().values():
+      for child in current_trackable._trackable_children(
+          save_type="checkpoint").values():
         if child in visited:
           continue
         visited.add(child)
@@ -226,6 +227,10 @@ class AsyncCheckpointHelper:
 
     # Initiate the underlying Checkpoint instance with the copied items.
     self._checkpoint = self._checkpointer_impl(**self._checkpoint_items)
+    # Initiate the underlying Checkpoint instance's save_counter.
+    save_counter = self._checkpoint.save_counter
+    logging.info("Initializing async checkpoint's save_counter: %d",
+                 save_counter)
 
     # Pass the object map of the copied variables to the underlying Checkpoint.
     self._checkpoint._saver._object_map = self._object_map  # pylint: disable=protected-access
@@ -244,7 +249,7 @@ class AsyncCheckpointHelper:
     3). Trigger the async save thread to check and fail the while-predicate.
     4). Join the async save thread. (The thread may finish before joining.)
     """
-    if self._writer_sem.acquire(timeout=3600):  # Step-1.
+    if self._writer_sem.acquire(timeout=300):  # Step-1.
       self._async_save_thread_shutdown = True  # Step-2.
       self._reader_sem.release()  # Step-3.
       logging.info("Joining the async save thread.")
@@ -387,6 +392,10 @@ class AsyncCheckpointHelper:
     Returns:
       The save counter variable.
     """
+    # TODO(sagunb): Improve the solution for initializing save_counter.
+    # If save_counter() is called before all the variables are created,
+    # self._ensure_initialized() would construct the object_map without some
+    # variables that need to be checkpointed, e.g., slot variables.
     self._ensure_initialized()
     return self._checkpoint.save_counter
 

@@ -18,6 +18,9 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <optional>
+#include <queue>
+#include <string>
+#include <string_view>
 #include <vector>
 
 // clang-format off
@@ -83,7 +86,6 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/util.h"
 
 #ifdef INTEL_MKL
@@ -93,10 +95,6 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-
-constexpr char kCpuDevice[] = "CPU";
-constexpr char kGpuDevice[] = "GPU";
-constexpr char kTpuDevice[] = "TPU";
 
 constexpr char kEnabled[] = "enabled";
 constexpr char kDisabled[] = "disabled";
@@ -462,7 +460,7 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
   }
 
   // No explicit requests. Compile for XLA devices by default.
-  if (op->GetDeviceParsedName().type == "TPU" ||
+  if (op->GetDeviceParsedName().type == tensorflow::DEVICE_TPU ||
       op->GetDeviceParsedName().type == "XLA_GPU" ||
       op->GetDeviceParsedName().type == "XLA_CPU") {
     VLOG(2) << "Compiling " << op->Name()
@@ -477,34 +475,110 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
   return OkStatus();
 }
 
-void UpdateCompileCounter(const EagerOperation* op, bool compile_with_xla,
-                          bool has_tpu_replication) {
+// Check if `op` has tf.StatefulPartitionedCall op with _XlaMustCompile, sets
+// `has_jit_compile` and `device`.
+Status HasNestedJitCompile(const EagerOperation& op, const EagerContext& ctx,
+                           bool* has_jit_compile, string* device) {
+  *has_jit_compile = false;
+
+  const std::string kStatefulPartitionedCallOp = "StatefulPartitionedCall";
+  const std::string kXlaMustCompile = "_XlaMustCompile";
+  if (!op.is_function()) {
+    return OkStatus();
+  }
+
+  std::queue<std::string> function_names;
+  function_names.push(op.Name());
+
+  while (!function_names.empty()) {
+    const string& function_name = function_names.front();
+
+    const FunctionDef* function_def =
+        ctx.pflr()->GetFunctionLibraryDefinition()->Find(function_name);
+    if (function_def == nullptr) {
+      return errors::NotFound("Failed to find function '", function_name, "'");
+    }
+    function_names.pop();
+    for (const NodeDef& node : function_def->node_def()) {
+      if (node.op() == kStatefulPartitionedCallOp) {
+        auto attr = node.attr().find(kXlaMustCompile);
+        if (attr != node.attr().end() && attr->second.b() == true) {
+          *has_jit_compile = true;
+          auto device_attr = node.attr().find("device");
+          if (device_attr != node.attr().end()) {
+            *device = device_attr->second.s();
+          }
+          return OkStatus();
+        } else {
+          auto attr = node.attr().find("f");
+          if (attr != node.attr().end() &&
+              !attr->second.func().name().empty()) {
+            function_names.push(attr->second.func().name());
+          }
+        }
+      }
+    }
+  }
+  return OkStatus();
+}
+
+string CanonicalizeDeviceType(std::string_view device_type) {
+  string canonical_device_type = "Unknown";
+  if (device_type == "XLA_CPU" || device_type == tensorflow::DEVICE_CPU) {
+    canonical_device_type = tensorflow::DEVICE_CPU;
+  }
+  if (device_type == "XLA_GPU" || device_type == tensorflow::DEVICE_GPU) {
+    canonical_device_type = tensorflow::DEVICE_GPU;
+  }
+  if (device_type == tensorflow::DEVICE_TPU) {
+    canonical_device_type = tensorflow::DEVICE_TPU;
+  }
+  return canonical_device_type;
+}
+
+Status UpdateCompileCounter(const EagerOperation* op, const EagerContext& ctx,
+                            bool compile_with_xla, bool has_tpu_replication) {
   if (has_tpu_replication) {
-    function_compile_counter->GetCell(kTpuDevice, kEnabled)->IncrementBy(1);
-    return;
+    function_compile_counter->GetCell(tensorflow::DEVICE_TPU, kEnabled)
+        ->IncrementBy(1);
+    return OkStatus();
   }
 
-  string device_type = "Unknown";
   string compilation_option = kDisabled;
-  if (op->GetDeviceParsedName().type == "XLA_CPU" ||
-      op->GetDeviceParsedName().type == "CPU") {
-    device_type = kCpuDevice;
+  if (!compile_with_xla) {
+    bool nested_jit_compile;
+    string device;
+    TF_RETURN_IF_ERROR(
+        HasNestedJitCompile(*op, ctx, &nested_jit_compile, &device));
+    if (nested_jit_compile) {
+      if (!device.empty()) {
+        tsl::DeviceNameUtils::ParsedName device_parsed_name;
+        if (!DeviceNameUtils::ParseFullName(device, &device_parsed_name)) {
+          return errors::InvalidArgument("Malformed device specification: '",
+                                         device);
+        }
+        VLOG(1) << "Compilation Device Type: " << device_parsed_name.type;
+
+        function_compile_counter
+            ->GetCell(CanonicalizeDeviceType(device_parsed_name.type), kEnabled)
+            ->IncrementBy(1);
+        return OkStatus();
+      } else {
+        compilation_option = kEnabled;
+      }
+    }
   }
-  if (op->GetDeviceParsedName().type == "XLA_GPU" ||
-      op->GetDeviceParsedName().type == "GPU") {
-    device_type = kGpuDevice;
-  }
-  if (op->GetDeviceParsedName().type == "TPU") {
-    device_type = kTpuDevice;
+
+  string device_type = CanonicalizeDeviceType(op->GetDeviceParsedName().type);
+  if (device_type == tensorflow::DEVICE_TPU || compile_with_xla) {
     compilation_option = kEnabled;
   }
 
-  if (compile_with_xla) {
-    compilation_option = kEnabled;
-  }
+  VLOG(1) << "Compilation Device Type: " << device_type;
 
   function_compile_counter->GetCell(device_type, compilation_option)
       ->IncrementBy(1);
+  return OkStatus();
 }
 
 Status VerifyWrappableInCallOp(const OpDef& opdef, EagerOperation* op) {
@@ -1195,9 +1269,8 @@ Status GetOrCreateKernelAndDevice(
       bool has_tpu_replication = false;
       TF_RETURN_IF_ERROR(MustCompileWithXLA(op, ctx, &compile_with_xla));
       TF_RETURN_IF_ERROR(HasTPUReplication(*op, ctx, &has_tpu_replication));
-      VLOG(1) << "Compilation Device Type: " << op->GetDeviceParsedName().type;
-      UpdateCompileCounter(op, compile_with_xla, has_tpu_replication);
-
+      TF_RETURN_IF_ERROR(
+          UpdateCompileCounter(op, ctx, compile_with_xla, has_tpu_replication));
       if (compile_with_xla && !has_tpu_replication) {
         if (ctx.JitCompileRewrite()) {
           xla_compile_device_type = op->GetDeviceParsedName().type;

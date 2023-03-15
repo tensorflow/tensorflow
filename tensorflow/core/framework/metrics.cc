@@ -173,12 +173,24 @@ auto* tf_data_service_cross_trainer_cache_size_bytes =
         "/tensorflow/data/service/cross_trainer_cache_size_bytes",
         "tf.data service cross-trainer cache memory usage in bytes.");
 
+auto* tf_data_service_snapshot_bytes_committed =
+    tsl::monitoring::Counter<0>::New(
+        "/tensorflow/data/service/snapshot_bytes_committed",
+        "tf.data service distributed snapshot committed bytes.");
+
 auto* tf_data_service_data_transfer_protocol_used =
     tsl::monitoring::Counter<1>::New(
         "/tensorflow/data/service/data_transfer_protocol_used",
         "The number of tf.data service worker clients created that use this "
         "data transfer protocol.",
         "data_transfer_protocol");
+
+auto* tf_data_service_data_transfer_protocol_error =
+    tsl::monitoring::Counter<3>::New(
+        "/tensorflow/data/service/data_transfer_protocol_error",
+        "The number of times a tf.data service worker client got this type "
+        "of non-retriable error with this message when using this protocol.",
+        "data_transfer_protocol", "error_type", "error_message");
 
 auto* tf_data_filename_counter = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
@@ -286,10 +298,10 @@ auto* mlir_bridge_first_phase_counter = tsl::monitoring::Counter<4>::New(
     "Tracks processing state in first phase of mlir bridge", "device",
     "version", "fallback", "result");
 
-auto* tf_version_graph_counter = tsl::monitoring::Counter<4>::New(
-    "/tensorflow/core/tf_version_graph_counter",
-    "Marks which tf1 feature (if any) a graph contains.", "device_context",
-    "control_flow", "ref_variable", "tf_version");
+auto* tf1_features_by_graph_count = tsl::monitoring::Counter<5>::New(
+    "/tensorflow/core/tf1_features_by_graph_count",
+    "Marks which tf1 feature (if any) a graph contains.", "device", "context",
+    "control_flow", "ref_variable", "manual_control_deps");
 
 tsl::monitoring::Counter<2>* GetGraphOptimizationCounter() {
   static auto* graph_optimization_counter = tsl::monitoring::Counter<2>::New(
@@ -423,6 +435,14 @@ void RecordTFDataServiceDataTransferProtocolUsed(
       ->IncrementBy(1);
 }
 
+void RecordTFDataServiceDataTransferProtocolError(
+    const string& data_transfer_protocol, error::Code code,
+    const string& error_message) {
+  tf_data_service_data_transfer_protocol_error
+      ->GetCell(data_transfer_protocol, error::Code_Name(code), error_message)
+      ->IncrementBy(1);
+}
+
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit) {
   std::string cache_hit_str = cache_hit ? "true" : "false";
   tf_data_service_cross_trainer_cache_queries_counter->GetCell(cache_hit_str)
@@ -432,6 +452,10 @@ void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit) {
 void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes) {
   tf_data_service_cross_trainer_cache_size_bytes->GetCell()->Set(
       static_cast<int64_t>(bytes));
+}
+
+void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes) {
+  tf_data_service_snapshot_bytes_committed->GetCell()->IncrementBy(bytes);
 }
 
 void RecordTFDataFilename(const string& name, const string& filename) {
@@ -616,13 +640,15 @@ void UpdateTfMlirBridgeGraphAnalysisPerOp(
       ->IncrementBy(1);
 }
 
-void RecordTFVersionByGraphFeatures(const std::string& device_context,
+void RecordTFVersionByGraphFeatures(const std::string& device,
+                                    const std::string& context,
                                     bool hasControlFlowV1,
-                                    bool hasReferenceVariables) {
-  tf_version_graph_counter
-      ->GetCell(device_context, hasControlFlowV1 ? "true" : "false",
+                                    bool hasReferenceVariables,
+                                    bool hasManualControlDeps) {
+  tf1_features_by_graph_count
+      ->GetCell(device, context, hasControlFlowV1 ? "true" : "false",
                 hasReferenceVariables ? "true" : "false",
-                hasControlFlowV1 || hasReferenceVariables ? "tf1" : "tf2")
+                hasManualControlDeps ? "true" : "false")
       ->IncrementBy(1);
 }
 

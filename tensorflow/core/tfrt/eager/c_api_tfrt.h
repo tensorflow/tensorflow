@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_EAGER_C_API_TFRT_H_
 #define TENSORFLOW_CORE_TFRT_EAGER_C_API_TFRT_H_
 
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,10 +27,10 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
-#include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/context_registry.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -161,7 +163,10 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
       const tensorflow::FunctionDef& fdef,
       const tensorflow::StackTracesMap& stack_traces) override;
   std::vector<std::string> ListFunctionNames() override;
+  tensorflow::ImmediateExecutionContext::CacheStats GetCacheStats() override;
   tensorflow::Status RemoveFunction(const std::string& func) override;
+  tensorflow::Status AddRemoveFunctionNotifier(
+      const std::string& func, std::function<void()> notifier) override;
   const tensorflow::FunctionDef* FindFunctionDef(
       const std::string& name) const override;
 
@@ -346,8 +351,6 @@ class TensorHandleInterface
   explicit TensorHandleInterface(tensorflow::DataType dtype, Value&& v,
                                  TfrtContext* context);
 
-  void Release() override { Unref(); }
-
   tensorflow::DataType DataType() const override;
   tensorflow::Status TensorHandleStatus() const override;
   tensorflow::Status Shape(
@@ -375,13 +378,6 @@ class TensorHandleInterface
   tensorflow::AbstractTensorInterface* Resolve(
       tensorflow::Status* status) override;
 
-  // TODO(b/161897666): Figure out if we can get rid of returning a new
-  // pointer here and just use Ref().
-  tensorflow::ImmediateExecutionTensorHandle* Copy() override {
-    Ref();
-    return this;
-  }
-
   TensorHandle Handle() { return value_.get<TensorHandle>().CopyRef(); }
 
   Value* value() { return &value_; }
@@ -391,8 +387,10 @@ class TensorHandleInterface
     return ptr->getKind() == kTfrt;
   }
 
+  tensorflow::FullTypeDef FullType() const override { return full_type_; }
+
  private:
-  llvm::Optional<const TensorMetadata*> Metadata() const;
+  std::optional<const TensorMetadata*> Metadata() const;
 
   tensorflow::StatusOr<tensorflow::DataType> ObtainDataTypeFromMetaData(
       const TensorMetadata*) const;
@@ -401,12 +399,14 @@ class TensorHandleInterface
   // is known from the function output signature.
   // Therefore, we can obtain the datatype earlier, before the function
   // execution completes.
-  llvm::Optional<tensorflow::DataType> dtype_;
+  std::optional<tensorflow::DataType> dtype_;
 
   TfrtContext& context_;
 
   // Value of tfrt::TensorHandle.
   Value value_;
+
+  tensorflow::FullTypeDef full_type_;
 };
 
 template <typename T>
@@ -556,7 +556,7 @@ class OperationInterface : public tensorflow::ImmediateExecutionOperation {
     // TODO(b/181368626): Support cancellation.
   }
 
-  absl::optional<tensorflow::ManagedStackTrace> GetStackTrace() override {
+  std::optional<tensorflow::ManagedStackTrace> GetStackTrace() override {
     return stack_trace_;
   }
 
@@ -601,10 +601,13 @@ class OperationInterface : public tensorflow::ImmediateExecutionOperation {
   AbortLocationHandler abort_location_handler_;
   ContextInterface* const context_;
   // TODO(kkb): Use tfrt::Location and implement TFRT async stack tracing.
-  absl::optional<tensorflow::ManagedStackTrace> stack_trace_;
+  std::optional<tensorflow::ManagedStackTrace> stack_trace_;
 
   int custom_device_tensor_handle_count_ = 0;
 };
+
+tensorflow::ImmediateExecutionContext* CreateTfrtEagerContext(
+    const TFE_ContextOptions* opts);
 
 }  // namespace tf
 }  // namespace tfrt

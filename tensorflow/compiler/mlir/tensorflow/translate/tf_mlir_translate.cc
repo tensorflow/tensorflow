@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 
+#include <optional>
+
 #include "absl/memory/memory.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -46,7 +48,7 @@ static StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirImport(
     llvm::StringRef input, absl::string_view debug_info_file,
     const std::vector<std::string>& input_arrays,
     const std::vector<std::string>& input_dtypes,
-    const std::vector<llvm::Optional<std::vector<int>>>& input_shapes,
+    const std::vector<std::optional<std::vector<int>>>& input_shapes,
     const std::vector<std::string>& output_arrays,
     const std::vector<std::string>& control_output_arrays,
     bool prune_unused_nodes, bool convert_legacy_fed_inputs,
@@ -108,7 +110,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirTranslateFunction(
     llvm::StringRef input, absl::string_view debug_info_file,
     const std::vector<std::string>& input_arrays,
     const std::vector<std::string>& input_dtypes,
-    const std::vector<llvm::Optional<std::vector<int>>>& input_shapes,
+    const std::vector<std::optional<std::vector<int>>>& input_shapes,
     const std::vector<std::string>& output_arrays,
     const std::vector<std::string>& control_output_arrays,
     bool prune_unused_nodes, bool convert_legacy_fed_inputs,
@@ -135,7 +137,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirTranslateFunction(
     mlir::MLIRContext* context) {
   std::vector<std::string> input_array_vector;
   std::vector<std::string> input_dtype_vector;
-  std::vector<llvm::Optional<std::vector<int>>> input_shapes_vector;
+  std::vector<std::optional<std::vector<int>>> input_shapes_vector;
   std::vector<std::string> output_array_vector;
   std::vector<std::string> control_output_array_vector;
   TF_RETURN_IF_ERROR(ParseNodeNames(input_arrays, input_array_vector));
@@ -166,10 +168,13 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SavedModelObjectGraphToMlirImport(
     return load_status;
   }
 
-  auto module_or = ConvertSavedModelToMlir(
-      &bundle, context, exported_names, /*add_default_attributes=*/true,
-      /*unconditionally_use_set_output_shapes=*/
-      unconditionally_use_set_output_shapes);
+  MLIRImportOptions options;
+  options.add_default_attributes = true;
+  options.unconditionally_use_set_output_shapes =
+      unconditionally_use_set_output_shapes;
+
+  auto module_or =
+      ConvertSavedModelToMlir(&bundle, context, exported_names, options);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "SavedModel import failed: " << module_or.status();
   }
@@ -180,7 +185,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    MLIRImportOptions options, bool lift_variables,
+    MLIRImportOptions options,
     std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle) {
   // Create local bundle if no one is provided to use.
   std::unique_ptr<tensorflow::SavedModelBundle> bundle;
@@ -204,8 +209,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SavedModelSignatureDefsToMlirImport(
     return load_status;
   }
 
-  auto module_or = ConvertSavedModelV1ToMlir(*bundle_ptr, exported_names,
-                                             context, options, lift_variables);
+  auto module_or =
+      ConvertSavedModelV1ToMlir(*bundle_ptr, exported_names, context, options);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "SavedModel V1 import failed: " << module_or.status();
   }
@@ -246,7 +251,7 @@ GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input, absl::string_view debug_info_file,
     const std::vector<std::string>& input_arrays,
     const std::vector<std::string>& input_dtypes,
-    const std::vector<llvm::Optional<std::vector<int>>>& input_shapes,
+    const std::vector<std::optional<std::vector<int>>>& input_shapes,
     const std::vector<std::string>& output_arrays,
     const std::vector<std::string>& control_output_arrays,
     bool prune_unused_nodes, bool convert_legacy_fed_inputs,
@@ -304,7 +309,7 @@ GraphdefToSplattedMlirTranslateFunction(
     mlir::MLIRContext* context) {
   std::vector<std::string> input_array_vector;
   std::vector<std::string> input_dtype_vector;
-  std::vector<llvm::Optional<std::vector<int>>> input_shapes_vector;
+  std::vector<std::optional<std::vector<int>>> input_shapes_vector;
   std::vector<std::string> output_array_vector;
   std::vector<std::string> control_output_array_vector;
   TF_RETURN_IF_ERROR(ParseNodeNames(input_arrays, input_array_vector));

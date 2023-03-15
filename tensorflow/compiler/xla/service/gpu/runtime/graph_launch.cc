@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
@@ -100,6 +101,14 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
   // accidentally record any concurrent kernel launches from other XLA
   // executables.
   se::StreamExecutor* executor = run_options->stream()->parent();
+
+  // Initialize (with memoization) BlasSupport here because cublasCreate fails
+  // during cuda graph capturing.
+  // TODO(b/272559361): The initialization should be conditional.
+  if (!executor->AsBlas()) {
+    return absl::InternalError("Failed to initialize BLAS support");
+  }
+
   StatusOr<StreamPool::Ptr> capture_stream =
       run_options->BorrowStream(executor->device_ordinal());
 
@@ -182,6 +191,7 @@ static absl::Status LaunchGraph(
     StreamExecutorConvRunners::Snapshot* convs,
     StreamExecutorGraphInstances::Snapshot* instances,
     GemmConfigs::Snapshot* gemm_config, runtime::Executable* executable,
+    NonAtomicallyUpgradeableRWLock* gpu_lock,
     CustomCall::RemainingArgs fwd_args, CustomCall::FunctionOrdinal capture) {
 #if GOOGLE_CUDA
   VLOG(1) << "Launch Cuda Graph: capture=" << capture.ordinal;
@@ -196,7 +206,7 @@ static absl::Status LaunchGraph(
   auto user_data = [&] {
     return CustomCall::UserData(run_options, debug_options, ptx, cubin,
                                 temp_buffer, kernels, convs, executable,
-                                gemm_config);
+                                gemm_config, gpu_lock);
   };
 
   absl::StatusOr<GraphInstance*> instance = instances->GetOrCreate(
@@ -259,6 +269,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .UserData<StreamExecutorGraphInstances::Snapshot*>()
         .UserData<GemmConfigs::Snapshot*>()
         .UserData<Executable*>()
+        .UserData<NonAtomicallyUpgradeableRWLock*>()
         .RemainingArgs()
         .Attr<CustomCall::FunctionOrdinal>("capture"));
 

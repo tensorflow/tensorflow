@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -112,14 +113,15 @@ class SnapshotManager {
   tsl::StatusOr<std::optional<int64_t>> MaybeGetOrCreateStreamAssignment(
       absl::string_view worker_address,
       const SnapshotTaskProgress* snapshot_progress);
-  tsl::Status ReassignPreviouslyAssignedStream(
-      int64_t stream_index, absl::string_view worker_address);
   tsl::Status HandleStreamCompletion(int64_t stream_index,
                                      absl::string_view worker_address);
+  void ReassignPreviouslyAssignedStream(int64_t stream_index,
+                                        absl::string_view worker_address);
   std::optional<int64_t> MaybeAssignOrphanStream(
       absl::string_view worker_address);
   tsl::StatusOr<int64_t> CreateAndAssignNewStream(
       absl::string_view worker_address);
+  Status HandleStreamError(const StatusProto& status_proto);
 
   // The filepath of the on-disk state.
   const std::string path_;
@@ -173,11 +175,17 @@ class SnapshotManager {
     kWindingDown,
     // All streams are done.
     kDone,
+    // If any stream fails, the snapshot is in an error state. `status_` will
+    // contain the error status.
+    kError,
   };
 
   // If not `kActive`, at least one source has finished processing and no new
   // streams are created or assigned.
   Mode mode_ = Mode::kActive;
+
+  // If `mode_` is in an error state, `status_` will contain the error status.
+  Status status_;
 };
 
 }  // namespace data

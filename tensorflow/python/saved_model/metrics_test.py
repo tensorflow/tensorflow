@@ -25,11 +25,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import builder_impl
+from tensorflow.python.saved_model import fingerprinting
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import load_v1_in_v2
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import save
-from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.trackable import autotrackable
 
@@ -114,18 +114,20 @@ class MetricsTests(test.TestCase):
 
   def test_save_sets_write_fingerprint_metric(self):
     exported_dir = self._create_save_v2_model()
+    fingerprint = fingerprinting.read_fingerprint(exported_dir)
 
     self.assertEqual(
         metrics.GetWriteFingerprint(),
-        str(fingerprinting.MaybeReadSavedModelChecksum(exported_dir)))
+        str(fingerprint.saved_model_checksum))
 
   def test_load_sets_read_fingerprint_metric(self):
     exported_dir = self._create_save_v2_model()
     load.load(exported_dir)
+    fingerprint = fingerprinting.read_fingerprint(exported_dir)
 
     self.assertEqual(
         metrics.GetWriteFingerprint(),
-        str(fingerprinting.MaybeReadSavedModelChecksum(exported_dir)))
+        str(fingerprint.saved_model_checksum))
 
   def test_save_sets_write_path_metric(self):
     exported_dir = self._create_save_v2_model()

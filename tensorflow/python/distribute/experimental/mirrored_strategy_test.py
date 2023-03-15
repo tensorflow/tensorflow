@@ -70,6 +70,15 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertIsNotNone(v.layout)
     self.assertEqual(v.layout, layout.Layout.replicated(self.mesh, rank=1))
 
+  def test_variable_creation_with_dtype(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    with strategy.scope():
+      v = variables.Variable(
+          0, dtype='int64',
+          aggregation=variables.VariableAggregationV2.ONLY_FIRST_REPLICA)
+    self.assertIsInstance(v, d_variable.DVariable)
+    self.assertEqual(v.dtype, dtypes.int64)
+
   def test_mesh(self):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
     self.assertEqual(strategy._mesh, self.mesh)
@@ -214,6 +223,19 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertLen(result_2.values, 2)
     self.assertAllClose(result_2.values[0], constant_op.constant([7.0]))
     self.assertAllClose(result_2.values[1], constant_op.constant([7.0]))
+
+  def test_run_with_nullary_ops(self):
+
+    @def_function.function
+    def replica_fn():
+      return constant_op.constant([3.0])
+
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    result = strategy.run(replica_fn)
+
+    self.assertIsInstance(result, dtensor_util.DTensorDistributedValue)
+    self.assertAllClose(result.values[0], constant_op.constant([3.0]))
+    self.assertAllClose(result.values[1], constant_op.constant([3.0]))
 
   def test_get_replica_context(self):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
@@ -585,7 +607,26 @@ class StrategyDatasetTest(test_util.DTensorBaseTest):
         layout.Layout.batch_sharded(self.mesh, batch_dim='batch', rank=1),
         distributed_values['b'])
 
-  # TODO(scottzhu): Add test for unpacking the dataset in tf.function
+  def test_distribute_dataset_in_tf_function(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    local_batch_size = 4
+    global_batch_size = 8
+    dataset = self.dataset.batch(global_batch_size).prefetch(2)
+
+    distributed_dataset = strategy.experimental_distribute_dataset(dataset)
+
+    @def_function.function
+    def step_fn(iterator):
+      images, labels = next(iterator)
+      del labels
+      return images
+
+    result = strategy.run(step_fn, args=(iter(distributed_dataset),))
+    self.assertIsInstance(result, dtensor_util.DTensorDistributedValue)
+    self.assertLen(result.values, self.mesh.num_local_devices())
+    self.assertEqual(result.values[0].shape, [local_batch_size, 8, 8, 3])
+    self.assertEqual(result.values[1].shape, [local_batch_size, 8, 8, 3])
+
 
 if __name__ == '__main__':
   test.main()

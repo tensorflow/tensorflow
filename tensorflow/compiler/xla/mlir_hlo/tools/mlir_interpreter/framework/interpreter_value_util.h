@@ -44,6 +44,8 @@ struct InterpreterValueMapVisitor {
       }
       return {out};
     } else {
+      llvm::errs() << llvm::getTypeName<Fn>()
+                   << " unsupported type: " << llvm::getTypeName<T>() << "\n";
       llvm_unreachable("unsupported type");
     }
   }
@@ -62,6 +64,8 @@ struct InterpreterValueMapVisitor {
     if constexpr (Fn::template supportedType<T>()) {
       return {Fn::apply(t)};
     } else {
+      llvm::errs() << llvm::getTypeName<Fn>()
+                   << " unsupported type: " << llvm::getTypeName<T>() << "\n";
       llvm_unreachable("unsupported type");
     }
   }
@@ -82,6 +86,8 @@ struct InterpreterValueBiMapVisitor {
       }
       return {out};
     } else {
+      llvm::errs() << llvm::getTypeName<Fn>()
+                   << " unsupported type: " << llvm::getTypeName<T>() << "\n";
       llvm_unreachable("unsupported type");
     }
   }
@@ -101,6 +107,8 @@ struct InterpreterValueBiMapVisitor {
     if constexpr (Fn::template supportedType<T>()) {
       return {Fn::apply(t, std::get<T>(rhs.storage))};
     } else {
+      llvm::errs() << llvm::getTypeName<Fn>()
+                   << " unsupported type: " << llvm::getTypeName<T>() << "\n";
       llvm_unreachable("unsupported type");
     }
   }

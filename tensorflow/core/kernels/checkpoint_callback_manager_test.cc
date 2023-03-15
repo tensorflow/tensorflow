@@ -20,15 +20,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/resource_handle.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/managed_stack_trace.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace checkpoint {
@@ -242,9 +240,10 @@ TEST_F(CheckpointCallbackManagerTest, Restore) {
       io::JoinPath(testing::TmpDir(), "model.ckpt-100"));
   EXPECT_EQ(callback_call_count, 1);
 
+  // Repeated call should not be triggered.
   checkpoint_callback_manager_->Restore(
       io::JoinPath(testing::TmpDir(), "model.ckpt-100"));
-  EXPECT_EQ(callback_call_count, 2);
+  EXPECT_EQ(callback_call_count, 1);
 }
 
 TEST_F(CheckpointCallbackManagerTest, SaveAndRestore) {

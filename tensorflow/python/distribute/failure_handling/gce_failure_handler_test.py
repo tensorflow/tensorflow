@@ -28,13 +28,16 @@ from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.distribute import one_device_strategy as one_device_lib
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.failure_handling import failure_handling
 from tensorflow.python.distribute.failure_handling import failure_handling_util
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.module import module
 from tensorflow.python.ops import variables as variables_lib
@@ -69,7 +72,7 @@ def _is_oss():
 
 def _make_checkpoint_manager(checkpoint, checkpoint_dir, cluster_resolver):
 
-  if not cluster_resolver.cluster_spec().as_dict() or (
+  if not cluster_resolver or not cluster_resolver.cluster_spec().as_dict() or (
       multi_worker_util.is_chief(
           cluster_spec=cluster_resolver.cluster_spec(),
           task_type=cluster_resolver.task_type,
@@ -112,14 +115,23 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
       checkpoint_dir,
       cluster_spec,
       input_arg,
+      strategy_option,
       maintenance_event=None,
       training_finished=None,
       frequent_send=False,
       training_restarted=None,
       termination_config=failure_handling.TerminationConfig(grace_period=0),
-      api_wrapping_train=True):
-
-    strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
+      api_wrapping_train=True,
+  ):
+    if strategy_option == 'MS':
+      strategy = mirrored_strategy.MirroredStrategy()
+    elif strategy_option == 'OneDevice':
+      if config.list_physical_devices('GPU'):
+        strategy = one_device_lib.OneDeviceStrategy(device='/gpu:0')
+      else:
+        strategy = one_device_lib.OneDeviceStrategy(device='/cpu:0')
+    else:
+      strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
 
     def mock_termination_watcher_function_gce(*args, **kwargs):
       del args, kwargs
@@ -266,16 +278,24 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
             return
 
   @combinations.generate(
-      combinations.combine(input_arg=['checkpoint', 'manager'],
-                           mwms_mode=['local', 'multi_worker'],))
-  def test_basic_run(self, input_arg, mwms_mode):
+      combinations.combine(
+          input_arg=['checkpoint', 'manager'],
+          strategy_option=[
+              'MS',
+              'OneDevice',
+              'MWMS_local',
+              'MWMS_multi_worker',
+          ],
+      )
+  )
+  def test_basic_run(self, input_arg, strategy_option):
     if _is_oss():
       rpc_layer = 'grpc'
     else:
       rpc_layer = 'grpc+loas'
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt/')
 
-    if mwms_mode == 'multi_worker':
+    if strategy_option == 'MWMS_multi_worker':
       has_chief = False
       cluster_spec = multi_worker_test_base.create_cluster_spec(
           has_chief=has_chief,
@@ -287,8 +307,9 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
       mpr = multi_process_runner.MultiProcessRunner(
           self.worker_fn,
           cluster_spec,
-          args=(checkpoint_dir, cluster_spec, input_arg, maintenance_event,
-                training_finished, False, training_restarted),
+          args=(checkpoint_dir, cluster_spec, input_arg, strategy_option,
+                maintenance_event, training_finished, False,
+                training_restarted),
           rpc_layer=rpc_layer,
           return_output=True,
           dependence_on_chief=has_chief)
@@ -316,7 +337,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
       cluster_spec = server_lib.ClusterSpec({})
       caught_exit = False
       try:
-        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+        self.worker_fn(checkpoint_dir, cluster_spec, input_arg, strategy_option,
                        maintenance_event, training_finished, False,
                        training_restarted)
       except SystemExit as exit_error:
@@ -330,7 +351,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
 
         logging.info('restarting workers')
         training_restarted.set()
-        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+        self.worker_fn(checkpoint_dir, cluster_spec, input_arg, strategy_option,
                        maintenance_event, training_finished, False,
                        training_restarted)
 
@@ -340,11 +361,16 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
       combinations.combine(
           grace_period=[0, 7],
           input_arg=['checkpoint', 'manager'],
-          mwms_mode=['local', 'multi_worker'],
+          strategy_option=[
+              'MS',
+              'OneDevice',
+              'MWMS_local',
+              'MWMS_multi_worker',
+          ],
           api_wrapping_train=[True, False]
       ))
   def test_multiple_workers_preempted_consecutively(self, grace_period,
-                                                    input_arg, mwms_mode,
+                                                    input_arg, strategy_option,
                                                     api_wrapping_train):
 
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt/')
@@ -356,7 +382,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
     termination_config = failure_handling.TerminationConfig(
         grace_period=grace_period)
 
-    if mwms_mode == 'multi_worker':
+    if strategy_option == 'MWMS_multi_worker':
       has_chief = False
       cluster_spec = multi_worker_test_base.create_cluster_spec(
           has_chief=has_chief,
@@ -369,7 +395,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
           self.worker_fn,
           cluster_spec,
           args=(checkpoint_dir, cluster_spec, input_arg, maintenance_event,
-                training_finished, True, training_restarted,
+                strategy_option, training_finished, True, training_restarted,
                 termination_config),
           kwargs={'api_wrapping_train': api_wrapping_train},
           rpc_layer=rpc_layer,
@@ -400,7 +426,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
 
       caught_exit = False
       try:
-        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+        self.worker_fn(checkpoint_dir, cluster_spec, input_arg, strategy_option,
                        maintenance_event, training_finished, True,
                        training_restarted, termination_config)
       except SystemExit as exit_error:
@@ -414,16 +440,21 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
 
         logging.info('restarting workers')
         training_restarted.set()
-        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+        self.worker_fn(checkpoint_dir, cluster_spec, input_arg, strategy_option,
                        maintenance_event, training_finished, True,
                        training_restarted, termination_config)
 
   @combinations.generate(
       combinations.combine(
           input_arg=['checkpoint', 'manager'],
-          mwms_mode=['local', 'multi_worker'],
+          strategy_option=[
+              'MS',
+              'OneDevice',
+              'MWMS_local',
+              'MWMS_multi_worker',
+          ],
           api_wrapping_train=[True, False]))
-  def test_grace_period_continue_training(self, input_arg, mwms_mode,
+  def test_grace_period_continue_training(self, input_arg, strategy_option,
                                           api_wrapping_train):
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt/')
     grace_period = 7
@@ -435,7 +466,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
     termination_config = failure_handling.TerminationConfig(
         grace_period=grace_period)
 
-    if mwms_mode == 'multi_worker':
+    if strategy_option == 'multi_worker':
       has_chief = False
       cluster_spec = multi_worker_test_base.create_cluster_spec(
           has_chief=has_chief,
@@ -450,7 +481,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
           self.worker_fn,
           cluster_spec,
           args=(checkpoint_dir, cluster_spec, input_arg, maintenance_event,
-                training_finished, False, training_restarted,
+                strategy_option, training_finished, False, training_restarted,
                 termination_config),
           kwargs={'api_wrapping_train': api_wrapping_train},
           rpc_layer=rpc_layer,
@@ -485,7 +516,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
       cluster_spec = server_lib.ClusterSpec({})
       caught_exit = False
       try:
-        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+        self.worker_fn(checkpoint_dir, cluster_spec, input_arg, strategy_option,
                        maintenance_event, training_finished, False,
                        training_restarted, termination_config)
       except SystemExit as exit_error:
@@ -499,7 +530,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
 
         logging.info('restarting workers')
         training_restarted.set()
-        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+        self.worker_fn(checkpoint_dir, cluster_spec, input_arg, strategy_option,
                        maintenance_event, training_finished, False,
                        training_restarted, termination_config)
         self.assertTrue(training_finished.is_set())

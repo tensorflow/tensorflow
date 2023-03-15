@@ -373,6 +373,26 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
         self.assertAllClose(np_ans, tf_ans)
         self.assertShapeEqual(np_ans, s)
 
+  def testIndicesTypes(self):
+    dtypes = [dtypes_lib.int16, dtypes_lib.int32, dtypes_lib.int64]
+    indices_flat = np.array([0, 4, 0, 8, 3, 8, 4, 7, 7, 3])
+    num_segments = 12
+    for indices in indices_flat, indices_flat.reshape(5, 2):
+      shape = indices.shape + (2,)
+      for dtype in dtypes:
+        with self.cached_session():
+          tf_x, np_x = self._input(shape)
+          indices_constant = constant_op.constant(indices, dtype=dtype)
+          np_ans = self._segmentReduce(
+              indices, np_x, np.add, op2=None, num_segments=num_segments
+          )
+          s = math_ops.unsorted_segment_sum(
+              data=tf_x, segment_ids=indices_constant, num_segments=num_segments
+          )
+          tf_ans = self.evaluate(s)
+        self.assertAllClose(np_ans, tf_ans)
+        self.assertShapeEqual(np_ans, s)
+
   @test_util.run_deprecated_v1
   def testGradientsTFGradients(self):
     num_cols = 2

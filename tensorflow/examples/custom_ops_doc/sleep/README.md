@@ -1,3 +1,4 @@
+<!-- LINT.IfChange -->
 # Create an asynchronous sleep op
 
 This guide provides an end-to-end example for an asynchronous custom op. The
@@ -625,8 +626,8 @@ the `sleep` op.
 
 | Op components  | Build rule             | Build target   | Source            |
 | -------------- | ---------------------- | -------------- | ----------------- |
-| Kernels (C++)  | `tf_kernel_library`    | `sleep_kernel` | `sleep_kernel.cc` |
-| Wrapper        | `tf_gen_op_wrapper.py` | `gen_sleep_op` | N/A               |
+| Kernels (C++)  | `tf_custom_op_library` | `sleep_kernel` | `sleep_kernel.cc` |
+| Wrapper        | N/A                    | `gen_sleep_op` | N/A               |
 : (automatically :                        :                :                   :
 : generated)     :                        :                :                   :
 | Wrapper (with  | `py_strict_library`    | `sleep_op`     | `sleep_op.py`     |
@@ -634,4 +635,4 @@ the `sleep` op.
 : docstring)     :                        :                :                   :
 | Tests          | `tf_py_test`           | `sleep_test`   | `sleep_test.py`   |
 | Example        | `py_strict_binary`     | `sleep_bin`    | `sleep_bin.py`    |
-
+<!-- LINT.ThenChange(sleep.md) -->

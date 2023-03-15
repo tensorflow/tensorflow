@@ -17,7 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
-#include "tensorflow/lite/core/async/common.h"
+#include "tensorflow/lite/core/async/c/types.h"
 #include "tensorflow/lite/core/async/task_internal.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -66,13 +66,13 @@ AsyncSubgraph::AsyncSubgraph(Subgraph* subgraph) : subgraph_(subgraph) {
     dest[io_type] = std::vector<const char*>(types, types + n_types);     \
   }
 
-  POPULATE_VECTOR(kTfLiteIoInput, supported_buffer_types,
+  POPULATE_VECTOR(kTfLiteIoTypeInput, supported_buffer_types,
                   supported_buffer_types_);
-  POPULATE_VECTOR(kTfLiteIoOutput, supported_buffer_types,
+  POPULATE_VECTOR(kTfLiteIoTypeOutput, supported_buffer_types,
                   supported_buffer_types_);
-  POPULATE_VECTOR(kTfLiteIoInput, supported_synchronizations,
+  POPULATE_VECTOR(kTfLiteIoTypeInput, supported_synchronizations,
                   supported_synchronizations_);
-  POPULATE_VECTOR(kTfLiteIoOutput, supported_synchronizations,
+  POPULATE_VECTOR(kTfLiteIoTypeOutput, supported_synchronizations,
                   supported_synchronizations_);
 #undef POPULATE_VECTOR
 }

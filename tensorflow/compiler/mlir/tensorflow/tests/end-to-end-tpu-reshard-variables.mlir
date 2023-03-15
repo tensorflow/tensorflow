@@ -41,11 +41,11 @@
       %i:2 = "tf_executor.island"() ({
         "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster", allow_soft_placement = true, computation_shape = [], device = "", device_assignment = [], host_compute_core = [], num_cores_per_replica = 1 : i64, num_replicas = 2 : i64, padding_map = [], step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", tpu_compile_options_proto = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> ()
         %one = "tf.Const"() {_tpu_replicate = "cluster", value = dense<1> : tensor<i32>} : () -> tensor<*xi32>
-	%res_rep = "tf.TPUReplicatedInput"(%res) {index = -1 : i64, is_mirrored_variable = true, is_packed = true} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<!tf_type.resource<tensor<i32>>>
-	%read = "tf.ReadVariableOp"(%res_rep) {_tpu_replicate = "cluster", device = ""} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<*xi32>
-	%inc = "tf.Add"(%read, %one) {_tpu_replicate = "cluster"} : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
-	"tf.AssignVariableOp"(%res_rep, %inc) {_tpu_replicate = "cluster"} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<*xi32>) -> ()
-	%res_out = "tf.TPUReplicatedOutput"(%res_rep) {is_packed = true} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<!tf_type.resource<tensor<i32>>>
+        %res_rep = "tf.TPUReplicatedInput"(%res) {index = -1 : i64, is_mirrored_variable = true, is_packed = true} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<!tf_type.resource<tensor<i32>>>
+        %read = "tf.ReadVariableOp"(%res_rep) {_tpu_replicate = "cluster", device = ""} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<*xi32>
+        %inc = "tf.Add"(%read, %one) {_tpu_replicate = "cluster"} : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+        "tf.AssignVariableOp"(%res_rep, %inc) {_tpu_replicate = "cluster"} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<*xi32>) -> ()
+        %res_out:2 = "tf.TPUReplicatedOutput"(%res_rep) : (tensor<!tf_type.resource<tensor<i32>>>) -> (tensor<!tf_type.resource<tensor<i32>>>, tensor<!tf_type.resource<tensor<i32>>>)
         "tf_executor.yield"(%res) : (tensor<!tf_type.resource<tensor<i32>>>) -> ()
       }) : () -> (tensor<!tf_type.resource<tensor<i32>>>, !tf_executor.control)
       "tf_executor.fetch"(%i#0) : (tensor<!tf_type.resource<tensor<i32>>>) -> ()

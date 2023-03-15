@@ -2524,4 +2524,73 @@ ENTRY entry {
             GetIndex(new_instruction_sequence, "cp1s"));
 }
 
+TEST_F(LatencyHidingSchedulerTest, AsyncTrackerTestForTargetDefinedResources) {
+  // Extend AsyncTracker for a fake target with one target-defined resource
+  class AsyncTrackerForMyTarget : public AsyncTracker {
+    enum class MyTargetResourceType {
+      kTargetResource0 = 0,
+      kNumTargetResources = 1,
+    };
+
+   public:
+    explicit AsyncTrackerForMyTarget(const SchedulerConfig& config,
+                                     int64_t target_resource0_limit = 3)
+        : AsyncTracker(config),
+          target_resource0_limit_(target_resource0_limit) {}
+
+    absl::string_view GetResourceName(int64_t resource_type) const override {
+      const int64_t first_target_resource = GetFirstTargetDefinedResource();
+      if (resource_type < first_target_resource) {
+        return AsyncTracker::GetResourceName(resource_type);
+      }
+      CHECK_LE(resource_type,
+               first_target_resource + GetNumTargetDefinedResources());
+      switch (resource_type - first_target_resource) {
+        case static_cast<int64_t>(MyTargetResourceType::kTargetResource0):
+          return "kTargetResource0";
+        default:
+          return "";
+      }
+    }
+
+    int64_t GetNumTargetDefinedResources() const override {
+      return static_cast<int64_t>(MyTargetResourceType::kNumTargetResources);
+    }
+
+    int64_t GetNumAvailableResources(int64_t resource_type) const override {
+      const int64_t first_target_resource =
+          AsyncTracker::GetFirstTargetDefinedResource();
+      CHECK_GE(resource_type, first_target_resource);
+      CHECK_LT(resource_type,
+               first_target_resource + GetNumTargetDefinedResources());
+      switch (resource_type - first_target_resource) {
+        case (static_cast<int64_t>(MyTargetResourceType::kTargetResource0)):
+          return static_cast<int64_t>(target_resource0_limit_);
+        default:
+          return 1;
+      }
+    }
+
+   private:
+    const int64_t target_resource0_limit_;
+  };
+  // Create an AsyncTrackerForMyTarget object with an overlap limit of 5 for
+  // target-defined resource "kTargetResource0"
+  const int64_t target_resource0_overlap_limit = 5;
+  AsyncTrackerForMyTarget async_tracker_for_my_target(
+      SchedulerConfig(), target_resource0_overlap_limit);
+  // Check the number of target-defined resources
+  CHECK_EQ(async_tracker_for_my_target.GetNumTargetDefinedResources(), 1);
+  // Check the name of the target-defined resource
+  const int64_t target_resource0_index =
+      static_cast<int64_t>(ResourceType::kTargetDefinedResourcesBound) + 1;
+  CHECK_EQ(async_tracker_for_my_target.GetResourceName(target_resource0_index),
+           "kTargetResource0");
+  // Check the number of available resources (overlap limit) for the
+  // target-defined resource
+  CHECK_EQ(async_tracker_for_my_target.GetNumAvailableResources(
+               target_resource0_index),
+           target_resource0_overlap_limit);
+}
+
 }  // namespace xla

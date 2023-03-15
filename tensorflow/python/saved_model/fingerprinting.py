@@ -18,6 +18,7 @@ This module contains classes and functions for reading the SavedModel
 fingerprint.
 """
 
+from tensorflow.core.protobuf import fingerprint_pb2
 from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting as fingerprinting_pywrap
 from tensorflow.python.util.tf_export import tf_export
 
@@ -65,6 +66,46 @@ class Fingerprint(object):
     self.checkpoint_hash = checkpoint_hash
     self.version = version
 
+  @classmethod
+  def from_proto(cls, proto):
+    return Fingerprint(
+        proto.saved_model_checksum,
+        proto.graph_def_program_hash,
+        proto.signature_def_hash,
+        proto.saved_object_graph_hash,
+        proto.checkpoint_hash,
+        proto.version)
+
+  def singleprint(self):
+    """Canonical fingerprinting ID for a SavedModel.
+
+    Uniquely identifies a SavedModel based on the regularized fingerprint
+    attributes. (saved_model_checksum is sensitive to immaterial changes and
+    thus non-deterministic.)
+
+    Returns:
+      The string concatenation of `graph_def_program_hash`,
+      `signature_def_hash`, and `saved_object_graph_hash`
+      fingerprint attributes (separated by '/').
+
+    Raises:
+      ValueError: If the fingerprint fields cannot be used to construct the
+      singleprint.
+    """
+    try:
+      return fingerprinting_pywrap.Singleprint(self.graph_def_program_hash,
+                                               self.signature_def_hash,
+                                               self.saved_object_graph_hash,
+                                               self.checkpoint_hash)
+    except (TypeError, fingerprinting_pywrap.FingerprintException) as e:
+      raise ValueError(
+          f"Encounted invalid fingerprint values when constructing singleprint."
+          f"graph_def_program_hash: {self.graph_def_program_hash}"
+          f"signature_def_hash: {self.signature_def_hash}"
+          f"saved_object_graph_hash: {self.saved_object_graph_hash}"
+          f"checkpoint_hash: {self.checkpoint_hash}"
+          f"{e}") from None
+
 
 @tf_export("saved_model.experimental.read_fingerprint", v1=[])
 def read_fingerprint(export_dir):
@@ -73,7 +114,9 @@ def read_fingerprint(export_dir):
   Returns a `tf.saved_model.experimental.Fingerprint` object that contains
   the values of the SavedModel fingerprint, which is persisted on disk in the
   `fingerprint.pb` file in the `export_dir`.
-  TODO(b/265199038): Add link to TensorFlow SavedModel guide.
+
+  Read more about fingerprints in the SavedModel guide at
+  https://www.tensorflow.org/guide/saved_model.
 
   Args:
     export_dir: The directory that contains the SavedModel.
@@ -82,16 +125,11 @@ def read_fingerprint(export_dir):
     A `tf.saved_model.experimental.Fingerprint`.
 
   Raises:
-    ValueError: If no or an invalid fingerprint is found.
+    FileNotFoundError: If no or an invalid fingerprint is found.
   """
-  fingerprint_map = fingerprinting_pywrap.GetFingerprintMap(export_dir)
-  if not fingerprint_map:
-    raise ValueError(f"No or invalid fingerprint found in: {export_dir}.")
-  return Fingerprint(
-      fingerprint_map["saved_model_checksum"],
-      fingerprint_map["graph_def_program_hash"],
-      fingerprint_map["signature_def_hash"],
-      fingerprint_map["saved_object_graph_hash"],
-      fingerprint_map["checkpoint_hash"],
-      fingerprint_map["version"],
-  )
+  try:
+    fingerprint = fingerprinting_pywrap.ReadSavedModelFingerprint(export_dir)
+  except fingerprinting_pywrap.FingerprintException as e:
+    raise FileNotFoundError(f"SavedModel Fingerprint Error: {e}") from None  # pylint: disable=raise-missing-from
+  return Fingerprint.from_proto(
+      fingerprint_pb2.FingerprintDef().FromString(fingerprint))

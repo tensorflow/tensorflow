@@ -149,7 +149,8 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   gtl::InlinedVector<bool, 8> bits(dims);
   bool is_identity = true;
   for (int i = 0; i < dims; ++i) {
-    const int32_t d = permutation[i];
+    int32_t d = permutation[i];
+    if (d < 0) d += dims;
     OP_REQUIRES(
         ctx, 0 <= d && d < dims,
         errors::InvalidArgument(d, " is out of range [0 .. ", dims, ")"));

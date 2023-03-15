@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -88,7 +87,7 @@ Status ParseInputArrayInfo(absl::string_view array_names,
                            GraphImportConfig::InputArrays* inputs) {
   std::vector<string> node_names;
   std::vector<string> node_dtypes;
-  std::vector<llvm::Optional<std::vector<int>>> node_shapes;
+  std::vector<std::optional<std::vector<int>>> node_shapes;
   TF_RETURN_IF_ERROR(ParseNodeNames(array_names, node_names));
   TF_RETURN_IF_ERROR(ParseNodeDataTypes(data_types, node_dtypes));
   TF_RETURN_IF_ERROR(ParseNodeShapes(shapes, node_shapes));
@@ -144,7 +143,7 @@ static Status HandleSubtype(absl::string_view subtype,
 Status ParseInputArrayInfo(
     const std::vector<string>& node_names,
     const std::vector<string>& node_dtypes,
-    const std::vector<llvm::Optional<std::vector<int>>>& node_shapes,
+    const std::vector<std::optional<std::vector<int>>>& node_shapes,
     GraphImportConfig::InputArrays* inputs) {
   std::vector<std::string> used_node_dtypes;
   if (node_dtypes.empty()) {
@@ -219,7 +218,7 @@ Status ParseInputArrayInfo(
 
 Status ParseNodeShapes(
     absl::string_view shapes_str,
-    std::vector<llvm::Optional<std::vector<int>>>& shapes_vector) {
+    std::vector<std::optional<std::vector<int>>>& shapes_vector) {
   shapes_vector.clear();
   if (!shapes_str.empty()) {
     std::vector<string> node_shapes_str = absl::StrSplit(shapes_str, ':');

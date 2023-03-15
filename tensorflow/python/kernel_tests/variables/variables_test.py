@@ -35,6 +35,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.util import compat
@@ -109,7 +110,7 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
   @test_util.run_deprecated_v1
   def testCyclicInitializer(self):
     with self.cached_session():
-      cyclic = control_flow_ops.while_loop(
+      cyclic = while_loop.while_loop(
           cond=lambda i: i < 10,
           body=lambda i: i + 1,
           loop_vars=(constant_op.constant(0),))
@@ -298,7 +299,7 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
       return (i + 1, v.read_value())
 
     with self.assertRaisesRegex(ValueError, "inside a control-flow"):
-      control_flow_ops.while_loop(cond, body, [0, 0])
+      while_loop.while_loop(cond, body, [0, 0])
 
   @test_util.run_deprecated_v1
   def testUseVariableAsTensor(self):

@@ -41,8 +41,33 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Choose the fastest algorithm for each conv.
 // Modifies CustomCalls to cudnn convolutions, choosing the best algorithm for
 // each and adding explicit scratch space to the CustomCalls.
+//
+// We pick the algorithm before fusion so that we can generate better HLO. After
+// GpuConvRewriter, our convolutions are CustomCalls which return a
+// tuple (conv_result, scratch_memory), and the each conv uses 0 bytes of
+// scratch:
+//
+//   customcall = (f32[...], f32[0])
+//   return gte(customcall, 0)
+//
+// The algorithm picker then chooses the best algorithm, and potentially
+// increases the scratch space.  It replaces customcall with new_tuple,
+// giving us the following:
+//
+//   new_customcall = (f32[...], f32[N])
+//   new_tuple = tuple(gte(new_customcall, 0), constant f32[0])
+//   return gte(new_tuple, 0)
+//
+// The new tuple and gte instructions can be simplified away, because
+// nobody is expected to use the scratch value.
+//
+// However, if we were to run GpuConvAlgorithmPicker after fusion
+// the gte(customcall, 0) would probably already be into a fusion node.  We
+// can't simplify across HloComputation boundaries, so in this case we
+// wouldn't be able to simplify away the new_tuple bits.
 //
 // It supports two modes: device and deviceless.
 // In device mode, we run autotuning on the device and store autotune results.
@@ -67,6 +92,27 @@ class GpuConvAlgorithmPicker : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
+  // Debug information about the instruction we are autotuning.
+  struct AutotuneInstructionInfo {
+    std::string instr_str;
+    std::string module_str;
+
+    explicit AutotuneInstructionInfo(const HloCustomCallInstruction* instr)
+        : instr_str(instr->ToString()),
+          module_str(instr->GetModule()->ToString()) {}
+
+    explicit AutotuneInstructionInfo(std::string_view instr_str,
+                                     std::string_view module_str)
+        : instr_str(instr_str), module_str(module_str) {}
+  };
+
+  // Run autotuning on allocated buffers and pick the best algorithm.
+  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmWithAllocatedBuffer(
+      GpuConvConfig conv_config, const ServiceExecutableRunOptions* run_options,
+      const DebugOptions* debug_options,
+      std::vector<se::DeviceMemoryBase> buffers,
+      se::DeviceMemoryBase result_buffer);
+
  private:
   StatusOr<bool> RunOnComputation(HloComputation* computation);
   StatusOr<bool> RunOnInstruction(HloInstruction* instr);
@@ -81,16 +127,6 @@ class GpuConvAlgorithmPicker : public HloModulePass {
     stream_executor::DeviceMemoryBase buffer;
   };
 
-  // Debug information about the instruction we are autotuning.
-  struct AutotuneInstructionInfo {
-    std::string instr_str;
-    std::string module_str;
-
-    explicit AutotuneInstructionInfo(const HloCustomCallInstruction* instr)
-        : instr_str(instr->ToString()),
-          module_str(instr->GetModule()->ToString()) {}
-  };
-
   // Execution environment for autotuning. Runtime autotuning requires runtime
   // information such as input/output buffers in order to run. It can be
   // constructed from the autotuned instruction by FromInstruction.
@@ -101,7 +137,7 @@ class GpuConvAlgorithmPicker : public HloModulePass {
     se::DeviceMemoryBase result_buffer;
     se::RedzoneAllocator* input_output_allocator;
     const GpuConvConfig gpu_conv_config;
-    std::string canonical_hlo;
+    std::optional<std::string> canonical_hlo;
 
     static StatusOr<AutotuneRuntimeArguments> FromInstruction(
         const HloCustomCallInstruction* instr,

@@ -69,7 +69,6 @@ using ::tensorflow::tfrt_stub::OpKernelRunState;
 using ::tfrt::AsyncValue;
 using ::tfrt::AsyncValueRef;
 using ::tfrt::Chain;
-using ::tfrt::OpAttrsRef;
 using ::tfrt::RCReference;
 using ::tfrt::string_view;
 
@@ -991,7 +990,7 @@ void BatchFunction(
         op_attr_array, /*op_func_attr_array*/ {}, attr_value_map));
     // Pass in a BEF function pointer with a I64 attribute.
     int64_t ptr_value = absl::bit_cast<int64_t>(&f.get());
-    (*attr_value_map)["tfrt_bef_func"].set_i(ptr_value);
+    (*attr_value_map)["opaque_function_handle"].set_i(ptr_value);
     return OkStatus();
   };
   auto kernel_runner_or_status = runner_cache->GetOrCreate(

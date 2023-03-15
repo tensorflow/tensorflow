@@ -95,8 +95,6 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
-
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     return input_->Cardinality(options);
   }
@@ -348,10 +346,6 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           limit == -1
               ? kTraceInfoUnavailable
               : strings::Printf("%lld", static_cast<long long>(limit))));
-      result.push_back(std::make_pair(
-          "buffer_size",
-          size == -1 ? kTraceInfoUnavailable
-                     : strings::Printf("%lld", static_cast<long long>(size))));
       result.push_back(std::make_pair(
           "autotune",
           dataset()->buffer_size_ == model::kAutotune ? "true" : "false"));

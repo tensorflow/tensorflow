@@ -232,19 +232,20 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // -----
 
 // Test the case where there are 2 initializer functions ("init_op" and
-// "restore_op").
+// "restore_op"). The init func of type "init_op" is merged first.
 
 // CHECK-LABEL: module attributes
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1228 : i32}, tf_saved_model.semantics} {
+  "tf_saved_model.asset"() {filename = "assets/table.txt", sym_name = "v"} : () -> ()
   "tf_saved_model.session_initializer"() {initializers = [@NoOp_0, @NoOp_1]} : () -> ()
 // Check that the initializer typed "init_op" is removed from initializers list.
 // CHECK: "tf_saved_model.session_initializer"()
 // CHECK-SAME: initializers = []
 
-  func.func @NoOp_0()
+func.func @NoOp_0(%arg0: tensor<!tf_type.string> {tf_saved_model.bound_input = @v})
     attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp_0"], tf_saved_model.initializer_type = "init_op"} {
     tf_executor.graph {
-      %out, %ctl = tf_executor.island wraps "tf.Const"() {device = "", value = dense<["dummy_op"]> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
+      %out, %ctl = tf_executor.island wraps "tf.Identity"(%arg0) : (tensor<!tf_type.string>) -> tensor<!tf_type.string>
       tf_executor.fetch %ctl : !tf_executor.control
     }
     return
@@ -252,10 +253,10 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // The session initializer function is removed.
 // CHECK-NOT: @NoOp_0()
 
-  func.func @NoOp_1()
+  func.func @NoOp_1(%arg0: tensor<!tf_type.string> {tf_saved_model.index_path = ["__tf_file_prefix"]})
     attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp_1"], tf_saved_model.initializer_type = "restore_op"} {
     tf_executor.graph {
-      %out, %ctl = tf_executor.island wraps "tf.Const"() {device = "", value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+      %out, %ctl = tf_executor.island wraps "tf.Identity"(%arg0) : (tensor<!tf_type.string>) -> tensor<!tf_type.string>
       tf_executor.fetch %ctl : !tf_executor.control
     }
     return
@@ -269,14 +270,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     }
     return
   }
-// Sanity check: The main function's signature & attributes have not changed.
-// CHECK: func.func @main()
+// Check that the args for the "restore_op" is added before the args for the "init_op".
+// CHECK: func.func @main(%[[ARG_0:.*]]: tensor<!tf_type.string> {tf_saved_model.index_path = ["__tf_file_prefix"]}, %[[ARG_1:.*]]: tensor<!tf_type.string> {tf_saved_model.bound_input = @v})
 // CHECK-SAME: tf_saved_model.exported_names = ["main"]
 
 // CHECK: tf_executor.graph
 // Checks that the contents of the initializer functions are copied here.
-// CHECK-DAG: %[[OUT_0:.*]], %[[CTL_0:.*]] = tf_executor.island wraps "tf.Const"() {{{.*value = dense<"dummy_op"> : tensor<1x!tf_type.string>.*}}}
-// CHECK-DAG: %[[OUT_1:.*]], %[[CTL_1:.*]] = tf_executor.island wraps "tf.Const"() {{{.*value = dense<1> : tensor<1xi32>.*}}}
+// CHECK-DAG: %[[OUT_0:.*]], %[[CTL_0:.*]] = tf_executor.island wraps "tf.Identity"(%[[ARG_0]])
+// CHECK-DAG: %[[OUT_1:.*]], %[[CTL_1:.*]] = tf_executor.island wraps "tf.Identity"(%[[ARG_1]])
 
 // Checks that 2 `NoOp`s having control dependencies to each of the initializer
 // functions are created.
@@ -304,7 +305,7 @@ module attributes {tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() {initializers = [@init_func_restore_op]} : () -> ()
 // CHECK: "tf_saved_model.session_initializer"() {initializers = []}
 
-  func.func @init_func_restore_op(%arg: tensor<!tf_type.string> {tf_saved_model.index_path = ["file_prefix"]})
+  func.func @init_func_restore_op(%arg: tensor<!tf_type.string> {tf_saved_model.index_path = ["__tf_file_prefix"]})
     attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"], tf_saved_model.initializer_type = "restore_op"} {
     tf_executor.graph {
       %out, %ctl = tf_executor.island wraps "tf.Const"() {value = dense<""> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
@@ -324,7 +325,7 @@ module attributes {tf_saved_model.semantics} {
     return
   }
 // A new argument corresponding to the "file_prefix" should be created.
-// CHECK: func.func @main(%[[ARG:.*]]: tensor<!tf_type.string> {tf_saved_model.index_path = ["file_prefix"]})
+// CHECK: func.func @main(%[[ARG:.*]]: tensor<!tf_type.string> {tf_saved_model.index_path = ["__tf_file_prefix"]})
 // CHECK-SAME: {{{.*tf.entry_function = {inputs = "restore_op_0:0", outputs = ""}.*}}}
 // CHECK-NEXT: tf_executor.graph
 
@@ -537,17 +538,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 
 // -----
 
-// Tests that warning is emitted when an initializer function does not have the
+// Tests that an error is emitted when an initializer function does not have the
 // tf_saved_model.initializer_type attribute.
 
-// CHECK-LABEL: module attributes
+// expected-error @below {{Validation on initializer functions failed.}}
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1228 : i32}, tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() {initializers = [@NoOp]} : () -> ()
-// Check that the initializers attribute is untouched.
-// CHECK: "tf_saved_model.session_initializer"()
-// CHECK-SAME: initializers = []
 
-  // expected-warning @+1 {{Initializer func op does not have tf_saved_model.initializer_type attribute. Func op: NoOp}}
+  // expected-error @below {{Initializer func op does not have tf_saved_model.initializer_type attribute. Func op: NoOp}}
   func.func @NoOp()
     attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"]} {
     tf_executor.graph {
@@ -563,10 +561,4 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     }
     return
   }
-// CHECK: func.func @main()
-// CHECK-NEXT: tf_executor.graph
-// CHECK: %[[OUT:.*]], %[[CTL:.*]] = tf_executor.island wraps "tf.Const"() {{{.*value = dense<1> : tensor<1xi64>.*}}}
-// CHECK: %[[CTL_0:.*]] = tf_executor.island(%[[CTL]]) wraps "tf.NoOp"() : () -> ()
-// CHECK: tf_executor.fetch %[[CTL_0]] : !tf_executor.control
-// CHECK: return
 }

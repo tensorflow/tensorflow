@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -28,7 +29,6 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -70,7 +70,6 @@ namespace TFL {
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CeilOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CosOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LocalResponseNormalizationOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ExpOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FloorOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(RoundOp);
@@ -273,6 +272,11 @@ bool IsQI16Type(Type element_type) {
          quantized_type.isSigned();
 }
 
+// Return true when the given element_type is I16.
+bool IsI16Type(Type element_type) {
+  return element_type.isInteger(16) && !element_type.isUnsignedInteger();
+}
+
 // Return true when the given element_type is I32.
 bool IsI32Type(Type element_type) {
   return element_type.isInteger(32) && !element_type.isUnsignedInteger();
@@ -313,9 +317,10 @@ struct RemoveOptionalZeroBias : public OpRewritePattern<ConcreteOpType> {
           rewriter.getUnknownLoc(), rewriter.getNoneType(),
           rewriter.getUnitAttr());
       op.getBiasMutable().assign(none_value);
+      return success();
     }
 
-    return success();
+    return failure();
   }
 };
 
@@ -326,8 +331,8 @@ bool VerifyAddOpShapeConstraints(AddOp op) {
   // Allows F32, QI8, QUI8 and I32 outputs when the operands have valid shapes,
   // which are broadcastable shapes up to four dimensions or have same shapes.
   if (element_type.isF32() || IsQI8Type(element_type) ||
-      IsQUI8Type(element_type) || IsI32Type(element_type) ||
-      IsI64Type(element_type)) {
+      IsQUI8Type(element_type) || IsI16Type(element_type) ||
+      IsI32Type(element_type) || IsI64Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/4);
@@ -2141,6 +2146,7 @@ struct CastDonwInt64BeginEndToInt32 : public OpRewritePattern<TFL::SliceOp> {
           begin_op, begin_type, slice_op.getLoc(), &rewriter);
       if (new_begin != nullptr) {
         slice_op.setOperand(1, new_begin);
+        return success();
       }
     }
 
@@ -2150,10 +2156,11 @@ struct CastDonwInt64BeginEndToInt32 : public OpRewritePattern<TFL::SliceOp> {
           size_op, size_type, slice_op.getLoc(), &rewriter);
       if (new_size != nullptr) {
         slice_op.setOperand(2, new_size);
+        return success();
       }
     }
 
-    return success();
+    return failure();
   }
 };
 
@@ -2601,6 +2608,7 @@ struct RemoveLSTMOpZeroBias : public OpRewritePattern<LSTMOp> {
           rewriter.getUnknownLoc(), rewriter.getNoneType(),
           rewriter.getUnitAttr());
       op.getInputGateBiasMutable().assign(none_value);
+      return success();
     }
 
     if (EqualsZero(op.getProjectionBias())) {
@@ -2608,9 +2616,10 @@ struct RemoveLSTMOpZeroBias : public OpRewritePattern<LSTMOp> {
           rewriter.getUnknownLoc(), rewriter.getNoneType(),
           rewriter.getUnitAttr());
       op.getProjectionBiasMutable().assign(none_value);
+      return success();
     }
 
-    return success();
+    return failure();
   }
 };
 
@@ -2667,7 +2676,8 @@ LogicalResult UnidirectionalSequenceLSTMOp::inferReturnTypes(
   }
 
   // Default to non-time_major.
-  Optional<mlir::NamedAttribute> time_major_attr = attr.getNamed("time_major");
+  std::optional<mlir::NamedAttribute> time_major_attr =
+      attr.getNamed("time_major");
   bool time_majored =
       time_major_attr ? time_major_attr->getValue().cast<BoolAttr>().getValue()
                       : false;
@@ -3404,10 +3414,13 @@ mlir::LogicalResult TransposeOp::verify() {
   int index = 0;
   llvm::SmallVector<int64_t, 4> axes;
   for (const auto& axis_int : perm.getValues<APInt>()) {
-    const int64_t axis = axis_int.getSExtValue();
+    int64_t axis = axis_int.getSExtValue();
+    if (axis < 0) {
+      axis += input_type.getRank();
+    }
     if (axis < 0 || (input_type.hasRank() && axis >= input_type.getRank())) {
       return op.emitOpError(
-          llvm::formatv("perm[{0}] must be in [0, rank)", index));
+          llvm::formatv("perm[{0}] must be in [-rank, rank)", index));
     }
     if (std::count(axes.begin(), axes.end(), axis) > 0) {
       return op.emitOpError(

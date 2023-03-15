@@ -18,24 +18,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def BufferReuse : Pass<"buffer-reuse", "func::FuncOp"> {
-  let summary = "Reuses already allocated buffers to save allocation "
-                "operations if it is provably safe.";
-  let description = [{
-    This pass tries to reuse already allocated buffers if they have the same
-    size, are in the right appearance order and have no interference among
-    themselves.
-  }];
-  let constructor = "createBufferReusePass()";
-}
-
-def CopyRemoval : Pass<"copy-removal", "func::FuncOp"> {
-  let summary = "Removes redundant operations that implement a "
-                "CopyOpInterface, if the intersection of the useranges from"
-                "copy source and target only contains the CopyOp.";
-  let constructor = "createCopyRemovalPass()";
-}
-
 def BufferPacking : Pass<"buffer-packing", "func::FuncOp"> {
   let summary = "Pass to pack allocated buffer to reduce memory consumption.";
   let description = [{The pass tries to pack smaller buffers into larger buffers.

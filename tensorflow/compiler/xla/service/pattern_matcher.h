@@ -1270,13 +1270,12 @@ class HloInstructionPatternOpcodeImpl {
 
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     if (invert_ && inst->opcode() == opcode_) {
-      EXPLAIN << "HloInstruction has opcode " << HloOpcodeString(opcode_)
+      EXPLAIN << "HloInstruction has opcode " << opcode_
               << ", expected anything else";
       return false;
     }
     if (!invert_ && inst->opcode() != opcode_) {
-      EXPLAIN << "HloInstruction doesn't have opcode "
-              << HloOpcodeString(opcode_);
+      EXPLAIN << "HloInstruction doesn't have opcode " << opcode_;
       return false;
     }
     return true;
@@ -1284,9 +1283,9 @@ class HloInstructionPatternOpcodeImpl {
 
   void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     if (!invert_) {
-      *os << "with opcode " << HloOpcodeString(opcode_);
+      *os << "with opcode " << opcode_;
     } else {
-      *os << "with any opcode other than " << HloOpcodeString(opcode_);
+      *os << "with any opcode other than " << opcode_;
     }
   }
 
@@ -2255,6 +2254,9 @@ XLA_UNOP_PATTERN(Cos)
 XLA_UNOP_PATTERN(AllReduce)
 XLA_UNOP_PATTERN(AllReduceStart)
 XLA_UNOP_PATTERN(AllReduceDone)
+XLA_UNOP_PATTERN(CollectivePermute)
+XLA_UNOP_PATTERN(CollectivePermuteStart)
+XLA_UNOP_PATTERN(CollectivePermuteDone)
 XLA_UNOP_PATTERN(Exp)
 XLA_UNOP_PATTERN(Fft)
 XLA_UNOP_PATTERN(Floor)

@@ -40,13 +40,12 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
-from tensorflow.python.keras.engine import input_layer
-from tensorflow.python.keras.engine import training
-from tensorflow.python.keras.saving import save as keras_save
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
@@ -630,7 +629,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     cond = lambda i, x: i < 10
     body = lambda i, x: (i + 1, MaskedTensorV1(x.values * 2, x.mask))
-    _, y = control_flow_ops.while_loop_v2(cond, body, [0, x])
+    _, y = while_loop.while_loop_v2(cond, body, [0, x])
 
     self.assertIsInstance(y, MaskedTensorV1)
     self.assertAllEqual(y.values, [1024, 2048, 3072, 4096])
@@ -662,7 +661,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(
         ValueError, "The two structures don't have the same nested structure"):
-      control_flow_ops.while_loop_v2(cond, body, [0, x])
+      while_loop.while_loop_v2(cond, body, [0, x])
 
   def testWhileLoopPacked(self):
     x = MaskedTensorV2([1, 2, 3, 4], [True, False, True, False])
@@ -672,7 +671,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     def body(i, x):
       return i + 1, extension_type.pack(MaskedTensorV2(x.values * 2, x.mask))
 
-    _, y = control_flow_ops.while_loop_v2(cond, body, [0, x])
+    _, y = while_loop.while_loop_v2(cond, body, [0, x])
     self.assertIsInstance(y, MaskedTensorV2)
     self.assertAllEqual(y.values, [1024, 2048, 3072, 4096])
     self.assertAllEqual(y.mask, [True, False, True, False])
@@ -755,7 +754,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     @def_function.function
     def fn(info):
       prices = [toy.price for toy in info.toys]
-      return math_ops.reduce_sum(array_ops.stack(prices))
+      return math_ops.reduce_sum(array_ops_stack.stack(prices))
 
     self.assertAllClose(fn(toy_info), 4.7)
 
@@ -1080,42 +1079,6 @@ class ExtensionTypeIntegrationTest(test_util.TensorFlowTestCase):
     per_replica_result = next(iter(dist_dataset))
     self.assertEqual(per_replica_result.values[0].values, expect.values[0])
     self.assertEqual(per_replica_result.values[0].mask, expect.mask[0])
-
-  # TODO(edloper): Move this test to Keras.
-  @test_util.run_v2_only
-  def testKerasModel(self):
-    mt_spec = MaskedTensorV3.Spec(
-        tensor_spec.TensorSpec(shape=[None, 1], dtype=dtypes.int32),
-        tensor_spec.TensorSpec(shape=[None, 1], dtype=dtypes.bool),
-    )
-    model_input = input_layer.Input(type_spec=mt_spec)
-    model_output = array_ops.identity(model_input, name='output')
-    model = training.Model(inputs=model_input, outputs=model_output)
-    mt = MaskedTensorV3([[1], [2], [3]], [[True], [False], [True]])
-    self.assertEqual(model(mt), mt)
-    ds = dataset_ops.DatasetV2.from_tensors(mt)
-    self.assertEqual(model.predict(ds), mt)
-
-    with self.subTest('keras save'):
-      path = self.create_tempdir().full_path
-      model.save(path)
-      loaded_model = keras_save.load_model(path)
-      self.assertEqual(loaded_model.input.type_spec, mt_spec)
-      self.assertEqual(loaded_model(mt), mt)
-
-      loaded_fn = load.load(path)
-      self.assertEqual(loaded_fn(mt), mt)
-      with self.assertRaisesRegex(
-          ValueError,
-          'Could not find matching concrete function to call '
-          'loaded from the SavedModel',
-      ):
-        loaded_fn(MaskedTensorV3([1, 2, 3], [True, False, True]))
-
-      # The serving_fn use flatten signature
-      serving_fn = loaded_fn.signatures['serving_default']
-      self.assertEqual(
-          serving_fn(args_0=mt.values, args_0_1=mt.mask)['tf.identity'], mt)
 
 
 @test_util.run_all_in_graph_and_eager_modes

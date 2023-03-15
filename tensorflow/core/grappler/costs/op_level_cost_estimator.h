@@ -185,6 +185,8 @@ class OpLevelCostEstimator {
   Status PredictCropAndResize(const OpContext& op_context,
                               NodeCosts* node_costs) const;
 
+  int64_t GetSoftmaxComputeOps(const OpContext& op_context) const;
+
   // Generic cost prediction method for fused operations.
   Status PredictFusedOp(const OpContext& op_context,
                         const std::vector<OpContext>& fused_op_contexts,

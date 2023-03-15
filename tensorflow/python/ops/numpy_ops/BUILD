@@ -24,6 +24,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:bitwise_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",

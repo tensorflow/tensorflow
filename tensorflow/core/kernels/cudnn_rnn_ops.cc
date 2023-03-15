@@ -324,9 +324,7 @@ DeviceMemoryBase SliceDeviceMemory(const DeviceMemoryBase& device_memory,
 }
 
 inline Status FromExecutorStatus(const tsl::Status& s) {
-  return s.ok() ? OkStatus()
-                : Status(static_cast<error::Code>(static_cast<int>(s.code())),
-                         s.error_message());
+  return s.ok() ? OkStatus() : Status(s.code(), s.error_message());
 }
 
 template <typename T>
@@ -335,10 +333,7 @@ inline Status FromExecutorStatus(const tsl::StatusOr<T>& s) {
 }
 
 inline tsl::Status ToExecutorStatus(const Status& s) {
-  return s.ok() ? OkStatus()
-                : tsl::Status(
-                      static_cast<tsl::error::Code>(static_cast<int>(s.code())),
-                      s.error_message());
+  return s.ok() ? OkStatus() : Status(s.code(), s.error_message());
 }
 
 template <typename>
@@ -456,7 +451,7 @@ class CudnnRNNSpaceAllocator : public ScratchAllocator {
 
   StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override {
     if (total_byte_size_ != 0) {
-      return Status(error::FAILED_PRECONDITION,
+      return Status(absl::StatusCode::kFailedPrecondition,
                     "Space allocator can only be called once");
     }
 
@@ -1803,7 +1798,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
     }
 
     if (!best_result.is_valid()) {
-      return Status(error::Code::INTERNAL, "No algorithm worked!");
+      return Status(absl::StatusCode::kInternal, "No algorithm worked!");
     }
     algo_config->set_algorithm(best_result.algorithm());
     VLOG(1) << "Best Cudnn RNN algorithm (algo, tensor_op_enabled) =  ("

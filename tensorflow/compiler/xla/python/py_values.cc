@@ -27,8 +27,8 @@ limitations under the License.
 #include <utility>
 // NOLINTEND
 
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/shape.h"
@@ -284,27 +284,19 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj,
         "Only single-sharded Array is expected in device_put.");
   }
 
-  if (py_array.sharding().get_type() == jax::PmapSharding::type()) {
-    // We are only handling single device case for PmapSharding here. For other
-    // cases, it fallbacks to python.
-    return HandleNumpyArray(obj.attr("_value"), client, to_device, options);
-  }
-
   ifrt::Array* ifrt_array = py_array.ifrt_array();
   if (ifrt_array == nullptr) {
     return InvalidArgument("Array has been deleted.");
   }
+
+  // Fallback to python for non-matching clients or pmap sharding.
+  if (py_array.sharding().get_type() == jax::PmapSharding::type() ||
+      ifrt_array->sharding().devices().front()->client() !=
+          to_device->client()) {
+    return HandleNumpyArray(obj.attr("_value"), client, to_device, options);
+  }
+
   if (ifrt_array->sharding().devices().front() == to_device) {
-    if (!llvm::isa<ifrt::SingleDeviceSharding>(ifrt_array->sharding())) {
-      // Explode in order to ensure that arrays always are SingleDeviceArrays.
-      auto exploded_arrays = ifrt_array->DisassembleIntoSingleDeviceArrays(
-          ifrt::ArrayCopySemantics::kReuseInput);
-      TF_CHECK_OK(exploded_arrays.status());
-      CHECK_EQ(exploded_arrays->size(), 1);
-      return DevicePutResult(
-          std::move((*exploded_arrays)[0]), py_array.weak_type(),
-          /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(obj));
-    }
     return DevicePutResult(
         tsl::FormRef(ifrt_array), py_array.weak_type(),
         /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(obj));

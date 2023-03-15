@@ -16,7 +16,7 @@
 
 import collections
 import itertools
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 
 import numpy as np
 
@@ -41,10 +41,10 @@ tf_export(
 MeshDimension = collections.namedtuple('MeshDimension', ['name', 'size'])
 
 
-def _compute_mesh_strides(mesh_dims: List[MeshDimension]) -> List[int]:
+def _compute_mesh_strides(shape: List[int]) -> List[int]:
   strides = [1]
-  for idx, dim in enumerate(reversed(mesh_dims[1:])):
-    strides.append(strides[idx] * dim.size)
+  for idx, dim_size in enumerate(reversed(shape[1:])):
+    strides.append(strides[idx] * dim_size)
   strides.reverse()
   return strides
 
@@ -68,25 +68,16 @@ class Mesh(_pywrap_dtensor_device.Mesh):
   single- or multi-client use cases.
   """
 
-  # TODO(panzf): remove this in the last step of Python/C++ unificiation effort
-  _dim_dict: Dict[str, MeshDimension]
-  _dim_names: List[str]
-  _local_device_ids: List[int]
-  _global_device_ids: np.ndarray
-  _name: str
-  _local_devices = List[tf_device.DeviceSpec]
-  _global_devices = Optional[List[tf_device.DeviceSpec]]
-  _device_type: str
-  _use_xla_spmd: bool
-
-  def __init__(self,
-               dim_names: List[str],
-               global_device_ids: np.ndarray,
-               local_device_ids: List[int],
-               local_devices: List[tf_device.DeviceSpec],
-               mesh_name: str = '',
-               global_devices: Optional[List[tf_device.DeviceSpec]] = None,
-               use_xla_spmd: bool = USE_XLA_SPMD):
+  def __init__(
+      self,
+      dim_names: List[str],
+      global_device_ids: np.ndarray,
+      local_device_ids: List[int],
+      local_devices: List[Union[tf_device.DeviceSpec, str]],
+      mesh_name: str = '',
+      global_devices: Optional[List[Union[tf_device.DeviceSpec, str]]] = None,
+      use_xla_spmd: bool = USE_XLA_SPMD,
+  ):
     """Builds a Mesh.
 
     The `dim_names` and `global_device_ids` arguments describe the dimension
@@ -146,20 +137,8 @@ class Mesh(_pywrap_dtensor_device.Mesh):
 
     # TODO(b/242201545): This class is only for args type transformation for
     # exported C++ Mesh class after the unification is complete. Any other
-    # logics should reside in the C++ layer.
-
-    # Transform args format for C++ Mesh constructor
-    global_device_ids_flatten = global_device_ids.flatten()
-    global_device_ids_shape = global_device_ids.shape
-    local_devices_str = [d.to_string() for d in local_devices]
-    if global_devices:
-      global_devices_str = [d.to_string() for d in global_devices]
-    else:
-      global_devices_str = []
-
-    super().__init__(mesh_name, dim_names, global_device_ids_shape,
-                     global_device_ids_flatten, global_devices_str,
-                     local_device_ids, local_devices_str, use_xla_spmd)
+    # logics should reside in the C++ layer, including validation checks, shall
+    # go to C++.
 
     if len(dim_names) != global_device_ids.ndim:
       raise ValueError(
@@ -177,7 +156,28 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     if not local_devices and not global_devices:
       raise ValueError('Empty list of devices not allowed.')
 
-    local_devices_set = set(local_devices)
+    # Transform args format for C++ Mesh constructor
+    global_device_ids_flatten = global_device_ids.flatten()
+    global_device_ids_shape = global_device_ids.shape
+
+    def to_str(d) -> str:
+      if isinstance(d, tf_device.DeviceSpec):
+        return d.to_string()
+      return d
+
+    def to_spec(d) -> tf_device.DeviceSpec:
+      if not isinstance(d, tf_device.DeviceSpec):
+        return tf_device.DeviceSpec.from_string(d)
+      return d
+
+    local_devices_str = [to_str(d) for d in local_devices]
+    local_devices_spec = [to_spec(d) for d in local_devices]
+    if not global_devices:
+      global_devices = []
+    global_devices_str = [to_str(d) for d in global_devices]
+    global_devices_spec = [to_spec(d) for d in global_devices]
+
+    local_devices_set = set(local_devices_spec)
     local_device_only_contains_host_cpu = (
         len(local_devices_set) == 1 and
         list(local_devices_set)[0].device_type == 'CPU')
@@ -193,9 +193,9 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     if len(local_device_ids) > len(np.ravel(global_device_ids)):
       raise ValueError('Cannot have more local than gobal device IDs.')
 
-    device_types = set([device.device_type for device in local_devices])
+    device_types = set([device.device_type for device in local_devices_spec])
     if not device_types:
-      device_types = set([device.device_type for device in global_devices])
+      device_types = set([device.device_type for device in global_devices_spec])
     if None in device_types:
       raise ValueError('device_type is required')
     if len(device_types) > 1:
@@ -205,35 +205,26 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     if use_xla_spmd and device_type != 'TPU':
       raise ValueError('XLA SPMD is not currently not supported for %s mesh.' %
                        device_type)
-    # Set object's state.
-    self._device_type = device_type
-    self._dim_names = dim_names
-    self._dim_dict = {
-        dim_name: MeshDimension(dim_name, global_device_ids.shape[i])
-        for i, dim_name in enumerate(dim_names)
-    }
-    self._global_device_ids = global_device_ids
-    self._local_device_ids = local_device_ids
-    self._local_devices = local_devices
-    self._global_devices = global_devices
-    self._name = mesh_name
-    self._strides = _compute_mesh_strides(
-        [self._dim_dict[dim] for dim in self._dim_names])
-    self._use_xla_spmd = use_xla_spmd
 
-  def __eq__(self, other):
-    if not isinstance(other, type(self)) and not isinstance(self, type(other)):
-      raise ValueError('comparing with type : {0} but expecting : {1}'.format(
-          type(other), type(self)))
-    return (self.as_proto().SerializeToString(
-        deterministic=True) == other.as_proto().SerializeToString(
-            deterministic=True))
+    super().__init__(
+        mesh_name,
+        dim_names,
+        global_device_ids_shape,
+        global_device_ids_flatten,
+        global_devices_str,
+        local_device_ids,
+        local_devices_str,
+        use_xla_spmd,
+    )
+
+  def global_device_ids(self) -> np.ndarray:
+    """Returns a global device list as an array."""
+    return np.array(super().global_device_ids(), dtype=np.int64).reshape(
+        self.shape()
+    )
 
   def __getitem__(self, dim_name: str) -> MeshDimension:
-    if dim_name not in self._dim_dict:
-      raise KeyError(
-          f'Dimension {dim_name} not defined in mesh: {self._dim_dict.keys()}')
-    return self._dim_dict[dim_name]
+    return MeshDimension(name=dim_name, size=self.dim_size(dim_name))
 
   def __hash__(self):
     return hash(self.as_proto().SerializeToString(deterministic=True))
@@ -243,166 +234,72 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     return (
         f'<Mesh object with dims={dims}, device_type="{self.device_type()}", '
         f'num_local_devices={self.num_local_devices()}), '
-        f'size={self.size}>')
+        f'size={self.size}>'
+    )
 
   # TODO(panzf): change to pybind11 pickle implementation in the last step
   def __reduce__(self):
-    return self.__class__, (self._dim_names, self._global_device_ids,
-                            self._local_device_ids, self._local_devices,
-                            self._name, self._global_devices)
+    return Mesh.from_string, (self.to_string(),)
 
-  def as_proto(self) -> layout_pb2.MeshProto:
-    """Returns mesh protobuffer."""
-
-    mesh_proto = layout_pb2.MeshProto()
-
-    mesh_proto.name = self._name
-
-    for i, mesh_dimension in enumerate(self._dim_names):
-      dim = mesh_proto.mesh_dimensions.add()
-      dim.name = mesh_dimension
-      dim.size = self._global_device_ids.shape[i]
-
-    for d in np.ravel(self._global_device_ids):
-      mesh_proto.global_device_ids.append(d)
-
-    for d in self._local_device_ids:
-      mesh_proto.local_device_ids.append(d)
-
-    for d in self._local_devices:
-      mesh_proto.local_devices.append(d.to_string())
-
-    if self._global_devices:
-      for d in self._global_devices:
-        mesh_proto.global_devices.append(d.to_string())
-
-    mesh_proto.use_xla_spmd = self.use_xla_spmd()
-    return mesh_proto
-
+  # TODO(b/242201545): implement this in Mesh C++ class
   def coords(self, device_idx: int) -> ops.Tensor:
     """Converts the device index into a tensor of mesh coordinates."""
     strides = ops.convert_to_tensor(self.strides)
     shape = ops.convert_to_tensor(self.shape())
     return (device_idx // strides) % shape
 
-  def dim_size(self, dim_name: str) -> int:
-    """Returns the size of a dimension."""
-    if dim_name not in self._dim_dict.keys():
-      raise ValueError(('"{dim_name}" not a dimension name in current mesh. ' +
-                        'Dimension names: {dim_names}.').format(
-                            dim_name=dim_name,
-                            dim_names=list(self._dim_dict.keys())))
-    return self._dim_dict[dim_name].size
-
   @staticmethod
   def from_proto(proto: layout_pb2.MeshProto) -> 'Mesh':
     """Construct a mesh instance from input `proto`."""
-    shape = [dim.size for dim in proto.mesh_dimensions]
+    mesh = _pywrap_dtensor_device.Mesh.__new__(Mesh)
+    _pywrap_dtensor_device.Mesh.__init__(mesh, proto)
+    return mesh
 
-    # Convert global_device ids list back into array form
-    global_device_ids = [int(d) for d in proto.global_device_ids]
-    global_device_ids = np.asarray(global_device_ids).reshape(shape)
-
-    # Construct local_device_ids list
-    local_device_ids = [int(d) for d in proto.local_device_ids]
-
-    # Convert local devices list back to array form
-    local_devices = [
-        tf_device.DeviceSpec.from_string(d) for d in proto.local_devices
-    ]
-
-    # Convert global devices list back to array form
-    global_devices = [
-        tf_device.DeviceSpec.from_string(d) for d in proto.global_devices
-    ]
-
-    name = proto.name
-    dims = [dim.name for dim in proto.mesh_dimensions]
-    return Mesh(dims, global_device_ids, local_device_ids, local_devices, name,
-                global_devices, proto.use_xla_spmd)
-
-  # TODO(panzf): Remove this in the last step of C++/Python unification
-  # Removing this method depends on C++ Mesh implements all Python methods
   @staticmethod
   def from_string(mesh_str: str) -> 'Mesh':
-    """Construct a mesh instance from input `proto`."""
-    # Separate elements of mesh.
-    mesh_parts = mesh_str.split('|')
-    global_dev_str_or_use_xla_spmd = None
-    use_xla_spmd = False
-    if len(mesh_parts) == 5:
-      name, mesh_dim_strs, global_id_str, local_id_str, dev_str = mesh_parts
-    elif len(mesh_parts) == 6:
-      (name, mesh_dim_strs, global_id_str, local_id_str, dev_str,
-       global_dev_str_or_use_xla_spmd) = mesh_parts
-    elif len(mesh_parts) == 7:
-      (name, mesh_dim_strs, global_id_str, local_id_str, dev_str,
-       global_dev_str_or_use_xla_spmd, use_xla_spmd) = mesh_parts
-    else:
-      raise ValueError('Invalid mesh string : %s' % mesh_str)
+    mesh = _pywrap_dtensor_device.Mesh.__new__(Mesh)
+    _pywrap_dtensor_device.Mesh.__init__(mesh, mesh_str)
+    return mesh
 
-    # Load mesh proto.
-    mesh_proto = layout_pb2.MeshProto()
-    mesh_proto.name = name
-    mesh_proto.use_xla_spmd = (use_xla_spmd == 'use_xla_spmd')
-
-    for mesh_dim_str in mesh_dim_strs.split(','):
-      name, size_str = mesh_dim_str.split('=')
-      dim = mesh_proto.mesh_dimensions.add()
-      dim.name = name
-      dim.size = int(size_str)
-
-    for global_id in global_id_str.split(','):
-      mesh_proto.global_device_ids.append(int(global_id))
-
-    if local_id_str:
-      for local_id in local_id_str.split(','):
-        mesh_proto.local_device_ids.append(int(local_id))
-
-    if dev_str:
-      for dev in dev_str.split(','):
-        mesh_proto.local_devices.append(dev)
-
-    # Global device ids and use_xla_spmd are both optional strings appended to
-    # the end. When there are 6 arguments, we need to check which argument.
-    if global_dev_str_or_use_xla_spmd:
-      if global_dev_str_or_use_xla_spmd == 'use_xla_spmd':
-        mesh_proto.use_xla_spmd = True
-      else:
-        for dev in global_dev_str_or_use_xla_spmd.split(','):
-          mesh_proto.global_devices.append(dev)
-
-    return Mesh.from_proto(mesh_proto)
-
+  # TODO(b/242201545): implement this in Mesh C++ class
   def host_mesh(self):
     """Returns the 1-1 mapped host mesh."""
     if self.device_type().upper() == 'CPU':
       return self
 
     v_cpus_counts = config.num_local_devices('CPU')
-    if v_cpus_counts < len(self._local_devices):
+    if v_cpus_counts < len(self.local_devices()):
       raise ValueError(
           'Must have at least {0} virtual CPUs for mesh : {1}, '
           'but got : {2} virtual CPUs. '
           'Call tf.experimental.dtensor.initialize_accelerator_system() '
           'to initialize the host CPU devices with the accelerators.'.format(
-              len(self._local_devices), self.to_string(), v_cpus_counts))
-    device_array = np.asarray([
-        spec.replace(device_type='CPU') for spec in self._local_devices
-    ]).reshape((len(self._local_devices), 1))
-    global_devices = None
-    if self._global_devices:
-      global_devices = [
-          spec.replace(device_type='CPU') for spec in self._global_devices
-      ]
+              len(self.local_devices()), self.to_string(), v_cpus_counts
+          )
+      )
+    local_device_specs = [
+        tf_device.DeviceSpec.from_string(d) for d in self.local_devices()
+    ]
+    global_device_specs = [
+        tf_device.DeviceSpec.from_string(d) for d in self.global_devices()
+    ]
+
+    device_array = np.asarray(
+        [spec.replace(device_type='CPU') for spec in local_device_specs]
+    ).reshape((len(self.local_devices()), 1))
+    global_devices = [
+        spec.replace(device_type='CPU') for spec in global_device_specs
+    ]
     h_mesh = Mesh(
-        self._dim_names,
-        self._global_device_ids,
+        self.dim_names,
+        self.global_device_ids(),
         self.local_device_ids(),
         np.ravel(device_array).tolist(),
-        global_devices=global_devices)
+        global_devices=global_devices,
+    )
     return h_mesh
 
+  # TODO(b/242201545): implement this in Mesh C++ class
   def local_device_locations(self) -> List[Dict[str, int]]:
     """Returns a list of local device locations.
 
@@ -412,6 +309,7 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     mapping = self.unravel_index()
     return [mapping[device_id] for device_id in self.local_device_ids()]
 
+  # TODO(b/242201545): implement this in Mesh C++ class
   @property
   def strides(self) -> List[int]:
     """Returns the strides tensor array for this mesh.
@@ -433,8 +331,9 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     Returns:
       The mesh strides as an integer tensor.
     """
-    return self._strides
+    return _compute_mesh_strides(self.shape())
 
+  # TODO(b/242201545): implement this in Mesh C++ class
   def unravel_index(self):
     """Returns a dictionary from device ID to {dim_name: dim_index}.
 
@@ -449,14 +348,12 @@ class Mesh(_pywrap_dtensor_device.Mesh):
         5: {'x': 2, 'y', 1} }
     ```
     """
-    idx_ranges = [
-        range(self.dim_size(dim_name)) for dim_name in self._dim_names
-    ]
+    idx_ranges = [range(self.dim_size(dim_name)) for dim_name in self.dim_names]
     mesh_pos = itertools.product(*idx_ranges)
     mapping = {}
     for device_id, device_pos in enumerate(mesh_pos):
       device_loc = {}
-      for dim_name, dim_index in zip(self._dim_names, device_pos):
+      for dim_name, dim_index in zip(self.dim_names, device_pos):
         device_loc[dim_name] = dim_index
       mapping[device_id] = device_loc
     return mapping
@@ -464,7 +361,7 @@ class Mesh(_pywrap_dtensor_device.Mesh):
 
 # TODO(hthu): Consider making this class immutable.
 @tf_export('experimental.dtensor.Layout', v1=[])
-class Layout(object):
+class Layout(_pywrap_dtensor_device.Layout):
   """Represents the layout information of a DTensor.
 
   A layout describes how a distributed tensor is partitioned across a mesh (and
@@ -541,38 +438,44 @@ class Layout(object):
              'valid mesh dimension or UNSHARDED.').format(
                  dim_sharding=dim_sharding))
 
-    # Set object's state
-    self.sharding_specs = sharding_specs
-    self.rank = len(sharding_specs)
-    self.mesh = mesh
-    self.shape = [self.num_shards(i) for i in range(self.rank)]
-
-  def __eq__(self, other) -> bool:
-    return self.serialized_string() == other.serialized_string()
+    super().__init__(sharding_specs, mesh)
 
   def __repr__(self) -> str:
     return f'Layout(sharding_specs={self.sharding_specs}, mesh={self.mesh})'
 
-  def __hash__(self) -> int:
-    return hash(self.serialized_string())
+  def __hash__(self):
+    return hash(self.as_proto().SerializeToString(deterministic=True))
 
-  def as_proto(self) -> layout_pb2.LayoutProto:
-    """Create a proto representation of a layout."""
-    layout_proto = layout_pb2.LayoutProto()
+  # TODO(panzf): change to pybind11 pickle implementation in the last step
+  def __reduce__(self):
+    return Layout.from_string, (self.to_string(),)
 
-    for dim_sharding in self.sharding_specs:
-      tensor_dim = layout_proto.sharding_specs.add()
-      tensor_dim.sharding_spec = dim_sharding
+  # TODO(b/242201545): Find a way to return Mesh object from the pywrap module.
+  @property
+  def mesh(self):
+    return Mesh.from_proto(super().mesh.as_proto())
 
-    layout_proto.mesh_config.CopyFrom(self.mesh_proto())
-
-    return layout_proto
+  @property
+  def shape(self):
+    return self.mesh.shape()
 
   @staticmethod
-  def batch_sharded(mesh: Mesh, batch_dim: str, rank: int) -> 'Layout':
+  def batch_sharded(
+      mesh: Mesh, batch_dim: str, rank: int, axis: int = 0
+  ) -> 'Layout':
     """Returns a layout sharded on batch dimension."""
-    return Layout([batch_dim] + [UNSHARDED] * (rank - 1), mesh)
+    layout_obj = _pywrap_dtensor_device.Layout.__new__(Layout)
+    _pywrap_dtensor_device.Layout.__init__(
+        # Watchout for the different ordering.
+        layout_obj,
+        mesh=mesh,
+        rank=rank,
+        batch_dim=batch_dim,
+        axis=axis,
+    )
+    return layout_obj
 
+  # TODO(b/242201545): Move this to C++ / find the corresponding function there.
   def delete(self, dims: List[int]) -> 'Layout':
     """Returns the layout with the give dimensions deleted."""
     if not isinstance(dims, list):
@@ -583,57 +486,25 @@ class Layout(object):
     return Layout(new_specs, self.mesh)
 
   @staticmethod
-  def from_str(layout_str: bytes) -> 'Layout':
-    """Creates an instance from a serialized Protobuf binary string."""
-    layout_proto = layout_pb2.LayoutProto()
-    layout_proto.ParseFromString(layout_str)
-    sharding_specs = [
-        sharding_spec.sharding_spec
-        for sharding_spec in layout_proto.sharding_specs
-    ]
-    mesh = Mesh.from_proto(layout_proto.mesh_config)
-    return Layout(sharding_specs, mesh)
+  def from_proto(layout_proto: layout_pb2.LayoutProto) -> 'Layout':
+    """Creates an instance from a LayoutProto."""
+    layout_obj = _pywrap_dtensor_device.Layout.__new__(Layout)
+    _pywrap_dtensor_device.Layout__init__(layout_obj, layout_proto)
+    return layout_obj
 
   @staticmethod
   def from_string(layout_str: str) -> 'Layout':
     """Creates an instance from a human-readable string."""
-    layout_parts = layout_str.split(' ')
-    if len(layout_parts) != 2:
-      raise ValueError(
-          'layout string must contain two parts: specs and mesh. But got {}.'
-          .format(layout_str))
-
-    sharding_specs_str = layout_parts[0].replace('sharding_specs:', '')
-    mesh_str = layout_parts[1].replace('mesh:', '')
-
-    sharding_specs = sharding_specs_str.split(',')[:-1]
-
-    mesh = Mesh.from_string(mesh_str)
-    layout = Layout(sharding_specs, mesh)
-    return layout
+    layout_obj = _pywrap_dtensor_device.Layout.__new__(Layout)
+    _pywrap_dtensor_device.Layout.__init__(layout_obj, layout_str)
+    return layout_obj
 
   @staticmethod
   def inner_sharded(mesh: Mesh, inner_dim: str, rank: int) -> 'Layout':
     """Returns a layout sharded on inner dimension."""
-    return Layout([UNSHARDED] * (rank - 1) + [inner_dim], mesh)
+    return Layout.batch_sharded(mesh, inner_dim, rank, axis=rank - 1)
 
-  def is_fully_replicated(self) -> bool:
-    """Returns True if all tensor axes are replicated."""
-    return all([self.num_shards(i) == 1 for i in range(self.rank)])
-
-  def mesh_proto(self) -> layout_pb2.MeshProto:
-    """Returns the underlying mesh in Protobuf format."""
-    return self.mesh.as_proto()
-
-  def num_shards(self, idx: int) -> int:
-    """Returns the number of shards for tensor dimension `idx`."""
-    dim_sharding = self.sharding_specs[idx]
-    if dim_sharding == UNSHARDED:
-      return 1
-    if dim_sharding == MATCH:
-      return -1
-    return self.mesh.dim_size(dim_sharding)
-
+  # TODO(b/242201545): Move this to C++ / find the corresponding function there.
   def offset_to_shard(self):
     """Mapping from offset in a flattened list to shard index."""
     unravel_index = self.mesh.unravel_index()
@@ -646,8 +517,10 @@ class Layout(object):
         else:
           loc.append(mesh_loc[dim_sharding])
       locations[offset] = tuple(loc)
+
     return locations
 
+  # TODO(b/242201545): Move this to C++ / find the corresponding function there.
   def offset_tuple_to_global_index(self, offset_tuple):
     """Mapping from offset to index in global tensor."""
     index = 0
@@ -661,20 +534,6 @@ class Layout(object):
   @staticmethod
   def replicated(mesh: Mesh, rank: int) -> 'Layout':
     """Returns a replicated layout of rank `rank`."""
-    return Layout([UNSHARDED] * rank, mesh)
-
-  def serialized_string(self) -> bytes:
-    """Returns a serialized Protobuf binary string representation."""
-    return self.as_proto().SerializeToString(deterministic=True)
-
-  # A layout with no sharding specs is acceptable, therefore we only check the
-  # mesh.
-  def to_string(self) -> str:
-    """Returns a human-readable string representation."""
-    sharding_spec_str = 'sharding_specs:'
-    # Add comma after each instruction.
-    for spec in self.sharding_specs:
-      sharding_spec_str += spec + ','
-
-    mesh_str = 'mesh:' + self.mesh.to_string()
-    return sharding_spec_str + ' ' + mesh_str
+    layout_obj = _pywrap_dtensor_device.Layout.__new__(Layout)
+    _pywrap_dtensor_device.Layout.__init__(layout_obj, mesh=mesh, rank=rank)
+    return layout_obj

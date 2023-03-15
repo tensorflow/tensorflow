@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
 
 namespace tensorflow {
 
@@ -111,6 +112,13 @@ static void DumpModule(mlir::ModuleOp module, std::string file_prefix) {
   VLOG(1) << "Dumped MLIR module to " << prefix;
 }
 
+static std::string GetModuleText(mlir::ModuleOp module) {
+  std::string module_txt;
+  llvm::raw_string_ostream os(module_txt);
+  module.print(os);
+  return module_txt;
+}
+
 MlirOptimizationPassRegistry& MlirOptimizationPassRegistry::Global() {
   static auto* global = new MlirOptimizationPassRegistry();
   return *global;
@@ -128,8 +136,9 @@ static void RegisterDialects(mlir::DialectRegistry& registry) {
 }
 
 Status MlirFunctionOptimizationPass::Run(
-    const DeviceSet& device_set, const ConfigProto& config_proto,
-    std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
+    const std::string& function_name, const DeviceSet& device_set,
+    const ConfigProto& config_proto, std::unique_ptr<Graph>* graph,
+    FunctionLibraryDefinition* flib_def,
     std::vector<std::string>* control_ret_node_names,
     bool* control_rets_updated) {
   //  overall_state equals to:
@@ -228,9 +237,8 @@ Status MlirFunctionOptimizationPass::Run(
   for (auto& pass_registration : registry_->passes()) {
     llvm::StringRef name = pass_registration.pass->name();
 
-    if (VLOG_IS_ON(1)) {
-      DumpModule(*module_ref, llvm::formatv("mlir_{0}_before_", name));
-    }
+    DUMP_MLIR_MODULE(function_name, llvm::formatv("mlir_{0}_before", name),
+                     GetModuleText(*module_ref), VLOG_IS_ON(1));
 
     Status pass_status = OkStatus();
     auto pass_state = per_pass_state[per_pass_state_index++];
@@ -296,9 +304,8 @@ Status MlirFunctionOptimizationPass::Run(
       }
     }
 
-    if (VLOG_IS_ON(1)) {
-      DumpModule(*module_ref, llvm::formatv("mlir_{0}_after_", name));
-    }
+    DUMP_MLIR_MODULE(function_name, llvm::formatv("mlir_{0}_after", name),
+                     GetModuleText(*module_ref), VLOG_IS_ON(1));
   }
 
   if (!is_module_updated) {

@@ -50,7 +50,7 @@ tensorflow::Status InitializeOpHandlers(tfrt::CoreRuntime* corert) {
   DeviceNameUtils::ParsedName device_parsed_name;
   if (!DeviceNameUtils::ParseFullName(default_device, &device_parsed_name) ||
       !device_parsed_name.has_type) {
-    return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+    return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                               "Invalid device name");
   }
 
@@ -60,7 +60,7 @@ tensorflow::Status InitializeOpHandlers(tfrt::CoreRuntime* corert) {
              (!device_parsed_name.has_job || !device_parsed_name.has_id ||
               !device_parsed_name.has_replica ||
               !device_parsed_name.has_task)) {
-    return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+    return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                               "Device name must be fully specified");
   }
 
@@ -115,7 +115,7 @@ tensorflow::Status InitializeOpHandlers(tfrt::CoreRuntime* corert) {
     op_handler = gpu_op_handler.get();
 #endif  // GOOGLE_CUDA
   } else {
-    return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+    return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                               "Unknown device type");
   }
 

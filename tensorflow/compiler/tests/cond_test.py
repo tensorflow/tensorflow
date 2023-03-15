@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -223,7 +224,7 @@ class CondTest(xla_test.XLATestCase):
       @def_function.function
       def f():
         ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=1)
-        output = control_flow_ops.switch_case(
+        output = control_flow_switch_case.switch_case(
             constant_op.constant(1), {
                 0: lambda: ta.write(0, 5.),
                 1: lambda: ta.write(0, 10.),
@@ -245,7 +246,7 @@ class CondTest(xla_test.XLATestCase):
 
       def f():
         ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=1)
-        output = control_flow_ops.switch_case(
+        output = control_flow_switch_case.switch_case(
             constant_op.constant(1), {
                 0: lambda: ta.write(0, 5.),
                 1: lambda: ta.write(0, 10.),
@@ -280,7 +281,7 @@ class CondTest(xla_test.XLATestCase):
         # compile-time const.
         return x[p]
 
-      output = control_flow_ops.switch_case(
+      output = control_flow_switch_case.switch_case(
           constant_op.constant(2), {
               0: branch0,
               1: branch1,

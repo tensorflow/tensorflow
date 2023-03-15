@@ -35,13 +35,11 @@ py_library(
         ":convolutional",
         ":convolutional_recurrent",
         ":core",
-        ":cudnn_recurrent",
         ":dense_attention",
         ":embeddings",
         ":merge",
         ":pooling",
         ":recurrent",
-        ":recurrent_v2",
         ":rnn_cell_wrapper_v2",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/utils:tf_utils",
@@ -54,7 +52,6 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:base_layer",
         "//tensorflow/python/keras:constraints",
@@ -62,6 +59,7 @@ py_library(
         "//tensorflow/python/keras/engine:input_spec",
         "//tensorflow/python/keras/initializers",
         "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -75,7 +73,6 @@ py_library(
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras:activations",
         "//tensorflow/python/keras:backend",
@@ -86,6 +83,7 @@ py_library(
         "//tensorflow/python/keras/initializers",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -96,7 +94,6 @@ py_library(
     deps = [
         ":recurrent",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python/keras:activations",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:base_layer",
@@ -107,6 +104,7 @@ py_library(
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
@@ -126,7 +124,6 @@ py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:standard_ops",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -143,27 +140,11 @@ py_library(
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-    ],
-)
-
-py_library(
-    name = "cudnn_recurrent",
-    srcs = ["cudnn_recurrent.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":recurrent",
-        ":recurrent_v2",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:cudnn_rnn_ops_gen",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:constraints",
-        "//tensorflow/python/keras:regularizers",
-        "//tensorflow/python/keras/engine:input_spec",
-        "//tensorflow/python/keras/initializers",
     ],
 )
 
@@ -179,10 +160,10 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:base_layer",
         "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -194,7 +175,6 @@ py_library(
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:constraints",
@@ -202,6 +182,7 @@ py_library(
         "//tensorflow/python/keras/engine:base_layer",
         "//tensorflow/python/keras/initializers",
         "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -213,10 +194,10 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
-        "//tensorflow/python:util",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:base_layer",
         "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -229,11 +210,11 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:base_layer",
         "//tensorflow/python/keras/engine:input_spec",
         "//tensorflow/python/keras/utils:engine_utils",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -249,7 +230,6 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras:activations",
@@ -263,35 +243,10 @@ py_library(
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:data_structures",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
         "//third_party/py/numpy",
-    ],
-)
-
-py_library(
-    name = "recurrent_v2",
-    srcs = ["recurrent_v2.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":recurrent",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:cudnn_rnn_ops_gen",
-        "//tensorflow/python:device",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:function",
-        "//tensorflow/python/keras:activations",
-        "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras/engine:input_spec",
     ],
 )
 
@@ -301,7 +256,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":recurrent",
-        "//tensorflow/python:util",
         "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_wrapper_impl",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )

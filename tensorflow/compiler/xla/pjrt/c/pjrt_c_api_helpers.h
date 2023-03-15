@@ -18,7 +18,10 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <string>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
@@ -94,10 +97,10 @@ absl::string_view GetPjrtErrorMessage(const PJRT_Error* error,
 
 xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api);
 
-tsl::error::Code PjrtErrorToStatusCode(const PJRT_Error* error,
+absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
                                        const PJRT_Api* api);
 
-PJRT_Error_Code StatusCodeToPjrtErrorCode(tsl::error::Code code);
+PJRT_Error_Code StatusCodeToPjrtErrorCode(absl::StatusCode code);
 
 // Conversion helper from xla::PrimitiveType to PJRT_Buffer_Type.
 PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type);
@@ -120,6 +123,23 @@ xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
 xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
                                                       const PJRT_Api* c_api);
 
+// The data of returned variable-length PJRT_NamedValue list is backed by
+// `cpp_value_map`, so `cpp_value_map` must outlive the returned list. It will
+// raise errors for unsupported PjRtValueType.
+xla::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
+    const absl::flat_hash_map<std::string, xla::PjRtValueType>& cpp_value_map);
+
+absl::flat_hash_map<std::string, xla::PjRtValueType>
+ConvertFromPjRtNamedValueList(PJRT_NamedValue* c_value_list, size_t list_size);
+
+// Validates that all entries in value_map have a matching name and type in
+// expected_name_and_type. expected_name_and_type may contain extra entries
+// not in value_map without error.
+xla::Status ValidateCreateOptions(
+    const absl::flat_hash_map<std::string, xla::PjRtValueType>& value_map,
+    const absl::flat_hash_map<std::string, PJRT_NamedValue_Type>&
+        expected_name_and_types);
+
 // Helper function for checking C API argument struct sizes. Returns a non-OK
 // status if the expected and actual sizes aren't equal (i.e. no ABI
 // compatibility guarantees).
@@ -127,6 +147,13 @@ xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
                                      size_t expected_size, size_t actual_size);
 
 absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api);
+
+// Releases `chunk`.
+PJRT_Chunk ConvertFromCppChunk(xla::PjRtChunk chunk);
+
+// Returned PjRtChunk takes ownership of data in PJRT_Chunk (i.e. chunk.deleter
+// should not be called).
+xla::PjRtChunk ConvertToCppChunk(const PJRT_Chunk& chunk);
 
 }  // namespace pjrt
 

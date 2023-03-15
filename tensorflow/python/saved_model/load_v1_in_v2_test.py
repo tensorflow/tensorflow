@@ -41,6 +41,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import load
@@ -349,10 +350,11 @@ class LoadTest(test.TestCase):
       loop_iterations = array_ops.placeholder(
           name="loop_iterations", shape=[], dtype=dtypes.int32
       )
-      _, output = control_flow_ops.while_loop(
+      _, output = while_loop.while_loop(
           lambda index, accum: index <= loop_iterations,
           lambda index, accum: (index + 1, accum + index),
-          [constant_op.constant(0), constant_op.constant(0)],
+          [constant_op.constant(0),
+           constant_op.constant(0)],
       )
       with session_lib.Session() as session:
         path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
@@ -376,20 +378,22 @@ class LoadTest(test.TestCase):
     with export_graph.as_default():
 
       def _inner_while(loop_iterations):
-        _, output = control_flow_ops.while_loop(
+        _, output = while_loop.while_loop(
             lambda index, accum: index <= loop_iterations,
             lambda index, accum: (index + 1, accum + index),
-            [constant_op.constant(0), constant_op.constant(0)],
+            [constant_op.constant(0),
+             constant_op.constant(0)],
         )
         return output
 
       loop_iterations = array_ops.placeholder(
           name="loop_iterations", shape=[], dtype=dtypes.int32
       )
-      _, output = control_flow_ops.while_loop(
+      _, output = while_loop.while_loop(
           lambda index, accum: index <= loop_iterations,
           lambda index, accum: (index + 1, accum + _inner_while(index)),
-          [constant_op.constant(0), constant_op.constant(0)],
+          [constant_op.constant(0),
+           constant_op.constant(0)],
       )
       with session_lib.Session() as session:
         path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))

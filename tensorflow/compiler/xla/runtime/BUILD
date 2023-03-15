@@ -539,6 +539,11 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "cpu_event",
+    hdrs = ["cpu_event.h"],
+)
+
 xla_cc_test(
     name = "type_id_test",
     srcs = ["type_id_test.cc"],

@@ -87,7 +87,6 @@ final class BenchmarkReport {
   private void computeBenchmarkReport() {
     List<BenchmarkResultType> results = new ArrayList<>();
     for (ModelBenchmarkReportInterface modelBenchmarkReport : modelBenchmarkReports) {
-      modelBenchmarkReport.computeModelReport();
       results.add(modelBenchmarkReport.result());
     }
     result = DelegatePerformanceBenchmark.aggregateResults(/* strict= */ true, results);

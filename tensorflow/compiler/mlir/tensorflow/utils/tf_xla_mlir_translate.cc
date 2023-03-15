@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -133,7 +134,7 @@ Status ParseArgumentShapes(
     absl::string_view input_shapes_str,
     llvm::SmallVectorImpl<TensorOrResourceShape>& arg_shapes) {
   arg_shapes.clear();
-  std::vector<llvm::Optional<std::vector<int>>> input_shapes_vector;
+  std::vector<std::optional<std::vector<int>>> input_shapes_vector;
   TF_RETURN_IF_ERROR(ParseNodeShapes(input_shapes_str, input_shapes_vector));
   arg_shapes.resize(input_shapes_vector.size());
   for (const auto& shape : llvm::enumerate(input_shapes_vector)) {
@@ -202,7 +203,7 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
                          absl::string_view arg_kinds_str,
                          llvm::SmallVectorImpl<XlaArgument>& xla_arguments) {
   xla_arguments.clear();
-  std::vector<llvm::Optional<std::vector<int>>> input_shapes_vector;
+  std::vector<std::optional<std::vector<int>>> input_shapes_vector;
   TF_RETURN_IF_ERROR(
       tensorflow::ParseNodeShapes(input_shapes_str, input_shapes_vector));
   llvm::SmallVector<DataType, 4> dtypes_vector;
@@ -385,7 +386,10 @@ static void RegisterGraphInputDialects(mlir::DialectRegistry& registry) {
 static mlir::OwningOpRef<mlir::ModuleOp>
 SerializedMlirStringAttrToMlirModuleTranslate(llvm::StringRef input,
                                               mlir::MLIRContext* context) {
-  mlir::Attribute attr = mlir::parseAttribute(input, context);
+  // When the parser doesn't read all the input chars, it issues an error unless
+  // an output parameter is provided for returning the number of chars read.
+  size_t numRead;
+  mlir::Attribute attr = mlir::parseAttribute(input, context, {}, &numRead);
   if (!attr || !attr.isa<mlir::StringAttr>()) {
     LOG(ERROR) << "Input is not parsable as a MLIR StringAttr.";
     return nullptr;

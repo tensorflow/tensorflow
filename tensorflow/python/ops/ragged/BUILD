@@ -28,6 +28,7 @@ py_library(
         ":ragged_config",
         ":ragged_conversion_ops",
         ":ragged_dispatch",
+        ":ragged_embedding_ops",
         ":ragged_factory_ops",
         ":ragged_functional_ops",
         ":ragged_gather_ops",
@@ -150,6 +151,16 @@ py_library(
 )
 
 py_library(
+    name = "ragged_embedding_ops",
+    srcs = ["ragged_embedding_ops.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":ragged_tensor",
+        "//tensorflow/python:embedding_ops",
+    ],
+)
+
+py_library(
     name = "ragged_factory_ops",
     srcs = ["ragged_factory_ops.py"],
     srcs_version = "PY3",
@@ -260,6 +271,7 @@ py_library(
         ":ragged_config",  # fixdeps: keep
         ":ragged_conversion_ops",
         ":ragged_dispatch",
+        ":ragged_embedding_ops",
         ":ragged_factory_ops",
         ":ragged_functional_ops",
         ":ragged_gather_ops",
@@ -303,6 +315,7 @@ py_library(
         ":ragged_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -354,6 +367,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -386,6 +400,7 @@ py_library(
         ":ragged_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -731,9 +746,6 @@ py_test(
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY3",
-    tags = [
-        "notsan",  # TODO(b/170902201): Flaky
-    ],
     deps = [
         ":ragged_factory_ops",
         ":ragged_gather_ops",

@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -59,8 +60,8 @@ LogicalResult tilePartialSoftmax(
   //   i)  by a reduction and subsequent bcast in one dimension, or
   //   ii) by using the source value as is.
   Value commonSource;
-  Optional<int64_t> commonReductionDim;
-  SmallVector<Optional<SimpleBcastReduction>> simpleBcastReductions;
+  std::optional<int64_t> commonReductionDim;
+  SmallVector<std::optional<SimpleBcastReduction>> simpleBcastReductions;
   auto mapOp = llvm::dyn_cast_or_null<linalg::MapOp>(op.getOperation());
   if (!mapOp || mapOp.getNumDpsInits() != 1)
     return rewriter.notifyMatchFailure(op, "no mapOp");
@@ -132,14 +133,10 @@ struct TilePartialSoftmaxPattern
     : public OpInterfaceRewritePattern<TilingInterface> {
   using OpInterfaceRewritePattern<TilingInterface>::OpInterfaceRewritePattern;
 
-  TilePartialSoftmaxPattern(MLIRContext *ctx, bool distribute,
-                            SmallVector<int64_t> tileSizes,
-                            StringRef distributionLabel,
+  TilePartialSoftmaxPattern(MLIRContext *ctx, SmallVector<int64_t> tileSizes,
                             PatternBenefit benefit = 1)
       : OpInterfaceRewritePattern<TilingInterface>(ctx, benefit),
-        distribute(distribute),
-        tileSizes(std::move(tileSizes)),
-        distributionLabel(distributionLabel) {}
+        tileSizes(std::move(tileSizes)) {}
 
   LogicalResult matchAndRewrite(TilingInterface op,
                                 PatternRewriter &rewriter) const override {
@@ -158,27 +155,25 @@ struct TilePartialSoftmaxPattern
         [&](Operation *op,
             int64_t commonReductionDim) -> FailureOr<Operation *> {
           // Populate tiling options.
-          TilingOptions tilingOptions;
-          tilingOptions.tileSizeComputationFn =
+          scf::SCFTilingOptions tilingOptions;
+          tilingOptions.setTileSizeComputationFunction(
               [&](OpBuilder &b, Operation *op) -> SmallVector<Value> {
-            Location loc = op->getLoc();
-            SmallVector<Value> tileSizeValues;
-            for (int64_t i = 0; i < static_cast<int64_t>(tileSizes.size());
-                 i++) {
-              // Skip tiling the reduction dimension. By convention, this is a
-              // tile size of 0.
-              int64_t tileSizeInDim =
-                  i == commonReductionDim ? 0 : tileSizes[i];
-              tileSizeValues.push_back(
-                  b.create<arith::ConstantIndexOp>(loc, tileSizeInDim));
-            }
-            return tileSizeValues;
-          };
-          tilingOptions.distribute = distribute;
-          tilingOptions.distributionLabel = distributionLabel;
+                Location loc = op->getLoc();
+                SmallVector<Value> tileSizeValues;
+                for (int64_t i = 0; i < static_cast<int64_t>(tileSizes.size());
+                     i++) {
+                  // Skip tiling the reduction dimension. By convention, this is
+                  // a tile size of 0.
+                  int64_t tileSizeInDim =
+                      i == commonReductionDim ? 0 : tileSizes[i];
+                  tileSizeValues.push_back(
+                      b.create<arith::ConstantIndexOp>(loc, tileSizeInDim));
+                }
+                return tileSizeValues;
+              });
           // Tile.
           FailureOr<TilingResult> tilingResult =
-              tileUsingGmlSt(tilingOptions, rewriter, op);
+              tileUsingSCFForallOp(tilingOptions, rewriter, op);
           if (failed(tilingResult)) return failure();
 
           rewriter.replaceOp(op, tilingResult->loop->getResults());
@@ -188,9 +183,7 @@ struct TilePartialSoftmaxPattern
   }
 
  private:
-  bool distribute;
   SmallVector<int64_t> tileSizes;
-  std::string distributionLabel;
 };
 
 struct FusePartialSoftmaxPattern
@@ -257,15 +250,11 @@ struct FuseUnaryCwisePattern : public OpRewritePattern<tensor::ExtractSliceOp> {
 struct TilingSoftmaxPass
     : public impl::TilingSoftmaxPassBase<TilingSoftmaxPass> {
   TilingSoftmaxPass() = default;
-  TilingSoftmaxPass(bool distr, ArrayRef<int64_t> ts, StringRef dl) {
-    this->distribute = distr;
-    this->tileSizes = ts;
-    this->distributionLabel = dl.str();
-  }
+  explicit TilingSoftmaxPass(ArrayRef<int64_t> ts) { this->tileSizes = ts; }
 
   void getDependentDialects(DialectRegistry &registry) const final {
-    registry
-        .insert<GmlStDialect, linalg::LinalgDialect, tensor::TensorDialect>();
+    registry.insert<GmlStDialect, linalg::LinalgDialect, tensor::TensorDialect,
+                    scf::SCFDialect>();
     linalg::registerTilingInterfaceExternalModels(registry);
   }
 
@@ -278,8 +267,7 @@ struct TilingSoftmaxPass
     RewritePatternSet patterns(ctx);
     SmallVector<int64_t> tileSizes(this->tileSizes.begin(),
                                    this->tileSizes.end());
-    patterns.insert<TilePartialSoftmaxPattern>(ctx, distribute, tileSizes,
-                                               distributionLabel);
+    patterns.insert<TilePartialSoftmaxPattern>(ctx, tileSizes);
     patterns.insert<FuseUnaryCwisePattern, FusePartialSoftmaxPattern>(ctx);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
@@ -298,9 +286,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass() {
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass(
-    bool distribute, ArrayRef<int64_t> tileSizes, StringRef distributionLabel) {
-  return std::make_unique<TilingSoftmaxPass>(distribute, tileSizes,
-                                             distributionLabel);
+    ArrayRef<int64_t> tileSizes) {
+  return std::make_unique<TilingSoftmaxPass>(tileSizes);
 }
 
 }  // namespace gml_st

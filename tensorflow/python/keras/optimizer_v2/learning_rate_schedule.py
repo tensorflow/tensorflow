@@ -21,6 +21,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -290,7 +291,7 @@ class PiecewiseConstantDecay(LearningRateSchedule):
       # The default isn't needed here because our conditions are mutually
       # exclusive and exhaustive, but tf.case requires it.
       default = lambda: values[0]
-      return control_flow_ops.case(pred_fn_pairs, default, exclusive=True)
+      return control_flow_case.case(pred_fn_pairs, default, exclusive=True)
 
   def get_config(self):
     return {

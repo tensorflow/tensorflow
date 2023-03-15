@@ -79,14 +79,14 @@ void ConvertEndianShort(char* bytes, int64_t size) {
 }
 
 bool LiteralProtoHasValues(const LiteralProto& proto) {
-  return proto.preds_size() || !proto.s8s().empty() || !proto.u8s().empty() ||
-         proto.s32s_size() || proto.s64s_size() || proto.u32s_size() ||
-         proto.u64s_size() || proto.f32s_size() || proto.f64s_size() ||
-         proto.c64s_size() || proto.c128s_size() ||
-         proto.tuple_literals_size() || !proto.f16s().empty() ||
-         !proto.bf16s().empty() || !proto.u16s().empty() ||
-         !proto.s16s().empty() || !proto.f8e5m2s().empty() ||
-         !proto.f8e4m3fns().empty();
+  return proto.preds_size() || !proto.s4s().empty() || !proto.u4s().empty() ||
+         !proto.s8s().empty() || !proto.u8s().empty() || proto.s32s_size() ||
+         proto.s64s_size() || proto.u32s_size() || proto.u64s_size() ||
+         proto.f32s_size() || proto.f64s_size() || proto.c64s_size() ||
+         proto.c128s_size() || proto.tuple_literals_size() ||
+         !proto.f16s().empty() || !proto.bf16s().empty() ||
+         !proto.u16s().empty() || !proto.s16s().empty() ||
+         !proto.f8e5m2s().empty() || !proto.f8e4m3fns().empty();
 }
 
 // Lazy getter for the interned scalar shape in static storage. We reuse this
@@ -107,6 +107,8 @@ const Shape& ScalarShapeImpl() {
 
 const Shape& ScalarShape(PrimitiveType type) {
   switch (type) {
+    case U4:
+      return ScalarShapeImpl<U4>();
     case U8:
       return ScalarShapeImpl<U8>();
     case U16:
@@ -115,6 +117,8 @@ const Shape& ScalarShape(PrimitiveType type) {
       return ScalarShapeImpl<U32>();
     case U64:
       return ScalarShapeImpl<U64>();
+    case S4:
+      return ScalarShapeImpl<S4>();
     case S8:
       return ScalarShapeImpl<S8>();
     case S16:
@@ -342,6 +346,8 @@ int32_t LiteralBase::GetDynamicSize(int64_t dim_index,
 
 std::optional<int64_t> LiteralBase::GetFirstInteger() const {
   switch (shape().element_type()) {
+    case U4:
+      return GetFirstElement<u4>();
     case U8:
       return GetFirstElement<uint8_t>();
     case U16:
@@ -355,6 +361,8 @@ std::optional<int64_t> LiteralBase::GetFirstInteger() const {
       }
       return v;
     }
+    case S4:
+      return GetFirstElement<s4>();
     case S8:
       return GetFirstElement<int8_t>();
     case S16:
@@ -647,10 +655,12 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
                                     subshape(), src.subshape());            \
     }                                                                       \
     break;
+      COPY_ELEMENTS(U4, u4);
       COPY_ELEMENTS(U8, uint8_t);
       COPY_ELEMENTS(U16, uint16_t);
       COPY_ELEMENTS(U32, uint32_t);
       COPY_ELEMENTS(U64, uint64_t);
+      COPY_ELEMENTS(S4, s4);
       COPY_ELEMENTS(S8, int8_t);
       COPY_ELEMENTS(S16, int16_t);
       COPY_ELEMENTS(S32, int32_t);
@@ -793,6 +803,9 @@ Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
   TF_RET_CHECK(ShapeUtil::SameElementType(src_literal.shape(), shape()));
 
   switch (shape().element_type()) {
+    case U4:
+      return CopySliceFromInternal<u4>(src_literal, src_base, dest_base,
+                                       copy_size);
     case U8:
       return CopySliceFromInternal<uint8_t>(src_literal, src_base, dest_base,
                                             copy_size);
@@ -805,6 +818,9 @@ Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
     case U64:
       return CopySliceFromInternal<uint64_t>(src_literal, src_base, dest_base,
                                              copy_size);
+    case S4:
+      return CopySliceFromInternal<s4>(src_literal, src_base, dest_base,
+                                       copy_size);
     case S8:
       return CopySliceFromInternal<int8_t>(src_literal, src_base, dest_base,
                                            copy_size);
@@ -933,53 +949,104 @@ Literal LiteralBase::ToStatic() const {
   return result;
 }
 
-StatusOr<Literal> LiteralBase::Broadcast(
-    const Shape& result_shape, absl::Span<const int64_t> dimensions) const {
-  if (!shape().IsArray()) {
-    return InvalidArgument("Broadcast only supports arrays.");
-  }
-
+namespace {
+template <int64_t PRIMITIVE_SIZE>
+StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
+                                  const Shape& src_shape,
+                                  const Shape& result_shape,
+                                  absl::Span<const int64_t> dimensions) {
   for (int64_t i = 0, end = dimensions.size(); i < end; i++) {
-    TF_RET_CHECK(shape().dimensions(i) ==
+    TF_RET_CHECK(src_shape.dimensions(i) ==
                  result_shape.dimensions(dimensions[i]));
   }
 
-  TF_RET_CHECK(result_shape.element_type() == shape().element_type());
+  TF_RET_CHECK(result_shape.element_type() == src_shape.element_type());
   Literal result(result_shape);
-  // scratch_source_index is temporary storage space for the computed index into
-  // the input literal.  We put it here to avoid allocating an std::vector in
-  // every iteration of ShapeUtil::ForEachIndex.
-  std::vector<int64_t> scratch_source_index(shape().dimensions_size());
-
-  char* dest_data = static_cast<char*>(result.untyped_data());
-  const char* source_data = static_cast<const char*>(untyped_data());
-  const int64_t primitive_size =
-      ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
-  if (shape().is_dynamic()) {
+  if (src_shape.is_dynamic()) {
     for (int64_t i = 0; i < dimensions.size(); ++i) {
-      if (shape().is_dynamic_dimension(i)) {
+      if (src_shape.is_dynamic_dimension(i)) {
         // Set any dynamic sizes in the new literal.
-        int64_t dynamic_size = GetDynamicSize(i);
+        int64_t dynamic_size = src.GetDynamicSize(i);
         result.SetDynamicSize(dimensions[i], dynamic_size);
       }
     }
   }
 
-  ShapeUtil::ForEachIndex(
+  // scratch_source_index is temporary storage space for the computed index into
+  // the input literal.  We put it here to avoid allocating an std::vector in
+  // every iteration of ShapeUtil::ForEachIndex.
+  int src_shape_dims = src_shape.dimensions_size();
+  std::vector<int64_t> scratch_source_index(src_shape_dims);
+  // Make the span once outside the ForEachIndex... loop, pointing into
+  // scratch_source_index
+  absl::Span<int64_t> scratch_source_span(scratch_source_index);
+  int64_t* scratch_source_array = scratch_source_span.data();
+
+  const char* source_data = static_cast<const char*>(src.untyped_data());
+  char* dest_data = static_cast<char*>(result.untyped_data());
+
+  auto src_minor_to_major = LayoutUtil::MinorToMajor(src_shape);
+  auto result_minor_to_major = LayoutUtil::MinorToMajor(result_shape);
+
+  ShapeUtil::ForEachIndexNoStatus(
       result_shape, [&](absl::Span<const int64_t> output_index) {
-        for (int64_t i = 0, end = dimensions.size(); i < end; ++i) {
-          scratch_source_index[i] = output_index[dimensions[i]];
-        }
+        // Compute dest_index
         int64_t dest_index = IndexUtil::MultidimensionalIndexToLinearIndex(
-            result_shape, output_index);
-        int64_t source_index = IndexUtil::MultidimensionalIndexToLinearIndex(
-            shape(), scratch_source_index);
-        memcpy(dest_data + primitive_size * dest_index,
-               source_data + primitive_size * source_index, primitive_size);
+            result_shape, result_minor_to_major, output_index);
+
+        // Compute source_index
+        int64_t source_index;
+        for (int64_t i = 0, end = dimensions.size(); i < end; ++i) {
+          scratch_source_array[i] = output_index[dimensions[i]];
+        }
+        if (src_shape_dims == 1) {
+          // Fast path for this case
+          source_index = scratch_source_array[0];
+          DCHECK_EQ(source_index,
+                    IndexUtil::MultidimensionalIndexToLinearIndex(
+                        src_shape, src_minor_to_major, scratch_source_span));
+        } else {
+          source_index = IndexUtil::MultidimensionalIndexToLinearIndex(
+              src_shape, src_minor_to_major, scratch_source_span);
+        }
+        // Move one element from source_index in source to dest_index in dest
+        memcpy(dest_data + PRIMITIVE_SIZE * dest_index,
+               source_data + PRIMITIVE_SIZE * source_index, PRIMITIVE_SIZE);
         return true;
       });
 
   return std::move(result);
+}
+}  // anonymous namespace
+
+StatusOr<Literal> LiteralBase::Broadcast(
+    const Shape& result_shape, absl::Span<const int64_t> dimensions) const {
+  const LiteralBase& src = *this;
+  const Shape& src_shape = shape();
+  if (!src_shape.IsArray()) {
+    return InvalidArgument("Broadcast only supports arrays.");
+  }
+  const int64_t primitive_size =
+      ShapeUtil::ByteSizeOfPrimitiveType(src_shape.element_type());
+
+  switch (primitive_size) {
+    case 0:
+      return BroadcastHelper<0>(src, src_shape, result_shape, dimensions);
+    case 1:
+      return BroadcastHelper<1>(src, src_shape, result_shape, dimensions);
+    case 2:
+      return BroadcastHelper<2>(src, src_shape, result_shape, dimensions);
+    case 4:
+      return BroadcastHelper<4>(src, src_shape, result_shape, dimensions);
+    case 8:
+      return BroadcastHelper<8>(src, src_shape, result_shape, dimensions);
+    case 16:
+      return BroadcastHelper<16>(src, src_shape, result_shape, dimensions);
+    default:
+      LOG(FATAL) << "Unhandled primitive size " << primitive_size;
+      return InvalidArgument("Unhandled primitive size");
+      break;
+  }
 }
 
 StatusOr<Literal> LiteralBase::Reshape(
@@ -1169,6 +1236,8 @@ std::string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
   switch (subshape.element_type()) {
     case PRED:
       return Get<bool>(multi_index, shape_index) ? "true" : "false";
+    case S4:
+      return Get<s4>(multi_index, shape_index).to_string();
     case S8:
       return StrCat(Get<int8_t>(multi_index, shape_index));
     case S16:
@@ -1177,6 +1246,8 @@ std::string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
       return StrCat(Get<int32_t>(multi_index, shape_index));
     case S64:
       return StrCat(Get<int64_t>(multi_index, shape_index));
+    case U4:
+      return Get<u4>(multi_index, shape_index).to_string();
     case U8:
       return StrCat(Get<uint8_t>(multi_index, shape_index));
     case U16:
@@ -1220,8 +1291,12 @@ std::optional<int64_t> LiteralBase::GetIntegralAsS64(
   switch (shape().element_type()) {
     case PRED:
       return Get<bool>(multi_index);
+    case S4:
+      return Get<s4>(multi_index);
     case S8:
       return Get<int8_t>(multi_index);
+    case U4:
+      return Get<u4>(multi_index);
     case U8:
       return Get<uint8_t>(multi_index);
     case S16:
@@ -1243,8 +1318,9 @@ std::optional<int64_t> LiteralBase::GetIntegralAsS64(
 
 std::optional<double> LiteralBase::GetAsDouble(
     absl::Span<const int64_t> multi_index) const {
-  CHECK(LayoutUtil::IsDenseArray(shape()));
-  switch (shape().element_type()) {
+  const Shape& s = shape();
+  CHECK(LayoutUtil::IsDenseArray(s));
+  switch (s.element_type()) {
     case F8E5M2:
       return static_cast<double>(Get<tsl::float8_e5m2>(multi_index));
     case F8E4M3FN:
@@ -1260,6 +1336,47 @@ std::optional<double> LiteralBase::GetAsDouble(
     default:
       return std::nullopt;
   }
+}
+
+std::optional<double> LiteralBase::GetSumAsDouble(
+    absl::Span<const int64_t> linear_indices) const {
+  const Shape& s = shape();
+  CHECK(LayoutUtil::IsDenseArray(s));
+  double sum = 0.0;
+
+#define SUMLOOP(native_type)                   \
+  do {                                         \
+    auto d = root_piece().data<native_type>(); \
+    for (const int64_t idx : linear_indices) { \
+      sum += static_cast<double>(d[idx]);      \
+    }                                          \
+  } while (0)
+
+  switch (s.element_type()) {
+    case F8E5M2:
+      SUMLOOP(tsl::float8_e5m2);
+      break;
+    case F8E4M3FN:
+      SUMLOOP(tsl::float8_e4m3fn);
+      break;
+    case F16:
+      SUMLOOP(half);
+      break;
+    case F32:
+      SUMLOOP(float);
+      break;
+    case F64:
+      SUMLOOP(double);
+      break;
+    case BF16:
+      SUMLOOP(bfloat16);
+      break;
+    default:
+      return std::nullopt;
+  }
+#undef SUMLOOP
+
+  return sum;
 }
 
 std::optional<complex128> LiteralBase::GetAsComplex128(
@@ -1281,6 +1398,8 @@ std::optional<complex128> LiteralBase::GetAsComplex128(
       return {Get<complex64>(multi_index)};
     case C128:
       return {Get<complex128>(multi_index)};
+    case S4:
+      return {{static_cast<double>(Get<s4>(multi_index)), 0}};
     case S8:
       return {Get<int8_t>(multi_index)};
     default:
@@ -1684,10 +1803,12 @@ StatusOr<Literal> ConvertIfDestTypeMatches(const LiteralBase& src_literal,
     return ConvertIfTypesMatch<primitive_src_type, (type)>(src_literal, \
                                                            bitcast);
     CONVERT_IF_TYPES_MATCH(PRED)
+    CONVERT_IF_TYPES_MATCH(S4)
     CONVERT_IF_TYPES_MATCH(S8)
     CONVERT_IF_TYPES_MATCH(S16)
     CONVERT_IF_TYPES_MATCH(S32)
     CONVERT_IF_TYPES_MATCH(S64)
+    CONVERT_IF_TYPES_MATCH(U4)
     CONVERT_IF_TYPES_MATCH(U8)
     CONVERT_IF_TYPES_MATCH(U16)
     CONVERT_IF_TYPES_MATCH(U32)
@@ -1731,10 +1852,12 @@ StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
     return ConvertIfDestTypeMatches<(type)>(literal, primitive_dest_type, \
                                             bitcast);
     CONVERT_IF_DEST_TYPE_MATCHES(PRED)
+    CONVERT_IF_DEST_TYPE_MATCHES(S4)
     CONVERT_IF_DEST_TYPE_MATCHES(S8)
     CONVERT_IF_DEST_TYPE_MATCHES(S16)
     CONVERT_IF_DEST_TYPE_MATCHES(S32)
     CONVERT_IF_DEST_TYPE_MATCHES(S64)
+    CONVERT_IF_DEST_TYPE_MATCHES(U4)
     CONVERT_IF_DEST_TYPE_MATCHES(U8)
     CONVERT_IF_DEST_TYPE_MATCHES(U16)
     CONVERT_IF_DEST_TYPE_MATCHES(U32)
@@ -1910,6 +2033,8 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
   switch (subshape().element_type()) {
     case PRED:
       return EqualElementsInternal<bool>(other, &multi_index);
+    case S4:
+      return EqualElementsInternal<s4>(other, &multi_index);
     case S8:
       return EqualElementsInternal<int8_t>(other, &multi_index);
     case S16:
@@ -1918,6 +2043,8 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
       return EqualElementsInternal<int32_t>(other, &multi_index);
     case S64:
       return EqualElementsInternal<int64_t>(other, &multi_index);
+    case U4:
+      return EqualElementsInternal<u4>(other, &multi_index);
     case U8:
       return EqualElementsInternal<uint8_t>(other, &multi_index);
     case U16:
@@ -2019,6 +2146,8 @@ bool Literal::Piece::IsAll(const Literal& scalar) const {
       << __func__ << " is only supported for dense arrays: " << subshape();
   CHECK_EQ(subshape().element_type(), scalar.shape().element_type());
   switch (subshape().element_type()) {
+    case U4:
+      return AllElementsEqualValue(data<u4>(), scalar.GetFirstElement<u4>());
     case U8:
       return AllElementsEqualValue(data<uint8_t>(),
                                    scalar.GetFirstElement<uint8_t>());
@@ -2031,6 +2160,8 @@ bool Literal::Piece::IsAll(const Literal& scalar) const {
     case U64:
       return AllElementsEqualValue(data<uint64_t>(),
                                    scalar.GetFirstElement<uint64_t>());
+    case S4:
+      return AllElementsEqualValue(data<s4>(), scalar.GetFirstElement<s4>());
     case S8:
       return AllElementsEqualValue(data<int8_t>(),
                                    scalar.GetFirstElement<int8_t>());
@@ -2093,6 +2224,9 @@ bool LiteralBase::IsAll(int8_t value) const {
   }
   Literal scalar(ShapeUtil::MakeScalarShape(ty));
   switch (ty) {
+    case U4:
+      scalar.Set<u4>({}, u4(value));
+      break;
     case U8:
       scalar.Set<uint8_t>({}, value);
       break;
@@ -2104,6 +2238,9 @@ bool LiteralBase::IsAll(int8_t value) const {
       break;
     case U64:
       scalar.Set<uint64_t>({}, value);
+      break;
+    case S4:
+      scalar.Set<s4>({}, s4(value));
       break;
     case S8:
       scalar.Set<int8_t>({}, value);
@@ -2220,6 +2357,8 @@ bool LiteralBase::IsR1Iota() const {
 
   auto is_iota_at_idx = [&](const int64_t idx) {
     switch (shape().element_type()) {
+      case U4:
+        return static_cast<int64_t>(Get<u4>({idx})) == idx;
       case U8:
         return static_cast<int64_t>(Get<uint8_t>({idx})) == idx;
       case U16:
@@ -2228,6 +2367,8 @@ bool LiteralBase::IsR1Iota() const {
         return static_cast<int64_t>(Get<uint32_t>({idx})) == idx;
       case U64:
         return static_cast<int64_t>(Get<uint64_t>({idx})) == idx;
+      case S4:
+        return Get<s4>({idx}) == idx;
       case S8:
         return Get<int8_t>({idx}) == idx;
       case S16:
@@ -2289,6 +2430,8 @@ std::optional<int64_t> LiteralBase::IsR1StridedIota() const {
 
   auto get_element_at = [&](const int64_t idx) -> int64_t {
     switch (type) {
+      case U4:
+        return static_cast<int64_t>(Get<u4>({idx}));
       case U8:
         return static_cast<int64_t>(Get<uint8_t>({idx}));
       case U16:
@@ -2297,6 +2440,8 @@ std::optional<int64_t> LiteralBase::IsR1StridedIota() const {
         return static_cast<int64_t>(Get<uint32_t>({idx}));
       case U64:
         return static_cast<int64_t>(Get<uint64_t>({idx}));
+      case S4:
+        return static_cast<int64_t>(Get<s4>({idx}));
       case S8:
         return Get<int8_t>({idx});
       case S16:
@@ -2331,6 +2476,8 @@ bool LiteralBase::IsZero(absl::Span<const int64_t> indices) const {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
   switch (shape().element_type()) {
+    case U4:
+      return Get<u4>(indices) == 0;
     case U8:
       return Get<uint8_t>(indices) == 0;
     case U16:
@@ -2339,6 +2486,8 @@ bool LiteralBase::IsZero(absl::Span<const int64_t> indices) const {
       return Get<uint32_t>(indices) == 0;
     case U64:
       return Get<uint64_t>(indices) == 0;
+    case S4:
+      return Get<s4>(indices) == 0;
     case S8:
       return Get<int8_t>(indices) == 0;
     case S16:
@@ -2396,9 +2545,23 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
     case PRED:
       CopyToRepeatedField(proto->mutable_preds(), data<bool>());
       break;
+    case S4:
+      *proto->mutable_s4s() = std::string(
+          reinterpret_cast<const char*>(data<s4>().data()), size_bytes_dense());
+      if (!kLittleEndian) {
+        ConvertEndianShort(proto->mutable_s4s());
+      }
+      break;
     case S8:
       proto->set_s8s(static_cast<const signed char*>(data<int8_t>().data()),
                      element_count());
+      break;
+    case U4:
+      *proto->mutable_u4s() = std::string(
+          reinterpret_cast<const char*>(data<u4>().data()), size_bytes_dense());
+      if (!kLittleEndian) {
+        ConvertEndianShort(proto->mutable_u4s());
+      }
       break;
     case U8:
       proto->set_u8s(static_cast<const unsigned char*>(data<uint8_t>().data()),
@@ -2527,10 +2690,26 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
     case PRED:
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<bool>(), proto.preds()));
       break;
+    case S4: {
+      const std::string& s(proto.s4s());
+      TF_RET_CHECK(data<s4>().size() * sizeof(s4) == s.size());
+      memcpy(untyped_data(), s.data(), s.size());
+      if (!kLittleEndian) {
+        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
+      }
+    } break;
     case S8: {
       auto s8_data = data<int8_t>();
       TF_RET_CHECK(proto.s8s().size() == s8_data.size());
       std::copy(proto.s8s().begin(), proto.s8s().end(), s8_data.begin());
+    } break;
+    case U4: {
+      const std::string& s(proto.u4s());
+      TF_RET_CHECK(data<u4>().size() * sizeof(u4) == s.size());
+      memcpy(untyped_data(), s.data(), s.size());
+      if (!kLittleEndian) {
+        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
+      }
     } break;
     case U8: {
       auto u8_data = data<uint8_t>();

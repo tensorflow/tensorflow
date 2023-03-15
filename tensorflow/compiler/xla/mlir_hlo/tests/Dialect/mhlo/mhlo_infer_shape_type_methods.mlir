@@ -412,6 +412,29 @@ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi3
 
 // -----
 
+// CHECK-LABEL: @gather_bounds
+func.func @gather_bounds(%operand : tensor<?x?x?xi32, #mhlo.type_extensions<bounds = [2, 4, 8]>>,
+    %start_indices : tensor<?x?x?xi32, #mhlo.type_extensions<bounds = [16, 32, 64]>>)
+    -> tensor<*xindex> {
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 0,
+      offset_dims = [2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+  } : (tensor<?x?x?xi32, #mhlo.type_extensions<bounds = [2, 4, 8]>>, tensor<?x?x?xi32, #mhlo.type_extensions<bounds = [16, 32, 64]>>)
+  -> tensor<?x?x8xi32>
+
+  // CHECK: types0 = tensor<?x?x8xi32, #mhlo.type_extensions<bounds = [32, 64, ?]>>
+  %1 = "mhlo_test.get_return_types"(%res) : (tensor<?x?x8xi32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
 // CHECK-LABEL: @rng_normal
 func.func @rng_normal(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<7xindex> {
   %0 = "mhlo.constant"() {value = dense<7> : tensor<1xi64>} : () -> tensor<1xi64>

@@ -121,7 +121,6 @@ cuda_py_test(
     shard_count = 4,
     tags = [
         "no_windows",  # TODO(b/218876472)
-        "nomsan",  # b/216320808
         "nozapfhahn",
     ],
     xla_tags = [

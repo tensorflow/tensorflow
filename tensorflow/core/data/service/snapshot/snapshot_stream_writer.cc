@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/utils.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/regexp.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -82,6 +84,11 @@ void SnapshotStreamWriter::WriteSnapshotAndLog() TF_LOCKS_EXCLUDED(mu_) {
   LOG(INFO) << "Writing distributed tf.data snapshot stream: "
             << params_.DebugString();
   Status status = WriteSnapshot();
+  if (errors::IsFailedPrecondition(status)) {
+    LOG(INFO) << "Stopping writing distributed tf.data snapshot stream: "
+              << status.error_message();
+    return;
+  }
   status = FinalizeStream(status);
   mutex_lock l(mu_);
   if (!status.ok()) {
@@ -148,6 +155,7 @@ Status SnapshotStreamWriter::CommitChunk() {
   TF_RETURN_IF_ERROR(
       params_.env->RenameFile(GetChunkFilePath(), GetCommittedChunkFilePath()));
   ++chunk_index_;
+  metrics::RecordTFDataServiceSnapshotBytesCommitted(chunk_size_bytes_);
   chunk_size_bytes_ = 0;
   return OkStatus();
 }
@@ -252,8 +260,9 @@ Status SnapshotStreamWriter::Save() {
             << ", chunk size in bytes: " << chunk_size_bytes_ << ".";
   std::string checkpoint_path = CheckpointPath(chunk_index_);
   TF_ASSIGN_OR_RETURN(Tensor serialized_iterator, iterator_->Save());
-  TF_RETURN_IF_ERROR(AtomicallyWriteTFRecord(
-      checkpoint_path, serialized_iterator, params_.compression, params_.env));
+  TF_RETURN_IF_ERROR(
+      AtomicallyWriteTFRecords(checkpoint_path, {serialized_iterator},
+                               params_.compression, params_.env));
   return DeleteOutdatedCheckpoints();
 }
 
@@ -268,6 +277,11 @@ Status SnapshotStreamWriter::DeleteOutdatedCheckpoints() {
   for (const std::string& checkpoint_filename : checkpoint_filenames) {
     std::string checkpoint_filepath =
         tsl::io::JoinPath(params_.CheckpointsDirectory(), checkpoint_filename);
+    if (IsTemporaryFile(checkpoint_filename)) {
+      TF_RETURN_IF_ERROR(params_.env->DeleteFile(checkpoint_filepath));
+      continue;
+    }
+
     TF_ASSIGN_OR_RETURN(int64_t checkpoint_index,
                         GetFileIndex(checkpoint_filename, "checkpoint"));
     if (checkpoint_index < chunk_index_) {
@@ -318,9 +332,8 @@ Status SnapshotStreamWriter::Restore() {
 }
 
 StatusOr<int64_t> SnapshotStreamWriter::LastCheckpointIndex() const {
-  std::vector<std::string> checkpoint_names;
-  TF_RETURN_IF_ERROR(params_.env->GetChildren(params_.CheckpointsDirectory(),
-                                              &checkpoint_names));
+  TF_ASSIGN_OR_RETURN(std::vector<std::string> checkpoint_names,
+                      GetChildren(params_.CheckpointsDirectory(), params_.env));
   if (checkpoint_names.empty()) {
     return errors::NotFound("No checkpoint has been written in directory ",
                             params_.CheckpointsDirectory());
@@ -341,10 +354,9 @@ Status SnapshotStreamWriter::SyncCheckpointWithChunks(
   // a chunk file, this will synchronize the checkpoint with the chunks. It will
   // commit uncommitted chunk files written before the checkpoint and delete
   // chunk files written after the checkpoint.
-  std::vector<std::string> uncommitted_chunks;
-  TF_RETURN_IF_ERROR(params_.env->GetChildren(
-      params_.UncommittedChunksDirectory(), &uncommitted_chunks));
-
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::string> uncommitted_chunks,
+      GetChildren(params_.UncommittedChunksDirectory(), params_.env));
   for (const std::string& uncommitted_chunk : uncommitted_chunks) {
     std::string uncommitted_chunk_filename = tsl::io::JoinPath(
         params_.UncommittedChunksDirectory(), uncommitted_chunk);

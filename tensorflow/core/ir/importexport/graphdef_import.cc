@@ -578,10 +578,10 @@ Status GraphDefImporter::ConvertFunctionDef(
   // otherwise the ranges will be invalidated.
   ConversionState s(body, placeholder_state_);
   for (const auto &it : llvm::enumerate(signature.input_arg())) {
-    s.emplace(
-        it.value().name(),
-        new ResultInfo{/*resolved=*/true, body->getArgument(it.index() * 2 + 1),
-                       body->getArguments().slice(it.index() * 2, 1)});
+    s.emplace(it.value().name(),
+              absl::WrapUnique(new ResultInfo{
+                  /*resolved=*/true, body->getArgument(it.index() * 2 + 1),
+                  body->getArguments().slice(it.index() * 2, 1)}));
   }
   TF_RETURN_IF_ERROR(ConvertNodes(builder, s, function.node_def(), body));
 

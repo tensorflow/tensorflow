@@ -19,6 +19,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -386,7 +387,7 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
 
     domain_dimension = sum(self._block_domain_dimension_tensors())
     range_dimension = sum(self._block_range_dimension_tensors())
-    matrix_shape = array_ops.stack([domain_dimension, range_dimension])
+    matrix_shape = array_ops_stack.stack([domain_dimension, range_dimension])
 
     batch_shape = self.operators[0][0].batch_shape_tensor()
     for row in self.operators[1:]:

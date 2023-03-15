@@ -31,27 +31,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "snapshot_ft_test",
-    size = "medium",
-    srcs = ["snapshot_ft_test.py"],
-    shard_count = 8,
-    # TODO(b/250921378): Fix sanitizers.
-    tags = [
-        "noasan",
-        "nomsan",
-        "notsan",
-    ],
-    deps = [
-        ":test_base",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python/data/experimental/ops:distributed_save_op",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/framework:combinations",
-    ],
-)
-
-tf_py_test(
     name = "coordinated_read_ft_test",
     size = "medium",
     srcs = ["coordinated_read_ft_test.py"],
@@ -227,6 +206,46 @@ tf_py_test(
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/platform:test",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "distributed_save_test",
+    size = "small",
+    srcs = ["distributed_save_test.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_combinations",
+        "//tensorflow/python/data/experimental/kernel_tests/service:test_base",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/experimental/ops:distributed_save_op",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "distributed_save_ft_test",
+    size = "medium",
+    srcs = ["distributed_save_ft_test.py"],
+    shard_count = 8,
+    # TODO(b/250921378): Fix sanitizers.
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":test_base",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/data/experimental/ops:distributed_save_op",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
     ],
 )
 

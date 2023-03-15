@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 

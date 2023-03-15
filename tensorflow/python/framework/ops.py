@@ -47,18 +47,19 @@ from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
-from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import registry
+from tensorflow.python.framework import stack
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import traceable_stack
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace as profiler_trace
 from tensorflow.python.types import core as core_tf_types
@@ -285,13 +286,6 @@ def disable_tensor_equality():
   logging.vlog(1, "Disabling tensor equality")
   _tensor_equality_api_usage_gauge.get_cell().set(False)
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
-
-
-def pretty_print_dtype(dtype):
-  res = dtypes.as_strong_type(dtype).name
-  if dtypes.is_weak_type(dtype):
-    res += ", weak_type=True"
-  return res
 
 
 @tf_export("Tensor", "experimental.numpy.ndarray", v1=["Tensor"])
@@ -618,6 +612,14 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
     """
     return self.shape.ndims
 
+  def _record_tape(self, capture):
+    """Connect this graph tensor with capture for gradients calculation."""
+    tape.record_operation(
+        "captured_value",
+        [self], [capture],
+        backward_function=lambda x: [x],
+        forward_function=lambda x: [x])
+
   def get_shape(self):
     """Returns a `tf.TensorShape` that represents the shape of this tensor.
 
@@ -897,15 +899,12 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
         self.name,
         (", shape=%s" %
          self.get_shape()) if self.get_shape().ndims is not None else "",
-        (", dtype=%s" % pretty_print_dtype(self._dtype)) if self._dtype else "",
+        (", dtype=%s" % self._dtype.name) if self._dtype else "",
         (", device=%s" % self.device) if self.device else "")
 
   def __repr__(self):
-    return "<tf.Tensor '%s' shape=%s dtype=%s>" % (
-        self.name,
-        self.get_shape(),
-        pretty_print_dtype(self._dtype),
-    )
+    return "<tf.Tensor '%s' shape=%s dtype=%s>" % (self.name, self.get_shape(),
+                                                   self._dtype.name)
 
   def __hash__(self):
     g = getattr(self, "graph", None)
@@ -1056,7 +1055,7 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
     # TODO(b/263894631): Store handle data in the TensorSpec itself. Once
     # implemented, the following section under the if condition can be removed.
     if self.dtype == dtypes.resource or self.dtype == dtypes.variant:
-      handle_data = get_handle_data(self)
+      handle_data = handle_data_util.get_handle_data(self)
       signature_context.add_handledata(id(spec), handle_data)
     return spec
 
@@ -1147,16 +1146,11 @@ class _EagerTensorBase(Tensor, core_tf_types.Value):
 
   def __str__(self):
     return "tf.Tensor(%s, shape=%s, dtype=%s)" % (
-        value_text(self, is_repr=False),
-        self.shape,
-        pretty_print_dtype(self.dtype),
-    )
+        value_text(self, is_repr=False), self.shape, self.dtype.name)
 
   def __repr__(self):
     return "<tf.Tensor: shape=%s, dtype=%s, %s>" % (
-        self.shape,
-        pretty_print_dtype(self.dtype),
-        value_text(self, is_repr=True))
+        self.shape, self.dtype.name, value_text(self, is_repr=True))
 
   def __len__(self):
     """Returns the length of the first dimension in the Tensor."""
@@ -1186,11 +1180,6 @@ class _EagerTensorBase(Tensor, core_tf_types.Value):
 
   @property
   def dtype(self):
-    # Weakly typed Tensors get an additional attribute `_weak_dtype` added
-    # during its construction in python. This is because the weak information
-    # only exists in python and do not have dedicated dtype enums.
-    if getattr(self, "_weak_dtype", False):
-      return self._weak_dtype
     # Note: using the intern table directly here as this is
     # performance-sensitive in some models.
     return dtypes._INTERN_TABLE[self._datatype_enum()]  # pylint: disable=protected-access
@@ -1805,8 +1794,7 @@ def internal_convert_to_tensor_or_composite(value,
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value_dtype):
       raise ValueError(f"Tensor conversion dtype mismatch. "
                        f"Requested dtype is {dtypes.as_dtype(dtype).name}, "
-                       f"Tensor has dtype {pretty_print_dtype(value.dtype)}: "
-                       f"{value!r}")
+                       f"Tensor has dtype {value.dtype.name}: {value!r}")
     return value
   else:
     return convert_to_tensor(
@@ -5581,118 +5569,8 @@ def control_dependencies(control_inputs):
   else:
     return get_default_graph().control_dependencies(control_inputs)
 
-
-class _DefaultStack(threading.local):
-  """A thread-local stack of objects for providing implicit defaults."""
-
-  def __init__(self):
-    super(_DefaultStack, self).__init__()
-    self._enforce_nesting = True
-    self.stack = []
-
-  def get_default(self):
-    return self.stack[-1] if self.stack else None
-
-  def reset(self):
-    self.stack = []
-
-  def is_cleared(self):
-    return not self.stack
-
-  @property
-  def enforce_nesting(self):
-    return self._enforce_nesting
-
-  @enforce_nesting.setter
-  def enforce_nesting(self, value):
-    self._enforce_nesting = value
-
-  @tf_contextlib.contextmanager
-  def get_controller(self, default):
-    """A context manager for manipulating a default stack."""
-    self.stack.append(default)
-    try:
-      yield default
-    finally:
-      # stack may be empty if reset() was called
-      if self.stack:
-        if self._enforce_nesting:
-          if self.stack[-1] is not default:
-            raise AssertionError(
-                "Nesting violated for default stack of %s objects" %
-                type(default))
-          self.stack.pop()
-        else:
-          self.stack.remove(default)
-
-
-_default_session_stack = _DefaultStack()  # pylint: disable=protected-access
-
-
-def default_session(session):
-  """Python "with" handler for defining a default session.
-
-  This function provides a means of registering a session for handling
-  Tensor.eval() and Operation.run() calls. It is primarily intended for use
-  by session.Session, but can be used with any object that implements
-  the Session.run() interface.
-
-  Use with the "with" keyword to specify that Tensor.eval() and Operation.run()
-  invocations within the scope of a block should be executed by a particular
-  session.
-
-  The default session applies to the current thread only, so it is always
-  possible to inspect the call stack and determine the scope of a default
-  session. If you create a new thread, and wish to use the default session
-  in that thread, you must explicitly add a "with ops.default_session(sess):"
-  block in that thread's function.
-
-  Example:
-    The following code examples are equivalent:
-
-    # 1. Using the Session object directly:
-    sess = ...
-    c = tf.constant(5.0)
-    sess.run(c)
-
-    # 2. Using default_session():
-    sess = ...
-    with ops.default_session(sess):
-      c = tf.constant(5.0)
-      result = c.eval()
-
-    # 3. Overriding default_session():
-    sess = ...
-    with ops.default_session(sess):
-      c = tf.constant(5.0)
-      with ops.default_session(...):
-        c.eval(session=sess)
-
-  Args:
-    session: The session to be installed as the default session.
-
-  Returns:
-    A context manager for the default session.
-  """
-  return _default_session_stack.get_controller(session)
-
-
-@tf_export(v1=["get_default_session"])
-def get_default_session():
-  """Returns the default session for the current thread.
-
-  The returned `Session` will be the innermost session on which a
-  `Session` or `Session.as_default()` context has been entered.
-
-  NOTE: The default session is a property of the current thread. If you
-  create a new thread, and wish to use the default session in that
-  thread, you must explicitly add a `with sess.as_default():` in that
-  thread's function.
-
-  Returns:
-    The default `Session` being used in the current thread.
-  """
-  return _default_session_stack.get_default()
+# TODO(b/271463878): Remove in favor of direct references to `stack`.
+get_default_session = stack.get_default_session
 
 
 def _eval_using_default_session(tensors, feed_dict, graph, session=None):
@@ -5716,7 +5594,7 @@ def _eval_using_default_session(tensors, feed_dict, graph, session=None):
       and it does not have "graph" as its graph.
   """
   if session is None:
-    session = get_default_session()
+    session = stack.get_default_session()
     if session is None:
       raise ValueError("Cannot evaluate tensor using `eval()`: No default "
                        "session is registered. Use `with "
@@ -5751,7 +5629,7 @@ def _run_using_default_session(operation, feed_dict, graph, session=None):
       and it does not have "graph" as its graph.
   """
   if session is None:
-    session = get_default_session()
+    session = stack.get_default_session()
     if session is None:
       raise ValueError("Cannot execute operation using `run()`: No default "
                        "session is registered. Use `with "
@@ -5770,7 +5648,7 @@ def _run_using_default_session(operation, feed_dict, graph, session=None):
   session.run(operation, feed_dict)
 
 
-class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
+class _DefaultGraphStack(stack.DefaultStack):  # pylint: disable=protected-access
   """A thread-local stack of objects for providing an implicit default graph."""
 
   def __init__(self):
@@ -7129,7 +7007,7 @@ def to_raw_op(f):
 
 
 def raise_from_not_ok_status(e, name):
-  e.message += (" name: " + name if name is not None else "")
+  e.message += (" name: " + str(name if name is not None else ""))
   raise core._status_to_exception(e) from None  # pylint: disable=protected-access
 
 
@@ -7267,26 +7145,12 @@ def _get_enclosing_context(graph):
     return _get_enclosing_context(graph.outer_graph)
 
 
-def get_resource_handle_data(graph_op):
-  assert type(graph_op) == Tensor  # pylint: disable=unidiomatic-typecheck
-
-  with graph_op.graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
-    handle_data = pywrap_tf_session.GetHandleShapeAndType(
-        c_graph, graph_op._as_tf_output())  # pylint: disable=protected-access
-
-  return cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData.FromString(
-      compat.as_bytes(handle_data))
-
-
-def get_handle_data(source_t):
-  """Obtains HandleData from a tensor."""
-  if isinstance(source_t, EagerTensor):
-    return source_t._handle_data  # pylint: disable=protected-access
-  return get_resource_handle_data(source_t)
+# TODO(b/271463878): Remove in favor of direct references to `handle_data_util`.
+get_resource_handle_data = handle_data_util.get_resource_handle_data
 
 
 def _copy_handle_data_to_arg_def(tensor, arg_def):
-  handle_data = get_resource_handle_data(tensor)
+  handle_data = handle_data_util.get_resource_handle_data(tensor)
   if handle_data.shape_and_type:
     shape_and_type = handle_data.shape_and_type[0]
     proto = arg_def.handle_data.add()

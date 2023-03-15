@@ -74,6 +74,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
@@ -1204,7 +1205,7 @@ def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
 
   if require_one_iteration:
     with ops.control_dependencies([
-        control_flow_ops.Assert(final_loop_vars[0], [
+        control_flow_assert.Assert(final_loop_vars[0], [
             _runtime_zero_iterations_errmsg(symbol_names, nulls, orig_init_vars)
         ])
     ]):

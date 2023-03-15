@@ -17,6 +17,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <algorithm>
 #include <complex>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
@@ -34,6 +35,15 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+
+#ifdef TFLITE_KERNEL_USE_XNNPACK
+#include <array>
+#include <limits>
+
+#include "xnnpack.h"  // from @XNNPACK
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/minimal_logging.h"
+#endif  // TFLITE_KERNEL_USE_XNNPACK
 
 namespace tflite {
 namespace ops {
@@ -175,6 +185,49 @@ void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
         TF_LITE_MUL(reference_ops, Mul, float);
       }
     } else {
+#ifdef TFLITE_KERNEL_USE_XNNPACK
+      const size_t num_input1_dims =
+          static_cast<size_t>(GetTensorShape(input1).DimensionsCount());
+      const size_t num_input2_dims =
+          static_cast<size_t>(GetTensorShape(input2).DimensionsCount());
+      if (std::max(num_input1_dims, num_input2_dims) <= XNN_MAX_TENSOR_DIMS) {
+        std::array<size_t, XNN_MAX_TENSOR_DIMS> input1_shape;
+        std::array<size_t, XNN_MAX_TENSOR_DIMS> input2_shape;
+        for (size_t i = 0; i < num_input1_dims; ++i) {
+          input1_shape[i] = GetTensorShape(input1).Dims(i);
+        }
+        for (size_t i = 0; i < num_input2_dims; ++i) {
+          input2_shape[i] = GetTensorShape(input2).Dims(i);
+        }
+        CpuBackendContext* cpu_backend_context =
+            CpuBackendContext::GetFromContext(context);
+        pthreadpool_t threadpool =
+            cpu_backend_context->get_xnnpack_threadpool();
+        float output_min = -std::numeric_limits<float>::infinity();
+        float output_max = std::numeric_limits<float>::infinity();
+        // NOTE: In the case of NaN inputs the behavior is platform-dependent.
+        // Passing in NaN values should not cause hardware exceptions, but NaN
+        // propagation is not guaranteed.
+        CalculateActivationRange(params->activation, &output_min, &output_max);
+        const enum xnn_status status = xnn_run_multiply_nd_f32(
+            num_input1_dims, input1_shape.data(), num_input2_dims,
+            input2_shape.data(), GetTensorData<float>(input1),
+            GetTensorData<float>(input2), GetTensorData<float>(output),
+            output_min, output_max,
+            /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
+        if (status != xnn_status_success) {
+          TFLITE_LOG(TFLITE_LOG_INFO,
+                     "Failed to run xnn_run_multiply_nd_f32. Error code: %d",
+                     status);
+          if (need_broadcast) {
+            TF_LITE_MUL(reference_ops, BroadcastMul4DSlow, float);
+          } else {
+            TF_LITE_MUL(reference_ops, Mul, float);
+          }
+        }
+        return;
+      }
+#endif  // TFLITE_KERNEL_USE_XNNPACK
       if (need_broadcast) {
         TF_LITE_MUL(optimized_ops, BroadcastMulDispatch, float);
       } else {

@@ -92,14 +92,14 @@ bool Platform::Initialized() const { return true; }
 tsl::Status Platform::Initialize(
     const std::map<std::string, std::string> &platform_options) {
   if (!platform_options.empty()) {
-    return tsl::Status(tsl::error::UNIMPLEMENTED,
+    return tsl::Status(absl::StatusCode::kUnimplemented,
                        "this platform does not support custom initialization");
   }
   return ::tsl::OkStatus();
 }
 
 tsl::Status Platform::ForceExecutorShutdown() {
-  return tsl::Status(tsl::error::UNIMPLEMENTED,
+  return tsl::Status(absl::StatusCode::kUnimplemented,
                      "executor shutdown is not supported on this platform");
 }
 

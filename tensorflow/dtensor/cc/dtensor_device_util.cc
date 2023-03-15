@@ -42,10 +42,12 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -96,8 +98,7 @@ BroadcastTensorHandleToParallelTensor(TFE_Context* context,
 // replicated sharding spec. Does not take ownership of `tensor`.
 std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
     TFE_Context* context, TFE_TensorHandle* tensor,
-    const MeshWithParallelDevice& mesh, const std::string& dtensor_device_name,
-    TF_Status* status) {
+    const MeshWithParallelDevice& mesh, TF_Status* status) {
   // Only broadcast resource tensors that point to scalars since they are
   // always replicated. We also still want to catch honest user errors so
   // error out on non-scalars.
@@ -294,21 +295,10 @@ tensorflow::Fprint128 TensorWithLayoutTf::CacheKey() const {
 
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Broadcast(
     TFE_Context* context, TFE_TensorHandle* tensor,
-    const MeshWithParallelDevice& mesh, const std::string& dtensor_device_name,
-    TF_Status* status) {
-  const char* input_device = TFE_TensorHandleDeviceName(tensor, status);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-
-  if (dtensor_device_name == input_device) {
-    TF_SetStatus(status, TF_INVALID_ARGUMENT,
-                 "Input to Broadcast must be eager tensor.");
-    return nullptr;
-  }
-
+    const MeshWithParallelDevice& mesh, TF_Status* status) {
   // Handle resource tensor broadcasting to the mesh.
   if (TFE_TensorHandleDataType(tensor) == TF_RESOURCE) {
-    return BroadcastResourceTensor(context, tensor, mesh, dtensor_device_name,
-                                   status);
+    return BroadcastResourceTensor(context, tensor, mesh, status);
   }
 
   const Mesh& target_mesh = mesh.mesh_config();
@@ -362,11 +352,29 @@ StatusOr<std::unique_ptr<TensorWithLayoutTf>> TensorWithLayoutTf::Wrap(
       new TensorWithLayoutTf(std::move(tensor), mesh, layout, *shape));
 }
 
+std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Wrap(
+    parallel_device::TensorHandlePtr single_tensor, const Mesh& mesh,
+    const Layout& layout, TF_Status* status) {
+  if (!mesh.IsSingleDevice() || !layout.IsSingleDevice()) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Input mesh or layout is not for single device.");
+    return nullptr;
+  }
+  std::vector<int64_t> shape = TensorShapeAsVector(single_tensor.get(), status);
+  if (TF_GetCode(status) != TF_OK) {
+    return nullptr;
+  }
+
+  return absl::WrapUnique(
+      new TensorWithLayoutTf(std::move(single_tensor), mesh, layout, shape));
+}
+
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Dummy(
     const std::vector<int64_t>& local_shape, const TF_DataType dtype,
     const Mesh& mesh, const Layout& layout) {
-  return absl::WrapUnique(new TensorWithLayoutTf(
-      /*tensor=*/nullptr, mesh, layout, local_shape, dtype));
+  return absl::WrapUnique(
+      new TensorWithLayoutTf(std::unique_ptr<parallel_device::ParallelTensor>(),
+                             mesh, layout, local_shape, dtype));
 }
 
 std::string TensorWithLayoutTf::SummarizeValue() const {
@@ -582,15 +590,59 @@ std::vector<int64_t> TensorShapeAsVector(TFE_TensorHandle* tensor,
   return shape;
 }
 
+template <>
+StatusOr<bool> ExecutableManager<ExecutionFunctions>::ShouldFoldInput(
+    const DTensorOperation& doperation,
+    const std::vector<TensorWithLayout*>& inputs, const int input_index) const {
+  return tsl::errors::Unavailable(
+      "ExecutionFunctions manager can not check if the input is foldable, as "
+      "the information is maintained by other types of managers (e.g. ModuleOp "
+      "manager)");
+}
+
+Status InferOutputLayouts(const DTensorOperation& doperation,
+                          const NameAttrList& attributes,
+                          const std::optional<Layout>& default_layout,
+                          tensorflow::Graph* graph,
+                          std::vector<const Layout*>* output_layouts) {
+  tensorflow::Status status;
+  tensorflow::NodeDef op_node_def;
+  op_node_def.set_op(doperation.name);
+  op_node_def.set_name("eager_operation");
+
+  op_node_def.mutable_attr()->insert(attributes.attr().begin(),
+                                     attributes.attr().end());
+
+  tensorflow::Node* op_node = graph->AddNode(op_node_def, &status);
+  TF_RETURN_IF_ERROR(status);
+
+  output_layouts->clear();
+  output_layouts->reserve(op_node->num_outputs());
+  for (int output_index = 0; output_index < op_node->num_outputs();
+       ++output_index) {
+    const Layout* layout = nullptr;
+    if (!doperation.is_func() && default_layout.has_value() &&
+        output_index == 0) {
+      // Record the user's requested output layout. The scope currently only
+      // covers the first output of an op.
+      layout = &default_layout.value();
+    }
+    output_layouts->push_back(layout);
+  }
+  graph->RemoveNode(op_node);
+  return OkStatus();
+}
+
 Status PrepareGraphForMlir(
-    const ExecutableManager<ExecutionFunctions>& function_manager,
+    const ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>& module_manager,
     const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation,
     const tensorflow::FunctionLibraryDefinition& flib_def,
-    const NameAttrList& attributes, const std::optional<Layout>& default_layout,
-    tensorflow::Graph* graph,
-    std::vector<PartialTensorShape>* global_output_shapes,
-    std::vector<const Layout*>* output_layouts) {
+    const NameAttrList& attributes,
+    const std::vector<const Layout*>& output_layouts, tensorflow::Graph* graph,
+    std::vector<PartialTensorShape>* global_output_shapes
+
+) {
   // We run shape inference on the graph to find output shapes, which may
   // determine default layouts.
   ShapeRefiner shape_refiner(TF_GRAPH_DEF_VERSION, &flib_def);
@@ -675,9 +727,9 @@ Status PrepareGraphForMlir(
     // Small constants are converted into constant graph nodes, instead of
     // being passed in as input arguments. This provides more information to
     // the SPMD and layout propagation passes.
-    if (!input->const_value_node() ||
-        !input->const_value_node()->const_value().has_value() ||
-        !function_manager.IsConstantFoldable(doperation, i)) {
+    TF_ASSIGN_OR_RETURN(bool should_fold_input,
+                        module_manager.ShouldFoldInput(doperation, inputs, i));
+    if (!should_fold_input) {
       graph_op_inputs.push_back(FunctionArgument{
           arg_node, NodeDefBuilder::NodeOut{arg_node->name(), i, dtype}});
       graph->AddControlEdge(graph->source_node(), arg_node);
@@ -734,8 +786,6 @@ Status PrepareGraphForMlir(
   }
   TF_RETURN_IF_ERROR(shape_refiner.AddNode(op_node));
 
-  output_layouts->clear();
-  output_layouts->reserve(op_node->num_outputs());
   global_output_shapes->reserve(op_node->num_outputs());
   for (int output_index = 0; output_index < op_node->num_outputs();
        ++output_index) {
@@ -765,14 +815,10 @@ Status PrepareGraphForMlir(
             << "':" << global_output_shape.DebugString();
     global_output_shapes->push_back(global_output_shape);
 
-    const Layout* layout = nullptr;
-    if (default_layout.has_value() && output_index == 0) {
-      // Record the user's requested output layout. The scope currently only
-      // covers the first output of an op.
-      layout = &default_layout.value();
+    auto layout = output_layouts[output_index];
+    if (layout != nullptr) {
       ret_node->AddAttr(kDefaultLayoutAttr, layout->ToString());
     }
-    output_layouts->push_back(layout);
   }
   return OkStatus();
 }

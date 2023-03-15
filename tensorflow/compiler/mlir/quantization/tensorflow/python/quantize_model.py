@@ -28,6 +28,7 @@ from tensorflow.compiler.mlir.quantization.tensorflow.python import representati
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import wrap_function
@@ -41,9 +42,6 @@ from tensorflow.python.saved_model.load import load as saved_model_load
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.types import core
 
-# The signature key of the saved model init op.
-_INIT_OP_SIGNATURE_KEY = '__saved_model_init_op'
-
 # Type aliases for quant_opts_pb2 messages.
 _Method = quant_opts_pb2.QuantizationMethod.Method
 _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
@@ -54,6 +52,9 @@ _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
 # Default minimum number of elements in the weights for them to be quantized
 # during dynamic range quantization (DRQ).
 _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS = 1024
+
+# Name of the saved model assets directory.
+_ASSETS_DIR = 'assets'
 
 
 def _is_qat_saved_model(saved_model_path: str):
@@ -549,10 +550,10 @@ def _run_static_range_qat(
       signature_def_map,
       tags,
       init_op_name=exported_model.init_node_name,
-      save_op_name=exported_model.save_node_name,
-      restore_op_name=exported_model.restore_node_name,
+      saver_def=_get_saver_def_or_none(exported_model),
       checkpoint_dir=exported_model.checkpoint_dir,
       function_aliases=exported_model.function_aliases,
+      asset_file_defs=exported_model.asset_file_defs,
   )
 
 
@@ -587,6 +588,55 @@ def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
             node_id.decode('utf-8'),
             function_def.signature.name,
         )
+
+
+def _copy_assets(src_path: str, dst_path: str) -> None:
+  """Copies the assets directory of the saved model.
+
+  Clones the contents of the assets/ directory from the source saved model
+  directory to the destination saved model directory. Nothing will be copied if
+  there are no assets directory in the source directory.
+
+  Args:
+    src_path: Source saved model directory.
+    dst_path: Destination saved model directory. This directory must exist.
+  """
+  src_assets_path = file_io.join(src_path, _ASSETS_DIR)
+  if not file_io.file_exists_v2(src_assets_path):
+    # Do nothing if the source assets path does not exist.
+    return
+
+  dst_assets_path = file_io.join(dst_path, _ASSETS_DIR)
+  file_io.create_dir_v2(dst_assets_path)
+
+  for curr_dir, _, files in file_io.walk_v2(src_assets_path):
+    for asset_file_name in files:
+      src_asset_file = file_io.join(curr_dir, asset_file_name)
+
+      # Construct the destination assets file path.
+      curr_dst_dir = curr_dir.replace(src_assets_path, dst_assets_path)
+      dst_asset_file = file_io.join(curr_dst_dir, asset_file_name)
+
+      file_io.copy_v2(src_asset_file, dst_asset_file)
+      logging.info(
+          'Copied asset file: %s -> %s', src_asset_file, dst_asset_file
+      )
+
+
+def _get_saver_def_or_none(
+    exported_model: exported_model_pb2.ExportedModel,
+) -> Optional[saver_pb2.SaverDef]:
+  """Returns the SaverDef from ExportedModel, None otherwise.
+
+  Args:
+    exported_model: ExportedModel to take the SaverDef from.
+
+  Returns:
+    SaverDef instance if the field `saver_def` is set. None otherwise.
+  """
+  if exported_model.HasField('saver_def'):
+    return exported_model.saver_def
+  return None
 
 
 def _run_static_range_ptq(
@@ -654,11 +704,13 @@ def _run_static_range_ptq(
       signature_def_map,
       tags,
       exported_model.init_node_name,
-      exported_model.restore_node_name,
-      exported_model.save_node_name,
+      _get_saver_def_or_none(exported_model),
       exported_model.checkpoint_dir,
       exported_model.function_aliases,
+      asset_file_defs=exported_model.asset_file_defs,
   )
+
+  _copy_assets(src_saved_model_path, pre_calib_output_model_path)
 
   # Uses the representative dataset to collect statistics for calibration.
   # Handles the graph mode execution separately in case TF2 is disabled or
@@ -679,10 +731,12 @@ def _run_static_range_ptq(
       signature_def_map,
       tags,
       exported_model.init_node_name,
-      exported_model.restore_node_name,
-      exported_model.save_node_name,
+      _get_saver_def_or_none(exported_model),
       exported_model.checkpoint_dir,
+      asset_file_defs=exported_model.asset_file_defs,
   )
+
+  _copy_assets(pre_calib_output_model_path, calibrated_model_path)
 
   logging.info('Running post-training quantization post-calibration step.')
   exported_model_serialized = (
@@ -705,11 +759,13 @@ def _run_static_range_ptq(
       signature_def_map,
       tags,
       init_op_name=exported_model.init_node_name,
-      save_op_name=exported_model.save_node_name,
-      restore_op_name=exported_model.restore_node_name,
+      saver_def=_get_saver_def_or_none(exported_model),
       checkpoint_dir=exported_model.checkpoint_dir,
       function_aliases=exported_model.function_aliases,
+      asset_file_defs=exported_model.asset_file_defs,
   )
+
+  _copy_assets(calibrated_model_path, dst_saved_model_path)
 
 
 def _static_range_quantize(

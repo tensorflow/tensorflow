@@ -17,18 +17,22 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 
 namespace {
-// The EventMgr has 1 thread for the polling loop and one to execute
-// event callback functions. Issues for reconsideration:
+
+// The EventMgr has two threads to execute event callback functions. Issues for
+// reconsideration:
 //  - Is this the right number of threads?
 //  - Should EventMgrs be shared between devices on a machine with multiple
 //  devices of the same type?
@@ -97,176 +101,146 @@ void InitThreadpoolLabels(thread::ThreadPool* threadpool) {
 
 EventMgr::EventMgr(se::StreamExecutor* se, const GPUOptions& gpu_options)
     : exec_(se),
-      polling_active_delay_usecs_(gpu_options.polling_active_delay_usecs()
-                                      ? gpu_options.polling_active_delay_usecs()
-                                      : 10),
       threadpool_(Env::Default(), "Device_Event_Manager", kNumThreads) {
   device_event_mgr::InitThreadpoolLabels(&threadpool_);
-  StartPollingLoop();
 }
 
 EventMgr::~EventMgr() {
-  StopPollingLoop();
+  // Wait for all streams to complete.  All of the streams have completed when
+  // `callback_streams_` is empty, or when all of the remaining streams are in
+  // an error state.
+  mutex_lock lock(mu_);
+  mu_.Await(tsl::Condition(
+      +[](decltype(callback_streams_)* callback_streams) {
+        // std::all_of returns true if the container is empty.
+        return absl::c_all_of(*callback_streams,
+                              [](auto& kv) { return !kv.first->ok(); });
+      },
+      &callback_streams_));
 
-  for (auto& [stream, stream_callbacks] : callbacks_) {
-    for (auto& [event, callback] : stream_callbacks) {
-      threadpool_.Schedule(std::move(callback));
-    }
-  }
   // The threadpool's destructor will block waiting for all outstanding
   // callbacks to complete.
 }
 
-void EventMgr::StartPollingLoop() {
-  CHECK(polling_stopped_ == nullptr);
-  {
-    mutex_lock l(mu_);
-    stop_polling_ = false;
-  }
-  polling_stopped_ = std::make_unique<Notification>();
-  threadpool_.Schedule([this]() { PollLoop(); });
-}
-
-void EventMgr::StopPollingLoop() {
-  if (polling_stopped_) {
-    {
-      mutex_lock l(mu_);
-      stop_polling_ = true;
-      events_pending_.notify_all();
-    }
-    polling_stopped_->WaitForNotification();
-    polling_stopped_.reset(nullptr);
-  }
-}
-
-// A polling loop to detect completion of device events.
-//
-// While one or more events is outstanding, poll for completed events.  When no
-// events are outstanding, we sleep until one is enqueued.
-void EventMgr::PollLoop() {
-  while (true) {
-    bool events_still_pending;
-    {
-      mutex_lock l(mu_);
-      if (stop_polling_) {
-        break;
-      }
-      if (callbacks_.empty()) {
-        events_pending_.wait(l);
-      }
-      PollEvents(/*stream=*/nullptr);  // poll all streams
-      events_still_pending = !callbacks_.empty();
-    }
-
-    if (events_still_pending) {
-      Env::Default()->SleepForMicroseconds(polling_active_delay_usecs_);
-    }
-  }
-  polling_stopped_->Notify();
-}
-
-void EventMgr::EnqueueCallback(se::Stream* stream, std::function<void()> func) {
-  VLOG(2) << "EnqueueCallback with one or more callbacks pending on "
-          << callbacks_.size() << " streams and " << free_events_.size()
-          << " unused event objects.";
-  // Events are created on demand, and repeatedly reused.  There is no
-  // limit placed here on the number of allocated Events.
-  if (free_events_.empty()) {
-    free_events_.push_back(std::make_unique<se::Event>(exec_));
-    free_events_.back()->Init();
-  }
-
-  std::unique_ptr<se::Event> e = std::move(free_events_.back());
-  free_events_.pop_back();
-  stream->ThenRecordEvent(e.get());
-
-  bool was_empty = callbacks_.empty();
-  callbacks_[stream].push_back({std::move(e), std::move(func)});
-
-  // Wake up the polling thread if it was sleeping.
-  if (was_empty) {
-    events_pending_.notify_all();
-  }
-}
-
-// This function must be called periodically to check whether pending
-// events have recorded, and then retire them.  Initial observations
-// suggest that typical behavior in a TensorFlow program is to have
-// 0-3 events pending most of the time, but there are occasionally
-// spikes of up to several hundred outstanding.  (If GPUKernelTracker
-// is used to cap pending kernels there should never be more than
-// that many.)
-void EventMgr::PollEvents(se::Stream* stream /*=nullptr*/) {
-  VLOG(2) << "PollEvents with one or more callbacks pending on "
-          << callbacks_.size() << " streams and " << free_events_.size()
-          << " unused event objects.";
-
-  // Polls the events for one stream.
+void EventMgr::ThenExecute(se::Stream* stream, std::function<void()> func) {
+  // Ensure the correct GPU is active before making any CUDA calls.
   //
-  // `stream_it` should be an iterator into callbacks_.  Modifies stream_it so
-  // it points to the next element of callbacks_.
-  auto poll_events_for_stream_it =
-      [&](auto& stream_it) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        auto& stream_callbacks = stream_it->second;
+  // This shouldn't be necessary!  StreamExecutor uses the CUDA driver API, and
+  // all calls there take a GPU context as a parameter; the "current GPU" from
+  // the perspective of the runtime API shouldn't matter.  But we can verify
+  // that it in fact *does* matter, perhaps specifically because of the
+  // ThenHostCallback calls, though it's hard to tell.
+  //
+  // This library is only available when GOOGLE_CUDA is defined.
+#if GOOGLE_CUDA
+  stream_executor::gpu::ScopedActivateExecutorContext scoped_activation{exec_};
+#endif
 
-        auto it = stream_callbacks.begin();
-        while (it != stream_callbacks.end()) {
-          auto& [event, callback] = *it;
+  // tl;dr: Don't make CUDA calls while holding the lock on mu_.
+  //
+  // There are three mutexes at play here.  We need to be careful to avoid a
+  // cycle in the order in which we acquire them.  The mutexes are:
+  //
+  //  1. Any mutexes inside the CUDA runtime or driver.  We can consider these
+  //     to be a single mutex that wraps all CUDA calls and is also held while
+  //     running the host callback, because that's the worst case for our
+  //     analysis.
+  //  2. Any mutexes inside threadpool_, which again we can consier to be a
+  //     single mutex wrapping all calls to the object.
+  //  3. EventMgr::mu_.
+  //
+  // The CUDA host callback needs to schedule func on threadpool_ (that's the
+  // whole point of all this).  It also needs to modify internal state of the
+  // EventMgr, e.g. to push an elements back onto free_events_ and
+  // free_streams_.  Thus it's unavoidable that we acquire mutexes (2) and (3)
+  // while holding (1).  This means that to avoid a deadlock, we must drop the
+  // lock on the EventMgr (3) before making any CUDA API calls (1)!
 
-          se::Event::Status s = event->PollForStatus();
-          bool keep_looping = true;
-          switch (s) {
-            case se::Event::Status::kUnknown:
-            case se::Event::Status::kError:
-              // We don't expect to see these.  Someday maybe propagate
-              // a Status error, but for now fail hard.
-              LOG(FATAL) << "Unexpected Event status: " << static_cast<int>(s);
-              break;
-            case se::Event::Status::kPending:
-              // If this event is still pending, then all events after it are
-              // guaranteed to be pending as well, so we can stop looping.
-              keep_looping = false;
-              break;
-            case se::Event::Status::kComplete:
-              free_events_.push_back(std::move(event));
-              threadpool_.Schedule(std::move(callback));
-              // std::deque::erase() does invalidate iterators, so we can't
-              // erase `it` here.  Instead, we'll wait until the end of the loop
-              // over stream_callbacks and erase all of the completed events at
-              // that point.
-              ++it;
-              break;
-          }
+  // Get an event and stream off the free list, lazily creating them if
+  // necessary.  There's currently no limit on the number of allocated events
+  // and streams.
+  //
+  // If we have to create a new stream/event, don't call Init() while holding
+  // mu_, because that's what touches the CUDA API and can cause deadlocks.
+  std::unique_ptr<se::Event> event;
+  bool is_new_event = false;
+  se::Stream* callback_stream;
+  bool is_new_stream = false;
+  {
+    mutex_lock lock(mu_);
 
-          if (!keep_looping) {
-            break;
-          }
-        }
-
-        // Erase all completed events from stream_callbacks.
-        stream_callbacks.erase(stream_callbacks.begin(), it);
-
-        if (stream_callbacks.empty()) {
-          // absl::flat_hash_map::erase doesn't invalidate iterators, so this is
-          // safe.
-          callbacks_.erase(stream_it++);
-        } else {
-          stream_it++;
-        }
-      };
-
-  // If `stream` is non-null, poll events just for that stream.  Otherwise, poll
-  // events for all streams.
-  if (stream != nullptr) {
-    auto stream_it = callbacks_.find(stream);
-    if (stream_it != callbacks_.end()) {
-      poll_events_for_stream_it(stream_it);
+    // Get an event off the free list.
+    if (free_events_.empty()) {
+      free_events_.push_back(std::make_unique<se::Event>(exec_));
+      is_new_event = true;
     }
-  } else {
-    for (auto stream_it = callbacks_.begin(); stream_it != callbacks_.end();) {
-      poll_events_for_stream_it(stream_it);
-    }
+    event = std::move(free_events_.back());
+    free_events_.pop_back();
+
+    // Get the internal stream associated with `stream`, or grab one off the
+    // free list.
+    //
+    // Disable thread-safety analysis on this lambda because tsl::Mutex
+    // currently lacks an AssertHeld function.  :(
+    auto it = callback_streams_.lazy_emplace(
+        stream, [&](const auto& ctor) ABSL_NO_THREAD_SAFETY_ANALYSIS {
+          if (free_streams_.empty()) {
+            free_streams_.push_back(std::make_unique<se::Stream>(exec_));
+            is_new_stream = true;
+          }
+          ctor(stream, std::make_pair(std::move(free_streams_.back()),
+                                      /*num_pending_events=*/0));
+          free_streams_.pop_back();
+        });
+    callback_stream = it->second.first.get();
+    it->second.second++;  // increment num_pending_events
   }
+  if (is_new_event) {
+    event->Init();
+  }
+  if (is_new_stream) {
+    callback_stream->Init();
+  }
+
+  // Set callback_stream to run `func` when `stream` finishes the work that's
+  // currently pending.
+  stream->ThenRecordEvent(event.get());
+  callback_stream->ThenWaitFor(event.get());
+
+  // `mutable` is needed on the lambda so we can move `event` and `func`.
+  // Without `mutable`, these variables are const and can't be moved.
+  callback_stream->ThenDoHostCallbackWithStatus(
+      [this, stream, event = std::move(event),
+       func = std::move(func)]() mutable {
+        threadpool_.Schedule(std::move(func));
+
+        mutex_lock lock(mu_);
+        free_events_.push_back(std::move(event));
+
+        // Update the number of pending events on `stream` and erase it from
+        // callback_streams_ if no events are pending any longer.
+        auto callback_stream_it = callback_streams_.find(stream);
+        if (callback_stream_it == callback_streams_.end()) {
+          return tsl::errors::Internal(
+              "Invariant violation in EventMgr: callback_streams_ does not "
+              "contain stream ",
+              stream);
+        }
+        auto& [callback_stream, num_pending_events] =
+            callback_stream_it->second;
+        if (num_pending_events <= 0) {
+          return tsl::errors::Internal(
+              "Invariant violation in EventMgr: refcount for stream ", stream,
+              "should be >= 1, but was ", num_pending_events);
+        }
+        num_pending_events--;
+
+        if (num_pending_events == 0) {
+          free_streams_.push_back(std::move(callback_stream));
+          callback_streams_.erase(callback_stream_it);
+        }
+        return tsl::OkStatus();
+      });
 }
 
 EventMgrFactory* EventMgrFactory::Singleton() {

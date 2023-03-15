@@ -61,6 +61,7 @@ tf_cuda_library(
             "//tensorflow/core/common_runtime/eager:attr_builder",
             "//tensorflow/core/common_runtime/eager:context",
             "//tensorflow/core/common_runtime/eager:context_distributed_manager",
+            "//tensorflow/core/common_runtime/eager:context_registry",
             "//tensorflow/core/common_runtime/eager:core",
             "//tensorflow/core/common_runtime/eager:custom_device",
             "//tensorflow/core/common_runtime/eager:eager_executor",
@@ -134,6 +135,16 @@ filegroup(
 )
 
 cc_library(
+    name = "c_api_headers",
+    hdrs = [
+        "c_api.h",
+    ],
+    deps = [
+        "//tensorflow/c:c_api_headers",
+    ],
+)
+
+cc_library(
     name = "c_api_internal",
     hdrs = [
         "c_api_experimental.h",
@@ -141,7 +152,7 @@ cc_library(
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":c_api",
+        ":c_api_headers",
         ":tfe_cancellation_manager_internal",
         ":tfe_executor_internal",
         ":tfe_monitoring_internal",
@@ -749,10 +760,6 @@ tf_cuda_cc_test(
     tags = [
         "no_oss",  # TODO(b/200848572)
         "no_windows",
-        # TODO(b/136478427): sanitizers report issues due to unclean exit.
-        "noasan",  # leaks gRPC server instances
-        "nomsan",  # b/229991646: use of destructed memory due to unclean exit.
-        "notsan",  # b/259602430: race on destructed mutex due to unclean exit.
     ],
     deps = [
         ":c_api",
@@ -928,18 +935,24 @@ tf_cuda_cc_test(
     name = "c_api_unified_experimental_test",
     size = "small",
     srcs = [
+        "c_api_unified_experimental_internal.h",
         "c_api_unified_experimental_test.cc",
     ],
     args = ["--heap_check="],
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
+        ":abstract_context",
+        ":abstract_operation",
+        ":abstract_tensor_handle",
         ":c_api",
         ":c_api_experimental",
         ":c_api_test_util",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
+        "//tensorflow/c:conversion_macros",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

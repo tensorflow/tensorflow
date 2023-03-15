@@ -35,7 +35,6 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
@@ -46,6 +45,8 @@ py_library(
         "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -62,7 +63,7 @@ py_library(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
-        "//tensorflow/python:util",
         "//tensorflow/python/keras/utils:generic_utils",
+        "//tensorflow/python/util:nest",
     ],
 )

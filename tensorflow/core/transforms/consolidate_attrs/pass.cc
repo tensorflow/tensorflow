@@ -452,7 +452,7 @@ DictionaryAttr PrepareAttributesForExportPassImpl::prepareAttributesFor(
     auto shape = ShapeAttr::get(&getContext(),
                                 type.isa<RankedTensorType>()
                                     ? type.cast<RankedTensorType>().getShape()
-                                    : Optional<ArrayRef<int64_t>>());
+                                    : std::optional<ArrayRef<int64_t>>());
     attrs.set(output_shapes_id_, ArrayAttr::get(&getContext(), {shape}));
   }
   auto element_type = type.cast<TensorType>().getElementType();

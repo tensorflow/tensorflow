@@ -129,7 +129,7 @@ class MlirGraphOptimizationPassTest : public Test {
                                                  std::move(optimization_pass));
     }
 
-    flib_.reset(new FunctionLibraryDefinition(graph_->flib_def()));
+    flib_ = std::make_unique<FunctionLibraryDefinition>(graph_->flib_def());
   }
 
   void AddModuleModificationPass(MlirOptimizationPassState pass_state,
@@ -181,7 +181,7 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsNoFallback) {
   graph_->ToGraphDef(&original_graph_def);
 
   EXPECT_EQ(function_optimization_pass_.Run(
-                device_set_, config_proto_, &graph_, flib_.get(),
+                "test_func", device_set_, config_proto_, &graph_, flib_.get(),
                 &control_ret_node_names_, &control_rets_updated_),
             Status(error::Code::ABORTED, "aborted"));
   verifyGraph(original_graph_def);
@@ -206,7 +206,7 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsDisabledFallback) {
                             Status(error::Code::ABORTED, "aborted"));
 
   EXPECT_EQ(function_optimization_pass_.Run(
-                device_set_, config_proto_, &graph_, flib_.get(),
+                "test_func", device_set_, config_proto_, &graph_, flib_.get(),
                 &control_ret_node_names_, &control_rets_updated_),
             OkStatus());
   verifyGraph(original_graph_def);
@@ -221,7 +221,7 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassDoesNotFailFallback) {
   AddModuleModificationPass(MlirOptimizationPassState::FallbackEnabled,
                             OkStatus());
   EXPECT_EQ(function_optimization_pass_.Run(
-                device_set_, config_proto_, &graph_, flib_.get(),
+                "test_func", device_set_, config_proto_, &graph_, flib_.get(),
                 &control_ret_node_names_, &control_rets_updated_),
             OkStatus());
 

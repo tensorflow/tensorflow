@@ -56,11 +56,6 @@ def jit(fun: Callable[..., Any],
         jit_device: Optional[Device] = ...,
         cache: Optional[CompiledFunctionCache] = ...) -> CompiledFunction: ...
 
-def device_put(
-    __obj: Any,
-    __jax_enable_x64: bool,
-    __to_device: Client) -> Any: ...
-
 class ArgSignature:
   dtype: np.dtype
   shape: Tuple[int, ...]

@@ -252,6 +252,20 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status EvaluateParameterFromCallerArgument(HloInstruction* parameter,
                                              const ShapeIndex& shape_index);
 
+  // For one particular placement of a window in a base shape (the placement is
+  // represented as `window_count_index`), iterates inside the window.
+  // Translates the window index into base index. If the base index is within
+  // bound, call `f` with the base index.
+  static void IterateThroughWindow(
+      const Shape& window_shape, const Window& window, const Shape& base_shape,
+      absl::Span<const int64_t> window_count_index,
+      const std::function<void(absl::Span<const int64_t>)>& f);
+
+  // Helper method to extract a list of int64_t from evaluated instruction for
+  // start_indices for DynamicSlice and DynamicUpdateSlice.
+  std::vector<int64_t> GetS64Indices(
+      absl::Span<HloInstruction* const> start_indices);
+
   // Make HloEvaluatorTypedVisitor a friend because it is logically part of this
   // class.
   //

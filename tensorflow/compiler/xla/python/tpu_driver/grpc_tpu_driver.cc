@@ -480,7 +480,7 @@ GrpcTpuStream::~GrpcTpuStream() {
     for (const auto& e : events_) {
       if (!e.second.done) {
         LOG(ERROR) << "Resetting: " << e.first;
-        UpdateEventStatus(e.first, xla::Status(tsl::error::Code::ABORTED,
+        UpdateEventStatus(e.first, xla::Status(absl::StatusCode::kAborted,
                                                "Driver was closed."));
       }
     }
@@ -689,7 +689,7 @@ void GrpcTpuStream::StreamReaderFn() {
           UpdateEventStatus(
               event_id,
               Status(
-                  tsl::error::Code::DATA_LOSS,
+                  absl::StatusCode::kDataLoss,
                   absl::StrCat("Expected ", it->second.num_bytes, " received ",
                                entry.transfer_from().data().size())));
           continue;

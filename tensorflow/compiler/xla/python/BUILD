@@ -96,6 +96,21 @@ py_test(
 )
 
 py_test(
+    name = "weakref_lru_cache_test",
+    srcs = ["weakref_lru_cache_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = ["no_oss"],  # TODO(phawkins): This test passes, but requires --config=monolithic.
+    deps = [
+        ":xla_client",
+        ":xla_extension",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
+        "@absl_py//absl/testing:absltest",
+    ] + xla_py_test_deps(),
+)
+
+py_test(
     name = "xla_client_test_gpu",
     srcs = ["xla_client_test.py"],
     args = ["--backend=gpu"],
@@ -295,6 +310,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":exceptions",
+        "//tensorflow/compiler/xla/pjrt:lru_cache",
         "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/python/lib/core:numpy",
         ":pprof_profile_builder",
@@ -424,8 +440,8 @@ cc_library(
         ":status_casters",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_sharding_util",
         "//tensorflow/compiler/xla/service:custom_call_sharding_helper",
-        "//tensorflow/compiler/xla/service:hlo_sharding_util",
         "//tensorflow/compiler/xla/service/spmd:spmd_partitioner",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/synchronization",
@@ -643,6 +659,7 @@ cc_library(
         "@pybind11",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_serialization",
     ],
 )
 

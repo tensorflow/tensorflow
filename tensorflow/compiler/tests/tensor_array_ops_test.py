@@ -776,7 +776,7 @@ class TensorArrayTest(xla_test.XLATestCase):
 
   #     def body(time, ta_t, state):
   #       sliced = array_ops.slice(
-  #           v0, begin=array_ops.stack([time, 0]), size=[1, -1])
+  #           v0, begin=array_ops_stack.stack([time, 0]), size=[1, -1])
   #       sliced = array_ops.squeeze(sliced)
   #       out = sliced + var + state
   #       state += sliced

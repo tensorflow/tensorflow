@@ -30,9 +30,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python:util",
         "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/utils",
         "@gast_archive//:gast",
     ],
 )

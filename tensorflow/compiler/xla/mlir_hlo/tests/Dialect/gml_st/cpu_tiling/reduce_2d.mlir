@@ -11,12 +11,12 @@ func.func @col_reduce_static(%input: tensor<100x10xf32>,
 }
 // CHECK-LABEL: @col_reduce_static
 
-//       CHECK: gml_st.parallel
+//       CHECK: scf.for
 //       CHECK:   scf.for
 //       CHECK:     vector.multi_reduction
 //  CHECK-SAME:       : vector<4x4xf32> to vector<4xf32>
-//  CHECK-NEXT:     scf.yield %{{.*}} : vector<4xf32>
-//       CHECK:   gml_st.set_yield
+//  CHECK-NEXT:     scf.yield %{{.*}} : {{.*}}, vector<4xf32>
+//       CHECK:   vector.transfer_write
 
 // -----
 
@@ -35,25 +35,25 @@ func.func @row_reduce_dynamic(%input: tensor<?x?xf32>,
 }
 // CHECK-LABEL: @row_reduce_dynamic
 
-// CHECK:      gml_st.parallel
+// CHECK:      scf.for
 // CHECK:        scf.for
 // CHECK:          vector.multi_reduction
 // CHECK-SAME:       : vector<4x4xf32> to vector<4xf32>
-// CHECK-NEXT:     scf.yield %{{.*}} : vector<4xf32>
+// CHECK-NEXT:     scf.yield %{{.*}} : {{.*}}, vector<4xf32>
 
 // CHECK:        scf.for
 // CHECK:          vector.multi_reduction
 // CHECK-SAME:       : vector<4x1xf32> to vector<4xf32>
-// CHECK-NEXT:     scf.yield %{{.*}} : vector<4xf32>
-// CHECK:        gml_st.set_yield
+// CHECK-NEXT:     scf.yield %{{.*}} : {{.*}}, vector<4xf32>
+// CHECK:        vector.transfer_write
 
-// CHECK:      gml_st.parallel
-// CHECK:        gml_st.parallel
+// CHECK:      scf.for
+// CHECK:        scf.for
 // CHECK:          scf.for
 // CHECK:            arith.mulf %{{.*}} : f32
 // CHECK:            scf.yield %{{.*}} : f32
-// CHECK:          gml_st.set_yield
-// CHECK:        gml_st.set_yield
+// CHECK:          tensor.insert
+// CHECK:        tensor.insert_slice
 
 // -----
 
@@ -72,21 +72,21 @@ func.func @col_reduce_dynamic(%input: tensor<?x?xf32>,
 }
 // CHECK-LABEL: @col_reduce_dynamic
 
-// CHECK:      gml_st.parallel
+// CHECK:      scf.for
 // CHECK:        scf.for
 // CHECK:          vector.multi_reduction
 // CHECK-SAME:       : vector<4x4xf32> to vector<4xf32>
-// CHECK-NEXT:     scf.yield %{{.*}} : vector<4xf32>
+// CHECK-NEXT:     scf.yield %{{.*}} : {{.*}}, vector<4xf32>
 
 // CHECK:        scf.for
 // CHECK:          arith.mulf %{{.*}} : f32
 // CHECK-NEXT:     scf.yield %{{.*}} : f32
-// CHECK:        gml_st.set_yield
+// CHECK:        tensor.insert
 
-// CHECK:      gml_st.parallel
-// CHECK:        gml_st.parallel
+// CHECK:      scf.for
+// CHECK:        scf.for
 // CHECK:            scf.for
 // CHECK:              arith.mulf %{{.*}} : f32
 // CHECK:              scf.yield %{{.*}} : f32
-// CHECK:          gml_st.set_yield
-// CHECK:        gml_st.set_yield
+// CHECK:          tensor.insert
+// CHECK:        tensor.insert_slice

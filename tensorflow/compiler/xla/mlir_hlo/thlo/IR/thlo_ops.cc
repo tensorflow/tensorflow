@@ -112,7 +112,7 @@ ParseResult parseKeywordOperandListWithTypes(
     if (parser.parseCommaSeparatedList(
             AsmParser::Delimiter::Paren, [&]() -> ParseResult {
               if (parser.parseOperand(operands.emplace_back(),
-                                      /*allowResultNumber=*/false) ||
+                                      /*allowResultNumber=*/true) ||
                   parser.parseColon() ||
                   parser.parseType(operandTypes->emplace_back())) {
                 return failure();
@@ -180,6 +180,25 @@ SmallVector<Range> getIterationDomainForTensor(OpBuilder &b, Location loc,
   return llvm::to_vector(llvm::map_range(dimValues, [&](OpFoldResult d) {
     return Range{b.getIndexAttr(0), d, b.getIndexAttr(1)};
   }));
+}
+
+static void getDstStyleOpEffectsImpl(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects,
+    ValueRange results, const OpOperandVector &inputOperands,
+    const OpOperandVector &outputOperands) {
+  for (auto *operand : inputOperands) {
+    if (!operand->get().getType().isa<MemRefType>()) continue;
+    effects.emplace_back(MemoryEffects::Read::get(), operand->get(),
+                         SideEffects::DefaultResource::get());
+  }
+  for (auto *operand : outputOperands) {
+    if (!operand->get().getType().isa<MemRefType>()) continue;
+    effects.emplace_back(MemoryEffects::Read::get(), operand->get(),
+                         SideEffects::DefaultResource::get());
+    effects.emplace_back(MemoryEffects::Write::get(), operand->get(),
+                         SideEffects::DefaultResource::get());
+  }
 }
 
 }  // namespace
@@ -452,13 +471,13 @@ LogicalResult ConcatenateOp::reifyResultShapes(
 
   // Assume unique result.
   if (getNumResults() != 1) return failure();
-  SmallVector<Value> &shape = reifiedReturnShapes.emplace_back();
+  SmallVector<OpFoldResult> &shape = reifiedReturnShapes.emplace_back();
 
   // Derive shape from init operand.
   int64_t rank = init.getType().cast<RankedTensorType>().getRank();
   shape.reserve(rank);
   for (int64_t i = 0; i < rank; ++i) {
-    shape.push_back(b.create<tensor::DimOp>(loc, init, i));
+    shape.push_back(b.create<tensor::DimOp>(loc, init, i).getResult());
   }
 
   return success();
@@ -531,6 +550,13 @@ LogicalResult ConcatenateOp::verify() {
   }
 
   return verifyDestinationStyleOp(getOperation());
+}
+
+void ConcatenateOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
+                           getDpsInputOperands(), getDpsInitOperands());
 }
 
 //===----------------------------------------------------------------------===//
@@ -679,6 +705,13 @@ FailureOr<Value> DynamicBroadcastInDimOp::generateResultTileValue(
       .front()
       ->getResults()
       .front();
+}
+
+void DynamicBroadcastInDimOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
+                           getDpsInputOperands(), getDpsInitOperands());
 }
 
 //===----------------------------------------------------------------------===//
@@ -835,6 +868,13 @@ FailureOr<Value> ScatterOp::generateResultTileValue(
   return getTiledImplementation(b, offsets, sizes).front()->getResult(0);
 }
 
+void ScatterOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
+                           getDpsInputOperands(), getDpsInitOperands());
+}
+
 //===----------------------------------------------------------------------===//
 // GatherOp
 //===----------------------------------------------------------------------===//
@@ -924,6 +964,13 @@ FailureOr<Value> GatherOp::generateResultTileValue(
     ArrayRef<OpFoldResult> sizes) {
   assert(resultNumber == 0 && "resultNumber > 0 not implemented");
   return getTiledImplementation(b, offsets, sizes).front()->getResult(0);
+}
+
+void GatherOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
+                           getDpsInputOperands(), getDpsInitOperands());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1168,6 +1215,13 @@ FailureOr<Value> SortOp::generateResultTileValue(OpBuilder &b,
       ->getResult(resultNumber);
 }
 
+void SortOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
+                           getDpsInputOperands(), getDpsInitOperands());
+}
+
 //===----------------------------------------------------------------------===//
 // ReverseOp
 //===----------------------------------------------------------------------===//
@@ -1280,6 +1334,13 @@ OpFoldResult ReverseOp::fold(
     if (inputType.getDimSize(getReverseDimensions()[i]) != 1) return nullptr;
   }
   return getInput();
+}
+
+void ReverseOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
+                           getDpsInputOperands(), getDpsInitOperands());
 }
 
 }  // namespace thlo

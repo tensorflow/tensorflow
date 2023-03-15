@@ -24,17 +24,13 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/BitVector.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SetVector.h"
-#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/iterator_range.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "mhlo/transforms/passes.h"
 #include "mhlo/transforms/rewriters.h"
 #include "mhlo/utils/legalize_to_linalg_utils.h"
+#include "mhlo/utils/mhlo_rng_utils.h"
 #include "mhlo/utils/type_conversion.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
@@ -49,7 +45,6 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
@@ -985,7 +980,8 @@ class DynamicBroadcastInDimOpToBroadcastConverter
     SmallVector<int64_t> broadcastDimensions =
         llvm::to_vector(op.getBroadcastDimensions().getValues<int64_t>());
 
-    SmallVector<Optional<bool>> expansionBehavior(broadcastDimensions.size());
+    SmallVector<std::optional<bool>> expansionBehavior(
+        broadcastDimensions.size());
 
     // Use static type info.
     for (const auto& [idx, dim] : llvm::enumerate(operandTy.getShape())) {
@@ -1375,7 +1371,7 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
     // Compute the reassociation maps for the linalg operation. This will
     // succeed if the reshape can be done with a single expand_shape or
     // collapse_shape.
-    if (Optional<SmallVector<ReassociationIndices>> reassociationMap =
+    if (std::optional<SmallVector<ReassociationIndices>> reassociationMap =
             getReassociationIndicesForReshape(operandType, resultType)) {
       if (resultType.getRank() < operandType.getRank()) {
         // We have found a working reassociation map. If the operand is dynamic,
@@ -1994,15 +1990,18 @@ class MapOpToMapConverter : public OpConversionPattern<mhlo::MapOp> {
 
     Location loc = op.getLoc();
     Value operand0 = adaptor.getOperands()[0];
-    Value operand1 = coerceTensorShape(
-        rewriter, loc, cast<TypedValue<ShapedType>>(adaptor.getOperands()[1]),
-        operand0.getType());
+    SmallVector<Value> coercedOperands = {operand0};
+    for (Value operand : llvm::drop_begin(adaptor.getOperands(), 1)) {
+      coercedOperands.push_back(coerceTensorShape(
+          rewriter, loc, cast<TypedValue<ShapedType>>(operand),
+          operand0.getType()));
+    }
     Value output = rewriter.create<tensor::EmptyOp>(
         loc, tensor::getMixedSizes(rewriter, loc, operand0),
         resultType.getElementType());
 
     auto linalgOp = rewriter.create<linalg::MapOp>(
-        loc, ValueRange{operand0, operand1}, output,
+        loc, coercedOperands, output,
         /*bodyBuild=*/nullptr, linalg::getPrunedAttributeList(op));
 
     // Convert the signature of the body. We scalarize the operands and add a
@@ -2267,6 +2266,32 @@ struct ReduceOpToReduceConverter : public OpConversionPattern<mhlo::ReduceOp> {
     }
     rewriter.replaceOp(op, results);
     return success();
+  }
+};
+
+class RngBitGeneratorConverter
+    : public OpConversionPattern<mhlo::RngBitGeneratorOp> {
+  using OpConversionPattern<mhlo::RngBitGeneratorOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      RngBitGeneratorOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    Location loc = op.getLoc();
+    Value state = adaptor.getInitialState();
+    ShapedType resultTy =
+        this->typeConverter->convertType(op.getResult(1).getType())
+            .cast<ShapedType>();
+
+    if (op.getRngAlgorithm() == mhlo::RngAlgorithm::THREE_FRY) {
+      Value random;
+      if (generateLinalgThreeFry(rewriter, loc, resultTy, state, random)
+              .failed())
+        return failure();
+      rewriter.replaceOp(op, {state, random});
+      return success();
+    }
+
+    return failure();
   }
 };
 
@@ -4211,7 +4236,7 @@ class PointwiseToLinalgMapConverter : public OpConversionPattern<OpTy> {
     }
 
     // Find result type, if on tensors.
-    Optional<ShapedType> resultTy;
+    std::optional<ShapedType> resultTy;
     resultTy = this->typeConverter->convertType(op->getResultTypes().front())
                    .template dyn_cast<ShapedType>();
 
@@ -4388,6 +4413,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PadOpNegativePaddingConversion,
       ReduceWindowOpOnTensorsGenericConversion,
       ReduceWindowOpConversion,
+      RngBitGeneratorConverter,
       RngUniformConversion,
       TorchIndexSelectOpConversion,
       SelectAndScatterNoOverlapConverter,

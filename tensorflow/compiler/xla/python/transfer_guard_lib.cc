@@ -23,8 +23,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/base/attributes.h"
-#include "pybind11/cast.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"

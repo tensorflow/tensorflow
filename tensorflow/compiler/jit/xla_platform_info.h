@@ -111,21 +111,6 @@ std::shared_ptr<se::DeviceMemoryAllocator> GetAllocator(
     DeviceBase* device, se::Stream* stream,
     const XlaPlatformInfo& platform_info);
 
-// Returns created options for the XLA compiler, and writes the used allocator
-// into `tf_allocator_adapter`.
-XlaCompiler::Options GenerateCompilerOptions(
-    const DeviceCompiler<xla::LocalExecutable, xla::LocalClient>&
-        xla_device_compiler,
-    const FunctionLibraryRuntime& function_library, DeviceBase* device,
-    se::Stream* stream, const XlaPlatformInfo& platform_info,
-    bool has_ref_vars);
-
-// Returns created options for XLA compiler when TFRT-TPU is used.
-XlaCompiler::Options GenerateTfrtTpuCompilerOptions(
-    const DeviceCompiler<xla::LocalExecutable, xla::LocalClient>&
-        xla_device_compiler,
-    const FunctionLibraryRuntime& function_library);
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_PLATFORM_INFO_H_

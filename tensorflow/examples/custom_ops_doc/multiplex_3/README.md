@@ -1,3 +1,4 @@
+<!-- LINT.IfChange -->
 # Create a custom multiplexer op with dispatch to special case kernels
 
 This guide provides an end-to-end example of handling special cases with a new
@@ -672,8 +673,8 @@ the `multiplex_3` op.
 
 Op components                           | Build rule             | Build target         | Source
 --------------------------------------- | ---------------------- | -------------------- | ------
-Kernels (C++)                           | `tf_kernel_library`    | `multiplex_3_kernel` | `multiplex_3_kernel.cc`, `multiplex_3_op.cc`
-Wrapper (automatically generated)       | `tf_gen_op_wrapper.py` | `gen_multiplex_3_op` | N/A
+Kernels (C++)                           | `tf_custom_op_library` | `multiplex_3_kernel` | `multiplex_3_kernel.cc`, `multiplex_3_op.cc`
+Wrapper (automatically generated)       | N/A                    | `gen_multiplex_3_op` | N/A
 Wrapper (with public API and docstring) | `py_strict_library`    | `multiplex_3_op`     | `multiplex_3_op.py`
 Tests                                   | `tf_py_test`           | `multiplex_3_test`   | `multiplex_3_test.py`
 
@@ -682,3 +683,4 @@ Tests                                   | `tf_py_test`           | `multiplex_3_
 *   [OSS custom ops guide](https://www.tensorflow.org/guide/create_op)
 *   [Extension types and dispatch decorators](https://www.tensorflow.org/guide/extension_type#tensor_api_dispatch)
 *   [Working with sparse tensors](https://www.tensorflow.org/guide/sparse_tensor)
+<!-- LINT.ThenChange(multiplex_3.md) -->

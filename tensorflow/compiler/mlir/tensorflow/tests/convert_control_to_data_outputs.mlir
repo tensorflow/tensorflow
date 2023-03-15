@@ -492,3 +492,56 @@ func.func @mixed_unique_resource_chain_while_cond(%arg0: tensor<i32>, %arg1: ten
 // CHECK:           }
 // CHECK:           return %[[GRAPH]] : tensor<i1>
 
+// CHECK-LABEL: func @uses_tpu_execute_while_body
+func.func @uses_tpu_execute_while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (!tf_res, !tf_res, tensor<f32>, tensor<f32>) {
+  %graph:4 = tf_executor.graph {
+    // CHECK: , [[C0:%.*]] = {{.*}}wraps "tf.ReadVariableOp"
+    %0, %c0 = tf_executor.island wraps "tf.ReadVariableOp"(%arg0) : (!tf_res) -> (tensor<f32>)
+    %1, %c1 = tf_executor.island wraps "tf.Shape"(%arg2) : (tensor<f32>) -> (tensor<?xi64>)
+    %2, %c2 = tf_executor.island wraps "tf.Shape"(%0) : (tensor<f32>) -> (tensor<?xi64>)
+    %compilation_status, %program, %c3 = tf_executor.island wraps "tf._TPUCompileMlir"(%1, %2) {metadata = "metadata", mlir_module = "mlir_module"} : (tensor<?xi64>, tensor<?xi64>) -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+    // CHECK: , [[C4:%.*]] = {{.*}}wraps "tf.TPUExecute"
+    %result, %c4 = tf_executor.island wraps "tf.TPUExecute"(%arg2, %0, %program) : (tensor<f32>, tensor<f32>, tensor<3x!tf_type.string>) -> tensor<f32>
+
+    tf_executor.fetch %arg0, %arg1, %result, %result, %c0, %c4 : !tf_res, !tf_res, tensor<f32>, tensor<f32>, !tf_executor.control, !tf_executor.control
+    // CHECK: island(
+    // CHECK-DAG: [[C0]]
+    // CHECK-DAG: [[C4]]
+    // CHECK-SAME: ) wraps "tf.Identity"
+    // CHECK-NOT: tf.Identity
+  }
+  func.return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
+}
+
+// CHECK-LABEL: func @uses_tpu_execute_while_cond
+func.func @uses_tpu_execute_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<i32>) {
+  %graph = tf_executor.graph {
+    %island, %ctrl = tf_executor.island {
+      %pred = "tf.SomeOp"(%arg2) : (tensor<f32>) -> tensor<i32>
+      tf_executor.yield %pred : tensor<i32>
+    }
+    // CHECK: tf_executor.fetch %{{[^%]*}} : tensor<i32>
+    tf_executor.fetch %island : tensor<i32>
+  }
+  func.return %graph : tensor<i32>
+}
+
+// CHECK-LABEL:   func @uses_tpu_execute
+// This test has a single while loop that compiles and executes TPU code.
+// Due to the presence of TPU code, the pass will create only one data token for
+// the compile_and_execute op and all its transitive inputs.
+func.func @uses_tpu_execute(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) {
+  tf_executor.graph {
+    // CHECK: OpA
+    %control_A = tf_executor.island wraps "tf.OpA"() : () -> ()
+    // CHECK: "tf.Const"()
+    // CHECK: "tf.While"
+    %while_out:4, %control_while = tf_executor.island(%control_A) wraps "tf.While"(
+            %arg0, %arg1, %arg2, %arg2) {
+        body = @uses_tpu_execute_while_body,
+        cond = @uses_tpu_execute_while_cond, is_stateless = false} : (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>) -> (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>)
+    %control_B = tf_executor.island(%control_while) wraps "tf.OpB"() : () -> ()
+    tf_executor.fetch
+  }
+  func.return
+}

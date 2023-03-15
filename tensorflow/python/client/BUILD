@@ -255,6 +255,7 @@ py_library(
         "//tensorflow/python/framework:error_interpolation",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:stack",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
         "@wrapt",
@@ -310,6 +311,7 @@ tf_py_test(
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:stack",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
@@ -356,7 +358,6 @@ tf_py_test(
     tags = [
         "no_gpu",
         "no_pip_gpu",
-        "notsan",  # data race due to b/62910646
     ],
     deps = [
         ":client",

@@ -43,7 +43,7 @@ static constexpr llvm::StringRef kTransposeTransformedLabel =
     "__transpose_transformed_label__";
 
 struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
-  TileTransposePattern(MLIRContext *context, TilingOptions options,
+  TileTransposePattern(MLIRContext *context, scf::SCFTilingOptions options,
                        PatternBenefit benefit = 1)
       : OpRewritePattern<linalg::TransposeOp>(context, benefit),
         options(std::move(options)) {}
@@ -56,7 +56,7 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
       return rewriter.notifyMatchFailure(
           op, "has already been tiled by another pass.");
 
-    auto tilingResult = tileUsingGmlSt(
+    auto tilingResult = tileUsingSCFForallOp(
         options, rewriter, cast<TilingInterface>(op.getOperation()));
     if (failed(tilingResult)) return failure();
 
@@ -69,23 +69,18 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
 
     // Peel parallel loops, label the main loop as "perfectly tiled" one, to
     // enable vectorization after canonicalization.
-    if (auto loop = dyn_cast_or_null<ParallelOp>(tilingResult->loop)) {
-      auto peelingResult = peelAllLoops(loop, rewriter);
-      setLabel(loop, kPerfectlyTiledLoopLabel);
+    auto peelingResult = peelAllLoops(tilingResult->loop, rewriter);
+    setLabel(tilingResult->loop, kPerfectlyTiledLoopLabel);
 
-      // Tile ops in the peeled loop again, to size 1, so they can be
-      // scalarized.
-      if (failed(tilePeeledOpsToScalars(rewriter, peelingResult,
-                                        kTransposeTransformedLabel,
-                                        /*fuseFilterFn=*/nullptr)))
-        return failure();
-    }
-
-    return success();
+    // Tile ops in the peeled loop again, to size 1, so they can be
+    // scalarized.
+    return tilePeeledOpsToScalars(rewriter, peelingResult,
+                                  kTransposeTransformedLabel,
+                                  /*fuseFilterFn=*/nullptr);
   }
 
  private:
-  TilingOptions options;
+  scf::SCFTilingOptions options;
 };
 
 struct TransformTransposeForCpuPass
@@ -144,12 +139,13 @@ struct TransformTransposeForCpuPass
       return tiles;
     };
 
-    TilingOptions tilingOptions;
-    tilingOptions.tileSizeComputationFn = getTileSize;
+    scf::SCFTilingOptions tilingOptions;
+    tilingOptions.setTileSizeComputationFunction(getTileSize);
 
     auto func = getOperation();
     RewritePatternSet patterns(func.getContext());
     patterns.add<TileTransposePattern>(patterns.getContext(), tilingOptions);
+    populateCollapseForallOpDimensionsPattern(patterns);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
       return signalPassFailure();
     }

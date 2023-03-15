@@ -201,6 +201,7 @@ py_library(
     deps = [
         ":executor",
         ":monitoring",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:device",
         "//tensorflow/python:device_spec",
@@ -375,7 +376,6 @@ cuda_py_test(
     tags = [
         "no_cuda_asan",  # b/173825938
         "no_windows",  #TODO(b/139745667)
-        "notsan",  #TODO(b/139745667)
     ],
     xla_tags = [
         "no_cuda_asan",  # times out
@@ -395,6 +395,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/framework:memory_checker",
         "//third_party/py/numpy",
     ],
@@ -418,9 +419,6 @@ cuda_py_test(
     size = "small",
     srcs = ["core_test.py"],
     python_version = "PY3",
-    tags = [
-        "notsan",  # TODO(b/183962087)
-    ],
     deps = [
         ":context",
         ":core",
@@ -761,6 +759,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/eager/polymorphic_function:eager_function_run",
     ],
 )
 
@@ -874,6 +873,7 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:test_ops",
+        "//tensorflow/python:while_loop",
         "@absl_py//absl/testing:parameterized",
     ],
 )

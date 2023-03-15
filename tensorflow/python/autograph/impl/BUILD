@@ -30,12 +30,24 @@ py_library(
     deps = [
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
-        "//tensorflow/python/autograph/converters",
+        "//tensorflow/python/autograph/converters:asserts",
+        "//tensorflow/python/autograph/converters:break_statements",
+        "//tensorflow/python/autograph/converters:call_trees",
+        "//tensorflow/python/autograph/converters:conditional_expressions",
+        "//tensorflow/python/autograph/converters:continue_statements",
+        "//tensorflow/python/autograph/converters:control_flow",
+        "//tensorflow/python/autograph/converters:directives",
+        "//tensorflow/python/autograph/converters:functions",
+        "//tensorflow/python/autograph/converters:lists",
+        "//tensorflow/python/autograph/converters:logical_expressions",
+        "//tensorflow/python/autograph/converters:return_statements",
+        "//tensorflow/python/autograph/converters:slices",
+        "//tensorflow/python/autograph/converters:variables",
         "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/operators",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
-        "//tensorflow/python/autograph/utils",
+        "//tensorflow/python/autograph/utils:ag_logging",
         "@gast_archive//:gast",
     ],
 )
@@ -45,14 +57,12 @@ tf_py_test(
     srcs = ["api_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "notsan",  # TODO(b/186153876)
-    ],
     deps = [
         ":impl",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/utils",
+        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/utils:ag_logging",
         "//third_party/py/numpy",
     ],
 )

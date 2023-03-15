@@ -1213,6 +1213,28 @@ TEST(Transpose021Test, BatchedLogical) {
                 shape, transposed, dimensions, Vector3{0, 2, 1}));
 }
 
+TEST(Transpose021Test, LogicalWithDegenerateDims) {
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(
+      F32, {1, 32, 1, 3, 1, 64, 1}, {6, 5, 4, 3, 2, 1, 0});
+  Shape transposed = ShapeUtil::MakeShapeWithDenseLayout(
+      F32, {1, 32, 1, 64, 1, 3, 1}, {6, 5, 4, 3, 2, 1, 0});
+  std::vector<int64_t> dimensions = {6, 1, 4, 5, 2, 3, 0};
+  EXPECT_EQ(std::make_optional(Vector3{32, 64, 3}),
+            ShapeUtil::GetNormalizedLogicalTransposeShape(
+                shape, transposed, dimensions, Vector3{0, 2, 1}));
+}
+
+TEST(Transpose021Test, LogicalWithDegenerateLastDim) {
+  Shape shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 64, 32}, {2, 1, 0});
+  Shape transposed =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {32, 64, 1}, {2, 1, 0});
+  std::vector<int64_t> dimensions = {2, 1, 0};
+  EXPECT_EQ(std::make_optional(Vector3{1, 32, 64}),
+            ShapeUtil::GetNormalizedLogicalTransposeShape(
+                shape, transposed, dimensions, Vector3{0, 2, 1}));
+}
+
 TEST(Transpose021Test, Large) {
   Shape shape =
       ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 31, 31, 65}, {3, 2, 1, 0});
@@ -1302,6 +1324,53 @@ void BM_MakeValidatedShape(::testing::benchmark::State& state) {
   }
 }
 BENCHMARK(BM_MakeValidatedShape);
+
+Shape ShapeForBenchmark(::testing::benchmark::State& state) {
+  Shape shape;
+  switch (state.range(0)) {
+    case 0: {
+      shape = ShapeUtil::MakeShape(xla::F32, {1});
+      break;
+    }
+    case 1: {
+      shape = ShapeUtil::MakeShape(xla::F32, {4, 1});
+      break;
+    }
+    case 2: {
+      shape = ShapeUtil::MakeShape(xla::F32, {256, 1, 1024});
+      break;
+    }
+  }
+  state.SetLabel(shape.ToString());
+  return shape;
+}
+
+void BM_ForEachIndex(::testing::benchmark::State& state) {
+  Shape shape = ShapeForBenchmark(state);
+  for (auto s : state) {
+    int count = 0;
+    auto increment_func =
+        [&count](absl::Span<const int64_t> indexes) -> StatusOr<bool> {
+      count++;
+      return true;
+    };
+    ShapeUtil::ForEachIndex(shape, increment_func);
+  }
+}
+BENCHMARK(BM_ForEachIndex)->Arg(0)->Arg(1)->Arg(2);
+
+void BM_ForEachIndexNoStatus(::testing::benchmark::State& state) {
+  Shape shape = ShapeForBenchmark(state);
+  for (auto s : state) {
+    int count = 0;
+    auto increment_func = [&count](absl::Span<const int64_t> indexes) -> bool {
+      count++;
+      return true;
+    };
+    ShapeUtil::ForEachIndexNoStatus(shape, increment_func);
+  }
+}
+BENCHMARK(BM_ForEachIndexNoStatus)->Arg(0)->Arg(1)->Arg(2);
 
 }  // namespace
 }  // namespace xla

@@ -2656,6 +2656,7 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
   )
   @test_util.run_v2_only
   def testVariableQuantization(self, variable_quantization, number_of_states):
+    k_readvariable_name = 'model/read_assign/concat/ReadVariableOp'
     model, calibration_gen = self._createReadAssignModel(number_of_states)
 
     converter = lite.TFLiteConverterV2.from_keras_model(model)
@@ -2666,8 +2667,28 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     converter.inference_output_type = tf.int8  # or tf.uint8
     converter._experimental_variable_quantization = variable_quantization
 
-    converter.convert()
-    # TODO(b/261940892): Reinforce end-to-end test
+    quantized_tflite_model = converter.convert()
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+
+    detail = next(
+        (
+            d
+            for d in interpreter.get_tensor_details()
+            if d['name'].startswith(k_readvariable_name)
+        )
+    )
+    quant_params = detail['quantization_parameters']
+    if variable_quantization:
+      expected_num_params = 1
+    else:
+      # This number is not a spec. Since It's the unintended number, it can be
+      # changed later by the other features of the quantizer.
+      expected_num_params = 0
+
+    self.assertLen(quant_params['scales'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
 
   @test_util.run_v2_only
   def testSequentialModel(self):

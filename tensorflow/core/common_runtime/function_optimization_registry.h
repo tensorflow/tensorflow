@@ -41,7 +41,8 @@ namespace tensorflow {
 class FunctionOptimizationPass {
  public:
   virtual ~FunctionOptimizationPass() {}
-  virtual Status Run(const DeviceSet& device_set,
+  virtual Status Run(const std::string& function_name,
+                     const DeviceSet& device_set,
                      const ConfigProto& config_proto,
                      std::unique_ptr<Graph>* graph,
                      FunctionLibraryDefinition* flib_def,
@@ -60,8 +61,9 @@ class FunctionOptimizationPassRegistry {
   void Init(std::unique_ptr<FunctionOptimizationPass> pass);
 
   // Runs a pass if the registry contains one.
-  Status Run(const DeviceSet& device_set, const ConfigProto& config_proto,
-             std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
+  Status Run(const std::string& function_name, const DeviceSet& device_set,
+             const ConfigProto& config_proto, std::unique_ptr<Graph>* graph,
+             FunctionLibraryDefinition* flib_def,
              std::vector<std::string>* control_ret_node_names,
              bool* control_rets_updated);
 

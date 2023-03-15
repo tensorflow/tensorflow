@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/lib/io/compression.h"
+#include "tensorflow/tsl/lib/monitoring/cell_reader.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/path.h"
@@ -48,6 +49,7 @@ using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::ValuesIn;
+using ::tsl::monitoring::testing::CellReader;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
@@ -140,6 +142,10 @@ using SnapshotStreamWriterParameterizedTest =
     ::testing::TestWithParam<std::string>;
 
 TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshot) {
+  CellReader<int64_t> cell_reader(
+      "/tensorflow/data/service/snapshot_bytes_committed");
+  EXPECT_EQ(cell_reader.Delta(), 0);
+
   int64_t range = 10;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
                           TestIterator(testing::RangeDataset(range)));
@@ -164,6 +170,8 @@ TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshot) {
                                     "chunk_0"),
                   compression, range),
               StatusIs(error::NOT_FOUND));
+  // Writes at least 10 elements of 8 bytes.
+  EXPECT_GE(cell_reader.Delta(), 80);
 }
 
 TEST_P(SnapshotStreamWriterParameterizedTest, StreamAlreadyCompleted) {

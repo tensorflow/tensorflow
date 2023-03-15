@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -560,7 +561,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
   return new TensorInterface(std::move(host_tensor_ref));
 }
 
-llvm::Optional<const TensorMetadata*> TensorHandleInterface::Metadata() const {
+std::optional<const TensorMetadata*> TensorHandleInterface::Metadata() const {
   auto& th = value_.get<TensorHandle>();
   if (!th.IsMetadataAvailable()) {
     context_.GetHostContext()->Await(th.GetAsyncMetadata().CopyRCRef());
@@ -1100,11 +1101,21 @@ std::vector<std::string> ContextInterface::ListFunctionNames() {
   return GetEagerContext()->ListFunctionNames();
 }
 
+tensorflow::ImmediateExecutionContext::CacheStats
+ContextInterface::GetCacheStats() {
+  return GetEagerContext()->GetCacheStats();
+}
+
 tensorflow::Status ContextInterface::RemoveFunction(const std::string& func) {
   // TODO(tfrt-devs): We need to ensure all invocations of this function is
   // finished before removing it.
   function_cache_.RemoveFunction(func);
   return GetEagerContext()->RemoveFunction(func);
+}
+
+tensorflow::Status ContextInterface::AddRemoveFunctionNotifier(
+    const std::string& func, std::function<void()> notifier) {
+  return GetEagerContext()->AddRemoveFunctionNotifier(func, notifier);
 }
 
 const tensorflow::FunctionDef* ContextInterface::FindFunctionDef(
@@ -1963,6 +1974,19 @@ void OperationInterface::MaybeInferInputAttrs() {
     }
   }
 }
+
+tensorflow::ImmediateExecutionContext* CreateTfrtEagerContext(
+    const TFE_ContextOptions* opts) {
+  auto* tfrt_context = new tfrt::tf::ContextInterface(
+      opts->session_options.options,
+      static_cast<tensorflow::ContextDevicePlacementPolicy>(
+          opts->device_placement_policy),
+      opts->async);
+  return tfrt_context;
+}
+
+REGISTER_EAGER_CONTEXT_CREATOR(TfrtEagerContext, "tfrt",
+                               CreateTfrtEagerContext);
 
 }  // namespace tf
 }  // namespace tfrt

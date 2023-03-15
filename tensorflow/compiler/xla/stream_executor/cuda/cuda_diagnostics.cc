@@ -69,7 +69,7 @@ tsl::StatusOr<DriverVersion> StringToDriverVersion(const std::string &value) {
   std::vector<std::string> pieces = absl::StrSplit(value, '.');
   if (pieces.size() < 2 || pieces.size() > 4) {
     return tsl::Status(
-        tsl::error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrFormat(
             "expected %%d.%%d, %%d.%%d.%%d, or %%d.%%d.%%d.%%d form "
             "for driver version; got \"%s\"",
@@ -81,21 +81,21 @@ tsl::StatusOr<DriverVersion> StringToDriverVersion(const std::string &value) {
   int patch = 0;
   if (!absl::SimpleAtoi(pieces[0], &major)) {
     return tsl::Status(
-        tsl::error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrFormat("could not parse major version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[0], value));
   }
   if (!absl::SimpleAtoi(pieces[1], &minor)) {
     return tsl::Status(
-        tsl::error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrFormat("could not parse minor version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[1].c_str(), value.c_str()));
   }
   if (pieces.size() == 3 && !absl::SimpleAtoi(pieces[2], &patch)) {
     return tsl::Status(
-        tsl::error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrFormat("could not parse patch version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[2], value));

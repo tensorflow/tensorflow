@@ -116,6 +116,10 @@ class Runtime {
       runtime_resource_fns_;
 };
 
+Runtime* GetGlobalRuntime();
+
+void SetGlobalRuntime(Runtime* runtime);
+
 }  // namespace tfrt_stub
 }  // namespace tensorflow
 

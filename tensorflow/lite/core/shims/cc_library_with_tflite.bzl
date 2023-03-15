@@ -1,5 +1,6 @@
 """Definitions for targets that use the TFLite shims."""
 
+load("//tensorflow:tensorflow.bzl", "clean_dep")
 load(
     "//tensorflow/lite:build_def.bzl",
     "tflite_copts_warnings",
@@ -143,7 +144,7 @@ def cc_library_with_tflite(
             name = name + "_opaque_delegate",
             srcs = srcs + tflite_jni_binaries,
             deps = deps + tflite_deps_renamed + _concat([select(map) for map in tflite_deps_selects_renamed]) + [
-                "//tensorflow/lite/core/shims:tflite_use_opaque_delegate",
+                clean_dep("//tensorflow/lite/core/shims:tflite_use_opaque_delegate"),
             ],
             **kwargs
         )
@@ -383,13 +384,13 @@ def custom_c_library_with_tflite(
 
     if experimental:
         hdrs = [
-            "//tensorflow/lite/core/shims:c/c_api.h",
-            "//tensorflow/lite/core/shims:c/c_api_experimental.h",
-            "//tensorflow/lite/core/shims:c/c_api_opaque.h",
+            clean_dep("//tensorflow/lite/core/shims:c/c_api.h"),
+            clean_dep("//tensorflow/lite/core/shims:c/c_api_experimental.h"),
+            clean_dep("//tensorflow/lite/core/shims:c/c_api_opaque.h"),
         ]
     else:
         hdrs = [
-            "//tensorflow/lite/core/shims:c/c_api.h",
+            clean_dep("//tensorflow/lite/core/shims:c/c_api.h"),
         ]
 
     cc_library_with_tflite(

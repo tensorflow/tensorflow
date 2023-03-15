@@ -30,6 +30,8 @@ from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
@@ -83,7 +85,7 @@ def tfadd_with_ckpt_saver(out_dir):
 def tfassert_eq(_):
   x = array_ops.placeholder(dtypes.int32, name='x_hold')
   y = array_ops.placeholder(dtypes.int32, name='y_hold')
-  control_flow_ops.Assert(
+  control_flow_assert.Assert(
       math_ops.equal(x, y), ['Expected x == y.'], name='assert_eq')
   math_ops.add(x, math_ops.negative(y), name='x_y_diff')
 
@@ -166,7 +168,7 @@ def tfvariable(_):
   old_x = x.value()
   with ops.control_dependencies([old_x]):
     new_x = x.assign_add([42.0])
-  array_ops.stack([old_x, new_x], name='result')
+  array_ops_stack.stack([old_x, new_x], name='result')
 
 
 def tfvariable_sequential_updates(_):

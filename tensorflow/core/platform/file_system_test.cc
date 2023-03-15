@@ -55,7 +55,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
     std::vector<string> split_path = str_util::Split(parsed_path, '/');
     // If the path is too long then we don't support it.
     if (split_path.size() > 3) {
-      return Status(tensorflow::error::INVALID_ARGUMENT, "Bad dirname");
+      return Status(absl::StatusCode::kInvalidArgument, "Bad dirname");
     }
     if (split_path.empty()) {
       return OkStatus();

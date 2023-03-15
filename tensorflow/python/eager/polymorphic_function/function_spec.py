@@ -39,8 +39,7 @@ BOUND_VALUE = object()
 
 
 def to_fullargspec(function_type: function_type_lib.FunctionType,
-                   default_values: Dict[str, Any],
-                   is_bound_method: bool) -> inspect.FullArgSpec:
+                   default_values: Dict[str, Any]) -> inspect.FullArgSpec:
   """Generates backwards compatible FullArgSpec from FunctionType."""
   args = []
   varargs = None
@@ -65,9 +64,6 @@ def to_fullargspec(function_type: function_type_lib.FunctionType,
       varargs = parameter.name
     elif parameter.kind is inspect.Parameter.VAR_KEYWORD:
       varkw = parameter.name
-
-  if (is_bound_method and (not args or args[0] != "self")):
-    args.insert(0, "self")
 
   return inspect.FullArgSpec(
       args,
@@ -203,8 +199,6 @@ class FunctionSpec(object):
     default_values = function_type_lib.FunctionType.get_default_values(
         python_function)
 
-    is_bound_method = inspect.ismethod(python_function)
-
     if input_signature is not None:
       input_signature = tuple(input_signature)
       function_type = function_type_lib.add_type_constraints(
@@ -218,7 +212,6 @@ class FunctionSpec(object):
     return FunctionSpec(
         function_type,
         default_values,
-        is_bound_method,
         is_pure=is_pure,
         jit_compile=jit_compile,
         name=name)
@@ -226,7 +219,6 @@ class FunctionSpec(object):
   @classmethod
   def from_fullargspec_and_signature(cls,
                                      fullargspec,
-                                     is_bound_method,
                                      input_signature,
                                      is_pure=False,
                                      name=None,
@@ -239,14 +231,12 @@ class FunctionSpec(object):
       function_type = function_type_lib.add_type_constraints(
           function_type, input_signature, default_values)
 
-    return FunctionSpec(function_type, default_values, is_bound_method, is_pure,
+    return FunctionSpec(function_type, default_values, is_pure,
                         name, jit_compile)
 
-  # TODO(fmuham): Remove redundant is_bound_method.
   def __init__(self,
                function_type,
                default_values,
-               is_bound_method,
                is_pure=False,
                name=None,
                jit_compile=None):
@@ -255,7 +245,6 @@ class FunctionSpec(object):
     Args:
       function_type: A FunctionType describing the python function signature.
       default_values: Dictionary mapping parameter names to default values.
-      is_bound_method: True if the underlying function is a bound method.
       is_pure: if True all input arguments (including variables and constants)
         will be converted to tensors and no variable changes allowed.
       name: Name of the function
@@ -263,9 +252,7 @@ class FunctionSpec(object):
     """
     self._function_type = function_type
     self._default_values = default_values
-    self._fullargspec = to_fullargspec(function_type, default_values,
-                                       is_bound_method)
-    self._is_bound_method = is_bound_method
+    self._fullargspec = to_fullargspec(function_type, default_values)
     self._is_pure = is_pure
     self._jit_compile = jit_compile
 
@@ -286,12 +273,6 @@ class FunctionSpec(object):
   @property
   def fullargspec(self):
     return self._fullargspec
-
-  # TODO(fmuham): Remove redundant property.
-  @property
-  def is_method(self):
-    """Returns True if the function is a method with a class instance bound."""
-    return self._is_bound_method
 
   # TODO(fmuham): Replace usages with FunctionType and remove.
   @property

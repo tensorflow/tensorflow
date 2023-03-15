@@ -11,7 +11,6 @@ cuda_py_test(
     name = "dense_update_ops_no_tsan_test",
     size = "small",
     srcs = ["dense_update_ops_no_tsan_test.py"],
-    tags = ["notsan"],
     # TODO (b/140294007): the test fails with XLA.
     xla_enable_strict_auto_jit = False,
     deps = [
@@ -77,6 +76,7 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:test_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -141,6 +141,7 @@ tf_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/eager:function",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

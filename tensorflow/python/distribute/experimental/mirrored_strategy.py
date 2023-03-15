@@ -182,6 +182,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     # strategy.extended.colocate_vars_with(variable)
     kwargs.pop('colocate_with', None)
 
+    # Ignore expected_shape, which is from the v1 Variable. Keras was somehow
+    # using the v1 Variable, but didn't specify that value particularly.
+    kwargs.pop('expected_shape', None)
+
     # Make sure to call DVariable initializer under the scope so that it will
     # have the proper replicated layout. The initial_value is multi-typed,
     # eg it can be a tensor, or a python/numpy type, or a callable that
@@ -192,11 +196,12 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     # TODO(scottzhu): The layout information should be injected via kwargs, or
     # lazily set later.
     initial_value = kwargs.pop('initial_value')
+    dtype = kwargs.get('dtype', None)
     def new_initial_value():
       if callable(initial_value):
-        init_var = ops.convert_to_tensor(initial_value())
+        init_var = ops.convert_to_tensor(initial_value(), dtype=dtype)
       else:
-        init_var = ops.convert_to_tensor(initial_value)
+        init_var = ops.convert_to_tensor(initial_value, dtype=dtype)
       rank = init_var.shape.rank
       return d_api.copy_to_mesh(
           init_var, layout.Layout.replicated(self._mesh, rank))
@@ -369,9 +374,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     d_args = nest.map_structure(map_fn, args)
     d_kwargs = nest.map_structure(map_fn, kwargs)
 
-    with self._container_strategy().scope():
-      with dtensor_util.DTensorReplicaContext(self._container_strategy()):
-        dtensor_result = fn(*d_args, **d_kwargs)
+    with d_api.default_mesh(self._mesh):
+      with self._container_strategy().scope():
+        with dtensor_util.DTensorReplicaContext(self._container_strategy()):
+          dtensor_result = fn(*d_args, **d_kwargs)
 
     return nest.map_structure(
         dtensor_util.DTensorDistributedValue,
@@ -398,6 +404,8 @@ def _convert_inputs_to_dtensor(inputs, mesh):
     return inputs.get_dtensor()
   elif isinstance(inputs, values_lib.DistributedValues):
     return _convert_per_replica_to_dtensor(inputs, mesh)
+  elif isinstance(inputs, input_util._DTensorIterator):   # pylint: disable=protected-access
+    return inputs
   else:
     # For the rest of the types, we will convert it to dtensor.
     # Any of the inputs will be replicate to all the devices.

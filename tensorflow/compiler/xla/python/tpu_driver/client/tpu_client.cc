@@ -337,7 +337,7 @@ Status PyTpuBuffer::CopyToHostAsync() {
       VLOG(1) << "Device to host transfer finished.";
       if (!status.ok()) {
         host_value->status =
-            Status(static_cast<tsl::error::Code>(status.code()),
+            Status(static_cast<absl::StatusCode>(status.code()),
                    status.error_message());
       }
 
@@ -737,7 +737,7 @@ PyTpuExecutable::ExecuteOnLocalDevices(
     if (!s.ok()) {
       if (failed == 0) {
         first_failure_status =
-            Status(static_cast<tsl::error::Code>(s.code()), s.error_message());
+            Status(static_cast<absl::StatusCode>(s.code()), s.error_message());
       }
       ++failed;
     }

@@ -36,8 +36,8 @@ func.func @reverse_reduce_map(%input: tensor<?x?xf32>, %init0: tensor<?x?xf32>,
 // CHECK:         gml_st.yield %[[SORTED]]
 
 // CHECK:       %[[FUSION1:.*]] = gml_st.fusion
-// CHECK-SAME:      (%[[BB_INIT1:.*]] = %[[INIT1]]: tensor<?xf32>,
-// CHECK-SAME:      %[[BB_INPUT:.*]] = %[[FUSION0]]: tensor<?x?xf32>
+// CHECK-SAME:      (%[[BB_INPUT:.*]] = %[[FUSION0]]: tensor<?x?xf32>,
+// CHECK-SAME:      %[[BB_INIT1:.*]] = %[[INIT1]]: tensor<?xf32>
 // CHECK:         %[[REDUCED:.*]] = linalg.reduce
 // CHECK-SAME:      ins(%[[BB_INPUT]]
 // CHECK-SAME:      outs(%[[BB_INIT1]]
@@ -103,6 +103,8 @@ func.func @reverse(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 // CHECK:       gml_st.fusion
 // CHECK:         thlo.reverse
 // CHECK:         gml_st.yield
+// CHECK:         parallel_tile_sizes = array<i64: 1, 8>
+// CHECK-SAME:    reduction_tile_sizes = array<i64: 0, 0>
 
 // -----
 
@@ -132,6 +134,8 @@ func.func @map(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 // CHECK:       gml_st.fusion
 // CHECK:         linalg.map
 // CHECK:         gml_st.yield
+// CHECK:         parallel_tile_sizes = array<i64: 1, 8>
+// CHECK-SAME:    reduction_tile_sizes = array<i64: 0, 0>
 
 // -----
 
@@ -153,6 +157,8 @@ func.func @map_non_unique_users(%arg: tensor<?x?xf32>,
 // CHECK:         gml_st.fusion
 // CHECK-COUNT-3:   linalg.map
 // CHECK:           gml_st.yield
+// CHECK:           parallel_tile_sizes = array<i64: 1, 8>
+// CHECK-SAME:      reduction_tile_sizes = array<i64: 0, 0>
 
 // -----
 
@@ -208,14 +214,15 @@ func.func @fused_matmul(%arg0: tensor<1x32xf32>, %arg1: tensor<32x10xf32>,
 // CHECK:         %[[C0:.*]] = arith.constant 0
 // CHECK:         %[[EMPTY:.*]] = tensor.empty()
 // CHECK:         gml_st.fusion
-// CHECK-SAME:        (%[[EMPTY_:.*]] = %[[EMPTY]]: tensor<1x10xf32>,
-// CHECK-SAME:        %[[ARG2_:.*]] = %[[ARG2]]: tensor<10xf32>
+// CHECK-SAME:        (%[[ARG2_:.*]] = %[[ARG2]]: tensor<10xf32>
 // CHECK-SAME:        %[[ARG0_:.*]] = %[[ARG0]]: tensor<1x32xf32>
 // CHECK-SAME:        %[[ARG1_:.*]] = %[[ARG1]]: tensor<32x10xf32>
+// CHECK-SAME:        %[[EMPTY_:.*]] = %[[EMPTY]]: tensor<1x10xf32>
 // CHECK:           %[[EXPANDED:.*]] = tensor.expand_shape %[[ARG2_]]
+// CHECK:           %[[TMP:.*]] = tensor.empty
 // CHECK:           %[[FILLED:.*]] = linalg.fill
 // CHECK-SAME:        ins(%[[C0]] : f32)
-// CHECK-SAME:        outs(%[[EMPTY_]] : tensor<1x10xf32>
+// CHECK-SAME:        outs(%[[TMP]] : tensor<1x10xf32>
 // CHECK:           %[[MATMUL:.*]] = linalg.matmul
 // CHECK-SAME:        ins(%[[ARG0_]], %[[ARG1_]]
 // CHECK-SAME:        outs(%[[FILLED]]
@@ -247,6 +254,8 @@ func.func @value_used_in_op_region(%arg0: tensor<i1>,
 // CHECK-SAME:        %[[EXTRACTED_:[a-zA-Z0-9]*]] = %[[EXTRACTED]]: i1
 // CHECK:         linalg.map
 // CHECK:           arith.select %[[EXTRACTED_]]
+// CHECK:           parallel_tile_sizes = array<i64: 8>
+// CHECK-SAME:      reduction_tile_sizes = array<i64: 0>
 
 // -----
 
@@ -270,3 +279,86 @@ func.func @variadic_fusion(%input1: tensor<16x32x64xf32>,
 // CHECK:    %[[REDUCE_RESULT:.*]]:2 = linalg.reduce
 // CHECK:    gml_st.yield %[[REDUCE_RESULT]]#0, %[[REDUCE_RESULT]]#1
 // CHECK:  return %[[FUSION_RESULT]]#0, %[[FUSION_RESULT]]#1
+
+// -----
+
+func.func @tensor_empty_init(%input: tensor<?xf32>)
+    -> tensor<?xf32> {
+  %c0 = arith.constant 0 : index
+  %d0 = tensor.dim %input, %c0 : tensor<?xf32>
+  %init = tensor.empty(%d0) : tensor<?xf32>
+
+  %mapped = linalg.map { math.exp }
+              ins(%input: tensor<?xf32>)
+              outs(%init: tensor<?xf32>)
+
+  %result = linalg.map { math.exp }
+              ins(%mapped: tensor<?xf32>)
+              outs(%init: tensor<?xf32>)
+
+  func.return %result : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @tensor_empty_init
+// CHECK-SAME:      %[[ARG0:.*]]: tensor<?xf32>
+// CHECK:         %[[C0:.*]] = arith.constant 0
+// CHECK:         %[[DIM:.*]] = tensor.dim
+// CHECK:         %[[EMPTY:.*]] = tensor.empty
+// CHECK:         gml_st.fusion
+// CHECK-SAME:        %[[ARG0_:.*]] = %[[ARG0]]: tensor<?xf32>
+// CHECK-SAME:        %[[DIM_:.*]] = %[[DIM]]: index
+// CHECK-SAME:        %[[EMPTY_:.*]] = %[[EMPTY]]
+// CHECK:           %[[TMP:.*]] = tensor.empty(%[[DIM_]])
+// CHECK:           %[[MAPPED:.*]] = linalg.map
+// CHECK-SAME:        outs(%[[TMP]]
+// CHECK:           %[[MAPPED0:.*]] = linalg.map
+// CHECK-SAME:        outs(%[[EMPTY_]]
+// CHECK:             parallel_tile_sizes = array<i64: 8>
+// CHECK-SAME:        reduction_tile_sizes = array<i64: 0>
+
+// -----
+
+func.func @multiple_users_linalg_fill(%arg0: tensor<2xf64>)
+    -> (tensor<f64>, tensor<f64>) {
+  %cst = arith.constant 0x7FF0000000000000 : f64
+  %0 = tensor.empty() : tensor<f64>
+  %1 = linalg.fill ins(%cst : f64) outs(%0 : tensor<f64>) -> tensor<f64>
+  %reduced = linalg.reduce { arith.minf }
+               ins(%arg0 : tensor<2xf64>)
+               outs(%1 : tensor<f64>)
+               dimensions = [0]
+  return %1, %reduced : tensor<f64>, tensor<f64>
+}
+
+// CHECK-LABEL: func @multiple_users_linalg_fill
+// CHECK:         %[[FILL0:.*]] = linalg.fill
+// CHECK:         %[[RESULT:.*]] = gml_st.fusion
+// CHECK:         %[[FILL1:.*]] = linalg.fill
+// CHECK:         linalg.reduce
+// CHECK-SAME:      outs(%[[FILL1]]
+// CHECK:         return %[[FILL0]], %[[RESULT]]
+
+// -----
+
+func.func @map_for_matmuls(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
+                           %arg2: tensor<?x?xf32>, %init: tensor<?x?xf32>)
+                           -> tensor<?x?xf32> {
+  %matmul0 = linalg.matmul
+               ins(%arg0, %arg1 : tensor<?x?xf32>, tensor<?x?xf32>)
+               outs(%init : tensor<?x?xf32>) -> tensor<?x?xf32>
+  %matmul1 = linalg.matmul
+               ins(%arg0, %arg2 : tensor<?x?xf32>, tensor<?x?xf32>)
+               outs(%init : tensor<?x?xf32>) -> tensor<?x?xf32>
+
+  %res = linalg.map { arith.addf }
+           ins(%matmul0, %matmul1 : tensor<?x?xf32>, tensor<?x?xf32>)
+           outs(%init : tensor<?x?xf32>)
+  func.return %res : tensor<?x?xf32>
+}
+
+// CHECK-LABEL: func @map_for_matmuls
+// CHECK:         gml_st.fusion
+// CHECK:           linalg.matmul
+// CHECK:         gml_st.fusion
+// CHECK:           linalg.matmul
+// CHECK:           linalg.map

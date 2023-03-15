@@ -28,6 +28,16 @@ struct MLIRImportOptions {
 
   // Whether to unconditionally use the shape set via _output_shapes on import.
   bool unconditionally_use_set_output_shapes = false;
+
+  // Apply default attributes from the op definition to the loaded op.
+  bool add_default_attributes = true;
+
+  //  If set, promote tf.VarHandleOp to resource arguments for all functions.
+  bool lift_variables = true;
+
+  // Load the model without restoring associated variables from disk. Enables
+  // loading raw programs without checkpoints.
+  bool allow_uninitialized_variables = false;
 };
 
 }  // namespace tensorflow

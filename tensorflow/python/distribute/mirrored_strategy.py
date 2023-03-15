@@ -44,6 +44,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -651,9 +652,13 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
     cond = lambda i, *args: i < iterations
     i = constant_op.constant(0)
-    loop_result = control_flow_ops.while_loop(
-        cond, body, [i] + initial_loop_values, name="",
-        parallel_iterations=1, back_prop=False, swap_memory=False,
+    loop_result = while_loop.while_loop(
+        cond,
+        body, [i] + initial_loop_values,
+        name="",
+        parallel_iterations=1,
+        back_prop=False,
+        swap_memory=False,
         return_same_structure=True)
     del self._outer_control_flow_context
 

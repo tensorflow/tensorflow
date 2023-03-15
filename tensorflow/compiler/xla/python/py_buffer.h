@@ -24,8 +24,8 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
-#include "pybind11/numpy.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/numpy.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_array.h"
 #include "tensorflow/compiler/xla/python/py_client.h"

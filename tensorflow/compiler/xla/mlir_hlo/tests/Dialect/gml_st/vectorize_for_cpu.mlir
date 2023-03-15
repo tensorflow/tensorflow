@@ -33,15 +33,15 @@ func.func @vectorize_tiled_matmul(%lhs: tensor<8x16xf32>,
 // CHECK-LABEL: func @vectorize_tiled_matmul
 
 // CHECK:         %[[OUT_READ:.*]] = vector.transfer_read %[[OUT:.*]]
-// CHECK:         %[[FOR:.*]] = scf.for {{.*}} iter_args(%[[ARG:.*]] =
+// CHECK:         %[[FOR:.*]]:2 = scf.for {{.*}} iter_args(%[[ARG0:.*]] = %{{.*}}, %[[ARG1:.*]] =
 // CHECK:           %[[LHS:.*]] = vector.transfer_read
 // CHECK-SAME:        : tensor<8x16xf32>, vector<8x2xf32>
 // CHECK:           %[[RHS:.*]] = vector.transfer_read
 // CHECK-SAME:        : tensor<16x4xf32>, vector<2x4xf32>
 // CHECK:           %[[CONTRACT:.*]] = vector.contract
-// CHECK-SAME:        %[[LHS]], %[[RHS]], %[[ARG]]
-// CHECK:           scf.yield %[[CONTRACT]]
-// CHECK:         vector.transfer_write %[[FOR]]
+// CHECK-SAME:        %[[LHS]], %[[RHS]], %[[ARG1]]
+// CHECK:           scf.yield %[[ARG0]], %[[CONTRACT]]
+// CHECK:         vector.transfer_write %[[FOR]]#1,  %[[FOR]]#0
 
 // -----
 
@@ -54,8 +54,8 @@ func.func @vectorize_static_matmul(%lhs: tensor<128x16xf32>,
   %c0 = arith.constant 0 : index
   %c128 = arith.constant 128 : index
   %c64 = arith.constant 64 : index
-  %0 = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c128, %c64) step (%c8, %c4)
-    outs (%out_ = %fill: tensor<128x64xf32>) {
+  %0 = scf.forall (%i, %j) = (%c0, %c0) to (%c128, %c64) step (%c8, %c4)
+    shared_outs (%out_ = %fill) -> (tensor<128x64xf32>) {
     %2 = tensor.extract_slice %lhs[%i, 0] [8, 16] [1, 1] :
             tensor<128x16xf32> to tensor<8x16xf32>
     %4 = tensor.extract_slice %rhs[0, %j] [16, 4] [1, 1] :
@@ -73,23 +73,24 @@ func.func @vectorize_static_matmul(%lhs: tensor<128x16xf32>,
                           outs(%13 : tensor<8x4xf32>) -> tensor<8x4xf32>
       scf.yield %14 : tensor<8x4xf32>
     }
-    %5 = gml_st.tile [%i, %j] [8, 4] [1, 1] : !gml_st.tile<8x4>
-    gml_st.set_yield %7 into %out_[%5] :
-            tensor<8x4xf32> into tensor<128x64xf32>[!gml_st.tile<8x4>]
-  } : tensor<128x64xf32>
+    scf.forall.in_parallel {
+      tensor.parallel_insert_slice %7 into %out_[%i, %j] [8, 4] [1, 1]  :
+              tensor<8x4xf32> into tensor<128x64xf32>
+    }
+  }
   return %0 : tensor<128x64xf32>
 }
 // CHECK-LABEL: func @vectorize_static_matmul
 
 // CHECK:         %[[OUT_READ:.*]] = vector.transfer_read {{.*}} : tensor<8x4xf32>, vector<8x4xf32>
-// CHECK:         %[[FOR:.*]] = scf.for {{.*}} iter_args(%[[ARG:.*]] = %[[OUT_READ]]
+// CHECK:         %[[FOR:.*]]:2 = scf.for {{.*}} iter_args(%[[ARG0:.*]] = %{{.*}}, %[[ARG1:.*]] = %[[OUT_READ]]
 // CHECK-NOT:       linalg.matmul
 // CHECK:           %[[LHS:.*]] = vector.transfer_read {{.*}} : tensor<128x16xf32>, vector<8x2xf32>
 // CHECK:           %[[RHS:.*]] = vector.transfer_read {{.*}} : tensor<16x64xf32>, vector<2x4xf32>
 // CHECK-NOT:       vector.transfer_read
-// CHECK:           %[[CONTRACT:.*]] = vector.contract {{{.*}}} %[[LHS]], %[[RHS]], %[[ARG]]
-// CHECK:           scf.yield %[[CONTRACT]]
-// CHECK:         vector.transfer_write %[[FOR]]
+// CHECK:           %[[CONTRACT:.*]] = vector.contract {{{.*}}} %[[LHS]], %[[RHS]], %[[ARG1]]
+// CHECK:           scf.yield %[[ARG0]], %[[CONTRACT]]
+// CHECK:         vector.transfer_write  %[[FOR]]#1,  %[[FOR]]#0
 
 // -----
 
@@ -254,80 +255,141 @@ func.func @dot(%lhs: tensor<17xf32>, %rhs: tensor<17xf32>,
 
 // -----
 
-func.func @vectorize_ite(%pred: i1, %lhs: tensor<8x1xf32>,
-    %rhs: tensor<8x1xf32>) -> tensor<8x1xf32> {
-  %0 = scf.if %pred -> (tensor<8x1xf32>) {
-    scf.yield %lhs : tensor<8x1xf32>
+func.func @dont_vectorize_any_ite(%arg0: i1, %arg1: tensor<8x1xf32>,
+    %arg2: tensor<8x1xf32>) -> tensor<8x1xf32> {
+  %0 = scf.if %arg0 -> (tensor<8x1xf32>) {
+    scf.yield %arg1 : tensor<8x1xf32>
   } else {
-    scf.yield %rhs : tensor<8x1xf32>
+    scf.yield %arg2 : tensor<8x1xf32>
   }
   return %0 : tensor<8x1xf32>
 }
 
-// CHECK-LABEL:  @vectorize_ite
-// CHECK-SAME:       %[[PRED:.*]]: i1, %[[LHS:.*]]: tensor<8x1xf32>, %[[RHS:.*]]: tensor<8x1xf32>
-// CHECK-DAG:      %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG:      %[[ZERO:.*]] = arith.constant 0.000000e+00 : f32
-// CHECK:          %[[IF:.*]] = scf.if %[[PRED]] -> (vector<8x1xf32>)
-// CHECK:            %[[TRANSFER:.*]] = vector.transfer_read %[[LHS]][%[[C0]], %[[C0]]], %[[ZERO]]
-// CHECK:            scf.yield %[[TRANSFER]]
-// CHECK:          else
-// CHECK:            %[[TRANSFER_0:.*]] = vector.transfer_read %[[RHS]][%[[C0]], %[[C0]]], %[[ZERO]]
-// CHECK:            scf.yield %[[TRANSFER_0]]
-// CHECK:          %[[EMPTY:.*]] = tensor.empty
-// CHECK:          %[[TRANSFER_1:.*]] = vector.transfer_write %[[IF]], %[[EMPTY]][%[[C0]], %[[C0]]]
-// CHECK:          return %[[TRANSFER_1]]
+// CHECK-LABEL: @dont_vectorize_any_ite
+// CHECK:         scf.if %{{.*}} -> (tensor<8x1xf32>)
 
 // -----
 
-func.func @vectorize_ite_and_scalar(%pred: i1, %lhs: tensor<8x1xf32>,
-    %lhs_scalar: f32, %rhs: tensor<8x1xf32>, %rhs_scalar: f32)
-    -> (tensor<8x1xf32>, f32) {
-  %0:2 = scf.if %pred -> (tensor<8x1xf32>, f32) {
-    scf.yield %lhs, %lhs_scalar: tensor<8x1xf32>, f32
+func.func @vectorize_ite_w_vector_producers(%arg0: i1, %arg1: vector<8x1xf32>,
+    %arg2: vector<8x1xf32>) -> tensor<8x1xf32> {
+  %c0 = arith.constant 0 : index
+  %0 = tensor.empty() : tensor<8x1xf32>
+  %1 = scf.if %arg0 -> (tensor<8x1xf32>) {
+    %2 = vector.transfer_write %arg1, %0[%c0, %c0] {in_bounds = [true, true]}
+        : vector<8x1xf32>, tensor<8x1xf32>
+    scf.yield %2 : tensor<8x1xf32>
   } else {
-    scf.yield %rhs, %rhs_scalar : tensor<8x1xf32>, f32
+    %2 = vector.transfer_write %arg2, %0[%c0, %c0] {in_bounds = [true, true]}
+        : vector<8x1xf32>, tensor<8x1xf32>
+    scf.yield %2 : tensor<8x1xf32>
   }
-  return %0#0, %0#1 : tensor<8x1xf32>, f32
-}
-
-// CHECK-LABEL:  @vectorize_ite_and_scalar
-// CHECK-SAME:       %[[PRED:.*]]: i1, %[[LHS:.*]]: tensor<8x1xf32>, %[[LHS_SCALAR:.*]]: f32, %[[RHS:.*]]: tensor<8x1xf32>, %[[RHS_SCALAR:.*]]: f32
-// CHECK-DAG:      %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG:      %[[CST:.*]] = arith.constant 0.000000e+00 : f32
-// CHECK:          %[[IF:.*]]:2 = scf.if %[[PRED]] -> (vector<8x1xf32>, f32)
-// CHECK:            %[[TRANSFER:.*]] = vector.transfer_read %[[LHS]][%[[C0]], %[[C0]]], %[[CST]]
-// CHECK:            scf.yield %[[TRANSFER]], %[[LHS_SCALAR]]
-// CHECK:          else
-// CHECK:            %[[TRANSFER_0:.*]] = vector.transfer_read %[[RHS]][%[[C0]], %[[C0]]], %[[CST]]
-// CHECK:            scf.yield %[[TRANSFER_0]], %[[RHS_SCALAR]]
-// CHECK:          %[[EMPTY:.*]] = tensor.empty
-// CHECK:          %[[TRANSFER_1:.*]] = vector.transfer_write %[[IF]]#0, %[[EMPTY]][%[[C0]], %[[C0]]]
-// CHECK:          return %[[TRANSFER_1]], %[[IF]]#1
-
-// -----
-
-func.func @vectorize_ite_w_casts(%pred: i1, %lhs: tensor<8x1xf32>,
-    %rhs: tensor<8x1xf32>) -> tensor<8x1xf32> {
-  %0 = scf.if %pred -> (tensor<?x1xf32>) {
-    %lhs_ = tensor.cast %lhs : tensor<8x1xf32> to tensor<?x1xf32>
-    scf.yield %lhs_ : tensor<?x1xf32>
-  } else {
-    %rhs_ = tensor.cast %rhs : tensor<8x1xf32> to tensor<?x1xf32>
-    scf.yield %rhs_ : tensor<?x1xf32>
-  }
-  %1 = tensor.cast %0 : tensor<?x1xf32> to tensor<8x1xf32>
   return %1 : tensor<8x1xf32>
 }
 
-// CHECK-LABEL:  @vectorize_ite_w_casts
-// CHECK-SAME:       %[[PRED:.*]]: i1, %[[LHS:.*]]: tensor<8x1xf32>, %[[RHS:.*]]: tensor<8x1xf32>
-// CHECK:          %[[RES:.*]] = scf.if %[[PRED]]
-// CHECK-SAME:         vector<8x1xf32>
-// CHECK:            %[[LHS_:.*]] = vector.transfer_read %[[LHS]]
-// CHECK:            scf.yield %[[LHS_]]
-// CHECK:          else
-// CHECK:            %[[RHS_:.*]] = vector.transfer_read %[[RHS]]
-// CHECK:            scf.yield %[[RHS_]]
-// CHECK:          %[[RES_:.*]] = vector.transfer_write %[[RES]]
-// CHECK:          return %[[RES_]]
+// CHECK-LABEL: @vectorize_ite_w_vector_producers
+// CHECK-SAME:      %[[ARG0:.*]]: i1, %[[ARG1:.*]]: vector<8x1xf32>, %[[ARG2:.*]]: vector<8x1xf32>
+// CHECK:         %[[IF:.*]] = scf.if %[[ARG0]] -> (vector<8x1xf32>)
+// CHECK:           scf.yield %[[ARG1]]
+// CHECK:         else
+// CHECK:           scf.yield %[[ARG2]]
+// CHECK:         %[[TRANSFER:.*]] = vector.transfer_write %[[IF]]
+// CHECK:         return %[[TRANSFER]]
+
+// -----
+
+func.func @vectorize_ite_w_vector_users(%arg0: i1, %arg1: tensor<8x1xf32>,
+    %arg2: tensor<8x1xf32>) -> vector<8x1xf32> {
+  %c0 = arith.constant 0 : index
+  %cst = arith.constant 0.000000e+00 : f32
+  %0 = scf.if %arg0 -> (tensor<8x1xf32>) {
+    scf.yield %arg1 : tensor<8x1xf32>
+  } else {
+    scf.yield %arg2 : tensor<8x1xf32>
+  }
+  %1 = vector.transfer_read %0[%c0, %c0], %cst {in_bounds = [true, true]}
+      : tensor<8x1xf32>, vector<8x1xf32>
+  return %1 : vector<8x1xf32>
+}
+
+// CHECK-LABEL: @vectorize_ite_w_vector_users
+// CHECK-SAME:      %[[ARG0:.*]]: i1, %[[ARG1:.*]]: tensor<8x1xf32>, %[[ARG2:.*]]: tensor<8x1xf32>
+// CHECK:         %[[IF:.*]] = scf.if %[[ARG0]] -> (vector<8x1xf32>)
+// CHECK:           %[[TRANSFER:.*]] = vector.transfer_read
+// CHECK:           scf.yield %[[TRANSFER]] : vector<8x1xf32>
+// CHECK:         else
+// CHECK:           %[[TRANSFER_0:.*]] = vector.transfer_read
+// CHECK:           scf.yield %[[TRANSFER_0]] : vector<8x1xf32>
+// CHECK:         return %[[IF]]
+
+// -----
+
+func.func @dont_vectorize_complex_ite(%arg0: i1,
+    %arg1: tensor<8x1xcomplex<f32>>, %arg2: tensor<8x1xcomplex<f32>>)
+    -> tensor<8x1xcomplex<f32>> {
+  %0 = scf.if %arg0 -> (tensor<8x1xcomplex<f32>>) {
+    scf.yield %arg1 : tensor<8x1xcomplex<f32>>
+  } else {
+    scf.yield %arg2 : tensor<8x1xcomplex<f32>>
+  }
+  return %0 : tensor<8x1xcomplex<f32>>
+}
+
+// CHECK-LABEL: @dont_vectorize_complex_ite
+// CHECK:         scf.if %{{.*}} -> (tensor<8x1xcomplex<f32>>)
+
+// -----
+
+func.func @vectorize_ite_w_scalar(%arg0: i1, %arg1: tensor<8x1xf32>, %arg2: f32,
+    %arg3: tensor<8x1xf32>, %arg4: f32) -> (vector<8x1xf32>, f32) {
+  %c0 = arith.constant 0 : index
+  %cst = arith.constant 0.000000e+00 : f32
+  %0:2 = scf.if %arg0 -> (tensor<8x1xf32>, f32) {
+    scf.yield %arg1, %arg2 : tensor<8x1xf32>, f32
+  } else {
+    scf.yield %arg3, %arg4 : tensor<8x1xf32>, f32
+  }
+  %1 = vector.transfer_read %0#0[%c0, %c0], %cst {in_bounds = [true, true]}
+      : tensor<8x1xf32>, vector<8x1xf32>
+  return %1, %0#1 : vector<8x1xf32>, f32
+}
+
+// CHECK-LABEL: @vectorize_ite_w_scalar
+// CHECK-SAME:      %[[ARG0:.*]]: i1, %[[ARG1:.*]]: tensor<8x1xf32>, %[[ARG2:.*]]: f32, %[[ARG3:.*]]: tensor<8x1xf32>, %[[ARG4:.*]]: f32
+// CHECK:         %[[IF:.*]]:2 = scf.if %[[ARG0]] -> (vector<8x1xf32>, f32)
+// CHECK:           %[[TRANSFER:.*]] = vector.transfer_read %[[ARG1]]
+// CHECK:           scf.yield %[[TRANSFER]], %[[ARG2]]
+// CHECK:         else
+// CHECK:           %[[TRANSFER_0:.*]] = vector.transfer_read %[[ARG3]]
+// CHECK:           scf.yield %[[TRANSFER_0]], %[[ARG4]]
+// CHECK:         return %[[IF]]#0, %[[IF]]#1
+
+// -----
+
+func.func @vectorize_ite_w_casts(%arg0: i1, %arg1: tensor<8x1xf32>,
+    %arg2: tensor<8x1xf32>) -> vector<8x1xf32> {
+  %c0 = arith.constant 0 : index
+  %cst = arith.constant 0.000000e+00 : f32
+  %0 = scf.if %arg0 -> (tensor<?x1xf32>) {
+    %cast_0 = tensor.cast %arg1 : tensor<8x1xf32> to tensor<?x1xf32>
+    scf.yield %cast_0 : tensor<?x1xf32>
+  } else {
+    %cast_0 = tensor.cast %arg2 : tensor<8x1xf32> to tensor<?x1xf32>
+    scf.yield %cast_0 : tensor<?x1xf32>
+  }
+  %cast = tensor.cast %0 : tensor<?x1xf32> to tensor<8x1xf32>
+  %1 = vector.transfer_read %cast[%c0, %c0], %cst {in_bounds = [true, true]}
+      : tensor<8x1xf32>, vector<8x1xf32>
+  return %1 : vector<8x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @vectorize_ite_w_casts
+// CHECK-SAME:      %[[ARG0:.*]]: i1, %[[ARG1:.*]]: tensor<8x1xf32>, %[[ARG2:.*]]: tensor<8x1xf32>
+// CHECK:         %[[IF:.*]] = scf.if %[[ARG0]] -> (vector<8x1xf32>)
+// CHECK:           %[[TRANSFER:.*]] = vector.transfer_read %[[ARG1]]
+// CHECK:           scf.yield %[[TRANSFER]]
+// CHECK:         else
+// CHECK:           %[[TRANSFER_0:.*]] = vector.transfer_read %[[ARG2]]
+// CHECK:           scf.yield %[[TRANSFER_0]]
+// CHECK:         return %[[IF]]

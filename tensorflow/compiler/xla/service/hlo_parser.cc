@@ -1628,7 +1628,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         }
         LOG(FATAL) << "Expect opcode to be CollectivePermute or "
                       "CollectivePermuteStart, but got "
-                   << HloOpcodeString(opcode);
+                   << opcode;
       }
       if (operands.size() != 4) {
         TokenError(
@@ -1650,7 +1650,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       LOG(FATAL) << "Expect opcode to be CollectivePermute or "
                     "CollectivePermuteStart, but got "
-                 << HloOpcodeString(opcode);
+                 << opcode;
     }
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
@@ -1683,8 +1683,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
               !is_async_shape_correct(operands[0]->shape())) {
             TokenError(
                 "AsyncUpdate and AsyncDone expect a single operand in the form "
-                "of "
-                "((async-operands), async-outputs, state).");
+                "of ((async-operands), async-outputs, state).");
             return nullptr;
           }
           async_wrapped_operand_shapes =
@@ -1720,7 +1719,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         }
         computations_.emplace_back(async_wrapped_builder.Build(root));
         async_computation = computations_.back().get();
-
       } else {
         attrs["calls"] = {/*required=*/true, AttrTy::kHloComputation,
                           &async_computation};

@@ -33,6 +33,7 @@ from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import data as data_types
 from tensorflow.python.util import nest
 
 
@@ -125,7 +126,7 @@ def model_iteration(model,
   # dataset at the end of each epoch.
   reset_dataset_after_each_epoch = False
   original_dataset = None
-  is_dataset = isinstance(data, (dataset_ops.DatasetV2, dataset_ops.DatasetV1))
+  is_dataset = isinstance(data, (data_types.DatasetV2, data_types.DatasetV1))
   if is_dataset:
     original_dataset = data
     if steps_per_epoch is None:
@@ -457,7 +458,7 @@ def convert_to_generator_like(data,
       if steps_per_epoch is None:
         steps_per_epoch = len(data)
     return data, steps_per_epoch
-  if isinstance(data, dataset_ops.DatasetV2):
+  if isinstance(data, data_types.DatasetV2):
     return dataset_ops.make_one_shot_iterator(data), steps_per_epoch
 
   # Create generator from NumPy or EagerTensor Input.
@@ -660,7 +661,7 @@ class EagerDatasetOrIteratorTrainingLoop(training_utils_v1.TrainingLoop):
     # Make sure that y, sample_weights, validation_split are not passed.
     training_utils_v1.validate_dataset_input(x, y, sample_weight,
                                              validation_split)
-    if (isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)) and
+    if (isinstance(x, (data_types.DatasetV1, data_types.DatasetV2)) and
         shuffle):
       training_utils_v1.verify_dataset_shuffled(x)
 

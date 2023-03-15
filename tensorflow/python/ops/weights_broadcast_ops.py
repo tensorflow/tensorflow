@@ -21,6 +21,7 @@ file includes operations for those broadcasting rules.
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sets
@@ -128,7 +129,7 @@ def assert_broadcastable(weights, values):
         lambda: _has_valid_nonscalar_shape(  # pylint: disable=g-long-lambda
             weights_rank, weights_shape, values_rank, values_shape),
         name="is_valid_shape")
-    return control_flow_ops.Assert(is_valid_shape, data, name=scope)
+    return control_flow_assert.Assert(is_valid_shape, data, name=scope)
 
 
 @tf_export("__internal__.ops.broadcast_weights", v1=[])

@@ -26,10 +26,12 @@ py_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:util",
+        "//tensorflow/python/autograph/converters:__init__",
         "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/impl",
         "//tensorflow/python/autograph/lang",
         "//tensorflow/python/autograph/operators",
-        "//tensorflow/python/autograph/utils",
+        "//tensorflow/python/autograph/utils:__init__",
+        "//tensorflow/python/autograph/utils:ag_logging",
     ],
 )

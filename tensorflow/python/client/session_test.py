@@ -40,6 +40,7 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import stack
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
@@ -1300,7 +1301,7 @@ class SessionTest(test_util.TensorFlowTestCase):
   @test_util.run_v1_only('b/120545219')
   def testNotEntered(self):
     # pylint: disable=protected-access
-    self.assertIsNone(ops._default_session_stack.get_default())
+    self.assertIsNone(stack._default_session_stack.get_default())
     # pylint: enable=protected-access
     with ops.device('/cpu:0'):
       sess = session.Session()
@@ -1816,7 +1817,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(AssertionError, 'Nesting violated'):
       sess1_controller.__exit__(None, None, None)
 
-    ops._default_session_stack.reset()
+    stack._default_session_stack.reset()
 
   def testInteractiveSessionNesting(self):
     sess1 = session.InteractiveSession()

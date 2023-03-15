@@ -14,7 +14,6 @@ cuda_py_test(
     srcs = ["array_ops_test.py"],
     shard_count = 10,
     tags = [
-        "noasan",  # times out
         "optonly",  # times out
     ],
     deps = [
@@ -385,10 +384,6 @@ cuda_py_test(
     name = "large_concat_op_test",
     size = "medium",
     srcs = ["large_concat_op_test.py"],
-    tags = [
-        "nomsan",
-        "notsan",
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -508,7 +503,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["scatter_nd_ops_test.py"],
     shard_count = 2,
-    tags = ["noasan"],  # http://b/32635055
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",

@@ -16,10 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <functional>
+#include <iostream>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <utility>
 #include <variant>
@@ -44,6 +47,7 @@ limitations under the License.
 // TODO(b/238999986): Remove this.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace pjrt {
 
@@ -100,7 +104,8 @@ static xla::Status PopulateExecutableCostAnalysisIfNeeded(
       const xla::PjRtValueType& property_value = property.second;
       CHECK(std::holds_alternative<float>(property_value))
           << property_value.index();
-      cost_analysis_property.type = PJRT_NamedValue::PJRT_NamedValue_kFloat;
+      cost_analysis_property.type =
+          PJRT_NamedValue_Type::PJRT_NamedValue_kFloat;
       cost_analysis_property.float_value = std::get<float>(property_value);
       cost_analysis_property.value_size = 1;
 
@@ -143,7 +148,8 @@ PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Error_GetCode_Args", PJRT_Error_GetCode_Args_STRUCT_SIZE,
       args->struct_size));
-  args->code = StatusCodeToPjrtErrorCode(args->error->status.code());
+  args->code = StatusCodeToPjrtErrorCode(
+      static_cast<absl::StatusCode>(args->error->status.code()));
   return nullptr;
 }
 
@@ -699,6 +705,72 @@ PJRT_Error* PJRT_LoadedExecutable_IsDeleted(
   return nullptr;
 }
 
+static xla::SendCallback CSendCallbackToCpp(
+    const PJRT_SendCallbackInfo& c_callback) {
+  return xla::SendCallback{
+      c_callback.channel_id,
+      [user_arg = c_callback.user_arg, callback = c_callback.send_callback](
+          const xla::PjRtTransferMetadata& metadata, xla::PjRtChunk input,
+          size_t total_size_in_bytes, bool done) -> xla::Status {
+        PJRT_TransferMetadata c_metadata{metadata.device_shape};
+        PJRT_Chunk c_chunk = ConvertFromCppChunk(std::move(input));
+
+        // TODO(b/267255088) retrieve up the callback error message.
+        bool success = callback(&c_metadata, &c_chunk, total_size_in_bytes,
+                                done, user_arg);
+        if (success) {
+          return tsl::OkStatus();
+        }
+        return xla::Status(tsl::error::UNKNOWN,
+                           "PJRT_SendCallback returned false (error).");
+      }};
+}
+
+// Create new libtpu C++ callbacks that does the following:
+// - convert libtpu PjRtTransferMetadata to PJRT_TransferMetadata, etc.
+// - call C API callback with the converted arguments
+static void CSendCallbackListsToCpp(
+    PJRT_SendCallbackInfo** c_lists, size_t outer_size, size_t inner_size,
+    std::vector<std::vector<xla::SendCallback>>& cpp_lists) {
+  cpp_lists.reserve(outer_size);
+  for (int i = 0; i < outer_size; ++i) {
+    std::vector<xla::SendCallback>& cpp_list = cpp_lists.emplace_back();
+    cpp_list.reserve(inner_size);
+    for (int j = 0; j < inner_size; ++j) {
+      cpp_list.push_back(CSendCallbackToCpp(c_lists[i][j]));
+    }
+  }
+}
+
+static xla::RecvCallback CRecvCallbackToCpp(
+    const PJRT_RecvCallbackInfo& c_callback) {
+  return xla::RecvCallback{
+      c_callback.channel_id,
+      [user_arg = c_callback.user_arg, callback = c_callback.recv_callback](
+          const xla::PjRtTransferMetadata& metadata,
+          std::unique_ptr<xla::CopyToDeviceStream> stream) {
+        Int64List c_dimensions;
+        ApiConverter::CreateVector(metadata.device_shape.dimensions(),
+                                   &c_dimensions);
+        PJRT_TransferMetadata c_metadata{metadata.device_shape};
+        PJRT_CopyToDeviceStream c_stream{std::move(stream)};
+        callback(&c_metadata, &c_stream, user_arg);
+      }};
+}
+
+static void CRecvCallbackListsToCpp(
+    PJRT_RecvCallbackInfo** c_lists, size_t outer_size, size_t inner_size,
+    std::vector<std::vector<xla::RecvCallback>>& cpp_lists) {
+  cpp_lists.reserve(outer_size);
+  for (int i = 0; i < outer_size; ++i) {
+    auto& cpp_list = cpp_lists.emplace_back();
+    cpp_list.reserve(inner_size);
+    for (int j = 0; j < inner_size; ++j) {
+      cpp_list.push_back(CRecvCallbackToCpp(c_lists[i][j]));
+    }
+  }
+}
+
 static std::vector<std::vector<xla::PjRtBuffer*>> Convert2DCBuffersToCppBuffers(
     PJRT_Buffer*** c_lists, size_t outer_size, size_t inner_size) {
   std::vector<std::vector<xla::PjRtBuffer*>> cpp_lists;
@@ -728,26 +800,66 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
   options.untuple_result = true;
   options.context = nullptr;
   options.multi_slice_config = nullptr;
+
   std::vector<std::vector<xla::PjRtBuffer*>> cpp_argument_lists =
       Convert2DCBuffersToCppBuffers(args->argument_lists, args->num_devices,
                                     args->num_args);
 
+  // Set send/recv callbacks in ExecuteOptions. The callbacks
+  // should call the C callbacks provided by the caller.
+  auto cpp_send_callbacks =
+      std::make_shared<std::vector<std::vector<xla::SendCallback>>>();
+  if (args->options->num_send_ops > 0) {
+    CSendCallbackListsToCpp(args->options->send_callbacks, args->num_devices,
+                            args->options->num_send_ops, *cpp_send_callbacks);
+    options.send_callbacks = *cpp_send_callbacks;
+    CHECK_EQ(options.send_callbacks.size(), args->num_devices);
+  }
+
+  auto cpp_recv_callbacks =
+      std::make_shared<std::vector<std::vector<xla::RecvCallback>>>();
+  if (args->options->num_recv_ops > 0) {
+    CRecvCallbackListsToCpp(args->options->recv_callbacks, args->num_devices,
+                            args->options->num_recv_ops, *cpp_recv_callbacks);
+    options.recv_callbacks = *cpp_recv_callbacks;
+    CHECK_EQ(options.recv_callbacks.size(), args->num_devices);
+  }
+
   if (args->execute_device == nullptr) {
     std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> cpp_buffer_lists;
-    if (args->device_complete_events != nullptr) {
+    if (args->device_complete_events != nullptr ||
+        !cpp_send_callbacks->empty() || !cpp_recv_callbacks->empty()) {
       std::optional<std::vector<xla::PjRtFuture<xla::Status>>> returned_futures;
       returned_futures.emplace();
       PJRT_ASSIGN_OR_RETURN(cpp_buffer_lists,
                             args->executable->get()->Execute(
                                 cpp_argument_lists, options, returned_futures));
-      for (int i = 0; i < returned_futures->size(); ++i) {
-        args->device_complete_events[i] =
-            new PJRT_Event{std::move((*returned_futures)[i])};
+      CHECK_EQ(returned_futures->size(), args->num_devices);
+
+      // We assume that these OnReady callbacks will fire even if
+      // returned_futures is destroyed first. This is true for the
+      // AsyncValue-based implementation of PjRtFuture.
+      if (!cpp_send_callbacks->empty() || !cpp_recv_callbacks->empty()) {
+        for (int i = 0; i < returned_futures->size(); ++i) {
+          (*returned_futures)[i].OnReady(
+              [cpp_send_callbacks, cpp_recv_callbacks](xla::Status status) {
+                // Keeps C++ callbacks alive until execution completes on all
+                // devices.
+              });
+        }
+      }
+
+      if (args->device_complete_events != nullptr) {
+        for (int i = 0; i < returned_futures->size(); ++i) {
+          args->device_complete_events[i] =
+              new PJRT_Event{std::move((*returned_futures)[i])};
+        }
       }
     } else {
       PJRT_ASSIGN_OR_RETURN(cpp_buffer_lists, args->executable->get()->Execute(
                                                   cpp_argument_lists, options));
     }
+
     for (int i = 0; i < cpp_buffer_lists.size(); ++i) {
       for (int j = 0; j < cpp_buffer_lists[i].size(); ++j) {
         args->output_lists[i][j] = new PJRT_Buffer{
@@ -763,6 +875,12 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
           "num_devices=%i",
           args->num_devices)};
     }
+    if (!cpp_send_callbacks->empty() || !cpp_recv_callbacks->empty()) {
+      return new PJRT_Error{xla::Unimplemented(
+          "PJRT_Executable_Execute doesn't support using send/recv callbacks "
+          "with `execute_device`.")};
+    }
+
     std::vector<std::unique_ptr<xla::PjRtBuffer>> cpp_buffer_list;
     std::optional<xla::PjRtFuture<xla::Status>> returned_future;
     bool fill_future = args->device_complete_events != nullptr;
@@ -1007,6 +1125,51 @@ PJRT_Error* PJRT_Buffer_UnsafePointer(PJRT_Buffer_UnsafePointer_Args* args) {
   return nullptr;
 }
 
+// ---------------------------- CopyToDeviceStream -----------------------------
+
+PJRT_Error* PJRT_CopyToDeviceStream_AddChunk(
+    PJRT_CopyToDeviceStream_AddChunk_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_CopyToDeviceStream_AddChunk_Args",
+      PJRT_CopyToDeviceStream_AddChunk_Args_STRUCT_SIZE, args->struct_size));
+
+  xla::PjRtFuture<xla::Status> future =
+      args->stream->stream->AddChunk(ConvertToCppChunk(*args->chunk));
+  args->transfer_complete = new PJRT_Event{std::move(future)};
+  return nullptr;
+}
+
+PJRT_Error* PJRT_CopyToDeviceStream_TotalBytes(
+    PJRT_CopyToDeviceStream_TotalBytes_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_CopyToDeviceStream_TotalBytes_Args",
+      PJRT_CopyToDeviceStream_TotalBytes_Args_STRUCT_SIZE, args->struct_size));
+
+  args->total_bytes = args->stream->stream->total_bytes();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_CopyToDeviceStream_GranuleSize(
+    PJRT_CopyToDeviceStream_GranuleSize_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_CopyToDeviceStream_GranuleSize_Args",
+      PJRT_CopyToDeviceStream_GranuleSize_Args_STRUCT_SIZE, args->struct_size));
+
+  args->granule_size_in_bytes = args->stream->stream->granule_size_in_bytes();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_CopyToDeviceStream_CurrentBytes(
+    PJRT_CopyToDeviceStream_CurrentBytes_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_CopyToDeviceStream_CurrentBytes_Args",
+      PJRT_CopyToDeviceStream_CurrentBytes_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->current_bytes = args->stream->stream->current_bytes();
+  return nullptr;
+}
+
 // -------------------------------- Events -------------------------------------
 
 PJRT_Error* PJRT_Event_Destroy(PJRT_Event_Destroy_Args* args) {
@@ -1158,16 +1321,16 @@ static void PopulatePjrtDeviceAttributes(PJRT_Device* c_device) {
     cur_attribute.name = name.c_str();
     cur_attribute.name_size = name.size();
     if (const std::string* string_val = std::get_if<std::string>(&value)) {
-      cur_attribute.type = PJRT_NamedValue::PJRT_NamedValue_kString;
+      cur_attribute.type = PJRT_NamedValue_Type::PJRT_NamedValue_kString;
       cur_attribute.string_value = string_val->c_str();
       cur_attribute.value_size = string_val->size();
     } else if (const std::vector<int64_t>* vector_val =
                    std::get_if<std::vector<int64_t>>(&value)) {
-      cur_attribute.type = PJRT_NamedValue::PJRT_NamedValue_kInt64List;
+      cur_attribute.type = PJRT_NamedValue_Type::PJRT_NamedValue_kInt64List;
       cur_attribute.int64_array_value = vector_val->data();
       cur_attribute.value_size = vector_val->size();
     } else if (const int64_t* int_value = std::get_if<int64_t>(&value)) {
-      cur_attribute.type = PJRT_NamedValue::PJRT_NamedValue_kInt64;
+      cur_attribute.type = PJRT_NamedValue_Type::PJRT_NamedValue_kInt64;
       cur_attribute.int64_value = *int_value;
       cur_attribute.value_size = 1;
     } else {

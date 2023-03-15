@@ -262,6 +262,19 @@ class PjRtCApiClient : public PjRtClient {
     return it->second;
   }
 
+  // Returns nullptr if `kPjRtCApiBypass` is not set, until the C API
+  // device manager is implemented.
+  // TODO(b/267063498) return the PjRtHostMemoryForDeviceManager for the wrapped
+  // client.
+  PjRtHostMemoryForDeviceManager* GetPjRtHostMemoryForDeviceManager()
+      const override {
+    if (kPjRtCApiBypass) {
+      VLOG(1) << "PJRT C API BYPASS: GetPjRtHostMemoryForDeviceManager";
+      return wrapped_->GetPjRtHostMemoryForDeviceManager();
+    }
+    return nullptr;
+  }
+
  private:
   void InitDevices();
 
@@ -460,7 +473,28 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
     return loaded_executable_.get();
   }
 
+  // True if the `returned_futures` output parameter is supported in the
+  // Execute*() methods.
+  bool IsReturnedFutureSupported() const override { return true; }
+
+  // std::function version of PJRT_SendCallback
+  using SendCallbackFunction =
+      std::function<bool(PJRT_TransferMetadata*, PJRT_Chunk*, size_t, bool)>;
+  // std::function version of PJRT_RecvCallback
+  using RecvCallbackFunction =
+      std::function<void(PJRT_TransferMetadata*, PJRT_CopyToDeviceStream*)>;
+
  private:
+  // Groups data needed to support send/recv execution callbacks.
+  struct SendRecvCallbackData {
+    std::vector<std::vector<PJRT_SendCallbackInfo>> c_send_callbacks;
+    std::vector<PJRT_SendCallbackInfo*> c_send_callback_lists;
+    std::vector<std::vector<PJRT_RecvCallbackInfo>> c_recv_callbacks;
+    std::vector<PJRT_RecvCallbackInfo*> c_recv_callback_lists;
+    std::vector<SendCallbackFunction> send_callback_functions;
+    std::vector<RecvCallbackFunction> recv_callback_functions;
+  };
+
   // Gets common Execute_Args between Execute, ExecuteSharded and
   // ExecutePortable. device_complete_events in the return is set if the input
   // device_complete_events has value.
@@ -471,7 +505,8 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
       std::vector<PJRT_Buffer**>& c_arguments,
       std::vector<std::vector<PJRT_Buffer*>>& c_output_lists_storage,
       std::vector<PJRT_Buffer**>& c_output_lists,
-      std::optional<std::vector<PJRT_Event*>>& device_complete_events);
+      std::optional<std::vector<PJRT_Event*>>& device_complete_events,
+      SendRecvCallbackData& send_recv_callback_data);
 
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteWithSingleDevice(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
@@ -529,8 +564,21 @@ class PjRtCApiDeviceTopology : public PjRtDeviceTopology {
       c_topology_;
 };
 
+class CApiCopyToDeviceStream : public CopyToDeviceStream {
+ public:
+  CApiCopyToDeviceStream(PJRT_CopyToDeviceStream* c_stream,
+                         const PJRT_Api* c_api);
+
+  PjRtFuture<Status> AddChunk(PjRtChunk chunk) override;
+
+ private:
+  PJRT_CopyToDeviceStream* c_stream_;
+  const PJRT_Api* c_api_;
+};
+
 StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
-    absl::string_view device_type);
+    absl::string_view device_type,
+    const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {});
 
 StatusOr<std::unique_ptr<PjRtDeviceTopology>> GetCApiTopology(
     absl::string_view device_type);

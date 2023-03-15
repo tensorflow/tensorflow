@@ -75,6 +75,7 @@ cc_library(
     deps = [
         ":next_pluggable_device",
         ":next_pluggable_device_api",
+        ":pjrt_compile_on_demand_op",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
@@ -94,6 +95,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":next_pluggable_device",
         ":next_pluggable_device_api",
         ":utils",
         "//tensorflow/c:tf_status_helper",
@@ -329,7 +331,6 @@ cc_library(
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/experimental/next_pluggable_device:c_api_hdrs",
         "//tensorflow/core:framework",
-        "//tensorflow/core/platform:status",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
     ],

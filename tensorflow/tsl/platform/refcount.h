@@ -170,6 +170,17 @@ class WeakRefCounted : public RefCounted {
       return notifier_id;
     }
 
+    int DupNotifier(int notifier_id) {
+      mutex_lock ml(mu);
+      auto iter = notifiers.find(notifier_id);
+      if (iter != notifiers.end()) {
+        int notifier_id = next_notifier_id++;
+        notifiers.emplace(notifier_id, iter->second);
+        return notifier_id;
+      }
+      return 0;
+    }
+
     void RemoveNotifier(int notifier_id) {
       mutex_lock ml(mu);
       notifiers.erase(notifier_id);
@@ -208,9 +219,17 @@ class WeakPtr {
     }
   }
 
-  // NOTE(feyu): change data_ to a IntrusivePtr to make WeakPtr copyable.
-  WeakPtr(const WeakPtr& other) = delete;
-  WeakPtr& operator=(const WeakPtr& other) = delete;
+  WeakPtr(const WeakPtr& other) { operator=(other); }
+
+  WeakPtr& operator=(const WeakPtr& other) {
+    if (data_ != nullptr && notifier_id_ != 0) {
+      data_->RemoveNotifier(notifier_id_);
+    }
+    other.data_->Ref();
+    data_.reset(other.data_.get());
+    notifier_id_ = data_->DupNotifier(other.notifier_id_);
+    return *this;
+  }
 
   WeakPtr(WeakPtr&& other) {
     data_ = std::move(other.data_);

@@ -49,6 +49,7 @@ enum class GpuApi {
 
 enum class AdrenoGpu {
   // Adreno 7xx series
+  kAdreno740,
   kAdreno730,
   // Adreno 6xx series
   kAdreno685,
@@ -235,6 +236,7 @@ enum class MaliGpu {
   kG510,
   kG610,
   kG710,
+  kG715,
 };
 
 struct MaliInfo {
@@ -253,6 +255,7 @@ struct MaliInfo {
   bool IsValhallGen1() const;
   bool IsValhallGen2() const;
   bool IsValhallGen3() const;
+  bool IsValhallGen4() const;
   bool IsValhall() const;
 
   // returns approximate compute units count using GPU name

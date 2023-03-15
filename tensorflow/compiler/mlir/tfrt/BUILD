@@ -112,31 +112,26 @@ cc_library(
     deps = [
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tf2xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/xla/mlir/backends/cpu/transforms:passes",
-        "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_passes",
-        "//tensorflow/compiler/xla/mlir_hlo:gml_st_transforms",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",
         "//tensorflow/compiler/xla/runtime:compiler",
         "//tensorflow/core:ops",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithTransforms",
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//mlir:BufferizationToMemRef",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ComplexToStandard",
         "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:ShapeTransforms",
-        "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:Transforms",
-        "@llvm-project//mlir:VectorToSCF",
     ],
     alwayslink = 1,
 )
@@ -380,6 +375,15 @@ cc_library(
 )
 
 cc_library(
+    name = "tfrt_pipeline_options",
+    hdrs = ["transforms/tfrt_pipeline_options.h"],
+    deps = [
+        ":tfrt_compile_options",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
     name = "tf_to_tfrt",
     srcs = [
         "transforms/cross_device_transfer.cc",
@@ -409,7 +413,7 @@ cc_library(
         ":tensor_array_side_effect_analysis",
         ":tf_jitrt_opdefs",
         ":tf_jitrt_pipeline",
-        ":tfrt_compile_options",
+        ":tfrt_pipeline_options",
         ":transforms/gpu_passes",
         ":transforms/set_shape_invariant_in_while_ops",
         "@llvm-project//llvm:Support",

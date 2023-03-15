@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_
 
 #include <memory>
+#include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -329,7 +330,7 @@ namespace tf_executor {
 
 // Creates a pass to chain control outputs of while loop body.
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateTFExecutorConvertControlToDataOutputsPass();
+CreateTFExecutorConvertControlToDataOutputsPass(bool coarse_tpu_tokens = false);
 
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorCheckControlDependenciesPass();
@@ -447,6 +448,15 @@ CreateAnnotateParameterReplicationPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateMarkOpsForOutsideCompilationPass();
 
+// Creates a pass that extracts outside compilation (Host ops inside device
+// cluster) at head/tail of Device cluster to run before/after XLA computation.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateExtractHeadTailOutsideCompilationPass();
+
+// Creates a pass that extract outside compilation (Host ops inside cevice
+// cluster) ops to a separate parallel_execute region to run on CPU.
+std::unique_ptr<OperationPass<ModuleOp>> CreateExtractOutsideCompilationPass();
+
 // Creates a pass that merges control flow with similar predicates.
 std::unique_ptr<OperationPass<ModuleOp>> CreateMergeControlFlowPass();
 
@@ -555,11 +565,6 @@ CreateTPUVariableRuntimeReformattingPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateOutsideCompiledToHostLaunchPass();
 
-// Creates a pass that extracts outside compilation (CPU ops inside TPU cluster)
-// at head/tail of TPU cluster to run before/after TPU computation.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateTPUExtractHeadTailOutsideCompilationPass();
-
 // Creates a pass that expands outside compilation cluster at the head/tail of
 // TPU computation by adding outside compilation attribute to identity/cast ops
 // that are only used for host computation.
@@ -570,11 +575,6 @@ CreateTPUHostComputationExpansionPass();
 // correct ops are invoked during training and evaluation.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUUpdateEmbeddingEnqueueOpInputsPass();
-
-// Creates a pass that extract outside compilation (CPU ops inside TPU cluster)
-// ops to a separate parallel_execute region to run on CPU.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateTPUExtractOutsideCompilationPass();
 
 // Creates a pass that propagates TPU devices to users.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTPUDevicePropagationPass();

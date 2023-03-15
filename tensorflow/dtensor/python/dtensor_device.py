@@ -193,7 +193,7 @@ class DTensorDevice(object):
       RuntimeError: When not called eagerly.
     """
     if not context.executing_eagerly():
-      raise RuntimeError("Pack must be called eagerly.")
+      raise RuntimeError("`pack` must be called eagerly.")
     if any(
         issubclass(type(t), resource_variable_ops.BaseResourceVariable)
         for t in tensors):
@@ -244,7 +244,7 @@ class DTensorDevice(object):
       RuntimeError: When not called eagerly.
     """
     if not context.executing_eagerly():
-      raise RuntimeError("Unpack must be called eagerly.")
+      raise RuntimeError("`unpack` must be called eagerly.")
     if issubclass(type(dtensor), resource_variable_ops.BaseResourceVariable):
       raise TypeError(
           "Received Variable input to unpack, Variable is not supported.")
@@ -284,7 +284,7 @@ class DTensorDevice(object):
       RuntimeError: When not called eagerly.
     """
     if not context.executing_eagerly():
-      raise RuntimeError("FetchLayout must be called eagerly.")
+      raise RuntimeError("`fetch_layout` must be called eagerly.")
     if issubclass(type(dtensor), resource_variable_ops.BaseResourceVariable):
       dtensor = dtensor.read_value()
     try:
@@ -307,7 +307,12 @@ class DTensorDevice(object):
 
     Returns:
       bool, True if the given tensor is a DTensor.
+
+    Raises:
+      RuntimeError: When not called eagerly.
     """
+    if not context.executing_eagerly():
+      raise RuntimeError("`is_dtensor` must be called eagerly.")
     if not tensor_util.is_tensor(tensor):
       return False
     if isinstance(tensor, variables.Variable):
@@ -318,17 +323,6 @@ class DTensorDevice(object):
         tensor,
         self._device_info,
     )
-
-  def set_same_shape_policy(self, enabled):
-    """Guess layouts using the layouts of other tensors with the same shape.
-
-    This is the default behavior, and is quite safe. The `default_layout` scope
-    overrides shape-based guesses.
-
-    Args:
-      enabled: A boolean indicating whether to use the policy.
-    """
-    _pywrap_dtensor_device.SetSameShapePolicy(self._device_info, enabled)
 
   def set_tpu_core_ids(self, mesh_name, tpu_core_ids):
     """Sets the singleton global device ID-to-physical core ID map.
@@ -372,16 +366,20 @@ class DTensorDevice(object):
         self._device_info,
         tpu_core_locations)
 
-  def _get_function_cache_hit_and_miss_count(self):
+  def _get_function_cache_stats(self):
     """Returns the number of cache hit and miss for function compilation.
 
     Returns:
-      A dictionary keyed with miss and hit, corresponding to the cache hit and
+      A dictionary.
+        'miss': number of cache misses;
+        'hit': number of cache hits; and
+        'size': size of cache;
       miss count.
     """
-    return _pywrap_dtensor_device.GetFunctionCacheHitAndMissCount(
+    return _pywrap_dtensor_device.GetFunctionCacheStats(
         context.context()._handle,  # pylint: disable=protected-access,
-        self._device_info)
+        self._device_info,
+    )
 
   def set_iterator_element_layouts(self, iterator_resource_dtensor,
                                    layouts: List[layout_lib.Layout]):

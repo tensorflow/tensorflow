@@ -16,9 +16,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/dtensor/cc/dtensor_device.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -38,13 +39,13 @@ using tensorflow::dtensor::ExperimentalClearDefaultMesh;
 using tensorflow::dtensor::ExperimentalSetDefaultLayout;
 using tensorflow::dtensor::ExperimentalSetDefaultMesh;
 using tensorflow::dtensor::FetchLayout;
-using tensorflow::dtensor::GetFunctionCacheHitAndMissCount;
+using tensorflow::dtensor::GetFunctionCacheStats;
 using tensorflow::dtensor::IsDTensor;
 using tensorflow::dtensor::IsSparseDTensor;
+using tensorflow::dtensor::Layout;
 using tensorflow::dtensor::Mesh;
 using tensorflow::dtensor::Pack;
 using tensorflow::dtensor::SetIteratorElementLayouts;
-using tensorflow::dtensor::SetSameShapePolicy;
 using tensorflow::dtensor::SetTPUCoreIDs;
 using tensorflow::dtensor::SparsePack;
 using tensorflow::dtensor::TPUCoreIDsToLocations;
@@ -87,6 +88,7 @@ void ConvertToTensor(TFE_Context* ctx, PyObject* input,
 }
 
 PYBIND11_MODULE(_pywrap_dtensor_device, m) {
+  pybind11_protobuf::ImportNativeProtoCasters();
   m.def("Allocate", [](const std::string& name) {
     TFE_CustomDevice* device = new TFE_CustomDevice;
     std::unique_ptr<PyObject, decltype(&PyXDecref)> device_capsule(
@@ -175,11 +177,6 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       PyErr_SetString(PyExc_ValueError, TF_Message(status.get()));
       throw py::error_already_set();
     }
-  });
-  m.def("SetSameShapePolicy", [](const py::capsule& device_info, bool enabled) {
-    SetSameShapePolicy(
-        PyCapsule_GetPointer(device_info.ptr(), "TFE_CustomDevice_DeviceInfo"),
-        enabled);
   });
   m.def("SetTPUCoreIDs", [](const py::capsule& device_info,
                             const std::string& mesh_name,
@@ -356,11 +353,11 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
     }
     return is_sparse;
   });
-  m.def("GetFunctionCacheHitAndMissCount", [](const py::handle& context,
-                                              const py::capsule& device_info) {
+  m.def("GetFunctionCacheStats", [](const py::handle& context,
+                                    const py::capsule& device_info) {
     std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
         TF_NewStatus(), TF_DeleteStatus);
-    return GetFunctionCacheHitAndMissCount(
+    return GetFunctionCacheStats(
         static_cast<TFE_Context*>(PyCapsule_GetPointer(context.ptr(), nullptr)),
         device_info, status.get());
   });
@@ -384,14 +381,41 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
         });
   py::class_<Mesh>(m, "Mesh")
       .def(py::init(&Mesh::CreateMesh))
+      .def(py::init([](const tensorflow::dtensor::MeshProto& proto) {
+             auto mesh = Mesh::ParseFromProto(proto);
+             if (!mesh.ok()) {
+               throw py::value_error(mesh.status().error_message());
+             }
+             return *mesh;
+           }),
+           "Returns a Mesh from a MeshProto.")
+      .def(py::init([](std::string_view mesh_str) {
+             auto mesh = Mesh::FromString(mesh_str);
+             if (!mesh.ok()) {
+               throw py::value_error(mesh.status().error_message());
+             }
+             return *mesh;
+           }),
+           "Returns a Mesh from a string.")
       .def_property_readonly("name", &Mesh::name)
       .def_property_readonly("dim_names", &Mesh::MeshDimNames)
       .def_property_readonly("size", &Mesh::num_devices)
       .def("__contains__", &Mesh::IsMeshDim, py::arg("dim_name"))
+      .def("__eq__", &Mesh::operator==)
       .def("to_string", &Mesh::ToString,
            "Returns string representation of Mesh.")
       .def("contains_dim", &Mesh::IsMeshDim, py::arg("dim_name"),
            "Returns True if a Mesh contains the given dimension name.")
+      .def(
+          "dim_size",
+          [](const Mesh& mesh, std::string_view name) {
+            auto dim_size = mesh.dim_size(name);
+            if (!dim_size.ok()) {
+              throw py::value_error(dim_size.status().error_message());
+            }
+            return *dim_size;
+          },
+          py::arg("dim_name"), "Returns the size of mesh dimension.")
       .def("device_type", &Mesh::device_type,
            "Returns the device_type of a Mesh.")
       .def("num_local_devices", &Mesh::num_local_devices,
@@ -403,9 +427,71 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def("local_device_ids", &Mesh::local_device_ids,
            "Returns a list of local device IDs.")
       .def("local_devices", &Mesh::local_devices,
-           "Returns a list of local device specs represented as strings.")
+           "Returns a list of local device specs "
+           "represented as strings.")
+      .def("global_device_ids", &Mesh::global_device_ids,
+           "Returns a list of global device IDs.")
+      .def("global_devices", &Mesh::global_devices,
+           "Returns a list of global device specs "
+           "represented as strings.")
       .def("shape", &Mesh::dim_sizes, "Returns the shape of the mesh.")
       .def("use_xla_spmd", &Mesh::use_xla_spmd,
-           "Returns True if Mesh will use XLA for SPMD instead of DTensor "
-           "SPMD.");
+           "Returns True if Mesh will use XLA for SPMD "
+           "instead of DTensor SPMD.")
+      .def("as_proto", &Mesh::ToProto,
+           "Returns the MeshProto protobuf message.")
+      .def("device_location", [](const Mesh& mesh, int device_id) {
+        auto location = mesh.device_location(device_id);
+        if (!location.ok()) {
+          throw py::value_error(location.status().error_message());
+        }
+        return std::vector<int64_t>(location->begin(), location->end());
+      });
+  py::class_<Layout>(m, "Layout")
+      .def(py::init(
+          [](const std::vector<std::string>& sharding_specs, const Mesh& mesh) {
+            auto layout = Layout::GetLayout(sharding_specs, mesh);
+            if (!layout.ok()) {
+              throw py::value_error(layout.status().error_message());
+            }
+            return *layout;
+          }))
+      .def(py::init([](const tensorflow::dtensor::LayoutProto& proto) {
+             auto layout = Layout::FromProto(proto);
+             if (!layout.ok()) {
+               throw py::value_error(layout.status().error_message());
+             }
+             return *layout;
+           }),
+           "Returns a Layout from a LayoutProto.")
+      .def(py::init([](std::string_view layout_str) {
+             auto layout = Layout::FromString(layout_str);
+             if (!layout.ok()) {
+               throw py::value_error(layout.status().error_message());
+             }
+             return *layout;
+           }),
+           "Returns a Layout from a string.")
+      .def(py::init(&Layout::ReplicatedOnMesh), py::arg("mesh"),
+           py::arg("rank"), "Returns a replicated layout.")
+      .def(py::init(&Layout::BatchShardedOnMesh), py::arg("mesh"),
+           py::arg("rank"), py::arg("batch_dim"), py::arg("axis"),
+           "Returns a batch sharded layout.")
+      .def("__eq__", &Layout::operator==)
+      .def("as_proto", &Layout::ToProto)
+      .def("to_string", &Layout::ToString)
+      .def_property_readonly("sharding_specs", &Layout::sharding_spec_strs)
+      .def_property_readonly("rank", &Layout::rank)
+      .def_property_readonly("mesh", &Layout::mesh)
+      .def("is_fully_replicated", &Layout::IsFullyReplicated,
+           "Returns True if all tensor axes are replicated.")
+      .def("is_batch_parallel",
+           [](const Layout& layout) { return layout.IsBatchParallel(); })
+      .def(
+          "num_shards",
+          [](const Layout& layout, int dim) {
+            return layout.num_shards_for_dim(dim);
+          },
+          py::arg("idx"),
+          "Returns the number of shards for tensor dimension `idx`.");
 }

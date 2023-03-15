@@ -236,9 +236,12 @@ void TF_CoordinationServiceDeleteKeyValue(const char* key,
 }
 
 // ----------------------------  PJRT  -----------------------------------------
-void TF_CreateAndSetPjRtCApiClient(const char* device_type, TF_Status* status) {
+void TF_CreateAndSetPjRtCApiClient(const char* device_type, TF_Status* status,
+                                   PJRT_NamedValue* create_options,
+                                   int num_options) {
   tsl::StatusOr<std::unique_ptr<xla::PjRtClient>> pjrt_client =
-      xla::GetCApiClient(device_type);
+      xla::GetCApiClient(device_type, pjrt::ConvertFromPjRtNamedValueList(
+                                          create_options, num_options));
   if (!pjrt_client.ok()) {
     tensorflow::Set_TF_Status_from_Status(status, pjrt_client.status());
     return;

@@ -10,6 +10,9 @@ func.func @unranked_null() {
 // CHECK: [[DESC_0:%.*]] = llvm.mlir.undef : !llvm.struct<(i64, ptr<i8>)>
 // CHECK: [[DESC_1:%.*]] = llvm.insertvalue [[C0]], [[DESC_0]][0]
 // CHECK: [[PTR:%.*]] = llvm.alloca {{.*}} x i8
+// CHECK: [[NULL:%.*]] = llvm.mlir.null : !llvm.ptr<f32>
+// CHECK: [[BITCAST:%.*]] = llvm.bitcast [[PTR]] : !llvm.ptr<i8> to !llvm.ptr<ptr<f32>>
+// CHECK: llvm.store [[NULL]], [[BITCAST]] : !llvm.ptr<ptr<f32>>
 // CHECK: [[DESC_2:%.*]] = llvm.insertvalue [[PTR]], [[DESC_1]][1]
 
 // -----

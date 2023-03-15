@@ -487,6 +487,7 @@ cc_library(
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/runtime:cpu_event",
         "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
@@ -531,6 +532,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/runtime:cpu_event",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:computation_placer_hdr",
         "//tensorflow/compiler/xla/service:dump",
@@ -668,6 +670,33 @@ cc_library(
 )
 
 cc_library(
+    name = "tf_pjrt_client",
+    srcs = ["tf_pjrt_client.cc"],
+    hdrs = ["tf_pjrt_client.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_client",
+        ":pjrt_future",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+xla_cc_test(
+    name = "tf_pjrt_client_test",
+    srcs = ["tf_pjrt_client_test.cc"],
+    deps = [
+        ":tf_pjrt_client",
+        ":tfrt_cpu_pjrt_client",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "host_callback",
     srcs = ["host_callback.cc"],
     hdrs = ["host_callback.h"],
@@ -697,3 +726,12 @@ tf_proto_library(
     ],
     visibility = ["//visibility:public"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "compile_options_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":compile_options_proto"],
+# )
+# copybara:uncomment_end

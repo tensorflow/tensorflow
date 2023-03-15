@@ -24,11 +24,12 @@ from tensorflow.core.config import flags
 from tensorflow.core.protobuf import fingerprint_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.saved_model import fingerprinting
 from tensorflow.python.saved_model import save
-from tensorflow.python.saved_model.fingerprinting import read_fingerprint
 from tensorflow.python.saved_model.pywrap_saved_model import constants
 from tensorflow.python.trackable import autotrackable
 
@@ -51,6 +52,14 @@ class FingerprintingTest(test.TestCase):
     root = autotrackable.AutoTrackable()
     root.f = def_function.function(
         lambda x: 2. * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    return root
+
+  def _create_model_with_data(self):
+    root = autotrackable.AutoTrackable()
+    root.x = constant_op.constant(1.0, dtype=dtypes.float32)
+    root.f = def_function.function(
+        lambda x: root.x * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
     return root
 
@@ -119,7 +128,7 @@ class FingerprintingTest(test.TestCase):
 
   def test_read_fingerprint_api(self):
     save_dir = self._create_saved_model()
-    fingerprint = read_fingerprint(save_dir)
+    fingerprint = fingerprinting.read_fingerprint(save_dir)
 
     fingerprint_def = self._read_fingerprint(
         file_io.join(save_dir, constants.FINGERPRINT_FILENAME)
@@ -142,11 +151,33 @@ class FingerprintingTest(test.TestCase):
     self.assertEqual(
         fingerprint.checkpoint_hash, fingerprint_def.checkpoint_hash
     )
-    self.assertEqual(fingerprint.version, fingerprint_def.version.producer)
+    self.assertEqual(
+        fingerprint.version.producer, fingerprint_def.version.producer
+    )
 
   def test_read_fingerprint_api_invalid(self):
-    with self.assertRaisesRegex(ValueError, "No or invalid fingerprint"):
-      read_fingerprint("foo")
+    with self.assertRaisesRegex(FileNotFoundError,
+                                "SavedModel Fingerprint Error"):
+      fingerprinting.read_fingerprint("foo")
+
+  def test_valid_singleprint(self):
+    save_dir = os.path.join(self.get_temp_dir(), "singleprint_model")
+    save.save(self._create_model_with_data(), save_dir)
+    fingerprint = fingerprinting.read_fingerprint(save_dir)
+    singleprint = fingerprint.singleprint()
+
+    # checkpoint_hash is non-deterministic and not included
+    self.assertRegex(singleprint,
+                     "/".join(["8947653168630125217",  # graph_def_program_hash
+                               "13520770727385282311",  # signature_def_hash
+                               "1613952301283913051"  # saved_object_graph_hash
+                               ]))
+
+  def test_invalid_singleprint(self):
+    fingerprint = fingerprinting.Fingerprint()
+    with self.assertRaisesRegex(ValueError,
+                                "Encounted invalid fingerprint values"):
+      fingerprint.singleprint()
 
 
 if __name__ == "__main__":

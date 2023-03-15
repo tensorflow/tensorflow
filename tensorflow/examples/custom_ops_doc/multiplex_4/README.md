@@ -1,3 +1,4 @@
+<!-- LINT.IfChange -->
 # Create a custom multiplexer op with C++ backward compatibility
 
 This guide provides an end-to-end implementation of a new custom op that is
@@ -591,8 +592,8 @@ the `multiplex_4` op.
 
 Op components                           | Build rule             | Build target         | Source
 --------------------------------------- | ---------------------- | -------------------- | ------
-Kernels (C++)                           | `tf_kernel_library`    | `multiplex_4_kernel` | `multiplex_4_kernel.cc`, `multiplex_4_op.cc`
-Wrapper (automatically generated)       | `tf_gen_op_wrapper.py` | `gen_multiplex_4_op` | N/A
+Kernels (C++)                           | `tf_custom_op_library` | `multiplex_4_kernel` | `multiplex_4_kernel.cc`, `multiplex_4_op.cc`
+Wrapper (automatically generated)       | N/A                    | `gen_multiplex_4_op` | N/A
 Wrapper (with public API and docstring) | `py_strict_library`    | `multiplex_4_op`     | `multiplex_4_op.py`
 Tests                                   | `tf_py_test`           | `multiplex_4_test`   | `multiplex_4_test.py`
 
@@ -609,3 +610,4 @@ New op (with SavedModel) | `py_strict_binary`  | `multiplex_4_load_and_use` | `m
 *   [OSS custom ops guide](https://www.tensorflow.org/guide/create_op)
 *   [SavedModel](https://www.tensorflow.org/guide/saved_model)
 *   [Numpy Select](https://numpy.org/doc/stable/reference/generated/numpy.select.html)
+<!-- LINT.ThenChange(multiplex_4.md) -->

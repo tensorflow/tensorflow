@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_DTENSOR_CC_PARALLEL_EXECUTOR_H_
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -42,7 +43,8 @@ class ParallelExecutor {
   // DTensor representation.
   virtual tsl::StatusOr<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>
   Broadcast(const tensorflow::Tensor& tensor,
-            const tensorflow::dtensor::Mesh& mesh) = 0;
+            const tensorflow::dtensor::Mesh& mesh,
+            std::optional<tensorflow::NodeDef> const_value) = 0;
 
   // Takes input TensorWithLayouts, a MLIR module and the entry function name.
   // Attributes are forwarded to executed operations unmodified.
@@ -53,6 +55,16 @@ class ParallelExecutor {
       TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
       mlir::ModuleOp module, llvm::StringRef entry_function_name,
       const TFE_OpAttrs* attributes) const = 0;
+
+  // Disassembles `t` into multiple TensorWithLayouts. `t` may or may not be
+  // valid to use afterwards.
+  virtual tsl::StatusOr<
+      std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>>
+  Disassemble(TensorWithLayout* t) = 0;
+
+  // Returns a tensor copied from `t` when `t` contains only a single device.
+  virtual Future<tsl::StatusOr<tensorflow::Tensor>> ToHostBuffer(
+      TensorWithLayout* t) = 0;
 };
 
 // Factory method for Default ParallelExecutor instance.

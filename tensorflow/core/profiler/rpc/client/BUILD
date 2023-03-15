@@ -12,24 +12,6 @@ package(
 )
 
 cc_library(
-    name = "capture_profile",
-    hdrs = ["capture_profile.h"],
-    copts = tf_profiler_copts(),
-    visibility = [
-        "//tensorflow/compiler/xla/python:__pkg__",
-        "//tensorflow/python/profiler/internal:__pkg__",
-    ],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
-        "//tensorflow/tsl/profiler/protobuf:profiler_service_proto_cc",
-        "//tensorflow/tsl/profiler/rpc/client:capture_profile",
-    ],
-)
-
-cc_library(
     name = "save_profile",
     hdrs = ["save_profile.h"],
     copts = tf_profiler_copts(),

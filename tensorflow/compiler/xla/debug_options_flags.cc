@@ -98,20 +98,19 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
   opts.set_xla_gpu_enable_mlir_lowering(true);
-  opts.set_xla_gpu_enable_softmax_fusion(false);
   opts.set_xla_gpu_normalize_layouts(true);
   opts.set_xla_gpu_simplify_all_fp_conversions(true);
   opts.set_xla_dump_latency_hiding_schedule(false);
   opts.set_xla_gpu_enable_latency_hiding_scheduler(false);
 
-  opts.set_xla_cpu_enable_mlir_tiling_and_fusion(false);
-  opts.set_xla_cpu_enable_experimental_deallocation(false);
+  opts.set_xla_cpu_enable_mlir_tiling_and_fusion(true);
+  opts.set_xla_cpu_enable_experimental_deallocation(true);
 
   opts.set_xla_partitioning_algorithm(
       DebugOptions::PARTITIONING_ALGORITHM_NOOP);
 
-  opts.set_xla_gpu_enable_triton_gemm(false);
-  opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(false);
+  opts.set_xla_gpu_enable_triton_gemm(true);
+  opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(false);
   return opts;
 }
@@ -245,26 +244,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         return true;
       };
 
-  auto setter_for_xla_gpu_enable_softmax_fusion = [debug_options](bool value) {
-    // It is only possible to enable softmax fusion if
-    // xla_gpu_enable_mlir_lowering is also enabled.
-    if (value && !debug_options->xla_gpu_enable_mlir_lowering()) {
-      LOG(ERROR) << "xla_gpu_enable_softmax_fusion can only be enabled if "
-                    "xla_gpu_enable_mlir_lowering is enabled as well";
-      return false;
-    }
-    debug_options->set_xla_gpu_enable_softmax_fusion(value);
-    return true;
-  };
-
   auto setter_for_xla_gpu_enable_mlir_lowering = [debug_options](bool value) {
-    // It is only possible to disable mlir lowering if
-    // xla_gpu_enable_softmax_fusion is also disabled.
-    if (!value && debug_options->xla_gpu_enable_softmax_fusion()) {
-      LOG(ERROR) << "xla_gpu_enable_mlir_lowering can only be disabled if "
-                    "xla_gpu_enable_softmax_fusion is disabled as well";
-      return false;
-    }
     debug_options->set_xla_gpu_enable_mlir_lowering(value);
     return true;
   };
@@ -841,10 +821,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_gpu_enable_mlir_lowering", setter_for_xla_gpu_enable_mlir_lowering,
       debug_options->xla_gpu_enable_mlir_lowering(),
       "Enable MLIR-based lowering in XLA:GPU instead of LLVM emitters."));
-  flag_list->push_back(tsl::Flag("xla_gpu_enable_softmax_fusion",
-                                 setter_for_xla_gpu_enable_softmax_fusion,
-                                 debug_options->xla_gpu_enable_softmax_fusion(),
-                                 "Enable MLIR-based softmax fusion."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_normalize_layouts",
                 bool_setter_for(&DebugOptions::set_xla_gpu_normalize_layouts),

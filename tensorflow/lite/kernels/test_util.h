@@ -1189,7 +1189,7 @@ class MultiOpModel : public SingleOpModel {
 // case of a failure.
 //
 // EXAMPLE:
-// TfLiteTensor* t = (TfLiteTensor*)malloc(sizeof(TfLiteTensor*));
+// TfLiteTensor* t = (TfLiteTensor*)malloc(sizeof(TfLiteTensor));
 // t->dims = ConvertVectorToTfLiteIntArray({2, 2});
 // EXPECT_EQ(t, DimsAre({2, 2}));
 //
@@ -1202,18 +1202,24 @@ class DimsAreMatcher {
                                             TfLiteIntArrayFree);
   }
 
-  bool MatchAndExplain(TfLiteTensor* arg,
+  // Required method to implement for matcher objects. We overload on
+  // both `TfLiteTensor*` and `TfLiteIntArray` for flexibility.
+  bool MatchAndExplain(TfLiteIntArray* arg,
                        testing::MatchResultListener* result_listener) const {
-    TfLiteIntArray* tensor_dims = arg->dims;
-    if (tensor_dims == nullptr) {
+    if (arg == nullptr) {
       *result_listener << "dims are null";
       return false;
     }
-    if (TfLiteIntArrayEqual(tensor_dims, dims_.get())) {
+    if (TfLiteIntArrayEqual(arg, dims_.get())) {
       return true;
     }
-    *result_listener << "has dims " << tflite::GetShapeDebugString(tensor_dims);
+    *result_listener << "has dims " << tflite::GetShapeDebugString(arg);
     return false;
+  }
+
+  bool MatchAndExplain(TfLiteTensor* arg,
+                       testing::MatchResultListener* result_listener) const {
+    return MatchAndExplain(arg->dims, result_listener);
   }
 
   void DescribeTo(std::ostream* os) const {

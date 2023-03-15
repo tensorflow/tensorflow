@@ -67,12 +67,16 @@ class InternalPlaceholderContext(trace.PlaceholderContext):
                context_graph=None,
                placeholder_mapping=None,
                handledata_mapping=None,
-               unnest_only=False):
+               unnest_only=False,
+               with_none_control_dependencies=False,
+               composite_device_name=None):
     self._alias_id_to_placeholder = placeholder_mapping or {}
     self._spec_id_to_handledata = handledata_mapping or {}
     self._naming_scope = None
     self._context_graph = context_graph
     self._unnest_only = unnest_only
+    self._with_none_control_dependencies = with_none_control_dependencies
+    self._composite_device_name = composite_device_name
 
   def has_placeholder(self, alias_id: Hashable) -> bool:
     return alias_id in self._alias_id_to_placeholder
@@ -112,6 +116,14 @@ class InternalPlaceholderContext(trace.PlaceholderContext):
   @property
   def unnest_only(self) -> bool:
     return self._unnest_only
+
+  @property
+  def with_none_control_dependencies(self) -> bool:
+    return self._with_none_control_dependencies
+
+  @property
+  def composite_device_name(self) -> Any:
+    return self._composite_device_name
 
 
 class InternalCastContext(trace.CastContext):
