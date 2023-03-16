@@ -479,8 +479,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // including when slicing is applied to the result.
     if (Match(instr,
               m::AddAnyOrder(
-                  OptionalSlice(&optional_slice,
-                                CublasLtMatmul(&existing_gemm).WithOneUser())
+                  OptionalSlice(
+                      &optional_slice,
+                      CublasLtMatmulMaybeF8(&existing_gemm).WithOneUser())
                       .WithOneUser(),
                   m::Broadcast(&bias, m::Op())))) {
       TF_ASSIGN_OR_RETURN(
@@ -1170,14 +1171,19 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     config.set_epilogue(GemmBackendConfig::BIAS);
     std::vector<HloInstruction *> operands(gemm->operands().begin(),
                                            gemm->operands().end());
-    operands.push_back(bias);
-
+    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget) {
+      // Matrix and vector bias don't co-exist for FP8 matmul.
+      config.set_beta(0.0);
+      operands[2] = bias;
+    } else {
+      operands.push_back(bias);
+    }
     std::unique_ptr<HloInstruction> result =
         gemm->CloneWithNewOperands(gemm->shape(), operands);
     TF_RETURN_IF_ERROR(result->set_backend_config(config));
     TF_RETURN_IF_ERROR(SetName(result->GetModule(), result.get()));
-
-    if (slice != nullptr) {
+    if (gemm->custom_call_target() != kCublasLtMatmulF8CallTarget &&
+        slice != nullptr) {
       result = slice->CloneWithNewOperands(
           slice->shape(), {slice->parent()->AddInstruction(std::move(result))});
     }
