@@ -199,7 +199,7 @@ Status::Status(tsl::errors::Code code, absl::string_view msg,
                SourceLocation loc) {
   assert(code != tsl::errors::Code::OK);
   state_ = std::make_unique<State>();
-  state_->code = static_cast<tsl::error::Code>(code);
+  state_->code = static_cast<absl::StatusCode>(code);
   state_->msg = std::string(msg);
   MaybeAddSourceLocation(loc);
   VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
@@ -210,7 +210,7 @@ Status::Status(absl::StatusCode code, absl::string_view msg,
                SourceLocation loc) {
   assert(code != absl::StatusCode::kOk);
   state_ = std::make_unique<State>();
-  state_->code = static_cast<tsl::error::Code>(code);
+  state_->code = code;
   state_->msg = std::string(msg);
   MaybeAddSourceLocation(loc);
   VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
@@ -240,57 +240,57 @@ const std::string& Status::empty_string() {
   return *empty;
 }
 
-std::string error_name(error::Code code) {
+std::string error_name(absl::StatusCode code) {
   switch (code) {
-    case tsl::error::OK:
+    case absl::StatusCode::kOk:
       return "OK";
       break;
-    case tsl::error::CANCELLED:
+    case absl::StatusCode::kCancelled:
       return "CANCELLED";
       break;
-    case tsl::error::UNKNOWN:
+    case absl::StatusCode::kUnknown:
       return "UNKNOWN";
       break;
-    case tsl::error::INVALID_ARGUMENT:
+    case absl::StatusCode::kInvalidArgument:
       return "INVALID_ARGUMENT";
       break;
-    case tsl::error::DEADLINE_EXCEEDED:
+    case absl::StatusCode::kDeadlineExceeded:
       return "DEADLINE_EXCEEDED";
       break;
-    case tsl::error::NOT_FOUND:
+    case absl::StatusCode::kNotFound:
       return "NOT_FOUND";
       break;
-    case tsl::error::ALREADY_EXISTS:
+    case absl::StatusCode::kAlreadyExists:
       return "ALREADY_EXISTS";
       break;
-    case tsl::error::PERMISSION_DENIED:
+    case absl::StatusCode::kPermissionDenied:
       return "PERMISSION_DENIED";
       break;
-    case tsl::error::UNAUTHENTICATED:
+    case absl::StatusCode::kUnauthenticated:
       return "UNAUTHENTICATED";
       break;
-    case tsl::error::RESOURCE_EXHAUSTED:
+    case absl::StatusCode::kResourceExhausted:
       return "RESOURCE_EXHAUSTED";
       break;
-    case tsl::error::FAILED_PRECONDITION:
+    case absl::StatusCode::kFailedPrecondition:
       return "FAILED_PRECONDITION";
       break;
-    case tsl::error::ABORTED:
+    case absl::StatusCode::kAborted:
       return "ABORTED";
       break;
-    case tsl::error::OUT_OF_RANGE:
+    case absl::StatusCode::kOutOfRange:
       return "OUT_OF_RANGE";
       break;
-    case tsl::error::UNIMPLEMENTED:
+    case absl::StatusCode::kUnimplemented:
       return "UNIMPLEMENTED";
       break;
-    case tsl::error::INTERNAL:
+    case absl::StatusCode::kInternal:
       return "INTERNAL";
       break;
-    case tsl::error::UNAVAILABLE:
+    case absl::StatusCode::kUnavailable:
       return "UNAVAILABLE";
       break;
-    case tsl::error::DATA_LOSS:
+    case absl::StatusCode::kDataLoss:
       return "DATA_LOSS";
       break;
     default:
@@ -470,7 +470,7 @@ std::unordered_map<std::string, absl::Cord> StatusGroup::GetPayloads() const {
   return payloads;
 }
 
-Status MakeStatus(tensorflow::error::Code code, absl::string_view message,
+Status MakeStatus(absl::StatusCode code, absl::string_view message,
                   const std::unordered_map<std::string, absl::Cord>& payloads) {
   Status status(code, message);
   for (const auto& payload : payloads) {
@@ -520,11 +520,12 @@ Status StatusGroup::as_summary_status() const {
         strings::Printf("%zu root error(s) found.", non_derived_.size()));
 
     int index = 0;
-    auto code = tsl::error::CANCELLED;
+    auto code = absl::StatusCode::kCancelled;
     for (const auto& s : non_derived_) {
       // NOTE: Avoid using CANCELLED as the code of summary status if the group
       // contains other error code.
-      if (code == tsl::error::CANCELLED && s.code() != tsl::error::CANCELLED) {
+      if (code == absl::StatusCode::kCancelled &&
+          s.code() != absl::StatusCode::kCancelled) {
         code = s.code();
       }
       fmt.emplace_back(strings::StrCat("  (", index, ") ", MakeString(s)));

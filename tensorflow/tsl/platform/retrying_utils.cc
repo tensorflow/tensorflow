@@ -24,11 +24,11 @@ namespace tsl {
 
 namespace {
 
-bool IsRetriable(error::Code code) {
+bool IsRetriable(absl::StatusCode code) {
   switch (code) {
-    case error::UNAVAILABLE:
-    case error::DEADLINE_EXCEEDED:
-    case error::UNKNOWN:
+    case absl::StatusCode::kUnavailable:
+    case absl::StatusCode::kDeadlineExceeded:
+    case absl::StatusCode::kUnknown:
       return true;
     default:
       // OK also falls here.

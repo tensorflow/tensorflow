@@ -124,10 +124,9 @@ class Status {
   /// Returns true iff the status indicates success.
   bool ok() const { return (state_ == nullptr); }
 
-  tsl::error::Code code() const {
-    return ok() ? tensorflow::error::OK : state_->code;
+  absl::StatusCode code() const {
+    return ok() ? absl::StatusCode::kOk : state_->code;
   }
-
   int raw_code() const { return static_cast<int>(code()); }
 
   const std::string& error_message() const {
@@ -237,7 +236,7 @@ class Status {
     State(const State&) TF_ATTRIBUTE_NOINLINE = default;
     State& operator=(const State&) TF_ATTRIBUTE_NOINLINE = default;
 
-    tsl::error::Code code;
+    absl::StatusCode code;
     std::string msg;
     std::unordered_map<std::string, absl::Cord> payloads;
     absl::InlinedVector<SourceLocation, 4> source_locations;
@@ -367,7 +366,8 @@ typedef std::function<void(const Status&)> StatusCallback;
 extern tsl::string* TfCheckOpHelperOutOfLine(const ::tsl::Status& v,
                                              const char* msg);
 
-std::string error_name(error::Code code);
+// Prefer using `absl::StatusCodeToString`.
+std::string error_name(absl::StatusCode code);
 
 inline tsl::string* TfCheckOpHelper(::tsl::Status v, const char* msg) {
   if (v.ok()) return nullptr;
