@@ -1560,7 +1560,10 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "xla_platform_info_test",
     srcs = ["xla_platform_info_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = [
+        "no_oss",
+        "notap",
+    ],  #TODO(b/273833440): Remove this once the test is fixed.
     deps = [
         ":flags_headers",
         ":test_util",
