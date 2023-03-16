@@ -15,6 +15,7 @@ limitations under the License.
 
 // Legalize TensorFlow Lite to TOSA
 
+#include <cfloat>
 #include <climits>
 #include <cmath>
 #include <cstddef>
@@ -123,6 +124,7 @@ DECL_CONVERT_OP(Fill);
 DECL_CONVERT_OP(Elu);
 DECL_CONVERT_OP(Softmax);
 DECL_CONVERT_OP(LogSoftmax);
+DECL_CONVERT_OP(Rsqrt);
 DECL_CONVERT_OP(Sqrt);
 DECL_CONVERT_OP(L2Normalization);
 DECL_CONVERT_OP(ReduceAll);
@@ -2346,6 +2348,54 @@ LogicalResult ConvertTFLSoftmaxOp::matchAndRewrite(
   if (!result) return failure();
 
   rewriter.replaceOp(op, {result.value()});
+
+  return success();
+}
+
+LogicalResult ConvertTFLRsqrtOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_rsqrt_op = cast<TFL::RsqrtOp>(op);
+
+  RankedTensorType output_type =
+      tfl_rsqrt_op.getResult().getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      tfl_rsqrt_op.getX().getType().dyn_cast<RankedTensorType>();
+
+  mlir::quant::UniformQuantizedType input_qtype =
+      input_type.getElementType()
+          .dyn_cast_or_null<mlir::quant::UniformQuantizedType>();
+  mlir::quant::UniformQuantizedType output_qtype =
+      output_type.getElementType()
+          .dyn_cast_or_null<mlir::quant::UniformQuantizedType>();
+
+  // Quantization case
+  if (input_qtype && output_qtype) {
+    auto rsqrt_func = [](double x) -> double {
+      // Negative numbers are undefined for rsqrt
+      // 0 should return the max value of the storage data type for rsqrt
+      if (x <= 0.0) return DBL_MAX;
+      return 1.0 / std::sqrt(x);
+    };
+
+    // 16-bit is pending review for TFL
+    // https://github.com/tensorflow/tensorflow/pull/58406
+    if (input_qtype.getStorageTypeIntegralWidth() != 8) {
+      return rewriter.notifyMatchFailure(op,
+                                         "input qtype storage width is not 8");
+    }
+
+    // Implement with 8-bit table lookup.
+    Value table_const = getTosaConst8bitTable(
+        rewriter, op, input_qtype.getScale(), input_qtype.getZeroPoint(),
+        output_qtype.getScale(), output_qtype.getZeroPoint(), rsqrt_func);
+
+    CreateReplaceOpAndInfer<tosa::TableOp>(rewriter, op, output_type,
+                                           tfl_rsqrt_op.getX(), table_const);
+    return success();
+  }
+
+  CreateReplaceOpAndInfer<tosa::RsqrtOp>(rewriter, op, tfl_rsqrt_op.getType(),
+                                         tfl_rsqrt_op.getX());
 
   return success();
 }

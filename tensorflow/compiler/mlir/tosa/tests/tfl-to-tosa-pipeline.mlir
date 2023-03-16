@@ -520,6 +520,8 @@ func.func @test_reduce_sum(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
   func.return %0 : tensor<21x3xf32>
 }
 
+// -----
+
 // CHECK-LABEL: test_reduce_sum_nonzero_axis
 // CHECK-SAME: %[[VAL_0:.*]]: tensor<10x20x30x40x50xf32>
 // CHECK: %[[VAL_1:.*]] = "tosa.const"() {value = dense<[0, 1, 2, 4, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
@@ -533,8 +535,6 @@ func.func @test_reduce_sum_nonzero_axis(%arg0: tensor<10x20x30x40x50xf32> {tf._u
   %0 = "tfl.sum"(%arg0, %cst) {device = "", keep_dims = false} : (tensor<10x20x30x40x50xf32>, tensor<i32>) -> tensor<10x20x30x50xf32>
   func.return %0 : tensor<10x20x30x50xf32>
 }
-
-// -----
 
 // -----
 
@@ -679,10 +679,22 @@ func.func @test_negate(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 // -----
 
 // CHECK-LABEL: test_rsqrt
-// CHECK: %[[VAR0:.*]] = "tosa.rsqrt"(%arg0)
-func.func @test_rsqrt(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %0 = "tfl.rsqrt"(%arg0) : (tensor<13x21x3xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<13x21x3xf32>
+// CHECK: %[[VAL_1:.*]] = "tosa.rsqrt"(%[[VAL_0]]) : (tensor<13x21x3xf32>)
+func.func @test_rsqrt(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
+  %0 = "tfl.rsqrt"(%arg0) : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+  func.return %0 : tensor<13x21x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_rsqrt_qi8
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<13x21x3x!quant.uniform<i8:f32, 0.015686223283410072:-128>>
+// CHECK: %[[VAL_1:.*]] = "tosa.const"() {value = dense<{{.+}}> : tensor<256xi8>}
+// CHECK: %[[VAL_2:.*]] = "tosa.table"(%[[VAL_0]], %[[VAL_1]])
+func.func @test_rsqrt_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015686223283410072:-128>>) -> (tensor<13x21x3x!quant.uniform<i8:f32, 3.7091615200042725:-128>>) {
+  %0 = "tfl.rsqrt"(%arg0) : (tensor<13x21x3x!quant.uniform<i8:f32, 0.015686223283410072:-128>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 3.7091615200042725:-128>>
+  func.return %0 : tensor<13x21x3x!quant.uniform<i8:f32, 3.7091615200042725:-128>>
 }
 
 // -----
