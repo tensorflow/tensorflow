@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PY_ARRAY_H_
 
 #include <memory>
+#include <optional>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -62,7 +63,9 @@ struct PyArray_Storage {
   tsl::RCReference<ifrt::Array> ifrt_array;
 
   // optional field, used only in python
-  std::vector<PyBuffer::object> py_buffers;
+  std::vector<PyArray> py_arrays;
+  std::shared_ptr<PyHostValue> host_value;  // Protected by the GIL.
+  std::optional<Shape> dynamic_shape = std::nullopt;
 
   // Doubly-linked list of all PyArrays known to the client. Protected by the
   // GIL. Since multiple PyBuffers may share the same PjRtBuffer, there may be
@@ -177,13 +180,11 @@ class PyArray : public pybind11::object {
     return arr->pjrt_buffers().size();
   }
 
-  std::vector<PyBuffer::object>& py_buffers() {
-    return GetStorage().py_buffers;
+  std::vector<PyArray>& py_arrays() { return GetStorage().py_arrays; }
+  const std::vector<PyArray>& py_arrays() const {
+    return GetStorage().py_arrays;
   }
-  const std::vector<PyBuffer::object>& py_buffers() const {
-    return GetStorage().py_buffers;
-  }
-  const std::vector<PyBuffer::object>& py_buffers_cached();
+  const std::vector<PyArray>& py_arrays_cached();
 
   pybind11::object arrays();
   Status set_arrays(pybind11::object obj);
@@ -214,6 +215,7 @@ class PyArray : public pybind11::object {
   StatusOr<pybind11::object> SingleDeviceArrayToNumpyArray();
   Status CopySingleDeviceArrayToHostAsync();
   StatusOr<pybind11::dict> CudaArrayInterface();
+  StatusOr<std::uintptr_t> UnsafeBufferPointer();
 
   Status Delete();
 
@@ -232,7 +234,8 @@ class PyArray : public pybind11::object {
       bool jax_enable_x64);
 
  private:
-  StatusOr<PyBuffer::object> FetchSingleShard(std::string_view api);
+  StatusOr<PyArray> FetchSingleShard(std::string_view api);
+  StatusOr<PyArray> AssertUnsharded(std::string_view api);
 
   void CheckAndRearrange();
 
