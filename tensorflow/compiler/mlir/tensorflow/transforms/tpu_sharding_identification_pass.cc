@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -108,7 +110,23 @@ LogicalResult VerifySharding(Type type, StringRef sharding_string) {
     return success();
   }
   if (RankedTensorType ranked_type = type.dyn_cast<RankedTensorType>()) {
-    if (ranked_type.getRank() < sharding.tile_assignment_dimensions_size()) {
+    const int64_t tensor_rank = ranked_type.getRank();
+    int tile_assignment_rank = sharding.tile_assignment_dimensions_size();
+
+    // When a tensor is partial or subgroup tiled, its tile assignment will have
+    // one or more dimension(s) than its rank; so, we subtract them to determine
+    // which rank the sharding is compatible with.
+    tile_assignment_rank -= (int)sharding.replicate_on_last_tile_dim();
+    tile_assignment_rank -= sharding.last_tile_dims_size();
+
+    if (tensor_rank < tile_assignment_rank) {
+      std::string warning_text;
+      llvm::raw_string_ostream warning(warning_text);
+      warning << "tensor of type " << ranked_type << " (rank=" << tensor_rank
+              << ") sharded in " << (tile_assignment_rank - tensor_rank)
+              << " extra dimension(s) by: " << sharding.DebugString();
+      LOG(WARNING) << warning_text;
+
       return failure();
     }
   }

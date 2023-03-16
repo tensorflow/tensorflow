@@ -313,6 +313,66 @@ func.func @cluster_func(%arg0: tensor<*xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @partial_tile_partitioned_variable
+func.func @partial_tile_partitioned_variable(%arg0: tensor<!tf_type.resource<tensor<1x4x4x4xf32>>>) {
+  %0 = "tf.TPUPartitionedInputV2"(%arg0) {_XlaSharding = "\08\03\1A\05\04\01\01\01\02\22\08\00\01\02\03\04\05\06\070\01", partition_dims = [4, 1, 1, 1, 2], is_packed = true} : (tensor<!tf_type.resource<tensor<1x4x4x4xf32>>>) -> tensor<!tf_type.resource<tensor<4x4x4x4xf32>>>
+  %1 = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<4x4x4x4xf32>>>) -> tensor<4x4x4x4xf32>
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: input_sharding_configuration = ["\08\03\1A\05\04\01\01\01\02\22\08\00\01\02\03\04\05\06\070\01"]
+  // CHECK-SAME: output_sharding_configuration = []
+  // CHECK-SAME: use_spmd_for_xla_partitioning = true
+  "tf_device.cluster_func"(%1) {func = @cluster_func, use_spmd_for_xla_partitioning = true, num_cores_per_replica = 8 : i64} : (tensor<4x4x4x4xf32>) -> ()
+  func.return
+}
+
+// CHECK-LABEL: func @cluster_func
+// CHECK-SAME: ({{.+}}: tensor<4x4x4x4xf32> {mhlo.sharding = "\08\03\1A\05\04\01\01\01\02\22\08\00\01\02\03\04\05\06\070\01"})
+func.func @cluster_func(%arg0: tensor<4x4x4x4xf32>) {
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: func @subgroup_tile_partitioned_variable
+func.func @subgroup_tile_partitioned_variable(%arg0: tensor<!tf_type.resource<tensor<1x4x4x4xf32>>>) {
+  %0 = "tf.TPUPartitionedInputV2"(%arg0) {_XlaSharding = "\08\03\1A\05\04\01\01\01\02\22\08\00\01\02\03\04\05\06\07B\01\00", partition_dims = [4, 1, 1, 1, 2], is_packed = true} : (tensor<!tf_type.resource<tensor<1x4x4x4xf32>>>) -> tensor<!tf_type.resource<tensor<4x4x4x4xf32>>>
+  %1 = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<4x4x4x4xf32>>>) -> tensor<4x4x4x4xf32>
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: input_sharding_configuration = ["\08\03\1A\05\04\01\01\01\02\22\08\00\01\02\03\04\05\06\07B\01\00"]
+  // CHECK-SAME: output_sharding_configuration = []
+  // CHECK-SAME: use_spmd_for_xla_partitioning = true
+  "tf_device.cluster_func"(%1) {func = @cluster_func, use_spmd_for_xla_partitioning = true, num_cores_per_replica = 8 : i64} : (tensor<4x4x4x4xf32>) -> ()
+  func.return
+}
+
+// CHECK-LABEL: func @cluster_func
+// CHECK-SAME: ({{.+}}: tensor<4x4x4x4xf32> {mhlo.sharding = "\08\03\1A\05\04\01\01\01\02\22\08\00\01\02\03\04\05\06\07B\01\00"})
+func.func @cluster_func(%arg0: tensor<4x4x4x4xf32>) {
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: func @partial_tile_mpmd_fallback
+func.func @partial_tile_mpmd_fallback(%arg0: tensor<!tf_type.resource<tensor<1x4x4xf32>>>) {
+  %0 = "tf.TPUPartitionedInputV2"(%arg0) {_XlaSharding = "\08\03\1A\05\04\01\01\01\02\22\08\00\01\02\03\04\05\06\070\01", partition_dims = [4, 1, 1, 2], is_packed = true} : (tensor<!tf_type.resource<tensor<1x4x4xf32>>>) -> tensor<!tf_type.resource<tensor<4x4x4xf32>>>
+  %1 = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<4x4x4xf32>>>) -> tensor<4x4x4xf32>
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: input_sharding_configuration = ["\08\03\1A\05\04\01\01\01\02\22\08\00\01\02\03\04\05\06\070\01"]
+  // CHECK-SAME: output_sharding_configuration = []
+  // CHECK-SAME: use_spmd_for_xla_partitioning = false
+  "tf_device.cluster_func"(%1) {func = @cluster_func, use_spmd_for_xla_partitioning = true, num_cores_per_replica = 8 : i64} : (tensor<4x4x4xf32>) -> ()
+  func.return
+}
+
+// CHECK-LABEL: func @cluster_func
+// CHECK-SAME: ({{.+}}: tensor<4x4x4xf32> {mhlo.sharding = "\08\03\1A\05\04\01\01\01\02\22\08\00\01\02\03\04\05\06\070\01"})
+func.func @cluster_func(%arg0: tensor<4x4x4xf32>) {
+  func.return
+}
+
+// -----
+
 // Tests that device variable sharding defaults to xla.OpSharding
 // { type : MAXIMAL
 //   tile_assignment_dimensions: [ 1 ]
