@@ -1262,6 +1262,16 @@ TEST(CAPI, RunAddFunctionWithGrappler) {
   RunAddFunction(/*use_tfrt=*/false, /*enable_grappler=*/true);
 }
 
+#ifdef PLATFORM_GOOGLE
+TEST(CAPI, RunAddFunction_TFRT) {
+  RunAddFunction(/*use_tfrt=*/true, /*enable_grappler=*/false);
+}
+
+TEST(CAPI, RunAddFunctionWithGrappler_TFRT) {
+  RunAddFunction(/*use_tfrt=*/true, /*enable_grappler=*/true);
+}
+#endif
+
 void BM_ExecuteFunction(::testing::benchmark::State& state) {
   const int async = state.range(0);
   state.SetLabel(async ? "ExecuteFunctionAsync" : "ExecuteFunction");
@@ -1818,6 +1828,11 @@ void TestOpAddAttrs(bool use_tfrt) {
 }
 
 TEST(CAPI, TestTFE_OpAddAttrs) { TestOpAddAttrs(/*use_tfrt=*/false); }
+
+#ifdef PLATFORM_GOOGLE
+TEST(CAPI, TestTFE_OpAddAttrs_TFRT) { TestOpAddAttrs(/*use_tfrt=*/true); }
+
+#endif
 
 TEST(CAPI, TestTFE_OpAttrsSerialize) {
   TF_Status* status = TF_NewStatus();
