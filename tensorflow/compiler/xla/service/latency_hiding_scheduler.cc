@@ -1315,6 +1315,10 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
   }
   module_pressure_state_->UpdatePressureStateForComputation(
       computation, memory_pressure_tracker.pressure_state());
+  absl::c_reverse(sched_state.new_sequence_reversed);
+  if (post_processing_fn_) {
+    post_processing_fn_(sched_state);
+  }
   CHECK_EQ(sched_state.new_sequence_reversed.size(),
            sched_state.sched_graph.GetOriginalInstrList().size())
       << "Not all instructions have been scheduled "
@@ -1322,9 +1326,8 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
       << sched_state.sched_graph.GetOriginalInstrList().size();
   VLOG(1) << "Total time: "
           << sched_state.sched_graph
-                 .GetNode(sched_state.new_sequence_reversed.back())
+                 .GetNode(sched_state.new_sequence_reversed.front())
                  .GetReadyTime();
-  absl::c_reverse(sched_state.new_sequence_reversed);
 
   const auto& debug_options = xla::GetDebugOptionsFromFlags();
   if (debug_options.xla_dump_latency_hiding_schedule() &&
