@@ -192,7 +192,7 @@ class Device : public DeviceBase {
     LOG(FATAL) << "Device does not implement SetRealDevice()";
   }
 
-  virtual Device* GetRealDevice() { return this; }
+  virtual const Device* GetRealDevice() const { return this; }
 
   void SetStreamId(int32 stream_id) { stream_id_ = stream_id; }
 

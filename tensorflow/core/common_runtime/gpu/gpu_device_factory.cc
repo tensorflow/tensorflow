@@ -84,7 +84,7 @@ class StreamDevice : public GPUDevice {
 
   void SetRealDevice(Device* device) override { real_device_ = device; }
 
-  Device* GetRealDevice() override { return real_device_; }
+  const Device* GetRealDevice() const override { return real_device_; }
 
   ResourceMgr* resource_manager() override {
     return real_device_->resource_manager();
@@ -177,7 +177,7 @@ class StreamCompatibleCPUDevice : public GPUCompatibleCPUDevice {
 
   void SetRealDevice(Device* device) override { real_device_ = device; }
 
-  Device* GetRealDevice() override { return real_device_; }
+  const Device* GetRealDevice() const override { return real_device_; }
 
   ResourceMgr* resource_manager() override {
     return real_device_->resource_manager();
