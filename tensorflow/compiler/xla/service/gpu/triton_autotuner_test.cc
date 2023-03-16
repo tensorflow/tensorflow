@@ -83,7 +83,7 @@ ENTRY e {
   CheckTritonAutotuning(hlo, R"(
 // CHECK:   %triton_gemm_out
 // CHECK:   ROOT %out.1 = f16[128,6144]{1,0} dot(%c.1, %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-// CHECK:   ROOT %fusion = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out, backend_config="{\"block_m\":\"
+// CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out, backend_config="{\"block_m\":\"
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{5e-3, 5e-3}));
@@ -106,7 +106,7 @@ ENTRY e {
   CheckTritonAutotuning(hlo, R"(
 // CHECK:   %triton_gemm_out (
 // CHECK:   ROOT %out.1 = f16[128,6144]{1,0} dot(%c.1, %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-// CHECK:   ROOT %fusion = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out, backend_config="{\"block_m\":\"
+// CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out, backend_config="{\"block_m\":\"
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-2, 1e-2}));

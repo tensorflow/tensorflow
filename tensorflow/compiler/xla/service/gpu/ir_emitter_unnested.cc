@@ -1852,7 +1852,7 @@ Status IrEmitterUnnested::EmitTritonFusion(
     const std::string fn_name =
         ir_emitter_context_->name_uniquer()->GetUniqueName(
             llvm_ir::SanitizeFunctionName(
-                fusion_op->getName().getStringRef().str()));
+                absl::StrCat(GetIrNameFromLoc(fusion_op->getLoc()), "_impl")));
     const std::optional<LaunchDimensions> launch_dimensions = TritonWrapper(
         fn_name, hlo_computation,
         ir_emitter_context_->cuda_compute_capability(),

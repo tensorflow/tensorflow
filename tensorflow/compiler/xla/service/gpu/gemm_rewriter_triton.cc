@@ -359,7 +359,8 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
 
     // TODO(b/266857789): also fuse convert(dot()) at output if present:
     // seen on s8xf32->bf16
-    HloComputation::Builder builder(absl::StrCat("triton_gemm_", dot->name()));
+    std::string suggested_name = absl::StrCat("triton_gemm_", dot->name());
+    HloComputation::Builder builder(suggested_name);
     // Original instruction -> fused one.
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>
         old_to_new_mapping;
@@ -449,6 +450,8 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
         dot->parent()->AddInstruction(HloInstruction::CreateFusion(
             dot->shape(), HloInstruction::FusionKind::kCustom, call_operands,
             computation));
+    dot_fusion->GetModule()->SetAndUniquifyInstrName(dot_fusion,
+                                                     suggested_name);
     dot_fusion->set_raw_backend_config_string(
         std::string(kTritonGemmBackendConfig));
     if (dot->IsRoot()) {
