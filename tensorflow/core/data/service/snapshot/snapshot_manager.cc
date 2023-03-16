@@ -28,10 +28,10 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/split_provider.h"
 #include "tensorflow/core/data/snapshot_utils.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/tsl/lib/io/compression.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -40,7 +40,9 @@ namespace data {
 using ::tsl::OkStatus;
 using ::tsl::errors::InvalidArgument;
 
-const absl::Duration kWorkerTimeout = absl::Seconds(45);
+// The time for which an UNKNOWN stream should transition to ORPHAN if no worker
+// claims ownership of it via heartbeat.
+const absl::Duration kUnknownStreamTimeout = absl::Seconds(45);
 
 StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
     const SnapshotRequest& request, Env* env) {
@@ -51,7 +53,7 @@ StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
 
 Status SnapshotManager::Start(const SnapshotRequest& request) {
   if (env_->FileExists(request.path()).ok()) {
-    return InvalidArgument("Distributed tf.data snapshot at " + request.path(),
+    return InvalidArgument("Distributed tf.data snapshot at ", request.path(),
                            " already exists.");
   }
   TF_RETURN_IF_ERROR(CreateSplitProviders(request.dataset(), split_providers_));
@@ -439,7 +441,7 @@ void SnapshotManager::UpdateStreams() {
   // Check for streams to move from `unknowns_` to `orphans_`.
   if (resume_time_micros_.has_value() && !unknowns_.empty() &&
       absl::Microseconds(env_->NowMicros()) - resume_time_micros_.value() >
-          kWorkerTimeout) {
+          kUnknownStreamTimeout) {
     for (auto stream_index : unknowns_) {
       orphans_.insert(stream_index);
     }

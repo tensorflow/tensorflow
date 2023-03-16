@@ -28,8 +28,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_live_range.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/service/hlo_live_range.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_repacking.h"
 #include "tensorflow/compiler/xla/util.h"
 

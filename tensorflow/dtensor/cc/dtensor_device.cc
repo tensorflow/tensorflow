@@ -105,6 +105,8 @@ class DTensorDevice {
     }
   }
 
+  bool use_parallel_executor() const { return parallel_executor_ != nullptr; }
+
   void AddMesh(std::unique_ptr<MeshWithParallelDevice> mesh,
                bool is_host_mesh) {
     if (is_host_mesh) {
@@ -281,6 +283,10 @@ class DTensorDevice {
                                         TFE_TensorHandle* input,
                                         TF_Status* status);
 
+  TFE_TensorHandle* ToHostTensorHandle(TFE_Context* context,
+                                       TensorWithLayout* input,
+                                       TF_Status* status);
+
   // Return the layout for the input tensor.
   std::string FetchLayout(TFE_Context* context, TFE_TensorHandle* input,
                           TF_Status* status);
@@ -311,9 +317,9 @@ class DTensorDevice {
                 std::unique_ptr<ParallelExecutor> parallel_executor)
       : name_(name),
         same_shape_policy_enabled_(false),
-        function_manager_(new ExecutableManager<ExecutionFunctions>()),
         module_manager_(
             new ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>()),
+        function_manager_(new ExecutableManager<ExecutionFunctions>()),
         cancellation_manager_(std::make_unique<CancellationManager>()),
         parallel_executor_(std::move(parallel_executor)) {}
 
@@ -447,9 +453,16 @@ class DTensorDevice {
   };
   absl::flat_hash_map<int64_t, CachedLayout> shape_layout_cache_;
 
-  core::RefCountPtr<ExecutableManager<ExecutionFunctions>> function_manager_;
+  // DTensor op execution is divided into two general stages:
+  // Stage 1: DTensor function is converted to MLIR module. And the
+  // module_manager_ is used in this stage to cache the module. The cache key
+  // generated in this stage will be reused in the next stage.
   core::RefCountPtr<ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>>
       module_manager_;
+  // Stage 2: MLIR module is processed. On TensorFlow runtime execution the
+  // module is lowered to ExecutionFunctions for execution. function_manager_
+  // caches the ExecutionFunctions.
+  core::RefCountPtr<ExecutableManager<ExecutionFunctions>> function_manager_;
 
   // Coordinates cancelling ops across meshes on error. Must outlive any queued
   // async op launches, so we only reset it after seeing a failure status.
@@ -753,17 +766,69 @@ std::vector<TFE_TensorHandle*> DTensorDevice::Unpack(TFE_Context* context,
                  "DTensorUnpack is not supported on a remote mesh.");
     return outputs;
   }
-  const int output_size = t->num_tensors();
-  outputs.resize(output_size);
 
-  for (int output_index = 0; output_index < output_size; ++output_index) {
-    outputs[output_index] =
-        TFE_TensorHandleCopySharingTensor(t->get_tensor(output_index), status);
-    if (TF_GetCode(status) != TF_OK) {
+  if (parallel_executor_) {
+    StatusOr<
+        std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>>
+        tensor_with_layouts = parallel_executor_->Disassemble(t);
+    if (!tensor_with_layouts.ok()) {
+      TF_SetStatus(status, TF_INTERNAL,
+                   "Failed to disassemble the TensorWithLayout.");
       return outputs;
+    }
+    outputs.reserve(tensor_with_layouts->size());
+    for (auto& tensor_with_layout : *tensor_with_layouts) {
+      TFE_TensorHandle* output = MakeLayoutTensorHandle(
+          context, std::move(tensor_with_layout), status);
+      if (TF_GetCode(status) != TF_OK) {
+        return outputs;
+      }
+      outputs.push_back(output);
+    }
+  } else {
+    const int output_size = t->num_tensors();
+    outputs.resize(output_size);
+
+    for (int output_index = 0; output_index < output_size; ++output_index) {
+      outputs[output_index] = TFE_TensorHandleCopySharingTensor(
+          t->get_tensor(output_index), status);
+      if (TF_GetCode(status) != TF_OK) {
+        return outputs;
+      }
     }
   }
   return outputs;
+}
+
+TFE_TensorHandle* DTensorDevice::ToHostTensorHandle(TFE_Context* context,
+                                                    TensorWithLayout* input,
+                                                    TF_Status* status) {
+  if (!parallel_executor_) {
+    TF_SetStatus(
+        status, TF_UNIMPLEMENTED,
+        "ToHostTensorHandle has not been implemented for the case of not "
+        "using parallel executor.");
+    return nullptr;
+  }
+  StatusOr<Tensor> tensor = parallel_executor_->ToHostBuffer(input).Await();
+  if (!tensor.ok()) {
+    TF_SetStatus(status, TF_INTERNAL, tensor.status().ToString().c_str());
+    return nullptr;
+  }
+  Status tf_tensor_from_tensor_status;
+  TF_Tensor* tf_tensor =
+      TF_TensorFromTensor(*tensor, &tf_tensor_from_tensor_status);
+  if (!tf_tensor_from_tensor_status.ok()) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 tf_tensor_from_tensor_status.ToString().c_str());
+    return nullptr;
+  }
+  TFE_TensorHandle* tensor_handle =
+      TFE_NewTensorHandleFromTensor(context, tf_tensor, status);
+  if (TF_GetCode(status) != TF_OK) {
+    return nullptr;
+  }
+  return tensor_handle;
 }
 
 void DTensorDevice::MaybeHandleDTensorCustomOps(
@@ -1208,7 +1273,19 @@ Status DTensorDevice::UpdateOutputLayoutsWithSameShapePolicy(
 std::unordered_map<std::string, int> DTensorDevice::GetFunctionCacheStats(
     TFE_Context* context, TF_Status* status) const {
   const auto stats = function_manager_->GetStats();
-  return {{"hit", stats.hits}, {"miss", stats.misses}, {"size", stats.size}};
+
+  const auto eager_stats = tensorflow::unwrap(context)->GetCacheStats();
+  std::unordered_map<std::string, int> result{
+      {"hit", stats.hits},
+      {"miss", stats.misses},
+      {"size", stats.size},
+      {"device_cache.size", eager_stats.device_cache_size},
+      {"kernel_cache.size", eager_stats.kernel_cache_size},
+  };
+  for (const auto& iter : eager_stats.func_kernel_cache_entries) {
+    result[absl::StrCat("kernel_cache.", iter.first, ".size")] = iter.second;
+  }
+  return result;
 }
 
 void DTensorDevice::SetIteratorElementLayouts(
@@ -1303,7 +1380,7 @@ StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
     // nodes. This should just be increasing from 0 to n where n
     // is the total number of arguments. Note that this definition to
     // the `index` attribute is different from the definition we set in
-    // PrepareGraphForMLIR.
+    // PrepareGraphForMlir.
     // This attribute is needed for each arg node when converting a Graph to
     // a FunctionDef.
     if (n->IsArg()) {
@@ -1331,6 +1408,7 @@ StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
 // Adds processed graph to run for each mesh computation in
 // `execution_functions` to function definition library.
 Status AddExecutionFunctionDefsToFunctionDefLibrary(
+    const std::string doperation_name, const StackTracesMap& stack_traces,
     const absl::flat_hash_set<Node*>& control_ret_nodes, TFE_Context* context,
     const Graph& graph, ExecutionFunctions* execution_functions) {
   // Note: We use node name instead of node pointer for comparison because
@@ -1357,7 +1435,9 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
 
     static std::atomic<int64_t> unique_function_number(0);
     function.translated_function_name =
-        absl::StrCat(func.name(), "_", unique_function_number.fetch_add(1));
+        absl::StrCat(doperation_name, "_", func.name(), "_",
+                     unique_function_number.fetch_add(1));
+    function.function_name = func.name();
     auto control_ret_node_names =
         [&control_ret_names, &selected_call_node_name](
             const Node* node) -> std::optional<std::string> {
@@ -1380,7 +1460,9 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
     }
 
     AddDTensorFunctionAttr(to_run);
-    TF_RETURN_IF_ERROR(tensorflow::unwrap(context)->AddFunctionDef(to_run));
+    TF_RETURN_IF_ERROR(
+        tensorflow::unwrap(context)->AddFunctionDefWithStackTraces(
+            to_run, stack_traces));
   }
 
   return OkStatus();
@@ -1404,7 +1486,7 @@ DTensorDevice::DTensorOperationToModule(
     // key computation, since they might depend on the current DTensorDevice
     // state.
     TF_RETURN_IF_ERROR(PrepareGraphForMlir(
-        *function_manager_, inputs, doperation, *flib_def, eager_attributes,
+        *module_manager_, inputs, doperation, *flib_def, eager_attributes,
         default_layout_, result.graph.get(), &result.global_output_shapes,
         &result.output_layouts));
 
@@ -1422,11 +1504,16 @@ DTensorDevice::DTensorOperationToModule(
         result.graph.get(), &result.output_layouts));
   }
 
-  auto [cache_key, cached_mlir_module] = module_manager_->GetCachedExecutable(
-      doperation, eager_attributes, inputs, result.output_layouts);
+  TF_ASSIGN_OR_RETURN(
+      auto cached_key_and_module,
+      module_manager_->GetCachedExecutable(doperation, eager_attributes, inputs,
+                                           result.output_layouts));
+  auto [cache_key, cached_mlir_module] = cached_key_and_module;
   result.doperation_cache_key = cache_key;
 
   if (cached_mlir_module != nullptr) {
+    VLOG(2) << "DTensor cache key lookup found for " << doperation.name
+            << ". DTensor is (re-)using its SPMD transformation.";
     result.module = **cached_mlir_module;
     return result;
   } else if (function_def) {
@@ -1445,7 +1532,7 @@ DTensorDevice::DTensorOperationToModule(
     // cache key computation to reduce the overheads of running the same
     // function multiple times.
     TF_RETURN_IF_ERROR(PrepareGraphForMlir(
-        *function_manager_, inputs, doperation, *flib_def, eager_attributes,
+        *module_manager_, inputs, doperation, *flib_def, eager_attributes,
         default_layout_, result.graph.get(), &result.global_output_shapes,
         &result.output_layouts));
   }
@@ -1460,8 +1547,21 @@ DTensorDevice::DTensorOperationToModule(
           device_set, doperation.is_func(), doperation.default_mesh, *flib_def,
           *result.graph, result.doperation_cache_key));
 
+  tsl::core::WeakPtr<ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>>
+      manager{module_manager_.get()};
+
   cached_mlir_module = module_manager_->AddCachedExecutable(
       cache_key, mlir_module_ref.release());
+
+  tensorflow::unwrap(context)
+      ->AddRemoveFunctionNotifier(doperation.name,
+                                  [manager, key = cache_key]() {
+                                    // Removes from the cache.
+                                    auto manager_ref = manager.GetNewRef();
+                                    if (!manager_ref) return;
+                                    manager_ref->Remove(key);
+                                  })
+      .IgnoreError();
   result.module = **cached_mlir_module;
   return result;
 }
@@ -1484,6 +1584,8 @@ void DTensorDevice::ModuleToExecutionFunctions(
       lowering_context.doperation_cache_key);
   if (cached_function != nullptr) {
     *execution_functions = cached_function;
+    VLOG(2) << "DTensor cache key lookup found for " << doperation.name
+            << ". DTensor is (re-)using its ExecutionFunctions.";
     return;
   } else {
     if (doperation.is_func()) {
@@ -1540,7 +1642,8 @@ void DTensorDevice::ModuleToExecutionFunctions(
 
   RETURN_C_STATUS_IF_NOT_OK(
       AddExecutionFunctionDefsToFunctionDefLibrary(
-          control_ret_nodes, context, *lowering_context.graph, &functions),
+          doperation.name, doperation.stack_traces, control_ret_nodes, context,
+          *lowering_context.graph, &functions),
       status);
   functions.num_device_ids = 1;
   if (function_def) {
@@ -1551,8 +1654,55 @@ void DTensorDevice::ModuleToExecutionFunctions(
     }
   }
 
+  tsl::core::WeakPtr<ExecutableManager<ExecutionFunctions>> manager{
+      function_manager_.get()};
+  std::vector<std::string> translated_names;
+  translated_names.reserve(functions.function_list.size());
+  for (TranslatedFunction& function : functions.function_list) {
+    translated_names.push_back(function.translated_function_name);
+  }
+  std::vector<std::string> func_names;
+  for (auto function : lowering_context.module->getOps<mlir::func::FuncOp>()) {
+    func_names.push_back(function.getName().str());
+  }
+  /*
+  std::vector<std::string> names;
+  names.reserve(functions.function_list.size());
+  for (TranslatedFunction& function : functions.function_list) {
+    names.push_back(function.function_name);
+  } */
+
   *execution_functions = function_manager_->AddCachedExecutable(
       lowering_context.doperation_cache_key, std::move(functions));
+
+  tensorflow::unwrap(context)
+      ->AddRemoveFunctionNotifier(
+          doperation.name,
+          [context, manager, key = lowering_context.doperation_cache_key,
+           func_names, translated_names]() {
+            // Removes the cache.
+            auto manager_ref = manager.GetNewRef();
+            if (manager_ref) {
+              manager_ref->Remove(key);
+            }
+
+            // Do no purge under TFRT, TFRT refers to these defs even after
+            // the top level function is removed from Python.
+            if (tensorflow::unwrap(context)->UsesTFRT()) return;
+
+            // Translated functions are added to the eager context.
+            for (const auto& name : translated_names) {
+              tensorflow::unwrap(context)->RemoveFunction(name).IgnoreError();
+            }
+            // Untranslated functions are only added to the
+            // FunctionLibraryDefinition.
+            FunctionLibraryDefinition* flib_def =
+                tensorflow::unwrap(context)->FuncLibDef();
+            for (const auto& name : func_names) {
+              flib_def->RemoveFunction(name).IgnoreError();
+            }
+          })
+      .IgnoreError();
 }
 
 void DTensorDevice::ExecuteFunctionAndWait(
@@ -1706,7 +1856,7 @@ void DTensorDevice::ExecuteRegularOperation(
       epu_fn_ptr = std::make_unique<const TranslatedFunction>(function);
       excluded_fn_names.insert(function.translated_function_name);
     }
-    if (absl::StartsWith(function.translated_function_name, kLoadEmbeddingFn)) {
+    if (absl::StartsWith(function.function_name, kLoadEmbeddingFn)) {
       if (load_embedding_ptr != nullptr) {
         RETURN_STATUS(status, TF_INTERNAL,
                       "There are more than one function defined on EPU mesh.");
@@ -2000,11 +2150,15 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
         "No default mesh has been registered to DTensor. Use dtensor.run_on to "
         "explicit specify a mesh.");
   }
+  FunctionLibraryDefinition* flib_def =
+      tensorflow::unwrap(context)->FuncLibDef();
   DTensorOperation dtensor_operation{
       /*name*/ operation_name,
       /*function_def*/
       tensorflow::unwrap(context)->FindFunctionDef(operation_name),
       /*default_mesh*/ default_mesh_->mesh_config(),
+      /*stack_traces*/
+      flib_def->GetStackTraces(operation_name),
   };
 
   // First handle DTensor-specific virtual operations.
@@ -2182,10 +2336,20 @@ TFE_TensorHandle* CopyFromDTensorDevice(TFE_Context* context,
   // requires blocking waiting for other devices to flush their execution
   // queues.
   // Note that we also only need to sync the threads on the parallel_device()
-  // directly, or a context level sync might cause unintentional deadlocks when
-  // grabbing locks on other threads.
+  // directly, or a context level sync might cause unintentional deadlocks
+  // when grabbing locks on other threads.
   dev->AsyncWait(context, status);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
+  if (TF_GetCode(status) != TF_OK) {
+    return nullptr;
+  }
+  if (dev->use_parallel_executor()) {
+    TFE_TensorHandle* handle =
+        dev->ToHostTensorHandle(context, typed_input, status);
+    if (TF_GetCode(status) != TF_OK) {
+      return nullptr;
+    }
+    return handle;
+  }
   return TFE_TensorHandleCopySharingTensor(typed_input->get_tensor(0), status);
 }
 

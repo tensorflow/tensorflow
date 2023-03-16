@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iterator>
 #include <memory>
 #include <utility>
 
@@ -20,12 +21,15 @@ limitations under the License.
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/DestinationStyleOpInterface.h"
+#include "mlir/Interfaces/TilingInterface.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "thlo/IR/thlo_ops.h"
@@ -40,6 +44,20 @@ namespace {
 static constexpr llvm::StringRef kFusionPlanningLabel =
     "__fusion_planning_label__";
 
+// Returns true if the op is linalg.reduce or one of the variations of matmul.
+bool isReducingOp(Operation* op) {
+  return isa<linalg::ReduceOp, linalg::MatmulOp, linalg::MatvecOp,
+             linalg::VecmatOp, linalg::DotOp>(op);
+}
+
+// Returns true if the op is either a map (linalg.map or linalg.fill) or the op
+// has only parallel tiling dimensions and doesn't perform any computations
+// (linalg.broadcast, linalg.transpose, thlo.reverse).
+bool isElementwiseOp(Operation* op) {
+  return isa<linalg::MapOp, linalg::BroadcastOp, linalg::TransposeOp,
+             thlo::ReverseOp, linalg::FillOp>(op);
+}
+
 // Returns true is consumer and producer should be fused and tiled together.
 bool allowedToFuse(Operation* consumerOp, Operation* producerOp) {
   if (isa<thlo::ScatterOp, thlo::SortOp>(producerOp)) return false;
@@ -53,6 +71,8 @@ bool allowedToFuse(Operation* consumerOp, Operation* producerOp) {
         }))
       return true;
   }
+
+  if (isElementwiseOp(consumerOp) && isElementwiseOp(producerOp)) return true;
 
   if (isa<linalg::MapOp, thlo::ReverseOp>(consumerOp)) return true;
   if (isa<linalg::BroadcastOp>(consumerOp)) return false;
@@ -83,6 +103,7 @@ LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
 
   SetVector<Operation*> resultOps;
   SmallVector<Operation*> remainingProducers;
+  bool hasReducingOp = isReducingOp(op);
   resultOps.insert(op.getOperation());
   for (auto operand : op.getOperands())
     remainingProducers.push_back(operand.getDefiningOp());
@@ -103,6 +124,12 @@ LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
         }))
       continue;
 
+    // Only one reducing op should be added to the cluster.
+    if (isReducingOp(curOp)) {
+      if (hasReducingOp) continue;
+      hasReducingOp = true;
+    }
+
     resultOps.insert(curOp);
 
     for (auto operand : curOp->getOperands())
@@ -120,23 +147,121 @@ LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
   return success();
 }
 
+// Duplicate linalg.fill op with rank-0 tensors results that have multiple
+// users. If linalg.fill is used inside and outside of a fusion cluster, it will
+// not be fused and can break some other passes that expect linalg.reduce inits
+// to be linalg.fill.
+LogicalResult copyConstantLikeFillOp(linalg::FillOp fillOp,
+                                     PatternRewriter& rewriter) {
+  // Only modify ops that fill rank-0 tensors.
+  if (fillOp.getRank(fillOp.getDpsInitOperand(0)) != 0) return failure();
+
+  // Nothing to do, because the op has 0 or 1 users.
+  if (std::distance(fillOp->user_begin(), fillOp->user_end()) <= 1)
+    return failure();
+
+  bool modified = false;
+  for (auto& use : llvm::make_early_inc_range(fillOp->getUses())) {
+    Operation* ownerOp = use.getOwner();
+
+    auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(ownerOp);
+    if (!dstStyleOp || !dstStyleOp.isDpsInit(&use)) continue;
+
+    auto newFillOp = cast<linalg::FillOp>(rewriter.clone(*fillOp));
+    use.set(newFillOp.getResult(0));
+    modified = true;
+  }
+  return success(modified);
+}
+
+// Add attributes with tile sizes for parallel and reduction dimensions.
+// Attribute is empty if there is nothing to tile across respective dimensions.
+struct ComputeTileSizesPattern : public OpRewritePattern<gml_st::FusionOp> {
+  ComputeTileSizesPattern(MLIRContext* context, int64_t vectorSize,
+                          PatternBenefit benefit = 1)
+      : OpRewritePattern<gml_st::FusionOp>(context, benefit),
+        vectorSize(vectorSize) {}
+
+  LogicalResult matchAndRewrite(gml_st::FusionOp fusionOp,
+                                PatternRewriter& rewriter) const override {
+    if (fusionOp.getParallelTileSizes().has_value()) return failure();
+
+    if (!llvm::all_of(fusionOp.getRegion().getOps(), [](Operation& op) {
+          return isa<gml_st::YieldOp, linalg::BroadcastOp, linalg::FillOp,
+                     linalg::MapOp, tensor::EmptyOp, thlo::ReverseOp>(op);
+        }))
+      return failure();
+
+    auto rootOp = dyn_cast_or_null<TilingInterface>(
+        fusionOp.getTerminator().getOperand(0).getDefiningOp());
+    if (!rootOp) return failure();
+
+    const int64_t numLoops = rootOp.getLoopIteratorTypes().size();
+
+    fusionOp.setParallelTileSizes(getParallelTileSizes(numLoops));
+    fusionOp.setReductionTileSizes(SmallVector<int64_t>(numLoops, 0));
+
+    return success();
+  };
+
+ private:
+  SmallVector<int64_t> getParallelTileSizes(int64_t numLoops) const {
+    SmallVector<int64_t> result(numLoops, 1);
+    if (!result.empty()) result.back() = vectorSize;
+    return result;
+  }
+
+  int64_t vectorSize;
+};
+
 struct FusionPlanningForCpuPass
     : public impl::FusionPlanningForCpuPassBase<FusionPlanningForCpuPass> {
+  explicit FusionPlanningForCpuPass(int64_t vs = 8) { vectorSize = vs; }
+
   void runOnOperation() override {
     func::FuncOp f = getOperation();
     MLIRContext* context = &getContext();
 
-    RewritePatternSet patterns(context);
-    patterns.add(fusionPattern<linalg::MapOp>);
-    patterns.add(fusionPattern<linalg::MatmulOp>);
-    patterns.add(fusionPattern<linalg::ReduceOp>);
-    patterns.add(fusionPattern<linalg::TransposeOp>);
-    patterns.add(fusionPattern<thlo::ReverseOp>);
-    patterns.add(fusionPattern<thlo::ScatterOp>);
-    patterns.add(fusionPattern<thlo::SortOp>);
+    // Cleanup passes to prepare ops for better clustering.
+    {
+      RewritePatternSet patterns(context);
+      patterns.add(copyConstantLikeFillOp);
 
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
-      return signalPassFailure();
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+        return signalPassFailure();
+      }
+    }
+
+    // Move ops to gml_st.fusion clusters.
+    {
+      RewritePatternSet patterns(context);
+      patterns.add(fusionPattern<linalg::MapOp>);
+      patterns.add(fusionPattern<linalg::MatmulOp>);
+      patterns.add(fusionPattern<linalg::ReduceOp>);
+      patterns.add(fusionPattern<linalg::TransposeOp>);
+      patterns.add(fusionPattern<thlo::ReverseOp>);
+      patterns.add(fusionPattern<thlo::ScatterOp>);
+      patterns.add(fusionPattern<thlo::SortOp>);
+
+      GreedyRewriteConfig config = GreedyRewriteConfig();
+      // TODO(shyshkov): Refactor the fusion pattern so it doesn't visit all ops
+      // too many times. Currently pattern might need O(N^2) iterations to
+      // create fusion clusters for N ops.
+      config.maxIterations = GreedyRewriteConfig::kNoLimit;
+      if (failed(
+              applyPatternsAndFoldGreedily(f, std::move(patterns), config))) {
+        return signalPassFailure();
+      }
+    }
+
+    // Add attributes with tile sizes.
+    {
+      RewritePatternSet patterns(context);
+      patterns.add<ComputeTileSizesPattern>(context, vectorSize);
+
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+        return signalPassFailure();
+      }
     }
   }
 };
@@ -159,8 +284,8 @@ struct InlineFusionClustersPass
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createFusionPlanningForCpuPass() {
-  return std::make_unique<mlir::gml_st::FusionPlanningForCpuPass>();
+createFusionPlanningForCpuPass(int64_t vectorSize) {
+  return std::make_unique<mlir::gml_st::FusionPlanningForCpuPass>(vectorSize);
 }
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>

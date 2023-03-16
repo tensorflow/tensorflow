@@ -222,6 +222,9 @@ tf_py_test(
     name = "io_test",
     size = "medium",
     srcs = ["io_test.py"],
+    tags = [
+        "notap",  # b/272281090
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",

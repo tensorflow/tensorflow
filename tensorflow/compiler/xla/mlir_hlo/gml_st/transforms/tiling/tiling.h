@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "gml_st/IR/gml_st_ops.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/TilingInterface.h"
 
@@ -28,7 +29,7 @@ namespace gml_st {
 
 struct TilingResult {
   SmallVector<Operation *> tiledOps;
-  ParallelOp loop = nullptr;
+  scf::ForallOp loop = nullptr;
 };
 
 /// Options to use to control tiling.
@@ -60,6 +61,10 @@ void populateTilingPatterns(
 
 /// Cleans up attributes from applying above tiling patterns.
 void removeTilingLabels(Operation *op);
+
+/// Extracts all yielded values from scf.in_parallel terminator. It should be
+/// upstreamed.
+SmallVector<Value> getYieldedValues(scf::InParallelOp inParallelOp);
 
 }  // namespace gml_st
 }  // namespace mlir

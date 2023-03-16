@@ -44,6 +44,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -51,6 +52,7 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops import while_v2
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import constants
@@ -446,7 +448,7 @@ class VariablesToConstantsTest(test.TestCase):
         tensor_spec.TensorSpec(shape=[2, 2], dtype=dtypes.float32)
     ])
     def model(x):
-      return control_flow_ops.while_loop(condition, body, [x])
+      return while_loop.while_loop(condition, body, [x])
 
     root, output_func = self._freezeModel(model)
 
@@ -520,8 +522,8 @@ class VariablesToConstantsTest(test.TestCase):
         tensor_spec.TensorSpec(shape=[10, 3], dtype=dtypes.float32),
     ])
     def model(i, x):
-      return control_flow_ops.switch_case(i, [
-          lambda: branch0(x), lambda: branch1(x), lambda: branch2(x)])
+      return control_flow_switch_case.switch_case(
+          i, [lambda: branch0(x), lambda: branch1(x), lambda: branch2(x)])
 
     root, output_func = self._freezeModel(model)
     self._testConvertedFunction(root, root.f, output_func, input_data)
@@ -817,7 +819,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
             tensor_spec.TensorSpec(shape=[2, 2], dtype=dtypes.float32)
         ])
         def model(x):
-          return control_flow_ops.while_loop(condition, body, [x])
+          return while_loop.while_loop(condition, body, [x])
 
         root, output_func = self._freezeModel(model)
 
@@ -899,7 +901,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
             tensor_spec.TensorSpec(shape=[10, 3], dtype=dtypes.float32),
         ])
         def model(i, x):
-          return control_flow_ops.switch_case(
+          return control_flow_switch_case.switch_case(
               i, [lambda: branch0(x), lambda: branch1(x), lambda: branch2(x)])
 
         root, output_func = self._freezeModel(model)

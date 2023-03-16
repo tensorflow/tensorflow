@@ -32,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import stack
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -1149,7 +1150,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     ckpt = trackable_utils.Checkpoint(v=v)
     self.evaluate(v.initializer)
     prefix = pathlib.Path(self.get_temp_dir()) / "ckpt"
-    with ops.default_session(None):
+    with stack.default_session(None):
       with self.assertRaisesRegex(RuntimeError, "create a session"):
         ckpt.write(prefix)
 

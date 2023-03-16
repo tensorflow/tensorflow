@@ -268,6 +268,15 @@ class Node {
   // Erases type information from the node.
   void ClearTypeInfo();
 
+  // Update type information for a node with a list of inputs and/or outputs
+  // described by its TYPE_ATTR_NAME attr when removing some of these. The keys
+  // of INDEX_MAPPING are the indexes of the inputs/outputs that are not
+  // removed. dtype information in the TYPE_ATTR_NAME attr is always updated.
+  // Use UPDATE_FULL_TYPE=true when this changes the node's outputs to also
+  // update the node's full type information (if present).
+  Status ShrinkTypeInfo(const absl::flat_hash_map<int, int>& index_mapping,
+                        const string& type_attr_name, bool update_full_type);
+
   // Called after an incident non-control edge has changed. Does nothing if not
   // all input edges are defined.
   void RunForwardTypeInference();
@@ -586,7 +595,9 @@ class Graph {
                              bool allow_duplicates = false);
 
   // Removes edge from the graph. Does not update the destination node's
-  // NodeDef.
+  // NodeDef. Does not update the full type information of the source node's
+  // NodeDef. (See ShrinkTypeInfo for an example of updating full type
+  // information when removing some outputs from a node.)
   // REQUIRES: The edge must exist.
   void RemoveEdge(const Edge* edge);
 

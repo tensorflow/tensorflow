@@ -22,6 +22,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
@@ -112,7 +113,7 @@ PJRT_DeviceTopologyDeleter MakeDeviceTopologyDeleter(const PJRT_Api* api) {
   };
 }
 
-tsl::error::Code PjrtErrorToStatusCode(const PJRT_Error* error,
+absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
                                        const PJRT_Api* api) {
   PJRT_Error_GetCode_Args args;
   args.struct_size = PJRT_Error_GetCode_Args_STRUCT_SIZE;
@@ -122,74 +123,44 @@ tsl::error::Code PjrtErrorToStatusCode(const PJRT_Error* error,
   PJRT_Error_Code code = args.code;
   switch (code) {
     case PJRT_Error_Code_CANCELLED:
-      return tsl::error::CANCELLED;
     case PJRT_Error_Code_UNKNOWN:
-      return tsl::error::UNKNOWN;
     case PJRT_Error_Code_INVALID_ARGUMENT:
-      return tsl::error::INVALID_ARGUMENT;
     case PJRT_Error_Code_DEADLINE_EXCEEDED:
-      return tsl::error::DEADLINE_EXCEEDED;
     case PJRT_Error_Code_NOT_FOUND:
-      return tsl::error::NOT_FOUND;
     case PJRT_Error_Code_ALREADY_EXISTS:
-      return tsl::error::ALREADY_EXISTS;
     case PJRT_Error_Code_PERMISSION_DENIED:
-      return tsl::error::PERMISSION_DENIED;
     case PJRT_Error_Code_RESOURCE_EXHAUSTED:
-      return tsl::error::RESOURCE_EXHAUSTED;
     case PJRT_Error_Code_FAILED_PRECONDITION:
-      return tsl::error::FAILED_PRECONDITION;
     case PJRT_Error_Code_ABORTED:
-      return tsl::error::ABORTED;
     case PJRT_Error_Code_OUT_OF_RANGE:
-      return tsl::error::OUT_OF_RANGE;
     case PJRT_Error_Code_UNIMPLEMENTED:
-      return tsl::error::UNIMPLEMENTED;
     case PJRT_Error_Code_INTERNAL:
-      return tsl::error::INTERNAL;
     case PJRT_Error_Code_UNAVAILABLE:
-      return tsl::error::UNAVAILABLE;
     case PJRT_Error_Code_DATA_LOSS:
-      return tsl::error::DATA_LOSS;
     case PJRT_Error_Code_UNAUTHENTICATED:
-      return tsl::error::UNAUTHENTICATED;
+      return static_cast<absl::StatusCode>(code);
   }
 }
 
 PJRT_Error_Code StatusCodeToPjrtErrorCode(tsl::error::Code code) {
   switch (code) {
     case tsl::error::CANCELLED:
-      return PJRT_Error_Code::PJRT_Error_Code_CANCELLED;
     case tsl::error::UNKNOWN:
-      return PJRT_Error_Code::PJRT_Error_Code_UNKNOWN;
     case tsl::error::INVALID_ARGUMENT:
-      return PJRT_Error_Code::PJRT_Error_Code_INVALID_ARGUMENT;
     case tsl::error::DEADLINE_EXCEEDED:
-      return PJRT_Error_Code::PJRT_Error_Code_DEADLINE_EXCEEDED;
     case tsl::error::NOT_FOUND:
-      return PJRT_Error_Code::PJRT_Error_Code_NOT_FOUND;
     case tsl::error::ALREADY_EXISTS:
-      return PJRT_Error_Code::PJRT_Error_Code_ALREADY_EXISTS;
     case tsl::error::PERMISSION_DENIED:
-      return PJRT_Error_Code::PJRT_Error_Code_PERMISSION_DENIED;
     case tsl::error::UNAUTHENTICATED:
-      return PJRT_Error_Code::PJRT_Error_Code_UNAUTHENTICATED;
     case tsl::error::RESOURCE_EXHAUSTED:
-      return PJRT_Error_Code::PJRT_Error_Code_RESOURCE_EXHAUSTED;
     case tsl::error::FAILED_PRECONDITION:
-      return PJRT_Error_Code::PJRT_Error_Code_FAILED_PRECONDITION;
     case tsl::error::ABORTED:
-      return PJRT_Error_Code::PJRT_Error_Code_ABORTED;
     case tsl::error::OUT_OF_RANGE:
-      return PJRT_Error_Code::PJRT_Error_Code_OUT_OF_RANGE;
     case tsl::error::UNIMPLEMENTED:
-      return PJRT_Error_Code::PJRT_Error_Code_UNIMPLEMENTED;
     case tsl::error::INTERNAL:
-      return PJRT_Error_Code::PJRT_Error_Code_INTERNAL;
     case tsl::error::UNAVAILABLE:
-      return PJRT_Error_Code::PJRT_Error_Code_UNAVAILABLE;
     case tsl::error::DATA_LOSS:
-      return PJRT_Error_Code::PJRT_Error_Code_DATA_LOSS;
+      return static_cast<PJRT_Error_Code>(code);
     case tsl::error::OK:
       CHECK(false) << "Status::OK() cannot be converted to PJRT_Error code, "
                       "use nullptr instead";

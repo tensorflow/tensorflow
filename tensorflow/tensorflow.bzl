@@ -2142,8 +2142,10 @@ def _check_deps_impl(ctx):
         for disallowed_dep in disallowed_deps:
             if sets.contains(collected_deps, disallowed_dep.label):
                 fail(
-                    _dep_label(input_dep) + " cannot depend on " +
-                    _dep_label(disallowed_dep),
+                    "{src} cannot depend on {dep}. See: bazel query 'somepath(//{src}, //{dep})'".format(
+                        src = _dep_label(input_dep),
+                        dep = _dep_label(disallowed_dep),
+                    ),
                 )
         for required_dep in required_deps:
             if not sets.contains(collected_deps, required_dep.label):
@@ -2507,6 +2509,11 @@ def py_test(deps = [], data = [], kernels = [], exec_properties = None, **kwargs
         **kwargs
     )
 
+register_extension_info(
+    extension = py_test,
+    label_regex_for_dep = "{extension_name}",
+)
+
 # Similar to py_test above, this macro is used to exclude dependencies for some py_binary
 # targets in order to reduce the size of //tensorflow/tools/pip_package:simple_console_windows.
 # See https://github.com/tensorflow/tensorflow/issues/22390
@@ -2630,6 +2637,11 @@ def tf_py_test(
             deps = depset(deps + xla_test_true_list),
             **kwargs
         )
+
+register_extension_info(
+    extension = tf_py_test,
+    label_regex_for_dep = "{extension_name}(_tfrt)?",
+)
 
 def gpu_py_test(
         name,
@@ -3209,7 +3221,6 @@ def tf_python_pybind_static_deps(testonly = False):
         "@llvm_openmp//:__subpackages__",
         "@llvm_terminfo//:__subpackages__",
         "@llvm_zlib//:__subpackages__",
-        "@lmdb//:__subpackages__",
         "@local_config_cuda//:__subpackages__",
         "@local_config_git//:__subpackages__",
         "@local_config_nccl//:__subpackages__",

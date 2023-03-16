@@ -272,6 +272,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:execute",
+        "//tensorflow/security/fuzzing/py:annotation_types",
         "//tensorflow/tools/docs:doc_controls",
     ],
 )
@@ -1025,6 +1026,7 @@ py_library(
         ":op_callbacks",
         ":op_def_registry",
         ":registry",
+        ":stack",
         ":tensor_conversion_registry",
         ":tensor_shape",
         ":tensor_util",
@@ -1179,7 +1181,9 @@ tf_py_test(
     deps = [
         ":auto_control_deps",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:sendrecv_ops_gen",
+        "//tensorflow/python:while_loop",
     ],
 )
 
@@ -1470,6 +1474,16 @@ pytype_library(
 )
 
 py_library(
+    name = "stack",
+    srcs = ["stack.py"],
+    visibility = visibility + ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_library(
     name = "tensor",
     srcs = ["tensor.py"],
     deps = [
@@ -1722,6 +1736,7 @@ tf_py_test(
         ":error_interpolation",
         ":traceable_stack",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_assert",
     ],
 )
 
@@ -1773,6 +1788,7 @@ cuda_py_test(
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:gradients",
@@ -1785,6 +1801,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
     ],
 )
@@ -1821,6 +1838,7 @@ tf_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
     ],
 )
@@ -1858,6 +1876,7 @@ tf_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
     ],
 )
 
@@ -1966,6 +1985,7 @@ tf_py_test(
         "//tensorflow/python:resources",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python:while_v2",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
@@ -2000,6 +2020,17 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "python_op_gen_annotation_test",
+    size = "small",
+    srcs = ["python_op_gen_annotation_test.py"],
+    main = "python_op_gen_annotation_test.py",
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/security/fuzzing/py:annotation_types",
+    ],
+)
+
+tf_py_test(
     name = "ops_enable_eager_test",
     size = "small",
     srcs = ["ops_enable_eager_test.py"],
@@ -2023,6 +2054,7 @@ tf_py_test(
         ":test_lib",
         ":type_spec_registry",
         ":type_utils",
+        "//tensorflow/python:while_loop",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -2202,6 +2234,7 @@ cuda_py_test(
         ":test_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:platform_test",
@@ -2229,6 +2262,7 @@ tf_py_test(
         "no_windows",
         "noasan",  # TODO(b/149948895): Re-enable.
         "nomsan",  # TODO(b/149948895): Re-enable.
+        "notsan",  # TODO(b/149948895): Re-enable.
     ],
     deps = [
         ":test_lib",
@@ -2352,8 +2386,10 @@ tf_py_test(
         ":convert_to_constants",
         ":test_lib",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:while_loop",
     ],
 )
 

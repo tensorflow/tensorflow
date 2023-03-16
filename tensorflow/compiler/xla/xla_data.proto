@@ -480,6 +480,8 @@ message DeviceAssignmentProto {
 message LiteralProto {
   ShapeProto shape = 1;
   repeated bool preds = 2;
+  bytes s4s = 21;
+  bytes u4s = 22;
   bytes s8s = 15;
   bytes u8s = 3;
   repeated int32 s32s = 4;
@@ -499,7 +501,7 @@ message LiteralProto {
   bytes f8e5m2s = 19;
   bytes f8e4m3fns = 20;
   repeated int64 sparse_indices = 14;
-  // Next = 21
+  // Next = 23
 }
 
 message WindowDimension {

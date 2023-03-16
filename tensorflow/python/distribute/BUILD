@@ -158,7 +158,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/ops/losses",
         "//tensorflow/tools/docs:doc_controls",
     ],
 )
@@ -306,6 +305,7 @@ py_library(
         "//tensorflow/python/autograph/impl",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/ops/losses:losses_impl",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -345,6 +345,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:context",
@@ -413,6 +414,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
@@ -545,6 +547,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/autograph/operators",
         "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/experimental/ops:cardinality",
@@ -747,8 +750,8 @@ py_library(
     srcs = ["reduce_util.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -1820,6 +1823,7 @@ cuda_py_test(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",

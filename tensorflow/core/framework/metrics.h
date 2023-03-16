@@ -12,9 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #ifndef TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 #define TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
+
+#include <cstdint>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
@@ -130,11 +131,21 @@ void RecordTFDataServiceClientIterators(
 void RecordTFDataServiceDataTransferProtocolUsed(
     const string& data_transfer_protocol);
 
+// Records that a tf.data service worker client got an error of non-retriable
+// type `code` with message `error_message` when trying to transfer data over
+// `data_transfer_protocol`.
+void RecordTFDataServiceDataTransferProtocolError(
+    const string& data_transfer_protocol, error::Code code,
+    const string& error_message);
+
 // Records tf.data service cross-trainer cache queries.
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit);
 
 // Records tf.data service cross-trainer cache memory usage in bytes.
 void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes);
+
+// Records distributed tf.data snapshot bytes committed.
+void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes);
 
 // Records the file name read by a tf.data Dataset.
 //
@@ -232,7 +243,8 @@ void UpdateTfMlirBridgeGraphAnalysisPerOp(
     const std::string& unsupported_reason, bool has_unsupported_features);
 
 // Records whether a graph contains any of the TF1 features
-void RecordTFVersionByGraphFeatures(const std::string& device_name,
+void RecordTFVersionByGraphFeatures(const std::string& device,
+                                    const std::string& context,
                                     bool hasControlFlowV1,
                                     bool hasReferenceVariables,
                                     bool hasManualControlDeps);

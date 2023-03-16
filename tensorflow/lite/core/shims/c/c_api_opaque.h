@@ -15,6 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_SHIMS_C_C_API_OPAQUE_H_
 #define TENSORFLOW_LITE_CORE_SHIMS_C_C_API_OPAQUE_H_
 
-#include "tensorflow/lite/c/c_api_opaque.h"
+#include "tensorflow/lite/core/c/c_api_opaque.h"
 
 #endif  // TENSORFLOW_LITE_CORE_SHIMS_C_C_API_OPAQUE_H_

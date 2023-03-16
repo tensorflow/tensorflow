@@ -43,7 +43,7 @@ std::set<std::string> GetAllCpuKernels() {
 
 // Test if every flex op has their kernel included in the flex delegate library.
 // This test must be run on both Linux and Android.
-TEST(DISABLED_AllowlistedFlexOpsTest, EveryOpHasKernel) {
+TEST(AllowlistedFlexOpsTest, EveryOpHasKernel) {
   const std::set<std::string>& allowlist = GetFlexAllowlist();
   std::set<std::string> all_kernels = GetAllCpuKernels();
 

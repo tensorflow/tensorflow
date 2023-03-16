@@ -57,9 +57,9 @@ struct NullOpLowering : public ConvertOpToLLVMPattern<NullOp> {
     Value zero = createIndexConstant(rewriter, loc, 0);
     if (auto resultType = nullOp.getType().dyn_cast<MemRefType>()) {
       // Set all dynamic sizes to 1 and compute fake strides.
-      SmallVector<Value, 4> dynSizes(resultType.getNumDynamicDims(),
-                                     createIndexConstant(rewriter, loc, 1));
-      SmallVector<Value, 4> sizes, strides;
+      SmallVector<Value> dynSizes(resultType.getNumDynamicDims(),
+                                  createIndexConstant(rewriter, loc, 1));
+      SmallVector<Value> sizes, strides;
       Value sizeBytes;
       getMemRefDescriptorSizes(loc, resultType, dynSizes, rewriter, sizes,
                                strides, sizeBytes);
@@ -68,7 +68,7 @@ struct NullOpLowering : public ConvertOpToLLVMPattern<NullOp> {
       // to create a memref descriptor.
       Value null = rewriter.create<LLVM::NullOp>(
           loc, LLVM::LLVMPointerType::get(llvmElemType, addressSpace));
-      SmallVector<Value, 12> packedValues{null, null, zero};
+      SmallVector<Value> packedValues{null, null, zero};
       packedValues.append(sizes);
       packedValues.append(strides);
 
@@ -84,29 +84,27 @@ struct NullOpLowering : public ConvertOpToLLVMPattern<NullOp> {
     auto desc = UnrankedMemRefDescriptor::undef(rewriter, loc, llvmResultType);
     desc.setRank(rewriter, loc, zero);
 
-    // Due to the current way of handling unranked memref results escaping, we
-    // have to actually construct a ranked underlying descriptor instead of just
-    // setting its pointer to NULL.
-    SmallVector<Value, 4> sizes;
+    // The allocated pointer is stored in the underlying ranked memref
+    // descriptor.
+    SmallVector<Value, 1> sizes;
     UnrankedMemRefDescriptor::computeSizes(rewriter, loc, *getTypeConverter(),
                                            desc, addressSpace, sizes);
     Value underlyingDestPtr = rewriter.create<LLVM::AllocaOp>(
         loc, getVoidPtrType(), sizes.front(), std::nullopt);
 
     // Populate underlying ranked descriptor.
-    LLVM::LLVMPointerType elemPtrPtrType = LLVM::LLVMPointerType::get(
-        LLVM::LLVMPointerType::get(llvmElemType, addressSpace));
+    LLVM::LLVMPointerType elemPtrType =
+        LLVM::LLVMPointerType::get(llvmElemType, addressSpace);
 
     Value null = rewriter.create<LLVM::NullOp>(
         loc, LLVM::LLVMPointerType::get(llvmElemType, addressSpace));
     UnrankedMemRefDescriptor::setAllocatedPtr(rewriter, loc, underlyingDestPtr,
-                                              elemPtrPtrType, null);
+                                              elemPtrType, null);
     UnrankedMemRefDescriptor::setAlignedPtr(rewriter, loc, *getTypeConverter(),
-                                            underlyingDestPtr, elemPtrPtrType,
+                                            underlyingDestPtr, elemPtrType,
                                             null);
     UnrankedMemRefDescriptor::setOffset(rewriter, loc, *getTypeConverter(),
-                                        underlyingDestPtr, elemPtrPtrType,
-                                        zero);
+                                        underlyingDestPtr, elemPtrType, zero);
 
     desc.setMemRefDescPtr(rewriter, loc, underlyingDestPtr);
     rewriter.replaceOp(nullOp, {desc});

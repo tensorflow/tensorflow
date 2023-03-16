@@ -165,6 +165,15 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "proto_to_flatbuffer_test",
+    srcs = ["proto_to_flatbuffer_test.cc"],
+    deps = [
+        ":proto_to_flatbuffer",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "flatbuffer_to_proto",
     srcs = [

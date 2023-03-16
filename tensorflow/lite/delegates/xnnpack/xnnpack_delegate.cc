@@ -575,6 +575,8 @@ class Delegate {
 #endif
   }
 
+  TfLiteXNNPackDelegateOptions options() const { return options_; }
+
  private:
   TfLiteDelegate delegate_ = {
       reinterpret_cast<void*>(this),             // .data_
@@ -6023,6 +6025,11 @@ TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
 
   options.handle_variable_ops = false;
   return options;
+}
+
+TfLiteXNNPackDelegateOptions GetOptions(const void* delegate_data) {
+  return static_cast<const tflite::xnnpack::Delegate*>(delegate_data)
+      ->options();
 }
 
 TfLiteDelegate* TfLiteXNNPackDelegateCreate(

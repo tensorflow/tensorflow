@@ -28,7 +28,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import layers as tf_layers
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops as tf_control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients as gradient_ops
 from tensorflow.python.ops import math_ops
@@ -37,6 +36,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.ops.parallel_for import control_flow_ops
 from tensorflow.python.ops.parallel_for import gradients
@@ -397,9 +397,8 @@ class GradientsTest(test.TestCase):
   def test_jacobian_while_loop_shape(self):
     # Shape x: [3, 4]
     x = random_ops.random_uniform([3, 4])
-    _, y = tf_control_flow_ops.while_loop(lambda i, a: i > 5.,
-                                          lambda i, a: (i + 1, a + i),
-                                          (constant_op.constant(0.), x))
+    _, y = while_loop.while_loop(lambda i, a: i > 5., lambda i, a:
+                                 (i + 1, a + i), (constant_op.constant(0.), x))
     # Shape y: [2, 3]
     y = y[:2, :3]
     jacobian = gradients.jacobian(y, x)

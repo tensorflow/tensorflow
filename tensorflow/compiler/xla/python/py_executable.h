@@ -105,6 +105,9 @@ class PyExecuteResults {
   PyShardedToken token_;
 };
 
+using ExecuteShardedArg =
+    std::variant<PyArray, std::vector<std::variant<PyBuffer::object, PyArray>>>;
+
 // Python wrapper around PjRtExecutable. We use a wrapper class:
 // a) to keep the PyClient alive via a std::shared_ptr<>
 // b) to add Python-specific functionality.
@@ -157,19 +160,15 @@ class PyLoadedExecutable
   // argid,deviceid format.
   // args is [num_args x num_devices].
   StatusOr<std::vector<std::vector<PyBuffer::object>>>
-  ExecuteShardedOnLocalDevices(
-      absl::Span<const std::vector<std::variant<PyBuffer::object, PyArray>>>
-          args);
+  ExecuteShardedOnLocalDevices(absl::Span<const ExecuteShardedArg> args);
 
   StatusOr<
       std::pair<std::vector<std::vector<PyBuffer::object>>, PyShardedToken>>
   ExecuteShardedOnLocalDevicesWithTokens(
-      absl::Span<const std::vector<std::variant<PyBuffer::object, PyArray>>>
-          args);
+      absl::Span<const ExecuteShardedArg> args);
 
-  StatusOr<PyExecuteResults> ExecuteSharded(
-      std::vector<std::vector<std::variant<PyBuffer::object, PyArray>>> args,
-      bool with_tokens);
+  StatusOr<PyExecuteResults> ExecuteSharded(std::vector<ExecuteShardedArg> args,
+                                            bool with_tokens);
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
 

@@ -84,7 +84,7 @@ Status Int32FulltypePass::ProcessGraph(Graph* graph, bool ints_on_device) {
       FullTypeDef* node_t = n->mutable_def()->mutable_experimental_type();
       if (node_t->type_id() != TFT_PRODUCT) {
         return Status(
-            error::INVALID_ARGUMENT,
+            absl::StatusCode::kInvalidArgument,
             absl::StrCat("Full type for node='", n->name(), "' (op='",
                          n->op_def().name(),
                          "') does not start with TFT_PRODUCT.\n got:\n",
@@ -92,7 +92,7 @@ Status Int32FulltypePass::ProcessGraph(Graph* graph, bool ints_on_device) {
       }
       if (node_t->args_size() != output_types.size()) {
         return Status(
-            error::INVALID_ARGUMENT,
+            absl::StatusCode::kInvalidArgument,
             absl::StrCat("Full type for node='", n->name(), "' (op='",
                          n->op_def().name(), "') has ", node_t->args_size(),
                          " outputs but output_types has ", output_types.size(),

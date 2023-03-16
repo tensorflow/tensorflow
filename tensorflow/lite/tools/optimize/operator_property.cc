@@ -58,9 +58,8 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
   return GetOperatorProperty(op_variant, number_of_bits);
 }
 
-// Update operation defintions in TensorFlow Lite dialect accordingly when there
-// are any needs on updating the kernel support level.
-// LINT.IfChange
+// Update operation definitions in TensorFlow Lite dialect accordingly when
+// there are any needs on updating the kernel support level. LINT.IfChange
 OperatorProperty GetOperatorProperty(OpVariant op_variant, int number_of_bits) {
   BuiltinOperator op_code = op_variant.op_code;
   OperatorProperty property;
@@ -224,6 +223,11 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant, int number_of_bits) {
         return true;
       };
       property.version = 1;
+      break;
+    case BuiltinOperator_EXP:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
       break;
     case BuiltinOperator_FILL: {
       property.inputs = {{1, tensor_property_default}};

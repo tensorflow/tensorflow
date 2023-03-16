@@ -25,9 +25,9 @@ limitations under the License.
 namespace tensorflow::tpu {
 namespace {
 
-StatusOr<std::string> GenerateTFStatusOr(errors::Code code,
+StatusOr<std::string> GenerateTFStatusOr(absl::StatusCode code,
                                          absl::string_view value = "") {
-  if (code == errors::Code::OK) {
+  if (code == absl::StatusCode::kOk) {
     return std::string(value);
   } else {
     return tsl::Status(code, value);
@@ -46,8 +46,8 @@ TEST(TpuEmbeddingErrors, StatusOk) {
 
   {
     TF_ASSERT_OK_AND_ASSIGN(const std::string value,
-                            AppendTpuEmbeddingErrorPayload(
-                                GenerateTFStatusOr(errors::Code::OK, kValue)));
+                            AppendTpuEmbeddingErrorPayload(GenerateTFStatusOr(
+                                absl::StatusCode::kOk, kValue)));
     EXPECT_EQ(value, kValue);
   }
 }
@@ -63,7 +63,7 @@ TEST(TpuEmbeddingErrors, StatusFailed) {
 
   {
     StatusOr<std::string> status_or = AppendTpuEmbeddingErrorPayload(
-        GenerateTFStatusOr(errors::Code::RESOURCE_EXHAUSTED));
+        GenerateTFStatusOr(absl::StatusCode::kResourceExhausted));
     EXPECT_FALSE(status_or.ok());
     const Status& status = status_or.status();
     EXPECT_EQ(status.code(), error::Code::RESOURCE_EXHAUSTED);

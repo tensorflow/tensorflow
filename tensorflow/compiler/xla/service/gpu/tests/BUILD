@@ -21,6 +21,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -171,7 +172,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:hlo_verifier",
@@ -780,6 +781,13 @@ xla_cc_test(
     ],
 )
 
+build_test(
+    name = "hlo_to_llvm_ir_build_test",
+    targets = [
+        ":hlo_to_llvm_ir",
+    ],
+)
+
 xla_cc_binary(
     name = "hlo_to_llvm_ir",
     srcs = ["hlo_to_llvm_ir.cc"],
@@ -829,6 +837,7 @@ glob_lit_tests(
         "fused_slice.hlo": ["no_rocm"],
         "fused_slice_different_operands.hlo": ["no_rocm"],
         "fusion.hlo": ["no_rocm"],
+        "kernel_reuse.hlo": ["no_rocm"],
         "launch_dimensions.hlo": ["no_rocm"],
         "pad_to_static.hlo": ["no_rocm"],
         "reduce_unnested.hlo": ["no_rocm"],

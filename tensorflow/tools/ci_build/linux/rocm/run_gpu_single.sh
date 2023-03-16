@@ -62,3 +62,4 @@ bazel test \
       -//tensorflow/core/tpu/... \
       -//tensorflow/lite/... \
       -//tensorflow/compiler/tf2tensorrt/... \
+      -//tensorflow/dtensor/python/tests:multi_client_test_nccl_2gpus

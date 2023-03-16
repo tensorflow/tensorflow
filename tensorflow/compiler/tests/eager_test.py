@@ -29,6 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.layers import convolutional
 from tensorflow.python.layers import pooling
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import functional_ops
@@ -37,6 +38,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import adam
 
@@ -68,7 +70,7 @@ class EagerTest(xla_test.XLATestCase):
   def testExecuteListOutputLen0(self):
     with self.test_scope():
       empty = constant_op.constant([], dtype=dtypes.float32)
-      result = array_ops.unstack(empty, 0)
+      result = array_ops_stack.unstack(empty, 0)
       self.assertTrue(isinstance(result, list))
       self.assertEqual(0, len(result))
 
@@ -612,7 +614,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
       def f(start):
         c = lambda x: math_ops.less(x, 13.0)
         b = lambda x: math_ops.add(x, 1.0)
-        return control_flow_ops.while_loop(c, b, [start])
+        return while_loop.while_loop(c, b, [start])
 
       y = f(constant_op.constant(3.0))
     self.assertEqual(13.0, y.numpy())

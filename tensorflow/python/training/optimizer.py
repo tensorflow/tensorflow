@@ -18,7 +18,6 @@
 
 import abc
 
-from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
@@ -553,7 +552,7 @@ class Optimizer(
         loss_value = loss()
 
         # Scale loss if using a "mean" loss reduction and multiple replicas.
-        # Have to be careful to call distribute_lib.get_loss_reduction()
+        # Have to be careful to call distribute_utils.get_loss_reduction()
         # *after* loss() is evaluated, so we know what loss reduction it uses.
         # TODO(josh11b): Test that we handle weight decay in a reasonable way.
         loss_value = self._scale_loss(loss_value)
@@ -612,7 +611,7 @@ class Optimizer(
   @staticmethod
   def _scale_loss(loss_value):
     ops.get_default_graph()._is_loss_scaled_by_optimizer = False  # pylint: disable=protected-access
-    if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
+    if distribute_utils.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
       num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
       if num_replicas > 1:
         loss_value *= (1. / num_replicas)

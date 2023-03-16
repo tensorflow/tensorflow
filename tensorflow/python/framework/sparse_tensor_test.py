@@ -303,6 +303,16 @@ class SparseTensorSpecTest(test_util.TensorFlowTestCase,
     self.assertAllEqual(st.values, st_reconstructed.values)
     self.assertAllEqual(st.dense_shape, st_reconstructed.dense_shape)
 
+  def testFromComponentsDynamicDenseShapeTensor(self):
+    @def_function.function(input_signature=[
+        sparse_tensor.SparseTensorSpec([None, 10, 100])])
+    def sparse_fun(st):
+      self.assertEqual(st.get_shape().as_list(), [None, 10, 100])
+      return st.dense_shape
+
+    # Force tracing the TF function.
+    _ = sparse_fun.get_concrete_function()
+
   @test_util.run_v1_only("SparseTensorValue is deprecated in v2")
   def testFromNumpyComponents(self):
     indices = np.array([[0], [8]])

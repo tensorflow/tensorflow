@@ -35,12 +35,33 @@ try:
 except ImportError:
   custom_call_for_test = None
 
+xla_client._xla.jax_jit.set_thread_local_state_initialization_callback(
+    lambda: None
+)
+xla_client._xla.jax_jit.global_state().jax_array = True
+
 bfloat16 = xla_client.bfloat16
 float8_e4m3fn = xla_client.float8_e4m3fn
 float8_e5m2 = xla_client.float8_e5m2
 ops = xla_client.ops
 xla_computation_to_mlir_module = (
     xla_client._xla.mlir.xla_computation_to_mlir_module)
+
+
+# pylint: disable=invalid-name
+def jax_array_convert_to_array(self):
+  return np.array(self._arrays[0])
+
+
+def jax_array_device(self):
+  return self._sharding._device
+
+
+Array = xla_client.ArrayImpl
+Array.__array__ = jax_array_convert_to_array
+Array.device = jax_array_device
+# pylint: enable=invalid-name
+
 
 FLAGS = flags.FLAGS
 

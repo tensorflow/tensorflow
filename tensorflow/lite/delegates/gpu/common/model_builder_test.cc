@@ -1838,6 +1838,16 @@ TEST(LogicalElementwiseOperationParserTest, TestIsSupported) {
       parser
           ->IsSupported(context.get(), context->node(), context->registration())
           .ok());
+  context->registration(2)->builtin_code = kTfLiteBuiltinSelect;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  context->registration(2)->builtin_code = kTfLiteBuiltinSelectV2;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
 }
 
 TEST(ArithmeticUnaryElementwiseOperationParserTest, TestIsSupported) {

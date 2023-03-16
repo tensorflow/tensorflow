@@ -289,7 +289,8 @@ ParseResult SetReplicateOpOperands(
 
   if (replicated_inputs.empty() && packed_inputs.empty()) return success();
 
-  for (auto replicated_input_and_idx : llvm::enumerate(replicated_inputs)) {
+  for (const auto& replicated_input_and_idx :
+       llvm::enumerate(replicated_inputs)) {
     const int32_t idx = replicated_input_and_idx.index();
     const auto& replicated_input = replicated_input_and_idx.value();
     // Check if replicated input matches `n`.
@@ -305,7 +306,7 @@ ParseResult SetReplicateOpOperands(
   }
 
   const int32_t num_replicated_block_args = replicated_inputs.size();
-  for (auto packed_input_and_idx : llvm::enumerate(packed_inputs)) {
+  for (const auto& packed_input_and_idx : llvm::enumerate(packed_inputs)) {
     const int32_t idx = packed_input_and_idx.index();
     const auto& packed_input = packed_input_and_idx.value();
 
@@ -551,7 +552,7 @@ LogicalResult ReplicateOp::verify() {
            << " * " << terminator.getNumOperands() << ")";
 
   // Check replicated output types match return operand types.
-  for (auto operand_type_and_idx :
+  for (const auto& operand_type_and_idx :
        llvm::enumerate(terminator.getOperandTypes())) {
     Type operand_type = operand_type_and_idx.value();
     int32_t operand_idx = operand_type_and_idx.index();

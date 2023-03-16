@@ -319,16 +319,17 @@ inline Value getConstantOrSplat(OpBuilder* b, Location loc, Type t,
 }
 
 template <typename PredicateType>
-inline Optional<PredicateType> getCmpPredicate(mhlo::ComparisonDirection,
-                                               bool) {
+inline std::optional<PredicateType> getCmpPredicate(mhlo::ComparisonDirection,
+                                                    bool) {
   return std::nullopt;
 }
 
 template <>
-inline Optional<arith::CmpFPredicate> getCmpPredicate<arith::CmpFPredicate>(
+inline std::optional<arith::CmpFPredicate>
+getCmpPredicate<arith::CmpFPredicate>(
     mhlo::ComparisonDirection comparisonDirection, bool isSigned) {
   assert(isSigned && "cannot have an unsigned float!");
-  return llvm::StringSwitch<Optional<arith::CmpFPredicate>>(
+  return llvm::StringSwitch<std::optional<arith::CmpFPredicate>>(
              stringifyComparisonDirection(comparisonDirection))
       .Case("EQ", arith::CmpFPredicate::OEQ)
       .Case("NE", arith::CmpFPredicate::UNE)
@@ -340,9 +341,10 @@ inline Optional<arith::CmpFPredicate> getCmpPredicate<arith::CmpFPredicate>(
 }
 
 template <>
-inline Optional<arith::CmpIPredicate> getCmpPredicate<arith::CmpIPredicate>(
+inline std::optional<arith::CmpIPredicate>
+getCmpPredicate<arith::CmpIPredicate>(
     mhlo::ComparisonDirection comparisonDirection, bool isSigned) {
-  return llvm::StringSwitch<Optional<arith::CmpIPredicate>>(
+  return llvm::StringSwitch<std::optional<arith::CmpIPredicate>>(
              stringifyComparisonDirection(comparisonDirection))
       .Case("EQ", arith::CmpIPredicate::eq)
       .Case("NE", arith::CmpIPredicate::ne)
@@ -406,7 +408,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::CompareOp>(
   Type elementType = getElementTypeOrSelf(argTypes.front());
   if (elementType.isa<IntegerType>()) {
     bool isUnsigned = IsUnsignedIntegerType{}(elementType);
-    Optional<arith::CmpIPredicate> predicate =
+    std::optional<arith::CmpIPredicate> predicate =
         getCmpPredicate<arith::CmpIPredicate>(comparisonDirection, !isUnsigned);
     assert(predicate.has_value() && "expected valid comparison direction");
     return b->create<ScalarIOp<mhlo::CompareOp>>(loc, predicate.value(), lhs,
@@ -449,7 +451,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::CompareOp>(
       assert(predicate.has_value() && "expected valid comparison direction");
       return b->create<arith::CmpIOp>(loc, *predicate, lhsInt, rhsInt);
     }
-    Optional<arith::CmpFPredicate> predicate =
+    std::optional<arith::CmpFPredicate> predicate =
         getCmpPredicate<arith::CmpFPredicate>(comparisonDirection,
                                               /*is_signed=*/true);
     assert(predicate.has_value() && "expected valid comparison direction");
@@ -958,7 +960,7 @@ inline Value makeSafeIntDiv(ImplicitLocOpBuilder& lb, Type originalType,
   Value smin = makeConstant(APInt::getSignedMinValue(elementType.getWidth()));
   Value lhsIsSmin =
       lb.create<arith::CmpIOp>(arith::CmpIPredicate::eq, lhs, smin);
-  Value minusOne = makeConstant(APInt::getAllOnesValue(elementType.getWidth()));
+  Value minusOne = makeConstant(APInt::getAllOnes(elementType.getWidth()));
   Value rhsIsMinusOne =
       lb.create<arith::CmpIOp>(arith::CmpIPredicate::eq, rhs, minusOne);
   Value hasIntMinOverflow = lb.create<arith::AndIOp>(lhsIsSmin, rhsIsMinusOne);
@@ -994,7 +996,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::DivOp>(Location loc,
     return getConstantOrSplat(&lb, lb.getLoc(), type,
                               lb.getIntegerAttr(elementType, i));
   };
-  Value minusOne = makeConstant(APInt::getAllOnesValue(elementType.getWidth()));
+  Value minusOne = makeConstant(APInt::getAllOnes(elementType.getWidth()));
   Value smin = makeConstant(APInt::getSignedMinValue(elementType.getWidth()));
   return makeSafeIntDiv<arith::DivUIOp, arith::DivSIOp>(
       lb, originalType, adaptor.getLhs(), adaptor.getRhs(),
@@ -1061,7 +1063,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::NotOp>(Location loc,
     Value allOnes = getConstantOrSplat(
         b, loc, adaptor.getOperand().getType(),
         b->getIntegerAttr(integerType,
-                          APInt::getAllOnesValue(integerType.getWidth())));
+                          APInt::getAllOnes(integerType.getWidth())));
     return b->create<::mlir::arith::XOrIOp>(loc, allOnes, adaptor.getOperand());
   }
   return nullptr;

@@ -115,7 +115,7 @@ class CollectiveTest(test_util.DTensorBaseTest):
       b1 = math_ops.reduce_sum(b, name='reduceb')
       return a1 * b1
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = func(sharded_a, sharded_b)
     self.assertDTensorEqual(expected_result, self.scalar_layout, dtensor_result)
 

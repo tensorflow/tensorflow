@@ -322,6 +322,7 @@ py_library(
         ":queue_runner",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
@@ -392,7 +393,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:backprop",
@@ -902,6 +902,7 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
@@ -1321,6 +1322,9 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":training",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python:math_ops",
     ] + TRAINING_TEST_DEPS,
 )
 
@@ -1372,7 +1376,6 @@ cuda_py_test(
         ":session_manager",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
@@ -1380,6 +1383,7 @@ cuda_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/checkpoint:checkpoint_management",
     ],
 )

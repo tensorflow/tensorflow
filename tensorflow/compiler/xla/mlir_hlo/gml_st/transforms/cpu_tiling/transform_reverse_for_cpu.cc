@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
+#include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
@@ -24,8 +25,10 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "thlo/IR/thlo_ops.h"
 
@@ -78,36 +81,38 @@ struct ReverseTransformPattern : public OpRewritePattern<thlo::ReverseOp> {
     if (hasLabel(reverseOp, kReverseTransformedLabel))
       return rewriter.notifyMatchFailure(reverseOp,
                                          "has already been transformed.");
-    if (isa<gml_st::ParallelOp, scf::ForOp>(reverseOp->getParentOp())) {
+    if (isa<scf::ForallOp, scf::ForOp>(reverseOp->getParentOp())) {
       return rewriter.notifyMatchFailure(
           reverseOp, "has already been tiled by another pass.");
     }
-
     // Parallel dimension tiling. Tiling will be of the form
     // 1x1x..x1xVectorSize.
     int64_t rank = reverseOp.getInput().getType().getRank();
     auto tilingResult = tileReverseAndUpdateResultIfTiled(
         rewriter, reverseOp, getTileSizes(rank, vectorSize, false));
+    setLabel(reverseOp, kReverseTransformedLabel);
 
     // Peel parallel loop.
     auto peelingResult = peelAllLoops(tilingResult->loop, rewriter);
 
-    // If last dim is to be reversed.
-    if (llvm::is_contained(reverseOp.getReverseDimensions(), rank - 1)) {
-      // If we have a remaining loop, we tile this to sizes of 1.
-      for (ParallelOp remParLoop : peelingResult.tailLoops) {
-        remParLoop->walk([&](Operation *childOp) {
-          if (isa<thlo::ReverseOp>(childOp)) {
-            auto innerReverseOp = dyn_cast<thlo::ReverseOp>(*childOp);
-            auto secondTiling = tileReverseAndUpdateResultIfTiled(
-                rewriter, innerReverseOp, getTileSizes(rank, vectorSize, true));
-            setLabel(innerReverseOp, kReverseTransformedLabel);
-          }
-        });
-      }
+    // Fold operations in the remainder loops before scalarization. thlo.reverse
+    // will be folded if the last dim is not reversed.
+    for (scf::ForallOp remParLoop : peelingResult.tailLoops) {
+      remParLoop->walk([&](Operation *childOp) {
+        SmallVector<Value> foldValue;
+        if (succeeded(rewriter.tryFold(childOp, foldValue))) {
+          childOp->replaceAllUsesWith(foldValue);
+        }
+      });
     }
 
-    setLabel(reverseOp, kReverseTransformedLabel);
+    // Tile ops in the peeled loop again, to size 1, so they can be
+    // scalarized.
+    if (failed(tilePeeledOpsToScalars(rewriter, peelingResult,
+                                      kReverseTransformedLabel,
+                                      /*fuseFilterFn=*/nullptr)))
+      return failure();
+
     return success();
   }
 
@@ -125,7 +130,7 @@ struct TransformReverseForCpuPass
 
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<mlir::gml_st::GmlStDialect, arith::ArithDialect,
-                    tensor::TensorDialect>();
+                    tensor::TensorDialect, scf::SCFDialect>();
     linalg::registerTilingInterfaceExternalModels(registry);
   }
 
@@ -135,6 +140,7 @@ struct TransformReverseForCpuPass
 
     RewritePatternSet patterns(ctx);
     patterns.add<ReverseTransformPattern>(ctx, vectorSize);
+    populateCollapseForallOpDimensionsPattern(patterns);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();

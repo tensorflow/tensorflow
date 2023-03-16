@@ -45,8 +45,10 @@ from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.saving import save as keras_save
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
@@ -630,7 +632,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     cond = lambda i, x: i < 10
     body = lambda i, x: (i + 1, MaskedTensorV1(x.values * 2, x.mask))
-    _, y = control_flow_ops.while_loop_v2(cond, body, [0, x])
+    _, y = while_loop.while_loop_v2(cond, body, [0, x])
 
     self.assertIsInstance(y, MaskedTensorV1)
     self.assertAllEqual(y.values, [1024, 2048, 3072, 4096])
@@ -662,7 +664,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(
         ValueError, "The two structures don't have the same nested structure"):
-      control_flow_ops.while_loop_v2(cond, body, [0, x])
+      while_loop.while_loop_v2(cond, body, [0, x])
 
   def testWhileLoopPacked(self):
     x = MaskedTensorV2([1, 2, 3, 4], [True, False, True, False])
@@ -672,7 +674,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     def body(i, x):
       return i + 1, extension_type.pack(MaskedTensorV2(x.values * 2, x.mask))
 
-    _, y = control_flow_ops.while_loop_v2(cond, body, [0, x])
+    _, y = while_loop.while_loop_v2(cond, body, [0, x])
     self.assertIsInstance(y, MaskedTensorV2)
     self.assertAllEqual(y.values, [1024, 2048, 3072, 4096])
     self.assertAllEqual(y.mask, [True, False, True, False])
@@ -755,7 +757,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     @def_function.function
     def fn(info):
       prices = [toy.price for toy in info.toys]
-      return math_ops.reduce_sum(array_ops.stack(prices))
+      return math_ops.reduce_sum(array_ops_stack.stack(prices))
 
     self.assertAllClose(fn(toy_info), 4.7)
 

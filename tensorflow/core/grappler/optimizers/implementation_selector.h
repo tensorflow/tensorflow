@@ -52,7 +52,7 @@ namespace grappler {
 // input = tf.constant(2.0, dtype=tf.float32)
 // cpu_fn = lambda:plus_one_reference_implementation(input)
 // gpu_fn = lambda:plus_one_gpu(input)
-// control_flow_ops.execute_fn_for_device(
+// control_flow_switch_case.execute_fn_for_device(
 //  {"CPU": cpu_fn, "GPU":gpu_fn)}, default_fn=cpu_fn)
 //
 // Idea for approach 2.

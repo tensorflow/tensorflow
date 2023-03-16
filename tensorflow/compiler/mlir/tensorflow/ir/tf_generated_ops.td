@@ -18890,7 +18890,7 @@ All elements must have the same shape (excepting the first dimension).
     Arg<TF_ResourceTensor, [{The handle to a TensorArray.}], [TF_TensorArrayRead]>:$handle,
     Arg<TF_Float32Tensor, [{A float scalar that enforces proper chaining of operations.}]>:$flow_in,
 
-    DefaultValuedOptionalAttr<TF_ShapeAttr, "llvm::None">:$element_shape_except0
+    DefaultValuedOptionalAttr<TF_ShapeAttr, "std::nullopt">:$element_shape_except0
   );
 
   let results = (outs
@@ -18918,7 +18918,7 @@ All elements selected by `indices` must have the same shape.
     Arg<TF_Int32Tensor, [{The locations in the TensorArray from which to read tensor elements.}]>:$indices,
     Arg<TF_Float32Tensor, [{A float scalar that enforces proper chaining of operations.}]>:$flow_in,
 
-    DefaultValuedOptionalAttr<TF_ShapeAttr, "llvm::None">:$element_shape
+    DefaultValuedOptionalAttr<TF_ShapeAttr, "std::nullopt">:$element_shape
   );
 
   let results = (outs
@@ -19097,7 +19097,7 @@ Write data via Write and read via Read or Pack.
     Arg<TF_Int32Tensor, [{The size of the array.}]>:$size,
 
     TypeAttr:$dtype,
-    DefaultValuedOptionalAttr<TF_ShapeAttr, "llvm::None">:$element_shape,
+    DefaultValuedOptionalAttr<TF_ShapeAttr, "std::nullopt">:$element_shape,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$dynamic_size,
     DefaultValuedOptionalAttr<BoolAttr, "true">:$clear_after_read,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$identical_element_shapes,

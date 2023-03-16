@@ -47,7 +47,10 @@ void RegularizeNodes(GraphDef* graph_def) {
       }
       // Erase the "config_proto" attribute which contains device-specific
       // information.
-      node.mutable_attr()->find("config_proto")->second.mutable_s()->erase();
+      auto node_config_proto = node.mutable_attr()->find("config_proto");
+      if (node_config_proto != node.attr().end()) {
+        node_config_proto->second.mutable_s()->erase();
+      }
     }
     // Erase the value of string constants, which can vary based on platform.
     if (grappler::IsConstant(node)) {

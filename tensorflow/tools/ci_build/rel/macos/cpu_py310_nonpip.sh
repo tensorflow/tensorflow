@@ -31,7 +31,7 @@ python -m venv .tf-venv && source .tf-venv/bin/activate
 # Set up and install MacOS pip dependencies.
 install_macos_pip_deps
 
-tag_filters="-no_oss,-oss_serial,-no_oss_py310,-nomac,-no_mac$(maybe_skip_v1),-gpu,-tpu,-benchmark-test"
+tag_filters="-no_oss,-oss_serial,-no_oss_py310,-mac_excluded,-nomac,-no_mac$(maybe_skip_v1),-gpu,-tpu,-benchmark-test"
 
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh

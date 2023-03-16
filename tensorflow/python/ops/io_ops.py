@@ -139,15 +139,15 @@ def serialize_tensor(tensor, name=None):
   r"""Transforms a Tensor into a serialized TensorProto proto.
 
   This operation transforms data in a `tf.Tensor` into a `tf.Tensor` of type
-  `tf.string` containing the data in a binary string format. This operation can
-  transform scalar data and linear arrays, but it is most useful in converting
-  multidimensional arrays into a format accepted by binary storage formats such
-  as a `TFRecord` or `tf.train.Example`.
+  `tf.string` containing the data in a binary string in little-endian format.
+  This operation can transform scalar data and linear arrays, but it is most
+  useful in converting multidimensional arrays into a format accepted by binary
+  storage formats such as a `TFRecord` or `tf.train.Example`.
 
   See also:
   - `tf.io.parse_tensor`: inverse operation of `tf.io.serialize_tensor` that
-  transforms a scalar string containing a serialized Tensor into a Tensor of a
-  specified type.
+  transforms a scalar string containing a serialized Tensor in little-endian
+  format into a Tensor of a specified type.
   - `tf.ensure_shape`: `parse_tensor` cannot statically determine the shape of
   the parsed tensor. Use `tf.ensure_shape` to set the static shape when running
   under a `tf.function`

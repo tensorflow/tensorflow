@@ -78,32 +78,28 @@ BufferAttributes ReadBufferAttrs(const TfLiteAttributeMap* attr_map) {
                      "");  // Crash OK
   BufferAttributes attrs{};
   const char* buffer_type = nullptr;
-  if (TfLiteAttributeMapGetStringAttr(
-          attr_map, static_cast<uint32_t>(kTfLiteBufferAttrKeyResourceTypeName),
-          &buffer_type)) {
+  if (TfLiteAttributeMapGetStringBufferAttr(
+          attr_map, kTfLiteBufferAttrKeyResourceTypeName, &buffer_type)) {
     attrs.buffer_type = BufferTypeFromString(buffer_type);
   }
   size_t alignment = 0;
-  if (TfLiteAttributeMapGetSizeTAttr(
-          attr_map, static_cast<uint32_t>(kTfLiteBufferAttrKeyAlignment),
-          &alignment)) {
+  if (TfLiteAttributeMapGetSizeTBufferAttr(
+          attr_map, kTfLiteBufferAttrKeyAlignment, &alignment)) {
     attrs.alignment = alignment;
   }
   size_t padding = 0;
-  if (TfLiteAttributeMapGetSizeTAttr(
-          attr_map, static_cast<uint32_t>(kTfLiteBufferAttrKeyPadding),
-          &padding)) {
+  if (TfLiteAttributeMapGetSizeTBufferAttr(
+          attr_map, kTfLiteBufferAttrKeyPadding, &padding)) {
     attrs.padding = padding;
   }
   size_t offset = 0;
-  if (TfLiteAttributeMapGetSizeTAttr(
-          attr_map, static_cast<uint32_t>(kTfLiteBufferAttrKeyOffset),
-          &offset)) {
+  if (TfLiteAttributeMapGetSizeTBufferAttr(attr_map, kTfLiteBufferAttrKeyOffset,
+                                           &offset)) {
     attrs.offset = offset;
   }
   size_t size = 0;
-  if (TfLiteAttributeMapGetSizeTAttr(
-          attr_map, static_cast<uint32_t>(kTfLiteBufferAttrKeySize), &size)) {
+  if (TfLiteAttributeMapGetSizeTBufferAttr(attr_map, kTfLiteBufferAttrKeySize,
+                                           &size)) {
     attrs.size = size;
   }
   return attrs;
@@ -118,29 +114,25 @@ void WriteBufferAttrs(const BufferAttributes& attrs,
   TFLITE_ABORT_CHECK(TfLiteAttributeMapIsBufferAttributeMap(attr_map),
                      "");  // Crash OK
   if (attrs.buffer_type) {
-    TfLiteAttributeMapSetStringAttr(
-        attr_map, static_cast<uint32_t>(kTfLiteBufferAttrKeyResourceTypeName),
+    TfLiteAttributeMapSetStringBufferAttr(
+        attr_map, kTfLiteBufferAttrKeyResourceTypeName,
         StringFromBufferType(attrs.buffer_type.value()));
   }
   if (attrs.alignment) {
-    TfLiteAttributeMapSetSizeTAttr(
-        attr_map, static_cast<uint32_t>(kTfLiteBufferAttrKeyAlignment),
-        attrs.alignment.value());
+    TfLiteAttributeMapSetSizeTBufferAttr(
+        attr_map, kTfLiteBufferAttrKeyAlignment, attrs.alignment.value());
   }
   if (attrs.padding) {
-    TfLiteAttributeMapSetSizeTAttr(
-        attr_map, static_cast<uint32_t>(kTfLiteBufferAttrKeyPadding),
-        attrs.padding.value());
+    TfLiteAttributeMapSetSizeTBufferAttr(attr_map, kTfLiteBufferAttrKeyPadding,
+                                         attrs.padding.value());
   }
   if (attrs.offset) {
-    TfLiteAttributeMapSetSizeTAttr(
-        attr_map, static_cast<uint32_t>(kTfLiteBufferAttrKeyOffset),
-        attrs.offset.value());
+    TfLiteAttributeMapSetSizeTBufferAttr(attr_map, kTfLiteBufferAttrKeyOffset,
+                                         attrs.offset.value());
   }
   if (attrs.size) {
-    TfLiteAttributeMapSetSizeTAttr(
-        attr_map, static_cast<uint32_t>(kTfLiteBufferAttrKeySize),
-        attrs.size.value());
+    TfLiteAttributeMapSetSizeTBufferAttr(attr_map, kTfLiteBufferAttrKeySize,
+                                         attrs.size.value());
   }
 }
 
@@ -155,10 +147,8 @@ SyncAttributes ReadSyncAttrs(const TfLiteAttributeMap* attr_map) {
                      "");  // Crash OK
   SyncAttributes attrs{};
   const char* sync_type = nullptr;
-  if (TfLiteAttributeMapGetStringAttr(
-          attr_map,
-          static_cast<uint32_t>(kTfLiteSynchronizationAttrKeyObjectTypeName),
-          &sync_type)) {
+  if (TfLiteAttributeMapGetStringSyncAttr(
+          attr_map, kTfLiteSynchronizationAttrKeyObjectTypeName, &sync_type)) {
     attrs.sync_type = SyncTypeFromString(sync_type);
   }
   return attrs;
@@ -172,9 +162,8 @@ void WriteSyncAttrs(const SyncAttributes& attrs, TfLiteAttributeMap* attr_map) {
   TFLITE_ABORT_CHECK(TfLiteAttributeMapIsSyncAttributeMap(attr_map),
                      "");  // Crash OK
   if (attrs.sync_type) {
-    TfLiteAttributeMapSetStringAttr(
-        attr_map,
-        static_cast<uint32_t>(kTfLiteSynchronizationAttrKeyObjectTypeName),
+    TfLiteAttributeMapSetStringSyncAttr(
+        attr_map, kTfLiteSynchronizationAttrKeyObjectTypeName,
         StringFromSyncType(attrs.sync_type.value()));
   }
 }

@@ -250,12 +250,21 @@ xla::StatusOr<ShardArgResult> ShardArg(
     return result;
   }
   tsl::profiler::TraceMe traceme("pmap_lib_shard_arg_python_fallback");
+  auto py_array_or_bufs = python_fallback(arg, py_devices, input_spec.indices,
+                                          input_spec.array_sharding);
+
+  if (py_array_or_bufs.get_type() == xla::PyArray::type()) {
+    auto py_array = py::cast<xla::PyArray>(py_array_or_bufs);
+    ShardArgResult result;
+    result.owning_sda = py_array_or_bufs;
+    result.ifrt_array = tsl::FormRef(py_array.ifrt_array());
+    return result;
+  }
 
   // This fallback is better than nothing, but ideally we should be able to
   // convert the argument in C++. At least, we can call the C++ DevicePut from
   // Python.
-  auto per_device_pybuffers = py::cast<py::list>(python_fallback(
-      arg, py_devices, input_spec.indices, input_spec.array_sharding));
+  auto per_device_pybuffers = py::cast<py::list>(py_array_or_bufs);
   ShardArgResult result;
   result.owning_sda = py::reinterpret_borrow<py::object>(per_device_pybuffers);
   if (!per_device_pybuffers.empty()) {

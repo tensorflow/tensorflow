@@ -103,6 +103,8 @@ func.func @reverse(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 // CHECK:       gml_st.fusion
 // CHECK:         thlo.reverse
 // CHECK:         gml_st.yield
+// CHECK:         parallel_tile_sizes = array<i64: 1, 8>
+// CHECK-SAME:    reduction_tile_sizes = array<i64: 0, 0>
 
 // -----
 
@@ -132,6 +134,8 @@ func.func @map(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 // CHECK:       gml_st.fusion
 // CHECK:         linalg.map
 // CHECK:         gml_st.yield
+// CHECK:         parallel_tile_sizes = array<i64: 1, 8>
+// CHECK-SAME:    reduction_tile_sizes = array<i64: 0, 0>
 
 // -----
 
@@ -153,6 +157,8 @@ func.func @map_non_unique_users(%arg: tensor<?x?xf32>,
 // CHECK:         gml_st.fusion
 // CHECK-COUNT-3:   linalg.map
 // CHECK:           gml_st.yield
+// CHECK:           parallel_tile_sizes = array<i64: 1, 8>
+// CHECK-SAME:      reduction_tile_sizes = array<i64: 0, 0>
 
 // -----
 
@@ -248,6 +254,8 @@ func.func @value_used_in_op_region(%arg0: tensor<i1>,
 // CHECK-SAME:        %[[EXTRACTED_:[a-zA-Z0-9]*]] = %[[EXTRACTED]]: i1
 // CHECK:         linalg.map
 // CHECK:           arith.select %[[EXTRACTED_]]
+// CHECK:           parallel_tile_sizes = array<i64: 8>
+// CHECK-SAME:      reduction_tile_sizes = array<i64: 0>
 
 // -----
 
@@ -305,3 +313,52 @@ func.func @tensor_empty_init(%input: tensor<?xf32>)
 // CHECK-SAME:        outs(%[[TMP]]
 // CHECK:           %[[MAPPED0:.*]] = linalg.map
 // CHECK-SAME:        outs(%[[EMPTY_]]
+// CHECK:             parallel_tile_sizes = array<i64: 8>
+// CHECK-SAME:        reduction_tile_sizes = array<i64: 0>
+
+// -----
+
+func.func @multiple_users_linalg_fill(%arg0: tensor<2xf64>)
+    -> (tensor<f64>, tensor<f64>) {
+  %cst = arith.constant 0x7FF0000000000000 : f64
+  %0 = tensor.empty() : tensor<f64>
+  %1 = linalg.fill ins(%cst : f64) outs(%0 : tensor<f64>) -> tensor<f64>
+  %reduced = linalg.reduce { arith.minf }
+               ins(%arg0 : tensor<2xf64>)
+               outs(%1 : tensor<f64>)
+               dimensions = [0]
+  return %1, %reduced : tensor<f64>, tensor<f64>
+}
+
+// CHECK-LABEL: func @multiple_users_linalg_fill
+// CHECK:         %[[FILL0:.*]] = linalg.fill
+// CHECK:         %[[RESULT:.*]] = gml_st.fusion
+// CHECK:         %[[FILL1:.*]] = linalg.fill
+// CHECK:         linalg.reduce
+// CHECK-SAME:      outs(%[[FILL1]]
+// CHECK:         return %[[FILL0]], %[[RESULT]]
+
+// -----
+
+func.func @map_for_matmuls(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
+                           %arg2: tensor<?x?xf32>, %init: tensor<?x?xf32>)
+                           -> tensor<?x?xf32> {
+  %matmul0 = linalg.matmul
+               ins(%arg0, %arg1 : tensor<?x?xf32>, tensor<?x?xf32>)
+               outs(%init : tensor<?x?xf32>) -> tensor<?x?xf32>
+  %matmul1 = linalg.matmul
+               ins(%arg0, %arg2 : tensor<?x?xf32>, tensor<?x?xf32>)
+               outs(%init : tensor<?x?xf32>) -> tensor<?x?xf32>
+
+  %res = linalg.map { arith.addf }
+           ins(%matmul0, %matmul1 : tensor<?x?xf32>, tensor<?x?xf32>)
+           outs(%init : tensor<?x?xf32>)
+  func.return %res : tensor<?x?xf32>
+}
+
+// CHECK-LABEL: func @map_for_matmuls
+// CHECK:         gml_st.fusion
+// CHECK:           linalg.matmul
+// CHECK:         gml_st.fusion
+// CHECK:           linalg.matmul
+// CHECK:           linalg.map

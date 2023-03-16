@@ -1240,14 +1240,14 @@ def TPUResourceReadForWritePass : Pass<"tf-tpu-resource-read-for-write", "Module
   let constructor = "TFTPU::CreateTPUResourceReadForWritePass()";
 }
 
-def TPUExtractOutsideCompilationPass : Pass<"tf-tpu-extract-outside-compilation", "ModuleOp"> {
-  let summary = "Extracts TPU outside compilation computation to a separate tf_device.parallel_execute region.";
+def ExtractOutsideCompilationPass : Pass<"tf-extract-outside-compilation", "ModuleOp"> {
+  let summary = "Extracts device outside compilation computation to a separate tf_device.parallel_execute region.";
 
   let description = [{
     This pass extracts a CPU computation cluster with `_xla_outside_compilation`
-    annotation, which denotes ops that should be run on CPU/host, from a TPU cluster.
+    annotation, which denotes ops that should be run on CPU/host, from a device cluster.
     Each outside compilation cluster is moved to
-    a tf_device.parallel_execute region. The TPU cluster is also moved to a
+    a tf_device.parallel_execute region. The device cluster is also moved to a
     tf_device.parallel_execute region. Communication ops between device and host are
     added to pass inputs/outputs to/from the outside compiled region.
 
@@ -1293,7 +1293,7 @@ def TPUExtractOutsideCompilationPass : Pass<"tf-tpu-extract-outside-compilation"
     ```
   }];
 
-  let constructor = "TFTPU::CreateTPUExtractOutsideCompilationPass()";
+  let constructor = "TFDevice::CreateExtractOutsideCompilationPass()";
 }
 
 def HoistReplicateInvariantResourceWritesPass : Pass<"tf-hoist-replicate-invariant-resource-writes", "mlir::func::FuncOp"> {

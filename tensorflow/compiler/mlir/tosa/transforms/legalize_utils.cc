@@ -145,6 +145,12 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
   return rescale_op.getResult();
 }
 
+// Removes the zero point and cast to int32, no need to handle roundings modes
+Value removeZeroPointAndCastToInt32(PatternRewriter& rewriter, Operation* op,
+                                    Value input_val, int64_t input_zp) {
+  return buildRescaleToInt32(rewriter, op, input_val, 1.0f, input_zp);
+}
+
 // Creates TOSA rescale op with int32 output
 Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
                           Value input_val, double input_scale,
@@ -154,8 +160,14 @@ Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
   assert(input_type);
   auto output_type = input_type.clone(rewriter.getI32Type());
 
+#if TFLITE_SINGLE_ROUNDING
+  bool double_round = false;
+#else   // TFLITE_DOUBLE_ROUNDING
+  bool double_round = true;
+#endif  // TFLITE_SINGLE_ROUNDING
+
   return buildRescale(rewriter, op, output_type, input_val, input_scale,
-                      input_zp, 0, false, true);
+                      input_zp, 0, double_round, true);
 }
 
 // Creates TOSA rescale op with int32 input
@@ -168,9 +180,15 @@ Value buildRescaleFromInt32(PatternRewriter& rewriter, Operation* op,
   assert(input_type && input_type.getElementType().isInteger(32) &&
          "expected rescale input element type to be i32");
 
+#if TFLITE_SINGLE_ROUNDING
+  bool double_round = false;
+#else   // TFLITE_DOUBLE_ROUNDING
+  bool double_round = true;
+#endif  // TFLITE_SINGLE_ROUNDING
+
   // Potentially check input_shape == output_shape here
   return buildRescale(rewriter, op, output_type, input_val, output_scale, 0,
-                      output_zp, true, true);
+                      output_zp, double_round, true);
 }
 
 // Creates a TOSA rescale op based on conv2d parameters.

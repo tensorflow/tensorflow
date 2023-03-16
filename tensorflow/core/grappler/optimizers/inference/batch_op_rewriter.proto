@@ -27,8 +27,54 @@ message BatchOpRewriteConfig {
     // changes.
     google.protobuf.UInt32Value batches_to_average_over = 4;
   }
+  // DEPRECATED. Use the adaptive_batch_scheduler_option field in batch_options.
+  //
   // Keyed by model name, meaning all batch-ops in one saved model would use the
   // same adaptive-batch-scheduler option.
   map<string /* model name */, AdaptiveBatchSchedulerOption>
-      model_scheduler_options = 1;
+      model_scheduler_options = 1 [deprecated = true];
+
+  message BatchOptions {
+    // Number of scheduling threads for processing batches of work. Determines
+    // the number of batches processed in parallel.
+    //
+    // If enable_adaptive_shared_batching_thread_pool is enabled, this value
+    // can only be set to 0.
+    optional int32 num_batch_threads = 1;
+
+    // The maximum allowed batch size. Can be larger than allowed_batch_sizes to
+    // utilize large batch splitting.
+    optional int32 max_batch_size = 2;
+
+    // Maximum number of microseconds to wait before outputting an incomplete
+    // batch.
+    optional int32 batch_timeout_micros = 3;
+
+    // List of allowed batch sizes. The batching op will pad batches up to one
+    // of those sizes. The entries must increase monotonically, and the final
+    // entry must be lower or equal to max_batch_size.
+    repeated int32 allowed_batch_sizes = 4;
+
+    // Maximum number of batches enqueued for processing before requests are
+    // failed fast.
+    optional int32 max_enqueued_batches = 5;
+
+    // If set, disables large batch splitting which is an efficiency improvement
+    // on batching to reduce padding inefficiency.
+    optional bool disable_large_batch_splitting = 6;
+
+    // Adaptive batch scheduler options.
+    optional AdaptiveBatchSchedulerOption adaptive_batch_scheduler_option = 7;
+  }
+
+  // The options for overriding BatchFunction op in specific models.
+  //
+  // When these BatchOptions are set for a given model, they will override the
+  // models original batching options.
+  //
+  // This can be used to experiment with new batching options without updating
+  // the original saved model. This is NOT intended as a long term solution for
+  // updating batching options. Once the correct batching options have been
+  // identified using this, the saved model should be updated to include them.
+  map<string /* model name */, BatchOptions> batch_options = 2;
 }

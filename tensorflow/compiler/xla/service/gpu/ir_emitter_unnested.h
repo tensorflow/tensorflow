@@ -25,13 +25,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/reusable_kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
@@ -372,6 +376,27 @@ class IrEmitterUnnested : public IrEmitter {
   llvm::Function* BuildKernelPrototype(
       absl::string_view name, absl::Span<const BufferAllocation* const> args);
 
+  // An argument descriptor for "reusable kernels".
+  struct ReusableKernelArgument {
+    mlir::Value value;
+    Shape shape;
+    BufferAllocation::Slice slice;
+    bool aliased = true;
+    int64_t alignment = 1;
+    bool written = true;
+  };
+
+  // The return type of BuildReusableKernelPrototype.
+  struct KernelAndIrArrays {
+    llvm::Function* kernel = nullptr;
+    std::vector<llvm_ir::IrArray> ir_arrays;
+  };
+
+  KernelAndIrArrays BuildReusableKernelPrototype(
+      absl::string_view suggested_name,
+      absl::Span<const ReusableKernelArgument> arguments,
+      const LaunchDimensions& launch_dimensions);
+
   // Helper for writing extra outputs from inside a reduce kernel.
   Status EmitExtraOutputsForReduce(const Shape& reduction_operand_shape,
                                    const ReductionOutputMap& result_ir_arrays,
@@ -702,6 +727,75 @@ class IrEmitterUnnested : public IrEmitter {
   StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunk(
       mlir::Operation* op, const LaunchDimensions& launch_dimensions);
 
+  // Generates the argument descriptors for a "reusable kernel".
+  StatusOr<std::vector<IrEmitterUnnested::ReusableKernelArgument>>
+  GetReusableKernelArguments(mlir::lmhlo::FusionOp fusion_op);
+
+  // Calculates a fingerprint of the kernel arguments, which can be used for
+  // checking reusability.
+  //
+  // For example 2 arguments that are aligned to 16 bytes, aliased and also
+  // written by the kernel will be represented as "16aw,16aw".
+  static std::string GetArgumentFingerprint(
+      absl::Span<const ReusableKernelArgument> kernel_arguments);
+
+  // Calculates the fingerprint of a (fused_computation, kernel_arguments,
+  // discriminator) tuple.
+  //
+  // If a given fusion is implemented using multiple kernels, then for each
+  // kernel we should provide a discriminator, such as "init" and "impl".
+  //
+  // If the same fingerprint is returned twice, then we can reuse the kernel
+  // generated for the first computation.
+  static std::string GetFingerprint(
+      const HloComputation* fused_computation,
+      absl::Span<const ReusableKernelArgument> kernel_arguments,
+      absl::string_view discriminator = "");
+
+  // Removes some unneeded defining operations from the calculation of `value`,
+  // before passing it to a ReusableKernelThunk.
+  static StatusOr<mlir::Value> RemoveTransformingOperations(mlir::Value value);
+
+  // Creates a ReusableKernelThunk.
+  StatusOr<ReusableKernelThunk*> BuildReusableKernelThunkImpl(
+      absl::string_view kernel_name,
+      absl::Span<const ReusableKernelArgument> kernel_arguments,
+      Thunk::ThunkInfo thunk_info, const LaunchDimensions& launch_dimensions);
+
+  // Builds a thunk that calls a new or a reused "reusable kernel".
+  //
+  // The caller must specify the same launch dimensions for fusions which have
+  // the same computation.
+  //
+  // If a given fusion is implemented using multiple kernels, then for each
+  // kernel we should provide a discriminator, such as "init" and "impl".
+  //
+  // This returns an std::nullopt if the kernel was
+  // reused. In that case, the caller should not emit the code again for the
+  // implementation of the kernel.
+  //
+  // This is the typical usage pattern of this method:
+  //
+  // ```
+  // TF_ASSIGN_OR_RETURN(
+  //   std::optional<std::vector<llvm_ir::IrArray>> opt_ir_arrays,
+  //   BuildReusableKernelThunk(fusion_op, launch_dimensions));
+  // if (!opt_ir_arrays.has_value()) {
+  //   // The kernel was reused, no need to emit code.
+  //   return OkStatus();
+  // }
+  // std::vector<llvm_ir::IrArray>& ir_arrays = opt_ir_arrays.value();
+  //
+  // EmitYourSpecificKernelCode(ir_arrays);
+  // ```
+  //
+  // TODO(tdanyluk): Consider also using reusable kernels for kernel generating
+  // operations which are not fusions.
+  StatusOr<std::optional<std::vector<llvm_ir::IrArray>>>
+  BuildReusableKernelThunk(mlir::lmhlo::FusionOp fusion_op,
+                           const LaunchDimensions& launch_dimensions,
+                           absl::string_view discriminator = "");
+
   // Returns a thunk that, given a reduce or select-and-scatter op,
   // initializes its memory to the appropriate initial value.
   std::unique_ptr<Thunk> BuildConstantInitializerThunk(
@@ -808,6 +902,10 @@ class IrEmitterUnnested : public IrEmitter {
   // HLO computation fingerprint.
   absl::flat_hash_map<std::string, std::pair<llvm::Function*, LaunchDimensions>>
       triton_cache_;
+
+  // Maps computation fingerprints generated by GetFingerprint() to the first
+  // ReusableKernelThunk generated for them.
+  absl::flat_hash_map<std::string, ReusableKernelThunk*> kernel_reuse_cache_;
 };
 
 }  // namespace gpu

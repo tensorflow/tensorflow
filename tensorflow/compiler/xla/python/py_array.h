@@ -76,6 +76,7 @@ struct PyArray_Storage {
 class PyArray : public pybind11::object {
  public:
   PYBIND11_OBJECT(PyArray, pybind11::object, PyArray::IsPyArray);
+  PyArray() = default;
 
   // "__init__" methods. Only used in python
   static void PyInit(pybind11::object self, pybind11::object aval,
@@ -99,6 +100,10 @@ class PyArray : public pybind11::object {
           std::shared_ptr<Traceback> traceback,
           tsl::RCReference<ifrt::Array> ifrt_array,
           bool committed, bool skip_checks = true);
+
+  static PyArray MakeFromSingleDeviceArray(
+      std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
+      tsl::RCReference<ifrt::Array> ifrt_array, bool weak_type, bool committed);
 
   static Status RegisterTypes(pybind11::module& m);
 
@@ -155,6 +160,20 @@ class PyArray : public pybind11::object {
           "This operation is implemented for a PjRt-compatible backend only.");
     }
     return arr->pjrt_buffers();
+  }
+
+  int num_addressable_shards() const {
+    ifrt::Array* ifrt_array_ptr = ifrt_array();
+    if (ifrt_array_ptr == nullptr) {
+      return 0;
+    }
+    auto* arr =
+        llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array_ptr);
+    if (arr == nullptr) {
+      // TODO(hyeontaek): Add num_addressable_shards to ifrt.
+      return num_shards();
+    }
+    return arr->pjrt_buffers().size();
   }
 
   std::vector<PyBuffer::object>& py_buffers() {
@@ -214,6 +233,7 @@ class PyArrayResultHandler {
 
   PyArray Call(absl::Span<const PyBuffer::object> py_buffers) const;
   PyArray Call(absl::Span<const PyArray> py_arrays) const;
+  PyArray Call(PyArray py_array) const;
 
   PyArray Call(std::shared_ptr<PyClient> py_client,
                tsl::RCReference<ifrt::Array> ifrt_array) const;

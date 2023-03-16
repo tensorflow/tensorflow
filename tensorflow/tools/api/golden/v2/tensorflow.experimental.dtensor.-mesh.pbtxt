@@ -52,6 +52,14 @@ tf_class {
     argspec: "args=[\'mesh_str\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "global_device_ids"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "global_devices"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "host_mesh"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

@@ -51,4 +51,5 @@ bazel test \
       -//tensorflow/c/eager:c_api_distributed_test \
       -//tensorflow/python/data/experimental/kernel_tests/service:local_workers_test \
       -//tensorflow/python/data/experimental/kernel_tests/service:worker_tags_test \
+      -//tensorflow/compiler/xla/service/gpu/tests:hlo_to_llvm_ir_build_test
       

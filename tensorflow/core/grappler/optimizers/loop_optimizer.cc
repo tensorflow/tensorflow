@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -758,6 +759,31 @@ Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   return OkStatus();
 }
 
+// An Identity node has only 1 output, but Switch and Merge nodes have 2.
+// Update full type information (which describes the output) if present, i.e.
+// do simple type inference.
+static Status update_identity_node_type(NodeDef* sw_node) {
+  if (sw_node->has_experimental_type() &&
+      (sw_node->experimental_type().type_id() == TFT_PRODUCT)) {
+    FullTypeDef old_t = sw_node->experimental_type();
+    if (old_t.args_size() != 2) {
+      return errors::Internal(
+          "When converting Switch or Merge node '", sw_node->name(),
+          "' to Identity, full type of original node describes ",
+          old_t.args_size(), " outputs, not 2.\n", old_t.DebugString());
+    }
+    FullTypeDef new_t;
+    new_t.set_type_id(TFT_PRODUCT);
+    // For a Merge node, the type of output 0 matches the output of the
+    // corresponding Identity. For a Switch node, the type of both outputs
+    // is the same and matches the output of the corresponding identity,
+    // so using output 0 is fine.
+    *(new_t.add_args()) = old_t.args()[0];
+    *(sw_node->mutable_experimental_type()) = new_t;
+  }
+  return OkStatus();
+}
+
 Status LoopOptimizer::RemoveDeadBranches(
     const std::unordered_set<string>& nodes_to_preserve, NodeMap& node_map,
     const absl::flat_hash_set<string>& feed_nodes, GraphDef* optimized_graph) {
@@ -936,6 +962,7 @@ Status LoopOptimizer::RemoveDeadBranches(
     inputs->RemoveLast();
     merge_node->set_op("Identity");
     merge_node->mutable_attr()->erase("N");
+    TF_RETURN_IF_ERROR(update_identity_node_type(merge_node));
 
     VLOG(3) << "Merge node after cleanup: " << merge_node->DebugString();
   }
@@ -980,6 +1007,7 @@ Status LoopOptimizer::RemoveDeadBranches(
       node_map.UpdateInput(sw_node->name(), pred->name(), ctrl_dep);
       sw_node->set_input(1, ctrl_dep);
       sw_node->set_op("Identity");
+      TF_RETURN_IF_ERROR(update_identity_node_type(sw_node));
       VLOG(3) << "Switch node after cleanup: " << sw_node->DebugString();
     }
   }

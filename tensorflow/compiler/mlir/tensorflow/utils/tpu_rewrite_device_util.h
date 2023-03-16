@@ -247,7 +247,7 @@ std::string GetDeviceAliasForLogicalCore(int core_index);
 bool HasModelParallelism(mlir::tf_device::ClusterOp cluster);
 
 // Returns true if the devices list contain any TPU devices
-bool hasTPUDevice(const mlir::TF::RuntimeDevices& devices);
+bool HasTPUDevice(const mlir::TF::RuntimeDevices& devices);
 
 // Parses XLA compilation and execution devices from a tf_device.cluster and
 // returns the host device for the head and tail computations. For TPU device,

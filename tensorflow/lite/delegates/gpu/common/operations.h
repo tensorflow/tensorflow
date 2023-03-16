@@ -79,6 +79,7 @@ enum class OperationType {
   NOT_EQUAL,
   ONE_HOT,
   PAD,
+  PAD_V2,
   POOLING_2D,
   POW,
   PRELU,
@@ -93,8 +94,10 @@ enum class OperationType {
   RESHAPE,
   RESIZE,
   RSQRT,
+  SELECT,
   SELECT_V2,
   SIGMOID,
+  SIGN,
   SIN,
   SLICE,
   SOFTMAX,
@@ -486,6 +489,7 @@ struct PadAttributes {
 
   BHWC prepended;
   BHWC appended;
+  float constant_values = 0;
 };
 
 // @return shape of a tensor after Pad operation is applied to the given input.

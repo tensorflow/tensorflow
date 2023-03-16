@@ -73,7 +73,7 @@ struct HloUse {
   // Instruction at which the value is used.
   HloInstruction* instruction;
 
-  // The operand number in which the value is appears.
+  // The operand number in which the value appears.
   int64_t operand_number;
 
   // The shape index within the operand in which the value appears.

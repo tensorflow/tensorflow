@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 
 #include <memory>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
@@ -432,9 +434,17 @@ Status GpuLayoutAssignment::SetDotOperandLayout(
   if (MatrixLayout::For(shape, batch_dims, row_dims, col_dims).ok())
     return SetOperandLayout(shape, instruction, operand);
 
-  // Otherwise, fallback to forcing a (batch, rows, cols) layout.
+  // Otherwise, fallback to forcing the same layout as chosen by dot
+  // normalization, i.e. (batch, rows, cols) layout for the second operand and
+  // (batch, cols, rows) layout for the first operand.
+  if (operand == 1) {
+    return SetOperandBatchRowsColsLayout(instruction, operand, batch_dims,
+                                         row_dims, col_dims);
+  }
+  // To get (batch, cols, rows) layout, simply swap 'row_dims' with 'col_dims'
+  // when calling SetOperandBatchRowsColsLayout.
   return SetOperandBatchRowsColsLayout(instruction, operand, batch_dims,
-                                       row_dims, col_dims);
+                                       col_dims, row_dims);
 }
 
 Status GpuLayoutAssignment::SetOperandBatchRowsColsLayout(

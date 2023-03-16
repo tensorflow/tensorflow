@@ -28,6 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -505,7 +506,7 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
     new_seed = stateless.split(seed, 3)
     self.assertEqual(new_seed.shape, [3, 2])
     self.assertDTypeEqual(new_seed.dtype, dtype)
-    self.assertNoEqualPair([seed] + array_ops.unstack(new_seed))
+    self.assertNoEqualPair([seed] + array_ops_stack.unstack(new_seed))
 
   @parameterized.parameters(['int32', 'int64'])
   @test_util.run_v2_only

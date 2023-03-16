@@ -830,7 +830,7 @@ TEST(SavedModelTest, Error) {
 
   ASSERT_FALSE(status.ok());
 
-  EXPECT_EQ(status.code(), tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
 
   EXPECT_TRUE(absl::StrContains(
       status.error_message(), "You must feed a value for placeholder tensor"));

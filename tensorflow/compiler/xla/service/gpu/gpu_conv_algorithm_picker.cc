@@ -918,6 +918,36 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 #endif
 
 StatusOr<tensorflow::AutotuneResult>
+GpuConvAlgorithmPicker::PickBestAlgorithmWithAllocatedBuffer(
+    const GpuConvConfig conv_config,
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options,
+    const std::vector<se::DeviceMemoryBase> buffers,
+    const se::DeviceMemoryBase result_buffer) {
+#if GOOGLE_CUDA
+  Shape output_shape = conv_config.output_shape;
+  HloModuleConfig hlo_module_config;
+  se::Stream* stream = run_options->stream();
+  se::DeviceMemoryAllocator* allocator = run_options->allocator();
+  se::RedzoneAllocator input_output_allocator(
+      stream, allocator, PtxOptsFromDebugOptions(*debug_options),
+      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
+      se::RedzoneAllocator::kDefaultRedzoneSize);
+
+  GpuConvAlgorithmPicker::AutotuneRuntimeArguments autotune_runtime_arguments =
+      {output_shape,  hlo_module_config,       buffers,
+       result_buffer, &input_output_allocator, conv_config,
+       std::nullopt};
+
+  return PickBestAlgorithmNoCacheCuda(
+      /*instr=*/nullptr, allocator, stream,
+      /*instruction_info=*/std::nullopt, autotune_runtime_arguments);
+#else
+  return InternalError("CUDA is not enabled");
+#endif
+}
+
+StatusOr<tensorflow::AutotuneResult>
 GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
     const HloCustomCallInstruction* instr, se::DeviceMemoryAllocator* allocator,
     se::Stream* stream) {

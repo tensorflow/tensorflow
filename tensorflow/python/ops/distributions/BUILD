@@ -22,6 +22,7 @@ py_library(
         ":util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",

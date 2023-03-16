@@ -25,8 +25,10 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
+#include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
+#include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/util.h"
@@ -267,6 +269,42 @@ void PyArray::PyInit(py::object self, DisableFastpath) {
             PyArray_Storage::DisableFastpath());
 }
 
+PyArray PyArray::MakeFromSingleDeviceArray(
+    std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
+    tsl::RCReference<ifrt::Array> ifrt_array, bool weak_type, bool committed) {
+  if (!llvm::isa<ifrt::SingleDeviceSharding>(ifrt_array->sharding())) {
+    throw XlaRuntimeError(
+        InvalidArgument("Constructing single device jax.Array from non-single "
+                        "device ifrt array."));
+  }
+  static const py::handle* shaped_array = nullptr;
+  if (shaped_array == nullptr) {
+    auto* jax_core = PyImport_ImportModule("jax.core");
+    if (jax_core != nullptr) {
+      shaped_array = new py::handle(
+          py::reinterpret_steal<py::module>(jax_core).attr("ShapedArray"));
+    } else {
+      PyErr_Clear();
+    }
+  }
+  PrimitiveType primitive = ifrt::ToPrimitiveType(ifrt_array->dtype()).value();
+  auto dtype = PrimitiveTypeToDtype(primitive).value();
+  py::object aval;
+  if (shaped_array != nullptr) {
+    aval = (*shaped_array)(SpanToTuple(ifrt_array->shape().dims()), dtype,
+                           weak_type);
+  } else {
+    aval = py::none();
+  }
+  auto shape_span = ifrt_array->shape().dims();
+  auto shape = std::vector<int64_t>(shape_span.begin(), shape_span.end());
+  auto sharding = py::cast(std::make_unique<jax::SingleDeviceSharding>(py::cast(
+      WrapWithClient(py_client, ifrt_array->sharding().devices().front()))));
+  return PyArray(std::move(aval), weak_type, dtype, std::move(shape),
+                 std::move(sharding), std::move(py_client),
+                 std::move(traceback), std::move(ifrt_array), committed);
+}
+
 PyArrayResultHandler::PyArrayResultHandler(py::object aval, py::object sharding,
                                            bool committed, bool skip_checks)
     : aval_(std::move(aval)),
@@ -296,6 +334,10 @@ PyArray PyArrayResultHandler::Call(
   return PyArray(aval_, weak_type_, dtype_, shape_, sharding_,
                  std::move(py_client), Traceback::Get(), std::move(ifrt_array),
                  committed_, skip_checks_);
+}
+
+PyArray PyArrayResultHandler::Call(PyArray py_array) const {
+  return Call(py_array.py_client(), tsl::FormRef(py_array.ifrt_array()));
 }
 
 PyArray::PyArray(py::object aval, bool weak_type, py::dtype dtype,
@@ -524,7 +566,7 @@ std::vector<py::object> PyClient::LiveArrays() {
 }
 
 Status PyArray::SetUpType() {
-  static constexpr char kName[] = "Array";
+  static constexpr char kName[] = "ArrayImpl";
 
   py::str name = py::str(kName);
   py::str qualname = py::str(kName);
@@ -633,16 +675,95 @@ Status PyArray::RegisterTypes(py::module& m) {
       py::arg("aval"), py::arg("sharding"), py::arg("committed"),
       py::arg("_skip_checks") = false);
 
+  m.attr("batched_device_put") = py::cpp_function(
+      [](py::object aval, py::object sharding, std::vector<py::object> xs,
+         std::vector<ClientAndPtr<PjRtDevice>> dst_devices, bool committed,
+         bool force_copy, PjRtClient::HostBufferSemantics host_buffer_semantics)
+          -> StatusOr<PyArray> {
+        if (dst_devices.size() != xs.size() || xs.empty()) {
+          throw py::value_error(
+              absl::StrCat("Argument sizes (xs and devices) must match %zu vs "
+                           "%zu and be nonzero",
+                           dst_devices.size(), xs.size()));
+        }
+        auto transfer_guard_formatter = [&aval, &sharding] {
+          return absl::StrCat(
+              "aval=", py::cast<std::string>(py::repr(aval)),
+              ", dst_sharding=", py::cast<std::string>(py::repr(sharding)));
+        };
+
+        GlobalPyRefManager()->CollectGarbage();
+
+        auto n_devices = dst_devices.size();
+
+        DevicePutOptions options;
+        options.squash_64bit_types = false;
+        options.allow_zero_copy =
+            (!force_copy && (host_buffer_semantics ==
+                             ifrt::Client::HostBufferSemantics::kZeroCopy));
+
+        py::list owning_pylist(dst_devices.size());
+        std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
+
+        xla::ifrt::DeviceList::Devices devices;
+        devices.reserve(n_devices);
+        std::vector<xla::ifrt::Shape> shapes;
+        shapes.reserve(n_devices);
+        size_t i = 0;
+        for (auto& x : xs) {
+          if (PyArray::IsPyArray(x)) {
+            TF_RETURN_IF_ERROR(jax::ApplyTransferGuardToDeviceToDevice(
+                transfer_guard_formatter));
+          } else {
+            TF_RETURN_IF_ERROR(jax::ApplyTransferGuardToHostToDevice(
+                transfer_guard_formatter));
+          }
+          TF_ASSIGN_OR_RETURN(DevicePutResult on_device,
+                              DevicePut(x, dst_devices[i].client->ifrt_client(),
+                                        dst_devices[i].get(), options));
+          ifrt_arrays.push_back(std::move(on_device.ifrt_array));
+          devices.push_back(ifrt_arrays.back()->sharding().devices().front());
+          shapes.push_back(ifrt_arrays.back()->shape());
+          if (on_device.owning_pybuffer) {
+            owning_pylist.append(on_device.owning_pybuffer);
+          }
+          ++i;
+        }
+
+        auto weak_type = pybind11::cast<bool>(aval.attr("weak_type"));
+        auto dtype = aval.attr("dtype");
+        auto shape = pybind11::cast<std::vector<int64_t>>(aval.attr("shape"));
+        TF_ASSIGN_OR_RETURN(
+            auto ifrt_array,
+            ifrt_arrays.front()->client()->AssembleArrayFromSingleDeviceArrays(
+                ifrt::Shape(shape),
+                xla::ifrt::OpaqueSharding::Create(
+                    xla::ifrt::DeviceList(std::move(devices)),
+                    xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
+                        std::move(shapes))),
+                absl::MakeSpan(ifrt_arrays),
+                xla::ifrt::ArrayCopySemantics::kReuseInput));
+
+        return PyArray(aval, weak_type, dtype, std::move(shape), sharding,
+                       dst_devices[0].client, Traceback::Get(), ifrt_array,
+                       committed);
+      },
+      py::arg("aval"), py::arg("sharding"), py::arg("xs"), py::arg("devices"),
+      py::arg("committed") = true, py::arg("force_copy") = false,
+      py::arg("host_buffer_semantics") =
+          PjRtClient::HostBufferSemantics::kZeroCopy);
+
   py::class_<PyArrayResultHandler>(m, "ResultHandler")
+      .def("__call__", [](const PyArrayResultHandler& self,
+                          PyArray arg) { return self.Call(arg); })
       .def("__call__",
            [](const PyArrayResultHandler& self,
-              absl::Span<const PyBuffer::object> py_arrays) {
+              std::vector<PyBuffer::object> py_arrays) {
              return self.Call(py_arrays);
            })
-      .def("__call__", [](const PyArrayResultHandler& self,
-                          absl::Span<const PyArray> py_arrays) {
-        return self.Call(py_arrays);
-      });
+      .def("__call__",
+           [](const PyArrayResultHandler& self,
+              std::vector<PyArray> py_arrays) { return self.Call(py_arrays); });
 
   return OkStatus();
 }

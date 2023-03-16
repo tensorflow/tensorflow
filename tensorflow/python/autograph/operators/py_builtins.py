@@ -19,7 +19,6 @@ List of built-in functions: https://docs.python.org/3/library/functions.html
 
 import inspect
 
-from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.autograph.utils import tensors
 from tensorflow.python.autograph.utils import type_registry
 from tensorflow.python.framework import constant_op
@@ -28,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_string_ops
@@ -41,6 +41,7 @@ UNSPECIFIED = object()
 
 abs_registry = type_registry.TypeRegistry()
 len_registry = type_registry.TypeRegistry()
+print_registry = type_registry.TypeRegistry()
 enumerate_registry = type_registry.TypeRegistry()
 zip_registry = type_registry.TypeRegistry()
 map_registry = type_registry.TypeRegistry()
@@ -271,7 +272,7 @@ def _tf_tensor_len(s):
     msg = gen_string_ops.string_join(
         ['len requires non-zero rank, got ',
          gen_string_ops.as_string(rank)])
-    with ops.control_dependencies([control_flow_ops.Assert(False, [msg])]):
+    with ops.control_dependencies([control_flow_assert.Assert(False, [msg])]):
       return constant_op.constant(0, dtype=dtypes.int32)
 
   return control_flow_ops.cond(rank > 0, lambda: array_ops.shape(s)[0],
@@ -290,12 +291,18 @@ def print_(*objects, **kwargs):
   if unknown_kwargs:
     raise ValueError('invalid keyword arguments: {}'.format(unknown_kwargs))
 
-  # TODO(mdan): Use next.flatten(objects) instead?
-  if any(tensor_util.is_tf_type(o) for o in objects):
-    # TODO(mdan): use tf.print instead.
-    return _tf_py_func_print(objects, kwargs)
-  else:
-    _py_print(*objects, **kwargs)
+  print_fn = _py_print
+  for x in objects:
+    print_override = registry_lookup(print_registry, x)
+    if print_override is not None:  # pylint: disable=comparison-with-callable
+      print_fn = print_override
+      break
+
+  if print_fn is _py_print:
+    # If this fails, ops/autograph_ops.py hasn't been imported.
+    assert not any(tensor_util.is_tf_type(s) for s in objects)
+
+  return print_fn(*objects, **kwargs)
 
 
 def _py_print(*objects, **kwargs):
@@ -364,26 +371,6 @@ def _tf_max(*args, **kwargs):
 
 def _py_max(*args, **kwargs):
   return max(*args, **kwargs)
-
-
-def _tf_py_func_print(objects, kwargs):
-  """Overload of print_ as a py_func implementation."""
-  override_kwargs = {k: v for k, v in kwargs.items() if v is not UNSPECIFIED}
-  if 'flush' not in override_kwargs:
-    # Defaulting to flushing the console in graph mode, which helps reduce
-    # garbled output in IPython.
-    override_kwargs['flush'] = True
-
-  def print_wrapper(*vals):
-    vals = tuple(v.numpy() if tensor_util.is_tf_type(v) else v for v in vals)
-    # TensorFlow doesn't seem to generate Unicode when passing strings to
-    # py_func. This causes the print to add a "b'" wrapper to the output,
-    # which is probably never what you want.
-    vals = tuple(v.decode('utf-8') if isinstance(v, bytes) else v for v in vals)
-    print(*vals, **override_kwargs)
-
-  return py_func.wrap_py_func(
-      print_wrapper, None, objects, use_dummy_return=True)
 
 
 def range_(start_or_stop, stop=UNSPECIFIED, step=UNSPECIFIED):

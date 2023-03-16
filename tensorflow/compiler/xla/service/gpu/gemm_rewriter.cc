@@ -136,6 +136,20 @@ void VlogF8PatternMiss(const HloInstruction *instr) {
   }
 }
 
+bool IsSupportedMatrixMultiplication(
+    const HloInstruction &dot, se::CudaComputeCapability compute_capability) {
+  if (!IsMatrixMultiplication(dot)) {
+    return false;
+  }
+  if (IsF8Type(dot.operand(0)) || IsF8Type(dot.operand(1))) {
+    // cuBLAS only supports F8 matmuls on Hopper and above, and such matmuls
+    // are only supported with cuBLAS LT.
+    return compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER) &&
+           dot.GetModule()->config().debug_options().xla_gpu_enable_cublaslt();
+  }
+  return true;
+}
+
 // If the bias is a sequence of ops that depend only on broadcasts of
 // constants, materialize the bias if it's small.
 //
@@ -292,7 +306,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   Status HandleDot(HloInstruction *instr) override {
     HloInstruction *a, *b, *a_scale, *b_scale, *a_binary, *b_binary,
         *a_bitcast = nullptr, *b_bitcast = nullptr;
-    if (IsMatrixMultiplication(*instr)) {
+    if (IsSupportedMatrixMultiplication(*instr, cuda_compute_capability_)) {
       CHECK(!instr->IsRank2Transpose());
       HloInstruction *lhs = instr->mutable_operand(0);
       HloInstruction *rhs = instr->mutable_operand(1);
@@ -651,9 +665,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           inv_scales[i] = instr->AddInstruction(HloInstruction::CreateBinary(
               scales[i]->shape(), HloOpcode::kDivide, one, scales[i]));
         }
-        scales_f32[i] = instr->AddInstruction(HloInstruction::CreateConvert(
-            ShapeUtil::MakeScalarShape(F32),
-            mult_scale[i] ? scales[i] : inv_scales[i]));
+        scales_f32[i] = mult_scale[i] ? scales[i] : inv_scales[i];
+        if (scales_f32[i]->shape().element_type() != F32) {
+          scales_f32[i] = instr->AddInstruction(HloInstruction::CreateConvert(
+              ShapeUtil::MakeScalarShape(F32), scales_f32[i]));
+        }
       } else {
         scales_f32[i] = one;
       }
@@ -681,8 +697,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     // Fuse the possible addition of a matrix bias here to enable the subsequent
-    // fusion of the scaling and conversion of D into the Custom Call.
+    // fusion of the scaling and conversion of D into the Custom Call. Fusing
+    // a matrix bias is only supported with CUDA 12 and above.
     HloInstruction *c = nullptr;
+#if CUDA_VERSION > 12000
     if (instr->user_count() == 1 &&
         instr->users()[0]->opcode() == HloOpcode::kAdd) {
       HloInstruction *add = instr->users()[0];
@@ -693,6 +711,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         TF_RETURN_IF_ERROR(ReplaceInstruction(add, instr));
       }
     }
+#endif  // CUDA_VERSION > 12000
     // If a matrix bias was not fused, set C to a matrix of zeros.
     if (!c) {
       Literal c_literal = LiteralUtil::Zero(c_type);
@@ -937,11 +956,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       d_scale = instr->AddInstruction(HloInstruction::CreateBinary(
           d_scale->shape(), HloOpcode::kDivide, one, d_scale));
     }
-    HloInstruction *d_scale_f32 =
-        instr->AddInstruction(HloInstruction::CreateConvert(
-            ShapeUtil::MakeScalarShape(F32), d_scale));
-
-    TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(6, d_scale_f32));
+    if (d_scale->shape().element_type() != F32) {
+      d_scale = instr->AddInstruction(HloInstruction::CreateConvert(
+          ShapeUtil::MakeScalarShape(F32), d_scale));
+    }
+    TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(6, d_scale));
 
     // If present, elide the calculation of the maximum of the absolute values
     // of the result of the GEMM.
@@ -1256,20 +1275,19 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
   StatusOr<bool> TypesAreSupportedByCublasLt(
       const HloInstruction *instr) const {
+    // Figure out the Atype/Btype.
+    const PrimitiveType a_dtype = instr->operand(0)->shape().element_type();
+    const PrimitiveType b_dtype = instr->operand(1)->shape().element_type();
     // cublasLt has a defined set of combinations of types that it supports.
     // Figure out the computeType and scaleType.
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
                         AsBlasDataType(instr->shape().element_type()));
     TF_ASSIGN_OR_RETURN(const se::blas::ComputationType compute_type,
                         GetBlasComputationType(
-                            instr->shape().element_type(),
+                            a_dtype, instr->shape().element_type(),
                             stream_executor::blas::kDefaultComputePrecision));
     se::blas::DataType scale_type =
         cublas_lt::GetScaleType(output_dtype, compute_type);
-
-    // Figure out the Atype/Btype.
-    const PrimitiveType a_dtype = instr->operand(0)->shape().element_type();
-    const PrimitiveType b_dtype = instr->operand(1)->shape().element_type();
 
     using se::blas::ComputationType;
     using se::blas::DataType;

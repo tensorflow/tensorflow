@@ -21,7 +21,7 @@ import gzip
 import inspect
 import logging
 import os
-from typing import List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, List, Mapping, Optional, Sequence, Tuple, Union
 
 from . import xla_extension as _xla
 import numpy as np
@@ -43,10 +43,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 133
+_version = 137
 
 # Version number for MLIR:Python components.
-mlir_api_version = 45
+mlir_api_version = 46
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -467,7 +467,9 @@ PmapSharding = _xla.PmapSharding
 GSPMDSharding = _xla.GSPMDSharding
 
 
-def register_custom_call_target(name, fn, platform='cpu'):
+def register_custom_call_target(
+    name: str, fn: Any, platform: str = 'cpu'
+) -> None:
   """Registers a custom call target.
 
   Args:
@@ -746,3 +748,4 @@ atexit.register(_xla.collect_garbage)
 weakref_lru_cache = _xla.weakref_lru_cache
 array_result_handler = _xla.array_result_handler
 copy_array_to_devices_with_sharding = _xla.copy_array_to_devices_with_sharding
+batched_device_put = _xla.batched_device_put

@@ -25,9 +25,11 @@ limitations under the License.
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/mlir/utils/error_util.h"
+#include "tensorflow/compiler/xla/mlir_hlo/_virtual_includes/mhlo_passes/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
@@ -153,6 +155,40 @@ StatusOr<std::string> PyStablehloToMhlo(std::string mlir_module) {
   return PrintModule(*module);
 }
 
+StatusOr<py::bytes> PySerializePortableArtifact(std::string mlir_module,
+                                                std::string target) {
+  mlir::MLIRContext context;
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                      ParseModule(&context, mlir_module));
+
+  // Legalize CHLO -> MHLO -> StableHLO
+  mlir::PassManager pm(&context);
+  // FIXME: Add other dialect registrations here.
+  if (VLOG_IS_ON(3)) EnablePrintBeforeAndAfter(pm);
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createChloLegalizeToHloPass());
+  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+  if (!mlir::succeeded(pm.run(*module))) {
+    return tsl::errors::InvalidArgument("CHLO => MHLO => StableHLO failed");
+  }
+
+  // Serialize portable artifact
+  std::string buffer;
+  llvm::raw_string_ostream os(buffer);
+  if (failed(mlir::stablehlo::serializePortableArtifact(*module, target, os)))
+    return tsl::errors::InvalidArgument("Failed to serialize StableHLO");
+  return py::bytes(buffer);
+}
+
+StatusOr<std::string> PyDeserializePortableArtifact(std::string bytecode_str) {
+  mlir::MLIRContext context;
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::stablehlo::deserializePortableArtifact(bytecode_str, &context);
+  if (!module)
+    return tsl::errors::InvalidArgument("Failed to deserialize StableHLO");
+  return PrintModule(*module);
+}
+
 }  // namespace
 
 void BuildMlirSubmodule(py::module& m) {
@@ -169,6 +205,10 @@ void BuildMlirSubmodule(py::module& m) {
                   py::arg("mlir_module"));
   mlir_module.def("stablehlo_to_mhlo", &PyStablehloToMhlo,
                   py::arg("mlir_module"));
+  mlir_module.def("serialize_portable_artifact", &PySerializePortableArtifact,
+                  py::arg("mlir_module"), py::arg("target"));
+  mlir_module.def("deserialize_portable_artifact",
+                  &PyDeserializePortableArtifact, py::arg("mlir_module"));
 }
 
 }  // namespace xla

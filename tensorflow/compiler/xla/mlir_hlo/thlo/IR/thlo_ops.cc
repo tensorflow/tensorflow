@@ -471,13 +471,13 @@ LogicalResult ConcatenateOp::reifyResultShapes(
 
   // Assume unique result.
   if (getNumResults() != 1) return failure();
-  SmallVector<Value> &shape = reifiedReturnShapes.emplace_back();
+  SmallVector<OpFoldResult> &shape = reifiedReturnShapes.emplace_back();
 
   // Derive shape from init operand.
   int64_t rank = init.getType().cast<RankedTensorType>().getRank();
   shape.reserve(rank);
   for (int64_t i = 0; i < rank; ++i) {
-    shape.push_back(b.create<tensor::DimOp>(loc, init, i));
+    shape.push_back(b.create<tensor::DimOp>(loc, init, i).getResult());
   }
 
   return success();

@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gen_sendrecv_ops
@@ -32,6 +33,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 from tensorflow.python.training import momentum
@@ -308,7 +310,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       def body(_):
         return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
 
-      return control_flow_ops.while_loop(
+      return while_loop.while_loop(
           lambda i: True, body, [0.0], maximum_iterations=1)
 
     self._testVariableReadInFunctionalOp(build_functional_op, "While")
@@ -353,7 +355,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       def branch1():
         return array_ops.zeros([], v.dtype)
 
-      return control_flow_ops.switch_case(
+      return control_flow_switch_case.switch_case(
           constant_op.constant(0), [branch0, branch1])
 
     self._testVariableReadInFunctionalOp(build_functional_op, "Case")
@@ -368,7 +370,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       def branch1():
         return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
 
-      return control_flow_ops.switch_case(
+      return control_flow_switch_case.switch_case(
           constant_op.constant(0), [branch0, branch1])
 
     self._testVariableReadInFunctionalOp(build_functional_op, "Case")
@@ -417,7 +419,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
           def body(_):
             return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
 
-          return control_flow_ops.while_loop(
+          return while_loop.while_loop(
               lambda i: True, body, [0.0], maximum_iterations=1)
 
         return inner_fn()
@@ -498,7 +500,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
         return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
 
-      return control_flow_ops.while_loop(
+      return while_loop.while_loop(
           lambda i: True, body, [0.0], maximum_iterations=1)
 
     self._testVariableWriteInFunctionalOp(build_functional_op, "While")
@@ -546,7 +548,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       def branch1():
         return array_ops.zeros([], v.dtype)
 
-      return control_flow_ops.switch_case(
+      return control_flow_switch_case.switch_case(
           constant_op.constant(0), [branch0, branch1])
 
     self._testVariableWriteInFunctionalOp(build_functional_op, "Case")
@@ -562,7 +564,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
         return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
 
-      return control_flow_ops.switch_case(
+      return control_flow_switch_case.switch_case(
           constant_op.constant(0), [branch0, branch1])
 
     self._testVariableWriteInFunctionalOp(build_functional_op, "Case")
@@ -614,7 +616,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
             gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
             return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
 
-          return control_flow_ops.while_loop(
+          return while_loop.while_loop(
               lambda i: True, body, [0.0], maximum_iterations=1)
 
         return inner_fn()
@@ -805,7 +807,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
     def loop():
       c = lambda i, x: i < n
       b = lambda i, x: (i + 1, x + 1)
-      i, out = control_flow_ops.while_loop(c, b, (0, x))
+      i, out = while_loop.while_loop(c, b, (0, x))
       return i, out
 
     i, out = loop()

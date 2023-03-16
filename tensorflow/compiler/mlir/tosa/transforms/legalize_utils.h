@@ -57,6 +57,10 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    int64_t input_zp, int64_t output_zp, bool double_round,
                    bool scale32);
 
+// Removes the zero point and cast to int32, no need to handle roundings modes
+Value removeZeroPointAndCastToInt32(PatternRewriter& rewriter, Operation* op,
+                                    Value input_val, int64_t input_zp);
+
 // Creates TOSA rescale op with int32 output
 Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
                           Value input_val, double input_scale,

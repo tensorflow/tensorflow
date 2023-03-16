@@ -35,6 +35,7 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
         "//tensorflow/python:dtypes",

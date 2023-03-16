@@ -56,6 +56,10 @@ tsl::Status AtomicallyWriteTFRecord(absl::string_view filename,
 tsl::StatusOr<std::vector<std::string>> GetChildren(absl::string_view directory,
                                                     tsl::Env* env);
 
+// Returns true if `filename` is a temporary file and should be ignored in
+// normal data processing.
+bool IsTemporaryFile(absl::string_view filename);
+
 }  // namespace data
 }  // namespace tensorflow
 

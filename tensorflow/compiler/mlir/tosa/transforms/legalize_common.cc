@@ -158,10 +158,10 @@ std::optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   ArrayRef<int64_t> input0_tensor_shape = input_type.getShape();
   int input_tensor_rank = input0_tensor_shape.size();
 
-  if (axis < 0 || axis >= input_tensor_rank) {
+  if (axis < 0 || axis > input_tensor_rank) {
     (void)rewriter.notifyMatchFailure(
         op, llvm::formatv("reduce axis {} is not in valid range "
-                          "[-rank(input), rank(input))",
+                          "[-rank(input), rank(input)]",
                           axis));
     return std::nullopt;
   }
@@ -541,10 +541,11 @@ std::optional<Value> convertMultiplyOp(PatternRewriter& rewriter, Operation* op,
     // 32bits can be rescaled with 32bits quantize multiplier back to 16bits
     bool scale32 = true;
 
-    Value op1_rescale_lhs = buildRescaleToInt32(
-        rewriter, op, input_lhs_val, 1.0f, input_lhs_qtype.getZeroPoint());
-    Value op2_rescale_rhs = buildRescaleToInt32(
-        rewriter, op, input_rhs_val, 1.0f, input_rhs_qtype.getZeroPoint());
+    Value op1_rescale_lhs = removeZeroPointAndCastToInt32(
+        rewriter, op, input_lhs_val, input_lhs_qtype.getZeroPoint());
+    Value op2_rescale_rhs = removeZeroPointAndCastToInt32(
+        rewriter, op, input_rhs_val, input_rhs_qtype.getZeroPoint());
+
     auto op3_mul_op1_op2 =
         CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), rescale_type,
                                       op1_rescale_lhs, op2_rescale_rhs, 0);

@@ -96,7 +96,7 @@ absl::string_view GetPjrtErrorMessage(const PJRT_Error* error,
 
 xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api);
 
-tsl::error::Code PjrtErrorToStatusCode(const PJRT_Error* error,
+absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
                                        const PJRT_Api* api);
 
 PJRT_Error_Code StatusCodeToPjrtErrorCode(tsl::error::Code code);

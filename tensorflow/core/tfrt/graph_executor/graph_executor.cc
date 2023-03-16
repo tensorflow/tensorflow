@@ -688,7 +688,8 @@ StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
                          const TfrtPipelineOptions& options) {
         mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
-        pm.addPass(mlrt_compiler::CreateParallelizationPass());
+        pm.addPass(mlrt_compiler::CreateParallelizationPass(
+            options.cost_threshold, options.merge_inter_dependent_streams));
         pm.addPass(mlrt_compiler::CreateTfToMlrtConversionPass(options));
 
         if (mlir::failed(pm.run(module)))

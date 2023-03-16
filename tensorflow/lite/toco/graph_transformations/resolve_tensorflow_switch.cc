@@ -98,7 +98,7 @@ namespace toco {
         // of Switch nodes:
         if (other_op->type != OperatorType::kMerge) {
           return ::tensorflow::Status(
-              ::tensorflow::error::FAILED_PRECONDITION,
+              absl::StatusCode::kFailedPrecondition,
               ::absl::StrCat(
                   "Found ", HelpfulOperatorTypeName(*other_op),
                   " as non-selected output from Switch, but only "

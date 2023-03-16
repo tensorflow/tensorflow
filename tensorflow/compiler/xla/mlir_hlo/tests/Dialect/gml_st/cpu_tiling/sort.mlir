@@ -16,8 +16,8 @@ func.func @sort(%input1: tensor<64x8x4xf32>, %input2: tensor<64x8x4xf32>,
 }
 // CHECK-LABEL: func.func @sort(
 
-// CHECK:      gml_st.parallel
+// CHECK:      scf.for
 // CHECK:        thlo.sort
 // CHECK-SAME:     ins(%{{.*}} : tensor<1x8x1xf32>, %{{.*}} : tensor<1x8x1xf32>)
 // CHECK-SAME:     dimension = 1
-// CHECK:        gml_st.set_yield
+// CHECK:        tensor.insert_slice

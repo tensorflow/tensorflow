@@ -106,7 +106,27 @@ class GpuConvAlgorithmPicker : public HloModulePass {
         : instr_str(instr_str), module_str(module_str) {}
   };
 
+  // Run autotuning on allocated buffers and pick the best algorithm.
+  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmWithAllocatedBuffer(
+      GpuConvConfig conv_config, const ServiceExecutableRunOptions* run_options,
+      const DebugOptions* debug_options,
+      std::vector<se::DeviceMemoryBase> buffers,
+      se::DeviceMemoryBase result_buffer);
+
+ private:
+  StatusOr<bool> RunOnComputation(HloComputation* computation);
+  StatusOr<bool> RunOnInstruction(HloInstruction* instr);
+  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithm(
+      const HloCustomCallInstruction* instr);
+
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+  // Simple bundle of an algorithm and its output, for comparing results across
+  // autotuned algorithms.
+  struct ReferenceResult {
+    stream_executor::dnn::AlgorithmDesc algorithm;
+    stream_executor::DeviceMemoryBase buffer;
+  };
+
   // Execution environment for autotuning. Runtime autotuning requires runtime
   // information such as input/output buffers in order to run. It can be
   // constructed from the autotuned instruction by FromInstruction.
@@ -125,28 +145,6 @@ class GpuConvAlgorithmPicker : public HloModulePass {
         se::RedzoneAllocator* input_output_allocator);
   };
 
-  // Pick the best algorithm for CUDA platform.
-  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheCuda(
-      const HloCustomCallInstruction* instr,
-      se::DeviceMemoryAllocator* allocator, se::Stream* stream,
-      std::optional<AutotuneInstructionInfo> instruction_info,
-      const AutotuneRuntimeArguments& runtime_arguments);
-#endif
-
- private:
-  StatusOr<bool> RunOnComputation(HloComputation* computation);
-  StatusOr<bool> RunOnInstruction(HloInstruction* instr);
-  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithm(
-      const HloCustomCallInstruction* instr);
-
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-  // Simple bundle of an algorithm and its output, for comparing results across
-  // autotuned algorithms.
-  struct ReferenceResult {
-    stream_executor::dnn::AlgorithmDesc algorithm;
-    stream_executor::DeviceMemoryBase buffer;
-  };
-
   StatusOr<tensorflow::AutotuneResult> AutotuneOneConvRunner(
       se::DeviceMemoryAllocator* allocator, se::Stream* stream,
       MaybeFusedConvRunner* const runner,
@@ -155,6 +153,12 @@ class GpuConvAlgorithmPicker : public HloModulePass {
       std::optional<AutotuneInstructionInfo> instruction_info,
       const AutotuneRuntimeArguments& runtime_arguments);
 
+  // Pick the best algorithm for CUDA platform.
+  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheCuda(
+      const HloCustomCallInstruction* instr,
+      se::DeviceMemoryAllocator* allocator, se::Stream* stream,
+      std::optional<AutotuneInstructionInfo> instruction_info,
+      const AutotuneRuntimeArguments& runtime_arguments);
 #endif
 
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheRocm(

@@ -1935,9 +1935,24 @@ ShapeUtil::GetNormalizedLogicalTransposeShape(
     // Only works on default layouts.
     return std::nullopt;
   }
+  // Drop degenerate dimensions.
+  std::vector<int64_t> delta(input_shape.rank() + 1, 0);
+  for (int i = 0; i < input_shape.rank(); ++i) {
+    delta[i + 1] = delta[i];
+    if (input_shape.dimensions(i) == static_cast<int64_t>(1)) {
+      ++delta[i + 1];
+    }
+  }
+  std::vector<int64_t> new_dimensions;
+  for (int i = 0; i < dimensions.size(); i++) {
+    if (output_shape.dimensions(i) != 1) {
+      new_dimensions.push_back(dimensions[i] - delta[dimensions[i]]);
+    }
+  }
 
   return GetNormalizedTransposeShapeHelper(
-      input_shape, InversePermutation(dimensions), permutation);
+      DropDegenerateDimensions(input_shape), InversePermutation(new_dimensions),
+      permutation);
 }
 
 /* static */ std::optional<Vector3> ShapeUtil::GetNormalizedTransposeShape(

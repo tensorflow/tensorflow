@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
@@ -1336,7 +1337,7 @@ def pad(x, axis, front=False, back=False, value=0, count=1, name=None):
     x = array_ops.pad(
         x,
         paddings=array_ops.one_hot(
-            indices=array_ops.stack(
+            indices=array_ops_stack.stack(
                 [axis if front else -1, axis if back else -1]),
             depth=ndims,
             axis=0,

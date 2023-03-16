@@ -50,6 +50,7 @@ void PopulateLowerToMlProgramAndHloPipeline(mlir::OpPassManager& pm) {
   pm.addPass(mlir::tf_saved_model::CreateLowerVariableOpsToMlProgramPass());
   pm.addPass(mlir::tf_saved_model::CreateLowerGlobalsToMlProgramPass());
   pm.addPass(mlir::TF::CreateLocalizeVarHandlesPass());
+  pm.addPass(mlir::tf_saved_model::CreateAddFunctionsForExportedNamesPass());
   pm.addPass(mlir::tf_saved_model::CreateStripSavedModuleMetadataPass());
 
   pm.addPass(mlir::TF::CreateRemoveUnusedArgumentsPass());

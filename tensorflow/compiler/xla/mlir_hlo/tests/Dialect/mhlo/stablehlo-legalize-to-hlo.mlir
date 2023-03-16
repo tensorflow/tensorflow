@@ -1503,6 +1503,18 @@ func.func @op_subtract(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 }
 // CHECK-LABEL: "op_subtract"
 
+func.func @op_tan_mhlo_v1(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: "mhlo.tan"(%arg0) : (tensor<f32>) -> tensor<f32>
+  %0 = "stablehlo.custom_call"(%arg0) {
+    backend_config = "",
+    call_target_name = "mhlo.tan",
+    mhlo.attributes = {},
+    mhlo.version = 1 : i64
+  } : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+// CHECK-LABEL: "op_tan_mhlo_v1"
+
 func.func @op_tanh(%arg0: tensor<f32>) -> tensor<f32> {
   // CHECK: "mhlo.tanh"(%arg0) : (tensor<f32>) -> tensor<f32>
   %0 = "stablehlo.tanh"(%arg0) : (tensor<f32>) -> tensor<f32>

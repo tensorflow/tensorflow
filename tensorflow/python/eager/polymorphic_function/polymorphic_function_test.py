@@ -27,6 +27,7 @@ import weakref
 from absl.testing import parameterized
 import numpy
 
+from tensorflow.core.function.capture import capture_container
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.lang import directives
@@ -46,7 +47,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import extension_type
-from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
@@ -59,9 +59,11 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import cond_v2
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -133,6 +135,33 @@ class _HasDecoratedMethod(object):
   @polymorphic_function.function
   def f(self, x):
     return x * 3.
+
+
+class FunctionBenchmark(test.Benchmark):
+  """Benchmark the tf.function implementation."""
+
+  def benchmark_repeat_captures_property_access(self):
+    n_iters = 1000000
+    n_captures = 100
+    vs = []
+    for _ in range(n_captures):
+      vs.append(variables.Variable(1.0))
+
+    def f():
+      result = 0
+      for idx in range(n_captures):
+        result += vs[idx]
+      return result
+
+    pf = polymorphic_function.function(f)
+    g = pf.get_concrete_function().graph
+
+    start_time = time.time()
+    for _ in range(n_iters):
+      temp = g.captures  # pylint: disable=unused-variable
+    duration = time.time() - start_time
+
+    self.report_benchmark(iters=n_iters, wall_time=duration / float(n_iters))
 
 
 # TODO(mdan): Organize these tests.
@@ -1875,10 +1904,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testEagerCaptures(self):
     with context.eager_mode():
       large_tensor = array_ops.ones(shape=(256,))
-      self.assertGreater(256, func_graph._EAGER_CONST_THRESHOLD)
+      self.assertGreater(256, capture_container._EAGER_CONST_THRESHOLD)
 
       small_tensor = array_ops.ones(shape=(4,))
-      self.assertLessEqual(4, func_graph._EAGER_CONST_THRESHOLD)
+      self.assertLessEqual(4, capture_container._EAGER_CONST_THRESHOLD)
 
       v = resource_variable_ops.ResourceVariable(0.0)
 
@@ -3072,7 +3101,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     ])
     def f(x, s):
       old_shape = array_ops.shape(x)
-      new_shape = array_ops.stack([old_shape[0], s], axis=0)
+      new_shape = array_ops_stack.stack([old_shape[0], s], axis=0)
       y = array_ops.ones(shape=new_shape, dtype=dtypes.int32)
       return y
 
@@ -3094,8 +3123,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         tensor_spec.TensorSpec((), dtype=dtypes.int32),
     ])
     def f(x, s):
-      s0, _ = array_ops.unstack(array_ops.shape(x), axis=0)
-      new_shape = array_ops.stack([s0, s], axis=0)
+      s0, _ = array_ops_stack.unstack(array_ops.shape(x), axis=0)
+      new_shape = array_ops_stack.stack([s0, s], axis=0)
       y = array_ops.ones(shape=new_shape, dtype=dtypes.int32)
       return y
 
@@ -3773,7 +3802,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     @polymorphic_function.function
     def fail(i):
-      control_flow_ops.Assert(math_ops.equal(i, 0), ['ick'])
+      control_flow_assert.Assert(math_ops.equal(i, 0), ['ick'])
 
     fail(constant_op.constant(0))  # OK
     with self.assertRaises(errors.InvalidArgumentError):

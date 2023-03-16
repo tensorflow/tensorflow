@@ -76,6 +76,7 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:test_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -140,6 +141,7 @@ tf_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/eager:function",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

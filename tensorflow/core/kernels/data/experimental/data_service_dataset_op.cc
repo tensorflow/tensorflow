@@ -176,7 +176,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override {
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
     return EstimateCardinality(processing_mode_, metadata_,
                                is_coordinated_read_);
   }

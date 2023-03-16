@@ -730,6 +730,24 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
                                           sum_of_constants));
   }
 
+  VLOG(10) << "trying transform [(C1 - A) + C2 => (C1 + C2) - A]";
+  if (Match(add, m::Add(m::Subtract(m::Constant(&c1), m::NonConstant(&a)),
+                        m::Constant(&c2))) ||
+      Match(add, m::Add(m::Subtract(m::Broadcast(m::ConstantScalar(&c1)),
+                                    m::NonConstant(&a)),
+                        m::Broadcast(m::ConstantScalar(&c2))))) {
+    TF_ASSIGN_OR_RETURN(HloInstruction * sum_of_constants,
+                        MakeBinaryHlo(HloOpcode::kAdd, c1, c2));
+    if (ShapeUtil::IsScalar(sum_of_constants->shape()) &&
+        !ShapeUtil::IsScalar(add->shape())) {
+      sum_of_constants = add->AddInstruction(
+          HloInstruction::CreateBroadcast(add->shape(), sum_of_constants, {}));
+    }
+    return ReplaceWithNewInstruction(
+        add, HloInstruction::CreateBinary(add->shape(), HloOpcode::kSubtract,
+                                          sum_of_constants, a));
+  }
+
   // Convert add with fullshape into add with partial shape when a
   // portion of add is effective:
   //             zero (fullshape)   rhs (partialshape)
@@ -2772,9 +2790,12 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
       new_rhs = dot->AddInstruction(HloInstruction::CreateBroadcast(
           dot->shape(), new_rhs, rhs_broadcast_dims));
     }
-    return ReplaceWithNewInstruction(
-        dot, HloInstruction::CreateBinary(dot->shape(), HloOpcode::kMultiply,
-                                          new_lhs, new_rhs));
+    auto new_instruction = HloInstruction::CreateBinary(
+        dot->shape(), HloOpcode::kMultiply, new_lhs, new_rhs);
+    dot->SetupDerivedInstruction(new_lhs);
+    dot->SetupDerivedInstruction(new_rhs);
+    dot->SetupDerivedInstruction(new_instruction.get());
+    return ReplaceWithNewInstruction(dot, std::move(new_instruction));
   }
 
   // If the lhs or rhs have only batch and contracting dimensions, a dot can be

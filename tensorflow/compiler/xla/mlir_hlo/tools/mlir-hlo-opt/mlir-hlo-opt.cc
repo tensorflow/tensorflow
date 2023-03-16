@@ -53,7 +53,9 @@ int main(int argc, char** argv) {
   PassPipelineRegistration<> defaultGmlStCpuTilingPipeline(
       "default-gml-st-cpu-tiling-pipeline",
       "Tiles, fuses, vectorizes tileable ops for CPU with default parameters",
-      gml_st::addDefaultCPUTilingPipeline);
+      [](OpPassManager& pm) {
+        gml_st::addDefaultCPUTilingPipeline(pm, /*cpuName=*/"");
+      });
 
   PassPipelineRegistration<> genericHostToLLVMPass(
       "generic-host-to-llvm",

@@ -50,6 +50,7 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import distribute as distribute_types
@@ -944,7 +945,7 @@ class _IterableInput(DistributedDatasetInterface):
       optional_data = iterator.get_next_as_optional()
       return optional_data, state
 
-    optional_data, final_state = control_flow_ops.while_loop(
+    optional_data, final_state = while_loop.while_loop(
         cond,
         loop_body, [optional_data, initial_state],
         parallel_iterations=1,

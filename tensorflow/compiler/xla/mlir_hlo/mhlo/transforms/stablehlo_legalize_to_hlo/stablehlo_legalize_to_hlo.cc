@@ -169,7 +169,7 @@ LogicalResult rewriteCustomCallAsMhloOp(stablehlo::CustomCallOp stablehloOp,
   auto isSupportedAttrName = [](NamedAttribute attr) {
     auto name = attr.getName();
     return name == "call_target_name" || name == "backend_config" ||
-           name == "mhlo.attributes";
+           name == "mhlo.attributes" || name == "mhlo.version";
   };
   if (!llvm::all_of(stablehloOp->getAttrs(), isSupportedAttrName) ||
       !stablehloOp.getBackendConfig().empty()) {
