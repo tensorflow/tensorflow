@@ -125,8 +125,7 @@ py_test(
     deps = [
         ":operators",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/core:function_wrappers",
+        "//tensorflow/python/autograph/core",
         # TODO(b/145618471): Remove this transitive dependency.
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",

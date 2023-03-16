@@ -10,7 +10,7 @@ py_strict_library(
     srcs = ["__init__.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        ":list_comprehensions",
+        "//tensorflow/python/autograph/converters:list_comprehensions",
     ],
 )
 
@@ -19,7 +19,7 @@ py_strict_library(
     srcs = ["slices.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/pyct",
         "@gast_archive//:gast",
@@ -31,7 +31,7 @@ py_strict_library(
     srcs = ["continue_statements.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
     ],
@@ -42,7 +42,7 @@ py_strict_library(
     srcs = ["list_comprehensions.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/pyct",
         "@gast_archive//:gast",
     ],
@@ -53,7 +53,7 @@ py_strict_library(
     srcs = ["logical_expressions.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/pyct",
         "@gast_archive//:gast",
     ],
@@ -64,7 +64,7 @@ py_strict_library(
     srcs = ["break_statements.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
     ],
@@ -75,7 +75,7 @@ py_strict_library(
     srcs = ["conditional_expressions.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/pyct",
         "@gast_archive//:gast",
     ],
@@ -86,7 +86,7 @@ py_strict_library(
     srcs = ["call_trees.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/utils:ag_logging",
         "@gast_archive//:gast",
@@ -98,7 +98,7 @@ py_strict_library(
     srcs = ["control_flow_deprecated_py2.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
@@ -111,7 +111,7 @@ py_strict_library(
     srcs = ["directives.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/util:tf_inspect",
@@ -124,7 +124,7 @@ py_strict_library(
     srcs = ["variables.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/pyct",
         "@gast_archive//:gast",
     ],
@@ -135,7 +135,7 @@ py_strict_library(
     srcs = ["control_flow.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
@@ -148,7 +148,7 @@ py_strict_library(
     srcs = ["functions.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
         "@gast_archive//:gast",
@@ -160,7 +160,7 @@ py_strict_library(
     srcs = ["lists.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
@@ -173,7 +173,7 @@ py_strict_library(
     srcs = ["return_statements.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
         "@gast_archive//:gast",
@@ -185,7 +185,7 @@ py_strict_library(
     srcs = ["asserts.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/pyct",
         "@gast_archive//:gast",
     ],
@@ -302,8 +302,7 @@ py_strict_test(
         ":functions",
         ":return_statements",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/core:ag_ctx",
-        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/autograph/impl",
         "//tensorflow/python/framework:constant_op",
