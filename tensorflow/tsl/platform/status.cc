@@ -195,9 +195,9 @@ void Status::MaybeAddSourceLocation(SourceLocation loc) {
   state_->source_locations.push_back(loc);
 }
 
-Status::Status(tsl::errors::Code code, absl::string_view msg,
+Status::Status(tsl::error::Code code, absl::string_view msg,
                SourceLocation loc) {
-  assert(code != tsl::errors::Code::OK);
+  assert(code != absl::StatusCode::kOk);
   state_ = std::make_unique<State>();
   state_->code = static_cast<absl::StatusCode>(code);
   state_->msg = std::string(msg);
@@ -366,8 +366,7 @@ Status FromAbslStatus(const absl::Status& s, SourceLocation loc) {
   }
   absl::Span<const SourceLocation> locs = internal::GetSourceLocations(s);
   const SourceLocation first_loc = locs.empty() ? loc : locs[0];
-  Status converted(static_cast<tsl::error::Code>(s.code()), s.message(),
-                   first_loc);
+  Status converted(s.code(), s.message(), first_loc);
   for (int i = 1; i < locs.size(); ++i) {
     converted.MaybeAddSourceLocation(locs[i]);
   }

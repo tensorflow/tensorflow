@@ -54,7 +54,7 @@ class [[nodiscard]] Status;
 typedef SourceLocationImpl SourceLocation;
 
 namespace errors {
-typedef ::tensorflow::error::Code Code;
+typedef absl::StatusCode Code;
 }  // namespace errors
 namespace error {
 typedef ::tensorflow::error::Code Code;
@@ -110,7 +110,7 @@ class Status {
       "Use `Status(absl::StatusCode, ...) instead of Status(tsl::errors::Code, "
       "...).")
 #endif
-  Status(tsl::errors::Code code, absl::string_view msg,
+  Status(tsl::error::Code code, absl::string_view msg,
          SourceLocation loc = SourceLocation::current());
 
   /// Copy the specified status.
