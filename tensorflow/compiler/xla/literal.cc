@@ -423,9 +423,10 @@ Status MutableLiteralBase::CopySliceFromInternal(
     dest_data[linear_index(shape(), dest_base)] =
         src_data[linear_index(src_literal.shape(), src_base)];
   } else if (!ShapeUtil::IsZeroElementArray(shape()) &&
-             !ShapeUtil::IsZeroElementArray(src_literal.shape())) {
-    // Perform copy if neither src nor dest has dimensions with zero element,
-    // otherwise it's a no-op.
+             !ShapeUtil::IsZeroElementArray(src_literal.shape()) &&
+             absl::c_none_of(copy_size, [](auto d) { return d == 0; })) {
+    // Perform copy if none of src, dest and copy_size has dimensions with zero
+    // element, otherwise it's a no-op.
     TF_RET_CHECK(src_base.size() == dest_base.size());
     TF_RET_CHECK(src_base.size() == copy_size.size());
 
