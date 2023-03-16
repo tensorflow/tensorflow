@@ -49,6 +49,9 @@ class HasRank<int n> : Constraint<
     CPred<"$0.getType().cast<ShapedType>().hasRank() && "
           "$0.getType().cast<ShapedType>().getRank() == " # n>>;
 
+// Flattens a constant tensor to 1D.
+def FlattenTo1D : NativeCodeCall<"FlattenTo1D($0)">;
+
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
 //===----------------------------------------------------------------------===//
@@ -111,7 +114,7 @@ multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
               (Arith_ConstantOp FloatElementsAttr:$value), $act_fn),
     (TFL_Conv2DOp $input, $filter,
       (binaryOp (Arith_ConstantOp $bias),
-         (Arith_ConstantOp $value), TFL_AF_None),
+                (Arith_ConstantOp (FlattenTo1D $value)), TFL_AF_None),
       $h_factor, $w_factor, $act_fn, $padding, $stride_h, $stride_w),
     [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value),
      (HasOneUse $output)]>;
@@ -122,11 +125,11 @@ multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
                 $stride_w, $multiplier),
               (Arith_ConstantOp FloatElementsAttr:$value), $act_fn),
     (TFL_DepthwiseConv2DOp $input, $filter,
-      (binaryOp (Arith_ConstantOp $bias), (Arith_ConstantOp $value), TFL_AF_None),
+      (binaryOp (Arith_ConstantOp $bias),
+                (Arith_ConstantOp (FlattenTo1D $value)), TFL_AF_None),
       $h_factor, $w_factor, $act_fn, $padding, $stride_h, $stride_w,
       $multiplier),
     [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
-     (HasRank<1> $value),
      (HasOneUse $output)]>;
    def FuseBinaryOpWithTransposeConv#binaryOp : Pat<
     (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $input,
@@ -181,12 +184,11 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
         TFL_AF_None),
       (BinaryOp
         (Arith_ConstantOp $bias),
-        (Arith_ConstantOp $value),
+        (Arith_ConstantOp (FlattenTo1D $value)),
         TFL_AF_None),
       $h_factor, $w_factor, $act_fn, $padding, $stride_h,
       $stride_w, $multiplier),
     [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
-     (HasRank<1> $value),
      (HasOneUse $output)]>;
   def FuseMulOrDivWithConv#BinaryOp : Pat<
     (BinaryOp (TFL_Conv2DOp:$conv_output $input,
@@ -200,7 +202,7 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
         (Arith_ConstantOp (ExpandTo4DForConv $value)),
         TFL_AF_None),
       (BinaryOp (Arith_ConstantOp $bias),
-        (Arith_ConstantOp $value),
+        (Arith_ConstantOp (FlattenTo1D $value)),
         TFL_AF_None),
       $h_factor, $w_factor, $act_fn, $padding, $stride_h, $stride_w),
     [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value),
@@ -1016,10 +1018,10 @@ def ReplaceOneHotFullyConnectedWithLookup : Pat<
     $keep_num_dims,
     $asymmetric_quantize_inputs),
   (TFL_ReshapeOp
-    (TFL_EmbeddingLookupOp
+  (TFL_EmbeddingLookupOp
       (TFL_ReshapeOp $indices, (Get1DShapeValue $indices)),
-      (TFL_TransposeOp
-        $filter,
+    (TFL_TransposeOp
+      $filter,
         (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[2]>, "{1,0}">)),
       (returnType (GetEmbeddingLookupShape $indices, $filter))
     ),

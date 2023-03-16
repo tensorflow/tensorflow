@@ -17,6 +17,7 @@ limitations under the License.
 // optimizes them to resulting operations in TensorFlowLite dialect.
 
 #include <algorithm>
+#include <array>
 #include <climits>
 #include <cstdint>
 #include <functional>
@@ -70,6 +71,14 @@ namespace {
 constexpr char kRelu[] = "RELU";
 constexpr char kRelu6[] = "RELU6";
 constexpr char kRelu1[] = "RELU_N1_TO_1";
+
+ElementsAttr FlattenTo1D(Attribute a) {
+  auto elements = a.cast<DenseElementsAttr>();
+  const std::array<int64_t, 1> flattened_shape = {elements.getNumElements()};
+  auto new_type = RankedTensorType::get(flattened_shape,
+                                        elements.getType().getElementType());
+  return elements.reshape(new_type);
+}
 
 bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
   if (axis.getNumElements() == 0) {
@@ -142,11 +151,14 @@ bool IsTailOfShape(Type type1, Type type2) {
 bool CanFuseConvOrDepthwiseConvShapes(const ArrayRef<int64_t> filter_shape,
                                       const ArrayRef<int64_t> elements_shape,
                                       bool is_depthwise) {
-  // Also, val tensor must be of rank 1 or 0 (scalar).
-  const auto elements_rank = elements_shape.size();
-  if (elements_rank != 1 && elements_rank != 0) {
-    return false;
+  // Val tensor must be a scalar or of a shape [1, ... , 1, elements_depth].
+  const int elements_rank = elements_shape.size();
+  for (int i = 0; i < elements_rank - 1; ++i) {
+    if (elements_shape[i] != 1) {
+      return false;
+    }
   }
+
   auto elements_depth = elements_shape.empty() ? 1 : elements_shape.back();
   // If elements depth equals 1 (i.e., scalar or tensor with 1 element), then we
   // can let binary op to broadcast elements.
