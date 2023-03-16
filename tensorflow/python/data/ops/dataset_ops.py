@@ -50,8 +50,8 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_assert
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import gen_parsing_ops
@@ -4856,7 +4856,7 @@ def _filter_ds(dataset,
 
   def maybe_warn_on_large_rejection(accept_dist, initial_dist):
     proportion_rejected = math_ops.reduce_sum((1 - accept_dist) * initial_dist)
-    return control_flow_ops.cond(
+    return cond.cond(
         math_ops.less(proportion_rejected, .5),
         lambda: accept_dist,
         lambda: logging_ops.Print(  # pylint: disable=g-long-lambda
