@@ -21,8 +21,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace tsl {
 class CoordinationServiceAgent;
@@ -32,7 +32,7 @@ namespace tensorflow {
 
 namespace activity_watcher {
 
-using ActivityId = uint64;
+using ActivityId = tsl::uint64;
 constexpr ActivityId kActivityNotRecorded = 0;
 constexpr int kWatcherDisabled = 0;
 
@@ -44,7 +44,7 @@ enum ActivityCategory {
   kTpuOp = 4,
 };
 
-static tensorflow::string ToString(ActivityCategory category) {
+static tsl::string ToString(ActivityCategory category) {
   switch (category) {
     case ActivityCategory::kCollective:
       return "Collective";
@@ -61,19 +61,17 @@ static tensorflow::string ToString(ActivityCategory category) {
 
 // An activity to be recorded.
 struct Activity {
-  using Attributes =
-      absl::flat_hash_map<tensorflow::string, tensorflow::string>;
+  using Attributes = absl::flat_hash_map<tsl::string, tsl::string>;
   // A human readable title of the activity.
-  tensorflow::string title;
+  tsl::string title;
   // The category of the activity.
   ActivityCategory category = ActivityCategory::kMisc;
   // Key/value pairs that are attached to the activity.
   Attributes attributes;
   Activity() = default;
-  Activity(tensorflow::string title, ActivityCategory category)
+  Activity(tsl::string title, ActivityCategory category)
       : title(std::move(title)), category(category) {}
-  Activity(tensorflow::string title, ActivityCategory category,
-           Attributes attributes)
+  Activity(tsl::string title, ActivityCategory category, Attributes attributes)
       : title(std::move(title)),
         category(category),
         attributes(std::move(attributes)) {}
