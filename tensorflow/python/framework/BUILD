@@ -225,6 +225,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        ":byte_swap_tensor",
         ":device",
         ":device_spec",
         ":dtypes",
@@ -248,6 +249,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        ":byte_swap_tensor",
         ":constant_op",
         ":device",
         ":device_spec",
@@ -334,6 +336,15 @@ py_library(
     ] + if_xla_available([
         "//tensorflow/python:_pywrap_tfcompile",
     ]),
+)
+
+py_library(
+    name = "byte_swap_tensor",
+    srcs = ["byte_swap_tensor.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":dtypes",
+    ],
 )
 
 py_library(
