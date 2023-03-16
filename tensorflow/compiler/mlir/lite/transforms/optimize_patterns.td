@@ -44,6 +44,11 @@ class HasRankAtMost<int n> : Constraint<
     CPred<"$0.getType().cast<ShapedType>().hasRank() && "
           "$0.getType().cast<ShapedType>().getRank() <= " # n>>;
 
+// Checks if the value has rank at most 'n'.
+class HasRankAtLeast<int n> : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
+          "$0.getType().cast<ShapedType>().getRank() >= " # n>>;
+
 // Checks if the value has rank 'n'.
 class HasRank<int n> : Constraint<
     CPred<"$0.getType().cast<ShapedType>().hasRank() && "
@@ -916,38 +921,33 @@ def OptimizeSliceOp : Pat<
   (replaceWithValue $input),
   [(CanOptimizeIdentitySliceOp $input, $begin, $size)]>;
 
-def GetNumElementsOrOne: NativeCodeCall<"GetNumElementsOrOne($0)">;
+def GetNumElementsOrOne: NativeCodeCall<"GetNumElementsOrOne($0.getType())">;
 
 def ReshapeValueDroppingLastDim : NativeCodeCall<
-  "ReshapeValueDroppingLastDim($_builder, $0, $1)">;
-
-def HasExactlyTwoElements : Constraint<CPred<
-  "TFL::HasExactlyTwoElements($0)">>;
-
-def IsLastElementEqualsOne : Constraint<CPred<
-  "TFL::IsLastElementEqualsOne($0)">>;
+  "ReshapeValueDroppingLastDim($_builder, $0)">;
 
 def IsOneHotIndexAttribute : Constraint<CPred<
   "TFL::IsOneHotIndexAttribute($0)">>;
 
+// Checks if the shape has shape with last dimension equals 1.
+def IsLastDimensionEqualOne : Constraint<CPred<"IsLastDimensionEqualOne($0)">>;
+
 // Replace
-//   Equal(Reshape(X, shape), indices)
+//   Equal(X, indices)
 // With
-//   OneHot(Reshape(X, shape[:-1]), N, true, false, -1)
+//   OneHot(Reshape(X), N, true, false, -1)
 // where
-//  - shape has length 2 (unnecessary, just to be conservative)
-//  - last value in shape is 1
+//  - last dimension of the LHS of the equal is 1, and the rank is at least 2.
 //  - indices is a incrementing series from 0 to N-1. (N elements total.)
 def ReshapeEqualOpToOneHotOp : Pat<
-  (TFL_EqualOp (TFL_ReshapeOp $x, (Arith_ConstantOp $shape)),
-               (Arith_ConstantOp $series)),
-  (TFL_OneHotOp (ReshapeValueDroppingLastDim $x, $shape),
+  (TFL_EqualOp $x, (Arith_ConstantOp $series)),
+  (TFL_OneHotOp (ReshapeValueDroppingLastDim $x),
                 (Arith_ConstantOp (GetNumElementsOrOne $series)),
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "true">),
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "false">),
                 ConstantAttr<I32Attr, "-1">),
-  [(HasExactlyTwoElements $shape),
-   (IsLastElementEqualsOne $shape),
+  [(IsLastDimensionEqualOne $x),
+   (HasRankAtLeast<2> $x),
    (IsOneHotIndexAttribute $series)]>;
 
 def F32ElementsVal : Constraint<CPred<
@@ -1123,10 +1123,6 @@ def MatchGelu : Pat<
    (HasOneUse $erf_out),
    (HasOneUse $mul_out1),
   ]>;
-
-
-// Checks if the shape has shape with last dimension equals 1.
-def IsLastDimensionEqualOne : Constraint<CPred<"IsLastDimensionEqualOne($0)">>;
 
 // Fetches the output of FC op, from the provided arguments.
 def GetFcOutput : NativeCodeCall<
