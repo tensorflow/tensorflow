@@ -409,10 +409,7 @@ class Interpreter:
         available to CPU kernels. If not set, the interpreter will use an
         implementation-dependent default number of threads. Currently, only a
         subset of kernels, such as conv, support multi-threading. num_threads
-        should be >= -1. Setting num_threads to 0 has the effect to disable
-        multithreading, which is equivalent to setting num_threads to 1. If set
-        to the value -1, the number of threads used will be
-        implementation-defined and platform-dependent.
+        should be >= 1.
       experimental_op_resolver_type: The op resolver used by the interpreter. It
         must be an instance of OpResolverType. By default, we use the built-in
         op resolver which corresponds to tflite::ops::builtin::BuiltinOpResolver
