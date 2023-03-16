@@ -438,8 +438,16 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def("use_xla_spmd", &Mesh::use_xla_spmd,
            "Returns True if Mesh will use XLA for SPMD "
            "instead of DTensor SPMD.")
-      .def("as_proto", &Mesh::ToProto,
-           "Returns the MeshProto protobuf message.")
+      .def(
+          "as_proto",
+          [](const Mesh& mesh) {
+            auto mesh_proto = mesh.ToProto();
+            if (!mesh_proto.ok()) {
+              throw py::value_error(mesh_proto.status().error_message());
+            }
+            return *mesh_proto;
+          },
+          "Returns the MeshProto protobuf message.")
       .def("device_location", [](const Mesh& mesh, int device_id) {
         auto location = mesh.device_location(device_id);
         if (!location.ok()) {
@@ -478,7 +486,16 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
            py::arg("rank"), py::arg("batch_dim"), py::arg("axis"),
            "Returns a batch sharded layout.")
       .def("__eq__", &Layout::operator==)
-      .def("as_proto", &Layout::ToProto)
+      .def(
+          "as_proto",
+          [](const Layout& layout) {
+            auto layout_proto = layout.ToProto();
+            if (!layout_proto.ok()) {
+              throw py::value_error(layout_proto.status().error_message());
+            }
+            return *layout_proto;
+          },
+          "Returns the LayoutProto protobuf message.")
       .def("to_string", &Layout::ToString)
       .def_property_readonly("sharding_specs", &Layout::sharding_spec_strs)
       .def_property_readonly("rank", &Layout::rank)
