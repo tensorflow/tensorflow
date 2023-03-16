@@ -50,8 +50,16 @@ class SegmentReductionHelper(test.TestCase):
     return constant_op.constant(
         np_values, shape=input_shape, dtype=dtype), np_values
 
-  def _segmentReduce(self, indices, x, op1, op2=None, num_segments=None,
-                     initial_value=0):
+  def _segmentReduce(
+      self,
+      indices,
+      x,
+      op1,
+      op2=None,
+      num_segments=None,
+      initial_value=0,
+      empty_value=0,
+  ):
     if not x.size:
       return np.array([])
     indices = np.asarray(indices)
@@ -69,8 +77,8 @@ class SegmentReductionHelper(test.TestCase):
       else:
         output[index] = x_flat[i]
     # zero initialize values that are still uncalculated.
-    initial_value_slice = np.ones(slice_shape) * initial_value
-    output = [o if o is not None else initial_value_slice for o in output]
+    empty_value_slice = np.ones(slice_shape) * empty_value
+    output = [o if o is not None else empty_value_slice for o in output]
     if op2 is not None:
       output = [op2(o) for o in output]
     output = [o.reshape(slice_shape) for o in output]
@@ -185,6 +193,23 @@ class SegmentReductionOpTest(SegmentReductionHelper, parameterized.TestCase):
         indices = [0, 0, 3, 3]
         np_ans = self._segmentReduce(indices, np_x, np.add)
         s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
+        tf_ans = self.evaluate(s)
+        self.assertAllClose(np_ans, tf_ans)
+
+  def testSegmentIdsHoleEmptyValue(self):
+    shape = [4, 4]
+    for use_gpu in [True, False]:
+      with self.cached_session(use_gpu=use_gpu):
+        tf_x, np_x = self._input(shape, dtype=dtypes_lib.float32)
+        indices = [0, 0, 3, 3]
+        np_ans = self._segmentReduce(
+            indices,
+            np_x,
+            np.max,
+            initial_value=-dtypes_lib.float32.min,
+            empty_value=0,
+        )
+        s = math_ops.segment_max(data=tf_x, segment_ids=indices)
         tf_ans = self.evaluate(s)
         self.assertAllClose(np_ans, tf_ans)
 
@@ -346,7 +371,9 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
                   np_op1,
                   np_op2,
                   num_segments=num_segments,
-                  initial_value=init_op(dtype))
+                  initial_value=init_op(dtype),
+                  empty_value=init_op(dtype),
+              )
               s = tf_op(tf_x, segment_ids=indices, num_segments=num_segments)
               tf_ans = self.evaluate(s)
               self.assertAllCloseAccordingToType(np_ans, tf_ans)
