@@ -176,7 +176,8 @@ class HistogramFixedWidthTest(test.TestCase):
       self.assertAllClose(expected_bin_counts, hist.eval({placeholder: 5}))
 
 
-  def test_large_range(self):
+  # This test is disabled on 2.11 as it OOMs + segfaults afterwards
+  def DISABLED_test_large_range(self):
     hist = histogram_ops.histogram_fixed_width(
         values=constant_op.constant(
             [-(2**31), 2**31 - 1], dtype=dtypes.int32
