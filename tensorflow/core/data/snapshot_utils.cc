@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/platform/coding.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/random.h"
@@ -49,6 +48,9 @@ limitations under the License.
 #include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/tsl/lib/io/snappy/snappy_inputbuffer.h"
 #include "tensorflow/tsl/lib/io/snappy/snappy_outputbuffer.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -730,20 +732,18 @@ Status Reader::MakeNestedDataset(Env* env,
   return OkStatus();
 }
 
-TFRecordReader::TFRecordReader(const std::string& filename,
-                               const string& compression_type,
-                               const DataTypeVector& dtypes,
-                               std::optional<int64_t> output_buffer_size)
+TFRecordReaderImpl::TFRecordReaderImpl(
+    const std::string& filename, const string& compression,
+    std::optional<int64_t> output_buffer_size)
     : filename_(filename),
       offset_(0),
-      compression_type_(compression_type),
-      dtypes_(dtypes),
+      compression_(compression),
       output_buffer_size_(output_buffer_size) {}
 
-Status TFRecordReader::Initialize(Env* env) {
+Status TFRecordReaderImpl::Initialize(Env* env) {
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename_, &file_));
   auto options = io::RecordReaderOptions::CreateRecordReaderOptions(
-      /*compression_type=*/compression_type_);
+      /*compression_type=*/compression_);
 #if !defined(IS_SLIM_BUILD)
   if (output_buffer_size_.has_value()) {
     options.snappy_options.output_buffer_size = *output_buffer_size_;
@@ -754,26 +754,47 @@ Status TFRecordReader::Initialize(Env* env) {
   return OkStatus();
 }
 
+StatusOr<Tensor> TFRecordReaderImpl::GetNext() {
+  tstring record;
+  TF_RETURN_IF_ERROR(record_reader_->ReadRecord(&offset_, &record));
+  return Parse(record);
+}
+
+StatusOr<std::vector<Tensor>> TFRecordReaderImpl::GetTensors() {
+  std::vector<Tensor> tensors;
+  while (true) {
+    StatusOr<Tensor> tensor = GetNext();
+    if (errors::IsOutOfRange(tensor.status())) {
+      return tensors;
+    }
+    TF_RETURN_IF_ERROR(tensor.status());
+    tensors.push_back(std::move(*tensor));
+  }
+  return tensors;
+}
+
+StatusOr<Tensor> TFRecordReaderImpl::Parse(const tstring& record) {
+  TensorProto proto;
+  if (!proto.ParseFromArray(record.data(), record.size())) {
+    return errors::DataLoss(
+        "Unable to parse tensor from stored proto in file: ", filename_,
+        ", record ", offset_, ". Serialized proto: ", record);
+  }
+
+  Tensor tensor;
+  if (!tensor.FromProto(proto)) {
+    return errors::DataLoss(
+        "Unable to parse tensor from stored proto in file: ", filename_,
+        ", record ", offset_, ". TensorProto: ", proto.ShortDebugString());
+  }
+  return tensor;
+}
+
 Status TFRecordReader::ReadTensors(std::vector<Tensor>* read_tensors) {
+  read_tensors->clear();
   read_tensors->reserve(dtypes_.size());
   for (int i = 0; i < dtypes_.size(); ++i) {
-    tstring record;
-    TF_RETURN_IF_ERROR(record_reader_->ReadRecord(&offset_, &record));
-
-    TensorProto proto;
-    if (!proto.ParseFromArray(record.data(), record.size())) {
-      return errors::DataLoss(
-          "Unable to parse tensor from stored proto in file: ", filename_,
-          ", record ", offset_, ". Serialized proto: ", record);
-    }
-
-    Tensor tensor;
-    if (!tensor.FromProto(proto)) {
-      return errors::DataLoss(
-          "Unable to parse tensor from stored proto in file: ", filename_,
-          ", record ", offset_, ". TensorProto: ", proto.ShortDebugString());
-    }
-
+    TF_ASSIGN_OR_RETURN(Tensor tensor, reader_impl_.GetNext());
     read_tensors->push_back(std::move(tensor));
   }
   return OkStatus();
