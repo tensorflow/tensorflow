@@ -32,7 +32,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -433,8 +433,8 @@ class ImportGraphDefTest(test.TestCase):
         return importer.import_graph_def(graph_def, return_elements=[r.name])[0]
 
       pred = array_ops.placeholder(dtypes.bool)
-      out = control_flow_ops.cond(pred, ImportFn,
-                                  lambda: constant_op.constant(1))
+      out = cond.cond(pred, ImportFn,
+                      lambda: constant_op.constant(1))
       with self.cached_session() as sess:
         self.assertEqual(sess.run(out, {pred: True}), 10)
         self.assertEqual(sess.run(out, {pred: False}), 1)

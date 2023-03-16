@@ -37,8 +37,8 @@ from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_assert
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_ragged_conversion_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_config
@@ -1738,7 +1738,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
         # axes -- i.e., to be a no-op.)
         tensor_rank = array_ops.rank(tensor)
         reduce_axis = math_ops.range(2, tensor_rank)
-        has_default = control_flow_ops.cond(
+        has_default = cond.cond(
             tensor_rank > 2,
             lambda: math_ops.reduce_all(has_default_value, axis=reduce_axis),
             lambda: has_default_value)

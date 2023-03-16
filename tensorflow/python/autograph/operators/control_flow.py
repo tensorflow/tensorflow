@@ -74,8 +74,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import control_flow_assert
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -542,7 +542,7 @@ def _known_len_tf_for_stmt(
   def aug_test():
     main_test = iterate_index < n
     if extra_test is not None:
-      return control_flow_ops.cond(main_test, extra_test, lambda: False)
+      return tf_cond.cond(main_test, extra_test, lambda: False)
     return main_test
 
   _add_max_iterations_hint(opts, n)
@@ -590,7 +590,7 @@ def _tf_ragged_for_stmt(
   def aug_test():
     main_test = iterate_index < n
     if extra_test is not None:
-      return control_flow_ops.cond(main_test, extra_test, lambda: False)
+      return tf_cond.cond(main_test, extra_test, lambda: False)
     return main_test
 
   _add_max_iterations_hint(opts, n)
@@ -650,7 +650,7 @@ def _tf_range_for_stmt(
           math_ops.logical_and(delta < 0, iterate > limit))
 
     if extra_test is not None:
-      main_test = control_flow_ops.cond(main_test, extra_test, lambda: False)
+      main_test = tf_cond.cond(main_test, extra_test, lambda: False)
     return main_test
 
   _add_max_iterations_hint(
@@ -708,7 +708,7 @@ def _tf_iterator_for_stmt(
     # Calling set_state so that get_state() _tf_while_loop sees the conditional
     # tensors.
     aug_set_state(
-        control_flow_ops.cond(has_next, main_path, noop_path))
+        tf_cond.cond(has_next, main_path, noop_path))
 
   def aug_test():
     # This value takes a complicated path to get here:
@@ -716,7 +716,7 @@ def _tf_iterator_for_stmt(
     #   -> current_iteration_body -> set_state -> has_next
     main_test = has_next
     if extra_test is not None:
-      return control_flow_ops.cond(main_test, extra_test, lambda: False)
+      return tf_cond.cond(main_test, extra_test, lambda: False)
     return main_test
 
   _tf_while_stmt(
@@ -1309,7 +1309,7 @@ def _tf_if_stmt(
       _verify_tf_cond_vars(new_body_vars_[0], new_orelse_vars, symbol_names)
     return new_orelse_vars
 
-  final_cond_vars = control_flow_ops.cond(
+  final_cond_vars = tf_cond.cond(
       cond, aug_body, aug_orelse, strict=True)
   final_cond_vars = final_cond_vars + init_vars[nouts:]
 

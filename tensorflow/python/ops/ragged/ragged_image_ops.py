@@ -20,7 +20,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
@@ -95,4 +95,4 @@ def _resize_images(resize_op, images, size, **kwargs):
     return resize_with_map()
   else:
     empty_batch = math_ops.equal(images.nrows(), 0)
-    return control_flow_ops.cond(empty_batch, empty_result, resize_with_map)
+    return cond.cond(empty_batch, empty_result, resize_with_map)
