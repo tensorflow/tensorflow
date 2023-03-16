@@ -25,18 +25,15 @@ package_group(
 )
 
 cc_library(
-    name = "saved_model",
+    name = "saved_model_lib",
     srcs = [
         "saved_model.cc",
+        "saved_model.h",
         "saved_model_import_input.cc",
         "saved_model_import_input.h",
     ],
-    hdrs = ["saved_model.h"],
-    tags = ["no_oss"],
+    visibility = ["//visibility:private"],
     deps = [
-        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel",
-        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel:batch_kernel",
-        "//learning/brain/experimental/tfrt/native_lowering/kernels",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -83,6 +80,50 @@ cc_library(
         "@tf_runtime//:support",
     ] + if_google([
         "//third_party/tf_runtime_google:streamz_metrics_registry_alwayslink",
+        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel",
+        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel:batch_kernel",
+        "//learning/brain/experimental/tfrt/native_lowering/kernels",
+    ]),
+)
+
+cc_library(
+    name = "saved_model_cpu",
+    hdrs = ["saved_model.h"],
+    deps = [
+        ":saved_model_lib",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/tfrt/fallback:fallback_state",
+        "//tensorflow/core/tfrt/graph_executor",
+        "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
+        "//tensorflow/core/tfrt/runtime",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@tf_runtime//:hostcontext",
+    ],
+)
+
+cc_library(
+    name = "saved_model",
+    hdrs = ["saved_model.h"],
+    tags = ["no_oss"],
+    deps = [
+        ":saved_model_lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/tfrt/fallback:fallback_state",
+        "//tensorflow/core/tfrt/graph_executor",
+        "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
+        "//tensorflow/core/tfrt/runtime",
+        "@tf_runtime//:hostcontext",
+    ] + if_google([
+        "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
     ]),
 )
 
