@@ -842,9 +842,7 @@ cc_library(
     defines = select({
         ":tflite_kernel_use_xnnpack_false": [],
         ":tflite_with_xnnpack_explicit_false": [],
-        "//conditions:default": [
-            "TFLITE_KERNEL_USE_XNNPACK",
-        ],
+        "//conditions:default": [],
     }),
 )
 
