@@ -470,9 +470,7 @@ message DebugOptions {
 
   bool xla_gpu_triton_gemm_any = 190;
 
-  bool xla_gpu_allow_all_reduce_kernel = 192;
-
-  // Next id: 193
+  // Next id: 192
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

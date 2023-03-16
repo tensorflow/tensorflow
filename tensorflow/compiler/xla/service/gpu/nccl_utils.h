@@ -49,8 +49,6 @@ StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
 bool IsGlobalNcclConfig();
 bool IsNcclLaunchModeParallel();
 
-Status ToStatus(cudaError_t s, const char* file, int64_t line,
-                const char* expr);
 Status ToStatus(ncclResult_t s, const char* file, int64_t line,
                 const char* expr);
 
