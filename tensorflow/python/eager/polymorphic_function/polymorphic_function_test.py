@@ -62,9 +62,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_assert
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_random_ops
@@ -920,7 +920,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return n - 1
 
     @polymorphic_function.function(input_signature=signature)
-    def cond(n):
+    def cond_fn(n):
       return n > 0
 
     # Instead of calling the send & recv functions directly we want to call them
@@ -928,9 +928,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # while boundary.
     @polymorphic_function.function
     def fn(n):
-      functional_ops.While([n], cond.get_concrete_function(),
+      functional_ops.While([n], cond_fn.get_concrete_function(),
                            send_body.get_concrete_function())
-      return functional_ops.While([n], cond.get_concrete_function(),
+      return functional_ops.While([n], cond_fn.get_concrete_function(),
                                   recv_body.get_concrete_function())
 
     # Use a graph context since functions will not be automatically inlined
@@ -1101,7 +1101,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     v = variables.Variable(1.0)
 
     def trivial_function():
-      return control_flow_ops.cond(
+      return cond.cond(
           array_ops.placeholder_with_default(True, ()), v.read_value,
           v.read_value)
 

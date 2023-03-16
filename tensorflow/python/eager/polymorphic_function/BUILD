@@ -98,6 +98,7 @@ py_library(
         ":compiler_ir",
         ":eager_function_run",
         ":function_spec",
+        "//tensorflow/python:cond",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
@@ -130,6 +131,7 @@ cuda_py_test(
         ":polymorphic_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:data_flow_ops",
@@ -203,6 +205,7 @@ tf_xla_py_test(
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:collective_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:framework_ops",
@@ -243,6 +246,7 @@ cuda_py_test(
     shard_count = 5,
     deps = [
         ":polymorphic_function",
+        "//tensorflow/python:cond",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:while_loop",
