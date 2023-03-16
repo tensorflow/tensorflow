@@ -2471,6 +2471,11 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
     attrs.push_back(b.getNamedAttr(
         "tf.entry_function",
         b.getDictionaryAttr({inputs, outputs, control_outputs})));
+    if (!specs.xla_compile_device_type.empty()) {
+      attrs.push_back(
+          b.getNamedAttr("_xla_compile_device_type",
+                         b.getStringAttr(specs.xla_compile_device_type)));
+    }
   } else {
     // Collects the argument and return nodes by looking up the node names
     // specified by the user.

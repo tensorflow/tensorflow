@@ -137,8 +137,8 @@ static void RegisterDialects(mlir::DialectRegistry& registry) {
 
 Status MlirFunctionOptimizationPass::Run(
     const std::string& function_name, const DeviceSet& device_set,
-    const ConfigProto& config_proto, std::unique_ptr<Graph>* graph,
-    FunctionLibraryDefinition* flib_def,
+    const ConfigProto& config_proto, absl::string_view xla_compile_device_type,
+    std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
     std::vector<std::string>* control_ret_node_names,
     bool* control_rets_updated) {
   //  overall_state equals to:
@@ -208,6 +208,7 @@ Status MlirFunctionOptimizationPass::Run(
   // the shape inference pass is run early in the pass pipeline, shape inference
   // during import is not necessary.
   import_config.enable_shape_inference = false;
+  import_config.xla_compile_device_type = xla_compile_device_type;
 
   static const char* kTfMlirCategory = "TfMlir";
   tensorflow::metrics::ScopedCounter<2> timings(

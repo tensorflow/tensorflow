@@ -417,8 +417,9 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   bool control_rets_updated = false;
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(FunctionOptimizationPassRegistry::Global().Run(
-        function_name, dev_set, options.config_proto, &graph,
-        &reachable_lib_def, &control_ret_node_names, &control_rets_updated));
+        function_name, dev_set, options.config_proto,
+        options.xla_compile_device_type, &graph, &reachable_lib_def,
+        &control_ret_node_names, &control_rets_updated));
   }
 
   if (control_rets_updated) {

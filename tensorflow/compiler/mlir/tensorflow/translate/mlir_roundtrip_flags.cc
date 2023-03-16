@@ -62,6 +62,7 @@ std::string GraphImportConfig::str() const {
   ss << "\nenable_shape_inference: " << enable_shape_inference;
   ss << "\nunconditionally_use_set_output_shapes: "
      << unconditionally_use_set_output_shapes;
+  ss << "\nxla_compile_device_type: " << xla_compile_device_type;
 
   return ss.str();
 }
