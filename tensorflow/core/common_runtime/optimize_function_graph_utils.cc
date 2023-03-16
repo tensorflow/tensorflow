@@ -553,6 +553,13 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       options.shape_inference_on_tfe_dialect_import;
   optimization_options.debug_filename_prefix = function_name;
 
+  if (cpu_device->tensorflow_cpu_worker_threads() != nullptr) {
+    // Pass to the optimisation pass number of intra threads that are used to
+    // parallelise operations
+    session_options.config.set_intra_op_parallelism_threads(
+        cpu_device->tensorflow_cpu_worker_threads()->num_threads);
+  }
+
   DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
                                  "before_pre_placement_passes", graph.get(),
                                  &reachable_lib_def, false);

@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -48,6 +49,18 @@ limitations under the License.
 #include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
+
+/// This table contains for each node name descriptors on which
+/// hardware  to check whether we should rewrite the operations
+/// to use MKL based on the parameters for heuristic
+static const RewriteThreshold rewrite_thresholds[] = {
+#ifdef DNNL_AARCH64_USE_ACL
+    {"Conv2D", 0x41, 0xd40, {0.9349, 22.603}},
+    {"_FusedConv2D", 0x41, 0xd40, {0.9349, 22.603}},
+    {"FusedBatchNormV3", 0x41, 0xd40, {0.3223, -0.8822}},
+    {"Sigmoid", 0x41, 0xd40, {0.0, 0.064736}},
+#endif  // DNNL_AARCH64_USE_ACL
+    {"", 0x0, 0x0, {0, 0}}};
 
 // This pass implements rewriting of graph to support following scenarios:
 // (A) Merging nodes in the graph
@@ -239,7 +252,7 @@ namespace tensorflow {
 //
 class MklLayoutRewritePass : public GraphOptimizationPass {
  public:
-  MklLayoutRewritePass() {
+  MklLayoutRewritePass() : num_intra_threads_(0) {
     // NOTE: names are alphabetically sorted.
     csinfo_.addn = "AddN";
     csinfo_.avg_pool = "AvgPool";
@@ -380,6 +393,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mul = "Mul";
     csinfo_.squared_difference = "SquaredDifference";
     csinfo_.sub = "Sub";
+    csinfo_.sigmoid = "Sigmoid";
+    csinfo_.swish = "_MklSwish";
     // End - element-wise ops. See note above.
 
     const bool native_fmt = NativeFormatEnabled();
@@ -425,9 +440,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         {csinfo_.conjugate_transpose,
          mkl_op_registry::GetMklOpName(csinfo_.conjugate_transpose),
          CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
-    rinfo_.push_back(
-        {csinfo_.conv2d, mkl_op_registry::GetMklOpName(csinfo_.conv2d),
-         CopyAttrsConvCheckConstFilter, AlwaysRewrite, GetRewriteCause()});
+    rinfothr_.push_back(
+        {{csinfo_.conv2d, mkl_op_registry::GetMklOpName(csinfo_.conv2d),
+          CopyAttrsConvCheckConstFilter,
+          std::function<bool(const Node*)>(),  // we set this function to empty
+          GetRewriteCause()},
+         Conv2DRewrite});
     rinfo_.push_back({csinfo_.conv2d_with_bias,
                       native_fmt ? csinfo_.mkl_native_conv2d_with_bias
                                  : csinfo_.mkl_conv2d_with_bias,
@@ -486,10 +504,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     // Using CopyAttrsAll for V3 on CPU, as there are no additional
     // attributes.
-    rinfo_.push_back(
-        {csinfo_.fused_batch_norm_v3,
-         mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_v3),
-         CopyAttrsAll, FusedBatchNormV3Rewrite, GetRewriteCause()});
+    rinfothr_.push_back(
+        {{csinfo_.fused_batch_norm_v3,
+          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_v3),
+          CopyAttrsAll, std::function<bool(const Node*)>(), GetRewriteCause()},
+         FusedBatchNormV3RewriteWithThreads});
     rinfo_.push_back(
         {csinfo_.fused_batch_norm_grad_v3,
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad_v3),
@@ -499,11 +518,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                  : csinfo_.mkl_fused_batch_norm_ex,
                       CopyAttrsAll, FusedBatchNormExRewrite,
                       GetRewriteCause()});
-    rinfo_.push_back({csinfo_.fused_conv2d,
-                      native_fmt ? csinfo_.mkl_native_fused_conv2d
-                                 : csinfo_.mkl_fused_conv2d,
-                      CopyAttrsAllCheckConstFilter, FusedConv2DRewrite,
-                      GetRewriteCause()});
+    rinfothr_.push_back(
+        {{csinfo_.fused_conv2d,
+          native_fmt ? csinfo_.mkl_native_fused_conv2d
+                     : csinfo_.mkl_fused_conv2d,
+          CopyAttrsAllCheckConstFilter,
+          std::function<bool(const Node*)>(),  // we set this function to empty
+          GetRewriteCause()},
+         FusedConv2DRewrite});
     rinfo_.push_back({csinfo_.fused_conv3d, csinfo_.mkl_native_fused_conv3d,
                       CopyAttrsAllCheckConstFilter, AlwaysRewrite,
                       kRewriteForOpNameChange});
@@ -743,6 +765,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     wsinfo_.push_back(
         {csinfo_.max_pool3d, csinfo_.max_pool3d_grad, 0, 1, 1, 3});
 
+    // Rule for merging sigmoid and multiplication to swish
+    minfo_.push_back(
+        {csinfo_.sigmoid, csinfo_.mul, csinfo_.swish, GetSigmoidAndMul});
     // Add a rule for merging nodes
     minfo_.push_back({csinfo_.conv2d, csinfo_.bias_add,
                       csinfo_.conv2d_with_bias, GetConv2DOrBiasAdd});
@@ -807,6 +832,15 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // Why are we rewriting?
     RewriteCause rewrite_cause;
   } RewriteInfo;
+
+  /// Structure that carries the original rewrite info, but
+  /// in this case it is using the function that can accept
+  /// what is number of threads that will be used to run
+  /// the operation in parallel
+  typedef struct {
+    RewriteInfo rinfo;
+    std::function<bool(const Node*, const int)> rewrite_rule;
+  } RewriteInfoThreadCount;
 
   /// Structure to specify a forward op, a backward op, and the slot numbers
   /// in the forward and backward ops where we will add a workspace edge.
@@ -977,6 +1011,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string relu6;
     string relu6_grad;
     string requantize;
+    string sigmoid;
+    string swish;
     string tanh;
     string tanh_grad;
     string transpose;
@@ -991,6 +1027,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
  private:
   /// Maintain info about nodes to rewrite
   std::vector<RewriteInfo> rinfo_;
+  /// Mantain info about nodes to rewrite with additional
+  /// information that holds number of threads that should
+  /// be used to run kernel on so that we can decide
+  /// whether it is worth rewriting op to run with MKL
+  std::vector<RewriteInfoThreadCount> rinfothr_;
 
   /// Maintain info about nodes to add workspace edge
   std::vector<WorkSpaceInfo> wsinfo_;
@@ -1003,6 +1044,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
   /// Maintain structure of constant strings
   static ConstStringsInfo csinfo_;
+
+  /// Number of threads used for intra-parallelism
+  int num_intra_threads_;
 
  private:
   // Is OpDef::ArgDef a list type? It could be N * T or list(type).
@@ -1089,11 +1133,27 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   Status MergeNode(std::unique_ptr<Graph>* g, Node* m, Node* n);
 
   // Helper function to merge different nodes
+  Status MergeSigmoidWithMul(std::unique_ptr<Graph>* g, Node* m, Node* n);
   Status MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g, Node* m, Node* n);
   Status MergePadWithConv2D(std::unique_ptr<Graph>* g, Node* m, Node* n);
   Status MergeConv2DBackpropFilterWithBiasAddGrad(std::unique_ptr<Graph>* g,
                                                   Node* m, Node* n);
 
+  static Node* GetSigmoidAndMul(const Node* m) {
+    DCHECK(m);
+    Node* n = nullptr;
+
+    if (m->type_string() == csinfo_.sigmoid) {
+      for (const Edge* e : m->out_edges()) {
+        if (!e->IsControlEdge() && e->dst()->type_string() == csinfo_.mul &&
+            e->dst_input() == 0) {
+          n = e->dst();
+          break;
+        }
+      }
+    }
+    return n;
+  }
   // Find BiasAdd or Conv2D node that can be merged with input node 'm'.
   // If input 'm' is BiasAdd, then check if there exists Conv2D node that can be
   // merged with 'm'. If input 'm' is Conv2D, then check if there exists BiasAdd
@@ -1132,6 +1192,27 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     }
 
     return n;
+  }
+
+  static double FindRewriteThreshold(const Node* n, int threads) {
+    int cpu_family_ = port::CPUFamily();
+    int cpu_model_num_ = port::CPUModelNum();
+
+    if (threads == 0) {
+      // if we do not have information how many threads are used
+      // to parallelise operation we revert to the old behaviour
+      return 0;
+    }
+
+    for (const RewriteThreshold* i = rewrite_thresholds;
+         i->op != "" && threads > 0; i++) {
+      if (n->type_string() == i->op && cpu_family_ == i->cpu_family &&
+          cpu_model_num_ == i->cpu_model_num) {
+        return i->params.thread_sync_cost * threads + i->params.framework_cost;
+      }
+    }
+
+    return 0;
   }
 
   // Find Pad or Conv2D node that can be merged with input node 'm'.
@@ -1751,6 +1832,16 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return true;
   }
 
+  static bool FusedBatchNormV3RewriteWithThreads(const Node* n, int threads) {
+    double mflops = CalculateNodeMFlops(n);
+    double thr = FindRewriteThreshold(n, threads);
+    if (mflops > 0 && mflops < thr) {
+      return false;
+    }
+
+    return FusedBatchNormV3Rewrite(n);
+  }
+
   static bool FusedBatchNormExRewrite(const Node* n) {
     DCHECK(n);
 
@@ -1776,7 +1867,66 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return true;
   }
 
-  static bool FusedConv2DRewrite(const Node* n) {
+  static double CalculateNodeMFlops(const Node* n) {
+    // Check if we can obtained dimensions for this node
+    std::vector<const TensorShapeProto*> shape_attrs;
+    if (!TryGetNodeAttr(n->attrs(), "_input_shapes", &shape_attrs)) {
+      // We can't obtain shape so we will revert to default behaviour
+      // to rewrite node
+      return -1;
+    }
+
+    if ((n->type_string() == "Conv2D" || n->type_string() == "_FusedConv2D") &&
+        shape_attrs.size() == 2) {
+      TensorShape input_shape, filter_shape;
+      if (TensorShape::BuildTensorShape(*shape_attrs[0], &input_shape) !=
+          tsl::OkStatus()) {
+        return -1;
+      }
+      if (TensorShape::BuildTensorShape(*shape_attrs[1], &filter_shape) !=
+          tsl::OkStatus()) {
+        return -1;
+      }
+
+      // MFLOPS = N * H * W * C * FH * FW * FC / 1e6.
+      return input_shape.dim_size(0) * input_shape.dim_size(1) *
+             input_shape.dim_size(2) * input_shape.dim_size(3) *
+             filter_shape.dim_size(0) * filter_shape.dim_size(1) *
+             filter_shape.dim_size(3) / (double)1e6;
+    } else if ((n->type_string() == "FusedBatchNormV3" ||
+                n->type_string() == "Sigmoid") &&
+               shape_attrs.size() >= 1) {
+      TensorShape input_shape;
+      if (TensorShape::BuildTensorShape(*shape_attrs[0], &input_shape) !=
+          tsl::OkStatus()) {
+        return -1;
+      }
+      return input_shape.dim_size(0) * input_shape.dim_size(1) *
+             input_shape.dim_size(2) * input_shape.dim_size(3) / (double)1e6;
+    }
+
+    return -1;
+  }
+
+  static bool Conv2DRewrite(const Node* n, int threads) {
+    // Find out what are dimensions of the convolution
+    // If dimensions are small we will not rewrite node
+    // to use MKL operations as overhead to call into MKL
+    // data set up is higher then actual useful work we
+    // might end up doing
+    double total_mflops = CalculateNodeMFlops(n);
+    double thr = FindRewriteThreshold(n, threads);
+
+    return true ? (total_mflops < 0 || total_mflops >= thr) : false;
+  }
+
+  static bool FusedConv2DRewrite(const Node* n, int threads) {
+    // Decide whether it is worth rewriting it to MKL operation
+    // due to overheads as they will dominate for small shapes
+    if (!Conv2DRewrite(n, threads)) {
+      return false;
+    }
+
     // MKL DNN currently doesn't support all fusions that grappler fuses
     // together with Conv2D (ex. batchnorm). We rewrite _FusedConv2D only if
     // it includes those we support.
@@ -2998,6 +3148,129 @@ Node* MklLayoutRewritePass::CheckForNodeMerge(const Node* a) const {
   return nullptr;
 }
 
+Status MklLayoutRewritePass::MergeSigmoidWithMul(std::unique_ptr<Graph>* g,
+                                                 Node* m, Node* n) {
+  CHECK_EQ(
+      (m->type_string() == csinfo_.sigmoid && n->type_string() == csinfo_.mul),
+      true);
+
+  // Decide whether it is worth optimizing SigMoid+Mul to
+  // call to _MklSiwsh
+  double total_mflops = CalculateNodeMFlops(m);
+  double thr = FindRewriteThreshold(m, num_intra_threads_);
+
+  if (total_mflops != -1 && total_mflops < thr) {
+    // Do not merge and execute them as they are
+    // because overhead of going to MKL will dominate
+    // any benefits from accelerating compute
+    return Status(error::Code::CANCELLED,
+                  "Sigmoid and Mul operate on small shapes, "
+                  "so there is no benefit in optimizing to Swish. "
+                  "Will skip node merge optimization");
+  }
+
+  Node* sigmoid = m;
+  Node* mul = n;
+
+  DataType T_sigmoid, T_mul;
+  TF_CHECK_OK(GetNodeAttr(sigmoid->def(), "T", &T_sigmoid));
+  TF_CHECK_OK(GetNodeAttr(mul->def(), "T", &T_mul));
+
+  const int mul_num = mul->num_inputs();
+  gtl::InlinedVector<Node*, 4> mul_control_edges;
+  gtl::InlinedVector<std::pair<Node*, int>, 4> mul_in(mul_num);
+  FillInputs(mul, &mul_control_edges, &mul_in);
+
+  const int sigmoid_num = sigmoid->num_inputs();
+  gtl::InlinedVector<Node*, 4> sigmoid_control_edges;
+  gtl::InlinedVector<std::pair<Node*, int>, 4> sigmoid_in(sigmoid_num);
+  FillInputs(sigmoid, &sigmoid_control_edges, &sigmoid_in);
+
+  CHECK_EQ(sigmoid->in_edges().size(), 1);  // Sigmoid has 1 input
+  CHECK_EQ(mul->in_edges().size(), 2);      // Mul has 2 inputs
+  for (const Edge* e : mul->in_edges()) {
+    const int kFirstInputSlot = 0;  // this should be sigmoid
+    const int kSecondInputSlot =
+        1;  // this should be thae same input as in sigmoid
+    if (e->dst_input() == kFirstInputSlot && e->src() != sigmoid) {
+      return Status(error::Code::INVALID_ARGUMENT,
+                    "Sigmoid doesn't feed to Mul. "
+                    "Will skip node merge optimization");
+    }
+    const Edge* kSigmoidInputEdge = nullptr;
+    TF_CHECK_OK(sigmoid->input_edge(kFirstInputSlot, &kSigmoidInputEdge));
+    if (e->dst_input() == kSecondInputSlot &&
+        e->src() != kSigmoidInputEdge->src()) {
+      return Status(error::Code::INVALID_ARGUMENT,
+                    "Input to Sigmoid and Mul is not the same. "
+                    "Will skip node merge optimization");
+    }
+  }
+
+  NodeBuilder nb(mul->name(), csinfo_.swish);
+  nb.Input(sigmoid_in[0].first, sigmoid_in[0].second);
+  nb.Attr("T", T_mul);  // copy type attribute
+  nb.Device(mul->def().device());
+
+  // Create new node
+  Node* new_node;
+  TF_CHECK_OK(nb.Finalize(&**g, &new_node));
+
+  std::unordered_set<Node*> unique_node;
+  for (const Edge* e : sigmoid->in_edges()) {
+    if (e->IsControlEdge()) {
+      auto result = unique_node.insert(e->src());
+      if (result.second) {
+        (*g)->AddControlEdge(e->src(), new_node, true);
+      }
+    }
+  }
+  unique_node.clear();
+
+  for (const Edge* e : mul->in_edges()) {
+    if (e->IsControlEdge()) {
+      auto result = unique_node.insert(e->src());
+      if (result.second) {
+        (*g)->AddControlEdge(e->src(), new_node, true);
+      }
+    }
+  }
+  unique_node.clear();
+
+  for (const Edge* e : sigmoid->out_edges()) {
+    if (e->IsControlEdge()) {
+      auto result = unique_node.insert(e->dst());
+      if (result.second) {
+        (*g)->AddControlEdge(new_node, e->dst(), true);
+      }
+    }
+  }
+  unique_node.clear();
+  for (const Edge* e : mul->out_edges()) {
+    if (e->IsControlEdge()) {
+      auto results = unique_node.insert(e->dst());
+      if (results.second) {
+        (*g)->AddControlEdge(new_node, e->dst(), true);
+      }
+    } else {
+      const int kMulOutputSlot = 0;
+      auto new_edge =
+          (*g)->AddEdge(new_node, kMulOutputSlot, e->dst(), e->dst_input());
+      DCHECK(new_edge);
+    }
+  }
+
+  new_node->set_assigned_device_name(mul->assigned_device_name());
+  VLOG(1) << "MklLayoutRewritePass: Merged old node: " << sigmoid->DebugString()
+          << ", and node: " << mul->DebugString()
+          << ", into node: " << new_node->DebugString();
+
+  (*g)->RemoveNode(sigmoid);
+  (*g)->RemoveNode(mul);
+
+  return OkStatus();
+}
+
 Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
                                                     Node* m, Node* n) {
   CHECK_EQ(((m->type_string() == csinfo_.bias_add &&
@@ -3481,6 +3754,9 @@ Status MklLayoutRewritePass::MergeNode(std::unique_ptr<Graph>* g, Node* m,
   DCHECK(m);
   DCHECK(n);
 
+  if (m->type_string() == csinfo_.sigmoid && n->type_string() == csinfo_.mul) {
+    return this->MergeSigmoidWithMul(g, m, n);
+  }
   if (((m->type_string() == csinfo_.bias_add &&
         n->type_string() == csinfo_.conv2d)) ||
       ((n->type_string() == csinfo_.bias_add &&
@@ -3489,10 +3765,12 @@ Status MklLayoutRewritePass::MergeNode(std::unique_ptr<Graph>* g, Node* m,
   }
   if ((m->type_string() == csinfo_.pad &&
        (n->type_string() == csinfo_.conv2d ||
-        (n->type_string() == csinfo_.fused_conv2d && FusedConv2DRewrite(n)))) ||
+        (n->type_string() == csinfo_.fused_conv2d &&
+         FusedConv2DRewrite(n, num_intra_threads_)))) ||
       (n->type_string() == csinfo_.pad &&
        (m->type_string() == csinfo_.conv2d ||
-        (m->type_string() == csinfo_.fused_conv2d && FusedConv2DRewrite(m))))) {
+        (m->type_string() == csinfo_.fused_conv2d &&
+         FusedConv2DRewrite(m, num_intra_threads_))))) {
     return this->MergePadWithConv2D(g, m, n);
   }
 
@@ -3808,6 +4086,13 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
   for (auto ri = rinfo_.cbegin(); ri != rinfo_.cend(); ++ri) {
     if (n->type_string().compare(ri->name) == 0 && ri->rewrite_rule(n)) {
       return &*ri;
+    }
+  }
+
+  for (auto rit = rinfothr_.cbegin(); rit != rinfothr_.cend(); ++rit) {
+    if (n->type_string().compare(rit->rinfo.name) == 0 &&
+        rit->rewrite_rule(n, num_intra_threads_)) {
+      return &(rit->rinfo);
     }
   }
 
@@ -4167,6 +4452,10 @@ Status MklLayoutRewritePass::Run(const GraphOptimizationPassOptions& options) {
     return OkStatus();
   }
 
+  if (options.session_options != nullptr) {
+    num_intra_threads_ =
+        options.session_options->config.intra_op_parallelism_threads();
+  }
   auto process_graph = [&](std::unique_ptr<Graph>* g) {
     // Get the ownership of a graph
     std::unique_ptr<Graph>* ng = std::move(g);

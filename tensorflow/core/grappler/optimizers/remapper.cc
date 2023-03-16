@@ -733,6 +733,23 @@ bool IsBiasSemanticAdd(const RemapperContext& ctx,
   return false;
 }
 
+void AddInputShapesAttr(const RemapperContext& ctx, int node_index) {
+  auto mutable_node = ctx.graph_view.graph()->mutable_node(node_index);
+
+  AttrValue attr_input_shape;
+  auto tensor_properties =
+      ctx.graph_properties.GetInputProperties(mutable_node->name());
+  for (const auto& tensor_property : tensor_properties) {
+    TensorShapeProto* proto = attr_input_shape.mutable_list()->add_shape();
+    *proto = tensor_property.shape();
+  }
+
+  if (IsMKLEnabled()) {
+    (*mutable_node->mutable_attr())["_input_shapes"] =
+        std::move(attr_input_shape);
+  }
+}
+
 bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
                              ContractionWithBiasAdd* matched,
                              bool check_device_compatible = true) {
@@ -1819,50 +1836,6 @@ bool FindMulAndMaximum(RemapperContext* ctx, int node_index,
   return found_op_type_match;
 }
 
-bool FindSigmoidAndMul(RemapperContext* ctx, int node_index,
-                       std::map<string, int>* matched_nodes_map,
-                       std::set<int>* remove_node_indices) {
-  // Gelu fusion is enabled only with oneDNN library.
-  if (!IsMKLEnabled()) return false;
-
-  using utils::MatchingDirection;
-  using utils::NodeStatus;
-  // clang-format off
-  // Convert Sigmoid+Mul to Swish
-  // Mul(x, Sigmoid(x)) --> _MklSwish(x)
-
-  utils::OpTypePattern sigmoidmul_pattern{
-    "Mul", "mul_to_swish", NodeStatus::kReplace,
-    {
-      { "Sigmoid", "sigmoid", NodeStatus::kRemove,
-        {
-          { "*", "input", NodeStatus::kRemain}
-        }
-      },
-      { "*", "input", NodeStatus::kRemain}
-    }
-  };
-  // clang-format on
-  // check for data types
-  auto* mul_node_def = ctx->graph_view.GetNode(node_index)->node();
-  if (!HasDataType(mul_node_def, DT_FLOAT) &&
-      !HasDataType(mul_node_def, DT_BFLOAT16))
-    return false;
-
-  if (!NodeIsOnCpu(mul_node_def)) return false;
-
-  bool found_op_type_match = false;
-  utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
-      &(ctx->graph_view));
-  matched_nodes_map->clear();
-  remove_node_indices->clear();
-  found_op_type_match = graph_matcher.GetMatchedNodes(
-      sigmoidmul_pattern, {}, ctx->graph_view.GetNode(node_index),
-      matched_nodes_map, remove_node_indices);
-
-  return found_op_type_match;
-}
-
 // Keras LayerNormalization api uses multiple TensorFlow ops. Current fusion
 // pattern is only for the case, when LayerNormalization uses FusedBatcNormV3.
 // We further restrict it to only 2D or 3D tensor inputs to keras
@@ -2762,6 +2735,11 @@ void CopyConv2DAttributes(const NodeDef& conv2d, NodeDef* fused_conv2d,
   (*attr)["dilations"] = src_attr.at("dilations");
   (*attr)["data_format"] = src_attr.at("data_format");
   (*attr)["use_cudnn_on_gpu"] = src_attr.at("use_cudnn_on_gpu");
+  // When copying attributes check whether this convolution has
+  // attribute that describes the shapes on which it is working
+  if (IsMKLEnabled()) {
+    (*attr)["_input_shapes"] = src_attr.at("_input_shapes");
+  }
   // Copy LeakyRelu's attr alpha to FusedConv2D's attr leakyrelu_alpha
   if (activation != nullptr && IsLeakyRelu(*activation)) {
     auto& activation_attr = activation->attr();
@@ -2914,6 +2892,7 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   fused_op.add_input(bias_add.input(matched.bias_port));  // 2: bias
   if (IsConv2D(contraction)) {
     fused_op.set_op(kFusedConv2D);
+    AddInputShapesAttr(*ctx, matched.contraction);
     CopyConv2DAttributes(contraction, &fused_op);
   } else if (IsDepthwiseConv2dNative(contraction)) {
     fused_op.set_op(kFusedDepthwiseConv2dNative);
@@ -3017,6 +2996,7 @@ Status AddFusedContractionNode(
 
   if (IsConv2D(contraction)) {
     fused_op.set_op(kFusedConv2D);
+    AddInputShapesAttr(*ctx, matched.contraction);
     // leaky relu has a special attribute alpha
     CopyConv2DAttributes(contraction, &fused_op, &activation);
   } else if (IsDepthwiseConv2dNative(contraction)) {
@@ -3071,6 +3051,7 @@ Status AddFusedConvNode(RemapperContext* ctx,
 
   if (IsConv2D(contraction)) {
     fused_conv.set_op(kFusedConv2D);
+    AddInputShapesAttr(*ctx, matched.contraction);
     CopyConv2DAttributes(contraction, &fused_conv);
   } else if (IsConv3D(contraction)) {
     fused_conv.set_op(kFusedConv3D);
@@ -3121,6 +3102,7 @@ Status AddFusedConv2DNode(RemapperContext* ctx,
   fused_conv2d.add_input(fused_batch_norm.input(3));  // 4: mean
   fused_conv2d.add_input(fused_batch_norm.input(4));  // 5: variance
 
+  AddInputShapesAttr(*ctx, matched.contraction);
   CopyConv2DAttributes(contraction, &fused_conv2d);
   SetFusedOpAttributes(&fused_conv2d, {"FusedBatchNorm"},
                        /*num_args=*/4, /*epsilon=*/matched.epsilon);
@@ -3164,6 +3146,7 @@ Status AddFusedConv2DNode(RemapperContext* ctx,
   fused_conv2d.add_input(fused_batch_norm.input(3));  // 4: mean
   fused_conv2d.add_input(fused_batch_norm.input(4));  // 5: variance
 
+  AddInputShapesAttr(*ctx, matched.contraction);
   CopyConv2DAttributes(contraction, &fused_conv2d, &activation);
   SetFusedOpAttributes(&fused_conv2d, {"FusedBatchNorm", activation.op()},
                        /*num_args=*/4, /*epsilon=*/matched.epsilon);
@@ -3209,6 +3192,7 @@ Status AddFusedContractionNode(RemapperContext* ctx,
 
   if (IsConv2D(contraction)) {
     contraction_node.set_op(kFusedConv2D);
+    AddInputShapesAttr(*ctx, matched.contraction);
     CopyConv2DAttributes(contraction, &contraction_node);
   } else if (IsMatMul(contraction)) {
     contraction_node.set_op(kFusedMatMul);
@@ -3309,6 +3293,7 @@ Status AddFusedContractionNode(
 
   if (IsConv2D(contraction)) {
     fused_conv.set_op(kFusedConv2D);
+    AddInputShapesAttr(*ctx, matched.contraction);
     CopyConv2DAttributes(contraction, &fused_conv);
   } else if (IsConv3D(contraction)) {
     fused_conv.set_op(kFusedConv3D);
@@ -4423,6 +4408,15 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     ContractionWithActivation contract_with_activation;
     ContractionWithBiasAndAddActivation contract_with_bias_and_add_activation;
 
+    // Store dimensions so that they can be retrieved later in
+    // mkl_layout_rewrite_pass when deciding whether to rewrite node
+    if (IsConv2D(ctx.graph_view.graph()->node(i)) ||
+        IsFusedBatchNorm(ctx.graph_view.graph()->node(i)) ||
+        IsDepthwiseConv2dNative(ctx.graph_view.graph()->node(i)) ||
+        IsSigmoid(ctx.graph_view.graph()->node(i))) {
+      AddInputShapesAttr(ctx, i);
+    }
+
     if (IsMKLEnabled()) {
       // Remap Conv2D+BiasAdd+Add+relu into the _FusedConv2D.
       // or Remap Conv3D+BiasAdd+Add+relu into _FusedConv3D
@@ -4512,17 +4506,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         TF_RETURN_IF_ERROR(ReplaceMulMaximumWithLeakyRelu(
             &ctx, mulmax_matched_nodes_map, mulmax_remove_node_indices,
             &invalidated_nodes, &nodes_to_delete, alpha));
-        continue;
-      }
-
-      // Remap Mul(x, Sigmoid(x)) pattern, fuse them into the Swish(x).
-      std::map<string, int> sigmoidmul_matched_nodes_map;
-      std::set<int> sigmoidmul_remove_node_indices;
-      if (FindSigmoidAndMul(&ctx, i, &sigmoidmul_matched_nodes_map,
-                            &sigmoidmul_remove_node_indices)) {
-        TF_RETURN_IF_ERROR(ReplaceSigmoidMulWithSwish(
-            &ctx, sigmoidmul_matched_nodes_map, sigmoidmul_remove_node_indices,
-            &invalidated_nodes, &nodes_to_delete));
         continue;
       }
 
