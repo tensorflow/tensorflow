@@ -124,7 +124,8 @@ tensorflow::Status RunMlrtFunction(
 
   // Set up tf_mlrt::Context which is used for executing tensorflow::OpKernel.
   execution_context.AddUserContext(std::make_unique<tf_mlrt::Context>(
-      fallback_request_state, request_context->resource_context()));
+      fallback_request_state, request_context->resource_context(),
+      request_context->cancellation_context().get()));
 
   absl::InlinedVector<mlrt::Value, 4> mlrt_inputs;
   mlrt_inputs.reserve(inputs.size());
@@ -263,20 +264,6 @@ tensorflow::Status GraphExecutionRunOnFunction(
       tensorflow::profiler::ContextType::kTfrtExecutor,
       request_info->tfrt_request_context->id());
 
-  if (loaded_executable) {
-    auto function = loaded_executable->GetFunction(signature_name);
-    if (!function) {
-      return errors::InvalidArgument(absl::StrCat(
-          "Function not found in MLRT executable: ", signature_name));
-    }
-
-    return RunMlrtFunction(function, *loaded_executable,
-                           request_info->tfrt_request_context,
-                           *request_info->request_queue, inputs, outputs);
-  }
-
-  DCHECK(func);
-
   // Only configure timer when the deadline is set.
   if (run_options.deadline.has_value()) {
     auto deadline = run_options.deadline.value();
@@ -290,6 +277,20 @@ tensorflow::Status GraphExecutionRunOnFunction(
     req_deadline_tracker->CancelRequestOnDeadline(
         deadline, request_info->tfrt_request_context);
   }
+
+  if (loaded_executable) {
+    auto function = loaded_executable->GetFunction(signature_name);
+    if (!function) {
+      return errors::InvalidArgument(absl::StrCat(
+          "Function not found in MLRT executable: ", signature_name));
+    }
+
+    return RunMlrtFunction(function, *loaded_executable,
+                           request_info->tfrt_request_context,
+                           *request_info->request_queue, inputs, outputs);
+  }
+
+  DCHECK(func);
 
   tfrt::ExecutionContext exec_ctx{request_info->tfrt_request_context};
   if (run_options.work_queue) {
