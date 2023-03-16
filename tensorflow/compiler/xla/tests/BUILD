@@ -1867,6 +1867,7 @@ xla_test(
     shard_count = 20,
     # TODO(b/148276347) The test fails on macOS.
     tags = [
+        "noasan",
         "nomac",
         "nosan",
     ],
