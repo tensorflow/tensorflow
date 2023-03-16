@@ -3542,7 +3542,7 @@ void IfOp::getSuccessorRegions(std::optional<unsigned> index,
   // Otherwise, the successor is dependent on the condition.
   bool condition;
   if (auto cond_attr = operands.front().dyn_cast_or_null<IntegerAttr>()) {
-    condition = cond_attr.getValue().isOneValue();
+    condition = cond_attr.getValue().isOne();
   } else {
     // If the condition isn't constant, both regions may be executed.
     regions.push_back(RegionSuccessor(&getThenRegion()));
