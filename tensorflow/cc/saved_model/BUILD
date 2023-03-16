@@ -407,7 +407,10 @@ cc_library(
 cc_library(
     name = "fingerprinting",
     hdrs = ["fingerprinting.h"],
-    visibility = ["//tensorflow/python/saved_model:__subpackages__"],
+    visibility = [
+        "//learning/tfx/pipeline/util:__subpackages__",
+        "//tensorflow/python/saved_model:__subpackages__",
+    ],
     deps = if_static([
         ":fingerprinting_impl",
         "@com_google_absl//absl/strings",
