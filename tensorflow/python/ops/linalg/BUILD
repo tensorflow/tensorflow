@@ -21,6 +21,7 @@ py_strict_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:special_math_ops",
         "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",

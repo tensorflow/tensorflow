@@ -79,6 +79,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.types import distribute
 from tensorflow.python.util import nest
@@ -1200,8 +1201,8 @@ def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
   else:
     aug_init_vars = init_vars
 
-  final_loop_vars = control_flow_ops.while_loop(
-      aug_test, aug_body, aug_init_vars, **while_loop_opts)
+  final_loop_vars = while_loop.while_loop(aug_test, aug_body, aug_init_vars,
+                                          **while_loop_opts)
 
   if require_one_iteration:
     with ops.control_dependencies([

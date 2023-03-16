@@ -36,6 +36,7 @@ py_library(
         "//tensorflow/python:sort_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
     ],
 )
