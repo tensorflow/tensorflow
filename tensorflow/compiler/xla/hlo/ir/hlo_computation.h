@@ -202,11 +202,17 @@ class HloComputation {
   // and also transitively any operand that has no side effect and no users post
   // removing an instruction. The instruction must have no users. Instruction is
   // deallocated with this call. If given, the cleanup routine is executed on a
-  // removed instruction before its deallocation.
+  // removed instruction before its deallocation. If ignore_control_dependencies
+  // is set to true, if will remove the unused operands even when they have
+  // control dependencies, and transitively pass the control dependencies from
+  // the predecessors to the succesors of the removed instructions, so that the
+  // logical exeuction order of the remaining unremoved instructions are
+  // preserved.
   Status RemoveInstructionAndUnusedOperands(
       HloInstruction* instruction,
       std::optional<absl::FunctionRef<void(HloInstruction*)>> cleanup =
-          std::nullopt);
+          std::nullopt,
+      bool ignore_control_dependencies = false);
 
   // Set the root of the computation to the given instruction. The instruction
   // must have already been added to the computation. In addition it must have
@@ -474,7 +480,8 @@ class HloComputation {
   // information of |old_instruction|, and function will return true.
   StatusOr<bool> ReplaceInstruction(HloInstruction* old_instruction,
                                     HloInstruction* new_instruction,
-                                    bool preserve_sharding);
+                                    bool preserve_sharding,
+                                    bool relay_control_dependency = false);
 
   // Same as above, with preserve_sharding=false. Since this replacement always
   // happens, it returns just a Status as opposed to StatusOr<bool>
@@ -485,7 +492,7 @@ class HloComputation {
   // shape.
   StatusOr<bool> ReplaceInstructionWithDifferentShape(
       HloInstruction* old_instruction, HloInstruction* new_instruction,
-      bool preserve_sharding);
+      bool preserve_sharding, bool relay_control_dependency = false);
   Status ReplaceInstructionWithDifferentShape(HloInstruction* old_instruction,
                                               HloInstruction* new_instruction);
 
@@ -577,7 +584,8 @@ class HloComputation {
   // but the transformation must guarantee the invariants relevant to the
   // instructions still hold (e.g., Send and Recv must be removed together to
   // make each channel complete).
-  bool IsSafelyRemovable(const HloInstruction* instruction);
+  bool IsSafelyRemovable(const HloInstruction* instruction,
+                         bool ignore_control_dependency = false);
 
   // Returns a map from an instruction to the group of instructions associated
   // with the same channel. These instructions will be considered as a single

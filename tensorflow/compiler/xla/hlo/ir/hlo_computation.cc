@@ -277,12 +277,13 @@ Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
   return OkStatus();
 }
 
-bool HloComputation::IsSafelyRemovable(const HloInstruction* instruction) {
+bool HloComputation::IsSafelyRemovable(const HloInstruction* instruction,
+                                       bool ignore_control_dependency) {
   // If the instruction has control predecessors or successors then we cannot
   // remove the instruction without violating ordering constraints (added, for
   // example, to avert interference due to buffer aliasing).
-  if (!instruction->control_predecessors().empty() ||
-      !instruction->control_successors().empty()) {
+
+  if (!ignore_control_dependency && instruction->HasControlDependencies()) {
     return false;
   }
 
@@ -309,7 +310,8 @@ bool HloComputation::IsMarkedAsDead(const HloInstruction* inst) {
 
 Status HloComputation::RemoveInstructionAndUnusedOperands(
     HloInstruction* instruction,
-    std::optional<absl::FunctionRef<void(HloInstruction*)>> cleanup) {
+    std::optional<absl::FunctionRef<void(HloInstruction*)>> cleanup,
+    bool ignore_control_dependencies) {
   TF_RET_CHECK(root_instruction() != instruction);
 
   TF_RET_CHECK(instruction->IsDead());
@@ -322,10 +324,17 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
     HloInstruction* item = worklist.front();
     worklist.pop();
 
-    if (removed.contains(item) || !item->IsDead() || !IsSafelyRemovable(item) ||
+    if (removed.contains(item) || !item->IsDead() ||
+        !IsSafelyRemovable(item, ignore_control_dependencies) ||
         (item->HasSideEffect() && item != instruction)) {
       continue;
     }
+    if (ignore_control_dependencies) {
+      TF_RETURN_IF_ERROR(item->SafelyDropAllControlDependencies());
+    } else if (item->HasControlDependencies()) {
+      continue;
+    }
+
     for (int i = 0; i < item->operand_count(); ++i) {
       worklist.push(item->mutable_operand(i));
     }
@@ -1029,13 +1038,14 @@ Status HloComputation::ReplaceWithNewEntryComputationParameter(
 
 StatusOr<bool> HloComputation::ReplaceInstruction(
     HloInstruction* old_instruction, HloInstruction* new_instruction,
-    bool preserve_sharding) {
+    bool preserve_sharding, bool relay_control_dependency) {
   TF_RET_CHECK(
       ShapeUtil::Compatible(old_instruction->shape(), new_instruction->shape()))
       << ShapeUtil::HumanString(old_instruction->shape()) << " vs "
       << ShapeUtil::HumanString(new_instruction->shape());
   return ReplaceInstructionWithDifferentShape(old_instruction, new_instruction,
-                                              preserve_sharding);
+                                              preserve_sharding,
+                                              relay_control_dependency);
 }
 
 Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
@@ -1049,12 +1059,17 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
 
 StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     HloInstruction* old_instruction, HloInstruction* new_instruction,
-    bool preserve_sharding) {
+    bool preserve_sharding, bool relay_control_dependency) {
   if (preserve_sharding && new_instruction->has_sharding() &&
       old_instruction->has_sharding() &&
       !new_instruction->has_compatible_sharding(old_instruction)) {
     VLOG(10) << "Skipping replacement due to incompatible sharding";
     return false;
+  }
+  if (relay_control_dependency) {
+    TF_RETURN_IF_ERROR(
+        new_instruction->CopyAllControlDepsFrom(old_instruction));
+    TF_RETURN_IF_ERROR(old_instruction->DropAllControlDeps());
   }
   VLOG(10) << "transformed " << old_instruction->ToString() << " to "
            << new_instruction->ToString();
@@ -1098,7 +1113,9 @@ StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     new_instruction->SetAndSanitizeName(old_instruction->name());
   }
 
-  TF_RETURN_IF_ERROR(RemoveInstructionAndUnusedOperands(old_instruction));
+  TF_RETURN_IF_ERROR(RemoveInstructionAndUnusedOperands(
+      old_instruction, /*cleanup=*/std::nullopt,
+      /*ignore_control_dependencies=*/relay_control_dependency));
   return true;
 }
 
