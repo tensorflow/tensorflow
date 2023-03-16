@@ -12,6 +12,7 @@ py_library(
     srcs = ["loss_scale.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -77,6 +78,7 @@ py_test(
     deps = [
         ":loss_scale",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "@absl_py//absl/testing:parameterized",

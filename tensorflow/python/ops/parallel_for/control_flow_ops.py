@@ -29,7 +29,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import while_loop
@@ -400,7 +400,7 @@ def _pfor_impl(loop_fn,
 
     with ops.name_scope("pfor"):
       if iters_value is None or iters_value % parallel_iterations:
-        output_tensors = control_flow_ops.cond(
+        output_tensors = cond.cond(
             math_ops.equal(num_remaining_iterations, 0),
             lambda: tiled_output_tensors,
             lambda: [array_ops.concat([x, y], axis=0)  # pylint: disable=g-long-lambda

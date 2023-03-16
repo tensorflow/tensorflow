@@ -44,9 +44,9 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_assert
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -2107,8 +2107,8 @@ class NestedControlFlowTest(PForTestCase):
       f = lambda x, y: (x, y)
 
     def _f(x, y):
-      return control_flow_ops.cond(y > split, lambda: f(x, y), lambda:
-                                   (x + 1., y))
+      return cond.cond(y > split, lambda: f(x, y), lambda:
+                       (x + 1., y))
 
     return _f
 

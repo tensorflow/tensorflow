@@ -247,6 +247,7 @@ pytype_library(
         ":tpu_replication",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_case",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
@@ -350,6 +351,7 @@ pytype_library(
         "//tensorflow/python:auto_control_deps",
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:composite_tensor",
+        "//tensorflow/python:cond",
         "//tensorflow/python:config",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:device",
@@ -810,6 +812,7 @@ tpu_py_test(
     tags = ["no_oss"],
     deps = [
         ":tpu_lib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:variables",
         "//tensorflow/python:while_loop",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
