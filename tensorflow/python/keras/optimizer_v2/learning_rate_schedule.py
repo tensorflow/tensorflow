@@ -21,8 +21,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_case
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.util import nest
@@ -749,7 +749,7 @@ class CosineDecayRestarts(LearningRateSchedule):
 
         return i_restart, completed_fraction
 
-      i_restart, completed_fraction = control_flow_ops.cond(
+      i_restart, completed_fraction = cond.cond(
           math_ops.equal(t_mul, 1.0),
           lambda: compute_step(completed_fraction, geometric=False),
           lambda: compute_step(completed_fraction, geometric=True))

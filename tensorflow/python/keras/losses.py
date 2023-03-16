@@ -33,7 +33,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
@@ -1269,7 +1269,7 @@ def _ragged_tensor_apply_loss(loss_fn, y_true, y_pred, y_pred_extra_dim=False):
   def _wrapper(inputs, ragged_output):
     _, y_pred = inputs
     if isinstance(y_pred, ragged_tensor.RaggedTensor):
-      return control_flow_ops.cond(
+      return cond.cond(
           rt_is_equiv_dense(y_pred),
           lambda: _call_loss(_convert_to_dense(inputs), ragged_output),
           lambda: _call_loss(inputs, ragged_output))

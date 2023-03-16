@@ -56,6 +56,7 @@ from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import ctc_ops as ctc
 from tensorflow.python.ops import functional_ops
@@ -4584,7 +4585,7 @@ def switch(condition, then_expression, else_expression):
         return else_expression
     else:
       else_expression_fn = else_expression
-    x = control_flow_ops.cond(condition, then_expression_fn, else_expression_fn)
+    x = cond.cond(condition, then_expression_fn, else_expression_fn)
   else:
     # tf.where needs its condition tensor
     # to be the same shape as its two

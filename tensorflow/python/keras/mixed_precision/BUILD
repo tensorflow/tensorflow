@@ -111,6 +111,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":loss_scale",
+        "//tensorflow/python:cond",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:mirrored_strategy",
@@ -127,6 +128,7 @@ py_library(
     srcs = ["test_util.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:cond",
         "//tensorflow/python:framework",
         "//tensorflow/python/keras",
     ],

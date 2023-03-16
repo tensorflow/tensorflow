@@ -20,7 +20,7 @@ from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
@@ -91,7 +91,7 @@ def create_identity_with_nan_gradients_fn(have_nan_gradients):
     """Function whose gradient is NaN iff `have_nan_gradients` is True."""
     x = array_ops.identity(x)
     def grad(dx):
-      return control_flow_ops.cond(
+      return cond.cond(
           have_nan_gradients,
           lambda: dx * float('NaN'),
           lambda: dx
