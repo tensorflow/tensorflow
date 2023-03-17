@@ -335,6 +335,8 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
     HloXlaRuntimePipelineOptions options;
     options.enable_tiling_and_fusion =
         GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
+    options.enable_fusion_outlining =
+        GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining();
     options.cpu_name = llvm::sys::getHostCPUName();
     Status status = CreateHloXlaRuntimePipeline(passes, options);
     if (!status.ok()) {
@@ -1059,6 +1061,8 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
   HloXlaRuntimePipelineOptions options;
   options.enable_tiling_and_fusion =
       GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
+  options.enable_fusion_outlining =
+      GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining();
   options.sparse_bufferization = false;
   options.outline_with_xla_framework = true;
   options.experimental_deallocation =

@@ -847,6 +847,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_cpu_enable_mlir_tiling_and_fusion(),
       "Enable MLIR tiling and fusion."));
   flag_list->push_back(tsl::Flag(
+      "xla_cpu_enable_mlir_fusion_outlining",
+      bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_fusion_outlining),
+      debug_options->xla_cpu_enable_mlir_fusion_outlining(),
+      "Enable MLIR fusion outlining (to improve compile time)."));
+  flag_list->push_back(tsl::Flag(
       "xla_cpu_enable_experimental_deallocation",
       bool_setter_for(
           &DebugOptions::set_xla_cpu_enable_experimental_deallocation),
