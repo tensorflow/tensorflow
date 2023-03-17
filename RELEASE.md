@@ -75,7 +75,7 @@
 ### Breaking Changes
 
 
-*   `tf.keras`:
+`tf.keras`:
 
 * Moved all saving-related utilities to a new namespace, `keras.saving`, for example: `keras.saving.load_model`, `keras.saving.save_model`, `keras.saving.custom_object_scope`, `keras.saving.get_custom_objects`, `keras.saving.register_keras_serializable`,`keras.saving.get_registered_name` and `keras.saving.get_registered_object`. The previous API locations (in `keras.utils` and `keras.models`) will be available indefinitely, but we recommend you update your code to point to the new API locations.
  * Improvements and fixes in Keras loss masking:
@@ -85,7 +85,7 @@
 
 ### Major Features and Improvements     
 
-*   `tf.keras`:
+`tf.keras`:
 
  *   The new Keras model saving format (`.keras`) is available. You can start using it via `model.save(f"{fname}.keras", save_format="keras_v3")`. In the future it will become the default for all files with the `.keras` extension. This file format targets the Python runtime only and makes it possible to reload Python objects identical to the saved originals. The format supports non-numerical state such as vocabulary files and lookup tables, and it is easy to customize in the case of custom layers with exotic elements of state (e.g. a FIFOQueue). The format does not rely on bytecode or pickling, and is safe by default. Note that as a result, Python `lambdas` are disallowed at loading time. If you want to use `lambdas`, you can pass `safe_mode=False` to the loading method (only do this if you trust the source of the model).
 *   Added a `model.export(filepath)` API to create a lightweight SavedModel artifact that can be used for inference (e.g. with TF-Serving).
