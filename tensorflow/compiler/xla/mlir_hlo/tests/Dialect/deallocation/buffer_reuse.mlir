@@ -272,8 +272,6 @@ func.func @allocs_in_different_scopes_with_no_overlap_2() {
 }
 
 // CHECK-LABEL: allocs_in_different_scopes_with_no_overlap_2
-// TODO(jreiffers): Eliminate the second alloca.
-// CHECK: memref.alloca
 // CHECK: memref.alloca
 // CHECK-NOT: memref.alloc
 // CHECK-NOT: memref.dealloc
