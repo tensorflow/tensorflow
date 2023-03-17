@@ -529,6 +529,12 @@ CreateTPUReorderReplicateAndPartitionedInputsPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUResourceReadsWritesPartitioningPass();
 
+// Creates a pass that looks for usage of the result of
+// TPUCopyWithDynamicShapeOp and annotate these values to be dynamic shape. This
+// ensures that the generated tpu program has the correct inputs annotation.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTPUAnnotateDynamicShapeInputsPass();
+
 // Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
 // ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass();

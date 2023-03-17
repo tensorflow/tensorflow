@@ -1794,6 +1794,18 @@ def ExtractTPUCopyWithDynamicShapeOpPass : Pass<"tf-extract-tpu-copy-with-dynami
   let constructor = "TFTPU::CreateExtractTPUCopyWithDynamicShapeOpPass()";
 }
 
+def TPUAnnotateDynamicShapeInputsPass : Pass<"tf-tpu-annotate-dynamic-shape-inputs", "mlir::func::FuncOp"> {
+  let summary = "Annotate the inputs returned by TPUCopyWithDynamicShapeOp with dynamic shape";
+
+  let description = [{
+    This pass looks for the usage of the result of TPUCopyWithDynamicShapeOp
+    and sets the shape of these inputs to be dynamic shaped. This will ensure
+    that the generated HLO program is correctly reflecting the dynamic shape.
+  }];
+
+  let constructor = "TFTPU::CreateTPUAnnotateDynamicShapeInputsPass()";
+}
+
 def ReplicateInvariantOpHoistingPass : Pass<"tf-replicate-invariant-op-hoisting", "mlir::func::FuncOp"> {
   let summary = "Hoists replicate invariant operations out of replicate";
 
