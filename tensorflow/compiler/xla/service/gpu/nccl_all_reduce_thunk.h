@@ -188,7 +188,7 @@ class NcclReduceScatterDoneThunk : public NcclCollectiveDoneThunk {
 
 Status RunAllReduce(ReductionKind reduction_kind,
                     std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-                    ncclComm_t comm);
+                    ncclComm_t comm, bool allow_all_reduce_kernel);
 
 Status RunReduceScatter(ReductionKind reduction_kind,
                         std::vector<DeviceBufferPair>& buffers,
