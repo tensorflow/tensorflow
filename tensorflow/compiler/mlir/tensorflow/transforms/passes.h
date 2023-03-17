@@ -549,6 +549,12 @@ CreateTPUParallelExecuteSinkResourceWritePass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUMergeVariablesWithExecutePass();
 
+// Create a pass that extract TPUCopyWithDynamicShapeOp from the host launch op
+// and wrap them in device launch op. This allows this op executed on TPU while
+// still compiled on host.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateExtractTPUCopyWithDynamicShapeOpPass();
+
 // Creates a pass that wraps ReadVariableOp/AssignVariable op that consumes a
 // packed tensor to have same device placement as underlying TPU device.
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -681,6 +687,7 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TPUHOSTCOMPUTATIONEXPANSIONPASS
 #define GEN_PASS_DECL_TPUIDENTITYPRUNINGPASS
 #define GEN_PASS_DECL_TPUMERGEVARIABLESWITHEXECUTEPASS
+#define GEN_PASS_DECL_EXTRACTTPUCOPYWITHDYNAMICSHAPEOPPASS
 #define GEN_PASS_DECL_TPUPARALLELEXECUTESINKRESOURCEWRITEPASS
 #define GEN_PASS_DECL_TPUREORDERREPLICATEANDPARTITIONEDINPUTSPASS
 #define GEN_PASS_DECL_TPURESOURCEREADFORWRITEPASS

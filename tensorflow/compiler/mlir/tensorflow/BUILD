@@ -1215,6 +1215,7 @@ cc_library(
         "transforms/executor_tpuv1_outline_tpu_island.cc",
         "transforms/extract_head_tail_outside_compilation.cc",
         "transforms/extract_outside_compilation.cc",
+        "transforms/extract_tpu_copy_with_dynamic_shape_op.cc",
         "transforms/fold_broadcast.cc",
         "transforms/functional_control_flow_to_cfg.cc",
         "transforms/functional_control_flow_to_regions.cc",

@@ -1781,6 +1781,19 @@ def TPUMergeVariablesWithExecutePass : Pass<"tf-tpu-merge-variables-with-execute
   let constructor = "TFTPU::CreateTPUMergeVariablesWithExecutePass()";
 }
 
+def ExtractTPUCopyWithDynamicShapeOpPass : Pass<"tf-extract-tpu-copy-with-dynamic-shape-op", "mlir::func::FuncOp"> {
+  let summary = "Extract the TPUCopyWithDynamicShapeOp out of the host launch and place it on device launch";
+
+  let description = [{
+    This pass looks for TPUCopyWithDynamicShapeOp which wraps in a
+    `tf_device.launch` with host device attribute. It extracts the ops and wrap
+    them in `tf_device.launch` with tpu device attribute so that ops can be
+    run on TPU instead of CPU while still being compiled on host.
+  }];
+
+  let constructor = "TFTPU::CreateExtractTPUCopyWithDynamicShapeOpPass()";
+}
+
 def ReplicateInvariantOpHoistingPass : Pass<"tf-replicate-invariant-op-hoisting", "mlir::func::FuncOp"> {
   let summary = "Hoists replicate invariant operations out of replicate";
 
