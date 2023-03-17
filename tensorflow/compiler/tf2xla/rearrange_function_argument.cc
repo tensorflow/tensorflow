@@ -367,7 +367,7 @@ Status MaybeRewriteWhileNode(
         fld->UniqueFunctionName(absl::StrCat(attr_value.name(), "_rearrange_"));
     TF_RETURN_IF_ERROR(GraphToFunctionDef(*fbody->graph, new_name, &new_fdef));
     TF_RETURN_IF_ERROR(
-        fld->AddFunctionDef(new_fdef, fld->GetStackTraces(attr_value.name())));
+        fld->AddFunctionDef(new_fdef, *fld->GetStackTraces(attr_value.name())));
 
     // Change node to use rewritten function.
     attr_value.set_name(new_name);
@@ -457,11 +457,18 @@ Status MaybeRewriteIfNode(
     string new_name =
         fld->UniqueFunctionName(absl::StrCat(f.name(), "_rearrange_"));
     TF_RETURN_IF_ERROR(GraphToFunctionDef(*fbody->graph, new_name, &new_fdef));
-    const StackTracesMap& stack_traces =
-        fld->GetStackTraces(f.name()).empty() && global_fld
-            ? global_fld->GetStackTraces(f.name())
-            : fld->GetStackTraces(f.name());
-    TF_RETURN_IF_ERROR(fld->AddFunctionDef(new_fdef, stack_traces));
+
+    const StackTracesMap* global_stack_traces =
+        global_fld ? global_fld->GetStackTraces(f.name()) : nullptr;
+    const StackTracesMap* local_stack_traces = fld->GetStackTraces(f.name());
+
+    if (global_stack_traces != nullptr) {
+      TF_RETURN_IF_ERROR(fld->AddFunctionDef(new_fdef, *global_stack_traces));
+    } else if (local_stack_traces != nullptr) {
+      TF_RETURN_IF_ERROR(fld->AddFunctionDef(new_fdef, *local_stack_traces));
+    } else {
+      TF_RETURN_IF_ERROR(fld->AddFunctionDef(new_fdef, {}));
+    }
 
     // Change node to use rewritten function.
     f.set_name(new_name);

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -387,7 +388,7 @@ class GraphContext : public TracingContext {
                                    inputs_.size(), inputs_.data(),
                                    graph_outputs.size(), graph_outputs.data(),
                                    nullptr, nullptr, name_.data(), s);
-    *f = new GraphFunction(std::move(func->fdef));
+    *f = new GraphFunction(std::move(func->record->fdef()));
     TF_DeleteFunction(func);
     TF_RETURN_IF_ERROR(StatusFromTF_Status(s));
     TF_DeleteStatus(s);
