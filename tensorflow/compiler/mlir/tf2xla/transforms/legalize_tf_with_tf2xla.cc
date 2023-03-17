@@ -381,6 +381,7 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::PartitionedCallOp>(),
     TypeID::get<TF::ProdOp>(),
     TypeID::get<TF::QrOp>(),
+    TypeID::get<TF::RandomStandardNormalOp>(),
     TypeID::get<TF::RangeOp>(),
     TypeID::get<TF::ReshapeOp>(),
     TypeID::get<TF::ReverseV2Op>(),
