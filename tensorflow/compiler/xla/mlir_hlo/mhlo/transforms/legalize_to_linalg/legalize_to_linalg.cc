@@ -1497,6 +1497,42 @@ class IotaConverter : public OpConversionPattern<OpTy> {
   }
 };
 
+template <typename OpTy>
+class IotaToMapConverter : public OpConversionPattern<OpTy> {
+ public:
+  using OpConversionPattern<OpTy>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      OpTy iotaOp, typename OpTy::Adaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    ShapedType resultTy = getHloOpResultType(iotaOp);
+    if (!resultTy) return failure();
+    resultTy = this->typeConverter->convertType(resultTy)
+                   .template dyn_cast<ShapedType>();
+
+    Location loc = iotaOp.getLoc();
+    Value empty = getEmptyTensorFor(rewriter, loc, resultTy, iotaOp,
+                                    adaptor.getOperands());
+
+    auto linalgOp = rewriter.create<linalg::MapOp>(
+        loc, ValueRange{empty}, empty,
+        [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange /*args*/) {
+          Value index = nestedBuilder.create<linalg::IndexOp>(
+              nestedLoc, iotaOp.getIotaDimension());
+          index = nestedBuilder.create<arith::IndexCastOp>(
+              nestedLoc, nestedBuilder.getI64Type(), index);
+          Value result =
+              mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::ConvertOp>(
+                  nestedLoc, resultTy.getElementType(), index.getType(),
+                  {ValueRange{index}}, &nestedBuilder);
+          nestedBuilder.create<linalg::YieldOp>(nestedLoc, ValueRange{result});
+        },
+        linalg::getPrunedAttributeList(iotaOp));
+    rewriter.replaceOp(iotaOp, linalgOp.getResult());
+    return success();
+  }
+};
+
 /// Converts mhlo.concatenate operation to a linalg.generic op.
 struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
   using OpConversionPattern<mhlo::ConcatenateOp>::OpConversionPattern;
@@ -4398,9 +4434,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       BitcastConvertConverter,
       ConcatenateConverter,
       ConstConverterTensor,
-      IotaConverter<mhlo::IotaOp>,
       EinsumToLinalgConverter,
-      IotaConverter<mhlo::DynamicIotaOp>,
       RealDynamicSliceConverter,
       ReshapeOpConverter,
       ReverseConverter,
@@ -4424,6 +4458,8 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       BroadcastInDimOpToBroadcastConverter,
       BroadcastOpToBroadcastConverter,
       DynamicBroadcastInDimOpToBroadcastConverter,
+      IotaToMapConverter<mhlo::IotaOp>,
+      IotaToMapConverter<mhlo::DynamicIotaOp>,
       MapOpToMapConverter,
       PointwiseToLinalgMapConverter<mhlo::AbsOp>,
       PointwiseToLinalgMapConverter<mhlo::AddOp>,
@@ -4479,6 +4515,8 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
   } else {
     patterns->add<
       BroadcastConverter<mhlo::BroadcastOp>,
+      IotaConverter<mhlo::IotaOp>,
+      IotaConverter<mhlo::DynamicIotaOp>,
       HloBroadcastInDimConverter,
       HloDynamicBroadcastInDimConverter,
       MapOpToGenericConverter,
