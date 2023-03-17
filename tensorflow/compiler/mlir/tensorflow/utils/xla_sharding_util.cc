@@ -147,7 +147,7 @@ mlir::LogicalResult HandleTileShardedInputs(
   // Split nodes at ith depth from the original input node represent nodes
   // that split the input data at i-th dimension.
   const auto& dimension_splits = input_sharding.tile_assignment_dimensions();
-  for (auto num_splits_and_index : llvm::enumerate(dimension_splits)) {
+  for (const auto& num_splits_and_index : llvm::enumerate(dimension_splits)) {
     const int num_splits = num_splits_and_index.value();
     const int dimension_index = num_splits_and_index.index();
     if (num_splits == 1) continue;
@@ -317,7 +317,7 @@ mlir::LogicalResult ParseAndValidateOutputSharding(
   if (output_sharding_attrs.size() != cluster_func.getNumResults())
     return cluster_func.emitError("incorrect number of output sharding");
 
-  for (auto output_sharding_and_index :
+  for (const auto& output_sharding_and_index :
        llvm::enumerate(output_sharding_attrs)) {
     const auto& output_sharding = output_sharding_and_index.value();
     const int sharding_index = output_sharding_and_index.index();
@@ -472,7 +472,7 @@ mlir::LogicalResult ValidateAndGetTiledExecuteOutputShape(
     mlir::Type* tiled_logical_computation_type) {
   auto new_output_shape =
       llvm::to_vector<4>(cluster_func_output_type.getShape());
-  for (auto dimension_and_output_splits :
+  for (const auto& dimension_and_output_splits :
        llvm::enumerate(output_sharding.tile_assignment_dimensions())) {
     const auto dimension_index = dimension_and_output_splits.index();
     const auto output_splits = dimension_and_output_splits.value();
@@ -515,7 +515,8 @@ mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
   output_types->reserve(cluster_func.getNumResults());
 
   int core_index = 0;
-  for (auto result_and_index : llvm::enumerate(cluster_func.getResults())) {
+  for (const auto& result_and_index :
+       llvm::enumerate(cluster_func.getResults())) {
     const auto output_index = result_and_index.index();
     const auto& output_sharding = output_sharding_config[output_index];
     const auto output_sharding_type = output_sharding.type();

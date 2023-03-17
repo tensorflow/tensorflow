@@ -172,7 +172,7 @@ bool HandleReplicatedInputs(
 
   MutableArrayRef<OpOperand> inputs =
       replicate.GetOperandsForBlockArgument(replicate_arg);
-  for (auto entry : llvm::enumerate(inputs)) {
+  for (const auto& entry : llvm::enumerate(inputs)) {
     auto input_op = entry.value().get().getDefiningOp();
     if (!input_op || !IsSupportedInputOp(input_op, resource_alias_analysis))
       return false;
@@ -181,7 +181,7 @@ bool HandleReplicatedInputs(
   auto get_layout = BuildGetLayout(execute_arg_index, compilation_key,
                                    compile_launch, &builder);
   builder.setInsertionPoint(replicate);
-  for (auto entry : llvm::enumerate(inputs)) {
+  for (const auto& entry : llvm::enumerate(inputs)) {
     auto copy_with_layout =
         BuildCopyWithLayout(execute_launch, compile_launch, get_layout,
                             entry.value().get(), &builder);

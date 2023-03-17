@@ -2222,7 +2222,7 @@ std::optional<SmallVector<Value>> convertSplitVOp(
 // the only legal negative stride.
 static Value reverseNegativeStride(PatternRewriter& rewriter, Operation* op,
                                    Value input, ArrayRef<int32_t> strides) {
-  for (auto it : llvm::enumerate(strides)) {
+  for (const auto& it : llvm::enumerate(strides)) {
     auto axis = it.index();
     auto stride = it.value();
     if (stride != -1) continue;

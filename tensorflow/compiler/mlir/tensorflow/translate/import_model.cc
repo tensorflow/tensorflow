@@ -1680,7 +1680,7 @@ Status ImporterBase::ConvertFunctionArgAndRets(
   }
 
   llvm::SmallVector<mlir::Value, 8> inst_to_return;
-  for (auto ret_and_idx : llvm::enumerate(ret_nodes)) {
+  for (const auto& ret_and_idx : llvm::enumerate(ret_nodes)) {
     const auto& ret = ret_and_idx.value();
     auto* inst = node_values_[ret.node->id()];
     if (ret.node->IsRetval()) {
@@ -2544,7 +2544,7 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
   // Feeds have been remapped to single output nodes (Placeholder), so an exact
   // name match is sufficient.
   absl::flat_hash_map<absl::string_view, int> inputs;
-  for (auto input_and_idx : llvm::enumerate(specs.inputs)) {
+  for (const auto& input_and_idx : llvm::enumerate(specs.inputs)) {
     TensorId tensor = ParseTensorName(input_and_idx.value().first);
     auto remapped_it = remapped_feeds_.find(tensor);
     if (remapped_it != remapped_feeds_.end()) {
@@ -2705,7 +2705,7 @@ GraphDefImporter::GetArgsRetsAndTypesFromFunctionGraph(
   mlir::Builder builder(context);
   llvm::SmallVector<mlir::Type, 4> arg_types;
   arg_types.reserve(arg_nodes->size());
-  for (auto arg_node_and_idx : llvm::enumerate(*arg_nodes)) {
+  for (const auto& arg_node_and_idx : llvm::enumerate(*arg_nodes)) {
     auto& arg_node = arg_node_and_idx.value();
     if (arg_node.node == nullptr)
       return errors::InvalidArgument("Graph missing _Arg at index ",
@@ -2718,7 +2718,7 @@ GraphDefImporter::GetArgsRetsAndTypesFromFunctionGraph(
 
   llvm::SmallVector<mlir::Type, 4> ret_types;
   ret_types.reserve(ret_nodes->size());
-  for (auto ret_node_and_idx : llvm::enumerate(*ret_nodes)) {
+  for (const auto& ret_node_and_idx : llvm::enumerate(*ret_nodes)) {
     auto& ret_node = ret_node_and_idx.value();
     if (ret_node.node == nullptr)
       return errors::InvalidArgument("Graph missing _Retval at index ",
@@ -2738,7 +2738,7 @@ Status GraphDefImporter::GetControlRetsFromGraph(
   if (control_outputs.empty()) return OkStatus();
 
   llvm::SmallDenseMap<llvm::StringRef, int32_t> controls_to_idx;
-  for (auto control_and_idx : llvm::enumerate(control_outputs))
+  for (const auto& control_and_idx : llvm::enumerate(control_outputs))
     controls_to_idx.insert({control_and_idx.value(), control_and_idx.index()});
 
   if (controls_to_idx.size() != control_outputs.size())
@@ -3443,7 +3443,7 @@ Status CreateSavedModelIR(
             function.concrete_functions(0), "' (", output_index_paths.size(),
             " vs ", func.getNumResults(), ")");
       }
-      for (auto index_path : llvm::enumerate(output_index_paths)) {
+      for (const auto& index_path : llvm::enumerate(output_index_paths)) {
         func.setResultAttr(index_path.index(), kTfSavedModelIndexPathAttr,
                            index_path.value());
       }
@@ -3988,11 +3988,11 @@ Status SavedModelSignatureDefImporterLite::ConvertSignature(
                    builder.getStrArrayAttr({sig_def_key}));
 
   // Transfer input and output parameter names to index_path attributes.
-  for (auto input_and_idx : llvm::enumerate(inputs)) {
+  for (const auto& input_and_idx : llvm::enumerate(inputs)) {
     func_op.setArgAttr(input_and_idx.index(), kTfSavedModelIndexPathAttr,
                        builder.getStrArrayAttr({input_and_idx.value().first}));
   }
-  for (auto output_and_idx : llvm::enumerate(outputs)) {
+  for (const auto& output_and_idx : llvm::enumerate(outputs)) {
     func_op.setResultAttr(
         output_and_idx.index(), kTfSavedModelIndexPathAttr,
         builder.getStrArrayAttr({output_and_idx.value().first}));
