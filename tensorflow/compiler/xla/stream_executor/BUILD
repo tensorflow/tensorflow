@@ -107,6 +107,7 @@ cc_library(
         ":device_memory",
         ":kernel",
         "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/strings",
     ],
 )

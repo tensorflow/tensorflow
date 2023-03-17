@@ -721,7 +721,7 @@ static xla::SendCallback CSendCallbackToCpp(
         if (success) {
           return tsl::OkStatus();
         }
-        return xla::Status(tsl::error::UNKNOWN,
+        return xla::Status(absl::StatusCode::kUnknown,
                            "PJRT_SendCallback returned false (error).");
       }};
 }

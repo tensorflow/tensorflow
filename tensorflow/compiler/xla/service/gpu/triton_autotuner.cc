@@ -381,13 +381,13 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     // GPU caches should be in some comparable states during measurements.
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
     if (!timer->Init() || !timer->Start(se::gpu::AsGpuStream(stream))) {
-      return Status(tsl::error::INTERNAL, "Failed to start timer");
+      return Status(absl::StatusCode::kInternal, "Failed to start timer");
     }
     TF_RETURN_IF_ERROR(ExecuteKernelOnStream(*kernel, device_buffers,
                                              launch_dimensions, stream));
 
     if (!timer->Stop(se::gpu::AsGpuStream(stream))) {
-      return Status(tsl::error::INTERNAL, "Failed to stop timer");
+      return Status(absl::StatusCode::kInternal, "Failed to stop timer");
     }
     return std::make_optional(absl::Nanoseconds(timer->Nanoseconds()));
   }

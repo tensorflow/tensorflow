@@ -98,7 +98,7 @@ StatusOr<se::DeviceMemory<uint8_t>> ScratchAllocator::AllocateBytes(
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
   if (byte_size > GetMemoryLimitInBytes()) {
     return Status(
-        tsl::error::RESOURCE_EXHAUSTED,
+        absl::StatusCode::kResourceExhausted,
         absl::StrFormat(
             "Allocating %d bytes exceeds the memory limit of %d bytes.",
             byte_size, GetMemoryLimitInBytes()));
@@ -756,7 +756,8 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
                  << (*reference_result)->algorithm.ToString() << " against "
                  << alg.ToString() << " for " << instr_str << ": "
                  << compare_result.status();
-      if (compare_result.status().code() == tsl::error::RESOURCE_EXHAUSTED) {
+      if (compare_result.status().code() ==
+          absl::StatusCode::kResourceExhausted) {
         // Possibly OOM. Propagate the error.
         return compare_result.status();
       }
