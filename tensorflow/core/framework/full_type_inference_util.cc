@@ -89,7 +89,7 @@ TypeInferenceFn Merge() {
         continue;
       }
 
-      return Status(error::INVALID_ARGUMENT,
+      return Status(absl::StatusCode::kInvalidArgument,
                     absl::StrCat("expected compatible input types, but input ",
                                  i, ":\n", t.DebugString(),
                                  " is neither a subtype nor a supertype of the "
@@ -138,7 +138,7 @@ TypeInferenceFn Decode(FullTypeId t, int i) {
 
     const FullTypeId enc_tid = GetArgDefaultUnset(in_t, 1).type_id();
     if ((enc_tid != TFT_UNSET) && (enc_tid != t)) {
-      return Status(error::INVALID_ARGUMENT,
+      return Status(absl::StatusCode::kInvalidArgument,
                     absl::StrCat("expected encoded type ", t, " for input ", i,
                                  ", got ", in_t.DebugString()));
     }
@@ -192,7 +192,7 @@ TypeInferenceFn UnaryContainerAdd(FullTypeId t, int container_idx,
     if (in_cont_t.type_id() != TFT_UNSET) {
       if (in_cont_t.type_id() != t) {
         return Status(
-            error::INVALID_ARGUMENT,
+            absl::StatusCode::kInvalidArgument,
             absl::StrCat("expected container type ", t, " for input ",
                          container_idx, ", got ", in_cont_t.DebugString()));
       }
@@ -225,7 +225,7 @@ TypeInferenceFn UnaryContainerAdd(FullTypeId t, int container_idx,
     }
 
     if (homogeneous) {
-      return Status(error::INVALID_ARGUMENT,
+      return Status(absl::StatusCode::kInvalidArgument,
                     absl::StrCat("expected a subtype of ", el_t.DebugString(),
                                  " for input ", element_idx,
                                  " of a homogeneous container ", t, ", got ",
@@ -233,7 +233,7 @@ TypeInferenceFn UnaryContainerAdd(FullTypeId t, int container_idx,
     } else {
       // TODO(mdan): Implement if needed.
       return Status(
-          error::UNIMPLEMENTED,
+          absl::StatusCode::kUnimplemented,
           absl::StrCat("need union types for heterogeneous containers.\n"
                        "A homogeneous container would expect a subtype of ",
                        el_t.DebugString(), " for input ", element_idx,
@@ -287,7 +287,7 @@ TypeInferenceFn ContainerMap(
       return ret_type;
     }
     if (in_cont_t.type_id() != t) {
-      return Status(error::INVALID_ARGUMENT,
+      return Status(absl::StatusCode::kInvalidArgument,
                     absl::StrCat("expected type ", t, " for input ", input_idx,
                                  ", got ", in_cont_t.DebugString()));
     }
@@ -299,7 +299,7 @@ TypeInferenceFn ContainerMap(
       return ret_type;
     }
     if (in_el_t.type_id() != TFT_PRODUCT) {
-      return Status(error::INVALID_ARGUMENT,
+      return Status(absl::StatusCode::kInvalidArgument,
                     absl::StrCat("expected PRODUCT element type for input ",
                                  input_idx, ", got ", in_el_t.DebugString()));
     }
@@ -324,7 +324,7 @@ TypeInferenceFn MapCovariant(FullTypeId t, FullTypeId u, int input_idx) {
           return ret_type;
         }
         if (in_t.type_id() != t) {
-          return Status(error::INVALID_ARGUMENT,
+          return Status(absl::StatusCode::kInvalidArgument,
                         absl::StrCat("expected type ", t, " for input ",
                                      input_idx, ", got ", in_t.DebugString()));
         }
@@ -369,7 +369,7 @@ TypeInferenceFn Tuple(const std::vector<TypeInferenceFn>& func_list) {
       }
       if (t.type_id() != TFT_PRODUCT) {
         return Status(
-            error::INVALID_ARGUMENT,
+            absl::StatusCode::kInvalidArgument,
             absl::StrCat("for Tuple type inference function, expected result "
                          "of type inference function ",
                          ret_type.args_size(),

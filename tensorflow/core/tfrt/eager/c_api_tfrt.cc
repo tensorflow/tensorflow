@@ -539,7 +539,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
           .build();
   if (!req_ctx) {
     *status = tensorflow::Status(
-        tensorflow::error::Code::UNKNOWN,
+        absl::StatusCode::kUnknown,
         StrCat("Failed to build a RequestContext: ", req_ctx.takeError()));
     return nullptr;
   }
@@ -553,7 +553,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
   }
   if (target_av->IsError()) {
     *status = tensorflow::Status(
-        tensorflow::error::Code::UNKNOWN,
+        absl::StatusCode::kUnknown,
         StrCat("Cannot resolve tensor: ", target_av->GetError().message()));
     return nullptr;
   }

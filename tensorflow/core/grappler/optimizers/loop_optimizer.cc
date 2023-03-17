@@ -577,7 +577,7 @@ Status EvaluateBoolOpForConstantOperands(const NodeDef& op_node,
       EvaluateNode(op_node, inputs, cpu_device, resource_mgr, &outputs));
 
   if (outputs.size() != 1 || outputs[0].tensor == nullptr) {
-    return Status(error::INVALID_ARGUMENT, "Expected one output.");
+    return Status(absl::StatusCode::kInvalidArgument, "Expected one output.");
   }
   *value = outputs[0].tensor->scalar<bool>()();
   delete outputs[0].tensor;

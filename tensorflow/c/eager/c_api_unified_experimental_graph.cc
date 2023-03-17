@@ -204,7 +204,7 @@ class GraphOperation : public TracingOperation {
   Status SetAttrType(const char* const attr_name, DataType value) override {
     if (!op_) {
       return Status(
-          error::Code::FAILED_PRECONDITION,
+          absl::StatusCode::kFailedPrecondition,
           "op_type and op_name must be specified before specifying attrs.");
     }
     op_->node_builder.Attr(attr_name, value);
