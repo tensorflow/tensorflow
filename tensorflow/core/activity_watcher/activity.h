@@ -42,6 +42,7 @@ enum ActivityCategory {
   kMisc = 2,
   kDatasetOp = 3,
   kTpuOp = 4,
+  kRendezvous = 5,
 };
 
 static tsl::string ToString(ActivityCategory category) {
@@ -56,6 +57,8 @@ static tsl::string ToString(ActivityCategory category) {
       return "Dataset Op";
     case ActivityCategory::kTpuOp:
       return "TPU Op";
+    case ActivityCategory::kRendezvous:
+      return "Rendezvous";
   }
 }
 
