@@ -94,12 +94,7 @@ bool SupportsEpilogueFusion(PrimitiveType type) {
 }
 
 bool IsF8Type(const HloInstruction *instr) {
-  if (instr->shape().element_type() == F8E4M3FN ||
-      instr->shape().element_type() == F8E5M2) {
-    return true;
-  } else {
-    return false;
-  }
+  return primitive_util::IsF8Type(instr->shape().element_type());
 }
 
 // Recursively collects unary, pad, divide or multiply operands of instr until
@@ -197,6 +192,34 @@ bool IsSupportedF8Pattern(HloInstruction *instr, HloInstruction *&x,
 
   x_unary_ops = {subgraph->begin() + 3, subgraph->end()};
   return true;
+}
+
+// Transposes a matrix by swapping the contracting and non-contracting
+// dimension. There must be only one contracting and only one non-contracting
+// dimension. Keeps the layout the same.
+HloInstruction *TransposeMatrix(HloInstruction *instr, int64_t contracting_dim,
+                                absl::Span<const int64_t> batch_dims) {
+  // Identify the dimensional order which describes a transpose of the
+  // contracting and non-contracting dimensions of the GEMM.
+  std::vector<int64_t> permutation(instr->shape().dimensions_size(), -1);
+  // Discard the batch dimensions.
+  for (int64_t batch_dim : batch_dims) {
+    permutation[batch_dim] = batch_dim;
+  }
+  // Identify the non-contracting dimension.
+  int non_contracting_dim;
+  for (int i = 0; i < instr->shape().dimensions_size(); ++i) {
+    if (permutation[i] == -1 && contracting_dim != i) {
+      non_contracting_dim = i;
+    }
+  }
+  permutation[non_contracting_dim] = contracting_dim;
+  permutation[contracting_dim] = non_contracting_dim;
+
+  Shape new_shape = ShapeUtil::PermuteDimensions(permutation, instr->shape());
+  *new_shape.mutable_layout() = instr->shape().layout();
+  return instr->AddInstruction(
+      HloInstruction::CreateTranspose(new_shape, instr, permutation));
 }
 
 bool IsCublasSupportedMatrixMultiplication(
@@ -800,73 +823,22 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     shift_unary_ops(a, a_unary_ops);
     shift_unary_ops(b, b_unary_ops);
 
-    // Identify the dimensional order which describes a transpose of the
-    // contracting and non-contracting dimensions of the GEMM.
-    auto transp_dim_order =
-        [](HloInstruction *x, int64_t x_contracting_dim,
-           absl::Span<const int64_t> x_batch_dims) -> std::vector<int64_t> {
-      std::vector<int64_t> dims(x->shape().dimensions_size(), -1);
-      // Discard the batch dimensions.
-      for (int64_t batch_dim : x_batch_dims) {
-        dims[batch_dim] = batch_dim;
-      }
-      // Identify the non-contracting dimension.
-      int non_contracting_dim;
-      for (int i = 0; i < x->shape().dimensions_size(); ++i) {
-        if (dims[i] == -1 && x_contracting_dim != i) {
-          non_contracting_dim = i;
-        }
-      }
-      dims[non_contracting_dim] = x_contracting_dim;
-      dims[x_contracting_dim] = non_contracting_dim;
-      return dims;
-    };
-
-    auto transp_dims =
-        [](HloInstruction *x,
-           absl::Span<const int64_t> transp_dim_order) -> std::vector<int64_t> {
-      std::vector<int64_t> transp_dims;
-      transp_dims.reserve(x->shape().dimensions_size());
-      for (int64_t dim : transp_dim_order) {
-        transp_dims.emplace_back(x->shape().dimensions(dim));
-      }
-      return transp_dims;
-    };
-    // Plain transpose on a or b. Plain transposes a matrix by permuting its
-    // dimension without changing storage order.
-    auto plain_transpose =
-        [&](HloInstruction **x,
-            const absl::Span<const int64_t> &contracting_dims,
-            const absl::Span<const int64_t> &batch_dims) {
-          std::vector<int64_t> new_dim_order =
-              transp_dim_order(*x, contracting_dims[0], batch_dims);
-          *x = instr->AddInstruction(HloInstruction::CreateTranspose(
-              ShapeUtil::MakeShapeWithDenseLayout(
-                  (*x)->shape().element_type(), transp_dims(*x, new_dim_order),
-                  (*x)->shape().layout().minor_to_major()),
-              *x, new_dim_order));
-        };
-
-    // cuBLASLt FP8 GEMM kernels currently require the first operand, i.e. A, to
-    // be transposed. If the result of the GEMM is not in column major order, A
-    // and B are later exchanged, and B is transposed here instead.
-    // TODO(philipphack): Remove once cuBLASLt supports the NN configuration.
     TF_ASSIGN_OR_RETURN(bool a_is_col_major,
                         MatrixIsColumnMajor(*instr, gemm_backend_config, "a"));
     TF_ASSIGN_OR_RETURN(bool b_is_col_major,
                         MatrixIsColumnMajor(*instr, gemm_backend_config, "b"));
 
-    // Apply necessary transposes to accommodate canonicalize matmul(lhs and rhs
-    // contracting dims are 1 and 0). Also assuming transpose folding pass later
-    // will remove duplcated transposes. The last transpose is required by
-    // cublas fp8 matmul restriction.
     DotDimensionNumbers *dim_nums =
         gemm_backend_config.mutable_dot_dimension_numbers();
     int a_batch_dim_offset = a_batch_dims.size();
     int b_batch_dim_offset = b_batch_dims.size();
 
+    // cuBLASLt FP8 GEMM kernels currently require the first operand, i.e. A, to
+    // be row-major. If A is column-major, swap the contracting and
+    // non-contracting dimension and transpose the matrix to effectively make it
+    // column-major.
+    // TODO(philipphack): Remove once cuBLASLt supports A being column-major
     if (a_is_col_major) {
-      // Swap contracting dimensions and convert a to row major
       CHECK(a_contracting_dims[0] == a_batch_dim_offset ||
             a_contracting_dims[0] == a_batch_dim_offset + 1);
       if (a_contracting_dims[0] == a_batch_dim_offset) {
@@ -874,11 +846,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       } else {
         dim_nums->set_lhs_contracting_dimensions(0, a_batch_dim_offset);
       }
-      plain_transpose(&a, a_contracting_dims, a_batch_dims);
+      a = TransposeMatrix(a, a_contracting_dims[0], a_batch_dims);
     }
 
+    // Similarly, cuBLASLt requires the second operand to be column-major, so
+    // make it column-major if it is currently row-major.
     if (!b_is_col_major) {
-      // Swap contracting dimensions and convert b to col major
       CHECK(b_contracting_dims[0] == b_batch_dim_offset ||
             b_contracting_dims[0] == b_batch_dim_offset + 1);
       if (b_contracting_dims[0] == b_batch_dim_offset) {
@@ -886,7 +859,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       } else {
         dim_nums->set_rhs_contracting_dimensions(0, b_batch_dim_offset);
       }
-      plain_transpose(&b, b_contracting_dims, b_batch_dims);
+      b = TransposeMatrix(b, b_contracting_dims[0], b_batch_dims);
     }
     std::unique_ptr<HloInstruction> new_custom_call =
         HloInstruction::CreateCustomCall(
