@@ -31,6 +31,7 @@ from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -1577,7 +1578,7 @@ class VariableV1(Variable):
 
   def initialized_value(self):
     with ops.init_scope():
-      return control_flow_ops.cond(
+      return cond.cond(
           is_variable_initialized(self), self.read_value,
           lambda: self.initial_value)
 

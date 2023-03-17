@@ -25,18 +25,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import handle_data_util
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_list_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.util.lazy_loader import LazyLoader
-
-# list_ops -> control_flow_ops -> tensor_array_ops -> list_ops
-control_flow_ops = LazyLoader(
-    "control_flow_ops", globals(),
-    "tensorflow.python.ops.control_flow_ops")
 
 
 ops.NotDifferentiable("TensorListConcatLists")
@@ -199,7 +194,7 @@ def tensor_list_set_item(input_handle,
       input_list_size = gen_list_ops.tensor_list_length(input_handle)
       # TODO(srbs): This could cause some slowdown. Consider fusing resize
       # functionality in the SetItem op.
-      input_handle = control_flow_ops.cond(
+      input_handle = cond.cond(
           index >= input_list_size,
           lambda: gen_list_ops.tensor_list_resize(  # pylint: disable=g-long-lambda
               input_handle, index + 1),
