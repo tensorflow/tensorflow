@@ -1,12 +1,1 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -572,6 +572,7 @@
-     name = "tblgen",
-     srcs = glob([
-         "utils/TableGen/*.cpp",
-+        "utils/TableGen/*.inc",
-         "utils/TableGen/GlobalISel/*.cpp",
- 
-         # Some tablegen sources include headers from MC, so these have to be
