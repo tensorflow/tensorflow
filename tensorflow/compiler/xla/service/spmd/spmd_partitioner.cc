@@ -389,6 +389,15 @@ PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target,
   if (sharding() == target) {
     return *this;
   }
+  // Handling for constant resharding from non-manual sharding to manual.
+  // (This could happen for Tuple, While, etc. since manual sharding is not
+  // propagated to constant.)
+  if (hlo()->opcode() == HloOpcode::kConstant && !sharding().IsManual() &&
+      target.IsManual()) {
+    PartitionedHlo pconstant = this->Reshard(HloSharding::Replicate());
+    pconstant.hlo()->set_sharding(target);
+    return pconstant;
+  }
   auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].reshard_cache;
   // Replace existing reshard cache for target if we are sharding with new
   // padding value.
