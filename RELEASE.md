@@ -4,12 +4,11 @@
 
 *   Build, Compilation and Packaging
 
-    *   Removal of redundant packages: the `tensorflow-gpu` and `tf-nightly-gpu` packages have been effectively removed and replaced with packages that direct users to switch to `tensorflow` or `tf-nightly` respectively. The naming difference was the only difference between the two sets of packages ever since TensorFlow 2.1, so there is no loss of functionality or GPU support. See https://pypi.org/project/tensorflow-gpu for more details.
+    *   Removed redundant packages `tensorflow-gpu` and `tf-nightly-gpu`. These packages were removed and replaced with packages that direct users to switch to `tensorflow` or `tf-nightly` respectively. Since TensorFlow 2.1, the only difference between these two sets of packages was their names, so there is no loss of functionality or GPU support. See https://pypi.org/project/tensorflow-gpu for more details.
 
 *   `tf.function`:
 
-    *   `tf.function` now uses the Python inspect library directly for parsing the signature of the Python function it is decorated on.
-    *   This can break certain cases that were previously ignored where the signature is malformed, such as:
+    *   `tf.function` now uses the Python inspect library directly for parsing the signature of the Python function it is decorated on. This change may break code where the function signature is malformed, but was ignored previously, such as:
         *   Using `functools.wraps` on a function with different signature
         *   Using `functools.partial` with an invalid `tf.function` input
     *   `tf.function` now enforces input parameter names to be valid Python identifiers. Incompatible names are automatically sanitized similarly to existing SavedModel signature behavior.
@@ -21,7 +20,7 @@
 
 *   `tf.keras`:
 
-    * Moved all saving-related utilities to a new namespace, `keras.saving`, i.e. `keras.saving.load_model`, `keras.saving.save_model`, `keras.saving.custom_object_scope`, `keras.saving.get_custom_objects`, `keras.saving.register_keras_serializable`,`keras.saving.get_registered_name` and `keras.saving.get_registered_object`. The previous API locations (in `keras.utils` and `keras.models`) will stay available indefinitely, but we recommend that you update your code to point to the new API locations.
+    * Moved all saving-related utilities to a new namespace, `keras.saving`, for example: `keras.saving.load_model`, `keras.saving.save_model`, `keras.saving.custom_object_scope`, `keras.saving.get_custom_objects`, `keras.saving.register_keras_serializable`,`keras.saving.get_registered_name` and `keras.saving.get_registered_object`. The previous API locations (in `keras.utils` and `keras.models`) will be available indefinitely, but we recommend you update your code to point to the new API locations.
     * Improvements and fixes in Keras loss masking:
         * Whether you represent a ragged tensor as a `tf.RaggedTensor` or using [keras masking](https://www.tensorflow.org/guide/keras/masking_and_padding), the returned loss values should be the identical to each other. In previous versions Keras may have silently ignored the mask.
         * If you use masked losses with Keras the loss values may be different in TensorFlow `2.12` compared to previous versions.
