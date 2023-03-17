@@ -165,6 +165,10 @@ class ActivityScope {
   explicit ActivityScope(ActivityGenerator&& gen, int level = 1) {
     activity_id_ = ActivityStart(std::forward<ActivityGenerator>(gen), level);
   }
+  ActivityScope(ActivityScope&& activity) {
+    activity_id_ = activity.activity_id_;
+    activity.activity_id_ = kActivityNotRecorded;
+  }
   ~ActivityScope() { ActivityEnd(activity_id_); }
 
  private:
