@@ -1,6 +1,8 @@
 # Release 2.12.0
 
-## Breaking Changes
+## TensorFlow
+
+### Breaking Changes
 
 *   Build, Compilation and Packaging
 
@@ -18,15 +20,7 @@
 
 *   Experimental APIs `tf.config.experimental.enable_mlir_graph_optimization` and `tf.config.experimental.disable_mlir_graph_optimization` were removed.
 
-*   `tf.keras`:
-
-    * Moved all saving-related utilities to a new namespace, `keras.saving`, for example: `keras.saving.load_model`, `keras.saving.save_model`, `keras.saving.custom_object_scope`, `keras.saving.get_custom_objects`, `keras.saving.register_keras_serializable`,`keras.saving.get_registered_name` and `keras.saving.get_registered_object`. The previous API locations (in `keras.utils` and `keras.models`) will be available indefinitely, but we recommend you update your code to point to the new API locations.
-    * Improvements and fixes in Keras loss masking:
-        * Whether you represent a ragged tensor as a `tf.RaggedTensor` or using [keras masking](https://www.tensorflow.org/guide/keras/masking_and_padding), the returned loss values should be the identical to each other. In previous versions Keras may have silently ignored the mask.
-        * If you use masked losses with Keras the loss values may be different in TensorFlow `2.12` compared to previous versions.
-        * In cases where the mask was previously ignored, you will now get an error if you pass a mask with an incompatible shape.
-
-## Major Features and Improvements
+### Major Features and Improvements
 
 *   Support for Python3.11 has been added.
 
@@ -35,22 +29,6 @@
     *   Add 16-bit float type support for built-in op `fill`.
     *   Transpose now supports 6D tensors.
     *   Float LSTM now supports diagonal recurrent tensors: https://arxiv.org/abs/1903.08023
-
-*   `tf.keras`:
-
-    *   The new Keras model saving format (`.keras`) is available. You can start using it via `model.save(f"{fname}.keras", save_format="keras_v3")`. In the future it will become the default for all files with the `.keras` extension. This file format targets the Python runtime only and makes it possible to reload Python objects identical to the saved originals. The format supports non-numerical state such as vocabulary files and lookup tables, and it is easy to customize in the case of custom layers with exotic elements of state (e.g. a FIFOQueue). The format does not rely on bytecode or pickling, and is safe by default. Note that as a result, Python `lambdas` are disallowed at loading time. If you want to use `lambdas`, you can pass `safe_mode=False` to the loading method (only do this if you trust the source of the model).
-    *   Added a `model.export(filepath)` API to create a lightweight SavedModel artifact that can be used for inference (e.g. with TF-Serving).
-    *   Added `keras.export.ExportArchive` class for low-level customization of the process of exporting SavedModel artifacts for inference. Both ways of exporting models are based on `tf.function` tracing and produce a TF program composed of TF ops. They are meant primarily for environments where the TF runtime is available, but not the Python interpreter, as is typical for production with TF Serving.
-    *   Added utility `tf.keras.utils.FeatureSpace`, a one-stop shop for structured data preprocessing and encoding.
-    *   Added `tf.SparseTensor` input support to `tf.keras.layers.Embedding` layer. The layer now accepts a new boolean argument `sparse`. If `sparse` is set to True, the layer returns a SparseTensor instead of a dense Tensor. Defaults to False.
-    *   Added `jit_compile` as a settable property to `tf.keras.Model`.
-    *   Added `synchronized` optional parameter to `layers.BatchNormalization`.
-    *   Added deprecation warning to `layers.experimental.SyncBatchNormalization` and suggested to use `layers.BatchNormalization` with `synchronized=True` instead.
-    *   Updated `tf.keras.layers.BatchNormalization` to support masking of the inputs (`mask` argument) when computing the mean and variance.
-    *   Add `tf.keras.layers.Identity`, a placeholder pass-through layer.
-    *   Add `show_trainable` option to `tf.keras.utils.model_to_dot` to display layer trainable status in model plots.
-    *   Add ability to save a `tf.keras.utils.FeatureSpace` object, via `feature_space.save("myfeaturespace.keras")`, and reload it via `feature_space = tf.keras.models.load_model("myfeaturespace.keras")`.
-    *   Added utility `tf.keras.utils.to_ordinal` to convert class vector to ordinal regression / classification matrix.
 
 *   `tf.experimental.dtensor`:
 
@@ -71,7 +49,7 @@
 
     *   Added experimental support to ReduceScatter fuse on GPU (NCCL).
 
-## Bug Fixes and Other Changes
+### Bug Fixes and Other Changes
 
 *   `tf.SavedModel`:
     * Introduced new class `tf.saved_model.experimental.Fingerprint` that contains the fingerprint of the SavedModel. See the [SavedModel Fingerprinting RFC](https://github.com/tensorflow/community/pull/415) for details.
@@ -88,6 +66,40 @@
   * The `experimental_get_compiler_ir` method supports tf.TensorSpec compilation arguments.
 *  `tf.config.experimental.mlir_bridge_rollout`
     *   Removed enums `MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED` and `MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED` which are no longer used by the tf2xla bridge
+
+## Keras
+
+ Keras is a framework built on top of the TensorFlow framework. See more details on the Keras [website](https://keras.io/).
+
+### Breaking Changes
+
+* Moved all saving-related utilities to a new namespace, `keras.saving`, for example: `keras.saving.load_model`, `keras.saving.save_model`, `keras.saving.custom_object_scope`, `keras.saving.get_custom_objects`, `keras.saving.register_keras_serializable`,`keras.saving.get_registered_name` and `keras.saving.get_registered_object`. The previous API locations (in `keras.utils` and `keras.models`) will be available indefinitely, but we recommend you update your code to point to the new API locations.
+ * Improvements and fixes in Keras loss masking:
+    * Whether you represent a ragged tensor as a `tf.RaggedTensor` or using [keras masking](https://www.tensorflow.org/guide/keras/masking_and_padding), the returned loss values should be the identical to each other. In previous versions Keras may have silently ignored the mask.
+ * If you use masked losses with Keras the loss values may be different in TensorFlow `2.12` compared to previous versions.
+ * In cases where the mask was previously ignored, you will now get an error if you pass a mask with an incompatible shape.
+
+### Major Features and Improvements     
+
+ tf.keras:
+
+ *   The new Keras model saving format (`.keras`) is available. You can start using it via `model.save(f"{fname}.keras", save_format="keras_v3")`. In the future it will become the default for all files with the `.keras` extension. This file format targets the Python runtime only and makes it possible to reload Python objects identical to the saved originals. The format supports non-numerical state such as vocabulary files and lookup tables, and it is easy to customize in the case of custom layers with exotic elements of state (e.g. a FIFOQueue). The format does not rely on bytecode or pickling, and is safe by default. Note that as a result, Python `lambdas` are disallowed at loading time. If you want to use `lambdas`, you can pass `safe_mode=False` to the loading method (only do this if you trust the source of the model).
+*   Added a `model.export(filepath)` API to create a lightweight SavedModel artifact that can be used for inference (e.g. with TF-Serving).
+*   Added `keras.export.ExportArchive` class for low-level customization of the process of exporting SavedModel artifacts for inference. Both ways of exporting models are based on `tf.function` tracing and produce a TF program composed of TF ops. They are meant primarily for environments where the TF runtime is available, but not the Python interpreter, as is typical for production with TF Serving.
+ *   Added utility `tf.keras.utils.FeatureSpace`, a one-stop shop for structured data preprocessing and encoding.
+ *   Added `tf.SparseTensor` input support to `tf.keras.layers.Embedding` layer. The layer now accepts a new boolean argument `sparse`. If `sparse` is set to True, the layer returns a SparseTensor instead of a dense Tensor. Defaults to False.
+ *   Added `jit_compile` as a settable property to `tf.keras.Model`.
+ *   Added `synchronized` optional parameter to `layers.BatchNormalization`.
+ *   Added deprecation warning to `layers.experimental.SyncBatchNormalization` and suggested to use `layers.BatchNormalization` with `synchronized=True` instead.
+ *   Updated `tf.keras.layers.BatchNormalization` to support masking of the inputs (`mask` argument) when computing the mean and variance.
+ *   Add `tf.keras.layers.Identity`, a placeholder pass-through layer.
+ *   Add `show_trainable` option to `tf.keras.utils.model_to_dot` to display layer trainable status in model plots.
+ *   Add ability to save a `tf.keras.utils.FeatureSpace` object, via `feature_space.save("myfeaturespace.keras")`, and reload it via `feature_space = tf.keras.models.load_model("myfeaturespace.keras")`.
+*   Added utility `tf.keras.utils.to_ordinal` to convert class vector to ordinal regression / classification matrix.
+
+### Bug Fixes and Other Changes
+
+*   N/A
 
 ## Thanks to our Contributors
 
