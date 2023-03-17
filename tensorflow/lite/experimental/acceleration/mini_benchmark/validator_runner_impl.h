@@ -66,10 +66,12 @@ class ValidatorRunnerImpl {
   MinibenchmarkStatus Init();
 
   // Trigger the test for the given tflite_settings in a new thread. The
-  // settings will run sequentially.
+  // settings will run sequentially. The storage_path will be used to store
+  // intermediate test output.
   void TriggerValidationAsync(
       std::unique_ptr<std::vector<flatbuffers::FlatBufferBuilder>>
-          tflite_settings);
+          tflite_settings,
+      absl::string_view storage_path);
 
   // Returns the unmodified successful BenchmarkEvent from storage. If a
   // BenchmarkEvent is considered pass with the BenchmarkResultEvaluator, but

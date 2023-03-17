@@ -24,7 +24,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/time/time.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
-#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
@@ -145,7 +144,8 @@ TEST_F(ValidatorRunnerImplTest,
   // Run.
   validator.TriggerValidationAsync(
       std::make_unique<std::vector<flatbuffers::FlatBufferBuilder>>(
-          std::move(tflite_settings)));
+          std::move(tflite_settings)),
+      options_.storage_path);
 
   // Validate.
   FlatbufferStorage<BenchmarkEvent> storage(options_.storage_path,
@@ -191,7 +191,8 @@ TEST_F(ValidatorRunnerImplTest,
   // Run.
   validator.TriggerValidationAsync(
       std::make_unique<std::vector<flatbuffers::FlatBufferBuilder>>(
-          std::move(tflite_settings)));
+          std::move(tflite_settings)),
+      options_.storage_path);
 
   // Validate.
   FlatbufferStorage<BenchmarkEvent> storage(options_.storage_path,
@@ -237,7 +238,8 @@ TEST_F(ValidatorRunnerImplTest,
   // Run.
   validator.TriggerValidationAsync(
       std::make_unique<std::vector<flatbuffers::FlatBufferBuilder>>(
-          std::move(tflite_settings)));
+          std::move(tflite_settings)),
+      options_.storage_path);
 
   // Validate.
   FlatbufferStorage<BenchmarkEvent> storage(options_.storage_path,
@@ -281,7 +283,8 @@ TEST_F(ValidatorRunnerImplTest,
   // Run.
   validator.TriggerValidationAsync(
       std::make_unique<std::vector<flatbuffers::FlatBufferBuilder>>(
-          std::move(tflite_settings)));
+          std::move(tflite_settings)),
+      options_.storage_path);
 
   // Validate.
   FlatbufferStorage<BenchmarkEvent> storage(options_.storage_path,
