@@ -259,7 +259,7 @@ LogicalResult checkYieldOutputs(YieldOp yieldOp,
            << yieldOp.getValues().size();
   }
 
-  for (auto &item : llvm::enumerate(
+  for (const auto &item : llvm::enumerate(
            llvm::zip(expectedElementTypes, yieldOp.getOperandTypes()))) {
     Type outputElementType, resultType;
     unsigned index = item.index();
@@ -1088,7 +1088,7 @@ LogicalResult SortOp::verify() {
   ArrayRef<int64_t> referenceShape =
       getInputs().front().getType().cast<ShapedType>().getShape();
 
-  for (auto &item : llvm::enumerate(TypeRange{getInputs()})) {
+  for (const auto &item : llvm::enumerate(TypeRange{getInputs()})) {
     ArrayRef<int64_t> shape = item.value().cast<ShapedType>().getShape();
     if (shape != referenceShape) {
       return emitOpError() << "expected all inputs to have the same shape ("
@@ -1098,7 +1098,7 @@ LogicalResult SortOp::verify() {
   }
 
   // Checks that the outputs have the same shape as the inputs.
-  for (auto &item : llvm::enumerate(getInits())) {
+  for (const auto &item : llvm::enumerate(getInits())) {
     ArrayRef<int64_t> shape =
         item.value().getType().cast<ShapedType>().getShape();
     if (shape != referenceShape) {

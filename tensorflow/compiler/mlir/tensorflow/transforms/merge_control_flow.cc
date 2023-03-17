@@ -367,7 +367,8 @@ llvm::SmallVector<int, 4> GetReturnIndicesToKeep(
     }
     return false;
   };
-  for (auto& index_and_value : llvm::enumerate(current_if_op.getResults())) {
+  for (const auto& index_and_value :
+       llvm::enumerate(current_if_op.getResults())) {
     if (!llvm::all_of(index_and_value.value().getUsers(),
                       is_op_inside_IfRegions)) {
       return_indices_to_keep.push_back(index_and_value.index());

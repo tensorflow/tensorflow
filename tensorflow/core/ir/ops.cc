@@ -348,7 +348,7 @@ static bool VerifyGenericTFGOperation(Operation& op) {
   // inputs (or results).
   auto check_ctl_at_end = [&](TypeRange types, StringRef input_or_output) {
     int has_control_dep = -1;
-    for (auto& indexed_operand : llvm::enumerate(types)) {
+    for (const auto& indexed_operand : llvm::enumerate(types)) {
       if (indexed_operand.value() == control_ty) {
         has_control_dep = indexed_operand.index();
         continue;
@@ -426,7 +426,7 @@ LogicalResult GraphFuncOp::verifyBody() {
     return emitOpError() << "function type indicated " << type.getNumInputs()
                          << " args but block has " << body->getNumArguments();
 
-  for (auto& arg_types :
+  for (const auto& arg_types :
        llvm::enumerate(llvm::zip(type.getInputs(), body->getArgumentTypes()))) {
     Type signature_arg = std::get<0>(arg_types.value());
     Type block_arg = std::get<1>(arg_types.value());
@@ -447,7 +447,7 @@ LogicalResult GraphFuncOp::verifyBody() {
     return emitOpError() << "expects " << type.getNumResults()
                          << " returned values but tfg.return has "
                          << return_op->getNumOperands() << " operands";
-  for (auto& indexed_type : llvm::enumerate(type.getResults())) {
+  for (const auto& indexed_type : llvm::enumerate(type.getResults())) {
     Type expected_type = indexed_type.value();
     int res_num = indexed_type.index();
     Type actual_type = return_op->getOperand(res_num).getType();
@@ -458,7 +458,7 @@ LogicalResult GraphFuncOp::verifyBody() {
     }
   }
   Type control_type = getDialect()->getControlType();
-  for (auto& indexed_type : llvm::enumerate(llvm::drop_begin(
+  for (const auto& indexed_type : llvm::enumerate(llvm::drop_begin(
            return_op->getOperandTypes(), type.getNumResults()))) {
     Type actual_type = indexed_type.value();
     if (actual_type != control_type) {
@@ -923,7 +923,7 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation* op,
 
   if (func.getGeneric()) return success();
 
-  for (auto& it : llvm::enumerate(operands)) {
+  for (const auto& it : llvm::enumerate(operands)) {
     Type arg_type = arguments[it.index() * 2];
     Type op_type = it.value();
     if (!tf_type::HasCompatibleElementTypes(arg_type, op_type)) {
@@ -933,7 +933,7 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation* op,
           << " is not compatible with corresponding operand type: " << op_type);
     }
   }
-  for (auto& it : llvm::enumerate(results)) {
+  for (const auto& it : llvm::enumerate(results)) {
     Type ret_type = returns[it.index()];
     Type res_type = it.value();
     if (!tf_type::HasCompatibleElementTypes(ret_type, res_type)) {
@@ -1053,7 +1053,7 @@ static LogicalResult VerifyCaseLikeOp(CaseLikeOp op,
   // The first operand is the branch index and is not passed to the functions.
   TypeRange func_args = ins->drop_front();
 
-  for (auto& it : llvm::enumerate(op.getBranches())) {
+  for (const auto& it : llvm::enumerate(op.getBranches())) {
     SymbolRefAttr func_name = it.value().template cast<FuncAttr>().getName();
     auto func =
         symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(op, func_name);
@@ -1234,7 +1234,7 @@ void GetIfLikeRegionOpSuccessorRegions(
 // Verify a case-like region op.
 template <typename CaseLikeRegionOp>
 static LogicalResult VerifyCaseLikeRegionOp(CaseLikeRegionOp op) {
-  for (auto& it : llvm::enumerate(op.getBranches())) {
+  for (const auto& it : llvm::enumerate(op.getBranches())) {
     if (!TerminatedByYield(it.value().front())) {
       return op.emitOpError("branch region #")
              << it.index() << " is not terminated by a 'tfg.yield' op";

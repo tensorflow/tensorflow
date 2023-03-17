@@ -1376,7 +1376,7 @@ StatusOr<FuncOp> ConvertSubgraph(
   }
 
   // Construct MLIR operators from TFLite operators
-  for (auto& it : llvm::enumerate(subgraph.operators)) {
+  for (const auto& it : llvm::enumerate(subgraph.operators)) {
     auto& op = it.value();
 
     if (experimental_prune_unreachable_nodes_unconditionally &&

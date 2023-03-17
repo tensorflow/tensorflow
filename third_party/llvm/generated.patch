@@ -1,32 +1,12 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Affine/Transforms/DecomposeAffineOps.cpp b/mlir/lib/Dialect/Affine/Transforms/DecomposeAffineOps.cpp
---- a/mlir/lib/Dialect/Affine/Transforms/DecomposeAffineOps.cpp
-+++ b/mlir/lib/Dialect/Affine/Transforms/DecomposeAffineOps.cpp
-@@ -48,10 +48,9 @@
-   int64_t numOperands = op.getNumOperands();
-   SmallVector<int64_t> operandPositions =
-       llvm::to_vector(llvm::seq<int64_t>(0, numOperands));
--  std::sort(operandPositions.begin(), operandPositions.end(),
--            [&numInvariant](size_t i1, size_t i2) {
--              return numInvariant[i1] > numInvariant[i2];
--            });
-+  llvm::stable_sort(operandPositions, [&numInvariant](size_t i1, size_t i2) {
-+    return numInvariant[i1] > numInvariant[i2];
-+  });
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -572,6 +572,7 @@
+     name = "tblgen",
+     srcs = glob([
+         "utils/TableGen/*.cpp",
++        "utils/TableGen/*.inc",
+         "utils/TableGen/GlobalISel/*.cpp",
  
-   SmallVector<AffineExpr> replacements(numOperands);
-   SmallVector<Value> operands(numOperands);
-@@ -144,10 +143,9 @@
-         return i;
-     return -1;
-   };
--  std::sort(subExpressions.begin(), subExpressions.end(),
--            [&](AffineExpr e1, AffineExpr e2) {
--              return getMaxSymbol(e1) < getMaxSymbol(e2);
--            });
-+  llvm::stable_sort(subExpressions, [&](AffineExpr e1, AffineExpr e2) {
-+    return getMaxSymbol(e1) < getMaxSymbol(e2);
-+  });
-   LLVM_DEBUG(
-       llvm::interleaveComma(subExpressions, DBGS() << "--sorted subexprs: ");
-       llvm::dbgs() << "\n");
+         # Some tablegen sources include headers from MC, so these have to be

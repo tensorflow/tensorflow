@@ -93,7 +93,7 @@ scf::ForallOp generateTileLoopNest(OpBuilder &builder, Location loc,
 
   SmallVector<OpFoldResult> lbs, ubs, steps;
   SmallVector<unsigned> nonemptyRangeIndices;
-  for (auto &loopRange : llvm::enumerate(loopRanges)) {
+  for (const auto &loopRange : llvm::enumerate(loopRanges)) {
     OpFoldResult offset = loopRange.value().offset;
     OpFoldResult size = loopRange.value().size;
     // No loops if tile size is zero. Set offset and size to the loop offset and

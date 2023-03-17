@@ -3416,12 +3416,12 @@ Status CreateSavedModelIR(
             function.concrete_functions(0), "' (", input_index_paths.size(),
             " vs ", bound_input_base, ")");
       }
-      for (auto index_path : llvm::enumerate(input_index_paths)) {
+      for (const auto& index_path : llvm::enumerate(input_index_paths)) {
         func.setArgAttr(index_path.index(), kTfSavedModelIndexPathAttr,
                         index_path.value());
       }
 
-      for (auto& bound_input :
+      for (const auto& bound_input :
            llvm::enumerate(concrete_function.bound_inputs())) {
         int arg_index = bound_input_base + bound_input.index();
         auto symbol_ref = mlir::SymbolRefAttr::get(

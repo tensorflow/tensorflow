@@ -256,7 +256,7 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
                << input_index << "-th input";
 
       if (input_sharding_type == xla::OpSharding::REPLICATED) {
-        for (auto& index_and_inputs : llvm::enumerate(*input_list)) {
+        for (const auto& index_and_inputs : llvm::enumerate(*input_list)) {
           index_and_inputs.value().emplace_back(
               partitioned_input.getOperand(index_and_inputs.index()));
         }
@@ -557,7 +557,7 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
     mlir::tf_device::ParallelExecuteOp old_parallel_execute, int cluster_idx,
     mlir::tf_device::ParallelExecuteOp new_parallel_execute,
     mlir::OpBuilder* builder) {
-  for (auto& result_and_index :
+  for (const auto& result_and_index :
        llvm::enumerate(old_parallel_execute.getResults())) {
     const auto output_index = result_and_index.index();
     const auto old_parallel_execute_output = result_and_index.value();

@@ -2321,7 +2321,7 @@ std::optional<Value> convertStridedSliceOp(
   }
 
   // Set begin mask values if possible.
-  for (auto& val : llvm::enumerate(begin))
+  for (const auto& val : llvm::enumerate(begin))
     begin_mask |= (val.value() == 0) << val.index();
 
   // If all begin/end masks are set and striding is one we can just return

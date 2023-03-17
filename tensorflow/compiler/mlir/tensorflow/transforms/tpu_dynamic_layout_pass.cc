@@ -222,7 +222,7 @@ void HandleCompileAndExecutes(
         llvm::cast<TF::TPUExecuteOp>(execute_launch.GetBody().front());
     const auto& input_mapping = std::get<1>(execute_and_input_mapping);
 
-    for (auto& input_and_idx : llvm::enumerate(execute.getArgs())) {
+    for (const auto& input_and_idx : llvm::enumerate(execute.getArgs())) {
       Value input = input_and_idx.value();
       const int64_t execute_arg_index = input_and_idx.index();
       if (auto block_arg = input.dyn_cast<BlockArgument>()) {

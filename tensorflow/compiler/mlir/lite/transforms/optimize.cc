@@ -1498,7 +1498,7 @@ struct FuseUnpackAndConcatToReshape
     if (!unpack_op || unpack_op.getNumResults() != concat_op.getNumOperands()) {
       return failure();
     }
-    for (auto &index_and_value : llvm::enumerate(concat_op.getValues())) {
+    for (const auto &index_and_value : llvm::enumerate(concat_op.getValues())) {
       if (index_and_value.value() !=
           unpack_op.getResult(index_and_value.index())) {
         return failure();

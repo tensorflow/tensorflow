@@ -1553,7 +1553,7 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
   }
 
   bool failed_once = false;
-  for (auto& item : llvm::enumerate(bb)) {
+  for (const auto& item : llvm::enumerate(bb)) {
     Operation& inst = item.value();
     const int operation_index = item.index();
     if (inst.hasTrait<mlir::OpTrait::IsTerminator>()) break;

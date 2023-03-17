@@ -246,7 +246,7 @@ static StatusOr<std::vector<std::string>> ParseDTypesHelper(
   bool inside_subtype = false;
   int cur_pos = 0;
   std::vector<std::string> dtypes;
-  for (auto& it : llvm::enumerate(data_types_str)) {
+  for (const auto& it : llvm::enumerate(data_types_str)) {
     char c = it.value();
     int i = it.index();
     // Skip parsing the subtypes of a type

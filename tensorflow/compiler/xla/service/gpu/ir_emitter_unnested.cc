@@ -3438,7 +3438,7 @@ StatusOr<std::vector<llvm_ir::IrArray>> IrEmitterUnnested::BuildKernelThunk(
   TF_RET_CHECK(!mlir::isa<mlir::lmhlo::FusionOp>(op));
 
   std::vector<KernelArgument> kernel_arguments(operands.size());
-  for (auto& [i, operand] : llvm::enumerate(operands)) {
+  for (const auto& [i, operand] : llvm::enumerate(operands)) {
     TF_ASSIGN_OR_RETURN(
         kernel_arguments[i],
         ValueToKernelArgument(operand, i, WritesMlirBuffer(op, operand)));
