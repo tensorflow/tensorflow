@@ -31,6 +31,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -94,7 +95,7 @@ def tfcond(_):
   p = array_ops.placeholder(dtypes.bool, name='p_hold')
   x = array_ops.placeholder(dtypes.int32, name='x_hold')
   y = array_ops.placeholder(dtypes.int32, name='y_hold')
-  z = control_flow_ops.cond(p, lambda: x, lambda: y)
+  z = cond.cond(p, lambda: x, lambda: y)
   array_ops.identity(z, name='result')
 
 

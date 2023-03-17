@@ -879,6 +879,7 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",

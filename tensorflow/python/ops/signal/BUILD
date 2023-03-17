@@ -22,6 +22,7 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_stack",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",

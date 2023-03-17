@@ -14,6 +14,7 @@ py_strict_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:check_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:linalg_ops_gen",

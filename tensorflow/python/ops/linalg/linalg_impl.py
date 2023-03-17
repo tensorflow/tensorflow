@@ -23,6 +23,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
@@ -323,16 +324,16 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
 
     is_finite = math_ops.is_finite(math_ops.reduce_max(l1_norm))
     nan = constant_op.constant(np.nan, matrix.dtype)
-    result = control_flow_ops.cond(
+    result = tf_cond.cond(
         is_finite, lambda: linalg_ops.matrix_solve(-u + v, u + v),
         lambda: array_ops.fill(array_ops.shape(matrix), nan))
     max_squarings = math_ops.reduce_max(squarings)
     i = const(0.0)
 
     def c(i, _):
-      return control_flow_ops.cond(is_finite,
-                                   lambda: math_ops.less(i, max_squarings),
-                                   lambda: constant_op.constant(False))
+      return tf_cond.cond(is_finite,
+                          lambda: math_ops.less(i, max_squarings),
+                          lambda: constant_op.constant(False))
 
     def b(i, r):
       return i + 1, array_ops.where_v2(
