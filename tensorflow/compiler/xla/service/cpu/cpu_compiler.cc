@@ -335,9 +335,14 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
     HloXlaRuntimePipelineOptions options;
     options.enable_tiling_and_fusion =
         GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
-    options.enable_fusion_outlining =
-        GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining();
     options.cpu_name = llvm::sys::getHostCPUName();
+
+    if (GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining()) {
+      options.enable_fusion_outlining = true;
+      options.sparse_bufferization = false;
+      options.experimental_deallocation = true;
+    }
+
     Status status = CreateHloXlaRuntimePipeline(passes, options);
     if (!status.ok()) {
       LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
@@ -1061,8 +1066,6 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
   HloXlaRuntimePipelineOptions options;
   options.enable_tiling_and_fusion =
       GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
-  options.enable_fusion_outlining =
-      GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining();
   options.sparse_bufferization = false;
   options.outline_with_xla_framework = true;
   options.experimental_deallocation =
@@ -1070,6 +1073,11 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
   // TODO(b/271126383): The flag should depend on the lowering target.
   options.enable_avx2 = true;
   options.cpu_name = target.getTargetCPU();
+  if (GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining()) {
+    options.enable_fusion_outlining = true;
+    options.sparse_bufferization = false;
+    options.experimental_deallocation = true;
+  }
   TF_RETURN_IF_ERROR(CreateHloXlaRuntimePipeline(xla_pm, options));
 
   runtime::CpuPipelineOptions cpu_pipeline_opts;
