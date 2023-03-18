@@ -679,6 +679,8 @@ tsl::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
       static_cast<int>(transa), static_cast<int>(transb), m, n, k, alpha,
       a.opaque(), lda, b.opaque(), ldb, beta, c->opaque(), ldc);
 
+  CHECK(a.opaque() != nullptr);
+
   switch (dtype) {
     case blas::DataType::kHalf: {
 #if CUDA_VERSION < 7050
