@@ -176,7 +176,7 @@ class ArgumentsRef {
       : ArgumentsRef(llvm::ArrayRef<T>(arr)) {}
 
   template <typename T, std::enable_if_t<is_argument<T>>* = nullptr>
-  ArgumentsRef(std::initializer_list<T> list)  // NOLINT
+  ArgumentsRef(const std::initializer_list<T>& list)  // NOLINT
       : ArgumentsRef(llvm::ArrayRef<T>(list)) {}
 
   const Argument& operator[](size_t index) const {
