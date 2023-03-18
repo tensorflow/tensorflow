@@ -397,6 +397,11 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     components = d_api.unpack(value)
     return array_ops.concat(components, axis=axis)
 
+  def _use_merge_call(self):
+    # This is method for V1 StrategyExtended by still used by
+    # tf.__internal__.distribute.strategy_supports_no_merge_call
+    return False
+
 
 def _convert_inputs_to_dtensor(inputs, mesh):
   """Convert any input types to DTensor instance."""
