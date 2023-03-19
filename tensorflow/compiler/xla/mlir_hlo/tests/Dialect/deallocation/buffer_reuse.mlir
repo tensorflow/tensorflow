@@ -356,3 +356,16 @@ func.func @elide_while_ownership() {
 // CHECK-NEXT: dealloc %[[WHILE]]#0
 // CHECK-NEXT: dealloc %[[WHILE]]#1
 // CHECK-NEXT: return
+
+// -----
+
+func.func @empty_region() {
+  %cond = "test.make_condition"() : () -> i1
+  scf.if %cond {
+    "test.dummy"() : () -> ()
+  }
+  return
+}
+
+// Regression test. Just make sure this doesn't crash.
+// CHECK-LABEL: @empty_region
