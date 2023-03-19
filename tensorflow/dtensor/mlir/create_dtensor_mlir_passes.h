@@ -143,6 +143,9 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorSetHloShardingPass(
     std::optional<bool> check_layout_use_xla_spmd = std::optional<bool>(false));
 
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateDTensorLayoutToXlaShardingOpPass();
+
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorReplaceAuxiliaryDTensorLayoutOpPass();
 

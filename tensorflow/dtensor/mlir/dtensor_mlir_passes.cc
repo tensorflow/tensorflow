@@ -286,7 +286,8 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
     pm->addPass(CreateDTensorSetHloShardingPass(
         /*check_layout_use_xla_spmd=*/true));
     pm->addPass(CreateDTensorReplaceAuxiliaryDTensorLayoutOpPass());
-    pm->addPass(CreateDTensorRemoveDTensorLayoutPass());
+    pm->addNestedPass<mlir::func::FuncOp>(
+        CreateDTensorLayoutToXlaShardingOpPass());
     // We lower all remaining Relayout to Identity here to make XLA happy.
     // Under XLA SPMD the RelayoutOp is not expanded by DTensor's SPMD expander.
     // Note that we do not lower much earlier because
