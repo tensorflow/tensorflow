@@ -417,6 +417,24 @@ cc_library(
     ),
 )
 
+tf_cc_test(
+    name = "graph_compiler_test",
+    srcs = ["graph_compiler_test.cc"],
+    deps = [
+        ":graph_compiler_util",
+        ":tf2xla_proto_cc",
+        ":xla_compilation_device",
+        ":xla_compiler",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/core/platform:refcount",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "xla_compiler",
     srcs = [

@@ -124,6 +124,10 @@ ComputeArgAndRetvalShardings(const Graph& graph) {
   return std::make_pair(std::move(arg_shardings), std::move(retval_shardings));
 }
 
+// Due to the wonkiness with Resource Cleanup, changing how resources are
+// cleaned up here need to change how resources are cleaned up in
+// graph_compiler_test.
+// LINT.IfChange(ExecuteGraph)
 Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
                     XlaCompilationDevice* device, FunctionLibraryRuntime* flib,
                     int64_t step_id) {
@@ -150,6 +154,7 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   step_container.reset();
   return status;
 }
+// LINT.ThenChange(//tensorflow/compiler/tf2xla/graph_compiler_test.cc)
 
 // Builds the XLA computation.
 // - `args` is the list of input arguments
