@@ -169,8 +169,6 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
       const std::string& func, std::function<void()> notifier) override;
   const tensorflow::FunctionDef* FindFunctionDef(
       const std::string& name) const override;
-  tensorflow::core::RefCountPtr<tensorflow::FunctionRecord> FindRecord(
-      const std::string& name) const override;
 
   const tensorflow::DeviceNameUtils::ParsedName& HostCPUParsedName()
       const override;

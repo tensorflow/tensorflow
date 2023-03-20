@@ -1326,20 +1326,6 @@ class Context:
     self.ensure_initialized()
     pywrap_tfe.TFE_ContextAddFunction(self._handle, c_func)
 
-  def get_c_function(self, name):
-    """Get a C API TF_Function from the context.
-
-    Args:
-      name: Name of the function to get.
-
-    Returns:
-      A ScopedTFFunction wrapping the C API TF_Function.
-    """
-    self.ensure_initialized()
-    return c_api_util.ScopedTFFunction(
-        pywrap_tfe.TFE_ContextGetFunction(self._handle, name), name
-    )
-
   def add_function_def(self, fdef):
     """Add a function definition to the context.
 
@@ -2749,11 +2735,6 @@ def async_clear_error():
 def add_c_function(c_func):
   """Add a C API TF_Function to the context."""
   context().add_c_function(c_func)
-
-
-def get_c_function(name):
-  """Get a C API TF_Function from the context."""
-  return context().get_c_function(name)
 
 
 def remove_function(name):

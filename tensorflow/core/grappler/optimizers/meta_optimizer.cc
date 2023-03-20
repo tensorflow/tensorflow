@@ -1414,11 +1414,12 @@ Status OptimizeGraph(
     for (const FunctionDef& fdef : out_graph.library().function()) {
       const string& func_name = fdef.signature().name();
       if (flib->Contains(func_name)) {
-        StackTracesMap stack_traces = *flib->GetStackTraces(func_name);
+        StackTracesMap stack_traces = flib->GetStackTraces(func_name);
         TF_RETURN_IF_ERROR(
             flib->ReplaceFunction(func_name, fdef, stack_traces));
       } else {
-        TF_RETURN_IF_ERROR(flib->AddFunctionDef(fdef));
+        TF_RETURN_IF_ERROR(
+            flib->AddFunctionDef(fdef, flib->GetStackTraces(func_name)));
       }
     }
   }

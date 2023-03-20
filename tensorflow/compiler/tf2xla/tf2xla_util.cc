@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/function_body.h"
-#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -257,21 +256,19 @@ Status PropagateConstIntoFuncAttr(
   FunctionDef replace_fdef;
   string new_func_name =
       fld->UniqueFunctionName(absl::StrCat(func_attr.name(), "_const_"));
-  const StackTracesMap* stack_traces =
-      lookup_fld->GetStackTraces(func_attr.name());
   TF_RETURN_IF_ERROR(
       GraphToFunctionDef(*func_graph, new_func_name, &replace_fdef));
-  if (stack_traces != nullptr) {
-    TF_RETURN_IF_ERROR(fld->AddFunctionDef(replace_fdef, *stack_traces));
-  } else {
-    TF_RETURN_IF_ERROR(fld->AddFunctionDef(replace_fdef, {}));
-  }
+  TF_RETURN_IF_ERROR(fld->AddFunctionDef(
+      replace_fdef, lookup_fld->GetStackTraces(func_attr.name())));
 
   VLOG(1) << "replace func " << func_attr.name() << " with " << new_func_name;
   // Change the node to use rewritten function.
   func_attr.set_name(new_func_name);
   n->ClearAttr(attr_name);
   n->AddAttr(attr_name, func_attr);
+
+  TF_RETURN_IF_ERROR(fld->AddFunctionDef(
+      replace_fdef, lookup_fld->GetStackTraces(func_attr.name())));
 
   // Copy associated functions.
   TF_RETURN_IF_ERROR(CopyAssociatedFunctions(func_graph, lookup_fld, fld));

@@ -16,12 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
 #define TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
 
-#include <memory>
 #include <vector>
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
-#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
@@ -47,7 +45,6 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #endif  // IS_MOBILE_PLATFORM
@@ -381,35 +378,6 @@ using StackTracesMap =
     std::unordered_map<std::string,
                        std::shared_ptr<tensorflow::AbstractStackTrace>>;
 
-// Holds Function information that can be shared in multiple places.
-// FunctionRecord must be explicitly finalized before being saved in
-// FunctionLibraryDefinition or any other place that expects immutability.
-class FunctionRecord : public core::RefCounted {
- public:
-  FunctionRecord(const FunctionDef& fdef, const StackTracesMap& stack_traces,
-                 bool finalized);
-
-  // Mark FunctionRecord as finalized (disable mutation).
-  void finalize();
-
-  // Get a mutable reference to the FunctionDef owned by the record.
-  // Will fail if record is finalized.
-  StatusOr<FunctionDef*> mutable_fdef();
-
-  // Get an immutable access to FunctionRecord properties.
-  const FunctionDef& fdef() const;
-  const StackTracesMap& stack_traces() const;
-  const OpRegistrationData& op_registration_data() const;
-  const bool finalized() const;
-
- private:
-  bool finalized_ = false;
-
-  FunctionDef fdef_;
-  const StackTracesMap stack_traces_;
-  const OpRegistrationData op_registration_data_;
-};
-
 // Helper to maintain a map between function names in a given
 // FunctionDefLibrary and function definitions.
 //
@@ -448,11 +416,6 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // NB: This function returns a borrowed pointer, which can be invalidated by a
   // subsequent call to `ReplaceFunction()` with the given name.
   const FunctionDef* Find(const std::string& func) const TF_LOCKS_EXCLUDED(mu_);
-
-  // Returns nullptr if "func" is not defined in "lib_def". Otherwise,
-  // returns a strong reference pointer to the FunctionRecord in the library.
-  core::RefCountPtr<FunctionRecord> FindRecord(const std::string& func) const
-      TF_LOCKS_EXCLUDED(mu_);
 
   // Adds function definition 'fdef' to this function library.
   // Returns status 'ok' on success, or error otherwise. This is a no-op if
@@ -549,7 +512,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   size_t num_functions() const {
     tf_shared_lock l(mu_);
-    return records_.size();
+    return function_defs_.size();
   }
 
   // Returns all the function names in the FunctionLibraryDefinition.
@@ -574,19 +537,20 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // name `func` already exists in this function library, and has the same
   // implementation as in `other`. If the implementations conflict, an invalid
   // argument error is returned.
-  Status CopyFunctionDefFrom(const std::string& name,
+  Status CopyFunctionDefFrom(const std::string& func,
                              const FunctionLibraryDefinition& other)
       TF_LOCKS_EXCLUDED(mu_);
 
   // Returns graph with debug stack traces for the given function, or `nullptr`
   // if none found.
-  const StackTracesMap* GetStackTraces(const std::string& func_name) const {
+  const StackTracesMap& GetStackTraces(const std::string& func_name) const {
     tf_shared_lock l(mu_);
-    core::RefCountPtr<FunctionRecord> entry = FindHelper(func_name);
-    if (entry.get() != nullptr) {
-      return &entry->stack_traces();
+    std::shared_ptr<FunctionDefAndOpRegistration> entry = FindHelper(func_name);
+    if (entry) {
+      return entry->stack_traces;
     }
-    return nullptr;
+    static const auto* empty_map = new StackTracesMap;
+    return *empty_map;
   }
 
   // Adds or updates an OptimizedFunctionGraph. Key is `function_name`.
@@ -609,13 +573,24 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   }
 
  private:
-  core::RefCountPtr<FunctionRecord> FindHelper(const string& func) const
-      TF_SHARED_LOCKS_REQUIRED(mu_);
+  // Shape inference for functions is handled separately by ShapeRefiner.
+
+  struct FunctionDefAndOpRegistration {
+    explicit FunctionDefAndOpRegistration(
+        const FunctionDef& fdef_in, const StackTracesMap& stack_traces = {});
+
+    const FunctionDef fdef;
+    const OpRegistrationData op_registration_data;
+    const StackTracesMap stack_traces;
+  };
+
+  std::shared_ptr<FunctionDefAndOpRegistration> FindHelper(
+      const string& func) const TF_SHARED_LOCKS_REQUIRED(mu_);
   std::string FindGradientHelper(const std::string& func) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
-  Status AddHelper(FunctionRecord* registration, bool* added)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status AddHelper(std::shared_ptr<FunctionDefAndOpRegistration> registration,
+                   bool* added) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Same as AddFunctionDef/AddGradientDef except these methods set
   // `added` to true if the `fdef`/`grad` were actually added to this.
@@ -649,7 +624,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   mutable mutex mu_;
   const OpRegistryInterface* default_registry_;
-  gtl::FlatMap<string, FunctionRecord*> records_ TF_GUARDED_BY(mu_);
+  gtl::FlatMap<string, std::shared_ptr<FunctionDefAndOpRegistration>>
+      function_defs_ TF_GUARDED_BY(mu_);
   gtl::FlatMap<string, string> func_grad_ TF_GUARDED_BY(mu_);
   // Maps from function name to optimized function graph.
   gtl::FlatMap<string, OptimizedFunctionGraph> optimized_function_graph_map_

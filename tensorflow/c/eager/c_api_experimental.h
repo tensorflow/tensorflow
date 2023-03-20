@@ -612,12 +612,6 @@ TF_CAPI_EXPORT extern void TFE_ContextGetFunctionDef(TFE_Context* ctx,
                                                      TF_Buffer* buf,
                                                      TF_Status* status);
 
-// Extracts a TF_Function from the context.
-// Must call TF_DeleteFunction on the returned value.
-TF_CAPI_EXPORT extern TF_Function* TFE_ContextGetFunction(TFE_Context* ctx,
-                                                          const char* name,
-                                                          TF_Status* status);
-
 // Allocate and return a new Tensor on the host.
 //
 // The caller must set the Tensor values by writing them to the pointer returned

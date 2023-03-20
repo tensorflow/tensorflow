@@ -210,8 +210,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                             const tensorflow::OpRegistrationData** op_data);
 
   const FunctionDef* FindFunctionDef(const string& name) const override;
-  core::RefCountPtr<FunctionRecord> FindRecord(
-      const string& name) const override;
 
   Device* HostCPU() const { return host_cpu_device_; }
   Device* CanonicalDevice(Device* d) const {

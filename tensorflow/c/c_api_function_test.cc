@@ -1270,11 +1270,11 @@ TEST_F(CApiFunctionTest, GraphToFunctionDefWithPlaceholderAttr) {
   ASSERT_NE(func_, nullptr);
 
   // Verify that FunctionDef has 2 attributes, "v1" and "v2".
-  ASSERT_EQ(func_->record->fdef().signature().attr().size(), 2);
-  EXPECT_EQ(func_->record->fdef().signature().attr(0).name(), "v1");
-  EXPECT_EQ(func_->record->fdef().signature().attr(0).type(), "int");
-  EXPECT_EQ(func_->record->fdef().signature().attr(1).name(), "v2");
-  EXPECT_EQ(func_->record->fdef().signature().attr(1).type(), "int");
+  ASSERT_EQ(func_->fdef.signature().attr().size(), 2);
+  EXPECT_EQ(func_->fdef.signature().attr(0).name(), "v1");
+  EXPECT_EQ(func_->fdef.signature().attr(0).type(), "int");
+  EXPECT_EQ(func_->fdef.signature().attr(1).name(), "v2");
+  EXPECT_EQ(func_->fdef.signature().attr(1).type(), "int");
 }
 
 void NodeWithAttrHelper(TF_Graph* graph, TF_Status* s, const char* name,
@@ -1308,9 +1308,9 @@ TEST_F(CApiFunctionTest, GraphToFunctionDefWithArgAttr) {
   ASSERT_NE(func_, nullptr);
 
   // Verify that FunctionDef ArgDef has attributes.
-  ASSERT_EQ(func_->record->fdef().arg_attr_size(), 1);
-  auto arg_attrs = func_->record->fdef().arg_attr().find(0);
-  ASSERT_NE(arg_attrs, func_->record->fdef().arg_attr().end());
+  ASSERT_EQ(func_->fdef.arg_attr_size(), 1);
+  auto arg_attrs = func_->fdef.arg_attr().find(0);
+  ASSERT_NE(arg_attrs, func_->fdef.arg_attr().end());
   auto iter = arg_attrs->second.attr().find("_test_attr");
   ASSERT_NE(iter, arg_attrs->second.attr().end());
   EXPECT_EQ(iter->second.s(), "value");

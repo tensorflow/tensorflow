@@ -18,6 +18,7 @@ from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -124,10 +125,12 @@ class EagerDefinedFunction(object):
           fn, compat.as_str(attr_name), serialized
       )
 
+    # TODO(fmuham): pull from eager context instead.
+    self._c_func = c_api_util.ScopedTFFunction(fn, name)
+
     self._name = compat.as_bytes(name)
     self._bound_context = context.context()
     self._bound_context.add_c_function(fn)
-    pywrap_tf_session.TF_DeleteFunction(fn)
 
     # NOTE(feyu): Do not cache signature and definition at initialization to
     # save memory usage of concrete functions never called through Python. We
@@ -145,10 +148,6 @@ class EagerDefinedFunction(object):
     self._grad_func = None
     self.graph = graph
     self._stateful_ops = tuple(op for op in operations if op._is_stateful)  # pylint: disable=protected-access
-
-  @property
-  def _c_func(self):
-    return context.get_c_function(self.name)
 
   @property
   def signature(self):

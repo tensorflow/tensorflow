@@ -721,11 +721,6 @@ const FunctionDef* EagerContext::FindFunctionDef(const string& name) const {
   return func_lib_def_.Find(name);
 }
 
-core::RefCountPtr<FunctionRecord> EagerContext::FindRecord(
-    const string& name) const {
-  return func_lib_def_.FindRecord(name);
-}
-
 std::unique_ptr<RunMetadata> EagerContext::ExportRunMetadata() {
   mutex_lock ml(metadata_mu_);
   auto result = std::make_unique<RunMetadata>();
