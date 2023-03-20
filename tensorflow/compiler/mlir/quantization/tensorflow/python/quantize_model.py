@@ -33,6 +33,7 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
@@ -192,7 +193,9 @@ def _convert_values_to_tf_tensors(
     if isinstance(tensorlike_value, core.Tensor):
       tensor_value = tensorlike_value
     else:
-      tensor_value = ops.convert_to_tensor_v2_with_dispatch(tensorlike_value)
+      tensor_value = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          tensorlike_value
+      )
 
     tensor_mapping[name] = tensor_value
 
