@@ -87,6 +87,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras/distribute:distribute_coordinator_utils",
         "//tensorflow/python/keras/engine:keras_tensor",
         "//tensorflow/python/keras/utils:control_flow_util",
@@ -219,6 +220,7 @@ py_library(
     deps = [
         ":backend",
         "//tensorflow/python:cond",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/util:dispatch",
     ],
@@ -249,6 +251,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras/distribute",
         "//tensorflow/python/keras/engine:base_layer",
         "//tensorflow/python/keras/engine:base_layer_utils",

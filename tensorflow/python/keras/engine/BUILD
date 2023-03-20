@@ -55,6 +55,7 @@ py_library(
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras:activations",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:callbacks",
@@ -126,6 +127,7 @@ py_library(
         ":input_spec",
         ":node",
         "//third_party/py/numpy",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
@@ -184,6 +186,7 @@ py_library(
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras/utils:dataset_creator",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:tf_utils",

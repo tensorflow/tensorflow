@@ -43,6 +43,7 @@ from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -941,7 +942,7 @@ def _to_tensor(x, dtype):
   Returns:
       A tensor.
   """
-  return ops.convert_to_tensor_v2_with_dispatch(x, dtype=dtype)
+  return tensor_conversion.convert_to_tensor_v2_with_dispatch(x, dtype=dtype)
 
 
 @keras_export('keras.backend.is_sparse')
@@ -4856,8 +4857,8 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   [0. 0. 0.]
 
   """
-  target = ops.convert_to_tensor_v2_with_dispatch(target)
-  output = ops.convert_to_tensor_v2_with_dispatch(output)
+  target = tensor_conversion.convert_to_tensor_v2_with_dispatch(target)
+  output = tensor_conversion.convert_to_tensor_v2_with_dispatch(output)
   target.shape.assert_is_compatible_with(output.shape)
 
   # Use logits whenever they are available. `softmax` and `sigmoid`
@@ -4917,8 +4918,8 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   Raises:
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
-  target = ops.convert_to_tensor_v2_with_dispatch(target)
-  output = ops.convert_to_tensor_v2_with_dispatch(output)
+  target = tensor_conversion.convert_to_tensor_v2_with_dispatch(target)
+  output = tensor_conversion.convert_to_tensor_v2_with_dispatch(output)
 
   # Use logits whenever they are available. `softmax` and `sigmoid`
   # activations cache logits on the `output` Tensor.
@@ -5004,8 +5005,8 @@ def binary_crossentropy(target, output, from_logits=False):
   Returns:
       A tensor.
   """
-  target = ops.convert_to_tensor_v2_with_dispatch(target)
-  output = ops.convert_to_tensor_v2_with_dispatch(output)
+  target = tensor_conversion.convert_to_tensor_v2_with_dispatch(target)
+  output = tensor_conversion.convert_to_tensor_v2_with_dispatch(output)
 
   # Use logits whenever they are available. `softmax` and `sigmoid`
   # activations cache logits on the `output` Tensor.
