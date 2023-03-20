@@ -19,7 +19,7 @@ import threading
 
 
 class PreemptionSaveContext(threading.local):
-  """A context for monitoring saving checkpoint pre-preemption."""
+  """A context for saving checkpoint upon preemption."""
 
   def __init__(self):
     super(PreemptionSaveContext, self).__init__()

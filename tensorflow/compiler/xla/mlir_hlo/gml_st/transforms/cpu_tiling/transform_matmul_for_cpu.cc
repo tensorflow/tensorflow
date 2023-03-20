@@ -36,12 +36,6 @@ namespace {
 #define GEN_PASS_DEF_TRANSFORMMATMULFORCPUPASS
 #include "gml_st/transforms/passes.h.inc"
 
-FailureOr<TilingResult> tileMatmul(PatternRewriter &rewriter, Operation *op,
-                                   ArrayRef<int64_t> tileSizes) {
-  return tileUsingSCFForallOp(getSCFTilingOptions(tileSizes), rewriter,
-                              cast<TilingInterface>(op));
-}
-
 /// Pattern to tile `linalg.matmul`, fuse `linalg.fill` into generated
 /// `gml_st.parallel`, and peel the generated loops.
 struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
@@ -75,26 +69,15 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     if (isa<linalg::MatmulOp>(tilingRoot)) parallelDimsTileSizes.push_back(0);
 
     // First level tiling: parallel dimensions.
-    auto tilingParallelDimsResult =
-        tileMatmul(rewriter, tilingRoot, parallelDimsTileSizes);
+    auto tilingParallelDimsResult = tileUsingSCFForallOpAndFuseGreedily(
+        rewriter, tilingRoot, getSCFTilingOptions(parallelDimsTileSizes),
+        [&](Operation *op) { return fusionCluster.contains(op); });
     if (failed(tilingParallelDimsResult)) return failure();
-
-    // Update the results if tiling occurred.
-    if (tilingParallelDimsResult->loop != nullptr) {
-      rewriter.replaceOp(tilingRoot,
-                         tilingParallelDimsResult->loop->getResults());
-      tilingRoot = tilingParallelDimsResult->tiledOps.front();
-
-      // Fuse ops into the loop.
-      fuseGreedily(rewriter, *tilingRoot->getBlock(),
-                   [&](Operation *op) { return fusionCluster.contains(op); });
-      (void)fuseFillOpsIntoForallOp(rewriter, tilingParallelDimsResult->loop);
-    }
 
     // Second level tiling: reduction dimension for matmuls.
     SmallVector<scf::SCFTilingResult> tilingReductionDimsResults;
-    for (auto op :
-         llvm::to_vector(tilingRoot->getBlock()->getOps<linalg::MatmulOp>())) {
+    for (auto op : llvm::to_vector(tilingParallelDimsResult->loop.getBody()
+                                       ->getOps<linalg::MatmulOp>())) {
       auto result = tileMatmulReductionDims(rewriter, op, tileSize);
       if (failed(result)) return failure();
       tilingReductionDimsResults.push_back(*result);

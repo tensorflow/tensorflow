@@ -721,7 +721,7 @@ static xla::SendCallback CSendCallbackToCpp(
         if (success) {
           return tsl::OkStatus();
         }
-        return xla::Status(tsl::error::UNKNOWN,
+        return xla::Status(absl::StatusCode::kUnknown,
                            "PJRT_SendCallback returned false (error).");
       }};
 }
@@ -986,7 +986,13 @@ PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
       "PJRT_Buffer_OnDeviceTrimmedShape_Args",
       PJRT_Buffer_OnDeviceTrimmedShape_Args_STRUCT_SIZE, args->struct_size));
 
-  const xla::Shape& shape = args->buffer->buffer->on_device_shape();
+  xla::Shape shape;
+  if (args->is_logical_on_device_shape) {
+    PJRT_ASSIGN_OR_RETURN(shape,
+                          args->buffer->buffer->logical_on_device_shape());
+  } else {
+    shape = args->buffer->buffer->on_device_shape();
+  }
   args->element_type = shape.element_type();
   ApiConverter::CreateVector(shape.dimensions(), &args->dimensions);
   ApiConverter::CreateVector(shape.dynamic_dimensions(),

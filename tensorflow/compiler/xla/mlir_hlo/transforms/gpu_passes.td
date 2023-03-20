@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_GPU_PASSES
-#define TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_GPU_PASSES
+#ifndef MLIR_HLO_TRANSFORMS_GPU_PASSES
+#define MLIR_HLO_TRANSFORMS_GPU_PASSES
 
 include "mlir/Pass/PassBase.td"
 
@@ -30,4 +30,4 @@ def GpuKernelToROCDLPass : Pass<"gpu-kernel-to-rocdl", "gpu::GPUModuleOp"> {
   let constructor = "createGpuKernelToRocdlPass()";
 }
 
-#endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_GPU_PASSES
+#endif // MLIR_HLO_TRANSFORMS_GPU_PASSES

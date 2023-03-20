@@ -41,9 +41,9 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_case
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import gen_math_ops
@@ -381,7 +381,7 @@ class VariablesToConstantsTest(test.TestCase):
         tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool)
     ])
     def model(x, b):
-      return control_flow_ops.cond(
+      return cond.cond(
           b, true_fn=lambda: true_fn(x), false_fn=lambda: false_fn(x))
 
     root, output_func = self._freezeModel(model)
@@ -746,7 +746,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
             tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool)
         ])
         def model(x, b):
-          return control_flow_ops.cond(
+          return cond.cond(
               b, true_fn=lambda: true_fn(x), false_fn=lambda: false_fn(x))
 
         root, output_func = self._freezeModel(model)

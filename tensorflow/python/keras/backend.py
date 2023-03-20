@@ -43,6 +43,7 @@ from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -56,6 +57,7 @@ from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import ctc_ops as ctc
 from tensorflow.python.ops import functional_ops
@@ -940,7 +942,7 @@ def _to_tensor(x, dtype):
   Returns:
       A tensor.
   """
-  return ops.convert_to_tensor_v2_with_dispatch(x, dtype=dtype)
+  return tensor_conversion.convert_to_tensor_v2_with_dispatch(x, dtype=dtype)
 
 
 @keras_export('keras.backend.is_sparse')
@@ -4584,7 +4586,7 @@ def switch(condition, then_expression, else_expression):
         return else_expression
     else:
       else_expression_fn = else_expression
-    x = control_flow_ops.cond(condition, then_expression_fn, else_expression_fn)
+    x = cond.cond(condition, then_expression_fn, else_expression_fn)
   else:
     # tf.where needs its condition tensor
     # to be the same shape as its two
@@ -4855,8 +4857,8 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   [0. 0. 0.]
 
   """
-  target = ops.convert_to_tensor_v2_with_dispatch(target)
-  output = ops.convert_to_tensor_v2_with_dispatch(output)
+  target = tensor_conversion.convert_to_tensor_v2_with_dispatch(target)
+  output = tensor_conversion.convert_to_tensor_v2_with_dispatch(output)
   target.shape.assert_is_compatible_with(output.shape)
 
   # Use logits whenever they are available. `softmax` and `sigmoid`
@@ -4916,8 +4918,8 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   Raises:
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
-  target = ops.convert_to_tensor_v2_with_dispatch(target)
-  output = ops.convert_to_tensor_v2_with_dispatch(output)
+  target = tensor_conversion.convert_to_tensor_v2_with_dispatch(target)
+  output = tensor_conversion.convert_to_tensor_v2_with_dispatch(output)
 
   # Use logits whenever they are available. `softmax` and `sigmoid`
   # activations cache logits on the `output` Tensor.
@@ -5003,8 +5005,8 @@ def binary_crossentropy(target, output, from_logits=False):
   Returns:
       A tensor.
   """
-  target = ops.convert_to_tensor_v2_with_dispatch(target)
-  output = ops.convert_to_tensor_v2_with_dispatch(output)
+  target = tensor_conversion.convert_to_tensor_v2_with_dispatch(target)
+  output = tensor_conversion.convert_to_tensor_v2_with_dispatch(output)
 
   # Use logits whenever they are available. `softmax` and `sigmoid`
   # activations cache logits on the `output` Tensor.

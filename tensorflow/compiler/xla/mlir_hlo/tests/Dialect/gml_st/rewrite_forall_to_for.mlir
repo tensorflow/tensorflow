@@ -1,9 +1,11 @@
-// RUN: mlir-hlo-opt %s --gml-st-rewrite-forall-ops | FileCheck %s
+// RUN: mlir-hlo-opt %s --gml-st-rewrite-forall-ops --split-input-file \
+// RUN: | FileCheck %s
 
 func.func @add(%in: tensor<3x3xi32>, %out: tensor<3x3xi32>) -> tensor<3x3xi32> {
   %c3 = arith.constant 3 : index
 
-  %result = scf.forall (%i, %j) in (%c3, %c3) shared_outs(%o = %out) -> tensor<3x3xi32> {
+  %result = scf.forall (%i, %j) in (%c3, %c3)
+      shared_outs(%o = %out) -> tensor<3x3xi32> {
     %addend = tensor.extract_slice %in[%i, %j][1, 1][1, 1]
         : tensor<3x3xi32> to tensor<i32>
     %augend = tensor.extract_slice %out[%i, %j][1, 1][1, 1]
@@ -13,7 +15,7 @@ func.func @add(%in: tensor<3x3xi32>, %out: tensor<3x3xi32>) -> tensor<3x3xi32> {
       tensor.parallel_insert_slice %sum into %o[%i, %j][1, 1][1, 1]
         : tensor<i32> into tensor<3x3xi32>
     }
-  }
+  } {some_attr = "attr_value"}
 
   return %result : tensor<3x3xi32>
 }
@@ -26,9 +28,9 @@ func.func @add(%in: tensor<3x3xi32>, %out: tensor<3x3xi32>) -> tensor<3x3xi32> {
 // CHECK-NEXT:     mhlo.add
 // CHECK-NEXT:     %[[INSERTED:.*]] = tensor.insert_slice
 // CHECK-NEXT:     scf.yield %[[INSERTED]]
-// CHECK-NEXT:   }
+// CHECK-NEXT:   } {some_attr = "attr_value"}
 // CHECK-NEXT:   scf.yield %[[INNER]]
-// CHECK-NEXT: }
+// CHECK-NEXT: } {some_attr = "attr_value"}
 // CHECK-NEXT: return %[[RESULT]]
 
 // -----

@@ -21,7 +21,6 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -308,31 +307,33 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       *res.mutable_run_time() = tsl::proto_utils::ToDurationProto(*duration);
       VLOG(1) << "Running kernel took: " << *duration;
 
-      TF_ASSIGN_OR_RETURN(
-          se::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
-          rz_allocator.CheckRedzones());
-
-      if (!rz_check_status.ok()) {
-        res.mutable_failure()->set_kind(AutotuneResult::REDZONE_MODIFIED);
-        *res.mutable_failure()->mutable_msg() =
-            rz_check_status.RedzoneFailureMsg();
-        CHECK(!autotune_cfg.should_crash_on_check_failure);
-        continue;
-      }
-
-      if (!reference_tiling && autotune_cfg.should_check_correctness()) {
-        stream->ThenMemcpy(&reference_buffer, output_buffer,
-                           output_buffer.size());
-        reference_tiling = res.triton();
-      } else {
+      if (autotune_cfg.should_check_correctness()) {
         TF_ASSIGN_OR_RETURN(
-            bool outputs_match,
-            comparator.CompareEqual(stream, output_buffer, reference_buffer));
-        if (!outputs_match) {
-          LOG(ERROR) << "Results mismatch between different tilings. "
-                     << "This is likely a bug/unexpected loss of precision.";
+            se::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
+            rz_allocator.CheckRedzones());
+
+        if (!rz_check_status.ok()) {
+          res.mutable_failure()->set_kind(AutotuneResult::REDZONE_MODIFIED);
+          *res.mutable_failure()->mutable_msg() =
+              rz_check_status.RedzoneFailureMsg();
           CHECK(!autotune_cfg.should_crash_on_check_failure);
-          res.mutable_failure()->set_kind(AutotuneResult::WRONG_RESULT);
+          continue;
+        }
+
+        if (!reference_tiling) {
+          stream->ThenMemcpy(&reference_buffer, output_buffer,
+                             output_buffer.size());
+          reference_tiling = res.triton();
+        } else {
+          TF_ASSIGN_OR_RETURN(
+              bool outputs_match,
+              comparator.CompareEqual(stream, output_buffer, reference_buffer));
+          if (!outputs_match) {
+            LOG(ERROR) << "Results mismatch between different tilings. "
+                       << "This is likely a bug/unexpected loss of precision.";
+            CHECK(!autotune_cfg.should_crash_on_check_failure);
+            res.mutable_failure()->set_kind(AutotuneResult::WRONG_RESULT);
+          }
         }
       }
       results.push_back(res);
@@ -380,13 +381,13 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     // GPU caches should be in some comparable states during measurements.
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
     if (!timer->Init() || !timer->Start(se::gpu::AsGpuStream(stream))) {
-      return Status(tsl::error::INTERNAL, "Failed to start timer");
+      return Status(absl::StatusCode::kInternal, "Failed to start timer");
     }
     TF_RETURN_IF_ERROR(ExecuteKernelOnStream(*kernel, device_buffers,
                                              launch_dimensions, stream));
 
     if (!timer->Stop(se::gpu::AsGpuStream(stream))) {
-      return Status(tsl::error::INTERNAL, "Failed to stop timer");
+      return Status(absl::StatusCode::kInternal, "Failed to stop timer");
     }
     return std::make_optional(absl::Nanoseconds(timer->Nanoseconds()));
   }

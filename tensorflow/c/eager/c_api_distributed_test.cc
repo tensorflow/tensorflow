@@ -434,6 +434,7 @@ class FunctionErrorInjectionPass : public tensorflow::FunctionOptimizationPass {
   tensorflow::Status Run(const std::string& function_name,
                          const tensorflow::DeviceSet& device_set,
                          const tensorflow::ConfigProto& config_proto,
+                         absl::string_view xla_compile_device_type,
                          std::unique_ptr<tensorflow::Graph>* graph,
                          tensorflow::FunctionLibraryDefinition* flib_def,
                          std::vector<std::string>* control_ret_node_names,

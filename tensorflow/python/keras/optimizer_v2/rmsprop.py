@@ -18,6 +18,7 @@
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
@@ -164,11 +165,14 @@ class RMSprop(optimizer_v2.OptimizerV2):
     apply_state[(var_device, var_dtype)].update(
         dict(
             neg_lr_t=-apply_state[(var_device, var_dtype)]["lr_t"],
-            epsilon=ops.convert_to_tensor_v2_with_dispatch(
-                self.epsilon, var_dtype),
+            epsilon=tensor_conversion.convert_to_tensor_v2_with_dispatch(
+                self.epsilon, var_dtype
+            ),
             rho=rho,
             momentum=array_ops.identity(self._get_hyper("momentum", var_dtype)),
-            one_minus_rho=1. - rho))
+            one_minus_rho=1.0 - rho,
+        )
+    )
 
   def _resource_apply_dense(self, grad, var, apply_state=None):
     var_device, var_dtype = var.device, var.dtype.base_dtype

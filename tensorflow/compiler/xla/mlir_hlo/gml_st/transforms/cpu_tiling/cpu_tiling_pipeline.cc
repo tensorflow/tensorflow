@@ -26,14 +26,18 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 
-GmlStCPUTilingOptions getDefaultCPUPipelineOptions(StringRef cpuName) {
+GmlStCPUTilingOptions getDefaultCPUPipelineOptions(StringRef cpuName,
+                                                   int64_t statsDetailLevel) {
   GmlStCPUTilingOptions opts;
   opts.vectorSize = 8;
   opts.reduction1DTileSize = 32;
   opts.reduction2DTileSizes = {4, 4};
   opts.matmulTileSizes = {};
   opts.lowerToMmt4d = false;
+  opts.enableFusionClusters = false;
+  opts.enableFusionClusterOutlining = false;
   opts.cpuName = cpuName;
+  opts.statsDetailLevel = statsDetailLevel;
   return opts;
 }
 
@@ -111,6 +115,8 @@ void addCPUTilingPipeline(OpPassManager& pm,
                           const GmlStCPUTilingOptions& options) {
   using func::FuncOp;
 
+  pm.addNestedPass<FuncOp>(createCollectStatsPass(options.statsDetailLevel));
+
   if (options.enableFusionClusters) {
     pm.addNestedPass<FuncOp>(createFusionPlanningForCpuPass());
   }
@@ -119,6 +125,7 @@ void addCPUTilingPipeline(OpPassManager& pm,
   if (options.enableFusionClusterOutlining) {
     pm.addPass(createFusionOutliningPass());
     pm.addPass(func::createDuplicateFunctionEliminationPass());
+    pm.addPass(createCSEPass());
   }
 
   if (options.lowerToMmt4d) {
@@ -164,8 +171,10 @@ void addCPUTilingPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(createScalarizationPass());
 }
 
-void addDefaultCPUTilingPipeline(OpPassManager& pm, StringRef cpuName) {
-  addCPUTilingPipeline(pm, getDefaultCPUPipelineOptions(cpuName));
+void addDefaultCPUTilingPipeline(OpPassManager& pm, StringRef cpuName,
+                                 int64_t statsDetailLevel) {
+  addCPUTilingPipeline(pm,
+                       getDefaultCPUPipelineOptions(cpuName, statsDetailLevel));
 }
 
 }  // namespace gml_st

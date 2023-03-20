@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
+#include "tensorflow/core/data/service/snapshot/utils.h"
 #include "tensorflow/core/data/service/split_provider.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/tsl/lib/io/compression.h"
@@ -365,6 +366,8 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
 
 Status SnapshotManager::WorkerHeartbeat(const WorkerHeartbeatRequest& request,
                                         WorkerHeartbeatResponse& response) {
+  dead_workers_.erase(request.worker_address());
+
   if (mode_ == Mode::kDone || mode_ == Mode::kError) {
     // When the snapshot manager is done or in an error state, it returns an
     // empty response to inform the workers to cancel the ongoing tasks.
@@ -395,11 +398,10 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
                                          GetSnapshotSplitResponse& response) {
   auto it = assignments_.find(request.worker_address());
   if (it == assignments_.end()) {
-    if (!stream_available(request.stream_index())) {
-      return errors::FailedPrecondition(
-          "worker ", request.worker_address(),
-          " has no known assignment and its desired stream, ",
-          request.stream_index(), ", is unavailable");
+    if (!stream_available(request.stream_index()) ||
+        dead_workers_.contains(request.worker_address())) {
+      return StreamAssignmentChanged(request.worker_address(),
+                                     request.stream_index());
     }
     ReassignPreviouslyAssignedStream(request.stream_index(),
                                      request.worker_address());
@@ -457,12 +459,13 @@ Status SnapshotManager::GetSnapshotStreams(
   return OkStatus();
 }
 
-void SnapshotManager::HandleMissingWorker(absl::string_view worker_address) {
+void SnapshotManager::HandleMissingWorker(const std::string& worker_address) {
   if (auto it = assignments_.find(worker_address); it != assignments_.end()) {
     LOG(INFO) << "deleting assignment for stream " << it->second
               << " due to lost worker " << worker_address;
     orphans_.insert(it->second);
     assignments_.erase(it);
+    dead_workers_.insert(worker_address);
   }
 }
 

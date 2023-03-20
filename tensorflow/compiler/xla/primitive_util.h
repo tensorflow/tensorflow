@@ -169,6 +169,10 @@ bool IsUnsignedIntegralType(PrimitiveType type);
 
 bool IsIntegralType(PrimitiveType type);
 
+inline bool IsF8Type(PrimitiveType type) {
+  return type == F8E5M2 || type == F8E4M3FN;
+}
+
 // Returns true if values of the given primitive type are held in array shapes.
 inline constexpr bool IsArrayType(PrimitiveType primitive_type) {
   return primitive_type != PRIMITIVE_TYPE_INVALID && primitive_type != TUPLE &&

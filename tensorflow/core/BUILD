@@ -1648,6 +1648,7 @@ tf_cuda_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "//third_party/eigen3",
+        "//tensorflow/core/activity_watcher",
         "//tensorflow/core/example:feature_util",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/framework:allocator_registry_impl",

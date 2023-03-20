@@ -54,18 +54,15 @@ namespace data {
 
 StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 CreateDataServiceWorkerClient(const std::string& dispatcher_protocol,
-                              const DataTransferServerInfo& info,
-                              bool check_compatibility) {
+                              const DataTransferServerInfo& info) {
   auto client = std::make_unique<DataServiceWorkerClient>(
       info.address(), dispatcher_protocol, info.protocol());
   TF_RETURN_IF_ERROR(client->Initialize());
-  if (check_compatibility) {
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        client->CheckCompatibility(info.compatibility_info()),
-        "for data transfer protocol '", client->GetDataTransferProtocol(),
-        "', the compatibility check between the trainer worker and the ",
-        "tf.data service worker at ", info.address(), "failed");
-  }
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      client->CheckCompatibility(info.compatibility_info()),
+      "for data transfer protocol '", client->GetDataTransferProtocol(),
+      "', the compatibility check between the trainer worker and the ",
+      "tf.data service worker at ", info.address(), "failed");
   return client;
 }
 

@@ -372,6 +372,7 @@ pytype_strict_binary(
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",

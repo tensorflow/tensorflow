@@ -615,9 +615,9 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_case",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -758,8 +758,8 @@ cuda_py_test(
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:math_ops",
@@ -944,6 +944,7 @@ cuda_py_test(
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:dtypes",
@@ -1213,9 +1214,6 @@ tf_py_test(
 py_strict_test(
     name = "io_test",
     srcs = ["io_test.py"],
-    tags = [
-        "notap",  # b/272281090
-    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",

@@ -114,6 +114,15 @@ func.func @test_depthwise_conv2d_bias_qi8(%arg0: tensor<1x32x32x8x!quant.uniform
 
 // -----
 
+// CHECK-LABEL: @test_conv2d_grouped_convolution
+func.func @test_conv2d_grouped_convolution(%input: tensor<1x4x1x128xf32>, %weights: tensor<128x1x1x64xf32>, %bias: tensor<128xf32>) -> tensor<1x4x1x128xf32> {
+  // expected-error @below {{Grouped convolution is not supported at this time}}
+  %0 = "tfl.conv_2d"(%input, %weights, %bias) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x4x1x128xf32>, tensor<128x1x1x64xf32>, tensor<128xf32>)  -> (tensor<1x4x1x128xf32>)
+  return %0 : tensor<1x4x1x128xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_depthwise_conv2d_bias_inferred
 func.func @test_depthwise_conv2d_bias_inferred(%arg0: tensor<?x32x32x8xf32>, %arg1 : tensor<1x1x1x16xf32>, %arg2 : tensor<16xf32>) -> tensor<?x?x?x?xf32> {
   // CHECK: tosa.depthwise_conv2d

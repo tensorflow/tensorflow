@@ -389,10 +389,14 @@ PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target,
   if (sharding() == target) {
     return *this;
   }
-  // Do not reshard constants from tile maximal sharding to manual sharding.
-  if (hlo()->opcode() == HloOpcode::kConstant && sharding().IsTileMaximal() &&
+  // Handling for constant resharding from non-manual sharding to manual.
+  // (This could happen for Tuple, While, etc. since manual sharding is not
+  // propagated to constant.)
+  if (hlo()->opcode() == HloOpcode::kConstant && !sharding().IsManual() &&
       target.IsManual()) {
-    return *this;
+    PartitionedHlo pconstant = this->Reshard(HloSharding::Replicate());
+    pconstant.hlo()->set_sharding(target);
+    return pconstant;
   }
   auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].reshard_cache;
   // Replace existing reshard cache for target if we are sharding with new

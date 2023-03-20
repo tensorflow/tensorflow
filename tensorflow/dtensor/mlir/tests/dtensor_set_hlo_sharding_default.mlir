@@ -7,7 +7,6 @@ func.func @check_layouts_are_converted_to_xla_sharding_attributes(
   %arg0: tensor<8x8xi32> {tf._layout = "sharding_specs:unsharded,unsharded, mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0"}) -> tensor<8x8xi32> {
   // CHECK:      "tf.DTensorLayout"
   // CHECK:      "tf.Identity"
-  // CHECK-SAME: mhlo.sharding = ""
   // CHECK:      "tf.DTensorLayout"
   // CHECK-NEXT: return
   %1 = "tf.DTensorLayout"(%arg0) {global_shape = #tf_type.shape<8x8>, layout = #dtensor.layout<sharding_specs:unsharded,unsharded, mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0>} : (tensor<8x8xi32>) -> tensor<8x8xi32>

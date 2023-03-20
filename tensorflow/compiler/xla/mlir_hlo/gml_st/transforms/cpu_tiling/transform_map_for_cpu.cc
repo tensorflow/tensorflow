@@ -20,7 +20,6 @@ limitations under the License.
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/peeling/peeling.h"
-#include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -38,9 +37,6 @@ namespace {
 #define GEN_PASS_DEF_TRANSFORMMAPFORCPUPASS
 #include "gml_st/transforms/passes.h.inc"
 
-static constexpr llvm::StringRef kMapTransformedLabel =
-    "__map_transformed_label__";
-
 struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
   TileMapPattern(MLIRContext *context, int64_t innerDimTileSize,
                  PatternBenefit benefit = 1)
@@ -49,7 +45,7 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
 
   LogicalResult matchAndRewrite(linalg::MapOp op,
                                 PatternRewriter &rewriter) const override {
-    if (hasLabel(op, kMapTransformedLabel)) return failure();
+    if (hasLabel(op, kTransformedLabel)) return failure();
 
     if (isa<scf::ForallOp, scf::ForOp>(op->getParentOp())) {
       return rewriter.notifyMatchFailure(
@@ -63,7 +59,7 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
     // Find there another linalg.map where this op can be fused.
     op = findRootMap(op, fuseFilterFn);
 
-    if (hasLabel(op, kMapTransformedLabel)) return failure();
+    if (hasLabel(op, kTransformedLabel)) return failure();
 
     scf::SCFTilingOptions opts;
     opts.setTileSizeComputationFunction([&](OpBuilder &b, Operation *op) {
@@ -76,21 +72,16 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
       return tiles;
     });
 
-    auto tiledLoop = tileUsingSCFForallOpAndFuseGreedily(
-        rewriter, op, opts, kMapTransformedLabel, fuseFilterFn);
+    auto tiledLoop =
+        tileUsingSCFForallOpAndFuseGreedily(rewriter, op, opts, fuseFilterFn);
     if (failed(tiledLoop)) return failure();
 
-    // Peel parallel loops.
-    auto peelingResult = peelAllLoops(*tiledLoop, rewriter);
-    setLabel(*tiledLoop, kPerfectlyTiledLoopLabel);
+    auto peelingResult = peelAllLoops(tiledLoop->loop, rewriter);
+    setLabel(tiledLoop->loop, kPerfectlyTiledLoopLabel);
 
     // Tile ops in the peeled loop again, to size 1, so they can be
     // scalarized.
-    if (failed(tilePeeledOpsToScalars(rewriter, peelingResult,
-                                      kMapTransformedLabel, fuseFilterFn)))
-      return failure();
-
-    return success();
+    return tilePeeledOpsToScalars(rewriter, peelingResult, fuseFilterFn);
   }
 
  private:
@@ -138,7 +129,7 @@ struct TransformMapForCpuPass
       return signalPassFailure();
     }
 
-    f.walk([](linalg::MapOp op) { removeLabel(op, kMapTransformedLabel); });
+    f.walk([](linalg::MapOp op) { removeLabel(op, kTransformedLabel); });
   }
 };
 

@@ -21,8 +21,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_assert
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import math_ops
@@ -248,7 +248,7 @@ def _rnn_step(time,
 
     flat_new_state = nest.flatten(new_state)
     flat_new_output = nest.flatten(new_output)
-    return control_flow_ops.cond(
+    return cond.cond(
         # if t < min_seq_len: calculate and return everything
         time < min_sequence_length,
         lambda: flat_new_output + flat_new_state,
@@ -270,7 +270,7 @@ def _rnn_step(time,
     final_output_and_state = _copy_some_through(new_output, new_state)
   else:
     empty_update = lambda: flat_zero_output + flat_state
-    final_output_and_state = control_flow_ops.cond(
+    final_output_and_state = cond.cond(
         # if t >= max_seq_len: copy all state through, output zeros
         time >= max_sequence_length,
         empty_update,

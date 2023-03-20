@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -31,6 +32,32 @@ namespace tensorflow {
 namespace {
 using XlaDeviceCompiler =
     DeviceCompiler<xla::LocalExecutable, xla::LocalClient>;
+using XlaDeviceExecutablePersistor =
+    DeviceExecutablePersistor<xla::LocalExecutable, xla::LocalClient>;
+
+XlaDeviceCompiler* CreateXlaDeviceCompiler(
+    const XlaDeviceExecutablePersistor::Config& persistor_config,
+    DeviceType device_type, xla::LocalClient* local_client) {
+  auto persistor = std::make_unique<XlaDeviceExecutablePersistor>(
+      std::move(persistor_config), device_type);
+  auto compiler_client =
+      std::make_unique<XlaDeviceCompilerClient>(local_client);
+  return new XlaDeviceCompiler(std::move(persistor),
+                               std::move(compiler_client));
+}
+
+StatusOr<std::optional<std::set<int>>> GetAllowedGpus(
+    FunctionLibraryRuntime* flr) {
+  std::optional<std::set<int>> gpu_ids = std::nullopt;
+
+  if (flr->config_proto()) {
+    string allowed_gpus =
+        flr->config_proto()->gpu_options().visible_device_list();
+    TF_ASSIGN_OR_RETURN(gpu_ids, ParseVisibleDeviceList(allowed_gpus));
+  }
+
+  return gpu_ids;
+}
 }  // namespace
 
 xla::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
@@ -57,32 +84,24 @@ xla::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
 Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
                               const XlaPlatformInfo& platform_info,
                               XlaDeviceCompiler** xla_device_compiler) {
-  using XlaDeviceExecutablePersistor =
-      DeviceExecutablePersistor<xla::LocalExecutable, xla::LocalClient>;
   XlaDeviceExecutablePersistor::Config persistor_config(
       GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_directory,
       GetMarkForCompilationPassFlags()->tf_xla_disable_strict_signature_checks,
       GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix);
 
   if (platform_info.xla_device_metadata()) {
-    auto persistor = std::make_unique<XlaDeviceExecutablePersistor>(
-        std::move(persistor_config),
-        platform_info.xla_device_metadata()->jit_device_type());
-    auto compiler_client = std::make_unique<XlaDeviceCompilerClient>(
+    *xla_device_compiler = CreateXlaDeviceCompiler(
+        persistor_config,
+        platform_info.xla_device_metadata()->jit_device_type(),
         platform_info.xla_device_metadata()->client());
-    *xla_device_compiler =
-        new XlaDeviceCompiler(std::move(persistor), std::move(compiler_client));
     return OkStatus();
   }
 
   // TFRT-TPU is used if device type is `DEVICE_TPU` and platform_info does not
   // have `xla_device_metadata`.
   if (platform_info.device_type() == DEVICE_TPU) {
-    auto persistor = std::make_unique<XlaDeviceExecutablePersistor>(
-        std::move(persistor_config), DeviceType(DEVICE_TPU_XLA_JIT));
-    auto compiler_client = std::make_unique<XlaDeviceCompilerClient>(nullptr);
-    *xla_device_compiler =
-        new XlaDeviceCompiler(std::move(persistor), std::move(compiler_client));
+    *xla_device_compiler = CreateXlaDeviceCompiler(
+        persistor_config, DeviceType(DEVICE_TPU_XLA_JIT), nullptr);
     return OkStatus();
   }
 
@@ -118,13 +137,8 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
   client_options.set_intra_op_parallelism_threads(
       device->tensorflow_cpu_worker_threads()->num_threads);
 
-  if (flr->config_proto()) {
-    string allowed_gpus =
-        flr->config_proto()->gpu_options().visible_device_list();
-    TF_ASSIGN_OR_RETURN(std::optional<std::set<int>> gpu_ids,
-                        ParseVisibleDeviceList(allowed_gpus));
-    client_options.set_allowed_devices(gpu_ids);
-  }
+  TF_ASSIGN_OR_RETURN(auto allowed_gpus, GetAllowedGpus(flr));
+  client_options.set_allowed_devices(allowed_gpus);
 
   auto client = xla::ClientLibrary::GetOrCreateLocalClient(client_options);
   if (!client.ok()) {
@@ -137,13 +151,9 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
                                    platform_info.device_type().type());
   }
 
-  auto persistor = std::make_unique<XlaDeviceExecutablePersistor>(
-      std::move(persistor_config),
-      DeviceType(registration->compilation_device_name));
-  auto compiler_client =
-      std::make_unique<XlaDeviceCompilerClient>(client.value());
-  *xla_device_compiler =
-      new XlaDeviceCompiler(std::move(persistor), std::move(compiler_client));
+  *xla_device_compiler = CreateXlaDeviceCompiler(
+      persistor_config, DeviceType(registration->compilation_device_name),
+      client.value());
   return OkStatus();
 }
 

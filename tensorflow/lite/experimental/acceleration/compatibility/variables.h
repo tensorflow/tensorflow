@@ -76,6 +76,7 @@ namespace gpu {
 constexpr char kStatus[] = "tflite.gpu.status";
 
 constexpr char kStatusSupported[] = "SUPPORTED";
+constexpr char kStatusUnknown[] = "UNKNOWN";
 constexpr char kStatusUnsupported[] = "UNSUPPORTED";
 
 enum class CompatibilityStatus {

@@ -98,6 +98,7 @@ py_library(
         ":compiler_ir",
         ":eager_function_run",
         ":function_spec",
+        "//tensorflow/python:cond",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
@@ -130,6 +131,7 @@ cuda_py_test(
         ":polymorphic_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:data_flow_ops",
@@ -151,7 +153,8 @@ cuda_py_test(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:test_ops",
-        "//tensorflow/python/autograph/core",
+        "//tensorflow/python/autograph/core:ag_ctx",
+        "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:cancellation",
         "//tensorflow/python/eager:context",
@@ -178,7 +181,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python/autograph/core",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -203,6 +205,7 @@ tf_xla_py_test(
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:collective_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:framework_ops",
@@ -243,6 +246,7 @@ cuda_py_test(
     shard_count = 5,
     deps = [
         ":polymorphic_function",
+        "//tensorflow/python:cond",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:while_loop",
@@ -356,7 +360,9 @@ py_library(
     name = "function_context",
     srcs = ["function_context.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         "//tensorflow/core/function/polymorphism:function_cache",
         "//tensorflow/core/function/trace_type",

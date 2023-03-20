@@ -148,6 +148,10 @@ createRewriteForallOpPass();
 /// Pass to add debug info to be propagated into LLVM backend.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAddDebugInfoPass();
 
+/// Pass to print stats about tileable ops.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> createCollectStatsPass(
+    int64_t level = 0);
+
 /// Populate pattern to remove single/zero iteration scf.forall dimensions.
 void populateCollapseForallOpDimensionsPattern(RewritePatternSet &patterns);
 
@@ -161,6 +165,9 @@ struct GmlStCPUTilingOptions
     this->reduction2DTileSizes = opts.reduction2DTileSizes;
     this->vectorSize = opts.vectorSize;
     this->enableFusionClusters = opts.enableFusionClusters;
+    this->statsDetailLevel = opts.statsDetailLevel;
+    this->enableFusionClusterOutlining = opts.enableFusionClusterOutlining;
+    this->cpuName = opts.cpuName;
   }
 
   Option<int64_t> vectorSize{*this, "vector-size",
@@ -204,10 +211,15 @@ struct GmlStCPUTilingOptions
       llvm::cl::desc("CPU name, similar to llc's -mcpu flag. e.g. 'znver2', "
                      "'skylake-avx512'."),
       llvm::cl::init("")};
+
+  Option<int64_t> statsDetailLevel{
+      *this, "stats-detail-level",
+      llvm::cl::desc("Vector size for a 1D reduction."), llvm::cl::init(0)};
 };
 
 // Returns default "optimized" tiling parameters.
-GmlStCPUTilingOptions getDefaultCPUPipelineOptions(StringRef cpuName);
+GmlStCPUTilingOptions getDefaultCPUPipelineOptions(
+    StringRef cpuName, int64_t statsDetailLevel = 0);
 
 // Adds tiling-fusion-vectorization passes for tHLO/Linalg ops mix.
 void addCPUTilingPipeline(OpPassManager &pm,
@@ -215,7 +227,8 @@ void addCPUTilingPipeline(OpPassManager &pm,
 
 // Adds tiling-fusion-vectorization passes for tHLO/Linalg ops mix with the
 // "optimized" tiling parameters.
-void addDefaultCPUTilingPipeline(OpPassManager &pm, StringRef cpuName);
+void addDefaultCPUTilingPipeline(OpPassManager &pm, StringRef cpuName,
+                                 int64_t statsDetailLevel = 0);
 
 #define GEN_PASS_REGISTRATION
 #include "gml_st/transforms/passes.h.inc"

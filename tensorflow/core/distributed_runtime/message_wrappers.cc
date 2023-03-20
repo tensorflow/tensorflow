@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -712,8 +713,8 @@ Status OwnedProtoRunGraphResponse::status() const {
   return Status(response_.status_code(), response_.status_error_message());
 }
 
-errors::Code OwnedProtoRunGraphResponse::status_code() const {
-  return response_.status_code();
+absl::StatusCode OwnedProtoRunGraphResponse::status_code() const {
+  return static_cast<absl::StatusCode>(response_.status_code());
 }
 
 const string& OwnedProtoRunGraphResponse::status_error_message() const {
@@ -787,8 +788,8 @@ Status NonOwnedProtoRunGraphResponse::status() const {
   return Status(response_->status_code(), response_->status_error_message());
 }
 
-errors::Code NonOwnedProtoRunGraphResponse::status_code() const {
-  return response_->status_code();
+absl::StatusCode NonOwnedProtoRunGraphResponse::status_code() const {
+  return static_cast<absl::StatusCode>(response_->status_code());
 }
 
 const string& NonOwnedProtoRunGraphResponse::status_error_message() const {
@@ -902,8 +903,8 @@ Status OwnedProtoRunStepResponse::status() const {
   return Status(response_.status_code(), response_.status_error_message());
 }
 
-errors::Code OwnedProtoRunStepResponse::status_code() const {
-  return response_.status_code();
+absl::StatusCode OwnedProtoRunStepResponse::status_code() const {
+  return static_cast<absl::StatusCode>(response_.status_code());
 }
 
 const string& OwnedProtoRunStepResponse::status_error_message() const {
@@ -958,8 +959,8 @@ Status NonOwnedProtoRunStepResponse::status() const {
   return Status(response_->status_code(), response_->status_error_message());
 }
 
-errors::Code NonOwnedProtoRunStepResponse::status_code() const {
-  return response_->status_code();
+absl::StatusCode NonOwnedProtoRunStepResponse::status_code() const {
+  return static_cast<absl::StatusCode>(response_->status_code());
 }
 
 const string& NonOwnedProtoRunStepResponse::status_error_message() const {

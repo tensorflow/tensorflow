@@ -216,7 +216,7 @@ void Diagnostician::LogDiagnosticInformation() {
 // driver-interfacing DSO version number. Returns it as a string.
 tsl::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
   tsl::StatusOr<DriverVersion> result(tsl::Status(
-      tsl::error::NOT_FOUND,
+      absl::StatusCode::kNotFound,
       "was unable to find libcuda.so DSO loaded into this program"));
 
 #if defined(__APPLE__)
@@ -286,7 +286,7 @@ tsl::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
   size_t offset = driver_version_file_contents.find(kDriverFilePrelude);
   if (offset == std::string::npos) {
     return tsl::Status(
-        tsl::error::NOT_FOUND,
+        absl::StatusCode::kNotFound,
         absl::StrCat("could not find kernel module information in "
                      "driver version file contents: \"",
                      driver_version_file_contents, "\""));
@@ -347,21 +347,21 @@ tsl::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   }
   CFRelease(kext_infos);
   auto status = tsl::Status(
-      tsl::error::INTERNAL,
+      absl::StatusCode::kInternal,
       absl::StrCat(
           "failed to read driver bundle version: ",
           CFStringGetCStringPtr(kDriverKextIdentifier, kCFStringEncodingUTF8)));
   return status;
 #elif defined(PLATFORM_WINDOWS)
   auto status =
-      tsl::Status(tsl::error::UNIMPLEMENTED,
+      tsl::Status(absl::StatusCode::kUnimplemented,
                   "kernel reported driver version not implemented on Windows");
   return status;
 #else
   FILE *driver_version_file = fopen(kDriverVersionPath, "r");
   if (driver_version_file == nullptr) {
     return tsl::Status(
-        tsl::error::PERMISSION_DENIED,
+        absl::StatusCode::kPermissionDenied,
         absl::StrCat("could not open driver version path for reading: ",
                      kDriverVersionPath));
   }
@@ -383,7 +383,7 @@ tsl::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   }
 
   auto status = tsl::Status(
-      tsl::error::INTERNAL,
+      absl::StatusCode::kInternal,
       absl::StrCat(
           "failed to read driver version file contents: ", kDriverVersionPath,
           "; ferror: ", ferror(driver_version_file)));

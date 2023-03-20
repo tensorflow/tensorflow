@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/core/async/interop/variant.h"
 
+#include <cstring>
 #include <utility>
 
 namespace tflite {

@@ -797,6 +797,7 @@ py_strict_library(
     name = "fingerprinting_utils",
     srcs = ["fingerprinting_utils.py"],
     deps = [
+        ":fingerprinting",
         ":pywrap_saved_model",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/config:flags_py",

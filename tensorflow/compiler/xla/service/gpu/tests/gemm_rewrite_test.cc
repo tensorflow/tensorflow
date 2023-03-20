@@ -4176,13 +4176,11 @@ ENTRY main {
       )");
 }
 
-// This class can be replaced with CublasLtGemmRewriteTest once runtime supports
-// FP8.
-class CublasLtF8GemmRewriteTest : public CublasLtGemmRewriteTest {
+class ParameterizedFp8GemmRewriteTest : public ParameterizedGemmRewriteTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options =
-        CublasLtGemmRewriteTest::GetDebugOptionsForTest();
+        ParameterizedGemmRewriteTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_xla_runtime_executable(false);
     return debug_options;
   }
@@ -4208,7 +4206,7 @@ class CublasLtF8GemmRewriteTest : public CublasLtGemmRewriteTest {
   }
 };
 
-TEST_F(CublasLtF8GemmRewriteTest, DoNotRewriteToF8OnPreHopper) {
+TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreHopper) {
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::HOPPER)) {
     GTEST_SKIP() << "Test requires a pre-Hopper GPU.";
   }
@@ -4231,7 +4229,7 @@ TEST_F(CublasLtF8GemmRewriteTest, DoNotRewriteToF8OnPreHopper) {
           )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, UnscaledABUnscaledDF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4275,7 +4273,7 @@ TEST_F(CublasLtF8GemmRewriteTest, UnscaledABUnscaledDF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4329,7 +4327,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, BitcastScaledABUnscaledDF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDBitcastF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4363,7 +4361,72 @@ TEST_F(CublasLtF8GemmRewriteTest, BitcastScaledABUnscaledDF8) {
           m::CustomCall({"__cublas$lt$matmul$f8"}).WithShape(F32, {16, 16})));
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDUnaryOpsF8) {
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[3] parameter(0)
+      y = f8e4m3fn[32,16] parameter(1)
+      x_f32 = f32[3] convert(x)
+      y_f32 = f32[32,16] convert(y)
+      x_scale = f32[] parameter(2)
+      y_scale = f32[] parameter(3)
+      x_scale_bcast = f32[3] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      x_unscaled = f32[3] multiply(x_f32, x_scale_bcast)
+      zero = f32[] constant(0)
+      x_unscaled_padded = f32[30] pad(x_unscaled, zero), padding=0_27
+      x_unscaled_padded_bcast = f32[30,8,5] broadcast(x_unscaled_padded), dimensions={0}
+      x_unscaled_padded_bcast_sliced = f32[16,8,4] slice(x_unscaled_padded_bcast), slice={[2:18], [0:8], [0:4]}
+      x_unscaled_padded_bcast_sliced_reshaped = f32[16,32] reshape(x_unscaled_padded_bcast_sliced)
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[16,16] dot(x_unscaled_padded_bcast_sliced_reshaped, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+          }
+
+)";
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
+
+; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[3], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[3]{0} parameter(0)
+; CHECK-NEXT:    [[C0:%[^ ]+]] = f32[] constant(0)
+; CHECK-NEXT:    [[C0_CONVERT:%[^ ]+]] = f8e4m3fn[] convert([[C0]])
+; CHECK-NEXT:    [[P0_U0:%[^ ]+]] = f8e4m3fn[30]{0} pad([[P0]], [[C0_CONVERT]]), padding=0_27
+; CHECK-NEXT:    [[P0_U1:%[^ ]+]] = f8e4m3fn[30,8,5]{2,1,0} broadcast([[P0_U0]]), dimensions={0}
+; CHECK-NEXT:    [[P0_U2:%[^ ]+]] = f8e4m3fn[16,8,4]{2,1,0} slice([[P0_U1]]), slice={[2:18], [0:8], [0:4]}
+; CHECK-NEXT:    [[P0_U3:%[^ ]+]] = f8e4m3fn[16,32]{1,0} reshape([[P0_U2]])
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
+; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(0)
+; CHECK-NEXT:    [[C1_BCAST:%[^ ]+]] = f32[16,16]{1,0} broadcast([[C1]]), dimensions={}
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
+; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
+; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0_U3]], [[P1_TRANSPOSE]], [[C1_BCAST]], [[P2]], [[P3]], /*index=5*/[[C2]], [[C2]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
+; CHECK:           }"
+      )");
+}
+
+TEST_P(ParameterizedFp8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4417,7 +4480,7 @@ TEST_F(CublasLtF8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABAlphaDF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABAlphaDF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4475,7 +4538,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABAlphaDF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4533,7 +4596,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, InvScaledABUnscaledDF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, InvScaledABUnscaledDF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4562,7 +4625,7 @@ TEST_F(CublasLtF8GemmRewriteTest, InvScaledABUnscaledDF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
 #if CUDA_VERSION < 12000
   GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
 #endif
@@ -4621,7 +4684,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4687,7 +4750,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABInvScaledDF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABInvScaledDF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4729,7 +4792,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABInvScaledDF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
   const char* hlo_text = R"(
     HloModule test
     ENTRY test {
@@ -4796,7 +4859,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
 #if CUDA_VERSION < 12000
   GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
 #endif
@@ -4865,7 +4928,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -4941,7 +5004,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
   std::array<std::array<absl::string_view, 7>, 32> combinations;
   int i = 0;
 
@@ -5007,7 +5070,8 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
   }
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8ParameterizedBatched) {
+TEST_P(ParameterizedFp8GemmRewriteTest,
+       ScaledABUnscaledDF8ParameterizedBatched) {
   // TODO(wenscarl): For batched matmaul, not all combinations of A, B and
   // output layouts get pattern matched successfully to FP8 custom call. Only
   // a handful of cases are tested here.
@@ -5072,7 +5136,7 @@ ENTRY f {
   }
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
   const char* hlo_text = R"(
     HloModule test
 
@@ -5103,6 +5167,9 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
           )");
   tsl::enable_tensor_float_32_execution(tf32_state_);
 }
+
+INSTANTIATE_TEST_SUITE_P(Fp8CublasTestsBothLegacyAndLt,
+                         ParameterizedFp8GemmRewriteTest, ::testing::Bool());
 
 TEST_F(GemmRewriteTest, NoFuseBiasBroadcast) {
   const char* hlo = R"(

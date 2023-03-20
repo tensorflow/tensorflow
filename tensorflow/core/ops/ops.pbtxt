@@ -13073,6 +13073,13 @@ op {
     name: "cardinality"
     type: DT_INT64
   }
+  attr {
+    name: "cardinality_options"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "DatasetFromGraph"

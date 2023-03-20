@@ -1858,9 +1858,9 @@ ENTRY %xla_computation_unknown.45 (parameter.3: u8[], parameter.4: u8[], paramet
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
   pass.Run(&*module).value();
+  VLOG(3) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Conditional());
-  // We do not move reduce operations due to potential memory considerations.
   EXPECT_EQ(root->branch_computation(0)->instruction_count(), 4);
   EXPECT_EQ(root->branch_computation(1)->instruction_count(), 8);
   // Expect the add.0 and convert.35 in brnach_1_comp.31 to be moved

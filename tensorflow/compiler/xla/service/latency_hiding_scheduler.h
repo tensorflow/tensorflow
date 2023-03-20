@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LATENCY_HIDING_SCHEDULER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LATENCY_HIDING_SCHEDULER_H_
 
-#include <array>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -78,6 +77,7 @@ struct SchedulerConfig {
   bool force_send_recv_to_use_same_resource = false;
   bool use_real_cost_model = false;
   bool aggressive_scheduling_policies = false;
+  bool enable_release_start_policy = false;
   uint64_t memory_limit = UINT64_MAX;
 };
 
@@ -232,6 +232,12 @@ class HloGraphNode {
   bool DoesReleaseAnyResource() const {
     return absl::c_any_of(resources_, [](const ResourcePair& resource) {
       return resource.second == ResourceUsageType::kResourceRelease;
+    });
+  }
+  bool DoesReleaseResource(ResourceType res) const {
+    return absl::c_any_of(resources_, [res](const ResourcePair& resource) {
+      return resource.second == ResourceUsageType::kResourceRelease &&
+             resource.first == ResourceTypeToIndex(res);
     });
   }
   std::optional<ResourceUsageType> UsesResourceType(ResourceType res) const {
@@ -587,22 +593,6 @@ class DefaultSchedulerCore : public SchedulerCore {
     return std::nullopt;
   }
 
-  DefaultSchedulerCore(
-      HloCostAnalysis::ShapeSizeFunction shape_size_bytes,
-      const AsyncTracker* async_tracker,
-      const LatencyEstimator* latency_estimator, const SchedulerConfig& config,
-      TargetSchedulingRule target_scheduling_rule = nullptr,
-      TargetSchedulingRule early_target_scheduling_rule = nullptr)
-      : shape_size_bytes_(shape_size_bytes),
-        async_tracker_(async_tracker),
-        latency_estimator_(latency_estimator),
-        config_(config),
-        target_scheduling_rule_(target_scheduling_rule),
-        early_target_scheduling_rule_(early_target_scheduling_rule) {}
-  Status InitializeScheduler(const HloModule* module) override;
-  StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
-      const HloComputation* computation) override;
-
   // The scheduling state contains everything that is required for the
   // bookkeeping of the scheduling algorithm. Functions that perform operations
   // over the scheduling state can directly operate on the state contained into
@@ -656,6 +646,26 @@ class DefaultSchedulerCore : public SchedulerCore {
           config(config) {}
   };
 
+  using PostProcessingFn = std::function<void(SchedulingState&)>;
+
+  DefaultSchedulerCore(
+      HloCostAnalysis::ShapeSizeFunction shape_size_bytes,
+      const AsyncTracker* async_tracker,
+      const LatencyEstimator* latency_estimator, const SchedulerConfig& config,
+      TargetSchedulingRule target_scheduling_rule = nullptr,
+      TargetSchedulingRule early_target_scheduling_rule = nullptr,
+      PostProcessingFn post_processing_fn = nullptr)
+      : shape_size_bytes_(shape_size_bytes),
+        async_tracker_(async_tracker),
+        latency_estimator_(latency_estimator),
+        config_(config),
+        target_scheduling_rule_(target_scheduling_rule),
+        early_target_scheduling_rule_(early_target_scheduling_rule),
+        post_processing_fn_(post_processing_fn) {}
+  Status InitializeScheduler(const HloModule* module) override;
+  StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
+      const HloComputation* computation) override;
+
  protected:
   virtual void LogInstruction(const HloInstruction* instr) const;
   // Update node that has been scheduled.
@@ -681,6 +691,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   SchedulerConfig config_;
   TargetSchedulingRule target_scheduling_rule_ = nullptr;
   TargetSchedulingRule early_target_scheduling_rule_ = nullptr;
+  PostProcessingFn post_processing_fn_ = nullptr;
 };
 
 // A scheduler oriented to hiding latencies of operations that can run in
@@ -728,11 +739,6 @@ class LatencyHidingScheduler : public HloModulePass {
   virtual void LogScheduleStatistics(const HloComputation* computation);
 
  private:
-  // Perform scheduling of the computation.
-  Status ScheduleAsyncComputation(HloComputation* comp,
-                                  const LatencyEstimator* latency_estimator,
-                                  HloAliasAnalysis* alias_analysis,
-                                  ModulePressureState* module_pressure_state);
   SchedulerConfig config_;
   std::unique_ptr<LatencyEstimator> latency_estimator_;
   std::unique_ptr<AsyncTracker> async_tracker_;

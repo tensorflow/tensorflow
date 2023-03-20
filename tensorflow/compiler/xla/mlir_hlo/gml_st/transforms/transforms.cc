@@ -38,14 +38,5 @@ void removeLabel(Operation *op, StringRef name) { op->removeAttr(name); }
 
 bool hasLabel(Operation *op, StringRef name) { return op->hasAttr(name); }
 
-constexpr llvm::StringLiteral kOpLabel = "op_label";
-
-bool hasMatchingLabel(Operation *op, StringRef label) {
-  auto opLabelAttr = op->getAttr(kOpLabel);
-  if (!opLabelAttr) return false;
-
-  return opLabelAttr.cast<StringAttr>().getValue() == label;
-}
-
 }  // namespace gml_st
 }  // namespace mlir

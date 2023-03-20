@@ -136,7 +136,7 @@ class Mesh {
   //  <name|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1,/job:localhost/task:0/device:CPU:2,/job:localhost/task:0/device:CPU:3>
   static StatusOr<Mesh> FromString(absl::string_view str);
   std::string ToString() const;
-  MeshProto ToProto() const;
+  StatusOr<MeshProto> ToProto() const;
 
   // Creates mesh without specific devices associated to it (aka abstract mesh).
   // This is an experimental API. Use only if strictly needed.
@@ -221,6 +221,8 @@ class Mesh {
   // Global unique fingerprint. Same on different workers.
   uint64 GlobalFingerprint() const;
 
+  // Uses proto to compare the equality. If any conversion to proto fails,
+  // returns false.
   bool operator==(const Mesh& b) const;
   bool operator!=(const Mesh& b) const { return !((*this) == b); }
   bool operator<(const Mesh& b) const {
@@ -304,7 +306,7 @@ class Layout {
   static StatusOr<Layout> FromString(absl::string_view layout_str);
   // Creates human readable string version of a layout.
   std::string ToString() const;
-  LayoutProto ToProto() const;
+  StatusOr<LayoutProto> ToProto() const;
 
   const Mesh& mesh() const { return mesh_; }
   static Layout ReplicatedOnMesh(const Mesh& mesh, int rank);
@@ -344,13 +346,13 @@ class Layout {
   // Makes a new layout from this one dropping the given dimensions.
   // If keep_dims is true, the dimensions are replicated rather than
   // deleted.
-  Layout GetLayoutWithReducedDims(const absl::flat_hash_set<int>& reduced_dims,
-                                  bool keep_dims) const;
+  StatusOr<Layout> GetLayoutWithReducedDims(
+      const absl::flat_hash_set<int>& reduced_dims, bool keep_dims) const;
 
   // Truncates a layout at the front or back, depending on the value of end.
   // end = false returns the layout up to the split point,
   // end = true returns the layout from the split point.
-  Layout Truncate(int64 split_point, bool end = false) const;
+  StatusOr<Layout> Truncate(int64 split_point, bool end = false) const;
 
   // Left or right pad the layout to a max rank.
   Layout LeftPad(int64 rank) const;
@@ -399,6 +401,8 @@ class Layout {
   // the tensor. E.g. if one is unsharded and the other is sharded on a mesh
   // dimension of size 1.
   bool IsEquivalent(const Layout& b) const;
+  // Uses proto to compare the equality. If any conversion to proto fails,
+  // returns false.
   bool operator==(const Layout& b) const;
   bool operator!=(const Layout& b) const { return !((*this) == b); }
   bool operator<(const Layout& b) const {

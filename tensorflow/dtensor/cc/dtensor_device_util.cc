@@ -621,8 +621,7 @@ Status InferOutputLayouts(const DTensorOperation& doperation,
   for (int output_index = 0; output_index < op_node->num_outputs();
        ++output_index) {
     const Layout* layout = nullptr;
-    if (!doperation.is_func() && default_layout.has_value() &&
-        output_index == 0) {
+    if (default_layout.has_value() && output_index == 0) {
       // Record the user's requested output layout. The scope currently only
       // covers the first output of an op.
       layout = &default_layout.value();

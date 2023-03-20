@@ -1309,140 +1309,143 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
-  # TODO(b/263830952): Use dictionaries instead of tuples for parameters.
+  # Check only the most simple case and the most complicated cases.
   @parameterized.named_parameters(
-      ('none', None, False, False, quant_opts_pb2.TF, False, False),
-      ('relu', nn_ops.relu, False, False, quant_opts_pb2.TF, False, False),
-      ('relu6', nn_ops.relu6, False, False, quant_opts_pb2.TF, False, False),
-      ('bn', None, False, True, quant_opts_pb2.TF, False, False),
-      (
-          'bn_and_relu',
-          nn_ops.relu,
-          False,
-          True,
-          quant_opts_pb2.TF,
-          False,
-          False,
-      ),
-      ('with_bias', None, True, False, quant_opts_pb2.TF, False, False),
-      ('with_bias_and_bn', None, True, True, quant_opts_pb2.TF, False, False),
-      (
-          'with_bias_and_bn_and_relu',
-          nn_ops.relu,
-          True,
-          True,
-          quant_opts_pb2.TF,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu',
-          nn_ops.relu,
-          True,
-          False,
-          quant_opts_pb2.TF,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu6',
-          nn_ops.relu6,
-          True,
-          False,
-          quant_opts_pb2.TF,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_bn_to_xla',
-          None,
-          True,
-          True,
-          quant_opts_pb2.XLA,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu6_to_xla',
-          nn_ops.relu6,
-          True,
-          False,
-          quant_opts_pb2.XLA,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_bn_to_xla_dynamic',
-          None,
-          True,
-          True,
-          quant_opts_pb2.XLA,
-          True,
-          False,
-      ),
-      (
-          'with_bias_and_relu6_to_xla_dynamic',
-          nn_ops.relu6,
-          True,
-          False,
-          quant_opts_pb2.XLA,
-          True,
-          False,
-      ),
-      (
-          'none_to_uq',
-          None,
-          False,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
-      (
-          'none_to_uq_per_channel',
-          None,
-          False,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          True,
-      ),
-      (
-          'relu_to_uq',
-          nn_ops.relu,
-          False,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
-      (
-          'with_bias_to_uq',
-          None,
-          True,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu_to_uq',
-          nn_ops.relu,
-          True,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu6_to_uq',
-          nn_ops.relu6,
-          True,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
+      {
+          'testcase_name': 'none',
+          'activation_fn': None,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'relu',
+          'activation_fn': nn_ops.relu,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'relu6',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'bn',
+          'activation_fn': None,
+          'has_bias': False,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias',
+          'activation_fn': None,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_xla',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_xla',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_xla_dynamic',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': True,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_xla_dynamic',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': True,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_uq',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_uq',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_uq_per_channel',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': True,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_uq_per_channel',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': True,
+      },
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_ptq_model(
@@ -1628,140 +1631,143 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       else:
         self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
-  # TODO(b/263830952): Use dictionaries instead of tuples for parameters.
+  # Check only the most simple case and the most complicated cases.
   @parameterized.named_parameters(
-      ('none', None, False, False, quant_opts_pb2.TF, False, False),
-      ('relu', nn_ops.relu, False, False, quant_opts_pb2.TF, False, False),
-      ('relu6', nn_ops.relu6, False, False, quant_opts_pb2.TF, False, False),
-      ('bn', None, False, True, quant_opts_pb2.TF, False, False),
-      (
-          'bn_and_relu',
-          nn_ops.relu,
-          False,
-          True,
-          quant_opts_pb2.TF,
-          False,
-          False,
-      ),
-      ('with_bias', None, True, False, quant_opts_pb2.TF, False, False),
-      ('with_bias_and_bn', None, True, True, quant_opts_pb2.TF, False, False),
-      (
-          'with_bias_and_bn_and_relu',
-          nn_ops.relu,
-          True,
-          True,
-          quant_opts_pb2.TF,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu',
-          nn_ops.relu,
-          True,
-          False,
-          quant_opts_pb2.TF,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu6',
-          nn_ops.relu6,
-          True,
-          False,
-          quant_opts_pb2.TF,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_bn_to_xla',
-          None,
-          True,
-          True,
-          quant_opts_pb2.XLA,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu6_to_xla',
-          nn_ops.relu6,
-          True,
-          False,
-          quant_opts_pb2.XLA,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_bn_to_xla_dynamic',
-          None,
-          True,
-          True,
-          quant_opts_pb2.XLA,
-          True,
-          False,
-      ),
-      (
-          'with_bias_and_relu6_to_xla_dynamic',
-          nn_ops.relu6,
-          True,
-          False,
-          quant_opts_pb2.XLA,
-          True,
-          False,
-      ),
-      (
-          'none_to_uq',
-          None,
-          False,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
-      (
-          'none_to_uq_per_channel',
-          None,
-          False,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          True,
-      ),
-      (
-          'relu_to_uq',
-          nn_ops.relu,
-          False,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
-      (
-          'with_bias_to_uq',
-          None,
-          True,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu_to_uq',
-          nn_ops.relu,
-          True,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu6_to_uq',
-          nn_ops.relu6,
-          True,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
+      {
+          'testcase_name': 'none',
+          'activation_fn': None,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'relu',
+          'activation_fn': nn_ops.relu,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'relu6',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'bn',
+          'activation_fn': None,
+          'has_bias': False,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias',
+          'activation_fn': None,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_xla',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_xla',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_xla_dynamic',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': True,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_xla_dynamic',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': True,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_uq',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_uq',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_uq_per_channel',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': True,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_uq_per_channel',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': True,
+      },
   )
   @test_util.run_in_graph_and_eager_modes
   def test_depthwise_conv_ptq_model(
@@ -4391,6 +4397,61 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       )
 
       self.assertAllClose(lookup_val, [1.0, 2.0, 0.0])
+
+  @test_util.deprecated_graph_mode_only
+  def test_file_init_hash_table_lookup_model(self):
+    tags = {tag_constants.SERVING}
+    signature_def_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+
+    # Create and save a simple model that involves a hash table.
+    inputs, outputs = self._create_and_save_file_init_hash_table_model_tf1(
+        self._input_saved_model_path, tags, signature_def_key
+    )
+    # Make sure that the desired input key and output key is present.
+    self.assertIn('input_vocabs', inputs.keys())
+    self.assertIn('lookup', outputs.keys())
+
+    signature_def_keys = [signature_def_key]
+    quantize_model.quantize(
+        self._input_saved_model_path,
+        signature_def_keys,
+        tags,
+        self._output_saved_model_path,
+        quantization_options=quant_opts_pb2.QuantizationOptions(
+            quantization_method=quant_opts_pb2.QuantizationMethod(
+                experimental_method=_ExperimentalMethod.DYNAMIC_RANGE
+            ),
+        ),
+    )
+
+    # Tests table lookup to make sure the table has been initialized
+    # successfully.
+    with session.Session(graph=ops.Graph()) as sess:
+      output_meta_graph_def = saved_model_loader.load(
+          sess, tags=tags, export_dir=self._output_saved_model_path
+      )
+
+      self.assertCountEqual(
+          output_meta_graph_def.signature_def.keys(), signature_def_keys
+      )
+
+      signature_def = output_meta_graph_def.signature_def[signature_def_key]
+
+      input_tensor_name = signature_def.inputs['input_vocabs'].name
+      input_tensor = sess.graph.get_tensor_by_name(input_tensor_name)
+
+      lookup_tensor_name = signature_def.outputs['lookup'].name
+      lookup_tensor = sess.graph.get_tensor_by_name(lookup_tensor_name)
+
+      lookup_val = sess.run(
+          lookup_tensor,
+          feed_dict={
+              input_tensor: np.array([b'dynamic', b'quantization', b'range'])
+          },
+      )
+
+      # "dynamic" is not in the table: -1 (default value)
+      self.assertAllClose(lookup_val, [-1.0, 2.0, 1.0])
 
 
 class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):

@@ -21,10 +21,10 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "llvm/ADT/StringRef.h"
-#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
@@ -101,13 +101,6 @@ void KernelFallbackEmitError(
   if (op_chain) *op_chain = std::move(error);
 }
 
-std::function<void(std::function<void()>)>* GetDefaultRunner() {
-  static auto* const default_runner =
-      new std::function<void(std::function<void()>)>(
-          [](const std::function<void()>& f) { f(); });
-  return default_runner;
-}
-
 }  // namespace
 
 Status SetUpKernelFallbackCompatRequestContext(
@@ -133,46 +126,6 @@ Status SetUpKernelFallbackCompatRequestContext(
           model_metadata, pflr);
 
   fallback_request_state.set_cost_recorder(cost_recorder);
-
-  return OkStatus();
-}
-
-Status SetUpKernelFallbackCompatRequestContext(
-    tfrt::RequestContextBuilder* builder,
-    tfrt_stub::OpKernelRunnerTable* runner_table,
-    tensorflow::EagerContext* eager_context,
-    tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-    const absl::optional<SessionMetadata>& model_metadata) {
-  auto* resource_array =
-      builder->resource_context()->GetOrCreateResource<FallbackResourceArray>(
-          kFallbackResourceArray);
-
-  if (runner_table == nullptr)
-    runner_table = builder->resource_context()
-                       ->GetOrCreateResource<tfrt_stub::OpKernelRunnerTable>(
-                           kOpKernelRunnerTableResourceName);
-
-  auto step_id = builder->id();
-
-  Rendezvous::Factory creator = eager_context->RendezvousFactory();
-  Rendezvous* rendezvous;
-  TF_RETURN_IF_ERROR(
-      creator(step_id, eager_context->local_device_mgr(), &rendezvous));
-
-  // TODO(hhb): Clean up rendezvous from factory after run.
-
-  auto& fallback_request_state =
-      builder->context_data().emplace<KernelFallbackCompatRequestState>(
-          GetDefaultRunner(), eager_context->local_device_mgr(), step_id,
-          tfrt::OwnedOrUnownedPtr<ScopedStepContainer>{
-              eager_context->StepContainer()},
-          eager_context->GetCollectiveExecutorHandle(),
-          tensorflow::core::RefCountPtr<tensorflow::Rendezvous>(rendezvous),
-          runner_table, resource_array, user_intra_op_threadpool,
-          model_metadata, eager_context->pflr());
-
-  fallback_request_state.set_log_device_placement(
-      eager_context->LogDevicePlacement());
 
   return OkStatus();
 }

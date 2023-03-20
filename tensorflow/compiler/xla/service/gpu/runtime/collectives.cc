@@ -424,7 +424,8 @@ static absl::Status AllReduceImplCommon(
     const ServiceExecutableRunOptions* run_options, se::Stream* stream,
     CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
     int64_t reduction_kind, absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values) {
+    absl::Span<const int64_t> replica_group_values,
+    bool allow_all_reduce_kernel) {
   NcclExecuteParams params(*run_options, stream->parent());
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
@@ -435,7 +436,8 @@ static absl::Status AllReduceImplCommon(
   if (!device_buffers.ok()) return ToAbslStatus(device_buffers.status());
 
   return ToAbslStatus(RunAllReduce(static_cast<ReductionKind>(reduction_kind),
-                                   *device_buffers, *stream, **comm));
+                                   *device_buffers, *stream, **comm,
+                                   allow_all_reduce_kernel));
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -444,13 +446,14 @@ static absl::Status AllReduceImpl(
     CollectivesSupport* collectives, CustomCall::RemainingArgs args,
     int32_t uid, int64_t group_mode, int64_t op_id, int64_t reduction_kind,
     absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values) {
+    absl::Span<const int64_t> replica_group_values,
+    bool allow_all_reduce_kernel) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduce";
   se::Stream* stream = run_options->stream();
   auto status = AllReduceImplCommon(
       run_options, stream, args, group_mode, op_id, reduction_kind,
-      replica_group_offsets, replica_group_values);
+      replica_group_offsets, replica_group_values, allow_all_reduce_kernel);
   if (!status.ok()) return status;
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
@@ -472,7 +475,8 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<int64_t>("op_id")
         .Attr<int64_t>("reduction_kind")  // ReductionKind
         .Attr<absl::Span<const int64_t>>("replica_group_offsets")
-        .Attr<absl::Span<const int64_t>>("replica_group_values"));
+        .Attr<absl::Span<const int64_t>>("replica_group_values")
+        .Attr<bool>("allow_all_reduce_kernel"));
 
 //===----------------------------------------------------------------------===//
 // AllReduceStart.
@@ -483,7 +487,8 @@ static absl::Status AllReduceStartImpl(
     AsyncCollectivesSupport* async_collectives, CustomCall::RemainingArgs args,
     int64_t group_mode, int64_t op_id, int64_t reduction_kind,
     absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values, int32_t uid) {
+    absl::Span<const int64_t> replica_group_values, int32_t uid,
+    bool allow_all_reduce_kernel) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduceStart";
   se::Stream* stream = run_options->stream();
@@ -494,7 +499,7 @@ static absl::Status AllReduceStartImpl(
 
   auto status = AllReduceImplCommon(
       run_options, async_stream, args, group_mode, op_id, reduction_kind,
-      replica_group_offsets, replica_group_values);
+      replica_group_offsets, replica_group_values, allow_all_reduce_kernel);
   if (!status.ok()) return status;
 
   return async_collectives->RecordEvent(uid);
@@ -514,7 +519,8 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<int64_t>("reduction_kind")  // ReductionKind
         .Attr<absl::Span<const int64_t>>("replica_group_offsets")
         .Attr<absl::Span<const int64_t>>("replica_group_values")
-        .Attr<int32_t>("uid"));
+        .Attr<int32_t>("uid")
+        .Attr<bool>("allow_all_reduce_kernel"));
 
 //===----------------------------------------------------------------------===//
 // AllReduceDone.

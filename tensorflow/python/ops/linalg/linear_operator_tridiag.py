@@ -15,6 +15,7 @@
 """`LinearOperator` acting like a tridiagonal matrix."""
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
@@ -254,7 +255,9 @@ class LinearOperatorTridiag(linear_operator.LinearOperator):
           self.diagonals, linalg.adjoint(self.diagonals),
           message='Matrix was not equal to its adjoint.')]
     elif self.diagonals_format == _COMPACT:
-      diagonals = ops.convert_to_tensor_v2_with_dispatch(self.diagonals)
+      diagonals = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          self.diagonals
+      )
       asserts += [linear_operator_util.assert_zero_imag_part(
           diagonals[..., 1, :], message=diag_message)]
       # Roll the subdiagonal so the shifted argument is at the end.
@@ -362,7 +365,8 @@ class LinearOperatorTridiag(linear_operator.LinearOperator):
           padding_value=0.)
 
     diagonals = [
-        ops.convert_to_tensor_v2_with_dispatch(d) for d in self.diagonals
+        tensor_conversion.convert_to_tensor_v2_with_dispatch(d)
+        for d in self.diagonals
     ]
     diagonals = array_ops_stack.stack(diagonals, axis=-2)
 

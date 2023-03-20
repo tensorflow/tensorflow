@@ -2524,6 +2524,67 @@ ENTRY entry {
             GetIndex(new_instruction_sequence, "cp1s"));
 }
 
+TEST_F(LatencyHidingSchedulerTest, ReleaseStartWhenLatencyDue) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[128,2048,2048]{2,1,0} parameter(1)
+  p2 = f32[512,2048,2048]{2,1,0} parameter(2)
+  cp1s = (f32[512,2048,2048]{2,1,0}, f32[512,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p2), source_target_pairs={{1,0},{0,3},{3,2}}
+  cp1d = f32[512,2048,2048]{2,1,0} collective-permute-done(cp1s)
+  cp2s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p1), source_target_pairs={{1,0},{0,3},{3,2}}
+  cp2d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp2s)
+  cp3s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(cp2d), source_target_pairs={{1,0},{0,3},{3,2}}
+  cp3d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp3s)
+  slice = f32[16,64,256]{2,1,0} slice(f32[512,2048,2048]{2,1,0} cp1d), slice={[0:16], [0:64], [0:256]}
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, slice),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb  
+  c1 = f32[16,256,256]{2,1,0} convolution(p0, slice),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb  
+  ROOT tuple.2 = (f32[16,256,256]{2,1,0}, f32[16,256,256]{2,1,0}, f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}) tuple(c0, c1, cp2d, cp3d)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.aggressive_scheduling_policies = true;
+  sched_config.enable_release_start_policy = true;
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
+                           std::make_unique<TestLatencyEstimator>())
+                  .ok());
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  // Make sure that c0 and c1 are latency-hiding cp2 and cp3 respectively,
+  // instead of being scheduled only within the latency of one of cp2 or cp3.
+  // Note that the cost of c0 and c1 is larger than the latencies of cp2 and cp3
+  // so the best strategy is indeed to distribute them among both cp2 and cp3.
+  // When aggressive_scheduling_policies = true, this is achieved thanks to the
+  // "kScheduleStart" policy, in absence of which the "kAsyncDepth" prevails
+  // in scheduling both c0 and c1 within the latency of cp3.
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp2s"),
+            GetIndex(new_instruction_sequence, "c0"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "c0"),
+            GetIndex(new_instruction_sequence, "cp2d"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp2d"),
+            GetIndex(new_instruction_sequence, "cp3s"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp3s"),
+            GetIndex(new_instruction_sequence, "c1"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "c1"),
+            GetIndex(new_instruction_sequence, "cp3d"));
+}
+
 TEST_F(LatencyHidingSchedulerTest, AsyncTrackerTestForTargetDefinedResources) {
   // Extend AsyncTracker for a fake target with one target-defined resource
   class AsyncTrackerForMyTarget : public AsyncTracker {

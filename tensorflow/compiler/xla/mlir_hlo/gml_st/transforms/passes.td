@@ -202,6 +202,12 @@ def AddDebugInfoPass :
   let dependentDialects = ["::mlir::LLVM::LLVMDialect"];
 }
 
+def CollectStatsPass :
+    Pass<"collect-stats", "mlir::func::FuncOp"> {
+  let summary = "Print stats about tileable ops";
+  let constructor = "::mlir::gml_st::createCollectStatsPass()";
+}
+
 def FusionPlanningForCpuPass :
     Pass<"gml-st-cpu-fusion-planning", "mlir::func::FuncOp"> {
   let summary = "Create fusion clusters.";

@@ -275,7 +275,8 @@ std::string ExperimentalConvertSavedModelV1ToMlirLite(
 
 std::string ExperimentalConvertSavedModelV1ToMlir(
     const std::string& saved_model_path, const std::string& exported_names_str,
-    const std::string& tags, bool lift_variables, bool upgrade_legacy,
+    const std::string& tags, bool lift_variables,
+    bool include_variables_in_initializers, bool upgrade_legacy,
     bool show_debug_info, TF_Status* status) {
   // Load the saved model into a SavedModelBundle.
 
@@ -297,6 +298,8 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
   tensorflow::MLIRImportOptions import_options;
   import_options.upgrade_legacy = upgrade_legacy;
   import_options.lift_variables = lift_variables;
+  import_options.include_variables_in_initializers =
+      include_variables_in_initializers;
   auto module_or =
       ConvertSavedModelV1ToMlir(bundle, absl::Span<std::string>(exported_names),
                                 &context, import_options);

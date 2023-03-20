@@ -27,8 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 
-namespace mlir {
-namespace gml_st {
+namespace mlir::gml_st {
 namespace {
 
 // Compute tile size for the tile that starts at `offset`, has size `tileSize`
@@ -94,7 +93,7 @@ scf::ForallOp generateTileLoopNest(OpBuilder &builder, Location loc,
 
   SmallVector<OpFoldResult> lbs, ubs, steps;
   SmallVector<unsigned> nonemptyRangeIndices;
-  for (auto &loopRange : llvm::enumerate(loopRanges)) {
+  for (const auto &loopRange : llvm::enumerate(loopRanges)) {
     OpFoldResult offset = loopRange.value().offset;
     OpFoldResult size = loopRange.value().size;
     // No loops if tile size is zero. Set offset and size to the loop offset and
@@ -115,7 +114,8 @@ scf::ForallOp generateTileLoopNest(OpBuilder &builder, Location loc,
   return loop;
 }
 
-void updateOutputs(const TilingResult &tilingResult, ValueRange dstOperands) {
+void updateOutputs(const GMLSTTilingResult &tilingResult,
+                   ValueRange dstOperands) {
   scf::ForallOp parallelLoop = tilingResult.loop;
 
   if (auto dstOp = dyn_cast<DestinationStyleOpInterface>(
@@ -140,9 +140,9 @@ scf::SCFTilingOptions getSCFTilingOptions(ArrayRef<int64_t> tileSizes) {
   return opts;
 }
 
-FailureOr<TilingResult> tileUsingSCFForallOp(
-    const scf::SCFTilingOptions &options, PatternRewriter &rewriter,
-    TilingInterface op) {
+FailureOr<GMLSTTilingResult> tileUsingSCFForallOp(
+    PatternRewriter &rewriter, TilingInterface op,
+    const scf::SCFTilingOptions &options) {
   rewriter.setInsertionPoint(op);
   if (!options.tileSizeComputationFunction) {
     return rewriter.notifyMatchFailure(
@@ -172,7 +172,7 @@ FailureOr<TilingResult> tileUsingSCFForallOp(
 
   if (llvm::all_of(tileSizeVector,
                    [](Value v) { return matchPattern(v, m_Zero()); })) {
-    return TilingResult{{op}, nullptr};
+    return GMLSTTilingResult{{op}, nullptr};
   }
 
   // 3. Materialize an empty loop nest that iterates over the tiles.
@@ -180,7 +180,7 @@ FailureOr<TilingResult> tileUsingSCFForallOp(
   if (failed(tensor::getOrCreateDestinations(rewriter, loc, op, dstOperands)))
     return rewriter.notifyMatchFailure(op, "failed to get destinations");
   SmallVector<OpFoldResult> offsets, sizes;
-  TilingResult tilingResult;
+  GMLSTTilingResult tilingResult;
   tilingResult.loop =
       generateTileLoopNest(rewriter, loc, iterationDomain, tileSizeVector,
                            dstOperands, offsets, sizes);
@@ -190,7 +190,12 @@ FailureOr<TilingResult> tileUsingSCFForallOp(
   rewriter.setInsertionPoint(terminator);
 
   // 4. Insert the tiled implementation within the loop.
-  tilingResult.tiledOps = op.getTiledImplementation(rewriter, offsets, sizes);
+  FailureOr<TilingResult> tiledImplementation =
+      op.getTiledImplementation(rewriter, offsets, sizes);
+  if (failed(tiledImplementation))
+    return rewriter.notifyMatchFailure(op,
+                                       "failed to get tiled implementation");
+  tilingResult.tiledOps = tiledImplementation->tiledOps;
 
   // 5. Compute tiles for the insertion.
   int64_t numResults = op->getNumResults();
@@ -228,5 +233,4 @@ SmallVector<Value> getYieldedValues(scf::InParallelOp inParallelOp) {
       }));
 }
 
-}  // namespace gml_st
-}  // namespace mlir
+}  // namespace mlir::gml_st

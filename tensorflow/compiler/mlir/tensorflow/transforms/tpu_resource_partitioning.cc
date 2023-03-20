@@ -77,7 +77,8 @@ Type GetResourceSubtype(Value resource) {
 LogicalResult UpdateReadUses(TF::ReadVariableOp old_read,
                              TF::TPUPartitionedInputV2Op old_partitioned_input,
                              TF::TPUPartitionedInputV2Op new_partitioned_input,
-                             llvm::SmallVector<Value, 4> new_reads) {
+                             llvm::SmallVector<Value, 4> new_reads,
+                             bool is_packed) {
   xla::OpSharding sharding;
   sharding.ParseFromString(
       old_partitioned_input.get_XlaShardingAttr().getValue().str());
@@ -96,12 +97,44 @@ LogicalResult UpdateReadUses(TF::ReadVariableOp old_read,
             "TPUPartitionedInputV2 variable used in outside compiled code is "
             "only supported with REPLICATED sharding");
         return failure();
+      } else if (is_packed) {
+        // TODO(b/202047549) Generalize to the packed case.
+        old_partitioned_input.emitOpError(
+            "TPUPartitionedInputV2 variable used in outside compiled code is "
+            "only supported with UNPACKED ops (wrap value in tf.identity or"
+            "disable packing in TPUStrategy)");
+        return failure();
       }
       read_use.set(new_reads[0]);
     }
   }
   return success();
 }
+
+namespace {
+constexpr char kDeviceAttr[] = "device";
+constexpr char kFuncDeviceAttr[] = "tf.device";
+mlir::Attribute GetDeviceOfResource(mlir::func::FuncOp func,
+                                    mlir::Value resource) {
+  if (auto* resource_op = resource.getDefiningOp()) {
+    return resource_op->getAttr(kDeviceAttr);
+  } else {
+    const auto resource_arg = resource.dyn_cast_or_null<BlockArgument>();
+    if (resource_arg && (resource_arg.getOwner() == &(func.front()))) {
+      return func.getArgAttrOfType<mlir::StringAttr>(
+          resource_arg.getArgNumber(), kFuncDeviceAttr);
+    } else {
+      return mlir::Attribute{};
+    }
+  }
+}
+
+bool IsCompositeDevice(mlir::Attribute attr) {
+  const auto str_attr = attr.dyn_cast_or_null<mlir::StringAttr>();
+  return str_attr &&
+         (str_attr.getValue().find("COMPOSITE") != llvm::StringRef::npos);
+}
+}  // namespace
 
 // Rewrites unpartitioned resource reads and writes to partitioned resource
 // reads and writes. The TPU computation from the frontend is generated in such
@@ -199,9 +232,16 @@ LogicalResult PartitionResourceReadsWrites(
     llvm::SmallVector<Value, 4> partitioned_reads;
     builder.setInsertionPoint(partitioned_input);
 
+    bool is_packed = partitioned_input.getIsPacked();
+    const auto func = partitioned_input->getParentOfType<mlir::func::FuncOp>();
+
     for (Value input : partitioned_input.getInputs()) {
+      // At this stage, the op may've been rewritten to be "unpacked" but
+      // taking multiple copies of a resource on a COMPOSITE device
+      is_packed =
+          is_packed || IsCompositeDevice(GetDeviceOfResource(func, input));
+      // If a read variable op already doesn't exist for this input, create it
       auto search = read_variable_ops.find(input);
-      // if a read variable op already doesn't exist for this input, create it
       if (search == read_variable_ops.end()) {
         auto partitioned_read = builder.create<TF::ReadVariableOp>(
             read_var->getLoc(), GetResourceSubtype(input), input);
@@ -217,7 +257,7 @@ LogicalResult PartitionResourceReadsWrites(
         partitioned_input.getIsPackedAttr(),
         partitioned_input.get_XlaShardingAttr());
     if (failed(UpdateReadUses(read_var, partitioned_input, partitioned_read,
-                              partitioned_reads)))
+                              partitioned_reads, is_packed)))
       return failure();
     read_var->erase();
     if (partitioned_input->use_empty()) partitioned_input->erase();

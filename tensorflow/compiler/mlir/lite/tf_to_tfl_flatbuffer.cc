@@ -143,17 +143,19 @@ StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
 
   if (use_splatted_constant) {
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
-        file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
-        input_shapes, output_arrays, control_output_arrays,
-        specs.prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
+        file->getBuffer(), debug_info_file, /*xla_compile_device_type=*/"",
+        input_arrays, input_dtypes, input_shapes, output_arrays,
+        control_output_arrays, specs.prune_unused_nodes,
+        /*convert_legacy_fed_inputs=*/true,
         /*graph_as_function=*/false, specs.upgrade_legacy,
         /*enable_shape_inference=*/false,
         /*unconditionally_use_set_output_shapes=*/true, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
-      file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
-      input_shapes, output_arrays, control_output_arrays,
-      specs.prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
+      file->getBuffer(), debug_info_file, /*xla_compile_device_type=*/"",
+      input_arrays, input_dtypes, input_shapes, output_arrays,
+      control_output_arrays, specs.prune_unused_nodes,
+      /*convert_legacy_fed_inputs=*/true,
       /*graph_as_function=*/false, specs.upgrade_legacy,
       /*enable_shape_inference=*/false,
       /*unconditionally_use_set_output_shapes=*/true, context);

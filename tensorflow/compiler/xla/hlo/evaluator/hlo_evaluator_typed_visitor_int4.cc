@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,26 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/tsl/profiler/convert/trace_container.h"
+#include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator_typed_visitor.h"
+#include "tensorflow/compiler/xla/types.h"
 
-#include "tensorflow/tsl/platform/test.h"
-#include "tensorflow/tsl/profiler/protobuf/trace_events.pb.h"
-
-namespace tsl {
-namespace profiler {
-namespace {
-
-TEST(TraceContainer, TraceEventAllocation) {
-  TraceContainer container;
-
-  TraceEvent* event = container.CreateEvent();
-  event->set_device_id(1);
-  event->set_resource_id(2);
-  event->set_name("A");
-  event->set_timestamp_ps(3);
-  event->set_duration_ps(4);
-}
-
-}  // namespace
-}  // namespace profiler
-}  // namespace tsl
+namespace xla {
+template class HloEvaluatorTypedVisitor<s4, int64_t>;
+template class HloEvaluatorTypedVisitor<u4, uint64_t>;
+}  // namespace xla

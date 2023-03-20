@@ -23,7 +23,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
@@ -924,7 +924,7 @@ def _ragged_tensor_to_string(string_tensor, summarize):
         string_tensor,
         fn_output_signature=tensor_spec.TensorSpec(None, dtypes.string))
   if summarize not in (-1, None):
-    pieces = control_flow_ops.cond(
+    pieces = cond.cond(
         _nrows(string_tensor) <= 2 * summarize,
         lambda: pieces,
         lambda: array_ops.concat(  # pylint: disable=g-long-lambda

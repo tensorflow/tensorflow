@@ -580,11 +580,11 @@ class DeviceTopology:
 def compile(topology: DeviceTopology, mlir_module: str) -> Executable: ...
 
 def buffer_to_dlpack_managed_tensor(
-    buffer: Buffer,
+    buffer: ArrayImpl,
     take_ownership: bool = ...) -> Any: ...
 def dlpack_managed_tensor_to_buffer(
     tensor: Any, cpu_backend: Optional[Client] = ...,
-    gpu_backend: Optional[Client] = ...) -> Buffer: ...
+    gpu_backend: Optional[Client] = ...) -> ArrayImpl: ...
 
 # === BEGIN py_traceback.cc
 

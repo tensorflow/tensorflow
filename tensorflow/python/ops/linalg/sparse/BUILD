@@ -28,9 +28,9 @@ py_library(
     deps = [
         ":gen_sparse_csr_matrix_ops",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops/linalg:linalg_impl",

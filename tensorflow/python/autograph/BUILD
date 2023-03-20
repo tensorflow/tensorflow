@@ -27,9 +27,10 @@ py_strict_library(
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/autograph/converters:__init__",
-        "//tensorflow/python/autograph/core",
+        "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/impl",
-        "//tensorflow/python/autograph/lang",
+        "//tensorflow/python/autograph/lang:directives",
+        "//tensorflow/python/autograph/lang:special_functions",
         "//tensorflow/python/autograph/operators",
         "//tensorflow/python/autograph/utils:__init__",
         "//tensorflow/python/autograph/utils:ag_logging",

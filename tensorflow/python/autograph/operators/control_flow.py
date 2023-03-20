@@ -71,14 +71,16 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import control_flow_assert
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.types import distribute
 from tensorflow.python.util import nest
@@ -118,7 +120,7 @@ def _is_none_or_undef(value):
 def _verify_tf_condition(cond, tag):
   """Ensures that the condition can be used in a TF control flow."""
   extra_hint = 'to check for None, use `is not None`'
-  cond = ops.convert_to_tensor_v2(cond)
+  cond = tensor_conversion.convert_to_tensor_v2(cond)
 
   if cond.dtype != dtypes.bool:
     raise ValueError(
@@ -213,11 +215,11 @@ def _verify_single_loop_var(
     raise ValueError("'{}' is None at the end of the iteration.".format(name))
 
   if isinstance(init, (bool, int, float, str, np.ndarray)):
-    init = ops.convert_to_tensor_v2(init)
+    init = tensor_conversion.convert_to_tensor_v2(init)
   if isinstance(entry, (bool, int, float, str, np.ndarray)):
-    entry = ops.convert_to_tensor_v2(entry)
+    entry = tensor_conversion.convert_to_tensor_v2(entry)
   if isinstance(exit_, (bool, int, float, str, np.ndarray)):
-    exit_ = ops.convert_to_tensor_v2(exit_)
+    exit_ = tensor_conversion.convert_to_tensor_v2(exit_)
 
   if (not tensor_util.is_tf_type(entry) or
       not tensor_util.is_tf_type(exit_)):
@@ -329,10 +331,10 @@ def verify_single_cond_var(name, body_var, orelse_var):
         "'{}' is None at the end of the else branch.".format(name))
 
   if isinstance(body_var, (bool, int, float, str, np.ndarray)):
-    body_var = ops.convert_to_tensor_v2(body_var)
+    body_var = tensor_conversion.convert_to_tensor_v2(body_var)
 
   if isinstance(orelse_var, (bool, int, float, str, np.ndarray)):
-    orelse_var = ops.convert_to_tensor_v2(orelse_var)
+    orelse_var = tensor_conversion.convert_to_tensor_v2(orelse_var)
 
   if (not tensor_util.is_tf_type(body_var) or
       not tensor_util.is_tf_type(orelse_var)):
@@ -541,7 +543,7 @@ def _known_len_tf_for_stmt(
   def aug_test():
     main_test = iterate_index < n
     if extra_test is not None:
-      return control_flow_ops.cond(main_test, extra_test, lambda: False)
+      return tf_cond.cond(main_test, extra_test, lambda: False)
     return main_test
 
   _add_max_iterations_hint(opts, n)
@@ -589,7 +591,7 @@ def _tf_ragged_for_stmt(
   def aug_test():
     main_test = iterate_index < n
     if extra_test is not None:
-      return control_flow_ops.cond(main_test, extra_test, lambda: False)
+      return tf_cond.cond(main_test, extra_test, lambda: False)
     return main_test
 
   _add_max_iterations_hint(opts, n)
@@ -649,7 +651,7 @@ def _tf_range_for_stmt(
           math_ops.logical_and(delta < 0, iterate > limit))
 
     if extra_test is not None:
-      main_test = control_flow_ops.cond(main_test, extra_test, lambda: False)
+      main_test = tf_cond.cond(main_test, extra_test, lambda: False)
     return main_test
 
   _add_max_iterations_hint(
@@ -707,7 +709,7 @@ def _tf_iterator_for_stmt(
     # Calling set_state so that get_state() _tf_while_loop sees the conditional
     # tensors.
     aug_set_state(
-        control_flow_ops.cond(has_next, main_path, noop_path))
+        tf_cond.cond(has_next, main_path, noop_path))
 
   def aug_test():
     # This value takes a complicated path to get here:
@@ -715,7 +717,7 @@ def _tf_iterator_for_stmt(
     #   -> current_iteration_body -> set_state -> has_next
     main_test = has_next
     if extra_test is not None:
-      return control_flow_ops.cond(main_test, extra_test, lambda: False)
+      return tf_cond.cond(main_test, extra_test, lambda: False)
     return main_test
 
   _tf_while_stmt(
@@ -1068,7 +1070,7 @@ def _try_handling_undefineds(body, get_state, set_state, init_vars, nulls,
       def autocast_to_tensor(v):
         if isinstance(
             v, (int, float, bool, str, list, tuple, np.ndarray, np.generic)):
-          init_val = ops.convert_to_tensor_v2(v)
+          init_val = tensor_conversion.convert_to_tensor_v2(v)
           return array_ops.placeholder(init_val.dtype, init_val.shape)
         return v
       autocast_init_vars = nest.map_structure(autocast_to_tensor, init_vars)
@@ -1200,8 +1202,8 @@ def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
   else:
     aug_init_vars = init_vars
 
-  final_loop_vars = control_flow_ops.while_loop(
-      aug_test, aug_body, aug_init_vars, **while_loop_opts)
+  final_loop_vars = while_loop.while_loop(aug_test, aug_body, aug_init_vars,
+                                          **while_loop_opts)
 
   if require_one_iteration:
     with ops.control_dependencies([
@@ -1308,7 +1310,7 @@ def _tf_if_stmt(
       _verify_tf_cond_vars(new_body_vars_[0], new_orelse_vars, symbol_names)
     return new_orelse_vars
 
-  final_cond_vars = control_flow_ops.cond(
+  final_cond_vars = tf_cond.cond(
       cond, aug_body, aug_orelse, strict=True)
   final_cond_vars = final_cond_vars + init_vars[nouts:]
 

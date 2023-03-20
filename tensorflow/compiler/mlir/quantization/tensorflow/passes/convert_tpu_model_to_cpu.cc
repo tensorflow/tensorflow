@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/remove_identity_op_pattern.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -115,6 +116,7 @@ void ConvertTpuModelToCpuPass::runOnOperation() {
   patterns.add<ReplaceTpuPartitionedCallOpWithPartitionedCallOp,
                ReplaceBatchFunctionOpToPartitionedCallOp>(ctx);
   patterns.add<RemoveTpuOp>(ctx);
+  patterns.add<RemoveIdentity>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
     module_op.emitError() << "quant-convert-tpu-model-to-cpu pattern "

@@ -26,7 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad
@@ -271,7 +271,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
     @polymorphic_function.function
     def f(x):
-      return control_flow_ops.cond(x > 0.5, lambda: 2 * x, lambda: 3 * x)
+      return cond.cond(x > 0.5, lambda: 2 * x, lambda: 3 * x)
 
     with backprop.GradientTape() as t:
       x = constant_op.constant(1.0)

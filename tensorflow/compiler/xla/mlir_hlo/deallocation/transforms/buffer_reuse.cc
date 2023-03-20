@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -273,16 +274,27 @@ T findOp(Operation* start, std::function<bool(T)> predicate) {
   return {};
 }
 
-// Checks if v is used in [start; end)
-bool hasUsesBetween(Operation* start, Operation* end, Value v) {
+// Recursively checks if `pred` holds for any op in [start; end)
+bool anyMatchBetween(Operation* start, Operation* end,
+                     const std::function<bool(Operation*)>& predicate) {
   while (start != end) {
-    if (llvm::is_contained(start->getOperands(), v)) return true;
+    if (predicate(start)) return true;
     for (auto& region : start->getRegions()) {
-      if (hasUsesBetween(&region.front().front(), nullptr, v)) return true;
+      if (!region.empty() &&
+          anyMatchBetween(&region.front().front(), nullptr, predicate)) {
+        return true;
+      }
     }
     start = start->getNextNode();
   }
   return false;
+}
+
+// Recursively checks if `v` is used in [start; end)
+bool hasUsesBetween(Operation* start, Operation* end, Value v) {
+  return anyMatchBetween(start, end, [v](Operation* op) {
+    return llvm::is_contained(op->getOperands(), v);
+  });
 }
 
 std::pair<DenseMap<Type, SmallVector<memref::AllocOp>>,
@@ -395,16 +407,37 @@ bool doubleBuffer(Block& block) {
   return result;
 }
 
-bool reuseBuffers(Block& block) {
+enum class BufferReuseMode {
+  // Only reuse buffers if between a `dealloc` and `alloc` there are no further
+  // `alloc`s that might later become a candidate for buffer reuse.
+  CONSERVATIVE,
+  // Also reuse buffers if there are intermediate ops between `dealloc` and
+  // `alloc`. This may extend live-ranges of buffers (e.g. if the intermediate
+  // op contains a region), which may destroy reuse opportunities.
+  AGGRESSIVE
+};
+
+bool reuseBuffers(Block& block, BufferReuseMode mode) {
   auto* op = &block.front();
   bool result = false;
   while (op) {
     if (auto dealloc = llvm::dyn_cast<memref::DeallocOp>(op)) {
-      // Try to find an alloc op with the same shape. Only check the next
-      // alloc, so we don't increase the heap size in the meantime.
-      // TODO(jreiffers): Can we be smarter here?
-      auto alloc = findOp<memref::AllocOp>(
+      memref::AllocOp alloc = findOp<memref::AllocOp>(
           op->getNextNode(), [](memref::AllocOp) { return true; });
+
+      // In conservative mode, don't reuse buffers if there is a candidate alloc
+      // in between the dealloc/alloc pair that might still be matched with this
+      // dealloc. If we extend the live-range of the buffer past this alloc,
+      // this will prevent further reuse.
+      if (!alloc || (mode == BufferReuseMode::CONSERVATIVE &&
+                     anyMatchBetween(dealloc, alloc, [&](Operation* op) {
+                       return llvm::isa<memref::AllocOp>(op) &&
+                              op->getResultTypes().front() == alloc.getType();
+                     }))) {
+        op = op->getNextNode();
+        continue;
+      }
+
       if (alloc && alloc.getDynamicSizes().empty() &&
           alloc->getResultTypes()[0] == dealloc.getMemref().getType()) {
         alloc.replaceAllUsesWith(dealloc.getMemref());
@@ -438,12 +471,10 @@ bool reuseBuffers(Block& block) {
       }
     }
 
-    // Reuse may get rid of allocs entirely, so run it before attempting double
-    // buffering.
     for (auto& region : op->getRegions()) {
       if (!region.empty()) {
         assert(region.hasOneBlock());
-        result |= reuseBuffers(region.front());
+        result |= reuseBuffers(region.front(), mode);
       }
     }
 
@@ -596,12 +627,17 @@ struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
     do {
       // Eliminate dead code.
       (void)applyPatternsAndFoldGreedily(getOperation(), {});
-      result = hoistAllocs(block);
-      result |= reuseBuffers(block);
-      result |= doubleBuffer(block);
-      result |= simplifyLoopDeallocs(block);
+      // Only coalesce dealloc/alloc pairs that are immediate neighbors, to make
+      // sure we don't accidentally extend the live range of a buffer.
+      result = reuseBuffers(block, BufferReuseMode::CONSERVATIVE);
+      // Make sure we rerun buffer reuse after every intermediate step.
+      result |= hoistAllocs(block) || doubleBuffer(block) ||
+                simplifyLoopDeallocs(block);
     } while (result);
+    // Now we can also coalesce distant dealloc/alloc pairs.
+    reuseBuffers(block, BufferReuseMode::AGGRESSIVE);
     promoteBuffers(block);
+    (void)applyPatternsAndFoldGreedily(getOperation(), {});
   }
 };
 

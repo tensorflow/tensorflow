@@ -54,8 +54,10 @@ class DistributedSaveTest(
     except FileNotFoundError:
       pass
 
+  # TODO(mpcallanan): Add test for multiple workers.
+
   @combinations.generate(test_base.eager_only_combinations())
-  def testSimple(self):
+  def testSaveLoad(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10)
     distributed_save_op.distributed_save(
@@ -66,7 +68,25 @@ class DistributedSaveTest(
     dataset = dataset_ops.Dataset.load(self._test_dir)
     self.assertDatasetProduces(dataset, list(range(10)))
 
-  # TODO(mpcallanan): Add test for multiple workers.
+  @combinations.generate(
+      combinations.times(
+          test_base.eager_only_combinations(),
+          combinations.combine(compression=[None, "AUTO", "GZIP"]),
+      )
+  )
+  def testCompression(self, compression):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    distributed_save_op.distributed_save(
+        dataset,
+        self._test_dir,
+        cluster.dispatcher_address(),
+        compression=compression,
+    )
+    self._wait_for_snapshot(cluster)
+
+    dataset = dataset_ops.Dataset.load(self._test_dir)
+    self.assertDatasetProduces(dataset, list(range(10)))
 
   @combinations.generate(test_base.eager_only_combinations())
   def testChooseFromDatasets(self):

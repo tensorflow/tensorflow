@@ -26,8 +26,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_assert
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import list_ops
@@ -273,8 +273,8 @@ def _tf_tensor_len(s):
     with ops.control_dependencies([control_flow_assert.Assert(False, [msg])]):
       return constant_op.constant(0, dtype=dtypes.int32)
 
-  return control_flow_ops.cond(rank > 0, lambda: array_ops.shape(s)[0],
-                               raise_zero_rank_error)
+  return cond.cond(rank > 0, lambda: array_ops.shape(s)[0],
+                   raise_zero_rank_error)
 
 
 def _py_len(s):

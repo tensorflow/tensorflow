@@ -2402,6 +2402,21 @@ Status HloInstruction::DropAllControlDeps() {
   return OkStatus();
 }
 
+Status HloInstruction::SafelyDropAllControlDependencies() {
+  // Add all pairs of transitive dependencies from predecessors to successors.
+  for (HloInstruction* predecessor : control_predecessors_) {
+    for (HloInstruction* successor : control_successors_) {
+      TF_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(successor));
+    }
+  }
+  TF_RETURN_IF_ERROR(DropAllControlDeps());
+  return OkStatus();
+}
+
+bool HloInstruction::HasControlDependencies() const {
+  return !control_predecessors_.empty() || !control_successors_.empty();
+}
+
 Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
   for (auto* ctrl_pred : inst->control_predecessors()) {
     TF_RETURN_IF_ERROR(ctrl_pred->AddControlDependencyTo(this));

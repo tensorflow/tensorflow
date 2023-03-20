@@ -386,7 +386,7 @@ cuda_py_test(
         ":context",
         ":test",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
@@ -490,6 +490,7 @@ cuda_py_test(
 
 py_library(
     name = "framework_for_generated_wrappers",
+    deprecation = "Depending on this target can cause build dependency cycles. Depend on the fine-grained sub-targets instead.",
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
@@ -593,6 +594,7 @@ cuda_py_test(
         ":function",
         ":remote",
         ":test",
+        "//tensorflow/python:cond",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:random_ops",

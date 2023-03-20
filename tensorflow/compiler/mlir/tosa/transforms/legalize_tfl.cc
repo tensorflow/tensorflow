@@ -1281,6 +1281,14 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
         "be all quantized or all floating-point");
   }
 
+  int64_t input_channels = input_type.getDimSize(3);
+  int64_t filter_channels = filter_type.getDimSize(3);
+  if (input_channels != filter_channels &&
+      input_channels % filter_channels == 0) {
+    return rewriter.notifyMatchFailure(
+        op, "grouped convolution is not supported at this time");
+  }
+
   DenseI64ArrayAttr pad;
   DenseI64ArrayAttr stride;
   DenseI64ArrayAttr dilation;

@@ -49,6 +49,7 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import test_util as util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
@@ -315,9 +316,16 @@ class MirroredCollectiveOpTest(strategy_test_lib.DistributionTestBase,
     @def_function.function
     def fn():
       strategy = mirrored_strategy.MirroredStrategy(["CPU:0", "CPU:1"])
-      self.assertEqual(
-          strategy.extended._collective_ops._options.implementation,
-          collective_util.CommunicationImplementation.RING)
+      if ops.executing_eagerly_outside_functions():
+        self.assertIsInstance(
+            strategy.extended._collective_ops,
+            cross_device_ops_lib.CollectiveAllReduce)
+        self.assertEqual(
+            strategy.extended._collective_ops._options.implementation,
+            collective_util.CommunicationImplementation.RING)
+      else:
+        self.assertIsInstance(strategy.extended._collective_ops,
+                              cross_device_ops_lib.ReductionToOneDevice)
     fn()
 
   def testMixedDevices(self):
@@ -333,15 +341,19 @@ class MirroredCollectiveOpTest(strategy_test_lib.DistributionTestBase,
     @def_function.function
     def fn():
       strategy = mirrored_strategy.MirroredStrategy(["GPU:0", "GPU:1"])
+      self.assertIsInstance(
+          strategy.extended._collective_ops,
+          cross_device_ops_lib.CollectiveAllReduce)
       self.assertEqual(
           strategy.extended._collective_ops._options.implementation,
           collective_util.CommunicationImplementation.NCCL)
     fn()
 
   def testVirtualGpu(self):
-    physical_gpus = context.context().list_physical_devices(device_type="GPU")
     # Logical devices cannot be changed after context initialization.
     context._reset_context()
+
+    physical_gpus = context.context().list_physical_devices(device_type="GPU")
     context.context().set_logical_device_configuration(physical_gpus[1], [
         context.LogicalDeviceConfiguration(memory_limit=1024),
         context.LogicalDeviceConfiguration(memory_limit=1024)
@@ -349,10 +361,141 @@ class MirroredCollectiveOpTest(strategy_test_lib.DistributionTestBase,
     @def_function.function
     def fn():
       strategy = mirrored_strategy.MirroredStrategy(["GPU:0", "GPU:1", "GPU:2"])
-      self.assertEqual(
-          strategy.extended._collective_ops._options.implementation,
-          collective_util.CommunicationImplementation.RING)
+      if ops.executing_eagerly_outside_functions():
+        self.assertIsInstance(
+            strategy.extended._collective_ops,
+            cross_device_ops_lib.CollectiveAllReduce)
+        self.assertEqual(
+            strategy.extended._collective_ops._options.implementation,
+            collective_util.CommunicationImplementation.RING)
+      else:
+        self.assertEqual(strategy.extended._collective_ops,
+                         cross_device_ops_lib.ReductionToOneDevice)
     fn()
+
+
+@combinations.generate(
+    combinations.combine(
+        mode=["graph", "eager"], required_gpus=[2], use_default=[True, False]))
+class MirroredGetCrossDeviceOpTest(
+    strategy_test_lib.DistributionTestBase,
+    strategy_test_lib.TwoDeviceDistributionTestBase, parameterized.TestCase):
+
+  def tearDown(self):
+    super().tearDown()
+    context._reset_context()
+
+  def testGpusCollectiveOp(self, use_default):
+
+    @def_function.function(jit_compile=util.is_xla_enabled())
+    def fn(var, use_default):
+
+      if use_default or util.is_xla_enabled():
+        self.assertIsInstance(
+            strategy.extended._get_cross_device_ops(var),
+            cross_device_ops_lib.CollectiveAllReduce)
+      else:
+        self.assertIsInstance(
+            strategy.extended._get_cross_device_ops(var),
+            cross_device_ops_lib.NcclAllReduce)
+
+    strategy = mirrored_strategy.MirroredStrategy(
+        ["GPU:0", "GPU:1"],
+        cross_device_ops=None
+        if use_default else cross_device_ops_lib.NcclAllReduce())
+    with strategy.scope():
+      var = variables.Variable(1.)
+
+    fn(var, use_default)
+
+  def testVirtualGpusCollectiveOp(self, use_default):
+    # Logical devices cannot be changed after context initialization.
+    context._reset_context()
+
+    physical_gpus = context.context().list_physical_devices(device_type="GPU")
+    context.context().set_logical_device_configuration(physical_gpus[1], [
+        context.LogicalDeviceConfiguration(memory_limit=1024),
+        context.LogicalDeviceConfiguration(memory_limit=1024)
+    ])
+
+    @def_function.function(jit_compile=util.is_xla_enabled())
+    def fn(var, use_default):
+
+      if use_default or util.is_xla_enabled():
+        self.assertIsInstance(
+            strategy.extended._get_cross_device_ops(var),
+            cross_device_ops_lib.CollectiveAllReduce)
+        self.assertEqual(
+            strategy.extended._get_cross_device_ops(
+                var)._options.implementation,
+            collective_util.CommunicationImplementation.RING)
+      else:
+        self.assertIsInstance(
+            strategy.extended._get_cross_device_ops(var),
+            cross_device_ops_lib.NcclAllReduce)
+
+    strategy = mirrored_strategy.MirroredStrategy(
+        ["GPU:0", "GPU:1", "GPU:2"],
+        cross_device_ops=None
+        if use_default else cross_device_ops_lib.NcclAllReduce())
+
+    with strategy.scope():
+      var = variables.Variable(1.)
+
+    fn(var, use_default)
+
+  def testCpusCollectiveOp(self, use_default):
+    del use_default
+    if util.is_xla_enabled():
+      self.skipTest("Only expected to run under non-XLA context.")
+
+    @def_function.function(jit_compile=True)
+    def fn(var):
+
+      if not ops.executing_eagerly_outside_functions():
+        self.assertIsInstance(
+            strategy.extended._get_cross_device_ops(var),
+            cross_device_ops_lib.ReductionToOneDevice)
+      else:
+        self.assertIsInstance(
+            strategy.extended._get_cross_device_ops(var),
+            cross_device_ops_lib.CollectiveAllReduce)
+
+    strategy = mirrored_strategy.MirroredStrategy(["CPU:0", "CPU:1"])
+    with strategy.scope():
+      var = variables.Variable(1.)
+
+    fn(var)
+
+  def testMixedDevicesCollectiveOp(self, use_default):
+    del use_default
+    if util.is_xla_enabled():
+      self.skipTest("All devices should be identical in XLA context.")
+
+    # XLA is not supported if devices are not of the same type.
+    strategy = mirrored_strategy.MirroredStrategy(["CPU:0", "GPU:0"])
+    with strategy.scope():
+      var = variables.Variable(1.)
+
+    self.assertIsInstance(
+        strategy.extended._get_cross_device_ops(var),
+        cross_device_ops_lib.ReductionToOneDevice)
+
+  def testMirroredStrategyInt32VariableCollectiveOp(self, use_default):
+    if util.is_xla_enabled():
+      self.skipTest("Only expected to run under non-XLA context.")
+
+    strategy = mirrored_strategy.MirroredStrategy(
+        ["GPU:0", "GPU:1"],
+        cross_device_ops=None
+        if use_default else cross_device_ops_lib.NcclAllReduce())
+    with strategy.scope():
+      # CollevtiveOp does not support int32 on GPU.
+      var = variables.Variable(1)
+
+    self.assertIsInstance(
+        strategy.extended._get_cross_device_ops(var),
+        cross_device_ops_lib.ReductionToOneDevice)
 
 
 def one_device_combinations():
@@ -1287,7 +1430,7 @@ class MultiWorkerMirroredStrategyTestWithChief(
                                 {"TF_CONFIG": json.dumps(tf_config)}):
         strategy = mirrored_strategy.MirroredStrategy()
         if context.num_gpus() == 0:
-          self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
+          self.assertIsInstance(strategy.extended._cross_device_ops,
                                 cross_device_ops_lib.ReductionToOneDevice)
       self.skipTest("b/130551176, run the following once fixed.")
       self._test_minimize_loss_graph(strategy, learning_rate=0.05)

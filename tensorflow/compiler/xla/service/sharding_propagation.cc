@@ -1439,6 +1439,10 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
   if (!IsSpatiallyPartitioned(&user)) {
     return std::nullopt;
   }
+  if (instruction.opcode() == HloOpcode::kConstant &&
+      user.sharding().IsManual()) {
+    return std::nullopt;
+  }
   const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
 
   switch (user.opcode()) {
@@ -2437,7 +2441,7 @@ bool ShardingPropagation::InferShardingFromUsers(
     std::optional<HloSharding> user_sharding =
         ShardingPropagation::GetShardingFromUser(
             *instruction, *user, aggressiveness, is_spmd, call_graph);
-    // Do not propagate manual sharding to constant.
+    // Do not propagate manual sharding to constant from partially manual tuple.
     if (instruction->opcode() == HloOpcode::kConstant && user_sharding &&
         user_sharding->IsManual()) {
       continue;

@@ -342,7 +342,12 @@ std::vector<int64_t> Mesh::dim_sizes() const {
 }
 
 bool Mesh::operator==(const Mesh& b) const {
-  return protobuf::util::MessageDifferencer::Equals(ToProto(), b.ToProto());
+  StatusOr<MeshProto> this_proto = ToProto();
+  StatusOr<MeshProto> b_proto = b.ToProto();
+  if (!this_proto.ok() || !b_proto.ok()) {
+    return false;
+  }
+  return protobuf::util::MessageDifferencer::Equals(*this_proto, *b_proto);
 }
 
 bool Mesh::IsEmpty() const {
@@ -445,8 +450,7 @@ int64 Mesh::size() const {
 
 Mesh Mesh::Empty() { return Mesh(); }
 
-// TODO(b/256016071): This should return a `StatusOr<MeshProto>`.
-MeshProto Mesh::ToProto() const {
+StatusOr<MeshProto> Mesh::ToProto() const {
   MeshProto mesh_proto;
   mesh_proto.set_name(name());
   mesh_proto.set_use_xla_spmd(use_xla_spmd());
@@ -465,8 +469,10 @@ MeshProto Mesh::ToProto() const {
         mesh_proto.add_global_device_ids(i);
       }
 
+      auto& mesh_dimensions = *mesh_proto.mutable_mesh_dimensions();
+      mesh_dimensions.Reserve(mesh_dims_.size());
       for (const auto& dim : mesh_dims_) {
-        MeshDimensionProto* mesh_dim_proto = mesh_proto.add_mesh_dimensions();
+        MeshDimensionProto* mesh_dim_proto = mesh_dimensions.Add();
         mesh_dim_proto->set_name(dim.name);
         mesh_dim_proto->set_size(dim.size);
       }
@@ -481,7 +487,8 @@ MeshProto Mesh::ToProto() const {
       break;
     }
     default: {
-      LOG(ERROR) << "Unsupported mesh type " << static_cast<int>(mesh_type_);
+      return errors::InvalidArgument("Unsupported mesh type ",
+                                     static_cast<int>(mesh_type_));
     }
   }
   return mesh_proto;
@@ -500,6 +507,7 @@ std::string Mesh::ToString() const {
 
   // Add mesh dimensions
   absl::InlinedVector<std::string, 4> mesh_dim_lst;
+  mesh_dim_lst.reserve(mesh_dims_.size());
   for (const auto& dim : mesh_dims_)
     mesh_dim_lst.push_back(absl::StrCat(dim.name, "=", dim.size));
   mesh_str += absl::StrJoin(mesh_dim_lst, ",") + "|";
@@ -1074,9 +1082,9 @@ bool Layout::IsBatchParallel(int non_batch_rank) const {
   return true;
 }
 
-LayoutProto Layout::ToProto() const {
+StatusOr<LayoutProto> Layout::ToProto() const {
   LayoutProto proto;
-  *proto.mutable_mesh_config() = mesh_.ToProto();
+  TF_ASSIGN_OR_RETURN(*proto.mutable_mesh_config(), mesh_.ToProto());
   for (const auto& dim : sharding_specs_) {
     *proto.add_sharding_specs() = dim;
   }
@@ -1098,7 +1106,12 @@ bool Layout::IsEquivalent(const Layout& b) const {
 }
 
 bool Layout::operator==(const Layout& b) const {
-  return protobuf::util::MessageDifferencer::Equals(ToProto(), b.ToProto());
+  StatusOr<LayoutProto> this_proto = ToProto();
+  StatusOr<LayoutProto> b_proto = b.ToProto();
+  if (!this_proto.ok() || !b_proto.ok()) {
+    return false;
+  }
+  return protobuf::util::MessageDifferencer::Equals(*this_proto, *b_proto);
 }
 
 std::vector<int64_t> Layout::GlobalShapeFromLocalShape(
@@ -1267,10 +1280,10 @@ std::string Layout::ToString() const {
   return layout_str;
 }
 
-Layout Layout::GetLayoutWithReducedDims(
+StatusOr<Layout> Layout::GetLayoutWithReducedDims(
     const absl::flat_hash_set<int>& reduced_dims, bool keep_dims) const {
   dtensor::LayoutProto output_layout;
-  *output_layout.mutable_mesh_config() = mesh().ToProto();
+  TF_ASSIGN_OR_RETURN(*output_layout.mutable_mesh_config(), mesh().ToProto());
 
   for (int i = 0; i < rank(); ++i) {
     // reduced_dims may contain negative values.
@@ -1284,12 +1297,12 @@ Layout Layout::GetLayoutWithReducedDims(
   return Layout::FromProto(output_layout).value();
 }
 
-Layout Layout::Truncate(int64 split_point, bool end) const {
+StatusOr<Layout> Layout::Truncate(int64 split_point, bool end) const {
   if ((split_point == 0 && end) || (split_point == rank() && !end))
     return *this;
 
   dtensor::LayoutProto output_layout;
-  *output_layout.mutable_mesh_config() = mesh().ToProto();
+  TF_ASSIGN_OR_RETURN(*output_layout.mutable_mesh_config(), mesh().ToProto());
 
   if (end) {
     for (int i = split_point; i < rank(); ++i)
@@ -1347,8 +1360,8 @@ StatusOr<Layout> ConcatenateLayouts(const Layout& layout_a,
           "dimension: ",
           layout_b.sharding_spec(i), " is used in both layouts.");
 
-  LayoutProto layout_proto_a = layout_a.ToProto();
-  LayoutProto layout_proto_b = layout_b.ToProto();
+  TF_ASSIGN_OR_RETURN(LayoutProto layout_proto_a, layout_a.ToProto());
+  TF_ASSIGN_OR_RETURN(LayoutProto layout_proto_b, layout_b.ToProto());
   LayoutProto output_layout_proto;
 
   *output_layout_proto.mutable_mesh_config() = layout_proto_a.mesh_config();

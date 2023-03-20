@@ -53,7 +53,8 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import resources
@@ -925,7 +926,7 @@ class OperationTest(test_util.TensorFlowTestCase):
   @test_util.run_deprecated_v1
   def testNoConvert(self):
     # Operation cannot be converted to Tensor.
-    op = control_flow_ops.no_op()
+    op = gen_control_flow_ops.no_op()
     with self.assertRaisesRegex(TypeError,
                                 "can't convert Operation '.+' to Tensor"):
       ops.convert_to_tensor(op)
@@ -1336,7 +1337,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
         self.assertLen(new_ops, 1)
         return x
 
-      control_flow_ops.cond(x < 10, true_fn, lambda: x)
+      cond.cond(x < 10, true_fn, lambda: x)
 
     op = g.get_operation_by_name("cond/myop")
     self.assertIsNotNone(op)
@@ -3066,7 +3067,7 @@ class GraphTest(test_util.TensorFlowTestCase):
 class AttrScopeTest(test_util.TensorFlowTestCase):
 
   def _get_test_attrs(self):
-    x = control_flow_ops.no_op()
+    x = gen_control_flow_ops.no_op()
     try:
       a = compat.as_text(x.get_attr("_A"))
     except ValueError:

@@ -1842,14 +1842,17 @@ Status IrEmitterUnnested::EmitTritonFusion(
                                     .set_print_operand_shape(false));
 
   // TODO(tdanyluk): Consider removing this level of caching, because we already
-  // cache the wrapper_fn now.
+  // cache the wrapper_fn now. But we have to measure the compile time if we do
+  // that, because the reusability criteria of triton_cache_ is actually more
+  // permissive than the criteria of kernel_reuse_cache_, so removing it may
+  // make compilation slower.
   auto cache_it = triton_cache_.find(fingerprint);
   llvm::Function* impl_fn;
   if (cache_it == triton_cache_.end()) {
     const std::string fn_name =
         ir_emitter_context_->name_uniquer()->GetUniqueName(
             llvm_ir::SanitizeFunctionName(
-                fusion_op->getName().getStringRef().str()));
+                absl::StrCat(GetIrNameFromLoc(fusion_op->getLoc()), "_impl")));
     const std::optional<LaunchDimensions> launch_dimensions = TritonWrapper(
         fn_name, hlo_computation,
         ir_emitter_context_->cuda_compute_capability(),
@@ -3392,6 +3395,13 @@ StatusOr<std::vector<llvm_ir::IrArray>> IrEmitterUnnested::BuildKernelThunkImpl(
     llvm::Type* ir_type = llvm_ir::ShapeToIrType(slice.shape, module_);
     llvm_ir::IrArray ir_array(CastToTypedValue(slice.shape, loc, &b_), ir_type,
                               slice.shape);
+    // Note: This code here doesn't check if any partially overlapping buffers
+    // are written. Our investigation shows that HloDataflowAnalysis only
+    // aliases input and output buffers if they are exactly the same size and
+    // location and it aliases one output with at most one input. If that
+    // changes then we will have to modify this to something like:
+    //
+    // if (!OverlapsAny(buffers_written, slice.buffer_slice))
     if (!buffers_written.contains(slice.buffer_slice)) {
       ir_array.MarkInvariantOverWholeProgram(&loc->getContext());
     }
@@ -3428,7 +3438,7 @@ StatusOr<std::vector<llvm_ir::IrArray>> IrEmitterUnnested::BuildKernelThunk(
   TF_RET_CHECK(!mlir::isa<mlir::lmhlo::FusionOp>(op));
 
   std::vector<KernelArgument> kernel_arguments(operands.size());
-  for (auto& [i, operand] : llvm::enumerate(operands)) {
+  for (const auto& [i, operand] : llvm::enumerate(operands)) {
     TF_ASSIGN_OR_RETURN(
         kernel_arguments[i],
         ValueToKernelArgument(operand, i, WritesMlirBuffer(op, operand)));
@@ -3527,6 +3537,14 @@ IrEmitterUnnested::GetReusableKernelArguments(mlir::lmhlo::FusionOp fusion_op) {
       }
     }();
 
+    // Note: This code here doesn't check if any partially overlapping buffers
+    // are written. Our investigation shows that HloDataflowAnalysis only
+    // aliases input and output buffers if they are exactly the same size and
+    // location and it aliases one output with at most one input. If that
+    // changes then we will have to modify this to something like:
+    //
+    // kernel_argument.written =
+    //   OverlapsAny(buffers_written, kernel_argument.slice);
     kernel_argument.written = buffers_written.contains(kernel_argument.slice);
 
     kernel_argument.aliased = kernel_argument.written && [&] {

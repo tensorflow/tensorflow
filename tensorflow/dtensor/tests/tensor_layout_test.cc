@@ -147,7 +147,10 @@ TEST_F(LayoutTest, FromStringEmptyLayout) {
   std::string layout_str = layout.ToString();
   TF_ASSERT_OK_AND_ASSIGN(Layout layout_from_str,
                           Layout::FromString(layout_str));
-  EXPECT_THAT(layout.ToProto(), EqualsProto(layout_from_str.ToProto()));
+  TF_ASSERT_OK_AND_ASSIGN(LayoutProto layout_from_str_proto,
+                          layout_from_str.ToProto());
+  EXPECT_THAT(layout.ToProto(),
+              IsOkAndHolds(EqualsProto(layout_from_str_proto)));
 }
 
 TEST_F(LayoutTest, LayoutToFromString) {
@@ -155,7 +158,10 @@ TEST_F(LayoutTest, LayoutToFromString) {
   std::string layout_str = layout.ToString();
   TF_ASSERT_OK_AND_ASSIGN(Layout layout_from_str,
                           Layout::FromString(layout_str));
-  EXPECT_THAT(layout.ToProto(), EqualsProto(layout_from_str.ToProto()));
+  TF_ASSERT_OK_AND_ASSIGN(LayoutProto layout_from_str_proto,
+                          layout_from_str.ToProto());
+  EXPECT_THAT(layout.ToProto(),
+              IsOkAndHolds(EqualsProto(layout_from_str_proto)));
 }
 
 TEST_F(LayoutTest, LayoutToFromStringNotSharded) {
@@ -190,7 +196,9 @@ TEST_F(LayoutTest, MeshToFromString) {
   Mesh mesh = BatchLayout().mesh();
   std::string mesh_str = mesh.ToString();
   TF_ASSERT_OK_AND_ASSIGN(Mesh mesh_from_str, Mesh::FromString(mesh_str));
-  EXPECT_THAT(mesh.ToProto(), EqualsProto(mesh_from_str.ToProto()));
+  TF_ASSERT_OK_AND_ASSIGN(MeshProto mesh_from_str_proto,
+                          mesh_from_str.ToProto());
+  EXPECT_THAT(mesh.ToProto(), IsOkAndHolds(EqualsProto(mesh_from_str_proto)));
 }
 
 TEST_F(LayoutTest, GetType) {
@@ -231,7 +239,8 @@ TEST_F(LayoutTest, ScalarLayout) {
       Layout::FromString("sharding_specs:scalar, mesh:|x=4,y=4|*TPU"));
   EXPECT_EQ(layout.num_devices(), 16);
   EXPECT_TRUE(layout.mesh().is_tpu_mesh());
-  EXPECT_EQ(layout.ToProto().mesh_config().mesh_dimensions(0).size(), 4);
+  TF_ASSERT_OK_AND_ASSIGN(LayoutProto layout_proto, layout.ToProto());
+  EXPECT_EQ(layout_proto.mesh_config().mesh_dimensions(0).size(), 4);
   EXPECT_EQ(layout.rank(), 0);
 }
 
@@ -241,7 +250,8 @@ TEST_F(LayoutTest, ParseSimpleTpuMesh) {
       Layout::FromString("sharding_specs:x, mesh:|x=4,y=4|*TPU"));
   EXPECT_EQ(layout.num_devices(), 16);
   EXPECT_TRUE(layout.mesh().is_tpu_mesh());
-  EXPECT_EQ(layout.ToProto().mesh_config().mesh_dimensions(0).size(), 4);
+  TF_ASSERT_OK_AND_ASSIGN(LayoutProto layout_proto, layout.ToProto());
+  EXPECT_EQ(layout_proto.mesh_config().mesh_dimensions(0).size(), 4);
 }
 
 TEST_F(LayoutTest, ParseSimpleCpuMesh) {
@@ -251,7 +261,8 @@ TEST_F(LayoutTest, ParseSimpleCpuMesh) {
   EXPECT_EQ(layout.num_devices(), 16);
   EXPECT_FALSE(layout.mesh().is_tpu_mesh());
 
-  EXPECT_EQ(layout.ToProto().mesh_config().mesh_dimensions(0).size(), 4);
+  TF_ASSERT_OK_AND_ASSIGN(LayoutProto layout_proto, layout.ToProto());
+  EXPECT_EQ(layout_proto.mesh_config().mesh_dimensions(0).size(), 4);
 }
 
 TEST_F(LayoutTest, ParseFailsOnRepeatedShardingSpec) {
@@ -286,7 +297,8 @@ TEST_F(LayoutTest, ParseReplicatedLayout) {
   EXPECT_EQ(layout.num_devices(), 16);
   EXPECT_FALSE(layout.mesh().is_tpu_mesh());
   EXPECT_TRUE(layout.IsFullyReplicated());
-  EXPECT_EQ(layout.ToProto().mesh_config().mesh_dimensions(0).size(), 4);
+  TF_ASSERT_OK_AND_ASSIGN(LayoutProto layout_proto, layout.ToProto());
+  EXPECT_EQ(layout_proto.mesh_config().mesh_dimensions(0).size(), 4);
 }
 
 TEST_F(LayoutTest, SingleHostFullyReplicatedReducedMesh) {
@@ -578,7 +590,8 @@ TEST_F(LayoutTest, TruncateBeginning) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto expected_layout,
       Layout::FromString("sharding_specs:x, mesh:CPU|x=2,y=2|*CPU"));
-  EXPECT_EQ(layout.Truncate(/*split_point=*/1), expected_layout);
+  EXPECT_THAT(layout.Truncate(/*split_point=*/1),
+              IsOkAndHolds(expected_layout));
 }
 
 TEST_F(LayoutTest, TruncateEnd) {
@@ -588,7 +601,8 @@ TEST_F(LayoutTest, TruncateEnd) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto expected_layout,
       Layout::FromString("sharding_specs:y, mesh:CPU|x=2,y=2|*CPU"));
-  EXPECT_EQ(layout.Truncate(/*split_point=*/1, /*end=*/true), expected_layout);
+  EXPECT_THAT(layout.Truncate(/*split_point=*/1, /*end=*/true),
+              IsOkAndHolds(expected_layout));
 }
 
 TEST_F(LayoutTest, Concatenate) {

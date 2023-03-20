@@ -2303,7 +2303,18 @@ class Checkpoint(autotrackable.AutoTrackable):
     # 2. running in eager mode
     if options and options.experimental_enable_async_checkpoint:
       self._checkpoint_options = options
-      if context.executing_eagerly():
+      if checkpoint_context.in_preemption_save_context():
+        # Make sure all in-progress writes have completed before saving the
+        # final preemption checkpoint.
+        if self._async_checkpointer_impl is not None:
+          self._async_checkpointer_impl.sync()
+        # Additional work done will not be saved in a future checkpoint, so
+        # we use regular sync checkpoint to avoid overhead of dispatching
+        # checkpoint write to a new thread.
+        logging.warning(
+            "Switching to regular sync checkpoint for preemption checkpoint."
+        )
+      elif context.executing_eagerly():
         return self._async_checkpointer()._write(  # pylint: disable=protected-access
             file_prefix, options, write_done_callback)
       else:
@@ -2408,7 +2419,18 @@ class Checkpoint(autotrackable.AutoTrackable):
     # 2. running in eager mode
     if options and options.experimental_enable_async_checkpoint:
       self._checkpoint_options = options
-      if context.executing_eagerly():
+      if checkpoint_context.in_preemption_save_context():
+        # Make sure all in-progress writes have completed before saving the
+        # final preemption checkpoint.
+        if self._async_checkpointer_impl is not None:
+          self._async_checkpointer_impl.sync()
+        # Additional work done will not be saved in a future checkpoint, so
+        # we use regular sync checkpoint to avoid overhead of dispatching
+        # checkpoint write to a new thread.
+        logging.warning(
+            "Switching to regular sync checkpoint for preemption checkpoint."
+        )
+      elif context.executing_eagerly():
         return self._async_checkpointer().save(file_prefix, options)
       else:
         logging.warning(

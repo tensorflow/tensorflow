@@ -19,7 +19,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 
-#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/types.h"
@@ -56,15 +55,6 @@ Status SetUpKernelFallbackCompatRequestContext(
     const absl::optional<SessionMetadata>& model_metadata = absl::nullopt,
     std::function<void(std::function<void()>)>* runner = nullptr,
     tfrt_stub::CostRecorder* cost_recorder = nullptr);
-
-// Runner_table can be nullptr. In that case, kernel_fallback will use
-// the default runner_table.
-Status SetUpKernelFallbackCompatRequestContext(
-    tfrt::RequestContextBuilder* builder,
-    tfrt_stub::OpKernelRunnerTable* runner_table,
-    tensorflow::EagerContext* eager_context,
-    tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr,
-    const absl::optional<SessionMetadata>& model_metadata = absl::nullopt);
 
 // The CoreRuntime dispatch function to run a TF kernel in kernel fallback
 // compat mode.

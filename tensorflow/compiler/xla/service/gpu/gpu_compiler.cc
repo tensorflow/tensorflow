@@ -190,6 +190,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/blocking_counter.h"
 #include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -599,7 +600,8 @@ Status GpuCompiler::OptimizeHloModule(
     // annotations added by this pass may not be correct after the
     // modifications.
     pipeline.AddPass<WhileLoopTripCountAnnotator>();
-    pipeline.AddPass<HloComputationDeduplicator>();
+    pipeline.AddPass<HloComputationDeduplicator>(
+        /*mark_fusion_duplications=*/false);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -638,7 +640,11 @@ Status GpuCompiler::OptimizeHloModule(
   if (stream_exec != nullptr) {
     gpu_version = GetGpuVersion(stream_exec);
     se::dnn::DnnSupport* dnn = stream_exec->AsDnn();
-    TF_RET_CHECK(dnn != nullptr);
+    if (dnn == nullptr) {
+      return tsl::errors::FailedPrecondition(
+          "DNN library initialization failed."
+          " Look at the errors above for more details.");
+    }
     TF_ASSIGN_OR_RETURN(dnn_version, dnn->GetVersion());
   }
 
@@ -751,6 +757,12 @@ Status GpuCompiler::OptimizeHloModule(
     AlgebraicSimplifierOptions options = layout_insensitive_algsimp_opts;
     options.set_is_layout_sensitive(true);
     pipeline.AddPass<AlgebraicSimplifier>(options);
+
+    // This invocation is used to populate deduplicated_name for fusions that
+    // are considered duplicates according to the comparator in this pass.
+    // Currently, the pass doesn't actually deduplicate the fusions.
+    pipeline.AddPass<HloComputationDeduplicator>(
+        /*mark_fusion_duplications=*/true);
 
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }

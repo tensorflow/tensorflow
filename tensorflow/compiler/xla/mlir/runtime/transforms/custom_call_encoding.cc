@@ -977,7 +977,7 @@ FailureOr<LLVM::GlobalOp> EncodeAttributes(
     insert_value(Globals::AddrOf(b, num_attrs), 0);
 
     // Insert encoded attributes into the allocated storage.
-    for (auto &pair : llvm::enumerate(encoded_attrs)) {
+    for (const auto &pair : llvm::enumerate(encoded_attrs)) {
       CustomCallAttrEncoding::Encoded encoded = pair.value().second;
       int64_t offset = 1 + pair.index() * 3;
 
