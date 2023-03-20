@@ -650,6 +650,35 @@ class ReadySetLt {
             ShouldScheduleAsyncDone(*b.node), b, "kScheduleDone")) {
       return *value;
     }
+
+    if (sched_state_.config.enable_release_start_policy) {
+      // Prioritise scheduling ready "start" ops, to avoid useless extension of
+      // start-done latencies. This benefits future latency ops, as ops
+      // postponed here may be used to hide not-yet-scheduled latency ops.
+      const ApproximateLatencyEstimator::TimeCost a_ready_interval =
+          a.node->GetReadyTime() - sched_state_.current_time;
+      const ApproximateLatencyEstimator::TimeCost b_ready_interval =
+          b.node->GetReadyTime() - sched_state_.current_time;
+      bool a_ready_and_release =
+          a_ready_interval <= 0 &&
+          a.node->DoesReleaseResource(ResourceType::kCollectivePermute);
+      bool b_ready_and_release =
+          b_ready_interval <= 0 &&
+          b.node->DoesReleaseResource(ResourceType::kCollectivePermute);
+      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+              a_ready_and_release, a, b_ready_and_release, b,
+              "kScheduleStart")) {
+        return *value;
+      }
+      if (a_ready_and_release && b_ready_and_release) {
+        if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+                a_ready_interval < b_ready_interval, a,
+                b_ready_interval < a_ready_interval, b, "kScheduleStart")) {
+          return *value;
+        }
+      }
+    }
+
     const ApproximateLatencyEstimator::TimeCost a_ready_interval =
         std::max(a.node->GetReadyTime() - sched_state_.current_time, 0.0);
     const ApproximateLatencyEstimator::TimeCost b_ready_interval =

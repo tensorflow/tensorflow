@@ -64,6 +64,7 @@ py_test(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/training:gradient_descent",
         "//tensorflow/python/training:momentum",
         "@absl_py//absl/testing:parameterized",

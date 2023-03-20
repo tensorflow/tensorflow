@@ -71,6 +71,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -119,7 +120,7 @@ def _is_none_or_undef(value):
 def _verify_tf_condition(cond, tag):
   """Ensures that the condition can be used in a TF control flow."""
   extra_hint = 'to check for None, use `is not None`'
-  cond = ops.convert_to_tensor_v2(cond)
+  cond = tensor_conversion.convert_to_tensor_v2(cond)
 
   if cond.dtype != dtypes.bool:
     raise ValueError(
@@ -214,11 +215,11 @@ def _verify_single_loop_var(
     raise ValueError("'{}' is None at the end of the iteration.".format(name))
 
   if isinstance(init, (bool, int, float, str, np.ndarray)):
-    init = ops.convert_to_tensor_v2(init)
+    init = tensor_conversion.convert_to_tensor_v2(init)
   if isinstance(entry, (bool, int, float, str, np.ndarray)):
-    entry = ops.convert_to_tensor_v2(entry)
+    entry = tensor_conversion.convert_to_tensor_v2(entry)
   if isinstance(exit_, (bool, int, float, str, np.ndarray)):
-    exit_ = ops.convert_to_tensor_v2(exit_)
+    exit_ = tensor_conversion.convert_to_tensor_v2(exit_)
 
   if (not tensor_util.is_tf_type(entry) or
       not tensor_util.is_tf_type(exit_)):
@@ -330,10 +331,10 @@ def verify_single_cond_var(name, body_var, orelse_var):
         "'{}' is None at the end of the else branch.".format(name))
 
   if isinstance(body_var, (bool, int, float, str, np.ndarray)):
-    body_var = ops.convert_to_tensor_v2(body_var)
+    body_var = tensor_conversion.convert_to_tensor_v2(body_var)
 
   if isinstance(orelse_var, (bool, int, float, str, np.ndarray)):
-    orelse_var = ops.convert_to_tensor_v2(orelse_var)
+    orelse_var = tensor_conversion.convert_to_tensor_v2(orelse_var)
 
   if (not tensor_util.is_tf_type(body_var) or
       not tensor_util.is_tf_type(orelse_var)):
@@ -1069,7 +1070,7 @@ def _try_handling_undefineds(body, get_state, set_state, init_vars, nulls,
       def autocast_to_tensor(v):
         if isinstance(
             v, (int, float, bool, str, list, tuple, np.ndarray, np.generic)):
-          init_val = ops.convert_to_tensor_v2(v)
+          init_val = tensor_conversion.convert_to_tensor_v2(v)
           return array_ops.placeholder(init_val.dtype, init_val.shape)
         return v
       autocast_init_vars = nest.map_structure(autocast_to_tensor, init_vars)

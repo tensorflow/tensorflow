@@ -4175,7 +4175,9 @@ class SavedModelSignatureDefImporter {
     mlir::OpBuilder builder(module->getContext());
     (*module)->setAttr("tf_saved_model.under_construction",
                        builder.getUnitAttr());
-    TF_RETURN_IF_ERROR(LiftVariables(bundle, *module, options.lift_variables));
+    TF_RETURN_IF_ERROR(
+        LiftVariables(bundle, *module, options.lift_variables,
+                      options.include_variables_in_initializers));
     (*module)->removeAttr("tf_saved_model.under_construction");
 
     return module;
@@ -4183,14 +4185,21 @@ class SavedModelSignatureDefImporter {
 
  private:
   // Lifts the variables in `module`.
+  // If `include_variables_in_initializers` is set to false, then it removes all
+  // variables from the initializer functions (registered in the
+  // `tf_saved_model::SessionInitializerOp`) by running the
+  // `RemoveVariablesInSessionInitializerPass`, regardless of whether
+  // `lift_variable_ops_to_args` is true or not.
   static Status LiftVariables(const SavedModelBundle& bundle,
                               mlir::ModuleOp module,
-                              bool lift_varhandle_ops_to_args);
+                              bool lift_varhandle_ops_to_args,
+                              bool include_variables_in_initializers);
 };
 
 Status SavedModelSignatureDefImporter::LiftVariables(
     const SavedModelBundle& bundle, mlir::ModuleOp module,
-    bool lift_varhandle_ops_to_args) {
+    const bool lift_varhandle_ops_to_args,
+    const bool include_variables_in_initializers) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
   mlir::PassManager pm(module.getContext());
@@ -4199,8 +4208,10 @@ Status SavedModelSignatureDefImporter::LiftVariables(
       mlir::tf_executor::CreateTFExecutorGraphPruningPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateExecutorDialectToFunctionalConversionPass());
-  pm.addPass(
-      mlir::tf_saved_model::CreateRemoveVariablesInSessionInitializerPass());
+  if (!include_variables_in_initializers) {
+    pm.addPass(
+        mlir::tf_saved_model::CreateRemoveVariablesInSessionInitializerPass());
+  }
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::
           CreateConvertReadonlyReferenceVariablesToResourceVariablesPass());

@@ -1630,6 +1630,7 @@ py_library(
         "//tensorflow/python/framework:function_def_to_graph",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util",
