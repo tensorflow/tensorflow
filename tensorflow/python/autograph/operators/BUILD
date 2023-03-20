@@ -54,6 +54,7 @@ py_library(
         "//tensorflow/python/data/experimental/ops:cardinality",
         "//tensorflow/python/data/experimental/ops:scan_ops",
         "//tensorflow/python/data/experimental/ops:take_while_ops",
+        "//tensorflow/python/framework:tensor_conversion",
         "//third_party/py/numpy",
     ],
 )

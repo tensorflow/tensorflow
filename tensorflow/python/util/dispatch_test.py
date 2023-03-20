@@ -23,6 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
@@ -254,7 +255,9 @@ class DispatchTest(test_util.TensorFlowTestCase):
       x = TensorTracer("x")
       y = TensorTracer("y")
       trace = math_ops.add(
-          math_ops.abs(ops.convert_to_tensor_v2_with_dispatch(x)), y)
+          math_ops.abs(tensor_conversion.convert_to_tensor_v2_with_dispatch(x)),
+          y,
+      )
       self.assertEqual(
           str(trace), "math.add(math.abs(convert_to_tensor(x)), y)")
 
