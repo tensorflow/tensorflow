@@ -227,6 +227,11 @@ std::ostream& operator<<(std::ostream& os, const nvinfer1::DataType& v) {
       os << "kUINT8";
       break;
 #endif
+#if IS_TRT_VERSION_GE(8, 6, 0, 0)
+    case nvinfer1::DataType::kFP8:
+      os << "kFP8";
+      break;
+#endif
   }
   return os;
 }
