@@ -16,8 +16,7 @@
 # pylint: disable=g-classes-have-attributes
 
 import numpy as np
-
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
@@ -90,9 +89,12 @@ class Adadelta(optimizer_v2.OptimizerV2):
     super(Adadelta, self)._prepare_local(var_device, var_dtype, apply_state)
     apply_state[(var_device, var_dtype)].update(
         dict(
-            epsilon=ops.convert_to_tensor_v2_with_dispatch(
-                self.epsilon, var_dtype),
-            rho=array_ops.identity(self._get_hyper('rho', var_dtype))))
+            epsilon=tensor_conversion.convert_to_tensor_v2_with_dispatch(
+                self.epsilon, var_dtype
+            ),
+            rho=array_ops.identity(self._get_hyper('rho', var_dtype)),
+        )
+    )
 
   def set_weights(self, weights):
     params = self.weights
