@@ -18,6 +18,7 @@ cc_library(
     hdrs = ["arguments.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        ":async_runtime",
         ":errors",
         ":types",
         "//tensorflow/compiler/xla:shape_util",
