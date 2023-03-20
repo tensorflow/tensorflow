@@ -84,6 +84,7 @@ def experimental_convert_saved_model_v1_to_mlir(
     exported_names,
     tags,
     lift_variables,
+    include_variables_in_initializers,
     upgrade_legacy,
     show_debug_info,
 ):
@@ -92,6 +93,7 @@ def experimental_convert_saved_model_v1_to_mlir(
       str(exported_names).encode('utf-8'),
       str(tags).encode('utf-8'),
       lift_variables,
+      include_variables_in_initializers,
       upgrade_legacy,
       show_debug_info,
   )

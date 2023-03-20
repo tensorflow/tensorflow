@@ -428,6 +428,7 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
   import_options.lift_variables = false;
+  import_options.include_variables_in_initializers = true;
   auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
@@ -518,6 +519,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
   import_options.lift_variables = false;
+  import_options.include_variables_in_initializers = true;
   auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
@@ -589,6 +591,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
   import_options.lift_variables = false;
+  import_options.include_variables_in_initializers = true;
   auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
@@ -661,6 +664,7 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
   import_options.lift_variables = false;
+  import_options.include_variables_in_initializers = true;
   auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
