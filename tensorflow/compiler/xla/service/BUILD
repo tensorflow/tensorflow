@@ -2463,6 +2463,7 @@ cc_library(
         ":hlo_pass",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/ir:hlo_reachability",

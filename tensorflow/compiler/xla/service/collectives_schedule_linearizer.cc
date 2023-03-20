@@ -38,6 +38,9 @@ namespace xla {
 StatusOr<bool> CollectivesScheduleLinearizer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  if (is_enabled_ && !is_enabled_(module)) {
+    return false;
+  }
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {

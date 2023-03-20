@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -32,16 +33,20 @@ namespace xla {
 // within each computation.
 class CollectivesScheduleLinearizer : public HloModulePass {
  public:
+  explicit CollectivesScheduleLinearizer(HloModulePredicate is_enabled = {})
+      : is_enabled_(is_enabled) {}
+
   absl::string_view name() const override {
     return "collectives-schedule-linearizer";
   }
-
-  CollectivesScheduleLinearizer() = default;
 
   using HloPassInterface::Run;
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  HloModulePredicate is_enabled_;
 };
 
 }  // namespace xla
