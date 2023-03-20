@@ -3098,7 +3098,7 @@ std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
     // Dimension is length 1, we are just sampling from one value.
     if (input == 1) {
       n = 1;
-      d = 1;
+      d = output;
       offset = 0;
       border = output - 1;
       return;
