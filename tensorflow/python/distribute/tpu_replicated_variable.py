@@ -23,6 +23,7 @@ import contextlib
 from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.distribute import tpu_util
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.ops import control_flow_ops
@@ -215,9 +216,18 @@ class TPUReplicatedVariable(variables_lib.Variable):
                                 'outside tpu context or save context')
     else:
       with tpu_util.outside_or_skip_tpu_context():
-        return xla_sharding.replicate(
-            tpu_partition_ops.tpu_partitioned_input(
-                [v.handle for v in self._vars], partition_dim=-1))
+        packed_var = getattr(self, '_packed_var', None)
+
+        # TODO(b/202047549): Enable packed variables with soft device placement
+        if packed_var is None or config.get_soft_device_placement():
+          tensor = tpu_partition_ops.tpu_partitioned_input_v2(
+              [v.handle for v in self._vars],
+              partition_dims=[], is_packed=False)
+        else:
+          tensor = tpu_partition_ops.tpu_partitioned_input_v2(
+              [packed_var.packed_handle], partition_dims=[], is_packed=True)
+
+      return xla_sharding.replicate(tensor)
 
   def _read_variable_op(self):
     return gen_resource_variable_ops.read_variable_op(self.handle, self.dtype)
