@@ -45,6 +45,8 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+constexpr int64_t kTFRecordReaderOutputBufferSize = 512 << 20;  // 512MB
+
 // Extracts the index from `filename`. If `filename` is `prefix_<index>`, this
 // returns <index>. If `filename` does not start with `prefix`, returns an
 // internal error.
@@ -312,8 +314,8 @@ Status SnapshotStreamWriter::Restore() {
   TF_RETURN_IF_ERROR(checkpoint_index.status());
 
   std::string checkpoint_path = CheckpointPath(*checkpoint_index);
-  snapshot_util::TFRecordReaderImpl reader(checkpoint_path,
-                                           params_.compression);
+  snapshot_util::TFRecordReaderImpl reader(checkpoint_path, params_.compression,
+                                           kTFRecordReaderOutputBufferSize);
   TF_RETURN_IF_ERROR(reader.Initialize(params_.env));
   TF_ASSIGN_OR_RETURN(std::vector<Tensor> serialized_tensors,
                       reader.GetTensors());
