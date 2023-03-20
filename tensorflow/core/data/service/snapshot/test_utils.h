@@ -42,7 +42,7 @@ tsl::StatusOr<std::vector<T>> ReadSnapshot(const std::string& base_path,
   experimental::DistributedSnapshotMetadata metadata;
   metadata.set_compression(compression);
   SnapshotReaderParams params{base_path, metadata, DataTypeVector{DT_INT64},
-                              Env::Default()};
+                              /*shapes=*/{}, Env::Default()};
   SnapshotReader reader(params);
   std::vector<T> result;
   while (true) {

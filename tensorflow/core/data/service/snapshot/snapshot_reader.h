@@ -21,9 +21,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/substitute.h"
+#include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/tsl/platform/env.h"
@@ -42,7 +44,10 @@ struct SnapshotReaderParams {
   experimental::DistributedSnapshotMetadata metadata;
 
   // Data types of the snapshot data elements.
-  DataTypeVector output_types;
+  DataTypeVector dtypes;
+
+  // Data shape of the snapshot data elements.
+  std::vector<PartialTensorShape> shapes;
 
   // The Tensorflow environment.
   Env* env = nullptr;
@@ -58,11 +63,16 @@ struct SnapshotReaderParams {
   }
 };
 
+// Creates a dataset that reads tf.data distributed snapshots.
+Status MakeSnapshotReaderDataset(
+    const SnapshotReaderParams& params,
+    InstantiatedCapturedFunction& instantiated_captured_func,
+    IteratorContext* ctx, core::RefCountPtr<DatasetBase>* output);
+
 // Reads a distributed tf.data snapshot written by `SnapshotManager` and
 // `SnapshotStreamWriter`. See the comment on SnapshotManager for
 // how the directory is structured.
-// TODO(b/258691097): Support parallel read and make it thread-safe.
-// TODO(b/258691097): Support `reader_func`.
+// TODO(b/258691097): Deprecate this API.
 class SnapshotReader {
  public:
   explicit SnapshotReader(const SnapshotReaderParams& params);

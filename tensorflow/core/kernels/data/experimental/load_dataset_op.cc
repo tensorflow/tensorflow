@@ -306,19 +306,25 @@ class LoadDatasetOp::DatasetV2 : public DatasetBase {
         : DatasetIterator<DatasetV2>(params) {}
 
     Status Initialize(IteratorContext* ctx) override {
+      mutex_lock l(mu_);
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func;
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->Instantiate(
+          ctx, &instantiated_captured_func));
+
       SnapshotReaderParams params{dataset()->path_, dataset()->metadata_,
-                                  dataset()->output_types_, ctx->env()};
-      snapshot_reader_ = std::make_unique<SnapshotReader>(params);
-      return OkStatus();
+                                  dataset()->output_types_,
+                                  dataset()->output_shapes_, ctx->env()};
+      core::RefCountPtr<DatasetBase> input;
+      TF_RETURN_IF_ERROR(MakeSnapshotReaderDataset(
+          params, *instantiated_captured_func, ctx, &input));
+      return input->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      TF_ASSIGN_OR_RETURN(GetNextResult result, snapshot_reader_->GetNext());
-      *out_tensors = std::move(result.tensors);
-      *end_of_sequence = result.end_of_sequence;
-      return OkStatus();
+      mutex_lock l(mu_);
+      return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
     }
 
     Status SaveInternal(SerializationContext* ctx,
@@ -332,7 +338,8 @@ class LoadDatasetOp::DatasetV2 : public DatasetBase {
     }
 
    private:
-    std::unique_ptr<SnapshotReader> snapshot_reader_;
+    mutex mu_;
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
   };
 
   const tstring path_;

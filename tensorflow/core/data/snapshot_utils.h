@@ -224,6 +224,10 @@ class Reader {
                                   const int64_t start_index,
                                   DatasetBase** output);
 
+  // Returns a nested dataset for the given datasets.
+  static void MakeNestedDataset(const std::vector<DatasetBase*>& datasets,
+                                DatasetBase** output);
+
   // Reads a vector of Tensors from the snapshot file.
   virtual Status ReadTensors(std::vector<Tensor>* read_tensors) = 0;
 

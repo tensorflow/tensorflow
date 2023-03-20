@@ -215,7 +215,11 @@ cc_library(
     deps = [
         ":path_utils",
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data:captured_function",
+        "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/data/service:common",
         "//tensorflow/tsl/platform:env",

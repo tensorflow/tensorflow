@@ -107,6 +107,42 @@ class DistributedSaveTest(
     self.assertDatasetProduces(dataset, ["a", "b", "c"] * 5)
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testLoadWithCustomReaderFunc(self):
+    # TODO(b/250921378): Currently, all the unit tests only write one chunk
+    # since the test dataset is small. The maximum chunk size is a C++ constant.
+    # To test saving/loading multiple chunks in Python, we need a way to inject
+    # the maximum chunk size. In this test, we simulate multiple chunks by
+    # writing a snapshot and copying its output files.
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    distributed_save_op.distributed_save(
+        dataset, self._test_dir, cluster.dispatcher_address()
+    )
+    self._wait_for_snapshot(cluster)
+
+    chunks_dir = os.path.join(self._test_dir, "chunks")
+    files = os.listdir(chunks_dir)
+    for i in range(2):
+      for file in files:
+        shutil.copy(
+            os.path.join(chunks_dir, file),
+            os.path.join(chunks_dir, f"{file}_{i}"),
+        )
+
+    def custom_reader_func(datasets):
+      datasets = datasets.shuffle(3)
+      return datasets.interleave(
+          lambda x: x, num_parallel_calls=dataset_ops.AUTOTUNE
+      )
+
+    dataset = dataset_ops.Dataset.load(
+        self._test_dir, reader_func=custom_reader_func
+    )
+    self.assertDatasetProduces(
+        dataset, list(range(10)) * 3, assert_items_equal=True
+    )
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testDistributedLoad(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10)
