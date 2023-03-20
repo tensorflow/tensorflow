@@ -458,6 +458,7 @@ py_library(
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
+        "//tensorflow/python/framework:tensor_conversion_registry",
     ],
 )
 
