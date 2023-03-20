@@ -452,21 +452,44 @@ LogicalResult TransferTFAttributesToTFUniformAttributes(
   // Set the attributes for ops with the attr_map attribute.
   for (Operation& inner_op : quantized_func.getBody().front().getOperations()) {
     if (auto uniform_op =
-            llvm::dyn_cast<TF::UniformQuantizedConvolutionHybridOp>(inner_op)) {
+            llvm::dyn_cast<TF::UniformQuantizedConvolutionHybridOp>(inner_op);
+        uniform_op != nullptr) {
       if (failed(FillAttributesForUniformQuantizedConvolutionOp(
               rewriter, uniform_op, identifier_to_attr, quantization_method,
               enable_per_channel_quantization)))
         return failure();
     } else if (auto uniform_op =
-                   llvm::dyn_cast<TF::UniformQuantizedConvolutionOp>(
-                       inner_op)) {
+                   llvm::dyn_cast<TF::UniformQuantizedConvolutionOp>(inner_op);
+               uniform_op != nullptr) {
       if (failed(FillAttributesForUniformQuantizedConvolutionOp(
               rewriter, uniform_op, identifier_to_attr, quantization_method,
               enable_per_channel_quantization)))
         return failure();
     } else if (auto uniform_op =
-                   llvm::dyn_cast<TF::UniformQuantizedDotHybridOp>(inner_op)) {
+                   llvm::dyn_cast<TF::UniformQuantizedDotHybridOp>(inner_op);
+               uniform_op != nullptr) {
       if (failed(FillAttributesForUniformQuantizedDotOp(
+              rewriter, uniform_op, identifier_to_attr, quantization_method,
+              enable_per_channel_quantization)))
+        return failure();
+    } else if (auto uniform_op =
+                   llvm::dyn_cast<TF::UniformQuantizedAddOp>(inner_op);
+               uniform_op != nullptr) {
+      if (failed(FillAttributesForUniformQuantizedAddOp(
+              rewriter, uniform_op, identifier_to_attr, quantization_method,
+              enable_per_channel_quantization)))
+        return failure();
+    } else if (auto uniform_op =
+                   llvm::dyn_cast<TF::UniformQuantizedClipByValueOp>(inner_op);
+               uniform_op != nullptr) {
+      if (failed(FillAttributesForUniformQuantizedClipByValueOp(
+              rewriter, uniform_op, identifier_to_attr, quantization_method,
+              enable_per_channel_quantization)))
+        return failure();
+    } else if (auto uniform_op =
+                   llvm::dyn_cast<TF::UniformRequantizeOp>(inner_op);
+               uniform_op != nullptr) {
+      if (failed(FillAttributesForUniformRequantizeOp(
               rewriter, uniform_op, identifier_to_attr, quantization_method,
               enable_per_channel_quantization)))
         return failure();
