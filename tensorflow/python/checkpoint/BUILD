@@ -294,7 +294,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/trackable:trackable_utils",
-        "//tensorflow/python/training:optimizer",
     ],
 )
 
