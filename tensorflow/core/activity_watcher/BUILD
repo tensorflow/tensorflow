@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "if_not_android")
+load("//tensorflow:tensorflow.bzl", "tf_portable_full_lite_protos")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -23,9 +23,10 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:types",
-    ] + if_not_android([
-        ":activity_watcher_impl",
-    ]),
+    ] + tf_portable_full_lite_protos(
+        [":activity_watcher_impl"],
+        [],
+    ),
     alwayslink = True,
 )
 
@@ -37,6 +38,7 @@ cc_library(
     hdrs = ["activity.h"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
     alwayslink = True,
