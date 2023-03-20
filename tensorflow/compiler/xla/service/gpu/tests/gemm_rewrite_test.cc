@@ -4995,7 +4995,7 @@ TEST_F(CublasLtF8GemmRewriteTest,
       )");
 }
 
-TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDMatrixBiasThenVectorBias) {
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABUnscaledDMatrixBiasThenVectorBiasF8) {
   if (!GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::HOPPER)) {
     GTEST_SKIP()
@@ -5014,29 +5014,26 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDMatrixBiasThenVectorBias) {
       b2 = f16[16,16] parameter(3)
       x_scale = f16[] parameter(4)
       y_scale = f16[] parameter(5)
-      z_scale = f16[] parameter(6)
       x_scale_bcast = f16[16,32] broadcast(x_scale), dimensions={}
       y_scale_bcast = f16[32,16] broadcast(y_scale), dimensions={}
-      z_scale_bcast = f16[16,16] broadcast(z_scale), dimensions={}
       x_unscaled = f16[16,32] multiply(x_f16, x_scale_bcast)
       y_unscaled = f16[32,16] multiply(y_f16, y_scale_bcast)
       dot_a = f16[16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
       dot_a_bias1 = f16[16,16] add(dot_a, b2)
-      dot_a_bias = f16[16,16] add(dot_a_bias1, b_bcast)
-      dot_a_scaled = f16[16,16] divide(dot_a_bias, z_scale_bcast)
-      c1 = f16[] constant(-448.)
-      c1_bcast = f16[16,16] broadcast(c1), dimensions={}
-      c2 = f16[] constant(448.)
-      c2_bcast = f16[16,16] broadcast(c2), dimensions={}
-      dot_a_clamped = f16[16,16] clamp(c1_bcast, dot_a_scaled, c2_bcast)
-      ROOT dot_a_f8 = f8e4m3fn[16,16] convert(dot_a_clamped)
+      ROOT dot_a_bias = f16[16,16] add(dot_a_bias1, b_bcast)
           }
 
 )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{2e-3, 0.}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], b: f16[16], b2: f16[16,16], x_scale: f16[], y_scale: f16[], z_scale: f16[]) -> f8e4m3fn[16,16] {
+; CHECK-LABEL: %fused_computation (param_0: f16[16,16], param_1.1: f16[16]) -> f16[16,16] {
+; CHECK:         [[P0:%[^ ]+]] = f16[16,16]{1,0} parameter(0)
+; CHECK:         [[P1:%[^ ]+]] = f16[16]{0} parameter(1)
+; CHECK:         [[P1_BROADCAST:%[^ ]+]] = f16[16,16]{1,0} broadcast([[P1]]), dimensions={1}
+; CHECK:         [[OUT:%[^ ]+]] = f16[16,16]{1,0} add([[P0]], [[P1_BROADCAST]])
+; CHECK:         }
+; CHECK:         ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], b: f16[16], b2: f16[16,16], x_scale: f16[], y_scale: f16[]) -> f16[16,16] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
@@ -5044,7 +5041,7 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDMatrixBiasThenVectorBias) {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[] parameter(4)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f16[] parameter(5)
 ; CHECK:         [[C1:%[^ ]+]] = f32[] constant(1)
-; CHECK:         [[OUT:%[^ ]+]] = f16[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0]], [[DUMMY0:%[^ ]+]], [[DUMMY1:%[^ ]+]], /*index=5*/[[C1]], [[DUMMY2:%[^ ]+]]),
+; CHECK:         [[GEMMOUT:%[^ ]+]] = f16[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0]], [[DUMMY0:%[^ ]+]], [[DUMMY1:%[^ ]+]], /*index=5*/[[C1]], [[DUMMY2:%[^ ]+]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -5061,8 +5058,12 @@ TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDMatrixBiasThenVectorBias) {
 ; CHECK-DAG:         }
 ; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
 ; CHECK:           }"
+; CHECK:         [[VB:%[^ ]+]] = f16[16]{0} parameter(2)
+; CHECK:         [[OUT:%[^ ]+]] = f16[16,16]{1,0} fusion([[GEMMOUT]], [[VB]])
       )");
-}TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
+}
+
+TEST_F(CublasLtF8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
   if (!GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::HOPPER)) {
     GTEST_SKIP()
