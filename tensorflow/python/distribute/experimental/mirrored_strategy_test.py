@@ -161,7 +161,8 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
       tensor_input = constant_op.constant(3.0)
       return strategy.run(replica_fn, args=(tensor_input,))
 
-    with strategy.scope():
+    # with strategy.scope():
+    with d_api.default_mesh(self.mesh):
       result = run_fn()
     self.assertEqual(result, constant_op.constant(6.0))
 
