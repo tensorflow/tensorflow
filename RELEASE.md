@@ -116,8 +116,7 @@
 *   Fixes segmentation fault in tfg-translate [CVE-2023-25671](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25671)
 *   Fixes an NPE in QuantizedMatMulWithBiasAndDequantize [CVE-2023-25670](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25670)
 *   Fixes an FPE in AvgPoolGrad with XLA [CVE-2023-25669](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25669)
-*   Fixes a heap out-of-buffer read vulnerability in the QuantizeAndDequantize operation [CVE-2023-25668](https://cve.mitre.org/cgi-bin/cvename.cgi? 
-    name=CVE-2023-25668)
+*   Fixes a heap out-of-buffer read vulnerability in the QuantizeAndDequantize operation [CVE-2023-25668](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25668)
 *   Fixes a segfault when opening multiframe gif [CVE-2023-25667](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25667)
 *   Fixes an NPE in SparseSparseMaximum [CVE-2023-25665](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25665)
 *   Fixes an FPE in AudioSpectrogram [CVE-2023-25666](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25666)
