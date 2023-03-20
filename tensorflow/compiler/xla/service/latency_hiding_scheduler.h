@@ -77,6 +77,7 @@ struct SchedulerConfig {
   bool force_send_recv_to_use_same_resource = false;
   bool use_real_cost_model = false;
   bool aggressive_scheduling_policies = false;
+  bool enable_release_start_policy = false;
   uint64_t memory_limit = UINT64_MAX;
 };
 
@@ -231,6 +232,12 @@ class HloGraphNode {
   bool DoesReleaseAnyResource() const {
     return absl::c_any_of(resources_, [](const ResourcePair& resource) {
       return resource.second == ResourceUsageType::kResourceRelease;
+    });
+  }
+  bool DoesReleaseResource(ResourceType res) const {
+    return absl::c_any_of(resources_, [res](const ResourcePair& resource) {
+      return resource.second == ResourceUsageType::kResourceRelease &&
+             resource.first == ResourceTypeToIndex(res);
     });
   }
   std::optional<ResourceUsageType> UsesResourceType(ResourceType res) const {
