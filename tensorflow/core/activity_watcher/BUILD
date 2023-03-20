@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_portable_full_lite_protos")
+load("//tensorflow:tensorflow.bzl", "if_not_mobile")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -19,14 +19,14 @@ filegroup(
 cc_library(
     name = "activity_watcher",
     hdrs = ["activity.h"],
+    defines = if_not_mobile(["TF_ENABLE_ACTIVITY_WATCHER"]),
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:types",
-    ] + tf_portable_full_lite_protos(
-        [":activity_watcher_impl"],
-        [],
-    ),
+    ] + if_not_mobile([
+        ":activity_watcher_impl",
+    ]),
     alwayslink = True,
 )
 
