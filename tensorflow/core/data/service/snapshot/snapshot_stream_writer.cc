@@ -86,7 +86,7 @@ void SnapshotStreamWriter::WriteSnapshotAndLog() TF_LOCKS_EXCLUDED(mu_) {
   LOG(INFO) << "Writing distributed tf.data snapshot stream: "
             << params_.DebugString();
   Status status = WriteSnapshot();
-  if (errors::IsFailedPrecondition(status)) {
+  if (IsStreamAssignmentChanged(status)) {
     LOG(INFO) << "Stopped writing distributed tf.data snapshot stream due to a "
                  "transient error: "
               << params_.DebugString()
