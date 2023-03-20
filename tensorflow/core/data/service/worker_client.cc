@@ -83,10 +83,7 @@ Status DataServiceWorkerClient::EnsureInitialized() {
 }
 
 std::string DataServiceWorkerClient::GetDataTransferProtocol() const {
-  // TODO(mpcallanan): Test local transfer with alternative data transfer
-  // protocols.
-  if (transfer_protocol_ == kGrpcTransferProtocol &&
-      LocalWorkers::Get(address_) != nullptr) {
+  if (LocalWorkers::Get(address_) != nullptr) {
     return kLocalTransferProtocol;
   }
   return transfer_protocol_;
