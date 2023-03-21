@@ -271,6 +271,7 @@ struct AllReduceParticipantData : ParticipantData {
 
   std::string ToString() const override {
     std::vector<std::string> buffer_strs;
+    buffer_strs.reserve(buffers.size());
     for (const Buffer& buffer : buffers) {
       buffer_strs.push_back(
           absl::StrFormat("{element_count=%d}", buffer.element_count));
