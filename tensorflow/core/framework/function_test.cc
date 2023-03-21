@@ -1050,10 +1050,15 @@ TEST(FunctionLibraryDefinitionTest, Find) {
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
 
   EXPECT_EQ(lib_def.Find("XTimes16"), nullptr);
+  EXPECT_EQ(lib_def.FindRecord("XTimes16").get(), nullptr);
 
   auto found = lib_def.Find("XTimesTwo");
+  auto found_record = lib_def.FindRecord("XTimesTwo");
   ASSERT_NE(found, nullptr);
+  ASSERT_NE(found_record.get(), nullptr);
   EXPECT_EQ(test::function::XTimesTwo().DebugString(), found->DebugString());
+  EXPECT_EQ(test::function::XTimesTwo().DebugString(),
+            found_record->fdef().DebugString());
 }
 
 TEST(FunctionLibraryDefinitionTest, LookUp) {

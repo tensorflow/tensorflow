@@ -134,6 +134,10 @@ class ImmediateExecutionContext : public AbstractContext {
   // Find and return a added function by its name.
   virtual const FunctionDef* FindFunctionDef(const string& name) const = 0;
 
+  // Find and return a function record added by its name.
+  virtual core::RefCountPtr<FunctionRecord> FindRecord(
+      const string& name) const = 0;
+
   // Return the ParsedName of Host CPU device.
   virtual const DeviceNameUtils::ParsedName& HostCPUParsedName() const = 0;
   virtual const string& HostCPUName() const = 0;

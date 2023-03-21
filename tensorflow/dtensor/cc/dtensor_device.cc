@@ -2115,13 +2115,20 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
   }
   FunctionLibraryDefinition* flib_def =
       tensorflow::unwrap(context)->FuncLibDef();
+
+  StackTracesMap stack_traces;
+  const StackTracesMap* op_stack_traces =
+      flib_def->GetStackTraces(operation_name);
+  if (op_stack_traces != nullptr) {
+    stack_traces = *op_stack_traces;
+  }
   DTensorOperation dtensor_operation{
       /*name*/ operation_name,
       /*function_def*/
       tensorflow::unwrap(context)->FindFunctionDef(operation_name),
       /*default_mesh*/ *default_mesh_,
       /*stack_traces*/
-      flib_def->GetStackTraces(operation_name),
+      stack_traces,
   };
 
   // First handle DTensor-specific virtual operations.
