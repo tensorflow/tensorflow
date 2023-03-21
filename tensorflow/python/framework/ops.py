@@ -3381,6 +3381,24 @@ class Graph(pywrap_tf_session.GraphHandle):
     """
     return self._functions.get(compat.as_str(name), None)
 
+  def _add_function_recursive(self, function, overwrite=False):
+    """Adds function to the graph including other functions in its graph."""
+
+    if self._is_function(function.name):
+      if overwrite:
+        self._remove_function(function.name)
+        self._add_function(function)
+    else:
+      self._add_function(function)
+
+    for f in function.graph._functions.values():  # pylint: disable=protected-access
+      if self._is_function(f.name):
+        if overwrite:
+          self._remove_function(f.name)
+          self._add_function(f)
+      else:
+        self._add_function(f)
+
   def _add_function(self, function):
     """Adds a function to the graph.
 

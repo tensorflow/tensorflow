@@ -178,7 +178,6 @@ class EagerDefinedFunction(object):
       overwrite: A bool. If True, this function will overwrite any existing
         function of the same signature name in the graph `g` or context.
     """
-    # pylint: disable=protected-access
     if not g and self._bound_context.executing_eagerly():
       ctx = self._bound_context
       if ctx.has_function(self.name):
@@ -188,21 +187,7 @@ class EagerDefinedFunction(object):
       else:
         ctx.add_function_def(self.definition)
     else:
-      if g._is_function(self.name):
-        if overwrite:
-          g._remove_function(self.name)
-          g._add_function(self)
-      else:
-        g._add_function(self)
-
-      for f in self.graph._functions.values():
-        if g._is_function(f.name):
-          if overwrite:
-            g._remove_function(f.name)
-            g._add_function(f)
-        else:
-          g._add_function(f)
-    # pylint: enable=protected-access
+      g._add_function_recursive(self, overwrite)    # pylint: disable=protected-access
 
   @property
   def name(self):
