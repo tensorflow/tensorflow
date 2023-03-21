@@ -113,7 +113,7 @@ class TFETest(test_util.TensorFlowTestCase):
       constant_b = constant_op.constant(1.0)
 
       ops.disable_tensor_equality()
-      self._test_hashable(constant_a, constant_b, True)
+      self._test_hashable(constant_a, constant_b, False)
       _v1_check(constant_a, constant_b)
       ops.enable_tensor_equality()
       _v2_check(constant_a, constant_b)
@@ -164,7 +164,7 @@ class TFETest(test_util.TensorFlowTestCase):
       constant_b = constant_op.constant(float('nan'))
 
       ops.disable_tensor_equality()
-      self._test_hashable(constant_a, constant_b, True)
+      self._test_hashable(constant_a, constant_b, False)
       _v1_check(constant_a, constant_b)
       ops.enable_tensor_equality()
       _v2_check(constant_a, constant_b)
