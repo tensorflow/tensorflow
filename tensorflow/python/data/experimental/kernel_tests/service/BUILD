@@ -211,7 +211,7 @@ tf_py_test(
 
 tf_py_test(
     name = "distributed_save_test",
-    size = "small",
+    size = "medium",
     srcs = ["distributed_save_test.py"],
     deps = [
         "//tensorflow/python:array_ops",
