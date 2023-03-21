@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LATENCY_HIDING_SCHEDULER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LATENCY_HIDING_SCHEDULER_H_
 
+#include <cstddef>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -56,6 +57,11 @@ enum class ResourceUsageType {
 
 constexpr int64_t ResourceTypeToIndex(ResourceType resource_type) {
   return static_cast<int64_t>(resource_type);
+}
+
+constexpr int64_t ResourceUsageTypeToIndex(
+    ResourceUsageType resource_usage_type) {
+  return static_cast<int64_t>(resource_usage_type);
 }
 
 using ResourcePair = std::pair<int64_t, ResourceUsageType>;
@@ -151,6 +157,11 @@ class AsyncTracker {
 
   // Returns the name of the given resource
   virtual absl::string_view GetResourceName(int64_t resource_type) const;
+
+  // Returns the name of the given resource usage
+  absl::string_view GetResourceUsageName(int64_t resource_usage_type) const;
+  absl::string_view GetResourceUsageName(
+      ResourceUsageType resource_usage_type) const;
 
   // Returns the first target defined resource's id, regardless of if it exits
   static int64_t GetFirstTargetDefinedResource() {
@@ -270,7 +281,7 @@ class HloGraphNode {
   }
   void AddSuccessor(const HloEdge& e) { successors_.push_back(e); }
   int64_t GetOriginalPosition() const { return original_position_; }
-  std::string ToString() const {
+  std::string ToString(const AsyncTracker* async_tracker = nullptr) const {
     std::string result;
     absl::StrAppend(&result, "Instr: ", instr_->ToShortString(), "\n");
     absl::StrAppend(&result, "ReadyTime: ", ready_time_, "\n");
@@ -286,6 +297,14 @@ class HloGraphNode {
     absl::StrAppend(&result, "Successors:\n");
     for (const HloEdge& e : successors_) {
       absl::StrAppend(&result, e.ToString());
+    }
+    if (async_tracker != nullptr) {
+      absl::StrAppend(&result, "Resources:\n");
+      for (const auto& [resource, usage] : resources_) {
+        absl::StrAppend(
+            &result, "\tResource: ", async_tracker->GetResourceName(resource),
+            " usage: ", async_tracker->GetResourceUsageName(usage), "\n");
+      }
     }
     return result;
   }
@@ -335,7 +354,7 @@ class HloScheduleGraph {
                    const LatencyEstimator* latency_estimator,
                    const AsyncTracker* async_tracker);
 
-  std::string ToString() const;
+  std::string ToString(const AsyncTracker* async_tracker = nullptr) const;
 
   HloGraphNode& GetNode(const HloInstruction* instr) const;
 
