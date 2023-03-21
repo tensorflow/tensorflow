@@ -1528,7 +1528,10 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "device_context_test",
     srcs = ["device_context_test.cc"],
-    tags = tf_cuda_tests_tags() + ["config-cuda-only"],
+    tags = tf_cuda_tests_tags() + [
+        "config-cuda-only",
+        "no_oss",  # Temporarily disable OSS.
+    ],
     deps = [
         ":flags",
         ":xla_device",
