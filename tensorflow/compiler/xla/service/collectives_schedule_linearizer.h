@@ -17,12 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_COLLECTIVES_SCHEDULE_LINEARIZER_H_
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
