@@ -117,6 +117,7 @@ cc_library_with_tflite_with_c_headers_test(
     ],
     deps = [
         ":c_api_opaque_internal",
+        ":common_internal",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/core/c:c_api_experimental",
@@ -140,6 +141,7 @@ cc_library_with_tflite_with_c_headers_test(
     deps = [
         ":c_api_opaque_internal",
         ":c_api_without_op_resolver",
+        ":common_internal",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver",
         "//tensorflow/lite/core/c:c_api_types",

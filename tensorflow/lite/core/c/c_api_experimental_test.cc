@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string.h>
 
+#include <array>
 #include <memory>
 #include <vector>
 
@@ -35,13 +36,24 @@ using tflite::delegates::test_utils::TestDelegate;
 
 namespace {
 
-const TfLiteRegistration* GetDummyRegistration() {
+const TfLiteRegistration* GetNoOpRegistration() {
   static const TfLiteRegistration registration = {
       /*init=*/nullptr,
       /*free=*/nullptr,
       /*prepare=*/nullptr,
       /*invoke=*/[](TfLiteContext*, TfLiteNode*) { return kTfLiteOk; }};
   return &registration;
+}
+
+const TfLiteRegistrationExternal* GetNoOpRegistrationExternal() {
+  static TfLiteRegistrationExternal* registration =
+      TfLiteRegistrationExternalCreate(kTfLiteBuiltinCustom, "NoOp", 1);
+  TfLiteRegistrationExternalSetInvoke(
+      registration,
+      /*invoke=*/[](TfLiteOpaqueContext*, TfLiteOpaqueNode*) {
+        return kTfLiteOk;
+      });
+  return registration;
 }
 
 TEST(CApiExperimentalTest, Smoke) {
@@ -52,7 +64,7 @@ TEST(CApiExperimentalTest, Smoke) {
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
   TfLiteInterpreterOptionsAddBuiltinOp(options, kTfLiteBuiltinAdd,
-                                       GetDummyRegistration(), 1, 1);
+                                       GetNoOpRegistration(), 1, 1);
   TfLiteInterpreterOptionsSetUseNNAPI(options, true);
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
@@ -75,7 +87,7 @@ TEST(CApiExperimentalTest, SelectedBuiltins) {
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
   TfLiteInterpreterOptionsAddBuiltinOp(options, kTfLiteBuiltinAdd,
-                                       GetDummyRegistration(), 1, 1);
+                                       GetNoOpRegistration(), 1, 1);
 
   TfLiteInterpreter* interpreter =
       TfLiteInterpreterCreateWithSelectedOps(model, options);
@@ -135,7 +147,7 @@ const TfLiteRegistration* MyFindBuiltinOp(void* user_data,
   OpResolverData* my_data = static_cast<OpResolverData*>(user_data);
   if (op == kTfLiteBuiltinAdd && version == 1) {
     my_data->called_for_add = true;
-    return GetDummyRegistration();
+    return GetNoOpRegistration();
   }
   return nullptr;
 }
@@ -143,7 +155,7 @@ const TfLiteRegistration* MyFindBuiltinOp(void* user_data,
 const TfLiteRegistration* MyFindCustomOp(void*, const char* custom_op,
                                          int version) {
   if (absl::string_view(custom_op) == "foo" && version == 1) {
-    return GetDummyRegistration();
+    return GetNoOpRegistration();
   }
   return nullptr;
 }
@@ -160,6 +172,51 @@ TEST(CApiExperimentalTest, SetOpResolver) {
   OpResolverData my_data;
   TfLiteInterpreterOptionsSetOpResolver(options, MyFindBuiltinOp,
                                         MyFindCustomOp, &my_data);
+  EXPECT_FALSE(my_data.called_for_add);
+
+  TfLiteInterpreter* interpreter =
+      TfLiteInterpreterCreateWithSelectedOps(model, options);
+  ASSERT_NE(interpreter, nullptr);
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterResetVariableTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+  EXPECT_TRUE(my_data.called_for_add);
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
+}
+
+const TfLiteRegistrationExternal* MyFindBuiltinOpExternal(void* user_data,
+                                                          int op, int version) {
+  OpResolverData* my_data = static_cast<OpResolverData*>(user_data);
+  if (op == kTfLiteBuiltinAdd && version == 1) {
+    my_data->called_for_add = true;
+    return GetNoOpRegistrationExternal();
+  }
+  return nullptr;
+}
+
+const TfLiteRegistrationExternal* MyFindCustomOpExternal(void*,
+                                                         const char* custom_op,
+                                                         int version) {
+  if (absl::string_view(custom_op) == "foo" && version == 1) {
+    return GetNoOpRegistrationExternal();
+  }
+  return nullptr;
+}
+
+// Test using TfLiteInterpreterCreateWithSelectedOps.
+TEST(CApiExperimentalTest, SetOpResolverExternal) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+
+  OpResolverData my_data;
+  TfLiteInterpreterOptionsSetOpResolverExternal(
+      options, MyFindBuiltinOpExternal, MyFindCustomOpExternal, &my_data);
   EXPECT_FALSE(my_data.called_for_add);
 
   TfLiteInterpreter* interpreter =
