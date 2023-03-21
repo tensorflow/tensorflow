@@ -137,6 +137,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
+#include "tensorflow/compiler/xla/service/hlo_rematerialization.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/layout_normalization.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -1238,6 +1239,24 @@ static Status CompileModuleToLlvmIrImpl(
       [pointer_size](const BufferValue& buffer_value) -> int64_t {
     return GetSizeOfShape(buffer_value.shape(), pointer_size);
   };
+
+  HloRematerialization::RematerializationSizes sizes;
+  HloRematerialization remat(
+      [pointer_size](const Shape& shape) {
+        return GetSizeOfShape(shape, pointer_size);
+      },
+      // Assume 75% of the total device memory is available for XLA.
+      /*memory_limit_bytes=*/gpu_device_info.device_memory_size * 0.75,
+      /*sizes=*/&sizes,
+      HloRematerialization::RematerializationPass::kPostFusion,
+      /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
+      /*compact_shape_function=*/nullptr,
+      HloRematerialization::RematerializationMode::kRecomputeAndCompress);
+  TF_ASSIGN_OR_RETURN(bool changed, remat.Run(hlo_module));
+  if (changed) {
+    VLOG(1) << "HloRematerialization saved "
+            << sizes.before_bytes - sizes.after_bytes << " bytes";
+  }
 
   TF_ASSIGN_OR_RETURN(
       results->buffer_assignment,
