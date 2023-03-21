@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/pjrt_device_context.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "tensorflow/compiler/tf2xla/literal_util.h"
@@ -31,12 +32,16 @@ namespace {
 
 StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
     const tensorflow::Tensor* cpu_tensor, tensorflow::Device* device,
-    xla::PjRtClient* pjrt_client) {
-  // TODO(b/262472386): Consider layout_preference_fn and
-  // shape_representation_fn.
-  xla::Shape shape;
-  TF_RETURN_IF_ERROR(
-      TensorShapeToXLAShape(cpu_tensor->dtype(), cpu_tensor->shape(), &shape));
+    xla::PjRtClient* pjrt_client,
+    const XlaShapeLayoutHelpers::ShapeDeterminationFns
+        shape_determination_fns) {
+  XlaLayoutPreference layout_preference =
+      shape_determination_fns.layout_preference_fn(
+          cpu_tensor->shape(), cpu_tensor->dtype(), std::nullopt);
+  TF_ASSIGN_OR_RETURN(xla::Shape shape,
+                      shape_determination_fns.shape_representation_fn(
+                          cpu_tensor->shape(), cpu_tensor->dtype(),
+                          /*fast_mem=*/false, layout_preference));
   TF_ASSIGN_OR_RETURN(
       xla::PjRtDevice * pjrt_device,
       pjrt_client->LookupAddressableDevice(device->parsed_name().id));
@@ -101,8 +106,8 @@ void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     done(pjrt_client.status());
     return;
   }
-  StatusOr<std::unique_ptr<xla::PjRtBuffer>> buffer_or =
-      HostTensorToPjRtBuffer(cpu_tensor, device, *pjrt_client);
+  StatusOr<std::unique_ptr<xla::PjRtBuffer>> buffer_or = HostTensorToPjRtBuffer(
+      cpu_tensor, device, *pjrt_client, shape_determination_fns_);
   if (!buffer_or.ok()) {
     done(buffer_or.status());
     return;
