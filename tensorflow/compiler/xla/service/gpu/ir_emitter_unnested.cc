@@ -1828,57 +1828,69 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
 #if GOOGLE_CUDA
 Status IrEmitterUnnested::EmitTritonFusion(
     mlir::Operation* op, tensorflow::AutotuneResult::TritonGemmKey& config) {
+  // Note: In this method we can't use `BuildReusableKernelThunk` as usual,
+  // because we only get the launch dimensions after code generation. So we
+  // implement kernel reuse using lower level APIs, such as
+  // `BuildReusableKernelThunkImpl`.
+
   VLOG(3) << llvm_ir::DumpToString(op);
   auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
+
+  std::string suggested_kernel_name = GetIrNameFromLoc(fusion_op->getLoc());
+  TF_ASSIGN_OR_RETURN(std::vector<ReusableKernelArgument> kernel_arguments,
+                      GetReusableKernelArguments(fusion_op));
 
   TF_ASSIGN_OR_RETURN(
       const HloComputation* hlo_computation,
       GetOrCreateSubComputationFromRegion(&fusion_op->getRegion(0),
                                           /*is_fusion=*/false));
 
-  const std::string fingerprint =
-      hlo_computation->ToString(HloPrintOptions::Fingerprint()
-                                    .set_print_only_essential_constants(false)
-                                    .set_print_operand_shape(false));
+  std::string fingerprint = GetFingerprint(hlo_computation, kernel_arguments);
+  VLOG(4) << "Fingerprint: ";
+  XLA_VLOG_LINES(4, fingerprint);
 
-  // TODO(tdanyluk): Consider removing this level of caching, because we already
-  // cache the wrapper_fn now. But we have to measure the compile time if we do
-  // that, because the reusability criteria of triton_cache_ is actually more
-  // permissive than the criteria of kernel_reuse_cache_, so removing it may
-  // make compilation slower.
-  auto cache_it = triton_cache_.find(fingerprint);
-  llvm::Function* impl_fn;
-  if (cache_it == triton_cache_.end()) {
-    const std::string fn_name =
-        ir_emitter_context_->name_uniquer()->GetUniqueName(
-            llvm_ir::SanitizeFunctionName(
-                absl::StrCat(GetIrNameFromLoc(fusion_op->getLoc()), "_impl")));
-    const std::optional<LaunchDimensions> launch_dimensions = TritonWrapper(
-        fn_name, hlo_computation,
-        ir_emitter_context_->cuda_compute_capability(),
-        ir_emitter_context_->gpu_device_info(), config, module_, &MatMul);
-    TF_RET_CHECK(launch_dimensions.has_value());
-    impl_fn = module_->getFunction(fn_name);
-    TF_RET_CHECK(impl_fn);
-    triton_cache_[fingerprint] =
-        std::make_pair(impl_fn, launch_dimensions.value());
-  } else {
-    VLOG(10) << "Duplicate computation reused.";
-    impl_fn = cache_it->second.first;
-  }
+  if (auto cache_it = kernel_reuse_cache_.find(fingerprint);
+      cache_it != kernel_reuse_cache_.end()) {
+    ReusableKernelThunk* old_thunk = cache_it->second;
 
-  // Call the (cached) impl_fn from the wrapper_fn corresponding to this thunk.
-  // Using BuildReusableKernelThunk actually speeds up the compilation
-  // considerably, despite the caching of the impl_fn.
-  TF_ASSIGN_OR_RETURN(
-      std::optional<std::vector<llvm_ir::IrArray>> opt_ir_arrays,
-      BuildReusableKernelThunk(
-          fusion_op, /*launch_dimensions=*/triton_cache_[fingerprint].second));
-  if (!opt_ir_arrays.has_value()) {
-    // The kernel was reused, no need to emit code.
+    VLOG(3) << "Reuse: " << suggested_kernel_name << " -> "
+            << old_thunk->kernel_name();
+
+    TF_RETURN_IF_ERROR(
+        BuildReusableKernelThunkImpl(old_thunk->kernel_name(), kernel_arguments,
+                                     GetThunkInfo(fusion_op),
+                                     old_thunk->launch_dimensions())
+            .status());
+
     return OkStatus();
   }
-  std::vector<llvm_ir::IrArray>& ir_arrays = opt_ir_arrays.value();
+
+  VLOG(3) << "Generating: " << suggested_kernel_name;
+
+  // We still need `impl_fn` because we only get the launch dimension
+  // after Triton code generation and it is needed for creating the kernel and
+  // the thunk.
+  // TODO(tdanyluk): Consider removing `impl_fn` to simplify the emitted code.
+  const std::string impl_fn_name =
+      ir_emitter_context_->name_uniquer()->GetUniqueName(
+          llvm_ir::SanitizeFunctionName(
+              absl::StrCat(suggested_kernel_name, "_impl")));
+  const std::optional<LaunchDimensions> launch_dimensions = TritonWrapper(
+      impl_fn_name, hlo_computation,
+      ir_emitter_context_->cuda_compute_capability(),
+      ir_emitter_context_->gpu_device_info(), config, module_, &MatMul);
+  TF_RET_CHECK(launch_dimensions.has_value());
+  llvm::Function* impl_fn = module_->getFunction(impl_fn_name);
+  TF_RET_CHECK(impl_fn);
+
+  auto [kernel, ir_arrays] = BuildReusableKernelPrototype(
+      suggested_kernel_name, kernel_arguments, launch_dimensions.value());
+
+  TF_ASSIGN_OR_RETURN(ReusableKernelThunk * thunk,
+                      BuildReusableKernelThunkImpl(
+                          kernel->getName().str(), kernel_arguments,
+                          GetThunkInfo(fusion_op), launch_dimensions.value()));
+  kernel_reuse_cache_[fingerprint] = thunk;
 
   std::vector<llvm::Value*> args;
   args.reserve(ir_arrays.size());
